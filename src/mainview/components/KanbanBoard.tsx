@@ -127,8 +127,11 @@ function KanbanBoard({
 	}, [project.id, tasks]);
 
 	useEffect(() => {
+		// Virtual (Operations) boards have no git repo, branches, or PRs — skip the
+		// poll entirely instead of firing a doomed getProjectPRs RPC every 60s.
+		if (project.kind === "virtual") return;
 		return startVisibilityAwarePoll({ fn: fetchPRs, intervalMs: 60_000 });
-	}, [fetchPRs]);
+	}, [fetchPRs, project.kind]);
 
 	// CI/review status pushed by the background PR poller — merge onto the
 	// existing PR badge entry (carrying number/url forward if already known).

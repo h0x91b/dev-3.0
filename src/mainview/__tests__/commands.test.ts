@@ -35,4 +35,22 @@ describe("availableCommands", () => {
 		const ids = ALL_COMMANDS.map((c) => c.id);
 		expect(new Set(ids).size).toBe(ids.length);
 	});
+
+	it("hides git, dev-server, and run-script commands for a virtual (Operations) project", () => {
+		const cmds = availableCommands({ hasProject: true, hasTask: true, isVirtual: true });
+		const ids = cmds.map((c) => c.id);
+		expect(cmds.some((c) => c.category === "git")).toBe(false);
+		expect(cmds.some((c) => c.category === "devserver")).toBe(false);
+		expect(ids).not.toContain("task-run-script");
+		// Non-git task commands stay available.
+		expect(ids).toContain("task-open-in-finder");
+		expect(ids).toContain("task-move-in-progress");
+	});
+
+	it("keeps git/dev-server/run-script commands for a normal (git) project", () => {
+		const cmds = availableCommands({ hasProject: true, hasTask: true, isVirtual: false });
+		expect(cmds.some((c) => c.category === "git")).toBe(true);
+		expect(cmds.some((c) => c.category === "devserver")).toBe(true);
+		expect(cmds.map((c) => c.id)).toContain("task-run-script");
+	});
 });

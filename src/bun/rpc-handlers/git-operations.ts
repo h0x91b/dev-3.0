@@ -36,6 +36,21 @@ import {
 } from "./merge-prompt-suppression";
 import { computeSignalKey, mapReviewDecision, reasonForSignal, rollupCiStatus } from "./pr-status";
 
+/**
+ * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir
+ * but no git repo, so any git command would fail with a cryptic "not a git
+ * repository". The UI already hides these affordances for virtual tasks; this is
+ * defense-in-depth for CLI/programmatic callers and yields a clear error.
+ */
+function assertGitTask(project: Project, task: Task): asserts task is Task & { worktreePath: string } {
+	if (project.kind === "virtual") {
+		throw new Error("Git operations are not available for Operations tasks");
+	}
+	if (!task.worktreePath) {
+		throw new Error("Task has no worktree");
+	}
+}
+
 const gitOpPaneIds = new Map<string, string>();
 // promptKey -> reservedAt (ms). A reservation only mutes re-prompts for
 // MERGE_PROMPT_RETRY_SUPPRESS_MS: if the user never answers (app restart,
@@ -617,7 +632,10 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	if (!task.worktreePath) {
+	// Virtual (Operations) tasks have a working dir but no git repo. The renderer
+	// polls this every 15s for any active task with a worktreePath, so return an
+	// inert status instead of spawning a doomed `git` in a non-repo directory.
+	if (project.kind === "virtual" || !task.worktreePath) {
 		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null };
 	}
 
@@ -724,9 +742,7 @@ async function getTaskDiff(params: {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	if (!task.worktreePath) {
-		throw new Error("Task has no worktree");
-	}
+	assertGitTask(project, task);
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	if (params.mode !== "uncommitted") {
@@ -759,7 +775,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	if (!task.worktreePath) throw new Error("Task has no worktree");
+	assertGitTask(project, task);
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
@@ -811,7 +827,7 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	if (!task.worktreePath) throw new Error("Task has no worktree");
+	assertGitTask(project, task);
 
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
 	const branchForMerge = liveBranch ?? task.branchName;
@@ -909,7 +925,7 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	if (!task.worktreePath) throw new Error("Task has no worktree");
+	assertGitTask(project, task);
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 	const scriptPath = `/tmp/dev3-${task.id}-git-push.sh`;
@@ -957,7 +973,7 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	if (!task.worktreePath) throw new Error("Task has no worktree");
+	assertGitTask(project, task);
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
@@ -1003,7 +1019,7 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 
-	if (!task.worktreePath) throw new Error("Task has no worktree");
+	assertGitTask(project, task);
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 	const scriptPath = `/tmp/dev3-${task.id}-git-openPR.sh`;

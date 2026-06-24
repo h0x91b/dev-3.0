@@ -1,4 +1,5 @@
 import type { Project } from "../../shared/types";
+import { isBuiltinOpsProject } from "../../shared/types";
 import { useT } from "../i18n";
 import { PaletteShell } from "./PaletteShell";
 
@@ -31,7 +32,7 @@ function ProjectQuickSwitchModal({ projects, shortcutIndexById, onSelect, onClos
 		<PaletteShell
 			items={projects}
 			getKey={(p) => p.id}
-			getText={(p) => p.name}
+			getText={(p) => (isBuiltinOpsProject(p) ? t("ops.boardName") : p.name)}
 			onSelect={(p) => onSelect(p.id)}
 			onClose={onClose}
 			placeholder={t("projectSwitch.placeholder")}
@@ -40,6 +41,9 @@ function ProjectQuickSwitchModal({ projects, shortcutIndexById, onSelect, onClos
 			noResults={t("projectSwitch.noResults")}
 			testId="project-quick-switch"
 			renderItemRight={(p, _i, query) => {
+				if (query.length === 0 && isBuiltinOpsProject(p)) {
+					return <span className="text-fg-3 text-xs flex-shrink-0">⌘0</span>;
+				}
 				const idx = shortcutIndexById?.[p.id];
 				return idx !== undefined && idx < 9 && query.length === 0 ? (
 					<span className="text-fg-3 text-xs flex-shrink-0">⌘{idx + 1}</span>

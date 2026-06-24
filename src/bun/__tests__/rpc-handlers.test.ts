@@ -2257,6 +2257,49 @@ describe("virtual task lifecycle", () => {
 	});
 });
 
+describe("git-operations guards — virtual (Operations) tasks", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	const vproject = (overrides?: Partial<Project>) =>
+		makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", ...overrides });
+	const vtask = () => makeTask({ projectId: "vp1", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+
+	it("getBranchStatus returns an inert status without spawning git for a virtual task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(vtask());
+
+		const status = await handlers.getBranchStatus({ taskId: "task-1", projectId: "vp1" });
+
+		expect(status.ahead).toBe(0);
+		expect(status.behind).toBe(0);
+		expect(status.canRebase).toBe(false);
+		// The 15s renderer poll must not fire a doomed git in a non-repo dir.
+		expect(git.getCurrentBranch).not.toHaveBeenCalled();
+		expect(git.fetchOrigin).not.toHaveBeenCalled();
+	});
+
+	it("getTaskDiff throws a clear error (and skips git) for a virtual task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(vtask());
+
+		await expect(
+			handlers.getTaskDiff({ taskId: "task-1", projectId: "vp1", mode: "uncommitted" }),
+		).rejects.toThrow(/not available for Operations/i);
+		expect(git.getTaskDiff).not.toHaveBeenCalled();
+	});
+
+	it("pushTask throws a clear error for a virtual task", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(vproject());
+		vi.mocked(data.getTask).mockResolvedValue(vtask());
+
+		await expect(handlers.pushTask({ taskId: "task-1", projectId: "vp1" })).rejects.toThrow(
+			/not available for Operations/i,
+		);
+	});
+});
+
 // ================================================================
 // handlers.editTask
 // ================================================================

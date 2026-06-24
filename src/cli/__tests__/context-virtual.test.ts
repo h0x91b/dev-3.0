@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 
-import { detectContext } from "../context";
+import { detectContext, expandShortId, expandShortProjectId, readProjectDirect, readTaskDirect } from "../context";
 
 const HOME = process.env.HOME || "/tmp";
 const DEV3_HOME = `${HOME}/.dev3.0`;
@@ -66,5 +66,29 @@ describe("detectContext — virtual (Operations) tasks", () => {
 	it("returns null when no virtual project matches the readable slug", () => {
 		const ctx = detectContext(`${OPS_DIR}/no-such-board/${SHORT_ID}/work`);
 		expect(ctx).toBeNull();
+	});
+});
+
+describe("offline ID resolution — virtual (Operations) projects", () => {
+	// These run without a socket and previously read only projects.json, going
+	// blind to virtual boards (which live in virtual-projects.json).
+	it("readProjectDirect resolves a virtual project by id", () => {
+		const project = readProjectDirect(PROJECT_ID);
+		expect(project?.id).toBe(PROJECT_ID);
+		expect(project?.name).toBe("Test Ops");
+		expect(project?.path).toBe(SYNTH_PATH);
+	});
+
+	it("readTaskDirect resolves a virtual project's task", () => {
+		const task = readTaskDirect(PROJECT_ID, TASK_ID);
+		expect(task?.id).toBe(TASK_ID);
+	});
+
+	it("expandShortId expands a short task id belonging to a virtual project", () => {
+		expect(expandShortId(SHORT_ID, null)).toBe(TASK_ID);
+	});
+
+	it("expandShortProjectId expands a short virtual project id", () => {
+		expect(expandShortProjectId("vproj-test", null)).toBe(PROJECT_ID);
 	});
 });

@@ -6,6 +6,27 @@ const DEV3_HOME = `${HOME}/.dev3.0`;
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 const WORKTREES_DIR = `${DEV3_HOME}/worktrees`;
 const PROJECTS_FILE = `${DEV3_HOME}/projects.json`;
+// Virtual ("Operations") projects live in a SEPARATE file so older app versions
+// never see them. Offline ID resolution must read both or it goes blind to ops.
+const VIRTUAL_PROJECTS_FILE = `${DEV3_HOME}/virtual-projects.json`;
+
+/**
+ * Read all projects (git + virtual) for offline ID resolution, without a socket.
+ * Either file may be absent — an unreadable file contributes nothing rather than
+ * throwing, so a missing virtual-projects.json simply yields the git projects.
+ */
+function readAllProjectsRaw(): Array<{ id: string; name?: string; path: string }> {
+	const out: Array<{ id: string; name?: string; path: string }> = [];
+	for (const file of [PROJECTS_FILE, VIRTUAL_PROJECTS_FILE]) {
+		try {
+			const parsed = JSON.parse(readFileSync(file, "utf-8")) as Array<{ id: string; name?: string; path: string }>;
+			if (Array.isArray(parsed)) out.push(...parsed);
+		} catch {
+			// File missing or unreadable — skip it.
+		}
+	}
+	return out;
+}
 
 export interface CliContext {
 	projectId: string;
@@ -357,10 +378,9 @@ export function expandShortId(id: string, context: CliContext | null): string {
 	if (id.length >= 36) return id;
 	// Check if context task matches the prefix
 	if (context?.taskId?.startsWith(id)) return context.taskId;
-	// Fall back to scanning data files across all projects
+	// Fall back to scanning data files across all projects (git + virtual)
 	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string; path: string }>;
-		for (const project of projects) {
+		for (const project of readAllProjectsRaw()) {
 			const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
 			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
 			if (!existsSync(tasksFile)) continue;
@@ -384,10 +404,9 @@ export function expandShortProjectId(id: string, context: CliContext | null): st
 	if (id.length >= 36) return id;
 	// Check if context project matches the prefix
 	if (context?.projectId?.startsWith(id)) return context.projectId;
-	// Fall back to scanning projects.json
+	// Fall back to scanning projects (git + virtual)
 	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string }>;
-		const match = projects.find((p) => p.id.startsWith(id));
+		const match = readAllProjectsRaw().find((p) => p.id.startsWith(id));
 		if (match) return match.id;
 	} catch {
 		// Data files not available — return as-is
@@ -408,12 +427,8 @@ export function resolveProjectId(flagValue: string | undefined, context: CliCont
  * Read project info directly from data files (no socket needed).
  */
 export function readProjectDirect(projectId: string): { id: string; name: string; path: string } | null {
-	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string; name: string; path: string }>;
-		return projects.find((p) => p.id === projectId || p.id.startsWith(projectId)) || null;
-	} catch {
-		return null;
-	}
+	const match = readAllProjectsRaw().find((p) => p.id === projectId || p.id.startsWith(projectId));
+	return match ? { id: match.id, name: match.name ?? "", path: match.path } : null;
 }
 
 /**
@@ -421,8 +436,7 @@ export function readProjectDirect(projectId: string): { id: string; name: string
  */
 export function readTaskDirect(projectId: string, taskId: string): Record<string, unknown> | null {
 	try {
-		const projects = JSON.parse(readFileSync(PROJECTS_FILE, "utf-8")) as Array<{ id: string; path: string }>;
-		const project = projects.find((p) => p.id === projectId);
+		const project = readAllProjectsRaw().find((p) => p.id === projectId);
 		if (!project) return null;
 
 		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");

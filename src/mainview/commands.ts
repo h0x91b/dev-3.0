@@ -90,11 +90,20 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 export interface CommandContext {
 	hasProject: boolean;
 	hasTask: boolean;
+	/**
+	 * The current project is a virtual ("Operations") board, which has no git,
+	 * dev server, or setup/run scripts. Those command categories are hidden so the
+	 * palette matches the inspector (which already hides the same affordances).
+	 */
+	isVirtual?: boolean;
 }
 
 /** Commands runnable in the current route context, in registry order. */
 export function availableCommands(ctx: CommandContext): PaletteCommand[] {
 	return ALL_COMMANDS.filter((c) => {
+		if (ctx.isVirtual && (c.category === "git" || c.category === "devserver" || c.id === "task-run-script")) {
+			return false;
+		}
 		if (c.scope === "task") return ctx.hasTask;
 		if (c.scope === "project") return ctx.hasProject;
 		return true;

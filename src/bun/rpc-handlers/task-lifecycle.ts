@@ -134,19 +134,24 @@ async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<
 		});
 	});
 
-	const cleanupTask: Task = {
-		...task,
-		worktreePath: task.worktreePath ?? `${git.taskDir(project, task)}/worktree`,
-	};
+	// Virtual (Operations) tasks have no git worktree — the work dir is a managed
+	// temp folder (or a user-chosen one we must never force-remove). Skip the git
+	// worktree teardown entirely; only git projects own a removable worktree.
+	if (project.kind !== "virtual") {
+		const cleanupTask: Task = {
+			...task,
+			worktreePath: task.worktreePath ?? `${git.taskDir(project, task)}/worktree`,
+		};
 
-	try {
-		await git.removeWorktree(project, cleanupTask);
-	} catch (err) {
+		try {
+			await git.removeWorktree(project, cleanupTask);
+		} catch (err) {
 			log.warn("removeWorktree failed while cancelling preparation", {
 				taskId: task.id.slice(0, 8),
-			worktreePath: cleanupTask.worktreePath,
-			error: String(err),
-		});
+				worktreePath: cleanupTask.worktreePath,
+				error: String(err),
+			});
+		}
 	}
 
 	const updated = await data.updateTask(project, task.id, preparingResetUpdates());

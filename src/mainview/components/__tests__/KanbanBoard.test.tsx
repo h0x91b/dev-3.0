@@ -137,6 +137,17 @@ describe("column ordering", () => {
 		expect(labels).toContain("Completed");
 	});
 
+	it("does not poll getProjectPRs for a virtual board (no git, no PRs)", async () => {
+		await renderBoardWith({ project: { ...project, kind: "virtual" } });
+		await Promise.resolve();
+		expect(api.request.getProjectPRs).not.toHaveBeenCalled();
+	});
+
+	it("polls getProjectPRs for a git board", async () => {
+		await renderBoardWith();
+		await waitFor(() => expect(api.request.getProjectPRs).toHaveBeenCalled());
+	});
+
 	it("review-by-colleague is inserted before completed when missing from stored columnOrder", async () => {
 		await renderBoardWith({
 			project: {

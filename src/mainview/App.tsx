@@ -5,6 +5,7 @@ import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
+import { orderProjectsForDisplay } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
@@ -394,11 +395,19 @@ function App() {
 	// order); the ⌘N badge stays keyed to the stable board index.
 	const quickSwitch = useMemo(() => {
 		const boardProjects = state.projects.filter((p) => !p.deleted);
+		// ⌘1..9 address ordinary projects only — the builtin Operations board owns
+		// ⌘0 (see the keydown handler). The ⌘N badge index must mirror that same
+		// builtin-excluded ordering, or the badge would disagree with the shortcut.
+		const ordinary = boardProjects.filter((p) => !(p.builtin && p.kind === "virtual"));
 		const shortcutIndexById: Record<string, number> = {};
-		boardProjects.forEach((p, i) => {
+		ordinary.forEach((p, i) => {
 			shortcutIndexById[p.id] = i;
 		});
-		const ordered = showProjectSwitch ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects;
+		// Pin the builtin Operations board first (consistent with the dashboard,
+		// header switcher, and sidebar), then recency, then board order.
+		const ordered = orderProjectsForDisplay(
+			showProjectSwitch ? orderByRecency(boardProjects, getRecentProjectIds()) : boardProjects,
+		);
 		return { projects: ordered, shortcutIndexById };
 	}, [state.projects, showProjectSwitch]);
 
@@ -1394,6 +1403,7 @@ function App() {
 					context={{
 						hasProject: Boolean(getProjectIdForRoute(state.route)),
 						hasTask: Boolean(routeTaskId(state.route)),
+						isVirtual: state.projects.find((p) => p.id === getProjectIdForRoute(state.route))?.kind === "virtual",
 					}}
 					onRun={runCommand}
 					onClose={() => setShowCommandPalette(false)}
