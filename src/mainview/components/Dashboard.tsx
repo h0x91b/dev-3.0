@@ -1,6 +1,7 @@
 import type { Dispatch } from "react";
 import { toast } from "../toast";
 import type { Project } from "../../shared/types";
+import { orderProjectsForDisplay } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -40,7 +41,10 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 		dispatch({ type: "reorderProjects", projectIds });
 		try {
 			const reordered = await api.request.reorderProjects({ projectIds });
-			dispatch({ type: "setProjects", projects: reordered });
+			// reorderProjects only operates on git projects.json — re-merge virtual
+			// boards (Operations) so they are not wiped from state on confirmation.
+			const virtuals = previousProjects.filter((p) => p.kind === "virtual");
+			dispatch({ type: "setProjects", projects: orderProjectsForDisplay([...reordered, ...virtuals]) });
 			trackEvent("projects_reordered", { project_count: projectIds.length });
 		} catch (err) {
 			dispatch({ type: "setProjects", projects: previousProjects });
