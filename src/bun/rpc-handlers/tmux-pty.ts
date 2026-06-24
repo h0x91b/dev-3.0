@@ -1071,6 +1071,14 @@ async function getProjectPtyUrl(params: { projectId: string }): Promise<string> 
 
 	if (!pty.hasSession(sessionKey)) {
 		const project = await data.getProject(params.projectId);
+		// Virtual ("Operations") boards have no repo and no stable project folder
+		// (the synthetic ~/.dev3.0/ops/<slug> path is created lazily per-task). A
+		// project terminal there is meaningless and would otherwise open a shell in
+		// dev3's internal data dir — reject it explicitly. The UI hides the
+		// affordance for virtual boards; this is the backend backstop.
+		if (project.kind === "virtual") {
+			throw new Error("Project terminal is not available for Operations boards");
+		}
 		if (!existsSync(project.path)) {
 			throw new Error(`Project path does not exist: ${project.path}`);
 		}

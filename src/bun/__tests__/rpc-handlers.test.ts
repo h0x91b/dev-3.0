@@ -214,6 +214,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
+import { findReusableQuickShell } from "../rpc-handlers/task-lifecycle";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
 import * as updater from "../updater";
@@ -8079,5 +8080,56 @@ describe("handlers.openInApp", () => {
 		await expect(
 			handlers.openInApp({ appName: "../evil", path: "/tmp/work" }),
 		).rejects.toThrow("Invalid app name");
+	});
+});
+
+describe("handlers.getProjectPtyUrl — virtual board guard", () => {
+	beforeEach(() => {
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.hasDeadSession).mockReturnValue(false);
+	});
+
+	it("rejects a virtual (Operations) board instead of opening a doomed terminal", async () => {
+		// A virtual board's synthetic path is created lazily per-task; without the
+		// guard getProjectPtyUrl threw "Project path does not exist" (or opened a
+		// shell in dev3's internal data dir). Now it rejects with a clear message.
+		vi.mocked(data.getProject).mockResolvedValue(
+			makeProject({ kind: "virtual", path: "/Users/x/.dev3.0/ops/operations" }),
+		);
+		await expect(handlers.getProjectPtyUrl({ projectId: "vproj-1" })).rejects.toThrow(/Operations boards/);
+	});
+
+	it("opens a project terminal for a normal git project (guard does not over-fire)", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject({ path: "/tmp/real-repo" }));
+		vi.mocked(existsSync).mockReturnValue(true);
+		const url = await handlers.getProjectPtyUrl({ projectId: "proj-1" });
+		expect(url).toContain("session=project-proj-1");
+	});
+});
+
+describe("findReusableQuickShell — Quick shell dedup", () => {
+	it("reuses an active Quick shell", () => {
+		const tasks = [makeTask({ id: "a", customTitle: "Quick shell", status: "in-progress" })];
+		expect(findReusableQuickShell(tasks)?.id).toBe("a");
+	});
+
+	it("reuses an INACTIVE (todo) Quick shell instead of spawning a duplicate", () => {
+		// The original bug: dedup matched only active shells, so one dragged to todo
+		// was missed and ⇧⌘` created a second.
+		const tasks = [makeTask({ id: "b", customTitle: "Quick shell", status: "todo" })];
+		expect(findReusableQuickShell(tasks)?.id).toBe("b");
+	});
+
+	it("ignores completed/cancelled Quick shells (history) so a fresh one is created", () => {
+		const tasks = [
+			makeTask({ id: "c", customTitle: "Quick shell", status: "completed" }),
+			makeTask({ id: "d", customTitle: "Quick shell", status: "cancelled" }),
+		];
+		expect(findReusableQuickShell(tasks)).toBeUndefined();
+	});
+
+	it("ignores tasks that are not Quick shells", () => {
+		const tasks = [makeTask({ id: "e", customTitle: "Something else", status: "in-progress" })];
+		expect(findReusableQuickShell(tasks)).toBeUndefined();
 	});
 });

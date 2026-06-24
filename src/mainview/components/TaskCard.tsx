@@ -561,7 +561,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						title={t("task.scratchSession")}
 					>
-						{""}
+						{"\u{F018D}"}
 					</span>
 				)}
 				{displayTitle}

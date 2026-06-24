@@ -197,10 +197,46 @@ function resolveFromVirtualPath(cwd: string): CliContext | null {
 }
 
 /**
- * Detect context from worktree path structure (git) or virtual ops working dir.
+ * Resolve context from the DEV3_TASK_ID env var that the app injects into every
+ * task tmux pane (see buildAgentEnv / tmux-pty.ts). This is the fallback for
+ * operations whose working dir is NOT under ~/.dev3.0/ops/<slug>/<task>/work:
+ *  - a fixed-folder operation (user-picked opsWorkDir, e.g. ~/Downloads), and
+ *  - the built-in Quick shell (runs in homedir()).
+ * Path-based detection (worktree / managed-ops) can't see those, so without this
+ * the agent status hooks (`dev3 task move … --if-status-not …`) silently no-op.
+ * Scans all projects (git + virtual) for the task; the env var is the full UUID.
+ */
+function resolveFromEnv(): CliContext | null {
+	const taskId = process.env.DEV3_TASK_ID;
+	if (!taskId) return null;
+	try {
+		for (const project of readAllProjectsRaw()) {
+			const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
+			if (!existsSync(tasksFile)) continue;
+			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
+			if (tasks.some((t) => t.id === taskId)) {
+				return {
+					projectId: project.id,
+					taskId,
+					socketPath: discoverSocket() || "",
+				};
+			}
+		}
+	} catch {
+		// Data files unavailable — fall through to "no context".
+	}
+	return null;
+}
+
+/**
+ * Detect context from worktree path structure (git), virtual ops working dir, or
+ * the injected DEV3_TASK_ID env var (covers fixed-folder ops and the Quick shell,
+ * whose working dirs live outside the ~/.dev3.0/ops/ tree). Path wins over env so
+ * a user who `cd`s between worktrees in one pane resolves the dir they're in.
  */
 export function detectContext(cwd: string = process.cwd()): CliContext | null {
-	return resolveFromWorktreePath(cwd) || resolveFromVirtualPath(cwd);
+	return resolveFromWorktreePath(cwd) || resolveFromVirtualPath(cwd) || resolveFromEnv();
 }
 
 /**

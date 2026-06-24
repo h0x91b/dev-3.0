@@ -482,6 +482,14 @@ export async function removeProject(projectId: string): Promise<void> {
 				log.warn("Virtual project not found for soft-delete", { projectId });
 				return;
 			}
+			// The built-in Operations board is a pinned system object. Deleting it
+			// dead-ends ⌘0 (its lookup returns nothing) until the app restarts, and
+			// because the slug dir survives, the next launch re-creates it under a
+			// NEW slug/id — orphaning the old board's tasks. Refuse the deletion.
+			if (projects[idx].builtin) {
+				log.warn("Refusing to delete the built-in Operations board", { projectId });
+				return;
+			}
 			projects[idx] = { ...projects[idx], deleted: true };
 			await rawSaveVirtualProjects(projects);
 		});

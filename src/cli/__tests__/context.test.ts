@@ -18,6 +18,10 @@ const TEST_TASK_DATA_DIR = `${DATA_DIR}/${TEST_SLUG}`;
 let originalProjectsContent: string | null = null;
 
 beforeEach(() => {
+	// These tests may run inside a real dev3 agent pane where DEV3_TASK_ID is set;
+	// clear it so detectContext's env fallback doesn't resolve the real task when a
+	// test passes a non-worktree path expecting null.
+	delete process.env.DEV3_TASK_ID;
 	// Save original projects.json if it exists
 	if (existsSync(PROJECTS_FILE)) {
 		const { readFileSync } = require("node:fs");

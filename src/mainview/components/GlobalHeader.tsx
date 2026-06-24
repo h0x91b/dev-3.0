@@ -480,12 +480,15 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					className="flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
 					title={t("quickShell.tooltipWithShortcut")}
 				>
-					<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+					<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F018D}"}</span>
 					{!compact && <span className="text-[0.6875rem] font-medium">{t("quickShell.open")}</span>}
 				</button>
 
-				{/* Project Terminal — visible when inside a project */}
-				{"projectId" in route && (
+				{/* Project Terminal — visible when inside a git project. Hidden for
+				    virtual ("Operations") boards: their synthetic path is created
+				    lazily per-task, so opening one throws "Project path does not
+				    exist" (same reason Git Pull below is hidden). */}
+				{"projectId" in route && !isVirtualProject && (
 					<button
 						onClick={() => {
 							if (route.screen === "project-terminal") {

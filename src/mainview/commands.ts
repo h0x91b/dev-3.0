@@ -92,8 +92,10 @@ export interface CommandContext {
 	hasTask: boolean;
 	/**
 	 * The current project is a virtual ("Operations") board, which has no git,
-	 * dev server, or setup/run scripts. Those command categories are hidden so the
-	 * palette matches the inspector (which already hides the same affordances).
+	 * dev server, setup/run scripts, or project terminal (its synthetic path is
+	 * created lazily per-task and has no repo). Those command categories are
+	 * hidden so the palette matches the inspector (which already hides the same
+	 * affordances) and to avoid the "Project path does not exist" crash.
 	 */
 	isVirtual?: boolean;
 }
@@ -101,7 +103,13 @@ export interface CommandContext {
 /** Commands runnable in the current route context, in registry order. */
 export function availableCommands(ctx: CommandContext): PaletteCommand[] {
 	return ALL_COMMANDS.filter((c) => {
-		if (ctx.isVirtual && (c.category === "git" || c.category === "devserver" || c.id === "task-run-script")) {
+		if (
+			ctx.isVirtual &&
+			(c.category === "git" ||
+				c.category === "devserver" ||
+				c.id === "task-run-script" ||
+				c.id === "term-toggle-project-terminal")
+		) {
 			return false;
 		}
 		if (c.scope === "task") return ctx.hasTask;

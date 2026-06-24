@@ -572,9 +572,15 @@ function App() {
 					e.stopPropagation();
 					navigate({ screen: "project", projectId: route.projectId });
 				} else if ("projectId" in route) {
-					e.preventDefault();
-					e.stopPropagation();
-					navigate({ screen: "project-terminal", projectId: route.projectId });
+					// Virtual ("Operations") boards have no project terminal — their
+					// synthetic path is created lazily per-task, so opening one throws
+					// "Project path does not exist". Ignore the hotkey there.
+					const isVirtual = state.projects.find((p) => p.id === route.projectId)?.kind === "virtual";
+					if (!isVirtual) {
+						e.preventDefault();
+						e.stopPropagation();
+						navigate({ screen: "project-terminal", projectId: route.projectId });
+					}
 				}
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && /^Digit[1-9]$/.test(e.code)) {
 				// Cmd+Shift+1..9 — switch to project by index landing on the

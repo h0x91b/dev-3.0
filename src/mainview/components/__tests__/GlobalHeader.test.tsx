@@ -584,6 +584,13 @@ describe("GlobalHeader — project terminal button", () => {
 		).toBeTruthy();
 	});
 
+	it("renders a non-empty Quick Shell icon glyph (regression: was an empty placeholder)", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		const quickShellButton = screen.getByTitle("Quick Shell in home (⌘⇧`)");
+		const icon = quickShellButton.querySelector("span");
+		expect(icon?.textContent).toBe("\u{F018D}");
+	});
+
 	it("does not show terminal button on dashboard", () => {
 		renderHeader({ screen: "dashboard" });
 		expect(screen.queryByText("Project Terminal")).not.toBeInTheDocument();

@@ -112,6 +112,22 @@ describe("ensureBuiltinOperationsBoard", () => {
 		const all = await loadVirtualProjects();
 		expect(all.filter((p) => p.builtin)).toHaveLength(1);
 	});
+
+	it("refuses to delete the built-in Operations board (would dead-end ⌘0 + orphan tasks)", async () => {
+		const board = await ensureBuiltinOperationsBoard("Operations");
+		await removeProject(board.id);
+		const all = await loadVirtualProjects();
+		expect(all.find((p) => p.id === board.id)).toBeTruthy();
+		expect(all.filter((p) => p.builtin)).toHaveLength(1);
+	});
+
+	it("still soft-deletes a NON-builtin virtual board", async () => {
+		const board = await addVirtualProject("Experiments");
+		expect(board.builtin).toBeFalsy();
+		await removeProject(board.id);
+		const all = await loadVirtualProjects();
+		expect(all.find((p) => p.id === board.id)).toBeFalsy();
+	});
 });
 
 describe("getProject / updateProject / removeProject routing", () => {
@@ -142,14 +158,17 @@ describe("getProject / updateProject / removeProject routing", () => {
 	it("updateProjectWith routes virtual ids to the virtual file (labels/columns no longer throw)", async () => {
 		const project = await addVirtualProject("Operations");
 		// Before the fix this threw "Project not found" — it only searched projects.json.
-		const { project: updated, result } = await updateProjectWith(project.id, (p) => ({
-			updates: { name: `${p.name} (edited)` },
+		// Use a real ProjectUpdates field (labels are what the notes/labels callers
+		// actually mutate on the Operations board).
+		const label = { id: "l1", name: "urgent", color: "#ff0000" };
+		const { project: updated, result } = await updateProjectWith(project.id, () => ({
+			updates: { labels: [label] },
 			result: "ok" as const,
 		}));
 		expect(result).toBe("ok");
-		expect(updated.name).toBe("Operations (edited)");
+		expect(updated.labels).toEqual([label]);
 		const reloaded = await loadVirtualProjects();
-		expect(reloaded[0].name).toBe("Operations (edited)");
+		expect(reloaded[0].labels).toEqual([label]);
 		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(false);
 	});
 

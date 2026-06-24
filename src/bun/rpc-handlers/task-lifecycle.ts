@@ -1196,29 +1196,68 @@ async function respondToAgentCompletionRequest(params: { requestId: string; appr
  * focuses) a prompt-less "Quick shell" operation in the built-in Operations
  * board, running in the user's home dir. The ⇧⌘` hotkey maps to this.
  */
+/**
+ * Find a Quick shell task worth reusing: any one that is NOT in a terminal state
+ * (completed/cancelled). An active shell is refocused; an inactive one (e.g.
+ * dragged to todo) is relaunched. Only when every Quick shell is terminal — or
+ * none exists — is a fresh one created. Matching ONLY active ones (the old bug)
+ * silently spawned duplicates whenever a shell went inactive.
+ */
+export function findReusableQuickShell(tasks: Task[]): Task | undefined {
+	return tasks.find(
+		(tk) => tk.customTitle === "Quick shell" && tk.status !== "completed" && tk.status !== "cancelled",
+	);
+}
+
+// In-flight guard: openQuickShell does find-then-create, which is not atomic.
+// Two rapid ⇧⌘` presses would both miss the existing shell and each create one.
+// Serializing concurrent calls onto a single promise makes the second press
+// return the same task the first one resolves to, instead of a duplicate.
+let quickShellInflight: Promise<Task> | null = null;
+
 async function openQuickShell(_params: {}): Promise<Task> {
 	log.info("→ openQuickShell");
+	if (quickShellInflight) {
+		log.info("openQuickShell: joining in-flight call");
+		return quickShellInflight;
+	}
+	quickShellInflight = openQuickShellInner();
+	try {
+		return await quickShellInflight;
+	} finally {
+		quickShellInflight = null;
+	}
+}
+
+async function openQuickShellInner(): Promise<Task> {
 	const project = await data.ensureBuiltinOperationsBoard("Operations");
 	const tasks = await data.loadTasks(project);
-	const existing = tasks.find((tk) => tk.customTitle === "Quick shell" && isActive(tk.status));
-	if (existing) {
+	// Reuse any non-terminal Quick shell (NOT just active ones): one that was
+	// dragged to todo or otherwise went inactive must be refocused/relaunched, not
+	// duplicated. Completed/cancelled shells are history — a fresh one is created.
+	const existing = findReusableQuickShell(tasks);
+	if (existing && isActive(existing.status)) {
 		log.info("← openQuickShell (focus existing)", { taskId: existing.id.slice(0, 8) });
 		return existing;
 	}
-	const task = await data.addTask(project, "", "todo", {
-		scratch: true,
-		customTitle: "Quick shell",
-		titleEditedByUser: true,
-		opsWorkDir: homedir(),
-	});
-	const wt = await activateTask(project, task);
-	const updated = await data.updateTask(project, task.id, {
+	// Either no shell exists, or the existing one is inactive (e.g. todo) and needs
+	// its PTY relaunched. Both paths run activate + set in-progress identically.
+	const target =
+		existing ??
+		(await data.addTask(project, "", "todo", {
+			scratch: true,
+			customTitle: "Quick shell",
+			titleEditedByUser: true,
+			opsWorkDir: homedir(),
+		}));
+	const wt = await activateTask(project, target, { isReopen: !!existing });
+	const updated = await data.updateTask(project, target.id, {
 		status: "in-progress",
 		worktreePath: wt.worktreePath,
 		branchName: wt.branchName,
 	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info("← openQuickShell (created)", { taskId: task.id.slice(0, 8) });
+	log.info(`← openQuickShell (${existing ? "reactivated" : "created"})`, { taskId: target.id.slice(0, 8) });
 	return updated;
 }
 
