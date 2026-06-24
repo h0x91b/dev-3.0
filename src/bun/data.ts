@@ -529,6 +529,21 @@ export async function updateProjectWith<T>(
 	projectId: string,
 	mutator: (project: Project) => Promise<{ updates: ProjectUpdates; result: T }> | { updates: ProjectUpdates; result: T },
 ): Promise<{ project: Project; result: T }> {
+	// Route virtual (Operations) projects to virtual-projects.json, exactly like
+	// updateProject. Without this, labels and custom columns on the Operations
+	// board throw "Project not found" (they go through this mutator helper).
+	if (await isVirtualProjectId(projectId)) {
+		return withFileLock(VIRTUAL_PROJECTS_FILE, async () => {
+			log.info("Updating virtual project with mutator", { projectId });
+			const projects = await rawLoadAllVirtualProjects({ strict: true });
+			const idx = projects.findIndex((p) => p.id === projectId);
+			if (idx === -1) throw new Error(`Project not found: ${projectId}`);
+			const { updates, result } = await mutator(projects[idx]);
+			projects[idx] = { ...projects[idx], ...updates };
+			await rawSaveVirtualProjects(projects);
+			return { project: projects[idx], result };
+		});
+	}
 	return withFileLock(PROJECTS_FILE, async () => {
 		log.info("Updating project with mutator", { projectId });
 		const projects = await rawLoadAllProjects({ strict: true, persistMigrations: true });

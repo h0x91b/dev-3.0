@@ -309,8 +309,11 @@ async function checkMergedBranches(): Promise<void> {
 	mergeLastTickAt = now;
 
 	if (mergeNotifiedPromptKeys.size > 0 || prPromotedTasks.size > 0) {
+		// Merge detection itself is git-only (below), but the orphan-state reap must
+		// see EVERY live task id — including virtual ones — or a deleted virtual
+		// task's stale key would linger in these maps forever (slow memory leak).
 		const allTaskIds = new Set<string>();
-		for (const project of projects) {
+		for (const project of [...projects, ...await data.loadVirtualProjects()]) {
 			const tasks = await data.loadTasks(project);
 			for (const task of tasks) allTaskIds.add(task.id);
 		}

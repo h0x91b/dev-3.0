@@ -221,6 +221,7 @@ const settings = {
 	"projectSettings.tabGlobalDesc": "Diseño del tablero — etiquetas, columnas y orden de columnas",
 	"projectSettings.tabProjectDesc": "Configuración predeterminada para todas las tareas. Si existe .dev3/config.json en el repo, tiene prioridad sobre estos valores.",
 	"projectSettings.tabWorktreeDesc": "Sobrecargas de configuración para el worktree de una tarea específica",
+	"projectSettings.virtualNoGitConfig": "Los tableros de Operaciones no tienen repositorio git, así que no hay nada que configurar aquí. Gestiona columnas y etiquetas en la pestaña «Tablero».",
 	"projectSettings.projectOverriddenByRepo": "Estas configuraciones son sobreescritas por {file} en tu repo. Edita ese archivo para cambiar la config efectiva.",
 	"projectSettings.projectOverriddenByLocal": "Estas configuraciones son sobreescritas por {file} (local, ignorado por git). Edita ese archivo para cambiar la config efectiva.",
 	"projectSettings.worktreeSelector": "Selecciona una tarea para editar la config de su worktree",

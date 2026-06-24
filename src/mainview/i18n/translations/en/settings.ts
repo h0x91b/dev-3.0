@@ -220,6 +220,7 @@ const settings = {
 	"projectSettings.tabGlobalDesc": "Board layout — labels, columns, and column order",
 	"projectSettings.tabProjectDesc": "Default settings for all tasks. If a .dev3/config.json exists in the repo, it takes priority over these values.",
 	"projectSettings.tabWorktreeDesc": "Override settings for a specific task's worktree",
+	"projectSettings.virtualNoGitConfig": "Operations boards have no git repository, so there's nothing to configure here. Manage columns and labels on the Board tab.",
 	"projectSettings.projectOverriddenByRepo": "These settings are overridden by {file} in your repo. Edit that file to change the effective config.",
 	"projectSettings.projectOverriddenByLocal": "These settings are overridden by {file} (local, git-ignored). Edit that file to change the effective config.",
 	"projectSettings.worktreeSelector": "Select a task to edit its worktree config",

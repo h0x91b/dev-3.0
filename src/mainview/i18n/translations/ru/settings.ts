@@ -222,6 +222,7 @@ const settings = {
 	"projectSettings.tabGlobalDesc": "Макет доски — метки, колонки и порядок колонок",
 	"projectSettings.tabProjectDesc": "Настройки по умолчанию для всех задач. Если в репо есть .dev3/config.json, он имеет приоритет над этими значениями.",
 	"projectSettings.tabWorktreeDesc": "Переопределения настроек для конкретного worktree задачи",
+	"projectSettings.virtualNoGitConfig": "У досок «Операции» нет git-репозитория, поэтому здесь нечего настраивать. Колонки и метки — на вкладке «Доска».",
 	"projectSettings.projectOverriddenByRepo": "Эти настройки переопределены файлом {file} в репо. Редактируйте этот файл для изменения эффективного конфига.",
 	"projectSettings.projectOverriddenByLocal": "Эти настройки переопределены файлом {file} (локальный, не в git). Редактируйте этот файл для изменения эффективного конфига.",
 	"projectSettings.worktreeSelector": "Выберите задачу для редактирования конфига worktree",

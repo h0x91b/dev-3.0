@@ -42,6 +42,7 @@ import {
 	loadVirtualProjects,
 	removeProject,
 	updateProject,
+	updateProjectWith,
 } from "../data";
 
 describe("addVirtualProject", () => {
@@ -135,6 +136,27 @@ describe("getProject / updateProject / removeProject routing", () => {
 		const git = await addProject("/tmp/some-repo", "Repo");
 		const updated = await updateProject(git.id, { autoReviewEnabled: true });
 		expect(updated.autoReviewEnabled).toBe(true);
+		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(true);
+	});
+
+	it("updateProjectWith routes virtual ids to the virtual file (labels/columns no longer throw)", async () => {
+		const project = await addVirtualProject("Operations");
+		// Before the fix this threw "Project not found" — it only searched projects.json.
+		const { project: updated, result } = await updateProjectWith(project.id, (p) => ({
+			updates: { name: `${p.name} (edited)` },
+			result: "ok" as const,
+		}));
+		expect(result).toBe("ok");
+		expect(updated.name).toBe("Operations (edited)");
+		const reloaded = await loadVirtualProjects();
+		expect(reloaded[0].name).toBe("Operations (edited)");
+		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(false);
+	});
+
+	it("updateProjectWith for a git id still writes projects.json", async () => {
+		const git = await addProject("/tmp/some-repo-2", "Repo2");
+		const { result } = await updateProjectWith(git.id, () => ({ updates: { autoReviewEnabled: true }, result: 42 }));
+		expect(result).toBe(42);
 		expect(existsSync(`${DEV3_HOME}/projects.json`)).toBe(true);
 	});
 });

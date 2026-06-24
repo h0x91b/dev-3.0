@@ -615,4 +615,26 @@ describe("ProjectSettings", () => {
 			}
 		});
 	});
+
+	describe("virtual (Operations) board", () => {
+		const virtualProject: Project = {
+			...mockProject,
+			id: "ops-1",
+			name: "Operations",
+			kind: "virtual",
+			builtin: true,
+		};
+
+		it("hides the git-only Project Config and Worktree Config tabs", async () => {
+			await renderProjectSettings(virtualProject);
+			expect(screen.getByText("Board")).toBeInTheDocument();
+			expect(screen.queryByText("Project Config")).not.toBeInTheDocument();
+			expect(screen.queryByText("Worktree Config")).not.toBeInTheDocument();
+		});
+
+		it("defaults to the Board tab (columns + labels) for a virtual board", async () => {
+			await renderProjectSettings(virtualProject);
+			expect(screen.getByText(/Board layout/i)).toBeInTheDocument();
+		});
+	});
 });
