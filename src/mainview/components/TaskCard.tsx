@@ -367,12 +367,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	// still TBD — for now every badge click maps to `review-by-user`.
 	const CI_BADGE: Record<NonNullable<TaskPRBadgeInfo["ciStatus"]>, { glyph: string; cls: string; key: TranslationKey }> = {
 		success: { glyph: "", cls: "text-green-400 bg-green-500/10 hover:bg-green-500/20", key: "task.ci.success" },
-		failure: { glyph: "", cls: "text-red-400 bg-red-500/10 hover:bg-red-500/20", key: "task.ci.failure" },
+		failure: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.ci.failure" },
 		pending: { glyph: "", cls: "text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20", key: "task.ci.pending" },
 	};
 	const REVIEW_BADGE: Record<NonNullable<TaskPRBadgeInfo["reviewState"]>, { glyph: string; cls: string; key: TranslationKey }> = {
 		approved: { glyph: "", cls: "text-green-400 bg-green-500/10 hover:bg-green-500/20", key: "task.review.approved" },
-		changes_requested: { glyph: "", cls: "text-red-400 bg-red-500/10 hover:bg-red-500/20", key: "task.review.changesRequested" },
+		changes_requested: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.review.changesRequested" },
 		commented: { glyph: "", cls: "text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20", key: "task.review.commented" },
 	};
 	const ciMeta = prInfo?.ciStatus ? CI_BADGE[prInfo.ciStatus] : null;

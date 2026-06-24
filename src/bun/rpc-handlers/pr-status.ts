@@ -47,9 +47,10 @@ export function rollupCiStatus(rollup: unknown): PRCIStatus | null {
 
 /**
  * Map GitHub's `reviewDecision` to our review state. GitHub only emits
- * APPROVED / CHANGES_REQUESTED / REVIEW_REQUIRED (or empty). We surface
- * `commented` from a non-empty-but-undecided value so "got comments" still
- * shows. REVIEW_REQUIRED / empty ⇒ `null` (no review activity yet).
+ * APPROVED / CHANGES_REQUESTED / REVIEW_REQUIRED (or empty), so in practice
+ * only `approved` / `changes_requested` / `null` are reachable today.
+ * REVIEW_REQUIRED / empty ⇒ `null` (no review activity yet). The `commented`
+ * fallback is forward-compat only (see the inline note below).
  */
 export function mapReviewDecision(reviewDecision: unknown): PRReviewState | null {
 	if (typeof reviewDecision !== "string" || reviewDecision === "") return null;
@@ -57,6 +58,11 @@ export function mapReviewDecision(reviewDecision: unknown): PRReviewState | null
 	if (d === "APPROVED") return "approved";
 	if (d === "CHANGES_REQUESTED") return "changes_requested";
 	if (d === "REVIEW_REQUIRED") return null;
+	// Future-proofing: GitHub's `reviewDecision` enum only ever returns
+	// APPROVED / CHANGES_REQUESTED / REVIEW_REQUIRED / "" — it never emits
+	// COMMENTED, so this branch is effectively unreachable today. Kept as
+	// forward-compat for when `commented` is fed from a richer source (e.g.
+	// reviews / latestReviews counts) rather than `reviewDecision`.
 	return "commented";
 }
 
