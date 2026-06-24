@@ -464,7 +464,7 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 		return tasks;
 	} catch (err: any) {
 		if (err.code === "ENOENT") {
-			log.info("No tasks file yet", { projectId: project.id });
+			log.debug("No tasks file yet", { projectId: project.id });
 			return [];
 		}
 		log.error("Failed to load tasks", { projectId: project.id, error: String(err) });

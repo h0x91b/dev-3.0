@@ -630,7 +630,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		await data.updateTask(project, task.id, { branchName: liveBranch });
 	}
 
-	log.info("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
+	log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
 	await git.fetchOrigin(project.path, baseBranch);
 	const ref = params.compareRef || `origin/${baseBranch}`;
 	const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
@@ -670,7 +670,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	]);
 	const prNumber = prInfo?.number ?? null;
 	const prUrl = prInfo?.url ?? null;
-	log.info("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
+	log.debug("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
 	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref, project) === true : false;
 	const mergeCompletionFingerprint = mergedByContent
@@ -683,7 +683,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		prNumber, prUrl,
 		mergeCompletionFingerprint,
 	};
-	log.info("← getBranchStatus", result);
+	log.debug("← getBranchStatus", result);
 
 	git.saveDiffSnapshot(project, task, ref).catch((err) => {
 		log.warn("saveDiffSnapshot failed", { taskId: task.id, error: String(err) });
@@ -693,7 +693,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 }
 
 async function getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {
-	log.info("→ getBranchStatus", params);
+	log.debug("→ getBranchStatus", params);
 	const dedupKey = `${params.taskId}:${params.compareRef ?? ""}`;
 	const existing = branchStatusInFlight.get(dedupKey);
 	if (existing) {
