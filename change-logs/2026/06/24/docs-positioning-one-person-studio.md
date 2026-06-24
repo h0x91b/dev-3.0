@@ -1,0 +1,1 @@
+Reframed the README and landing page (docs/index.html) around dev-3.0's positioning: mission control for the One Person Studio, deliberately not an IDE. Added Philosophy, Ways to work, and "Which is for you?" sections plus a refreshed hero, meta tags, and CTA copy. See decisions/080-positioning-not-an-ide.md.

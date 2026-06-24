@@ -5,8 +5,8 @@
 <h1 align="center">dev-3.0</h1>
 
 <p align="center">
-  <strong>Terminal-centric project manager for AI coding agents</strong><br>
-  Kanban board meets terminal. Each task gets its own git worktree, tmux session, and full terminal.
+  <strong>Mission control for the One Person Studio</strong><br>
+  AI writes the code now — your job is commanding the fleet. dev-3.0 is the Kanban-first cockpit for running dozens of AI coding agents at full speed, while one board keeps you focused. Each task gets its own git worktree, tmux session, and terminal.
 </p>
 
 <p align="center">
@@ -27,6 +27,33 @@
 <p align="center">
   <img src="docs/screenshots/kanban-board.jpg" width="800" alt="Kanban board — tasks across To Do, Working, Review and Done columns">
 </p>
+
+## Philosophy
+
+AI writes the code now. It commits, opens PRs, reviews. Your job changed —
+from *writing* to *commanding* a fleet of agents across more tasks and projects
+than any one head can hold. The bottleneck moved: it's not your editor anymore,
+it's your **focus**. Everything in dev-3.0 is built around that. Two things we
+optimize for, above all:
+
+**1. Your speed — as one person.**
+dev-3.0 optimizes a single developer: *you*. The unit is always the individual,
+never the org. It works fine on a team — but it's not a tool for managing other
+people; it's a tool for each person to command their own fleet and hit their own
+top speed. Everyone focuses on themselves, and the whole moves faster.
+
+**2. Beautiful, and built around you.**
+A cockpit you stare at all day should be fast, gorgeous, and keyboard-first — and
+it should bend to *your* way of working, not force one on you. Great tooling
+doesn't just make you productive; it makes the work fun again. We sweat the polish.
+
+**And what we refuse: dev-3.0 is not an IDE — and won't become one.**
+
+- **The code is the agent's job.** No embedded editor; one click to your real
+  VS Code or Cursor when you truly need it — and the goal is to need it less.
+- **Git is the agent's job too.** No manual staging, no hand-written commits.
+- **Integrate through your agent.** Claude Code, Codex & co. already speak MCP to
+  Linear, Jira, and the rest. dev-3.0 is the cockpit; your agent is the adapter.
 
 ## The problem
 
@@ -81,6 +108,17 @@ dev-3.0 gives you a Kanban board where each task is a fully isolated environment
 <p align="center">
   <img src="docs/screenshots/global-settings.jpg" width="600" alt="Global settings — agents, configs, languages">
 </p>
+
+## Which is for you?
+
+Other tools in this space are great — if you want to live in an editor.
+dev-3.0 makes a different bet. Pick by your goal, not a feature checklist:
+
+| If you want to… | Reach for… |
+|---|---|
+| Stay in an editor, hands on the code and git | an **agent IDE** |
+| Buy a platform for a whole team (SSO, seats, audit) | a **team orchestrator** |
+| Run a fleet of agents **solo**, at speed, without drowning | **dev-3.0** |
 
 ## Keyboard shortcuts
 
