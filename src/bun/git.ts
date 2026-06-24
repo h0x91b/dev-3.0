@@ -1222,7 +1222,7 @@ export async function fetchOrigin(
 		if (result.ok) {
 			fetchLastSuccess.set(cacheKey, Date.now());
 			fetchLastFailure.delete(cacheKey);
-			log.info("fetchOrigin finished", {
+			log.debug("fetchOrigin finished", {
 				projectPath,
 				branch,
 				durationMs: Math.round(performance.now() - startedAt),

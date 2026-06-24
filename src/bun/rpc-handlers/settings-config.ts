@@ -43,10 +43,10 @@ export async function resolveOperationalProjectConfig(project: Project, worktree
 }
 
 async function getResolvedProject(params: { projectId: string; worktreePath: string }): Promise<Project> {
-	log.info("→ getResolvedProject", { projectId: params.projectId, worktreePath: params.worktreePath });
+	log.debug("→ getResolvedProject", { projectId: params.projectId, worktreePath: params.worktreePath });
 	const project = await data.getProject(params.projectId);
 	const resolved = await repoConfig.resolveProjectConfig(project, params.worktreePath);
-	log.info("← getResolvedProject");
+	log.debug("← getResolvedProject");
 	return resolved;
 }
 

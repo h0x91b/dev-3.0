@@ -20,7 +20,34 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
 
-let minLevel: LogLevel = "debug";
+/**
+ * Resolve the initial minimum log level.
+ *
+ * History: this used to be hard-coded to `"debug"`, and nothing ever lowered
+ * it — so every build (including prod) wrote every DEBUG line to disk via a
+ * synchronous `appendFileSync` on each call. On a busy machine the git-status
+ * pollers alone produced tens of thousands of DEBUG lines per session
+ * (multi-MB/day) and the synchronous writes nibbled at the event loop.
+ *
+ * Rules (first match wins):
+ *   1. `DEV3_LOG_LEVEL=debug|info|warn|error` — explicit override, always honored.
+ *   2. dev builds (`DEV3_CHANNEL=dev`) keep full `debug` logs.
+ *   3. everything else (prod/staging/canary) defaults to `info`.
+ */
+export function resolveLogLevel(env: Record<string, string | undefined>): LogLevel {
+	const explicit = env.DEV3_LOG_LEVEL?.toLowerCase();
+	if (
+		explicit === "debug" ||
+		explicit === "info" ||
+		explicit === "warn" ||
+		explicit === "error"
+	) {
+		return explicit;
+	}
+	return env.DEV3_CHANNEL === "dev" ? "debug" : "info";
+}
+
+let minLevel: LogLevel = resolveLogLevel(process.env);
 let logDir: string | null = null;
 let currentLogFile: string | null = null;
 let currentLogDate: string | null = null;
@@ -153,6 +180,10 @@ export function createLogger(tag: string): Logger {
 
 export function setMinLevel(level: LogLevel): void {
 	minLevel = level;
+}
+
+export function getMinLevel(): LogLevel {
+	return minLevel;
 }
 
 export function getLogPath(): string {
