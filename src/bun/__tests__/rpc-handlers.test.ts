@@ -1443,6 +1443,28 @@ describe("handlers.getTasks", () => {
 	});
 });
 
+describe("handlers.getAllProjectTasks", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("includes virtual (Operations) boards so active operations are surfaced", async () => {
+		// Feeds the dashboard's per-project active tasks AND the working-folder
+		// conflict check — both dead for operations if virtual boards are skipped.
+		const git = makeProject({ id: "g1" });
+		const ops = makeProject({ id: "vp1", kind: "virtual", builtin: true });
+		vi.mocked(data.loadProjects).mockResolvedValue([git]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([ops]);
+		vi.mocked(data.loadTasks).mockImplementation(async (project: Project) =>
+			project.id === "vp1" ? [makeTask({ id: "op1", projectId: "vp1", status: "in-progress" })] : [],
+		);
+
+		const result = await handlers.getAllProjectTasks();
+
+		const opsEntry = result.find((r) => r.projectId === "vp1");
+		expect(opsEntry).toBeDefined();
+		expect(opsEntry!.tasks.map((t) => t.id)).toEqual(["op1"]);
+	});
+});
+
 // ================================================================
 // handlers.createTask
 // ================================================================
@@ -3844,6 +3866,31 @@ describe("handlers.getPtyUrl", () => {
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).toHaveBeenCalled();
+	});
+
+	it("restores a VIRTUAL (Operations) task's dead session — scans virtual boards, skips git config", async () => {
+		// Regression: findTaskAcrossProjects scanned only git projects, so an active
+		// operation whose tmux session died could never be restored ("[session ended]").
+		const vproject = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/test-dev3/ops/operations/task-1/work" });
+
+		vi.mocked(pty.hasSession).mockReturnValue(false);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
+		vi.mocked(data.loadProjects).mockResolvedValue([]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([vproject]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
+		expect(pty.createSession).toHaveBeenCalledWith(
+			"task-1", "vp1", "/tmp/test-dev3/ops/operations/task-1/work",
+			expect.anything(), expect.anything(), expect.anything(),
+		);
+		// Virtual boards have no git repo config — it must be skipped.
+		expect(repoConfig.resolveProjectConfig).not.toHaveBeenCalled();
 	});
 
 	it("returns recoverable when tmux is dead but sessionState exists", async () => {

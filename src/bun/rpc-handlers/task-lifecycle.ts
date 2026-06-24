@@ -655,7 +655,10 @@ async function getTasks(params: { projectId: string }): Promise<Task[]> {
 
 async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] }[]> {
 	log.info("→ getAllProjectTasks");
-	const projects = await data.loadProjects();
+	// Include virtual ("Operations") boards — otherwise the dashboard shows no
+	// active operations and the working-folder conflict check (which compares
+	// against active operations) never fires.
+	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
 	const results = await Promise.all(
 		projects.map(async (project) => {
 			const tasks = await data.loadTasks(project);
