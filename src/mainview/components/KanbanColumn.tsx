@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type Dispatch } from "react";
-import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskStatus, TipState } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus, TipState } from "../../shared/types";
 import { hexToRgb, getAllowedTransitions } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { useT } from "../i18n";
@@ -58,7 +58,7 @@ interface KanbanColumnProps {
 	// Column reorder drop target (left half = "before", right half = "after")
 	onColumnDrop?: (side: "before" | "after") => void;
 	// PR numbers for task cards
-	taskPrMap?: Map<string, { number: number; url: string }>;
+	taskPrMap?: Map<string, TaskPRBadgeInfo>;
 	// Feature discovery tip
 	tip?: Tip | null;
 	tipState?: TipState;

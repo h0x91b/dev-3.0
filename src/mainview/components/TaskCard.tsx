@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskStatus } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import type { TranslationKey } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
@@ -43,7 +44,7 @@ interface TaskCardProps {
 	isMoving?: boolean;
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
 	siblingMap?: Map<string, Task[]>;
-	prInfo?: { number: number; url: string };
+	prInfo?: TaskPRBadgeInfo;
 }
 
 function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
@@ -357,6 +358,48 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		>
 			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
 			<span className="leading-none">#{prInfo.number}</span>
+		</button>
+	) : null;
+
+	// CI + PR-review status badges. Clicking a badge bounces the task to your
+	// review (`review-by-user`) so a signalled PR resurfaces for action.
+	// NOTE (open question for PR review): the exact per-signal target column is
+	// still TBD — for now every badge click maps to `review-by-user`.
+	const CI_BADGE: Record<NonNullable<TaskPRBadgeInfo["ciStatus"]>, { glyph: string; cls: string; key: TranslationKey }> = {
+		success: { glyph: "", cls: "text-green-400 bg-green-500/10 hover:bg-green-500/20", key: "task.ci.success" },
+		failure: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.ci.failure" },
+		pending: { glyph: "", cls: "text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20", key: "task.ci.pending" },
+	};
+	const REVIEW_BADGE: Record<NonNullable<TaskPRBadgeInfo["reviewState"]>, { glyph: string; cls: string; key: TranslationKey }> = {
+		approved: { glyph: "", cls: "text-green-400 bg-green-500/10 hover:bg-green-500/20", key: "task.review.approved" },
+		changes_requested: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.review.changesRequested" },
+		commented: { glyph: "", cls: "text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20", key: "task.review.commented" },
+	};
+	const ciMeta = prInfo?.ciStatus ? CI_BADGE[prInfo.ciStatus] : null;
+	const ciBadge = ciMeta ? (
+		<button
+			onClick={(e) => {
+				e.stopPropagation();
+				handleMove("review-by-user");
+			}}
+			className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${ciMeta.cls}`}
+			title={t(ciMeta.key)}
+		>
+			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ciMeta.glyph}</span>
+			<span className="leading-none">CI</span>
+		</button>
+	) : null;
+	const reviewMeta = prInfo?.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
+	const reviewBadge = reviewMeta ? (
+		<button
+			onClick={(e) => {
+				e.stopPropagation();
+				handleMove("review-by-user");
+			}}
+			className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${reviewMeta.cls}`}
+			title={t(reviewMeta.key)}
+		>
+			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{reviewMeta.glyph}</span>
 		</button>
 	) : null;
 
@@ -675,8 +718,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					);
 				})()}
 
-				{/* PR badge for non-active cards */}
+				{/* PR + CI/review badges for non-active cards */}
 				{!isActive && prBadge}
+				{!isActive && ciBadge}
+				{!isActive && reviewBadge}
 
 				{/* Sibling variant dots */}
 				{hasSiblings && (
@@ -764,6 +809,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				)}
 			</div>
 
+			{/* PR / CI / review status badges — their own row so they don't crowd the
+			    action row's Watch / + Variant controls (which previously squeezed them
+			    onto one overflowing line). */}
+			{isActive && (prBadge || ciBadge || reviewBadge) && (
+				<div data-testid="task-card-status-badges" className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+					{prBadge}
+					{ciBadge}
+					{reviewBadge}
+				</div>
+			)}
+
 			{/* Action row for active tasks — Open in... | Watch | + Variant */}
 			{isActive && (
 				<div data-testid="task-card-action-row" className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
@@ -810,9 +866,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
 						</button>
 					</div>
-					<div className="flex min-w-0 justify-center">
-						{prBadge}
-					</div>
+					<div className="min-w-0" />
 					<button
 						onClick={(e) => {
 							e.stopPropagation();

@@ -13,7 +13,8 @@ import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
 import { Semaphore } from "../concurrency";
-import { getActiveContext, getPushMessage, isAppForeground, log } from "./shared";
+import { loadSettings } from "../settings";
+import { getActiveContext, getPushMessage, isAppForeground, log, notifyWatchedTaskEvent } from "./shared";
 import {
 	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
 	ACTIVE_PROJECT_PR_INTERVAL_MS,
@@ -33,6 +34,7 @@ import {
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
 } from "./merge-prompt-suppression";
+import { computeSignalKey, mapReviewDecision, reasonForSignal, rollupCiStatus } from "./pr-status";
 
 const gitOpPaneIds = new Map<string, string>();
 // promptKey -> reservedAt (ms). A reservation only mutes re-prompts for
@@ -47,6 +49,11 @@ const branchStatusSemaphore = new Semaphore(GIT_STATUS_MAX_CONCURRENCY);
 // duration, so a hung gh on a slow network must not stall branch-status globally.
 const PR_DETECTION_TIMEOUT_MS = 15_000;
 const prPromotedTasks = new Set<string>();
+// taskId -> last CI/review signal key we already raised attention for. Lets the
+// poller fire the bell / watched-notification only on a *transition* to a new
+// worthy state (e.g. CI flips to failure, a reviewer approves), not on every
+// 5-minute tick while the state is unchanged. See computeSignalKey().
+const prSignalState = new Map<string, string>();
 
 // taskId -> next time each poller may run its heavy git check for that task.
 // The scheduling math (intervals, jitter, wake re-spread) lives in
@@ -452,10 +459,12 @@ export function stopPRDetectionPoller(): void {
 
 export function _resetPRPollerState(): void {
 	prPromotedTasks.clear();
+	prSignalState.clear();
 	prTaskNextDue.clear();
 	prLastTickAt = 0;
 	scheduleRandom = Math.random;
 }
+
 
 export async function checkOpenPRsForPromotion(): Promise<void> {
 	const pushMessage = getPushMessage();
@@ -478,8 +487,13 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 		if (project.peerReviewEnabled === false) continue;
 
 		const tasks = await data.loadTasks(project);
+		// Poll `review-by-user` (to detect an open PR and promote it) AND
+		// `review-by-colleague` (to keep refreshing CI/review status while the PR
+		// is being reviewed). `prPromotedTasks` only gates the one-shot promotion
+		// below — it must NOT exclude a task from continued CI/review polling.
 		const candidates = tasks.filter(
-			(task) => task.status === "review-by-user" && task.worktreePath && !prPromotedTasks.has(task.id),
+			(task) =>
+				(task.status === "review-by-user" || task.status === "review-by-colleague") && !!task.worktreePath,
 		);
 
 		if (candidates.length === 0) continue;
@@ -514,29 +528,68 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 				const ghResult = await github.runGitHub(
 					project,
 					task.worktreePath!,
-					["pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft", "--limit", "1"],
+					["pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft,url,statusCheckRollup,reviewDecision", "--limit", "1"],
 				);
 				if (!ghResult.ok || !ghResult.stdout) continue;
 
-				let prs: Array<{ number: number; isDraft: boolean }>;
+				let prs: Array<{
+					number: number;
+					isDraft: boolean;
+					url?: string;
+					statusCheckRollup?: unknown;
+					reviewDecision?: unknown;
+				}>;
 				try {
 					prs = JSON.parse(ghResult.stdout);
 				} catch {
 					continue;
 				}
 
-				const hasOpenNonDraftPR = Array.isArray(prs) && prs.length > 0 && !prs[0].isDraft;
-				if (!hasOpenNonDraftPR) continue;
+				const pr = Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
+				if (!pr) continue;
 
-				prPromotedTasks.add(task.id);
-				log.info("Open PR detected — promoting to review-by-colleague", {
-					taskId: task.id.slice(0, 8),
-					branch: branchName,
-					pr: prs[0].number,
+				const ciStatus = rollupCiStatus(pr.statusCheckRollup);
+				const reviewState = mapReviewDecision(pr.reviewDecision);
+
+				// Always refresh the passive CI/review badges (not gated by Focus Mode).
+				pushMessage("taskPrStatus", {
+					projectId: project.id,
+					taskId: task.id,
+					prNumber: typeof pr.number === "number" ? pr.number : null,
+					prUrl: typeof pr.url === "string" ? pr.url : null,
+					ciStatus,
+					reviewState,
 				});
 
-				const updated = await data.updateTask(project, task.id, { status: "review-by-colleague" });
-				pushMessage("taskUpdated", { projectId: project.id, task: updated });
+				// Raise the bell / native notification only on a *transition* to a new
+				// worthy signal, and only once per state. Focus Mode suppresses the
+				// attention UI but we still record the state so it isn't replayed later.
+				const signalKey = computeSignalKey(ciStatus, reviewState);
+				if (signalKey && prSignalState.get(task.id) !== signalKey) {
+					prSignalState.set(task.id, signalKey);
+					const focusMode = (await loadSettings()).focusMode;
+					if (!focusMode) {
+						const reason = reasonForSignal(ciStatus, reviewState);
+						pushMessage("cliAttention", { taskId: task.id, reason });
+						notifyWatchedTaskEvent(task, reason, project.name);
+					}
+				} else if (!signalKey) {
+					prSignalState.delete(task.id);
+				}
+
+				// One-shot promotion: review-by-user with an open non-draft PR moves to
+				// review-by-colleague. review-by-colleague tasks fall through (already promoted).
+				const isOpenNonDraft = pr.isDraft === false;
+				if (task.status === "review-by-user" && isOpenNonDraft && !prPromotedTasks.has(task.id)) {
+					prPromotedTasks.add(task.id);
+					log.info("Open PR detected — promoting to review-by-colleague", {
+						taskId: task.id.slice(0, 8),
+						branch: branchName,
+						pr: pr.number,
+					});
+					const updated = await data.updateTask(project, task.id, { status: "review-by-colleague" });
+					pushMessage("taskUpdated", { projectId: project.id, task: updated });
+				}
 			} catch (err) {
 				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
 			} finally {
@@ -545,12 +598,18 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 		}
 	}
 	pruneSchedule(prTaskNextDue, liveTaskIds);
+	// Drop signal state for tasks no longer being polled so a re-entry to a
+	// review status re-raises the signal fresh.
+	for (const id of prSignalState.keys()) {
+		if (!liveTaskIds.has(id)) prSignalState.delete(id);
+	}
 }
 
 export function cleanupTaskGitState(taskId: string): void {
 	gitOpPaneIds.delete(taskId);
 	clearMergeNotification(taskId);
 	prPromotedTasks.delete(taskId);
+	prSignalState.delete(taskId);
 	branchStatusInFlight.delete(taskId);
 }
 

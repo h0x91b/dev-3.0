@@ -858,6 +858,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "pr-ci-review-badges",
+		titleKey: "tip.prCiReviewBadges.title",
+		bodyKey: "tip.prCiReviewBadges.body",
+		icon: "\u{F0E1D}", // nf-md-source_pull
+		score: 4,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

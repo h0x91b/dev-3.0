@@ -210,6 +210,8 @@ const tips = {
 	"tip.agentCanPingYou.body": "Агент вызывает `dev3 notify` или `dev3 attention` — появляется кликабельный тост или бейдж, переносящий вас на его задачу.",
 	"tip.focusModeMutesPings.title": "Пинги отвлекают?",
 	"tip.focusModeMutesPings.body": "Включите «Режим фокуса» в Настройки → Поведение, чтобы заглушить все тосты, бейджи и уведомления от агентов.",
+	"tip.prCiReviewBadges.title": "CI и ревью на карточке",
+	"tip.prCiReviewBadges.body": "Задачи на PR-ревью показывают бейджи CI и ревью; нажмите на бейдж, чтобы вернуть задачу на ваше ревью.",
 };
 
 export default tips;

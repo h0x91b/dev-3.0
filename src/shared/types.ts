@@ -917,6 +917,32 @@ export interface PRInfo {
 	headRefName: string;
 }
 
+/**
+ * CI/checks rollup for a task's open PR, collapsed from GitHub's
+ * `statusCheckRollup`. `null` = no PR / no checks reported yet.
+ */
+export type PRCIStatus = "success" | "failure" | "pending";
+
+/**
+ * PR review outcome, mapped from GitHub's `reviewDecision` (plus a derived
+ * `commented` when reviews exist without an approve/changes decision).
+ * `null` = no review activity yet.
+ */
+export type PRReviewState = "approved" | "changes_requested" | "commented";
+
+/**
+ * Per-task PR badge data shown on the Kanban card: PR number/url (from
+ * `getProjectPRs`) plus optional CI/review state (from the background PR
+ * poller's `taskPrStatus` push). `ciStatus`/`reviewState` are absent until the
+ * poller reports them.
+ */
+export interface TaskPRBadgeInfo {
+	number: number;
+	url: string;
+	ciStatus?: PRCIStatus | null;
+	reviewState?: PRReviewState | null;
+}
+
 // ---- Listening ports ----
 
 export interface PortInfo {
@@ -1804,6 +1830,20 @@ export type AppRPCSchema = {
 			 * terminal bell uses.
 			 */
 			cliAttention: { taskId: string; reason: string };
+			/**
+			 * CI/checks + PR-review state for a task's open PR, emitted by the
+			 * background PR poller (`checkOpenPRsForPromotion`). Drives the CI and
+			 * review badges on the task card. Passive status — NOT gated by Focus
+			 * Mode (only the bell/notification raised alongside it is).
+			 */
+			taskPrStatus: {
+				projectId: string;
+				taskId: string;
+				prNumber: number | null;
+				prUrl: string | null;
+				ciStatus: PRCIStatus | null;
+				reviewState: PRReviewState | null;
+			};
 		};
 	}>;
 	webview: RPCSchema<{
