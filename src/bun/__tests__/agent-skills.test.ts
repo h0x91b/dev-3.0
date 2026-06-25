@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyClaudeSettings,
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
 	getCodexSkillContent,
@@ -234,5 +235,63 @@ describe("dev3 Bug Hunter skill content", () => {
 		expect(skill).toContain(
 			"I could not reproduce this bug, so I did not attempt a fix. Please verify it manually; the issue may be invalid.",
 		);
+	});
+});
+
+describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)", () => {
+	const SOCKETS = "/Users/testuser/.dev3.0/sockets";
+
+	it("adds the dev3 CLI permission and the sockets dir to a fresh settings object", () => {
+		const settings: Record<string, unknown> = {};
+		const changed = applyClaudeSettings(settings, SOCKETS);
+
+		expect(changed).toBe(true);
+		const permissions = settings.permissions as { allow: string[] };
+		expect(permissions.allow).toContain("Bash(~/.dev3.0/bin/dev3 *)");
+		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
+		expect(sandbox.network.allowUnixSockets).toEqual([SOCKETS]);
+	});
+
+	it("allow-lists the sockets DIRECTORY, not a *.sock glob", () => {
+		const settings: Record<string, unknown> = {};
+		applyClaudeSettings(settings, SOCKETS);
+		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
+		expect(sandbox.network.allowUnixSockets[0]).toBe(SOCKETS);
+		expect(sandbox.network.allowUnixSockets[0]).not.toContain("*");
+	});
+
+	it("is a no-op (returns false) when both entries are already present", () => {
+		const settings: Record<string, unknown> = {
+			permissions: { allow: ["Bash(~/.dev3.0/bin/dev3 *)"] },
+			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
+		};
+		expect(applyClaudeSettings(settings, SOCKETS)).toBe(false);
+	});
+
+	it("preserves unrelated settings and existing allow/socket entries", () => {
+		const settings: Record<string, unknown> = {
+			model: "claude-opus-4-8",
+			permissions: { allow: ["Bash(ls *)"], deny: ["Bash(rm *)"] },
+			sandbox: { network: { allowUnixSockets: ["/tmp/other.sock"] } },
+		};
+		const changed = applyClaudeSettings(settings, SOCKETS);
+
+		expect(changed).toBe(true);
+		expect(settings.model).toBe("claude-opus-4-8");
+		const permissions = settings.permissions as { allow: string[]; deny: string[] };
+		expect(permissions.allow).toEqual(["Bash(ls *)", "Bash(~/.dev3.0/bin/dev3 *)"]);
+		expect(permissions.deny).toEqual(["Bash(rm *)"]);
+		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
+		expect(sandbox.network.allowUnixSockets).toEqual(["/tmp/other.sock", SOCKETS]);
+	});
+
+	it("does not duplicate the socket when only the permission is missing", () => {
+		const settings: Record<string, unknown> = {
+			sandbox: { network: { allowUnixSockets: [SOCKETS] } },
+		};
+		const changed = applyClaudeSettings(settings, SOCKETS);
+		expect(changed).toBe(true); // permission was added
+		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
+		expect(sandbox.network.allowUnixSockets).toEqual([SOCKETS]);
 	});
 });

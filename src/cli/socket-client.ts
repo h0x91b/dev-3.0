@@ -13,6 +13,12 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // few times with short backoff before concluding the app is actually down —
 // otherwise a single hiccup is misreported as "app not running" (issue #714).
 const TRANSIENT_CONNECT_CODES = new Set(["ECONNREFUSED", "ENOENT", "EAGAIN"]);
+// A sandbox (Claude Code seatbelt / Codex) that denies the Unix-socket connect
+// surfaces as EPERM/EACCES. Unlike a busy-backlog ECONNREFUSED, this is
+// deterministic — retrying never clears it (issue #726) — so we fail fast and
+// route to the same "can't reach the app" path with the errno attached, rather
+// than spinning through the retry budget or bubbling a raw EPERM.
+const BLOCKED_CONNECT_CODES = new Set(["EPERM", "EACCES"]);
 const DEFAULT_CONNECT_ATTEMPTS = 4;
 const CONNECT_RETRY_BASE_MS = 75;
 
@@ -21,6 +27,14 @@ class TransientConnectError extends Error {
 	constructor(readonly code: string) {
 		super(`Transient connect failure: ${code}`);
 		this.name = "TransientConnectError";
+	}
+}
+
+/** Connect was deterministically denied (sandbox) — retrying is pointless. */
+class BlockedConnectError extends Error {
+	constructor(readonly code: string) {
+		super(`Blocked connect: ${code}`);
+		this.name = "BlockedConnectError";
 	}
 }
 
@@ -62,6 +76,8 @@ function sendOnce(socketPath: string, req: CliRequest, timeoutMs: number): Promi
 			const code = (err as NodeJS.ErrnoException).code;
 			if (code && TRANSIENT_CONNECT_CODES.has(code)) {
 				reject(new TransientConnectError(code));
+			} else if (code && BLOCKED_CONNECT_CODES.has(code)) {
+				reject(new BlockedConnectError(code));
 			} else {
 				reject(err);
 			}
@@ -94,6 +110,14 @@ export async function sendRequest(
 		try {
 			return await sendOnce(socketPath, req, timeoutMs);
 		} catch (err) {
+			// A deterministic sandbox denial never clears on retry — surface it
+			// immediately as APP_NOT_RUNNING (connect stage) with the errno so the
+			// CLI prints the sandbox-aware message instead of bubbling a raw EPERM.
+			if (err instanceof BlockedConnectError) {
+				const blocked = new Error("APP_NOT_RUNNING") as Error & { connectCode?: string };
+				blocked.connectCode = err.code;
+				throw blocked;
+			}
 			// Only connection-level hiccups are retried. A real response (even an
 			// error one), a timeout, or a malformed payload propagates immediately.
 			if (!(err instanceof TransientConnectError)) throw err;
