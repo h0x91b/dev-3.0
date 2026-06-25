@@ -1,0 +1,1 @@
+Fixed a flaky pty-server test by cancelling the deferred post-spawn configureTmux timer when a session is destroyed. Previously the 200ms setTimeout fired even for torn-down sessions, leaking a default-socket tmux source-file spawn that could bleed into a later test and pick the wrong socket. Hardened the related tests to match the source-file call for their own socket.
