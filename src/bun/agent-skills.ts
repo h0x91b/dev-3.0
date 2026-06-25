@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { dirname } from "node:path";
 import { createLogger } from "./logger";
 import { ensureCodexConfigFile } from "./codex-config";
 
@@ -1107,33 +1108,76 @@ function installAgentsMd(): void {
 const CLAUDE_BASH_PERMISSION = "Bash(~/.dev3.0/bin/dev3 *)";
 
 /**
- * Ensure ~/.claude/settings.json has the dev3 CLI in permissions.allow
- * so Claude Code never prompts for approval on dev3 commands.
+ * Pure: ensure a parsed Claude Code settings object has both
+ *   1. the dev3 CLI bash command allow-listed (no approval prompt), and
+ *   2. the dev3 sockets DIRECTORY in `sandbox.network.allowUnixSockets`, so
+ *      Claude Code's macOS seatbelt sandbox lets the CLI connect to the running
+ *      app's Unix socket (`~/.dev3.0/sockets/<pid>.sock`). Without it the connect
+ *      is denied and the CLI falsely reports "app not running" (issue #726, the
+ *      Claude Code counterpart of the Codex fix in #100).
+ *
+ * Uses the sockets DIRECTORY, not a `*.sock` glob: each allowUnixSockets entry
+ * compiles to a seatbelt `(subpath ...)` rule — a literal directory-prefix match
+ * with no `*` expansion — so the directory covers the PID-named socket across app
+ * restarts while a glob would match nothing. Mutates `settings` in place and
+ * returns whether anything changed (so the caller can skip a needless write).
  */
-function ensureClaudePermission(): void {
-	const settingsPath = `${homedir()}/.claude/settings.json`;
+export function applyClaudeSettings(settings: Record<string, unknown>, socketsPath: string): boolean {
+	let changed = false;
+
+	// 1. permissions.allow — auto-approve the dev3 CLI.
+	const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
+	const allow = Array.isArray(permissions.allow) ? (permissions.allow as string[]) : [];
+	if (!allow.includes(CLAUDE_BASH_PERMISSION)) {
+		allow.push(CLAUDE_BASH_PERMISSION);
+		changed = true;
+	}
+	permissions.allow = allow;
+	settings.permissions = permissions;
+
+	// 2. sandbox.network.allowUnixSockets — let the seatbelt reach the app socket.
+	const sandbox = (settings.sandbox ?? {}) as Record<string, unknown>;
+	const network = (sandbox.network ?? {}) as Record<string, unknown>;
+	const sockets = Array.isArray(network.allowUnixSockets) ? (network.allowUnixSockets as string[]) : [];
+	if (!sockets.includes(socketsPath)) {
+		sockets.push(socketsPath);
+		changed = true;
+	}
+	network.allowUnixSockets = sockets;
+	sandbox.network = network;
+	settings.sandbox = sandbox;
+
+	return changed;
+}
+
+/**
+ * Read, patch, and write ~/.claude/settings.json so the dev3 CLI is auto-approved
+ * and the dev3 socket directory is allow-listed in the Claude Code sandbox.
+ * Non-fatal on any error. Note: the seatbelt profile is compiled when `claude`
+ * starts, so a freshly-launched Claude Code session is required for a new
+ * allowUnixSockets entry to take effect (resume/--continue does not rebuild it).
+ */
+function ensureClaudeSettings(home: string): void {
+	const settingsPath = `${home}/.claude/settings.json`;
+	const socketsPath = `${home}/.dev3.0/sockets`;
 	try {
 		let settings: Record<string, unknown> = {};
 		try {
 			const raw = readFileSync(settingsPath, "utf-8");
-			settings = JSON.parse(raw);
+			settings = JSON.parse(raw) as Record<string, unknown>;
 		} catch {
 			// File doesn't exist or is invalid — start fresh
 		}
 
-		const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
-		const allow = Array.isArray(permissions.allow) ? (permissions.allow as string[]) : [];
-
-		if (allow.includes(CLAUDE_BASH_PERMISSION)) {
-			return; // Already present
+		if (!applyClaudeSettings(settings, socketsPath)) {
+			return; // Already up to date
 		}
 
-		allow.push(CLAUDE_BASH_PERMISSION);
-		permissions.allow = allow;
-		settings.permissions = permissions;
-
+		mkdirSync(dirname(settingsPath), { recursive: true });
 		writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
-		log.info("Claude permission added", { pattern: CLAUDE_BASH_PERMISSION });
+		log.info("Claude settings patched (dev3 CLI permission + sandbox socket allowlist)", {
+			path: settingsPath,
+		});
 	} catch (err) {
 		log.warn("Failed to update Claude settings (non-fatal)", {
 			error: String(err),
@@ -1313,6 +1357,6 @@ export function installAgentSkills(): void {
 	cleanupLegacyGeminiSkillDuplicates(home);
 	installOpenAiMetadata(home);
 	installAgentsMd();
-	ensureClaudePermission();
+	ensureClaudeSettings(home);
 	ensureCodexConfigFile(home);
 }

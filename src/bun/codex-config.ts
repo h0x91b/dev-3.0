@@ -18,7 +18,17 @@ interface CodexPermissionsProfile {
 	filesystem?: Record<string, unknown>;
 	network?: {
 		enabled?: boolean;
+		/** Legacy form (codex < 0.119): array of allowed socket paths. */
 		allow_unix_sockets?: string[];
+		/**
+		 * Current form (codex >= 0.119, PR openai/codex#15120): a sub-table mapping
+		 * each socket path to "allow" | "deny" under
+		 * `[permissions.<profile>.network.unix_sockets]`. The legacy array key is
+		 * silently ignored by codex >= 0.119 (serde drops the unknown field), so on
+		 * those versions the socket must be written as this map or it is never
+		 * allowlisted. See decision record 081.
+		 */
+		unix_sockets?: Record<string, "allow" | "deny">;
 	};
 }
 
@@ -51,17 +61,26 @@ interface CodexSyntax {
 	 * the `--profile-v2` *launch flag* was later removed (see issue #611).
 	 */
 	profileV2: boolean;
+	/**
+	 * unix-sockets-map: codex >= 0.119 reads the socket allowlist from a
+	 * `[permissions.<profile>.network.unix_sockets]` map (path -> "allow"|"deny")
+	 * instead of the legacy `allow_unix_sockets = [...]` array. The old array key
+	 * is silently ignored on those versions. See codex PR #15120 and decision 081.
+	 */
+	unixSocketsAsMap: boolean;
 }
 
 const LEGACY_CODEX_SYNTAX: CodexSyntax = {
 	filesystemRootKey: ":project_roots",
 	hooksFeatureKey: "codex_hooks",
 	profileV2: false,
+	unixSocketsAsMap: false,
 };
 
 const CODEX_HOOKS_RENAME_VERSION: CodexVersion = { major: 0, minor: 129, patch: 0 };
 const CODEX_WORKSPACE_ROOTS_RENAME_VERSION: CodexVersion = { major: 0, minor: 131, patch: 0 };
 const CODEX_PROFILE_V2_VERSION: CodexVersion = { major: 0, minor: 131, patch: 0 };
+const CODEX_UNIX_SOCKETS_MAP_VERSION: CodexVersion = { major: 0, minor: 119, patch: 0 };
 
 const MANAGED_DEV3_PROFILES = [
 	DEV3_CODEX_PROFILE,
@@ -101,6 +120,7 @@ export function getCodexSyntaxForVersion(versionText: string | null | undefined)
 			? "hooks"
 			: LEGACY_CODEX_SYNTAX.hooksFeatureKey,
 		profileV2: isVersionAtLeast(version, CODEX_PROFILE_V2_VERSION),
+		unixSocketsAsMap: isVersionAtLeast(version, CODEX_UNIX_SOCKETS_MAP_VERSION),
 	};
 }
 
@@ -239,7 +259,7 @@ export function ensureCodexConfig(
 			"",
 			`[permissions.${DEV3_CODEX_PROFILE}.network]`,
 			"enabled = true",
-			`allow_unix_sockets = ["${socketsPath}"]`,
+			...dev3NetworkSocketLines(socketsPath, syntax),
 			"",
 		].join("\n");
 		config = appendBlock(config, block);
@@ -249,31 +269,15 @@ export function ensureCodexConfig(
 		const netHeader = `[permissions.${DEV3_CODEX_PROFILE}.network]`;
 
 		if (dev3Net == null) {
-			const block = `\n${netHeader}\nenabled = true\nallow_unix_sockets = ["${socketsPath}"]\n`;
+			const block = `\n${netHeader}\nenabled = true\n${dev3NetworkSocketLines(socketsPath, syntax).join("\n")}\n`;
 			config = appendBlock(config, block);
 		} else {
 			if (dev3Net.enabled !== true) {
 				config = insertAfterSectionHeader(config, netHeader, "enabled = true");
 			}
-			const existingSockets = dev3Net.allow_unix_sockets ?? [];
-			if (!existingSockets.includes(socketsPath)) {
-				if (existingSockets.length === 0 && !config.includes("allow_unix_sockets")) {
-					config = insertAfterSectionHeader(config, netHeader, `allow_unix_sockets = ["${socketsPath}"]`);
-				} else {
-					// Append to existing array under dev3.network specifically
-					const pattern = new RegExp(
-						`(\\[permissions\\.${DEV3_CODEX_PROFILE}\\.network\\][^\\[]*?)allow_unix_sockets\\s*=\\s*\\[([^\\]]*)\\]`,
-						"s",
-					);
-					config = config.replace(pattern, (_match, prefix, inner) => {
-						const trimmed = inner.trim();
-						const newValue = trimmed
-							? `${trimmed}, "${socketsPath}"`
-							: `"${socketsPath}"`;
-						return `${prefix}allow_unix_sockets = [${newValue}]`;
-					});
-				}
-			}
+			config = syntax.unixSocketsAsMap
+				? ensureDev3UnixSocketsMap(config, dev3Net, socketsPath)
+				: ensureDev3UnixSocketsArray(config, dev3Net, socketsPath);
 		}
 
 		// Ensure skill directories are readable and dev3 data dir is writable
@@ -465,6 +469,92 @@ function ensureFilesystemRootAccess(
 		return appendBlock(config, `\n${header}\n"." = "write"\n`);
 	}
 	return upsertSectionLine(config, header, '"."', '"write"');
+}
+
+/**
+ * Build the socket-allowlist line(s) placed under [permissions.dev3.network] in
+ * a fresh dev3 network block. codex >= 0.119 (syntax.unixSocketsAsMap) uses a
+ * `[...network.unix_sockets]` sub-table (path -> "allow"); older codex uses the
+ * legacy `allow_unix_sockets = [...]` array. The sub-table form is returned with
+ * a leading blank line + its own header so it sits *after* the parent table's
+ * inline keys (`enabled = true`), as TOML requires.
+ */
+function dev3NetworkSocketLines(socketsPath: string, syntax: CodexSyntax): string[] {
+	if (syntax.unixSocketsAsMap) {
+		return [
+			"",
+			`[permissions.${DEV3_CODEX_PROFILE}.network.unix_sockets]`,
+			`"${socketsPath}" = "allow"`,
+		];
+	}
+	return [`allow_unix_sockets = ["${socketsPath}"]`];
+}
+
+/** Legacy (codex < 0.119): ensure the socket is in the allow_unix_sockets array. */
+function ensureDev3UnixSocketsArray(
+	config: string,
+	dev3Net: NonNullable<CodexPermissionsProfile["network"]>,
+	socketsPath: string,
+): string {
+	const netHeader = `[permissions.${DEV3_CODEX_PROFILE}.network]`;
+	const existingSockets = dev3Net.allow_unix_sockets ?? [];
+	if (existingSockets.includes(socketsPath)) return config;
+
+	if (existingSockets.length === 0 && !config.includes("allow_unix_sockets")) {
+		return insertAfterSectionHeader(config, netHeader, `allow_unix_sockets = ["${socketsPath}"]`);
+	}
+	// Append to the existing array under dev3.network specifically.
+	const pattern = new RegExp(
+		`(\\[permissions\\.${DEV3_CODEX_PROFILE}\\.network\\][^\\[]*?)allow_unix_sockets\\s*=\\s*\\[([^\\]]*)\\]`,
+		"s",
+	);
+	return config.replace(pattern, (_match, prefix, inner) => {
+		const trimmed = inner.trim();
+		const newValue = trimmed ? `${trimmed}, "${socketsPath}"` : `"${socketsPath}"`;
+		return `${prefix}allow_unix_sockets = [${newValue}]`;
+	});
+}
+
+/**
+ * Current (codex >= 0.119): ensure the socket is allow-listed in the
+ * `[permissions.dev3.network.unix_sockets]` map. Migrates any stale legacy
+ * `allow_unix_sockets = [...]` line away (codex >= 0.119 silently ignores it),
+ * preserving its entries as "allow" map entries. Idempotent.
+ */
+function ensureDev3UnixSocketsMap(
+	config: string,
+	dev3Net: NonNullable<CodexPermissionsProfile["network"]>,
+	socketsPath: string,
+): string {
+	const mapHeader = `[permissions.${DEV3_CODEX_PROFILE}.network.unix_sockets]`;
+
+	// Desired allow paths: our socket + any legacy-array entries + existing map
+	// "allow" entries. Existing "deny" entries are left untouched in the file.
+	const desired = new Set<string>([socketsPath]);
+	for (const p of dev3Net.allow_unix_sockets ?? []) desired.add(p);
+	for (const [p, perm] of Object.entries(dev3Net.unix_sockets ?? {})) {
+		if (perm === "allow") desired.add(p);
+	}
+
+	// Drop the legacy array line — codex >= 0.119 no longer reads it.
+	config = stripDev3LegacyAllowUnixSockets(config);
+
+	// Upsert each desired path into the map sub-table (creates the table if absent).
+	for (const p of desired) {
+		config = upsertSectionLine(config, mapHeader, `"${p}"`, '"allow"');
+	}
+	return config;
+}
+
+/** Remove an `allow_unix_sockets = [...]` line from inside [permissions.dev3.network]. */
+function stripDev3LegacyAllowUnixSockets(config: string): string {
+	const netHeader = `[permissions.${DEV3_CODEX_PROFILE}.network]`;
+	const escapedHeader = netHeader.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const sectionPattern = new RegExp(`(${escapedHeader}\\n)([\\s\\S]*?)(?=\\n\\[|$)`);
+	return config.replace(sectionPattern, (_m, header: string, body: string) => {
+		const cleaned = body.replace(/^[ \t]*allow_unix_sockets[ \t]*=[ \t]*\[[^\]]*\][ \t]*\r?\n?/m, "");
+		return `${header}${cleaned}`;
+	});
 }
 
 /**

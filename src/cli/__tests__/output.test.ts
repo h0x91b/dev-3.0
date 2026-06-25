@@ -162,6 +162,27 @@ describe("exitAppNotRunning", () => {
 		expect(stderrOutput).toContain("HOME: /tmp");
 		expect(stderrOutput).toContain("sockets: none present");
 	});
+
+	it("on a connect-stage failure, blames the sandbox instead of 'start the app' (issue #726)", () => {
+		expect(() =>
+			exitAppNotRunning({ stage: "connect", socketPath: "/Users/me/.dev3.0/sockets/123.sock" }),
+		).toThrow(`EXIT_${CLI_EXIT_CODE_APP_NOT_RUNNING}`);
+		// Different headline than the truly-down case, and points at the sandbox.
+		expect(stderrOutput).toContain("cannot reach the dev3.0 app");
+		expect(stderrOutput).toContain("sandbox");
+		expect(stderrOutput).toContain("allowUnixSockets");
+		// Prints the socket path that was attempted.
+		expect(stderrOutput).toContain("/Users/me/.dev3.0/sockets/123.sock");
+		// Not the misleading "must be running / start the app" wording.
+		expect(stderrOutput).not.toContain("Start the app and try again");
+		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_APP_NOT_RUNNING);
+	});
+
+	it("stays terse on a connect-stage failure without DEV3_DEBUG diagnostics", () => {
+		expect(() => exitAppNotRunning({ stage: "connect", socketPath: "/x/y.sock" })).toThrow();
+		expect(stderrOutput).not.toContain("DEV3_DEBUG");
+		expect(stderrOutput).not.toContain("stage:");
+	});
 });
 
 describe("exitUsage", () => {

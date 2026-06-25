@@ -141,7 +141,7 @@ async function main(): Promise<void> {
 		socketPath = await resolveSocketPathWithRetry();
 	}
 	if (!socketPath) {
-		exitAppNotRunning(debugAppNotRunning("discovery"));
+		exitAppNotRunning({ stage: "discovery", ...debugAppNotRunning("discovery") });
 	}
 
 	try {
@@ -181,7 +181,7 @@ async function main(): Promise<void> {
 	} catch (err) {
 		if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
 			const connectCode = (err as Error & { connectCode?: string }).connectCode;
-			exitAppNotRunning(debugAppNotRunning("connect", connectCode));
+			exitAppNotRunning({ stage: "connect", socketPath, ...debugAppNotRunning("connect", connectCode) });
 		}
 		throw err;
 	}
@@ -195,11 +195,14 @@ async function main(): Promise<void> {
 function debugAppNotRunning(
 	stage: "discovery" | "connect",
 	connectCode?: string,
-): { stage?: "discovery" | "connect"; diagnostics?: string } {
+): { diagnostics?: string } {
 	if (process.env.DEV3_DEBUG !== "1" && process.env.DEV3_DEBUG !== "true") return {};
+	// The human-readable stage line is added by exitAppNotRunning; here we only
+	// attach the raw socket diagnostics + last connect errno.
+	void stage;
 	const parts = [socketDiagnostics()];
 	if (connectCode) parts.push(`  last connect errno: ${connectCode}`);
-	return { stage, diagnostics: parts.join("\n") };
+	return { diagnostics: parts.join("\n") };
 }
 
 main().catch((err) => {

@@ -114,17 +114,26 @@ describe("ensureCodexConfig", () => {
 				filesystemRootKey: ":project_roots",
 				hooksFeatureKey: "codex_hooks",
 				profileV2: false,
+				unixSocketsAsMap: true,
 			});
 			expect(getCodexSyntaxForVersion("codex-cli 0.130.0")).toEqual({
 				filesystemRootKey: ":project_roots",
 				hooksFeatureKey: "hooks",
 				profileV2: false,
+				unixSocketsAsMap: true,
 			});
 			expect(getCodexSyntaxForVersion("codex-cli 0.131.0")).toEqual({
 				filesystemRootKey: ":workspace_roots",
 				hooksFeatureKey: "hooks",
 				profileV2: true,
+				unixSocketsAsMap: true,
 			});
+		});
+
+		it("switches the unix-socket allowlist to map form at codex 0.119", () => {
+			expect(getCodexSyntaxForVersion("codex-cli 0.118.9").unixSocketsAsMap).toBe(false);
+			expect(getCodexSyntaxForVersion("codex-cli 0.119.0").unixSocketsAsMap).toBe(true);
+			expect(getCodexSyntaxForVersion(null).unixSocketsAsMap).toBe(false);
 		});
 
 		it("uses workspace_roots and hooks for Codex 0.131+", () => {
@@ -592,5 +601,84 @@ sandbox_mode = "workspace-write"
 			expect(result).toContain('web_search = "live"');
 			expect(result).not.toContain('web_search = "disabled"');
 		});
+	});
+});
+
+describe("ensureCodexConfig unix-socket allowlist (codex >= 0.119 map form)", () => {
+	const WORKTREES_PATH = "/Users/testuser/.dev3.0/worktrees";
+	const SOCKETS_PATH = "/Users/testuser/.dev3.0/sockets";
+	const NEW = { codexVersion: "0.141.0" };
+	const count = (hay: string, needle: string) => hay.split(needle).length - 1;
+
+	it("writes the unix_sockets map (not the legacy array) on a fresh config", () => {
+		const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
+		expect(result).toContain("[permissions.dev3.network]");
+		expect(result).toContain("enabled = true");
+		expect(result).toContain("[permissions.dev3.network.unix_sockets]");
+		expect(result).toContain(`"${SOCKETS_PATH}" = "allow"`);
+		expect(result).not.toContain("allow_unix_sockets");
+	});
+
+	it("keeps the legacy array form when the codex version is below 0.119", () => {
+		const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], { codexVersion: "0.118.0" });
+		expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
+		expect(result).not.toContain("[permissions.dev3.network.unix_sockets]");
+	});
+
+	it("defaults to the legacy array form when the codex version is unknown", () => {
+		const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH);
+		expect(result).toContain(`allow_unix_sockets = ["${SOCKETS_PATH}"]`);
+		expect(result).not.toContain("[permissions.dev3.network.unix_sockets]");
+	});
+
+	it("migrates a stale legacy array to the map and drops the array line", () => {
+		const existing = `[permissions.dev3.filesystem]
+":minimal" = "read"
+
+[permissions.dev3.filesystem.":project_roots"]
+"." = "write"
+
+[permissions.dev3.network]
+enabled = true
+allow_unix_sockets = ["${SOCKETS_PATH}"]
+`;
+		const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
+		expect(result).not.toContain("allow_unix_sockets");
+		expect(result).toContain("[permissions.dev3.network.unix_sockets]");
+		expect(result).toContain(`"${SOCKETS_PATH}" = "allow"`);
+		// The network table still carries enabled = true after the array is stripped.
+		expect(result).toMatch(/\[permissions\.dev3\.network\]\nenabled = true/);
+	});
+
+	it("preserves a foreign socket from the legacy array during migration", () => {
+		const existing = `[permissions.dev3.network]
+enabled = true
+allow_unix_sockets = ["/tmp/other.sock"]
+`;
+		const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
+		expect(result).not.toContain("allow_unix_sockets =");
+		expect(result).toContain(`"${SOCKETS_PATH}" = "allow"`);
+		expect(result).toContain('"/tmp/other.sock" = "allow"');
+	});
+
+	it("adds the socket to an existing unix_sockets map that lacks it", () => {
+		const existing = `[permissions.dev3.network]
+enabled = true
+
+[permissions.dev3.network.unix_sockets]
+"/tmp/other.sock" = "allow"
+`;
+		const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
+		expect(result).toContain('"/tmp/other.sock" = "allow"');
+		expect(result).toContain(`"${SOCKETS_PATH}" = "allow"`);
+		expect(count(result, "[permissions.dev3.network.unix_sockets]")).toBe(1);
+	});
+
+	it("is idempotent — a second pass adds no duplicate map table or entry", () => {
+		const once = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
+		const twice = ensureCodexConfig(once, WORKTREES_PATH, SOCKETS_PATH, [], NEW);
+		expect(count(twice, "[permissions.dev3.network.unix_sockets]")).toBe(1);
+		expect(count(twice, `"${SOCKETS_PATH}" = "allow"`)).toBe(1);
+		expect(twice).not.toContain("allow_unix_sockets");
 	});
 });
