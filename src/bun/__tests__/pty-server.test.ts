@@ -826,22 +826,49 @@ describe("pty-server", () => {
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "conf-socket");
 			mockSpawn.mockClear();
 
+			// Match the source-file call for THIS session's socket specifically.
+			// A generic `includes("source-file")` would also match a stale
+			// configureTmux timer leaked from a prior test (default "dev3"
+			// socket), which made this assertion flaky on slow CI runners.
+			const findSourceCall = (socket: string) =>
+				mockSpawn.mock.calls.find(
+					(c) => Array.isArray(c[0]) && c[0].includes("source-file") && c[0].includes(socket),
+				);
+
 			await vi.advanceTimersByTimeAsync(200);
 			await vi.waitFor(() => {
-				const call = mockSpawn.mock.calls.find(
-					(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
-				);
-				expect(call).toBeDefined();
+				expect(findSourceCall("conf-socket")).toBeDefined();
 			});
 
 			// configureTmux now uses async `spawn` rather than `spawnSync`.
-			const sourceCall = mockSpawn.mock.calls.find(
-				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
-			);
+			const sourceCall = findSourceCall("conf-socket");
 			expect(sourceCall).toBeDefined();
 			expect(sourceCall![0]).toContain("-L");
 			expect(sourceCall![0]).toContain("conf-socket");
 			expect(sourceCall![0]).toContain(TMUX_CONF_PATH);
+
+			vi.useRealTimers();
+		});
+
+		it("does not configure tmux when the session is destroyed before the timeout", async () => {
+			vi.useFakeTimers();
+
+			const id = track("task-conf-destroy");
+			createSession(id, "proj-1", "/tmp/cwd", "bash", {}, "destroy-sock");
+			mockSpawn.mockClear();
+
+			// Tear the session down before the deferred 200ms configureTmux fires.
+			// The pending timer must be cancelled — otherwise it fires later and
+			// sources tmux config for a dead session (and, in the test suite,
+			// leaks a stray source-file spawn into whatever test runs next).
+			destroySession(id);
+
+			await vi.advanceTimersByTimeAsync(400);
+
+			const sourceCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
+			);
+			expect(sourceCall).toBeUndefined();
 
 			vi.useRealTimers();
 		});
@@ -878,19 +905,19 @@ describe("pty-server", () => {
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});
 			mockSpawn.mockClear();
 
+			const findDefaultSourceCall = () =>
+				mockSpawn.mock.calls.find(
+					(c) => Array.isArray(c[0]) && c[0].includes("source-file") && c[0].includes("dev3"),
+				);
+
 			await vi.advanceTimersByTimeAsync(200);
 			await vi.waitFor(() => {
-				const call = mockSpawn.mock.calls.find(
-					(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
-				);
-				expect(call).toBeDefined();
+				expect(findDefaultSourceCall()).toBeDefined();
 			});
 
-			const sourceCall = mockSpawn.mock.calls.find(
-				(c) => Array.isArray(c[0]) && c[0].includes("source-file"),
-			);
-			expect(sourceCall).toBeDefined();
 			// Should use the default "dev3" socket
+			const sourceCall = findDefaultSourceCall();
+			expect(sourceCall).toBeDefined();
 			expect(sourceCall![0]).toContain("dev3");
 
 			vi.useRealTimers();

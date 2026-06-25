@@ -236,6 +236,10 @@ interface PtySession {
 	pendingData: string;
 	/** Timer handle for the batch flush interval. */
 	batchTimer: ReturnType<typeof setTimeout> | null;
+	/** Timer handle for the deferred post-spawn configureTmux() call.
+	 *  Cleared on destroy so a torn-down session never sources its tmux
+	 *  config 200ms later (also prevents stale spawns leaking across tests). */
+	configureTimer: ReturnType<typeof setTimeout> | null;
 	/** Partial OSC 52 clipboard sequence buffered across PTY chunks. */
 	osc52Buffer: string;
 	/** Size last applied to the shared PTY (min across all clients). Used to
@@ -308,6 +312,7 @@ export function createSession(
 		decoder: new TextDecoder("utf-8", { fatal: false }),
 		pendingData: "",
 		batchTimer: null,
+		configureTimer: null,
 		osc52Buffer: "",
 	};
 	sessions.set(taskId, session);
@@ -337,6 +342,10 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 		if (session.batchTimer) {
 			clearTimeout(session.batchTimer);
 			session.batchTimer = null;
+		}
+		if (session.configureTimer) {
+			clearTimeout(session.configureTimer);
+			session.configureTimer = null;
 		}
 		session.pendingData = "";
 		if (session.proc) {
@@ -982,7 +991,9 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	// new-session above. The set-environment loop below stays as a safety
 	// net for the `-A` (attach to existing session) path, where `-e` is
 	// ignored by tmux.
-	setTimeout(() => {
+	if (session.configureTimer) clearTimeout(session.configureTimer);
+	session.configureTimer = setTimeout(() => {
+		session.configureTimer = null;
 		(async () => {
 			try {
 				await configureTmux(tmuxSessionName, session.tmuxSocket);
