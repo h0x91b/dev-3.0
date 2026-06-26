@@ -1764,15 +1764,29 @@ export async function getTaskDiff(
 	if (mode === "unpushed") {
 		const upstreamRef = await getUpstreamRef(worktreePath);
 		if (upstreamRef) {
-			const entries = await listDiffEntries(worktreePath, [upstreamRef, "HEAD"]);
+			// Compare HEAD against the merge-base with the upstream (three-dot
+			// semantics), not the upstream tip directly. A two-dot
+			// `upstream..HEAD` diff also surfaces commits the upstream gained
+			// independently of HEAD — after a rebase, a force-push, or when the
+			// upstream tracks the base branch and the base has advanced — as
+			// reversed hunks, i.e. "changes that aren't mine". The merge-base
+			// shows only what HEAD added. Mirrors the no-upstream fallback below.
+			const mergeBaseResult = await run(
+				["git", "merge-base", upstreamRef, "HEAD"],
+				worktreePath,
+			);
+			const oldRef = mergeBaseResult.ok && mergeBaseResult.stdout
+				? mergeBaseResult.stdout
+				: upstreamRef;
+			const entries = await listDiffEntries(worktreePath, [oldRef, "HEAD"]);
 			const [summary, numstat] = await Promise.all([
-				getDiffShortStat(worktreePath, [upstreamRef, "HEAD"]),
-				getNumstat(worktreePath, [upstreamRef, "HEAD"]),
+				getDiffShortStat(worktreePath, [oldRef, "HEAD"]),
+				getNumstat(worktreePath, [oldRef, "HEAD"]),
 			]);
 			const filesResult = await buildTaskDiffFiles(
 				worktreePath,
 				entries,
-				{ kind: "ref", ref: upstreamRef },
+				{ kind: "ref", ref: oldRef },
 				{ kind: "ref", ref: "HEAD" },
 				numstat,
 			);
