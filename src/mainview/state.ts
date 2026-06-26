@@ -70,28 +70,37 @@ export function routeTaskId(route: Route): string | null {
 	return null;
 }
 
+/** The task open-mode preference (`dev3-task-open-mode`); "split" is the default. */
+export type TaskOpenMode = "split" | "fullscreen";
+
 /**
  * Where to land after `taskId` is completed/cancelled and its worktree is
- * destroyed. The point is to preserve the surface the user is on instead of
- * always dropping them onto the Kanban board:
+ * destroyed. The destination is driven by the user's *configured* open-mode,
+ * not the transient route, so each user lands back on the surface they live in:
  *
- *  - full-page task view of this task        → task split view, no task selected
- *  - split task view showing this task        → same split view, task deselected
- *  - anything else (Kanban, a different task) → no navigation (returns null)
+ *  - fullscreen open-mode → that project's Kanban board (their home surface)
+ *  - split open-mode      → the split task view with the task deselected
+ *                           (`{ screen: "project", taskView: true }`, no
+ *                           `activeTaskId`) — the "select a task" placeholder pane
+ *  - not viewing this task (Kanban, a different task) → null (don't navigate)
  *
- * Both task surfaces collapse to `{ screen: "project", taskView: true }` with
- * no `activeTaskId`, which renders the "select a task" placeholder pane — i.e.
- * "stay in task view, nothing selected". Returning null means the caller should
+ * Why gate on the preference and not the route: a full-page task view
+ * (`screen: "task"`) is reached both by fullscreen-mode users *and* by a
+ * split-mode user who temporarily "zoomed" a task. Fullscreen users have no
+ * split task list, so collapsing to `{ taskView: true }` would dump them into a
+ * layout (board columns / task-list sidebar on the left) they never use — they
+ * want the board. A split-mode user, even mid-zoom, should return to their
+ * split task view, not the bare board. Returning null means the caller should
  * not navigate at all (the completed card simply leaves the board).
  */
-export function routeAfterTaskClosed(route: Route, taskId: string): Route | null {
-	if (route.screen === "task" && route.taskId === taskId) {
-		return { screen: "project", projectId: route.projectId, taskView: true };
-	}
-	if (route.screen === "project" && route.activeTaskId === taskId) {
-		return { screen: "project", projectId: route.projectId, taskView: true };
-	}
-	return null;
+export function routeAfterTaskClosed(route: Route, taskId: string, openMode: TaskOpenMode): Route | null {
+	const viewingClosingTask =
+		(route.screen === "task" && route.taskId === taskId) ||
+		(route.screen === "project" && route.activeTaskId === taskId);
+	if (!viewingClosingTask) return null;
+	return openMode === "fullscreen"
+		? { screen: "project", projectId: route.projectId }
+		: { screen: "project", projectId: route.projectId, taskView: true };
 }
 
 /** The project id a route lands on, or null for project-less screens (dashboard, settings…). */

@@ -1,0 +1,1 @@
+Fixed completing a task jumping users to the wrong surface. Where you land after a task completes now follows your Task Open Mode: full-screen users return to the Kanban board (instead of being dumped into the split task view they never use), while split-view users stay in the split task view with the task deselected — even if they had temporarily zoomed the task to full screen.
