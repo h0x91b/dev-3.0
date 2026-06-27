@@ -247,6 +247,7 @@ const {
 	stopPRDetectionPoller,
 	resolveBinaryPath,
 	launchTaskPty,
+	addVirtualShellPane,
 	activateTask,
 	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
@@ -6020,6 +6021,33 @@ describe("handlers.openQuickShell", () => {
 
 		expect(data.addTask).toHaveBeenCalled();
 		expect(result.id).toBe("fresh");
+	});
+});
+
+describe("addVirtualShellPane — focus lands on the agent pane", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("has-session")) return { exited: Promise.resolve(0) };
+			if (args.includes("split-window")) return { stdout: "%9", stderr: "", exited: Promise.resolve(0) };
+			return { stdout: "", stderr: "", exited: Promise.resolve(0) };
+		});
+	});
+
+	it("selects the agent pane (.0) LAST so the user lands on the agent, not the split shell", async () => {
+		const task = makeTask({ id: "abcdef12-0000-0000-0000-000000000000", projectId: "ops1" });
+		await addVirtualShellPane(task, "/tmp/work", "dev3", "/bin/zsh");
+
+		const session = `dev3-${task.id.slice(0, 8)}`;
+		const selectCalls = mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((a) => a.includes("select-pane"));
+
+		// Regression: previously the shell title was set last, so `select-pane -t`
+		// left focus on the freshly-split shell. The agent pane must be selected last.
+		const last = selectCalls[selectCalls.length - 1];
+		expect(last).toBeDefined();
+		expect(last[last.indexOf("-t") + 1]).toBe(`${session}.0`);
 	});
 });
 
