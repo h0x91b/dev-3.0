@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useT } from "./i18n";
+import { useFocusTrap } from "./utils/useFocusTrap";
 
 export interface ConfirmOptions {
 	title: string;
@@ -53,7 +54,6 @@ export function confirm(options: ConfirmOptions): Promise<boolean> {
 }
 
 export function ConfirmHost() {
-	const t = useT();
 	const [pending, setPending] = useState<PendingConfirm | null>(null);
 
 	useEffect(() => {
@@ -70,6 +70,17 @@ export function ConfirmHost() {
 		setPending(null);
 	};
 
+	// Render the dialog as a child keyed by request id so it genuinely
+	// mounts/unmounts per confirm — that's what lets useFocusTrap capture the
+	// right trigger element and restore focus when the dialog closes (the host
+	// itself is mounted for the whole app lifetime).
+	return <ConfirmDialog key={pending.id} pending={pending} close={close} />;
+}
+
+function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (result: boolean) => void }) {
+	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
+
 	const confirmLabel = pending.confirmLabel ?? t("confirmDialog.confirm");
 	const cancelLabel = pending.cancelLabel ?? t("confirmDialog.cancel");
 
@@ -81,7 +92,11 @@ export function ConfirmHost() {
 			}}
 		>
 			<div
-				className={`bg-overlay border rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4 ${
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className={`bg-overlay border rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4 outline-none ${
 					pending.agentInitiated ? "border-accent/40" : "border-edge"
 				}`}
 			>
