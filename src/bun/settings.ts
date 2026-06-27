@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
-import type { ExternalApp } from "../shared/types";
+import type { GlobalSettings } from "../shared/types";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -8,37 +8,12 @@ const log = createLogger("settings");
 
 const SETTINGS_FILE = `${DEV3_HOME}/settings.json`;
 
-export interface GlobalSettings {
-	defaultAgentId: string;
-	defaultConfigId: string;
-	taskDropPosition: "top" | "bottom";
-	updateChannel: "stable" | "canary";
-	theme?: "dark" | "light" | "system";
-	resolvedTheme?: "dark" | "light";
-	cloneBaseDirectory?: string;
-	customBinaryPaths?: Record<string, string>;
-	agentBinaryPaths?: Record<string, string>;
-	playSoundOnTaskComplete?: boolean;
-	externalApps?: ExternalApp[];
-	terminalKeymap?: "default" | "iterm2";
-	taskOpenMode?: "split" | "fullscreen";
-	defaultDiffViewMode?: "split" | "unified" | "auto";
-	preventSleepWhileRunning?: boolean;
-	skipQuitDialog?: boolean;
-	/**
-	 * Inherit the user's full exported login-shell environment into agent/MCP
-	 * sessions (so env-based MCP servers, SDK keys, etc. set in `.zshrc`/`.bashrc`
-	 * work). Default on; set to `false` to fall back to importing only the typed
-	 * vars (PATH/LANG/...) for an isolated environment.
-	 */
-	importShellEnv?: boolean;
-	/**
-	 * Focus mode: when true, agent-initiated attention UI (`dev3 notify` toasts /
-	 * native notifications and `dev3 attention` badges) is suppressed. For users
-	 * who find the pings distracting.
-	 */
-	focusMode?: boolean;
-}
+// `GlobalSettings` has a single source of truth in `src/shared/types.ts` (it is
+// the RPC schema type shared with the renderer). Re-export it here so this
+// module's consumers can keep importing it from "./settings", but never define
+// a second copy — a drifted local interface is what silently dropped
+// `tipsDisabled` on load and then erased it from disk on the next save.
+export type { GlobalSettings };
 
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
@@ -67,6 +42,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
+			tipsDisabled: data.tipsDisabled === true ? true : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			defaultDiffViewMode:
 				data.defaultDiffViewMode === "unified"
@@ -117,6 +93,7 @@ export function loadSettingsSync(): GlobalSettings {
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
 			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
+			tipsDisabled: data.tipsDisabled === true ? true : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			defaultDiffViewMode:
 				data.defaultDiffViewMode === "unified"
