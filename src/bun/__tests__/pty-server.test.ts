@@ -28,9 +28,13 @@ vi.mock("../spawn", () => ({
 // ---- Imports ----
 
 import { existsSync } from "node:fs";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
 import {
 	tmuxArgs,
+	cwdExists,
 	createSession,
 	destroySession,
 	hasSession,
@@ -1159,6 +1163,37 @@ describe("pty-server", () => {
 			expect(
 				smallestClientSize([{ cols: 0, rows: 0 }, { cols: 80, rows: 24 }]),
 			).toEqual({ cols: 80, rows: 24 });
+		});
+	});
+
+	// ------- cwdExists -------
+
+	describe("cwdExists", () => {
+		// Regression: a PTY cwd is always a DIRECTORY, and the old check used
+		// `Bun.file(cwd).exists()`, which returns false for directories — so every
+		// valid worktree/project dir produced a bogus "PTY cwd missing" error.
+		it("returns true for an existing directory", async () => {
+			const dir = await mkdtemp(join(tmpdir(), "dev3-cwd-"));
+			try {
+				expect(await cwdExists(dir)).toBe(true);
+			} finally {
+				await rm(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("returns true for an existing file", async () => {
+			const dir = await mkdtemp(join(tmpdir(), "dev3-cwd-"));
+			const file = join(dir, "f.txt");
+			await writeFile(file, "x");
+			try {
+				expect(await cwdExists(file)).toBe(true);
+			} finally {
+				await rm(dir, { recursive: true, force: true });
+			}
+		});
+
+		it("returns false for a path that does not exist", async () => {
+			expect(await cwdExists(join(tmpdir(), "dev3-cwd-nope-zzzzzzzz"))).toBe(false);
 		});
 	});
 });

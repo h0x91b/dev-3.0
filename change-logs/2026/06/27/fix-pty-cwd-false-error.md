@@ -1,0 +1,1 @@
+Fixed a bogus "PTY cwd missing" error that was logged for every valid terminal directory: the existence probe now uses fs.access instead of Bun.file().exists(), which always returns false for directories.
