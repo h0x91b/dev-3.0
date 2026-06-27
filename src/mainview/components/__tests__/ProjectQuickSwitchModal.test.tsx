@@ -40,6 +40,12 @@ beforeEach(() => {
 });
 
 describe("ProjectQuickSwitchModal", () => {
+	it("traps focus inside the dialog on open", () => {
+		renderModal();
+		const dialog = screen.getByRole("dialog");
+		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
 	it("lists all projects initially", () => {
 		renderModal();
 		expect(screen.getByText("users-service")).toBeTruthy();

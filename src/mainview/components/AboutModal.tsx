@@ -1,4 +1,5 @@
 import { useT } from "../i18n";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface AboutModalProps {
 	version: string;
@@ -11,6 +12,7 @@ interface AboutModalProps {
  */
 export default function AboutModal({ version, onClose }: AboutModalProps) {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 	return (
 		<div
 			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
@@ -18,7 +20,13 @@ export default function AboutModal({ version, onClose }: AboutModalProps) {
 				if (e.target === e.currentTarget) onClose();
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[24rem] p-6 space-y-2 text-center">
+			<div
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[24rem] p-6 space-y-2 text-center outline-none"
+			>
 				<div
 					className="text-accent text-4xl leading-none"
 					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}

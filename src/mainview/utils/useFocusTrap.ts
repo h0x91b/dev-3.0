@@ -27,7 +27,8 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
  * Without a trap, Tab/Shift+Tab walk straight out of the modal into the page
  * behind it (task cards, labels, etc.), which is both confusing and lets the
  * user operate hidden UI. This hook:
- *   1. moves focus into the dialog container on mount,
+ *   1. moves focus into the dialog container on mount (unless something inside
+ *      already grabbed it, e.g. an `autoFocus` input),
  *   2. cycles Tab / Shift+Tab within the container's focusable elements,
  *   3. restores focus to whatever was focused before the dialog opened.
  *
@@ -40,14 +41,23 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 export function useFocusTrap<T extends HTMLElement = HTMLElement>(): RefObject<T | null> {
 	const ref = useRef<T>(null);
 
+	// Capture the trigger element at first render — before the dialog mounts and
+	// before any `autoFocus` child runs — so focus can be restored on close.
+	const previouslyFocused = useRef<Element | null>(null);
+	if (previouslyFocused.current === null) {
+		previouslyFocused.current = document.activeElement;
+	}
+
 	useEffect(() => {
 		const container = ref.current;
 		if (!container) return;
 
-		const previouslyFocused = document.activeElement as HTMLElement | null;
-
-		// Move focus into the dialog so the very first Tab is already trapped.
-		container.focus();
+		// Pull focus into the dialog so the very first Tab is already trapped —
+		// but don't steal it from an element inside that's already focused (an
+		// autoFocus input, a programmatically-focused field).
+		if (!container.contains(document.activeElement)) {
+			container.focus();
+		}
 
 		function onKeyDown(e: KeyboardEvent) {
 			if (e.key !== "Tab" || !container) return;
@@ -82,7 +92,7 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(): RefObject<T
 		return () => {
 			document.removeEventListener("keydown", onKeyDown, true);
 			// Return focus to where the user was before the dialog opened.
-			previouslyFocused?.focus?.();
+			(previouslyFocused.current as HTMLElement | null)?.focus?.();
 		};
 	}, []);
 

@@ -115,6 +115,12 @@ function dispatchTextPaste(target: Element, text: string) {
 }
 
 describe("CreateTaskModal", () => {
+	it("traps focus inside the dialog on open", () => {
+		renderModal();
+		const dialog = screen.getByRole("dialog");
+		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedApi.request.createTask.mockResolvedValue(mockTask);

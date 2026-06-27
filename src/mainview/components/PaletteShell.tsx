@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { fuzzyRank } from "../utils/fuzzyMatch";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 /** Render text with the fuzzy-matched characters emphasized. */
 export function HighlightedText({ text, indices }: { text: string; indices: number[] }) {
@@ -60,6 +61,7 @@ export function PaletteShell<T>({
 }: PaletteShellProps<T>) {
 	const [query, setQuery] = useState("");
 	const [index, setIndex] = useState(0);
+	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	const results = useMemo(() => fuzzyRank(query, items, getText), [query, items, getText]);
 
@@ -97,8 +99,11 @@ export function PaletteShell<T>({
 			data-testid={testId}
 		>
 			<div
-				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[34rem] max-h-[60vh] flex flex-col overflow-hidden"
+				ref={trapRef}
+				tabIndex={-1}
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[34rem] max-h-[60vh] flex flex-col overflow-hidden outline-none"
 				role="dialog"
+				aria-modal="true"
 				aria-label={ariaLabel}
 			>
 				<div className="px-3 pt-3 pb-2 border-b border-edge">

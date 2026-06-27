@@ -8,6 +8,7 @@ import {
 	shortcutKeysFor,
 } from "../keymap";
 import { isMac } from "../utils/platform";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 export type ShortcutsTab = "app" | "terminal";
 
@@ -143,6 +144,7 @@ function buildTmuxSections(t: T): Section[] {
  */
 export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose }: Props): ReactElement | null {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	useEffect(() => {
 		if (!open) return;
@@ -173,7 +175,9 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 			data-testid="keyboard-shortcuts-overlay"
 		>
 			<div
-				className="bg-overlay border border-edge-active rounded-2xl shadow-2xl shadow-black/50 w-full max-w-5xl max-h-[88vh] overflow-hidden flex flex-col"
+				ref={trapRef}
+				tabIndex={-1}
+				className="bg-overlay border border-edge-active rounded-2xl shadow-2xl shadow-black/50 w-full max-w-5xl max-h-[88vh] overflow-hidden flex flex-col outline-none"
 				onClick={(e) => e.stopPropagation()}
 				role="dialog"
 				aria-modal="true"

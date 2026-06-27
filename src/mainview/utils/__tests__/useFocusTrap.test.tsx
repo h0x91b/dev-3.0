@@ -85,6 +85,20 @@ describe("useFocusTrap", () => {
 		expect(document.activeElement).toBe(dialog);
 	});
 
+	it("does not steal focus from an autoFocus child", () => {
+		function DialogWithInput() {
+			const ref = useFocusTrap<HTMLDivElement>();
+			return (
+				<div ref={ref} role="dialog" tabIndex={-1}>
+					<input autoFocus aria-label="name" />
+					<button>ok</button>
+				</div>
+			);
+		}
+		render(<DialogWithInput />);
+		expect(document.activeElement).toBe(screen.getByLabelText("name"));
+	});
+
 	it("restores focus to the previously focused element on unmount", () => {
 		const trigger = document.createElement("button");
 		trigger.textContent = "trigger";

@@ -15,6 +15,7 @@ import { removeImagePath } from "../utils/imageAttachments";
 import BranchSelector from "./BranchSelector";
 import SkillAutocompleteDropdown from "./SkillAutocompleteDropdown";
 import { openFolderPicker } from "../folder-picker";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -31,6 +32,7 @@ interface CreateTaskModalProps {
 
 function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateTaskModalProps) {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
@@ -364,7 +366,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			onClick={handleRequestClose}
 		>
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-			<div className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5" onClick={(e) => e.stopPropagation()}>
+			<div ref={trapRef} role="dialog" aria-modal="true" tabIndex={-1} className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
 				<div className="flex items-center justify-between">
 					<h2 className="text-fg text-lg font-semibold">
 						{t("createTask.title")}

@@ -4,6 +4,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import Select, { useAgentRenderOption } from "./Select";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface SpawnAgentModalProps {
 	task: Task;
@@ -13,6 +14,7 @@ interface SpawnAgentModalProps {
 
 function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
 	const [agentId, setAgentId] = useState<string | null>(null);
@@ -56,8 +58,13 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 			if (e.key === "Escape") {
 				onClose();
 			} else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-				const tag = (document.activeElement as HTMLElement | null)?.tagName;
-				if (tag === "INPUT" || tag === "TEXTAREA") return;
+				// Only an "implicit" Enter (nothing interactive focused) should spawn.
+				// The agent/config pickers render as <button> (Select.tsx), so a
+				// keyboard user tab-focusing one and pressing Enter must open that
+				// control, not spawn an agent.
+				const el = document.activeElement as HTMLElement | null;
+				const tag = el?.tagName;
+				if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT" || tag === "A" || el?.isContentEditable) return;
 				if (!spawning && globalSettings) handleSpawn();
 			}
 		}
@@ -103,7 +110,11 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 			onClick={onClose}
 		>
 			<div
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-md mx-4 overflow-hidden"
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-md mx-4 overflow-hidden outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}

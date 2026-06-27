@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface GitPullErrorModalProps {
 	branch: string;
@@ -12,6 +13,7 @@ interface GitPullErrorModalProps {
 
 function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPullErrorModalProps) {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
@@ -37,7 +39,11 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 		>
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
 			<div
-				className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[42rem] max-w-[90vw] max-h-[80vh] flex flex-col"
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[42rem] max-w-[90vw] max-h-[80vh] flex flex-col outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
 				<div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-edge">

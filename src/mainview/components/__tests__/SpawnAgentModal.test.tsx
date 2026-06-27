@@ -242,4 +242,76 @@ describe("SpawnAgentModal", () => {
 		const configBtn = document.getElementById("spawn-config") as HTMLButtonElement;
 		expect(configBtn?.textContent?.trim()).toBe("Default");
 	});
+
+	describe("Enter key", () => {
+		// Same class of bug as LaunchVariantsModal: the agent/config pickers render
+		// as <button>, so Enter while one is focused must NOT spawn an agent.
+		it("does not spawn when the agent Select button is focused", async () => {
+			renderModal();
+			await vi.waitFor(() => {
+				expect(document.getElementById("spawn-agent")).toBeInTheDocument();
+			});
+
+			(document.getElementById("spawn-agent") as HTMLButtonElement).focus();
+			await userEvent.keyboard("{Enter}");
+
+			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
+		});
+
+		it("spawns on Enter when no interactive control is focused", async () => {
+			renderModal();
+			// Wait until agents + globalSettings have loaded (Enter is gated on globalSettings).
+			await vi.waitFor(() => {
+				const agentBtn = document.getElementById("spawn-agent") as HTMLButtonElement;
+				expect(agentBtn?.textContent?.trim()).toBe("Claude");
+			});
+
+			// Focus the dialog container (no control) then press Enter.
+			(screen.getByRole("dialog") as HTMLElement).focus();
+			await userEvent.keyboard("{Enter}");
+
+			await vi.waitFor(() => {
+				expect(mockedApi.request.spawnAgentInTask).toHaveBeenCalled();
+			});
+		});
+
+		it("does not spawn on Cmd/Ctrl/Shift+Enter", async () => {
+			renderModal();
+			await vi.waitFor(() => {
+				expect(screen.getByText("Spawn")).toBeInTheDocument();
+			});
+
+			await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+			await userEvent.keyboard("{Control>}{Enter}{/Control}");
+			await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+
+			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("focus trap", () => {
+		it("moves focus into the dialog on open", async () => {
+			renderModal();
+			const dialog = await screen.findByRole("dialog");
+			expect(dialog.contains(document.activeElement)).toBe(true);
+		});
+
+		it("keeps Tab inside the dialog", async () => {
+			const user = userEvent.setup();
+			renderModal();
+			const dialog = await screen.findByRole("dialog");
+			await vi.waitFor(() => {
+				expect(document.getElementById("spawn-agent")).toBeInTheDocument();
+			});
+
+			const outside = document.createElement("button");
+			document.body.appendChild(outside);
+			for (let i = 0; i < 8; i++) {
+				await user.tab();
+				expect(dialog.contains(document.activeElement)).toBe(true);
+				expect(document.activeElement).not.toBe(outside);
+			}
+			document.body.removeChild(outside);
+		});
+	});
 });

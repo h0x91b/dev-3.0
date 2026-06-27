@@ -62,6 +62,12 @@ const mockProject = {
 };
 
 describe("AddProjectModal", () => {
+	it("traps focus inside the dialog on open", () => {
+		renderModal();
+		const dialog = screen.getByRole("dialog");
+		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});

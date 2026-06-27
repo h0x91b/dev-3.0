@@ -78,6 +78,20 @@ describe("TaskDetailModal", () => {
 		vi.clearAllMocks();
 	});
 
+	describe("focus trap", () => {
+		it("traps focus inside the dialog on open", () => {
+			renderModal(makeTodoTask());
+			const dialog = screen.getByRole("dialog");
+			expect(dialog.contains(document.activeElement)).toBe(true);
+		});
+
+		it("traps focus inside the archived dialog on open", () => {
+			renderModal(makeTodoTask({ status: "completed" }));
+			const dialog = screen.getByRole("dialog");
+			expect(dialog.contains(document.activeElement)).toBe(true);
+		});
+	});
+
 	describe("title rename", () => {
 		it("shows a visible rename button for todo tasks without requiring hover", () => {
 			const task = makeTodoTask();
