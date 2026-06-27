@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import { access } from "node:fs/promises";
 import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
@@ -855,6 +856,22 @@ async function setupTiledLayout(session: PtySession): Promise<void> {
 	}
 }
 
+/**
+ * True when `cwd` exists and is reachable. A PTY's cwd is always a DIRECTORY
+ * (worktree / project path / ops work dir). Do NOT use `Bun.file(cwd).exists()`
+ * here: Bun.file has file semantics and returns `false` for directories, so it
+ * reported a bogus "PTY cwd missing" for every valid dir. `fs.access` resolves
+ * directories correctly. See decisions/081-pty-cwd-exists-fs-access.md.
+ */
+export async function cwdExists(cwd: string): Promise<boolean> {
+	try {
+		await access(cwd);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 function spawnPty(session: PtySession, cols: number, rows: number): void {
 	const tmuxSessionName = session.tmuxSessionName;
 	const tmuxCmd = session.tmuxCommand || getUserShell();
@@ -862,7 +879,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 	// cwd existence is checked asynchronously (best-effort log) — if cwd is
 	// missing, the child fork will fail and `proc.exited` will fire with a
 	// non-zero exit, triggering onPtyDiedCallback. We do NOT block here.
-	Bun.file(session.cwd).exists().then((exists) => {
+	cwdExists(session.cwd).then((exists) => {
 		if (!exists) {
 			log.error("PTY cwd missing", { taskId: shortId(session.taskId), cwd: session.cwd });
 		}
