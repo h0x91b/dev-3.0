@@ -24,7 +24,7 @@ import {
 import { loadSettings, loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
-import { buildScriptRunnerCommand, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
+import { buildScriptRunnerCommand, buildTaskLifecycleEnv, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
 import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
 import { resolveOperationalProjectConfig } from "./settings-config";
 import { cleanupTaskTmuxState, killDevServerSession, launchColumnAgent, launchTaskPty } from "./tmux-pty";
@@ -142,6 +142,22 @@ async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<
 			...task,
 			worktreePath: task.worktreePath ?? `${git.taskDir(project, task)}/worktree`,
 		};
+
+		// Preparation may already have run the setup script (e.g. brought up a
+		// per-worktree dev container), so give the cleanup hook a chance to tear
+		// that down before the worktree disappears. Best-effort: the worktree may
+		// be half-created and runCleanupScript skips it when missing.
+		try {
+			await runCleanupScript(cleanupTask, project, {
+				fromStatus: task.status,
+				toStatus: "todo",
+			});
+		} catch (err) {
+			log.warn("Cleanup script failed while cancelling preparation", {
+				taskId: task.id.slice(0, 8),
+				error: String(err),
+			});
+		}
 
 		try {
 			await git.removeWorktree(project, cleanupTask);
@@ -341,6 +357,8 @@ async function prepareTaskInBackground(
 					options.agentId,
 					options.configId,
 					true,
+					false,
+					{ branchName: wt.branchName },
 				),
 				"launching-pty",
 			);
@@ -437,7 +455,7 @@ export async function activateTask(
 	//     (not just the prepareTaskInBackground / Launch Variants flow), so we must
 	//     blank it here too — otherwise the placeholder is sent as the prompt.
 	const taskForLaunch = isReopen || task.scratch ? { ...task, description: "" } : task;
-	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, task.agentId, task.configId, true, isReopen);
+	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, task.agentId, task.configId, true, isReopen, { branchName: wt.branchName });
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
 
@@ -510,7 +528,10 @@ const DEFAULT_CLEANUP_SCRIPT = 'echo "Task finished"';
 
 type CleanupTransition = {
 	fromStatus: TaskStatus;
-	toStatus: Extract<TaskStatus, "completed" | "cancelled">;
+	// Beyond board statuses, the cleanup hook also fires when the worktree is
+	// destroyed outside a column move: "deleted" (task deleted while active)
+	// and "todo" (task preparation cancelled, task reverted to To Do).
+	toStatus: TaskStatus | "deleted";
 };
 
 function buildCleanupScriptEnv(
@@ -521,11 +542,7 @@ function buildCleanupScriptEnv(
 	return {
 		TERM: "xterm-256color",
 		HOME: process.env.HOME || "/",
-		DEV3_TASK_TITLE: task.title,
-		DEV3_TASK_ID: task.id,
-		DEV3_PROJECT_NAME: project.name,
-		DEV3_PROJECT_PATH: project.path,
-		DEV3_WORKTREE_PATH: task.worktreePath || "",
+		...buildTaskLifecycleEnv(project, task, task.worktreePath || ""),
 		DEV3_TASK_STATUS: transition.toStatus,
 		DEV3_TASK_FROM_STATUS: transition.fromStatus,
 		DEV3_TASK_TO_STATUS: transition.toStatus,
@@ -893,6 +910,7 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	cleanupTaskState(task.id);
+	portPool.releasePorts(task.id);
 
 	try {
 		pty.destroySession(task.id, task.tmuxSocket ?? undefined);
@@ -901,6 +919,27 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	}
 
 	if (isActive(task.status) || task.worktreePath) {
+		killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET).catch((err) => {
+			log.warn("killDevServerSession on task delete failed (best-effort)", {
+				taskId: task.id.slice(0, 8), error: String(err),
+			});
+		});
+
+		// Deleting an active task destroys its worktree/work dir just like moving
+		// it to completed/cancelled does — run the same teardown hook so
+		// per-worktree resources (dev containers, exports, caches) don't leak.
+		try {
+			await runCleanupScript(task, project, {
+				fromStatus: task.status,
+				toStatus: "deleted",
+			});
+		} catch (err) {
+			log.error("Cleanup script failed, continuing with task delete", {
+				taskId: task.id,
+				error: String(err),
+			});
+		}
+
 		if (project.kind === "virtual") {
 			// SAFETY: only ever remove a MANAGED dir (under ~/.dev3.0/ops/). A
 			// user-chosen fixed folder (e.g. ~ or ~/Downloads) is NEVER auto-removed.

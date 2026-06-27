@@ -4,7 +4,7 @@
  * in standalone bun scripts (e.g. e2e tests) without triggering native deps.
  */
 import { existsSync } from "node:fs";
-import type { TaskStatus } from "../../shared/types";
+import type { Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS } from "../../shared/types";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
@@ -158,6 +158,39 @@ export function buildAgentEnv(extraEnv: Record<string, string>, taskId: string):
 	const currentPath = process.env.PATH || "";
 	const pathWithDev3 = currentPath.includes(dev3Bin) ? currentPath : `${dev3Bin}:${currentPath}`;
 	return { ...extraEnv, DEV3_TASK_ID: taskId, PATH: pathWithDev3 };
+}
+
+/**
+ * Workspace env vars injected into every project hook (setup script, dev
+ * script, cleanup script) and into agent sessions.
+ *
+ * `DEV3_PROJECT_PATH` is the load-bearing one for git-ignored hooks: a
+ * `.dev3/config.local.json` lives only at the project root (a fresh worktree
+ * checkout has no copy), so any script it references must be resolved from
+ * the root — `"bash \"$DEV3_PROJECT_PATH/.dev3/setup.sh\""` — while the cwd
+ * stays the worktree. This mirrors the Superset workspace-hook contract
+ * (SUPERSET_ROOT_PATH / SUPERSET_WORKSPACE_NAME / SUPERSET_WORKSPACE_PATH),
+ * which lets tooling such as the b44 CLI target both runners with the same
+ * per-worktree setup/teardown scripts.
+ *
+ * `branchName` wins over `task.branchName` because at first launch the task
+ * record is persisted only after the PTY starts — callers that just created
+ * the worktree pass the fresh branch name explicitly.
+ */
+export function buildTaskLifecycleEnv(
+	project: Project,
+	task: Task,
+	worktreePath: string,
+	branchName?: string | null,
+): Record<string, string> {
+	return {
+		DEV3_PROJECT_PATH: project.path,
+		DEV3_PROJECT_NAME: project.name,
+		DEV3_TASK_ID: task.id,
+		DEV3_TASK_TITLE: task.title,
+		DEV3_WORKTREE_PATH: worktreePath,
+		DEV3_BRANCH_NAME: branchName ?? task.branchName ?? "",
+	};
 }
 
 export function extractConfigFromParams(params: Record<string, any>): Record<string, any> {

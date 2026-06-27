@@ -483,7 +483,7 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
    |-------|-----------------|
    | \`setupScript\` | Package manager install command. Detect from lockfile: \`bun.lockb\` → \`bun install\`, \`pnpm-lock.yaml\` → \`pnpm install\`, \`yarn.lock\` → \`yarn\`, \`package-lock.json\` → \`npm install\`. For Python: \`pip install -e .\` or \`poetry install\`. For Rust: \`cargo build\`. Chain multiple steps with \`&&\` if needed. |
    | \`devScript\` | The dev server command. Check \`package.json\` scripts for \`dev\`, \`start\`, \`serve\`. Use the full command: \`bun run dev\`, \`npm run dev\`, etc. If no dev server exists, leave empty. |
-   | \`cleanupScript\` | Teardown hook that runs before the task worktree is removed after \`completed\` or \`cancelled\`. Useful for copy-back, exports, and cache cleanup. Inside the script you can branch on \`$DEV3_TASK_STATUS\`, \`$DEV3_TASK_FROM_STATUS\`, and \`$DEV3_TASK_TO_STATUS\`. |
+   | \`cleanupScript\` | Teardown hook that runs before the task worktree is removed — on \`completed\` / \`cancelled\`, when an active task is deleted (\`$DEV3_TASK_STATUS\` = \`deleted\`), or when task preparation is cancelled (\`$DEV3_TASK_STATUS\` = \`todo\`). Useful for copy-back, exports, cache cleanup, and tearing down per-worktree containers. Inside the script you can branch on \`$DEV3_TASK_STATUS\`, \`$DEV3_TASK_FROM_STATUS\`, and \`$DEV3_TASK_TO_STATUS\`, plus the workspace env vars from step 3b. |
    | \`clonePaths\` | Heavy directories that should be CoW-cloned into new worktrees instead of re-downloaded. Common: \`node_modules\`, \`.venv\`, \`target\`, \`.next\`, \`build\`. Only include dirs that actually exist in the project. |
    | \`defaultBaseBranch\` | Check \`git symbolic-ref refs/remotes/origin/HEAD\` or look at common branches. Usually \`main\` or \`master\`. |
    | \`defaultCompareRefMode\` | Default diff comparison target. Use \`"remote"\` for \`origin/<baseBranch>\` (recommended default) or \`"local"\` for the local base branch. |
@@ -511,6 +511,22 @@ is genuinely ambiguous (e.g., multiple possible dev servers, unclear base branch
 
    Before writing the config, briefly state the evidence for each mapping in your response so the user can verify it.
    If you cannot find an explicit port override mechanism in this project, do NOT guess with a generic \`PORT=\` assignment. Set \`portCount: 0\` and explain why.
+
+3b. **Workspace env vars available to hook scripts.**
+   Every hook (\`setupScript\`, \`devScript\`, \`cleanupScript\`) runs with cwd = the task worktree and these env vars:
+
+   | Var | Value |
+   |-----|-------|
+   | \`$DEV3_PROJECT_PATH\` | Project root directory (the original repo checkout) |
+   | \`$DEV3_PROJECT_NAME\` | Project name |
+   | \`$DEV3_TASK_ID\` | Task UUID |
+   | \`$DEV3_TASK_TITLE\` | Task title |
+   | \`$DEV3_WORKTREE_PATH\` | This task's worktree directory |
+   | \`$DEV3_BRANCH_NAME\` | The task's git branch |
+
+   \`setupScript\` and \`devScript\` additionally get the \`$DEV3_PORT*\` vars (step 3a); \`cleanupScript\` additionally gets \`$DEV3_TASK_STATUS\` / \`$DEV3_TASK_FROM_STATUS\` / \`$DEV3_TASK_TO_STATUS\`.
+
+   **Git-ignored hooks pattern:** \`.dev3/config.local.json\` exists only at the project root — a fresh worktree has no copy of it or of any git-ignored script it references. Reference such scripts through the root, e.g. \`"setupScript": "bash \\"$DEV3_PROJECT_PATH/.dev3/setup.sh\\""\` — the script is resolved from the root while cwd stays the worktree. (Scripts committed to the repo can keep plain relative paths.)
 
 4. **Ask where to save.** Stop and ask clearly: "Repo config (shared, git) or Local config (personal, git-ignored)?" — wait for answer before writing anything.
 
@@ -541,9 +557,9 @@ EOF
 
 | Field | Type | Description |
 |-------|------|-------------|
-| \`setupScript\` | string | Runs after a new worktree is created (install deps, generate code, etc.) |
+| \`setupScript\` | string | Runs after a new worktree is created (install deps, generate code, etc.). Gets the workspace env vars from step 3b |
 | \`devScript\` | string | Dev server command (powers the "Dev Server" button in the UI) |
-| \`cleanupScript\` | string | Runs before the task worktree is removed after \`completed\` or \`cancelled\` |
+| \`cleanupScript\` | string | Runs before the task worktree is removed (\`completed\` / \`cancelled\` / task deleted / preparation cancelled) |
 | \`clonePaths\` | string[] | Dirs to CoW-clone into worktrees (faster than re-downloading) |
 | \`defaultBaseBranch\` | string | Base branch for new task branches (default: \`main\`) |
 | \`defaultCompareRefMode\` | \`"remote" \| "local"\` | Default diff comparison target (\`origin/<baseBranch>\` vs local base branch) |
