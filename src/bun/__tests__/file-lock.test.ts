@@ -286,6 +286,94 @@ describe("withFileLock — lock dir shape (backward compatibility)", () => {
 	});
 });
 
+describe("withFileLock — stale-break backward compatibility", () => {
+	let warnSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(() => {
+		warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		warnSpy.mockRestore();
+	});
+
+	it("(a) breaks and acquires a stale lock created the OLD way (plain mkdir)", async () => {
+		const filePath = path.join(tmpDir, "tasks.json");
+		const lockDir = filePath + ".lock";
+
+		// Old version's lock: a plain empty directory with a stale mtime. No
+		// payload, no extra files — exactly what a pre-fix version leaves behind.
+		fs.mkdirSync(lockDir);
+		const past = new Date(Date.now() - 30000);
+		fs.utimesSync(lockDir, past, past);
+
+		const result = await withFileLock(filePath, async () => "recovered", {
+			staleThreshold: 5000,
+		});
+
+		expect(result).toBe("recovered");
+		// Lock released; no graveyard litter left behind on the happy path.
+		expect(fs.existsSync(lockDir)).toBe(false);
+		const siblings = fs.readdirSync(tmpDir).filter((n) => n.includes(".lock"));
+		expect(siblings).toEqual([]);
+	});
+
+	it("(b) leftover from a crash mid-break is acquirable by OLD semantics (plain mkdir)", () => {
+		const filePath = path.join(tmpDir, "tasks.json");
+		const lockDir = filePath + ".lock";
+
+		// Reproduce the on-disk state a crash between rename-aside and rmdir
+		// leaves: the canonical lock path is ABSENT (renamed away) and an orphan
+		// graveyard sibling lingers. An older version only knows <file>.lock.
+		const orphanGraveyard = `${lockDir}.stale.99999.123456789.0`;
+		fs.mkdirSync(orphanGraveyard);
+		expect(fs.existsSync(lockDir)).toBe(false);
+
+		// OLD acquire semantics: a plain, non-recursive mkdir of the canonical
+		// path must succeed (the orphan sibling does not block it).
+		expect(() => fs.mkdirSync(lockDir)).not.toThrow();
+		expect(() => fs.rmdirSync(lockDir)).not.toThrow();
+
+		// OLD stale-break semantics (plain stat-age + rmdir) likewise operate only
+		// on the canonical path and are unaffected by the orphan sibling.
+		expect(fs.existsSync(orphanGraveyard)).toBe(true);
+	});
+
+	it("(b) new code acquires fine despite an orphan graveyard sibling on disk", async () => {
+		const filePath = path.join(tmpDir, "tasks.json");
+		const lockDir = filePath + ".lock";
+
+		// Orphan left by a previous crash mid-break.
+		fs.mkdirSync(`${lockDir}.stale.1.2.3`);
+
+		const result = await withFileLock(filePath, async () => "ok");
+		expect(result).toBe("ok");
+		// Canonical lock released; the orphan is never mistaken for a lock.
+		expect(fs.existsSync(lockDir)).toBe(false);
+	});
+
+	it("(b) while held by new code, the lock is a plain empty dir an OLD version can stat+rmdir", async () => {
+		const filePath = path.join(tmpDir, "tasks.json");
+		const lockDir = filePath + ".lock";
+
+		let oldStyleStatWorked = false;
+		let oldStyleAgeFinite = false;
+		await withFileLock(filePath, async () => {
+			// Simulate what an OLD version sees/does: plain stat-age check + the
+			// directory is empty (no new payload the old version can't handle).
+			const st = fs.statSync(lockDir);
+			oldStyleStatWorked = st.isDirectory();
+			// The age computation an old version performs must yield a real number
+			// (sign/jitter near zero is irrelevant — fresh locks aren't broken).
+			oldStyleAgeFinite = Number.isFinite(Date.now() - st.mtimeMs);
+			expect(fs.readdirSync(lockDir)).toEqual([]);
+		});
+
+		expect(oldStyleStatWorked).toBe(true);
+		expect(oldStyleAgeFinite).toBe(true);
+	});
+});
+
 describe("withFileLock — re-entrancy (same file, nested calls)", () => {
 	it("does not deadlock on nested lock for the same file", async () => {
 		const filePath = path.join(tmpDir, "test.json");
