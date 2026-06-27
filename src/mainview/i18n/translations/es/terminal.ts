@@ -145,7 +145,7 @@ const terminal = {
 
 	// Quick Shell (consola Operations integrada en $HOME)
 	"quickShell.open": "Shell rápido",
-	"quickShell.tooltipWithShortcut": "Shell rápido en el inicio (⌘⇧`)",
+	"quickShell.tooltipWithShortcut": "Shell rápido — nuevo scratch en Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
 };
 

@@ -421,7 +421,7 @@ export async function launchTaskPty(
  * failure just leaves the agent pane alone. Waits for the freshly-created tmux
  * session to come up before splitting.
  */
-async function addVirtualShellPane(task: Task, worktreePath: string, socket: string, userShell: string): Promise<void> {
+export async function addVirtualShellPane(task: Task, worktreePath: string, socket: string, userShell: string): Promise<void> {
 	const session = `dev3-${task.id.slice(0, 8)}`;
 	try {
 		let ready = false;
@@ -448,8 +448,11 @@ async function addVirtualShellPane(task: Task, worktreePath: string, socket: str
 		const exitCode = await proc.exited;
 		if (exitCode === 0 && paneId) {
 			spawn(pty.tmuxArgs(socket, "set-option", "-t", session, "pane-border-status", "top")).exited.catch(() => {});
-			spawn(pty.tmuxArgs(socket, "select-pane", "-t", `${session}.0`, "-T", "Agent")).exited.catch(() => {});
-			spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", "Shell")).exited.catch(() => {});
+			// `select-pane -t` sets a pane's title but ALSO makes it the active pane.
+			// Title the shell first and the agent (pane 0) LAST, awaited in order, so
+			// focus deterministically lands on the agent — not the freshly-split shell.
+			await spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", "Shell")).exited.catch(() => {});
+			await spawn(pty.tmuxArgs(socket, "select-pane", "-t", `${session}.0`, "-T", "Agent")).exited.catch(() => {});
 			log.info("Virtual shell pane created", { taskId: task.id.slice(0, 8), paneId });
 		} else {
 			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode });

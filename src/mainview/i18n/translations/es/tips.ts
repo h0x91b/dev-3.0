@@ -153,7 +153,7 @@ const tips = {
 	"tip.diffCompareDefault.title": "Elige la base del diff",
 	"tip.diffCompareDefault.body": "En Ajustes del proyecto puedes elegir si el estado de rama y Show Diff comparan contra origin/<base> o la rama base local.",
 	"tip.projectTerminal.title": "Terminal del proyecto",
-	"tip.projectTerminal.body": "¿Necesitas un shell rápido en la raíz del repo? Haz clic en el botón Terminal en el encabezado o presiona \u2318` para alternarlo desde cualquier pantalla del proyecto. ⌘⇧` abre un shell aparte en el directorio home.",
+	"tip.projectTerminal.body": "¿Necesitas un shell rápido en la raíz del repo? Haz clic en el botón Terminal en el encabezado o presiona \u2318` para alternarlo desde cualquier pantalla del proyecto. ⌘⇧` crea una nueva tarea scratch en el tablero Operations.",
 	"tip.portAllocation.title": "Asignar puertos automáticamente",
 	"tip.portAllocation.body": "Configura portCount en ajustes del proyecto para asignar puertos libres por tarea. Usa $DEV3_PORT0, $DEV3_PORT1 en scripts.",
 	"tip.taskWatch.title": "Vigila tus tareas",

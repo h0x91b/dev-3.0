@@ -576,7 +576,7 @@ describe("GlobalHeader — project terminal button", () => {
 	it("shows quick shell before project terminal", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 
-		const quickShellButton = screen.getByTitle("Quick Shell in home (\u2318\u21e7`)");
+		const quickShellButton = screen.getByTitle("Quick Shell \u2014 new scratch in Operations (\u2318\u21e7`)");
 		const projectButton = screen.getByTitle("Project Terminal (\u2318`)");
 
 		expect(
@@ -586,7 +586,7 @@ describe("GlobalHeader — project terminal button", () => {
 
 	it("renders a non-empty Quick Shell icon glyph (regression: was an empty placeholder)", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
-		const quickShellButton = screen.getByTitle("Quick Shell in home (⌘⇧`)");
+		const quickShellButton = screen.getByTitle("Quick Shell — new scratch in Operations (⌘⇧`)");
 		const icon = quickShellButton.querySelector("span");
 		expect(icon?.textContent).toBe("\u{F018D}");
 	});

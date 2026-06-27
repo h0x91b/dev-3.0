@@ -302,8 +302,8 @@ function App() {
 		[navigate, state.route],
 	);
 
-	// Quick shell: open (or focus) the built-in "Quick shell" operation in ~.
-	// Replaces the former single home terminal; bound to ⇧⌘`.
+	// Quick shell (⇧⌘`): spawn a fresh scratch op in the built-in Operations board
+	// and jump to it. The backend launches it with the default agent + config.
 	const openQuickShell = useCallback(async () => {
 		try {
 			const task = await api.request.openQuickShell({});

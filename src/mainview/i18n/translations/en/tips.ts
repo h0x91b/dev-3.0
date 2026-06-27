@@ -153,7 +153,7 @@ const tips = {
 	"tip.diffCompareDefault.title": "Pick your diff baseline",
 	"tip.diffCompareDefault.body": "In Project Settings, choose whether branch status and Show Diff compare against origin/<base> or your local base branch.",
 	"tip.projectTerminal.title": "Project Terminal",
-	"tip.projectTerminal.body": "Need a quick shell at the repo root? Click the Terminal button in the header or press \u2318` to toggle it from any project screen. ⌘⇧` opens a separate home-directory shell.",
+	"tip.projectTerminal.body": "Need a quick shell at the repo root? Click the Terminal button in the header or press \u2318` to toggle it from any project screen. ⌘⇧` spins up a fresh scratch task in the Operations board.",
 	"tip.portAllocation.title": "Auto-allocate ports",
 	"tip.portAllocation.body": "Set portCount in Project Settings to auto-assign free ports per task. Use $DEV3_PORT0, $DEV3_PORT1 in scripts.",
 	"tip.taskWatch.title": "Watch tasks",
