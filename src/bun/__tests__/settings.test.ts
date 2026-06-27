@@ -12,7 +12,7 @@ vi.mock("../paths", () => ({
 	DEV3_HOME: TEST_HOME,
 }));
 
-import { saveSettings, loadSettings, type GlobalSettings } from "../settings";
+import { saveSettings, loadSettings, loadSettingsSync, type GlobalSettings } from "../settings";
 
 function makeSettings(overrides: Partial<GlobalSettings> = {}): GlobalSettings {
 	return {
@@ -65,6 +65,80 @@ describe("saveSettings", () => {
 		// Explicit true normalizes back to undefined (the default-on representation).
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ importShellEnv: true }), null, 2), "utf-8");
 		expect((await loadSettings()).importShellEnv).toBeUndefined();
+	});
+
+	it("reads tipsDisabled back from disk (async + sync)", async () => {
+		// User toggled "Disable feature tips" → the flag lives in settings.json.
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ tipsDisabled: true }), null, 2), "utf-8");
+		expect((await loadSettings()).tipsDisabled).toBe(true);
+		expect(loadSettingsSync().tipsDisabled).toBe(true);
+	});
+
+	it("does not erase tipsDisabled on the next settings save", async () => {
+		// Reproduces the erase-on-next-save path: load the flag, persist the full
+		// object back (as the renderer does on ANY setting change), reload.
+		vi.spyOn(Bun, "write").mockImplementation(async (target, data) => {
+			writeFileSync(String(target), String(data), "utf-8");
+			return 0;
+		});
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ tipsDisabled: true }), null, 2), "utf-8");
+
+		const loaded = await loadSettings();
+		await saveSettings(loaded);
+
+		expect(JSON.parse(readFileSync(settingsPath, "utf-8")).tipsDisabled).toBe(true);
+		expect((await loadSettings()).tipsDisabled).toBe(true);
+	});
+
+	it("upgrade-safe: an older settings.json without tipsDisabled loads with the flag absent", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings(), null, 2), "utf-8");
+		expect((await loadSettings()).tipsDisabled).toBeUndefined();
+	});
+
+	it("preserves every GlobalSettings field across a save→load round-trip (drift guard + downgrade safety)", async () => {
+		// `Required<>` forces this object to enumerate EVERY field of the shared
+		// GlobalSettings type. Adding a field to the type without handling it in
+		// loadSettings breaks compilation here (missing key) or this test at
+		// runtime (dropped value) — so the tipsDisabled class of bug cannot recur.
+		// Values are chosen so each one survives loadSettings normalization as-is.
+		vi.spyOn(Bun, "write").mockImplementation(async (target, data) => {
+			writeFileSync(String(target), String(data), "utf-8");
+			return 0;
+		});
+		const full: Required<GlobalSettings> = {
+			defaultAgentId: "builtin-codex",
+			defaultConfigId: "codex-default",
+			taskDropPosition: "bottom",
+			updateChannel: "canary",
+			theme: "light",
+			resolvedTheme: "light",
+			cloneBaseDirectory: "/tmp/clones",
+			customBinaryPaths: { git: "/usr/bin/git" },
+			agentBinaryPaths: { "builtin-codex": "/usr/bin/codex" },
+			terminalKeymap: "iterm2",
+			playSoundOnTaskComplete: false,
+			externalApps: [{ id: "x", name: "X", macAppName: "X" }],
+			tipsDisabled: true,
+			taskOpenMode: "fullscreen",
+			defaultDiffViewMode: "unified",
+			preventSleepWhileRunning: true,
+			skipQuitDialog: true,
+			importShellEnv: false,
+			focusMode: true,
+		};
+
+		await saveSettings(full);
+
+		// Downgrade safety: the file is a plain JSON superset of all pre-existing keys.
+		const onDisk = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		for (const key of Object.keys(full) as (keyof GlobalSettings)[]) {
+			expect(onDisk[key], `field "${key}" was not written to disk`).toEqual(full[key]);
+		}
+
+		const loaded = await loadSettings();
+		for (const key of Object.keys(full) as (keyof GlobalSettings)[]) {
+			expect(loaded[key], `field "${key}" was dropped by loadSettings`).toEqual(full[key]);
+		}
 	});
 
 	it("creates the settings directory before writing the file", async () => {

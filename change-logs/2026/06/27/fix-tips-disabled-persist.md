@@ -1,0 +1,1 @@
+Fixed the "Disable feature tips" setting being silently lost on app restart (and then erased from settings.json on the next settings change). loadSettings now reads tipsDisabled, and the drifted duplicate GlobalSettings interface in src/bun/settings.ts was removed in favor of the single shared type, with a round-trip test guarding against the same class of dropped-field bug.

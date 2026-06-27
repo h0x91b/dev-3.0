@@ -431,6 +431,13 @@ export interface GlobalSettings {
 	defaultDiffViewMode?: "split" | "unified" | "auto"; // default inline diff layout; "auto" picks based on screen size
 	preventSleepWhileRunning?: boolean; // spawn caffeinate when agents are active
 	skipQuitDialog?: boolean; // suppress the "tmux keeps running" quit confirmation
+	/**
+	 * Inherit the user's full exported login-shell environment into agent/MCP
+	 * sessions (so env-based MCP servers, SDK keys, etc. set in `.zshrc`/`.bashrc`
+	 * work). Default on; set to `false` to fall back to importing only the typed
+	 * vars (PATH/LANG/...) for an isolated environment.
+	 */
+	importShellEnv?: boolean;
 	focusMode?: boolean; // when true, suppress agent-initiated attention UI (dev3 notify/attention)
 }
 
