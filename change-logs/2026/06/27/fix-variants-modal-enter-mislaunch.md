@@ -1,0 +1,1 @@
+Fixed the Launch Variants modal spawning agents when pressing Enter while the agent/config picker or the Watch/Cancel/Add/Remove buttons were keyboard-focused. The global Enter shortcut now only launches when no interactive control is focused.

@@ -80,8 +80,14 @@ function LaunchVariantsModal({
 			if (e.key === "Escape") {
 				onClose();
 			} else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-				const tag = (document.activeElement as HTMLElement | null)?.tagName;
-				if (tag === "INPUT" || tag === "TEXTAREA") return;
+				// Only an "implicit" Enter (nothing interactive focused) should launch.
+				// If the user tab-focused a control, Enter must trigger that control's
+				// own action — the agent/config pickers render as <button> (Select.tsx),
+				// as do Watch/Cancel/Add/Remove — otherwise keyboard navigation causes
+				// accidental, costly agent spawns.
+				const el = document.activeElement as HTMLElement | null;
+				const tag = el?.tagName;
+				if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT" || tag === "A" || el?.isContentEditable) return;
 				if (!launching && variants.length > 0) handleLaunch();
 			}
 		}

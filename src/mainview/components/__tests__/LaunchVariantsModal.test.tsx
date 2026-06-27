@@ -577,5 +577,64 @@ describe("LaunchVariantsModal", () => {
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
 			document.body.removeChild(input);
 		});
+
+		// Regression: the custom Select renders a <button>. A keyboard user who
+		// tab-focuses the Agent/Config picker and presses Enter to open the
+		// dropdown must NOT spawn agents (accidental, costly launch).
+		it("Enter does not trigger launch when the agent Select button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			getAgentButtons()[0].focus();
+			expect(document.activeElement?.tagName).toBe("BUTTON");
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		it("Enter does not trigger launch when the config Select button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			getConfigButtons()[0].focus();
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		it("Enter does not trigger launch when the Cancel button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			const cancel = screen.getByText("Cancel") as HTMLButtonElement;
+			cancel.focus();
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		it("Enter does not trigger launch when the Watch button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			const watch = screen.getByText("Watch").closest("button") as HTMLButtonElement;
+			watch.focus();
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		// Backward-compat: the modifier-Enter contract must stay unchanged —
+		// only a plain Enter (no focused control) launches.
+		it("Cmd/Ctrl/Shift+Enter do not trigger launch", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+			await userEvent.keyboard("{Control>}{Enter}{/Control}");
+			await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
 	});
 });
