@@ -5,6 +5,7 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
+import { useFocusTrap } from "../utils/useFocusTrap";
 import Select, { useAgentRenderOption } from "./Select";
 
 interface VariantRow {
@@ -73,6 +74,11 @@ function LaunchVariantsModal({
 	}, []);
 
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
+
+	// Keep Tab/Shift+Tab inside the dialog — otherwise focus escapes to the
+	// Kanban board behind the modal (labels, task cards), letting the user
+	// operate hidden UI.
+	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	// Escape → close; Enter → launch (when no text input is focused)
 	useEffect(() => {
@@ -166,7 +172,11 @@ function LaunchVariantsModal({
 			onClick={onClose}
 		>
 			<div
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-lg mx-4 overflow-hidden"
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-lg mx-4 overflow-hidden outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}

@@ -637,4 +637,55 @@ describe("LaunchVariantsModal", () => {
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
 		});
 	});
+
+	describe("focus trap", () => {
+		it("moves focus into the dialog on open", () => {
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+			expect(dialog.contains(document.activeElement)).toBe(true);
+			expect(document.activeElement).not.toBe(document.body);
+		});
+
+		it("Tab from the last control cycles back into the dialog (does not escape)", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+
+			(screen.getByText("Launch") as HTMLButtonElement).focus();
+			await user.tab();
+
+			expect(dialog.contains(document.activeElement)).toBe(true);
+			expect(document.activeElement).not.toBe(document.body);
+		});
+
+		it("Shift+Tab from the first control cycles to the last (stays in dialog)", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+
+			(screen.getByText("Watch").closest("button") as HTMLButtonElement).focus();
+			await user.tab({ shift: true });
+
+			expect(dialog.contains(document.activeElement)).toBe(true);
+		});
+
+		it("Tab never lands on an element outside the dialog", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+
+			// Something focusable behind the modal.
+			const outside = document.createElement("button");
+			outside.textContent = "behind";
+			document.body.appendChild(outside);
+
+			for (let i = 0; i < 12; i++) {
+				await user.tab();
+				expect(dialog.contains(document.activeElement)).toBe(true);
+				expect(document.activeElement).not.toBe(outside);
+			}
+
+			document.body.removeChild(outside);
+		});
+	});
 });
