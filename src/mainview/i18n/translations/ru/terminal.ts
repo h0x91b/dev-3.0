@@ -151,7 +151,7 @@ const terminal = {
 
 	// Quick Shell (встроенная Operations-консоль в $HOME)
 	"quickShell.open": "Быстрая консоль",
-	"quickShell.tooltipWithShortcut": "Быстрая консоль в домашней папке (⌘⇧`)",
+	"quickShell.tooltipWithShortcut": "Быстрая консоль — новый scratch в Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
 };
 

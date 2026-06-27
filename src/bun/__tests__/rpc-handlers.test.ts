@@ -214,7 +214,6 @@ import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
-import { findReusableQuickShell } from "../rpc-handlers/task-lifecycle";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
 import * as updater from "../updater";
@@ -5987,32 +5986,40 @@ describe("handlers.openQuickShell", () => {
 		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
 	});
 
-	it("creates a Quick shell op in the built-in board when none exists", async () => {
+	it("creates a fresh scratch op in the built-in board, launched in-progress", async () => {
 		const project = makeProject({ id: "ops1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", builtin: true });
-		const created = makeTask({ id: "qs1", projectId: "ops1", status: "todo", worktreePath: null, customTitle: "Quick shell", scratch: true });
+		const created = makeTask({ id: "qs1", projectId: "ops1", status: "todo", worktreePath: null, scratch: true });
 		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([]);
+		vi.mocked(data.addTask).mockResolvedValue(created);
+		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, u) => ({ ...created, ...u } as Task));
+
+		const result = await handlers.openQuickShell({});
+
+		// Scratch op, no custom "Quick shell" identity, no home dir.
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			expect.stringMatching(/^Scratch — /),
+			"todo",
+			{ scratch: true },
+		);
+		expect(result.status).toBe("in-progress");
+		expect(result.projectId).toBe("ops1");
+		expect(git.createWorktree).not.toHaveBeenCalled();
+	});
+
+	it("creates a NEW op every call — no singleton reuse of an existing one", async () => {
+		const project = makeProject({ id: "ops1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", builtin: true });
+		const existing = makeTask({ id: "old", projectId: "ops1", status: "in-progress", scratch: true });
+		const created = makeTask({ id: "fresh", projectId: "ops1", status: "todo", worktreePath: null, scratch: true });
+		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([existing]);
 		vi.mocked(data.addTask).mockResolvedValue(created);
 		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, u) => ({ ...created, ...u } as Task));
 
 		const result = await handlers.openQuickShell({});
 
 		expect(data.addTask).toHaveBeenCalled();
-		expect(result.status).toBe("in-progress");
-		expect(result.projectId).toBe("ops1");
-		expect(git.createWorktree).not.toHaveBeenCalled();
-	});
-
-	it("focuses an existing active Quick shell op instead of creating a new one", async () => {
-		const project = makeProject({ id: "ops1", kind: "virtual", path: "/tmp/test-dev3/ops/operations", builtin: true });
-		const existing = makeTask({ id: "qs1", projectId: "ops1", status: "in-progress", customTitle: "Quick shell" });
-		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockResolvedValue([existing]);
-
-		const result = await handlers.openQuickShell({});
-
-		expect(data.addTask).not.toHaveBeenCalled();
-		expect(result.id).toBe("qs1");
+		expect(result.id).toBe("fresh");
 	});
 });
 
@@ -8190,29 +8197,3 @@ describe("handlers.getProjectPtyUrl — virtual board guard", () => {
 	});
 });
 
-describe("findReusableQuickShell — Quick shell dedup", () => {
-	it("reuses an active Quick shell", () => {
-		const tasks = [makeTask({ id: "a", customTitle: "Quick shell", status: "in-progress" })];
-		expect(findReusableQuickShell(tasks)?.id).toBe("a");
-	});
-
-	it("reuses an INACTIVE (todo) Quick shell instead of spawning a duplicate", () => {
-		// The original bug: dedup matched only active shells, so one dragged to todo
-		// was missed and ⇧⌘` created a second.
-		const tasks = [makeTask({ id: "b", customTitle: "Quick shell", status: "todo" })];
-		expect(findReusableQuickShell(tasks)?.id).toBe("b");
-	});
-
-	it("ignores completed/cancelled Quick shells (history) so a fresh one is created", () => {
-		const tasks = [
-			makeTask({ id: "c", customTitle: "Quick shell", status: "completed" }),
-			makeTask({ id: "d", customTitle: "Quick shell", status: "cancelled" }),
-		];
-		expect(findReusableQuickShell(tasks)).toBeUndefined();
-	});
-
-	it("ignores tasks that are not Quick shells", () => {
-		const tasks = [makeTask({ id: "e", customTitle: "Something else", status: "in-progress" })];
-		expect(findReusableQuickShell(tasks)).toBeUndefined();
-	});
-});

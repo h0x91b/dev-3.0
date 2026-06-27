@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
@@ -1231,27 +1230,18 @@ async function respondToAgentCompletionRequest(params: { requestId: string; appr
 }
 
 /**
- * Quick shell: the replacement for the removed single home-terminal. Opens (or
- * focuses) a prompt-less "Quick shell" operation in the built-in Operations
- * board, running in the user's home dir. The ⇧⌘` hotkey maps to this.
+ * Quick shell (⇧⌘`): spawns a FRESH scratch operation in the built-in Operations
+ * board on every press — exactly like clicking "Scratch Task" there. The task
+ * gets the normal `Scratch — HH:mm` title and a managed work dir, and is launched
+ * immediately with the user's default agent + config (Claude Opus 4.8 / auto by
+ * factory default) — no agent picker, no singleton reuse. A blank prompt means
+ * the agent starts idle and ready.
  */
-/**
- * Find a Quick shell task worth reusing: any one that is NOT in a terminal state
- * (completed/cancelled). An active shell is refocused; an inactive one (e.g.
- * dragged to todo) is relaunched. Only when every Quick shell is terminal — or
- * none exists — is a fresh one created. Matching ONLY active ones (the old bug)
- * silently spawned duplicates whenever a shell went inactive.
- */
-export function findReusableQuickShell(tasks: Task[]): Task | undefined {
-	return tasks.find(
-		(tk) => tk.customTitle === "Quick shell" && tk.status !== "completed" && tk.status !== "cancelled",
-	);
-}
 
-// In-flight guard: openQuickShell does find-then-create, which is not atomic.
-// Two rapid ⇧⌘` presses would both miss the existing shell and each create one.
-// Serializing concurrent calls onto a single promise makes the second press
-// return the same task the first one resolves to, instead of a duplicate.
+// In-flight guard: a single ⇧⌘` should create exactly one task even if the key
+// repeats / double-fires. Serializing concurrent calls onto one promise makes a
+// second near-simultaneous press resolve to the same task instead of spawning a
+// duplicate. Deliberate presses after completion still each create a fresh op.
 let quickShellInflight: Promise<Task> | null = null;
 
 async function openQuickShell(_params: {}): Promise<Task> {
@@ -1270,33 +1260,19 @@ async function openQuickShell(_params: {}): Promise<Task> {
 
 async function openQuickShellInner(): Promise<Task> {
 	const project = await data.ensureBuiltinOperationsBoard("Operations");
-	const tasks = await data.loadTasks(project);
-	// Reuse any non-terminal Quick shell (NOT just active ones): one that was
-	// dragged to todo or otherwise went inactive must be refocused/relaunched, not
-	// duplicated. Completed/cancelled shells are history — a fresh one is created.
-	const existing = findReusableQuickShell(tasks);
-	if (existing && isActive(existing.status)) {
-		log.info("← openQuickShell (focus existing)", { taskId: existing.id.slice(0, 8) });
-		return existing;
-	}
-	// Either no shell exists, or the existing one is inactive (e.g. todo) and needs
-	// its PTY relaunched. Both paths run activate + set in-progress identically.
-	const target =
-		existing ??
-		(await data.addTask(project, "", "todo", {
-			scratch: true,
-			customTitle: "Quick shell",
-			titleEditedByUser: true,
-			opsWorkDir: homedir(),
-		}));
-	const wt = await activateTask(project, target, { isReopen: !!existing });
-	const updated = await data.updateTask(project, target.id, {
+	// Always a brand-new scratch op (no reuse): normal `Scratch — HH:mm` title and
+	// a managed work dir (no opsWorkDir → git.virtualWorkDir). Leaving
+	// agentId/configId unset makes launchTaskPty resolve the project/global default
+	// agent — i.e. the "default agent with default config".
+	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true });
+	const wt = await activateTask(project, task);
+	const updated = await data.updateTask(project, task.id, {
 		status: "in-progress",
 		worktreePath: wt.worktreePath,
 		branchName: wt.branchName,
 	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	log.info(`← openQuickShell (${existing ? "reactivated" : "created"})`, { taskId: target.id.slice(0, 8) });
+	log.info("← openQuickShell (created scratch)", { taskId: task.id.slice(0, 8) });
 	return updated;
 }
 

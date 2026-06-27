@@ -1401,7 +1401,7 @@ export type AppRPCSchema = {
 				params: { projectId: string };
 				response: void;
 			};
-			/** Open or focus the built-in "Quick shell" operation (replaces the old home terminal). */
+			/** Spawn a fresh scratch op in the built-in Operations board, launched with the default agent. */
 			openQuickShell: {
 				params: {};
 				response: Task;

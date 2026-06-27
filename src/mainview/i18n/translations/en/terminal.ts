@@ -145,7 +145,7 @@ const terminal = {
 
 	// Quick Shell (built-in Operations shell in $HOME)
 	"quickShell.open": "Quick Shell",
-	"quickShell.tooltipWithShortcut": "Quick Shell in home (\u2318\u21e7`)",
+	"quickShell.tooltipWithShortcut": "Quick Shell \u2014 new scratch in Operations (\u2318\u21e7`)",
 	"fileDrop.uploadFailed": "File upload failed: {error}",
 } as const;
 

@@ -153,7 +153,7 @@ const tips = {
 	"tip.diffCompareDefault.title": "Выберите базу для diff",
 	"tip.diffCompareDefault.body": "В Project Settings можно выбрать, сравнивать ли статус ветки и Show Diff с origin/<base> или с локальной базовой веткой.",
 	"tip.projectTerminal.title": "Терминал проекта",
-	"tip.projectTerminal.body": "Нужен быстрый shell в корне репо? Нажми кнопку Terminal в шапке или \u2318` для переключения с любого экрана проекта. ⌘⇧` откроет отдельный shell в домашней папке.",
+	"tip.projectTerminal.body": "Нужен быстрый shell в корне репо? Нажми кнопку Terminal в шапке или \u2318` для переключения с любого экрана проекта. ⌘⇧` создаёт новый scratch-таск в борде Operations.",
 	"tip.portAllocation.title": "Авто-выделение портов",
 	"tip.portAllocation.body": "Задайте portCount в настройках проекта — каждой задаче выделяются свободные порты. Используйте $DEV3_PORT0, $DEV3_PORT1 в скриптах.",
 	"tip.taskWatch.title": "Следите за задачами",
