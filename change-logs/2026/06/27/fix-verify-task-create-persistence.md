@@ -1,0 +1,1 @@
+Task creation now verifies the write actually landed on disk before reporting success. Previously `dev3 task create` could print "Created task <id>" (consuming a seq) for a task that was never persisted; it now fails loudly with a clear error instead of returning a ghost task, so the printed id is always immediately resolvable.

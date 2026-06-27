@@ -788,6 +788,24 @@ export async function addTask(
 		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
 		tasks.push(task);
 		await rawSaveTasks(project, tasks);
+
+		// Verify the write actually landed before reporting success. atomicWriteFile
+		// can report success while the new content never reaches disk — e.g. macOS
+		// Full Disk Access / sandbox loss mid-write, or another running app instance
+		// clobbering the file. Without this guard the CLI prints "Created task <id>"
+		// (consuming a seq) for a task that is never queryable, which an agent then
+		// trusts. Re-read fresh from disk (strict bypasses the cache) and fail loudly
+		// instead of returning a ghost task. See decision 082.
+		const persisted = await rawLoadTasks(project, { strict: true });
+		if (!persisted.some((t) => t.id === task.id)) {
+			log.error("Task create verification failed — write did not persist", { taskId: task.id, seq: task.seq });
+			throw new Error(
+				`Task ${task.id} failed to persist (verification read-back did not find it). ` +
+				`The write reported success but the task is not on disk — likely macOS Full Disk Access loss ` +
+				`or another running app instance clobbering ${tasksFile(project)}.`,
+			);
+		}
+
 		log.info("Task created", { taskId: task.id, seq: task.seq, title });
 		return task;
 	});
