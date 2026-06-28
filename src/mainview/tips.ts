@@ -906,6 +906,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["settings", "board"],
 	},
+	{
+		id: "remote-command-palette",
+		titleKey: "tip.remoteCommandPalette.title",
+		bodyKey: "tip.remoteCommandPalette.body",
+		icon: "\u{F0E7}", // nf-fa-bolt
+		score: 2,
+		contexts: ["board", "terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -8,6 +8,7 @@ import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { orderProjectsForDisplay } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
+import { isRemote } from "./utils/platform";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import GlobalHeader from "./components/GlobalHeader";
@@ -490,7 +491,14 @@ function App() {
 		(e) => {
 			// While hint mode is active the overlay owns every keystroke.
 			if (hintMode) return;
+			// In browser remote mode the native menu is gone and the browser claims
+			// several modifier combos. Drop-fated shortcuts (shell-level or
+			// browser-owned) bail BEFORE preventDefault so the browser keeps its
+			// native behavior; aliased ones (⌘1–9 → `G then 1–9`, ⌘N → `C`) fall back
+			// to their bare-key path. Source of truth: `keymap.ts` scope/remoteKeys.
+			const remote = isRemote();
 			if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "q") {
+				if (remote) return; // ⌘Q quits the browser — leave it to the browser.
 				// WKWebView swallows the native menu Cmd+Q accelerator while a
 				// terminal has focus, so we catch it here (capture phase) and ask
 				// the main process to start the quit. The `before-quit` gate then
@@ -499,6 +507,7 @@ function App() {
 				e.stopPropagation();
 				api.request.requestQuit().catch(() => {});
 			} else if ((e.metaKey || e.ctrlKey) && e.key === "h") {
+				if (remote) return; // ⌘H hides the browser — leave it to the browser.
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
@@ -506,10 +515,14 @@ function App() {
 				// Cmd+Shift+N — open a new window (the native menu item has no
 				// accelerator because Electrobun can't bind chord shortcuts; see
 				// decision 044). Cmd+N (no shift) opens a new task instead.
+				if (remote) return; // No second app window over one browser tab.
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.openNewWindow().catch(() => {});
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
+				// ⌘N opens a new browser window in remote (not cancelable) — fall back
+				// to the bare `C` shortcut there. See keymap.ts `new-task` remoteKeys.
+				if (remote) return;
 				if (createTaskProjectId || showAddProjectModal || showQuitDialog) return;
 				if (!openCreateTaskModal()) return;
 				e.preventDefault();
@@ -546,10 +559,12 @@ function App() {
 				e.stopPropagation();
 				navigate({ screen: "settings" });
 			} else if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) {
+				if (remote) return; // Yield to the browser's native page zoom in remote.
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(ZOOM_STEP);
 			} else if ((e.metaKey || e.ctrlKey) && e.key === "-") {
+				if (remote) return; // Yield to the browser's native page zoom in remote.
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(-ZOOM_STEP);
@@ -557,6 +572,7 @@ function App() {
 				// Cmd+Shift+0 — reset zoom to 100%. Relocated from Cmd+0, which now
 				// jumps to the built-in Operations board (see below). `e.code` because
 				// Shift+0 yields ")" in `e.key`.
+				if (remote) return; // Yield to the browser's native zoom reset in remote.
 				e.preventDefault();
 				e.stopPropagation();
 				applyZoom(DEFAULT_ZOOM);
@@ -632,6 +648,10 @@ function App() {
 					);
 				}
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key >= "1" && e.key <= "9") {
+				// ⌘1..9 switches the browser's own tabs in remote (not cancelable), so
+				// don't double-fire a project switch — the `G then 1–9` go-to chord is
+				// the remote alias (keymap.ts `switch-project` remoteKeys).
+				if (remote) return;
 				// Cmd+1..9 — switch to project by index (like Slack workspaces).
 				// View-mode preservation is gated on the `dev3-task-open-mode` setting:
 				//  - "split"      users live in the sidebar+terminal layout, so if they
@@ -1458,6 +1478,7 @@ function App() {
 						hasProject: Boolean(getProjectIdForRoute(state.route)),
 						hasTask: Boolean(routeTaskId(state.route)),
 						isVirtual: state.projects.find((p) => p.id === getProjectIdForRoute(state.route))?.kind === "virtual",
+						remote: isRemote(),
 					}}
 					onRun={runCommand}
 					onClose={() => setShowCommandPalette(false)}

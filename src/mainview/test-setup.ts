@@ -1,6 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { createElement } from "react";
 
+// NOTE on transport detection in tests: happy-dom has no `__electrobunWebviewId`,
+// so `isRemote()` (utils/platform) reports browser-remote by default — the SAME
+// signal `rpc.ts` uses to pick its transport. We deliberately do NOT fake the
+// flag globally: setting it flips `rpc.ts` into the Electrobun bridge path, which
+// throws at import in files that use the real rpc module. Tests that need the
+// desktop keymap (e.g. ⌘Q, zoom) set the flag themselves AND mock rpc — see
+// App.test.tsx / zoom.test.ts / KeyboardShortcutsModal.test.tsx.
+
 vi.mock("@lobehub/icons/es/icons", () => {
 	const makeIcon = (name: string) => {
 		const Icon = (props: Record<string, unknown>) => createElement("svg", { "data-icon": name, ...props });

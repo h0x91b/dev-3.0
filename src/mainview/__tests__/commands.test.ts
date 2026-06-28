@@ -59,4 +59,13 @@ describe("availableCommands", () => {
 		expect(cmds.map((c) => c.id)).toContain("task-run-script");
 		expect(cmds.map((c) => c.id)).toContain("term-toggle-project-terminal");
 	});
+
+	it("hides host-local 'Open in Finder' in browser remote mode", () => {
+		const desktop = availableCommands({ hasProject: true, hasTask: true });
+		expect(desktop.map((c) => c.id)).toContain("task-open-in-finder");
+		const remote = availableCommands({ hasProject: true, hasTask: true, remote: true });
+		expect(remote.map((c) => c.id)).not.toContain("task-open-in-finder");
+		// Only that one command is dropped vs desktop.
+		expect(remote.length).toBe(desktop.length - 1);
+	});
 });

@@ -98,11 +98,22 @@ export interface CommandContext {
 	 * affordances) and to avoid the "Project path does not exist" crash.
 	 */
 	isVirtual?: boolean;
+	/**
+	 * Running in browser remote mode (`dev3 remote`). Desktop-only commands whose
+	 * effect lands on the *server host* rather than the user's machine (e.g.
+	 * "Open in Finder" → opens Finder on the host) are hidden, since they would
+	 * silently do nothing visible for a remote user.
+	 */
+	remote?: boolean;
 }
+
+/** Palette commands hidden in browser remote mode (host-local desktop effect). */
+const REMOTE_HIDDEN_COMMANDS = new Set<string>(["task-open-in-finder"]);
 
 /** Commands runnable in the current route context, in registry order. */
 export function availableCommands(ctx: CommandContext): PaletteCommand[] {
 	return ALL_COMMANDS.filter((c) => {
+		if (ctx.remote && REMOTE_HIDDEN_COMMANDS.has(c.id)) return false;
 		if (
 			ctx.isVirtual &&
 			(c.category === "git" ||

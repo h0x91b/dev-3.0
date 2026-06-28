@@ -222,6 +222,8 @@ const tips = {
 	"tip.remoteMenuBar.body": "Abre dev-3.0 en un navegador mediante Remote Access y toda la barra de menú File/Task/Project se renderiza en la propia página.",
 	"tip.browserNotifications.title": "Notificaciones en el navegador",
 	"tip.browserNotifications.body": "¿Abriste dev3 en un navegador? Activa Notificaciones del navegador en Ajustes → Comportamiento para recibir avisos de escritorio de dev3 notify y tareas observadas.",
+	"tip.remoteCommandPalette.title": "¿El navegador se come tus atajos?",
+	"tip.remoteCommandPalette.body": "Abierto vía dev3 remote, el navegador reserva combinaciones como ⌘1–9 y ⌘N — pulsa ⇧⌘P para acceder a cualquier comando.",
 };
 
 export default tips;
