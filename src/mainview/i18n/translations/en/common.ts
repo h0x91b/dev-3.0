@@ -1,4 +1,7 @@
 const common = {
+	// Menu bar (browser / Remote Access mode only)
+	"menubar.label": "Application menu",
+	"menubar.openMenu": "Open menu",
 	// App
 	"app.loading": "Loading...",
 	"app.branchMergedTitle": "Branch Merged",

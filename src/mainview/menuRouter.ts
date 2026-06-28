@@ -78,6 +78,43 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			ctx.setLocale("es");
 			return;
 
+		// ── App: About / hard refresh ──
+		// On desktop these are handled by the bun `application-menu-clicked`
+		// handler and never reach the renderer. In browser (Remote Access) mode
+		// there is no bun handler in the click path, so the React menu bar routes
+		// them here directly.
+		case "about": {
+			try {
+				const { version } = await api.request.getAppVersion();
+				window.dispatchEvent(new CustomEvent("rpc:showAbout", { detail: { version } }));
+			} catch (err) {
+				console.error("[menu] getAppVersion failed", err);
+			}
+			return;
+		}
+		case "hard-refresh":
+			window.location.reload();
+			return;
+
+		// ── Debug screens (browser equivalents of the bun navigate-to-* pushes) ──
+		case "gauge-demo":
+			navigate(ctx, { screen: "gauge-demo" });
+			return;
+		case "viewport-lab":
+			navigate(ctx, { screen: "viewport-lab" });
+			return;
+
+		// ── Help: external links (bun uses Utils.openExternal; browser uses window.open) ──
+		case "help-documentation":
+			window.open("https://h0x91b.github.io/dev-3.0/", "_blank", "noopener,noreferrer");
+			return;
+		case "help-github":
+			window.open("https://github.com/h0x91b/dev-3.0", "_blank", "noopener,noreferrer");
+			return;
+		case "help-report-bug":
+			window.open("https://github.com/h0x91b/dev-3.0/issues/new", "_blank", "noopener,noreferrer");
+			return;
+
 		// ── View navigation ──
 		case "view-dashboard":
 			navigate(ctx, { screen: "dashboard" });
@@ -313,6 +350,38 @@ const TASK_MOVE_STATUS: Record<string, TaskStatus> = {
 	"task-move-review-ai": "review-by-ai",
 	"task-move-review-user": "review-by-user",
 };
+
+/**
+ * Every action string `handleMenuAction` can actually execute. The browser-mode
+ * menu bar (`AppMenuBar.tsx`) uses this as the source of truth for which menu
+ * items are live: an item whose action is NOT in this set cannot run in the
+ * browser (it is handled only by the bun-side `application-menu-clicked` handler
+ * — e.g. new-window, check-for-updates, devtools, zoom, open-logs, remote-QR),
+ * so the menu bar hides it. Keep this in lockstep with the `switch` above; a
+ * unit test guards a representative slice against drift.
+ */
+export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
+	// App
+	"set-theme-light", "set-theme-dark", "set-theme-auto",
+	"set-locale-en", "set-locale-ru", "set-locale-es",
+	"about", "hard-refresh",
+	// View / navigation
+	"view-dashboard", "view-kanban", "view-changelog", "open-settings",
+	"go-back", "go-forward", "gauge-demo", "viewport-lab",
+	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
+	// Project
+	"project-settings", "project-pull-main", "project-create-pr",
+	"project-dev-server-start", "project-dev-server-stop", "project-dev-server-restart", "project-dev-server-status",
+	// Task (safe, non-destructive)
+	"task-toggle-watch", "task-run-script", "task-open-in-finder", "task-copy-worktree-path",
+	"task-move-todo", "task-move-in-progress", "task-move-user-questions", "task-move-review-ai", "task-move-review-user",
+	// Terminal
+	"term-split-h", "term-split-v", "term-zoom-pane", "term-close-pane",
+	"term-layout-tiled", "term-layout-even-h", "term-layout-even-v", "term-layout-main-h", "term-layout-main-v", "term-layout-cycle",
+	"term-toggle-project-terminal", "term-open-quick-shell", "term-cheat-sheet",
+	// Help
+	"help-keyboard-shortcuts", "help-documentation", "help-github", "help-report-bug",
+]);
 
 const TMUX_ACTION_MAP = {
 	"term-split-h": "splitH",

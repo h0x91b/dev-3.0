@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApplicationMenu, MENU_ACTIONS, type MenuContext } from "../application-menu";
+import { buildApplicationMenu, MENU_ACTIONS, type MenuContext } from "../../shared/application-menu";
 
 const FULL_CONTEXT: MenuContext = { hasTask: true, hasProject: true, hasTerminal: true };
 const PROJECT_ONLY: MenuContext = { hasTask: false, hasProject: true, hasTerminal: false };

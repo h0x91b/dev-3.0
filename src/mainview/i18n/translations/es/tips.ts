@@ -218,6 +218,8 @@ const tips = {
 	"tip.operationsHistory.body": "Las operaciones completadas permanecen en Hecho con sus notas y carpeta, así ves qué ejecutaste y por qué más tarde.",
 	"tip.watchRemembers.title": "Watch recuerda tu elección",
 	"tip.watchRemembers.body": "Activa o desactiva Watch en el diálogo de lanzamiento y esa elección será la predeterminada para las próximas tareas.",
+	"tip.remoteMenuBar.title": "Menú completo en el navegador",
+	"tip.remoteMenuBar.body": "Abre dev-3.0 en un navegador mediante Remote Access y toda la barra de menú File/Task/Project se renderiza en la propia página.",
 };
 
 export default tips;

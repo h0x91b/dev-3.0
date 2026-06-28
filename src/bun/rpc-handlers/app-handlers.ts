@@ -16,7 +16,7 @@ import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
 import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground } from "./shared";
-import { applyMenuContext, type MenuContext } from "../application-menu";
+import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
 	applyMenuContext({
