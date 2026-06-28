@@ -61,7 +61,7 @@ The app uses a **screen router** (`Route` union + `useReducer` with a 15-entry b
 
 ### Global navigation
 
-Destinations: `dashboard`, `project` (Kanban — the daily home), `task`, `project-terminal`, `home-terminal`, `settings`, `project-settings`, `changelog`. Debug-only: `gauge-demo`, `viewport-lab`.
+Destinations: `dashboard`, `project` (Kanban — the daily home), `task`, `project-terminal`, `settings`, `project-settings`, `changelog`, `stats` (Productivity Stats / Velocity Cockpit). Debug-only: `gauge-demo`, `viewport-lab`.
 
 Mechanism: `GlobalHeader` breadcrumbs (`Dashboard > Project > Task`) + back/forward + native application-menu `View`.
 
@@ -102,6 +102,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
+| Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch, per-project→board jump | mutation, lifecycle/config action, header button | `ProductivityStatsView.tsx`, `components/stats/*` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
 
