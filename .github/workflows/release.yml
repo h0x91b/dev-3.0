@@ -313,11 +313,111 @@ jobs:
           name: artifacts-linux-x64
           path: ./artifacts-linux-x64/
 
+  build-linux-arm64:
+    needs: prepare
+    runs-on: ubuntu-22.04-arm
+    # Best-effort: arm64 is a newer target and the Electrobun desktop bundle for
+    # linux-arm64 is not yet proven, so this job must NEVER block a release of the
+    # established x64 / macOS platforms. The CLI tarball (`bun build --compile`)
+    # is arch-portable and reliable; the GUI bundle step is allowed to fail
+    # without taking the job (or the release) down. Drop continue-on-error once
+    # arm64 has shipped cleanly a few times.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Restore node_modules cache
+        id: cache-deps
+        uses: actions/cache/restore@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-linux-arm64-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: bun install
+
+      - name: Save node_modules cache
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ./node_modules
+          key: bun-deps-linux-arm64-${{ hashFiles('bun.lock') }}
+
+      - name: Clean build directory
+        run: rm -rf ./build ./artifacts
+
+      - name: Build release
+        env:
+          COPYFILE_DISABLE: "1"
+          COPY_EXTENDED_ATTRIBUTES_DISABLE: "1"
+        run: |
+          bun scripts/generate-build-info.ts
+          bun scripts/generate-changelog.ts
+          bunx vite build
+          bun run build:cli
+          bunx electrobun build --env=stable || echo "::warning::electrobun build exited with $? (recovering artifacts)"
+
+      - name: Debug build output
+        if: always()
+        run: |
+          echo "=== ./build/ ==="
+          find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
+          echo "=== ./artifacts/ ==="
+          ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
+
+      # Reliable artifact FIRST: the compiled CLI is just `bun build --compile`
+      # for the host arch, no Electrobun runtime involved. This guarantees the
+      # arm64 CLI tarball (brew + `dev3 remote`) ships even if the GUI bundle
+      # below can't be produced yet.
+      - name: Create CLI tarball
+        run: bash ./scripts/create-cli-tarball.sh linux arm64
+
+      # Best-effort GUI bundle: depends on Electrobun shipping linux-arm64 runtime
+      # binaries. If that's not available yet, don't fail the job — the CLI tarball
+      # is already staged and the release notes/formula simply omit the arm64 GUI.
+      - name: Create release artifacts (GUI bundle, best-effort)
+        continue-on-error: true
+        run: |
+          bash ./scripts/create-release-artifacts.sh linux arm64 \
+            || echo "::warning::linux-arm64 GUI bundle not produced (Electrobun arm64 runtime may be unavailable) — shipping the CLI tarball only"
+
+      - name: Upload artifacts to S3
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: eu-west-1
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          aws s3 sync "./artifacts-linux-arm64/" "s3://h0x91b-releases/dev-3.0/$TAG/"
+          aws s3 sync "./artifacts-linux-arm64/" "s3://h0x91b-releases/dev-3.0/" \
+            --exclude "*.dmg" --exclude "*Setup*.tar.gz" --exclude "dev3-cli-*.tar.gz"
+
+      - name: Upload artifacts for release job
+        uses: actions/upload-artifact@v5
+        with:
+          name: artifacts-linux-arm64
+          path: ./artifacts-linux-arm64/
+
   # ──────────────────────────────────────────────────
   # Create GitHub Release (aggregates all platforms)
   # ──────────────────────────────────────────────────
   release:
-    needs: [prepare, build-macos-arm64, build-macos-x64, build-linux-x64]
+    needs: [prepare, build-macos-arm64, build-macos-x64, build-linux-x64, build-linux-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -356,10 +456,18 @@ jobs:
               echo ""
             fi
 
-            # Linux
+            # Linux (x64)
             if ls all-artifacts/*linux-x64*.tar.zst 1>/dev/null 2>&1; then
               echo "### Linux (x64)"
               echo "- [\`stable-linux-x64-dev-3.0.tar.zst\`]($S3_BASE/stable-linux-x64-dev-3.0.tar.zst)"
+              echo ""
+            fi
+
+            # Linux (arm64) — best-effort; the GUI bundle may be absent until the
+            # Electrobun arm64 runtime ships, but the CLI tarball still publishes.
+            if ls all-artifacts/*linux-arm64*.tar.zst 1>/dev/null 2>&1; then
+              echo "### Linux (arm64)"
+              echo "- [\`stable-linux-arm64-dev-3.0.tar.zst\`]($S3_BASE/stable-linux-arm64-dev-3.0.tar.zst)"
               echo ""
             fi
 
@@ -482,7 +590,11 @@ jobs:
           MACOS_ARM64="all-artifacts/dev3-cli-macos-arm64.tar.gz"
           MACOS_X64="all-artifacts/dev3-cli-macos-x64.tar.gz"
           LINUX_X64="all-artifacts/dev3-cli-linux-x64.tar.gz"
+          LINUX_ARM64="all-artifacts/dev3-cli-linux-arm64.tar.gz"
 
+          # linux-arm64 is NOT in the hard requirement below — it's a best-effort
+          # platform, so a missing arm64 tarball must not block the x64/macOS
+          # formula update. It's added to the formula conditionally further down.
           if [ ! -f "$LINUX_X64" ] || [ ! -f "$MACOS_ARM64" ] || [ ! -f "$MACOS_X64" ]; then
             echo "::warning::CLI tarballs missing for one or more platforms — skipping Formula update"
             ls -lh all-artifacts/dev3-cli-*.tar.gz 2>/dev/null || echo "(none)"
@@ -493,6 +605,19 @@ jobs:
           MACOS_X64_SHA=$(shasum -a 256 "$MACOS_X64" | awk '{print $1}')
           LINUX_X64_SHA=$(shasum -a 256 "$LINUX_X64" | awk '{print $1}')
           echo "Formula sha256: macos-arm64=$MACOS_ARM64_SHA macos-x64=$MACOS_X64_SHA linux-x64=$LINUX_X64_SHA"
+
+          # Conditionally add the linux-arm64 bottle. Built with first-line indent
+          # bare (the heredoc placeholder supplies it) and 6-space body indent so it
+          # nests correctly under `on_linux do`. Empty when the arm64 tarball wasn't
+          # produced, which collapses to a harmless blank line in the formula.
+          LINUX_ARM_BLOCK=""
+          if [ -f "$LINUX_ARM64" ]; then
+            LINUX_ARM64_SHA=$(shasum -a 256 "$LINUX_ARM64" | awk '{print $1}')
+            echo "Formula includes linux-arm64: sha256=$LINUX_ARM64_SHA"
+            LINUX_ARM_BLOCK=$(printf 'on_arm do\n        url "%s/dev3-cli-linux-arm64.tar.gz"\n        sha256 "%s"\n      end' "$S3_BASE" "$LINUX_ARM64_SHA")
+          else
+            echo "::warning::linux-arm64 CLI tarball missing — Formula will omit the Linux arm64 bottle"
+          fi
 
           rm -rf /tmp/homebrew-dev3
           git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/h0x91b/homebrew-dev3.git" /tmp/homebrew-dev3
@@ -521,6 +646,7 @@ jobs:
                 url "${S3_BASE}/dev3-cli-linux-x64.tar.gz"
                 sha256 "${LINUX_X64_SHA}"
               end
+              ${LINUX_ARM_BLOCK}
             end
 
             depends_on "tmux"

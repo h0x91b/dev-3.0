@@ -229,9 +229,10 @@ This installs the `dev3` CLI. Three ways to use it:
 If you don't want Homebrew at all (e.g. running inside a minimal container), grab the CLI tarball directly:
 
 ```sh
-# Pick your arch — on Hetzner CPX/CCX it's x64
+# Auto-pick your arch: x64 (Intel/AMD, e.g. Hetzner CPX/CCX) or arm64 (Ampere/Graviton, e.g. Hetzner CAX)
+case "$(uname -m)" in aarch64|arm64) A=arm64;; *) A=x64;; esac
 curl -fsSL -o /tmp/dev3.tar.gz \
-  https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-x64.tar.gz
+  "https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-$A.tar.gz"
 
 mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
 ~/.dev3/dev3 remote
