@@ -67,21 +67,36 @@ const mockedApi = vi.mocked(api, true);
 const mockedTrackEvent = vi.mocked(trackEvent);
 const mockedConfirmTaskCompletion = vi.mocked(confirmTaskCompletion);
 
-/** Stub window.matchMedia so the compact breakpoint is deterministic in tests. */
-function mockMatchMedia(matches: boolean) {
+/**
+ * Stub window.matchMedia + innerWidth for a given viewport width. The component
+ * reads two independent breakpoints (compact at 1600px, narrow at 768px), so the
+ * mock must answer each `max-width` query against a real width rather than a
+ * single flat boolean — otherwise "compact" and "narrow" can't be distinguished.
+ */
+function mockViewport(width: number) {
+	Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width });
 	Object.defineProperty(window, "matchMedia", {
 		writable: true,
 		configurable: true,
-		value: vi.fn((query: string) => ({
-			matches,
-			media: query,
-			addEventListener: vi.fn(),
-			removeEventListener: vi.fn(),
-			addListener: vi.fn(),
-			removeListener: vi.fn(),
-			dispatchEvent: vi.fn(),
-		})),
+		value: vi.fn((query: string) => {
+			const m = query.match(/max-width:\s*(\d+)/);
+			const matches = m ? width <= Number(m[1]) : false;
+			return {
+				matches,
+				media: query,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			};
+		}),
 	});
+}
+
+/** Back-compat wrapper: `true` = compact (but not narrow), `false` = roomy desktop. */
+function mockMatchMedia(compact: boolean) {
+	mockViewport(compact ? 1024 : 1920);
 }
 
 // Default to the roomy layout (button text labels visible). happy-dom's default
@@ -2306,5 +2321,55 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			renderPanel(makeTask({ status: "in-progress", worktreePath: "/tmp/wt/t1" }));
 		});
 		expect(screen.getByLabelText("Scripts")).toBeInTheDocument();
+	});
+
+	describe("narrow viewport (mobile)", () => {
+		beforeEach(() => {
+			mockViewport(390);
+		});
+		afterEach(() => {
+			mockViewport(1920);
+		});
+
+		it("collapses the two toolbars into a summary bar with a kebab (sheet closed)", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ title: "Mobile task" }));
+			});
+			// Summary bar: kebab present, full actions sheet not yet open.
+			expect(screen.getByTestId("task-actions-kebab")).toBeInTheDocument();
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+			// The dense desktop resize-handle/details grid is not inline anymore.
+			expect(screen.getByText("Mobile task")).toBeInTheDocument();
+		});
+
+		it("opens the actions sheet from the kebab, exposing actions + details", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ title: "Mobile task", seq: 7 }));
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			const sheet = screen.getByTestId("task-actions-sheet");
+			expect(sheet).toBeInTheDocument();
+			// Sheet header.
+			expect(within(sheet).getByText("Task actions")).toBeInTheDocument();
+			// Details grid moved into the sheet (Title row + task number).
+			expect(within(sheet).getByText("Title")).toBeInTheDocument();
+			expect(within(sheet).getByText("#7")).toBeInTheDocument();
+		});
+
+		it("closes the sheet on the close button", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ title: "Mobile task" }));
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			expect(screen.getByTestId("task-actions-sheet")).toBeInTheDocument();
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Close" }));
+			});
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+		});
 	});
 });

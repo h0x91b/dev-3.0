@@ -32,6 +32,9 @@ import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { useCompact } from "../utils/useCompact";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import BottomSheet from "./BottomSheet";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -82,6 +85,8 @@ function readNumber(key: string, fallback: number): number {
 function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
 	const t = useT();
 	const compact = useCompact();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
 	const [collapsed, setCollapsed] = useState(() => readBool(LS_COLLAPSED, true));
 	const [panelHeight, setPanelHeight] = useState(() => readNumber(LS_HEIGHT, DEFAULT_HEIGHT));
 	const [copiedPath, setCopiedPath] = useState(false);
@@ -108,6 +113,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	useEffect(() => {
 		setMetadataBranchState(null);
 	}, [task.id]);
+
+	// Leaving the narrow viewport (window widened) must not strand an open sheet.
+	useEffect(() => {
+		if (!narrow) setActionsSheetOpen(false);
+	}, [narrow]);
 
 	useEffect(() => () => {
 		if (diffFilesHoverTimer.current) {
@@ -584,159 +594,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		</button>
 	) : null;
 
-	const height = collapsed ? `${COLLAPSED_HEIGHT_REM}rem` : panelHeight;
-
-	return (
-		<div
-			ref={panelRef}
-			className="flex-shrink-0 border-b border-edge glass-header overflow-hidden transition-[height] duration-200 ease-out"
-			style={{ height }}
-		>
-			{diffFilesPopover}
-			{fileOpenInMenuPortal}
-			{collapsed ? (
-				<div className="flex flex-col h-full px-4 gap-1 justify-center">
-					<div className="flex items-center gap-1.5 min-w-0">
-						{watchToggleButton}
-						{statusDropdownButton}
-						{statusDropdownPortal}
-						{diffSummaryBadge}
-						{diffIncludeTestsToggle}
-						{labelStrip}
-						<div className="flex-1" />
-						{bugHuntersButton}
-						{spawnAgentButton}
-						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-						<TaskTmuxControls taskId={task.id} />
-						{worktreeSettingsButton}
-						<button
-							onClick={() => isFullPage
-								? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
-								: navigate({ screen: "task", projectId: project.id, taskId: task.id })
-							}
-							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-							title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
-						>
-							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								{isFullPage
-									? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
-									: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
-								}
-							</svg>
-						</button>
-						<button
-							onClick={toggleCollapsed}
-							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-							title={t("infoPanel.expand")}
-						>
-							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-							</svg>
-						</button>
-					</div>
-
-					<div className="flex items-center gap-1.5 min-w-0">
-						{project.kind === "virtual" ? (
-							<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
-						) : (
-							<TaskGitActions
-								task={task}
-								project={project}
-								dispatch={dispatch}
-								navigate={navigate}
-								isTaskActive={isTaskActive}
-								showWorktreeCopy
-								showLoading
-								compact={compact}
-								onBranchStatusChange={setMetadataBranchState}
-								onOpenInlineDiff={onOpenInlineDiff}
-							/>
-						)}
-						<div className="flex-1" />
-						<div className="flex items-center gap-2 flex-shrink-0">
-							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
-							{project.kind !== "virtual" && (
-								<>
-									<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
-								</>
-							)}
-							<TaskExposedPorts task={task} />
-						</div>
-					</div>
-				</div>
-			) : (
-				<div className="flex flex-col h-full">
-					<div className="flex flex-col px-4">
-						<div className="flex items-center gap-1.5 min-w-0 pt-1">
-							{watchToggleButton}
-							{statusDropdownButton}
-							{statusDropdownPortal}
-							{diffSummaryBadge}
-						{diffIncludeTestsToggle}
-							{labelStrip}
-							<div className="flex-1" />
-							{bugHuntersButton}
-							{spawnAgentButton}
-							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-							<TaskTmuxControls taskId={task.id} />
-							<button
-								onClick={() => isFullPage
-									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
-									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
-								}
-								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
-							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									{isFullPage
-										? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
-										: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
-									}
-								</svg>
-							</button>
-							<button
-								onClick={toggleCollapsed}
-								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								title={t("infoPanel.collapse")}
-							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-								</svg>
-							</button>
-						</div>
-
-						<div className="flex items-center gap-1.5 min-w-0 pb-1">
-							{project.kind === "virtual" ? (
-								<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
-							) : (
-								<TaskGitActions
-									task={task}
-									project={project}
-									dispatch={dispatch}
-									navigate={navigate}
-									isTaskActive={isTaskActive}
-									branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
-									compact={compact}
-									onBranchStatusChange={setMetadataBranchState}
-									onOpenInlineDiff={onOpenInlineDiff}
-								/>
-							)}
-							<div className="flex-1" />
-							<div className="flex items-center gap-2 flex-shrink-0">
-								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
-								{project.kind !== "virtual" && (
-									<>
-										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
-									</>
-								)}
-								<TaskExposedPorts task={task} />
-							</div>
-						</div>
-					</div>
-
-					<div className="flex-1 overflow-auto px-4 pb-2">
+	const taskDetailsBody = (
+		<>
 						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
 							<span className="text-fg-3">{t("infoPanel.title")}</span>
 							<InlineRename
@@ -908,6 +767,249 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						})()}
 
 						<TaskNotes task={task} project={project} dispatch={dispatch} />
+		</>
+	);
+
+	const height = collapsed ? `${COLLAPSED_HEIGHT_REM}rem` : panelHeight;
+
+	// Narrow viewport (phone / narrow window): the two dense desktop toolbars do
+	// not fit. Collapse them into a thin summary bar (status + title + diff) and
+	// fold every action + the full details grid into an actions BottomSheet — the
+	// same kebab→sheet pattern used in the global header.
+	if (narrow) {
+		return (
+			<div className="flex-shrink-0 border-b border-edge glass-header">
+				{diffFilesPopover}
+				{fileOpenInMenuPortal}
+				{statusDropdownPortal}
+				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
+					{statusDropdownButton}
+					<span className="flex-1 min-w-0 truncate text-fg-2 text-sm font-semibold">{getTaskTitle(task)}</span>
+					{diffSummaryBadge}
+					<button
+						type="button"
+						onClick={() => setActionsSheetOpen(true)}
+						aria-label={t("infoPanel.actionsTitle")}
+						title={t("infoPanel.actionsTitle")}
+						data-testid="task-actions-kebab"
+						className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
+					>
+						<span className="text-lg leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+					</button>
+				</div>
+
+				<BottomSheet
+					open={actionsSheetOpen}
+					onClose={() => setActionsSheetOpen(false)}
+					title={t("infoPanel.actionsTitle")}
+					testId="task-actions-sheet"
+				>
+					<div className="flex flex-col gap-4">
+						<div className="flex flex-wrap items-center gap-2">
+							{watchToggleButton}
+							{spawnAgentButton}
+							{bugHuntersButton}
+							{diffIncludeTestsToggle}
+							{labelStrip}
+							<TaskTmuxControls taskId={task.id} />
+							{worktreeSettingsButton}
+						</div>
+						<div className="flex flex-wrap items-center gap-2">
+							{project.kind === "virtual" ? (
+								<span className="text-fg-muted text-[0.6875rem] italic">{t("ops.gitUnavailable")}</span>
+							) : (
+								<TaskGitActions
+									task={task}
+									project={project}
+									dispatch={dispatch}
+									navigate={navigate}
+									isTaskActive={isTaskActive}
+									showWorktreeCopy
+									showLoading
+									compact={compact}
+									onBranchStatusChange={setMetadataBranchState}
+									onOpenInlineDiff={onOpenInlineDiff}
+								/>
+							)}
+							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
+							{project.kind !== "virtual" && (
+								<>
+									<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+								</>
+							)}
+							<TaskExposedPorts task={task} />
+						</div>
+						<div className="border-t border-edge pt-3">
+							{taskDetailsBody}
+						</div>
+					</div>
+				</BottomSheet>
+
+				{spawnModalOpen && createPortal(
+					<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
+					document.body,
+				)}
+				{bugHuntersOpen && createPortal(
+					<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
+					document.body,
+				)}
+			</div>
+		);
+	}
+
+	return (
+		<div
+			ref={panelRef}
+			className="flex-shrink-0 border-b border-edge glass-header overflow-hidden transition-[height] duration-200 ease-out"
+			style={{ height }}
+		>
+			{diffFilesPopover}
+			{fileOpenInMenuPortal}
+			{collapsed ? (
+				<div className="flex flex-col h-full px-4 gap-1 justify-center">
+					<div className="flex items-center gap-1.5 min-w-0">
+						{watchToggleButton}
+						{statusDropdownButton}
+						{statusDropdownPortal}
+						{diffSummaryBadge}
+						{diffIncludeTestsToggle}
+						{labelStrip}
+						<div className="flex-1" />
+						{bugHuntersButton}
+						{spawnAgentButton}
+						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
+						<TaskTmuxControls taskId={task.id} />
+						{worktreeSettingsButton}
+						<button
+							onClick={() => isFullPage
+								? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+								: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+							}
+							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+							title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
+						>
+							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								{isFullPage
+									? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
+									: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+								}
+							</svg>
+						</button>
+						<button
+							onClick={toggleCollapsed}
+							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+							title={t("infoPanel.expand")}
+						>
+							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+							</svg>
+						</button>
+					</div>
+
+					<div className="flex items-center gap-1.5 min-w-0">
+						{project.kind === "virtual" ? (
+							<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+						) : (
+							<TaskGitActions
+								task={task}
+								project={project}
+								dispatch={dispatch}
+								navigate={navigate}
+								isTaskActive={isTaskActive}
+								showWorktreeCopy
+								showLoading
+								compact={compact}
+								onBranchStatusChange={setMetadataBranchState}
+								onOpenInlineDiff={onOpenInlineDiff}
+							/>
+						)}
+						<div className="flex-1" />
+						<div className="flex items-center gap-2 flex-shrink-0">
+							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
+							{project.kind !== "virtual" && (
+								<>
+									<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+								</>
+							)}
+							<TaskExposedPorts task={task} />
+						</div>
+					</div>
+				</div>
+			) : (
+				<div className="flex flex-col h-full">
+					<div className="flex flex-col px-4">
+						<div className="flex items-center gap-1.5 min-w-0 pt-1">
+							{watchToggleButton}
+							{statusDropdownButton}
+							{statusDropdownPortal}
+							{diffSummaryBadge}
+						{diffIncludeTestsToggle}
+							{labelStrip}
+							<div className="flex-1" />
+							{bugHuntersButton}
+							{spawnAgentButton}
+							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
+							<TaskTmuxControls taskId={task.id} />
+							<button
+								onClick={() => isFullPage
+									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+								}
+								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									{isFullPage
+										? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
+										: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+									}
+								</svg>
+							</button>
+							<button
+								onClick={toggleCollapsed}
+								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								title={t("infoPanel.collapse")}
+							>
+								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+								</svg>
+							</button>
+						</div>
+
+						<div className="flex items-center gap-1.5 min-w-0 pb-1">
+							{project.kind === "virtual" ? (
+								<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+							) : (
+								<TaskGitActions
+									task={task}
+									project={project}
+									dispatch={dispatch}
+									navigate={navigate}
+									isTaskActive={isTaskActive}
+									branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
+									compact={compact}
+									onBranchStatusChange={setMetadataBranchState}
+									onOpenInlineDiff={onOpenInlineDiff}
+								/>
+							)}
+							<div className="flex-1" />
+							<div className="flex items-center gap-2 flex-shrink-0">
+								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
+								{project.kind !== "virtual" && (
+									<>
+										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+									</>
+								)}
+								<TaskExposedPorts task={task} />
+							</div>
+						</div>
+					</div>
+
+					<div className="flex-1 overflow-auto px-4 pb-2">
+						{taskDetailsBody}
 					</div>
 
 					<div

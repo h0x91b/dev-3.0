@@ -12,6 +12,7 @@ const infoPanel = {
 	"infoPanel.expand": "Expandir panel",
 	"infoPanel.fullScreen": "Pantalla completa",
 	"infoPanel.exitFullScreen": "Salir de pantalla completa",
+	"infoPanel.actionsTitle": "Acciones de la tarea",
 	"infoPanel.commitsBehind": "{count} commits atrás",
 	"infoPanel.commitsAhead": "{count} commits adelante",
 	"infoPanel.commitsAheadBehind": "{ahead} adelante · {behind} atrás",

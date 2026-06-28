@@ -12,6 +12,7 @@ const infoPanel = {
 	"infoPanel.expand": "Expand panel",
 	"infoPanel.fullScreen": "Full screen",
 	"infoPanel.exitFullScreen": "Exit full screen",
+	"infoPanel.actionsTitle": "Task actions",
 	"infoPanel.commitsBehind": "{count} commits behind",
 	"infoPanel.commitsAhead": "{count} commits ahead",
 	"infoPanel.commitsAheadBehind": "{ahead} ahead · {behind} behind",
