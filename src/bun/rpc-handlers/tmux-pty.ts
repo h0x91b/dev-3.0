@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { ColumnAgentConfig, DevServerStatus, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
+import type { ColumnAgentConfig, DevServerStatus, PermissionMode, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
@@ -155,6 +155,7 @@ export async function launchTaskPty(
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
+	let resolvedPermissionMode: PermissionMode | undefined;
 
 	try {
 		const cmdOptions: agents.CommandOptions = {};
@@ -177,6 +178,7 @@ export async function launchTaskPty(
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+			resolvedPermissionMode = resolved.config?.permissionMode;
 		} else {
 			log.info("Resolving command for project", { projectName: project.name });
 			const resolved = await agents.resolveCommandForProject(
@@ -190,6 +192,7 @@ export async function launchTaskPty(
 			tmuxCmd = resolved.command;
 			extraEnv = resolved.extraEnv;
 			resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+			resolvedPermissionMode = resolved.config?.permissionMode;
 		}
 
 		// Persist session state as pane[0] for the main agent pane.
@@ -331,7 +334,7 @@ export async function launchTaskPty(
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	try {
-		setupAgentHooks(worktreePath, resolvedBaseCmd, { stopTarget });
+		setupAgentHooks(worktreePath, resolvedBaseCmd, { stopTarget, permissionMode: resolvedPermissionMode });
 	} catch (err) {
 		log.warn("setupAgentHooks failed (non-fatal)", {
 			worktreePath,

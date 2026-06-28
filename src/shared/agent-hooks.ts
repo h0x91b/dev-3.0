@@ -4,7 +4,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { TaskStatus } from "./types";
+import type { PermissionMode, TaskStatus } from "./types";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
@@ -179,6 +179,28 @@ function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
 
 export const DEV3_BASH_PERMISSION = "Bash(dev3:*)";
 
+/**
+ * Write `permissions.defaultMode` into a settings object. Idempotent.
+ *
+ * The `--permission-mode` CLI flag only governs the *lead* Claude session.
+ * Teammates spawned via the experimental agent-teams feature
+ * (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 + the TeamCreate tool) take their
+ * starting mode from the worktree's settings files, NOT from the lead's CLI
+ * flag — so without a settings-file baseline they fall back to "default" and
+ * prompt "Waiting for tool approval" on every tool call. Writing defaultMode
+ * into .claude/settings.local.json gives the lead AND every teammate the same
+ * auto-approve baseline. dev3's PermissionMode values map 1:1 to the modes
+ * Claude Code accepts here, so we write them through verbatim. See
+ * decision 085.
+ */
+export function ensureDefaultMode(
+	settings: Record<string, unknown>,
+	mode: PermissionMode,
+): Record<string, unknown> {
+	const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
+	return { ...settings, permissions: { ...permissions, defaultMode: mode } };
+}
+
 export function mergeClaudeHooks(
 	existing: Record<string, unknown>,
 	options?: { stopTarget?: TaskStatus },
@@ -225,7 +247,10 @@ function resolvePermissionSettingsPath(claudeDir: string): string {
  * Also ensures Bash(dev3:*) permission in the appropriate settings file.
  * Creates the .claude/ directory if it doesn't exist.
  */
-export function writeClaudeHooks(worktreePath: string, options?: { stopTarget?: TaskStatus }): void {
+export function writeClaudeHooks(
+	worktreePath: string,
+	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode },
+): void {
 	const claudeDir = join(worktreePath, ".claude");
 	mkdirSync(claudeDir, { recursive: true });
 
@@ -244,6 +269,13 @@ export function writeClaudeHooks(worktreePath: string, options?: { stopTarget?: 
 	}
 
 	let updatedHooks = mergeClaudeHooks(hooksSettings, options);
+
+	// defaultMode always lives in settings.local.json (local scope, gitignored)
+	// so it never leaks into a committed settings.json. "default" is Claude's
+	// baseline — writing it would be a no-op, so we skip it.
+	if (options?.permissionMode && options.permissionMode !== "default") {
+		updatedHooks = ensureDefaultMode(updatedHooks, options.permissionMode);
+	}
 
 	if (sameFile) {
 		// Permission goes into the same file — apply on top of merged hooks
