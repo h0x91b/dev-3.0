@@ -10,6 +10,7 @@ import { useTree } from "@headless-tree/react";
 import type { FolderListing } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import {
 	subscribeFolderPicker,
@@ -225,16 +226,15 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 		return () => { cancelled = true; };
 	}, [options.initialPath]);
 
-	useEffect(() => {
-		function onKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				e.stopPropagation();
-				onClose(null);
-			}
+	// Escape cancels the inline "new folder" input first, otherwise closes the modal.
+	useEscapeKey(() => {
+		if (newFolderInput !== null) {
+			setNewFolderInput(null);
+			setNewFolderError(null);
+		} else {
+			onClose(null);
 		}
-		window.addEventListener("keydown", onKey, true);
-		return () => window.removeEventListener("keydown", onKey, true);
-	}, [onClose]);
+	});
 
 	const navigateTo = useCallback(async (path: string) => {
 		setListingError(null);

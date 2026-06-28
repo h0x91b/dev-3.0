@@ -7,6 +7,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "../toast";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Label, Project, Task } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -77,6 +78,7 @@ function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPicker
 		inputRef.current?.focus();
 	}, [anchorEl]);
 
+	useEscapeKey(onClose);
 	// Close on click outside
 	useEffect(() => {
 		function handleClick(e: MouseEvent) {
@@ -88,14 +90,9 @@ function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPicker
 				onClose();
 			}
 		}
-		function handleKeyDown(e: KeyboardEvent) {
-			if (e.key === "Escape") onClose();
-		}
 		document.addEventListener("mousedown", handleClick);
-		document.addEventListener("keydown", handleKeyDown);
 		return () => {
 			document.removeEventListener("mousedown", handleClick);
-			document.removeEventListener("keydown", handleKeyDown);
 		};
 	}, [anchorEl, onClose]);
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { CodingAgent, Task } from "../../shared/types";
 import { ACTIVE_STATUSES } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -47,7 +48,8 @@ function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, project
 		setVisible(true);
 	}, [anchorEl]);
 
-	// Close on click outside or Escape
+	useEscapeKey(onClose);
+	// Close on click outside
 	useEffect(() => {
 		function handleClick(e: MouseEvent) {
 			if (
@@ -58,14 +60,9 @@ function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, project
 				onClose();
 			}
 		}
-		function handleKeyDown(e: KeyboardEvent) {
-			if (e.key === "Escape") onClose();
-		}
 		document.addEventListener("mousedown", handleClick);
-		document.addEventListener("keydown", handleKeyDown);
 		return () => {
 			document.removeEventListener("mousedown", handleClick);
-			document.removeEventListener("keydown", handleKeyDown);
 		};
 	}, [anchorEl, onClose]);
 

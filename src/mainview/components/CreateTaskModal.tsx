@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import { toast } from "../toast";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Label, Project, Task } from "../../shared/types";
 import { titleFromDescription } from "../../shared/types";
 import type { AppAction } from "../state";
@@ -184,29 +185,20 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		}
 	}, [confirmDiscard]);
 
-	useEffect(() => {
-		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				e.stopImmediatePropagation();
-				if (skillAutocomplete.open) {
-					skillAutocomplete.close();
-				} else if (addingLabel) {
-					cancelLabelInput();
-				} else if (pendingBranchChoice) {
-					setPendingBranchChoice(null);
-					setPendingSubmitMode(null);
-				} else if (confirmDiscard) {
-					setConfirmDiscard(false);
-				} else {
-					handleRequestClose();
-				}
-			}
+	useEscapeKey(() => {
+		if (skillAutocomplete.open) {
+			skillAutocomplete.close();
+		} else if (addingLabel) {
+			cancelLabelInput();
+		} else if (pendingBranchChoice) {
+			setPendingBranchChoice(null);
+			setPendingSubmitMode(null);
+		} else if (confirmDiscard) {
+			setConfirmDiscard(false);
+		} else {
+			handleRequestClose();
 		}
-		// Use capture phase so we intercept ESC before App's global handler
-		window.addEventListener("keydown", handleKey, true);
-		return () => window.removeEventListener("keydown", handleKey, true);
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [description, onClose, confirmDiscard, pendingBranchChoice, skillAutocomplete.open, skillAutocomplete.close, addingLabel]);
+	});
 
 	async function createTaskWithBranch(branch: string | null, mode: "save" | "run" | "scratch") {
 		const trimmed = description.trim();

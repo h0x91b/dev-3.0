@@ -1331,19 +1331,28 @@ function App() {
 			const terminalEl = document.querySelector('[data-terminal="true"]');
 			if (terminalEl?.contains(document.activeElement)) return;
 			if (showQuitDialog) {
+				// preventDefault so Escape closes the dialog instead of dropping the
+				// app out of native fullscreen (WKWebView forwards an unconsumed
+				// Escape to AppKit's cancelOperation: → exit fullscreen).
+				e.preventDefault();
 				setShowQuitDialog(false);
 				return;
 			}
 			const { route } = state;
 			if (route.screen === "settings") {
+				e.preventDefault();
 				navigate({ screen: "dashboard" });
 			} else if (route.screen === "project-settings") {
+				e.preventDefault();
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project-terminal") {
+				e.preventDefault();
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project" && (route.activeTaskId || route.taskView)) {
+				e.preventDefault();
 				navigate({ screen: "project", projectId: route.projectId });
 			} else if (route.screen === "project") {
+				e.preventDefault();
 				navigate({ screen: "dashboard" });
 			}
 		},

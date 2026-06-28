@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { api } from "../rpc";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
 
 export const DATA_URL_CACHE_MAX = 30;
@@ -81,15 +82,15 @@ export function ImageLightbox({ paths, currentIndex, onClose }: ImageLightboxPro
 		if (index > 0) setIndex(index - 1);
 	}, [index]);
 
+	useEscapeKey(onClose);
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") onClose();
 			if (e.key === "ArrowRight") goNext();
 			if (e.key === "ArrowLeft") goPrev();
 		}
 		document.addEventListener("keydown", handleKey);
 		return () => document.removeEventListener("keydown", handleKey);
-	}, [onClose, goNext, goPrev]);
+	}, [goNext, goPrev]);
 
 	function handleOpenExternal() {
 		api.request.openImageFile({ path }).catch(() => {});

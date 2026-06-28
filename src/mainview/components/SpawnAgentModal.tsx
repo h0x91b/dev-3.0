@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { api } from "../rpc";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import Select, { useAgentRenderOption } from "./Select";
@@ -53,11 +54,10 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		}).catch(() => {});
 	}, []);
 
+	useEscapeKey(onClose);
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				onClose();
-			} else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+			if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
 				// Only an "implicit" Enter (nothing interactive focused) should spawn.
 				// The agent/config pickers render as <button> (Select.tsx), so a
 				// keyboard user tab-focusing one and pressing Enter must open that
@@ -71,7 +71,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [onClose, spawning, globalSettings, agentId, configId]);
+	}, [spawning, globalSettings, agentId, configId]);
 
 	function handleAgentChange(newAgentId: string | null) {
 		setAgentId(newAgentId);

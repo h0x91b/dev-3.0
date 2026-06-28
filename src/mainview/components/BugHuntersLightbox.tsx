@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { api } from "../rpc";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import Select, { useAgentRenderOption } from "./Select";
@@ -54,11 +55,10 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 		}).catch(() => {});
 	}, []);
 
+	useEscapeKey(onClose);
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				onClose();
-			} else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+			if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
 				const tag = (document.activeElement as HTMLElement | null)?.tagName;
 				if (tag === "INPUT" || tag === "TEXTAREA") return;
 				if (!launching && globalSettings) handleLaunch();
@@ -67,7 +67,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [onClose, launching, globalSettings, agentId, configId, count]);
+	}, [launching, globalSettings, agentId, configId, count]);
 
 	function handleAgentChange(newAgentId: string | null) {
 		setAgentId(newAgentId);

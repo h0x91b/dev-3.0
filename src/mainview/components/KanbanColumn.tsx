@@ -510,7 +510,7 @@ function KanbanColumn({
 							onBlur={commitRename}
 							onKeyDown={(e) => {
 								if (e.key === "Enter") e.currentTarget.blur();
-								if (e.key === "Escape") { setEditing(false); }
+								if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEditing(false); }
 							}}
 							className="text-fg text-sm font-semibold bg-transparent outline-none border-b border-accent flex-1 min-w-0"
 							autoFocus

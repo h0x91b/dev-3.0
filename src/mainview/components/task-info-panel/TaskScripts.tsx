@@ -11,6 +11,7 @@ import type {
 import { SCRIPT_PLACEMENTS } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 const DEFAULT_PLACEMENT_IDX = SCRIPT_PLACEMENTS.indexOf("right");
 
@@ -75,19 +76,13 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		if (open) refresh();
 	}, [open, refresh]);
 
-	useEffect(() => {
-		if (!open) return;
-		function onKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				if (pickerFor) setPickerFor(null);
-				else setOpen(false);
-			}
-		}
-		document.addEventListener("keydown", onKey);
-		return () => {
-			document.removeEventListener("keydown", onKey);
-		};
-	}, [open, pickerFor]);
+	useEscapeKey(
+		() => {
+			if (pickerFor) setPickerFor(null);
+			else setOpen(false);
+		},
+		{ enabled: open },
+	);
 
 	// Auto-focus the search input as soon as the dropdown opens (and not in picker mode).
 	// On the very first open `pkg` is still null while parsePackageScripts runs, so the

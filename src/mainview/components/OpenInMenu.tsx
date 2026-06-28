@@ -1,6 +1,7 @@
 import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { ExternalApp } from "../../shared/types";
 import { useAvailableApps } from "../hooks/useAvailableApps";
 import { useT } from "../i18n";
@@ -39,6 +40,7 @@ export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps)
 	const [visible, setVisible] = useState(false);
 	const [copied, setCopied] = useState(false);
 
+	useEscapeKey(onClose);
 	// Close on click outside
 	useEffect(() => {
 		function handleClick(e: MouseEvent) {
@@ -46,14 +48,9 @@ export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps)
 				onClose();
 			}
 		}
-		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") onClose();
-		}
 		document.addEventListener("mousedown", handleClick);
-		document.addEventListener("keydown", handleKey);
 		return () => {
 			document.removeEventListener("mousedown", handleClick);
-			document.removeEventListener("keydown", handleKey);
 		};
 	}, [onClose]);
 

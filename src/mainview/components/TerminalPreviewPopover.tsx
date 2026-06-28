@@ -239,6 +239,7 @@ function TerminalPreviewPopover({
 								onFocus={cancelClose}
 								onKeyDown={(e) => {
 									if (e.key === "Escape") {
+										e.preventDefault();
 										e.stopPropagation();
 										cancelEditing();
 									} else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
