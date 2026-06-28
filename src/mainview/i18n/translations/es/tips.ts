@@ -230,6 +230,10 @@ const tips = {
 	"tip.remoteRemembersDevice.body": "Tras escanear el QR una vez, tu teléfono o portátil se reconecta a la UI remota al recargar sin volver a escanear — hasta 8 horas.",
 	"tip.remotePickInterface.title": "Elige la dirección remota",
 	"tip.remotePickInterface.body": "En Acceso Remoto (túnel apagado), el desplegable de dirección apunta el QR a cualquier IP local, incluido localhost para el reenvío SSH.",
+	"tip.productivityStats.title": "Mira cuánto entregas",
+	"tip.productivityStats.body": "Abre Estadísticas de productividad desde el Dashboard: un panel de velocímetros con tareas, líneas y tu racha.",
+	"tip.statsTimeRange.title": "Estadísticas por día o semana",
+	"tip.statsTimeRange.body": "Cambia el rango de tiempo en la pantalla de estadísticas para ver tu ritmo y la tendencia frente al período anterior.",
 };
 
 export default tips;

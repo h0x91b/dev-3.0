@@ -230,6 +230,10 @@ const tips = {
 	"tip.remoteRemembersDevice.body": "After you scan the QR once, your phone or laptop reconnects to the remote UI on reload without rescanning — for up to 8 hours.",
 	"tip.remotePickInterface.title": "Pick the remote address",
 	"tip.remotePickInterface.body": "In Remote Access (tunnel off), the address dropdown lets you point the QR at any local IP, including localhost for the SSH-forward path.",
+	"tip.productivityStats.title": "See how much you ship",
+	"tip.productivityStats.body": "Open Productivity Stats from the Dashboard for a speedometer cockpit of tasks shipped, lines changed and your streak.",
+	"tip.statsTimeRange.title": "Stats by day, week or month",
+	"tip.statsTimeRange.body": "Switch the time range on the stats screen to see your velocity and trend versus the previous period.",
 } as const;
 
 export default tips;

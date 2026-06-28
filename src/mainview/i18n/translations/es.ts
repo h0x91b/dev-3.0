@@ -13,6 +13,7 @@ import overview from "./es/overview";
 import scripts from "./es/scripts";
 import tunnels from "./es/tunnels";
 import keymap from "./es/keymap";
+import stats from "./es/stats";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -29,6 +30,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...scripts,
 	...tunnels,
 	...keymap,
+	...stats,
 };
 
 export default es;

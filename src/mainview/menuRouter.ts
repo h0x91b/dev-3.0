@@ -127,7 +127,10 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		}
 		case "view-changelog":
 			navigate(ctx, { screen: "changelog" });
-			return;
+			break;
+		case "view-stats":
+			navigate(ctx, { screen: "stats" });
+			break;
 		case "open-settings":
 			navigate(ctx, { screen: "settings" });
 			return;

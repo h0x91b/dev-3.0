@@ -154,6 +154,19 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 	return (
 		<div className="h-full overflow-y-auto p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
+				<button
+					type="button"
+					data-hint-id="dashboard-stats"
+					onClick={() => navigate({ screen: "stats" })}
+					className="group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-5 py-4 transition-all text-left"
+				>
+					<span className="text-accent text-3xl leading-none shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04C5}"}</span>
+					<div className="flex-1 min-w-0">
+						<div className="text-fg font-semibold">{t("stats.cardTitle")}</div>
+						<div className="text-fg-3 text-xs mt-0.5 truncate">{t("stats.cardSubtitle")}</div>
+					</div>
+					<span className="text-fg-muted group-hover:text-accent transition-colors text-lg leading-none shrink-0" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0142}"}</span>
+				</button>
 				<div className="flex items-start justify-between gap-4">
 					<div>
 						<div className="text-fg-2 text-sm font-medium">

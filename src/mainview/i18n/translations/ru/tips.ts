@@ -230,6 +230,10 @@ const tips = {
 	"tip.remoteRemembersDevice.body": "После одного скана QR телефон или ноутбук переподключается к удалённому UI при перезагрузке без повторного скана — до 8 часов.",
 	"tip.remotePickInterface.title": "Выберите адрес для remote",
 	"tip.remotePickInterface.body": "В Remote Access (туннель выключен) дропдаун адреса нацеливает QR на любой локальный IP, включая localhost для SSH-форварда.",
+	"tip.productivityStats.title": "Смотри, сколько ты делаешь",
+	"tip.productivityStats.body": "Открой «Статистику продуктивности» с Dashboard — кокпит спидометров: задачи, строки и серия дней.",
+	"tip.statsTimeRange.title": "Статистика по дням и неделям",
+	"tip.statsTimeRange.body": "Переключай диапазон времени на экране статистики, чтобы видеть темп и тренд к прошлому периоду.",
 };
 
 export default tips;

@@ -938,6 +938,22 @@ const ALL_TIPS: Tip[] = [
 		score: 2,
 		contexts: ["board"],
 	},
+	{
+		id: "productivity-stats",
+		titleKey: "tip.productivityStats.title",
+		bodyKey: "tip.productivityStats.body",
+		icon: "\u{F04C5}", // nf-md-speedometer
+		score: 4,
+		contexts: ["board"],
+	},
+	{
+		id: "stats-time-range",
+		titleKey: "tip.statsTimeRange.title",
+		bodyKey: "tip.statsTimeRange.body",
+		icon: "\u{F0240}", // nf-md-chart_line
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
