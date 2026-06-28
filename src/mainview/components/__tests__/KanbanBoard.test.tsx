@@ -2,7 +2,7 @@ import { act, render, screen, fireEvent, waitFor } from "@testing-library/react"
 import KanbanBoard from "../KanbanBoard";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
-import type { CustomColumn, Project, TipState } from "../../../shared/types";
+import type { CustomColumn, Project, Task, TipState } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -39,6 +39,31 @@ const project: Project = {
 
 const customColA: CustomColumn = { id: "col-a", name: "Alpha", color: "#ff0000", llmInstruction: "" };
 const customColB: CustomColumn = { id: "col-b", name: "Beta", color: "#00ff00", llmInstruction: "" };
+
+function makeTask(overrides: Partial<Task> = {}): Task {
+	return {
+		id: "task-1",
+		seq: 1,
+		projectId: "p1",
+		title: "Test Task",
+		description: "Test Task",
+		status: "in-progress",
+		baseBranch: "main",
+		worktreePath: null,
+		branchName: null,
+		groupId: null,
+		variantIndex: null,
+		agentId: null,
+		configId: null,
+		createdAt: "2025-01-01T00:00:00Z",
+		updatedAt: "2025-01-01T00:00:00Z",
+		customColumnId: null,
+		labelIds: [],
+		notes: [],
+		history: [],
+		...overrides,
+	};
+}
 
 function makeDt(data: Record<string, string> = {}): DataTransfer {
 	return {
@@ -408,5 +433,74 @@ describe("collapsible columns", () => {
 			// Collapsed columns should not contain TipCard content
 			expect(col.querySelector("[class*='tip']")).toBeNull();
 		}
+	});
+});
+
+describe("dangling customColumnId render fallback", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	// Returns the header label of the column that currently renders the given task,
+	// or null if the task is not rendered in any column. Scoped to the card's own
+	// column so it never trips over duplicate label text elsewhere on the board.
+	function columnLabelOf(taskId: string): string | null {
+		const card = document.querySelector(`[data-task-id="${taskId}"]`);
+		const col = card?.closest("[class*='glass-column']");
+		return col?.querySelector(".text-fg.text-sm.font-semibold")?.textContent ?? null;
+	}
+
+	it("renders a task whose customColumnId points to a deleted column in its underlying status column", async () => {
+		// "col-deleted" is NOT in project.customColumns — simulates a column that
+		// was deleted (or a multi-instance write referencing a column this instance
+		// never had). The task must NOT vanish from the board.
+		const danglingTask = makeTask({
+			id: "task-dangling",
+			status: "in-progress",
+			customColumnId: "col-deleted",
+		});
+		await renderBoardWith({
+			project: { ...project, customColumns: [customColA] },
+			tasks: [danglingTask],
+		});
+		// Invariant: every non-deleted task renders in SOME column.
+		expect(document.querySelector('[data-task-id="task-dangling"]')).not.toBeNull();
+		// Specifically, in its underlying status column ("Agent is Working").
+		expect(columnLabelOf("task-dangling")).toBe("Agent is Working");
+	});
+
+	it("keeps the AI Review column visible for a dangling-custom-column task in review-by-ai", async () => {
+		// AI review disabled + no other review-by-ai items: the column is normally
+		// hidden. A dangling-custom-column task in review-by-ai must still surface.
+		const danglingReview = makeTask({
+			id: "task-dangling-review",
+			status: "review-by-ai",
+			customColumnId: "col-deleted",
+		});
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA],
+				builtinColumnAgents: {},
+			},
+			tasks: [danglingReview],
+		});
+		expect(document.querySelector('[data-task-id="task-dangling-review"]')).not.toBeNull();
+	});
+
+	it("still renders a task with a valid customColumnId in its custom column", async () => {
+		// Regression guard: the fallback must not pull a valid custom-column task
+		// into its status column.
+		const validTask = makeTask({
+			id: "task-valid",
+			status: "in-progress",
+			customColumnId: "col-a",
+		});
+		await renderBoardWith({
+			project: { ...project, customColumns: [customColA] },
+			tasks: [validTask],
+		});
+		expect(columnLabelOf("task-valid")).toBe("Alpha");
 	});
 });
