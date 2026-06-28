@@ -5,7 +5,7 @@
 	"license": "Apache-2.0",
 	"author": "Arseny Pavlenko",
 	"scripts": {
-		"dev": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build && electrobun dev",
+		"dev": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build && DEV3_REMOTE_STATIC_CODE=3c0878df-73aa-4b05-99c5-df4521c9699d electrobun dev",
 		"watch": "concurrently --kill-others \"bun run hmr\" \"bun run scripts/watch-main.ts\"",
 		"hmr": "vite --port 5173",
 		"build": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build",
