@@ -101,4 +101,6 @@ EXPOSE 3000
 # tini reaps tmux/child zombies correctly on SIGTERM (the stock bun process
 # isn't a PID-1 reaper). `--` separates tini's own flags from the payload.
 ENTRYPOINT ["/usr/bin/tini", "--", "./dev3"]
-CMD ["remote", "--port", "3000"]
+# --no-detach: `dev3 remote` backgrounds by default; as the container's main
+# process it must stay in the foreground, or the container would exit immediately.
+CMD ["remote", "--no-detach", "--port", "3000"]

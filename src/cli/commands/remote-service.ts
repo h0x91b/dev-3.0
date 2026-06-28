@@ -51,11 +51,13 @@ function hasSystemctl(): boolean {
 
 /**
  * Translate install-service flags into the `dev3 remote start …` arguments the
- * unit's ExecStart runs. Note: NO --detach — systemd owns the process lifecycle,
- * so the server must run in the foreground.
+ * unit's ExecStart runs. Always includes --no-detach: `dev3 remote` backgrounds
+ * by default now, but systemd (Type=simple) owns the process lifecycle and tracks
+ * the foreground process — a detaching ExecStart would fork-and-exit and systemd
+ * would treat the unit as failed.
  */
 export function buildExecStartArgs(args: ParsedArgs): string[] {
-	const out = ["remote", "start"];
+	const out = ["remote", "start", "--no-detach"];
 
 	if (args.flags.port !== undefined) {
 		if (args.flags.port === "true") exitUsage(`--port requires a value: --port <1-65535>`);

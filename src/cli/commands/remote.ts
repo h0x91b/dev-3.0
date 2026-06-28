@@ -21,14 +21,15 @@ import {
 const REMOTE_HELP = `dev3 remote — run dev-3.0 in headless mode with a browser UI.
 
 Usage:
-  dev3 remote [start] [--detach] [--no-tunnel] [--expose-ports=<ports>] [--port <n>] [--views-dir <path>]
+  dev3 remote [start] [--no-detach] [--no-tunnel] [--expose-ports=<ports>] [--port <n>] [--views-dir <path>]
   dev3 remote status
   dev3 remote url
   dev3 remote stop
   dev3 remote install-service [--port <n>] [--no-tunnel] [--no-start]
   dev3 remote uninstall-service
 
-  (default subcommand is "start"; bare "dev3 remote" runs the server in the foreground)
+  (default subcommand is "start"; bare "dev3 remote" starts the server in the
+   BACKGROUND and returns to your shell — add --no-detach to keep it foreground)
 
 What it does:
   Starts a Bun-only dev-3.0 server (no GUI window) and serves the full web UI
@@ -42,8 +43,9 @@ What it does:
   dependency. Pass --no-tunnel for local-only mode (LAN + SSH forward only).
 
 Subcommands:
-  start (default)     Start the headless server. Add --detach to run it in the
-                      background (survives the current shell), then exit.
+  start (default)     Start the headless server in the BACKGROUND (survives the
+                      current shell), print the access link, and return. Add
+                      --no-detach to keep it in the foreground instead.
   status              Show whether a server is running, its PID, port, and uptime.
   url                 Print a fresh access URL + QR for the running server. Handy
                       from a new SSH session to re-scan without rerunning start.
@@ -55,11 +57,14 @@ Subcommands:
   uninstall-service   (Linux) Stop, disable, and remove the systemd --user unit.
 
 Flags (start):
-  --detach
-      Run the server in the background and return to the shell immediately.
-      stdout/stderr are redirected to ${REMOTE_LOG_FILE}.
-      Use \`dev3 remote url\` to get the access link and \`dev3 remote stop\`
-      to shut it down. Ideal for remote Linux boxes reached over SSH.
+  --no-detach
+      Keep the server in the FOREGROUND (don't background it). The live banner +
+      QR stay on screen and Ctrl-C stops it. Required when a supervisor owns the
+      process — systemd (Type=simple), a Docker CMD, etc. The default (no flag)
+      backgrounds the server, redirects stdout/stderr to ${REMOTE_LOG_FILE},
+      and returns to your shell — then use \`dev3 remote url\` for the link and
+      \`dev3 remote stop\` to shut it down. (\`--detach\` is accepted too, but it
+      is already the default.)
 
   --no-tunnel
       Skip the Cloudflare quick tunnel — only LAN + SSH-forward URLs are
@@ -101,8 +106,8 @@ Connection options shown on startup:
   http://localhost.
 
 Examples:
-  dev3 remote                              # Cloudflare tunnel + LAN + SSH forwarding
-  dev3 remote --detach                     # run in background, return to shell
+  dev3 remote                              # background + tunnel + LAN + SSH forwarding (returns to shell)
+  dev3 remote --no-detach                  # stay in the foreground (watch the QR, Ctrl-C to stop)
   dev3 remote url                          # print a fresh QR/URL for the running server
   dev3 remote stop                         # shut the background server down
   dev3 remote install-service --port 3017  # (Linux) run as a systemd --user service
@@ -208,12 +213,21 @@ async function startRemote(args: ParsedArgs): Promise<void> {
 		exitUsage(`Unknown positional argument: "${args.positional[0]}"\nRun "dev3 remote --help" for usage.`);
 	}
 	rejectUnknownFlags(args, [
-		"no-tunnel", "views-dir", "static-code", "port", "expose-ports", "detach", "help", "h",
+		"no-tunnel", "views-dir", "static-code", "port", "expose-ports", "detach", "no-detach", "help", "h",
 	]);
 
 	const remoteEnv = collectRemoteEnv(args); // validates; exits on a bad flag
 
-	if (args.flags.detach === "true") {
+	// Detached is the DEFAULT. `dev3 remote` is a human-typed command, so the
+	// lazy/expected outcome is "start it in the background and give me my shell
+	// back" — you then manage it with status/url/stop. Pass --no-detach to stay
+	// in the foreground; that's required by supervised contexts that OWN the
+	// process (systemd Type=simple, Docker CMD, the debug-ui skill) and by the
+	// interactive "watch the live QR, Ctrl-C to quit" flow — all of which pass
+	// --no-detach explicitly. `--detach` is still accepted as a no-op (it just
+	// names the default), and --no-detach wins if both are given.
+	const foreground = args.flags["no-detach"] === "true";
+	if (!foreground) {
 		await startDetached();
 		return;
 	}
@@ -269,13 +283,18 @@ async function startDetached(): Promise<void> {
 		mkdirSync(REMOTE_DIR, { recursive: true });
 		const logFd = openSync(REMOTE_LOG_FILE, "a");
 
-		// Single-binary model: re-run THIS invocation's `remote` command WITHOUT
-		// --detach, detached, so the child boots the server in-process (dev:
-		// `bun <main.ts> remote …`; prod: the `dev3` binary) and survives the
-		// shell. process.execPath is the runtime (bun or the compiled binary);
-		// process.argv[1:] is our own command line, which already contains
-		// "remote" + the user's flags — we only strip --detach.
-		const childArgs = process.argv.slice(1).filter((a) => a !== "--detach");
+		// Single-binary model: re-run THIS invocation's `remote` command, detached,
+		// so the child boots the server in-process (dev: `bun <main.ts> remote …`;
+		// prod: the `dev3` binary) and survives the shell. process.execPath is the
+		// runtime (bun or the compiled binary); process.argv[1:] is our own command
+		// line ("remote" + the user's flags). The child MUST run in the foreground
+		// (it IS the server) — and since detach is the DEFAULT now, we have to force
+		// --no-detach or the child would recursively detach. Strip any detach flags
+		// the user passed and append --no-detach.
+		const childArgs = process.argv
+			.slice(1)
+			.filter((a) => a !== "--detach" && a !== "--no-detach");
+		childArgs.push("--no-detach");
 		const childEnv: NodeJS.ProcessEnv = { ...process.env, DEV3_REMOTE_LOG_FILE: REMOTE_LOG_FILE };
 		const child = spawn(process.execPath, childArgs, {
 			stdio: ["ignore", logFd, logFd],

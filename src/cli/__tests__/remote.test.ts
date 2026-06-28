@@ -127,8 +127,8 @@ describe("dev3 remote --port validation", () => {
 		expect(combined).toContain("--port must be an integer");
 	});
 
-	it("accepts a valid port and applies it to process.env (DEV3_REMOTE_PORT + DEV3_HEADLESS)", async () => {
-		// Single in-process path now: a valid port is applied to process.env, then
+	it("--no-detach applies a valid port to process.env (DEV3_REMOTE_PORT + DEV3_HEADLESS) and boots in-process", async () => {
+		// Foreground path (--no-detach): a valid port is applied to process.env, then
 		// the (mocked) headless-entry import resolves and handleRemote returns.
 		const ENV_KEYS = [
 			"DEV3_REMOTE_PORT",
@@ -142,7 +142,7 @@ describe("dev3 remote --port validation", () => {
 		for (const k of ENV_KEYS) saved[k] = process.env[k];
 
 		try {
-			await handleRemote(undefined, args({ port: "3000" }));
+			await handleRemote(undefined, args({ port: "3000", "no-detach": "true" }));
 			expect(process.env.DEV3_REMOTE_PORT).toBe("3000");
 			expect(process.env.DEV3_HEADLESS).toBe("1");
 		} finally {
@@ -281,9 +281,24 @@ describe("dev3 remote --detach (lifecycle)", () => {
 		};
 	}
 
-	// F4: a second --detach while another launch holds the start lock is refused
-	// (rather than spawning a second server that orphans the first). This bails
-	// before spawn, so it's runtime-independent.
+	// Detach is the DEFAULT: bare `dev3 remote` (no flags) backgrounds the server
+	// (spawns a detached child) instead of booting in-process. The child is forced
+	// to --no-detach so it runs foreground and doesn't recursively detach.
+	it("backgrounds by DEFAULT and forces --no-detach on the child", async () => {
+		const { spawn } = await import("node:child_process");
+		mockReadState.mockReturnValueOnce(null).mockReturnValue(liveState({ pid: 1234, port: 41234 }));
+		mockSendRequest.mockResolvedValue({
+			id: "x", ok: true,
+			data: { url: "http://localhost:41234/?token=t", tunnelUrl: null, port: 41234, staticCode: null },
+		});
+		await expect(handleRemote(undefined, args())).rejects.toThrow("__exit__");
+		expect(vi.mocked(spawn)).toHaveBeenCalled(); // detached child, not in-process boot
+		const childArgs = vi.mocked(spawn).mock.calls[0][1] as string[];
+		expect(childArgs).toContain("--no-detach"); // child runs foreground
+	});
+
+	// F4: a second launch while another holds the start lock is refused (rather
+	// than spawning a second server that orphans the first). Bails before spawn.
 	it("refuses to start when the start lock is already held (F4)", async () => {
 		mockAcquireLock.mockReturnValue(null);
 		await expect(handleRemote(undefined, args({ detach: "true" }))).rejects.toThrow("__exit__");
