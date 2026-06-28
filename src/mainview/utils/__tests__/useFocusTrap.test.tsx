@@ -57,6 +57,22 @@ describe("useFocusTrap", () => {
 		expect(document.activeElement).toBe(screen.getByText("first"));
 	});
 
+	// Regression: the first Tab after the dialog auto-focuses its container must
+	// land on the FIRST focusable (not skip it to the second). The container is
+	// focused on mount, so the first forward Tab must not be swallowed.
+	it("does not skip the first focusable on the opening Tab", async () => {
+		const user = userEvent.setup();
+		render(<Dialog />);
+		const dialog = screen.getByRole("dialog");
+		expect(document.activeElement).toBe(dialog); // auto-focused container
+
+		await user.tab();
+		expect(document.activeElement).toBe(screen.getByText("first"));
+
+		await user.tab();
+		expect(document.activeElement).toBe(screen.getByText("middle"));
+	});
+
 	it("keeps focus from escaping to elements outside the container", async () => {
 		const user = userEvent.setup();
 		const outside = document.createElement("button");

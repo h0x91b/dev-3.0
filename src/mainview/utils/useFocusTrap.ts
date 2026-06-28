@@ -75,12 +75,20 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(): RefObject<T
 			const inside = container.contains(active);
 
 			if (e.shiftKey) {
-				if (!inside || active === container || active === first) {
+				// Backward: wrap to the last element at the first element, the
+				// container, or if focus has escaped the dialog.
+				if (active === first || active === container || !inside) {
 					e.preventDefault();
 					last.focus();
 				}
 			} else {
-				if (!inside || active === container || active === last) {
+				// Forward: wrap to the first element only at the last element or if
+				// focus escaped. When the container ITSELF holds focus (dialog just
+				// opened), DON'T preventDefault — let the browser Tab natively into
+				// the first child. A native Tab reliably triggers :focus-visible,
+				// whereas a programmatic .focus() from the (non-focus-visible)
+				// container does not, which left the very first Tab showing no ring.
+				if (active === last || (!inside && active !== container)) {
 					e.preventDefault();
 					first.focus();
 				}
