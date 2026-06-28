@@ -8,7 +8,7 @@
  * Currently supports Claude Code.  Extensible for Gemini, Cursor, etc.
  */
 
-import type { TaskStatus } from "../shared/types";
+import type { PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { isClaudeCommand, isCodexCommand } from "./agents";
 import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
@@ -31,12 +31,13 @@ const log = createLogger("agent-hooks");
 export function setupAgentHooks(
 	worktreePath: string,
 	baseCommand: string,
-	options?: { stopTarget?: TaskStatus },
+	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode },
 ): void {
 	if (isClaudeCommand(baseCommand)) {
 		writeClaudeHooks(worktreePath, options);
 		log.info("Claude hooks installed", {
 			worktreePath,
+			permissionMode: options?.permissionMode,
 		});
 		return;
 	}

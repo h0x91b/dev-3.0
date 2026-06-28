@@ -14,6 +14,7 @@ import type { MatcherGroup } from "../../shared/agent-hooks";
 import {
 	CODEX_STOP_HOOK_SUCCESS_JSON,
 	DEV3_BASH_PERMISSION,
+	ensureDefaultMode,
 } from "../../shared/agent-hooks";
 
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
@@ -516,6 +517,105 @@ describe("writeClaudeHooks", () => {
 		const second = readFileSync(settingsPath, "utf-8");
 
 		expect(first).toBe(second);
+	});
+
+	// --- permissions.defaultMode (teammate auto-approve propagation) ---
+
+	it("writes permissions.defaultMode into settings.local.json for a non-default mode", () => {
+		writeClaudeHooks(tmp, { permissionMode: "bypassPermissions" });
+
+		const settingsPath = join(tmp, ".claude", "settings.local.json");
+		const content = JSON.parse(readFileSync(settingsPath, "utf-8"));
+		expect(content.permissions.defaultMode).toBe("bypassPermissions");
+		// hooks + dev3 permission still present alongside defaultMode
+		expect(content.hooks).toBeDefined();
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+	});
+
+	it("propagates the 'auto' mode (default dev3 config) so teammates inherit it", () => {
+		writeClaudeHooks(tmp, { permissionMode: "auto" });
+
+		const content = JSON.parse(
+			readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"),
+		);
+		expect(content.permissions.defaultMode).toBe("auto");
+	});
+
+	it("does NOT write defaultMode when no permissionMode is given", () => {
+		writeClaudeHooks(tmp);
+
+		const content = JSON.parse(
+			readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"),
+		);
+		expect(content.permissions?.defaultMode).toBeUndefined();
+	});
+
+	it("does NOT write defaultMode for the 'default' mode (no-op baseline)", () => {
+		writeClaudeHooks(tmp, { permissionMode: "default" });
+
+		const content = JSON.parse(
+			readFileSync(join(tmp, ".claude", "settings.local.json"), "utf-8"),
+		);
+		expect(content.permissions?.defaultMode).toBeUndefined();
+	});
+
+	it("keeps defaultMode in settings.local.json even when permission goes to settings.json", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		// Only settings.json exists → dev3 permission lands there, not in local.
+		writeFileSync(
+			join(claudeDir, "settings.json"),
+			JSON.stringify({ permissions: { allow: ["Read(*)"] } }),
+		);
+
+		writeClaudeHooks(tmp, { permissionMode: "acceptEdits" });
+
+		// defaultMode must be local-scoped (gitignored), never the committed file.
+		const local = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(local.permissions.defaultMode).toBe("acceptEdits");
+		const shared = JSON.parse(readFileSync(join(claudeDir, "settings.json"), "utf-8"));
+		expect(shared.permissions.defaultMode).toBeUndefined();
+	});
+
+	it("preserves an existing defaultMode-bearing file's other keys", () => {
+		const claudeDir = join(tmp, ".claude");
+		mkdirSync(claudeDir, { recursive: true });
+		writeFileSync(
+			join(claudeDir, "settings.local.json"),
+			JSON.stringify({ enableAllProjectMcpServers: true, permissions: { allow: ["Bash(ls:*)"] } }),
+		);
+
+		writeClaudeHooks(tmp, { permissionMode: "dontAsk" });
+
+		const content = JSON.parse(readFileSync(join(claudeDir, "settings.local.json"), "utf-8"));
+		expect(content.enableAllProjectMcpServers).toBe(true);
+		expect(content.permissions.allow).toContain("Bash(ls:*)");
+		expect(content.permissions.allow).toContain(DEV3_BASH_PERMISSION);
+		expect(content.permissions.defaultMode).toBe("dontAsk");
+	});
+});
+
+describe("ensureDefaultMode", () => {
+	it("sets permissions.defaultMode on an empty object", () => {
+		const result = ensureDefaultMode({}, "bypassPermissions");
+		expect((result.permissions as Record<string, unknown>).defaultMode).toBe("bypassPermissions");
+	});
+
+	it("preserves existing permission allow/deny lists", () => {
+		const result = ensureDefaultMode(
+			{ permissions: { allow: ["Bash(git:*)"], deny: ["Read(secret)"] } },
+			"acceptEdits",
+		);
+		const perms = result.permissions as Record<string, unknown>;
+		expect(perms.allow).toEqual(["Bash(git:*)"]);
+		expect(perms.deny).toEqual(["Read(secret)"]);
+		expect(perms.defaultMode).toBe("acceptEdits");
+	});
+
+	it("is idempotent and overwrites a stale mode", () => {
+		const once = ensureDefaultMode({}, "plan");
+		const twice = ensureDefaultMode(once, "auto");
+		expect((twice.permissions as Record<string, unknown>).defaultMode).toBe("auto");
 	});
 });
 
