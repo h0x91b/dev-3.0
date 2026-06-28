@@ -638,6 +638,29 @@ describe("LaunchVariantsModal", () => {
 		});
 	});
 
+	describe("single open dropdown", () => {
+		// Regression: opening one Select via keyboard (Enter) then Tabbing to the
+		// next Select used to leave BOTH dropdowns open, stacked on top of each
+		// other. Moving focus off a Select must close its dropdown.
+		it("closes an open Select dropdown when focus moves to another control", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+
+			const agentBtn = getAgentButtons()[0];
+			agentBtn.focus();
+			await user.keyboard("{Enter}");
+
+			// Agent dropdown is open — "Codex" only appears as an agent option.
+			expect(screen.getByText("Codex")).toBeInTheDocument();
+
+			// Tab to the next control (the config Select).
+			await user.tab();
+
+			// The agent dropdown must have closed.
+			expect(screen.queryByText("Codex")).not.toBeInTheDocument();
+		});
+	});
+
 	describe("focus trap", () => {
 		it("moves focus into the dialog on open", () => {
 			renderModal(makeProject());
