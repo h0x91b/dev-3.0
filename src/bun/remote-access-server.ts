@@ -316,6 +316,21 @@ function stripHopByHop(headers: Headers): Headers {
 }
 
 /**
+ * Close a proxied upstream socket when its browser-side client goes away.
+ * Closing must also happen in CONNECTING — not just OPEN: a client that
+ * disconnects mid-handshake would otherwise leak an upstream that goes on to
+ * complete its connection and then lingers forever, holding a PTY session slot
+ * (F5). `close()` is a no-op once CLOSING/CLOSED, so guard only against CLOSED.
+ */
+export function closeUpstreamSocket(
+	upstream: { readyState: number; close: () => void } | undefined | null,
+): void {
+	if (upstream && upstream.readyState !== WebSocket.CLOSED) {
+		upstream.close();
+	}
+}
+
+/**
  * Parse `/p/<subtoken>/<port>/<rest...>`. `<rest>` may be empty; `<port>`
  * must be a positive integer in [1, 65535].
  */
@@ -580,15 +595,9 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					rpcClients.delete(ws);
 					log.info("Remote RPC client disconnected", { total: rpcClients.size });
 				} else if (wsData.type === "pty") {
-					const upstream = (ws as any)._ptyUpstream as WebSocket | undefined;
-					if (upstream && upstream.readyState === WebSocket.OPEN) {
-						upstream.close();
-					}
+					closeUpstreamSocket((ws as any)._ptyUpstream as WebSocket | undefined);
 				} else if (wsData.type === "shared-proxy") {
-					const upstream = (ws as any)._proxyUpstream as WebSocket | undefined;
-					if (upstream && upstream.readyState === WebSocket.OPEN) {
-						upstream.close();
-					}
+					closeUpstreamSocket((ws as any)._proxyUpstream as WebSocket | undefined);
 				}
 			},
 		},

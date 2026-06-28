@@ -441,3 +441,34 @@ describe("getAccessUrl host override", () => {
 		expect(qr).toBe("data:image/png;base64,test");
 	});
 });
+
+import { closeUpstreamSocket } from "../remote-access-server";
+
+describe("closeUpstreamSocket (F5)", () => {
+	function fakeWs(readyState: number) {
+		return { readyState, close: vi.fn() };
+	}
+
+	it("closes an upstream still in CONNECTING (the leak fix)", () => {
+		const ws = fakeWs(WebSocket.CONNECTING); // 0
+		closeUpstreamSocket(ws);
+		expect(ws.close).toHaveBeenCalledOnce();
+	});
+
+	it("closes an OPEN upstream", () => {
+		const ws = fakeWs(WebSocket.OPEN); // 1
+		closeUpstreamSocket(ws);
+		expect(ws.close).toHaveBeenCalledOnce();
+	});
+
+	it("does not re-close an already-CLOSED upstream", () => {
+		const ws = fakeWs(WebSocket.CLOSED); // 3
+		closeUpstreamSocket(ws);
+		expect(ws.close).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op for a missing upstream", () => {
+		expect(() => closeUpstreamSocket(undefined)).not.toThrow();
+		expect(() => closeUpstreamSocket(null)).not.toThrow();
+	});
+});
