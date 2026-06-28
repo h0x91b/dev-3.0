@@ -224,6 +224,12 @@ const tips = {
 	"tip.browserNotifications.body": "¿Abriste dev3 en un navegador? Activa Notificaciones del navegador en Ajustes → Comportamiento para recibir avisos de escritorio de dev3 notify y tareas observadas.",
 	"tip.remoteCommandPalette.title": "¿El navegador se come tus atajos?",
 	"tip.remoteCommandPalette.body": "Abierto vía dev3 remote, el navegador reserva combinaciones como ⌘1–9 y ⌘N — pulsa ⇧⌘P para acceder a cualquier comando.",
+	"tip.remoteDetachLifecycle.title": "Ejecuta dev3 remote en segundo plano",
+	"tip.remoteDetachLifecycle.body": "En un servidor, solo ejecuta `dev3 remote` — pasa a segundo plano solo. Luego `dev3 remote url` desde cualquier sesión SSH para un QR nuevo, y `dev3 remote stop` para detenerlo.",
+	"tip.remoteRemembersDevice.title": "Remote recuerda tu dispositivo",
+	"tip.remoteRemembersDevice.body": "Tras escanear el QR una vez, tu teléfono o portátil se reconecta a la UI remota al recargar sin volver a escanear — hasta 8 horas.",
+	"tip.remotePickInterface.title": "Elige la dirección remota",
+	"tip.remotePickInterface.body": "En Acceso Remoto (túnel apagado), el desplegable de dirección apunta el QR a cualquier IP local, incluido localhost para el reenvío SSH.",
 };
 
 export default tips;

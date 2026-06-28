@@ -81,6 +81,16 @@ vi.mock("../vents", () => ({
 	addVent: vi.fn(() => ({ fileName: "2026-06-15_14-30_x.md", path: "/tmp/v/2026-06-15_14-30_x.md", name: "x" })),
 }));
 
+vi.mock("../remote-access-server", () => ({
+	getAccessUrl: vi.fn(async () => "http://10.0.0.5:41234/?token=fresh"),
+	getServerPort: vi.fn(() => 0),
+	getStaticCode: vi.fn(() => null),
+}));
+
+vi.mock("../cloudflare-tunnel", () => ({
+	getTunnelUrl: vi.fn(() => null),
+}));
+
 vi.mock("node:fs", () => ({
 	existsSync: vi.fn(() => false),
 	readdirSync: vi.fn(() => []),
@@ -97,6 +107,7 @@ import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } fro
 import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import { addVent } from "../vents";
+import { getServerPort } from "../remote-access-server";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
 	"../cli-socket-server"
@@ -147,6 +158,27 @@ function makeRequest(method: string, params: Record<string, unknown> = {}): CliR
 
 beforeEach(() => {
 	vi.clearAllMocks();
+});
+
+describe("remote.accessUrl", () => {
+	it("errors when no remote-access server is bound (serverPort 0)", async () => {
+		vi.mocked(getServerPort).mockReturnValue(0);
+		const resp = await handleRequest(makeRequest("remote.accessUrl"));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("not running");
+	});
+
+	it("returns a fresh access URL when the server is running", async () => {
+		vi.mocked(getServerPort).mockReturnValue(41234);
+		const resp = await handleRequest(makeRequest("remote.accessUrl"));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({
+			url: "http://10.0.0.5:41234/?token=fresh",
+			port: 41234,
+			tunnelUrl: null,
+			staticCode: null,
+		});
+	});
 });
 
 describe("handleRequest dispatch", () => {

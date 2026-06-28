@@ -23,13 +23,15 @@ skills dev3 ships to its users (those live in `src/bun/agent-skills.ts`).
 
 ## The shared dev access code
 
-`bun run dev` launches the desktop app with a **fixed web-access token baked in**
-(`DEV3_REMOTE_STATIC_CODE`, a UUID set in package.json's `dev` script). So whenever the dev
-app is running it already serves the full web UI at that token, and any `dev3 remote` you
-start can reuse the same one. Read it from the single source of truth — never hardcode it:
+`bun run dev` launches the desktop app with a **stable per-machine web-access token**
+(`DEV3_REMOTE_STATIC_CODE`). The token is a random UUID generated ONCE per machine on the
+first `bun run dev` (by `scripts/dev-web-code.ts`) and persisted at
+`~/.dev3.0/dev-web-access-code` — it is **not** hardcoded in source. So whenever the dev app
+is running it already serves the full web UI at that token, and any `dev3 remote` you start
+can reuse the same one. Read it from that file — never hardcode it (delete the file to rotate):
 
 ```bash
-CODE=$(grep -o 'DEV3_REMOTE_STATIC_CODE=[^ ]*' package.json | cut -d= -f2)
+CODE=$(cat "$HOME/.dev3.0/dev-web-access-code" 2>/dev/null || bun scripts/dev-web-code.ts)
 ```
 
 ## Freshness — read this first
@@ -51,10 +53,12 @@ your live working tree:
 2. **Start an agent-owned headless server in a split tmux pane** (deterministic — you pick
    the port, so the URL is fully known; it's long-running, don't run it inline):
    ```bash
-   CODE=$(grep -o 'DEV3_REMOTE_STATIC_CODE=[^ ]*' package.json | cut -d= -f2)
+   CODE=$(cat "$HOME/.dev3.0/dev-web-access-code" 2>/dev/null || bun scripts/dev-web-code.ts)
    tmux -L dev3 split-window -h -t "$(tmux -L dev3 display-message -p '#S')" \
-     "dev3 remote --no-tunnel --static-code $CODE --port 47823"
+     "dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823"
    ```
+   - `--no-detach` — `dev3 remote` backgrounds by default; keep it in the foreground
+     so it stays tied to this pane (killable by pane, live logs visible).
    - `--no-tunnel` — local only, no public Cloudflare exposure.
    - `--static-code` — fixed token (a rotating JWT would expire). Local-only.
    - `--port` — fixed port → predictable URL: `http://localhost:47823/?token=<CODE>`

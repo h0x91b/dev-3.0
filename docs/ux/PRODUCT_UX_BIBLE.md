@@ -11,6 +11,17 @@ Evidence notation: `Observed` (backed by code/docs), `Inferred` (likely rule fro
 
 Canonical UX architecture reference for dev-3.0. It defines how the app organizes navigation, screens, surfaces, actions, and design-token roles, and where new features should live. Agents must consult this (via the `ux-principal` skill) before adding UI.
 
+### 1.0 North-star principle — the user is the star; optimize for the lazy human — `Observed`
+
+**When a default, shape, or amount-of-typing trades off the human's effort against a machine's, always favor the human.** The user is a person — lazy by design, and rightly so: they should type/click the minimum and get the obvious, most-wanted outcome. Agents, scripts, CI, and supervisors are not — they can happily emit a longer command with explicit flags, read a man page, or carry extra config. So:
+
+- **Defaults serve the human's most common intent**, even if that diverges from a machine-world convention. Example: `dev3 remote` (a hand-typed command) **backgrounds by default** because "start it and give me my shell back" is what a person wants — Docker/nginx default to foreground, but a human typing the command is not Docker. The foreground/supervised path is the one that pays the extra `--no-detach` flag, because the thing that needs it (systemd, a Docker `CMD`, a script) is a machine and doesn't mind the verbosity. See `UX_DECISIONS.md` (2026-06-28, detach-by-default).
+- **Push required verbosity onto the non-human caller**, never onto the person. If exactly one side must say more, make it the agent/script/supervisor.
+- This applies to CLI defaults, flag polarity (prefer `--no-x` opt-outs over `--x` opt-ins when the human wants `x` by default), prefilled form values, smart defaults in dialogs, and "do the obvious thing on Enter."
+- It does **not** mean hiding power or breaking safety: destructive/irreversible actions still demand explicit confirmation (the human's effort there is the point). It means the *happy, safe, common* path is the lazy path.
+
+Litmus test when choosing a default or flag polarity: *"who is typing this, and what do they most want with the fewest keystrokes?"* If the answer is "a human, who wants X" — make X the default and let machines opt out.
+
 ## 2. Product overview
 
 ### Product type — `Observed`

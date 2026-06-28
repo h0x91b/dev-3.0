@@ -210,9 +210,28 @@ function initBrowserApi(): ApiShape {
 	const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const isViteDevServer = window.location.port === "5173";
 
-	// ── JWT session token (in-memory only) ──
+	// ── JWT session token ──
+	// Persisted to localStorage so a "trusted device" (your own phone/laptop)
+	// reconnects without rescanning the QR: on load we refresh the stored token
+	// instead of demanding a fresh QR. The token has a server-side TTL (8h) and
+	// is rolled forward on load + every 15 min while open. Cleared the moment the
+	// server rejects it (expired/invalid) so a stale token can't loop forever.
+	const SESSION_STORAGE_KEY = "dev3-remote-session";
 	let sessionToken: string | null = null;
 	let authReady: Promise<void>;
+
+	function loadStoredSession(): string | null {
+		try { return localStorage.getItem(SESSION_STORAGE_KEY); } catch { return null; }
+	}
+	function persistSession(token: string | null): void {
+		try {
+			if (token) localStorage.setItem(SESSION_STORAGE_KEY, token);
+			else localStorage.removeItem(SESSION_STORAGE_KEY);
+		} catch { /* storage blocked (private mode) — in-memory token still works for this tab */ }
+	}
+	function dispatchAuthFailed(detail: Record<string, unknown>): void {
+		window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail }));
+	}
 
 	// Extract QR token from URL and clean it from the address bar
 	const urlParams = new URLSearchParams(window.location.search);
@@ -222,34 +241,70 @@ function initBrowserApi(): ApiShape {
 		window.history.replaceState({}, "", window.location.pathname);
 	}
 
-	// Exchange QR token for session token
+	// Obtain a session token: exchange a fresh QR token if the URL carried one,
+	// otherwise try to revive a persisted session from a previous visit.
 	async function authenticate(): Promise<void> {
-		if (isViteDevServer || !qrToken) {
-			console.log("[browser-rpc] auth skip", { isViteDevServer, hasToken: !!qrToken });
+		if (isViteDevServer) {
+			console.log("[browser-rpc] auth skip (vite dev)");
 			return;
 		}
-		console.log("[browser-rpc] Exchanging QR token...");
+		if (qrToken) {
+			console.log("[browser-rpc] Exchanging QR token...");
+			try {
+				const resp = await fetch("/auth/exchange", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ token: qrToken }),
+				});
+				if (resp.ok) {
+					sessionToken = (await resp.json()).token;
+					persistSession(sessionToken);
+					console.log("[browser-rpc] Auth OK, got session token");
+				} else {
+					persistSession(null);
+					console.error("[browser-rpc] Token exchange failed:", resp.status);
+					dispatchAuthFailed({ status: resp.status });
+				}
+			} catch (err) {
+				console.error("[browser-rpc] Token exchange error:", err);
+				dispatchAuthFailed({ error: String(err) });
+			}
+			return;
+		}
+
+		// No QR token in the URL — try a stored session ("trusted device").
+		const stored = loadStoredSession();
+		if (!stored) {
+			console.log("[browser-rpc] auth skip (no QR token, no stored session)");
+			return;
+		}
+		console.log("[browser-rpc] Reviving stored session (no QR in URL)...");
 		try {
-			const resp = await fetch("/auth/exchange", {
+			const resp = await fetch("/auth/refresh", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ token: qrToken }),
+				body: JSON.stringify({ token: stored }),
 			});
 			if (resp.ok) {
-				const data = await resp.json();
-				sessionToken = data.token;
-				console.log("[browser-rpc] Auth OK, got session token");
+				sessionToken = (await resp.json()).token;
+				persistSession(sessionToken);
+				console.log("[browser-rpc] Reconnected via stored session — no QR needed");
 			} else {
-				console.error("[browser-rpc] Token exchange failed:", resp.status);
-				window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail: { status: resp.status } }));
+				// Server says the stored token is expired/invalid — drop it and
+				// fall back to the "scan a fresh QR" screen.
+				persistSession(null);
+				console.warn("[browser-rpc] Stored session rejected:", resp.status);
+				dispatchAuthFailed({ status: resp.status });
 			}
 		} catch (err) {
-			console.error("[browser-rpc] Token exchange error:", err);
-			window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail: { error: String(err) } }));
+			// Network hiccup — keep the stored token for a later reload retry.
+			console.error("[browser-rpc] Stored session refresh error:", err);
+			dispatchAuthFailed({ error: String(err) });
 		}
 	}
 
-	// Refresh session token periodically (every 15 minutes)
+	// Refresh session token periodically (every 15 minutes), rolling the TTL
+	// forward and re-persisting so an open tab stays authenticated indefinitely.
 	function startRefreshTimer(): void {
 		setInterval(async () => {
 			if (!sessionToken) return;
@@ -260,8 +315,8 @@ function initBrowserApi(): ApiShape {
 					body: JSON.stringify({ token: sessionToken }),
 				});
 				if (resp.ok) {
-					const data = await resp.json();
-					sessionToken = data.token;
+					sessionToken = (await resp.json()).token;
+					persistSession(sessionToken);
 					console.log("[browser-rpc] Session token refreshed");
 				}
 			} catch {

@@ -914,6 +914,30 @@ const ALL_TIPS: Tip[] = [
 		score: 2,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "remote-detach-lifecycle",
+		titleKey: "tip.remoteDetachLifecycle.title",
+		bodyKey: "tip.remoteDetachLifecycle.body",
+		icon: "\u{F048D}", // nf-md-server
+		score: 3,
+		contexts: ["board"],
+	},
+	{
+		id: "remote-remembers-device",
+		titleKey: "tip.remoteRemembersDevice.title",
+		bodyKey: "tip.remoteRemembersDevice.body",
+		icon: "\u{F0FA9}", // nf-md-cellphone_link
+		score: 3,
+		contexts: ["board"],
+	},
+	{
+		id: "remote-pick-interface",
+		titleKey: "tip.remotePickInterface.title",
+		bodyKey: "tip.remotePickInterface.body",
+		icon: "\u{F0200}", // nf-md-lan
+		score: 2,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

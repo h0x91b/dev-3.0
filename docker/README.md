@@ -60,7 +60,7 @@ into the image yourself, or install at runtime:
 docker run --rm -it -p 3000:3000 dev3-remote bash -c '
   curl -sSL -o /tmp/cf https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 &&
   install -m 0755 /tmp/cf /home/dev3/app/cloudflared &&
-  dev3 remote --port 3000 --tunnel
+  dev3 remote --no-detach --port 3000 --tunnel
 '
 ```
 
