@@ -503,7 +503,7 @@ describe("App keyboard shortcuts", () => {
 			await act(async () => {
 				window.dispatchEvent(new CustomEvent("rpc:taskSound", { detail: { status: "completed", taskId: "task-9" } }));
 			});
-			expect(playTaskSoundFromPush).toHaveBeenCalledWith("completed", "task-9");
+			expect(playTaskSoundFromPush).toHaveBeenCalledWith("completed");
 		});
 	});
 

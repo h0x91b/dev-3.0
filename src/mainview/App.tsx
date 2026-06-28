@@ -828,8 +828,8 @@ function App() {
 
 	useEffect(() => {
 		function onTaskSound(e: Event) {
-			const { status, taskId } = (e as CustomEvent).detail;
-			playTaskSoundFromPush(status, taskId);
+			const { status } = (e as CustomEvent).detail;
+			playTaskSoundFromPush(status);
 		}
 		window.addEventListener("rpc:taskSound", onTaskSound);
 		return () => window.removeEventListener("rpc:taskSound", onTaskSound);

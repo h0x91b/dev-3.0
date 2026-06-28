@@ -19,11 +19,13 @@ describe("task sound assets", () => {
 	}
 });
 
-// The UI plays the completion sound client-side the instant a card is dropped,
-// while the bun process pushes a `taskSound` echo for the SAME move a moment
-// later. The echo is suppressed precisely by task id — not by status+time — so
-// the sound is heard exactly once AND two different tasks both ring.
-describe("completion-sound echo suppression", () => {
+// The sound plays in exactly one place per move: UI-initiated moves play it
+// locally (and signal `clientPlayedSound` so the backend skips its push), while
+// non-UI completions play it from the backend push. `playTaskCompletionSound`
+// returns whether the UI owns the sound so the caller can suppress the push —
+// this is what prevents the double-play in remote mode (desktop window + browser
+// on the same machine both receiving a broadcast push).
+describe("completion sound playback", () => {
 	let playSpy: ReturnType<typeof vi.spyOn>;
 
 	beforeEach(() => {
@@ -37,33 +39,27 @@ describe("completion-sound echo suppression", () => {
 		playSpy.mockRestore();
 	});
 
-	it("swallows the bun echo for a task the UI already played", () => {
-		playTaskCompletionSound("completed", "task-A");
-		playTaskSoundFromPush("completed", "task-A"); // the echo
+	it("plays locally and reports the UI owns the sound when enabled", () => {
+		const played = playTaskCompletionSound("completed");
+		expect(played).toBe(true);
+		expect(playSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not play and reports false when the setting is disabled", () => {
+		setTaskCompletionSoundEnabled(false);
+		const played = playTaskCompletionSound("completed");
+		expect(played).toBe(false);
+		expect(playSpy).not.toHaveBeenCalled();
+	});
+
+	it("plays the backend push (CLI / branch-merge / agent approval)", () => {
+		playTaskSoundFromPush("completed");
 		expect(playSpy).toHaveBeenCalledTimes(1);
 	});
 
 	it("rings for two different tasks completing back-to-back", () => {
-		playTaskCompletionSound("completed", "task-1");
-		playTaskCompletionSound("completed", "task-2");
+		expect(playTaskCompletionSound("completed")).toBe(true);
+		expect(playTaskCompletionSound("cancelled")).toBe(true);
 		expect(playSpy).toHaveBeenCalledTimes(2);
-	});
-
-	it("swallows a repeated echo (force-retry can emit the push twice)", () => {
-		playTaskCompletionSound("completed", "task-R");
-		playTaskSoundFromPush("completed", "task-R");
-		playTaskSoundFromPush("completed", "task-R");
-		expect(playSpy).toHaveBeenCalledTimes(1);
-	});
-
-	it("plays a push for a task the UI never played locally (CLI/other window)", () => {
-		playTaskSoundFromPush("completed", "remote-task");
-		expect(playSpy).toHaveBeenCalledTimes(1);
-	});
-
-	it("does not play locally when the setting is disabled", () => {
-		setTaskCompletionSoundEnabled(false);
-		playTaskCompletionSound("completed", "task-off");
-		expect(playSpy).not.toHaveBeenCalled();
 	});
 });

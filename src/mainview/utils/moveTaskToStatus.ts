@@ -95,9 +95,13 @@ export async function moveTaskToStatus({
 		}
 		: { ...task, status: newStatus, customColumnId: null };
 	dispatch({ type: "updateTask", task: optimisticTask });
+	// When the UI plays the completion sound here, tell the backend to skip its
+	// own `taskSound` push — otherwise it fans out to every other connected
+	// renderer (e.g. a remote browser on the same machine) and plays twice.
+	let clientPlayedSound = false;
 	if (terminal) {
 		dispatch({ type: "clearBell", taskId: task.id });
-		playTaskCompletionSound(newStatus as "completed" | "cancelled", task.id);
+		clientPlayedSound = playTaskCompletionSound(newStatus as "completed" | "cancelled");
 	}
 	onMoved?.();
 	trackEvent("task_moved", { from_status: fromStatus, to_status: newStatus, agent_name: agentNameFromId(task.agentId) });
@@ -107,10 +111,10 @@ export async function moveTaskToStatus({
 	try {
 		let updated: Task;
 		try {
-			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus });
+			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, clientPlayedSound });
 		} catch {
 			// Environment is likely broken (missing worktree, etc.) — force it through.
-			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, force: true });
+			updated = await api.request.moveTask({ taskId: task.id, projectId: project.id, newStatus, force: true, clientPlayedSound });
 		}
 		dispatch({ type: "updateTask", task: updated });
 		onSuccess?.();

@@ -1,0 +1,1 @@
+Fixed the task complete/cancel sound playing twice in remote mode when the desktop app and a browser are both connected to the same machine. UI-initiated terminal moves now play the sound locally and tell the backend to skip its broadcast `taskSound` push, so it is heard exactly once.

@@ -1967,6 +1967,29 @@ describe("handlers.moveTask", () => {
 		expect(push).not.toHaveBeenCalledWith("taskSound", expect.anything());
 	});
 
+	it("moveTask: skips the taskSound push when the client already played it (remote double-sound fix)", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
+		const push = vi.fn();
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(loadSettingsSync).mockReturnValue({ playSoundOnTaskComplete: true } as any);
+		setPushMessage(push);
+
+		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed", clientPlayedSound: true });
+
+		// The UI played the sound locally; the backend must NOT broadcast a second
+		// one (which a remote browser on the same machine would also play).
+		expect(push).not.toHaveBeenCalledWith("taskSound", expect.anything());
+		// The board still syncs via taskUpdated — only the sound push is skipped.
+		expect(push).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
+		expect(result.status).toBe("completed");
+	});
+
 	it("in-progress → cancelled: same cleanup as completed", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });

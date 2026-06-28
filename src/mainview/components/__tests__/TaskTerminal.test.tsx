@@ -243,6 +243,7 @@ describe("TaskTerminal", () => {
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "completed",
+				clientPlayedSound: true,
 			});
 		});
 	});
