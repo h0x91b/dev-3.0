@@ -1,0 +1,1 @@
+The main dashboard's per-project activity now lists PR Review tasks and tasks parked in custom columns as their own rows, instead of burying them in the collapsed background summary. PR Review rows show the "PR Review" status; custom-column rows are labeled and colored by their column.
