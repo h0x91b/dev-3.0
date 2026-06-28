@@ -281,3 +281,19 @@ describe("dev3 remote unknown subcommand", () => {
 		expect(stderrText()).toContain("Unknown subcommand: remote bogus");
 	});
 });
+
+describe("dev3 remote service subcommands (dispatch)", () => {
+	// The test host is macOS; both service subcommands are Linux-only, so they
+	// exit early with that message — enough to prove the dispatch wiring.
+	it("routes install-service", async () => {
+		if (process.platform === "linux") return; // would touch real systemd — skip on Linux CI
+		await expect(handleRemote("install-service", args())).rejects.toThrow("__exit__");
+		expect(stderrText()).toContain("Linux-only");
+	});
+
+	it("routes uninstall-service", async () => {
+		if (process.platform === "linux") return;
+		await expect(handleRemote("uninstall-service", args())).rejects.toThrow("__exit__");
+		expect(stderrText()).toContain("Linux-only");
+	});
+});

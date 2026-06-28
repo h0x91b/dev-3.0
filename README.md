@@ -219,6 +219,8 @@ This installs the `dev3` CLI. Three ways to use it:
 
 - **Headless / browser UI** — `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint. By default it also starts a Cloudflare quick tunnel so you can connect from anywhere without SSH (`cloudflared` is installed as a brew dep). Pass `--no-tunnel` for local-only mode. The token rotates every 25 seconds; the QR auto-refreshes too. Perfect for remote dev boxes.
   - **Background lifecycle (for SSH boxes)** — `dev3 remote --detach` runs the server in the background so it survives your SSH session. From any later SSH session, `dev3 remote status` shows it (PID, port, uptime), `dev3 remote url` re-prints a fresh QR/URL to re-scan from your phone, and `dev3 remote stop` shuts it down cleanly.
+  - **Run as a service** — `dev3 remote install-service --port <n>` installs a systemd --user unit so the server survives logout and restarts on boot (`dev3 remote uninstall-service` removes it). Tip: `sudo loginctl enable-linger $USER` keeps user services running while you're logged out.
+  - **Trusted device** — after you scan the QR once, the browser remembers the session (8h) and reconnects on reload without rescanning.
 - **Desktop GUI** — `dev3 gui` launches the full Electrobun desktop app. On the first run it lazily downloads the bundle (~88 MB) into `~/.dev3.0/gui/` and registers an XDG menu entry. If your distro is missing GTK/WebKit libraries it prints the exact `apt`/`dnf`/`pacman` command for you to copy.
 - **CLI tooling** — `dev3 task …`, `dev3 current`, `dev3 note add …` etc. when you want to script the Kanban board from a terminal.
 

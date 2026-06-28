@@ -7,6 +7,7 @@ import type { RemoteAccessInfo } from "../../shared/types";
 import { exitError, exitUsage, printDetail } from "../output";
 import { rejectUnknownFlags } from "../flag-validation";
 import { sendRequest } from "../socket-client";
+import { installRemoteService, uninstallRemoteService } from "./remote-service";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "../../shared/cli-exit-codes";
 import {
 	REMOTE_DIR,
@@ -23,6 +24,8 @@ Usage:
   dev3 remote status
   dev3 remote url
   dev3 remote stop
+  dev3 remote install-service [--port <n>] [--no-tunnel] [--no-start]
+  dev3 remote uninstall-service
 
   (default subcommand is "start"; bare "dev3 remote" runs the server in the foreground)
 
@@ -38,12 +41,17 @@ What it does:
   dependency. Pass --no-tunnel for local-only mode (LAN + SSH forward only).
 
 Subcommands:
-  start (default)   Start the headless server. Add --detach to run it in the
-                    background (survives the current shell), then exit.
-  status            Show whether a server is running, its PID, port, and uptime.
-  url               Print a fresh access URL + QR for the running server. Handy
-                    from a new SSH session to re-scan without rerunning start.
-  stop              Stop the background server (SIGTERM, then SIGKILL fallback).
+  start (default)     Start the headless server. Add --detach to run it in the
+                      background (survives the current shell), then exit.
+  status              Show whether a server is running, its PID, port, and uptime.
+  url                 Print a fresh access URL + QR for the running server. Handy
+                      from a new SSH session to re-scan without rerunning start.
+  stop                Stop the background server (SIGTERM, then SIGKILL fallback).
+  install-service     (Linux) Install + enable a systemd --user unit so the
+                      server survives logout and starts on boot. Accepts the
+                      same start flags (e.g. --port, --no-tunnel). The unit runs
+                      in the foreground under systemd — do NOT pass --detach.
+  uninstall-service   (Linux) Stop, disable, and remove the systemd --user unit.
 
 Flags (start):
   --detach
@@ -96,6 +104,8 @@ Examples:
   dev3 remote --detach                     # run in background, return to shell
   dev3 remote url                          # print a fresh QR/URL for the running server
   dev3 remote stop                         # shut the background server down
+  dev3 remote install-service --port 3017  # (Linux) run as a systemd --user service
+  dev3 remote uninstall-service            # (Linux) remove the systemd --user service
   dev3 remote --no-tunnel                  # LAN + SSH only (no public URL)
   dev3 remote --port 3000                  # fixed port (ideal for Docker -p 3000:3000)
   dev3 remote --expose-ports=3000,5173     # also expose dev-server ports publicly
@@ -510,10 +520,15 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 			return urlRemote(args);
 		case "stop":
 			return stopRemote(args);
+		case "install-service":
+			return installRemoteService(args);
+		case "uninstall-service":
+			return uninstallRemoteService(args);
 		default:
 			exitUsage(
 				`Unknown subcommand: remote ${subcommand}\n` +
-				"Available: dev3 remote [start], dev3 remote status, dev3 remote url, dev3 remote stop\n" +
+				"Available: dev3 remote [start], dev3 remote status, dev3 remote url, dev3 remote stop,\n" +
+				"           dev3 remote install-service, dev3 remote uninstall-service\n" +
 				'Run "dev3 remote --help" for usage.',
 			);
 	}
