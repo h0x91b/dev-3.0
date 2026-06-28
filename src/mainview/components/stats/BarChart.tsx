@@ -1,3 +1,7 @@
+import { Bar, BarChart as RBarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { SeriesTooltip } from "./ChartTooltip";
+import { useChartColors } from "./useChartColors";
+
 interface BarDatum {
 	label: string;
 	value: number;
@@ -13,15 +17,13 @@ interface BarChartProps {
 }
 
 /**
- * Lightweight responsive bar chart (flex divs, no SVG, no chart lib). Bars are
- * accent-tinted and scale to the max value. Theme-aware via design tokens.
+ * Responsive bar chart (recharts). Accent bars with a hover tooltip; axis and
+ * grid use design tokens (resolved via {@link useChartColors}) so it tracks the
+ * active theme.
  */
-export function BarChart({ data, height = 160, formatValue = (n) => String(n), emptyLabel }: BarChartProps) {
-	const max = Math.max(1, ...data.map((d) => d.value));
+export function BarChart({ data, height = 180, formatValue = (n) => String(n), emptyLabel }: BarChartProps) {
+	const c = useChartColors();
 	const total = data.reduce((s, d) => s + d.value, 0);
-	// Sparse x labels when there are many buckets, so they don't overlap.
-	const labelEvery = data.length <= 14 ? 1 : Math.ceil(data.length / 10);
-
 	if (total === 0 && emptyLabel) {
 		return (
 			<div className="flex items-center justify-center text-fg-muted text-xs" style={{ height }}>
@@ -30,29 +32,28 @@ export function BarChart({ data, height = 160, formatValue = (n) => String(n), e
 		);
 	}
 
+	// Thin out x-axis labels so they never collide.
+	const interval = data.length <= 14 ? 0 : Math.ceil(data.length / 8) - 1;
+
 	return (
-		<div>
-			<div className="flex items-end gap-[3px]" style={{ height }}>
-				{data.map((d, i) => {
-					const pct = (d.value / max) * 100;
-					return (
-						<div
-							key={d.startMs}
-							className="group flex-1 flex flex-col justify-end items-stretch h-full min-w-0"
-							title={`${d.label}: ${formatValue(d.value)}`}
-						>
-							<div
-								className="w-full rounded-t-[3px] bg-accent/70 group-hover:bg-accent transition-colors"
-								style={{ height: `${Math.max(d.value > 0 ? 2 : 0, pct)}%` }}
-							/>
-							{labelEvery > 0 && i % labelEvery === 0 && (
-								<div className="mt-1 text-center text-[0.5625rem] text-fg-muted truncate">{d.label}</div>
-							)}
-						</div>
-					);
-				})}
-			</div>
-		</div>
+		<ResponsiveContainer width="100%" height={height}>
+			<RBarChart data={data} margin={{ top: 8, right: 6, bottom: 0, left: 6 }} barCategoryGap="18%">
+				<CartesianGrid vertical={false} stroke={c.grid} strokeOpacity={0.5} />
+				<XAxis
+					dataKey="label"
+					interval={interval}
+					tickLine={false}
+					axisLine={false}
+					tick={{ fill: c.axis, fontSize: 10 }}
+				/>
+				<YAxis hide domain={[0, "dataMax"]} />
+				<Tooltip
+					cursor={{ fill: `rgb(${c.accentRaw} / 0.1)` }}
+					content={<SeriesTooltip formatValue={formatValue} />}
+				/>
+				<Bar dataKey="value" radius={[3, 3, 0, 0]} fill={c.accent} maxBarSize={48} isAnimationActive={false} />
+			</RBarChart>
+		</ResponsiveContainer>
 	);
 }
 

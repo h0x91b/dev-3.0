@@ -9,6 +9,15 @@ import { createElement } from "react";
 // desktop keymap (e.g. ⌘Q, zoom) set the flag themselves AND mock rpc — see
 // App.test.tsx / zoom.test.ts / KeyboardShortcutsModal.test.tsx.
 
+// happy-dom has no ResizeObserver; recharts' ResponsiveContainer needs one.
+if (typeof globalThis.ResizeObserver === "undefined") {
+	globalThis.ResizeObserver = class {
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	} as unknown as typeof ResizeObserver;
+}
+
 vi.mock("@lobehub/icons/es/icons", () => {
 	const makeIcon = (name: string) => {
 		const Icon = (props: Record<string, unknown>) => createElement("svg", { "data-icon": name, ...props });

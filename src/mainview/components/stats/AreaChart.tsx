@@ -1,3 +1,7 @@
+import { Area, AreaChart as RAreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { SeriesTooltip } from "./ChartTooltip";
+import { useChartColors } from "./useChartColors";
+
 interface AreaDatum {
 	label: string;
 	value: number;
@@ -11,13 +15,14 @@ interface AreaChartProps {
 	emptyLabel?: string;
 }
 
-const VW = 1000; // virtual viewBox width; preserveAspectRatio="none" stretches it
+const GRAD_ID = "stats-area-fill";
 
 /**
- * Lightweight responsive area/line chart (pure SVG, no chart lib). Accent line
- * with a soft accent fill. Theme-aware via `currentColor` (set by `text-accent`).
+ * Responsive area/line chart (recharts). Accent line over a soft accent
+ * gradient, with a hover tooltip. Theme-aware via {@link useChartColors}.
  */
-export function AreaChart({ data, height = 160, formatValue = (n) => String(n), emptyLabel }: AreaChartProps) {
+export function AreaChart({ data, height = 180, formatValue = (n) => String(n), emptyLabel }: AreaChartProps) {
+	const c = useChartColors();
 	const total = data.reduce((s, d) => s + d.value, 0);
 	if ((data.length === 0 || total === 0) && emptyLabel) {
 		return (
@@ -27,41 +32,40 @@ export function AreaChart({ data, height = 160, formatValue = (n) => String(n), 
 		);
 	}
 
-	const VH = 100;
-	const pad = 6;
-	const max = Math.max(1, ...data.map((d) => d.value));
-	const n = data.length;
-	const x = (i: number) => (n <= 1 ? VW / 2 : (i / (n - 1)) * VW);
-	const y = (v: number) => VH - pad - (v / max) * (VH - 2 * pad);
-
-	const linePts = data.map((d, i) => `${x(i).toFixed(1)},${y(d.value).toFixed(2)}`);
-	const linePath = n === 1 ? `M0,${y(data[0].value).toFixed(2)} L${VW},${y(data[0].value).toFixed(2)}` : `M${linePts.join(" L")}`;
-	const areaPath = `${linePath} L${VW},${VH} L0,${VH} Z`;
-
-	const labelEvery = n <= 14 ? 1 : Math.ceil(n / 10);
+	const interval = data.length <= 14 ? 0 : Math.ceil(data.length / 8) - 1;
 
 	return (
-		<div className="text-accent">
-			<svg width="100%" height={height} viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none" role="img">
-				<path d={areaPath} fill="currentColor" fillOpacity={0.12} />
-				<path
-					d={linePath}
-					fill="none"
-					stroke="currentColor"
-					strokeWidth={2}
-					strokeLinejoin="round"
-					strokeLinecap="round"
-					vectorEffect="non-scaling-stroke"
+		<ResponsiveContainer width="100%" height={height}>
+			<RAreaChart data={data} margin={{ top: 8, right: 6, bottom: 0, left: 6 }}>
+				<defs>
+					<linearGradient id={GRAD_ID} x1="0" y1="0" x2="0" y2="1">
+						<stop offset="0%" stopColor={`rgb(${c.accentRaw} / 0.35)`} />
+						<stop offset="100%" stopColor={`rgb(${c.accentRaw} / 0.02)`} />
+					</linearGradient>
+				</defs>
+				<CartesianGrid vertical={false} stroke={c.grid} strokeOpacity={0.5} />
+				<XAxis
+					dataKey="label"
+					interval={interval}
+					tickLine={false}
+					axisLine={false}
+					tick={{ fill: c.axis, fontSize: 10 }}
 				/>
-			</svg>
-			<div className="flex gap-[3px] mt-1">
-				{data.map((d, i) => (
-					<div key={d.startMs} className="flex-1 min-w-0 text-center text-[0.5625rem] text-fg-muted truncate" title={`${d.label}: ${formatValue(d.value)}`}>
-						{i % labelEvery === 0 ? d.label : ""}
-					</div>
-				))}
-			</div>
-		</div>
+				<YAxis hide domain={[0, "dataMax"]} />
+				<Tooltip
+					cursor={{ stroke: c.accent, strokeOpacity: 0.4 }}
+					content={<SeriesTooltip formatValue={formatValue} />}
+				/>
+				<Area
+					type="monotone"
+					dataKey="value"
+					stroke={c.accent}
+					strokeWidth={2}
+					fill={`url(#${GRAD_ID})`}
+					isAnimationActive={false}
+				/>
+			</RAreaChart>
+		</ResponsiveContainer>
 	);
 }
 

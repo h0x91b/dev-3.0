@@ -49,6 +49,7 @@ const stats = {
 	"stats.perAgent.title": "По агентам",
 	"stats.perAgent.empty": "Нет завершённых задач за этот период",
 	"stats.perAgent.busiest": "Самый используемый агент",
+	"stats.perAgent.total": "сделано",
 	"stats.empty.title": "Заверши первую задачу — и кокпит оживёт",
 	"stats.empty.body": "Заверши задачу, и здесь появится твоя статистика.",
 	"stats.error": "Не удалось загрузить статистику",

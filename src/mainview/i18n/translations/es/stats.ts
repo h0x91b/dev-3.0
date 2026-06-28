@@ -49,6 +49,7 @@ const stats = {
 	"stats.perAgent.title": "Por agente",
 	"stats.perAgent.empty": "Sin tareas completadas en este período",
 	"stats.perAgent.busiest": "Agente más usado",
+	"stats.perAgent.total": "completadas",
 	"stats.empty.title": "Entrega tu primera tarea para encender el panel",
 	"stats.empty.body": "Completa una tarea y tus estadísticas aparecerán aquí.",
 	"stats.error": "No se pudieron cargar las estadísticas",
