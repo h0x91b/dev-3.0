@@ -1,5 +1,6 @@
 import { useEffect, type ReactElement } from "react";
 import { createPortal } from "react-dom";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT, type TranslationKey } from "../i18n";
 import {
 	APP_SHORTCUTS,
@@ -146,18 +147,17 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
+	useEscapeKey(onClose, { enabled: open });
 	useEffect(() => {
 		if (!open) return;
 		function onKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				onClose();
-			} else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+			if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
 				onTabChange(tab === "app" ? "terminal" : "app");
 			}
 		}
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [open, tab, onClose, onTabChange]);
+	}, [open, tab, onTabChange]);
 
 	if (!open) return null;
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useLayoutEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { TmuxSessionInfo } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
@@ -108,14 +109,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 	}, [popoverOpen]);
 
 	// Escape to close
-	useEffect(() => {
-		if (!popoverOpen) return;
-		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") setPopoverOpen(false);
-		}
-		document.addEventListener("keydown", handleKey);
-		return () => document.removeEventListener("keydown", handleKey);
-	}, [popoverOpen]);
+	useEscapeKey(() => setPopoverOpen(false), { enabled: popoverOpen });
 
 	// Viewport clamping
 	useLayoutEffect(() => {

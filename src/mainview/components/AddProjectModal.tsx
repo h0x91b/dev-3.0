@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { extractRepoName } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -43,13 +44,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 		}
 	}, [activeTab]);
 
-	useEffect(() => {
-		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") onClose();
-		}
-		window.addEventListener("keydown", handleKey);
-		return () => window.removeEventListener("keydown", handleKey);
-	}, [onClose]);
+	useEscapeKey(onClose);
 
 	const inferredName = gitUrl.trim() ? extractRepoName(gitUrl.trim()) : "";
 	const displayName = repoName.trim() || inferredName;

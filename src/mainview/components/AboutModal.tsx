@@ -1,5 +1,6 @@
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface AboutModalProps {
 	version: string;
@@ -13,6 +14,7 @@ interface AboutModalProps {
 export default function AboutModal({ version, onClose }: AboutModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	useEscapeKey(onClose);
 	return (
 		<div
 			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"

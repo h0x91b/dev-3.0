@@ -1,7 +1,7 @@
-import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 
 interface GitPullErrorModalProps {
 	branch: string;
@@ -15,16 +15,7 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
-	useEffect(() => {
-		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				e.preventDefault();
-				onClose();
-			}
-		}
-		window.addEventListener("keydown", handleKey, true);
-		return () => window.removeEventListener("keydown", handleKey, true);
-	}, [onClose]);
+	useEscapeKey(onClose);
 
 	// Render through a portal into document.body — the kanban GlobalHeader uses
 	// `backdrop-filter`, which establishes a containing block for `position:

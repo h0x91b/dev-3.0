@@ -32,6 +32,14 @@ describe("AboutModal", () => {
 		expect(onClose).toHaveBeenCalledTimes(1);
 	});
 
+	it("closes on Escape and prevents the default (native fullscreen exit)", () => {
+		const onClose = renderAbout();
+		const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+		window.dispatchEvent(event);
+		expect(onClose).toHaveBeenCalledTimes(1);
+		expect(event.defaultPrevented).toBe(true);
+	});
+
 	it("opens the website in a new tab", async () => {
 		const user = userEvent.setup();
 		const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);

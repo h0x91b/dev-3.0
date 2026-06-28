@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type Dispatch } from "react";
 import { toast } from "../toast";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -37,23 +38,17 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
 
-	useEffect(() => {
-		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				if (statusMenuOpen) {
-					setStatusMenuOpen(false);
-				} else if (isRenaming) {
-					setIsRenaming(false);
-				} else if (isEditing) {
-					setIsEditing(false);
-				} else {
-					onClose();
-				}
-			}
+	useEscapeKey(() => {
+		if (statusMenuOpen) {
+			setStatusMenuOpen(false);
+		} else if (isRenaming) {
+			setIsRenaming(false);
+		} else if (isEditing) {
+			setIsEditing(false);
+		} else {
+			onClose();
 		}
-		window.addEventListener("keydown", handleKey);
-		return () => window.removeEventListener("keydown", handleKey);
-	}, [onClose, isEditing, isRenaming, statusMenuOpen]);
+	});
 
 	useEffect(() => {
 		if (isEditing) {

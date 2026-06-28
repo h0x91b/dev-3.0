@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useT } from "../i18n";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Route } from "../state";
 import type { ChangelogEntry } from "../../shared/types";
 import { api } from "../rpc";
@@ -66,19 +67,13 @@ function Changelog({ navigate, goBack, canGoBack }: ChangelogProps) {
 	}, []);
 
 	// Escape → go back to previous page
-	useEffect(() => {
-		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				if (canGoBack) {
-					goBack();
-				} else {
-					navigate({ screen: "dashboard" });
-				}
-			}
+	useEscapeKey(() => {
+		if (canGoBack) {
+			goBack();
+		} else {
+			navigate({ screen: "dashboard" });
 		}
-		document.addEventListener("keydown", handleKey);
-		return () => document.removeEventListener("keydown", handleKey);
-	}, [navigate, goBack, canGoBack]);
+	});
 
 	const toggleFilter = useCallback((type: EntryType) => {
 		setActiveFilter((prev) => (prev === type ? null : type));

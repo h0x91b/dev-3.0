@@ -478,6 +478,7 @@ function ActiveTasksSidebar({
 						onChange={(e) => setSearchQuery(e.target.value)}
 						onKeyDown={(e) => {
 							if (e.key === "Escape") {
+								e.preventDefault();
 								e.stopPropagation();
 								setSearchQuery("");
 								searchRef.current?.blur();

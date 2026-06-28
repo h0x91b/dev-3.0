@@ -377,6 +377,8 @@ function BranchPicker({
 				}}
 				onKeyDown={(event) => {
 					if (event.key === "Escape") {
+						event.preventDefault();
+						event.stopPropagation();
 						setDropdownOpen(false);
 						setEditing(false);
 						setQuery("");

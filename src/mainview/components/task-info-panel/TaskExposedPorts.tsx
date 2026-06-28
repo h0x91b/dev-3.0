@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { ExposedPort, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useTaskAllocatedPorts } from "./useTaskAllocatedPorts";
 
 interface TaskExposedPortsProps {
@@ -162,13 +163,7 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 	const [busyPort, setBusyPort] = useState<number | null>(null);
 	const [toast, setToast] = useState<string | null>(null);
 
-	useEffect(() => {
-		function handleKey(event: KeyboardEvent) {
-			if (event.key === "Escape") onClose();
-		}
-		document.addEventListener("keydown", handleKey);
-		return () => document.removeEventListener("keydown", handleKey);
-	}, [onClose]);
+	useEscapeKey(onClose);
 
 	useLayoutEffect(() => {
 		if (!menuRef.current) return;

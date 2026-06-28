@@ -4,6 +4,7 @@ import { getTaskTitle, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDis
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { useCompact } from "../utils/useCompact";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api } from "../rpc";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
@@ -75,7 +76,16 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 		}
 	}, [countdown, showToast]);
 
-	// Close dropdowns on outside click or Escape
+	// Close whichever header dropdown is open on Escape.
+	useEscapeKey(
+		() => {
+			if (showProjectDropdown) setShowProjectDropdown(false);
+			if (showUpdateDropdown) setShowUpdateDropdown(false);
+			if (showOverflowMenu) setShowOverflowMenu(false);
+		},
+		{ enabled: showUpdateDropdown || showProjectDropdown || showOverflowMenu },
+	);
+	// Close dropdowns on outside click
 	useEffect(() => {
 		if (!showUpdateDropdown && !showProjectDropdown && !showOverflowMenu) return;
 		function handleClick(e: MouseEvent) {
@@ -89,18 +99,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				setShowOverflowMenu(false);
 			}
 		}
-		function handleKeydown(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				if (showProjectDropdown) setShowProjectDropdown(false);
-				if (showUpdateDropdown) setShowUpdateDropdown(false);
-				if (showOverflowMenu) setShowOverflowMenu(false);
-			}
-		}
 		document.addEventListener("mousedown", handleClick);
-		document.addEventListener("keydown", handleKeydown);
 		return () => {
 			document.removeEventListener("mousedown", handleClick);
-			document.removeEventListener("keydown", handleKeydown);
 		};
 	}, [showUpdateDropdown, showProjectDropdown, showOverflowMenu]);
 

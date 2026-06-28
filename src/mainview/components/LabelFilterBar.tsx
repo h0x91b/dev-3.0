@@ -65,6 +65,7 @@ function LabelFilterBar({
 					onChange={(e) => onSearchChange(e.target.value)}
 					onKeyDown={(e) => {
 						if (e.key === "Escape") {
+							e.preventDefault();
 							e.stopPropagation();
 							onSearchChange("");
 							inputRef.current?.blur();

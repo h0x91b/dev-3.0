@@ -4,6 +4,7 @@ import { useT } from "../../i18n";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { getKeymapPreset, KEYMAP_CHANGED_EVENT, setKeymapPreset } from "../../terminal-keymaps";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 
 interface TaskTmuxControlsProps {
 	taskId: string;
@@ -77,21 +78,13 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 
 	useEffect(() => clearHintsTimeout, []);
 
-	useEffect(() => {
-		if (!hintsOpen) {
-			return;
-		}
-
-		function handleKey(event: KeyboardEvent) {
-			if (event.key === "Escape") {
-				setHintsOpen(false);
-				setHintsVisible(false);
-			}
-		}
-
-		document.addEventListener("keydown", handleKey);
-		return () => document.removeEventListener("keydown", handleKey);
-	}, [hintsOpen]);
+	useEscapeKey(
+		() => {
+			setHintsOpen(false);
+			setHintsVisible(false);
+		},
+		{ enabled: hintsOpen },
+	);
 
 	useLayoutEffect(() => {
 		if (!hintsOpen || !hintsPopoverRef.current || !hintsTriggerRef.current) {
@@ -147,21 +140,13 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 
 	useEffect(() => clearLayoutTimeout, []);
 
-	useEffect(() => {
-		if (!layoutOpen) {
-			return;
-		}
-
-		function handleKey(event: KeyboardEvent) {
-			if (event.key === "Escape") {
-				setLayoutOpen(false);
-				setLayoutVisible(false);
-			}
-		}
-
-		document.addEventListener("keydown", handleKey);
-		return () => document.removeEventListener("keydown", handleKey);
-	}, [layoutOpen]);
+	useEscapeKey(
+		() => {
+			setLayoutOpen(false);
+			setLayoutVisible(false);
+		},
+		{ enabled: layoutOpen },
+	);
 
 	useLayoutEffect(() => {
 		if (!layoutOpen || !layoutMenuRef.current || !layoutTriggerRef.current) {

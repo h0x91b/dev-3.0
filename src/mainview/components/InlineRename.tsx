@@ -91,7 +91,7 @@ export default function InlineRename({
 					onChange={(e) => setValue(e.target.value)}
 					onKeyDown={(e) => {
 						if (e.key === "Enter") save(value);
-						if (e.key === "Escape") { e.stopPropagation(); setEditing(false); }
+						if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEditing(false); }
 					}}
 					disabled={saving}
 					className={inputClassName}

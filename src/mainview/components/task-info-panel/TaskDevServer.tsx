@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useResolvedTaskProject } from "./useResolvedTaskProject";
 
 interface TaskDevServerProps {
@@ -25,25 +26,16 @@ function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuPr
 	const [menuPos, setMenuPos] = useState(position);
 	const [visible, setVisible] = useState(false);
 
+	useEscapeKey(onClose);
 	useEffect(() => {
 		function handleClick(event: MouseEvent) {
 			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
 				onClose();
 			}
 		}
-
-		function handleKey(event: KeyboardEvent) {
-			if (event.key === "Escape") {
-				onClose();
-			}
-		}
-
 		document.addEventListener("mousedown", handleClick);
-		document.addEventListener("keydown", handleKey);
-
 		return () => {
 			document.removeEventListener("mousedown", handleClick);
-			document.removeEventListener("keydown", handleKey);
 		};
 	}, [onClose]);
 

@@ -1,0 +1,1 @@
+Escape now reliably closes any open modal, lightbox, or popover instead of dropping the app out of native fullscreen. Added a shared `useEscapeKey` hook (capture-phase listener that calls preventDefault + stopImmediatePropagation) and routed every overlay through it; the About dialog now also closes on Escape.

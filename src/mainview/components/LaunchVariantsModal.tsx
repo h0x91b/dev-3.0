@@ -1,6 +1,7 @@
 import { useState, useEffect, type Dispatch } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -89,12 +90,11 @@ function LaunchVariantsModal({
 	// operate hidden UI.
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
-	// Escape → close; Enter → launch (when no text input is focused)
+	useEscapeKey(onClose);
+	// Enter → launch (when no text input is focused)
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
-			if (e.key === "Escape") {
-				onClose();
-			} else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+			if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
 				// Only an "implicit" Enter (nothing interactive focused) should launch.
 				// If the user tab-focused a control, Enter must trigger that control's
 				// own action — the agent/config pickers render as <button> (Select.tsx),
@@ -109,7 +109,7 @@ function LaunchVariantsModal({
 		window.addEventListener("keydown", handleKey);
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [onClose, launching, variants]);
+	}, [launching, variants]);
 
 	function addVariant() {
 		setVariants((prev) => [...prev, makeDefaultVariant()]);
