@@ -194,6 +194,29 @@ await startRemoteAccessServer({
 	},
 });
 
+// ── Persist lifecycle state so `dev3 remote status/stop/url` (a separate
+// process, e.g. a fresh SSH session) can find and control this server. This
+// MUST happen BEFORE the (potentially slow / network-blocked) Cloudflare tunnel
+// start — otherwise a box with outbound 443 blocked leaves the tunnel hanging,
+// the `--detach` parent times out its readiness poll, and the very-much-alive
+// server is invisible to status/url/stop (F3). The state needs only pid/port/
+// socket; the tunnel URL is fetched live over the CLI socket, never stored. ──
+try {
+	writeRemoteState({
+		pid: process.pid,
+		port: getServerPort(),
+		socketPath: cliSocketPath,
+		tunnelRequested: wantTunnel,
+		staticCode: process.env.DEV3_REMOTE_STATIC_CODE || null,
+		logFile: process.env.DEV3_REMOTE_LOG_FILE || null,
+		startedAt: new Date().toISOString(),
+		version: BUILD_VERSION,
+	});
+	log.info("Remote lifecycle state written", { port: getServerPort(), pid: process.pid });
+} catch (err) {
+	log.warn("Failed to write remote lifecycle state (non-fatal)", { err: String(err) });
+}
+
 // ── Cloudflare tunnel (default-on; opt out with --no-tunnel → DEV3_REMOTE_NO_TUNNEL=1) ──
 if (wantTunnel) {
 	if (!isCloudflaredAvailable()) {
@@ -261,24 +284,6 @@ async function isPortListening(port: number): Promise<boolean> {
 	} catch {
 		return false;
 	}
-}
-
-// ── Persist lifecycle state so `dev3 remote status/stop/url` (a separate
-// process, e.g. a fresh SSH session) can find and control this server. ──
-try {
-	writeRemoteState({
-		pid: process.pid,
-		port: getServerPort(),
-		socketPath: cliSocketPath,
-		tunnelRequested: wantTunnel,
-		staticCode: process.env.DEV3_REMOTE_STATIC_CODE || null,
-		logFile: process.env.DEV3_REMOTE_LOG_FILE || null,
-		startedAt: new Date().toISOString(),
-		version: BUILD_VERSION,
-	});
-	log.info("Remote lifecycle state written", { port: getServerPort(), pid: process.pid });
-} catch (err) {
-	log.warn("Failed to write remote lifecycle state (non-fatal)", { err: String(err) });
 }
 
 // ── Banner + QR + auto-refresh ──
