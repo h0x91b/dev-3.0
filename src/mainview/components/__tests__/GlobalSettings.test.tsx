@@ -17,6 +17,7 @@ vi.mock("../../zoom", () => ({
 }));
 
 vi.mock("../../rpc", () => ({
+	isElectrobun: false,
 	api: {
 		request: {
 			getAgents: vi.fn(),

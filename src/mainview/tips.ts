@@ -365,7 +365,7 @@ const ALL_TIPS: Tip[] = [
 		id: "bell-auto-move",
 		titleKey: "tip.bellAutoMove.title",
 		bodyKey: "tip.bellAutoMove.body",
-		icon: "", // nf-fa-bell
+		icon: "\uF0F3", // nf-fa-bell
 		score: 4,
 		contexts: ["board", "terminal"],
 	},
@@ -897,6 +897,14 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0204}", // nf-md-menu
 		score: 3,
 		contexts: ["board", "terminal"],
+	},
+	{
+		id: "browser-notifications",
+		titleKey: "tip.browserNotifications.title",
+		bodyKey: "tip.browserNotifications.body",
+		icon: "\uF0F3", // nf-fa-bell
+		score: 4,
+		contexts: ["settings", "board"],
 	},
 ];
 

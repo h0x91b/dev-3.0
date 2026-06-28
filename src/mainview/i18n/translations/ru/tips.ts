@@ -220,6 +220,8 @@ const tips = {
 	"tip.watchRemembers.body": "Переключите Watch в окне запуска — и это состояние вкл/выкл станет значением по умолчанию для следующих задач.",
 	"tip.remoteMenuBar.title": "Полное меню в браузере",
 	"tip.remoteMenuBar.body": "Откройте dev-3.0 в браузере через Remote Access — и вся панель меню File/Task/Project отрисуется прямо на странице.",
+	"tip.browserNotifications.title": "Уведомления в браузере",
+	"tip.browserNotifications.body": "Открыли dev3 в браузере? Включите «Уведомления браузера» в Настройки → Поведение, чтобы получать алерты для dev3 notify и отслеживаемых задач.",
 };
 
 export default tips;
