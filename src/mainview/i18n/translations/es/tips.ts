@@ -216,6 +216,8 @@ const tips = {
 	"tip.operationsBoard.body": "Añade un tablero de Operaciones desde “Añadir proyecto” para tareas con código sin repo git — cada una ejecuta un agente y un shell en una carpeta gestionada.",
 	"tip.operationsHistory.title": "Las operaciones guardan su historial",
 	"tip.operationsHistory.body": "Las operaciones completadas permanecen en Hecho con sus notas y carpeta, así ves qué ejecutaste y por qué más tarde.",
+	"tip.watchRemembers.title": "Watch recuerda tu elección",
+	"tip.watchRemembers.body": "Activa o desactiva Watch en el diálogo de lanzamiento y esa elección será la predeterminada para las próximas tareas.",
 };
 
 export default tips;

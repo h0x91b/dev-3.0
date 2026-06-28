@@ -216,6 +216,8 @@ const tips = {
 	"tip.operationsBoard.body": "Add an Operations board from “Add Project” for code-driven tasks with no git repo — each runs an agent + shell in a managed folder.",
 	"tip.operationsHistory.title": "Operations keep their history",
 	"tip.operationsHistory.body": "Completed operations stay in Done with their notes and folder, so you can see what you ran and why later.",
+	"tip.watchRemembers.title": "Watch remembers your choice",
+	"tip.watchRemembers.body": "Toggle Watch in the launch dialog and that on/off choice becomes the default for the tasks you launch next.",
 } as const;
 
 export default tips;

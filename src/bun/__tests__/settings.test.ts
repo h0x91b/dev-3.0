@@ -125,6 +125,7 @@ describe("saveSettings", () => {
 			skipQuitDialog: true,
 			importShellEnv: false,
 			focusMode: true,
+			watchByDefault: true,
 		};
 
 		await saveSettings(full);

@@ -56,6 +56,9 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 			importShellEnv: data.importShellEnv === false ? false : undefined,
 			focusMode: data.focusMode === true ? true : undefined,
+			// Boolean preference — both true (watch) and false (don't watch) are
+			// meaningful stored choices, so preserve either; only undefined drops.
+			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -107,6 +110,9 @@ export function loadSettingsSync(): GlobalSettings {
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 			importShellEnv: data.importShellEnv === false ? false : undefined,
 			focusMode: data.focusMode === true ? true : undefined,
+			// Boolean preference — both true (watch) and false (don't watch) are
+			// meaningful stored choices, so preserve either; only undefined drops.
+			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

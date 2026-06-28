@@ -439,6 +439,12 @@ export interface GlobalSettings {
 	 */
 	importShellEnv?: boolean;
 	focusMode?: boolean; // when true, suppress agent-initiated attention UI (dev3 notify/attention)
+	/**
+	 * Remembered state of the Watch toggle in the launch/create-variant modal.
+	 * When a task is launched, the toggle's on/off choice is persisted here and
+	 * reused as the default for the next launch. Undefined → default to unwatched.
+	 */
+	watchByDefault?: boolean;
 }
 
 export interface TipState {

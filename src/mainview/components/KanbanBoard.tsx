@@ -564,6 +564,7 @@ function KanbanBoard({
 					dispatch={dispatch}
 					onClose={() => setLaunchModal(null)}
 					mode={launchModal.mode}
+					onGlobalSettingsChange={setGlobalSettings}
 				/>
 			)}
 		</>

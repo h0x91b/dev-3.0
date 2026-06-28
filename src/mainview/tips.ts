@@ -882,6 +882,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "watch-remembers",
+		titleKey: "tip.watchRemembers.title",
+		bodyKey: "tip.watchRemembers.body",
+		icon: "\u{F009A}", // nf-md-eye_check
+		score: 2,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

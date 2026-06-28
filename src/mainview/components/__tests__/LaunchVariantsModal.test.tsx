@@ -9,7 +9,9 @@ vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			spawnVariants: vi.fn(),
+			addAttempts: vi.fn(),
 			toggleTaskWatch: vi.fn(),
+			saveGlobalSettings: vi.fn().mockResolvedValue(undefined),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",
@@ -145,18 +147,21 @@ function renderModal(
 		onClose?: () => void;
 		targetStatus?: TaskStatus;
 		globalSettings?: GlobalSettings;
+		task?: Task;
+		onGlobalSettingsChange?: (settings: GlobalSettings) => void;
 	},
 ) {
 	return render(
 		<I18nProvider>
 			<LaunchVariantsModal
-				task={baseTask}
+				task={opts?.task ?? baseTask}
 				project={project}
 				targetStatus={opts?.targetStatus ?? "in-progress"}
 				agents={agents}
 				globalSettings={opts?.globalSettings ?? makeGlobalSettings()}
 				dispatch={opts?.dispatch ?? vi.fn()}
 				onClose={opts?.onClose ?? vi.fn()}
+				onGlobalSettingsChange={opts?.onGlobalSettingsChange}
 			/>
 		</I18nProvider>,
 	);
@@ -540,6 +545,75 @@ describe("LaunchVariantsModal", () => {
 			if (backdrop) await user.click(backdrop);
 
 			expect(onClose).toHaveBeenCalled();
+		});
+	});
+
+	describe("watch default preference", () => {
+		it("initializes the Watch toggle from globalSettings.watchByDefault for a new task", () => {
+			const gs = makeGlobalSettings({ watchByDefault: true });
+			renderModal(makeProject(), { globalSettings: gs });
+			// baseTask has no explicit `watched` → falls back to the remembered preference.
+			expect(screen.getByText("Watching")).toBeInTheDocument();
+		});
+
+		it("defaults to unwatched when no preference is stored", () => {
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
+			expect(screen.getByText("Watch")).toBeInTheDocument();
+		});
+
+		it("respects an existing task's explicit watched flag over the default", () => {
+			const gs = makeGlobalSettings({ watchByDefault: false });
+			renderModal(makeProject(), { globalSettings: gs, task: { ...baseTask, watched: true } });
+			expect(screen.getByText("Watching")).toBeInTheDocument();
+		});
+
+		it("persists the choice as the new default when the toggle is clicked", async () => {
+			const user = userEvent.setup();
+			const onGlobalSettingsChange = vi.fn();
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings(), onGlobalSettingsChange });
+
+			await user.click(screen.getByText("Watch"));
+
+			expect(onGlobalSettingsChange).toHaveBeenCalledWith(
+				expect.objectContaining({ watchByDefault: true }),
+			);
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ watchByDefault: true }),
+			);
+			expect(screen.getByText("Watching")).toBeInTheDocument();
+		});
+
+		it("applies the remembered Watch default to the task on launch", async () => {
+			const user = userEvent.setup();
+			const dispatch = vi.fn();
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			mockedApi.request.toggleTaskWatch.mockResolvedValue({ ...baseTask, watched: true });
+
+			renderModal(makeProject(), { dispatch, globalSettings: makeGlobalSettings({ watchByDefault: true }) });
+
+			await user.click(screen.getByText("Launch"));
+
+			await vi.waitFor(() => {
+				expect(mockedApi.request.toggleTaskWatch).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					watched: true,
+				});
+			});
+		});
+
+		it("does not touch watch on launch when the toggle matches the task state", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
+
+			await user.click(screen.getByText("Launch"));
+
+			await vi.waitFor(() => {
+				expect(mockedApi.request.spawnVariants).toHaveBeenCalled();
+			});
+			expect(mockedApi.request.toggleTaskWatch).not.toHaveBeenCalled();
 		});
 	});
 

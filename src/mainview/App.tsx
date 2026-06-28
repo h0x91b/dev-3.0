@@ -1441,6 +1441,7 @@ function App() {
 					globalSettings={globalSettings}
 					dispatch={dispatch}
 					onClose={() => setLaunchModal(null)}
+					onGlobalSettingsChange={setGlobalSettings}
 				/>
 			)}
 			{pendingNavigation && (
