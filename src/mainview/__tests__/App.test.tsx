@@ -143,6 +143,10 @@ async function renderApp() {
 
 describe("App keyboard shortcuts", () => {
 	beforeEach(() => {
+		// These assert the DESKTOP keymap (⌘Q, ⌘N, zoom, ⌘1–9). happy-dom looks like
+		// a browser to `isRemote()`, where those combos are dropped/aliased, so fake
+		// the Electrobun webview flag. Safe here because rpc is mocked (above).
+		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
 		vi.clearAllMocks();
 		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);

@@ -3,7 +3,10 @@ import {
 	APP_SHORTCUTS,
 	SHORTCUT_CATEGORY_KEY,
 	SHORTCUT_CATEGORY_ORDER,
+	appShortcutsForMode,
+	shortcutAppliesInMode,
 	shortcutKeysFor,
+	shortcutKeysForMode,
 	shortcutsInCategory,
 } from "../keymap";
 import en from "../i18n/translations/en";
@@ -45,5 +48,50 @@ describe("keymap registry", () => {
 		expect(nav.length).toBeGreaterThan(0);
 		expect(nav.every((s) => s.category === "navigation")).toBe(true);
 		expect(nav[0].id).toBe("go-to-project");
+	});
+
+	it("only valid scopes are used", () => {
+		for (const s of APP_SHORTCUTS) {
+			expect(["both", "desktop", "remote", undefined]).toContain(s.scope);
+		}
+	});
+
+	it("every remoteKeys override has non-empty per-platform strings", () => {
+		for (const s of APP_SHORTCUTS) {
+			if (!s.remoteKeys) continue;
+			expect(s.remoteKeys.mac.length, `empty remote mac keys for ${s.id}`).toBeGreaterThan(0);
+			expect(s.remoteKeys.other.length, `empty remote other keys for ${s.id}`).toBeGreaterThan(0);
+		}
+	});
+});
+
+describe("transport-aware keymap", () => {
+	it("shortcutAppliesInMode keeps `both`, drops `desktop` in remote", () => {
+		const both = APP_SHORTCUTS.find((s) => s.id === "go-to-project")!;
+		const desktopOnly = APP_SHORTCUTS.find((s) => s.id === "quit")!;
+		expect(shortcutAppliesInMode(both, false)).toBe(true);
+		expect(shortcutAppliesInMode(both, true)).toBe(true);
+		expect(shortcutAppliesInMode(desktopOnly, false)).toBe(true);
+		expect(shortcutAppliesInMode(desktopOnly, true)).toBe(false);
+	});
+
+	it("appShortcutsForMode(remote) excludes every desktop-only shortcut", () => {
+		const remote = appShortcutsForMode(true);
+		const ids = remote.map((s) => s.id);
+		for (const id of ["quit", "hide", "new-window", "zoom-in", "zoom-out", "zoom-reset", "hard-refresh"]) {
+			expect(ids, `${id} should be hidden in remote`).not.toContain(id);
+		}
+		// Desktop keeps them all.
+		expect(appShortcutsForMode(false).length).toBe(APP_SHORTCUTS.length);
+		expect(remote.length).toBeLessThan(APP_SHORTCUTS.length);
+	});
+
+	it("shortcutKeysForMode applies remoteKeys only in remote mode", () => {
+		const switchProject = APP_SHORTCUTS.find((s) => s.id === "switch-project")!;
+		expect(shortcutKeysForMode(switchProject, true, false)).toBe("⌘1–9"); // desktop
+		expect(shortcutKeysForMode(switchProject, true, true)).toBe("G then 1–9"); // remote alias
+		// A shortcut without remoteKeys is unchanged across modes.
+		const palette = APP_SHORTCUTS.find((s) => s.id === "command-palette")!;
+		expect(shortcutKeysForMode(palette, true, true)).toBe(shortcutKeysForMode(palette, true, false));
 	});
 });

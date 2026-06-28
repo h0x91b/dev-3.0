@@ -4,6 +4,8 @@ const keymap = {
 	"keymap.tab.app": "Приложение",
 	"keymap.tab.terminal": "Терминал (tmux)",
 	"keymap.footerEscape": "Esc — закрыть",
+	"keymap.remoteNotice":
+		"Вы в браузере. Часть комбинаций (⌘1–9, ⌘N, зум, обновление) занята браузером — используйте показанные альтернативы или палитру команд (⇧⌘P).",
 
 	"keymap.category.navigation": "Навигация",
 	"keymap.category.create": "Создание",

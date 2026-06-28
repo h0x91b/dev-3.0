@@ -3,12 +3,12 @@ import { createPortal } from "react-dom";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT, type TranslationKey } from "../i18n";
 import {
-	APP_SHORTCUTS,
 	SHORTCUT_CATEGORY_KEY,
 	SHORTCUT_CATEGORY_ORDER,
-	shortcutKeysFor,
+	appShortcutsForMode,
+	shortcutKeysForMode,
 } from "../keymap";
-import { isMac } from "../utils/platform";
+import { isMac, isRemote } from "../utils/platform";
 import { useFocusTrap } from "../utils/useFocusTrap";
 
 export type ShortcutsTab = "app" | "terminal";
@@ -42,14 +42,21 @@ function spaceModifierGlyphs(keys: string): string {
 	return keys.replace(/([⌘⇧⌥⌃])(?=\S)/gu, "$1 ");
 }
 
-/** App-level shortcuts grouped by category, rendered from the keymap registry. */
-function buildAppSections(t: T, mac: boolean): Section[] {
+/**
+ * App-level shortcuts grouped by category, rendered from the keymap registry.
+ * Transport-aware: in remote (browser) mode, desktop-only shortcuts are dropped
+ * and `remoteKeys` overrides are shown (e.g. ⌘1–9 → `G then 1–9`).
+ */
+function buildAppSections(t: T, mac: boolean, remote: boolean): Section[] {
+	const shortcuts = appShortcutsForMode(remote);
 	return SHORTCUT_CATEGORY_ORDER.map((category) => ({
 		title: t(SHORTCUT_CATEGORY_KEY[category]),
-		rows: APP_SHORTCUTS.filter((s) => s.category === category).map((s) => ({
-			keys: spaceModifierGlyphs(shortcutKeysFor(s, mac)),
-			desc: t(s.descKey),
-		})),
+		rows: shortcuts
+			.filter((s) => s.category === category)
+			.map((s) => ({
+				keys: spaceModifierGlyphs(shortcutKeysForMode(s, mac, remote)),
+				desc: t(s.descKey),
+			})),
 	})).filter((section) => section.rows.length > 0);
 }
 
@@ -161,7 +168,9 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 
 	if (!open) return null;
 
-	const sections = tab === "app" ? buildAppSections(t, isMac()) : buildTmuxSections(t);
+	const remote = isRemote();
+	const sections = tab === "app" ? buildAppSections(t, isMac(), remote) : buildTmuxSections(t);
+	const showRemoteNotice = remote && tab === "app";
 	const tabs: ShortcutsTab[] = ["app", "terminal"];
 	const tabLabel: Record<ShortcutsTab, string> = {
 		app: t("keymap.tab.app"),
@@ -221,6 +230,11 @@ export default function KeyboardShortcutsModal({ open, tab, onTabChange, onClose
 						))}
 					</div>
 				</div>
+				{showRemoteNotice && (
+					<div className="mx-6 mt-3 rounded-lg border border-edge bg-raised px-3 py-2 text-xs text-fg-3 leading-relaxed">
+						{t("keymap.remoteNotice")}
+					</div>
+				)}
 				<div className="overflow-y-auto px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
 					{sections.map((section) => (
 						<section key={section.title}>

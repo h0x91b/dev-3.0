@@ -5,6 +5,8 @@ const keymap = {
 	"keymap.tab.app": "App",
 	"keymap.tab.terminal": "Terminal (tmux)",
 	"keymap.footerEscape": "Esc to close",
+	"keymap.remoteNotice":
+		"You're in the browser. Some combos (⌘1–9, ⌘N, zoom, refresh) are reserved by your browser — use the shown alternatives or the Command Palette (⇧⌘P).",
 
 	// Categories (App tab)
 	"keymap.category.navigation": "Navigation",
