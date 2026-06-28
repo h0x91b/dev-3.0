@@ -9,6 +9,11 @@ Implementation status: **Level 1 (board carousel) implemented** (`MobileBoardCar
 `KanbanBoard.tsx`, `KanbanColumn.tsx` `fullWidth`, `useViewport.ts` device-width, i18n + tip).
 **Level 2 (terminal pane carousel) not yet built** — next step; needs a pane-index RPC + tmux keep-zoom.
 
+> **Breakpoint correction (2026-06-28):** this original brief assumed `< 1024px` / `useMobile()`. The
+> **canonical gate is `< 768px` via the reactive `useNarrowViewport(768)`** (`useMobile` 1024 is
+> mount-once and drives only the viewport meta). The 1024 references below are superseded — see
+> `narrow-viewport-doctrine.md` §2 and bible §12.1.
+
 ## 0. One-paragraph framing
 
 On a phone (reached through `dev3 remote`) or any sub-1024px viewport, the desktop

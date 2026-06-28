@@ -480,43 +480,75 @@ ux_architecture:
       rationale: "The Velocity Cockpit is the product's motivation engine. New features that produce a countable, repeatable signal should emit it into the stats pipeline at BUILD time (so the data exists even before it is charted) and surface a visualization on the read-only cockpit WHEN motivational — within the complexity + honesty budget (prefer one strong signal; forward-only 'tracking since', never fake history; numbers must be true). Diagnostic-only metrics keep the data but stay off the cockpit. See PRODUCT_UX_BIBLE §1.1 + UX_DECISIONS 2026-06-29."
 
   responsive:
-    status: "partial" # Level 1 (board_carousel) implemented; Level 2 (pane_carousel) proposed — see docs/ux/feature-plans/mobile-carousel-navigation.md
-    implementation: "board_carousel: MobileBoardCarousel.tsx + KanbanBoard.tsx (useNarrowViewport(768)) + KanbanColumn fullWidth + useViewport device-width. pane_carousel: not yet built."
-    idea_credit: "Ittai Zeidman"
+    status: "partial" # board_carousel implemented; full mobile doctrine proposed — see bible §12 + feature-plans/narrow-viewport-doctrine.md
+    idea_credit: "Ittai Zeidman (carousel reference)"
+    principle: "On a narrow viewport show exactly ONE sibling at a time and move between siblings by swipe + a visible pager. Columns, tasks-in-column, terminal panes, active tasks, settings sections, diff files all collapse to this one-at-a-time idiom. A responsive view-mode of existing screens — never a new destination, route, or 'mobile mode' setting."
+    no_new_nav: "Narrow layouts are responsive view-modes of existing screens. They MUST NOT add a destination, nav item, route, or be entered via a setting. Layout follows the viewport automatically."
     breakpoints:
-      narrow:
-        rule: "screen.width < 1024"
-        signal: "useMobile() (existing); gate on viewport width, NOT on isElectrobun"
-        covers: ["phone via dev3 remote", "hypothetical electrobun-mobile", "narrowed desktop browser window"]
-    principle: "On a narrow viewport show exactly one element at a time and move between siblings by swipe/pager. Applies to columns, tasks-in-column, and terminal panes alike."
-    no_new_nav: "Carousels are responsive view-modes of existing screens (project board, task terminal). They MUST NOT add a destination, nav item, or be entered via a setting as the primary mechanism. Layout follows the viewport automatically."
-    view_modes:
-      board_carousel:
-        screen: "project"
-        layout: "CSS scroll-snap track; one column = 100vw (scroll-snap-align:start); column body scrolls vertically. Axis disambiguation delegated to the browser (outer x-snap vs inner y-scroll)."
-        full_surface_swipe: true # column bodies scroll vertically only → horizontal swipe is unambiguous
-        column_set: "same order as desktop; collapsed columns (useColumnCollapse) EXCLUDED from the track; empty columns KEPT for position stability"
-        pager: "sticky header: name + count + position (n / N) + ‹/› chevrons + dot indicators; tap name → bottom-sheet column list"
-        drag_replacement: "no drag with one column visible — card long-press → 'Move to <status>' action sheet wired to the existing status-change path; completion targets reuse confirmTaskCompletion"
-        filters: "LabelFilterBar + search collapse into a bottom sheet behind a header funnel button"
-        evidence: ["src/mainview/components/KanbanBoard.tsx", "KanbanColumn.tsx", "hooks/useColumnCollapse.ts"]
-      pane_carousel:
-        screen: "task"
-        layout: "one zoomed tmux pane (resize-pane -Z); single ghostty TerminalView canvas"
-        full_surface_swipe: false # terminal runs interactive TUIs that consume touch + horizontal motion
-        pager: "docked bar: ‹ prev · pane n / N + dots · next ›; optional 24px edge-swipe gutters as a shortcut; hidden when session has one pane"
-        backend: "reuse tmuxAction nextPane (:.+) / prevPane (:.-) / zoom (-Z). KEEP-ZOOM gotcha: tmux auto-unzooms on pane select, so a step = select-pane then resize-pane -Z (combine into one backend action / keepZoom flag)"
-        evidence: ["src/mainview/components/TaskWorkspacePane.tsx", "TerminalView.tsx", "src/bun/rpc-handlers/tmux-pty.ts (tmuxAction)"]
-    viewport_meta: "Extend useViewport(): narrow + browser → device-width on board/list screens (one column == one screen); terminal screen keeps a stable readable width for tmux sizing. Today browser-remote is pinned to width=1024 for every screen — relax for the board."
-    accessibility:
-      - "Every swipe has a button equivalent (chevrons/dots) and arrow-key support when the pager is focused; swipe is never the only way."
-      - "Focus follows the active column/pane heading on change; aria-live announces the new column/pane."
-      - "Board carousel: aria-roledescription=carousel, columns as group/tabpanel, pager as tablist. Pane pager: labelled group with prev/next buttons."
-      - "Honour prefers-reduced-motion: snap instantly, no smooth-scroll animation."
+      narrow_mobile:
+        rule: "viewport width < 768px"
+        signal: "useNarrowViewport(768) — matchMedia, reactive (CAROUSEL_MAX_WIDTH). THIS is the layout gate."
+        aligns_with: "Tailwind md"
+        covers: ["phone via dev3 remote", "narrowed desktop browser window", "hypothetical electrobun-mobile"]
+      compact:
+        rule: "viewport width < 1600px"
+        signal: "useCompact() (COMPACT_MAX_WIDTH) — reactive"
+        governs: "dense-DESKTOP label hiding + header overflow kebab. NOT mobile. A wide-but-not-huge desktop is compact, not narrow."
+      device_class:
+        rule: "screen.width < 1024px"
+        signal: "useMobile() — mount-once, NOT reactive"
+        governs: "ONLY the <meta viewport> decision in useViewport(). NOT a layout gate."
+      reconciliation: "Gate LAYOUT on useNarrowViewport (reactive). Use useMobile ONLY for viewport-meta. NEVER gate layout on isElectrobun (transport != width). Earlier 'sub-1024 / useMobile' wording was wrong; shipped gate is 768 / useNarrowViewport."
+    gesture_law:
+      scroll_body: "board columns / lists / settings sections — one sibling = 100vw via CSS scroll-snap, body scrolls the OTHER axis. FULL-SURFACE SWIPE ALLOWED (axis unambiguous; delegate to browser)."
+      live_content: "terminal pane / diff stream / any canvas/TUI — one element + explicit pager (chevrons + position + dots). FULL-SURFACE SWIPE FORBIDDEN (content eats touch/horizontal motion); optional thin edge-swipe gutters only."
+      always: "every swipe has a button + keyboard equivalent (chevrons/dots/Arrow Left-Right); swipe is never the only way. Focus follows the active sibling; aria-live announces it. prefers-reduced-motion snaps instantly — honour EVERYWHERE (today only MobileBoardCarousel does)."
+    surface_adaptation: # every §5 surface gets a narrow form
+      kanban_board: { narrow: "column carousel (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept)", status: observed, evidence: "MobileBoardCarousel.tsx, KanbanBoard.tsx useNarrowViewport(768), KanbanColumn fullWidth" }
+      task_move_drag: { narrow: "drag impossible -> 'Move to <status>' bottom action sheet (long-press) on existing status path; completion reuses confirmTaskCompletion", status: proposed }
+      board_filters: { narrow: "bottom sheet behind a header funnel button (LabelFilterBar + search)", status: proposed }
+      terminal_panes: { narrow: "pane carousel — one zoomed pane + explicit pager (tmuxAction next/prev + keep-zoom: select-pane then resize-pane -Z)", status: proposed, evidence: "TaskWorkspacePane.tsx, TerminalView.tsx, tmux-pty.ts tmuxAction" }
+      active_tasks: { narrow: "ActiveTasksStrip (horizontal task carousel) — already used in ProjectView isBrowserMode; SplitLayout/ActiveTasksSidebar never shown <768 (SplitLayout breaks ~<600px)", status: observed, evidence: "ProjectView.tsx isBrowserMode branch, ActiveTasksStrip, SplitLayout.tsx" }
+      task_inspector: { narrow: "2x2 bar grid cannot fit -> one summary bar + 'task actions' bottom sheet (bars become sheet sections); metadata grid already reflows", status: proposed, evidence: "TaskInfoPanel.tsx (uses useCompact)" }
+      diff_viewer: { narrow: "files-aside (22rem) -> bottom-sheet file picker; diff stream owns screen (live-content: explicit nav, no full-surface swipe)", status: proposed, evidence: "TaskDiffViewer.tsx w-[22rem] aside" }
+      modal: { narrow: "full-bleed sheet: max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)], or BottomSheet for action-style modals", status: proposed, evidence: "TaskDetailModal 35rem, AddProjectModal 32.5rem, confirm() 26rem — all fixed-width" }
+      context_menu: { narrow: "bottom action sheet (long-press trigger)", status: proposed }
+      settings: { narrow: "tabs -> one section at a time (carousel / <select> / accordion); no horizontal tab overflow", status: proposed, evidence: "GlobalSettings.tsx, ProjectSettings.tsx" }
+      dashboard: { narrow: "already vertical project list — fits; ensure full-width cards", status: ok, evidence: "ActivityOverview.tsx" }
+      command_palette: { narrow: "needs a TOUCH entry + w-full max-w-[calc(100vw-2rem)] (PaletteShell is 34rem fixed, keyboard-only) — it is the action fallback for the absent native menu", status: proposed, evidence: "PaletteShell.tsx w-[34rem], App.tsx Cmd+K/Cmd+Shift+P" }
+      global_header: { narrow: "reflow: logo + truncated breadcrumb + ONE overflow kebab for all utilities; never a 9-icon row (useCompact at 1600 only hides labels)", status: proposed, evidence: "GlobalHeader.tsx flex justify-between, useCompact.ts" }
+      hover_terminal_preview: { narrow: "DISABLED on touch/narrow (no hover; popover obscures)", status: observed, evidence: "useTerminalPreview.ts hoverPreviewEnabled()" }
+      toast: { narrow: "already max-w-[calc(100vw-2rem)] — OK", status: ok, evidence: "toast.tsx" }
+    navigation_touch:
+      problem: "Keyboard-first nav is DEAD on touch (Cmd+K/Cmd+Shift+P palettes, Cmd+1..9, Cmd+/ hint overlay) and the native application menu is ABSENT in remote/browser mode."
+      backbone: "breadcrumb spine stays the touch nav backbone (logo->dashboard, project->board, chevron->switcher, back/forward). Keep reachable (>=44px targets, right-0 dropdown fallback, not pushed off-screen by long task titles)."
+      action_fallback: "command/action palette gains a TOUCH entry + responsive width on narrow; because the native menu is gone in remote, the action palette / per-object action sheets become the canonical action surface on mobile. This is the one sanctioned exception to 'palettes are keyboard-only / no button'."
+      hard_rule: "NO feature may be touch-unreachable. If an action's only desktop path is a keyboard shortcut or the native menu, it MUST have a touch path on narrow (action sheet, palette, or inline control)."
+    primitive_bottom_sheet:
+      status: proposed
+      need: "No bottom-sheet/drawer exists today (only centered Modal, confirm(), toast, Popover). ONE reusable BottomSheet is mandated."
+      used_for: ["context-menu -> action sheet", "board filters", "column-jump list", "Move to <status>", "inspector actions", "diff file picker", "narrow form of action-style modals"]
+      requirements: "slide from bottom; respect env(safe-area-inset-bottom); trap + restore focus; dismiss on backdrop tap / swipe-down / Esc; pure React (no native dialog — works in desktop and browser). Build once; no ad-hoc sheets."
+    budgets_narrow:
+      global_header: "logo + breadcrumb + 1 overflow kebab; rest into kebab/sheet"
+      page_primary: "1 (FAB or header button); rest into a bottom sheet"
+      inspector: "1 summary bar; all actions into the actions sheet"
+      toolbar_row: "wrap or sheet — NEVER a non-wrapping overflow row"
+      touch_target: ">= 44x44px (many controls are 32px / p-0.5 — bump on narrow)"
+    viewport_meta: "useViewport(): browser -> device-width (so a phone reports true width and media queries fire; replaces the old fixed width=1024). Keep the .browser-mode 16px input-font rule (prevents iOS focus-zoom). Honour env(safe-area-inset-*) (viewport already sets viewport-fit=cover)."
+    reusable_primitives: ["useNarrowViewport(px) reactive gate", "MobileBoardCarousel scroll-snap+pager (reference)", "TerminalView touch->mouse bridge (model for canvas surfaces)", "ExtraKeyBar vw-based sizing (mobile toolbars)", "prefersReducedMotion() (apply site-wide)", ".browser-mode CSS sentinel (env-specific styling)"]
 
   anti_patterns:
     - id: "full-surface-swipe-over-terminal"
       description: "Hijacking full-pane horizontal swipe to change tmux panes. The terminal runs interactive TUIs (vim/htop/less) that consume touch and horizontal motion. Pane switching must use the explicit pager (optionally thin edge-swipe gutters), not a full-surface swipe. Full-surface swipe is allowed ONLY on the board, where column bodies scroll vertically."
+    - id: "touch-unreachable-feature"
+      description: "An action whose only path is a keyboard shortcut (Cmd+K/Cmd+Shift+P/Cmd+1..9/hint overlay) or the native application menu. On narrow (<768) it is dead — no keyboard, and the native menu is absent in remote. Every feature needs a touch path (palette touch entry, action sheet, or inline control). See responsive.navigation_touch."
+    - id: "fixed-width-overlay-on-narrow"
+      description: "A Modal/palette/popover with a hardcoded w-[NNrem] and no max-w-[calc(100vw-2rem)] overflows a 390px phone (PaletteShell 34rem, TaskDetailModal 35rem, confirm() 26rem, diff aside 22rem). Overlays must clamp to the viewport on narrow."
+    - id: "non-wrapping-toolbar-on-narrow"
+      description: "An icon/action row (flex justify-end / justify-between, no flex-wrap) that silently overflows under 768px (GlobalHeader <=9 buttons, TaskCard footer, inspector collapsed bar). On narrow, wrap or move to a bottom sheet — never a clipped row."
+    - id: "layout-gated-on-transport-not-width"
+      description: "Gating a layout on isElectrobun (or only on useMobile's mount-once 1024 check) instead of the reactive useNarrowViewport. Transport != viewport width: browser/remote can be wide, desktop can be narrowed. Gate layout on useNarrowViewport; use isElectrobun/useMobile only for transport/viewport-meta."
     - id: "toolbar-button-creep"
       description: "Adding yet another always-visible git/tmux/dev-server button to TaskInfoPanel or task toolbars without checking the budget. The changelog shows a long history of this (always-visible-git-buttons, tmux-action-buttons, push-button, create-pr-button, etc.). Group or overflow instead."
     - id: "hardcoded-colors"
