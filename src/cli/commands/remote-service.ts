@@ -70,7 +70,23 @@ export function buildExecStartArgs(args: ParsedArgs): string[] {
 		out.push(`--expose-ports=${args.flags["expose-ports"]}`);
 	}
 	if (args.flags["static-code"] && args.flags["static-code"] !== "true") {
-		out.push(`--static-code=${args.flags["static-code"]}`);
+		const code = args.flags["static-code"];
+		// Mirror buildServerEnv()'s min-length gate — otherwise the unit is written
+		// and enabled, but every `dev3 remote start` it spawns exits non-zero, and
+		// Restart=on-failure turns that into a silent restart loop (only visible in
+		// journalctl). Validate at install time instead.
+		if (code.length < 4) {
+			exitUsage(`--static-code must be at least 4 characters (got "${code}")`);
+		}
+		// systemd splits ExecStart on whitespace (no shell), so a code with spaces
+		// would be parsed as extra positional args and crash the server on every
+		// start. Reject it here rather than emit a broken unit.
+		if (/\s/.test(code)) {
+			exitUsage(`--static-code must not contain whitespace (systemd splits ExecStart on spaces)`);
+		}
+		out.push(`--static-code=${code}`);
+	} else if (args.flags["static-code"] === "true") {
+		exitUsage(`--static-code requires a value: --static-code=<your-code>`);
 	}
 	return out;
 }

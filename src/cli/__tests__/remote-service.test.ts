@@ -84,6 +84,29 @@ describe("buildExecStartArgs", () => {
 		expect(() => buildExecStartArgs(args({ port: "abc" }))).toThrow("__exit__");
 		expect(stderrText()).toContain("--port must be an integer");
 	});
+
+	// F1: install-service must enforce the same ≥4 minimum that `remote start`
+	// does — otherwise systemd Restart=on-failure loops forever on a too-short code.
+	it("rejects a static-code shorter than 4 chars (no silent systemd restart loop)", () => {
+		expect(() => buildExecStartArgs(args({ "static-code": "ab" }))).toThrow("__exit__");
+		expect(stderrText()).toContain("--static-code must be at least 4 characters");
+	});
+
+	// F7: systemd splits ExecStart on whitespace, so a code with a space would be
+	// parsed as extra positional args and crash the server on every start.
+	it("rejects a static-code containing whitespace (breaks systemd ExecStart)", () => {
+		expect(() => buildExecStartArgs(args({ "static-code": "hello world" }))).toThrow("__exit__");
+		expect(stderrText()).toContain("must not contain whitespace");
+	});
+
+	it("rejects --static-code with no value", () => {
+		expect(() => buildExecStartArgs(args({ "static-code": "true" }))).toThrow("__exit__");
+		expect(stderrText()).toContain("--static-code requires a value");
+	});
+
+	it("accepts a valid static-code", () => {
+		expect(buildExecStartArgs(args({ "static-code": "letmein" }))).toContain("--static-code=letmein");
+	});
 });
 
 describe("renderUnitFile", () => {
