@@ -18,11 +18,13 @@ interface ActivityOverviewProps {
 	onReorderProjects?: (projectIds: string[]) => void | Promise<void>;
 }
 
-/** Statuses that require the user's attention — shown as individual task rows. */
-const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
+/** Statuses worth their own row — they're waiting on a human (questions, your
+ * review, or an open PR review). Tasks parked in a custom column always get a
+ * row too, regardless of status (see columnOf below). */
+const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user", "review-by-colleague"];
 
 /** Statuses that are "background work" — collapsed into a summary line. */
-const BACKGROUND_STATUSES: TaskStatus[] = ["in-progress", "review-by-ai", "review-by-colleague"];
+const BACKGROUND_STATUSES: TaskStatus[] = ["in-progress", "review-by-ai"];
 
 type DropSide = "before" | "after";
 
@@ -185,9 +187,23 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					const showDropBefore = dropTarget?.projectId === project.id && dropTarget.side === "before";
 					const showDropAfter = dropTarget?.projectId === project.id && dropTarget.side === "after";
 
-					// Split into attention tasks (shown individually) and background tasks (summarized)
-					const attentionTasks = tasks.filter((t) => ATTENTION_STATUSES.includes(t.status));
-					const backgroundTasks = tasks.filter((t) => BACKGROUND_STATUSES.includes(t.status));
+					// A task is "in" a custom column only when its customColumnId still
+					// resolves to a live column; a dangling id (deleted column) falls back
+					// to status-based bucketing, mirroring the kanban (PR #737).
+					const customColumnById = new Map((project.customColumns ?? []).map((c) => [c.id, c] as const));
+					const columnOf = (task: Task) =>
+						task.customColumnId ? customColumnById.get(task.customColumnId) ?? null : null;
+
+					// Rows shown individually: attention statuses (questions / your review /
+					// PR review) plus any task parked in a custom column. Custom-column
+					// tasks carry the column's identity, not their underlying status, and
+					// are never collapsed into the summary line below.
+					const rowTasks = tasks.filter(
+						(task) => columnOf(task) !== null || ATTENTION_STATUSES.includes(task.status),
+					);
+					const backgroundTasks = tasks.filter(
+						(task) => columnOf(task) === null && BACKGROUND_STATUSES.includes(task.status),
+					);
 
 					// Build summary segments: "3 in-progress · 2 AI review"
 					const summarySegments: { status: TaskStatus; count: number }[] = [];
@@ -325,8 +341,12 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 
 							{hasActiveTasks && (
 								<div className="border-t border-edge">
-									{/* Attention tasks — shown individually */}
-									{attentionTasks.map((task) => (
+									{/* Attention + custom-column tasks — shown individually */}
+									{rowTasks.map((task) => {
+										const col = columnOf(task);
+										const rowColor = col ? col.color : statusColors[task.status];
+										const rowLabel = col ? col.name : getStatusLabel(task.status, t, project);
+										return (
 										<button
 											key={task.id}
 											data-hint-id={`task:${task.id}`}
@@ -335,8 +355,8 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										>
 											<span
 												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-												style={{ backgroundColor: statusColors[task.status] }}
-												title={getStatusLabel(task.status, t, project)}
+												style={{ backgroundColor: rowColor }}
+												title={rowLabel}
 											/>
 											<span className="text-fg-2 text-sm truncate flex-1">
 												{getTaskTitle(task)}
@@ -346,9 +366,9 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											)}
 											<span
 												className="text-xs flex-shrink-0"
-												style={{ color: statusColors[task.status] }}
+												style={{ color: rowColor }}
 											>
-												{getStatusLabel(task.status, t, project)}
+												{rowLabel}
 											</span>
 											{task.movedAt && (
 												<span className="text-fg-muted text-xs flex-shrink-0 w-16 text-right">
@@ -356,7 +376,8 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 												</span>
 											)}
 										</button>
-									))}
+										);
+									})}
 
 									{/* Background tasks — collapsed summary line */}
 									{summarySegments.length > 0 && (

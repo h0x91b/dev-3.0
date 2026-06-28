@@ -206,6 +206,72 @@ describe("ActivityOverview", () => {
 		expect(ops.compareDocumentPosition(repo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
+	it("shows PR Review tasks as individual rows, not collapsed into the summary", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [
+					{ ...mockTask, id: "pr1", title: "Ship the parser", status: "review-by-colleague" },
+				],
+			},
+		]);
+
+		renderActivityOverview();
+
+		// The task title is rendered as its own row...
+		expect(await screen.findByText("Ship the parser")).toBeInTheDocument();
+		// ...with the "PR Review" status pill, instead of being folded into the
+		// background summary line.
+		expect(screen.getByText("PR Review")).toBeInTheDocument();
+	});
+
+	it("shows custom-column tasks as rows labeled with the column name", async () => {
+		const projWithColumn: Project = {
+			...mockProject,
+			customColumns: [{ id: "col1", name: "Blocked", color: "#ff0000", llmInstruction: "" }],
+		};
+		// An in-progress task would normally be summarized; parking it in a custom
+		// column promotes it to its own row carrying the column's identity.
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [
+					{ ...mockTask, id: "c1", title: "Parked work", status: "in-progress", customColumnId: "col1" },
+				],
+			},
+		]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[projWithColumn]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+
+		expect(await screen.findByText("Parked work")).toBeInTheDocument();
+		// Labeled by the custom column, not its underlying "Agent is Working" status.
+		expect(screen.getByText("Blocked")).toBeInTheDocument();
+		expect(screen.queryByText("Agent is Working")).not.toBeInTheDocument();
+	});
+
+	it("ignores a dangling customColumnId and falls back to status bucketing", async () => {
+		// Column "ghost" no longer exists on the project → the task must not be
+		// treated as a custom-column row; an in-progress task stays in the summary.
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [
+					{ ...mockTask, id: "g1", title: "Orphan task", status: "in-progress", customColumnId: "ghost" },
+				],
+			},
+		]);
+
+		renderActivityOverview();
+
+		await screen.findByText("My Project");
+		// Background in-progress task is summarized, never shown as a titled row.
+		expect(screen.queryByText("Orphan task")).not.toBeInTheDocument();
+	});
+
 	it("opens the add project flow from the activity header", async () => {
 		const user = userEvent.setup();
 		const onOpenAddProject = vi.fn();
