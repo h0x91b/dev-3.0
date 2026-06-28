@@ -24,6 +24,11 @@ function compact(n: number): string {
 	return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
+/** Only surface a red "beat-your-average" zone once there's a real average (>0). */
+function redZoneOf(avg: number | null): number | undefined {
+	return avg != null && avg > 0 ? avg : undefined;
+}
+
 function loadRange(): StatsRange {
 	const v = (typeof localStorage !== "undefined" && localStorage.getItem(RANGE_KEY)) as StatsRange | null;
 	return v === "day" || v === "week" || v === "month" || v === "all" ? v : "week";
@@ -138,7 +143,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<StatGauge
 								value={data.hero.tasksShipped.value}
 								max={data.hero.tasksShipped.max}
-								redZone={data.hero.tasksShipped.redZone ?? undefined}
+								redZone={redZoneOf(data.hero.tasksShipped.redZone)}
 								redZoneMode="above"
 								label={t("stats.hero.tasksShipped")}
 								unit={periodLabel}
@@ -150,7 +155,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<StatGauge
 								value={data.hero.linesChanged.value}
 								max={data.hero.linesChanged.max}
-								redZone={data.hero.linesChanged.redZone ?? undefined}
+								redZone={redZoneOf(data.hero.linesChanged.redZone)}
 								redZoneMode="above"
 								label={t("stats.hero.linesChanged")}
 								unit={periodLabel}
@@ -162,7 +167,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<StatGauge
 								value={data.hero.velocity.value}
 								max={data.hero.velocity.max}
-								redZone={data.hero.velocity.redZone ?? undefined}
+								redZone={redZoneOf(data.hero.velocity.redZone)}
 								redZoneMode="above"
 								label={t("stats.hero.velocity")}
 								unit={t("stats.unit.perDay")}
@@ -174,7 +179,6 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<StatGauge
 								value={data.hero.completionRate.value}
 								max={100}
-								redZone={40}
 								label={t("stats.hero.completionRate")}
 								unit={t("stats.unit.percent")}
 								caption={t("stats.heroCaption.completionRate")}

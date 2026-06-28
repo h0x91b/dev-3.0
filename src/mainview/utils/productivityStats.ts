@@ -458,7 +458,8 @@ export function computeProductivityStats(
 		completionRate: {
 			value: completionRate,
 			previous: null,
-			redZone: 40,
+			// A ratio, not a count-vs-average — no red "beat-your-norm" zone.
+			redZone: null,
 			max: 100,
 			trendPct: null,
 		},

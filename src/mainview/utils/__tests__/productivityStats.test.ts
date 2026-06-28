@@ -175,9 +175,9 @@ describe("computeProductivityStats — red zone = rolling average", () => {
 		expect(r.hero.velocity.redZone).toBeCloseTo(0.3, 5); // 8 / 28 ≈ 0.286 → 0.3
 	});
 
-	it("keeps a fixed completion-rate red zone and none for all-time", () => {
+	it("has no red zone on completion rate, and none for all-time counts", () => {
 		const week = computeProductivityStats(events, "week", NOW);
-		expect(week.hero.completionRate.redZone).toBe(40);
+		expect(week.hero.completionRate.redZone).toBeNull();
 		const all = computeProductivityStats(events, "all", NOW);
 		expect(all.hero.tasksShipped.redZone).toBeNull();
 		expect(all.hero.velocity.redZone).toBeNull();
