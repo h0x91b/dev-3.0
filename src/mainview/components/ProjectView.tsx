@@ -12,6 +12,8 @@ import { useT } from "../i18n";
 import ActiveTasksStrip from "./ActiveTasksStrip";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 type SidebarMode = "sidebar" | "board";
 const LS_SIDEBAR_MODE = "dev3-split-sidebar-mode";
@@ -58,6 +60,7 @@ function ProjectView({
 	const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readSidebarMode);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const inlineDiff = useTaskInlineDiffState(activeTaskId);
+	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 
 	const toggleSidebarMode = useCallback((mode: SidebarMode) => {
 		setSidebarMode(mode);
@@ -112,6 +115,30 @@ function ProjectView({
 				<span className="text-fg-muted text-sm">{t("project.selectTaskForTerminal")}</span>
 			</div>
 		);
+
+		// Narrow viewport (phone / narrow window): zoom the task workspace. There
+		// is no room for the active-tasks list — task switching happens via the
+		// breadcrumb back button → board carousel. Keep the task's own info panel.
+		if (isNarrow) {
+			return (
+				<div className="flex-1 min-h-0 flex flex-col">
+					{activeTask && (
+						<TaskInfoPanel
+							task={activeTask}
+							project={project}
+							dispatch={dispatch}
+							navigate={navigate}
+							taskPorts={taskPorts}
+							taskResourceUsage={taskResourceUsage}
+							onOpenInlineDiff={inlineDiff.open}
+						/>
+					)}
+					<div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+						{terminalPane}
+					</div>
+				</div>
+			);
+		}
 
 		// Browser mode: stack sidebar on top for full-width terminal
 		if (isBrowserMode) {

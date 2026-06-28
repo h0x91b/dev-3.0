@@ -22,6 +22,7 @@ const columns = {
 	"labels.addLabel": "+ Add Label",
 	"labels.clearFilters": "Clear",
 	"labels.searchPlaceholderTasks": "Search tasks...",
+	"labels.openFilters": "Filter by label",
 	"labels.deleteLabel": "Delete label",
 	"labels.labelName": "Label name",
 	"labels.settingsTitle": "Labels",

@@ -376,3 +376,36 @@ button {
 	from { transform: scaleX(0); }
 	to { transform: scaleX(1); }
 }
+
+/* ---- Bottom sheet (narrow-viewport primitive) ---- */
+
+@keyframes dev3-sheet-up {
+	from { transform: translateY(100%); }
+	to { transform: translateY(0); }
+}
+
+.bottom-sheet-panel {
+	animation: dev3-sheet-up 0.22s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bottom-sheet-panel {
+		animation: none;
+	}
+}
+
+/* ---- Narrow-viewport modal clamp ------------------------------------------
+   On a phone-width viewport, centered modal/palette panels keep their fixed
+   `w-[..rem]` width and overflow off-screen. Clamp every modal (role="dialog"
+   + aria-modal) to the viewport minus a gutter and let it scroll. Bottom sheets
+   opt out via [data-bottom-sheet] (they own their full-width/85dvh layout).
+   Authored after `@tailwind utilities`, so this wins over the fixed-width
+   utilities at equal-or-lower specificity (later source order). */
+@media (max-width: 767px) {
+	[role="dialog"][aria-modal="true"]:not([data-bottom-sheet]) {
+		max-width: calc(100vw - 1.5rem);
+		max-height: calc(100dvh - 1.5rem);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+}
