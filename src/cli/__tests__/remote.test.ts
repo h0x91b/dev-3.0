@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleRemote, printAccessForState } from "../commands/remote";
+import { handleRemote, printAccessForState, computeDetachedChildArgs } from "../commands/remote";
 import type { ParsedArgs } from "../args";
 
 /**
@@ -264,6 +264,47 @@ describe("dev3 remote stop", () => {
 		} finally {
 			killSpy.mockRestore();
 		}
+	});
+});
+
+describe("computeDetachedChildArgs (single-binary respawn argv)", () => {
+	// Regression: on the COMPILED binary, `process.argv[1]` is bun's injected
+	// virtual entry "/$bunfs/root/dev3". The old code passed `argv.slice(1)`, so
+	// that path was re-sent as a positional and bun re-injected its own at the
+	// child's argv[1], shoving ours to argv[2] where main() parsed it as the
+	// command → "Unknown command: /$bunfs/root/dev3" and the bg server died.
+	it("compiled binary: passes only user args (no /$bunfs entry, starts at 'remote')", () => {
+		const out = computeDetachedChildArgs(
+			["/opt/homebrew/bin/dev3", "/$bunfs/root/dev3", "remote"],
+			"/opt/homebrew/bin/dev3",
+		);
+		expect(out).toEqual(["remote", "--no-detach"]);
+		expect(out).not.toContain("/$bunfs/root/dev3");
+	});
+
+	it("compiled binary: preserves the user's flags after 'remote'", () => {
+		const out = computeDetachedChildArgs(
+			["/usr/local/bin/dev3", "/$bunfs/root/dev3", "remote", "start", "--port", "3000", "--no-tunnel"],
+			"/usr/local/bin/dev3",
+		);
+		expect(out).toEqual(["remote", "start", "--port", "3000", "--no-tunnel", "--no-detach"]);
+	});
+
+	it("dev (bun run): keeps the entry script path as the first child arg", () => {
+		const out = computeDetachedChildArgs(
+			["/home/me/.bun/bin/bun", "/repo/src/cli/main.ts", "remote", "--port", "3000"],
+			"/home/me/.bun/bin/bun",
+		);
+		expect(out).toEqual(["/repo/src/cli/main.ts", "remote", "--port", "3000", "--no-detach"]);
+	});
+
+	it("strips a user-passed --detach/--no-detach and appends exactly one --no-detach", () => {
+		const out = computeDetachedChildArgs(
+			["/usr/local/bin/dev3", "/$bunfs/root/dev3", "remote", "--detach"],
+			"/usr/local/bin/dev3",
+		);
+		expect(out).toEqual(["remote", "--no-detach"]);
+		expect(out.filter((a) => a === "--no-detach")).toHaveLength(1);
 	});
 });
 
