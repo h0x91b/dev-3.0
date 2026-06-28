@@ -4,11 +4,11 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import type { Route } from "../state";
 import { computeProductivityStats, gaugeMax, type StatsRange } from "../utils/productivityStats";
-import { Gauge } from "./gauges/Gauge";
 import { StatGauge } from "./stats/StatGauge";
 import { BarChart } from "./stats/BarChart";
 import { AreaChart } from "./stats/AreaChart";
 import { AgentPie } from "./stats/AgentPie";
+import { SegmentedBar } from "./stats/SegmentedBar";
 import { TimeRangeSwitch } from "./stats/TimeRangeSwitch";
 
 interface ProductivityStatsViewProps {
@@ -230,27 +230,30 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<Counter value={String(data.counters.bestStreak)} label={t("stats.counters.bestStreak")} />
 						</div>
 
-						{/* Per-project gauge wall */}
+						{/* Per-project breakdown — segmented LED bars, tasks shipped per project */}
 						<div>
 							<div className="text-fg-2 text-sm font-semibold mb-3">{t("stats.perProject.title")}</div>
 							{data.perProject.length === 0 ? (
 								<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perProject.empty")}</div>
 							) : (
-								<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+								<div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
 									{data.perProject.map((p) => (
 										<button
 											type="button"
 											key={p.projectId}
 											onClick={() => navigate({ screen: "project", projectId: p.projectId })}
-											className={`group flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-colors ${
+											className={`group flex flex-col gap-1.5 rounded-xl border px-3 py-2.5 text-left transition-colors ${
 												p.busiest ? "border-accent/50 bg-accent/5 hover:bg-accent/10" : "border-edge bg-raised hover:bg-raised-hover"
 											}`}
 										>
-											<Gauge value={p.completed} max={projMax} size={104} label={String(p.completed)} unit={t("stats.unit.tasks")} theme="auto" />
-											<div className="text-fg text-xs font-semibold truncate max-w-full text-center flex items-center gap-1">
-												{p.busiest && <span className="text-accent" style={{ fontFamily: ICON }} title={t("stats.perProject.busiest")}>{"\u{F0241}"}</span>}
-												<span className="truncate">{p.name}</span>
+											<div className="flex items-center justify-between gap-2">
+												<span className="text-fg text-xs font-semibold truncate flex items-center gap-1 min-w-0">
+													{p.busiest && <span className="text-accent flex-shrink-0" style={{ fontFamily: ICON }} title={t("stats.perProject.busiest")}>{"\u{F0241}"}</span>}
+													<span className="truncate">{p.name}</span>
+												</span>
+												<span className="text-fg text-sm font-bold tabular-nums flex-shrink-0">{p.completed}</span>
 											</div>
+											<SegmentedBar value={p.completed} max={projMax} ariaLabel={`${p.name}: ${p.completed} ${t("stats.unit.tasks")}`} />
 											<div className="text-fg-muted text-[0.625rem]">{compact(p.lines)} {t("stats.unit.lines")}</div>
 										</button>
 									))}
