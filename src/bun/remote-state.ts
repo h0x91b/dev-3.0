@@ -12,13 +12,17 @@
  * never read it, so it does not touch the frozen `~/.dev3.0/` layout invariants.
  */
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import type { RemoteServerState } from "../shared/types";
 import { DEV3_HOME } from "./paths";
 
 export const REMOTE_DIR = `${DEV3_HOME}/remote`;
 export const REMOTE_STATE_FILE = `${REMOTE_DIR}/state.json`;
 export const REMOTE_LOG_FILE = `${REMOTE_DIR}/remote.log`;
+export const REMOTE_START_LOCK_FILE = `${REMOTE_DIR}/start.lock`;
+
+/** A start lock older than this is treated as abandoned (launcher crashed). */
+const START_LOCK_STALE_MS = 30_000;
 
 /**
  * Is `pid` a live process? `kill(pid, 0)` sends no signal — it only probes.
@@ -90,4 +94,48 @@ export function clearRemoteStateIfOwnedBy(pid: number): void {
 	const current = readRemoteState();
 	if (current && current.pid !== pid) return;
 	clearRemoteState();
+}
+
+/**
+ * Acquire an exclusive "a `--detach` launch is in progress" lock so two
+ * simultaneous `dev3 remote --detach` invocations can't both pass the
+ * "is one already running?" check and orphan each other's server (the state
+ * file is a singleton — the second writer clobbers the first).
+ *
+ * Uses `O_EXCL` ("wx") — an atomic create-or-fail on POSIX. Returns the open fd
+ * on success, or `null` if another live launch already holds it. A lock older
+ * than {@link START_LOCK_STALE_MS} is treated as abandoned (its launcher crashed
+ * mid-startup) and reclaimed, so a crash never wedges the feature permanently.
+ */
+export function acquireStartLock(): number | null {
+	mkdirSync(REMOTE_DIR, { recursive: true });
+	try {
+		return openSync(REMOTE_START_LOCK_FILE, "wx");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+		try {
+			const age = Date.now() - statSync(REMOTE_START_LOCK_FILE).mtimeMs;
+			if (age > START_LOCK_STALE_MS) {
+				unlinkSync(REMOTE_START_LOCK_FILE);
+				return openSync(REMOTE_START_LOCK_FILE, "wx");
+			}
+		} catch {
+			// Lost the reclaim race, or the file vanished — treat as held.
+		}
+		return null;
+	}
+}
+
+/** Release the start lock: close the fd and remove the file. Best-effort. */
+export function releaseStartLock(fd: number): void {
+	try {
+		closeSync(fd);
+	} catch {
+		// Already closed — harmless.
+	}
+	try {
+		if (existsSync(REMOTE_START_LOCK_FILE)) unlinkSync(REMOTE_START_LOCK_FILE);
+	} catch {
+		// Best-effort — a leftover lock self-heals via the stale-reclaim path.
+	}
 }

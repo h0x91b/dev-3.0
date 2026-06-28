@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleRemote } from "../commands/remote";
+import { handleRemote, printAccessForState } from "../commands/remote";
 import type { ParsedArgs } from "../args";
 
 /**
@@ -14,6 +14,14 @@ vi.mock("node:child_process", () => ({
 	spawn: vi.fn(() => ({ on: vi.fn() })),
 }));
 
+// Keep node:fs real except existsSync, which we flip per-test so
+// resolveServerCommand can take the compiled-binary branch (the runViaBun branch
+// needs Bun's import.meta.dir, which is undefined under the node test runner).
+vi.mock("node:fs", async (importOriginal) => {
+	const real = await importOriginal<typeof import("node:fs")>();
+	return { ...real, existsSync: vi.fn(real.existsSync) };
+});
+
 // status/url/stop read the lifecycle state file and talk to the running server
 // over its CLI socket. Mock both boundaries so the dispatch + formatting logic
 // is exercised without a real server or fs.
@@ -23,6 +31,8 @@ vi.mock("../../bun/remote-state", () => ({
 	readRemoteState: vi.fn(),
 	isProcessAlive: vi.fn(),
 	clearRemoteState: vi.fn(),
+	acquireStartLock: vi.fn(() => 7),
+	releaseStartLock: vi.fn(),
 }));
 vi.mock("../socket-client", () => ({
 	sendRequest: vi.fn(),
@@ -31,13 +41,15 @@ vi.mock("qrcode", () => ({
 	default: { toString: vi.fn(async () => "QR-ASCII\n") },
 }));
 
-import { readRemoteState, isProcessAlive, clearRemoteState } from "../../bun/remote-state";
+import { readRemoteState, isProcessAlive, clearRemoteState, acquireStartLock, releaseStartLock } from "../../bun/remote-state";
 import { sendRequest } from "../socket-client";
 import type { RemoteServerState } from "../../shared/types";
 
 const mockReadState = vi.mocked(readRemoteState);
 const mockIsAlive = vi.mocked(isProcessAlive);
 const mockClearState = vi.mocked(clearRemoteState);
+const mockAcquireLock = vi.mocked(acquireStartLock);
+const mockReleaseLock = vi.mocked(releaseStartLock);
 const mockSendRequest = vi.mocked(sendRequest);
 
 function liveState(overrides: Partial<RemoteServerState> = {}): RemoteServerState {
@@ -74,6 +86,9 @@ beforeEach(() => {
 	mockIsAlive.mockReset();
 	mockClearState.mockReset();
 	mockSendRequest.mockReset();
+	mockAcquireLock.mockReset();
+	mockAcquireLock.mockReturnValue(7); // default: lock granted
+	mockReleaseLock.mockReset();
 });
 
 afterEach(() => {
@@ -272,6 +287,72 @@ describe("dev3 remote stop", () => {
 		} finally {
 			killSpy.mockRestore();
 		}
+	});
+});
+
+describe("dev3 remote --detach (lifecycle)", () => {
+	// A controllable fake ChildProcess. `fireError` makes child.on("error", …) fire
+	// synchronously on registration, simulating an un-spawnable binary.
+	function fakeChild(opts: { pid: number; fireError?: Error }) {
+		return {
+			pid: opts.pid,
+			unref: vi.fn(),
+			on(event: string, cb: (arg: unknown) => void) {
+				if (event === "error" && opts.fireError) cb(opts.fireError);
+				return this;
+			},
+		};
+	}
+
+	// F4: a second --detach while another launch holds the start lock is refused
+	// (rather than spawning a second server that orphans the first). This bails
+	// before resolveServerCommand, so it's runtime-independent.
+	it("refuses to start when the start lock is already held (F4)", async () => {
+		mockAcquireLock.mockReturnValue(null);
+		await expect(handleRemote(undefined, args({ detach: "true" }))).rejects.toThrow("__exit__");
+		expect(stderrText()).toContain("already starting up");
+	});
+
+	// F2: spawn failing with ENOENT/EACCES must surface a friendly message via the
+	// "error" event, not crash the CLI with an unhandled-error stack trace. We
+	// stub existsSync so resolveServerCommand takes the compiled-binary branch
+	// (the runViaBun branch needs Bun's import.meta.dir, absent under the node
+	// test runner) and reaches the spawn site.
+	it("surfaces a spawn error cleanly instead of an uncaught crash (F2)", async () => {
+		const { existsSync } = await import("node:fs");
+		const { spawn } = await import("node:child_process");
+		mockReadState.mockReturnValue(null); // no prior server
+		// One true → locateServerBinary finds the sibling; reverts to real after.
+		vi.mocked(existsSync).mockReturnValueOnce(true);
+		vi.mocked(spawn).mockReturnValue(fakeChild({ pid: 5151, fireError: new Error("spawn EACCES") }) as never);
+		await expect(handleRemote(undefined, args({ detach: "true" }))).rejects.toThrow("__exit__");
+		const out = stderrText();
+		expect(out).toContain("exited during startup");
+		expect(out).toContain("spawn EACCES");
+		expect(mockReleaseLock).toHaveBeenCalled(); // lock released, not leaked
+	});
+
+	// F6: printAccessForState must honor notRunningIsFatal. The fatal path (used by
+	// `url`) clears state + exits; the non-fatal path (used by --detach, where the
+	// server is provably alive) rethrows WITHOUT clearing — clearing there would
+	// orphan a live server whose socket simply hasn't come up yet.
+	it("printAccessForState rethrows (no state clear) when non-fatal (F6)", async () => {
+		mockSendRequest.mockRejectedValue(new Error("APP_NOT_RUNNING"));
+		await expect(
+			printAccessForState("/tmp/x.sock", { header: "h", withQr: false, notRunningIsFatal: false }),
+		).rejects.toThrow("APP_NOT_RUNNING");
+		expect(mockClearState).not.toHaveBeenCalled();
+	});
+
+	it("printAccessForState clears state + exits fatally when fatal (F6 control)", async () => {
+		mockSendRequest.mockRejectedValue(new Error("APP_NOT_RUNNING"));
+		const codes: number[] = [];
+		exitSpy.mockImplementation(((code?: number) => { codes.push(code ?? 0); throw new Error("__exit__"); }) as never);
+		await expect(
+			printAccessForState("/tmp/x.sock", { header: "h", withQr: false, notRunningIsFatal: true }),
+		).rejects.toThrow("__exit__");
+		expect(mockClearState).toHaveBeenCalled();
+		expect(codes).toContain(2); // CLI_EXIT_CODE_APP_NOT_RUNNING
 	});
 });
 

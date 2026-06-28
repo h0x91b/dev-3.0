@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import type { RemoteServerState } from "../../shared/types";
 
 // Redirect DEV3_HOME to an isolated tmp dir so the real fs round-trips never
@@ -15,10 +15,13 @@ vi.mock("../paths", () => ({ DEV3_HOME: TEST_HOME }));
 import {
 	REMOTE_DIR,
 	REMOTE_STATE_FILE,
+	REMOTE_START_LOCK_FILE,
+	acquireStartLock,
 	clearRemoteState,
 	clearRemoteStateIfOwnedBy,
 	isProcessAlive,
 	readRemoteState,
+	releaseStartLock,
 	writeRemoteState,
 } from "../remote-state";
 
@@ -124,6 +127,45 @@ describe("clearRemoteStateIfOwnedBy", () => {
 		writeRemoteState(sampleState({ pid: 777 }));
 		clearRemoteStateIfOwnedBy(888);
 		expect(readRemoteState()).not.toBeNull();
+	});
+});
+
+describe("acquireStartLock / releaseStartLock (F4)", () => {
+	it("grants the lock to the first caller and refuses a concurrent second", () => {
+		const fd = acquireStartLock();
+		expect(typeof fd).toBe("number");
+		expect(existsSync(REMOTE_START_LOCK_FILE)).toBe(true);
+		// Second concurrent launch must be refused while the first holds it.
+		expect(acquireStartLock()).toBeNull();
+		releaseStartLock(fd as number);
+	});
+
+	it("releases the lock so a later launch can re-acquire it", () => {
+		const fd1 = acquireStartLock();
+		releaseStartLock(fd1 as number);
+		expect(existsSync(REMOTE_START_LOCK_FILE)).toBe(false);
+		const fd2 = acquireStartLock();
+		expect(typeof fd2).toBe("number");
+		releaseStartLock(fd2 as number);
+	});
+
+	it("reclaims a stale lock left by a crashed launcher", () => {
+		mkdirSync(REMOTE_DIR, { recursive: true });
+		// Simulate an abandoned lock: create it, then backdate its mtime past the
+		// staleness window so the next launch reclaims it instead of giving up.
+		writeFileSync(REMOTE_START_LOCK_FILE, "");
+		const past = new Date(Date.now() - 60_000);
+		utimesSync(REMOTE_START_LOCK_FILE, past, past);
+		const fd = acquireStartLock();
+		expect(typeof fd).toBe("number");
+		releaseStartLock(fd as number);
+	});
+
+	it("does NOT reclaim a fresh lock held by a live launcher", () => {
+		const fd = acquireStartLock();
+		// A brand-new lock (mtime ~ now) must be respected, not reclaimed.
+		expect(acquireStartLock()).toBeNull();
+		releaseStartLock(fd as number);
 	});
 });
 

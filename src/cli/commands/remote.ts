@@ -12,9 +12,11 @@ import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "../../shared/cli-exit-codes";
 import {
 	REMOTE_DIR,
 	REMOTE_LOG_FILE,
+	acquireStartLock,
 	clearRemoteState,
 	isProcessAlive,
 	readRemoteState,
+	releaseStartLock,
 } from "../../bun/remote-state";
 
 const REMOTE_HELP = `dev3 remote — run dev-3.0 in headless mode with a browser UI.
@@ -263,69 +265,128 @@ async function startRemote(args: ParsedArgs): Promise<void> {
 }
 
 async function startDetached(childEnv: NodeJS.ProcessEnv): Promise<void> {
-	// Refuse to launch a second managed server — the lifecycle state file is a
-	// singleton, so a second detached server would orphan the first.
-	const existing = readRemoteState();
-	if (existing && isProcessAlive(existing.pid)) {
+	// Hold an exclusive start lock across the whole check → spawn → readiness-wait
+	// window. The lifecycle state file is a singleton, so without this two
+	// simultaneous `--detach` launches could both pass the "already running?"
+	// check and orphan each other's server (F4). The lock is held until the child
+	// has recorded its state — at which point the state file itself enforces
+	// uniqueness — then released.
+	const lockFd = acquireStartLock();
+	if (lockFd === null) {
 		exitError(
-			`A dev3 remote server is already running (pid ${existing.pid}, port ${existing.port}).`,
-			"Use `dev3 remote url` to get its link, or `dev3 remote stop` to shut it down first.",
+			"Another `dev3 remote --detach` is already starting up.",
+			"Wait a moment and retry, or check `dev3 remote status`.",
 		);
+		return;
 	}
-	if (existing) clearRemoteState(); // stale record from a dead server
+	let lockReleased = false;
+	const releaseLock = (): void => {
+		if (lockReleased) return;
+		lockReleased = true;
+		releaseStartLock(lockFd);
+	};
 
-	mkdirSync(REMOTE_DIR, { recursive: true });
-	childEnv.DEV3_REMOTE_LOG_FILE = REMOTE_LOG_FILE;
-	const logFd = openSync(REMOTE_LOG_FILE, "a");
-
-	const { bin, args: serverArgs } = resolveServerCommand();
-	const child = spawn(bin, serverArgs, {
-		stdio: ["ignore", logFd, logFd],
-		env: childEnv,
-		detached: true,
-	});
-	child.unref();
-
-	const pid = child.pid;
-	process.stdout.write(`Starting dev3 remote in the background (pid ${pid ?? "?"})…\n`);
-
-	// Bail early if the child dies during startup (e.g. port in use, crash).
-	let childExited = false;
-	child.on("exit", (code) => { childExited = true; void code; });
-
-	// Wait for the server to write its lifecycle state, then print the access URL.
-	const deadlineMs = Date.now() + 20_000;
-	while (Date.now() < deadlineMs) {
-		if (childExited) {
+	try {
+		// Refuse to launch a second managed server — see the lock comment above.
+		const existing = readRemoteState();
+		if (existing && isProcessAlive(existing.pid)) {
+			releaseLock();
 			exitError(
-				"The background server exited during startup.",
-				`Check the log for details:\n  ${REMOTE_LOG_FILE}`,
+				`A dev3 remote server is already running (pid ${existing.pid}, port ${existing.port}).`,
+				"Use `dev3 remote url` to get its link, or `dev3 remote stop` to shut it down first.",
 			);
 		}
-		const state = readRemoteState();
-		if (state && state.pid === pid && state.port > 0) {
-			await printAccessForState(state.socketPath, {
-				header: `dev3 remote is running in the background (pid ${pid}, port ${state.port}).`,
-				withQr: true,
-			});
+		if (existing) clearRemoteState(); // stale record from a dead server
+
+		mkdirSync(REMOTE_DIR, { recursive: true });
+		childEnv.DEV3_REMOTE_LOG_FILE = REMOTE_LOG_FILE;
+		const logFd = openSync(REMOTE_LOG_FILE, "a");
+
+		const { bin, args: serverArgs } = resolveServerCommand();
+		const child = spawn(bin, serverArgs, {
+			stdio: ["ignore", logFd, logFd],
+			env: childEnv,
+			detached: true,
+		});
+
+		// A ChildProcess emits "error" (not "exit") when the binary can't be
+		// executed at all — ENOENT, EACCES, wrong arch (EBADARCH), AV quarantine.
+		// Without a listener Node re-throws it as an uncaught exception, crashing
+		// the CLI with a raw stack trace instead of our friendly message (F2).
+		let childExited = false;
+		let startupErrorMessage: string | null = null;
+		child.on("error", (err) => { childExited = true; startupErrorMessage = err.message; });
+		child.on("exit", (code) => { childExited = true; void code; });
+		child.unref();
+
+		const pid = child.pid;
+		process.stdout.write(`Starting dev3 remote in the background (pid ${pid ?? "?"})…\n`);
+
+		// Wait for the server to write its lifecycle state.
+		const deadlineMs = Date.now() + 20_000;
+		let recorded: ReturnType<typeof readRemoteState> = null;
+		while (Date.now() < deadlineMs) {
+			if (childExited) {
+				releaseLock();
+				exitError(
+					"The background server exited during startup.",
+					startupErrorMessage
+						? `Could not start it: ${startupErrorMessage}`
+						: `Check the log for details:\n  ${REMOTE_LOG_FILE}`,
+				);
+			}
+			const state = readRemoteState();
+			if (state && state.pid === pid && state.port > 0) {
+				recorded = state;
+				break;
+			}
+			await delay(250);
+		}
+
+		// State is recorded (or we timed out) — the state file now guards
+		// uniqueness, so we can drop the lock before the slower URL fetch.
+		releaseLock();
+
+		if (!recorded) {
+			// Started but never reported in — likely slow startup. Don't fail;
+			// point the user at status/log so we don't hang forever.
 			process.stdout.write(
-				`\nManage it with:  dev3 remote url   (fresh link)\n` +
-				`                 dev3 remote status\n` +
-				`                 dev3 remote stop\n` +
-				`Logs:  ${REMOTE_LOG_FILE}\n`,
+				`Server started (pid ${pid ?? "?"}) but did not report readiness within 20s.\n` +
+				`Check \`dev3 remote status\` or the log at ${REMOTE_LOG_FILE}.\n`,
 			);
 			process.exit(0);
 		}
-		await delay(250);
-	}
 
-	// Started but never reported in — likely slow startup. Don't fail; point the
-	// user at status/log so they can check without us hanging forever.
-	process.stdout.write(
-		`Server started (pid ${pid ?? "?"}) but did not report readiness within 20s.\n` +
-		`Check \`dev3 remote status\` or the log at ${REMOTE_LOG_FILE}.\n`,
-	);
-	process.exit(0);
+		try {
+			await printAccessForState(recorded.socketPath, {
+				header: `dev3 remote is running in the background (pid ${pid}, port ${recorded.port}).`,
+				withQr: true,
+				notRunningIsFatal: false, // server IS alive (state recorded) — a lagging socket is "booting", not "dead"
+			});
+		} catch (err) {
+			if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
+				// The server recorded its state but its CLI socket isn't accepting
+				// yet. It's booting, not dead — don't clear state or fail hard.
+				process.stdout.write(
+					`Server is running (pid ${pid}, port ${recorded.port}) but the link isn't ready yet.\n` +
+					`Run \`dev3 remote url\` in a moment for the QR + URL.\n`,
+				);
+				process.exit(0);
+			}
+			throw err;
+		}
+		process.stdout.write(
+			`\nManage it with:  dev3 remote url   (fresh link)\n` +
+			`                 dev3 remote status\n` +
+			`                 dev3 remote stop\n` +
+			`Logs:  ${REMOTE_LOG_FILE}\n`,
+		);
+		process.exit(0);
+	} finally {
+		// Backstop: process.exit() above skips finally in production, but exitError
+		// throws under test — make sure the lock never leaks there.
+		releaseLock();
+	}
 }
 
 // ── status ─────────────────────────────────────────────────────────────────
@@ -445,8 +506,11 @@ async function stopRemote(args: ParsedArgs): Promise<void> {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Ask a running server (over its CLI socket) for a fresh access URL and print it. */
-async function printAccessForState(
+/**
+ * Ask a running server (over its CLI socket) for a fresh access URL and print it.
+ * Exported for unit tests (F6: notRunningIsFatal contract).
+ */
+export async function printAccessForState(
 	socketPath: string,
 	opts: { header: string; withQr: boolean; notRunningIsFatal?: boolean },
 ): Promise<void> {
@@ -459,12 +523,20 @@ async function printAccessForState(
 		info = resp.data as RemoteAccessInfo;
 	} catch (err) {
 		if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
-			clearRemoteState();
-			exitError(
-				"The dev3 remote server is no longer reachable (cleared a stale record).",
-				"Start one with `dev3 remote`.",
-				CLI_EXIT_CODE_APP_NOT_RUNNING,
-			);
+			// Honor notRunningIsFatal (F6): only the fatal callers (e.g. `url`) want
+			// us to clear the state and exit. A non-fatal caller (e.g. the --detach
+			// readiness path, where the server is provably alive) gets the error
+			// rethrown so it can decide — clearing state there would orphan a live
+			// server whose socket simply hasn't come up yet.
+			if (opts.notRunningIsFatal) {
+				clearRemoteState();
+				exitError(
+					"The dev3 remote server is no longer reachable (cleared a stale record).",
+					"Start one with `dev3 remote`.",
+					CLI_EXIT_CODE_APP_NOT_RUNNING,
+				);
+			}
+			throw err;
 		}
 		throw err;
 	}
