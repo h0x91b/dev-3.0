@@ -3,7 +3,7 @@ import type { ProductivityStatEvent } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import type { Route } from "../state";
-import { computeProductivityStats, niceCeil, type StatsRange } from "../utils/productivityStats";
+import { computeProductivityStats, gaugeMax, type StatsRange } from "../utils/productivityStats";
 import { Gauge } from "./gauges/Gauge";
 import { StatGauge } from "./stats/StatGauge";
 import { BarChart } from "./stats/BarChart";
@@ -72,7 +72,8 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	const periodLabel = t(`stats.period.${range}` as Parameters<typeof t>[0]);
 	const trendSuffix = range === "all" ? undefined : t(`stats.periodPrev.${range}` as Parameters<typeof t>[0]);
 
-	const projMax = niceCeil(Math.max(0, ...data.perProject.map((p) => p.completed)), 2);
+	const projMax = gaugeMax(Math.max(0, ...data.perProject.map((p) => p.completed)), 2);
+	const agentMax = gaugeMax(Math.max(0, ...data.perAgent.map((a) => a.completed)), 2);
 
 	return (
 		<div className="h-full overflow-y-auto">
@@ -137,6 +138,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<StatGauge
 								value={data.hero.tasksShipped.value}
 								max={data.hero.tasksShipped.max}
+								redZone={data.hero.tasksShipped.redZone ?? undefined}
 								label={t("stats.hero.tasksShipped")}
 								unit={periodLabel}
 								caption={t("stats.heroCaption.tasksShipped")}
@@ -147,6 +149,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<StatGauge
 								value={data.hero.linesChanged.value}
 								max={data.hero.linesChanged.max}
+								redZone={data.hero.linesChanged.redZone ?? undefined}
 								label={t("stats.hero.linesChanged")}
 								unit={periodLabel}
 								caption={t("stats.heroCaption.linesChanged")}
@@ -157,6 +160,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<StatGauge
 								value={data.hero.velocity.value}
 								max={data.hero.velocity.max}
+								redZone={data.hero.velocity.redZone ?? undefined}
 								label={t("stats.hero.velocity")}
 								unit={t("stats.unit.perDay")}
 								caption={t("stats.heroCaption.velocity")}
@@ -242,6 +246,32 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 											</div>
 											<div className="text-fg-muted text-[0.625rem]">{compact(p.lines)} {t("stats.unit.lines")}</div>
 										</button>
+									))}
+								</div>
+							)}
+						</div>
+
+						{/* Per-agent gauge wall — tasks shipped by each agent type */}
+						<div>
+							<div className="text-fg-2 text-sm font-semibold mb-3">{t("stats.perAgent.title")}</div>
+							{data.perAgent.length === 0 ? (
+								<div className="text-fg-muted text-xs py-6 text-center">{t("stats.perAgent.empty")}</div>
+							) : (
+								<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+									{data.perAgent.map((a) => (
+										<div
+											key={a.agentId}
+											className={`flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 ${
+												a.busiest ? "border-accent/50 bg-accent/5" : "border-edge bg-raised"
+											}`}
+										>
+											<Gauge value={a.completed} max={agentMax} size={104} label={String(a.completed)} unit={t("stats.unit.tasks")} theme="auto" />
+											<div className="text-fg text-xs font-semibold truncate max-w-full text-center flex items-center gap-1">
+												{a.busiest && <span className="text-accent" style={{ fontFamily: ICON }} title={t("stats.perAgent.busiest")}>{"\u{F0241}"}</span>}
+												<span className="truncate">{a.name}</span>
+											</div>
+											<div className="text-fg-muted text-[0.625rem]">{compact(a.lines)} {t("stats.unit.lines")}</div>
+										</div>
 									))}
 								</div>
 							)}

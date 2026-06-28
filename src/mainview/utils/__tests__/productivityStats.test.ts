@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProductivityStatEvent, TaskStatus } from "../../../shared/types";
-import { computeProductivityStats, niceCeil } from "../productivityStats";
+import { computeProductivityStats, gaugeMax } from "../productivityStats";
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-06-28T12:00:00.000Z");
@@ -28,15 +28,23 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 	};
 }
 
-describe("niceCeil", () => {
-	it("rounds up to 1/2/5 × 10ⁿ and respects the floor", () => {
-		expect(niceCeil(3)).toBe(5);
-		expect(niceCeil(13)).toBe(20);
-		expect(niceCeil(0, 5)).toBe(5);
-		expect(niceCeil(0, 4)).toBeGreaterThanOrEqual(4);
-		expect(niceCeil(7)).toBe(10);
-		expect(niceCeil(1)).toBe(1);
-		expect(niceCeil(140, 100)).toBe(200);
+describe("gaugeMax", () => {
+	it("rounds up with headroom using fine steps (no huge 20→50 jumps)", () => {
+		// The headline requirement: 25 shipped → a tight 30, not 50.
+		expect(gaugeMax(25, 4)).toBe(30);
+		expect(gaugeMax(3)).toBe(4);
+		expect(gaugeMax(7)).toBe(8);
+		expect(gaugeMax(13)).toBe(16);
+		expect(gaugeMax(140, 100)).toBe(160);
+	});
+
+	it("respects the floor and never pegs the needle at full", () => {
+		expect(gaugeMax(0, 5)).toBe(5);
+		expect(gaugeMax(0, 4)).toBe(4);
+		// Always strictly above a positive value so the needle has headroom.
+		for (const v of [1, 4, 9, 20, 25, 48, 99, 250, 1234]) {
+			expect(gaugeMax(v, 1)).toBeGreaterThan(v);
+		}
 	});
 });
 
@@ -135,6 +143,66 @@ describe("computeProductivityStats — streaks", () => {
 		expect(r.hero.tasksShipped.value).toBe(0);
 		expect(r.counters.bestStreak).toBe(0);
 		expect(r.series).toHaveLength(7);
+	});
+});
+
+describe("computeProductivityStats — red zone = rolling average", () => {
+	// 8 completed over a 28-day history → average per week = 8 * (7/28) = 2.
+	const at = (d: number) => new Date(NOW - d * DAY).toISOString();
+	const events: ProductivityStatEvent[] = [
+		// 4 this week
+		ev({ createdAt: at(1), movedAt: at(1), insertions: 5, deletions: 0 }),
+		ev({ createdAt: at(2), movedAt: at(2), insertions: 5, deletions: 0 }),
+		ev({ createdAt: at(3), movedAt: at(3), insertions: 5, deletions: 0 }),
+		ev({ createdAt: at(4), movedAt: at(4), insertions: 5, deletions: 0 }),
+		// 4 spread earlier, anchoring earliest at NOW-28d
+		ev({ createdAt: at(10), movedAt: at(10) }),
+		ev({ createdAt: at(15), movedAt: at(15) }),
+		ev({ createdAt: at(20), movedAt: at(20) }),
+		ev({ createdAt: at(28), movedAt: at(28) }),
+	];
+
+	it("sets the weekly red zone to the lifetime average for that period", () => {
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.hero.tasksShipped.value).toBe(4);
+		expect(r.hero.tasksShipped.redZone).toBe(2); // 8 * 7/28
+		// Max must clear both the value and the red zone.
+		expect(r.hero.tasksShipped.max).toBeGreaterThanOrEqual(4);
+	});
+
+	it("sets the velocity red zone to the lifetime tasks/day average", () => {
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.hero.velocity.redZone).toBeCloseTo(0.3, 5); // 8 / 28 ≈ 0.286 → 0.3
+	});
+
+	it("keeps a fixed completion-rate red zone and none for all-time", () => {
+		const week = computeProductivityStats(events, "week", NOW);
+		expect(week.hero.completionRate.redZone).toBe(40);
+		const all = computeProductivityStats(events, "all", NOW);
+		expect(all.hero.tasksShipped.redZone).toBeNull();
+		expect(all.hero.velocity.redZone).toBeNull();
+	});
+});
+
+describe("computeProductivityStats — per-agent breakdown", () => {
+	const at = (d: number) => new Date(NOW - d * DAY).toISOString();
+	it("groups completed tasks by agent type with friendly names", () => {
+		const events: ProductivityStatEvent[] = [
+			ev({ agentId: "builtin-claude", movedAt: at(1) }),
+			ev({ agentId: "builtin-claude", movedAt: at(2) }),
+			ev({ agentId: "builtin-claude", movedAt: at(3) }),
+			ev({ agentId: "builtin-codex", movedAt: at(1) }),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.perAgent).toHaveLength(2);
+		expect(r.perAgent[0]).toMatchObject({ agentId: "builtin-claude", name: "Claude", completed: 3, busiest: true });
+		const codex = r.perAgent.find((a) => a.agentId === "builtin-codex");
+		expect(codex).toMatchObject({ name: "Codex", completed: 1, sharePct: 25 });
+	});
+
+	it("falls back to 'unknown' for tasks with no agent", () => {
+		const r = computeProductivityStats([ev({ agentId: null, movedAt: at(1) })], "week", NOW);
+		expect(r.perAgent[0]).toMatchObject({ agentId: "unknown", name: "Unknown", completed: 1 });
 	});
 });
 

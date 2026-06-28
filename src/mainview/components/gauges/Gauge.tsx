@@ -13,6 +13,12 @@ export interface GaugeProps {
 	step?: number;
 	/** Value at which red zone starts (optional) */
 	redZone?: number;
+	/**
+	 * Which side of `redZone` is painted red. "above" (default) is a classic
+	 * tachometer redline (high = danger). "below" flags values UNDER the
+	 * threshold (e.g. productivity below your average = behind).
+	 */
+	redZoneMode?: "above" | "below";
 	/** Gauge diameter in px (default: 240) */
 	size?: number;
 	/** Label text (e.g. "Income") */
@@ -150,6 +156,7 @@ export function Gauge({
 	max,
 	step: stepProp,
 	redZone,
+	redZoneMode = "above",
 	size = 240,
 	label,
 	unit,
@@ -192,7 +199,7 @@ export function Gauge({
 		for (let n = 0; n <= steps; n++) {
 			const v = min + n * effectiveStep;
 			const angle = angleMin + n * angleStep;
-			const isRed = redZone != null && v >= redZone;
+			const isRed = redZone != null && (redZoneMode === "below" ? v <= redZone : v >= redZone);
 			items.push({
 				value: v,
 				angle,
@@ -201,7 +208,7 @@ export function Gauge({
 			});
 		}
 		return items;
-	}, [min, max, step, angleMin, angleMax, redZone]);
+	}, [min, max, step, angleMin, angleMax, redZone, redZoneMode]);
 
 	// --- Styles ---
 	const bezelStyle: CSSProperties = {

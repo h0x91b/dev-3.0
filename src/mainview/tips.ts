@@ -954,6 +954,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "stats-beat-average",
+		titleKey: "tip.statsBeatAverage.title",
+		bodyKey: "tip.statsBeatAverage.body",
+		icon: "\u{F04C5}", // nf-md-speedometer
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

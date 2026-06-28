@@ -4,6 +4,8 @@ interface StatGaugeProps {
 	value: number;
 	max: number;
 	redZone?: number;
+	/** Stats gauges flag the LOW side (below your average) by default. */
+	redZoneMode?: "above" | "below";
 	/** Short label rendered inside the gauge face. */
 	label: string;
 	/** Unit rendered inside the gauge face under the label. */
@@ -32,6 +34,7 @@ export function StatGauge({
 	value,
 	max,
 	redZone,
+	redZoneMode = "below",
 	label,
 	unit,
 	caption,
@@ -44,7 +47,7 @@ export function StatGauge({
 	const up = (trendPct ?? 0) >= 0;
 	return (
 		<div className="flex flex-col items-center gap-2 rounded-2xl border border-edge bg-raised px-4 py-4">
-			<Gauge value={value} max={max} redZone={redZone} label={label} unit={unit} size={size} theme="auto" />
+			<Gauge value={value} max={max} redZone={redZone} redZoneMode={redZoneMode} label={label} unit={unit} size={size} theme="auto" />
 			<div className="flex flex-col items-center gap-0.5 mt-1">
 				<div className="text-fg text-xl font-bold tabular-nums leading-none">{displayValue ?? compact(value)}</div>
 				<div className="text-fg-3 text-xs">{caption}</div>

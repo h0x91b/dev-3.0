@@ -234,6 +234,8 @@ const tips = {
 	"tip.productivityStats.body": "Abre Estadísticas de productividad desde el Dashboard: un panel de velocímetros con tareas, líneas y tu racha.",
 	"tip.statsTimeRange.title": "Estadísticas por día o semana",
 	"tip.statsTimeRange.body": "Cambia el rango de tiempo en la pantalla de estadísticas para ver tu ritmo y la tendencia frente al período anterior.",
+	"tip.statsBeatAverage.title": "Supera tu promedio",
+	"tip.statsBeatAverage.body": "La zona roja de cada medidor marca tu ritmo habitual: lleva la aguja más allá para superar tu norma.",
 };
 
 export default tips;

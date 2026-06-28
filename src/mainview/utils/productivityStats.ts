@@ -1,4 +1,4 @@
-import type { ProductivityStatEvent } from "../../shared/types";
+import { DEFAULT_AGENTS, type ProductivityStatEvent } from "../../shared/types";
 
 export type StatsRange = "day" | "week" | "month" | "all";
 
@@ -9,6 +9,12 @@ export interface HeroMetric {
 	value: number;
 	/** Gauge max for scaling the needle. */
 	max: number;
+	/**
+	 * Value below which the gauge paints its red zone — the user's typical output
+	 * for an equivalent period (rolling lifetime average). Beating it means you're
+	 * above your norm. Null when not meaningful (range "all", or no history).
+	 */
+	redZone: number | null;
 	/** Previous-period value (for the trend). Null when no previous period (range "all"). */
 	previous: number | null;
 	/** Percentage change vs previous period, rounded. Null when not computable. */
@@ -28,6 +34,18 @@ export interface PerProjectStat {
 	projectId: string;
 	name: string;
 	kind: "git" | "virtual";
+	completed: number;
+	lines: number;
+	/** Share of the period's completed tasks, 0–100. */
+	sharePct: number;
+	busiest: boolean;
+}
+
+export interface PerAgentStat {
+	/** Raw agent id (e.g. "builtin-claude") or "unknown" when a task had none. */
+	agentId: string;
+	/** Human-friendly name (e.g. "Claude"). */
+	name: string;
 	completed: number;
 	lines: number;
 	/** Share of the period's completed tasks, 0–100. */
@@ -58,21 +76,40 @@ export interface ProductivityDashboardData {
 	};
 	series: SeriesBucket[];
 	perProject: PerProjectStat[];
+	perAgent: PerAgentStat[];
 }
 
 const DAY_MS = 86_400_000;
 
-/** Round up to a "nice" gauge maximum (1/2/5 × 10ⁿ), never below `floor`. */
-export function niceCeil(value: number, floor = 1): number {
-	const v = Math.max(value, floor);
-	const magnitude = Math.pow(10, Math.floor(Math.log10(v)));
-	const norm = v / magnitude;
-	let nice: number;
-	if (norm <= 1) nice = 1;
-	else if (norm <= 2) nice = 2;
-	else if (norm <= 5) nice = 5;
-	else nice = 10;
-	return Math.max(nice * magnitude, floor);
+/** agentId → display name, from the builtin registry (custom ids fall back to a prettified slug). */
+const AGENT_NAMES = new Map(DEFAULT_AGENTS.map((a) => [a.id, a.name]));
+
+function agentDisplayName(agentId: string): string {
+	const known = AGENT_NAMES.get(agentId);
+	if (known) return known;
+	if (agentId === "unknown") return "Unknown";
+	// Prettify a custom id: "builtin-foo" / "my-agent" → "Foo" / "My agent".
+	const slug = agentId.replace(/^builtin-/, "").replace(/[-_]+/g, " ").trim();
+	return slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : agentId;
+}
+
+/**
+ * A "nice" gauge maximum sitting comfortably above `value` (~10% headroom so the
+ * needle never pegs at full), rounded up to a 1/2/5×10ⁿ step chosen for roughly
+ * ten divisions. Steps are kept ≥1 so count gauges show whole-number ticks.
+ * Never below `floor`.
+ */
+export function gaugeMax(value: number, floor = 1): number {
+	const v = Math.max(value * 1.1, floor, 1);
+	const rough = v / 10;
+	let magnitude = Math.pow(10, Math.floor(Math.log10(rough)));
+	if (!Number.isFinite(magnitude) || magnitude <= 0) magnitude = 1;
+	const norm = rough / magnitude;
+	const step = Math.max(
+		norm <= 1 ? magnitude : norm <= 2 ? 2 * magnitude : norm <= 5 ? 5 * magnitude : 10 * magnitude,
+		1,
+	);
+	return Math.max(Math.ceil(v / step) * step, floor);
 }
 
 function trendPct(current: number, previous: number | null): number | null {
@@ -289,10 +326,12 @@ export function computeProductivityStats(
 	let cancelledCur = 0;
 	const projectsTouched = new Set<string>();
 	const perProjectMap = new Map<string, PerProjectStat>();
+	const perAgentMap = new Map<string, PerAgentStat>();
 	const completedForSeries: Array<{ at: number; lines: number }> = [];
 
 	// --- All-time aggregates ---
 	let allTimeCompleted = 0;
+	let allTimeLines = 0;
 	let agentsRun = 0;
 	const allDayKeys = new Set<string>();
 	let locTrackingSince: number | null = null;
@@ -309,6 +348,7 @@ export function computeProductivityStats(
 
 		if (isCompleted(e) && at != null) {
 			allTimeCompleted += 1;
+			allTimeLines += lines;
 			allDayKeys.add(dayKey(at));
 			completedForSeries.push({ at, lines });
 
@@ -328,6 +368,19 @@ export function computeProductivityStats(
 				pp.completed += 1;
 				pp.lines += lines;
 				perProjectMap.set(e.projectId, pp);
+
+				const agentId = e.agentId || "unknown";
+				const pa = perAgentMap.get(agentId) ?? {
+					agentId,
+					name: agentDisplayName(agentId),
+					completed: 0,
+					lines: 0,
+					sharePct: 0,
+					busiest: false,
+				};
+				pa.completed += 1;
+				pa.lines += lines;
+				perAgentMap.set(agentId, pa);
 			}
 			if (win.prevFrom != null && win.prevTo != null && inPeriod(at, win.prevFrom, win.prevTo)) {
 				completedPrev += 1;
@@ -348,6 +401,11 @@ export function computeProductivityStats(
 	for (const pp of perProject) pp.sharePct = completedCur > 0 ? Math.round((pp.completed / completedCur) * 100) : 0;
 	if (perProject.length > 0 && perProject[0].completed > 0) perProject[0].busiest = true;
 
+	// --- Per-agent share + busiest ---
+	const perAgent = [...perAgentMap.values()].sort((a, b) => b.completed - a.completed || b.lines - a.lines);
+	for (const pa of perAgent) pa.sharePct = completedCur > 0 ? Math.round((pa.completed / completedCur) * 100) : 0;
+	if (perAgent.length > 0 && perAgent[0].completed > 0) perAgent[0].busiest = true;
+
 	// --- Streaks ---
 	const streaks = computeStreaks(allDayKeys, nowMs);
 
@@ -357,40 +415,57 @@ export function computeProductivityStats(
 	const prevDays = win.prevFrom != null && win.prevTo != null ? Math.max(1, (win.prevTo - win.prevFrom) / DAY_MS) : null;
 	const velocityPrev = prevDays != null ? completedPrev / prevDays : null;
 
+	// --- Rolling lifetime averages (the gauge red zone = "your usual output") ---
+	// avgFactor scales an all-time total down to one equivalent period. Clamped to
+	// ≤1 so a short history (span < period) can't project an unreachable baseline.
+	const totalSpanMs = Math.max(DAY_MS, nowMs - earliest);
+	const avgFactor = range === "all" ? null : Math.min(1, (win.to - win.from) / totalSpanMs);
+	const avgCompleted = avgFactor != null ? allTimeCompleted * avgFactor : null;
+	const avgLines = avgFactor != null ? allTimeLines * avgFactor : null;
+	const avgVelocity = range === "all" ? null : allTimeCompleted / (totalSpanMs / DAY_MS);
+
 	// --- Completion rate (period) ---
 	const ratedTotal = completedCur + cancelledCur;
 	const completionRate = ratedTotal > 0 ? Math.round((completedCur / ratedTotal) * 100) : 0;
 
 	const tasksTotal = events.length;
 
+	const roundOrNull = (n: number | null) => (n == null ? null : Math.round(n));
+	const round1OrNull = (n: number | null) => (n == null ? null : Math.round(n * 10) / 10);
+
 	const hero: ProductivityDashboardData["hero"] = {
 		tasksShipped: {
 			value: completedCur,
 			previous: win.prevFrom != null ? completedPrev : null,
-			max: niceCeil(Math.max(completedCur, completedPrev) * 1.25, 4),
+			redZone: roundOrNull(avgCompleted),
+			max: gaugeMax(Math.max(completedCur, completedPrev, avgCompleted ?? 0), 4),
 			trendPct: trendPct(completedCur, win.prevFrom != null ? completedPrev : null),
 		},
 		linesChanged: {
 			value: linesCur,
 			previous: win.prevFrom != null ? linesPrev : null,
-			max: niceCeil(Math.max(linesCur, linesPrev) * 1.25, 100),
+			redZone: roundOrNull(avgLines),
+			max: gaugeMax(Math.max(linesCur, linesPrev, avgLines ?? 0), 100),
 			trendPct: trendPct(linesCur, win.prevFrom != null ? linesPrev : null),
 		},
 		velocity: {
 			value: Math.round(velocityCur * 10) / 10,
 			previous: velocityPrev != null ? Math.round(velocityPrev * 10) / 10 : null,
-			max: niceCeil(Math.max(velocityCur, velocityPrev ?? 0) * 1.25, 2),
+			redZone: round1OrNull(avgVelocity),
+			max: gaugeMax(Math.max(velocityCur, velocityPrev ?? 0, avgVelocity ?? 0), 2),
 			trendPct: trendPct(velocityCur, velocityPrev),
 		},
 		completionRate: {
 			value: completionRate,
 			previous: null,
+			redZone: 40,
 			max: 100,
 			trendPct: null,
 		},
 		streak: {
 			value: streaks.current,
 			previous: null,
+			redZone: null,
 			max: Math.max(streaks.best, 7),
 			trendPct: null,
 		},
@@ -412,5 +487,6 @@ export function computeProductivityStats(
 		},
 		series,
 		perProject,
+		perAgent,
 	};
 }

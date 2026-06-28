@@ -56,6 +56,10 @@ const stats = {
 	"stats.perProject.title": "By project",
 	"stats.perProject.empty": "No completed tasks in this period",
 	"stats.perProject.busiest": "Busiest project",
+	// Per-agent
+	"stats.perAgent.title": "By agent",
+	"stats.perAgent.empty": "No completed tasks in this period",
+	"stats.perAgent.busiest": "Most-used agent",
 	// Empty / error states
 	"stats.empty.title": "Ship your first task to light up the cockpit",
 	"stats.empty.body": "Complete a task and your stats will appear here.",

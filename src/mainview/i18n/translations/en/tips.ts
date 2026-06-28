@@ -234,6 +234,8 @@ const tips = {
 	"tip.productivityStats.body": "Open Productivity Stats from the Dashboard for a speedometer cockpit of tasks shipped, lines changed and your streak.",
 	"tip.statsTimeRange.title": "Stats by day, week or month",
 	"tip.statsTimeRange.body": "Switch the time range on the stats screen to see your velocity and trend versus the previous period.",
+	"tip.statsBeatAverage.title": "Beat your average",
+	"tip.statsBeatAverage.body": "The red zone on each stats gauge marks your usual output — push the needle past it to top your norm.",
 } as const;
 
 export default tips;
