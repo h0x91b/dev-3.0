@@ -85,7 +85,7 @@ export const STATUS_COLORS_LIGHT: Record<TaskStatus, string> = {
 	cancelled: "#dc2626",
 };
 
-/** Convert "#rrggbb" → "R G B" for use as CSS variable value */
+/** Convert "#rrggbb" â "R G B" for use as CSS variable value */
 export function hexToRgb(hex: string): string {
 	const r = parseInt(hex.slice(1, 3), 16);
 	const g = parseInt(hex.slice(3, 5), 16);
@@ -141,9 +141,9 @@ For medium/high severity: fix directly and commit.
 For minor/cosmetic: leave alone. Do NOT break existing functionality.
 
 As the very last step (after any commits), you MUST hand the task back to the user by moving it yourself:
-- If you found problems, committed fixes, or have anything worth surfacing — add a short \`dev3 note add "<1–3 sentence summary>"\` and then run:
+- If you found problems, committed fixes, or have anything worth surfacing â add a short \`dev3 note add "<1â3 sentence summary>"\` and then run:
     dev3 task move --status user-questions
-- If the diff is clean and nothing needed changing — run:
+- If the diff is clean and nothing needed changing â run:
     dev3 task move --status review-by-user
 
 Do not skip this step. Move the task exactly once, at the end.`;
@@ -193,14 +193,14 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install claude-code",
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
-			// --- Opus 4.8 (current default — Fable 5 temporarily unavailable) — order: Auto, Bypass, Default, then the rest ---
+			// --- Opus 4.8 (current default â Fable 5 temporarily unavailable) â order: Auto, Bypass, Default, then the rest ---
 			{ id: "claude-auto-opus48", name: "Auto (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "auto", version: 1 },
 			{ id: "claude-bypass-opus48", name: "Bypass (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-default-opus48", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-plan-opus48", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
 			{ id: "claude-dontask-opus48", name: "Don't Ask (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			// --- Fable 5 (temporarily unavailable, kept for when it returns) — order: Auto, Bypass, Default, then the rest ---
+			// --- Fable 5 (temporarily unavailable, kept for when it returns) â order: Auto, Bypass, Default, then the rest ---
 			{ id: "claude-auto", name: "Auto (Fable 5)", model: "claude-fable-5", permissionMode: "auto", version: 6 },
 			{ id: "claude-auto-sonnet", name: "Auto (Sonnet)", model: "sonnet", permissionMode: "auto", version: 1 },
 			{ id: "claude-bypass", name: "Bypass (Fable 5)", model: "claude-fable-5", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
@@ -421,8 +421,8 @@ export interface GlobalSettings {
 	theme?: "dark" | "light" | "system";
 	resolvedTheme?: "dark" | "light";
 	cloneBaseDirectory?: string;
-	customBinaryPaths?: Record<string, string>; // requirementId → custom binary path
-	agentBinaryPaths?: Record<string, string>; // agentId → resolved binary path
+	customBinaryPaths?: Record<string, string>; // requirementId â custom binary path
+	agentBinaryPaths?: Record<string, string>; // agentId â resolved binary path
 	terminalKeymap?: TerminalKeymapPreset;
 	playSoundOnTaskComplete?: boolean;
 	externalApps?: ExternalApp[]; // user-configured apps for "Open in..." menus
@@ -442,14 +442,14 @@ export interface GlobalSettings {
 	/**
 	 * Remembered state of the Watch toggle in the launch/create-variant modal.
 	 * When a task is launched, the toggle's on/off choice is persisted here and
-	 * reused as the default for the next launch. Undefined → default to unwatched.
+	 * reused as the default for the next launch. Undefined â default to unwatched.
 	 */
 	watchByDefault?: boolean;
 }
 
 export interface TipState {
-	snoozedUntil: number; // timestamp — all tips hidden until this time
-	seen: Record<string, number>; // tipId → last-seen timestamp
+	snoozedUntil: number; // timestamp â all tips hidden until this time
+	seen: Record<string, number>; // tipId â last-seen timestamp
 	rotationIndex: number;
 }
 
@@ -485,20 +485,20 @@ export interface CustomColumn {
 }
 
 // Colors ordered to maximize perceptual distance between consecutive picks
-// (each step jumps ~150° around the color wheel: warm→cool→warm→cool…)
+// (each step jumps ~150Â° around the color wheel: warmâcoolâwarmâcoolâ¦)
 export const LABEL_COLORS = [
-	"#ef4444", // red       0°
-	"#14b8a6", // teal    174°
-	"#f97316", // orange   25°
-	"#8b5cf6", // violet  258°
-	"#84cc16", // lime     80°
-	"#ec4899", // pink    322°
-	"#06b6d4", // cyan    188°
-	"#eab308", // yellow   50°
-	"#3b82f6", // blue    217°
-	"#22c55e", // green   142°
-	"#f43f5e", // rose    350°
-	"#6366f1", // indigo  239°
+	"#ef4444", // red       0Â°
+	"#14b8a6", // teal    174Â°
+	"#f97316", // orange   25Â°
+	"#8b5cf6", // violet  258Â°
+	"#84cc16", // lime     80Â°
+	"#ec4899", // pink    322Â°
+	"#06b6d4", // cyan    188Â°
+	"#eab308", // yellow   50Â°
+	"#3b82f6", // blue    217Â°
+	"#22c55e", // green   142Â°
+	"#f43f5e", // rose    350Â°
+	"#6366f1", // indigo  239Â°
 ] as const;
 
 // ---- Repo-local config (.dev3/config.json) ----
@@ -538,7 +538,7 @@ export interface Dev3RepoConfig {
 	portCount?: number;
 }
 
-/** Keys of Dev3RepoConfig — used for merge logic. */
+/** Keys of Dev3RepoConfig â used for merge logic. */
 export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"setupScript",
 	"setupScriptLaunchMode",
@@ -619,9 +619,9 @@ export interface Project {
 }
 
 /**
- * True for the single hardcoded "Operations" board — the special, pinned virtual
+ * True for the single hardcoded "Operations" board â the special, pinned virtual
  * project. Distinct from user-created virtual boards (which have `kind: "virtual"`
- * but `builtin` unset). Used for pin-first ordering, the ⌘0 shortcut, and the
+ * but `builtin` unset). Used for pin-first ordering, the â0 shortcut, and the
  * special `[ Operations ]` / SYSTEM identity treatment.
  */
 export function isBuiltinOpsProject(p: Pick<Project, "kind" | "builtin">): boolean {
@@ -650,7 +650,7 @@ export interface Task {
 	 * Surfaced in the hover-preview popover above the terminal snapshot so
 	 * the user can re-enter focus fast after a long break. `description` is
 	 * the raw original user request and must NOT be used as a substitute.
-	 * When `userOverview` is set, it takes precedence for display — agents
+	 * When `userOverview` is set, it takes precedence for display â agents
 	 * keep writing here freely, but the user won't see it until they revert.
 	 */
 	overview?: string | null;
@@ -667,7 +667,7 @@ export interface Task {
 	 * Task modal or inline rename). Titles set by an agent through
 	 * `dev3 task update --title` leave this flag at `false`. The user-edited
 	 * marker shown to agents and the CLI overwrite-guard both key off this
-	 * flag — NOT off `customTitle != null` — so agent-set titles can still
+	 * flag â NOT off `customTitle != null` â so agent-set titles can still
 	 * be re-rewritten by later agents while a real user-typed title is
 	 * preserved for the entire task lifetime.
 	 */
@@ -692,7 +692,7 @@ export interface Task {
 	/**
 	 * Append-only log of the task's title/overview as they changed over time.
 	 * Written automatically by the data layer whenever the *effective*
-	 * (displayed) title or overview changes — and seeded once at creation. Each
+	 * (displayed) title or overview changes â and seeded once at creation. Each
 	 * entry is a full snapshot of both values, so it is self-contained. Not
 	 * surfaced in the UI yet; kept for a future history view and for search.
 	 */
@@ -717,7 +717,7 @@ export interface Task {
 	mergeCompletionPrompt?: MergeCompletionPromptState | null;
 	/**
 	 * True when the task was created via the "Scratch Task" button with no
-	 * initial prompt. The `description` holds only a `Scratch — HH:mm`
+	 * initial prompt. The `description` holds only a `Scratch â HH:mm`
 	 * placeholder used for the title; at launch time the agent receives an
 	 * empty prompt instead of the placeholder. The flag propagates from the
 	 * source todo task into every variant spawned from it.
@@ -731,9 +731,9 @@ export interface Task {
 	 * removed but a fixed folder is never auto-removed. Ignored for git projects.
 	 */
 	opsWorkDir?: string | null;
-	/** Last-launch timestamps (ISO) per package.json script — used to sort the Scripts dropdown. */
+	/** Last-launch timestamps (ISO) per package.json script â used to sort the Scripts dropdown. */
 	scriptLastRunAt?: Record<string, string>;
-	/** Last-used placement per package.json script — pre-selects it in the placement picker. */
+	/** Last-used placement per package.json script â pre-selects it in the placement picker. */
 	scriptLastPlacement?: Record<string, ScriptPlacement>;
 }
 
@@ -761,7 +761,7 @@ export interface PackageScripts {
 	runner: ScriptRunner;
 	/** Runner was auto-detected from a lockfile (vs falling back to npm). */
 	runnerAutoDetected: boolean;
-	/** Multiple lockfiles found — runner is ambiguous. */
+	/** Multiple lockfiles found â runner is ambiguous. */
 	multipleLockfiles: boolean;
 	/** Lockfiles actually present in the worktree. */
 	lockfiles: string[];
@@ -811,7 +811,7 @@ export const STUCK_PREPARATION_FETCH_THRESHOLD_MS = 60 * 1000;
 
 /** Per-pane session info for recovery. */
 export interface PaneSessionEntry {
-	/** tmux pane ID (e.g. "%0", "%5") — stable within a tmux server lifetime, unique across sessions. */
+	/** tmux pane ID (e.g. "%0", "%5") â stable within a tmux server lifetime, unique across sessions. */
 	paneId?: string | null;
 	/** The resolved agent base command (e.g. "claude", "/usr/local/bin/codex"). */
 	agentCmd: string;
@@ -825,7 +825,7 @@ export interface PaneSessionEntry {
 
 /** Captured session state for agent recovery after tmux death / app restart. */
 export interface TaskSessionState {
-	/** Panes in order — index 0 is the main pane, rest are extra agent panes. */
+	/** Panes in order â index 0 is the main pane, rest are extra agent panes. */
 	panes: PaneSessionEntry[];
 }
 
@@ -861,7 +861,7 @@ export interface TaskHistoryEntry {
 	changed: TaskHistoryChange;
 }
 
-/** Humanize a status slug for display in notifications (e.g. "in-progress" → "In Progress"). */
+/** Humanize a status slug for display in notifications (e.g. "in-progress" â "In Progress"). */
 export function formatStatus(status: string): string {
 	return status
 		.split("-")
@@ -1014,13 +1014,13 @@ export type ExposedPortKind = "quick" | "shared";
 /**
  * A dev-server port (or group of ports) being shared publicly through a
  * Cloudflare quick-tunnel. `kind: "quick"` is one cloudflared per port
- * → its own random `*.trycloudflare.com` URL. `kind: "shared"` is one
- * cloudflared shared between multiple ports of the same task — those ports
+ * â its own random `*.trycloudflare.com` URL. `kind: "shared"` is one
+ * cloudflared shared between multiple ports of the same task â those ports
  * are reached via `<url>/p/<port>/...` on the headless server which proxies
  * the request to localhost:<port>. Shared mode lets a frontend and backend
  * talk to each other via relative URLs (no CORS, no hardcoded URLs).
  *
- * State is runtime-only — never persists to tasks.json. Tunnels are torn
+ * State is runtime-only â never persists to tasks.json. Tunnels are torn
  * down on explicit stop, after two consecutive port-scan misses (~20 s),
  * on task removal, and on app shutdown.
  */
@@ -1028,7 +1028,7 @@ export interface ExposedPort {
 	taskId: string;
 	kind: ExposedPortKind;
 	/**
-	 * For `quick`, exactly one element — the dev-server port. For `shared`,
+	 * For `quick`, exactly one element â the dev-server port. For `shared`,
 	 * the full set of ports reachable through this tunnel.
 	 */
 	ports: number[];
@@ -1338,7 +1338,13 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			moveTask: {
-				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean };
+				// `clientPlayedSound`: the UI already played the completion/cancel sound
+				// optimistically in the initiating renderer, so the backend must NOT
+				// also push `taskSound` (that push fans out to every connected renderer
+				// — a desktop window AND a remote browser on the same machine — and
+				// would play a second time). Unset for CLI / branch-merge / agent
+				// approval, where no renderer played locally and the push is the sound.
+				params: { taskId: string; projectId: string; newStatus: TaskStatus; force?: boolean; clientPlayedSound?: boolean };
 				response: Task;
 			};
 			cancelTaskPreparation: {
@@ -1863,7 +1869,7 @@ export type AppRPCSchema = {
 			taskPreparationFailed: { taskId: string; projectId: string; taskTitle: string; error: string };
 			/**
 			 * Emitted when the main window gains focus shortly after a watched-task notification fired.
-			 * The renderer navigates to the referenced task — implements click-to-open for native notifications.
+			 * The renderer navigates to the referenced task â implements click-to-open for native notifications.
 			 */
 			openTaskFromNotification: { taskId: string; projectId: string };
 			/**
@@ -1889,7 +1895,7 @@ export type AppRPCSchema = {
 			/**
 			 * CI/checks + PR-review state for a task's open PR, emitted by the
 			 * background PR poller (`checkOpenPRsForPromotion`). Drives the CI and
-			 * review badges on the task card. Passive status — NOT gated by Focus
+			 * review badges on the task card. Passive status â NOT gated by Focus
 			 * Mode (only the bell/notification raised alongside it is).
 			 */
 			taskPrStatus: {
@@ -1926,7 +1932,7 @@ export type AppRPCSchema = {
 			 * RPC call, state mutation) based on its `current` view/task/project.
 			 *
 			 * Bun-side side effects (open external URL, dialog, display-popup) do
-			 * not go through this channel — they execute in `src/bun/index.ts`.
+			 * not go through this channel â they execute in `src/bun/index.ts`.
 			 */
 			menuAction: { action: string };
 			/**

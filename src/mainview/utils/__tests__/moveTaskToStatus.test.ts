@@ -15,7 +15,7 @@ vi.mock("../confirmTaskCompletion", () => ({
 	confirmTaskCompletion: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("../../task-sounds", () => ({
-	playTaskCompletionSound: vi.fn(),
+	playTaskCompletionSound: vi.fn(() => true),
 }));
 
 import { moveTaskToStatus } from "../moveTaskToStatus";
@@ -43,6 +43,7 @@ describe("moveTaskToStatus", () => {
 	beforeEach(() => {
 		mockedMoveTask.mockResolvedValue({ ...task, status: "completed" } as Task);
 		mockedConfirm.mockResolvedValue(true);
+		mockedSound.mockReturnValue(true);
 	});
 	afterEach(() => vi.clearAllMocks());
 
@@ -51,12 +52,22 @@ describe("moveTaskToStatus", () => {
 		const ok = await moveTaskToStatus({ task, project, newStatus: "completed", dispatch, t });
 
 		expect(ok).toBe(true);
-		// Sound fires before the RPC resolves (instant feedback), keyed by task id.
-		expect(mockedSound).toHaveBeenCalledWith("completed", "t1");
+		// Sound fires before the RPC resolves (instant feedback).
+		expect(mockedSound).toHaveBeenCalledWith("completed");
 		// Optimistic + clearBell + server-confirmed update.
 		expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "clearBell", taskId: "t1" }));
 		expect(dispatchedStatuses(dispatch)).toEqual(["completed", "completed"]);
-		expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus: "completed" });
+		// Because the UI played the sound, the backend is told to skip its push —
+		// otherwise a second connected renderer (remote browser on the same
+		// machine) would play it again.
+		expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus: "completed", clientPlayedSound: true });
+	});
+
+	it("tells the backend NOT to suppress the push when the UI did not play (sound off)", async () => {
+		mockedSound.mockReturnValue(false);
+		const dispatch = vi.fn();
+		await moveTaskToStatus({ task, project, newStatus: "completed", dispatch, t });
+		expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus: "completed", clientPlayedSound: false });
 	});
 
 	it("aborts without any change when the confirmation is declined", async () => {
@@ -70,10 +81,11 @@ describe("moveTaskToStatus", () => {
 		expect(mockedMoveTask).not.toHaveBeenCalled();
 	});
 
-	it("does not play a sound for non-terminal moves", async () => {
+	it("does not play a sound for non-terminal moves and does not suppress the push", async () => {
 		const dispatch = vi.fn();
 		await moveTaskToStatus({ task, project, newStatus: "review-by-user", dispatch, t });
 		expect(mockedSound).not.toHaveBeenCalled();
+		expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus: "review-by-user", clientPlayedSound: false });
 	});
 
 	it("retries with force when the normal move fails", async () => {
@@ -83,8 +95,8 @@ describe("moveTaskToStatus", () => {
 		const dispatch = vi.fn();
 		await moveTaskToStatus({ task, project, newStatus: "completed", dispatch, t });
 
-		expect(mockedMoveTask).toHaveBeenNthCalledWith(1, { taskId: "t1", projectId: "p1", newStatus: "completed" });
-		expect(mockedMoveTask).toHaveBeenNthCalledWith(2, { taskId: "t1", projectId: "p1", newStatus: "completed", force: true });
+		expect(mockedMoveTask).toHaveBeenNthCalledWith(1, { taskId: "t1", projectId: "p1", newStatus: "completed", clientPlayedSound: true });
+		expect(mockedMoveTask).toHaveBeenNthCalledWith(2, { taskId: "t1", projectId: "p1", newStatus: "completed", force: true, clientPlayedSound: true });
 		expect(mockedToastError).not.toHaveBeenCalled();
 	});
 

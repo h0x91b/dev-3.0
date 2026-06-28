@@ -747,6 +747,7 @@ export async function moveTask(params: {
 	force?: boolean;
 	ifStatus?: string;
 	ifStatusNot?: string;
+	clientPlayedSound?: boolean;
 }): Promise<Task> {
 	log.info("→ moveTask", params);
 	const project = await data.getProject(params.projectId);
@@ -790,7 +791,15 @@ export async function moveTask(params: {
 	if (newStatus === "completed" || newStatus === "cancelled") {
 		cleanupTaskState(task.id);
 		portPool.releasePorts(task.id);
-		emitTaskSound(newStatus as "completed" | "cancelled", task.id);
+		// When a UI renderer initiates the move it plays the sound optimistically
+		// and sets `clientPlayedSound`, so we must NOT also push `taskSound`: that
+		// push broadcasts to every connected renderer (a desktop window AND a remote
+		// browser on the same machine), which would play a second time. CLI /
+		// branch-merge / agent-approval completions never set it, so the push is the
+		// only sound and still fires.
+		if (!params.clientPlayedSound) {
+			emitTaskSound(newStatus as "completed" | "cancelled", task.id);
+		}
 		if (params.force) {
 			log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
 		} else if (isActive(oldStatus) || task.worktreePath) {

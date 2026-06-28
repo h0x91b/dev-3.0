@@ -361,6 +361,7 @@ describe("TaskCard", () => {
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "cancelled",
+				clientPlayedSound: true,
 			});
 		});
 
@@ -867,6 +868,7 @@ describe("TaskCard", () => {
 					taskId: "t1",
 					projectId: "p1",
 					newStatus: "completed",
+					clientPlayedSound: true,
 				});
 			});
 
@@ -924,12 +926,14 @@ describe("TaskCard", () => {
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "in-progress",
+				clientPlayedSound: false,
 			});
 			expect(mockedApi.request.moveTask).toHaveBeenNthCalledWith(2, {
 				taskId: "t1",
 				projectId: "p1",
 				newStatus: "in-progress",
 				force: true,
+				clientPlayedSound: false,
 			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
 			expect(onTaskMoved).toHaveBeenCalledWith("t1");
