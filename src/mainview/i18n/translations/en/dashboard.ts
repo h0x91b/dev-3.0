@@ -104,7 +104,7 @@ const dashboard = {
 	"remote.close": "Close",
 	"remote.connected": "Connected",
 	"remote.authFailed": "Session Expired",
-	"remote.authFailedDesc": "Your access link has expired. Scan a new QR code from the desktop app to reconnect.",
+	"remote.authFailedDesc": "Your access link expired. Get a fresh one from the host — run `dev3 remote url` on a headless server, or reopen the Remote Access QR in the desktop app — then open it here.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi is not installed",

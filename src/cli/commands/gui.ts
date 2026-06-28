@@ -10,11 +10,25 @@ import {
 	CLI_EXIT_CODE_USAGE_ERROR,
 } from "../../shared/cli-exit-codes";
 
-const DEFAULT_BUNDLE_URL =
-	"https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0/stable-linux-x64-dev-3.0.tar.zst";
+const BUNDLE_URL_BASE = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
+
+/**
+ * Linux GUI-bundle arch slug. The compiled `dev3` binary reports the arch it was
+ * built for via `process.arch`, so an arm64 box (Graviton, Ampere, Hetzner CAX,
+ * Raspberry Pi) resolves the arm64 bundle instead of silently fetching x64 — which
+ * would download fine and then fail to exec with a cryptic wrong-arch error. Any
+ * non-arm64 value falls back to x64 (the only other Linux target we publish).
+ */
+function linuxBundleArch(): "x64" | "arm64" {
+	return process.arch === "arm64" ? "arm64" : "x64";
+}
+
+function defaultBundleUrl(): string {
+	return `${BUNDLE_URL_BASE}/stable-linux-${linuxBundleArch()}-dev-3.0.tar.zst`;
+}
 
 function buildGuiHelp(): string {
-	const url = process.env.DEV3_GUI_BUNDLE_URL || DEFAULT_BUNDLE_URL;
+	const url = process.env.DEV3_GUI_BUNDLE_URL || defaultBundleUrl();
 	return `dev3 gui — launch the dev-3.0 desktop app.
 
 Usage:
@@ -113,7 +127,7 @@ const DISTRO_INSTALL_COMMANDS: readonly DistroInstall[] = [
 ];
 
 function guiBundleUrl(): string {
-	return process.env.DEV3_GUI_BUNDLE_URL || DEFAULT_BUNDLE_URL;
+	return process.env.DEV3_GUI_BUNDLE_URL || defaultBundleUrl();
 }
 
 function guiBundleRoot(): string {
@@ -265,9 +279,17 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
 		);
 	}
 	if (!response.ok) {
+		// S3 answers 403/404 for a key that doesn't exist. The arm64 Linux desktop
+		// bundle may not be published yet — point the user at the browser UI, which
+		// runs on any arch, instead of leaving them with a bare HTTP error.
+		const missing = response.status === 404 || response.status === 403;
+		const arm64Hint = missing && url.includes("-linux-arm64-")
+			? "\n\nThe arm64 Linux desktop bundle may not be published yet. " +
+			  "Until it is, run `dev3 remote` for the full UI in your browser — it works on any arch."
+			: "";
 		exitError(
 			`failed to download dev-3.0 GUI bundle`,
-			`URL: ${url}\nHTTP ${response.status} ${response.statusText}`,
+			`URL: ${url}\nHTTP ${response.status} ${response.statusText}${arm64Hint}`,
 		);
 	}
 	if (!response.body) {

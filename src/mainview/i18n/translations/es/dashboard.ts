@@ -104,7 +104,7 @@ const dashboard = {
 	"remote.close": "Cerrar",
 	"remote.connected": "Conectado",
 	"remote.authFailed": "Sesión expirada",
-	"remote.authFailedDesc": "Tu enlace de acceso ha expirado. Escanea un nuevo código QR desde la app de escritorio.",
+	"remote.authFailedDesc": "Tu enlace de acceso caducó. Consigue uno nuevo en el host — ejecuta `dev3 remote url` en un servidor headless, o vuelve a abrir el QR de Acceso remoto en la app de escritorio — y ábrelo aquí.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi no está instalado",

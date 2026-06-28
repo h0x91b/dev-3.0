@@ -218,7 +218,7 @@ That's it. Full Homebrew-on-Linux docs: https://docs.brew.sh/Homebrew-on-Linux
 This installs the `dev3` CLI. Three ways to use it:
 
 - **Headless / browser UI** — `dev3 remote` prints an ASCII QR, an access URL, and an SSH-forward hint. By default it also starts a Cloudflare quick tunnel so you can connect from anywhere without SSH (`cloudflared` is installed as a brew dep). Pass `--no-tunnel` for local-only mode. The token rotates every 25 seconds; the QR auto-refreshes too. Perfect for remote dev boxes.
-  - **Background lifecycle (for SSH boxes)** — `dev3 remote --detach` runs the server in the background so it survives your SSH session. From any later SSH session, `dev3 remote status` shows it (PID, port, uptime), `dev3 remote url` re-prints a fresh QR/URL to re-scan from your phone, and `dev3 remote stop` shuts it down cleanly.
+  - **Background lifecycle (for SSH boxes)** — `dev3 remote` backgrounds the server by default, so it survives your SSH session (add `--no-detach` to keep it in the foreground). From any later SSH session, `dev3 remote status` shows it (PID, port, uptime), `dev3 remote url` re-prints a fresh QR/URL to re-scan from your phone, `dev3 remote logs --follow` tails its output, `dev3 remote restart` relaunches it, and `dev3 remote stop` shuts it down cleanly.
   - **Run as a service** — `dev3 remote install-service --port <n>` installs a systemd --user unit so the server survives logout and restarts on boot (`dev3 remote uninstall-service` removes it). Tip: `sudo loginctl enable-linger $USER` keeps user services running while you're logged out.
   - **Trusted device** — after you scan the QR once, the browser remembers the session (8h) and reconnects on reload without rescanning.
 - **Desktop GUI** — `dev3 gui` launches the full Electrobun desktop app. On the first run it lazily downloads the bundle (~88 MB) into `~/.dev3.0/gui/` and registers an XDG menu entry. If your distro is missing GTK/WebKit libraries it prints the exact `apt`/`dnf`/`pacman` command for you to copy.
@@ -229,9 +229,10 @@ This installs the `dev3` CLI. Three ways to use it:
 If you don't want Homebrew at all (e.g. running inside a minimal container), grab the CLI tarball directly:
 
 ```sh
-# Pick your arch — on Hetzner CPX/CCX it's x64
+# Auto-pick your arch: x64 (Intel/AMD, e.g. Hetzner CPX/CCX) or arm64 (Ampere/Graviton, e.g. Hetzner CAX)
+case "$(uname -m)" in aarch64|arm64) A=arm64;; *) A=x64;; esac
 curl -fsSL -o /tmp/dev3.tar.gz \
-  https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-x64.tar.gz
+  "https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-$A.tar.gz"
 
 mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
 ~/.dev3/dev3 remote
