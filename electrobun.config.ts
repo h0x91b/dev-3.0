@@ -4,7 +4,7 @@ export default {
 	app: {
 		name: "dev-3.0",
 		identifier: "dev3.electrobun.dev",
-		version: "1.26.1",
+		version: "1.27.0",
 	},
 	runtime: {
 		// Standard macOS behavior: closing the last window does NOT quit the app —
