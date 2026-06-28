@@ -5,6 +5,7 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
+import { useFocusTrap } from "../utils/useFocusTrap";
 import Select, { useAgentRenderOption } from "./Select";
 
 interface VariantRow {
@@ -74,14 +75,25 @@ function LaunchVariantsModal({
 
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
 
+	// Keep Tab/Shift+Tab inside the dialog — otherwise focus escapes to the
+	// Kanban board behind the modal (labels, task cards), letting the user
+	// operate hidden UI.
+	const trapRef = useFocusTrap<HTMLDivElement>();
+
 	// Escape → close; Enter → launch (when no text input is focused)
 	useEffect(() => {
 		function handleKey(e: KeyboardEvent) {
 			if (e.key === "Escape") {
 				onClose();
 			} else if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-				const tag = (document.activeElement as HTMLElement | null)?.tagName;
-				if (tag === "INPUT" || tag === "TEXTAREA") return;
+				// Only an "implicit" Enter (nothing interactive focused) should launch.
+				// If the user tab-focused a control, Enter must trigger that control's
+				// own action — the agent/config pickers render as <button> (Select.tsx),
+				// as do Watch/Cancel/Add/Remove — otherwise keyboard navigation causes
+				// accidental, costly agent spawns.
+				const el = document.activeElement as HTMLElement | null;
+				const tag = el?.tagName;
+				if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON" || tag === "SELECT" || tag === "A" || el?.isContentEditable) return;
 				if (!launching && variants.length > 0) handleLaunch();
 			}
 		}
@@ -160,7 +172,11 @@ function LaunchVariantsModal({
 			onClick={onClose}
 		>
 			<div
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-lg mx-4 overflow-hidden"
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-lg mx-4 overflow-hidden outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}

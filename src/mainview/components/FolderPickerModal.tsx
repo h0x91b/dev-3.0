@@ -10,6 +10,7 @@ import { useTree } from "@headless-tree/react";
 import type { FolderListing } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { useFocusTrap } from "../utils/useFocusTrap";
 import {
 	subscribeFolderPicker,
 	type FolderPickerRequest,
@@ -176,6 +177,7 @@ interface ModalProps {
 
 function FolderPickerModal({ options, onClose }: ModalProps) {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [currentRoot, setCurrentRoot] = useState<string | null>(null);
 	const [manualPath, setManualPath] = useState("");
 	const [listingError, setListingError] = useState<string | null>(null);
@@ -315,7 +317,13 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			}}
 			data-testid="folder-picker-backdrop"
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.55)] w-[56rem] max-w-[94vw] flex flex-col overflow-hidden">
+			<div
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay border border-edge rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.55)] w-[56rem] max-w-[94vw] flex flex-col overflow-hidden outline-none"
+			>
 				{/* Header */}
 				<div className="px-5 py-3 border-b border-edge flex items-center justify-between gap-3">
 					<h2 className="text-fg text-base font-semibold truncate">

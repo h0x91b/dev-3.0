@@ -13,6 +13,12 @@ function renderAbout(onClose = vi.fn()) {
 }
 
 describe("AboutModal", () => {
+	it("traps focus inside the dialog on open", () => {
+		renderAbout();
+		const dialog = screen.getByRole("dialog");
+		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
 	it("shows the app name and version", () => {
 		renderAbout();
 		expect(screen.getByText("dev-3.0")).toBeInTheDocument();

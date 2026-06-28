@@ -20,6 +20,12 @@ function renderModal(
 }
 
 describe("CommandPaletteModal", () => {
+	it("traps focus inside the dialog on open", () => {
+		renderModal();
+		const dialog = screen.getByRole("dialog");
+		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
 	it("lists commands and filters as the user types", async () => {
 		const user = userEvent.setup();
 		renderModal();

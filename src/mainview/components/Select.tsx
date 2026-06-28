@@ -59,6 +59,16 @@ function Select({
 				ref={buttonRef}
 				type="button"
 				onClick={handleOpen}
+				onBlur={(e) => {
+					// Close when focus leaves the trigger (e.g. Tab to another Select)
+					// so two dropdowns can't be open at once — the document mousedown
+					// handler only covers mouse, not keyboard navigation. Ignore focus
+					// moving into our own portaled dropdown. Clicking an option does not
+					// blur the trigger (options preventDefault on mousedown), so mouse
+					// selection is unaffected.
+					if (dropdownRef.current?.contains(e.relatedTarget as Node | null)) return;
+					setOpen(false);
+				}}
 				className={`w-full flex items-center justify-between gap-2 bg-elevated text-fg text-sm rounded-lg px-3 py-1.5 border transition-colors outline-none text-left ${
 					open ? "border-accent" : "border-edge hover:border-edge-active"
 				}`}

@@ -577,5 +577,138 @@ describe("LaunchVariantsModal", () => {
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
 			document.body.removeChild(input);
 		});
+
+		// Regression: the custom Select renders a <button>. A keyboard user who
+		// tab-focuses the Agent/Config picker and presses Enter to open the
+		// dropdown must NOT spawn agents (accidental, costly launch).
+		it("Enter does not trigger launch when the agent Select button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			getAgentButtons()[0].focus();
+			expect(document.activeElement?.tagName).toBe("BUTTON");
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		it("Enter does not trigger launch when the config Select button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			getConfigButtons()[0].focus();
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		it("Enter does not trigger launch when the Cancel button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			const cancel = screen.getByText("Cancel") as HTMLButtonElement;
+			cancel.focus();
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		it("Enter does not trigger launch when the Watch button is focused", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			const watch = screen.getByText("Watch").closest("button") as HTMLButtonElement;
+			watch.focus();
+
+			await userEvent.keyboard("{Enter}");
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+
+		// Backward-compat: the modifier-Enter contract must stay unchanged —
+		// only a plain Enter (no focused control) launches.
+		it("Cmd/Ctrl/Shift+Enter do not trigger launch", async () => {
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject());
+
+			await userEvent.keyboard("{Meta>}{Enter}{/Meta}");
+			await userEvent.keyboard("{Control>}{Enter}{/Control}");
+			await userEvent.keyboard("{Shift>}{Enter}{/Shift}");
+
+			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("single open dropdown", () => {
+		// Regression: opening one Select via keyboard (Enter) then Tabbing to the
+		// next Select used to leave BOTH dropdowns open, stacked on top of each
+		// other. Moving focus off a Select must close its dropdown.
+		it("closes an open Select dropdown when focus moves to another control", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+
+			const agentBtn = getAgentButtons()[0];
+			agentBtn.focus();
+			await user.keyboard("{Enter}");
+
+			// Agent dropdown is open — "Codex" only appears as an agent option.
+			expect(screen.getByText("Codex")).toBeInTheDocument();
+
+			// Tab to the next control (the config Select).
+			await user.tab();
+
+			// The agent dropdown must have closed.
+			expect(screen.queryByText("Codex")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("focus trap", () => {
+		it("moves focus into the dialog on open", () => {
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+			expect(dialog.contains(document.activeElement)).toBe(true);
+			expect(document.activeElement).not.toBe(document.body);
+		});
+
+		it("Tab from the last control cycles back into the dialog (does not escape)", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+
+			(screen.getByText("Launch") as HTMLButtonElement).focus();
+			await user.tab();
+
+			expect(dialog.contains(document.activeElement)).toBe(true);
+			expect(document.activeElement).not.toBe(document.body);
+		});
+
+		it("Shift+Tab from the first control cycles to the last (stays in dialog)", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+
+			(screen.getByText("Watch").closest("button") as HTMLButtonElement).focus();
+			await user.tab({ shift: true });
+
+			expect(dialog.contains(document.activeElement)).toBe(true);
+		});
+
+		it("Tab never lands on an element outside the dialog", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+			const dialog = screen.getByRole("dialog");
+
+			// Something focusable behind the modal.
+			const outside = document.createElement("button");
+			outside.textContent = "behind";
+			document.body.appendChild(outside);
+
+			for (let i = 0; i < 12; i++) {
+				await user.tab();
+				expect(dialog.contains(document.activeElement)).toBe(true);
+				expect(document.activeElement).not.toBe(outside);
+			}
+
+			document.body.removeChild(outside);
+		});
 	});
 });

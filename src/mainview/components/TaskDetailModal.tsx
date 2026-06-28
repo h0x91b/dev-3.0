@@ -11,6 +11,7 @@ import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { trackEvent, agentNameFromId } from "../analytics";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface TaskDetailModalProps {
 	task: Task;
@@ -22,6 +23,7 @@ interface TaskDetailModalProps {
 function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 	const isTodo = task.status === "todo";
 	const isArchived = task.status === "completed" || task.status === "cancelled";
 	const [isEditing, setIsEditing] = useState(false);
@@ -251,7 +253,13 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 				if (e.target === e.currentTarget && !isEditing) onClose();
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[35rem] max-h-[80vh] flex flex-col">
+			<div
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[35rem] max-h-[80vh] flex flex-col outline-none"
+			>
 				{/* Header */}
 				<div className="flex items-center justify-between px-6 pt-5 pb-3">
 					<div className="flex items-center gap-3">
@@ -434,6 +442,7 @@ function ArchivedView({
 	const t = useT();
 	const statusColors = useStatusColors();
 	const menuRef = useRef<HTMLDivElement>(null);
+	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	// Close status menu on click outside
 	useEffect(() => {
@@ -460,7 +469,13 @@ function ArchivedView({
 				if (e.target === e.currentTarget) onClose();
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col">
+			<div
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col outline-none"
+			>
 				{/* Header */}
 				<div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-edge">
 					<div className="flex items-center gap-3">

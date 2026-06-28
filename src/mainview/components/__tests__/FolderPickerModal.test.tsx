@@ -50,6 +50,17 @@ describe("FolderPickerHost", () => {
 		expect(screen.queryByTestId("folder-picker-backdrop")).not.toBeInTheDocument();
 	});
 
+	it("traps focus inside the dialog once opened", async () => {
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test", [{ name: "projects", isDir: true }]),
+		);
+		renderHost();
+		openFolderPicker();
+
+		const dialog = await screen.findByRole("dialog");
+		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
 	it("opens on request, loads the initial listing, and resolves with the selected path on Select", async () => {
 		const user = userEvent.setup();
 		mockedApi.request.listDirectory.mockResolvedValue(

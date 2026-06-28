@@ -152,6 +152,20 @@ text-fg placeholder-fg-muted | outline-none
 focus:border-accent/50 | transition-colors
 ```
 
+### Focus ring (keyboard)
+
+Focus affordance is global, not per-component. `index.css` defines a single
+`:focus-visible` ring (`outline: 2px solid rgb(var(--accent)); outline-offset: 2px`)
+that shows **only** for keyboard / assistive-tech focus — never on a mouse click.
+
+- Do **not** add per-element focus styling for keyboard users; the global rule
+  covers every focusable control (buttons, the custom `Select` trigger, inputs,
+  links, `tabindex` elements). Keep using `outline-none` to suppress the default
+  mouse-focus outline — the global rule overrides it for `:focus-visible`.
+- Dialog/modal shells use `tabIndex={-1}` + `role="dialog"` so the focus trap can
+  pull focus in on open; they are exempted from the ring (no box around the panel).
+- Inputs keep their `focus:border-accent/50` border change in addition to the ring.
+
 ### Scrollbars
 
 ```css

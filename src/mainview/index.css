@@ -303,6 +303,31 @@ button {
 	user-select: none;
 }
 
+/* ---- Keyboard focus ring (single source of truth) -------------------------
+   The app scatters `outline-none` across components to kill the default focus
+   outline on mouse interaction. That also hid the focus indicator for KEYBOARD
+   users (Tab/Shift+Tab showed nothing — see the custom Select trigger). These
+   rules restore a consistent, accent-colored ring shown ONLY for keyboard /
+   assistive-tech focus via :focus-visible, never on a mouse click.
+
+   Because this block is authored after `@tailwind utilities`, it wins over the
+   `.outline-none` utility at equal specificity (later source order) when
+   :focus-visible matches — so individual components need no focus styling.
+   The outline auto-follows each element's border-radius in WebKit/Chromium. */
+:focus {
+	outline: none;
+}
+:focus-visible {
+	outline: 2px solid rgb(var(--accent));
+	outline-offset: 2px;
+}
+/* Dialog/modal shells are focusable only programmatically (tabIndex={-1}) to
+   pull focus into the dialog on open — they must never render a ring. */
+[tabindex="-1"]:focus,
+[tabindex="-1"]:focus-visible {
+	outline: none;
+}
+
 /* ---- Toast auto-dismiss progress bar ---- */
 
 @keyframes toast-shrink {

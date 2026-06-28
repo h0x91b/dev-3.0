@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
 import { toast } from "../toast";
+import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface AddProjectModalProps {
 	dispatch: Dispatch<AppAction>;
@@ -14,6 +15,7 @@ interface AddProjectModalProps {
 
 function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	const t = useT();
+	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [kind, setKind] = useState<"git" | "operations">("git");
 	const [opsName, setOpsName] = useState("");
 	const [creatingOps, setCreatingOps] = useState(false);
@@ -199,7 +201,13 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 				if (e.target === e.currentTarget) onClose();
 			}}
 		>
-			<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5">
+			<div
+				ref={trapRef}
+				role="dialog"
+				aria-modal="true"
+				tabIndex={-1}
+				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5 outline-none"
+			>
 				<h2 className="text-fg text-lg font-semibold">
 					{t("addProject.title")}
 				</h2>

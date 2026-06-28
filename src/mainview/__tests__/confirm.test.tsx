@@ -113,6 +113,29 @@ describe("confirm service", () => {
 		expect(await screen.findByText("Title only")).toBeInTheDocument();
 	});
 
+	it("traps focus inside the dialog (Tab does not escape)", async () => {
+		const user = userEvent.setup();
+		const outside = document.createElement("button");
+		outside.textContent = "outside";
+		document.body.appendChild(outside);
+
+		renderHost();
+		act(() => {
+			void confirm({ title: "Trap me", message: "M" });
+		});
+
+		const dialog = await screen.findByRole("dialog");
+		expect(dialog.contains(document.activeElement)).toBe(true);
+
+		for (let i = 0; i < 6; i++) {
+			await user.tab();
+			expect(dialog.contains(document.activeElement)).toBe(true);
+			expect(document.activeElement).not.toBe(outside);
+		}
+
+		document.body.removeChild(outside);
+	});
+
 	it("resolves false when no host is mounted", async () => {
 		// No ConfirmHost rendered → fail-closed.
 		await expect(confirm({ title: "T", message: "M" })).resolves.toBe(false);
