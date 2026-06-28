@@ -1,0 +1,1 @@
+The Watch toggle in the launch/create-variant dialog now remembers its on/off state as a global default and applies it to the next tasks you launch. Toggling it persists your preference; launching applies the chosen watch state to the task.

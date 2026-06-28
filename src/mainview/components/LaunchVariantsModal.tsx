@@ -24,6 +24,12 @@ interface LaunchVariantsModalProps {
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
 	mode?: LaunchMode;
+	/**
+	 * Called when the Watch toggle changes the remembered `watchByDefault`
+	 * preference, so the parent can keep its in-memory GlobalSettings in sync
+	 * (the next modal open then reflects the new default).
+	 */
+	onGlobalSettingsChange?: (settings: GlobalSettings) => void;
 }
 
 function LaunchVariantsModal({
@@ -35,6 +41,7 @@ function LaunchVariantsModal({
 	dispatch,
 	onClose,
 	mode = "spawn",
+	onGlobalSettingsChange,
 }: LaunchVariantsModalProps) {
 	const t = useT();
 
@@ -67,7 +74,9 @@ function LaunchVariantsModal({
 	const [launching, setLaunching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
-	const [watched, setWatched] = useState(!!task.watched);
+	// A freshly created task has no explicit `watched` flag → fall back to the
+	// remembered preference; an existing task with an explicit value keeps it.
+	const [watched, setWatched] = useState(task.watched ?? globalSettings.watchByDefault ?? false);
 
 	useEffect(() => {
 		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
@@ -127,6 +136,22 @@ function LaunchVariantsModal({
 		setLaunching(true);
 		setError(null);
 		try {
+			// Apply the (possibly preference-derived) Watch choice to the source
+			// task before spawning, so launching with the toggle on/off actually
+			// watches/unwatches it — even when the user never clicked the toggle.
+			// Variants inherit `watched` from the source, so this must run first.
+			if (watched !== !!task.watched) {
+				try {
+					const updated = await api.request.toggleTaskWatch({
+						taskId: task.id,
+						projectId: project.id,
+						watched,
+					});
+					dispatch({ type: "updateTask", task: updated });
+				} catch {
+					// Watch is best-effort; never block the launch on it.
+				}
+			}
 			if (mode === "addAttempts") {
 				const result = await api.request.addAttempts({
 					taskId: task.id,
@@ -187,18 +212,15 @@ function LaunchVariantsModal({
 							<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
 						</div>
 						<button
-							onClick={async () => {
+							onClick={() => {
 								const newVal = !watched;
 								setWatched(newVal);
-								try {
-									const updated = await api.request.toggleTaskWatch({
-										taskId: task.id,
-										projectId: project.id,
-										watched: newVal,
-									});
-									dispatch({ type: "updateTask", task: updated });
-								} catch {
-									setWatched(!newVal); // revert on failure
+								// Remember this choice as the default for future launches.
+								// The task itself is (un)watched at launch time (handleLaunch).
+								if (globalSettings.watchByDefault !== newVal) {
+									const next = { ...globalSettings, watchByDefault: newVal };
+									onGlobalSettingsChange?.(next);
+									api.request.saveGlobalSettings(next).catch(() => {});
 								}
 							}}
 							className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
