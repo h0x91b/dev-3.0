@@ -31,7 +31,7 @@ function writeExecutable(path: string, content: string) {
 }
 
 describe("sign-cli-binaries.sh", () => {
-	it("uses Developer ID signing for both CLI binaries during release builds", () => {
+	it("uses Developer ID signing for the CLI binary during release builds", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "dev3-sign-cli-"));
 		tempDirs.push(tempDir);
 
@@ -43,7 +43,6 @@ describe("sign-cli-binaries.sh", () => {
 		mkdirSync(binDir, { recursive: true });
 
 		writeFileSync(join(distDir, "dev3"), "fake");
-		writeFileSync(join(distDir, "dev3-server"), "fake");
 
 		writeExecutable(join(binDir, "uname"), "#!/bin/bash\necho Darwin\n");
 		writeExecutable(
@@ -68,13 +67,10 @@ exit 0
 
 		const log = readFileSync(logPath, "utf8");
 		expect(log).toContain("--remove-signature dist/dev3");
-		expect(log).toContain("--remove-signature dist/dev3-server");
 		expect(log).toContain(
 			'--force --verbose --timestamp --sign Developer ID Application: Example Corp (TEAMID) --options runtime dist/dev3',
 		);
-		expect(log).toContain(
-			'--force --verbose --timestamp --sign Developer ID Application: Example Corp (TEAMID) --options runtime dist/dev3-server',
-		);
-		expect(log).not.toContain("--sign - dist/dev3-server");
+		// Ad-hoc fallback must NOT be used when a Developer ID is present.
+		expect(log).not.toContain("--sign - dist/dev3");
 	});
 });

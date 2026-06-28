@@ -40,7 +40,6 @@ export default {
 			"dist/assets": "views/mainview/assets",
 			"changelog.json": "changelog.json",
 			"dist/dev3": "cli/dev3",
-			"dist/dev3-server": "cli/dev3-server",
 			"src/assets/sounds": "sounds",
 		},
 		linux: {

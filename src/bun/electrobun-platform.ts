@@ -12,15 +12,19 @@
  * Usage contract:
  *   • GUI entry  (`src/bun/index.ts`) — runs under Electrobun shell, imports
  *     this module through handlers transitively; GUI path resolved here.
- *   • Headless entry (`src/bun/headless-entry.ts`) — sets DEV3_HEADLESS=1 as
- *     the first statement, then imports everything else. This shim sees the
- *     flag and short-circuits to stubs, never touching `electrobun/bun`.
- *   • CLI (`src/cli/main.ts`) — must NOT import this module transitively.
- *     The `dev3 remote` subcommand spawns a separate headless binary.
+ *   • Headless entry (`src/bun/headless-entry.ts`) — reached only via
+ *     `dev3 remote`, which sets DEV3_HEADLESS=1 and THEN dynamically imports
+ *     headless-entry. This shim sees the flag and short-circuits to stubs,
+ *     never touching `electrobun/bun`.
+ *   • CLI (`src/cli/main.ts`) — must NOT import this module via any STATIC
+ *     import path. `dev3 remote` boots the headless server in the same binary
+ *     through a dynamic `import()`, so this shim only evaluates after
+ *     DEV3_HEADLESS is set. A guard test (cli-startup-graph.test.ts) enforces
+ *     that the CLI's static import graph never reaches headless-entry/electrobun.
  *
  * The top-level-await import below is safe for GUI mode: Electrobun's own
  * bundler handles it. For headless compilation we must ensure the DEV3_HEADLESS
- * env is set before this shim evaluates (headless-entry does that).
+ * env is set before this shim evaluates (the `dev3 remote` handler does that).
  */
 
 const isHeadless = process.env.DEV3_HEADLESS === "1";

@@ -10,8 +10,8 @@
 #
 # Default mode is an ad-hoc signature — enough to satisfy AMFI for local
 # testing on the dev machine. When `ELECTROBUN_DEVELOPER_ID` is present
-# (release CI), sign both CLI binaries with the real Developer ID before
-# Electrobun copies them into the app bundle.
+# (release CI), sign the CLI binary with the real Developer ID before
+# Electrobun copies it into the app bundle.
 #
 # No-op on Linux/Windows/CI without macOS — they don't need a signature.
 
@@ -49,4 +49,3 @@ sign_one() {
 }
 
 sign_one dist/dev3
-sign_one dist/dev3-server

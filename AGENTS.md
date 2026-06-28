@@ -432,6 +432,10 @@ bun run test:watch    # Watch mode
 
 > **Hard rule for AI agents — full test suite before push / PR:** Before `git push` (or `gh pr create`, or enabling auto-merge), you MUST run `bun run test` and see it green end-to-end. Running only the test file you just edited is NOT sufficient — code in one component is often asserted against from sibling test files (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). Targeted runs miss those. If `bun run test` fails, fix the failures (or update the affected assertions) and re-run until green BEFORE pushing. Do not push first and then watch CI go red — that's a wasted CI run and a noisy PR history.
 
+### Manual UI QA in a browser
+
+Beyond automated tests, you can **drive the real running UI** in headless Chromium and screenshot it — to verify a UI/UX change, reproduce a visual bug, or self-QA before review. Serve the app with `dev3 remote --no-tunnel --static-code <code> --port <port>` (from a fresh dev build — the dev-server provides it) and point `agent-browser` at `http://localhost:<port>/?token=<code>`. Full recipe: the **`/debug-ui`** skill (`.claude/skills/debug-ui/SKILL.md`). This is dev-internal tooling, not a dev3-shipped skill.
+
 ### Coverage requirements
 
 Overall thresholds: **70% lines, 65% branches, 70% functions**.

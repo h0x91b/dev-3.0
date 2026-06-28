@@ -257,8 +257,7 @@ bun install --frozen-lockfile
 bun scripts/generate-build-info.ts
 bun scripts/generate-changelog.ts
 bun --bun ./node_modules/vite/bin/vite.js build   # `bun --bun` avoids Node OOM
-bun build src/cli/main.ts              --compile --outfile dist/dev3
-bun build src/bun/headless-bootstrap.ts --compile --outfile dist/dev3-server
+bun build src/cli/main.ts --compile --outfile dist/dev3
 
 ./dist/dev3 remote
 ```

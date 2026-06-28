@@ -3,16 +3,14 @@ import { handleRemote } from "../commands/remote";
 import type { ParsedArgs } from "../args";
 
 /**
- * `handleRemote` spawns a child process for the actual server. We can't let
- * that happen in unit tests, so we stub `node:child_process.spawn` into a
- * no-op: it returns an object with an `on` method that never fires. This is
- * enough to cover the flag-validation branches without touching the real
- * server. `process.exit` is spied on so exitUsage() raises synchronously
- * instead of tearing the test runner down.
+ * On the happy path `handleRemote` boots the headless server in-process via
+ * `await import("../../bun/headless-entry")`. We can't let the real server boot
+ * in a unit test, so we mock that module to an empty no-op — the dynamic import
+ * then resolves instantly and `handleRemote` returns after applying its env
+ * vars. `process.exit` is spied on so exitUsage() raises synchronously instead
+ * of tearing the test runner down.
  */
-vi.mock("node:child_process", () => ({
-	spawn: vi.fn(() => ({ on: vi.fn() })),
-}));
+vi.mock("../../bun/headless-entry", () => ({}));
 
 function args(flags: Record<string, string> = {}, positional: string[] = []): ParsedArgs {
 	return { positional, flags };
@@ -70,48 +68,29 @@ describe("dev3 remote --port validation", () => {
 		expect(combined).toContain("--port must be an integer");
 	});
 
-	it("accepts a valid port and passes it through DEV3_REMOTE_PORT", async () => {
-		const { spawn } = await import("node:child_process");
-		const spawnMock = vi.mocked(spawn);
+	it("accepts a valid port and applies it to process.env (DEV3_REMOTE_PORT + DEV3_HEADLESS)", async () => {
+		// Single in-process path now: a valid port is applied to process.env, then
+		// the (mocked) headless-entry import resolves and handleRemote returns.
+		const ENV_KEYS = [
+			"DEV3_REMOTE_PORT",
+			"DEV3_HEADLESS",
+			"DEV3_REMOTE_NO_TUNNEL",
+			"DEV3_VIEWS_DIR",
+			"DEV3_REMOTE_STATIC_CODE",
+			"DEV3_REMOTE_EXPOSE_PORTS",
+		] as const;
+		const saved: Record<string, string | undefined> = {};
+		for (const k of ENV_KEYS) saved[k] = process.env[k];
 
-		// `handleRemote` has two branches depending on process.execPath:
-		//   - ends with "/bun"      → runViaBun (dev mode)
-		//   - else                  → spawn sibling dev3-server, which here
-		//                              fails with exitError("binary not found")
-		//                              because we're clearly not running a
-		//                              compiled dev3.
-		// The env-forwarding behaviour is identical in both branches; we pick
-		// whichever path we currently hit and assert against that.
-		const execPath = process.execPath;
-		const isViaBun = execPath.endsWith("/bun") || execPath.endsWith("\\bun.exe");
-
-		// Track signal listeners to clean up if we go down the happy path —
-		// runViaBun registers SIGINT/SIGTERM forwarders.
-		const sigBefore = process.listeners("SIGINT").length;
-
-		if (isViaBun) {
+		try {
 			await handleRemote(undefined, args({ port: "3000" }));
-			expect(spawnMock).toHaveBeenCalledOnce();
-			const passedEnv = spawnMock.mock.calls[0][2]?.env as NodeJS.ProcessEnv | undefined;
-			expect(passedEnv?.DEV3_REMOTE_PORT).toBe("3000");
-		} else {
-			// Compiled-CLI branch: exits early because there's no sibling
-			// dev3-server in the test environment. We still want to confirm
-			// the flag *was* accepted (reached exitError, not exitUsage).
-			await expect(handleRemote(undefined, args({ port: "3000" }))).rejects.toThrow("__exit__");
-			const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-			expect(combined).toContain("dev3-server binary not found");
-			expect(combined).not.toContain("--port must");
-		}
-
-		// Clean up any leaked signal listeners.
-		const sigIntListeners = process.listeners("SIGINT");
-		const added = sigIntListeners.length - sigBefore;
-		for (let i = 0; i < added; i++) {
-			const intList = process.listeners("SIGINT");
-			const termList = process.listeners("SIGTERM");
-			process.removeListener("SIGINT", intList[intList.length - 1]);
-			process.removeListener("SIGTERM", termList[termList.length - 1]);
+			expect(process.env.DEV3_REMOTE_PORT).toBe("3000");
+			expect(process.env.DEV3_HEADLESS).toBe("1");
+		} finally {
+			for (const k of ENV_KEYS) {
+				if (saved[k] === undefined) delete process.env[k];
+				else process.env[k] = saved[k];
+			}
 		}
 	});
 

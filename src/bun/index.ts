@@ -67,17 +67,15 @@ log.info("Log files", { dir: getLogPath() });
 		readFileSync: fRead, appendFileSync: fAppend } = await import("node:fs");
 	const { resolve: fResolve } = await import("node:path");
 
-	// Copy the compiled CLI binaries from the app bundle to ~/.dev3.0/bin/.
-	// Two binaries ship together:
-	//   dev3         — the CLI (this process is a copy of it in dev/prod).
-	//   dev3-server  — the headless server spawned by `dev3 remote`.
-	// Both must sit next to each other so locateServerBinary() in
-	// src/cli/commands/remote.ts finds dev3-server as a sibling of dev3.
-	// Overwritten on every start so the pair always matches the running app version.
+	// Copy the compiled CLI binary from the app bundle to ~/.dev3.0/bin/.
+	// A single binary ships: `dev3` is both the CLI and — via `dev3 remote` — the
+	// headless server (the server is bundled behind a dynamic import; see
+	// src/cli/commands/remote.ts). Overwritten on every start so it always
+	// matches the running app version.
 	// Production: PATHS.VIEWS_FOLDER (<bundle>/Resources/app/views/) → ../cli/<name>
 	// Dev fallback: import.meta.dir (src/bun/) → ../cli/<name>
 	const cliBinDir = `${DEV3_HOME}/bin`;
-	const installBinary = (name: string, optional: boolean): void => {
+	const installBinary = (name: string): void => {
 		const prodSrc = fResolve(PATHS.VIEWS_FOLDER, "..", "cli", name);
 		const devSrc = fResolve(import.meta.dir, "..", "cli", name);
 		const bundledSrc = fExists(prodSrc) ? prodSrc : devSrc;
@@ -88,8 +86,6 @@ log.info("Log files", { dir: getLogPath() });
 				fCopy(bundledSrc, dest);
 				fChmod(dest, 0o755);
 				log.info(`${name} binary installed`, { from: bundledSrc, to: dest });
-			} else if (optional) {
-				log.info(`${name} binary not in bundle (optional, skip)`, { prodSrc, devSrc });
 			} else {
 				log.warn(`${name} binary not found in bundle (skip)`, { prodSrc, devSrc });
 			}
@@ -98,11 +94,7 @@ log.info("Log files", { dir: getLogPath() });
 		}
 	};
 
-	installBinary("dev3", false);
-	// dev3-server is optional: pre-remote-feature releases don't ship it, and a
-	// missing sibling is also fine for users who never run `dev3 remote`. The
-	// remote handler prints a clear error if it's absent at invocation time.
-	installBinary("dev3-server", true);
+	installBinary("dev3");
 
 	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).
