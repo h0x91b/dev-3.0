@@ -1,3 +1,5 @@
+import { useAnimatedNumber } from "../../utils/useAnimatedNumber";
+
 interface SegmentedBarProps {
 	value: number;
 	max: number;
@@ -30,7 +32,9 @@ export function SegmentedBar({
 	height = 10,
 	ariaLabel,
 }: SegmentedBarProps) {
-	const ratio = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+	// Grow the lit segments in on mount; the aria value stays the real target.
+	const animated = useAnimatedNumber(value);
+	const ratio = max > 0 ? Math.min(1, Math.max(0, animated / max)) : 0;
 	const lit = Math.round(ratio * segments);
 	const hasRed = redZone != null;
 

@@ -18,6 +18,27 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 	} as unknown as typeof ResizeObserver;
 }
 
+// Force prefers-reduced-motion: reduce = true (happy-dom's default matchMedia
+// reports false) so animation hooks (useReducedMotion/useAnimatedNumber) render
+// final values synchronously in tests; every other query reports false. Tests
+// that need a specific media query still redefine window.matchMedia themselves.
+if (typeof window !== "undefined") {
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		writable: true,
+		value: (query: string) => ({
+			matches: query.includes("prefers-reduced-motion"),
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false,
+		}),
+	});
+}
+
 vi.mock("@lobehub/icons/es/icons", () => {
 	const makeIcon = (name: string) => {
 		const Icon = (props: Record<string, unknown>) => createElement("svg", { "data-icon": name, ...props });

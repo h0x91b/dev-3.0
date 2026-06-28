@@ -1,4 +1,5 @@
 import { Gauge } from "../gauges/Gauge";
+import { CountUp } from "./CountUp";
 
 interface StatGaugeProps {
 	value: number;
@@ -14,6 +15,11 @@ interface StatGaugeProps {
 	caption: string;
 	/** Pre-formatted big number shown below; defaults to the compact value. */
 	displayValue?: string;
+	/**
+	 * When provided, the big number counts up to `value` on mount using this
+	 * formatter (applied to the mid-tween float). Takes precedence over `displayValue`.
+	 */
+	format?: (n: number) => string;
 	/** Trend vs previous period (%). Null/undefined hides the trend chip. */
 	trendPct?: number | null;
 	/** Localized "vs previous period" suffix for the trend chip tooltip/label. */
@@ -39,6 +45,7 @@ export function StatGauge({
 	unit,
 	caption,
 	displayValue,
+	format,
 	trendPct,
 	trendSuffix,
 	size = 168,
@@ -49,7 +56,9 @@ export function StatGauge({
 		<div className="flex flex-col items-center gap-2 rounded-2xl border border-edge bg-raised px-4 py-4">
 			<Gauge value={value} max={max} redZone={redZone} redZoneMode={redZoneMode} label={label} unit={unit} size={size} theme="auto" />
 			<div className="flex flex-col items-center gap-0.5 mt-1">
-				<div className="text-fg text-xl font-bold tabular-nums leading-none">{displayValue ?? compact(value)}</div>
+				<div className="text-fg text-xl font-bold tabular-nums leading-none">
+					{format ? <CountUp value={value} format={format} /> : (displayValue ?? compact(value))}
+				</div>
 				<div className="text-fg-3 text-xs">{caption}</div>
 				{hasTrend && (
 					<div

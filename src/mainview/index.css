@@ -70,6 +70,10 @@ html {
 	--chart-5: 244 114 182;
 	--chart-6: 45 212 191;
 
+	/* ---- Productivity stats flair: achievement gold + on-fire heat ---- */
+	--stat-gold: 212 175 55;   /* medals */
+	--stat-fire: 249 115 22;   /* above-your-norm "on fire" */
+
 	/* ---- Vimium-style task hint badges ---- */
 	--hint-bg: 253 224 71;     /* amber-300 */
 	--hint-fg: 28 25 23;       /* near-black ink on the badge */
@@ -149,6 +153,10 @@ html {
 	--chart-4: 217 119 6;
 	--chart-5: 219 39 119;
 	--chart-6: 13 148 136;
+
+	/* ---- Productivity stats flair: achievement gold + on-fire heat ---- */
+	--stat-gold: 184 134 11;   /* deeper gold reads on a light canvas */
+	--stat-fire: 234 88 12;
 
 	/* ---- Vimium-style task hint badges ---- */
 	--hint-bg: 252 211 77;     /* amber-300/400 — pops on a light canvas */

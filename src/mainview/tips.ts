@@ -962,6 +962,22 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "stats-heatmap",
+		titleKey: "tip.statsHeatmap.title",
+		bodyKey: "tip.statsHeatmap.body",
+		icon: "\u{F0238}", // nf-md-fire
+		score: 4,
+		contexts: ["board"],
+	},
+	{
+		id: "stats-milestones",
+		titleKey: "tip.statsMilestones.title",
+		bodyKey: "tip.statsMilestones.body",
+		icon: "\u{F0699}", // nf-md-trophy
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

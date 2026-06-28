@@ -61,6 +61,30 @@ const stats = {
 	"stats.perAgent.empty": "No completed tasks in this period",
 	"stats.perAgent.busiest": "Most-used agent",
 	"stats.perAgent.total": "shipped",
+	// Momentum headline (dynamic subtitle)
+	"stats.momentum.fire": "On fire — {pct}% above your usual pace",
+	"stats.momentum.ahead": "Up {pct}% — ahead of last period",
+	"stats.momentum.behind": "Down {pct}% — time to pick it back up",
+	"stats.momentum.steady": "Holding a steady pace",
+	"stats.momentum.idle": "Ship a task to get the needle moving",
+	"stats.momentum.lifetime": "{count} tasks shipped, all-time. Respect.",
+	// Contribution heatmap
+	"stats.heatmap.title": "Activity",
+	"stats.heatmap.subtitle": "Last 12 months",
+	"stats.heatmap.less": "Less",
+	"stats.heatmap.more": "More",
+	"stats.heatmap.tasks_one": "{count} task",
+	"stats.heatmap.tasks_other": "{count} tasks",
+	// Milestones
+	"stats.milestones.title": "Milestones",
+	"stats.milestones.next": "Next",
+	"stats.milestones.reachedTip": "{tier} tasks shipped — medal earned",
+	"stats.milestones.nextTip": "Next medal at {tier} tasks shipped",
+	// LOC empty state (diff tracking just started)
+	"stats.locEmpty.title": "Lines changed",
+	"stats.locEmpty.body": "Diff tracking just started — your next shipped task fills this in.",
+	"stats.locEmpty.badge": "Tracking starts now",
+	"stats.locEmpty.chart": "Your first shipped task will fill this in",
 	// Empty / error states
 	"stats.empty.title": "Ship your first task to light up the cockpit",
 	"stats.empty.body": "Complete a task and your stats will appear here.",

@@ -142,3 +142,14 @@ New handler module `src/bun/rpc-handlers/productivity-stats.ts` exporting `getPr
 
 - **O1 — Entry point:** RESOLVED → **Dashboard card only** (no GlobalHeader button). View-menu + palette still added (standard for a destination, zero chrome).
 - **O2 — LOC history:** RESOLVED → **Forward-only** (LOC accrues from ship time; live for active tasks). No `.patch` backfill in scope.
+
+## 13. Enhancement pass (2026-06-28)
+
+Follow-up "make it cooler" round on the shipped surface (full rationale in UX_DECISIONS 2026-06-28 "flair pass"):
+
+- **Header button:** O1 was later revisited — the user asked for an icon-only speedometer button in `GlobalHeader` (left of the GitHub icon, + compact overflow). It now coexists with the Dashboard card.
+- **Boot-up animation:** gauge sweep + number count-up + LED bar grow-in; `useReducedMotion()`/`useAnimatedNumber()` gate it (reduced-motion + tests render final instantly).
+- **Contribution heatmap:** GitHub-style trailing-12-month grid (range-independent), after the charts, before the counters.
+- **Milestones:** lifetime shipping medals (`--stat-gold`) + next-tier progress, after the counters strip.
+- **Momentum headline:** dynamic subtitle verdict; on-fire uses `--stat-fire` + flame glyph.
+- **LOC empty-state:** dashed placeholder gauge + friendly chart/badge copy + hidden per-project "0 LOC" while `hasAnyLines === false`.

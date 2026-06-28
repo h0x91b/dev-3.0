@@ -236,6 +236,10 @@ const tips = {
 	"tip.statsTimeRange.body": "Switch the time range on the stats screen to see your velocity and trend versus the previous period.",
 	"tip.statsBeatAverage.title": "Beat your average",
 	"tip.statsBeatAverage.body": "The red zone on each stats gauge marks your usual output — push the needle past it to top your norm.",
+	"tip.statsHeatmap.title": "A year of shipping",
+	"tip.statsHeatmap.body": "The activity heatmap on the stats screen shows every day you shipped — hover a cell for the count.",
+	"tip.statsMilestones.title": "Earn shipping medals",
+	"tip.statsMilestones.body": "Hit 100, 500 or 1000 tasks shipped to unlock medals on the stats screen, with progress toward the next.",
 } as const;
 
 export default tips;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProductivityStatEvent, TaskStatus } from "../../../shared/types";
-import { computeProductivityStats, gaugeMax } from "../productivityStats";
+import { computeMilestones, computeProductivityStats, gaugeMax, SHIPPING_MILESTONES } from "../productivityStats";
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-06-28T12:00:00.000Z");
@@ -203,6 +203,100 @@ describe("computeProductivityStats — per-agent breakdown", () => {
 	it("falls back to 'unknown' for tasks with no agent", () => {
 		const r = computeProductivityStats([ev({ agentId: null, movedAt: at(1) })], "week", NOW);
 		expect(r.perAgent[0]).toMatchObject({ agentId: "unknown", name: "Unknown", completed: 1 });
+	});
+});
+
+describe("computeMilestones", () => {
+	it("returns reached medals and the next tier to chase", () => {
+		expect(computeMilestones(0)).toEqual({ reached: [], next: 10, current: 0 });
+		expect(computeMilestones(1075)).toEqual({ reached: [10, 50, 100, 250, 500, 1000], next: 2500, current: 1075 });
+	});
+
+	it("has no next tier once every milestone is earned", () => {
+		const top = SHIPPING_MILESTONES[SHIPPING_MILESTONES.length - 1];
+		const m = computeMilestones(top);
+		expect(m.next).toBeNull();
+		expect(m.reached).toHaveLength(SHIPPING_MILESTONES.length);
+	});
+});
+
+describe("computeProductivityStats — momentum & on-fire", () => {
+	const at = (d: number) => new Date(NOW - d * DAY).toISOString();
+
+	it("flags on-fire when the period beats the rolling average", () => {
+		// 8 completed over 28 days → weekly avg 2; this week 4 → above norm.
+		const events: ProductivityStatEvent[] = [
+			ev({ createdAt: at(1), movedAt: at(1) }),
+			ev({ createdAt: at(2), movedAt: at(2) }),
+			ev({ createdAt: at(3), movedAt: at(3) }),
+			ev({ createdAt: at(4), movedAt: at(4) }),
+			ev({ createdAt: at(10), movedAt: at(10) }),
+			ev({ createdAt: at(15), movedAt: at(15) }),
+			ev({ createdAt: at(20), movedAt: at(20) }),
+			ev({ createdAt: at(28), movedAt: at(28) }),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.onFire).toBe(true);
+		expect(r.momentum.state).toBe("fire");
+		expect(r.momentum.pct).toBe(100); // (4/2 - 1) * 100
+	});
+
+	it("is idle with no shipments, lifetime for all-time", () => {
+		expect(computeProductivityStats([], "week", NOW).momentum.state).toBe("idle");
+		const some = [ev({ movedAt: at(2) }), ev({ movedAt: at(40) })];
+		expect(computeProductivityStats(some, "all", NOW).momentum.state).toBe("lifetime");
+	});
+
+	it("reads as behind when output drops vs the previous period", () => {
+		const events: ProductivityStatEvent[] = [
+			ev({ createdAt: at(1), movedAt: at(1) }), // this week: 1
+			ev({ createdAt: at(8), movedAt: at(8) }), // last week: 5
+			ev({ createdAt: at(9), movedAt: at(9) }),
+			ev({ createdAt: at(10), movedAt: at(10) }),
+			ev({ createdAt: at(11), movedAt: at(11) }),
+			ev({ createdAt: at(12), movedAt: at(12) }),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.onFire).toBe(false);
+		expect(r.momentum.state).toBe("behind");
+		expect(r.momentum.pct).toBe(80); // |(1-5)/5| * 100
+	});
+});
+
+describe("computeProductivityStats — contribution heatmap", () => {
+	const at = (d: number) => new Date(NOW - d * DAY).toISOString();
+
+	it("spans ~a year of day cells starting on a Sunday", () => {
+		const r = computeProductivityStats([], "week", NOW);
+		expect(r.heatmap.days.length).toBeGreaterThanOrEqual(365);
+		expect(r.heatmap.days.length).toBeLessThanOrEqual(378);
+		expect(new Date(r.heatmap.days[0].ms).getDay()).toBe(0); // Sunday
+		expect(r.heatmap.maxCount).toBe(0);
+		expect(r.heatmap.totalCount).toBe(0);
+	});
+
+	it("counts completed tasks into the matching day cell", () => {
+		const events = [ev({ movedAt: at(1) }), ev({ movedAt: at(1) }), ev({ movedAt: at(3) })];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.heatmap.totalCount).toBe(3);
+		expect(r.heatmap.maxCount).toBe(2);
+		// Match on the engine's LOCAL day key (heatmap cells are local-midnight).
+		const localKey = (ms: number) => {
+			const d = new Date(ms);
+			return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+		};
+		const cell = r.heatmap.days.find((d) => localKey(d.ms) === localKey(NOW - DAY));
+		expect(cell?.count).toBe(2);
+	});
+});
+
+describe("computeProductivityStats — LOC empty state", () => {
+	const at = (d: number) => new Date(NOW - d * DAY).toISOString();
+	it("reports hasAnyLines only once a completed task has real diff data", () => {
+		const noLines = [ev({ movedAt: at(1), insertions: 0, deletions: 0 })];
+		expect(computeProductivityStats(noLines, "all", NOW).hasAnyLines).toBe(false);
+		const withLines = [ev({ movedAt: at(1), insertions: 3, deletions: 1 })];
+		expect(computeProductivityStats(withLines, "all", NOW).hasAnyLines).toBe(true);
 	});
 });
 

@@ -234,6 +234,10 @@ const tips = {
 	"tip.productivityStats.body": "Abre Estadísticas de productividad desde el Dashboard: un panel de velocímetros con tareas, líneas y tu racha.",
 	"tip.statsTimeRange.title": "Estadísticas por día o semana",
 	"tip.statsTimeRange.body": "Cambia el rango de tiempo en la pantalla de estadísticas para ver tu ritmo y la tendencia frente al período anterior.",
+	"tip.statsHeatmap.title": "Un año entregando",
+	"tip.statsHeatmap.body": "El mapa de calor en la pantalla de estadísticas muestra cada día que entregaste — pasa el cursor por una celda.",
+	"tip.statsMilestones.title": "Gana medallas",
+	"tip.statsMilestones.body": "Alcanza 100, 500 o 1000 tareas para desbloquear medallas en estadísticas, con progreso hacia la siguiente.",
 	"tip.statsBeatAverage.title": "Supera tu promedio",
 	"tip.statsBeatAverage.body": "La zona roja de cada medidor marca tu ritmo habitual: lleva la aguja más allá para superar tu norma.",
 };

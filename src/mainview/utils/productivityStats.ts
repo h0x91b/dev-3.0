@@ -53,13 +53,52 @@ export interface PerAgentStat {
 	busiest: boolean;
 }
 
+/**
+ * The verdict the momentum headline renders. Derived from the period's output vs
+ * the user's rolling average (fire) and vs the previous period (ahead/behind).
+ */
+export type MomentumState = "idle" | "fire" | "ahead" | "behind" | "steady" | "lifetime";
+
+/** One day-cell of the contribution heatmap (count of tasks shipped that day). */
+export interface HeatmapDay {
+	ms: number;
+	count: number;
+}
+
+/** Contribution-heatmap data: a contiguous run of days starting on a Sunday. */
+export interface HeatmapData {
+	days: HeatmapDay[];
+	maxCount: number;
+	totalCount: number;
+}
+
+/** Lifetime shipping milestones: which medals are earned and the next one to chase. */
+export interface MilestoneInfo {
+	/** Tier values already reached (allTimeCompleted ≥ tier). */
+	reached: number[];
+	/** Next unreached tier, or null once every tier is earned. */
+	next: number | null;
+	/** Current all-time completed count (the progress numerator toward `next`). */
+	current: number;
+}
+
 export interface ProductivityDashboardData {
 	range: StatsRange;
 	periodFrom: number;
 	periodTo: number;
 	hasAnyData: boolean;
+	/** True once any completed task has real diff data — gates the LOC empty-state. */
+	hasAnyLines: boolean;
 	/** ISO date (YYYY-MM-DD) LOC tracking effectively started (earliest captured/live stat), or null. */
 	locTrackingSince: string | null;
+	/** Current-period output is above the user's rolling average — drives the on-fire flair. */
+	onFire: boolean;
+	/** Headline verdict + its headline number (percent), derived from the period. */
+	momentum: { state: MomentumState; pct: number | null };
+	/** Lifetime shipping medals. */
+	milestones: MilestoneInfo;
+	/** Year-long contribution heatmap (range-independent). */
+	heatmap: HeatmapData;
 	hero: {
 		tasksShipped: HeroMetric;
 		linesChanged: HeroMetric;
@@ -80,6 +119,45 @@ export interface ProductivityDashboardData {
 }
 
 const DAY_MS = 86_400_000;
+
+/** Lifetime "tasks shipped" medal tiers, ascending. */
+export const SHIPPING_MILESTONES: readonly number[] = [10, 50, 100, 250, 500, 1000, 2500, 5000, 10_000] as const;
+
+/** Which medals an all-time completed count has earned, plus the next tier to chase. */
+export function computeMilestones(allTimeCompleted: number): MilestoneInfo {
+	const reached = SHIPPING_MILESTONES.filter((tier) => allTimeCompleted >= tier);
+	const next = SHIPPING_MILESTONES.find((tier) => allTimeCompleted < tier) ?? null;
+	return { reached, next, current: allTimeCompleted };
+}
+
+/** Number of day-cells in the contribution heatmap (~53 weeks). */
+const HEATMAP_DAYS = 371;
+
+/**
+ * Build the trailing-year contribution heatmap from a per-day completed count.
+ * Range-independent: always the last ~12 months, starting on a Sunday so the
+ * cells tile cleanly into 7-row week columns. DST-safe (steps by calendar day).
+ */
+function buildHeatmap(dayCounts: Map<string, number>, nowMs: number): HeatmapData {
+	const start = new Date(nowMs);
+	start.setHours(0, 0, 0, 0);
+	start.setDate(start.getDate() - (HEATMAP_DAYS - 1));
+	start.setDate(start.getDate() - start.getDay()); // back up to Sunday
+	const end = new Date(nowMs);
+	end.setHours(0, 0, 0, 0);
+	const endMs = end.getTime();
+
+	const days: HeatmapDay[] = [];
+	let maxCount = 0;
+	let totalCount = 0;
+	for (const c = new Date(start); c.getTime() <= endMs; c.setDate(c.getDate() + 1)) {
+		const count = dayCounts.get(dayKey(c.getTime())) ?? 0;
+		days.push({ ms: c.getTime(), count });
+		if (count > maxCount) maxCount = count;
+		totalCount += count;
+	}
+	return { days, maxCount, totalCount };
+}
 
 /** agentId → display name, from the builtin registry (custom ids fall back to a prettified slug). */
 const AGENT_NAMES = new Map(DEFAULT_AGENTS.map((a) => [a.id, a.name]));
@@ -334,6 +412,7 @@ export function computeProductivityStats(
 	let allTimeLines = 0;
 	let agentsRun = 0;
 	const allDayKeys = new Set<string>();
+	const completedDayCounts = new Map<string, number>();
 	let locTrackingSince: number | null = null;
 
 	for (const e of events) {
@@ -349,7 +428,9 @@ export function computeProductivityStats(
 		if (isCompleted(e) && at != null) {
 			allTimeCompleted += 1;
 			allTimeLines += lines;
-			allDayKeys.add(dayKey(at));
+			const dk = dayKey(at);
+			allDayKeys.add(dk);
+			completedDayCounts.set(dk, (completedDayCounts.get(dk) ?? 0) + 1);
 			completedForSeries.push({ at, lines });
 
 			if (inPeriod(at, win.from, win.to)) {
@@ -472,12 +553,38 @@ export function computeProductivityStats(
 		},
 	};
 
+	// --- Momentum verdict (the headline) ---
+	// "fire" = beat your rolling average; otherwise lean on the trend vs last period.
+	let momentumState: MomentumState;
+	let momentumPct: number | null = null;
+	if (completedCur === 0) {
+		momentumState = "idle";
+	} else if (range === "all") {
+		momentumState = "lifetime";
+	} else if (avgCompleted != null && avgCompleted > 0 && completedCur > avgCompleted) {
+		momentumState = "fire";
+		momentumPct = Math.round((completedCur / avgCompleted - 1) * 100);
+	} else if (hero.tasksShipped.trendPct != null && hero.tasksShipped.trendPct > 0) {
+		momentumState = "ahead";
+		momentumPct = hero.tasksShipped.trendPct;
+	} else if (hero.tasksShipped.trendPct != null && hero.tasksShipped.trendPct < 0) {
+		momentumState = "behind";
+		momentumPct = Math.abs(hero.tasksShipped.trendPct);
+	} else {
+		momentumState = "steady";
+	}
+
 	return {
 		range,
 		periodFrom: win.from,
 		periodTo: win.to,
 		hasAnyData: events.length > 0,
+		hasAnyLines: allTimeLines > 0,
 		locTrackingSince: locTrackingSince != null ? dayKey(locTrackingSince) : null,
+		onFire: momentumState === "fire",
+		momentum: { state: momentumState, pct: momentumPct },
+		milestones: computeMilestones(allTimeCompleted),
+		heatmap: buildHeatmap(completedDayCounts, nowMs),
 		hero,
 		counters: {
 			tasksTotal,

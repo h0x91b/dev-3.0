@@ -1,4 +1,5 @@
-import { useMemo, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useReducedMotion } from "../../utils/useReducedMotion";
 
 export type GaugeTheme = "dark" | "light" | "auto";
 
@@ -177,7 +178,20 @@ export function Gauge({
 	const pivotSize = Math.round(size * 0.13);
 	const tickMargin = 12;
 
-	const clampedValue = Math.min(Math.max(value, min), max);
+	// Sweep the needle: render at `min` first, then ease to the real value via the
+	// CSS transition below. Reduced-motion (and tests) jump straight to the value.
+	const reduced = useReducedMotion();
+	const [displayValue, setDisplayValue] = useState(reduced ? value : min);
+	useEffect(() => {
+		if (reduced) {
+			setDisplayValue(value);
+			return;
+		}
+		const raf = requestAnimationFrame(() => setDisplayValue(value));
+		return () => cancelAnimationFrame(raf);
+	}, [value, reduced]);
+
+	const clampedValue = Math.min(Math.max(displayValue, min), max);
 	const pct = (clampedValue - min) / (max - min);
 	const needleAngle = pct * (angleMax - angleMin) + angleMin;
 
@@ -266,7 +280,7 @@ export function Gauge({
 		backgroundColor: p.needleColor,
 		boxShadow: p.needleShadow,
 		zIndex: 10,
-		transition: "transform 1.5s cubic-bezier(0.19, 1, 0.22, 1)",
+		transition: reduced ? "none" : "transform 1.3s cubic-bezier(0.19, 1, 0.22, 1)",
 		borderRadius: `${Math.round(4 * scale)}px ${Math.round(4 * scale)}px 0 0`,
 	};
 
