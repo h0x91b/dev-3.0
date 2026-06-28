@@ -484,7 +484,7 @@ describe("GlobalHeader — update countdown", () => {
 			[],
 			{ updateVersion: "1.2.3" },
 		);
-		expect(screen.getByText(/Restart to Update \(300s\)/)).toBeInTheDocument();
+		expect(screen.getByText(/Restart to Update \(900s\)/)).toBeInTheDocument();
 	});
 
 	it("decrements countdown every second", () => {
@@ -495,10 +495,10 @@ describe("GlobalHeader — update countdown", () => {
 			[],
 			{ updateVersion: "1.2.3" },
 		);
-		expect(screen.getByText(/\(300s\)/)).toBeInTheDocument();
+		expect(screen.getByText(/\(900s\)/)).toBeInTheDocument();
 
 		act(() => { vi.advanceTimersByTime(3000); });
-		expect(screen.getByText(/\(297s\)/)).toBeInTheDocument();
+		expect(screen.getByText(/\(897s\)/)).toBeInTheDocument();
 	});
 
 	it("shows Postpone button instead of Later", () => {
@@ -538,7 +538,7 @@ describe("GlobalHeader — update countdown", () => {
 			{ updateVersion: "1.2.3" },
 		);
 
-		act(() => { vi.advanceTimersByTime(300_000); });
+		act(() => { vi.advanceTimersByTime(900_000); });
 		// Flush the async handleRestart (saveUpdateRoute → applyUpdate)
 		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
@@ -554,7 +554,7 @@ describe("GlobalHeader — update countdown", () => {
 			{ updateVersion: "1.2.3" },
 		);
 
-		act(() => { vi.advanceTimersByTime(300_000); });
+		act(() => { vi.advanceTimersByTime(900_000); });
 
 		expect(mockedApi.request.saveUpdateRoute).toHaveBeenCalledWith({
 			route: JSON.stringify({ screen: "project", projectId: "p1" }),
