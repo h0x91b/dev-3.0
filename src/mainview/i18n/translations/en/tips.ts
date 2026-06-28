@@ -222,6 +222,12 @@ const tips = {
 	"tip.remoteMenuBar.body": "Open dev-3.0 from a browser via Remote Access and the whole File/Task/Project menu bar renders right in the page.",
 	"tip.browserNotifications.title": "Notifications in the browser",
 	"tip.browserNotifications.body": "Opened dev3 in a browser? Enable Browser Notifications in Settings → Behavior to get desktop alerts for dev3 notify and watched tasks.",
+	"tip.remoteDetachLifecycle.title": "Run dev3 remote in the background",
+	"tip.remoteDetachLifecycle.body": "On a server, run `dev3 remote --detach`, then `dev3 remote url` from any SSH session for a fresh QR, and `dev3 remote stop` to shut it down.",
+	"tip.remoteRemembersDevice.title": "Remote remembers your device",
+	"tip.remoteRemembersDevice.body": "After you scan the QR once, your phone or laptop reconnects to the remote UI on reload without rescanning — for up to 8 hours.",
+	"tip.remotePickInterface.title": "Pick the remote address",
+	"tip.remotePickInterface.body": "In Remote Access (tunnel off), the address dropdown lets you point the QR at any local IP, including localhost for the SSH-forward path.",
 } as const;
 
 export default tips;

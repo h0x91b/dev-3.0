@@ -97,6 +97,8 @@ const dashboard = {
 	"remote.title": "Удалённый доступ",
 	"remote.subtitle": "Отсканируйте QR-код, чтобы открыть интерфейс на телефоне или другом устройстве",
 	"remote.refreshIn": "Обновится через {seconds}с",
+	"remote.addressLabel": "Доступен по адресу",
+	"remote.localhostLabel": "Localhost",
 	"remote.anywhereToggle": "Доступ откуда угодно (Cloudflare Tunnel)",
 	"remote.cloudflaredNotFound": "cloudflared не установлен",
 	"remote.cloudflaredInstall": "Установка: brew install cloudflared",

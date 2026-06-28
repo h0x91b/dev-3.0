@@ -66,12 +66,12 @@ describe("createQrToken", () => {
 // ================================================================
 
 describe("createSessionToken", () => {
-	it("creates tokens with type 'session' and ~30min expiry", async () => {
+	it("creates tokens with type 'session' and an 8h expiry", async () => {
 		const token = await createSessionToken();
 		const payloadB64 = token.split(".")[1];
 		const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
 		expect(payload.type).toBe("session");
-		expect(payload.exp - payload.iat).toBe(30 * 60);
+		expect(payload.exp - payload.iat).toBe(8 * 60 * 60);
 	});
 });
 
@@ -157,7 +157,7 @@ describe("refreshSession", () => {
 	it("rejects expired session token", async () => {
 		const session = await createSessionToken();
 		const originalNow = Date.now;
-		Date.now = () => originalNow() + 31 * 60 * 1000; // 31 minutes later
+		Date.now = () => originalNow() + (8 * 60 + 1) * 60 * 1000; // just past the 8h TTL
 		const result = await refreshSession(session);
 		Date.now = originalNow;
 		expect(result).toBeNull();
@@ -188,7 +188,7 @@ describe("verifySessionToken", () => {
 	it("returns false for expired session token", async () => {
 		const token = await createSessionToken();
 		const originalNow = Date.now;
-		Date.now = () => originalNow() + 31 * 60 * 1000;
+		Date.now = () => originalNow() + (8 * 60 + 1) * 60 * 1000; // just past the 8h TTL
 		expect(await verifySessionToken(token)).toBe(false);
 		Date.now = originalNow;
 	});

@@ -16,6 +16,7 @@ import { existsSync, statSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
+import type { RemoteNetInterface } from "../shared/types";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
@@ -315,6 +316,21 @@ function stripHopByHop(headers: Headers): Headers {
 }
 
 /**
+ * Close a proxied upstream socket when its browser-side client goes away.
+ * Closing must also happen in CONNECTING — not just OPEN: a client that
+ * disconnects mid-handshake would otherwise leak an upstream that goes on to
+ * complete its connection and then lingers forever, holding a PTY session slot
+ * (F5). `close()` is a no-op once CLOSING/CLOSED, so guard only against CLOSED.
+ */
+export function closeUpstreamSocket(
+	upstream: { readyState: number; close: () => void } | undefined | null,
+): void {
+	if (upstream && upstream.readyState !== WebSocket.CLOSED) {
+		upstream.close();
+	}
+}
+
+/**
  * Parse `/p/<subtoken>/<port>/<rest...>`. `<rest>` may be empty; `<port>`
  * must be a positive integer in [1, 65535].
  */
@@ -579,15 +595,9 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					rpcClients.delete(ws);
 					log.info("Remote RPC client disconnected", { total: rpcClients.size });
 				} else if (wsData.type === "pty") {
-					const upstream = (ws as any)._ptyUpstream as WebSocket | undefined;
-					if (upstream && upstream.readyState === WebSocket.OPEN) {
-						upstream.close();
-					}
+					closeUpstreamSocket((ws as any)._ptyUpstream as WebSocket | undefined);
 				} else if (wsData.type === "shared-proxy") {
-					const upstream = (ws as any)._proxyUpstream as WebSocket | undefined;
-					if (upstream && upstream.readyState === WebSocket.OPEN) {
-						upstream.close();
-					}
+					closeUpstreamSocket((ws as any)._proxyUpstream as WebSocket | undefined);
 				}
 			},
 		},
@@ -645,6 +655,41 @@ function getLocalIp(): string {
 }
 
 /**
+ * Every IPv4 the machine is reachable at, for the Remote Access modal's
+ * interface picker: each non-internal interface address first, then loopback
+ * `127.0.0.1` last (same-machine / SSH-forward). The browser can't enumerate
+ * host interfaces, so this is computed here and shipped to the renderer.
+ */
+export function getLocalInterfaces(): RemoteNetInterface[] {
+	const out: RemoteNetInterface[] = [];
+	const interfaces = networkInterfaces();
+	for (const name of Object.keys(interfaces)) {
+		for (const iface of (interfaces[name] ?? [])) {
+			if (iface.family === "IPv4" && !iface.internal) {
+				out.push({ name, address: iface.address, internal: false });
+			}
+		}
+	}
+	// Always offer loopback last — needed for the SSH-forward path.
+	out.push({ name: "loopback", address: "127.0.0.1", internal: true });
+	return out;
+}
+
+/**
+ * Resolve the host to embed in the access URL. A caller-supplied `host` is
+ * honoured only if it is one of the addresses we actually expose (allow-list —
+ * no arbitrary host injected into the URL); otherwise we fall back to the
+ * auto-picked first non-internal IPv4. Tunnel mode ignores this entirely.
+ */
+export function resolveAccessHost(host?: string): string {
+	if (host) {
+		const allowed = new Set([...getLocalInterfaces().map((i) => i.address), "127.0.0.1", "localhost"]);
+		if (allowed.has(host)) return host;
+	}
+	return getLocalIp();
+}
+
+/**
  * True when `dev3 remote --static-code=<value>` is in effect. In that mode the
  * URL token is the fixed user-supplied code (not a rolling JWT), the auth
  * exchange accepts it as a magic word, and the QR auto-refresher is skipped.
@@ -654,11 +699,11 @@ export function getStaticCode(): string | null {
 	return process.env.DEV3_REMOTE_STATIC_CODE || null;
 }
 
-export async function getAccessUrl(): Promise<string> {
+export async function getAccessUrl(host?: string): Promise<string> {
 	const token = getStaticCode() ?? await createQrToken();
 	const tunnel = getTunnelUrl();
 	if (tunnel) return `${tunnel}/?token=${token}`;
-	const ip = getLocalIp();
+	const ip = resolveAccessHost(host);
 	return `http://${ip}:${serverPort}/?token=${token}`;
 }
 
@@ -689,7 +734,7 @@ function printAccessInfo(): void {
 /**
  * Generate a QR code as a data URL (PNG) for display in the GUI.
  */
-export async function generateQrDataUrl(): Promise<string> {
-	const url = await getAccessUrl();
+export async function generateQrDataUrl(host?: string): Promise<string> {
+	const url = await getAccessUrl(host);
 	return QRCode.toDataURL(url, { width: 256, margin: 2 });
 }
