@@ -10,6 +10,9 @@ import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
 import PreventSleepToggle from "./PreventSleepToggle";
+import BottomSheet from "./BottomSheet";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface GlobalHeaderProps {
 	route: Route;
@@ -38,6 +41,8 @@ const COUNTS_CACHE_TTL = 30_000;
 function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateDownloadStatus }: GlobalHeaderProps) {
 	const t = useT();
 	const compact = useCompact();
+	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const [showActionSheet, setShowActionSheet] = useState(false);
 	const [showOverflowMenu, setShowOverflowMenu] = useState(false);
 	const overflowMenuRef = useRef<HTMLDivElement>(null);
 	const [showUpdateDropdown, setShowUpdateDropdown] = useState(false);
@@ -109,6 +114,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	useEffect(() => {
 		if (!compact) setShowOverflowMenu(false);
 	}, [compact]);
+
+	// Close the narrow action sheet when the viewport widens out of narrow mode.
+	useEffect(() => {
+		if (!isNarrow) setShowActionSheet(false);
+	}, [isNarrow]);
 
 	useEffect(() => {
 		setShowOverflowMenu(false);
@@ -244,6 +254,46 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	// Built-in Operations board pinned first; ⌘0 jumps to it, ⌘1-9 to the rest.
 	const availableProjects = orderProjectsForDisplay(projects.filter((p) => !p.deleted));
 	const switcherHasPinnedBuiltin = availableProjects.length > 0 && isBuiltinOpsProject(availableProjects[0]);
+
+	// Narrow viewport: the simple, dispatch-style right-cluster actions fold into
+	// a single kebab → BottomSheet. The Command Palette gets a touch entry here
+	// (it is otherwise keyboard-only, and the native menu is absent in remote).
+	// Stateful widgets (prevent-sleep, git pull, tmux, update indicator) stay inline.
+	const headerSheetRows: { key: string; label: string; run: () => void }[] = isNarrow
+		? [
+				{ key: "palette", label: t("header.commandPalette"), run: () => window.dispatchEvent(new CustomEvent("menu:open-command-palette")) },
+				{ key: "quickShell", label: t("quickShell.open"), run: () => window.dispatchEvent(new CustomEvent("menu:open-quick-shell")) },
+				...(currentProjectId && !isVirtualProject
+					? [{
+							key: "projectTerminal",
+							label: t("projectTerminal.open"),
+							run: () =>
+								route.screen === "project-terminal"
+									? navigate({ screen: "project", projectId: currentProjectId })
+									: navigate({ screen: "project-terminal", projectId: currentProjectId }),
+						}]
+					: []),
+				{
+					key: "remote",
+					label: t("header.remoteAccessLabel"),
+					run: async () => {
+						try {
+							const result = await api.request.getRemoteAccessQR({});
+							window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
+						} catch {
+							// Remote access server may not be running.
+						}
+					},
+				},
+				...(route.screen !== "changelog" ? [{ key: "changelog", label: t("header.changelogLabel"), run: () => navigate({ screen: "changelog" }) }] : []),
+				{ key: "website", label: t("header.githubLabel"), run: () => window.open("https://h0x91b.github.io/dev-3.0/", "_blank") },
+				{ key: "report", label: t("header.reportLabel"), run: () => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank") },
+				...(currentProjectId && route.screen !== "project-settings"
+					? [{ key: "projectSettings", label: t("header.projectSettings"), run: () => navigate({ screen: "project-settings", projectId: currentProjectId }) }]
+					: []),
+				...(route.screen !== "settings" ? [{ key: "settings", label: t("header.settingsLabel"), run: () => navigate({ screen: "settings" }) }] : []),
+			]
+		: [];
 
 	return (
 		<>
@@ -475,21 +525,23 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs */}
 				<PreventSleepToggle compact={compact} />
 
-				{/* Quick Shell — always visible (opens the built-in Operations shell in $HOME) */}
-				<button
-					onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
-					className="flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
-					title={t("quickShell.tooltipWithShortcut")}
-				>
-					<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F018D}"}</span>
-					{!compact && <span className="text-[0.6875rem] font-medium">{t("quickShell.open")}</span>}
-				</button>
+				{/* Quick Shell — opens the built-in Operations shell in $HOME (folded into the kebab on narrow) */}
+				{!isNarrow && (
+					<button
+						onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
+						className="flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
+						title={t("quickShell.tooltipWithShortcut")}
+					>
+						<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F018D}"}</span>
+						{!compact && <span className="text-[0.6875rem] font-medium">{t("quickShell.open")}</span>}
+					</button>
+				)}
 
 				{/* Project Terminal — visible when inside a git project. Hidden for
 				    virtual ("Operations") boards: their synthetic path is created
 				    lazily per-task, so opening one throws "Project path does not
 				    exist" (same reason Git Pull below is hidden). */}
-				{"projectId" in route && !isVirtualProject && (
+				{"projectId" in route && !isVirtualProject && !isNarrow && (
 					<button
 						onClick={() => {
 							if (route.screen === "project-terminal") {
@@ -521,27 +573,29 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					<GitPullButton projectId={route.projectId} compact={compact} />
 				)}
 
-				{/* Remote Access QR Code */}
-				<button
-					onClick={async () => {
-						try {
-							const result = await api.request.getRemoteAccessQR({});
-							window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
-						} catch {
-							// Remote access server may not be running
-						}
-					}}
-					className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-					title={t("header.remoteAccessTooltip")}
-				>
-					<span
-						className="text-[1.125rem] leading-none"
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				{/* Remote Access QR Code (folded into the kebab on narrow) */}
+				{!isNarrow && (
+					<button
+						onClick={async () => {
+							try {
+								const result = await api.request.getRemoteAccessQR({});
+								window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
+							} catch {
+								// Remote access server may not be running
+							}
+						}}
+						className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+						title={t("header.remoteAccessTooltip")}
 					>
-						{"\u{F0433}"}
-					</span>
-					{!compact && <span className="text-[0.6875rem] font-medium">Remote</span>}
-				</button>
+						<span
+							className="text-[1.125rem] leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\u{F0433}"}
+						</span>
+						{!compact && <span className="text-[0.6875rem] font-medium">Remote</span>}
+					</button>
+				)}
 
 				{/* Tmux Session Manager */}
 				<TmuxSessionManager navigate={navigate} />
@@ -613,8 +667,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</>
 				)}
 
-				{/* Compact overflow menu \u2014 folds GitHub / Report / Changelog into a single kebab */}
-				{compact && (
+				{/* Compact overflow menu \u2014 folds GitHub / Report / Changelog into a single kebab.
+				    On narrow the whole cluster folds into the action sheet below instead. */}
+				{compact && !isNarrow && (
 					<div className="relative" ref={overflowMenuRef}>
 						<button
 							onClick={() => setShowOverflowMenu((v) => !v)}
@@ -688,7 +743,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				)}
 
 				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}
-				{"projectId" in route && route.screen !== "project-settings" && (
+				{"projectId" in route && route.screen !== "project-settings" && !isNarrow && (
 					<button
 						onClick={() =>
 							navigate({
@@ -717,8 +772,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</button>
 				)}
 
-				{/* Global settings */}
-				{route.screen !== "settings" && (
+				{/* Global settings (folded into the kebab on narrow) */}
+				{route.screen !== "settings" && !isNarrow && (
 					<button
 						onClick={() => navigate({ screen: "settings" })}
 						className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
@@ -741,8 +796,45 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						{!compact && <span className="text-[0.6875rem] font-medium">{t("header.globalLabel")}</span>}
 					</button>
 				)}
+
+				{/* Narrow viewport: one kebab folds the simple cluster actions into a bottom sheet. */}
+				{isNarrow && (
+					<button
+						onClick={() => setShowActionSheet(true)}
+						className="flex items-center justify-center w-9 h-9 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+						title={t("header.moreActions")}
+						aria-label={t("header.moreActions")}
+						aria-haspopup="dialog"
+					>
+						<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+					</button>
+				)}
 			</div>
 		</div>
+		{isNarrow && (
+			<BottomSheet
+				open={showActionSheet}
+				onClose={() => setShowActionSheet(false)}
+				title={t("header.moreActions")}
+				testId="header-action-sheet"
+			>
+				<div className="flex flex-col">
+					{headerSheetRows.map((row) => (
+						<button
+							key={row.key}
+							type="button"
+							onClick={() => {
+								setShowActionSheet(false);
+								row.run();
+							}}
+							className="w-full text-left px-2 py-3 rounded-lg text-fg-2 hover:bg-elevated hover:text-fg transition-colors text-sm"
+						>
+							{row.label}
+						</button>
+					))}
+				</div>
+			</BottomSheet>
+		)}
 		{/* Toast notification for update ready */}
 		{showToast && updateVersion && (
 			<div className="fixed top-14 right-4 z-50 animate-slide-in-right">
