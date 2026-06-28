@@ -206,6 +206,38 @@ function delay(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
 }
 
+/**
+ * Compute the argv to hand `spawn(execPath, …)` when backgrounding ourselves.
+ *
+ * The detached child re-runs THIS `remote` invocation in the foreground. The
+ * correct child args are the *user-facing* args only — `argv.slice(2)` ("remote"
+ * + the user's flags), which is exactly what `main()` parses as `rawArgs`. Two
+ * runtimes, two argv shapes:
+ *
+ *   • Compiled binary  argv = [binPath, "/$bunfs/root/dev3", "remote", …]
+ *     `execPath` IS the binary, and bun re-injects the "/$bunfs/root/dev3" entry
+ *     as the child's argv[1] on its own — so we must pass ONLY the user args.
+ *     The original bug passed `slice(1)`, re-sending "/$bunfs/root/dev3" as a
+ *     positional; bun's re-injection then shoved it to the child's argv[2], where
+ *     `main()` parsed it as the command ("Unknown command: /$bunfs/root/dev3")
+ *     and the background server died on startup.
+ *
+ *   • Dev (bun run)    argv = [bunPath, "<abs>/main.ts", "remote", …]
+ *     `execPath` is `bun`, which needs the entry script as its first arg, so we
+ *     prepend argv[1] (the script path) ahead of the user args.
+ *
+ * Always strips any --detach/--no-detach the user passed and appends a single
+ * --no-detach so the child runs in the foreground (it IS the server) and does
+ * not recursively background itself. Exported for unit tests.
+ */
+export function computeDetachedChildArgs(argv: string[], execPath: string): string[] {
+	const userArgs = argv.slice(2).filter((a) => a !== "--detach" && a !== "--no-detach");
+	const runningViaBun = execPath.endsWith("/bun") || execPath.endsWith("\\bun.exe");
+	const childArgs = runningViaBun ? [argv[1], ...userArgs] : userArgs;
+	childArgs.push("--no-detach");
+	return childArgs;
+}
+
 // ── start ────────────────────────────────────────────────────────────────────
 
 async function startRemote(args: ParsedArgs): Promise<void> {
@@ -284,17 +316,11 @@ async function startDetached(): Promise<void> {
 		const logFd = openSync(REMOTE_LOG_FILE, "a");
 
 		// Single-binary model: re-run THIS invocation's `remote` command, detached,
-		// so the child boots the server in-process (dev: `bun <main.ts> remote …`;
-		// prod: the `dev3` binary) and survives the shell. process.execPath is the
-		// runtime (bun or the compiled binary); process.argv[1:] is our own command
-		// line ("remote" + the user's flags). The child MUST run in the foreground
-		// (it IS the server) — and since detach is the DEFAULT now, we have to force
-		// --no-detach or the child would recursively detach. Strip any detach flags
-		// the user passed and append --no-detach.
-		const childArgs = process.argv
-			.slice(1)
-			.filter((a) => a !== "--detach" && a !== "--no-detach");
-		childArgs.push("--no-detach");
+		// so the child boots the server in-process and survives the shell. The argv
+		// reshaping — and the compiled-binary "/$bunfs/root/dev3" footgun it avoids
+		// — lives in computeDetachedChildArgs so it can be unit-tested for both the
+		// `bun run` (dev) and compiled-binary (prod) argv shapes.
+		const childArgs = computeDetachedChildArgs(process.argv, process.execPath);
 		const childEnv: NodeJS.ProcessEnv = { ...process.env, DEV3_REMOTE_LOG_FILE: REMOTE_LOG_FILE };
 		const child = spawn(process.execPath, childArgs, {
 			stdio: ["ignore", logFd, logFd],
