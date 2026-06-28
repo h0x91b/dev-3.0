@@ -67,17 +67,19 @@ const stdoutText = () => stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])
 const stderrText = () => stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
 
 describe("buildExecStartArgs", () => {
-	it("defaults to `remote start` with no extra flags", () => {
-		expect(buildExecStartArgs(args())).toEqual(["remote", "start"]);
+	it("defaults to `remote start --no-detach` with no extra flags", () => {
+		expect(buildExecStartArgs(args())).toEqual(["remote", "start", "--no-detach"]);
 	});
 
 	it("maps --port / --no-tunnel / --expose-ports / --static-code", () => {
 		const out = buildExecStartArgs(args({ port: "3017", "no-tunnel": "true", "expose-ports": "3000,5173", "static-code": "letmein" }));
-		expect(out).toEqual(["remote", "start", "--port", "3017", "--no-tunnel", "--expose-ports=3000,5173", "--static-code=letmein"]);
+		expect(out).toEqual(["remote", "start", "--no-detach", "--port", "3017", "--no-tunnel", "--expose-ports=3000,5173", "--static-code=letmein"]);
 	});
 
-	it("never includes --detach (systemd owns the foreground process)", () => {
-		expect(buildExecStartArgs(args({ port: "3017" }))).not.toContain("--detach");
+	it("forces --no-detach so systemd keeps the foreground process (never bare --detach)", () => {
+		const out = buildExecStartArgs(args({ port: "3017" }));
+		expect(out).toContain("--no-detach");
+		expect(out).not.toContain("--detach");
 	});
 
 	it("rejects an invalid port", () => {
@@ -139,7 +141,7 @@ describe("installRemoteService", () => {
 		expect(mkdirSync).toHaveBeenCalledWith("/home/tester/.config/systemd/user", { recursive: true });
 		const writeCall = vi.mocked(writeFileSync).mock.calls[0];
 		expect(writeCall[0]).toBe("/home/tester/.config/systemd/user/dev3-remote.service");
-		expect(String(writeCall[1])).toContain("ExecStart=/usr/local/bin/dev3 remote start --port 3017");
+		expect(String(writeCall[1])).toContain("ExecStart=/usr/local/bin/dev3 remote start --no-detach --port 3017");
 		// daemon-reload + enable --now
 		const cmds = vi.mocked(spawnSync).mock.calls.map((c) => [c[0], ...(c[1] as string[])].join(" "));
 		expect(cmds.some((c) => c.includes("daemon-reload"))).toBe(true);

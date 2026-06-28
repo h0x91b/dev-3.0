@@ -55,8 +55,10 @@ your live working tree:
    ```bash
    CODE=$(cat "$HOME/.dev3.0/dev-web-access-code" 2>/dev/null || bun scripts/dev-web-code.ts)
    tmux -L dev3 split-window -h -t "$(tmux -L dev3 display-message -p '#S')" \
-     "dev3 remote --no-tunnel --static-code $CODE --port 47823"
+     "dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823"
    ```
+   - `--no-detach` — `dev3 remote` backgrounds by default; keep it in the foreground
+     so it stays tied to this pane (killable by pane, live logs visible).
    - `--no-tunnel` — local only, no public Cloudflare exposure.
    - `--static-code` — fixed token (a rotating JWT would expire). Local-only.
    - `--port` — fixed port → predictable URL: `http://localhost:47823/?token=<CODE>`

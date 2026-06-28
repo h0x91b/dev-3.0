@@ -225,7 +225,7 @@ const tips = {
 	"tip.remoteCommandPalette.title": "Browser eating your shortcuts?",
 	"tip.remoteCommandPalette.body": "Opened over dev3 remote, the browser claims combos like ⌘1–9 and ⌘N — press ⇧⌘P to reach every command instead.",
 	"tip.remoteDetachLifecycle.title": "Run dev3 remote in the background",
-	"tip.remoteDetachLifecycle.body": "On a server, run `dev3 remote --detach`, then `dev3 remote url` from any SSH session for a fresh QR, and `dev3 remote stop` to shut it down.",
+	"tip.remoteDetachLifecycle.body": "On a server, just run `dev3 remote` — it backgrounds itself. Then `dev3 remote url` from any SSH session for a fresh QR, and `dev3 remote stop` to shut it down.",
 	"tip.remoteRemembersDevice.title": "Remote remembers your device",
 	"tip.remoteRemembersDevice.body": "After you scan the QR once, your phone or laptop reconnects to the remote UI on reload without rescanning — for up to 8 hours.",
 	"tip.remotePickInterface.title": "Pick the remote address",
