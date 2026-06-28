@@ -226,6 +226,8 @@ const tips = {
 	"tip.remoteDetachLifecycle.body": "На сервере запустите `dev3 remote --detach`, затем `dev3 remote url` из любой SSH-сессии за свежим QR, и `dev3 remote stop` чтобы остановить.",
 	"tip.remoteRemembersDevice.title": "Remote запоминает устройство",
 	"tip.remoteRemembersDevice.body": "После одного скана QR телефон или ноутбук переподключается к удалённому UI при перезагрузке без повторного скана — до 8 часов.",
+	"tip.remotePickInterface.title": "Выберите адрес для remote",
+	"tip.remotePickInterface.body": "В Remote Access (туннель выключен) дропдаун адреса нацеливает QR на любой локальный IP, включая localhost для SSH-форварда.",
 };
 
 export default tips;

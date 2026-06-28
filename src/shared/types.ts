@@ -1121,6 +1121,19 @@ export interface RemoteServerState {
 }
 
 /**
+ * One IPv4 address the headless server is reachable at, for the Remote Access
+ * modal's interface picker. `internal: true` marks loopback (127.0.0.1).
+ */
+export interface RemoteNetInterface {
+	/** Interface name (e.g. "en0", "utun3") or "loopback" for 127.0.0.1. */
+	name: string;
+	/** The IPv4 address. */
+	address: string;
+	/** True for loopback / same-machine addresses. */
+	internal: boolean;
+}
+
+/**
  * Fresh access info for a running remote server, returned by the `remote.accessUrl`
  * CLI-socket method. The URL embeds a one-time QR token minted in the SERVER
  * process (where the JWT secret lives), so a detached `dev3 remote url` can print
@@ -1808,8 +1821,8 @@ export type AppRPCSchema = {
 				response: { path: string } | null;
 			};
 			getRemoteAccessQR: {
-				params: { tunnel?: boolean };
-				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
+				params: { tunnel?: boolean; host?: string };
+				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean; interfaces: RemoteNetInterface[]; selectedHost: string };
 			};
 			checkCloudflared: {
 				params: void;

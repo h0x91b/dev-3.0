@@ -33,6 +33,15 @@ vi.mock("../rpc", () => ({
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
+			getRemoteAccessQR: vi.fn().mockResolvedValue({
+				qrDataUrl: "data:image/png;base64,test",
+				accessUrl: "http://127.0.0.1:1234/?token=test",
+				tunnelState: "idle",
+				cloudflaredInstalled: false,
+				interfaces: [],
+				selectedHost: "127.0.0.1",
+			}),
+			stopTunnel: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -804,6 +813,60 @@ describe("App keyboard shortcuts", () => {
 			await waitFor(() => {
 				expect(screen.getByText("Session Expired")).toBeInTheDocument();
 			});
+		});
+
+		it("shows the interface picker (tunnel off) and switches host on change", async () => {
+			await renderApp();
+			const interfaces = [
+				{ name: "en0", address: "192.168.0.1", internal: false },
+				{ name: "loopback", address: "127.0.0.1", internal: true },
+			];
+			vi.mocked(api.request.getRemoteAccessQR).mockResolvedValue({
+				qrDataUrl: "data:image/png;base64,test2",
+				accessUrl: "http://127.0.0.1:1234/?token=test",
+				tunnelState: "idle",
+				cloudflaredInstalled: false,
+				interfaces,
+				selectedHost: "127.0.0.1",
+			});
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,test",
+					accessUrl: "http://192.168.0.1:1234/?token=test",
+					tunnelState: "idle",
+					cloudflaredInstalled: false,
+					interfaces,
+					selectedHost: "192.168.0.1",
+				},
+			}));
+
+			await waitFor(() => expect(screen.getByText("Reachable at")).toBeInTheDocument());
+			const select = screen.getByRole("combobox");
+			expect(select).toHaveValue("192.168.0.1");
+			expect(screen.getByRole("option", { name: "en0 · 192.168.0.1" })).toBeInTheDocument();
+			expect(screen.getByRole("option", { name: "Localhost · 127.0.0.1" })).toBeInTheDocument();
+
+			await userEvent.selectOptions(select, "127.0.0.1");
+			expect(api.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: false, host: "127.0.0.1" });
+		});
+
+		it("hides the interface picker when the tunnel is connected", async () => {
+			await renderApp();
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,test",
+					accessUrl: "https://abc.trycloudflare.com/?token=test",
+					tunnelState: "connected",
+					cloudflaredInstalled: true,
+					interfaces: [
+						{ name: "en0", address: "192.168.0.1", internal: false },
+						{ name: "loopback", address: "127.0.0.1", internal: true },
+					],
+					selectedHost: "192.168.0.1",
+				},
+			}));
+			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());
+			expect(screen.queryByText("Reachable at")).not.toBeInTheDocument();
 		});
 	});
 

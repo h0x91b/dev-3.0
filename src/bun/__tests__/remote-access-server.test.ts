@@ -387,3 +387,57 @@ describe("uploadImageBase64 size limit", () => {
 		expect(smallPayload.length).toBeLessThan(MAX_BASE64_SIZE);
 	});
 });
+
+import { getLocalInterfaces, resolveAccessHost, getAccessUrl, generateQrDataUrl } from "../remote-access-server";
+
+describe("getLocalInterfaces", () => {
+	it("always includes loopback 127.0.0.1 last and marked internal", () => {
+		const list = getLocalInterfaces();
+		const last = list[list.length - 1];
+		expect(last).toEqual({ name: "loopback", address: "127.0.0.1", internal: true });
+	});
+
+	it("marks every non-loopback entry as external", () => {
+		const list = getLocalInterfaces();
+		for (const iface of list.slice(0, -1)) {
+			expect(iface.internal).toBe(false);
+			expect(iface.address).not.toBe("127.0.0.1");
+		}
+	});
+});
+
+describe("resolveAccessHost", () => {
+	it("honours loopback (always an allowed address)", () => {
+		expect(resolveAccessHost("127.0.0.1")).toBe("127.0.0.1");
+		expect(resolveAccessHost("localhost")).toBe("localhost");
+	});
+
+	it("rejects a host that is not one of our addresses (falls back to auto)", () => {
+		// 8.8.8.8 is not a local interface — must NOT be echoed back into the URL.
+		expect(resolveAccessHost("8.8.8.8")).not.toBe("8.8.8.8");
+	});
+
+	it("falls back to the auto host when none is given", () => {
+		const auto = resolveAccessHost();
+		expect(typeof auto).toBe("string");
+		expect(auto.length).toBeGreaterThan(0);
+	});
+});
+
+describe("getAccessUrl host override", () => {
+	it("embeds an allowed host in the URL", async () => {
+		const url = await getAccessUrl("127.0.0.1");
+		expect(url).toContain("http://127.0.0.1:");
+		expect(url).toContain("?token=test-token");
+	});
+
+	it("ignores a disallowed host (does not inject it)", async () => {
+		const url = await getAccessUrl("8.8.8.8");
+		expect(url).not.toContain("8.8.8.8");
+	});
+
+	it("generateQrDataUrl threads the host through to the QR image", async () => {
+		const qr = await generateQrDataUrl("127.0.0.1");
+		expect(qr).toBe("data:image/png;base64,test");
+	});
+});

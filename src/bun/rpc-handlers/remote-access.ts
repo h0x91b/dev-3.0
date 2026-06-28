@@ -1,6 +1,7 @@
-import { getAccessUrl, generateQrDataUrl } from "../remote-access-server";
+import { getAccessUrl, generateQrDataUrl, getLocalInterfaces, resolveAccessHost } from "../remote-access-server";
+import type { RemoteNetInterface } from "../../shared/types";
 
-async function getRemoteAccessQR(params: { tunnel?: boolean }): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean }> {
+async function getRemoteAccessQR(params: { tunnel?: boolean; host?: string }): Promise<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean; interfaces: RemoteNetInterface[]; selectedHost: string }> {
 	const { isCloudflaredAvailable, getTunnelState, startTunnel } = await import("../cloudflare-tunnel");
 	const { getServerPort } = await import("../remote-access-server");
 	const cloudflaredInstalled = isCloudflaredAvailable();
@@ -10,9 +11,17 @@ async function getRemoteAccessQR(params: { tunnel?: boolean }): Promise<{ qrData
 		await startTunnel(getServerPort());
 	}
 
-	const qrDataUrl = await generateQrDataUrl();
-	const accessUrl = await getAccessUrl();
-	return { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled };
+	const host = params?.host;
+	const qrDataUrl = await generateQrDataUrl(host);
+	const accessUrl = await getAccessUrl(host);
+	return {
+		qrDataUrl,
+		accessUrl,
+		tunnelState: getTunnelState(),
+		cloudflaredInstalled,
+		interfaces: getLocalInterfaces(),
+		selectedHost: resolveAccessHost(host),
+	};
 }
 
 async function checkCloudflared(): Promise<{ installed: boolean }> {

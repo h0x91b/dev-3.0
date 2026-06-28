@@ -922,6 +922,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "remote-pick-interface",
+		titleKey: "tip.remotePickInterface.title",
+		bodyKey: "tip.remotePickInterface.body",
+		icon: "\u{F0200}", // nf-md-lan
+		score: 2,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
