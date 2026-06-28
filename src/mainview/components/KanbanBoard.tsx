@@ -279,6 +279,12 @@ function KanbanBoard({
 	const projectLabels = project.labels ?? [];
 	const customColumns: CustomColumn[] = project.customColumns ?? [];
 	const customStatusLabels = project.customStatusLabels ?? {};
+	const customColumnIds = new Set(customColumns.map((c) => c.id));
+	// A task belongs to a custom column only if that column still exists. A
+	// dangling customColumnId (its column was deleted, or a multi-instance write
+	// referenced a column this instance never had) falls back to the task's
+	// underlying status column so the task can never silently vanish from the board.
+	const isInCustomColumn = (task: Task) => !!task.customColumnId && customColumnIds.has(task.customColumnId);
 
 	async function handleRenameBuiltinColumn(status: TaskStatus, name: string | null) {
 		try {
@@ -298,13 +304,14 @@ function KanbanBoard({
 		displayTasks = displayTasks.filter((t) => matchesSearchQuery(t, searchQuery, { prNumber: taskPrMap.get(t.id)?.number }));
 	}
 
-	// Built-in column tasks (exclude tasks in custom columns)
+	// Built-in column tasks (exclude tasks in an existing custom column; tasks
+	// with a dangling customColumnId fall back here into their status column).
 	const tasksByStatus = new Map<TaskStatus, Task[]>();
 	for (const status of ALL_STATUSES) {
 		tasksByStatus.set(status, []);
 	}
 	for (const task of displayTasks) {
-		if (!task.customColumnId) {
+		if (!isInCustomColumn(task)) {
 			tasksByStatus.get(task.status)?.push(task);
 		}
 	}
@@ -323,7 +330,7 @@ function KanbanBoard({
 		const peerReviewEnabled = project.peerReviewEnabled !== false;
 		// Show AI Review column by default (on when builtinColumnAgents is unset or has review-by-ai config)
 		const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
-		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !t.customColumnId);
+		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !isInCustomColumn(t));
 		// Virtual ("Operations") boards have no diff/PR, so all review columns are
 		// hidden — the flow is todo → in-progress → user-questions → done.
 		const isVirtual = project.kind === "virtual";
@@ -427,8 +434,8 @@ function KanbanBoard({
 		tasksByCustomColumn.set(col.id, []);
 	}
 	for (const task of displayTasks) {
-		if (task.customColumnId) {
-			tasksByCustomColumn.get(task.customColumnId)?.push(task);
+		if (isInCustomColumn(task)) {
+			tasksByCustomColumn.get(task.customColumnId!)?.push(task);
 		}
 	}
 

@@ -646,6 +646,32 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 			}
 		}
 
+		// Heal dangling customColumnId — the task references a custom column that
+		// no longer exists in this project. Reachable via the deleteCustomColumn
+		// snapshot race, or a multi-instance / CLI write that stamped a column id
+		// this instance never had. Clearing it to null (the documented "no custom
+		// column" value, already produced by the backfill above) is a content-only
+		// in-place rewrite — same shape as the legacy `say` cleanup migration — that
+		// keeps the file fully loadable by older app versions. We only persist on
+		// mutator reads (persistMigrations), which run under the file lock and skip
+		// the cache, so pure reads never transform cached values; the renderer falls
+		// back defensively regardless. Guarded on a real customColumns array so a
+		// partially-built project object can never wipe valid assignments.
+		if (options?.persistMigrations && Array.isArray(project.customColumns)) {
+			const validCustomColumnIds = new Set(project.customColumns.map((c) => c.id));
+			let danglingCount = 0;
+			for (const t of tasks) {
+				if (t.customColumnId != null && !validCustomColumnIds.has(t.customColumnId)) {
+					t.customColumnId = null;
+					danglingCount++;
+				}
+			}
+			if (danglingCount > 0) {
+				log.info("Cleared dangling customColumnId on tasks", { projectId: project.id, count: danglingCount });
+				await rawSaveTasks(project, tasks);
+			}
+		}
+
 		log.info(`Loaded ${tasks.length} task(s)`, { projectId: project.id });
 		if (useCache && preReadStat) {
 			tasksCache.set(file, { ...preReadStat, value: tasks.map((t) => ({ ...t })) });

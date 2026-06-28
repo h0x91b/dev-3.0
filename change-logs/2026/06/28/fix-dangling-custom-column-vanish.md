@@ -1,0 +1,1 @@
+Fixed tasks silently vanishing from the Kanban board when their customColumnId pointed to a deleted custom column. The board now falls back to rendering such a task in its underlying status column, and the data layer self-heals the dangling id to null on the next task mutation (in-place, fully backward-compatible).
