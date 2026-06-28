@@ -7,7 +7,7 @@
 # git, and Bash. Any browser on the host (or across your LAN) can reach the
 # UI over HTTP + WebSocket on the published port.
 #
-# Why a multi-stage build: `build:cli` and `build:server` rely on Bun's
+# Why a multi-stage build: `build:cli` relies on Bun's
 # `--compile`, which emits a single-file ELF binary for the host it runs on.
 # Building inside a Linux container guarantees Linux binaries regardless of
 # whether the developer is on macOS, Windows, or Linux — and we keep the
@@ -29,7 +29,7 @@
 ARG BUN_VERSION=1.3.10
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Stage 1: builder — compile dev3 CLI + dev3-server + UI assets from source
+# Stage 1: builder — compile dev3 (CLI + headless server) + UI assets from source
 # ──────────────────────────────────────────────────────────────────────────────
 FROM oven/bun:${BUN_VERSION} AS builder
 
@@ -43,14 +43,13 @@ RUN bun install --frozen-lockfile
 # change-logs from other sessions, .git worktree metadata, etc.
 COPY . .
 
-# UI bundle + native binaries. We skip `bun run build:cli`'s ad-hoc codesign
+# UI bundle + native binary. We skip `bun run build:cli`'s ad-hoc codesign
 # step (it's a no-op on Linux anyway — see scripts/sign-cli-binaries.sh) and
-# invoke the Bun compiles directly to keep the output deterministic.
+# invoke the Bun compile directly to keep the output deterministic.
 RUN bun scripts/generate-build-info.ts \
  && bun scripts/generate-changelog.ts \
  && bunx vite build \
- && bun build src/cli/main.ts --compile --outfile dist/dev3 \
- && bun build src/bun/headless-bootstrap.ts --compile --outfile dist/dev3-server
+ && bun build src/cli/main.ts --compile --outfile dist/dev3
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Stage 2: runtime — minimal Debian + the bits dev-3.0 actually spawns at runtime
@@ -88,10 +87,9 @@ RUN useradd --create-home --shell /bin/bash dev3 \
 USER dev3
 WORKDIR /home/dev3/app
 
-# Layout expected by the CLI: `dev3` and `dev3-server` side-by-side, with
-# `dist/` adjacent for the UI (see headless-entry.ts candidate search).
+# Layout expected by the CLI: the single `dev3` binary (CLI + headless server)
+# with `dist/` adjacent for the UI (see headless-entry.ts candidate search).
 COPY --from=builder --chown=dev3:dev3 /src/dist/dev3         ./dev3
-COPY --from=builder --chown=dev3:dev3 /src/dist/dev3-server  ./dev3-server
 COPY --from=builder --chown=dev3:dev3 /src/dist              ./dist
 
 ENV PATH=/home/dev3/app:$PATH \

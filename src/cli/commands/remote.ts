@@ -1,8 +1,5 @@
-import { existsSync, realpathSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { spawn } from "node:child_process";
 import type { ParsedArgs } from "../args";
-import { exitError, exitUsage } from "../output";
+import { exitUsage } from "../output";
 
 const REMOTE_HELP = `dev3 remote — run dev-3.0 in headless mode with a browser UI.
 
@@ -67,69 +64,6 @@ Examples:
   dev3 remote --expose-ports=3000,5173     # also expose dev-server ports publicly
 `;
 
-/**
- * True when the CLI runs via `bun run ...` (dev mode) rather than as a compiled
- * `dev3` binary. In dev mode we must NEVER spawn `dist/dev3-server`:
- *   (a) on macOS the unsigned compiled binary is killed by Gatekeeper with
- *       SIGKILL and no output (observed: signal=SIGKILL, exit code=null),
- *   (b) `dist/dev3-server` may be a stale artifact from a previous build that
- *       no longer matches the current source — running it would silently
- *       execute old code while the developer thinks they're testing HEAD.
- * Always re-run source through Bun instead (see runViaBun).
- */
-function isRunningViaBun(): boolean {
-	const exec = process.execPath;
-	return exec.endsWith("/bun") || exec.endsWith("\\bun.exe");
-}
-
-/**
- * Locate the `dev3-server` binary that sits alongside the CLI.
- *
- * Layout we expect:
- *   <bin>/dev3           ← CLI  (this process)
- *   <bin>/dev3-server    ← headless server (spawned)
- *
- * Resolved via `realpathSync(process.execPath)` so brew-style installs
- * (`bin/dev3` is a symlink to `libexec/dev3`, server lives at `libexec/dev3-server`)
- * find the sibling next to the actual binary, not next to the symlink.
- *
- * Only meaningful in prod — from the compiled `dev3`. Dev mode bypasses this
- * entirely via `runViaBun`; see isRunningViaBun.
- */
-function locateServerBinary(): string | null {
-	let cliDir = dirname(process.execPath);
-	try {
-		cliDir = dirname(realpathSync(process.execPath));
-	} catch { /* unreadable execPath — fall back to dirname(execPath) */ }
-	const sibling = resolve(cliDir, "dev3-server");
-	return existsSync(sibling) ? sibling : null;
-}
-
-/**
- * Run headless-entry.ts through the current Bun process (dev fallback when
- * there's no compiled `dev3-server` binary next to the CLI — e.g. when
- * invoking `bun run src/cli/main.ts remote` from the repo root).
- */
-function runViaBun(env: NodeJS.ProcessEnv): void {
-	// process.execPath is `bun` when launched via `bun run`; when compiled, it's
-	// the dev3 binary — which can't run .ts files, so this branch is only
-	// reachable in dev.
-	const bunBin = process.execPath;
-	// Use the bootstrap, not headless-entry directly — bootstrap sets
-	// DEV3_HEADLESS=1 *before* ES imports evaluate, which is required for the
-	// electrobun-platform shim to short-circuit to stubs instead of loading
-	// the real electrobun module.
-	const entry = resolve(import.meta.dir, "..", "..", "bun", "headless-bootstrap.ts");
-	if (!existsSync(entry)) {
-		exitError("Could not locate headless-bootstrap.ts", `Expected at ${entry}`);
-	}
-	const child = spawn(bunBin, ["run", entry], { stdio: "inherit", env });
-	child.on("exit", (code) => process.exit(code ?? 0));
-	// Forward signals so Ctrl-C in the CLI reaches the server cleanly.
-	process.on("SIGINT", () => child.kill("SIGINT"));
-	process.on("SIGTERM", () => child.kill("SIGTERM"));
-}
-
 export async function handleRemote(subcommand: string | undefined, args: ParsedArgs): Promise<void> {
 	if (args.flags.help === "true" || args.flags.h === "true") {
 		process.stdout.write(REMOTE_HELP);
@@ -151,15 +85,16 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 		}
 	}
 
-	// Translate flags → env for headless-entry. DEV3_HEADLESS is also set as a
-	// safety net: the bootstrap sets it before imports, but belt-and-suspenders.
-	// Tunnel is opt-out: headless-entry starts one unless DEV3_REMOTE_NO_TUNNEL=1.
-	const childEnv: NodeJS.ProcessEnv = { ...process.env, DEV3_HEADLESS: "1" };
+	// Validate flags and collect the env vars headless-entry reads at boot. We
+	// apply them to process.env only after every check passes, so a validation
+	// failure never pollutes the environment. Tunnel is opt-out: headless-entry
+	// starts one unless DEV3_REMOTE_NO_TUNNEL=1.
+	const remoteEnv: Record<string, string> = {};
 	if (args.flags["no-tunnel"] === "true") {
-		childEnv.DEV3_REMOTE_NO_TUNNEL = "1";
+		remoteEnv.DEV3_REMOTE_NO_TUNNEL = "1";
 	}
 	if (args.flags["views-dir"] && args.flags["views-dir"] !== "true") {
-		childEnv.DEV3_VIEWS_DIR = args.flags["views-dir"];
+		remoteEnv.DEV3_VIEWS_DIR = args.flags["views-dir"];
 	}
 	if (args.flags.port !== undefined) {
 		if (args.flags.port === "true") {
@@ -169,14 +104,14 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 		if (!Number.isFinite(n) || n < 1 || n > 65535 || String(n) !== args.flags.port.trim()) {
 			exitUsage(`--port must be an integer in 1-65535 (got "${args.flags.port}")`);
 		}
-		childEnv.DEV3_REMOTE_PORT = String(n);
+		remoteEnv.DEV3_REMOTE_PORT = String(n);
 	}
 	if (args.flags["static-code"] && args.flags["static-code"] !== "true") {
 		const code = args.flags["static-code"];
 		if (code.length < 4) {
 			exitUsage(`--static-code must be at least 4 characters (got "${code}")`);
 		}
-		childEnv.DEV3_REMOTE_STATIC_CODE = code;
+		remoteEnv.DEV3_REMOTE_STATIC_CODE = code;
 	} else if (args.flags["static-code"] === "true") {
 		exitUsage(`--static-code requires a value: --static-code=<your-code>`);
 	}
@@ -197,32 +132,23 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 		if (ports.length === 0) {
 			exitUsage(`--expose-ports: at least one port required`);
 		}
-		childEnv.DEV3_REMOTE_EXPOSE_PORTS = ports.join(",");
+		remoteEnv.DEV3_REMOTE_EXPOSE_PORTS = ports.join(",");
 	}
 
-	// Dev mode (bun run src/cli/main.ts) — always re-run source through Bun.
-	// See isRunningViaBun for why we never touch dist/dev3-server here.
-	if (isRunningViaBun()) {
-		runViaBun(childEnv);
-		return;
-	}
-
-	// Prod mode — compiled `dev3` spawns its sibling `dev3-server`.
-	const serverBin = locateServerBinary();
-	if (!serverBin) {
-		const expected = resolve(dirname(process.execPath), "dev3-server");
-		exitError(
-			"dev3-server binary not found",
-			`Expected alongside the CLI at: ${expected}\n` +
-				`\n` +
-				`This usually means the installed dev-3.0 app predates the \`dev3 remote\`\n` +
-				`feature. Launch the dev-3.0 GUI app once — it refreshes both dev3 and\n` +
-				`dev3-server into ~/.dev3.0/bin/ on every start — then retry \`dev3 remote\`.`,
-		);
-	}
-	const child = spawn(serverBin, [], { stdio: "inherit", env: childEnv });
-	child.on("exit", (code) => process.exit(code ?? 0));
-	// Forward signals so Ctrl-C in the CLI reaches the server cleanly.
-	process.on("SIGINT", () => child.kill("SIGINT"));
-	process.on("SIGTERM", () => child.kill("SIGTERM"));
+	// Boot the headless server IN-PROCESS. `dev3` and the old standalone
+	// `dev3-server` are now a single binary: the server lives behind this dynamic
+	// import so it stays out of the CLI's startup graph — every other
+	// `dev3 <cmd>` pays nothing for it (a guard test enforces this; see
+	// __tests__/cli-startup-graph.test.ts). DEV3_HEADLESS must be set BEFORE the
+	// import so the electrobun-platform shim short-circuits to no-op stubs
+	// instead of loading the real native module; `await import()` is a statement,
+	// so unlike a static `import` it never hoists above these assignments. The
+	// same path serves dev (`bun run src/cli/main.ts remote` imports the TS
+	// source) and prod (Bun bundles the dynamic-import target into the compiled
+	// binary). headless-entry boots on import and keeps the process alive via its
+	// own open handles + SIGINT/SIGTERM shutdown, so this import never resolves
+	// until the server stops.
+	Object.assign(process.env, remoteEnv);
+	process.env.DEV3_HEADLESS = "1";
+	await import("../../bun/headless-entry");
 }

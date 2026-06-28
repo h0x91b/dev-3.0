@@ -69,7 +69,7 @@ docker run --rm -it -p 3000:3000 dev3-remote bash -c '
 - `debian:stable-slim` base
 - `tmux`, `git`, `bash`, `ca-certificates`, `openssh-client`, `procps`, `curl`, `tini`
 - Non-root user `dev3` (UID 1000-ish) with `$HOME=/home/dev3`
-- Binaries at `/home/dev3/app/{dev3,dev3-server}` and `dist/` for the UI
+- Binary at `/home/dev3/app/dev3` (CLI + headless server in one) and `dist/` for the UI
 - `DEV3_REMOTE_PORT=3000` exported by default
 
 No AI CLIs (claude, codex, etc.) are pre-installed — drop them in

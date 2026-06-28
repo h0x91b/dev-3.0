@@ -528,12 +528,12 @@ jobs:
             depends_on "cloudflared"
 
             def install
-              libexec.install "dev3", "dev3-server", "dist"
+              libexec.install "dev3", "dist"
               chmod 0755, libexec/"dev3"
-              chmod 0755, libexec/"dev3-server"
-              # Only link \`dev3\`. The compiled \`dev3-server\` is spawned by
-              # \`dev3\` via realpath(execPath)/dev3-server, so it finds itself
-              # next to the real binary in libexec.
+              # \`dev3\` is a single binary that is both the CLI and the headless
+              # server (\`dev3 remote\` boots the server in-process). It serves the
+              # UI from the sibling \`dist/\` resolved via realpath(execPath), so it
+              # finds itself next to the real binary in libexec.
               bin.install_symlink libexec/"dev3"
             end
 

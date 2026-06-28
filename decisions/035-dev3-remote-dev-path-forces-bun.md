@@ -1,5 +1,11 @@
 # 035 — `dev3 remote` in dev mode always runs from source, ignoring `dist/dev3-server`
 
+> **Superseded by [084](084-merge-cli-and-headless-server.md).** `dev3-server` no
+> longer exists as a separate binary — `dev3 remote` boots the headless server
+> in-process via a dynamic import, so the `isRunningViaBun`/`runViaBun`/
+> `locateServerBinary` spawn dance described below has been removed. Kept for
+> historical context.
+
 ## Context
 
 `dev3 remote` spawns a separate `dev3-server` process (headless entry, no Electrobun GUI). In prod that binary sits next to `dev3`. In dev (`bun run src/cli/main.ts remote`) the original implementation also looked at `./dist/dev3-server` as a fallback.

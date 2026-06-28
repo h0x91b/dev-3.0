@@ -9,14 +9,13 @@ set -euo pipefail
 #   arch: arm64 or x64
 #
 # Inputs:
-#   ./dist/dev3, ./dist/dev3-server  — produced by `bun run build:cli`
+#   ./dist/dev3                      — produced by `bun run build:cli`
 #   ./dist/index.html, ./dist/assets — produced by `bunx vite build`
 #
 # Output: ./artifacts-<os>-<arch>/dev3-cli-<os>-<arch>.tar.gz
 #
 # Layout inside the tarball (extracts into the current dir):
-#   ./dev3                ← compiled CLI (sibling-discovers ./dist/)
-#   ./dev3-server         ← compiled headless server
+#   ./dev3                ← compiled CLI + headless server (one binary)
 #   ./dist/index.html     ← UI entry
 #   ./dist/assets/...     ← UI assets
 
@@ -28,8 +27,8 @@ STAGE_DIR="$(mktemp -d)"
 
 echo "=== Creating CLI tarball for ${OS}-${ARCH} ==="
 
-if [ ! -f ./dist/dev3 ] || [ ! -f ./dist/dev3-server ]; then
-  echo "::error::dist/dev3 or dist/dev3-server missing — run \`bun run build:cli\` first"
+if [ ! -f ./dist/dev3 ]; then
+  echo "::error::dist/dev3 missing — run \`bun run build:cli\` first"
   ls -lh ./dist 2>/dev/null || true
   exit 1
 fi
@@ -43,8 +42,7 @@ fi
 mkdir -p "$OUT_DIR" "$STAGE_DIR/dist"
 
 cp ./dist/dev3 "$STAGE_DIR/dev3"
-cp ./dist/dev3-server "$STAGE_DIR/dev3-server"
-chmod 0755 "$STAGE_DIR/dev3" "$STAGE_DIR/dev3-server"
+chmod 0755 "$STAGE_DIR/dev3"
 
 cp ./dist/index.html "$STAGE_DIR/dist/"
 [ -d ./dist/assets ] && cp -r ./dist/assets "$STAGE_DIR/dist/assets"

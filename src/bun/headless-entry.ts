@@ -8,10 +8,14 @@
  * remote-access HTTP/WS server which any browser can connect to.
  *
  * IMPORTANT: the DEV3_HEADLESS=1 env flag must be set BEFORE this module is
- * imported — ES module imports hoist so you can't set it here. The entrypoint
- * that boots us, `src/bun/headless-bootstrap.ts`, takes care of it; never run
- * this file directly. The spawn logic in `src/cli/commands/remote.ts` sets
- * the flag on the child env as belt-and-suspenders.
+ * imported — ES module imports hoist so you can't set it here. `dev3 remote`
+ * (`src/cli/commands/remote.ts → handleRemote`) takes care of it: it sets the
+ * flag and THEN does `await import("../../bun/headless-entry")`. Because
+ * `await import()` is a statement (not a hoisted declaration) the flag is
+ * guaranteed to be in place before this module — and the electrobun-platform
+ * shim it pulls in — evaluates. Never import this module statically from the
+ * CLI, or the heavy backend lands in every `dev3` invocation's startup graph.
+ * Booting on import keeps the process alive via its own open handles.
  */
 
 import { existsSync, realpathSync } from "node:fs";
@@ -65,7 +69,6 @@ const wantTunnel = process.env.DEV3_REMOTE_NO_TUNNEL !== "1";
 //   tarball release:  <bin-dir>/dev3 + <bin-dir>/dist           (CLI tarball)
 //   FHS install:      <bin-dir>/dev3 + <prefix>/share/dev-3.0/dist
 //   dev mode:         src/bun/headless-entry.ts  → <repo>/dist
-//   electrobun bundle: <bin-dir>/dev3-server     → <bin-dir>/dist
 //   CWD fallback:     ./dist (last resort)
 //
 // `process.execPath` resolves to the on-disk binary even when launched via a

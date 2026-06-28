@@ -66,8 +66,8 @@ function CopyUrlRow({ url }: { url: string }) {
  * publicly via a Cloudflare quick tunnel with one click.
  *
  * Source-of-ports: the project's pre-allocated pool. We deliberately do NOT
- * use port-scan detection — that picked up our own `cloudflared` /
- * `dev3-server` processes, drowning the user in irrelevant rows.
+ * use port-scan detection — that picked up our own `cloudflared` / headless
+ * server processes, drowning the user in irrelevant rows.
  *
  * Lives in the Runtime & access bar (row 2 right) per UX bible §5.1.
  * Hidden when the project doesn't allocate any ports.
