@@ -1893,6 +1893,28 @@ export type AppRPCSchema = {
 			 */
 			cliAttention: { taskId: string; reason: string };
 			/**
+			 * Browser Web Notification request. Mirrors a native OS notification
+			 * (`dev3 notify --desktop`, watched-task status/event banners) for clients
+			 * running in remote/browser mode, where `Utils.showNotification` is a no-op.
+			 * The desktop WKWebView ignores it (native already fired); browsers show a
+			 * `new Notification(...)`, or fall back to an in-app toast when the
+			 * Notification API is unavailable (insecure LAN context) or not granted.
+			 */
+			webNotification: {
+				taskId: string;
+				projectId: string;
+				/** Notification heading, e.g. "#804 Fix bug". */
+				title: string;
+				/** Notification body, e.g. a message or "In Progress → Review". */
+				body: string;
+				/** Toast-fallback variant when the Notification API can't be used. */
+				level: "info" | "success" | "error";
+				/** Source-task context for the fallback toast header. */
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
+			/**
 			 * CI/checks + PR-review state for a task's open PR, emitted by the
 			 * background PR poller (`checkOpenPRsForPromotion`). Drives the CI and
 			 * review badges on the task card. Passive status â NOT gated by Focus

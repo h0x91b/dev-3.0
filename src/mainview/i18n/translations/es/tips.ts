@@ -220,6 +220,8 @@ const tips = {
 	"tip.watchRemembers.body": "Activa o desactiva Watch en el diálogo de lanzamiento y esa elección será la predeterminada para las próximas tareas.",
 	"tip.remoteMenuBar.title": "Menú completo en el navegador",
 	"tip.remoteMenuBar.body": "Abre dev-3.0 en un navegador mediante Remote Access y toda la barra de menú File/Task/Project se renderiza en la propia página.",
+	"tip.browserNotifications.title": "Notificaciones en el navegador",
+	"tip.browserNotifications.body": "¿Abriste dev3 en un navegador? Activa Notificaciones del navegador en Ajustes → Comportamiento para recibir avisos de escritorio de dev3 notify y tareas observadas.",
 };
 
 export default tips;

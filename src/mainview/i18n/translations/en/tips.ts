@@ -220,6 +220,8 @@ const tips = {
 	"tip.watchRemembers.body": "Toggle Watch in the launch dialog and that on/off choice becomes the default for the tasks you launch next.",
 	"tip.remoteMenuBar.title": "Full menu in your browser",
 	"tip.remoteMenuBar.body": "Open dev-3.0 from a browser via Remote Access and the whole File/Task/Project menu bar renders right in the page.",
+	"tip.browserNotifications.title": "Notifications in the browser",
+	"tip.browserNotifications.body": "Opened dev3 in a browser? Enable Browser Notifications in Settings → Behavior to get desktop alerts for dev3 notify and watched tasks.",
 } as const;
 
 export default tips;

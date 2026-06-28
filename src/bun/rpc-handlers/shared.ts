@@ -25,7 +25,7 @@ import { dlopen, FFIType } from "bun:ffi";
 import type { RendererLogLevel, RequirementCheckResult, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
-import { log } from "./shared-pure";
+import { log, getPushMessage } from "./shared-pure";
 
 const rendererLog = createLogger("renderer");
 
@@ -132,14 +132,42 @@ export function getActiveContext(): { projectId: string | null; taskId: string |
 	return activeContext;
 }
 
+/**
+ * Mirror a native OS notification to remote/browser clients as a Web Notification
+ * request. Fires alongside every `Utils.showNotification` call so that clients on
+ * `dev3 remote` (where the native call is a no-op) still get notified. The push is
+ * broadcast to all connected renderers; the desktop WKWebView ignores it (native
+ * already fired) and only browsers act on it — see the renderer's `webNotification`
+ * handler. No-op when no push transport is wired (e.g. unit tests, CLI process).
+ */
+function pushWebNotification(opts: {
+	task: Task;
+	body: string;
+	projectName: string;
+	level?: "info" | "success" | "error";
+}): void {
+	getPushMessage()?.("webNotification", {
+		taskId: opts.task.id,
+		projectId: opts.task.projectId,
+		title: `#${opts.task.seq} ${getTaskTitle(opts.task)}`,
+		body: opts.body,
+		level: opts.level ?? "info",
+		taskSeq: opts.task.seq,
+		taskTitle: getTaskTitle(opts.task),
+		projectName: opts.projectName,
+	});
+}
+
 export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
 	if (!task.watched || oldStatus === newStatus) return;
+	const body = `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`;
 	Utils.showNotification({
 		title: `#${task.seq} ${getTaskTitle(task)}`,
-		body: `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`,
+		body,
 		subtitle: projectName,
 		silent: true,
 	});
+	pushWebNotification({ task, body, projectName });
 	// Only arm click-to-open when the app is NOT already in the foreground. If the
 	// user is actively looking at the app, the banner is purely informational — a
 	// subsequent in-app click that happens to re-key the window must not be misread
@@ -161,19 +189,20 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
  * exposes no click callback, so we treat "app became foreground shortly after"
  * as the click.
  */
-export function notifyFromCliDesktop(opts: { taskId: string; projectId: string; title: string; body: string; subtitle?: string }): void {
+export function notifyFromCliDesktop(opts: { task: Task; body: string; projectName?: string }): void {
 	Utils.showNotification({
-		title: opts.title,
+		title: `#${opts.task.seq} ${getTaskTitle(opts.task)}`,
 		body: opts.body,
-		...(opts.subtitle ? { subtitle: opts.subtitle } : {}),
+		...(opts.projectName ? { subtitle: opts.projectName } : {}),
 		silent: true,
 	});
+	pushWebNotification({ task: opts.task, body: opts.body, projectName: opts.projectName ?? "" });
 	// Don't arm click-to-open while the app is already focused — see the rationale
 	// in notifyWatchedTaskStatusChange.
 	if (appForeground) return;
 	lastWatchedNotification = {
-		taskId: opts.taskId,
-		projectId: opts.projectId,
+		taskId: opts.task.id,
+		projectId: opts.task.projectId,
 		timestamp: Date.now(),
 	};
 }
@@ -192,6 +221,7 @@ export function notifyWatchedTaskEvent(task: Task, body: string, projectName: st
 		subtitle: projectName,
 		silent: true,
 	});
+	pushWebNotification({ task, body, projectName });
 	if (appForeground) return;
 	lastWatchedNotification = {
 		taskId: task.id,

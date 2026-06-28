@@ -252,6 +252,8 @@ const {
 	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
+	notifyWatchedTaskEvent,
+	notifyFromCliDesktop,
 	consumeRecentWatchedNotification,
 	_resetWatchedNotificationState,
 	NOTIFICATION_CLICK_TTL_MS,
@@ -7936,6 +7938,83 @@ describe("notifyWatchedTaskStatusChange", () => {
 		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
 
 		expect(consumeRecentWatchedNotification()).toEqual({ taskId: task.id, projectId: "proj-bg" });
+	});
+});
+
+describe("web notification push (remote/browser mode mirror)", () => {
+	beforeEach(() => {
+		vi.mocked(Utils.showNotification).mockClear();
+		_resetWatchedNotificationState();
+	});
+
+	afterEach(() => {
+		setPushMessage(() => {});
+	});
+
+	it("pushes webNotification alongside the native banner on a watched status change", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const task = makeTask({ watched: true, seq: 7, customTitle: "Fix bug", projectId: "proj-x" });
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+
+		expect(push).toHaveBeenCalledWith("webNotification", {
+			taskId: task.id,
+			projectId: "proj-x",
+			title: "#7 Fix bug",
+			body: "In Progress → Review By User",
+			level: "info",
+			taskSeq: 7,
+			taskTitle: "Fix bug",
+			projectName: "MyProject",
+		});
+	});
+
+	it("does not push when the status did not actually change", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const task = makeTask({ watched: true });
+		notifyWatchedTaskStatusChange(task, "in-progress", "in-progress", "MyProject");
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	it("pushes webNotification for a CLI --desktop notification", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const task = makeTask({ seq: 3, customTitle: "Ship it", projectId: "proj-y" });
+		notifyFromCliDesktop({ task, body: "build done", projectName: "MyProject" });
+
+		expect(push).toHaveBeenCalledWith("webNotification", {
+			taskId: task.id,
+			projectId: "proj-y",
+			title: "#3 Ship it",
+			body: "build done",
+			level: "info",
+			taskSeq: 3,
+			taskTitle: "Ship it",
+			projectName: "MyProject",
+		});
+	});
+
+	it("pushes webNotification for a watched task event", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const task = makeTask({ watched: true, seq: 9, customTitle: "CI run", projectId: "proj-z" });
+		notifyWatchedTaskEvent(task, "CI passed", "MyProject");
+
+		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({
+			taskId: task.id,
+			title: "#9 CI run",
+			body: "CI passed",
+			level: "info",
+		}));
+	});
+
+	it("does not push a watched event for an unwatched task", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		const task = makeTask({ watched: false });
+		notifyWatchedTaskEvent(task, "CI passed", "MyProject");
+		expect(push).not.toHaveBeenCalled();
 	});
 });
 

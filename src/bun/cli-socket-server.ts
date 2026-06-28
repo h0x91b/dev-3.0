@@ -677,11 +677,9 @@ const handlers: Record<string, Handler> = {
 				throw new Error("desktop notification requires a task — run inside a worktree or pass --task <id>");
 			}
 			notifyFromCliDesktop({
-				taskId: task.id,
-				projectId,
-				title: `#${task.seq} ${getTaskTitle(task)}`,
+				task,
 				body: message,
-				subtitle: projectName ?? undefined,
+				projectName: projectName ?? undefined,
 			});
 			return { delivered: true, mode: "desktop", taskId: task.id };
 		}

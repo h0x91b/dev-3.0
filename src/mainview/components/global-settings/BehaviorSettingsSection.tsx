@@ -4,6 +4,7 @@ import type {
 } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
+import BrowserNotificationsSetting from "./BrowserNotificationsSetting";
 
 interface BehaviorSettingsSectionProps {
 	t: TFunction;
@@ -139,6 +140,8 @@ export default function BehaviorSettingsSection({
 					onToggle={() => onFocusModeToggle(globalSettings.focusMode !== true)}
 				/>
 			</div>
+
+			<BrowserNotificationsSetting t={t} />
 
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">

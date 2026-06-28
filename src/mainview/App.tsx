@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, type Route } from "./state";
 import { api, isElectrobun } from "./rpc";
+import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
@@ -886,6 +887,24 @@ function App() {
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
+	}, [navigate]);
+
+	// Browser Web Notifications (remote mode). The desktop WKWebView already shows
+	// the native banner, so it ignores this push; only browsers act on it, falling
+	// back to an in-app toast on insecure LAN contexts or when permission is denied.
+	useEffect(() => {
+		if (isElectrobun) return;
+		function onWebNotification(e: Event) {
+			const detail = (e as CustomEvent).detail as WebNotificationDetail;
+			if (!detail?.body) return;
+			showWebNotificationOrToast(detail, (taskId, projectId) => {
+				const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+				if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
+				else navigate({ screen: "project", projectId, activeTaskId: taskId });
+			});
+		}
+		window.addEventListener("rpc:webNotification", onWebNotification);
+		return () => window.removeEventListener("rpc:webNotification", onWebNotification);
 	}, [navigate]);
 
 	// Listen for port scan updates

@@ -560,7 +560,11 @@ describe("ui control (notify / attention / state)", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ delivered: true, mode: "desktop", taskId: task.id });
 		expect(notifyFromCliDesktop).toHaveBeenCalledWith(
-			expect.objectContaining({ taskId: task.id, projectId: project.id, body: "needs you" }),
+			expect.objectContaining({
+				task: expect.objectContaining({ id: task.id }),
+				body: "needs you",
+				projectName: project.name,
+			}),
 		);
 	});
 
