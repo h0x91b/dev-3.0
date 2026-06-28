@@ -914,6 +914,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "remote-remembers-device",
+		titleKey: "tip.remoteRemembersDevice.title",
+		bodyKey: "tip.remoteRemembersDevice.body",
+		icon: "\u{F0FA9}", // nf-md-cellphone_link
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

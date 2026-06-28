@@ -224,6 +224,8 @@ const tips = {
 	"tip.browserNotifications.body": "Открыли dev3 в браузере? Включите «Уведомления браузера» в Настройки → Поведение, чтобы получать алерты для dev3 notify и отслеживаемых задач.",
 	"tip.remoteDetachLifecycle.title": "Запускайте dev3 remote в фоне",
 	"tip.remoteDetachLifecycle.body": "На сервере запустите `dev3 remote --detach`, затем `dev3 remote url` из любой SSH-сессии за свежим QR, и `dev3 remote stop` чтобы остановить.",
+	"tip.remoteRemembersDevice.title": "Remote запоминает устройство",
+	"tip.remoteRemembersDevice.body": "После одного скана QR телефон или ноутбук переподключается к удалённому UI при перезагрузке без повторного скана — до 8 часов.",
 };
 
 export default tips;
