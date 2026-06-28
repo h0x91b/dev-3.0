@@ -5,7 +5,7 @@ import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
 import { orderProjectsForDisplay } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
@@ -176,7 +176,7 @@ function App() {
 	const updateClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// Remote access QR code modal
-	const [remoteQR, setRemoteQR] = useState<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean } | null>(null);
+	const [remoteQR, setRemoteQR] = useState<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean; interfaces?: RemoteNetInterface[]; selectedHost?: string } | null>(null);
 	const [tunnelWanted, setTunnelWanted] = useState(false);
 	const [tunnelStarting, setTunnelStarting] = useState(false);
 
@@ -1322,6 +1322,10 @@ function App() {
 	const [qrCountdown, setQrCountdown] = useState(25);
 	const tunnelWantedRef = useRef(tunnelWanted);
 	tunnelWantedRef.current = tunnelWanted;
+	// Preserve the chosen interface/IP across the 25s token refresh — without
+	// this, picking a host would snap back to the auto-pick on the next tick.
+	const selectedHostRef = useRef<string | undefined>(undefined);
+	selectedHostRef.current = remoteQR?.selectedHost;
 	useEffect(() => {
 		if (!qrModalOpen || qrConsumed) return;
 		setQrCountdown(25);
@@ -1330,7 +1334,8 @@ function App() {
 			counter -= 1;
 			if (counter <= 0) {
 				counter = 25;
-				api.request.getRemoteAccessQR({ tunnel: tunnelWantedRef.current }).then(setRemoteQR).catch(() => {});
+				const host = tunnelWantedRef.current ? undefined : selectedHostRef.current;
+				api.request.getRemoteAccessQR({ tunnel: tunnelWantedRef.current, host }).then(setRemoteQR).catch(() => {});
 			}
 			setQrCountdown(counter);
 		}, 1000);
@@ -1628,6 +1633,32 @@ function App() {
 									</svg>
 								</div>
 								<span>{t("remote.refreshIn", { seconds: String(qrCountdown) })}</span>
+							</div>
+						)}
+						{/* Interface picker — choose which local IP the QR/URL points at.
+						    Only relevant when the tunnel is off (the tunnel URL is public). */}
+						{!tunnelWanted && remoteQR.interfaces && remoteQR.interfaces.length > 0 && (
+							<div className="text-left">
+								<label htmlFor="remote-iface-select" className="text-fg-2 text-xs">{t("remote.addressLabel")}</label>
+								<select
+									id="remote-iface-select"
+									value={remoteQR.selectedHost ?? ""}
+									disabled={qrConsumed}
+									onChange={(e) => {
+										const host = e.target.value;
+										api.request.getRemoteAccessQR({ tunnel: false, host }).then((res) => {
+											setRemoteQR(res);
+											setQrCountdown(25);
+										}).catch(() => {});
+									}}
+									className="mt-1 w-full px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-xs outline-none focus:border-accent/40 transition-colors disabled:opacity-40"
+								>
+									{remoteQR.interfaces.map((iface) => (
+										<option key={`${iface.name}-${iface.address}`} value={iface.address}>
+											{iface.internal ? `${t("remote.localhostLabel")} · ${iface.address}` : `${iface.name} · ${iface.address}`}
+										</option>
+									))}
+								</select>
 							</div>
 						)}
 						<div className={`bg-base rounded-lg p-3 ${qrConsumed ? "opacity-40" : ""}`}>

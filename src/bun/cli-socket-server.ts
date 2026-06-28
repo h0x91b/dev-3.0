@@ -775,6 +775,29 @@ const handlers: Record<string, Handler> = {
 			hasRepoConfig: hasRepoFile,
 		};
 	},
+
+	// Mint a fresh access URL (with a one-time QR token) for a running headless
+	// server. The JWT secret lives only in this process, so a detached
+	// `dev3 remote url` can't mint a token itself — it asks us over this socket.
+	// Only meaningful in headless mode; a GUI instance has no remote-access
+	// server bound, so serverPort is 0 and we say so plainly.
+	//
+	// The remote-access-server / cloudflare-tunnel modules pull in the electrobun
+	// platform shim, so we import them LAZILY here: a static import would drag
+	// electrobun into every unit test that merely imports this socket server.
+	"remote.accessUrl": async () => {
+		const { getAccessUrl, getServerPort, getStaticCode } = await import("./remote-access-server");
+		const { getTunnelUrl } = await import("./cloudflare-tunnel");
+		if (getServerPort() === 0) {
+			throw new Error("Remote access server is not running in this instance (start it with `dev3 remote`).");
+		}
+		return {
+			url: await getAccessUrl(),
+			tunnelUrl: getTunnelUrl(),
+			port: getServerPort(),
+			staticCode: getStaticCode(),
+		};
+	},
 };
 
 export async function handleRequest(req: CliRequest): Promise<CliResponse> {

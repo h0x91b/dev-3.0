@@ -9,7 +9,15 @@
 // ── Constants ────────────────────────────────────────────────────────
 
 const QR_TOKEN_TTL_S = 30;
-const SESSION_TOKEN_TTL_S = 30 * 60; // 30 minutes
+// 8 hours — long enough that a "trusted device" (your own phone/laptop) can
+// reconnect later in the same work session without rescanning the QR. The
+// browser persists this token in localStorage and refreshes it on load + every
+// 15 min while open, so an active device rolls the window forward indefinitely;
+// a device left idle past 8h expires and must rescan. Tradeoff: a leaked
+// session token stays valid longer — acceptable because remote access is
+// already gated by the one-time QR (URL-is-the-password) and is meant for the
+// user's own trusted devices. See decision 086.
+const SESSION_TOKEN_TTL_S = 8 * 60 * 60;
 
 // Pre-encoded JWT header: {"alg":"HS256","typ":"JWT"}
 const HEADER_B64 = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";

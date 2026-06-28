@@ -1091,6 +1091,65 @@ export interface DevServerStatus {
 	resourceUsage?: ResourceUsage;
 }
 
+// ---- Remote (headless `dev3 remote`) lifecycle ----
+
+/**
+ * On-disk record of a running `dev3 remote` headless server, written to
+ * `~/.dev3.0/remote/state.json` by the server on startup and removed on
+ * graceful shutdown. Lets a SEPARATE `dev3 remote status/stop/url` process
+ * (e.g. a fresh SSH session) discover, query, and stop a backgrounded server
+ * without scraping the banner. This is an ADDITIVE path — older app versions
+ * never read it, so it does not touch the frozen `~/.dev3.0/` layout invariants.
+ */
+export interface RemoteServerState {
+	/** PID of the headless `dev3-server` process (liveness-checked via signal 0). */
+	pid: number;
+	/** TCP port the remote-access HTTP/WS server bound to. */
+	port: number;
+	/** Unix CLI socket path this server is listening on (for `url`/`status`). */
+	socketPath: string;
+	/** Whether a Cloudflare tunnel was requested for this run. */
+	tunnelRequested: boolean;
+	/** Static access code if `--static-code` was used, else null. */
+	staticCode: string | null;
+	/** Log file the detached server's stdout/stderr was redirected to (null if foreground). */
+	logFile: string | null;
+	/** ISO timestamp of when the server started. */
+	startedAt: string;
+	/** dev3 build version that wrote this record. */
+	version: string;
+}
+
+/**
+ * One IPv4 address the headless server is reachable at, for the Remote Access
+ * modal's interface picker. `internal: true` marks loopback (127.0.0.1).
+ */
+export interface RemoteNetInterface {
+	/** Interface name (e.g. "en0", "utun3") or "loopback" for 127.0.0.1. */
+	name: string;
+	/** The IPv4 address. */
+	address: string;
+	/** True for loopback / same-machine addresses. */
+	internal: boolean;
+}
+
+/**
+ * Fresh access info for a running remote server, returned by the `remote.accessUrl`
+ * CLI-socket method. The URL embeds a one-time QR token minted in the SERVER
+ * process (where the JWT secret lives), so a detached `dev3 remote url` can print
+ * a scannable URL it could never mint itself.
+ */
+export interface RemoteAccessInfo {
+	/** Full access URL with a fresh `?token=` (QR or static code). */
+	url: string;
+	/** Public Cloudflare tunnel URL, or null if no tunnel is connected. */
+	tunnelUrl: string | null;
+	/** TCP port the server is bound to. */
+	port: number;
+	/** Static access code if in `--static-code` mode, else null. */
+	staticCode: string | null;
+}
+
 // ---- Tmux sessions ----
 
 export interface TmuxSessionInfo {
@@ -1762,8 +1821,8 @@ export type AppRPCSchema = {
 				response: { path: string } | null;
 			};
 			getRemoteAccessQR: {
-				params: { tunnel?: boolean };
-				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean };
+				params: { tunnel?: boolean; host?: string };
+				response: { qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean; interfaces: RemoteNetInterface[]; selectedHost: string };
 			};
 			checkCloudflared: {
 				params: void;

@@ -643,7 +643,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			const qrDataUrl = await generateQrDataUrl();
 			const accessUrl = await getAccessUrl();
 			const { isCloudflaredAvailable, getTunnelState } = await import("./cloudflare-tunnel");
-			sendToFocusedWindow("showRemoteAccessQR", { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable() });
+			const { getLocalInterfaces, resolveAccessHost } = await import("./remote-access-server");
+			sendToFocusedWindow("showRemoteAccessQR", { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable(), interfaces: getLocalInterfaces(), selectedHost: resolveAccessHost() });
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}
