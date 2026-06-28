@@ -242,6 +242,8 @@ const tips = {
 	"tip.statsBeatAverage.body": "La zona roja de cada medidor marca tu ritmo habitual: lleva la aguja más allá para superar tu norma.",
 	"tip.mobileBoardCarousel.title": "Desliza entre columnas",
 	"tip.mobileBoardCarousel.body": "En un móvil o ventana estrecha el tablero se vuelve un carrusel — desliza de lado para cambiar de columna y desplázate para ver sus tareas.",
+	"tip.mobilePanePager.title": "Desliza entre paneles",
+	"tip.mobilePanePager.body": "En una pantalla estrecha la tarea se abre con un solo panel de tmux en zoom — desliza el terminal a izquierda/derecha (o toca los puntos) para alternar entre el agente, el dev server y la shell.",
 };
 
 export default tips;

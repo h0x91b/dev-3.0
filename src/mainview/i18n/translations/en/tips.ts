@@ -242,6 +242,8 @@ const tips = {
 	"tip.statsMilestones.body": "Hit 100, 500 or 1000 tasks shipped to unlock medals on the stats screen, with progress toward the next.",
 	"tip.mobileBoardCarousel.title": "Swipe between columns",
 	"tip.mobileBoardCarousel.body": "On a phone or narrow window the board becomes a carousel — swipe sideways to change column, scroll up/down to browse its tasks.",
+	"tip.mobilePanePager.title": "Swipe between panes",
+	"tip.mobilePanePager.body": "On a narrow screen a task opens zoomed to one tmux pane — swipe the terminal left/right (or tap the dots) to switch between the agent, dev server and shell.",
 } as const;
 
 export default tips;

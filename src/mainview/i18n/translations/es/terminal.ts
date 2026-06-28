@@ -16,6 +16,15 @@ const terminal = {
 	"terminal.startFresh": "Empezar de nuevo",
 	"terminal.startFreshDesc": "Se iniciará una nueva sesión con la descripción de la tarea.",
 
+	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
+	"panePager.role": "Paneles del terminal",
+	"panePager.prev": "Panel anterior",
+	"panePager.next": "Panel siguiente",
+	"panePager.position": "Panel {index} de {total}",
+	"panePager.goTo": "Ir al panel {index}",
+	"panePager.switchPane": "Cambiar de panel",
+	"panePager.pane": "Panel {index}",
+
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-div",
 	"tmux.vSplit": "v-div",

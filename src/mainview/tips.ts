@@ -987,6 +987,15 @@ const ALL_TIPS: Tip[] = [
 		score: 2,
 		contexts: ["board"],
 	},
+	// Batch 43: mobile terminal pane pager
+	{
+		id: "mobile-pane-pager",
+		titleKey: "tip.mobilePanePager.title",
+		bodyKey: "tip.mobilePanePager.body",
+		icon: "\u{F0BCA}", // nf-md-arrow_left_right
+		score: 3,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

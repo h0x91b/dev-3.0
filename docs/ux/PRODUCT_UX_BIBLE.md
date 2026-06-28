@@ -295,7 +295,7 @@ Rules: **gate layout on `useNarrowViewport`** (reactive, viewport-width). Use `u
 | Surface class | Narrow form | Swipe rule |
 |---|---|---|
 | **scroll-body** (board columns, lists, settings sections) | one sibling = 100vw via CSS `scroll-snap`; the body scrolls on the *other* axis | **full-surface swipe allowed** — the body scrolls vertically only, so horizontal motion is unambiguous (delegate axis disambiguation to the browser) |
-| **live-content** (terminal pane, diff stream, any canvas/TUI) | one element, explicit **pager bar** (chevrons + position + dots) | **full-surface swipe forbidden** — the content consumes touch/horizontal motion (vim/htop/less, code scroll); optional thin edge-swipe gutters only |
+| **live-content** (terminal pane, diff stream, any canvas/TUI) | one element + a position indicator (dots) | **full-surface swipe allowed, but axis-arbitrated** — the content consumes touch (vim/htop/less, code scroll), so the handler claims a gesture only once it is *clearly horizontal* (capture-phase `preventDefault`+`stopPropagation`, cancel any nascent selection); vertical drags and taps fall through to the content. Native `scroll-snap` can't do this (a canvas has no sibling slides) → manual gesture. *(Revised 2026-06-29 — was "swipe forbidden, pager only"; a bottom pager bar collides with the mobile keyboard. See decision 089.)* |
 
 **Gesture law (always):** every swipe has a **button + keyboard equivalent** (pager chevrons, dots, Arrow Left/Right); swipe is never the only way. Focus follows the active sibling's heading; `aria-live` announces it. `prefers-reduced-motion` snaps instantly (no smooth scroll) — and this must be honoured **everywhere**, not only in the carousel (it currently is only in `MobileBoardCarousel`).
 
@@ -308,7 +308,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Kanban board | all columns side-by-side | **column carousel** (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept) | `Observed` |
 | Task move (drag) | drag card across columns | drag impossible → **"Move to <status>" action sheet** (long-press card) on the existing status path; completion reuses `confirmTaskCompletion` | `Proposed` |
 | Board filters/search | inline `LabelFilterBar` | **bottom sheet** behind a header funnel button | `Proposed` |
-| Terminal panes | tiled tmux panes | **pane carousel** — one zoomed pane + explicit pager (`tmuxAction` next/prev + keep-zoom) | `Proposed` |
+| Terminal panes | tiled tmux panes | **pane carousel** — one zoomed pane + axis-arbitrated horizontal swipe over the terminal, a slim non-overlapping top dots strip, Arrow keys; keep-zoom via `tmuxPaneNavigate` (`MobilePaneCarousel.tsx`) | `Observed` |
 | Active tasks | `ActiveTasksSidebar` (split, 240px) | already a stacked **`ActiveTasksStrip`** (horizontal task carousel) in browser mode (`ProjectView` `isBrowserMode`) — formalise as the narrow task carousel; `SplitLayout` is never used <768 | `Observed` (strip) |
 | Task inspector (`TaskInfoPanel`, 2×2 bars) | 2×2 quickbar grid | the 2×2 cannot fit — collapse to **one summary bar + a "task actions" bottom sheet** (the bars' actions become sheet sections); metadata grid already reflows | `Proposed` |
 | Diff viewer | 22rem files-aside + diff stream | **stack/one-at-a-time** — files-aside becomes a bottom-sheet file picker; the diff stream owns the screen (live-content: pager/explicit nav, no full-surface swipe) | `Proposed` |

@@ -1407,6 +1407,132 @@ async function tmuxPaneCount(params: { taskId: string }): Promise<{ count: numbe
 	}
 }
 
+interface PaneLayoutInfo {
+	count: number;
+	activeIndex: number;
+	zoomed: boolean;
+	paneIds: string[];
+	labels: string[];
+}
+
+// Field separator for list-panes output: pane_title can contain spaces, so a
+// space-delimited format is unparseable. \x1f (unit separator) never appears in
+// a command name, title, or hostname.
+const PANE_FIELD_SEP = "\x1f";
+const PANE_LAYOUT_FORMAT = [
+	"#{pane_id}",
+	"#{pane_active}",
+	"#{window_zoomed_flag}",
+	"#{pane_current_command}",
+	"#{host_short}",
+	"#{pane_title}",
+].join(PANE_FIELD_SEP);
+
+/**
+ * Read the current window's pane layout (window-scoped, NOT `-s`): how many
+ * panes, which one is active (by display order), whether the window is zoomed,
+ * each pane's id, and a human label per pane. Drives the narrow-viewport pane
+ * switcher. Returns an empty layout when the session is gone or tmux errors.
+ *
+ * Label = an explicitly-set pane title (dev3 names some panes "Agent" / "Shell"
+ * / "Dev Server") — but tmux defaults pane_title to the hostname, so a title
+ * equal to host_short is treated as unset — else the running command, else "".
+ * The frontend localises the empty fallback to "Pane N".
+ */
+async function readPaneLayout(socket: string, tmuxSession: string): Promise<PaneLayoutInfo> {
+	try {
+		const proc = spawn(
+			pty.tmuxArgs(socket, "list-panes", "-t", tmuxSession, "-F", PANE_LAYOUT_FORMAT),
+			{ stdout: "pipe", stderr: "pipe" },
+		);
+		const stdout = await new Response(proc.stdout).text();
+		const exitCode = await proc.exited;
+		if (exitCode !== 0) return { count: 0, activeIndex: 0, zoomed: false, paneIds: [], labels: [] };
+
+		const lines = stdout.trim().split("\n").filter((l) => l.length > 0);
+		const paneIds: string[] = [];
+		const labels: string[] = [];
+		let activeIndex = 0;
+		let zoomed = false;
+		lines.forEach((line, i) => {
+			const [paneId, active, zoom, cmd, hostShort, title] = line.split(PANE_FIELD_SEP);
+			paneIds.push(paneId);
+			const trimmedTitle = (title ?? "").trim();
+			const meaningfulTitle = trimmedTitle && trimmedTitle !== (hostShort ?? "").trim() ? trimmedTitle : "";
+			labels.push(meaningfulTitle || (cmd ?? "").trim() || "");
+			if (active === "1") {
+				activeIndex = i;
+				zoomed = zoom === "1";
+			}
+		});
+		return { count: lines.length, activeIndex, zoomed, paneIds, labels };
+	} catch {
+		return { count: 0, activeIndex: 0, zoomed: false, paneIds: [], labels: [] };
+	}
+}
+
+async function runTmuxQuiet(args: string[]): Promise<void> {
+	const proc = spawn(args, { stdout: "ignore", stderr: "ignore" });
+	await proc.exited;
+}
+
+/**
+ * Pane navigation for the narrow-viewport pane carousel. In one round trip it
+ * can select the next/prev/absolute pane AND enforce a zoom intent, then return
+ * the fresh layout for the pager UI.
+ *
+ * The tmux gotcha (doctrine §6.3): `select-pane` auto-unzooms the window. So a
+ * "keep zoom" step must select first, then re-zoom. We make zooming idempotent
+ * (read the flag, toggle only on a mismatch) so a doubled call — React Strict
+ * Mode, a retry, a poll racing a tap — never flips zoom the wrong way.
+ */
+async function tmuxPaneNavigate(params: {
+	taskId: string;
+	step?: "next" | "prev";
+	index?: number;
+	zoom?: boolean;
+}): Promise<{ count: number; activeIndex: number; zoomed: boolean; labels: string[] }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+
+	let info = await readPaneLayout(socket, tmuxSession);
+	if (info.count === 0) return { count: 0, activeIndex: 0, zoomed: false, labels: [] };
+
+	// Navigate (only meaningful with more than one pane).
+	if (info.count > 1) {
+		let navigated = false;
+		if (params.step === "next") {
+			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.+`));
+			navigated = true;
+		} else if (params.step === "prev") {
+			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.-`));
+			navigated = true;
+		} else if (typeof params.index === "number" && info.paneIds[params.index]) {
+			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", info.paneIds[params.index]));
+			navigated = true;
+		}
+		// Re-read after a move: select-pane changes the active pane AND auto-unzooms.
+		if (navigated) info = await readPaneLayout(socket, tmuxSession);
+	}
+
+	// Enforce zoom intent idempotently (single pane needs no zoom — it already fills the window).
+	let zoomed = info.zoomed;
+	if (info.count > 1 && typeof params.zoom === "boolean" && params.zoom !== info.zoomed) {
+		await runTmuxQuiet(pty.tmuxArgs(socket, "resize-pane", "-Z", "-t", tmuxSession));
+		zoomed = params.zoom;
+	}
+
+	log.info("← tmuxPaneNavigate", {
+		taskId: params.taskId.slice(0, 8),
+		step: params.step ?? "none",
+		index: params.index ?? -1,
+		count: info.count,
+		activeIndex: info.activeIndex,
+		zoomed,
+	});
+	return { count: info.count, activeIndex: info.activeIndex, zoomed, labels: info.labels };
+}
+
 async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
 	const listProc = spawn(
 		pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id} #{pane_in_mode}"),
@@ -1838,6 +1964,7 @@ export const tmuxPtyHandlers = {
 	killTmuxSession,
 	tmuxAction,
 	tmuxPaneCount,
+	tmuxPaneNavigate,
 	exitCopyModeAllPanes,
 	spawnAgentInTask,
 	spawnBugHuntersInTask,

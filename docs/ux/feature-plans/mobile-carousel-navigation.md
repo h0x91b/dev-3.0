@@ -7,7 +7,8 @@ Confidence: high
 Idea credit: Ittai Zeidman (original concept)
 Implementation status: **Level 1 (board carousel) implemented** (`MobileBoardCarousel.tsx`,
 `KanbanBoard.tsx`, `KanbanColumn.tsx` `fullWidth`, `useViewport.ts` device-width, i18n + tip).
-**Level 2 (terminal pane carousel) not yet built** — next step; needs a pane-index RPC + tmux keep-zoom.
+**Level 2 (terminal pane carousel) implemented** (`MobilePanePager.tsx` docked in `TaskTerminal.tsx`,
+`tmuxPaneNavigate` keep-zoom RPC in `tmux-pty.ts`, i18n + tip).
 
 > **Breakpoint correction (2026-06-28):** this original brief assumed `< 1024px` / `useMobile()`. The
 > **canonical gate is `< 768px` via the reactive `useNarrowViewport(768)`** (`useMobile` 1024 is
@@ -181,10 +182,15 @@ No new color tokens. Status-list rows in the move sheet use existing `STATUS_COL
 - **Responsive behavior — the two key asymmetries (these resolve the raw idea):**
   1. **Board = full-surface swipe is allowed.** Column bodies scroll vertically only, so a
      horizontal swipe is unambiguous → drive it with native CSS x-snap.
-  2. **Terminal = full-surface swipe is NOT allowed.** The pane runs interactive TUIs that
-     consume touch and horizontal motion. Pane switching is driven by the **explicit pager**;
-     an optional left/right 24px edge-swipe gutter may map to prev/next as a shortcut, but the
-     pane body stays free for the running program.
+  2. **Terminal = full-surface swipe IS allowed, but axis-arbitrated.** *(Revised 2026-06-29 —
+     the original "pager only, no swipe" rule was changed at the user's request; a bottom pager
+     bar also collided with the mobile keyboard + ExtraKeyBar.)* The pane runs interactive TUIs
+     that consume touch, so the swipe handler arbitrates by axis in the **capture phase**: a
+     clearly-horizontal drag becomes the carousel (preventDefault + stopPropagation so the ghostty
+     canvas never sees the move; a synthetic `mouseup` cancels the nascent selection), while a
+     vertical drag or a tap falls through to the terminal untouched. Floating dots (top-centred,
+     off the keyboard) + Arrow keys are the accessible equivalents. Implemented in
+     `MobilePaneCarousel.tsx`.
   3. **tmux zoom-keep gotcha:** selecting another pane in tmux auto-unzooms. A carousel step
      must therefore be `select-pane :.+ / :.-` **then** `resize-pane -Z`, ideally as one
      combined backend action (a `keepZoom` flag on `tmuxAction`, or a new `cyclePaneZoomed`),

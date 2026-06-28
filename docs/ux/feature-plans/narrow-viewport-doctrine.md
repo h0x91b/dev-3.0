@@ -40,9 +40,14 @@ its true width.
 
 - **scroll-body** surfaces (board, lists, settings sections): one sibling = 100vw via CSS
   `scroll-snap`, body scrolls the other axis → **full-surface swipe allowed**.
-- **live-content** surfaces (terminal pane, diff stream, any canvas/TUI): one element + **explicit
-  pager** (chevrons + position + dots) → **full-surface swipe forbidden** (content eats touch); thin
-  edge-swipe gutters optional.
+- **live-content** surfaces (terminal pane, diff stream, any canvas/TUI): one element at a time +
+  position indicator (dots). Full-surface swipe **is allowed but must arbitrate by axis in the
+  capture phase** — a clearly-horizontal drag is the carousel (preventDefault + stopPropagation so
+  the canvas never sees it; cancel any nascent selection), while a vertical drag or a tap falls
+  through to the content untouched. Native CSS `scroll-snap` cannot do this (a single canvas has no
+  sibling slides), so it is a manual gesture. (Superseded the original "swipe forbidden, explicit
+  pager only" rule for the terminal — see Level 2 / decision 089. A bottom pager bar collides with
+  the mobile keyboard + ExtraKeyBar.)
 - Always: every swipe has a button + keyboard (Arrow Left/Right) equivalent; focus follows the active
   sibling; `aria-live` announces it; `prefers-reduced-motion` snaps instantly — **everywhere**.
 
@@ -53,7 +58,7 @@ its true width.
 | Kanban board | column carousel | done |
 | Task move (drag) | "Move to <status>" bottom action sheet (long-press) | to build |
 | Board filters/search | bottom sheet behind a header funnel | to build |
-| Terminal panes | pane carousel + explicit pager (keep-zoom) | to build (Level 2) |
+| Terminal panes | swipe carousel (axis-arbitrated) + top dots, keep-zoom | done (Level 2) |
 | Active tasks | `ActiveTasksStrip` (already used in `ProjectView` browser mode) — formalise | done (strip) |
 | Task inspector (2×2) | one summary bar + "task actions" bottom sheet | to build |
 | Diff viewer | files-aside → bottom-sheet file picker; diff stream owns screen | to build |
@@ -104,7 +109,7 @@ Build once; no ad-hoc sheets.
 3. **Command palette touch entry** + responsive width (the action fallback for the absent native menu).
 4. **Board move-to + filters** as bottom sheets (completes board Level 1 touch parity).
 5. **Inspector** → summary bar + actions sheet on narrow.
-6. **Terminal pane carousel** (Level 2: pager + tmux keep-zoom backend).
+6. ~~**Terminal pane carousel** (Level 2: axis-arbitrated swipe + top dots + tmux keep-zoom backend).~~ done
 7. **Diff viewer** narrow stack (file-picker sheet).
 8. **Settings** one-section-at-a-time.
 9. Site-wide `prefers-reduced-motion`; touch-target audit; `env(safe-area-inset-*)`.
@@ -113,7 +118,9 @@ Build once; no ad-hoc sheets.
 
 - Add any new destination / route / nav item / "mobile mode" setting.
 - Gate layout on `isElectrobun` or on `useMobile` (mount-once). Gate on `useNarrowViewport`.
-- Hijack full-surface swipe over the terminal or diff stream.
+- Hijack swipe over the terminal/diff stream **without axis arbitration** — a horizontal carousel
+  swipe is fine, but it must let vertical drags and taps fall through to the content (capture-phase,
+  preventDefault only once the gesture is clearly horizontal).
 - Ship ad-hoc bottom sheets — use the one primitive.
 - Leave any action reachable only by keyboard or native menu on narrow.
 - Change `projectSlug()` or anything under `~/.dev3.0/` (unrelated invariant, noted for safety).

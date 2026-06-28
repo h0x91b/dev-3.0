@@ -8327,3 +8327,94 @@ describe("handlers.getProjectPtyUrl — virtual board guard", () => {
 	});
 });
 
+
+// ----------------------------------------------------------------------------
+// handlers.tmuxPaneNavigate (narrow-viewport pane carousel)
+// ----------------------------------------------------------------------------
+describe("handlers.tmuxPaneNavigate", () => {
+	const TASK_ID = "abcd1234-0000-0000-0000-000000000000";
+	const SESSION = "dev3-abcd1234";
+	const SEP = "\x1f";
+	const HOST = "mac";
+
+	// One list-panes row: id, active, zoom, current_command, host_short, title.
+	// Title defaults to the hostname (tmux default) so labels fall back to cmd.
+	function row(id: string, active: string, zoom: string, cmd: string, title: string = HOST): string {
+		return [id, active, zoom, cmd, HOST, title].join(SEP);
+	}
+	const lay = (...rows: string[]) => rows.join("\n");
+
+	// list-panes output is FIFO: each readPaneLayout consumes the next layout,
+	// falling back to the last. Every other tmux command exits 0.
+	function mockLayouts(layouts: string[]) {
+		const queue = [...layouts];
+		mockSpawn.mockReset();
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes")) {
+				const out = queue.length > 1 ? queue.shift()! : queue[0] ?? "";
+				return { stdout: out, stderr: new Response(""), exited: Promise.resolve(0) };
+			}
+			return { stdout: "", stderr: new Response(""), exited: Promise.resolve(0) };
+		});
+	}
+
+	const calls = () => mockSpawn.mock.calls.map((c) => c[0] as string[]);
+	const called = (needle: string) => calls().some((a) => a.join(" ").includes(needle));
+
+	it("zoom-on-entry: zooms a multi-pane window that is not yet zoomed", async () => {
+		mockLayouts([lay(row("%1", "1", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "0", "0", "zsh"))]);
+		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
+		expect(res).toEqual({ count: 3, activeIndex: 0, zoomed: true, labels: ["claude", "bash", "zsh"] });
+		expect(called("resize-pane -Z")).toBe(true);
+		expect(called("select-pane")).toBe(false);
+	});
+
+	it("labels prefer an explicitly-set pane title over the command", async () => {
+		mockLayouts([lay(row("%1", "1", "0", "node", "Agent"), row("%2", "0", "0", "node", "Dev Server"))]);
+		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
+		expect(res.labels).toEqual(["Agent", "Dev Server"]);
+	});
+
+	it("step next + keep-zoom: selects the next pane then re-zooms it", async () => {
+		mockLayouts([
+			lay(row("%1", "1", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "0", "0", "zsh")), // before
+			lay(row("%1", "0", "0", "claude"), row("%2", "1", "0", "bash"), row("%3", "0", "0", "zsh")), // after select (active moved, auto-unzoomed)
+		]);
+		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, step: "next", zoom: true });
+		expect(res).toEqual({ count: 3, activeIndex: 1, zoomed: true, labels: ["claude", "bash", "zsh"] });
+		expect(called(`select-pane -t ${SESSION}:.+`)).toBe(true);
+		expect(called("resize-pane -Z")).toBe(true);
+	});
+
+	it("absolute index: selects that pane by its id", async () => {
+		mockLayouts([
+			lay(row("%1", "1", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "0", "0", "zsh")),
+			lay(row("%1", "0", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "1", "0", "zsh")),
+		]);
+		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, index: 2, zoom: true });
+		expect(res.activeIndex).toBe(2);
+		expect(called("select-pane -t %3")).toBe(true);
+	});
+
+	it("single pane: no navigation, no zoom, hides nothing to switch", async () => {
+		mockLayouts([lay(row("%1", "1", "0", "claude"))]);
+		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, step: "next", zoom: true });
+		expect(res).toEqual({ count: 1, activeIndex: 0, zoomed: false, labels: ["claude"] });
+		expect(called("select-pane")).toBe(false);
+		expect(called("resize-pane")).toBe(false);
+	});
+
+	it("idempotent zoom: already zoomed + zoom:true is a no-op", async () => {
+		mockLayouts([lay(row("%1", "1", "1", "claude"), row("%2", "0", "1", "bash"), row("%3", "0", "1", "zsh"))]);
+		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
+		expect(res).toEqual({ count: 3, activeIndex: 0, zoomed: true, labels: ["claude", "bash", "zsh"] });
+		expect(called("resize-pane")).toBe(false);
+	});
+
+	it("zoom:false unzooms a zoomed window (pager unmount / restore split)", async () => {
+		mockLayouts([lay(row("%1", "1", "1", "claude"), row("%2", "0", "1", "bash"))]);
+		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: false });
+		expect(res).toEqual({ count: 2, activeIndex: 0, zoomed: false, labels: ["claude", "bash"] });
+		expect(called("resize-pane -Z")).toBe(true);
+	});
+});

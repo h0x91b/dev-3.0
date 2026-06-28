@@ -10,6 +10,9 @@ import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskPreparingView from "./TaskPreparingView";
 import ExtraKeyBar from "./ExtraKeyBar";
+import MobilePaneCarousel from "./MobilePaneCarousel";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
 
 interface TaskTerminalProps {
@@ -32,6 +35,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// is unavailable. navigator.maxTouchPoints is more reliable than screen width
 	// because the viewport meta tag overrides CSS dimensions on mobile.
 	const isTouchDevice = navigator.maxTouchPoints > 0;
+	// On a narrow viewport we keep the tmux window zoomed to one pane and offer a
+	// pager to move between panes (instead of a cramped multi-pane split).
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
@@ -285,21 +291,26 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		);
 	}
 
+	const terminalArea = ptyUrl ? (
+		<TerminalView ptyUrl={ptyUrl} taskId={taskId} projectId={projectId} onReady={setTermHandle} />
+	) : (
+		<div className="flex items-center justify-center h-full">
+			<div className="flex items-center gap-3">
+				<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+				<span className="text-fg-3 text-sm">{t("terminal.connecting")}</span>
+			</div>
+		</div>
+	);
+
 	return (
 		<div className="h-full w-full flex flex-col overflow-hidden">
 			{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
-			<div className="flex-1 min-h-0 overflow-hidden">
-				{ptyUrl ? (
-					<TerminalView ptyUrl={ptyUrl} taskId={taskId} projectId={projectId} onReady={setTermHandle} />
-				) : (
-					<div className="flex items-center justify-center h-full">
-						<div className="flex items-center gap-3">
-							<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-							<span className="text-fg-3 text-sm">{t("terminal.connecting")}</span>
-						</div>
-					</div>
-				)}
-			</div>
+			{narrow && ptyUrl ? (
+				// Narrow: swipe / dots / Arrow keys move between zoomed tmux panes.
+				<MobilePaneCarousel taskId={taskId}>{terminalArea}</MobilePaneCarousel>
+			) : (
+				<div className="flex-1 min-h-0 overflow-hidden">{terminalArea}</div>
+			)}
 			{!isElectrobun && isTouchDevice && termHandle && <ExtraKeyBar handle={termHandle} />}
 		</div>
 	);
