@@ -222,6 +222,8 @@ const tips = {
 	"tip.remoteMenuBar.body": "Откройте dev-3.0 в браузере через Remote Access — и вся панель меню File/Task/Project отрисуется прямо на странице.",
 	"tip.browserNotifications.title": "Уведомления в браузере",
 	"tip.browserNotifications.body": "Открыли dev3 в браузере? Включите «Уведомления браузера» в Настройки → Поведение, чтобы получать алерты для dev3 notify и отслеживаемых задач.",
+	"tip.remoteDetachLifecycle.title": "Запускайте dev3 remote в фоне",
+	"tip.remoteDetachLifecycle.body": "На сервере запустите `dev3 remote --detach`, затем `dev3 remote url` из любой SSH-сессии за свежим QR, и `dev3 remote stop` чтобы остановить.",
 };
 
 export default tips;

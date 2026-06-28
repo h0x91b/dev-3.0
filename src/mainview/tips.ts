@@ -906,6 +906,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["settings", "board"],
 	},
+	{
+		id: "remote-detach-lifecycle",
+		titleKey: "tip.remoteDetachLifecycle.title",
+		bodyKey: "tip.remoteDetachLifecycle.body",
+		icon: "\u{F048D}", // nf-md-server
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

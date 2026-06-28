@@ -24,6 +24,7 @@ import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
+import { writeRemoteState, clearRemoteStateIfOwnedBy } from "./remote-state";
 import { BUILD_TIME, BUILD_VERSION } from "../shared/build-info.generated";
 
 const log = createLogger("headless");
@@ -262,6 +263,24 @@ async function isPortListening(port: number): Promise<boolean> {
 	}
 }
 
+// ── Persist lifecycle state so `dev3 remote status/stop/url` (a separate
+// process, e.g. a fresh SSH session) can find and control this server. ──
+try {
+	writeRemoteState({
+		pid: process.pid,
+		port: getServerPort(),
+		socketPath: cliSocketPath,
+		tunnelRequested: wantTunnel,
+		staticCode: process.env.DEV3_REMOTE_STATIC_CODE || null,
+		logFile: process.env.DEV3_REMOTE_LOG_FILE || null,
+		startedAt: new Date().toISOString(),
+		version: BUILD_VERSION,
+	});
+	log.info("Remote lifecycle state written", { port: getServerPort(), pid: process.pid });
+} catch (err) {
+	log.warn("Failed to write remote lifecycle state (non-fatal)", { err: String(err) });
+}
+
 // ── Banner + QR + auto-refresh ──
 const staticCode = process.env.DEV3_REMOTE_STATIC_CODE || null;
 await renderHeadlessBanner({
@@ -359,6 +378,7 @@ function shutdown(signal: string): void {
 	stopPortScanPoller();
 	stopResourceMonitor();
 	stopSocketServer();
+	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();
 	stopTunnel();
 	process.exit(0);

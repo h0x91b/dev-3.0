@@ -14,6 +14,46 @@ vi.mock("node:child_process", () => ({
 	spawn: vi.fn(() => ({ on: vi.fn() })),
 }));
 
+// status/url/stop read the lifecycle state file and talk to the running server
+// over its CLI socket. Mock both boundaries so the dispatch + formatting logic
+// is exercised without a real server or fs.
+vi.mock("../../bun/remote-state", () => ({
+	REMOTE_DIR: "/tmp/dev3-remote-unit-test",
+	REMOTE_LOG_FILE: "/tmp/dev3-remote-unit-test/remote.log",
+	readRemoteState: vi.fn(),
+	isProcessAlive: vi.fn(),
+	clearRemoteState: vi.fn(),
+}));
+vi.mock("../socket-client", () => ({
+	sendRequest: vi.fn(),
+}));
+vi.mock("qrcode", () => ({
+	default: { toString: vi.fn(async () => "QR-ASCII\n") },
+}));
+
+import { readRemoteState, isProcessAlive, clearRemoteState } from "../../bun/remote-state";
+import { sendRequest } from "../socket-client";
+import type { RemoteServerState } from "../../shared/types";
+
+const mockReadState = vi.mocked(readRemoteState);
+const mockIsAlive = vi.mocked(isProcessAlive);
+const mockClearState = vi.mocked(clearRemoteState);
+const mockSendRequest = vi.mocked(sendRequest);
+
+function liveState(overrides: Partial<RemoteServerState> = {}): RemoteServerState {
+	return {
+		pid: 4242,
+		port: 41234,
+		socketPath: "/tmp/dev3-test.sock",
+		tunnelRequested: true,
+		staticCode: null,
+		logFile: "/tmp/dev3-remote-unit-test/remote.log",
+		startedAt: new Date(Date.now() - 65_000).toISOString(),
+		version: "1.27.0",
+		...overrides,
+	};
+}
+
 function args(flags: Record<string, string> = {}, positional: string[] = []): ParsedArgs {
 	return { positional, flags };
 }
@@ -28,6 +68,12 @@ beforeEach(() => {
 	}) as never);
 	stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 	stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+	// clearAllMocks (afterEach) clears call history but NOT implementations, so
+	// reset the lifecycle/socket mocks here to stop mockReturnValue bleed-through.
+	mockReadState.mockReset();
+	mockIsAlive.mockReset();
+	mockClearState.mockReset();
+	mockSendRequest.mockReset();
 });
 
 afterEach(() => {
@@ -118,7 +164,7 @@ describe("dev3 remote --port validation", () => {
 	it("rejects unknown flags", async () => {
 		await expect(handleRemote(undefined, args({ bogus: "true" }))).rejects.toThrow("__exit__");
 		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
-		expect(combined).toContain("Unknown flag: --bogus");
+		expect(combined).toContain("Unknown option: --bogus");
 	});
 });
 
@@ -145,5 +191,93 @@ describe("dev3 remote --expose-ports validation", () => {
 		await expect(handleRemote(undefined, args({ "expose-ports": "3000abc" }))).rejects.toThrow("__exit__");
 		const combined = stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
 		expect(combined).toContain("invalid port");
+	});
+});
+
+const stdoutText = () => stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+const stderrText = () => stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+
+describe("dev3 remote status", () => {
+	it("reports when no server is running", async () => {
+		mockReadState.mockReturnValue(null);
+		await expect(handleRemote("status", args())).rejects.toThrow("__exit__");
+		expect(stdoutText()).toContain("No dev3 remote server is running.");
+	});
+
+	it("clears a stale record when the recorded pid is dead", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(false);
+		await expect(handleRemote("status", args())).rejects.toThrow("__exit__");
+		expect(mockClearState).toHaveBeenCalledOnce();
+		expect(stdoutText()).toContain("cleared a stale record");
+	});
+
+	it("prints pid/port/uptime and a fresh URL for a live server", async () => {
+		mockReadState.mockReturnValue(liveState({ pid: 4242, port: 41234 }));
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockResolvedValue({
+			id: "x", ok: true,
+			data: { url: "https://abc.trycloudflare.com/?token=t", tunnelUrl: "https://abc.trycloudflare.com", port: 41234, staticCode: null },
+		});
+		await expect(handleRemote("status", args())).rejects.toThrow("__exit__");
+		const out = stdoutText();
+		expect(out).toContain("running");
+		expect(out).toContain("4242");
+		expect(out).toContain("41234");
+		expect(out).toContain("https://abc.trycloudflare.com/?token=t");
+	});
+});
+
+describe("dev3 remote url", () => {
+	it("errors with APP_NOT_RUNNING exit when nothing is running", async () => {
+		mockReadState.mockReturnValue(null);
+		const codes: number[] = [];
+		exitSpy.mockImplementation(((code?: number) => { codes.push(code ?? 0); throw new Error("__exit__"); }) as never);
+		await expect(handleRemote("url", args())).rejects.toThrow("__exit__");
+		expect(stderrText()).toContain("No dev3 remote server is running.");
+		expect(codes).toContain(2); // CLI_EXIT_CODE_APP_NOT_RUNNING
+	});
+
+	it("prints a QR + URL from the running server", async () => {
+		mockReadState.mockReturnValue(liveState());
+		mockIsAlive.mockReturnValue(true);
+		mockSendRequest.mockResolvedValue({
+			id: "x", ok: true,
+			data: { url: "http://192.168.1.5:41234/?token=abc", tunnelUrl: null, port: 41234, staticCode: null },
+		});
+		await expect(handleRemote("url", args())).rejects.toThrow("__exit__");
+		const out = stdoutText();
+		expect(out).toContain("QR-ASCII");
+		expect(out).toContain("http://192.168.1.5:41234/?token=abc");
+	});
+});
+
+describe("dev3 remote stop", () => {
+	it("reports when no server is running", async () => {
+		mockReadState.mockReturnValue(null);
+		await expect(handleRemote("stop", args())).rejects.toThrow("__exit__");
+		expect(stdoutText()).toContain("No dev3 remote server is running.");
+	});
+
+	it("SIGTERMs a live server and reports it stopped", async () => {
+		mockReadState.mockReturnValue(liveState({ pid: 4242 }));
+		// alive at the guard check, dead on the first poll iteration
+		mockIsAlive.mockReturnValueOnce(true).mockReturnValue(false);
+		const killSpy = vi.spyOn(process, "kill").mockImplementation((() => true) as never);
+		try {
+			await expect(handleRemote("stop", args())).rejects.toThrow("__exit__");
+			expect(killSpy).toHaveBeenCalledWith(4242, "SIGTERM");
+			expect(mockClearState).toHaveBeenCalled();
+			expect(stdoutText()).toContain("Stopped dev3 remote server (pid 4242)");
+		} finally {
+			killSpy.mockRestore();
+		}
+	});
+});
+
+describe("dev3 remote unknown subcommand", () => {
+	it("rejects an unknown subcommand", async () => {
+		await expect(handleRemote("bogus", args())).rejects.toThrow("__exit__");
+		expect(stderrText()).toContain("Unknown subcommand: remote bogus");
 	});
 });
