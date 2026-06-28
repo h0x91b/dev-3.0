@@ -106,8 +106,17 @@ describe("buildExecStartArgs", () => {
 		expect(stderrText()).toContain("--static-code requires a value");
 	});
 
-	it("accepts a valid static-code", () => {
-		expect(buildExecStartArgs(args({ "static-code": "letmein" }))).toContain("--static-code=letmein");
+	it("accepts a valid static-code when paired with --no-tunnel", () => {
+		const out = buildExecStartArgs(args({ "static-code": "letmein", "no-tunnel": "true" }));
+		expect(out).toContain("--static-code=letmein");
+		expect(out).toContain("--no-tunnel");
+	});
+
+	// Safety gate: a non-rotating static code must never front a default-on public
+	// tunnel — the unit would expose a guessable, replayable bearer code.
+	it("rejects --static-code without --no-tunnel (no static code on a public tunnel)", () => {
+		expect(() => buildExecStartArgs(args({ "static-code": "letmein" }))).toThrow("__exit__");
+		expect(stderrText()).toContain("cannot be combined with a public tunnel");
 	});
 });
 

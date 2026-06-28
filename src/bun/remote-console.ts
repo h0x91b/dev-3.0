@@ -2,7 +2,7 @@
  * Console banner + QR code renderer for `dev3 remote` headless mode.
  *
  * Prints an ASCII QR code (via `qrcode` lib) with the access URL and user-facing
- * tips (SSH port-forward template, --tunnel hint). Re-generates the QR every
+ * tips (SSH port-forward template, tunnel hint). Re-generates the QR every
  * 25s to stay within the 30s JWT TTL — same schedule as the GUI modal in
  * `src/mainview/App.tsx:443-462`.
  *
@@ -175,8 +175,8 @@ function printConnectionTips(opts: TipsOptions): void {
 	console.log("");
 
 	if (!tunnelUrl && !tunnelRequested) {
-		console.log("    ④ Need a public URL? Rerun with --tunnel to expose via");
-		console.log("       Cloudflare Tunnel (trycloudflare.com).");
+		console.log("    ④ Need a public URL? Rerun without --no-tunnel — `dev3 remote`");
+		console.log("       starts a Cloudflare tunnel (trycloudflare.com) by default.");
 		console.log("");
 	}
 

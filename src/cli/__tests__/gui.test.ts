@@ -306,7 +306,10 @@ describe("dev3 gui — Linux path", () => {
 			await handleGui(undefined, args());
 			expect(fetchSpy).toHaveBeenCalled();
 			const url = fetchSpy.mock.calls[0][0];
-			expect(String(url)).toContain("stable-linux-x64-dev-3.0.tar.zst");
+			// Bundle URL is arch-aware: arm64 hosts resolve the arm64 bundle, all
+			// others x64 — mirror linuxBundleArch() so this passes on any runner.
+			const expectedArch = process.arch === "arm64" ? "arm64" : "x64";
+			expect(String(url)).toContain(`stable-linux-${expectedArch}-dev-3.0.tar.zst`);
 			const tarCall = spawnState.syncCalls.find((c) => c.cmd === "tar");
 			expect(tarCall).toBeDefined();
 			expect(tarCall?.args).toContain("-I");

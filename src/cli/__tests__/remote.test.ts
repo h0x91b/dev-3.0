@@ -16,6 +16,7 @@ vi.mock("../../bun/headless-entry", () => ({}));
 // so the detach tests can drive the child's lifecycle without a real process.
 vi.mock("node:child_process", () => ({
 	spawn: vi.fn(() => ({ on: vi.fn(), unref: vi.fn(), pid: 1234 })),
+	spawnSync: vi.fn(() => ({ status: 0, stdout: "", stderr: "" })),
 }));
 
 // status/url/stop read the lifecycle state file and talk to the running server
@@ -188,6 +189,98 @@ describe("dev3 remote --expose-ports validation", () => {
 
 const stdoutText = () => stdoutSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
 const stderrText = () => stderrSpy.mock.calls.map((c: unknown[]) => String(c[0])).join("");
+
+// Save/restore the DEV3_REMOTE_* env a foreground (--no-detach) boot writes, so a
+// test that drives collectRemoteEnv doesn't leak vars into sibling tests.
+const REMOTE_ENV_KEYS = [
+	"DEV3_REMOTE_PORT", "DEV3_HEADLESS", "DEV3_REMOTE_NO_TUNNEL",
+	"DEV3_VIEWS_DIR", "DEV3_REMOTE_STATIC_CODE", "DEV3_REMOTE_EXPOSE_PORTS",
+] as const;
+async function withRemoteEnvRestored(fn: () => Promise<void>): Promise<void> {
+	const saved: Record<string, string | undefined> = {};
+	for (const k of REMOTE_ENV_KEYS) saved[k] = process.env[k];
+	try {
+		await fn();
+	} finally {
+		for (const k of REMOTE_ENV_KEYS) {
+			if (saved[k] === undefined) delete process.env[k];
+			else process.env[k] = saved[k];
+		}
+	}
+}
+
+describe("dev3 remote --static-code safety gate", () => {
+	it("rejects --static-code on a default-on public tunnel", async () => {
+		await withRemoteEnvRestored(async () => {
+			await expect(handleRemote(undefined, args({ "static-code": "secret123" }))).rejects.toThrow("__exit__");
+			expect(stderrText()).toContain("cannot be combined with a public tunnel");
+		});
+	});
+
+	it("allows --static-code together with --no-tunnel", async () => {
+		await withRemoteEnvRestored(async () => {
+			await handleRemote(undefined, args({ "static-code": "secret123", "no-tunnel": "true", "no-detach": "true" }));
+			expect(process.env.DEV3_REMOTE_STATIC_CODE).toBe("secret123");
+			expect(process.env.DEV3_REMOTE_NO_TUNNEL).toBe("1");
+		});
+	});
+
+	it("still enforces the 4-char minimum", async () => {
+		await withRemoteEnvRestored(async () => {
+			await expect(handleRemote(undefined, args({ "static-code": "ab", "no-tunnel": "true" }))).rejects.toThrow("__exit__");
+			expect(stderrText()).toContain("at least 4 characters");
+		});
+	});
+});
+
+describe("dev3 remote restart", () => {
+	it("stops a running server (SIGTERM), then starts a fresh one", async () => {
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+		mockReadState.mockReturnValue(liveState({ pid: 4242 }));
+		// alive for the initial check, then dead so the grace loop exits immediately.
+		mockIsAlive.mockReturnValueOnce(true).mockReturnValue(false);
+		try {
+			await withRemoteEnvRestored(async () => {
+				await handleRemote("restart", args({ "no-detach": "true" }));
+				expect(killSpy).toHaveBeenCalledWith(4242, "SIGTERM");
+				expect(mockClearState).toHaveBeenCalled();
+				expect(process.env.DEV3_HEADLESS).toBe("1"); // fresh server booted
+			});
+		} finally {
+			killSpy.mockRestore();
+		}
+	});
+
+	it("with no server running, just starts a fresh one", async () => {
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+		mockReadState.mockReturnValue(null);
+		try {
+			await withRemoteEnvRestored(async () => {
+				await handleRemote("restart", args({ "no-detach": "true" }));
+				expect(killSpy).not.toHaveBeenCalled(); // nothing to terminate
+				expect(mockClearState).toHaveBeenCalled();
+				expect(process.env.DEV3_HEADLESS).toBe("1");
+			});
+		} finally {
+			killSpy.mockRestore();
+		}
+	});
+});
+
+describe("dev3 remote logs", () => {
+	it("points at journalctl when no log file exists", async () => {
+		// Guaranteed-absent path so the assertion can't be polluted by a sibling
+		// test that created the conventional /tmp log via openSync.
+		mockReadState.mockReturnValue(liveState({ logFile: "/nonexistent-dev3-remote/remote.log" }));
+		await expect(handleRemote("logs", args())).rejects.toThrow("__exit__");
+		expect(stderrText()).toContain("journalctl --user -u dev3-remote.service");
+	});
+
+	it("rejects a non-numeric --lines before touching the fs", async () => {
+		await expect(handleRemote("logs", args({ lines: "abc" }))).rejects.toThrow("__exit__");
+		expect(stderrText()).toContain("--lines must be a positive integer");
+	});
+});
 
 describe("dev3 remote status", () => {
 	it("reports when no server is running", async () => {

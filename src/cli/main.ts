@@ -59,10 +59,10 @@ Commands:
   dev3 install-hooks                     Install agent hooks in current worktree
   dev3 install-skills                    Install agent skills globally
   dev3 projects list                    List all projects
-  dev3 remote [start] [--detach]         Run headless — serve the UI to a browser
-                                         (--detach: background it; then use
-                                          remote status / url / stop. See
-                                          "dev3 remote --help" for full usage)
+  dev3 remote [start|status|url|stop]    Run headless — serve the UI to a browser
+                                         (backgrounds by default; manage it with
+                                          status / url / restart / logs / stop.
+                                          See "dev3 remote --help" for full usage)
   dev3 gui                               Launch the dev-3.0 desktop app
                                          (Linux: lazily downloads bundle on first run.
                                           See "dev3 gui --help" for full usage)

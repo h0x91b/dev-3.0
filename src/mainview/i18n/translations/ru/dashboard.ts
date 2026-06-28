@@ -110,7 +110,7 @@ const dashboard = {
 	"remote.close": "Закрыть",
 	"remote.connected": "Подключено",
 	"remote.authFailed": "Сессия истекла",
-	"remote.authFailedDesc": "Ссылка доступа устарела. Отсканируйте новый QR-код в десктопном приложении.",
+	"remote.authFailedDesc": "Ссылка доступа истекла. Получите новую на хосте — команда `dev3 remote url` на headless-сервере или повторно откройте QR «Удалённый доступ» в десктопном приложении — и откройте её здесь.",
 
 	// FileBrowser
 	"fileBrowser.notInstalledTitle": "yazi не установлен",

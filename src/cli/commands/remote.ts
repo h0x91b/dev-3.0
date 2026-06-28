@@ -1,5 +1,5 @@
-import { mkdirSync, openSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, openSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
 import QRCode from "qrcode";
 import type { ParsedArgs } from "../args";
 import type { RemoteAccessInfo } from "../../shared/types";
@@ -24,6 +24,8 @@ Usage:
   dev3 remote [start] [--no-detach] [--no-tunnel] [--expose-ports=<ports>] [--port <n>] [--views-dir <path>]
   dev3 remote status
   dev3 remote url
+  dev3 remote restart [<start flags>]
+  dev3 remote logs [--follow] [--lines <n>]
   dev3 remote stop
   dev3 remote install-service [--port <n>] [--no-tunnel] [--no-start]
   dev3 remote uninstall-service
@@ -49,6 +51,11 @@ Subcommands:
   status              Show whether a server is running, its PID, port, and uptime.
   url                 Print a fresh access URL + QR for the running server. Handy
                       from a new SSH session to re-scan without rerunning start.
+  restart             Stop the running background server, then start a fresh one.
+                      Pass any start flags (--port, --no-tunnel, …) for the new server.
+  logs                Tail the background server's log (~/.dev3.0/remote/remote.log).
+                      Add --follow to stream live, --lines <n> to choose how many to show.
+                      (Under systemd: \`journalctl --user -u dev3-remote.service -f\`.)
   stop                Stop the background server (SIGTERM, then SIGKILL fallback).
   install-service     (Linux) Install + enable a systemd --user unit so the
                       server survives logout and starts on boot. Accepts the
@@ -109,6 +116,8 @@ Examples:
   dev3 remote                              # background + tunnel + LAN + SSH forwarding (returns to shell)
   dev3 remote --no-detach                  # stay in the foreground (watch the QR, Ctrl-C to stop)
   dev3 remote url                          # print a fresh QR/URL for the running server
+  dev3 remote restart --port 3000          # restart the background server on a fixed port
+  dev3 remote logs --follow                # follow the background server log live
   dev3 remote stop                         # shut the background server down
   dev3 remote install-service --port 3017  # (Linux) run as a systemd --user service
   dev3 remote uninstall-service            # (Linux) remove the systemd --user service
@@ -131,6 +140,10 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 			return statusRemote(args);
 		case "url":
 			return urlRemote(args);
+		case "restart":
+			return restartRemote(args);
+		case "logs":
+			return logsRemote(args);
 		case "stop":
 			return stopRemote(args);
 		case "install-service":
@@ -140,8 +153,8 @@ export async function handleRemote(subcommand: string | undefined, args: ParsedA
 		default:
 			exitUsage(
 				`Unknown subcommand: remote ${subcommand}\n` +
-				"Available: dev3 remote [start], dev3 remote status, dev3 remote url, dev3 remote stop,\n" +
-				"           dev3 remote install-service, dev3 remote uninstall-service\n" +
+				"Available: dev3 remote [start], dev3 remote status, dev3 remote url, dev3 remote restart,\n" +
+				"           dev3 remote logs, dev3 remote stop, dev3 remote install-service, dev3 remote uninstall-service\n" +
 				'Run "dev3 remote --help" for usage.',
 			);
 	}
@@ -198,6 +211,18 @@ function collectRemoteEnv(args: ParsedArgs): Record<string, string> {
 			exitUsage(`--expose-ports: at least one port required`);
 		}
 		remoteEnv.DEV3_REMOTE_EXPOSE_PORTS = ports.join(",");
+	}
+	// Safety gate: a static access code has no replay protection (the URL token
+	// never rotates), so it must never ride a default-on public Cloudflare tunnel
+	// — that would put a guessable, replayable bearer code on the open internet,
+	// fronting full terminal access to this box. Tunnel is opt-OUT, so require an
+	// explicit --no-tunnel when --static-code is set rather than silently exposing.
+	if (remoteEnv.DEV3_REMOTE_STATIC_CODE && remoteEnv.DEV3_REMOTE_NO_TUNNEL !== "1") {
+		exitUsage(
+			"--static-code cannot be combined with a public tunnel (it has no replay protection).\n" +
+			"Add --no-tunnel for local-only / SSH-forward use, or drop --static-code to use the\n" +
+			"rotating single-use QR token, which is safe to expose over the tunnel.",
+		);
 	}
 	return remoteEnv;
 }
@@ -462,7 +487,7 @@ async function urlRemote(args: ParsedArgs): Promise<void> {
 		if (state) clearRemoteState();
 		exitError(
 			"No dev3 remote server is running.",
-			"Start one with `dev3 remote` (add --detach to run it in the background).",
+			"Start one with `dev3 remote` — it runs in the background by default; then `dev3 remote url` re-prints the link.",
 			CLI_EXIT_CODE_APP_NOT_RUNNING,
 		);
 	}
@@ -521,6 +546,86 @@ async function stopRemote(args: ParsedArgs): Promise<void> {
 	clearRemoteState();
 	process.stdout.write(`Force-stopped dev3 remote server (pid ${state.pid}) after it ignored SIGTERM.\n`);
 	process.exit(0);
+}
+
+// ── restart ────────────────────────────────────────────────────────────────
+
+async function restartRemote(args: ParsedArgs): Promise<void> {
+	// Stop the running background server (if any), then start a fresh one with the
+	// flags passed to THIS command. Flag validation and the actual (re)launch are
+	// delegated to startRemote → startDetached, so restart inherits exactly the
+	// same flag surface as start; we only own the "kill the current one first" step.
+	const state = readRemoteState();
+	if (state && isProcessAlive(state.pid)) {
+		process.stdout.write(`Stopping dev3 remote server (pid ${state.pid})…\n`);
+		try {
+			process.kill(state.pid, "SIGTERM");
+		} catch (err) {
+			if ((err as NodeJS.ErrnoException).code === "EPERM") {
+				exitError(`Cannot restart server (pid ${state.pid}) — it is owned by another user.`);
+			}
+			// ESRCH: it died between the liveness check and the signal — fall through.
+		}
+		const graceMs = Date.now() + 8_000;
+		while (Date.now() < graceMs && isProcessAlive(state.pid)) {
+			await delay(200);
+		}
+		if (isProcessAlive(state.pid)) {
+			try { process.kill(state.pid, "SIGKILL"); } catch { /* already gone */ }
+		}
+	}
+	// Drop any stale record so startDetached's "already running?" guard sees a clean
+	// slate — a server we just SIGKILLed never got to run its own state cleanup.
+	clearRemoteState();
+	await startRemote(args);
+}
+
+// ── logs ─────────────────────────────────────────────────────────────────────
+
+async function logsRemote(args: ParsedArgs): Promise<void> {
+	rejectUnknownFlags(args, ["follow", "lines", "help", "h"]);
+	const follow = args.flags.follow === "true";
+	const lines = resolveLogLines(args); // validates --lines before touching the fs
+
+	// The background launcher records its log path in the state file; fall back to
+	// the conventional path so `logs` still works if the state file is gone.
+	const state = readRemoteState();
+	const logFile = state?.logFile || REMOTE_LOG_FILE;
+
+	if (!existsSync(logFile)) {
+		exitError(
+			`No remote log file at ${logFile}.`,
+			"If the server runs under systemd (`dev3 remote install-service`), its output goes\n" +
+			"to the journal instead:\n  journalctl --user -u dev3-remote.service -f",
+			CLI_EXIT_CODE_APP_NOT_RUNNING,
+		);
+	}
+
+	if (follow) {
+		// Stream live. `tail -f` runs until the user hits Ctrl-C, which also stops us.
+		const child = spawn("tail", ["-n", String(lines), "-f", logFile], { stdio: "inherit" });
+		await new Promise<void>((resolve) => {
+			child.on("exit", () => resolve());
+			child.on("error", (err) => { exitError(`Failed to tail ${logFile}: ${err.message}`); });
+		});
+		return;
+	}
+
+	const r = spawnSync("tail", ["-n", String(lines), logFile], { stdio: "inherit" });
+	if (r.status !== 0) {
+		exitError(`Failed to read ${logFile}.`);
+	}
+}
+
+/** Parse `--lines` for `logs`; default 200, must be a positive integer. */
+function resolveLogLines(args: ParsedArgs): number {
+	const raw = args.flags.lines;
+	if (raw === undefined || raw === "true") return 200;
+	const n = Number.parseInt(raw, 10);
+	if (!Number.isFinite(n) || n < 1 || String(n) !== raw.trim()) {
+		exitUsage(`--lines must be a positive integer (got "${raw}")`);
+	}
+	return n;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
