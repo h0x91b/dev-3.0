@@ -218,6 +218,8 @@ const tips = {
 	"tip.operationsHistory.body": "Завершённые операции остаются в «Готово» вместе с заметками и папкой — позже видно, что и зачем вы запускали.",
 	"tip.watchRemembers.title": "Watch запоминает выбор",
 	"tip.watchRemembers.body": "Переключите Watch в окне запуска — и это состояние вкл/выкл станет значением по умолчанию для следующих задач.",
+	"tip.remoteMenuBar.title": "Полное меню в браузере",
+	"tip.remoteMenuBar.body": "Откройте dev-3.0 в браузере через Remote Access — и вся панель меню File/Task/Project отрисуется прямо на странице.",
 };
 
 export default tips;

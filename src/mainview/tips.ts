@@ -890,6 +890,14 @@ const ALL_TIPS: Tip[] = [
 		score: 2,
 		contexts: ["board"],
 	},
+	{
+		id: "remote-menu-bar",
+		titleKey: "tip.remoteMenuBar.title",
+		bodyKey: "tip.remoteMenuBar.body",
+		icon: "\u{F0204}", // nf-md-menu
+		score: 3,
+		contexts: ["board", "terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

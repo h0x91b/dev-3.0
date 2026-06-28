@@ -300,6 +300,17 @@ const NOT_YET_IMPLEMENTED: ReadonlySet<MenuAction> = new Set<MenuAction>([
 	MENU_ACTIONS.helpDiagnostics,
 ]);
 
+/**
+ * True for actions on the roadmap (declared in the menu but not yet wired up
+ * end-to-end). The native menu renders these disabled; the browser-mode React
+ * menu bar (`AppMenuBar.tsx`) drops them entirely so it only ever lists actions
+ * the current build can actually run. Accepts a plain string so renderer code
+ * can test arbitrary action ids without importing the `MenuAction` type.
+ */
+export function isComingSoonAction(action: string): boolean {
+	return (NOT_YET_IMPLEMENTED as ReadonlySet<string>).has(action);
+}
+
 type Item = {
 	label: string;
 	action?: MenuAction;

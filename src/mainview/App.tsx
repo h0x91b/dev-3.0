@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, type Route } from "./state";
-import { api } from "./rpc";
+import { api, isElectrobun } from "./rpc";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
@@ -10,6 +10,7 @@ import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import GlobalHeader from "./components/GlobalHeader";
+import AppMenuBar from "./components/AppMenuBar";
 import GlobalSettings from "./components/GlobalSettings";
 import Dashboard from "./components/Dashboard";
 import AddProjectModal from "./components/AddProjectModal";
@@ -109,19 +110,26 @@ function App() {
 		};
 	}, []);
 
-	// Push the current MenuContext to the bun side on every route change so the
-	// native menu can grey out task / project / terminal items that don't apply.
-	useEffect(() => {
+	// Context that drives which menu items apply, derived from the current route.
+	// Used both to grey out native-menu items (pushed to bun below) and to build
+	// the browser-mode React menu bar (`AppMenuBar`).
+	const menuContext = useMemo(() => {
 		const r = state.route;
 		const hasProject = r.screen === "project" || r.screen === "task" || r.screen === "project-terminal" || r.screen === "project-settings";
 		const hasTask = r.screen === "task" || (r.screen === "project" && Boolean(r.activeTaskId));
 		const hasTerminal = r.screen === "task" || r.screen === "project-terminal";
+		return { hasTask, hasProject, hasTerminal };
+	}, [state.route]);
+
+	// Push the current MenuContext to the bun side on every route change so the
+	// native menu can grey out task / project / terminal items that don't apply.
+	useEffect(() => {
 		try {
-			void api.request.updateMenuContext?.({ hasTask, hasProject, hasTerminal })?.catch(() => {});
+			void api.request.updateMenuContext?.(menuContext)?.catch(() => {});
 		} catch {
 			// In tests `api.request` is mocked without this method; safe to ignore.
 		}
-	}, [state.route]);
+	}, [menuContext]);
 
 	// Quit dialog
 	const [showQuitDialog, setShowQuitDialog] = useState(false);
@@ -439,6 +447,17 @@ function App() {
 			setShowCommandPalette(false);
 			handleMenuAction(actionId, { state, dispatch, setLocale }).catch((err) => {
 				console.error("[App] runCommand failed", err);
+			});
+		},
+		[state, dispatch, setLocale],
+	);
+
+	// Browser-mode menu bar (`AppMenuBar`) dispatches through the same router as
+	// the native menu and the command palette.
+	const handleMenuBarAction = useCallback(
+		(actionId: string) => {
+			handleMenuAction(actionId, { state, dispatch, setLocale }).catch((err) => {
+				console.error("[App] menu bar action failed", err);
 			});
 		},
 		[state, dispatch, setLocale],
@@ -1364,6 +1383,7 @@ function App() {
 
 	return (
 		<div className="h-full w-full flex flex-col">
+			{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
 			<GlobalHeader
 				route={route}
 				projects={state.projects}

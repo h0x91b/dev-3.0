@@ -148,8 +148,22 @@ ux_architecture:
       purpose: "Native macOS/Linux menu bar; canonical home for the full action taxonomy (File / Edit / Task / Project / View / Debug)."
       allowed: ["destination", "task_action", "project_action", "git_action", "dev_server_action", "destructive", "expert_shortcut"]
       forbidden: []
-      note: "Native menu is the overflow/expert surface. Frequent actions are mirrored into DOM toolbars."
-      evidence: ["src/bun/application-menu.ts", "src/bun/menu-actions.ts", "src/mainview/menuRouter.ts"]
+      note: "Native menu is the overflow/expert surface. Frequent actions are mirrored into DOM toolbars. Definition lives in src/shared/application-menu.ts (relocated from src/bun) so the browser menu bar can share it."
+      evidence: ["src/shared/application-menu.ts", "src/bun/menu-actions.ts", "src/mainview/menuRouter.ts"]
+    app_menu_bar:
+      purpose: "Browser / Remote Access stand-in for the native menu bar. First row of the window (above global_header); renders the same buildApplicationMenu(context) tree as React."
+      mode: "browser_only"  # mounted only when isElectrobun === false; never in the Electrobun desktop shell
+      allowed: ["destination", "task_action", "project_action", "dev_server_action", "expert_shortcut"]
+      forbidden: ["native_role_item", "roadmap_item", "bun_only_action", "task_scoped_action_in_header"]
+      filtering: "Drop role items (clipboard/window/quit — browser owns them), actions not in menuRouter.BROWSER_HANDLED_ACTIONS (bun-only: new-window/check-for-updates/devtools/zoom/open-logs/remote-QR), and NOT_YET_IMPLEMENTED roadmap items. Context-gated items render greyed."
+      dispatch: "handleMenuAction (same router as native menu + command palette)"
+      labels: "English, sourced from the shared menu definition — parity with the native menu (which is not i18n'd); documented i18n exception."
+      responsive: "Collapses to a single ☰ button below 640px (mobile remote)."
+      budget:
+        max_top_level_menus: 7   # mirrors the native top-levels minus native-only role menus (Edit/Window)
+        dropdown_length: "unbounded — it is the overflow/expert surface"
+      status: "observed"
+      evidence: ["src/mainview/components/AppMenuBar.tsx", "src/shared/application-menu.ts", "src/mainview/menuRouter.ts (BROWSER_HANDLED_ACTIONS)", "src/mainview/App.tsx (browser-only mount)"]
     kanban_board:
       purpose: "Primary work surface: columns by status, task cards, drag-to-move, per-column add."
       allowed: ["object_card", "create_in_column", "drag_move", "column_config", "label_filter"]

@@ -218,6 +218,8 @@ const tips = {
 	"tip.operationsHistory.body": "Completed operations stay in Done with their notes and folder, so you can see what you ran and why later.",
 	"tip.watchRemembers.title": "Watch remembers your choice",
 	"tip.watchRemembers.body": "Toggle Watch in the launch dialog and that on/off choice becomes the default for the tasks you launch next.",
+	"tip.remoteMenuBar.title": "Full menu in your browser",
+	"tip.remoteMenuBar.body": "Open dev-3.0 from a browser via Remote Access and the whole File/Task/Project menu bar renders right in the page.",
 } as const;
 
 export default tips;
