@@ -369,7 +369,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"set-locale-en", "set-locale-ru", "set-locale-es",
 	"about", "hard-refresh",
 	// View / navigation
-	"view-dashboard", "view-kanban", "view-changelog", "open-settings",
+	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",
 	"go-back", "go-forward", "gauge-demo", "viewport-lab",
 	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
 	// Project
