@@ -25,6 +25,19 @@ const terminal = {
 	"panePager.switchPane": "Switch pane",
 	"panePager.pane": "Pane {index}",
 
+	// Pane-map overview sheet (narrow viewport "zoom-out": spatial mini-map of panes)
+	"paneMap.open": "Pane overview",
+	"paneMap.title": "Pane layout",
+	"paneMap.hint": "Tap a pane to jump to it.",
+	"paneMap.loading": "Reading layout…",
+	"paneMap.empty": "No panes to show.",
+	"paneMap.goTo": "Go to {label}",
+	"paneMap.current": "current",
+	"paneMap.windows": "Windows",
+	"paneMap.untitledWindow": "(untitled)",
+	"paneMap.paneCount_one": "{count} pane",
+	"paneMap.paneCount_other": "{count} panes",
+
 	// Pane zoom indicator (full viewport: a tmux pane is zoomed)
 	"paneZoom.badge": "Zoomed",
 	"paneZoom.restore": "Show all panes",

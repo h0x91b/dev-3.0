@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { ColumnAgentConfig, DevServerStatus, PermissionMode, PortInfo, Project, Task, TmuxSessionInfo } from "../../shared/types";
+import type { ColumnAgentConfig, DevServerStatus, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
@@ -1540,6 +1540,7 @@ async function tmuxPaneNavigate(params: {
 	taskId: string;
 	step?: "next" | "prev";
 	index?: number;
+	paneId?: string;
 	zoom?: boolean;
 }): Promise<{ count: number; activeIndex: number; zoomed: boolean; labels: string[] }> {
 	const socket = pty.getSessionSocket(params.taskId);
@@ -1559,6 +1560,11 @@ async function tmuxPaneNavigate(params: {
 			navigated = true;
 		} else if (typeof params.index === "number" && info.paneIds[params.index]) {
 			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", info.paneIds[params.index]));
+			navigated = true;
+		} else if (params.paneId && info.paneIds.includes(params.paneId)) {
+			// Jump-by-id (the pane-map sheet taps a specific box). Robust against
+			// any index/order drift between the map's layout and this read.
+			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", params.paneId));
 			navigated = true;
 		}
 		// Re-read after a move: select-pane changes the active pane AND auto-unzooms.
@@ -1581,6 +1587,17 @@ async function tmuxPaneNavigate(params: {
 		zoomed,
 	});
 	return { count: info.count, activeIndex: info.activeIndex, zoomed, labels: info.labels };
+}
+
+/**
+ * Snapshot the full tmux layout (windows + every pane's geometry) for a task's
+ * session. Powers the narrow-viewport "zoom-out" pane-map sheet — the same data
+ * `dev3 ui state` renders as ASCII boxes. Reuses the session's own socket so it
+ * also works for the rare non-default socket.
+ */
+async function tmuxLayout(params: { taskId: string }): Promise<TmuxLayout> {
+	const socket = pty.getSessionSocket(params.taskId);
+	return pty.getTmuxLayout(params.taskId, socket);
 }
 
 async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
@@ -2015,6 +2032,7 @@ export const tmuxPtyHandlers = {
 	tmuxAction,
 	tmuxPaneCount,
 	tmuxPaneNavigate,
+	tmuxLayout,
 	exitCopyModeAllPanes,
 	spawnAgentInTask,
 	spawnBugHuntersInTask,

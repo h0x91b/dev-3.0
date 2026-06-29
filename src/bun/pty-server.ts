@@ -514,8 +514,36 @@ export async function listPaneIds(taskId: string, socket: string = DEFAULT_TMUX_
 }
 
 /**
+ * Parse a tmux `window_layout` string into per-pane geometry, keyed by pane id
+ * (`%N`). This is the source of truth for spatial layout: it is **zoom
+ * independent** — a zoomed window still reports the real split here, whereas the
+ * per-pane `pane_left/top/width/height` fields collapse the zoomed pane to the
+ * full window and leave the others overlapping it.
+ *
+ * Layout grammar: `checksum,WxH,X,Y<tree>`, where a leaf cell is `WxH,X,Y,paneId`
+ * and a container is `WxH,X,Y{…}` (left/right) or `WxH,X,Y[…]` (top/bottom).
+ * Only leaves carry the 5th (paneId) field, so the regex below matches leaves
+ * exclusively — a container's `{`/`[` separator stops the 5th group. The trailing
+ * integer is the pane id number (the N in `%N`), verified against non-contiguous
+ * ids (after a kill-pane). X/Y are absolute window coordinates.
+ */
+export function parseWindowLayout(layout: string): Map<string, { left: number; top: number; width: number; height: number }> {
+	const map = new Map<string, { left: number; top: number; width: number; height: number }>();
+	const re = /(\d+)x(\d+),(\d+),(\d+),(\d+)/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(layout)) !== null) {
+		const [, w, h, x, y, id] = m;
+		map.set(`%${id}`, { left: Number(x), top: Number(y), width: Number(w), height: Number(h) });
+	}
+	return map;
+}
+
+/**
  * Snapshot the tmux layout for a task's session: its windows and every pane's
- * geometry/command. Used by `dev3 ui state` to render an ASCII map for agents.
+ * geometry/command. Used by `dev3 ui state` to render an ASCII map for agents
+ * and by the narrow-viewport pane-map sheet. Pane geometry comes from each
+ * window's zoom-independent `window_layout` (see {@link parseWindowLayout}), so
+ * the map stays correct even while the carousel keeps the window zoomed.
  * Returns `exists: false` (empty windows/panes) when the session is gone.
  */
 export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMUX_SOCKET): Promise<TmuxLayout> {
@@ -539,18 +567,23 @@ export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMU
 		"-t",
 		sessionName,
 		"-F",
-		"#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}",
+		"#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}",
 	);
 	if (windowsOut === null) return empty;
 
+	// Per-window true geometry, keyed by pane id — used to override the zoom-
+	// collapsed per-pane fields below.
+	const geomByWindow = new Map<number, ReturnType<typeof parseWindowLayout>>();
 	const windows: TmuxWindowInfo[] = windowsOut
 		.trim()
 		.split("\n")
 		.filter(Boolean)
 		.map((line) => {
-			const [index, name, active, panes] = line.split("\t");
+			const [index, name, active, panes, layout] = line.split("\t");
+			const windowIndex = Number(index);
+			geomByWindow.set(windowIndex, parseWindowLayout(layout ?? ""));
 			return {
-				index: Number(index),
+				index: windowIndex,
 				name: name ?? "",
 				active: active === "1",
 				panes: Number(panes) || 0,
@@ -572,14 +605,19 @@ export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMU
 		.filter(Boolean)
 		.map((line) => {
 			const [windowIndex, paneId, active, left, top, width, height, command, ...titleParts] = line.split("\t");
+			const winIdx = Number(windowIndex);
+			const id = paneId ?? "";
+			// Prefer the zoom-independent layout geometry; fall back to the per-pane
+			// fields if the layout could not be parsed for this pane.
+			const geom = geomByWindow.get(winIdx)?.get(id);
 			return {
-				windowIndex: Number(windowIndex),
-				paneId: paneId ?? "",
+				windowIndex: winIdx,
+				paneId: id,
 				active: active === "1",
-				left: Number(left) || 0,
-				top: Number(top) || 0,
-				width: Number(width) || 0,
-				height: Number(height) || 0,
+				left: geom?.left ?? (Number(left) || 0),
+				top: geom?.top ?? (Number(top) || 0),
+				width: geom?.width ?? (Number(width) || 0),
+				height: geom?.height ?? (Number(height) || 0),
 				command: command ?? "",
 				title: titleParts.join("\t"),
 			};

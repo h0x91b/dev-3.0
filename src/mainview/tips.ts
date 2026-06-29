@@ -997,6 +997,14 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal"],
 	},
 	{
+		id: "mobile-pane-map",
+		titleKey: "tip.mobilePaneMap.title",
+		bodyKey: "tip.mobilePaneMap.body",
+		icon: "\u{F0570}", // nf-md-view_grid
+		score: 3,
+		contexts: ["terminal"],
+	},
+	{
 		id: "pane-zoom-restore",
 		titleKey: "tip.paneZoomRestore.title",
 		bodyKey: "tip.paneZoomRestore.body",

@@ -25,6 +25,21 @@ const terminal = {
 	"panePager.switchPane": "Переключить панель",
 	"panePager.pane": "Панель {index}",
 
+	// Pane-map overview sheet (narrow viewport "zoom-out": spatial mini-map of panes)
+	"paneMap.open": "Обзор панелей",
+	"paneMap.title": "Раскладка панелей",
+	"paneMap.hint": "Тапни панель, чтобы перейти к ней.",
+	"paneMap.loading": "Читаю раскладку…",
+	"paneMap.empty": "Нет панелей для показа.",
+	"paneMap.goTo": "Перейти к {label}",
+	"paneMap.current": "текущая",
+	"paneMap.windows": "Окна",
+	"paneMap.untitledWindow": "(без имени)",
+	"paneMap.paneCount_one": "{count} панель",
+	"paneMap.paneCount_few": "{count} панели",
+	"paneMap.paneCount_many": "{count} панелей",
+	"paneMap.paneCount_other": "{count} панелей",
+
 	// Pane zoom indicator (full viewport: a tmux pane is zoomed)
 	"paneZoom.badge": "Зум",
 	"paneZoom.restore": "Показать все панели",
