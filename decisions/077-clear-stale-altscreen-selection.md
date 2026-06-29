@@ -33,3 +33,14 @@ via the native selection bridge at gesture end.
 - Patch/upgrade ghostty-web upstream — it's an external `^0.4.0` dep; patching
   `node_modules` is not durable.
 - Clear on any scroll/wheel — only addresses scrollback, not the alt-screen case.
+
+## Update (2026-06-29) — primary-screen + mouse-tracking case
+The `isAlternateScreen()`-only gate missed a real case: the bug came back inside
+Claude Code. Temporary renderer diagnostics (logged `alt`/`mouseTracking`/
+`viewportY`/`selStartY` on write/scroll/wheel) proved it renders its TUI **inline
+on the primary screen** (`alt:false`) with **mouse tracking on**, repainting the
+same rows in place while `viewportY` stays 0 — so the selection (frozen at
+`selStartY:47`) went stale and `willClear` was always `false`. Fix: broadened the
+gate to `(isAlternateScreen() || hasMouseTracking())` — "the app owns the screen
+and repaints in place". Plain primary-screen scrollback (no mouse tracking) is
+still left alone. See `clearStaleSelectionOnWrite` in `src/mainview/TerminalView.tsx`.
