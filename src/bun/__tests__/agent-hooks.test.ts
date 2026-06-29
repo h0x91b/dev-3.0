@@ -153,6 +153,41 @@ describe("buildClaudeHooks", () => {
 			}
 		}
 	});
+
+	it("every Claude hook tolerates app-offline (exit 2) without blocking the agent", () => {
+		// Claude Code treats a hook exit code of 2 as a *blocking* error
+		// (PreToolUse blocks the tool, UserPromptSubmit erases the prompt, Stop
+		// blocks stoppage). CLI_EXIT_CODE_APP_NOT_RUNNING is also 2, so when the
+		// desktop app is closed the hook must swallow exactly that code — and
+		// nothing else — into success. (issue: closed app wedged Edit/Bash.)
+		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai" });
+
+		for (const groups of Object.values(hooks)) {
+			for (const group of groups) {
+				for (const entry of group.hooks) {
+					expect(entry.command).toContain("|| [ $? -eq 2 ]");
+					// Never the blunt `|| true`, which would also hide real failures.
+					expect(entry.command).not.toContain("|| true");
+				}
+			}
+		}
+	});
+
+	it("working hooks (PreToolUse/UserPromptSubmit) keep the move guard before the offline fallback", () => {
+		const hooks = buildClaudeHooks();
+
+		for (const event of ["PreToolUse", "UserPromptSubmit"] as const) {
+			const cmd = hooks[event][0].hooks[0].command;
+			expect(cmd).toContain("--status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]");
+		}
+	});
+
+	it("PermissionRequest hook also tolerates app-offline", () => {
+		const hooks = buildClaudeHooks();
+		const cmd = hooks.PermissionRequest[0].hooks[0].command;
+		expect(cmd).toContain("--status user-questions");
+		expect(cmd).toContain("|| [ $? -eq 2 ]");
+	});
 });
 
 describe("mergeClaudeHooks", () => {
