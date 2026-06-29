@@ -3,14 +3,21 @@ import userEvent from "@testing-library/user-event";
 import MobilePaneCarousel from "../MobilePaneCarousel";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
 
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			tmuxPaneNavigate: vi.fn(),
 			tmuxLayout: vi.fn(),
+			tmuxAction: vi.fn(),
+			tmuxPaneCount: vi.fn(),
 		},
 	},
+}));
+
+vi.mock("../../confirm", () => ({
+	confirm: vi.fn(),
 }));
 
 const THREE_PANES = { count: 3, activeIndex: 0, zoomed: true, labels: ["claude", "bash", "zsh"] };
@@ -48,6 +55,12 @@ describe("MobilePaneCarousel", () => {
 	beforeEach(() => {
 		vi.mocked(api.request.tmuxPaneNavigate).mockReset();
 		vi.mocked(api.request.tmuxLayout).mockReset();
+		vi.mocked(api.request.tmuxAction).mockReset();
+		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+		vi.mocked(api.request.tmuxPaneCount).mockReset();
+		vi.mocked(api.request.tmuxPaneCount).mockResolvedValue({ count: 2 });
+		vi.mocked(confirm).mockReset();
+		vi.mocked(confirm).mockResolvedValue(true);
 	});
 
 	it("always renders the terminal children", async () => {
@@ -161,5 +174,67 @@ describe("MobilePaneCarousel", () => {
 
 		await Promise.resolve();
 		expect(api.request.tmuxPaneNavigate).not.toHaveBeenCalled();
+	});
+
+	it("exposes the Panes & windows button even on a single-pane session", async () => {
+		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 1, activeIndex: 0, zoomed: false, labels: ["claude"] });
+		renderCarousel();
+		await waitFor(() => expect(screen.getByLabelText("Panes & windows")).toBeInTheDocument());
+		// Switcher chrome stays hidden — only the manage entry point is shown.
+		expect(screen.queryByLabelText("Switch pane")).toBeNull();
+	});
+
+	it("the sheet splits the pane and immediately refreshes the layout", async () => {
+		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 1, activeIndex: 0, zoomed: false, labels: ["claude"] });
+		renderCarousel();
+		await waitFor(() => expect(screen.getByLabelText("Panes & windows")).toBeInTheDocument());
+
+		await userEvent.click(screen.getByLabelText("Panes & windows"));
+		await userEvent.click(screen.getByRole("button", { name: "Split vertically" }));
+
+		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "splitV" });
+		// A refresh+zoom is issued right after, not left to the 3s poll.
+		await waitFor(() =>
+			expect(api.request.tmuxPaneNavigate).toHaveBeenLastCalledWith({ taskId: "task-1", zoom: true }),
+		);
+	});
+
+	it("the sheet opens a new tmux window", async () => {
+		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 1, activeIndex: 0, zoomed: false, labels: ["claude"] });
+		renderCarousel();
+		await waitFor(() => expect(screen.getByLabelText("Panes & windows")).toBeInTheDocument());
+
+		await userEvent.click(screen.getByLabelText("Panes & windows"));
+		await userEvent.click(screen.getByRole("button", { name: "New window" }));
+
+		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "newWindow" });
+	});
+
+	it("closing the only pane confirms first, then force-kills", async () => {
+		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 1, activeIndex: 0, zoomed: false, labels: ["claude"] });
+		vi.mocked(api.request.tmuxPaneCount).mockResolvedValue({ count: 1 });
+		vi.mocked(confirm).mockResolvedValue(true);
+		renderCarousel();
+		await waitFor(() => expect(screen.getByLabelText("Panes & windows")).toBeInTheDocument());
+
+		await userEvent.click(screen.getByLabelText("Panes & windows"));
+		await userEvent.click(screen.getByRole("button", { name: "Close pane" }));
+
+		await waitFor(() => expect(confirm).toHaveBeenCalled());
+		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "killPane", force: true });
+	});
+
+	it("declining the last-pane confirm does not kill the pane", async () => {
+		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 1, activeIndex: 0, zoomed: false, labels: ["claude"] });
+		vi.mocked(api.request.tmuxPaneCount).mockResolvedValue({ count: 1 });
+		vi.mocked(confirm).mockResolvedValue(false);
+		renderCarousel();
+		await waitFor(() => expect(screen.getByLabelText("Panes & windows")).toBeInTheDocument());
+
+		await userEvent.click(screen.getByLabelText("Panes & windows"));
+		await userEvent.click(screen.getByRole("button", { name: "Close pane" }));
+
+		await waitFor(() => expect(confirm).toHaveBeenCalled());
+		expect(api.request.tmuxAction).not.toHaveBeenCalled();
 	});
 });

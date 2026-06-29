@@ -24,6 +24,9 @@ const terminal = {
 	"panePager.goTo": "Перейти к панели {index}",
 	"panePager.switchPane": "Переключить панель",
 	"panePager.pane": "Панель {index}",
+	"panePager.manage": "Панели и окна",
+	"panePager.create": "Создать",
+	"panePager.windowHint": "Переключайте окна, нажимая их имя в статус-баре внизу.",
 
 	// Pane-map overview sheet (narrow viewport "zoom-out": spatial mini-map of panes)
 	"paneMap.open": "Обзор панелей",

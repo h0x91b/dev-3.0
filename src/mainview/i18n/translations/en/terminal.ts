@@ -24,6 +24,9 @@ const terminal = {
 	"panePager.goTo": "Go to pane {index}",
 	"panePager.switchPane": "Switch pane",
 	"panePager.pane": "Pane {index}",
+	"panePager.manage": "Panes & windows",
+	"panePager.create": "Create",
+	"panePager.windowHint": "Switch windows by tapping their name in the status bar below.",
 
 	// Pane-map overview sheet (narrow viewport "zoom-out": spatial mini-map of panes)
 	"paneMap.open": "Pane overview",

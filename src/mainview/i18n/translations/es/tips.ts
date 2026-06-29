@@ -248,6 +248,8 @@ const tips = {
 	"tip.mobilePanePager.body": "En una pantalla estrecha la tarea se abre con un solo panel de tmux en zoom — desliza el terminal a izquierda/derecha (o toca los puntos) para alternar entre el agente, el dev server y la shell.",
 	"tip.mobilePaneMap.title": "Aleja al mapa de paneles",
 	"tip.mobilePaneMap.body": "En el móvil, toca el icono de cuadrícula sobre el terminal para ver un minimapa espacial de todos los paneles; toca cualquier caja para saltar directamente a ese panel.",
+	"tip.mobilePaneCreate.title": "Crea paneles en el móvil",
+	"tip.mobilePaneCreate.body": "En el móvil, toca el botón de paneles sobre el terminal para dividirlo o abrir una ventana de tmux nueva — sin el prefijo ⌃B.",
 	"tip.paneZoomRestore.title": "Detecta un panel en zoom",
 	"tip.paneZoomRestore.body": "Cuando un panel de tmux está en zoom (p. ej. heredado del móvil), aparece una insignia «Zoom» arriba a la derecha del terminal — tócala para restaurar la división completa.",
 };

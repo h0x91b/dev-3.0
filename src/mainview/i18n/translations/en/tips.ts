@@ -246,6 +246,8 @@ const tips = {
 	"tip.mobilePanePager.body": "On a narrow screen a task opens zoomed to one tmux pane — swipe the terminal left/right (or tap the dots) to switch between the agent, dev server and shell.",
 	"tip.mobilePaneMap.title": "Zoom out to the pane map",
 	"tip.mobilePaneMap.body": "On a phone, tap the grid icon above the terminal for a spatial mini-map of all panes — then tap any box to jump straight to that pane.",
+	"tip.mobilePaneCreate.title": "Make panes on mobile",
+	"tip.mobilePaneCreate.body": "On a phone, tap the panes button above the terminal to split it or open a new tmux window — no ⌃B prefix needed.",
 	"tip.paneZoomRestore.title": "Spot a zoomed pane",
 	"tip.paneZoomRestore.body": "When a tmux pane is zoomed (e.g. left over from a phone), a 'Zoomed' badge appears top-right of the terminal — tap it to restore the full split.",
 	"tip.devServerStatus.title": "See dev server at a glance",

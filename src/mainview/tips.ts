@@ -1020,6 +1020,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal", "board"],
 	},
+	{
+		id: "mobile-pane-create",
+		titleKey: "tip.mobilePaneCreate.title",
+		bodyKey: "tip.mobilePaneCreate.body",
+		icon: "\u{F0578}", // nf-md-view_split_vertical
+		score: 3,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
