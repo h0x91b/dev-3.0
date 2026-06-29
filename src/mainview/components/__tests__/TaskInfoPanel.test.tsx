@@ -979,6 +979,54 @@ describe("TaskInfoPanel", () => {
 			await waitFor(() => expect(alertSpy).toHaveBeenCalled());
 			// alertSpy cleanup handled by clearAllMocks
 		});
+
+		it("renders neutral (non-green) play state when the dev server is stopped", async () => {
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			const btn = screen.getAllByText("Dev Server")[0].closest("button")!;
+			await waitFor(() => expect(btn.className).toContain("text-fg-2"));
+			expect(btn.className).not.toContain("text-success");
+			// play affordance, not a pulsing dot
+			expect(btn.querySelector(".animate-pulse")).toBeNull();
+		});
+
+		it("renders green running state with a pulsing live dot when running", async () => {
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: true });
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			const btn = screen.getAllByText("Dev Server")[0].closest("button")!;
+			await waitFor(() => expect(btn.className).toContain("text-success"));
+			const dot = btn.querySelector(".bg-success.animate-pulse");
+			expect(dot).not.toBeNull();
+			expect(btn.getAttribute("aria-label")).toBe("Dev server running — click for options");
+		});
+
+		it("shows the Starting… spinner state while the server is starting", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.checkDevServer.mockResolvedValue({ running: false });
+			// Keep runDevServer pending so the transient "starting" state stays visible.
+			mockedApi.request.runDevServer.mockImplementation(() => new Promise(() => {}));
+
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, devScript: "bun run dev" } });
+			});
+
+			const btn = screen.getAllByText("Dev Server")[0].closest("button")!;
+			await waitFor(() => expect(btn.className).toContain("text-fg-2"));
+			await user.click(btn);
+
+			await waitFor(() => expect(screen.getByText("Starting…")).toBeInTheDocument());
+			const startingBtn = screen.getByText("Starting…").closest("button")!;
+			expect(startingBtn.getAttribute("aria-busy")).toBe("true");
+			expect(startingBtn.querySelector(".animate-spin")).not.toBeNull();
+		});
 	});
 
 	describe("dev server button with worktree-resolved config", () => {

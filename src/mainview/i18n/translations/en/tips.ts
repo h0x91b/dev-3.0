@@ -246,6 +246,8 @@ const tips = {
 	"tip.mobilePanePager.body": "On a narrow screen a task opens zoomed to one tmux pane — swipe the terminal left/right (or tap the dots) to switch between the agent, dev server and shell.",
 	"tip.paneZoomRestore.title": "Spot a zoomed pane",
 	"tip.paneZoomRestore.body": "When a tmux pane is zoomed (e.g. left over from a phone), a 'Zoomed' badge appears top-right of the terminal — tap it to restore the full split.",
+	"tip.devServerStatus.title": "See dev server at a glance",
+	"tip.devServerStatus.body": "The Dev Server button glows green with a live dot while running, and shows a spinner while it starts up.",
 } as const;
 
 export default tips;

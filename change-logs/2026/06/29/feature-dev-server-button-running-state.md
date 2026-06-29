@@ -1,0 +1,1 @@
+The Dev Server button now shows its live state at a glance: neutral with a play icon when stopped, a spinner while starting, and green with a pulsing dot while running (previously it looked identical in every state). The button polls the dev-server status while the task panel is open and reflects start/stop instantly.

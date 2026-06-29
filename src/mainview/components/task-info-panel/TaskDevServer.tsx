@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "../../toast";
 import { createPortal } from "react-dom";
 import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { useReducedMotion } from "../../utils/useReducedMotion";
 import { useResolvedTaskProject } from "./useResolvedTaskProject";
 
 interface TaskDevServerProps {
@@ -12,6 +13,16 @@ interface TaskDevServerProps {
 	project: Project;
 	isTaskActive: boolean;
 }
+
+/**
+ * Live status of the task's dev server, reflected directly on the button so the
+ * user can tell at a glance whether it's up — `unknown` until the first poll
+ * resolves, `starting` only during the transient start/restart phase.
+ */
+type DevServerState = "unknown" | "stopped" | "starting" | "running";
+
+/** How often (ms) we re-check the dev-server tmux session while the panel is open. */
+const DEV_SERVER_POLL_MS = 4500;
 
 interface DevServerMenuProps {
 	position: { top: number; left: number };
@@ -96,6 +107,7 @@ function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuPr
 
 export default function TaskDevServer({ task, project, isTaskActive }: TaskDevServerProps) {
 	const t = useT();
+	const reducedMotion = useReducedMotion();
 	const resolvedProject = useResolvedTaskProject(task, project);
 	const hasDevScript = !!resolvedProject.devScript?.trim();
 	const devServerBtnRef = useRef<HTMLButtonElement>(null);
@@ -105,6 +117,56 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 	const [devServerHintOpen, setDevServerHintOpen] = useState(false);
 	const [devServerHintCopied, setDevServerHintCopied] = useState(false);
 	const [devServerHintPos, setDevServerHintPos] = useState({ top: 0, left: 0 });
+	const [devState, setDevState] = useState<DevServerState>("unknown");
+
+	// Track the live running state so the button can reflect it without a click.
+	// There are no dev-server push messages, so we poll the (cheap) tmux
+	// has-session check on mount + an interval, paused while the tab is hidden.
+	// A `starting` transition set by a click handler is never clobbered by a poll.
+	useEffect(() => {
+		if (!hasDevScript || !isTaskActive) {
+			setDevState("unknown");
+			return;
+		}
+		let cancelled = false;
+		async function poll() {
+			try {
+				const res = await api.request.checkDevServer({ taskId: task.id, projectId: project.id });
+				if (cancelled) return;
+				setDevState((prev) => (prev === "starting" ? prev : res?.running ? "running" : "stopped"));
+			} catch {
+				// Keep the last known state on a transient RPC error.
+			}
+		}
+		poll();
+		const id = setInterval(() => {
+			if (typeof document !== "undefined" && document.hidden) return;
+			poll();
+		}, DEV_SERVER_POLL_MS);
+		return () => {
+			cancelled = true;
+			clearInterval(id);
+		};
+	}, [task.id, project.id, hasDevScript, isTaskActive]);
+
+	function openDevServerMenu() {
+		if (devServerBtnRef.current) {
+			const rect = devServerBtnRef.current.getBoundingClientRect();
+			setDevServerMenuPos({ top: rect.bottom + 4, left: rect.left });
+		}
+		setDevServerMenuOpen(true);
+	}
+
+	async function startDevServerNow() {
+		setDevState("starting");
+		try {
+			const status = await api.request.runDevServer({ taskId: task.id, projectId: project.id });
+			setDevState(status?.running === false ? "stopped" : "running");
+		} catch (err) {
+			setDevState("stopped");
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
+		}
+	}
 
 	useEffect(() => {
 		if (!devServerHintOpen) {
@@ -141,20 +203,28 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 			return;
 		}
 
-		if (!isTaskActive) {
+		if (!isTaskActive || devState === "starting") {
 			return;
 		}
 
+		if (devState === "running") {
+			openDevServerMenu();
+			return;
+		}
+
+		if (devState === "stopped") {
+			await startDevServerNow();
+			return;
+		}
+
+		// State not yet resolved by a poll — check now, then act.
 		try {
-			const { running } = await api.request.checkDevServer({ taskId: task.id, projectId: project.id });
-			if (running) {
-				if (devServerBtnRef.current) {
-					const rect = devServerBtnRef.current.getBoundingClientRect();
-					setDevServerMenuPos({ top: rect.bottom + 4, left: rect.left });
-				}
-				setDevServerMenuOpen(true);
+			const res = await api.request.checkDevServer({ taskId: task.id, projectId: project.id });
+			if (res?.running) {
+				setDevState("running");
+				openDevServerMenu();
 			} else {
-				await api.request.runDevServer({ taskId: task.id, projectId: project.id });
+				await startDevServerNow();
 			}
 		} catch (err) {
 			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
@@ -163,15 +233,19 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 
 	async function handleDevServerRestart() {
 		setDevServerMenuOpen(false);
+		setDevState("starting");
 		try {
-			await api.request.restartDevServer({ taskId: task.id, projectId: project.id });
+			const status = await api.request.restartDevServer({ taskId: task.id, projectId: project.id });
+			setDevState(status?.running === false ? "stopped" : "running");
 		} catch (err) {
+			setDevState("stopped");
 			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
 		}
 	}
 
 	async function handleDevServerStop() {
 		setDevServerMenuOpen(false);
+		setDevState("stopped");
 		try {
 			await api.request.stopDevServer({ taskId: task.id, projectId: project.id });
 		} catch (err) {
@@ -181,26 +255,82 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 
 	const devServerHintPrompt = t("header.devServerHintPrompt");
 
+	// Active + has-script states drive the glanceable running indicator. Green
+	// (success token) means running ONLY; stopped is neutral; the spinner is
+	// reserved for the transient starting phase (never a steady "running" signal).
+	const isRunning = hasDevScript && isTaskActive && devState === "running";
+	const isStarting = hasDevScript && isTaskActive && devState === "starting";
+
+	const stateClasses = !hasDevScript
+		? "text-warning hover:text-warning hover:bg-warning/15 cursor-pointer border border-dashed border-warning/40"
+		: !isTaskActive
+			? "text-fg-muted/50 cursor-not-allowed border border-transparent"
+			: isStarting
+				? "text-fg-3 border border-edge cursor-progress"
+				: isRunning
+					? "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+					: "text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge";
+
+	const devServerTitle = !hasDevScript
+		? t("header.devServerDisabled")
+		: !isTaskActive
+			? t("header.devServer")
+			: isStarting
+				? t("header.devServerStartingTitle")
+				: isRunning
+					? t("header.devServerRunningTitle")
+					: t("header.devServerStartTitle");
+
+	const devServerLabel = !hasDevScript
+		? t("header.setupDevServer")
+		: isStarting
+			? t("header.devServerStarting")
+			: t("header.devServer");
+
+	let devServerIcon: ReactNode;
+	if (isRunning) {
+		// Steady "alive" signal — a calm pulsing dot, not a spinner.
+		devServerIcon = (
+			<span className="w-[1.125rem] h-[1.125rem] flex items-center justify-center" aria-hidden>
+				<span className={`w-2 h-2 rounded-full bg-success${reducedMotion ? "" : " animate-pulse"}`} />
+			</span>
+		);
+	} else if (isStarting) {
+		devServerIcon = (
+			<span className="w-[1.125rem] h-[1.125rem] flex items-center justify-center" aria-hidden>
+				<span
+					className={`w-3.5 h-3.5 rounded-full border-2 border-current/30 border-t-current${reducedMotion ? "" : " animate-spin"}`}
+				/>
+			</span>
+		);
+	} else if (hasDevScript && isTaskActive) {
+		// Stopped (or not-yet-resolved): a "start" play affordance.
+		devServerIcon = (
+			<svg className="w-[1.125rem] h-[1.125rem]" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+				<path d="M8 5v14l11-7z" />
+			</svg>
+		);
+	} else {
+		// No-script / inactive: the original neutral arrow.
+		devServerIcon = (
+			<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M12 5l7 7-7 7" />
+			</svg>
+		);
+	}
+
 	return (
 		<>
 			<button
 				ref={devServerBtnRef}
 				onClick={handleDevServer}
-				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-					!hasDevScript
-						? "text-warning hover:text-warning hover:bg-warning/15 cursor-pointer border border-dashed border-warning/40"
-						: !isTaskActive
-							? "text-fg-muted/50 cursor-not-allowed"
-							: "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
-				}`}
-				title={!hasDevScript ? t("header.devServerDisabled") : t("header.devServer")}
+				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${stateClasses}`}
+				title={devServerTitle}
+				aria-label={devServerTitle}
+				aria-busy={isStarting}
 			>
-				<svg className="w-[1.125rem] h-[1.125rem]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14M12 5l7 7-7 7" />
-				</svg>
-				<span className="text-[0.6875rem] font-semibold">
-					{hasDevScript ? t("header.devServer") : t("header.setupDevServer")}
-				</span>
+				{devServerIcon}
+				<span className="text-[0.6875rem] font-semibold">{devServerLabel}</span>
 			</button>
 
 			{devServerHintOpen && createPortal(
