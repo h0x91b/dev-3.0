@@ -1,0 +1,1 @@
+Stopping a task's dev server now kills its entire child process tree, not just the tmux pane. Previously the underlying server (e.g. the launched app or a process holding a port) kept running orphaned after Stop. The same reap also runs when a task session is destroyed.

@@ -5455,6 +5455,59 @@ describe("handlers.stopDevServer", () => {
 		expect(result.running).toBe(false);
 	});
 
+	it("reaps the dev server's orphaned child process tree, not just the tmux session", async () => {
+		// Regression: the Stop button used to only `tmux kill-session`, which SIGHUPs
+		// the pane's foreground shell but leaves deep children (vite / electrobun +
+		// the launched .app) running. We must SIGTERM/SIGKILL the whole descendant
+		// tree captured from the dev session before teardown.
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const enc = (s: string) => new TextEncoder().encode(s);
+		// dev session pane pid = 1111, with children 2222 and 3333 (no grandchildren).
+		mockSpawnSync.mockImplementation((args: string[]) => {
+			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) {
+				return { exitCode: 0, stdout: enc("1111\n") };
+			}
+			if (args[0] === "pgrep" && args.includes("1111")) {
+				return { exitCode: 0, stdout: enc("2222\n3333\n") };
+			}
+			return { exitCode: 1, stdout: enc("") };
+		});
+		// has-session reports "not running" so buildDevServerStatus short-circuits.
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: "",
+			stderr: new Response(""),
+			exited: Promise.resolve(args.includes("has-session") ? 1 : 0),
+		}));
+
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
+		vi.useFakeTimers();
+		// Capture calls before mockRestore() — restoring a spy also clears its
+		// recorded calls, so snapshot them while the spy is still live.
+		let killCalls: [number | NodeJS.Signals, ...unknown[]][] = [];
+		try {
+			const pending = handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" });
+			// Drive past the SIGTERM→SIGKILL grace delay without a real sleep.
+			await vi.advanceTimersByTimeAsync(1000);
+			await pending;
+			killCalls = [...killSpy.mock.calls] as typeof killCalls;
+		} finally {
+			vi.useRealTimers();
+			killSpy.mockRestore();
+		}
+
+		const killedPids = killCalls.map((c) => c[0]);
+		// Both children (and the pane shell) must have been signalled.
+		expect(killedPids).toContain(1111);
+		expect(killedPids).toContain(2222);
+		expect(killedPids).toContain(3333);
+		// And escalated to SIGKILL for survivors.
+		expect(killCalls.some((c) => c[0] === 2222 && c[1] === "SIGKILL")).toBe(true);
+	});
+
 	it("throws when kill-session fails", async () => {
 		const project = makeProject();
 		const task = makeTask();
