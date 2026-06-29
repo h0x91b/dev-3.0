@@ -1012,6 +1012,15 @@ const ALL_TIPS: Tip[] = [
 		score: 2,
 		contexts: ["terminal"],
 	},
+	// Batch 44: mobile terminal window switcher
+	{
+		id: "mobile-window-pager",
+		titleKey: "tip.mobileWindowPager.title",
+		bodyKey: "tip.mobileWindowPager.body",
+		icon: "\u{F05C2}", // nf-md-window_restore
+		score: 3,
+		contexts: ["terminal"],
+	},
 	{
 		id: "dev-server-status",
 		titleKey: "tip.devServerStatus.title",

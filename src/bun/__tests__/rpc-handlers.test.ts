@@ -8382,3 +8382,98 @@ describe("handlers.tmuxPaneNavigate", () => {
 		expect(called("resize-pane -Z")).toBe(true);
 	});
 });
+
+// ----------------------------------------------------------------------------
+// handlers.tmuxWindowNavigate (narrow-viewport window switcher)
+// ----------------------------------------------------------------------------
+describe("handlers.tmuxWindowNavigate", () => {
+	const TASK_ID = "abcd1234-0000-0000-0000-000000000000";
+	const SESSION = "dev3-abcd1234";
+	const SEP = "\x1f";
+
+	// One list-windows row: window_id, window_active, window_name.
+	function row(id: string, active: string, name: string): string {
+		return [id, active, name].join(SEP);
+	}
+	const lay = (...rows: string[]) => rows.join("\n");
+
+	// list-windows output is FIFO: each readWindowLayout consumes the next layout,
+	// falling back to the last. Every other tmux command exits 0.
+	function mockLayouts(layouts: string[]) {
+		const queue = [...layouts];
+		mockSpawn.mockReset();
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("list-windows")) {
+				const out = queue.length > 1 ? queue.shift()! : queue[0] ?? "";
+				return { stdout: out, stderr: new Response(""), exited: Promise.resolve(0) };
+			}
+			return { stdout: "", stderr: new Response(""), exited: Promise.resolve(0) };
+		});
+	}
+
+	const calls = () => mockSpawn.mock.calls.map((c) => c[0] as string[]);
+	const called = (needle: string) => calls().some((a) => a.join(" ").includes(needle));
+
+	it("read-only (no step/index) returns the layout and never selects", async () => {
+		mockLayouts([lay(row("@1", "1", "claude"), row("@2", "0", "shell"), row("@3", "0", "logs"))]);
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID });
+		expect(res).toEqual({ count: 3, activeIndex: 0, labels: ["claude", "shell", "logs"] });
+		expect(called("select-window")).toBe(false);
+	});
+
+	it("labels use the window name (tmux auto-names by command)", async () => {
+		mockLayouts([lay(row("@1", "1", "nvim"), row("@2", "0", "build"))]);
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID });
+		expect(res.labels).toEqual(["nvim", "build"]);
+	});
+
+	it("step next: selects the next window then re-reads", async () => {
+		mockLayouts([
+			lay(row("@1", "1", "claude"), row("@2", "0", "shell"), row("@3", "0", "logs")), // before
+			lay(row("@1", "0", "claude"), row("@2", "1", "shell"), row("@3", "0", "logs")), // after select
+		]);
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID, step: "next" });
+		expect(res).toEqual({ count: 3, activeIndex: 1, labels: ["claude", "shell", "logs"] });
+		expect(called(`select-window -t ${SESSION}:+`)).toBe(true);
+	});
+
+	it("step prev: selects the previous window", async () => {
+		mockLayouts([
+			lay(row("@1", "0", "claude"), row("@2", "1", "shell")),
+			lay(row("@1", "1", "claude"), row("@2", "0", "shell")),
+		]);
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID, step: "prev" });
+		expect(res.activeIndex).toBe(0);
+		expect(called(`select-window -t ${SESSION}:-`)).toBe(true);
+	});
+
+	it("absolute index: selects that window by its id", async () => {
+		mockLayouts([
+			lay(row("@1", "1", "claude"), row("@2", "0", "shell"), row("@3", "0", "logs")),
+			lay(row("@1", "0", "claude"), row("@2", "0", "shell"), row("@3", "1", "logs")),
+		]);
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID, index: 2 });
+		expect(res.activeIndex).toBe(2);
+		expect(called("select-window -t @3")).toBe(true);
+	});
+
+	it("single window: no navigation even when a step is requested", async () => {
+		mockLayouts([lay(row("@1", "1", "claude"))]);
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID, step: "next" });
+		expect(res).toEqual({ count: 1, activeIndex: 0, labels: ["claude"] });
+		expect(called("select-window")).toBe(false);
+	});
+
+	it("no session / tmux error: returns an empty layout", async () => {
+		mockSpawn.mockReset();
+		mockSpawn.mockImplementation((args: string[]) => {
+			if (args.includes("list-windows")) {
+				return { stdout: "", stderr: new Response("no server"), exited: Promise.resolve(1) };
+			}
+			return { stdout: "", stderr: new Response(""), exited: Promise.resolve(0) };
+		});
+		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID, step: "next" });
+		expect(res).toEqual({ count: 0, activeIndex: 0, labels: [] });
+		expect(called("select-window")).toBe(false);
+	});
+});

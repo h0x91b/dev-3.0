@@ -37,7 +37,7 @@ function prefersReducedMotion(): boolean {
 	return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function MobilePaneCarousel({ taskId, children }: { taskId: string; children: ReactNode }) {
+function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; refreshKey?: number; children: ReactNode }) {
 	const t = useT();
 	const [info, setInfo] = useState<PaneInfo>({ count: 0, activeIndex: 0, zoomed: false, labels: [] });
 	const [dragDx, setDragDx] = useState(0);
@@ -114,6 +114,9 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 
 	// Poll the layout while mounted (panes appear/vanish outside React — dev
 	// server, extra agents). Auto-zoom once on the first multi-pane sighting.
+	// `refreshKey` changes when the window switcher moves to another tmux window:
+	// treat it like a fresh entry so we immediately re-read AND re-zoom the new
+	// window's panes (its zoom state is independent of the previous window's).
 	useEffect(() => {
 		let cancelled = false;
 		zoomedOnEntryRef.current = false;
@@ -129,7 +132,7 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 			cancelled = true;
 			clearInterval(id);
 		};
-	}, [taskId, navigate]);
+	}, [taskId, navigate, refreshKey]);
 
 	// Horizontal swipe (axis-arbitrated) + horizontal trackpad scroll.
 	useEffect(() => {

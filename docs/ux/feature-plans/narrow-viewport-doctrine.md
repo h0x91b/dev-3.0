@@ -59,6 +59,7 @@ its true width.
 | Task move (drag) | "Move to <status>" bottom action sheet (long-press) | to build |
 | Board filters/search | bottom sheet behind a header funnel | to build |
 | Terminal panes | swipe carousel (axis-arbitrated) + top dots, keep-zoom | done (Level 2) |
+| Terminal windows | switcher bar above the pane bar (‹ prev · dropdown · next ›, no swipe) | done (decision 093) |
 | Active tasks | `ActiveTasksStrip` (already used in `ProjectView` browser mode) — formalise | done (strip) |
 | Task inspector (2×2) | one summary bar + "task actions" bottom sheet | to build |
 | Diff viewer | files-aside → bottom-sheet file picker; diff stream owns screen | to build |

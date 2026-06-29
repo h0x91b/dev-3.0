@@ -237,4 +237,29 @@ describe("MobilePaneCarousel", () => {
 		await waitFor(() => expect(confirm).toHaveBeenCalled());
 		expect(api.request.tmuxAction).not.toHaveBeenCalled();
 	});
+
+	it("a changed refreshKey re-reads + re-zooms the new window's panes", async () => {
+		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue(THREE_PANES);
+		const { rerender } = render(
+			<I18nProvider>
+				<MobilePaneCarousel taskId="task-1" refreshKey={0}>
+					<div data-testid="terminal-body">term</div>
+				</MobilePaneCarousel>
+			</I18nProvider>,
+		);
+		await waitFor(() => expect(api.request.tmuxPaneNavigate).toHaveBeenCalled());
+		vi.mocked(api.request.tmuxPaneNavigate).mockClear();
+
+		// Simulate a window switch: TaskTerminal bumps refreshKey.
+		rerender(
+			<I18nProvider>
+				<MobilePaneCarousel taskId="task-1" refreshKey={1}>
+					<div data-testid="terminal-body">term</div>
+				</MobilePaneCarousel>
+			</I18nProvider>,
+		);
+		await waitFor(() =>
+			expect(api.request.tmuxPaneNavigate).toHaveBeenCalledWith({ taskId: "task-1", zoom: true }),
+		);
+	});
 });
