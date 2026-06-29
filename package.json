@@ -34,7 +34,8 @@
 		"js-toml": "1.1.0",
 		"qrcode": "^1.5.4",
 		"react": "19.2.6",
-		"react-dom": "19.2.6"
+		"react-dom": "19.2.6",
+		"recharts": "^3.9.0"
 	},
 	"devDependencies": {
 		"@testing-library/jest-dom": "^6.9.1",

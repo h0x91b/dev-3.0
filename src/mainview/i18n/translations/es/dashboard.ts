@@ -69,6 +69,8 @@ const dashboard = {
 	"header.changelogTooltip": "Ver registro de cambios",
 	"header.githubTooltip": "Sitio web",
 	"header.githubLabel": "Sitio web",
+	"header.statsTooltip": "Estadísticas de productividad",
+	"header.statsLabel": "Estadísticas",
 	"header.moreActions": "Más",
 	"header.reportBugTooltip": "Reportar un error",
 	"header.remoteAccessTooltip": "Abrir en tu teléfono — escanea el código QR para acceso remoto",

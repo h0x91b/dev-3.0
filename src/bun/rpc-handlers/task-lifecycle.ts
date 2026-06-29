@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskStatus } from "../../shared/types";
+import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, CompletedDiffStats, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -740,6 +740,42 @@ function getSourceTaskBranch(task: Task, project: Project): string | undefined {
 	return undefined;
 }
 
+/**
+ * Best-effort capture of a task's git-diff stats at completion time, BEFORE the
+ * worktree is destroyed, so the Productivity dashboard can sum "lines changed"
+ * after the worktree is gone. Compares against `origin/<base>` (three-dot, the
+ * same ref the diff viewer's "branch" mode uses — survives squash-merge because
+ * the diff is measured from the merge-base); falls back to the local base branch
+ * when the origin ref is missing (local-only repo). Never throws.
+ */
+export async function captureCompletedDiffStats(
+	project: Project,
+	task: Task,
+): Promise<CompletedDiffStats | undefined> {
+	if (project.kind === "virtual" || !task.worktreePath) return undefined;
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	try {
+		let stats = await git.getBranchDiffStats(task.worktreePath, `origin/${baseBranch}`);
+		if (stats.files === 0 && stats.insertions === 0 && stats.deletions === 0) {
+			// Fallback for local-only repos with no `origin/<base>` ref.
+			const local = await git.getBranchDiffStats(task.worktreePath, baseBranch);
+			if (local.files > 0 || local.insertions > 0 || local.deletions > 0) stats = local;
+		}
+		return {
+			files: stats.files,
+			insertions: stats.insertions,
+			deletions: stats.deletions,
+			capturedAt: new Date().toISOString(),
+		};
+	} catch (err) {
+		log.warn("captureCompletedDiffStats failed (best-effort)", {
+			taskId: task.id.slice(0, 8),
+			error: String(err),
+		});
+		return undefined;
+	}
+}
+
 export async function moveTask(params: {
 	taskId: string;
 	projectId: string;
@@ -800,6 +836,9 @@ export async function moveTask(params: {
 		if (!params.clientPlayedSound) {
 			emitTaskSound(newStatus as "completed" | "cancelled", task.id);
 		}
+		// Captured before the worktree is removed (below); persisted on the task
+		// so the Productivity dashboard can sum "lines changed" historically.
+		let completedDiffStats: CompletedDiffStats | undefined;
 		if (params.force) {
 			log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
 		} else if (isActive(oldStatus) || task.worktreePath) {
@@ -835,6 +874,9 @@ export async function moveTask(params: {
 				});
 			}
 
+			// Capture diff stats while the worktree (and branch) still exist.
+			completedDiffStats = await captureCompletedDiffStats(project, task);
+
 			// Virtual ops keep their working dir as history — removed only on task
 			// delete. Git tasks tear down the worktree here.
 			if (project.kind !== "virtual") {
@@ -854,6 +896,7 @@ export async function moveTask(params: {
 			// Keep worktreePath for virtual ops so the history dir stays referenced
 			// (and deleteTask can clean it up). Git tasks clear it (worktree gone).
 			...(project.kind === "virtual" ? {} : { worktreePath: null, branchName: null }),
+			...(completedDiffStats ? { completedDiffStats } : {}),
 			customColumnId: null,
 		}, dropOpts);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });

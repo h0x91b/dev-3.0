@@ -1,5 +1,17 @@
 # UX Manifest Changelog
 
+## 2026-06-29 — Standing rule: countable progress feeds the Velocity Cockpit
+
+Added a forward-looking UX principle that makes the read-only Productivity Stats / Velocity Cockpit
+(`stats`) a first-class consumer of every new feature: a feature producing a countable, repeatable
+signal should emit it into the stats pipeline (`rpc-handlers/productivity-stats.ts` +
+`utils/productivityStats.ts`) at build time and surface a motivational visualization on the cockpit
+when warranted — guarded by a complexity/honesty budget (read-only surface, prefer one strong signal,
+forward-only "tracking since", true numbers only; diagnostics stay off the cockpit). Captured as
+`PRODUCT_UX_BIBLE.md §1.1` (`Proposed`) + a §10 placement row,
+`ux-architecture.yaml placement_rules.instrument-and-surface-countable-metrics` +
+`surfaces.stats_dashboard.instrumentation`, and UX decision 2026-06-29.
+
 ## 2026-06-24 — Built-in Operations board pinned-first + ⌘0 + "system object" identity
 
 Recorded the decision to elevate the single hardcoded Operations board (`builtin` + `virtual`)

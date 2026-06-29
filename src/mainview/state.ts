@@ -11,6 +11,7 @@ export type Route =
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree"; worktreeTaskId?: string }
 	| { screen: "settings" }
 	| { screen: "changelog" }
+	| { screen: "stats" }
 	| { screen: "gauge-demo" }
 	| { screen: "viewport-lab" };
 

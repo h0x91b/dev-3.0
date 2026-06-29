@@ -1,4 +1,5 @@
-import { useMemo, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useReducedMotion } from "../../utils/useReducedMotion";
 
 export type GaugeTheme = "dark" | "light" | "auto";
 
@@ -13,6 +14,12 @@ export interface GaugeProps {
 	step?: number;
 	/** Value at which red zone starts (optional) */
 	redZone?: number;
+	/**
+	 * Which side of `redZone` is painted red. "above" (default) is a classic
+	 * tachometer redline (high = danger). "below" flags values UNDER the
+	 * threshold (e.g. productivity below your average = behind).
+	 */
+	redZoneMode?: "above" | "below";
 	/** Gauge diameter in px (default: 240) */
 	size?: number;
 	/** Label text (e.g. "Income") */
@@ -150,6 +157,7 @@ export function Gauge({
 	max,
 	step: stepProp,
 	redZone,
+	redZoneMode = "above",
 	size = 240,
 	label,
 	unit,
@@ -170,7 +178,20 @@ export function Gauge({
 	const pivotSize = Math.round(size * 0.13);
 	const tickMargin = 12;
 
-	const clampedValue = Math.min(Math.max(value, min), max);
+	// Sweep the needle: render at `min` first, then ease to the real value via the
+	// CSS transition below. Reduced-motion (and tests) jump straight to the value.
+	const reduced = useReducedMotion();
+	const [displayValue, setDisplayValue] = useState(reduced ? value : min);
+	useEffect(() => {
+		if (reduced) {
+			setDisplayValue(value);
+			return;
+		}
+		const raf = requestAnimationFrame(() => setDisplayValue(value));
+		return () => cancelAnimationFrame(raf);
+	}, [value, reduced]);
+
+	const clampedValue = Math.min(Math.max(displayValue, min), max);
 	const pct = (clampedValue - min) / (max - min);
 	const needleAngle = pct * (angleMax - angleMin) + angleMin;
 
@@ -192,7 +213,7 @@ export function Gauge({
 		for (let n = 0; n <= steps; n++) {
 			const v = min + n * effectiveStep;
 			const angle = angleMin + n * angleStep;
-			const isRed = redZone != null && v >= redZone;
+			const isRed = redZone != null && (redZoneMode === "below" ? v <= redZone : v >= redZone);
 			items.push({
 				value: v,
 				angle,
@@ -201,7 +222,7 @@ export function Gauge({
 			});
 		}
 		return items;
-	}, [min, max, step, angleMin, angleMax, redZone]);
+	}, [min, max, step, angleMin, angleMax, redZone, redZoneMode]);
 
 	// --- Styles ---
 	const bezelStyle: CSSProperties = {
@@ -259,7 +280,7 @@ export function Gauge({
 		backgroundColor: p.needleColor,
 		boxShadow: p.needleShadow,
 		zIndex: 10,
-		transition: "transform 1.5s cubic-bezier(0.19, 1, 0.22, 1)",
+		transition: reduced ? "none" : "transform 1.3s cubic-bezier(0.19, 1, 0.22, 1)",
 		borderRadius: `${Math.round(4 * scale)}px ${Math.round(4 * scale)}px 0 0`,
 	};
 

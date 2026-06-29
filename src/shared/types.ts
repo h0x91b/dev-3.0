@@ -639,6 +639,21 @@ export function orderProjectsForDisplay<T extends Pick<Project, "kind" | "builti
 	return [...builtin, ...projects.filter((p) => !isBuiltinOpsProject(p))];
 }
 
+/**
+ * Compact git-diff stats captured for a task. For completed/cancelled git tasks
+ * this is captured ONCE at completion time (in `moveTask`, before the worktree is
+ * destroyed) and persisted on the task so the Productivity dashboard can sum
+ * "lines changed" after the worktree is gone. `capturedAt` is the ISO time of
+ * capture. Absent on tasks completed before this tracking shipped (worktree gone)
+ * and on virtual (Operations) tasks (no git).
+ */
+export interface CompletedDiffStats {
+	files: number;
+	insertions: number;
+	deletions: number;
+	capturedAt: string;
+}
+
 export interface Task {
 	id: string;
 	seq: number;
@@ -735,6 +750,13 @@ export interface Task {
 	scriptLastRunAt?: Record<string, string>;
 	/** Last-used placement per package.json script â pre-selects it in the placement picker. */
 	scriptLastPlacement?: Record<string, ScriptPlacement>;
+	/**
+	 * Git-diff stats captured at completion time (before the worktree is removed),
+	 * used by the Productivity dashboard to sum "lines changed" historically. Only
+	 * set for non-virtual tasks that had a worktree when completed/cancelled.
+	 * See {@link CompletedDiffStats}.
+	 */
+	completedDiffStats?: CompletedDiffStats | null;
 }
 
 // ---- Package scripts runner ----
@@ -1241,6 +1263,44 @@ export interface AgentSkillInfo {
 }
 
 
+// ---- Productivity stats ----
+
+/**
+ * One per-task record returned by `getProductivityStats`. The renderer buckets
+ * and aggregates these client-side per the selected time range (so range
+ * switching needs no round-trip). All timestamps are ISO 8601.
+ */
+export interface ProductivityStatEvent {
+	taskId: string;
+	projectId: string;
+	projectName: string;
+	projectKind: "git" | "virtual";
+	title: string;
+	status: TaskStatus;
+	/** Task creation time. */
+	createdAt: string;
+	/**
+	 * Time the task last changed status. For terminal statuses (completed /
+	 * cancelled) this equals the completion/cancellation time — the field the
+	 * dashboard uses to bucket "tasks completed over time". Null when unknown.
+	 */
+	movedAt: string | null;
+	insertions: number;
+	deletions: number;
+	files: number;
+	/** True when LOC was computed live from an active worktree (not the captured snapshot). */
+	liveStats: boolean;
+	agentId: string | null;
+	groupId: string | null;
+	variantIndex: number | null;
+}
+
+export interface ProductivityStats {
+	events: ProductivityStatEvent[];
+	/** ISO time the stats were generated (server clock). */
+	generatedAt: string;
+}
+
 // ---- RPC schema ----
 
 export type AppRPCSchema = {
@@ -1387,6 +1447,10 @@ export type AppRPCSchema = {
 			getAllProjectTasks: {
 				params: void;
 				response: { projectId: string; tasks: Task[] }[];
+			};
+			getProductivityStats: {
+				params: void;
+				response: ProductivityStats;
 			};
 			searchConversations: {
 				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };

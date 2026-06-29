@@ -9,6 +9,36 @@ import { createElement } from "react";
 // desktop keymap (e.g. ⌘Q, zoom) set the flag themselves AND mock rpc — see
 // App.test.tsx / zoom.test.ts / KeyboardShortcutsModal.test.tsx.
 
+// happy-dom has no ResizeObserver; recharts' ResponsiveContainer needs one.
+if (typeof globalThis.ResizeObserver === "undefined") {
+	globalThis.ResizeObserver = class {
+		observe() {}
+		unobserve() {}
+		disconnect() {}
+	} as unknown as typeof ResizeObserver;
+}
+
+// Force prefers-reduced-motion: reduce = true (happy-dom's default matchMedia
+// reports false) so animation hooks (useReducedMotion/useAnimatedNumber) render
+// final values synchronously in tests; every other query reports false. Tests
+// that need a specific media query still redefine window.matchMedia themselves.
+if (typeof window !== "undefined") {
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		writable: true,
+		value: (query: string) => ({
+			matches: query.includes("prefers-reduced-motion"),
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false,
+		}),
+	});
+}
+
 vi.mock("@lobehub/icons/es/icons", () => {
 	const makeIcon = (name: string) => {
 		const Icon = (props: Record<string, unknown>) => createElement("svg", { "data-icon": name, ...props });

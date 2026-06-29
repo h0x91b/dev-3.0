@@ -26,6 +26,7 @@ import RequirementsCheck from "./components/RequirementsCheck";
 import GhWarningBanner, { isGhWarningDismissed } from "./components/GhWarningBanner";
 import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
+import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
 import { ToastHost, toast } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
@@ -1841,6 +1842,14 @@ function App() {
 			case "changelog":
 				return (
 					<Changelog
+						navigate={navigate}
+						goBack={() => dispatch({ type: "goBack" })}
+						canGoBack={state.historyIndex > 0}
+					/>
+				);
+			case "stats":
+				return (
+					<ProductivityStatsView
 						navigate={navigate}
 						goBack={() => dispatch({ type: "goBack" })}
 						canGoBack={state.historyIndex > 0}

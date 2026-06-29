@@ -46,6 +46,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	{ id: "view-dashboard", labelKey: "command.viewDashboard", category: "nav", scope: "always" },
 	{ id: "view-kanban", labelKey: "command.viewKanban", category: "nav", scope: "project" },
 	{ id: "view-changelog", labelKey: "command.viewChangelog", category: "nav", scope: "always" },
+	{ id: "view-stats", labelKey: "command.openStats", category: "nav", scope: "always" },
 	{ id: "open-settings", labelKey: "command.openSettings", category: "nav", scope: "always" },
 	{ id: "project-settings", labelKey: "command.projectSettings", category: "nav", scope: "project" },
 	{ id: "go-back", labelKey: "command.goBack", category: "nav", scope: "always" },

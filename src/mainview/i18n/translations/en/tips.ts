@@ -230,6 +230,16 @@ const tips = {
 	"tip.remoteRemembersDevice.body": "After you scan the QR once, your phone or laptop reconnects to the remote UI on reload without rescanning — for up to 8 hours.",
 	"tip.remotePickInterface.title": "Pick the remote address",
 	"tip.remotePickInterface.body": "In Remote Access (tunnel off), the address dropdown lets you point the QR at any local IP, including localhost for the SSH-forward path.",
+	"tip.productivityStats.title": "See how much you ship",
+	"tip.productivityStats.body": "Open Productivity Stats from the Dashboard for a speedometer cockpit of tasks shipped, lines changed and your streak.",
+	"tip.statsTimeRange.title": "Stats by day, week or month",
+	"tip.statsTimeRange.body": "Switch the time range on the stats screen to see your velocity and trend versus the previous period.",
+	"tip.statsBeatAverage.title": "Beat your average",
+	"tip.statsBeatAverage.body": "The red zone on each stats gauge marks your usual output — push the needle past it to top your norm.",
+	"tip.statsHeatmap.title": "A year of shipping",
+	"tip.statsHeatmap.body": "The activity heatmap on the stats screen shows every day you shipped — hover a cell for the count.",
+	"tip.statsMilestones.title": "Earn shipping medals",
+	"tip.statsMilestones.body": "Hit 100, 500 or 1000 tasks shipped to unlock medals on the stats screen, with progress toward the next.",
 } as const;
 
 export default tips;

@@ -1,6 +1,6 @@
 ux_architecture:
   version: 1
-  updated_at: "2026-06-23"
+  updated_at: "2026-06-29"
   source: "derived_from_repository"
   confidence: "medium"
 
@@ -109,6 +109,7 @@ ux_architecture:
         - "settings"         # global settings
         - "project-settings" # per-project config (tabs: global | project | worktree)
         - "changelog"        # what's new
+        - "stats"            # productivity stats dashboard (Velocity Cockpit)
         - "gauge-demo"       # debug/dev surface
         - "viewport-lab"     # debug/dev surface
       mechanism: "GlobalHeader breadcrumbs + back/forward history (HISTORY_LIMIT=15) + native application menu 'View'"
@@ -263,6 +264,16 @@ ux_architecture:
       allowed: ["destination", "task_jump", "terminal_hover_preview", "search"]
       forbidden: ["durable_configuration"]
       evidence: ["src/mainview/components/ActiveTasksSidebar.tsx", "src/mainview/components/ActiveTasksStrip.tsx"]
+    stats_dashboard:
+      purpose: "Read-only full-screen 'Velocity Cockpit' proving how much the user ships: hero speedometer gauges (tasks shipped, lines changed, velocity, completion rate, streak), SVG bar/area charts over time, a per-project gauge wall, and a counters strip — all re-scoped by a Day/Week/Month/All time range."
+      feature_class: ["destination", "data_visualization"]
+      reached_from: ["dashboard:entry_card", "application_menu.View (Show Productivity Stats)", "command_palette ⇧⌘P (view-stats)"]
+      allowed: ["data_visualization", "time_range_switch", "navigation (per-project card → board)"]
+      forbidden: ["mutation", "task_lifecycle_action", "durable_configuration", "global_header_button"]
+      data: "Local only. Completed-task counts/streaks from movedAt (full history); LOC forward-only via Task.completedDiffStats (captured at completion) + live diff for active tasks. Aggregated client-side by utils/productivityStats.ts over the getProductivityStats RPC."
+      instrumentation: "First-class consumer of new features: any feature producing a countable, motivational signal should emit it into the stats pipeline at build time and surface a read-only viz here when it motivates — within the honesty/complexity budget. Governed by placement_rules.instrument-and-surface-countable-metrics + PRODUCT_UX_BIBLE §1.1."
+      tokens: "Gauge reused verbatim (self-contained palette, accepted exception); new charts use semantic tokens (accent/success/danger, bg-raised, border-edge, text-fg-*)."
+      evidence: ["src/mainview/components/ProductivityStatsView.tsx", "src/mainview/components/stats/*", "src/mainview/utils/productivityStats.ts", "src/bun/rpc-handlers/productivity-stats.ts", "decisions/084-productivity-stats-loc-capture.md", "docs/ux/feature-plans/productivity-stats-dashboard.md", "UX_DECISIONS 2026-06-28"]
     toast:
       purpose: "Transient operation feedback (errors)."
       allowed: ["status_message", "error"]
@@ -461,6 +472,12 @@ ux_architecture:
       reject: ["global_header", "dashboard", "sidebar"]
       status: "observed"
       rationale: "Dev/debug surfaces must not appear in user-facing navigation."
+    - id: "instrument-and-surface-countable-metrics"
+      when: { feature_class: "data_visualization", trait: "countable_motivational_signal" }
+      place_in: ["emit into stats pipeline first (src/bun/rpc-handlers/productivity-stats.ts + src/mainview/utils/productivityStats.ts)", "stats_dashboard (visualization, read-only)"]
+      reject: ["controls_or_config_on_cockpit", "new_top_level_screen_per_metric", "global_header_counter", "diagnostic_only_metric_on_cockpit"]
+      status: "proposed"
+      rationale: "The Velocity Cockpit is the product's motivation engine. New features that produce a countable, repeatable signal should emit it into the stats pipeline at BUILD time (so the data exists even before it is charted) and surface a visualization on the read-only cockpit WHEN motivational — within the complexity + honesty budget (prefer one strong signal; forward-only 'tracking since', never fake history; numbers must be true). Diagnostic-only metrics keep the data but stay off the cockpit. See PRODUCT_UX_BIBLE §1.1 + UX_DECISIONS 2026-06-29."
 
   anti_patterns:
     - id: "toolbar-button-creep"

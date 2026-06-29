@@ -44,6 +44,8 @@ export default {
 					border: "rgb(var(--hint-border) / <alpha-value>)",
 					typed: "rgb(var(--hint-typed) / <alpha-value>)",
 				},
+				"stat-gold": "rgb(var(--stat-gold) / <alpha-value>)",
+				"stat-fire": "rgb(var(--stat-fire) / <alpha-value>)",
 			},
 			keyframes: {
 				"slide-in-right": {

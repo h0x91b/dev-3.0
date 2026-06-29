@@ -73,6 +73,8 @@ const dashboard = {
 	"header.changelogTooltip": "Журнал изменений",
 	"header.githubTooltip": "Сайт проекта",
 	"header.githubLabel": "Сайт",
+	"header.statsTooltip": "Статистика продуктивности",
+	"header.statsLabel": "Статы",
 	"header.moreActions": "Ещё",
 	"header.reportBugTooltip": "Сообщить об ошибке",
 	"header.remoteAccessTooltip": "Открыть на телефоне — отсканируйте QR-код для удалённого доступа",

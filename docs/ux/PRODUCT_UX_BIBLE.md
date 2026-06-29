@@ -2,7 +2,7 @@
 
 Status: Draft (initial)
 Source: Derived from repository audit
-Last updated: 2026-05-29
+Last updated: 2026-06-29
 Owner: Product UX Architecture
 
 Evidence notation: `Observed` (backed by code/docs), `Inferred` (likely rule from repeated patterns), `Proposed` (recommended, not yet consistent), `Unknown` (insufficient evidence).
@@ -21,6 +21,21 @@ Canonical UX architecture reference for dev-3.0. It defines how the app organize
 - It does **not** mean hiding power or breaking safety: destructive/irreversible actions still demand explicit confirmation (the human's effort there is the point). It means the *happy, safe, common* path is the lazy path.
 
 Litmus test when choosing a default or flag polarity: *"who is typing this, and what do they most want with the fewest keystrokes?"* If the answer is "a human, who wants X" — make X the default and let machines opt out.
+
+### 1.1 Instrument & celebrate — countable progress feeds the Velocity Cockpit — `Proposed`
+
+**dev-3.0 ships a surface whose entire job is to make shipping *feel* rewarding — the read-only Productivity Stats / Velocity Cockpit (`stats`).** People love a number that ticks up; the cockpit is where the product turns raw activity into motivation. Treat it as a first-class consumer of every new feature, not an afterthought.
+
+- **Instrument by default.** When a feature produces a *countable, repeatable* signal (a thing shipped, a run completed, a streak, a volume, a milestone crossed), emit that signal into the stats pipeline **at build time** — extend the `getProductivityStats` event shape (`src/bun/rpc-handlers/productivity-stats.ts`) and/or the pure aggregation engine (`src/mainview/utils/productivityStats.ts`) — rather than bolting analytics on months later. The data should *exist* even if you don't draw a chart for it yet.
+- **Then surface it — selectively.** If the metric is *motivational* (progress, momentum, achievement, milestone), add a visualization to the cockpit. If it is merely *diagnostic*, keep the data but do **not** clutter the cockpit with it.
+
+**Guardrails — this is not a license to dump every counter onto one screen:**
+- The cockpit is **read-only**. Never add a control, a filter beyond the existing time-range switch, durable config, or any mutation there (`ux-architecture.yaml surfaces.stats_dashboard.forbidden`). It celebrates; it does not operate.
+- Respect a **complexity + honesty budget**. Prefer one strong motivational signal over five weak ones; consolidate; a new metric must *earn* its place. A wall of near-zero gauges is worse than no gauge.
+- **Forward-only honesty.** If a signal only starts being recorded now, show an honest "tracking since" / empty-state treatment (as the LOC views do) — never backfill fake history or imply data you don't have.
+- **Motivational ≠ vanity-at-any-cost.** The number must be *true*. Don't inflate or double-count to look impressive — a dishonest cockpit destroys the trust that makes it motivating.
+
+Litmus test when shipping a feature: *"does this produce something countable a developer would be proud to watch tick up?"* If yes — emit the data now, and surface it on the cockpit when it motivates. See §5 (Productivity Stats surface), §9 (budgets), §10 (placement rules), and `UX_DECISIONS.md` (2026-06-29).
 
 ## 2. Product overview
 
@@ -61,7 +76,7 @@ The app uses a **screen router** (`Route` union + `useReducer` with a 15-entry b
 
 ### Global navigation
 
-Destinations: `dashboard`, `project` (Kanban — the daily home), `task`, `project-terminal`, `home-terminal`, `settings`, `project-settings`, `changelog`. Debug-only: `gauge-demo`, `viewport-lab`.
+Destinations: `dashboard`, `project` (Kanban — the daily home), `task`, `project-terminal`, `settings`, `project-settings`, `changelog`, `stats` (Productivity Stats / Velocity Cockpit). Debug-only: `gauge-demo`, `viewport-lab`.
 
 Mechanism: `GlobalHeader` breadcrumbs (`Dashboard > Project > Task`) + back/forward + native application-menu `View`.
 
@@ -102,6 +117,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
+| Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch, per-project→board jump | mutation, lifecycle/config action, header button | `ProductivityStatsView.tsx`, `components/stats/*` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
 
@@ -242,6 +258,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 | debug surface | menu `Debug` | header, dashboard, sidebar | dev surfaces must not leak to users |
 | hint navigation (jump) | `HintOverlay` over any `[data-hint-id]` target; activate with bare `f` / `⌘G` | mutation or destructive targets, visible button | hints are destinations, not actions; keyboard-only avoids button-creep |
 | keyboard expert nav | bare-key + `g`-prefix sequences (`g d/p/t/s`), `/` focus search, `c` new task — declared in `keymap.ts`, matched on `e.code` | native menu accelerators (Electrobun can't bind chords/sequences) | layout-independent; reserve `g` for the go-to prefix |
+| countable/motivational metric (`data_visualization`) | emit into the stats engine first (`productivity-stats.ts` + `productivityStats.ts`), then a viz on the Velocity Cockpit (`stats`) | controls/config on the cockpit, a new top-level screen per metric, a header counter, diagnostic noise | the cockpit is the one home for shipping signal — keep it read-only and within the honesty/complexity budget (see §1.1) |
 
 ## 11. Known anti-patterns in this project
 

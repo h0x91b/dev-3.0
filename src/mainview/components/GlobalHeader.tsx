@@ -549,6 +549,18 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{/* External / low-frequency actions: inline when roomy, folded into an overflow menu when compact */}
 				{!compact && (
 					<>
+						{/* Productivity stats — icon-only, sits to the left of the website link */}
+						{route.screen !== "stats" && (
+							<button
+								onClick={() => navigate({ screen: "stats" })}
+								className="flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+								title={t("header.statsTooltip")}
+								aria-label={t("header.statsTooltip")}
+							>
+								<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04C5}"}</span>
+							</button>
+						)}
+
 						{/* GitHub website */}
 						<button
 							onClick={() => window.open("https://h0x91b.github.io/dev-3.0/", "_blank")}
@@ -618,6 +630,19 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						</button>
 						{showOverflowMenu && (
 							<div className="absolute right-0 top-full mt-1.5 w-52 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1" role="menu">
+								{route.screen !== "stats" && (
+									<button
+										role="menuitem"
+										onClick={() => {
+											setShowOverflowMenu(false);
+											navigate({ screen: "stats" });
+										}}
+										className="w-full text-left px-3 py-2 flex items-center gap-2.5 text-fg-2 hover:bg-elevated hover:text-fg transition-colors"
+									>
+										<span className="text-[1.125rem] leading-none flex-shrink-0 w-[1.125rem] text-center" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04C5}"}</span>
+										<span className="text-sm">{t("header.statsLabel")}</span>
+									</button>
+								)}
 								<button
 									role="menuitem"
 									onClick={() => {
