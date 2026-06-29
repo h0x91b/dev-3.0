@@ -8,6 +8,9 @@ import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { useStatusColors } from "../hooks/useStatusColors";
 import ProjectActionButtons from "./ProjectActionButtons";
+import BottomSheet from "./BottomSheet";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ActivityOverviewProps {
 	projects: Project[];
@@ -40,13 +43,51 @@ function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => strin
 	return t("activity.daysAgo", { count: String(days) });
 }
 
+/** A full-width, touch-sized (≥44px) row inside the per-project action sheet —
+ * the narrow-viewport replacement for the inline icon-button cluster. */
+function ActionSheetButton({
+	glyph,
+	label,
+	onClick,
+	disabled,
+	danger,
+}: {
+	glyph: string;
+	label: string;
+	onClick: () => void;
+	disabled?: boolean;
+	danger?: boolean;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			className={`flex w-full items-center gap-3 rounded-lg px-2 py-3 min-h-[44px] text-left text-sm transition-colors disabled:opacity-40 ${danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-elevated hover:text-fg"}`}
+		>
+			<span
+				className="w-5 flex-shrink-0 text-center text-[1.125rem] leading-none"
+				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+			>
+				{glyph}
+			</span>
+			<span className="flex-1">{label}</span>
+		</button>
+	);
+}
+
 function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
 	const [loading, setLoading] = useState(true);
 	const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<{ projectId: string; side: DropSide } | null>(null);
+	// Narrow viewport: HTML5 drag and the up/down step buttons are unusable on
+	// touch, so per-project actions + reorder collapse into a single kebab that
+	// opens this action sheet (the project whose id is set here).
+	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
@@ -109,6 +150,17 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 	const hasPinnedBuiltin = visibleProjects.length > 0 && isBuiltinOpsProject(visibleProjects[0]);
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
+	// The project backing the open action sheet, with its reorder constraints
+	// recomputed live (so "Move up/down" disable as the project hits an edge).
+	const sheetProject = actionSheetProjectId
+		? visibleProjects.find((p) => p.id === actionSheetProjectId) ?? null
+		: null;
+	const sheetIndex = sheetProject ? visibleProjects.findIndex((p) => p.id === sheetProject.id) : -1;
+	const sheetIsVirtual = sheetProject?.kind === "virtual";
+	const sheetIsBuiltin = sheetProject ? isBuiltinOpsProject(sheetProject) : false;
+	const sheetCannotMoveUp = sheetIndex <= 0 || (hasPinnedBuiltin && sheetIndex === 1) || !!sheetIsVirtual;
+	const sheetCannotMoveDown = sheetIndex === visibleProjects.length - 1 || !!sheetIsVirtual;
+
 	function moveProject(sourceProjectId: string, targetProjectId: string, side: DropSide): string[] {
 		const ids = visibleProjects.map((project) => project.id);
 		const sourceIndex = ids.indexOf(sourceProjectId);
@@ -152,7 +204,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 	}
 
 	return (
-		<div className="h-full overflow-y-auto p-7">
+		<div className="h-full overflow-y-auto p-3 md:p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
 				<button
 					type="button"
@@ -180,7 +232,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						<button
 							type="button"
 							onClick={onOpenAddProject}
-							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95"
+							className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95 flex-shrink-0"
 						>
 							{t("dashboard.addProject")}
 						</button>
@@ -238,8 +290,10 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 							{showDropBefore && <div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 							{showDropAfter && <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 							{/* Project header */}
-							<div className={`group flex items-center gap-2 pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
-								<div className="pl-3 flex items-center gap-0.5">
+							<div className={`group flex items-center gap-2 pl-3 md:pl-0 pr-2 md:pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+								{/* Reorder cluster — desktop only. On touch, drag and the
+								    step buttons are unusable; reorder lives in the action sheet. */}
+								<div className="hidden md:flex pl-3 items-center gap-0.5">
 									<button
 										type="button"
 										draggable={!!onReorderProjects && !cannotReorder}
@@ -330,12 +384,32 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										)}
 									</div>
 								</button>
-								<ProjectActionButtons
-									project={project}
-									navigate={navigate}
-									onRemove={onRemoveProject}
-									className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-								/>
+								{/* Desktop: hover-revealed inline icon cluster. */}
+								<div className="hidden md:flex">
+									<ProjectActionButtons
+										project={project}
+										navigate={navigate}
+										onRemove={onRemoveProject}
+										className="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+									/>
+								</div>
+								{/* Narrow: a single kebab folds every per-project action +
+								    reorder into a bottom sheet (no hover, no overflow row). */}
+								{narrow && (
+									<button
+										type="button"
+										onClick={(event) => {
+											event.stopPropagation();
+											setActionSheetProjectId(project.id);
+										}}
+										className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors flex-shrink-0"
+										title={t("activity.projectActions")}
+										aria-label={t("activity.projectActions")}
+										aria-haspopup="dialog"
+									>
+										<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+									</button>
+								)}
 								<button
 									type="button"
 									onClick={() => openProject(project.id)}
@@ -364,7 +438,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 											key={task.id}
 											data-hint-id={`task:${task.id}`}
 											onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
-											className="w-full flex items-center gap-3 px-5 py-2.5 hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0"
+											className="w-full flex items-center gap-3 px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0"
 										>
 											<span
 												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -413,6 +487,84 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						</div>
 					);
 				})}
+
+				{/* Narrow-viewport per-project action sheet — the touch surface for
+				    actions that are hover-only / drag-only on desktop. */}
+				{narrow && sheetProject && (
+					<BottomSheet
+						open={!!sheetProject}
+						onClose={() => setActionSheetProjectId(null)}
+						title={sheetIsBuiltin ? t("ops.boardName") : sheetProject.name}
+						ariaLabel={t("activity.projectActions")}
+						testId="activity-project-action-sheet"
+					>
+						<div className="flex flex-col">
+							<ActionSheetButton
+								glyph={""}
+								label={t("activity.openBoard")}
+								onClick={() => {
+									setActionSheetProjectId(null);
+									openProject(sheetProject.id);
+								}}
+							/>
+							<ActionSheetButton
+								glyph={"\u{F0493}"}
+								label={t("header.projectSettings")}
+								onClick={() => {
+									setActionSheetProjectId(null);
+									navigate({ screen: "project-settings", projectId: sheetProject.id });
+								}}
+							/>
+							{!sheetIsVirtual && (
+								<ActionSheetButton
+									glyph={"\u{F115}"}
+									label={t("dashboard.openInFinder")}
+									onClick={() => {
+										setActionSheetProjectId(null);
+										api.request.openFolder({ path: sheetProject.path }).catch(() => {});
+									}}
+								/>
+							)}
+							{!sheetIsVirtual && (
+								<ActionSheetButton
+									glyph={"\u{F489}"}
+									label={t("projectTerminal.tooltip")}
+									onClick={() => {
+										setActionSheetProjectId(null);
+										navigate({ screen: "project-terminal", projectId: sheetProject.id });
+									}}
+								/>
+							)}
+							{onReorderProjects && (
+								<>
+									<ActionSheetButton
+										glyph={"\u{F062}"}
+										label={t("dashboard.moveProjectUp")}
+										disabled={sheetCannotMoveUp}
+										onClick={() => moveProjectByStep(sheetProject.id, -1)}
+									/>
+									<ActionSheetButton
+										glyph={"\u{F063}"}
+										label={t("dashboard.moveProjectDown")}
+										disabled={sheetCannotMoveDown}
+										onClick={() => moveProjectByStep(sheetProject.id, 1)}
+									/>
+								</>
+							)}
+							{onRemoveProject && !sheetIsBuiltin && (
+								<ActionSheetButton
+									glyph={"\u{F0A79}"}
+									label={t("dashboard.remove")}
+									danger
+									onClick={() => {
+										setActionSheetProjectId(null);
+										void onRemoveProject(sheetProject.id);
+									}}
+								/>
+							)}
+						</div>
+					</BottomSheet>
+				)}
 			</div>
 		</div>
 	);

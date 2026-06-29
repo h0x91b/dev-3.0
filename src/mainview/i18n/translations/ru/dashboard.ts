@@ -24,6 +24,8 @@ const dashboard = {
 	"activity.taskCount_many": "{count} активных",
 	"activity.taskCount_other": "{count} активных",
 	"activity.noActiveInProject": "нет активных задач",
+	"activity.projectActions": "Действия проекта",
+	"activity.openBoard": "Открыть доску",
 	"activity.justNow": "только что",
 	"activity.secondsAgo": "{count}с назад",
 	"activity.minutesAgo": "{count}м назад",

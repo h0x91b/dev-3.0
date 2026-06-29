@@ -20,6 +20,8 @@ const dashboard = {
 	"activity.taskCount_one": "{count} activa",
 	"activity.taskCount_other": "{count} activas",
 	"activity.noActiveInProject": "sin tareas activas",
+	"activity.projectActions": "Acciones del proyecto",
+	"activity.openBoard": "Abrir tablero",
 	"activity.justNow": "ahora",
 	"activity.secondsAgo": "hace {count}s",
 	"activity.minutesAgo": "hace {count}m",
