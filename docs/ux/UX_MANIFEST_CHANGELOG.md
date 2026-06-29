@@ -103,3 +103,7 @@ Added a UX decision for the inline `/`-triggered skill-name autocomplete in the 
 ## 2026-06-28 — Narrow-viewport (mobile) doctrine
 
 Rewrote bible §12 from a single carousel feature into a product-wide narrow-viewport doctrine and expanded the `ux-architecture.yaml` `responsive` block to match. Reconciled the breakpoint ladder (layout gates on reactive `useNarrowViewport(768)`; `useCompact` 1600 is dense-desktop; `useMobile` 1024 drives only the viewport meta). Added: the one-at-a-time principle, the swipe gesture law (board full-swipe vs terminal/diff pager-only), a per-surface adaptation map for every §5 surface, the touch navigation + action-reachability model (palettes/native-menu are dead on touch → palette gets a touch entry; no feature may be touch-unreachable), a mandated reusable `BottomSheet` primitive, narrow complexity budgets + 44px touch targets, and four new anti-patterns. Grounded in a 3-agent code audit. Added a UX decision and `feature-plans/narrow-viewport-doctrine.md`. Planning only.
+
+## 2026-06-29 — Dev-server button running-state indicator
+
+Added a UX decision + feature plan (`feature-plans/dev-server-button-running-state.md`) for making the single `TaskDevServer` button reflect dev-server state (no-script / stopped / starting / running) instead of always looking green. Sharpened the success-token rule to "running only" and reserved the spinner for the transient start phase (running uses a calm pulsing dot). No new surface, button, or token; no `ux-architecture.yaml` structural change.
