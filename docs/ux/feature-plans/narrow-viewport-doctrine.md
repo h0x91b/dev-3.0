@@ -46,7 +46,7 @@ its true width.
   the canvas never sees it; cancel any nascent selection), while a vertical drag or a tap falls
   through to the content untouched. Native CSS `scroll-snap` cannot do this (a single canvas has no
   sibling slides), so it is a manual gesture. (Superseded the original "swipe forbidden, explicit
-  pager only" rule for the terminal — see Level 2 / decision 089. A bottom pager bar collides with
+  pager only" rule for the terminal — see Level 2 / decision 090. A bottom pager bar collides with
   the mobile keyboard + ExtraKeyBar.)
 - Always: every swipe has a button + keyboard (Arrow Left/Right) equivalent; focus follows the active
   sibling; `aria-live` announces it; `prefers-reduced-motion` snaps instantly — **everywhere**.

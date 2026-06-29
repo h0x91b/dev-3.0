@@ -25,6 +25,10 @@ const terminal = {
 	"panePager.switchPane": "Переключить панель",
 	"panePager.pane": "Панель {index}",
 
+	// Pane zoom indicator (full viewport: a tmux pane is zoomed)
+	"paneZoom.badge": "Зум",
+	"paneZoom.restore": "Показать все панели",
+
 	// Tmux hotkey hints
 	"tmux.hSplit": "гориз.",
 	"tmux.vSplit": "верт.",

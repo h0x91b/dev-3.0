@@ -1,4 +1,4 @@
-# 089 — Narrow-viewport pane carousel: idempotent tmux keep-zoom
+# 090 — Narrow-viewport pane carousel: idempotent tmux keep-zoom
 
 ## Context
 

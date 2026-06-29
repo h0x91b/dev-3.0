@@ -11,6 +11,7 @@ import TaskInfoPanel from "./TaskInfoPanel";
 import TaskPreparingView from "./TaskPreparingView";
 import ExtraKeyBar from "./ExtraKeyBar";
 import MobilePaneCarousel from "./MobilePaneCarousel";
+import PaneZoomBadge from "./PaneZoomBadge";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
@@ -309,7 +310,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				// Narrow: swipe / dots / Arrow keys move between zoomed tmux panes.
 				<MobilePaneCarousel taskId={taskId}>{terminalArea}</MobilePaneCarousel>
 			) : (
-				<div className="flex-1 min-h-0 overflow-hidden">{terminalArea}</div>
+				<div className="relative isolate flex-1 min-h-0 overflow-hidden">
+					{terminalArea}
+					{ptyUrl && <PaneZoomBadge taskId={taskId} />}
+				</div>
 			)}
 			{!isElectrobun && isTouchDevice && termHandle && <ExtraKeyBar handle={termHandle} />}
 		</div>
