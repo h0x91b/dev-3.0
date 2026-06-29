@@ -47,7 +47,17 @@ function buildMoveCommand(
 	return parts.join(" ");
 }
 
-function wrapCodexAppOfflineFallback(command: string): string {
+// Status-move hooks must not hard-fail when the desktop app is down. The CLI
+// exits `CLI_EXIT_CODE_APP_NOT_RUNNING` (2) in that case — but exit code 2 is
+// ALSO how both Claude Code and Codex signal a *blocking* hook error (Claude:
+// blocks the tool call / erases the prompt / blocks Stop; Codex: blocks prompt
+// and tool execution). So a closed app would otherwise wedge the agent on every
+// PreToolUse/UserPromptSubmit/Stop. This guard collapses ONLY the app-offline
+// exit code into success; any other failure still propagates. It is deliberately
+// selective rather than `|| true`, which would mask real regressions (see
+// decisions 032 and 089). The CLI still prints its "app not running" notice to
+// stderr, so the warning survives — we just don't let it block the agent.
+function wrapAppOfflineFallback(command: string): string {
 	return `${command} || [ $? -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]`;
 }
 
@@ -61,7 +71,9 @@ function buildStopGroups(
 ): MatcherGroup[] {
 	const move = (status: string, extra?: string) => {
 		const command = buildMoveCommand(status, extra, options);
-		return options?.codexStopHook ? wrapCodexStopHookCommand(command) : command;
+		return options?.codexStopHook
+			? wrapCodexStopHookCommand(command)
+			: wrapAppOfflineFallback(command);
 	};
 
 	const stopGroups: MatcherGroup[] = [
@@ -100,7 +112,7 @@ export function buildClaudeHooks(
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
 	const move = (status: string, extra?: string) =>
-		buildMoveCommand(status, extra);
+		wrapAppOfflineFallback(buildMoveCommand(status, extra));
 
 	// Working hook: move to in-progress, but NOT when in review-by-ai
 	// (the review agent shares the same hooks file and must not flip status).
@@ -135,7 +147,7 @@ export function buildCodexHooks(
 	options?: { stopTarget?: TaskStatus },
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
-	const workingCmd = wrapCodexAppOfflineFallback(
+	const workingCmd = wrapAppOfflineFallback(
 		buildMoveCommand("in-progress", "--if-status-not review-by-ai"),
 	);
 
