@@ -69,6 +69,8 @@ interface KanbanColumnProps {
 	collapseDragHandlers?: { onDragEnter: () => void; onDragLeave: () => void; onDragEnd: () => void };
 	// Rename support for built-in columns
 	onRenameColumn?: (newName: string | null) => void;
+	// Mobile carousel: stretch the column to fill the carousel track (one column per screen)
+	fullWidth?: boolean;
 }
 
 function KanbanColumn({
@@ -114,6 +116,7 @@ function KanbanColumn({
 	onCollapseToggle,
 	collapseDragHandlers,
 	onRenameColumn,
+	fullWidth,
 }: KanbanColumnProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
@@ -140,7 +143,7 @@ function KanbanColumn({
 	// Compact = narrow viewport, empty column, not the Todo column (it always shows + New Task),
 	// not in the explicitly-collapsed vertical state.
 	const isCompact =
-		isNarrowViewport && tasks.length === 0 && !collapsed && status !== "todo";
+		!fullWidth && isNarrowViewport && tasks.length === 0 && !collapsed && status !== "todo";
 	const isCompactNarrow = isCompact && !compactExpanded;
 
 	// Auto-collapse when column identity changes (e.g. project switch)
@@ -432,7 +435,7 @@ function KanbanColumn({
 		<>
 		<div
 			className={`group/col relative flex flex-col flex-shrink-0 glass-column column-glow rounded-2xl border transition-colors ${
-				isCompactNarrow ? "w-[6.125rem]" : "w-[17.5rem]"
+				fullWidth ? "w-full" : isCompactNarrow ? "w-[6.125rem]" : "w-[17.5rem]"
 			} ${
 				showDropHighlight
 					? "border-accent bg-accent/5 shadow-lg shadow-accent/10"

@@ -35,6 +35,9 @@ const common = {
 	"about.website": "Website",
 	"about.close": "Close",
 
+	// Generic
+	"common.close": "Close",
+
 	// Status labels
 	"status.todo": "To Do",
 	"status.inProgress": "Agent is Working",

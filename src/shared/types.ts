@@ -1746,6 +1746,10 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: { count: number };
 			};
+			tmuxPaneNavigate: {
+				params: { taskId: string; step?: "next" | "prev"; index?: number; zoom?: boolean };
+				response: { count: number; activeIndex: number; zoomed: boolean; labels: string[] };
+			};
 			exitCopyModeAllPanes: {
 				params: { taskId: string };
 				response: { panesExited: number };

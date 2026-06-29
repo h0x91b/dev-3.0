@@ -16,6 +16,19 @@ const terminal = {
 	"terminal.startFresh": "Начать заново",
 	"terminal.startFreshDesc": "Будет запущена новая сессия с описанием задачи.",
 
+	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
+	"panePager.role": "Панели терминала",
+	"panePager.prev": "Предыдущая панель",
+	"panePager.next": "Следующая панель",
+	"panePager.position": "Панель {index} из {total}",
+	"panePager.goTo": "Перейти к панели {index}",
+	"panePager.switchPane": "Переключить панель",
+	"panePager.pane": "Панель {index}",
+
+	// Pane zoom indicator (full viewport: a tmux pane is zoomed)
+	"paneZoom.badge": "Зум",
+	"paneZoom.restore": "Показать все панели",
+
 	// Tmux hotkey hints
 	"tmux.hSplit": "гориз.",
 	"tmux.vSplit": "верт.",

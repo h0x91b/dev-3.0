@@ -240,6 +240,12 @@ const tips = {
 	"tip.statsMilestones.body": "Alcanza 100, 500 o 1000 tareas para desbloquear medallas en estadísticas, con progreso hacia la siguiente.",
 	"tip.statsBeatAverage.title": "Supera tu promedio",
 	"tip.statsBeatAverage.body": "La zona roja de cada medidor marca tu ritmo habitual: lleva la aguja más allá para superar tu norma.",
+	"tip.mobileBoardCarousel.title": "Desliza entre columnas",
+	"tip.mobileBoardCarousel.body": "En un móvil o ventana estrecha el tablero se vuelve un carrusel — desliza de lado para cambiar de columna y desplázate para ver sus tareas.",
+	"tip.mobilePanePager.title": "Desliza entre paneles",
+	"tip.mobilePanePager.body": "En una pantalla estrecha la tarea se abre con un solo panel de tmux en zoom — desliza el terminal a izquierda/derecha (o toca los puntos) para alternar entre el agente, el dev server y la shell.",
+	"tip.paneZoomRestore.title": "Detecta un panel en zoom",
+	"tip.paneZoomRestore.body": "Cuando un panel de tmux está en zoom (p. ej. heredado del móvil), aparece una insignia «Zoom» arriba a la derecha del terminal — tócala para restaurar la división completa.",
 };
 
 export default tips;

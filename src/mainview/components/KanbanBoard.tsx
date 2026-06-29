@@ -23,6 +23,9 @@ import { startVisibilityAwarePoll } from "../utils/poll";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { useStatusColors } from "../hooks/useStatusColors";
+import MobileBoardCarousel, { CAROUSEL_MAX_WIDTH, type CarouselColumn } from "./MobileBoardCarousel";
 
 interface KanbanBoardProps {
 	project: Project;
@@ -52,6 +55,8 @@ function KanbanBoard({
 	disableGlobalFindShortcut = false,
 }: KanbanBoardProps) {
 	const t = useT();
+	const isCarousel = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const statusColors = useStatusColors();
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings>({
 		defaultAgentId: "builtin-claude",
@@ -461,6 +466,107 @@ function KanbanBoard({
 		return null;
 	}, [currentTip, displayTasks, collapseState]);
 
+	const orderedColumns = getOrderedColumns();
+	const handleTipChanged = applyTipState;
+	const commonProps = {
+		project,
+		dispatch,
+		navigate,
+		onAddTask: () => window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal")),
+		agents,
+		onLaunchVariants: (task: Task, targetStatus: TaskStatus) =>
+			setLaunchModal({ task, targetStatus }),
+		onAddAttempts: (task: Task) =>
+			setLaunchModal({ task, targetStatus: task.status, mode: "addAttempts" }),
+		onTaskDrop: handleTaskDrop,
+		onReorderTask: handleReorderTask,
+		dragFromStatus,
+		dragFromCustomColumnId,
+		onDragStart: handleDragStart,
+		onTaskMoved: recordMove,
+		bellCounts,
+		bellReasons,
+		taskPorts,
+		taskResourceUsage,
+		activeTaskId,
+		draggedTaskId,
+		movingTaskIds,
+		siblingMap,
+		onSetMoving: handleSetMoving,
+		taskPrMap,
+	};
+
+	function renderColumnElement(slot: ColumnSlot, full: boolean) {
+		if (slot.type === "builtin") {
+			const colId = slot.status;
+			return (
+				<KanbanColumn
+					key={slot.status}
+					status={slot.status}
+					label={customStatusLabels[slot.status] || t(statusKey(slot.status))}
+					description={t(statusDescKey(slot.status))}
+					tasks={tasksByStatus.get(slot.status) || []}
+					onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
+					tip={tipColumnId === slot.status ? currentTip : undefined}
+					onTipChanged={handleTipChanged}
+					tipState={tipState ?? undefined}
+					collapsed={full ? false : collapseState.isCollapsed(colId)}
+					onCollapseToggle={full ? undefined : () => collapseState.toggle(colId)}
+					collapseDragHandlers={full ? undefined : collapseState.dragExpandHandlers(colId)}
+					onRenameColumn={(name) => handleRenameBuiltinColumn(slot.status, name)}
+					fullWidth={full}
+					{...commonProps}
+				/>
+			);
+		}
+		const col = slot.col;
+		return (
+			<KanbanColumn
+				key={col.id}
+				status="todo"
+				label={col.name}
+				tasks={tasksByCustomColumn.get(col.id) || []}
+				onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
+				isCustomColumn
+				customColumnId={col.id}
+				colorOverride={col.color}
+				isDraggedColumn={draggedColumnId === col.id}
+				onColumnDragStart={() => handleColumnDragStart(col.id)}
+				onColumnDragEnd={handleColumnDragEnd}
+				onColumnDrop={(side) => handleColumnDrop(col.id, side)}
+				tip={tipColumnId === col.id ? currentTip : undefined}
+				onTipChanged={handleTipChanged}
+				tipState={tipState ?? undefined}
+				fullWidth={full}
+				{...commonProps}
+			/>
+		);
+	}
+
+	// Carousel mode: one column per screen. Collapsed columns are excluded from
+	// the rotation (already user-hidden); empty columns stay for position stability.
+	const carouselColumns: CarouselColumn[] = isCarousel
+		? orderedColumns
+				.filter((slot) => !collapseState.isCollapsed(slot.type === "builtin" ? slot.status : slot.col.id))
+				.map((slot) =>
+					slot.type === "builtin"
+						? {
+								id: slot.status,
+								label: customStatusLabels[slot.status] || t(statusKey(slot.status)),
+								color: statusColors[slot.status],
+								count: tasksByStatus.get(slot.status)?.length ?? 0,
+								element: renderColumnElement(slot, true),
+							}
+						: {
+								id: slot.col.id,
+								label: slot.col.name,
+								color: slot.col.color ?? statusColors.todo,
+								count: tasksByCustomColumn.get(slot.col.id)?.length ?? 0,
+								element: renderColumnElement(slot, true),
+							},
+				)
+		: [];
+
 	return (
 		<>
 			{onSwitchToSidebar && (
@@ -489,80 +595,13 @@ function KanbanBoard({
 				onSearchChange={setSearchQuery}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
 			/>
-			<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
-				{getOrderedColumns().map((slot) => {
-					const handleTipChanged = applyTipState;
-					const commonProps = {
-						project,
-						dispatch,
-						navigate,
-						onAddTask: () => window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal")),
-						agents,
-						onLaunchVariants: (task: Task, targetStatus: TaskStatus) =>
-							setLaunchModal({ task, targetStatus }),
-						onAddAttempts: (task: Task) =>
-							setLaunchModal({ task, targetStatus: task.status, mode: "addAttempts" }),
-						onTaskDrop: handleTaskDrop,
-						onReorderTask: handleReorderTask,
-						dragFromStatus,
-						dragFromCustomColumnId,
-						onDragStart: handleDragStart,
-						onTaskMoved: recordMove,
-						bellCounts,
-						bellReasons,
-						taskPorts,
-						taskResourceUsage,
-						activeTaskId,
-						draggedTaskId,
-						movingTaskIds,
-						siblingMap,
-						onSetMoving: handleSetMoving,
-						taskPrMap,
-					};
-					if (slot.type === "builtin") {
-						const colId = slot.status;
-						return (
-							<KanbanColumn
-								key={slot.status}
-								status={slot.status}
-								label={customStatusLabels[slot.status] || t(statusKey(slot.status))}
-								description={t(statusDescKey(slot.status))}
-								tasks={tasksByStatus.get(slot.status) || []}
-								onColumnDrop={(side) => handleColumnDrop(slot.status, side)}
-								tip={tipColumnId === slot.status ? currentTip : undefined}
-								onTipChanged={handleTipChanged}
-								tipState={tipState ?? undefined}
-								collapsed={collapseState.isCollapsed(colId)}
-								onCollapseToggle={() => collapseState.toggle(colId)}
-								collapseDragHandlers={collapseState.dragExpandHandlers(colId)}
-								onRenameColumn={(name) => handleRenameBuiltinColumn(slot.status, name)}
-								{...commonProps}
-							/>
-						);
-					}
-					const col = slot.col;
-					return (
-						<KanbanColumn
-							key={col.id}
-							status="todo"
-							label={col.name}
-							tasks={tasksByCustomColumn.get(col.id) || []}
-							onTaskDropToCustomColumn={handleTaskDropToCustomColumn}
-							isCustomColumn
-							customColumnId={col.id}
-							colorOverride={col.color}
-							isDraggedColumn={draggedColumnId === col.id}
-							onColumnDragStart={() => handleColumnDragStart(col.id)}
-							onColumnDragEnd={handleColumnDragEnd}
-							onColumnDrop={(side) => handleColumnDrop(col.id, side)}
-							tip={tipColumnId === col.id ? currentTip : undefined}
-							onTipChanged={handleTipChanged}
-							tipState={tipState ?? undefined}
-							{...commonProps}
-						/>
-					);
-				})}
-			</div>
+			{isCarousel ? (
+				<MobileBoardCarousel columns={carouselColumns} />
+			) : (
+				<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
+					{orderedColumns.map((slot) => renderColumnElement(slot, false))}
+				</div>
+			)}
 
 			{launchModal && (
 				<LaunchVariantsModal

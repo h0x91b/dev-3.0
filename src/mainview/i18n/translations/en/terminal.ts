@@ -16,6 +16,19 @@ const terminal = {
 	"terminal.startFresh": "Start Fresh",
 	"terminal.startFreshDesc": "A new session will be started with the task description.",
 
+	// Mobile pane pager (narrow viewport: one zoomed pane at a time)
+	"panePager.role": "Terminal panes",
+	"panePager.prev": "Previous pane",
+	"panePager.next": "Next pane",
+	"panePager.position": "Pane {index} of {total}",
+	"panePager.goTo": "Go to pane {index}",
+	"panePager.switchPane": "Switch pane",
+	"panePager.pane": "Pane {index}",
+
+	// Pane zoom indicator (full viewport: a tmux pane is zoomed)
+	"paneZoom.badge": "Zoomed",
+	"paneZoom.restore": "Show all panes",
+
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-split",
 	"tmux.vSplit": "v-split",

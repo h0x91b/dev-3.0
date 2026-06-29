@@ -9,6 +9,23 @@ const OPEN_DELAY = 400;
 const CLOSE_DELAY = 200;
 const REFRESH_INTERVAL = 1000;
 
+// Below this width the board renders as a one-column carousel (see MobileBoardCarousel).
+const HOVER_PREVIEW_MIN_WIDTH = 768;
+
+/**
+ * Hover terminal previews are pointless on touch / narrow (mobile carousel)
+ * viewports: there is no hover, and a tap-triggered popover just obscures the
+ * card. Disable the preview when the device is touch-primary OR the viewport is
+ * narrow. Evaluated lazily on hover so it reacts to window resizing.
+ */
+function hoverPreviewEnabled(): boolean {
+	if (typeof window === "undefined") return true;
+	const mq = window.matchMedia?.("(hover: none), (pointer: coarse)");
+	const coarse = mq ? mq.matches : false;
+	const narrow = window.innerWidth < HOVER_PREVIEW_MIN_WIDTH;
+	return !coarse && !narrow;
+}
+
 function clampPosition(anchorRect: DOMRect) {
 	const vw = window.innerWidth;
 	const vh = window.innerHeight;
@@ -105,6 +122,8 @@ export function useTerminalPreview() {
 	 */
 	function onMouseEnter(taskId: string, anchorEl: HTMLElement) {
 		if (isDraggingRef.current) return;
+		// No hover preview on touch / narrow (mobile carousel) viewports.
+		if (!hoverPreviewEnabled()) return;
 		cancelTimers();
 		if (activeTaskIdRef.current && activeTaskIdRef.current !== taskId) {
 			close();

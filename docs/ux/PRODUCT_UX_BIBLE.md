@@ -267,10 +267,96 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 - **Untranslated strings** — UI strings must use `t()` and exist in en/ru/es.
 - **Actions in breadcrumbs** — header is location + switching only.
 - **Debug-surface leak** — `gauge-demo` / `viewport-lab` outside the Debug menu.
+- **Touch-unreachable feature** — an action whose only path is a keyboard shortcut (Cmd+K/Cmd+Shift+P/Cmd+1..9/hint overlay) or the native application menu. On narrow (<768) it is dead, because the native menu is absent in remote and there is no keyboard. Every feature needs a touch path (palette touch entry, action sheet, or inline control). See §12.4.
+- **Fixed-width overlay on narrow** — a `Modal`/palette/popover with a hardcoded `w-[NNrem]` and no `max-w-[calc(100vw-2rem)]` overflows a 390px phone (`PaletteShell` 34rem, `TaskDetailModal` 35rem, `confirm()` 26rem, diff aside 22rem). Overlays must clamp to the viewport on narrow. See §12.3.
+- **Non-wrapping toolbar on narrow** — an icon/action row (`flex … justify-end` / `justify-between`, no `flex-wrap`) that silently overflows under 768px (GlobalHeader ≤9 buttons, TaskCard footer, inspector collapsed bar). On narrow, wrap or move to a bottom sheet — never a clipped row. See §12.6.
+- **Gating layout on `isElectrobun` instead of width** — transport ≠ viewport width. Browser/remote can be wide; desktop can be narrowed. Gate layout on `useNarrowViewport`; use `isElectrobun`/`useMobile` only for transport/viewport-meta decisions. See §12.1.
 
-## 12. Open questions
+## 12. Narrow-viewport (mobile) doctrine — board `Observed`, rest `Proposed`
+
+The app's secondary form factor is a **phone reached over `dev3 remote`** (any sub-768px viewport: a phone browser, a narrowed desktop browser window, or a hypothetical Electrobun-mobile build). The desktop UI is dense, wide, and keyboard-first; it must **degrade to a touch-first, one-thing-at-a-time form** on narrow screens — without becoming a second app. This section is the canonical ruleset; the Kanban board carousel (Ittai Zeidman's idea) is the **reference implementation** the rest generalises from. Full plans: `feature-plans/mobile-carousel-navigation.md`, `feature-plans/narrow-viewport-doctrine.md`.
+
+**The one principle:** *On a narrow viewport, show exactly one sibling at a time and move between siblings by swipe + a visible pager.* Columns, tasks-in-a-column, terminal panes, active tasks, settings sections, diff files — all collapse to the same one-at-a-time carousel/stack idiom. This is a **responsive view-mode of existing screens**, never a new destination, nav item, route, or "mobile mode" setting. Layout follows the viewport automatically.
+
+### 12.1 Breakpoint ladder — `Observed` (reconciled)
+
+Three distinct widths exist in code; they are **not** the same thing and must not be conflated:
+
+| Name | Width | Hook / signal | Reactive? | Governs |
+|---|---:|---|---|---|
+| **narrow (mobile)** | `< 768px` | `useNarrowViewport(768)` (matchMedia, `CAROUSEL_MAX_WIDTH`) | yes | **the mobile doctrine** — carousel/stack/sheet layout switch. This is THE gate. Aligns with Tailwind `md`. |
+| **compact** | `< 1600px` | `useCompact()` (`COMPACT_MAX_WIDTH`) | yes | dense-desktop label hiding + header overflow kebab; **not** mobile. A wide-but-not-huge desktop is compact, not narrow. |
+| **device-class** | `screen.width < 1024` | `useMobile()` | no (mount-once) | **only** the viewport-meta decision (`useViewport`) — is this physically a small device. NOT a layout gate. |
+
+Rules: **gate layout on `useNarrowViewport`** (reactive, viewport-width). Use `useMobile()` solely for the `<meta viewport>` choice. Never gate a layout on `isElectrobun` (transport ≠ width) — browser mode can be wide, desktop can be narrowed. `useViewport()` serves **device-width** to the browser so a phone reports its true width and the media queries fire (the old fixed `width=1024` is replaced). The earlier "sub-1024 / `useMobile`" wording was wrong — the shipped gate is **768 / `useNarrowViewport`**.
+
+### 12.2 The one-at-a-time pattern + gesture law
+
+| Surface class | Narrow form | Swipe rule |
+|---|---|---|
+| **scroll-body** (board columns, lists, settings sections) | one sibling = 100vw via CSS `scroll-snap`; the body scrolls on the *other* axis | **full-surface swipe allowed** — the body scrolls vertically only, so horizontal motion is unambiguous (delegate axis disambiguation to the browser) |
+| **live-content** (terminal pane, diff stream, any canvas/TUI) | one element + a position indicator (dots) | **full-surface swipe allowed, but axis-arbitrated** — the content consumes touch (vim/htop/less, code scroll), so the handler claims a gesture only once it is *clearly horizontal* (capture-phase `preventDefault`+`stopPropagation`, cancel any nascent selection); vertical drags and taps fall through to the content. Native `scroll-snap` can't do this (a canvas has no sibling slides) → manual gesture. *(Revised 2026-06-29 — was "swipe forbidden, pager only"; a bottom pager bar collides with the mobile keyboard. See decision 089.)* |
+
+**Gesture law (always):** every swipe has a **button + keyboard equivalent** (pager chevrons, dots, Arrow Left/Right); swipe is never the only way. Focus follows the active sibling's heading; `aria-live` announces it. `prefers-reduced-motion` snaps instantly (no smooth scroll) — and this must be honoured **everywhere**, not only in the carousel (it currently is only in `MobileBoardCarousel`).
+
+### 12.3 Per-surface adaptation map — `Observed` (board) / `Proposed` (rest)
+
+Every surface from §5 gets an explicit narrow form. "—" = unchanged.
+
+| Surface | Desktop form | Narrow (<768) form | Status |
+|---|---|---|---|
+| Kanban board | all columns side-by-side | **column carousel** (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept) | `Observed` |
+| Task move (drag) | drag card across columns | drag impossible → **"Move to <status>" action sheet** (long-press card) on the existing status path; completion reuses `confirmTaskCompletion` | `Proposed` |
+| Board filters/search | inline `LabelFilterBar` | **bottom sheet** behind a header funnel button | `Proposed` |
+| Terminal panes | tiled tmux panes | **pane carousel** — one zoomed pane + axis-arbitrated horizontal swipe over the terminal, a slim non-overlapping top dots strip, Arrow keys; keep-zoom via `tmuxPaneNavigate` (`MobilePaneCarousel.tsx`) | `Observed` |
+| Active tasks | `ActiveTasksSidebar` (split, 240px) | already a stacked **`ActiveTasksStrip`** (horizontal task carousel) in browser mode (`ProjectView` `isBrowserMode`) — formalise as the narrow task carousel; `SplitLayout` is never used <768 | `Observed` (strip) |
+| Task inspector (`TaskInfoPanel`, 2×2 bars) | 2×2 quickbar grid | the 2×2 cannot fit — collapse to **one summary bar + a "task actions" bottom sheet** (the bars' actions become sheet sections); metadata grid already reflows | `Proposed` |
+| Diff viewer | 22rem files-aside + diff stream | **stack/one-at-a-time** — files-aside becomes a bottom-sheet file picker; the diff stream owns the screen (live-content: pager/explicit nav, no full-surface swipe) | `Proposed` |
+| Modal (`*Modal`) | fixed 26–35rem centered | **full-bleed sheet**: `max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)]` (or bottom-sheet for action-style modals) | `Proposed` |
+| Context menu (right-click) | popup at cursor | **bottom action sheet** (long-press trigger) | `Proposed` |
+| Settings (tabs + sections) | tab row + grouped sections | tabs → **one section at a time** (carousel/`<select>` switcher or accordion); no horizontal tab overflow | `Proposed` |
+| Dashboard | project list | already vertical list — fits; ensure cards are full-width | `Observed` (OK) |
+| Command palette (Cmd+K / Cmd+Shift+P) | keyboard-summoned, `34rem` | needs a **touch entry** + `w-full max-w-[calc(100vw-2rem)]` — see §12.4 (it is the action fallback for the absent native menu) | `Proposed` |
+| Global header | single row, ≤9 utility buttons | reflow: logo + truncated breadcrumb + **one overflow (kebab)** for all utilities; never a 9-icon row (`useCompact` at 1600 only hides labels, it does not reflow for 390px) | `Proposed` |
+| Hover terminal preview | popover on card hover | **disabled** on touch/narrow (no hover; popover obscures) — already gated in `useTerminalPreview` | `Observed` |
+| Toast | top-right, clamped | already `max-w-[calc(100vw-2rem)]` — OK | `Observed` (OK) |
+
+### 12.4 Navigation & action reachability on touch — `Proposed`
+
+Mobile's hardest gap: **the keyboard-first nav layer is dead on a touchscreen, and the native application menu is absent in remote mode.** Keyboard-only and therefore unusable on a phone: Cmd+K / Cmd+Shift+P palettes, Cmd+1..9 project switch, the Cmd+/ hint overlay. The native menu (task moves, git, dev-server) does not exist in the browser at all.
+
+Doctrine:
+- **The breadcrumb spine stays the touch nav backbone**: logo→dashboard, project name→board, project chevron→switcher dropdown, back/forward. These must remain reachable (not pushed off-screen by a long task title) — give the project switcher a touch-sized target (≥44px) and a `right-0` fallback so the dropdown never clips.
+- **The command palette gains a touch entry on narrow** (a single search/jump affordance) and a responsive width. Because the native menu is gone in remote, the **action palette / per-object action sheets become the canonical action surface on mobile** — every action that on desktop lives only in the native menu must be reachable on mobile via a palette entry or an object action sheet. This is the one sanctioned exception to "palettes are keyboard-only / no button" — on narrow, a touch entry is mandatory, not button-creep.
+- **No feature may be touch-unreachable.** If an action's only desktop path is a keyboard shortcut or the native menu, it MUST have a touch path on narrow (action sheet, palette, or inline control).
+
+### 12.5 Overlay primitive — `BottomSheet` (new, mandated) — `Proposed`
+
+The doctrine needs **one** reusable bottom-sheet primitive; none exists today (only centered `Modal`, `confirm()`, `toast`, `Popover`). `BottomSheet` is the narrow rendering for: context-menu→action-sheet, board filters, column-jump list, "Move to", the inspector actions sheet, the diff file picker, and the narrow form of action-style modals. It must: slide from the bottom, respect `env(safe-area-inset-bottom)`, trap focus, restore focus on close, dismiss on backdrop tap / swipe-down / Esc, and be a pure React component (works identically in desktop and browser — no native dialog, per the project's no-native-dialogs rule). Build it once; do not scatter ad-hoc sheets.
+
+### 12.6 Narrow complexity budgets & touch targets — `Proposed`
+
+| Surface | Narrow budget | Overflow rule |
+|---|---|---|
+| Global header utilities | logo + breadcrumb + **1** overflow kebab | everything else into the kebab/sheet |
+| Page primary action | 1 (a FAB or header button) | rest into a bottom sheet |
+| Inspector | 1 summary bar | all actions into the actions sheet |
+| Any toolbar/action row | wrap or sheet — **never** a non-wrapping overflow row | move to bottom sheet |
+| Touch target | **≥ 44×44px** | many current controls are 32px / `p-0.5` — bump on narrow |
+
+### 12.7 Accessibility, motion, input — `Proposed`
+
+- Honour `prefers-reduced-motion` on every animated transition (currently only the carousel).
+- Keep the `.browser-mode` 16px input-font rule (prevents iOS focus-zoom); honour `env(safe-area-inset-*)` (the viewport already sets `viewport-fit=cover`).
+- Reuse the `TerminalView` touch→mouse bridge model for any canvas surface; reuse `ExtraKeyBar`'s vw-based sizing for mobile toolbars.
+- Carousels: `aria-roledescription="carousel"`, siblings as `group`/`tabpanel`, pager as the tablist; arrow-key support when the pager is focused.
+
+## 13. Open questions
 
 - Multi-select + a real selection toolbar on the board, or is per-task action intentional?
 - Add an `--info` token, or keep reusing accent (blue)?
 - `ProjectSettings` (59.9K) is still very large — does it need a documented sub-surface budget or splitting? (`TaskInfoPanel` is now governed by the §5.1 bar model.)
 - Should status colors migrate to named theme tokens, or stay as the documented hex exception?
+- Narrow nav: is a persistent bottom tab bar (Dashboard · Board · Task · More) the right touch nav spine, or do the breadcrumb + a touch palette entry suffice? (§12.4)
+- Does the mobile primary action want a FAB, or stay in the (reflowed) header? One per screen either way. (§12.6)
+- Should `useMobile()` become reactive (it is mount-once at 1024) so the viewport-meta decision tracks live resizes, or is mount-once acceptable since device class rarely changes mid-session? (§12.1)

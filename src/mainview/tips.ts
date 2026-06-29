@@ -978,6 +978,32 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	// Batch 42: mobile board carousel
+	{
+		id: "mobile-board-carousel",
+		titleKey: "tip.mobileBoardCarousel.title",
+		bodyKey: "tip.mobileBoardCarousel.body",
+		icon: "\u{F1252}", // nf-md-gesture_swipe_horizontal
+		score: 2,
+		contexts: ["board"],
+	},
+	// Batch 43: mobile terminal pane pager
+	{
+		id: "mobile-pane-pager",
+		titleKey: "tip.mobilePanePager.title",
+		bodyKey: "tip.mobilePanePager.body",
+		icon: "\u{F0BCA}", // nf-md-arrow_left_right
+		score: 3,
+		contexts: ["terminal"],
+	},
+	{
+		id: "pane-zoom-restore",
+		titleKey: "tip.paneZoomRestore.title",
+		bodyKey: "tip.paneZoomRestore.body",
+		icon: "\u{F0294}", // nf-md-fullscreen_exit
+		score: 2,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

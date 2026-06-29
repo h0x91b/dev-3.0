@@ -1,0 +1,86 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "../rpc";
+import { useT } from "../i18n";
+
+/**
+ * Full-viewport (non-narrow) tmux zoom indicator.
+ *
+ * tmux's zoom flag is shared, per-window state and easy to miss: a pane zoomed
+ * on a phone (the one-pane carousel view) leaks to the desktop split, and `⌃B z`
+ * leaves no obvious way back. This badge surfaces the zoomed state and offers a
+ * one-tap un-zoom.
+ *
+ * It only ever READS zoom (a read-only `tmuxPaneNavigate` poll) — it never
+ * mutates the shared view unless the user taps it. We deliberately do NOT
+ * auto-un-zoom on entry: that would fight a deliberate desktop `⌃B z` and break
+ * a phone client attached to the same session (see decision 091).
+ */
+const ZOOM_POLL_MS = 3000;
+
+function PaneZoomBadge({ taskId }: { taskId: string }) {
+	const t = useT();
+	const [zoomed, setZoomed] = useState(false);
+	const [multi, setMulti] = useState(false);
+	const busyRef = useRef(false);
+
+	const read = useCallback(
+		async (zoom?: boolean) => {
+			if (busyRef.current) return;
+			busyRef.current = true;
+			try {
+				const res = await api.request.tmuxPaneNavigate(zoom === undefined ? { taskId } : { taskId, zoom });
+				setZoomed(res.zoomed);
+				setMulti(res.count > 1);
+			} catch {
+				// Transient (session not ready / restarting) — the next poll retries.
+			} finally {
+				busyRef.current = false;
+			}
+		},
+		[taskId],
+	);
+
+	useEffect(() => {
+		let cancelled = false;
+		const tick = () => {
+			if (!cancelled) void read();
+		};
+		tick();
+		const id = setInterval(tick, ZOOM_POLL_MS);
+		return () => {
+			cancelled = true;
+			clearInterval(id);
+		};
+	}, [read]);
+
+	// A single-pane window is always "full" — zoom is meaningless, show nothing.
+	if (!zoomed || !multi) return null;
+
+	return (
+		<button
+			type="button"
+			onClick={() => read(false)}
+			title={t("paneZoom.restore")}
+			aria-label={t("paneZoom.restore")}
+			className="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-full border border-hint-border bg-hint px-3 py-1 text-xs font-bold uppercase tracking-wide text-hint-fg shadow-lg shadow-black/40 transition-[filter] hover:brightness-110"
+		>
+			{/* Same custom zoom glyph as the tmux zoom control (TaskTmuxControls). */}
+			<svg
+				className="h-3.5 w-3.5"
+				viewBox="0 0 24 24"
+				fill="none"
+				strokeWidth={1.5}
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				aria-hidden="true"
+			>
+				<rect x="4" y="6" width="16" height="12" rx="1" stroke="currentColor" />
+				<path d="M2 5 L2 2 L5 2 M19 2 L22 2 L22 5 M22 19 L22 22 L19 22 M5 22 L2 22 L2 19" stroke="currentColor" />
+				<path d="M2 2 L6 6 M22 2 L18 6 M22 22 L18 18 M2 22 L6 18" stroke="currentColor" />
+			</svg>
+			{t("paneZoom.badge")}
+		</button>
+	);
+}
+
+export default PaneZoomBadge;

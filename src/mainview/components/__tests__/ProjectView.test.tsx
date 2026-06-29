@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import ProjectView from "../ProjectView";
@@ -75,5 +75,42 @@ describe("ProjectView task-view layout", () => {
 		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
 		expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
 		expect(screen.queryByText("Select a task to see its terminal")).not.toBeInTheDocument();
+	});
+});
+
+describe("ProjectView narrow viewport (mobile zoom)", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("zooms the task workspace and hides the active-tasks sidebar/strip", async () => {
+		const task = { id: "t1", projectId: "p1", title: "T", status: "in-progress" } as unknown as Task;
+		renderView({ activeTaskId: "t1", tasks: [task] });
+		await waitFor(() => expect(screen.getByTestId("workspace")).toBeInTheDocument());
+		expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
+		expect(screen.queryByTestId("strip")).not.toBeInTheDocument();
+		expect(screen.getByTestId("info-panel")).toBeInTheDocument();
 	});
 });

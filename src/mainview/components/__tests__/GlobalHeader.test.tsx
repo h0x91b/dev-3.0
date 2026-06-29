@@ -28,21 +28,35 @@ import { api } from "../../rpc";
 
 const mockedApi = vi.mocked(api, true);
 
-/** Stub window.matchMedia so the compact breakpoint is deterministic in tests. */
-function mockMatchMedia(matches: boolean) {
+/**
+ * Stub window.innerWidth + matchMedia for a given viewport width. Each
+ * `(max-width: Npx)` query is evaluated against the width, so the compact
+ * (1600) and narrow (768) breakpoints resolve independently — both read
+ * matchMedia now, so a single shared boolean is not enough.
+ */
+function mockViewport(width: number) {
+	Object.defineProperty(window, "innerWidth", { writable: true, configurable: true, value: width });
 	Object.defineProperty(window, "matchMedia", {
 		writable: true,
 		configurable: true,
-		value: vi.fn((query: string) => ({
-			matches,
-			media: query,
-			addEventListener: vi.fn(),
-			removeEventListener: vi.fn(),
-			addListener: vi.fn(),
-			removeListener: vi.fn(),
-			dispatchEvent: vi.fn(),
-		})),
+		value: vi.fn((query: string) => {
+			const m = query.match(/max-width:\s*(\d+)/);
+			return {
+				matches: m ? width <= Number(m[1]) : false,
+				media: query,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			};
+		}),
 	});
+}
+
+/** compact (1600) but NOT narrow (768) when `true`; fully roomy when `false`. */
+function mockMatchMedia(compact: boolean) {
+	mockViewport(compact ? 1024 : 1920);
 }
 
 // Default to the roomy layout (labels visible). happy-dom's default viewport is
@@ -753,5 +767,52 @@ describe("GlobalHeader — virtual (Operations) board git affordances", () => {
 		// Ordinary projects keep ⌘1, ⌘2.
 		expect(rows[1].textContent).toContain("⌘1");
 		expect(rows[2].textContent).toContain("⌘2");
+	});
+});
+
+describe("GlobalHeader — narrow viewport action sheet", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+		mockViewport(390);
+	});
+
+	afterEach(() => mockMatchMedia(false));
+
+	it("folds the right-side cluster into a single kebab", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.getByLabelText("More")).toBeInTheDocument();
+		// Inline simple-action buttons are gone (folded into the sheet).
+		expect(screen.queryByTitle("Project Terminal (⌘`)")).not.toBeInTheDocument();
+	});
+
+	it("opens a bottom sheet exposing the command palette and folded actions", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" });
+		await user.click(screen.getByLabelText("More"));
+		expect(screen.getByTestId("header-action-sheet")).toBeInTheDocument();
+		expect(screen.getByText("Command palette")).toBeInTheDocument();
+		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
+		expect(screen.getByText("Settings")).toBeInTheDocument();
+	});
+
+	it("command palette row dispatches the open-command-palette event", async () => {
+		const user = userEvent.setup();
+		const handler = vi.fn();
+		window.addEventListener("menu:open-command-palette", handler);
+		renderHeader({ screen: "dashboard" });
+		await user.click(screen.getByLabelText("More"));
+		await user.click(screen.getByText("Command palette"));
+		expect(handler).toHaveBeenCalled();
+		window.removeEventListener("menu:open-command-palette", handler);
+	});
+
+	it("project terminal row navigates into the project terminal", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
+		await user.click(screen.getByLabelText("More"));
+		await user.click(screen.getByText("Project Terminal"));
+		expect(navigate).toHaveBeenCalledWith({ screen: "project-terminal", projectId: "p1" });
 	});
 });

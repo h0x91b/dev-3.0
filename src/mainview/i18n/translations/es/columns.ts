@@ -22,6 +22,7 @@ const columns = {
 	"labels.addLabel": "+ Agregar etiqueta",
 	"labels.clearFilters": "Limpiar",
 	"labels.searchPlaceholderTasks": "Buscar tareas...",
+	"labels.openFilters": "Filtrar por etiqueta",
 	"labels.deleteLabel": "Eliminar etiqueta",
 	"labels.labelName": "Nombre de etiqueta",
 	"labels.settingsTitle": "Etiquetas",
