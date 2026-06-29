@@ -6,7 +6,7 @@ import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
-import { getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scanner";
+import { getDescendantPids, getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scanner";
 import { getResourceUsage } from "../resource-monitor";
 import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
@@ -60,12 +60,58 @@ async function killDevServerViewerPane(taskId: string, taskSession: string, devS
 	log.info("Killed dev server viewer pane", { taskId: taskId.slice(0, 8), viewerPaneId });
 }
 
+// tmux `kill-session` only delivers SIGHUP to each pane's *foreground* process
+// (here: the `bash devScriptPath` wrapper). A dev server's real workload —
+// vite/webpack/next, or electrobun plus the GUI `.app` bundle it launches —
+// usually lives in deeper children that run in their own process group or get
+// reparented to init when the wrapper dies, so they survive the teardown and
+// keep holding ports (or windows) open. Snapshot the dev session's full
+// descendant tree and reap it explicitly. See decision 092.
+const DEV_SERVER_KILL_GRACE_MS = 600;
+
+function collectDevServerTreePids(devSession: string, socket: string): number[] {
+	const panePids = getSessionPanePids(socket, devSession);
+	if (panePids.length === 0) return [];
+	const tree = new Set<number>();
+	for (const pid of panePids) {
+		tree.add(pid);
+		for (const child of getDescendantPids(pid)) tree.add(child);
+	}
+	return [...tree];
+}
+
+function signalPids(pids: number[], signal: NodeJS.Signals): void {
+	for (const pid of pids) {
+		try {
+			process.kill(pid, signal);
+		} catch {
+			// Process already gone or not permitted — best-effort reaping.
+		}
+	}
+}
+
+// Reap a previously-captured PID set: SIGTERM for a graceful shutdown (lets dev
+// servers release ports / flush state), then SIGKILL the survivors after a
+// short grace. Pass the PIDs captured *before* the tmux session was torn down —
+// they stay valid after the wrapper dies (children just reparent to init).
+async function reapDevServerTree(pids: number[], devSession: string): Promise<void> {
+	if (pids.length === 0) return;
+	signalPids(pids, "SIGTERM");
+	await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_KILL_GRACE_MS));
+	signalPids(pids, "SIGKILL");
+	log.info("Reaped dev server process tree", { devSession, count: pids.length });
+}
+
 export async function killDevServerSession(taskId: string, socket: string): Promise<void> {
 	const devSession = devServerSessionName(taskId);
 	const taskSession = `dev3-${taskId.slice(0, 8)}`;
+	// Snapshot the process tree while the dev session still exists — afterwards
+	// its pane PIDs are unreachable via tmux.
+	const treePids = collectDevServerTreePids(devSession, socket);
 	await killDevServerViewerPane(taskId, taskSession, devSession, socket);
 	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 	await kill.exited;
+	await reapDevServerTree(treePids, devSession);
 	log.info("Killed dev server session", { taskId: taskId.slice(0, 8), devSession });
 }
 
@@ -1283,8 +1329,12 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 
 	if (!params.sessionName.startsWith("dev3-dev-")) {
 		const devSession = `dev3-dev-${params.sessionName.slice("dev3-".length)}`;
+		// Same orphaned-children problem as the Stop button: snapshot the dev
+		// server's process tree before tearing the session down, then reap it.
+		const treePids = collectDevServerTreePids(devSession, pty.DEFAULT_TMUX_SOCKET);
 		const devKill = spawn(pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 		await devKill.exited;
+		await reapDevServerTree(treePids, devSession);
 		log.info("killTmuxSession: killed dev server session (best-effort)", { devSession });
 	}
 
