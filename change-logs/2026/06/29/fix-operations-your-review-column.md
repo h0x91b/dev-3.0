@@ -1,0 +1,1 @@
+Restore the "Your Review" column on Operations (virtual) boards. Finished operations tasks are handed back via review-by-user, but the board hid that column for virtual projects, so the task disappeared. Now only AI Review and PR Review stay hidden on Operations boards.

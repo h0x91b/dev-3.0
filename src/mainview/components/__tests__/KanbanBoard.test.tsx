@@ -151,12 +151,12 @@ describe("column ordering", () => {
 		expect(labels).not.toContain("PR Review");
 	});
 
-	it("virtual board hides all review columns (todo → in-progress → user-questions → done)", async () => {
+	it("virtual board hides AI/PR review but keeps Your Review (finished ops tasks land there)", async () => {
 		await renderBoardWith({ project: { ...project, kind: "virtual" } });
 		const labels = getColumnLabels();
 		expect(labels).not.toContain("AI Review");
-		expect(labels).not.toContain("Your Review");
 		expect(labels).not.toContain("PR Review");
+		expect(labels).toContain("Your Review");
 		expect(labels).toContain("To Do");
 		expect(labels).toContain("Agent is Working");
 		expect(labels).toContain("Completed");
