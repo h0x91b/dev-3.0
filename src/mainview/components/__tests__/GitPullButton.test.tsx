@@ -128,6 +128,38 @@ describe("GitPullButton", () => {
 		expect(alertMock).not.toHaveBeenCalled();
 	});
 
+	it("shows a centered circular ring spinner while a pull is in progress", async () => {
+		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
+			branch: "main",
+			isBaseBranch: true,
+			isDirty: false,
+		});
+		let resolvePull: (v: any) => void = () => {};
+		(api.request.pullProjectMain as any).mockReturnValue(
+			new Promise((res) => {
+				resolvePull = res;
+			}),
+		);
+		await renderButton();
+		const btn = await screen.findByTestId("git-pull-button");
+		await waitFor(() => expect(btn).not.toBeDisabled());
+		await userEvent.click(btn);
+		// While pulling we show a circular ring spinner instead of a spinning Nerd Font glyph.
+		// A ring is radially symmetric, so it rotates perfectly around its own center (no wobble),
+		// and it carries no text content.
+		const spinner = await screen.findByTestId("git-pull-spinner");
+		expect(spinner.textContent).toBe("");
+		expect(spinner.className).toMatch(/rounded-full/);
+		expect(spinner.className).toMatch(/border-t-current/);
+		expect(spinner.className).toMatch(/w-3\.5/);
+		expect(spinner.className).toMatch(/h-3\.5/);
+		// Settle the pending promise to avoid act() warnings.
+		await act(async () => {
+			resolvePull({ ok: true, branch: "main", output: "Already up to date.", error: "" });
+		});
+		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("up-to-date"));
+	});
+
 	it("flashes 'Failed' and opens the error modal with the error text when pullProjectMain reports ok=false", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "main",

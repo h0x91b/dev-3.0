@@ -4,6 +4,7 @@ import type { BranchStatus, Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
+import { useReducedMotion } from "../../utils/useReducedMotion";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
 export interface TaskBranchStatusMeta {
@@ -50,6 +51,7 @@ export default function TaskGitActions({
 	onOpenInlineDiff,
 }: TaskGitActionsProps) {
 	const t = useT();
+	const reducedMotion = useReducedMotion();
 	const [copiedPath, setCopiedPath] = useState(false);
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
@@ -263,12 +265,27 @@ export default function TaskGitActions({
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
 
 	const gitGlyph = (glyph: string, spin = false) => (
+		// Fixed square slot so the idle glyph and the in-progress ring share one footprint
+		// (the icon does not shift sideways when the spin starts) and both stay centered.
 		<span
-			className={`text-[0.85rem] leading-none${spin ? " animate-spin inline-block" : ""}`}
-			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+			className="inline-flex items-center justify-center w-[0.85rem] h-[0.85rem]"
 			aria-hidden="true"
 		>
-			{glyph}
+			{spin ? (
+				// Circular ring spinner: radially symmetric, so animate-spin rotates it perfectly
+				// around its own center — zero wobble. (A spinning Nerd Font glyph wobbles instead,
+				// because its ink center never lines up with its advance-width × line-height box.)
+				<span
+					className={`w-2.5 h-2.5 rounded-full border-2 border-current/30 border-t-current${reducedMotion ? "" : " animate-spin"}`}
+				/>
+			) : (
+				<span
+					className="text-[0.85rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{glyph}
+				</span>
+			)}
 		</span>
 	);
 
