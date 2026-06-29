@@ -12,6 +12,7 @@ import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
+import { ALT_CLICK_PANE_FORMAT, altClickIneligibleReason, computeAltClickKeys, findAltClickPane, parseAltClickPanes } from "../tmux-alt-click";
 import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
@@ -1728,6 +1729,70 @@ async function tmuxWindowNavigate(params: {
 	return { count: info.count, activeIndex: info.activeIndex, labels: info.labels };
 }
 
+/**
+ * iTerm2-style Alt/Option-click: walk the shell cursor to the clicked cell.
+ *
+ * The renderer cannot gate this on `hasMouseTracking()` — dev3's tmux runs
+ * with `mouse on`, which keeps the OUTER terminal's mouse tracking enabled
+ * for the whole session, plain shell or not (decision 093). So the renderer
+ * forwards the clicked cell here, and tmux is asked what actually runs in
+ * that pane: only plain shells (zsh/bash/fish/…) get arrow keys; TUIs that
+ * own the mouse (Claude Code, vim, htop) are left untouched — the alt-click
+ * SGR event reaches them via the normal mouse pass-through instead.
+ *
+ * col/row are 1-based cells of the outer terminal grid. All decision logic
+ * is pure and unit-tested in ../tmux-alt-click.ts.
+ */
+async function tmuxAltClickMoveCursor(params: { taskId: string; col: number; row: number }): Promise<{ moved: boolean }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+	const x0 = Math.floor(params.col) - 1;
+	const y0 = Math.floor(params.row) - 1;
+	if (x0 < 0 || y0 < 0) return { moved: false };
+
+	// Panes of the session's CURRENT window only (that's what the client shows).
+	const listProc = spawn(
+		pty.tmuxArgs(socket, "list-panes", "-t", tmuxSession, "-F", ALT_CLICK_PANE_FORMAT),
+		{ stdout: "pipe", stderr: "pipe" },
+	);
+	const listOut = await new Response(listProc.stdout).text();
+	if ((await listProc.exited) !== 0) return { moved: false };
+
+	const pane = findAltClickPane(parseAltClickPanes(listOut), x0, y0);
+	if (!pane) return { moved: false };
+
+	const reason = altClickIneligibleReason(pane);
+	if (reason) {
+		log.debug("tmuxAltClickMoveCursor skipped", { taskId: params.taskId.slice(0, 8), pane: pane.paneId, reason });
+		return { moved: false };
+	}
+
+	// Row text of the cursor line — clamps the target to end-of-input so a
+	// click in the blank area right of the text lands exactly at EOL.
+	let rowText = "";
+	const capProc = spawn(
+		pty.tmuxArgs(socket, "capture-pane", "-p", "-t", pane.paneId, "-S", String(pane.cursorY), "-E", String(pane.cursorY)),
+		{ stdout: "pipe", stderr: "pipe" },
+	);
+	const capOut = await new Response(capProc.stdout).text();
+	if ((await capProc.exited) === 0) rowText = capOut.replace(/\n$/, "");
+
+	const plan = computeAltClickKeys(pane, x0, y0, rowText);
+	if (!plan) return { moved: false };
+
+	// Focus the clicked pane (alt-clicks bypass tmux's own MouseDown1Pane
+	// select-pane binding). Skip when already active — select-pane would
+	// needlessly unzoom a zoomed window (see tmuxPaneNavigate gotcha).
+	if (!pane.active) {
+		await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", pane.paneId));
+	}
+	await runTmuxQuiet(
+		pty.tmuxArgs(socket, "send-keys", "-t", pane.paneId, ...Array<string>(plan.count).fill(plan.key)),
+	);
+	log.info("← tmuxAltClickMoveCursor", { taskId: params.taskId.slice(0, 8), pane: pane.paneId, key: plan.key, count: plan.count });
+	return { moved: true };
+}
+
 async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
 	const listProc = spawn(
 		pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id} #{pane_in_mode}"),
@@ -2162,6 +2227,7 @@ export const tmuxPtyHandlers = {
 	tmuxPaneNavigate,
 	tmuxLayout,
 	tmuxWindowNavigate,
+	tmuxAltClickMoveCursor,
 	exitCopyModeAllPanes,
 	spawnAgentInTask,
 	spawnBugHuntersInTask,

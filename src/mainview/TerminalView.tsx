@@ -117,6 +117,36 @@ export function buildResizeDance(cols: number, rows: number): [string, string] {
 	];
 }
 
+/**
+ * iTerm2-style Alt/Option-click cursor move. Given the current readline cursor
+ * cell and the clicked cell (both 1-indexed, viewport-relative), return the
+ * plain CSI arrow sequence that walks the cursor horizontally to the target.
+ *
+ * v1 is horizontal-only and confined to the cursor's own row:
+ * - A cross-row click returns "" (no-op). In a shell, Up/Down map to command
+ *   history, not cursor motion, and a different row usually means a different
+ *   tmux pane, scrollback, or a wrapped/multi-line buffer we cannot resolve
+ *   unambiguously — so we deliberately do nothing.
+ * - A zero horizontal delta returns "".
+ *
+ * Otherwise it emits |Δcol| of \x1b[C (right) or \x1b[D (left). Plain arrows
+ * (no Alt modifier) are emitted on purpose so the sequence never collides with
+ * tmux's `bind -n M-Left/Right` pane-switch bindings (which are Alt+Arrow).
+ *
+ * Exported for unit testing — keeps the delta→sequence mapping pinned.
+ */
+export function buildCursorMoveSequence(
+	fromCol: number,
+	fromRow: number,
+	toCol: number,
+	toRow: number,
+): string {
+	if (fromRow !== toRow) return "";
+	const dCol = toCol - fromCol;
+	if (dCol === 0) return "";
+	return (dCol > 0 ? "\x1b[C" : "\x1b[D").repeat(Math.abs(dCol));
+}
+
 // ghostty-web 0.4.0 never invalidates the selection when the terminal content
 // changes. A selection goes stale whenever the app OWNS THE SCREEN and repaints
 // cells in place instead of scrolling the buffer — the highlight is anchored to
@@ -603,6 +633,16 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				);
 			}
 
+			// SGR mouse encoding carries modifiers as bits added to the button
+			// code (4=Shift, 8=Meta/Alt, 16=Ctrl). We forward only Alt: tmux
+			// passes it through to mouse-owning apps, so Claude Code's built-in
+			// Option-click-to-move-cursor receives a real M-click instead of a
+			// silently stripped plain click. Shift/Ctrl stay unencoded — Shift
+			// is the conventional "bypass mouse reporting" modifier.
+			function altBit(e: MouseEvent): number {
+				return e.altKey ? 8 : 0;
+			}
+
 			function onMouseDown(e: MouseEvent) {
 				if (disposed) return;
 				try {
@@ -611,7 +651,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 					copyDiagnosticsRef.current?.markMouseTrackingIntercept(e.button);
 					trackedButton = e.button;
 					const [col, row] = cellCoords(e);
-					sgrMouse(e.button, col, row, true);
+					sgrMouse(e.button | altBit(e), col, row, true);
 					e.preventDefault();
 					e.stopPropagation();
 				} catch { /* disposed */ }
@@ -625,7 +665,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 					trackedButton = -1;
 					if (!term.hasMouseTracking()) return;
 					const [col, row] = cellCoords(e);
-					sgrMouse(btn, col, row, false);
+					sgrMouse(btn | altBit(e), col, row, false);
 				} catch { /* disposed */ }
 			}
 
@@ -634,10 +674,71 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				try {
 					if (!term.hasMouseTracking() || trackedButton < 0) return;
 					const [col, row] = cellCoords(e);
-					sgrMouse(trackedButton + 32, col, row, true);
+					sgrMouse((trackedButton | altBit(e)) + 32, col, row, true);
 					e.stopPropagation();
 				} catch { /* disposed */ }
 			}
+
+			// iTerm2-style Alt/Option-click to move the readline cursor.
+			//
+			// Two paths, because dev3's tmux runs with `mouse on`, which keeps
+			// the OUTER terminal's mouse tracking enabled for the whole session
+			// (verified: tmux emits ?1000h/?1002h/?1006h on attach — decision
+			// 093). So `hasMouseTracking()` can NOT distinguish a plain shell
+			// pane from a TUI here:
+			//
+			// - tracking ON (tmux/app owns the mouse): delegate to the backend,
+			//   which asks tmux what runs in the clicked pane and sends arrow
+			//   keys only for plain shells. The event is NOT swallowed — the
+			//   SGR path above still delivers the alt-click to mouse-owning
+			//   apps (Claude Code's built-in alt-click keeps working).
+			//
+			// - tracking OFF (bare PTY, no tmux): move locally via ghostty's
+			//   cursor and plain CSI arrows over the WS, and swallow the click
+			//   so it never starts a selection. Attached to the canvas's PARENT
+			//   in the capture phase so it pre-empts ghostty-web's own canvas
+			//   mousedown (bubble-phase) selection handler, which is registered
+			//   first and does not check defaultPrevented.
+			function onAltClickMove(e: MouseEvent) {
+				if (disposed) return;
+				try {
+					if (!e.altKey || e.button !== 0) return;
+					const [toCol, toRow] = cellCoords(e);
+
+					if (term.hasMouseTracking()) {
+						const request = api.request.tmuxAltClickMoveCursor({
+							taskId,
+							col: toCol,
+							row: toRow,
+						});
+						if (request && typeof (request as Promise<unknown>).catch === "function") {
+							(request as Promise<unknown>).catch(() => {});
+						}
+						return;
+					}
+
+					const cursor = term.buffer.active;
+					const seq = buildCursorMoveSequence(
+						cursor.cursorX + 1,
+						cursor.cursorY + 1,
+						toCol,
+						toRow,
+					);
+					if (seq && wsRef.current?.readyState === WebSocket.OPEN) {
+						wsRef.current.send(seq);
+					}
+					// Swallow the alt-click even when the move is a no-op so it
+					// never starts a text selection or fires the copy bridge.
+					e.preventDefault();
+					e.stopPropagation();
+					e.stopImmediatePropagation();
+				} catch { /* disposed */ }
+			}
+
+			const altClickTarget: HTMLElement = containerRef.current ?? canvas;
+			altClickTarget.addEventListener("mousedown", onAltClickMove, {
+				capture: true,
+			});
 
 			canvas.addEventListener("mousedown", onMouseDown, {
 				capture: true,
@@ -671,6 +772,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			});
 
 			return () => {
+				altClickTarget.removeEventListener("mousedown", onAltClickMove, {
+					capture: true,
+				});
 				canvas.removeEventListener("mousedown", onMouseDown, {
 					capture: true,
 				});

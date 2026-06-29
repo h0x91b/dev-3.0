@@ -258,6 +258,8 @@ const tips = {
 	"tip.statsTimeTravel.body": "On Productivity Stats, use the ‹ › arrows next to the range switch to step back through past days, weeks, and months.",
 	"tip.todoDetailRun.title": "Run a task from its details",
 	"tip.todoDetailRun.body": "Open any To Do task to read the full description — then start it right there with the Run button in the footer.",
+	"tip.altClickMoveCursor.title": "Alt-click moves the cursor",
+	"tip.altClickMoveCursor.body": "At a shell prompt, hold Option/Alt and click anywhere on the line to jump the cursor there — no arrow-key holding.",
 } as const;
 
 export default tips;

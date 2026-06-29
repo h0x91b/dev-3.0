@@ -240,6 +240,8 @@ const tips = {
 	"tip.statsMilestones.body": "Заверши 100, 500 или 1000 задач — на экране статистики откроются медали с прогрессом до следующей.",
 	"tip.devServerStatus.title": "Статус dev-сервера с первого взгляда",
 	"tip.devServerStatus.body": "Кнопка Dev Server светится зелёным с живой точкой, пока сервер работает, и крутит спиннер во время запуска.",
+	"tip.altClickMoveCursor.title": "Alt-клик двигает курсор",
+	"tip.altClickMoveCursor.body": "В приглашении шелла зажмите Option/Alt и кликните в любом месте строки — курсор прыгнет туда, не нужно держать стрелку.",
 	"tip.statsBeatAverage.title": "Побей свой средний",
 	"tip.statsBeatAverage.body": "Красная зона на каждом гейдже статистики — это твой обычный темп; перешагни её стрелкой, чтобы превзойти норму.",
 	"tip.mobileBoardCarousel.title": "Свайпайте между колонками",

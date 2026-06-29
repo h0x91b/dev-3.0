@@ -1,5 +1,5 @@
 import { render, act, waitFor } from "@testing-library/react";
-import TerminalView, { buildResizeDance, clearStaleSelectionOnWrite } from "../TerminalView";
+import TerminalView, { buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import { KEYMAP_LS_KEY } from "../terminal-keymaps";
@@ -10,6 +10,7 @@ const {
 	mockFocus,
 	mockInput,
 	mockTermInstance,
+	mockBufferActive,
 	mockOnDataDispose,
 	mockOnResizeDispose,
 	mockOnSelectionChangeDispose,
@@ -25,11 +26,14 @@ const {
 		removeEventListener: vi.fn(),
 		getBoundingClientRect: () => ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100 }),
 	};
+	// Mutable cursor for the alt-click tests (ghostty buffer API surface).
+	const mockBufferActive = { cursorX: 0, cursorY: 0 };
 	const mockTermInstance = {
 		loadAddon: vi.fn(),
 		open: vi.fn(),
 		focus: mockFocus,
 		input: mockInput,
+		buffer: { active: mockBufferActive },
 		onData: vi.fn(() => ({ dispose: mockOnDataDispose })),
 		onResize: vi.fn(() => ({ dispose: mockOnResizeDispose })),
 		onSelectionChange: vi.fn(() => ({ dispose: mockOnSelectionChangeDispose })),
@@ -58,6 +62,7 @@ const {
 		mockInput,
 		mockCanvas,
 		mockTermInstance,
+		mockBufferActive,
 		mockOnDataDispose,
 		mockOnResizeDispose,
 		mockOnSelectionChangeDispose,
@@ -86,6 +91,7 @@ vi.mock("../rpc", () => ({
 		request: {
 			uploadFileBase64: vi.fn(),
 			tmuxAction: vi.fn(),
+			tmuxAltClickMoveCursor: vi.fn().mockResolvedValue({ moved: true }),
 			logRendererEvent: vi.fn().mockResolvedValue(undefined),
 			copyTerminalSelection: vi.fn().mockResolvedValue({ ok: true, tool: "pbcopy" }),
 		},
@@ -732,6 +738,126 @@ describe("buildResizeDance", () => {
 		const nudgeRows = Number(nudge.match(/resize;\d+;(\d+)/)![1]);
 		const correctRows = Number(correct.match(/resize;\d+;(\d+)/)![1]);
 		expect(nudgeRows - correctRows).toBe(1);
+	});
+});
+
+// ── Alt/Option-click gesture wiring ──────────────────────────────────────────
+
+describe("TerminalView – alt-click cursor move", () => {
+	afterEach(() => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+		mockBufferActive.cursorX = 0;
+		mockBufferActive.cursorY = 0;
+	});
+
+	function altClick(container: HTMLElement, clientX: number, clientY: number): boolean {
+		// canvas rect is mocked at (0,0), charWidth 8, charHeight 16
+		// → col = floor(x/8)+1, row = floor(y/16)+1
+		return container.dispatchEvent(
+			new MouseEvent("mousedown", {
+				altKey: true,
+				button: 0,
+				clientX,
+				clientY,
+				bubbles: true,
+				cancelable: true,
+			}),
+		);
+	}
+
+	it("delegates to the backend when mouse tracking is on (tmux) and does NOT swallow the click", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { container } = await renderAndSetup();
+		const termEl = container.querySelector('[data-terminal="true"]') as HTMLElement;
+
+		// clientX 20 → col 3, clientY 10 → row 1
+		const notPrevented = altClick(termEl, 20, 10);
+
+		expect(api.request.tmuxAltClickMoveCursor).toHaveBeenCalledWith({ taskId: "t1", col: 3, row: 1 });
+		// Not swallowed — the SGR mouse path must still deliver the alt-click
+		// to mouse-owning apps (Claude Code's built-in alt-click).
+		expect(notPrevented).toBe(true);
+		// No local arrows over the WS in this mode.
+		expect(lastWebSocket!.send).not.toHaveBeenCalled();
+	});
+
+	it("moves locally via CSI arrows and swallows the click when tracking is off (bare PTY)", async () => {
+		mockBufferActive.cursorX = 0; // cursor col 1
+		mockBufferActive.cursorY = 0; // cursor row 1
+		const { container } = await renderAndSetup();
+		const termEl = container.querySelector('[data-terminal="true"]') as HTMLElement;
+
+		const notPrevented = altClick(termEl, 20, 10); // col 3, row 1 → 2 × Right
+
+		expect(lastWebSocket!.send).toHaveBeenCalledWith("\x1b[C\x1b[C");
+		expect(notPrevented).toBe(false); // swallowed
+		expect(api.request.tmuxAltClickMoveCursor).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op for a cross-row click when tracking is off, but still swallows it", async () => {
+		mockBufferActive.cursorX = 0;
+		mockBufferActive.cursorY = 0; // cursor row 1
+		const { container } = await renderAndSetup();
+		const termEl = container.querySelector('[data-terminal="true"]') as HTMLElement;
+
+		const notPrevented = altClick(termEl, 20, 30); // row 2 ≠ cursor row 1
+
+		expect(lastWebSocket!.send).not.toHaveBeenCalled();
+		expect(notPrevented).toBe(false); // still swallowed — no stray selection
+	});
+
+	it("ignores non-alt clicks entirely", async () => {
+		const { container } = await renderAndSetup();
+		const termEl = container.querySelector('[data-terminal="true"]') as HTMLElement;
+
+		const notPrevented = termEl.dispatchEvent(
+			new MouseEvent("mousedown", { button: 0, clientX: 20, clientY: 10, bubbles: true, cancelable: true }),
+		);
+
+		expect(notPrevented).toBe(true);
+		expect(lastWebSocket!.send).not.toHaveBeenCalled();
+		expect(api.request.tmuxAltClickMoveCursor).not.toHaveBeenCalled();
+	});
+});
+
+// ── buildCursorMoveSequence — Alt/Option-click cursor move (horizontal only) ──
+
+describe("buildCursorMoveSequence", () => {
+	const RIGHT = "\x1b[C";
+	const LEFT = "\x1b[D";
+
+	it("emits right-arrows when the target is to the right on the same row", () => {
+		// cursor at col 3, click col 7 → 4 × right
+		expect(buildCursorMoveSequence(3, 10, 7, 10)).toBe(RIGHT.repeat(4));
+	});
+
+	it("emits left-arrows when the target is to the left on the same row", () => {
+		// cursor at col 20, click col 5 → 15 × left
+		expect(buildCursorMoveSequence(20, 10, 5, 10)).toBe(LEFT.repeat(15));
+	});
+
+	it("emits nothing when the click lands on the cursor cell", () => {
+		expect(buildCursorMoveSequence(12, 4, 12, 4)).toBe("");
+	});
+
+	it("is a no-op for any cross-row click (vertical = shell history, not motion)", () => {
+		// Same column, different row — must NOT emit history-walking up/down arrows.
+		expect(buildCursorMoveSequence(8, 5, 8, 9)).toBe("");
+		// Different column AND row — still skipped (ambiguous pane / wrap).
+		expect(buildCursorMoveSequence(8, 5, 30, 6)).toBe("");
+	});
+
+	it("never emits Alt+Arrow (plain CSI only) so tmux pane-switch is untouched", () => {
+		const seq = buildCursorMoveSequence(1, 1, 4, 1);
+		// Plain CSI C/D, not the M-Left/Right \x1b\x1b[ or \x1b[1;3 forms.
+		expect(seq).toBe(RIGHT.repeat(3));
+		expect(seq).not.toContain("\x1b\x1b");
+		expect(seq).not.toContain(";3");
+	});
+
+	it("scales the move by the exact column delta (one arrow per column)", () => {
+		expect(buildCursorMoveSequence(1, 7, 101, 7)).toBe(RIGHT.repeat(100));
+		expect(buildCursorMoveSequence(1, 7, 101, 7).length).toBe(100 * RIGHT.length);
 	});
 });
 
