@@ -40,6 +40,8 @@ import {
 	hasSession,
 	hasDeadSession,
 	capturePane,
+	getTmuxLayout,
+	parseWindowLayout,
 	getSessionProjectId,
 	getSessionSocket,
 	getSessionTmuxName,
@@ -598,6 +600,132 @@ describe("pty-server", () => {
 			);
 
 			expect(await capturePane("no-such-session")).toBeNull();
+		});
+	});
+
+	// ------- getTmuxLayout -------
+
+	describe("getTmuxLayout", () => {
+		function makeProc(stdout: string, exitCode: number): any {
+			const bytes = new TextEncoder().encode(stdout);
+			return {
+				pid: 777,
+				kill: vi.fn(),
+				stdout: new Response(new Blob([bytes as BlobPart])).body,
+				exited: Promise.resolve(exitCode),
+			};
+		}
+
+		// Two side-by-side panes in a single window (a 200-col window split down
+		// the middle, with a 1-col divider at column 99). The window_layout (5th
+		// field) is the zoom-independent geometry source.
+		const WINDOWS = "0\tmain\t1\t2\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\n";
+		const PANES =
+			"0\t%1\t1\t0\t0\t99\t50\tclaude\tAgent\n" + "0\t%2\t0\t100\t0\t100\t50\tzsh\tShell\n";
+
+		function mockLayoutSpawn(opts: { windows?: string; windowsExit?: number; panes?: string; panesExit?: number } = {}) {
+			mockSpawn.mockImplementation((cmd: any) => {
+				if (Array.isArray(cmd) && cmd.includes("list-windows")) {
+					return makeProc(opts.windows ?? WINDOWS, opts.windowsExit ?? 0) as any;
+				}
+				if (Array.isArray(cmd) && cmd.includes("list-panes")) {
+					return makeProc(opts.panes ?? PANES, opts.panesExit ?? 0) as any;
+				}
+				return defaultSpawnReturn() as any;
+			});
+		}
+
+		it("parses windows and pane geometry", async () => {
+			mockLayoutSpawn();
+			const layout = await getTmuxLayout("task-layout-01");
+
+			expect(layout.exists).toBe(true);
+			expect(layout.windows).toHaveLength(1);
+			expect(layout.windows[0]).toMatchObject({ index: 0, name: "main", active: true, panes: 2 });
+
+			expect(layout.panes).toHaveLength(2);
+			expect(layout.panes[0]).toMatchObject({
+				windowIndex: 0,
+				paneId: "%1",
+				active: true,
+				left: 0,
+				top: 0,
+				width: 99,
+				height: 50,
+				command: "claude",
+				title: "Agent",
+			});
+			expect(layout.panes[1]).toMatchObject({ paneId: "%2", active: false, left: 100, width: 100 });
+		});
+
+		it("uses the session socket and target session name", async () => {
+			mockLayoutSpawn();
+			await getTmuxLayout("task-layout-02", "custom-sock");
+
+			const winCall = mockSpawn.mock.calls.find((c) => Array.isArray(c[0]) && c[0].includes("list-windows"));
+			expect(winCall).toBeDefined();
+			expect(winCall![0]).toContain("-L");
+			expect(winCall![0]).toContain("custom-sock");
+		});
+
+		it("returns an empty layout when the session is gone (list-windows fails)", async () => {
+			mockLayoutSpawn({ windowsExit: 1 });
+			const layout = await getTmuxLayout("task-layout-03");
+
+			expect(layout.exists).toBe(false);
+			expect(layout.windows).toHaveLength(0);
+			expect(layout.panes).toHaveLength(0);
+		});
+
+		it("tolerates a pane title containing tabs/spaces", async () => {
+			mockLayoutSpawn({ panes: "0\t%1\t1\t0\t0\t200\t50\tvim\tmy file.txt\n" });
+			const layout = await getTmuxLayout("task-layout-04");
+			expect(layout.panes[0].title).toBe("my file.txt");
+		});
+
+		it("uses zoom-independent window_layout geometry over collapsed pane fields", async () => {
+			// While the window is zoomed, list-panes collapses the ACTIVE pane to the
+			// full window (200 wide, left 0) — overlapping the other pane. The real
+			// split must still come from window_layout (%1 = 99 wide @ left 0).
+			mockLayoutSpawn({
+				panes: "0\t%1\t1\t0\t0\t200\t50\tclaude\tAgent\n" + "0\t%2\t0\t100\t0\t100\t50\tzsh\tShell\n",
+			});
+			const layout = await getTmuxLayout("task-layout-05");
+
+			expect(layout.panes[0]).toMatchObject({ paneId: "%1", left: 0, width: 99 });
+			expect(layout.panes[1]).toMatchObject({ paneId: "%2", left: 100, width: 100 });
+			// The collapsed full-window width (200) must NOT leak through.
+			expect(layout.panes[0].width).not.toBe(200);
+		});
+
+		it("falls back to per-pane geometry when window_layout is absent", async () => {
+			mockLayoutSpawn({ windows: "0\tmain\t1\t1\t\n", panes: "0\t%7\t1\t3\t4\t80\t20\tzsh\tShell\n" });
+			const layout = await getTmuxLayout("task-layout-06");
+			expect(layout.panes[0]).toMatchObject({ paneId: "%7", left: 3, top: 4, width: 80, height: 20 });
+		});
+	});
+
+	describe("parseWindowLayout", () => {
+		it("extracts leaf geometry keyed by pane id, ignoring containers", () => {
+			const geom = parseWindowLayout("21be,200x50,0,0{100x50,0,0,0,99x50,101,0[99x25,101,0,1,99x24,101,26,2]}");
+			expect(geom.get("%0")).toEqual({ left: 0, top: 0, width: 100, height: 50 });
+			expect(geom.get("%1")).toEqual({ left: 101, top: 0, width: 99, height: 25 });
+			expect(geom.get("%2")).toEqual({ left: 101, top: 26, width: 99, height: 24 });
+			// The container cell (99x50,101,0) must not be mistaken for a pane.
+			expect(geom.size).toBe(3);
+		});
+
+		it("maps the trailing integer to pane id (not pane index) after a kill", () => {
+			// Non-contiguous ids: %0 and %2 survive; layout uses ids 0 and 2.
+			const geom = parseWindowLayout("4f3b,200x50,0,0{100x50,0,0,0,99x50,101,0,2}");
+			expect(geom.has("%0")).toBe(true);
+			expect(geom.has("%2")).toBe(true);
+			expect(geom.has("%1")).toBe(false);
+		});
+
+		it("returns an empty map for an empty/garbage layout", () => {
+			expect(parseWindowLayout("").size).toBe(0);
+			expect(parseWindowLayout("not-a-layout").size).toBe(0);
 		});
 	});
 

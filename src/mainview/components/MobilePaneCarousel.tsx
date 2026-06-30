@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import PaneMapSheet from "./PaneMapSheet";
 
 /**
  * Narrow-viewport terminal pane switcher. The tmux window is kept zoomed to one
@@ -37,6 +38,7 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 	const [info, setInfo] = useState<PaneInfo>({ count: 0, activeIndex: 0, zoomed: false, labels: [] });
 	const [dragDx, setDragDx] = useState(0);
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [mapOpen, setMapOpen] = useState(false);
 	// Auto-zoom only the FIRST time a multi-pane session is seen, so we never
 	// fight a user who deliberately un-zoomed to inspect the split.
 	const zoomedOnEntryRef = useRef(false);
@@ -48,7 +50,7 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 	countRef.current = info.count;
 
 	const navigate = useCallback(
-		async (opts?: { step?: "next" | "prev"; index?: number; zoom?: boolean }): Promise<PaneInfo | null> => {
+		async (opts?: { step?: "next" | "prev"; index?: number; paneId?: string; zoom?: boolean }): Promise<PaneInfo | null> => {
 			if (busyRef.current) return null;
 			busyRef.current = true;
 			try {
@@ -224,6 +226,15 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 				<div className="relative z-10 flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-edge/60 glass-header">
 					<button
 						type="button"
+						onClick={() => setMapOpen(true)}
+						aria-label={t("paneMap.open")}
+						title={t("paneMap.open")}
+						className={chevronBtn}
+					>
+						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0570}"}</span>
+					</button>
+					<button
+						type="button"
 						onClick={() => navigate({ step: "prev", zoom: true })}
 						aria-label={t("panePager.prev")}
 						title={t("panePager.prev")}
@@ -300,6 +311,15 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 					{children}
 				</div>
 			</div>
+
+			<PaneMapSheet
+				taskId={taskId}
+				open={mapOpen}
+				onClose={() => setMapOpen(false)}
+				onJump={(paneId) => {
+					void navigate({ paneId, zoom: true });
+				}}
+			/>
 		</div>
 	);
 }

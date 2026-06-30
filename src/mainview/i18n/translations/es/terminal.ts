@@ -25,6 +25,19 @@ const terminal = {
 	"panePager.switchPane": "Cambiar de panel",
 	"panePager.pane": "Panel {index}",
 
+	// Pane-map overview sheet (narrow viewport "zoom-out": spatial mini-map of panes)
+	"paneMap.open": "Vista de paneles",
+	"paneMap.title": "Disposición de paneles",
+	"paneMap.hint": "Toca un panel para saltar a él.",
+	"paneMap.loading": "Leyendo disposición…",
+	"paneMap.empty": "No hay paneles que mostrar.",
+	"paneMap.goTo": "Ir a {label}",
+	"paneMap.current": "actual",
+	"paneMap.windows": "Ventanas",
+	"paneMap.untitledWindow": "(sin título)",
+	"paneMap.paneCount_one": "{count} panel",
+	"paneMap.paneCount_other": "{count} paneles",
+
 	// Pane zoom indicator (full viewport: a tmux pane is zoomed)
 	"paneZoom.badge": "Zoom",
 	"paneZoom.restore": "Mostrar todos los paneles",
