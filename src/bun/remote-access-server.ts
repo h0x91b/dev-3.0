@@ -386,20 +386,25 @@ let qrConsumedCallback: (() => void) | null = null;
 /**
  * Resolve the listen port from DEV3_REMOTE_PORT env.
  *
- * Returns 0 (let Bun pick a random port) when unset or invalid. The env is
- * set by the CLI's `--port <n>` flag and is what Docker containers use to
- * map a stable host port to a known container port — otherwise the caller
- * would have to scrape the rolling banner line to discover the port.
+ * Returns 0 (let Bun pick a random port) when unset, invalid, or explicitly "0".
+ * The env is set by the CLI's `--port <n>` flag (Docker maps a stable host port
+ * to a known container port) and by the dev script as `DEV3_REMOTE_PORT=${DEV3_PORT0:-0}`,
+ * which pins the dev app to its task's pool-allocated port — see decision 093.
  *
- * Invalid values (non-numeric, out of range, < 1, > 65535) fall back to 0
- * rather than crashing: the banner will still print a usable URL. Privileged
- * ports (< 1024) are accepted — bind() will fail later and Bun surfaces the
- * EACCES cleanly, which is a more informative error than "refused at startup".
+ * "0" is the documented "pick a random port" sentinel: the dev script's `:-0`
+ * fallback produces it whenever no pool port is allocated, so it is a normal,
+ * expected value — return 0 silently, do NOT warn.
+ *
+ * Genuinely invalid values (non-numeric, negative, > 65535) fall back to 0 with
+ * a warning rather than crashing: the banner still prints a usable URL.
+ * Privileged ports (< 1024) are accepted — bind() will fail later and Bun
+ * surfaces the EACCES cleanly, which is more informative than "refused at startup".
  */
 export function resolveListenPort(): number {
 	const raw = process.env.DEV3_REMOTE_PORT;
 	if (!raw) return 0;
 	const n = Number.parseInt(raw, 10);
+	if (n === 0) return 0; // explicit random-port sentinel — not an error
 	if (!Number.isFinite(n) || n < 1 || n > 65535) {
 		log.warn("Invalid DEV3_REMOTE_PORT, falling back to random port", { raw });
 		return 0;

@@ -20,13 +20,21 @@ bare `bun run dev` (no dev-server, `DEV3_PORT0` unset) working = random, exactly
 as before. Result: the dev web UI binds the same port `dev3 dev-server status`
 prints as `DEV3_PORT0=<port>`, so the QA URL is fully derivable from the CLI.
 
-`resolveListenPort()` is left untouched — `DEV3_REMOTE_PORT` stays the single
-explicit knob; the dev script just maps the pool port onto it.
+`resolveListenPort()` now treats an explicit `"0"` as the silent random-port
+sentinel (no warning) — the `:-0` fallback routinely produces `"0"`, so warning
+on it was misleading noise. `DEV3_REMOTE_PORT` stays the single explicit knob.
 
-**Prerequisite (per-machine, not in-repo):** the dev-3.0 project must have Port
-Allocation ≥ 1 (Project Settings → Port Allocation) for `DEV3_PORT0` to exist.
-With it at 0 the wiring is inert and the port stays random — graceful
-degradation to the old behavior.
+**Activated in-repo:** `portCount: 1` is committed to `.dev3/config.json` so
+`DEV3_PORT0` is allocated for every dev-3.0 task worktree (and every
+contributor), no per-machine setup. `.dev3/config.local.json` would NOT work
+here — it lives only at the project root and is absent from worktrees, so
+`resolveProjectConfig(project, worktreePath)` never sees it.
+
+**Allocate-on-start (`runDevServer`):** the dev-server now calls the idempotent
+`allocatePorts(task.id, portCount)` itself (was: read-only `getPortAssignments`).
+This back-fills tasks whose worktree was created *before* `portCount` was set —
+without it those tasks would never get `DEV3_PORT0` short of recreating the
+worktree. New worktrees still allocate at creation time (`launchTaskPty`).
 
 ## Dev-only vs general for user projects
 

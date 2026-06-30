@@ -109,6 +109,23 @@ describe("config show", () => {
 
 		expect(stdoutOutput).toContain("exists");
 	});
+
+	// The handler maps unset config keys to null (not undefined) so they survive
+	// JSON and stay discoverable — the CLI must render null as "(not set)", not
+	// drop the row or print "null". Guards the config-show visibility fix.
+	it("renders an unset (null) field as '(not set)'", async () => {
+		mockSend.mockResolvedValue(okResp({
+			settings: { portCount: null, setupScript: "bun install" },
+			sources: { setupScript: "repo" },
+			hasRepoConfig: true,
+		}));
+
+		await handleConfig("show", EMPTY_ARGS, SOCKET, CTX_WITH_WT);
+
+		expect(stdoutOutput).toContain("portCount");
+		expect(stdoutOutput).toContain("(not set)");
+		expect(stdoutOutput).not.toContain("null");
+	});
 });
 
 describe("config export", () => {

@@ -633,7 +633,24 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			await killDevServerSession(task.id, socket);
 		}
 
-		const devPorts = portPool.getPortAssignments(task.id);
+		// Ensure pool ports exist for this task before launching. allocatePorts is
+		// idempotent (returns the existing set when the count matches), so this also
+		// back-fills tasks whose worktree was created before Port Allocation
+		// (portCount) was configured — otherwise the dev app's remote web server
+		// (DEV3_REMOTE_PORT=${DEV3_PORT0:-0}) could never bind a deterministic port
+		// on such a task without recreating the worktree. See decision 093.
+		const portCount = resolved.portCount ?? 0;
+		let devPorts = portPool.getPortAssignments(task.id);
+		if (portCount > 0 && devPorts.length !== portCount) {
+			try {
+				devPorts = await portPool.allocatePorts(task.id, portCount);
+				log.info("Dev-server allocated pool ports", { taskId: task.id.slice(0, 8), ports: devPorts });
+			} catch (err) {
+				log.error("Dev-server port allocation failed (non-fatal)", {
+					taskId: task.id.slice(0, 8), portCount, error: String(err),
+				});
+			}
+		}
 		const portExports = devPorts.length > 0
 			? buildEnvExports(portPool.buildPortEnv(devPorts)).join("\n") + "\n"
 			: "";
