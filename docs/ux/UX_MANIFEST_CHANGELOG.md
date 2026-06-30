@@ -107,3 +107,7 @@ Rewrote bible §12 from a single carousel feature into a product-wide narrow-vie
 ## 2026-06-29 — Dev-server button running-state indicator
 
 Added a UX decision + feature plan (`feature-plans/dev-server-button-running-state.md`) for making the single `TaskDevServer` button reflect dev-server state (no-script / stopped / starting / running) instead of always looking green. Sharpened the success-token rule to "running only" and reserved the spinner for the transient start phase (running uses a calm pulsing dot). No new surface, button, or token; no `ux-architecture.yaml` structural change.
+
+## 2026-06-29 — Narrow-viewport tmux windows switcher
+
+Added the narrow-viewport tmux **windows** switcher to the doctrine: a new row in bible §12.3 (Terminal windows → switcher bar above the pane bar, buttons + dropdown, no swipe) and the `feature-plans/narrow-viewport-doctrine.md` §4 work list (now done, decision 093). Added a UX decision. Implemented (not planning-only): `MobileWindowCarousel.tsx` + `tmuxWindowNavigate` RPC, pairing with the existing panes switcher. No new route, nav item, setting, or token.

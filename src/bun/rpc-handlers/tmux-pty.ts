@@ -1617,6 +1617,105 @@ async function tmuxLayout(params: { taskId: string }): Promise<TmuxLayout> {
 	return pty.getTmuxLayout(params.taskId, socket);
 }
 
+interface WindowLayoutInfo {
+	count: number;
+	activeIndex: number;
+	windowIds: string[];
+	labels: string[];
+}
+
+// Field separator for list-windows output: window_name can contain spaces, so a
+// space-delimited format is unparseable. \x1f (unit separator) never appears in
+// a window id or name.
+const WINDOW_FIELD_SEP = "\x1f";
+const WINDOW_LAYOUT_FORMAT = [
+	"#{window_id}",
+	"#{window_active}",
+	"#{window_name}",
+].join(WINDOW_FIELD_SEP);
+
+/**
+ * Read a session's window layout: how many windows (separate workspaces in the
+ * same tmux session), which one is active (by display order), each window's id,
+ * and a human label per window. Drives the narrow-viewport WINDOW switcher (the
+ * sibling of the pane switcher — window = outer workspace, pane = inner split).
+ * Returns an empty layout when the session is gone or tmux errors.
+ *
+ * Label = the window name. Unlike pane_title (which tmux defaults to the
+ * hostname), tmux auto-names a window after its running command, which is
+ * already meaningful; the frontend localises an empty name to "Window N".
+ */
+async function readWindowLayout(socket: string, tmuxSession: string): Promise<WindowLayoutInfo> {
+	try {
+		const proc = spawn(
+			pty.tmuxArgs(socket, "list-windows", "-t", tmuxSession, "-F", WINDOW_LAYOUT_FORMAT),
+			{ stdout: "pipe", stderr: "pipe" },
+		);
+		const stdout = await new Response(proc.stdout).text();
+		const exitCode = await proc.exited;
+		if (exitCode !== 0) return { count: 0, activeIndex: 0, windowIds: [], labels: [] };
+
+		const lines = stdout.trim().split("\n").filter((l) => l.length > 0);
+		const windowIds: string[] = [];
+		const labels: string[] = [];
+		let activeIndex = 0;
+		lines.forEach((line, i) => {
+			const [windowId, active, name] = line.split(WINDOW_FIELD_SEP);
+			windowIds.push(windowId);
+			labels.push((name ?? "").trim());
+			if (active === "1") activeIndex = i;
+		});
+		return { count: lines.length, activeIndex, windowIds, labels };
+	} catch {
+		return { count: 0, activeIndex: 0, windowIds: [], labels: [] };
+	}
+}
+
+/**
+ * Window navigation for the narrow-viewport window switcher. In one round trip
+ * it selects the next/prev/absolute window and returns the fresh layout for the
+ * switcher UI. There is no zoom concept for windows (each window is its own
+ * workspace); the pane carousel handles the one-pane-at-a-time view inside the
+ * newly-active window once the frontend re-reads it.
+ */
+async function tmuxWindowNavigate(params: {
+	taskId: string;
+	step?: "next" | "prev";
+	index?: number;
+}): Promise<{ count: number; activeIndex: number; labels: string[] }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+
+	let info = await readWindowLayout(socket, tmuxSession);
+	if (info.count === 0) return { count: 0, activeIndex: 0, labels: [] };
+
+	// Navigate (only meaningful with more than one window). `:+` / `:-` are the
+	// next / previous window and wrap around, mirroring the pane carousel.
+	if (info.count > 1) {
+		let navigated = false;
+		if (params.step === "next") {
+			await runTmuxQuiet(pty.tmuxArgs(socket, "select-window", "-t", `${tmuxSession}:+`));
+			navigated = true;
+		} else if (params.step === "prev") {
+			await runTmuxQuiet(pty.tmuxArgs(socket, "select-window", "-t", `${tmuxSession}:-`));
+			navigated = true;
+		} else if (typeof params.index === "number" && info.windowIds[params.index]) {
+			await runTmuxQuiet(pty.tmuxArgs(socket, "select-window", "-t", info.windowIds[params.index]));
+			navigated = true;
+		}
+		if (navigated) info = await readWindowLayout(socket, tmuxSession);
+	}
+
+	log.info("← tmuxWindowNavigate", {
+		taskId: params.taskId.slice(0, 8),
+		step: params.step ?? "none",
+		index: params.index ?? -1,
+		count: info.count,
+		activeIndex: info.activeIndex,
+	});
+	return { count: info.count, activeIndex: info.activeIndex, labels: info.labels };
+}
+
 async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
 	const listProc = spawn(
 		pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id} #{pane_in_mode}"),
@@ -2050,6 +2149,7 @@ export const tmuxPtyHandlers = {
 	tmuxPaneCount,
 	tmuxPaneNavigate,
 	tmuxLayout,
+	tmuxWindowNavigate,
 	exitCopyModeAllPanes,
 	spawnAgentInTask,
 	spawnBugHuntersInTask,

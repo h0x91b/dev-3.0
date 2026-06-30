@@ -11,6 +11,7 @@ import TaskInfoPanel from "./TaskInfoPanel";
 import TaskPreparingView from "./TaskPreparingView";
 import ExtraKeyBar from "./ExtraKeyBar";
 import MobilePaneCarousel from "./MobilePaneCarousel";
+import MobileWindowCarousel from "./MobileWindowCarousel";
 import PaneZoomBadge from "./PaneZoomBadge";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -39,6 +40,10 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// On a narrow viewport we keep the tmux window zoomed to one pane and offer a
 	// pager to move between panes (instead of a cramped multi-pane split).
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	// Bumped whenever the window switcher moves to another tmux window, so the
+	// pane carousel re-reads + re-zooms the newly-active window's panes at once
+	// (instead of waiting up to one poll interval).
+	const [windowEpoch, setWindowEpoch] = useState(0);
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
@@ -307,8 +312,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		<div className="h-full w-full flex flex-col overflow-hidden">
 			{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
 			{narrow && ptyUrl ? (
-				// Narrow: swipe / dots / Arrow keys move between zoomed tmux panes.
-				<MobilePaneCarousel taskId={taskId}>{terminalArea}</MobilePaneCarousel>
+				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
+				// Pane swipe / dots / Arrow keys move panes; the window bar moves
+				// between tmux windows (workspaces) and only renders when count > 1.
+				<MobileWindowCarousel taskId={taskId} onSwitch={() => setWindowEpoch((e) => e + 1)}>
+					<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
+				</MobileWindowCarousel>
 			) : (
 				<div className="relative isolate flex-1 min-h-0 overflow-hidden">
 					{terminalArea}

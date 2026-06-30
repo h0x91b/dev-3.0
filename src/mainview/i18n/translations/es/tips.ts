@@ -252,6 +252,8 @@ const tips = {
 	"tip.mobilePaneCreate.body": "En el móvil, toca el botón de paneles sobre el terminal para dividirlo o abrir una ventana de tmux nueva — sin el prefijo ⌃B.",
 	"tip.paneZoomRestore.title": "Detecta un panel en zoom",
 	"tip.paneZoomRestore.body": "Cuando un panel de tmux está en zoom (p. ej. heredado del móvil), aparece una insignia «Zoom» arriba a la derecha del terminal — tócala para restaurar la división completa.",
+	"tip.mobileWindowPager.title": "Cambia de ventana en el móvil",
+	"tip.mobileWindowPager.body": "En una pantalla estrecha, una barra sobre los paneles permite moverte entre ventanas de tmux — toca ‹ › o el nombre para saltar entre espacios de trabajo de la sesión.",
 };
 
 export default tips;

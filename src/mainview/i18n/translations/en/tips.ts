@@ -250,6 +250,8 @@ const tips = {
 	"tip.mobilePaneCreate.body": "On a phone, tap the panes button above the terminal to split it or open a new tmux window — no ⌃B prefix needed.",
 	"tip.paneZoomRestore.title": "Spot a zoomed pane",
 	"tip.paneZoomRestore.body": "When a tmux pane is zoomed (e.g. left over from a phone), a 'Zoomed' badge appears top-right of the terminal — tap it to restore the full split.",
+	"tip.mobileWindowPager.title": "Switch windows on a phone",
+	"tip.mobileWindowPager.body": "On a narrow screen a bar above the panes lets you move between tmux windows — tap ‹ › or the name to jump between separate workspaces in the session.",
 	"tip.devServerStatus.title": "See dev server at a glance",
 	"tip.devServerStatus.body": "The Dev Server button glows green with a live dot while running, and shows a spinner while it starts up.",
 } as const;

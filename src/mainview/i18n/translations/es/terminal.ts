@@ -41,6 +41,13 @@ const terminal = {
 	"paneMap.paneCount_one": "{count} panel",
 	"paneMap.paneCount_other": "{count} paneles",
 
+	// Mobile window switcher (narrow viewport: move between tmux windows / workspaces)
+	"windowPager.role": "Ventanas del terminal",
+	"windowPager.prev": "Ventana anterior",
+	"windowPager.next": "Ventana siguiente",
+	"windowPager.switchWindow": "Cambiar de ventana",
+	"windowPager.window": "Ventana {index}",
+
 	// Pane zoom indicator (full viewport: a tmux pane is zoomed)
 	"paneZoom.badge": "Zoom",
 	"paneZoom.restore": "Mostrar todos los paneles",
