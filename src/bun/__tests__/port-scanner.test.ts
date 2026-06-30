@@ -154,31 +154,57 @@ describe("getDescendantPids", () => {
 		vi.clearAllMocks();
 	});
 
+	// getDescendantPids walks a single `ps -eo pid,ppid` snapshot (NOT `pgrep -P`,
+	// which returns nothing when spawned from the packaged GUI .app — see
+	// decision 095). The mocks below provide that one ps table.
+
 	it("returns children for a single level", () => {
-		mockSpawnSync
-			.mockReturnValueOnce(makeResult("200\n201\n"))
-			.mockReturnValueOnce(makeResult("", 1))
-			.mockReturnValueOnce(makeResult("", 1));
+		mockSpawnSync.mockReturnValue(makeResult("100 1\n200 100\n201 100\n"));
 
 		const result = getDescendantPids(100);
 		expect(result).toEqual([200, 201]);
 	});
 
 	it("returns empty for no children", () => {
-		mockSpawnSync.mockReturnValue(makeResult("", 1));
+		mockSpawnSync.mockReturnValue(makeResult("100 1\n"));
 
 		const result = getDescendantPids(100);
 		expect(result).toEqual([]);
 	});
 
 	it("handles deep nesting", () => {
-		mockSpawnSync
-			.mockReturnValueOnce(makeResult("200\n"))
-			.mockReturnValueOnce(makeResult("300\n"))
-			.mockReturnValueOnce(makeResult("", 1));
+		mockSpawnSync.mockReturnValue(makeResult("100 1\n200 100\n300 200\n"));
 
 		const result = getDescendantPids(100);
 		expect(result).toEqual([200, 300]);
+	});
+
+	it("collects a deep dev-server tree via ONE ps call, not pgrep (decision 095)", () => {
+		// Mirrors the real orphaned tree: bash → bun → electrobun → launcher →
+		// app-bun → caffeinate, where the app subtree is in a different process
+		// group. A `ps` walk must still capture every descendant.
+		mockSpawnSync.mockReturnValue(
+			makeResult(
+				[
+					"10 1", // pane: bash dev.sh
+					"20 10", // bun run dev
+					"30 20", // bash -c
+					"40 30", // node electrobun
+					"50 40", // electrobun bun (new process group)
+					"60 50", // launcher
+					"70 60", // app bun (main.js)
+					"80 70", // caffeinate
+				].join("\n") + "\n",
+			),
+		);
+
+		const result = getDescendantPids(10);
+		expect(result).toEqual([20, 30, 40, 50, 60, 70, 80]);
+		// Exactly one spawn — the ps snapshot. No per-PID pgrep fan-out.
+		expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+		const [argv] = mockSpawnSync.mock.calls[0];
+		expect(argv[0]).toBe("ps");
+		expect(argv).not.toContain("pgrep");
 	});
 });
 
@@ -327,16 +353,18 @@ describe("collectTaskPids", () => {
 		vi.clearAllMocks();
 	});
 
+	// The fallback path (no processTree arg) resolves descendants through
+	// getDescendantPids, which now reads ONE `ps -eo pid,ppid` snapshot per pane
+	// PID instead of per-PID `pgrep` (decision 095).
+
 	it("returns pane PIDs plus descendants", () => {
 		mockSpawnSync
 			// tmux list-panes for main session
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux list-panes for dev server session (none)
 			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep -P 100
-			.mockReturnValueOnce(makeResult("200\n"))
-			// pgrep -P 200
-			.mockReturnValueOnce(makeResult("", 1));
+			// ps snapshot for getDescendantPids(100) → child 200
+			.mockReturnValueOnce(makeResult("100 1\n200 100\n"));
 
 		const pids = collectTaskPids("dev3", "dev3-abc12345");
 		expect(pids).toEqual(new Set([100, 200]));
@@ -354,14 +382,10 @@ describe("collectTaskPids", () => {
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux list-panes for dev3-dev-abc12345 (dev server session)
 			.mockReturnValueOnce(makeResult("500\n"))
-			// pgrep -P 100
-			.mockReturnValueOnce(makeResult("200\n"))
-			// pgrep -P 200
-			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep -P 500
-			.mockReturnValueOnce(makeResult("600\n"))
-			// pgrep -P 600
-			.mockReturnValueOnce(makeResult("", 1));
+			// ps snapshot for getDescendantPids(100) → child 200
+			.mockReturnValueOnce(makeResult("100 1\n200 100\n500 1\n600 500\n"))
+			// ps snapshot for getDescendantPids(500) → child 600
+			.mockReturnValueOnce(makeResult("100 1\n200 100\n500 1\n600 500\n"));
 
 		const pids = collectTaskPids("dev3", "dev3-abc12345");
 		expect(pids).toEqual(new Set([100, 200, 500, 600]));
@@ -379,8 +403,8 @@ describe("collectTaskPids", () => {
 		mockSpawnSync
 			// tmux list-panes for dev3-dev-abc12345
 			.mockReturnValueOnce(makeResult("500\n"))
-			// pgrep -P 500
-			.mockReturnValueOnce(makeResult("", 1));
+			// ps snapshot for getDescendantPids(500) — no children
+			.mockReturnValueOnce(makeResult("500 1\n"));
 
 		const pids = collectTaskPids("dev3", "dev3-dev-abc12345");
 		expect(pids).toEqual(new Set([500]));
@@ -398,8 +422,8 @@ describe("collectTaskPids", () => {
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux list-panes for dev3-dev-abc12345 (no session → exit 1)
 			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep -P 100
-			.mockReturnValueOnce(makeResult("", 1));
+			// ps snapshot for getDescendantPids(100) — no children
+			.mockReturnValueOnce(makeResult("100 1\n"));
 
 		const pids = collectTaskPids("dev3", "dev3-abc12345");
 		expect(pids).toEqual(new Set([100]));
@@ -443,10 +467,8 @@ describe("scanTaskPorts", () => {
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux list-panes for dev server session (none)
 			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep -P 100 (descendants)
-			.mockReturnValueOnce(makeResult("200\n"))
-			// pgrep -P 200 (no more descendants)
-			.mockReturnValueOnce(makeResult("", 1))
+			// ps snapshot for getDescendantPids(100) → child 200
+			.mockReturnValueOnce(makeResult("100 1\n200 100\n"))
 			// lsof
 			.mockReturnValueOnce(makeResult("p200\ncnode\nn*:3000\n"));
 
@@ -462,15 +484,15 @@ describe("scanTaskPorts", () => {
 			.mockReturnValueOnce(makeResult("100\n"))
 			// tmux list-panes for dev server session (none)
 			.mockReturnValueOnce(makeResult("", 1))
-			// pgrep -P 100
-			.mockReturnValueOnce(makeResult("", 1));
+			// ps snapshot for getDescendantPids(100) — no children
+			.mockReturnValueOnce(makeResult("100 1\n"));
 
 		const lsofOutput = "p100\ncbun\nn*:8080\n";
 		const result = scanTaskPorts("dev3", "dev3-abc12345", lsofOutput);
 		expect(result).toEqual([
 			{ port: 8080, pid: 100, processName: "bun" },
 		]);
-		// tmux list-panes (main) + tmux list-panes (dev) + pgrep = 3 calls
+		// tmux list-panes (main) + tmux list-panes (dev) + ps = 3 calls
 		expect(mockSpawnSync).toHaveBeenCalledTimes(3);
 	});
 });

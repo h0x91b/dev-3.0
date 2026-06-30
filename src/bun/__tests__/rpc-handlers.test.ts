@@ -5378,12 +5378,14 @@ describe("handlers.stopDevServer", () => {
 
 		const enc = (s: string) => new TextEncoder().encode(s);
 		// dev session pane pid = 1111, with children 2222 and 3333 (no grandchildren).
+		// Descendants are collected from a single `ps -eo pid,ppid` snapshot, not
+		// `pgrep -P` (which returns nothing from the packaged .app — decision 095).
 		mockSpawnSync.mockImplementation((args: string[]) => {
 			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) {
 				return { exitCode: 0, stdout: enc("1111\n") };
 			}
-			if (args[0] === "pgrep" && args.includes("1111")) {
-				return { exitCode: 0, stdout: enc("2222\n3333\n") };
+			if (args[0] === "ps") {
+				return { exitCode: 0, stdout: enc("1111 1\n2222 1111\n3333 1111\n") };
 			}
 			return { exitCode: 1, stdout: enc("") };
 		});
