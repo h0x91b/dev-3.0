@@ -58,7 +58,13 @@ describe("FolderPickerHost", () => {
 		openFolderPicker();
 
 		const dialog = await screen.findByRole("dialog");
-		expect(dialog.contains(document.activeElement)).toBe(true);
+		// useFocusTrap pulls focus into the dialog from a passive effect
+		// (`container.focus()` in a useEffect), which React flushes asynchronously
+		// after commit. `findByRole` resolves on the DOM mutation, before that
+		// effect is guaranteed to have run — so asserting focus synchronously is a
+		// race that fails intermittently under CI scheduling jitter. Poll until the
+		// trap has landed focus inside the dialog.
+		await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
 	});
 
 	it("opens on request, loads the initial listing, and resolves with the selected path on Select", async () => {
