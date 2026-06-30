@@ -8,6 +8,9 @@ import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { useStatusColors } from "../hooks/useStatusColors";
 import ProjectActionButtons from "./ProjectActionButtons";
+import BottomSheet from "./BottomSheet";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ActivityOverviewProps {
 	projects: Project[];
@@ -26,6 +29,21 @@ const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user", "r
 /** Statuses that are "background work" — collapsed into a summary line. */
 const BACKGROUND_STATUSES: TaskStatus[] = ["in-progress", "review-by-ai"];
 
+/** Statuses that mean "it's your turn" — surfaced above colleague reviews and
+ * given an accent strip on narrow viewports. */
+const NEEDS_ME_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
+
+/** Narrow-viewport ordering of attention rows so the cap never hides your turn:
+ * your questions → your review → colleague PR review → custom-column tasks. */
+const ATTENTION_RANK: Partial<Record<TaskStatus, number>> = {
+	"user-questions": 0,
+	"review-by-user": 1,
+	"review-by-colleague": 2,
+};
+
+/** Max attention rows shown per project on narrow before the "show more" fold. */
+const NARROW_ROW_CAP = 3;
+
 type DropSide = "before" | "after";
 
 function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => string): string {
@@ -40,16 +58,66 @@ function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => strin
 	return t("activity.daysAgo", { count: String(days) });
 }
 
+/** A full-width, touch-sized (≥44px) row inside the per-project action sheet —
+ * the narrow-viewport replacement for the inline icon-button cluster. */
+function ActionSheetButton({
+	glyph,
+	label,
+	onClick,
+	disabled,
+	danger,
+}: {
+	glyph: string;
+	label: string;
+	onClick: () => void;
+	disabled?: boolean;
+	danger?: boolean;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			disabled={disabled}
+			className={`flex w-full items-center gap-3 rounded-lg px-2 py-3 min-h-[44px] text-left text-sm transition-colors disabled:opacity-40 ${danger ? "text-danger hover:bg-danger/10" : "text-fg-2 hover:bg-elevated hover:text-fg"}`}
+		>
+			<span
+				className="w-5 flex-shrink-0 text-center text-[1.125rem] leading-none"
+				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+			>
+				{glyph}
+			</span>
+			<span className="flex-1">{label}</span>
+		</button>
+	);
+}
+
 function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [tasksByProject, setTasksByProject] = useState<Map<string, Task[]>>(new Map());
 	const [loading, setLoading] = useState(true);
 	const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
 	const [dropTarget, setDropTarget] = useState<{ projectId: string; side: DropSide } | null>(null);
+	// Narrow viewport: HTML5 drag and the up/down step buttons are unusable on
+	// touch, so per-project actions + reorder collapse into a single kebab that
+	// opens this action sheet (the project whose id is set here).
+	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
+	// Narrow viewport: per-project task lists are capped to NARROW_ROW_CAP rows;
+	// these are the projects the user has explicitly expanded past the cap.
+	const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
+	}
+
+	function toggleProjectExpanded(projectId: string) {
+		setExpandedProjects((prev) => {
+			const next = new Set(prev);
+			if (next.has(projectId)) next.delete(projectId);
+			else next.add(projectId);
+			return next;
+		});
 	}
 
 	const fetchAllTasks = useCallback(async () => {
@@ -109,6 +177,17 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 	const hasPinnedBuiltin = visibleProjects.length > 0 && isBuiltinOpsProject(visibleProjects[0]);
 	const totalActive = Array.from(tasksByProject.values()).reduce((sum, tasks) => sum + tasks.length, 0);
 
+	// The project backing the open action sheet, with its reorder constraints
+	// recomputed live (so "Move up/down" disable as the project hits an edge).
+	const sheetProject = actionSheetProjectId
+		? visibleProjects.find((p) => p.id === actionSheetProjectId) ?? null
+		: null;
+	const sheetIndex = sheetProject ? visibleProjects.findIndex((p) => p.id === sheetProject.id) : -1;
+	const sheetIsVirtual = sheetProject?.kind === "virtual";
+	const sheetIsBuiltin = sheetProject ? isBuiltinOpsProject(sheetProject) : false;
+	const sheetCannotMoveUp = sheetIndex <= 0 || (hasPinnedBuiltin && sheetIndex === 1) || !!sheetIsVirtual;
+	const sheetCannotMoveDown = sheetIndex === visibleProjects.length - 1 || !!sheetIsVirtual;
+
 	function moveProject(sourceProjectId: string, targetProjectId: string, side: DropSide): string[] {
 		const ids = visibleProjects.map((project) => project.id);
 		const sourceIndex = ids.indexOf(sourceProjectId);
@@ -152,7 +231,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 	}
 
 	return (
-		<div className="h-full overflow-y-auto p-7">
+		<div className="h-full overflow-y-auto p-3 md:p-7">
 			<div className="max-w-5xl mx-auto space-y-4">
 				<button
 					type="button"
@@ -180,7 +259,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						<button
 							type="button"
 							onClick={onOpenAddProject}
-							className="px-4 py-1.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95"
+							className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95 flex-shrink-0"
 						>
 							{t("dashboard.addProject")}
 						</button>
@@ -227,6 +306,20 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						}
 					}
 
+					// Narrow viewport: order attention rows so "your turn" sits first, then
+					// cap the list to NARROW_ROW_CAP behind a "show more" fold. Desktop keeps
+					// the natural order and always shows every row.
+					const rankOf = (task: Task) =>
+						columnOf(task) !== null ? 3 : ATTENTION_RANK[task.status] ?? 3;
+					const orderedRowTasks = narrow
+						? [...rowTasks].sort((a, b) => rankOf(a) - rankOf(b))
+						: rowTasks;
+					const isExpanded = expandedProjects.has(project.id);
+					const canCollapse = narrow && orderedRowTasks.length > NARROW_ROW_CAP;
+					const visibleRowTasks =
+						canCollapse && !isExpanded ? orderedRowTasks.slice(0, NARROW_ROW_CAP) : orderedRowTasks;
+					const hiddenRowCount = orderedRowTasks.length - visibleRowTasks.length;
+
 					return (
 						<div
 							key={project.id}
@@ -238,8 +331,10 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 							{showDropBefore && <div className="absolute top-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 							{showDropAfter && <div className="absolute bottom-0 left-3 right-3 h-0.5 bg-accent rounded-full z-10" />}
 							{/* Project header */}
-							<div className={`group flex items-center gap-2 pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
-								<div className="pl-3 flex items-center gap-0.5">
+							<div className={`group flex items-center gap-2 pl-3 md:pl-0 pr-2 md:pr-4 ${hasActiveTasks ? "py-3" : "py-2.5"} hover:bg-raised-hover transition-colors`}>
+								{/* Reorder cluster — desktop only. On touch, drag and the
+								    step buttons are unusable; reorder lives in the action sheet. */}
+								<div className="hidden md:flex pl-3 items-center gap-0.5">
 									<button
 										type="button"
 										draggable={!!onReorderProjects && !cannotReorder}
@@ -323,19 +418,24 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 												<span className="text-fg-muted text-[0.5625rem] font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
 											)}
 										</div>
+										{/* Subtitle (path / virtual hint) is dead weight on a phone —
+										    name + badge already identify the board. Desktop only. */}
 										{project.kind === "virtual" ? (
-											<div className="text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
+											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
 										) : (
-											<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">{project.path}</div>
+											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate font-mono">{project.path}</div>
 										)}
 									</div>
 								</button>
-								<ProjectActionButtons
-									project={project}
-									navigate={navigate}
-									onRemove={onRemoveProject}
-									className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-								/>
+								{/* Desktop: hover-revealed inline icon cluster. */}
+								<div className="hidden md:flex">
+									<ProjectActionButtons
+										project={project}
+										navigate={navigate}
+										onRemove={onRemoveProject}
+										className="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+									/>
+								</div>
 								<button
 									type="button"
 									onClick={() => openProject(project.id)}
@@ -346,51 +446,97 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 									) : (
 										<span className="text-fg-muted text-xs">{t("activity.noActiveInProject")}</span>
 									)}
-									<svg className="w-4 h-4 text-fg-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									{/* Chevron is redundant on narrow — the name + count already
+									    navigate, so it only crowds the row end where the kebab sits. */}
+									<svg className="hidden md:block w-4 h-4 text-fg-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
 									</svg>
 								</button>
+								{/* Narrow: a single kebab folds every per-project action + reorder
+								    into a bottom sheet. Rendered last so it sits at the true row end. */}
+								{narrow && (
+									<button
+										type="button"
+										onClick={(event) => {
+											event.stopPropagation();
+											setActionSheetProjectId(project.id);
+										}}
+										className="flex h-11 w-11 items-center justify-center rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors flex-shrink-0"
+										title={t("activity.projectActions")}
+										aria-label={t("activity.projectActions")}
+										aria-haspopup="dialog"
+									>
+										<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+									</button>
+								)}
 							</div>
 
 							{hasActiveTasks && (
 								<div className="border-t border-edge">
-									{/* Attention + custom-column tasks — shown individually */}
-									{rowTasks.map((task) => {
+									{/* Attention + custom-column tasks — shown individually. On narrow
+									    each row stacks (title on its own line, meta below) so the title
+									    is readable instead of squeezed by the status + time cluster. */}
+									{visibleRowTasks.map((task) => {
 										const col = columnOf(task);
 										const rowColor = col ? col.color : statusColors[task.status];
 										const rowLabel = col ? col.name : getStatusLabel(task.status, t, project);
+										const needsMe = !col && NEEDS_ME_STATUSES.includes(task.status);
 										return (
 										<button
 											key={task.id}
 											data-hint-id={`task:${task.id}`}
 											onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
-											className="w-full flex items-center gap-3 px-5 py-2.5 hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0"
+											className="relative w-full flex items-start md:items-center gap-3 px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0"
 										>
+											{/* "Your turn" accent strip — narrow only (keeps desktop intact). */}
+											{narrow && needsMe && (
+												<span
+													className="absolute left-0 top-0 bottom-0 w-0.5"
+													style={{ backgroundColor: rowColor }}
+												/>
+											)}
 											<span
-												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+												className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${narrow ? "mt-1.5" : ""}`}
 												style={{ backgroundColor: rowColor }}
 												title={rowLabel}
 											/>
-											<span className="text-fg-2 text-sm truncate flex-1">
-												{getTaskTitle(task)}
-											</span>
-											{bellCounts.has(task.id) && (
-												<span className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0" />
-											)}
-											<span
-												className="text-xs flex-shrink-0"
-												style={{ color: rowColor }}
-											>
-												{rowLabel}
-											</span>
-											{task.movedAt && (
-												<span className="text-fg-muted text-xs flex-shrink-0 w-16 text-right">
-													{timeAgo(task.movedAt, t)}
+											<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
+												<span
+													className={`text-fg-2 text-sm min-w-0 md:flex-1 ${narrow ? "line-clamp-2" : "truncate"}`}
+												>
+													{getTaskTitle(task)}
 												</span>
-											)}
+												<span className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+													{bellCounts.has(task.id) && (
+														<span className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0" />
+													)}
+													<span className="text-xs flex-shrink-0" style={{ color: rowColor }}>
+														{rowLabel}
+													</span>
+													{task.movedAt && (
+														<span className="text-fg-muted text-xs flex-shrink-0 md:w-16 md:text-right">
+															{timeAgo(task.movedAt, t)}
+														</span>
+													)}
+												</span>
+											</span>
 										</button>
 										);
 									})}
+
+									{/* Narrow: fold the long tail behind a touch-sized toggle. */}
+									{canCollapse && (
+										<button
+											type="button"
+											onClick={() => toggleProjectExpanded(project.id)}
+											aria-expanded={isExpanded}
+											className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] text-xs text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0"
+										>
+											{isExpanded
+												? t("activity.showFewerTasks")
+												: t.plural("activity.showMoreTasks", hiddenRowCount)}
+										</button>
+									)}
 
 									{/* Background tasks — collapsed summary line */}
 									{summarySegments.length > 0 && (
@@ -413,6 +559,84 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						</div>
 					);
 				})}
+
+				{/* Narrow-viewport per-project action sheet — the touch surface for
+				    actions that are hover-only / drag-only on desktop. */}
+				{narrow && sheetProject && (
+					<BottomSheet
+						open={!!sheetProject}
+						onClose={() => setActionSheetProjectId(null)}
+						title={sheetIsBuiltin ? t("ops.boardName") : sheetProject.name}
+						ariaLabel={t("activity.projectActions")}
+						testId="activity-project-action-sheet"
+					>
+						<div className="flex flex-col">
+							<ActionSheetButton
+								glyph={""}
+								label={t("activity.openBoard")}
+								onClick={() => {
+									setActionSheetProjectId(null);
+									openProject(sheetProject.id);
+								}}
+							/>
+							<ActionSheetButton
+								glyph={"\u{F0493}"}
+								label={t("header.projectSettings")}
+								onClick={() => {
+									setActionSheetProjectId(null);
+									navigate({ screen: "project-settings", projectId: sheetProject.id });
+								}}
+							/>
+							{!sheetIsVirtual && (
+								<ActionSheetButton
+									glyph={"\u{F115}"}
+									label={t("dashboard.openInFinder")}
+									onClick={() => {
+										setActionSheetProjectId(null);
+										api.request.openFolder({ path: sheetProject.path }).catch(() => {});
+									}}
+								/>
+							)}
+							{!sheetIsVirtual && (
+								<ActionSheetButton
+									glyph={"\u{F489}"}
+									label={t("projectTerminal.tooltip")}
+									onClick={() => {
+										setActionSheetProjectId(null);
+										navigate({ screen: "project-terminal", projectId: sheetProject.id });
+									}}
+								/>
+							)}
+							{onReorderProjects && (
+								<>
+									<ActionSheetButton
+										glyph={"\u{F062}"}
+										label={t("dashboard.moveProjectUp")}
+										disabled={sheetCannotMoveUp}
+										onClick={() => moveProjectByStep(sheetProject.id, -1)}
+									/>
+									<ActionSheetButton
+										glyph={"\u{F063}"}
+										label={t("dashboard.moveProjectDown")}
+										disabled={sheetCannotMoveDown}
+										onClick={() => moveProjectByStep(sheetProject.id, 1)}
+									/>
+								</>
+							)}
+							{onRemoveProject && !sheetIsBuiltin && (
+								<ActionSheetButton
+									glyph={"\u{F0A79}"}
+									label={t("dashboard.remove")}
+									danger
+									onClick={() => {
+										setActionSheetProjectId(null);
+										void onRemoveProject(sheetProject.id);
+									}}
+								/>
+							)}
+						</div>
+					</BottomSheet>
+				)}
 			</div>
 		</div>
 	);

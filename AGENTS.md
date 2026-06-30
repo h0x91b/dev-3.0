@@ -51,6 +51,8 @@ Key idea: each project is a git repo, each task gets its own **git worktree** + 
 
 When the manifest itself is stale or missing, use `/ux-create-manifest` to regenerate it. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change.
 
+**Bookend `/ux-principal` with `/debug-ui`.** *Before* planning, drive the **current** UI and screenshot the zones you're about to touch — grounding the plan in what's actually on screen beats reasoning from memory, and surfaces the real surrounding context. *After* implementing, verify the result in a browser before review. See [Manual UI QA in a browser](#manual-ui-qa-in-a-browser).
+
 ## No native dialogs — ever (remote/browser mode) (MANDATORY)
 
 The app runs in two modes: the **Electrobun desktop** shell **and** a **headless remote mode served to a browser** (`dev3 remote`). Anything that depends on the native OS shell silently breaks in the browser. **Native blocking dialogs are banned — do not add new ones, and prefer replacing existing ones.**
@@ -433,6 +435,8 @@ bun run test:watch    # Watch mode
 > **Hard rule for AI agents — full test suite before push / PR:** Before `git push` (or `gh pr create`, or enabling auto-merge), you MUST run `bun run test` and see it green end-to-end. Running only the test file you just edited is NOT sufficient — code in one component is often asserted against from sibling test files (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). Targeted runs miss those. If `bun run test` fails, fix the failures (or update the affected assertions) and re-run until green BEFORE pushing. Do not push first and then watch CI go red — that's a wasted CI run and a noisy PR history.
 
 ### Manual UI QA in a browser
+
+**Self-QA UI changes in a browser before review — make it the default.** Anything that changes the rendered UI *at all* can break something subtly: a layout shift, an overflow on one viewport, a console error, a state that renders wrong. So if a change touches what the user sees, drive the running UI, look at a screenshot, and check console errors before handing off — it costs you a minute and saves the human a lot of grief. **Don't treat "it's small" as a reason to skip** — small UI changes are exactly the ones that slip through unnoticed. The only real exceptions: a change with no visual surface at all, or when you genuinely can't bring the UI up. When in doubt, QA it.
 
 Beyond automated tests, you can **drive the real running UI** in headless Chromium and screenshot it — to verify a UI/UX change, reproduce a visual bug, or self-QA before review. When the dev-server is running and the project's Port Allocation is ≥ 1, the dev app already serves the web UI at a deterministic port (`dev3 dev-server status` → `DEV3_PORT0=<port>`), so the URL is `http://localhost:<DEV3_PORT0>/?token=<code>` — no separate server needed (see [decision 093](decisions/093-dev-remote-port-from-pool.md)). Otherwise serve it yourself with `dev3 remote --no-tunnel --static-code <code> --port <port>`. Either way, point `agent-browser` at the URL. Full recipe: the **`/debug-ui`** skill (`.claude/skills/debug-ui/SKILL.md`). This is dev-internal tooling, not a dev3-shipped skill.
 

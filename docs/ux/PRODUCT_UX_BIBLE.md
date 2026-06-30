@@ -316,7 +316,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Modal (`*Modal`) | fixed 26–35rem centered | **full-bleed sheet**: `max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)]` (or bottom-sheet for action-style modals) | `Proposed` |
 | Context menu (right-click) | popup at cursor | **bottom action sheet** (long-press trigger) | `Proposed` |
 | Settings (tabs + sections) | tab row + grouped sections | tabs → **one section at a time** (carousel/`<select>` switcher or accordion); no horizontal tab overflow | `Proposed` |
-| Dashboard | project list | already vertical list — fits; ensure cards are full-width | `Observed` (OK) |
+| Dashboard (Activity) | project list + hover action icons + drag-reorder | vertical list, full-width cards (`p-3` not `p-7`); per-project actions **+ reorder** collapse into a **kebab → `BottomSheet` action sheet** (hover cluster, HTML5 drag, and the `hidden md:flex` up/down steps are all dead on touch); touch targets ≥44px | `Observed` |
 | Command palette (Cmd+K / Cmd+Shift+P) | keyboard-summoned, `34rem` | needs a **touch entry** + `w-full max-w-[calc(100vw-2rem)]` — see §12.4 (it is the action fallback for the absent native menu) | `Proposed` |
 | Global header | single row, ≤9 utility buttons | reflow: logo + truncated breadcrumb + **one overflow (kebab)** for all utilities; never a 9-icon row (`useCompact` at 1600 only hides labels, it does not reflow for 390px) | `Proposed` |
 | Hover terminal preview | popover on card hover | **disabled** on touch/narrow (no hover; popover obscures) — already gated in `useTerminalPreview` | `Observed` |

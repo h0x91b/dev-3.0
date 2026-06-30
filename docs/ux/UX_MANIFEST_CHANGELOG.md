@@ -111,3 +111,7 @@ Added a UX decision + feature plan (`feature-plans/dev-server-button-running-sta
 ## 2026-06-29 — Narrow-viewport tmux windows switcher
 
 Added the narrow-viewport tmux **windows** switcher to the doctrine: a new row in bible §12.3 (Terminal windows → switcher bar above the pane bar, buttons + dropdown, no swipe) and the `feature-plans/narrow-viewport-doctrine.md` §4 work list (now done, decision 093). Added a UX decision. Implemented (not planning-only): `MobileWindowCarousel.tsx` + `tmuxWindowNavigate` RPC, pairing with the existing panes switcher. No new route, nav item, setting, or token.
+
+## 2026-06-29 — Dashboard Activity narrow-viewport pass
+
+Implemented the narrow form for the Dashboard Activity view and corrected its stale `Observed (OK)` verdict in the per-surface map. Per-project actions + reorder now collapse into a kebab → `BottomSheet` action sheet on `useNarrowViewport`; cards go full-width (`p-3`); touch targets ≥44px; reorder (previously touch-unreachable: dead HTML5 drag + `hidden md:flex` steps) is reachable via the sheet. Updated bible §12.3 dashboard row and `ux-architecture.yaml` `surface_adaptation.dashboard` (ok → observed); appended a UX decision. Product code changed (not planning-only).

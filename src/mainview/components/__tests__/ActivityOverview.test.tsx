@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ActivityOverview from "../ActivityOverview";
 import { I18nProvider } from "../../i18n";
@@ -282,5 +282,151 @@ describe("ActivityOverview", () => {
 		await user.click(screen.getByRole("button", { name: "Add Project" }));
 
 		expect(onOpenAddProject).toHaveBeenCalled();
+	});
+
+	it("does not render the per-project action kebab on a wide viewport", async () => {
+		renderActivityOverview(vi.fn(), vi.fn(), vi.fn());
+		await screen.findByText("My Project");
+
+		// On desktop the inline hover cluster is used; the touch kebab + sheet
+		// are narrow-only and must not be in the DOM.
+		expect(screen.queryByTitle("Project actions")).toBeNull();
+		expect(screen.queryByTestId("activity-project-action-sheet")).toBeNull();
+	});
+});
+
+describe("ActivityOverview — narrow viewport", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{ projectId: "p1", tasks: [mockTask] },
+		]);
+		mockedApi.request.openFolder.mockResolvedValue(undefined);
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("collapses every per-project action + reorder into a kebab action sheet", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActivityOverview
+					projects={[mockProject]}
+					navigate={vi.fn()}
+					bellCounts={new Map()}
+					onRemoveProject={vi.fn()}
+					onReorderProjects={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await screen.findByText("My Project");
+
+		await user.click(screen.getByTitle("Project actions"));
+
+		const sheet = screen.getByTestId("activity-project-action-sheet");
+		expect(within(sheet).getByText("Open board")).toBeInTheDocument();
+		expect(within(sheet).getByText("Project Settings")).toBeInTheDocument();
+		expect(within(sheet).getByText("Open in Finder")).toBeInTheDocument();
+		expect(within(sheet).getByText("Open a terminal in the project root")).toBeInTheDocument();
+		// Reorder — touch-unreachable on the desktop layout (drag + hidden step
+		// buttons) — is now reachable here.
+		expect(within(sheet).getByText("Move project up")).toBeInTheDocument();
+		expect(within(sheet).getByText("Move project down")).toBeInTheDocument();
+		expect(within(sheet).getByText("Remove")).toBeInTheDocument();
+	});
+
+	it("navigates to project settings from the action sheet (touch path)", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		render(
+			<I18nProvider>
+				<ActivityOverview
+					projects={[mockProject]}
+					navigate={navigate}
+					bellCounts={new Map()}
+					onRemoveProject={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await screen.findByText("My Project");
+
+		await user.click(screen.getByTitle("Project actions"));
+		const sheet = screen.getByTestId("activity-project-action-sheet");
+		await user.click(within(sheet).getByText("Project Settings"));
+
+		expect(navigate).toHaveBeenCalledWith({ screen: "project-settings", projectId: "p1" });
+		// The sheet closes after a navigation action.
+		expect(screen.queryByTestId("activity-project-action-sheet")).toBeNull();
+	});
+
+	it("caps the per-project list at 3 rows and reveals the rest behind a toggle", async () => {
+		const user = userEvent.setup();
+		const many = Array.from({ length: 5 }, (_, i) => ({
+			...mockTask,
+			id: `m${i}`,
+			title: `Review item ${i + 1}`,
+			status: "review-by-user" as const,
+		}));
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks: many }]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		await screen.findByText("Review item 1");
+
+		// Only the first 3 of 5 attention rows render before the fold.
+		expect(screen.getByText("Review item 3")).toBeInTheDocument();
+		expect(screen.queryByText("Review item 4")).toBeNull();
+		expect(screen.queryByText("Review item 5")).toBeNull();
+
+		// The toggle announces how many are hidden and reveals them on tap.
+		await user.click(screen.getByText("Show 2 more"));
+		expect(screen.getByText("Review item 4")).toBeInTheDocument();
+		expect(screen.getByText("Review item 5")).toBeInTheDocument();
+
+		// …and collapses again.
+		await user.click(screen.getByText("Show fewer"));
+		expect(screen.queryByText("Review item 4")).toBeNull();
+	});
+
+	it("orders 'your turn' tasks above colleague reviews on narrow", async () => {
+		// Passed colleague-first; the narrow sort must surface "your review" first.
+		const tasks = [
+			{ ...mockTask, id: "pr", title: "Colleague PR", status: "review-by-colleague" as const },
+			{ ...mockTask, id: "mine", title: "My review", status: "review-by-user" as const },
+		];
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks }]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		const mine = await screen.findByText("My review");
+		const colleague = screen.getByText("Colleague PR");
+
+		expect(mine.compareDocumentPosition(colleague) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 });
