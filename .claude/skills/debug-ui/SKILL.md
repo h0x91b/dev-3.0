@@ -34,6 +34,24 @@ can reuse the same one. Read it from that file — never hardcode it (delete the
 CODE=$(cat "$HOME/.dev3.0/dev-web-access-code" 2>/dev/null || bun scripts/dev-web-code.ts)
 ```
 
+## The dev app's port is deterministic too
+
+The `dev` script binds the dev app's remote web server to the task's first
+pool-allocated port: `DEV3_REMOTE_PORT=${DEV3_PORT0:-0} electrobun dev` (see
+[decision 093](../../../decisions/093-dev-remote-port-from-pool.md)). So when the
+dev-server is running, the **already-running dev app** is reachable at a port you
+can read from the CLI — no separate `dev3 remote`, no banner scraping:
+
+```bash
+# "Assigned Ports:  DEV3_PORT0=<port>, ..." → pull the first pool port
+PORT=$(dev3 dev-server status 2>/dev/null | grep -oE 'DEV3_PORT0=[0-9]+' | head -1 | cut -d= -f2)
+# then: http://localhost:$PORT/?token=$CODE
+```
+
+**Prerequisite:** the dev-3.0 project's **Port Allocation must be ≥ 1** (Project
+Settings → Port Allocation). At 0 there is no `DEV3_PORT0`, the dev app falls back
+to a random port, and you must use the standalone-server path below instead.
+
 ## Freshness — read this first
 
 `dev3 remote` serves the UI bundle (and runs the CLI code) from the **last dev build**, not
@@ -50,25 +68,34 @@ your live working tree:
 ## Recipe
 
 1. **Ensure a fresh build is up** (dev-server running, or start it — see above).
-2. **Start an agent-owned headless server in a split tmux pane** (deterministic — you pick
-   the port, so the URL is fully known; it's long-running, don't run it inline):
+2. **Resolve the URL.** Prefer the **already-running dev app** — its web UI is at a
+   deterministic, CLI-derivable port (no second server to start):
    ```bash
    CODE=$(cat "$HOME/.dev3.0/dev-web-access-code" 2>/dev/null || bun scripts/dev-web-code.ts)
+   PORT=$(dev3 dev-server status 2>/dev/null | grep -oE 'DEV3_PORT0=[0-9]+' | head -1 | cut -d= -f2)
+   URL="http://localhost:$PORT/?token=$CODE"
+   ```
+   - This needs Port Allocation ≥ 1 on the dev-3.0 project (see the section above). If
+     `$PORT` comes back empty, either set it and restart the dev-server, or use the
+     fallback below.
+
+   **Fallback — agent-owned headless server in a split tmux pane** (when the dev app
+   isn't running, or Port Allocation is 0). You pick the port, so the URL is known; it's
+   long-running, so don't run it inline:
+   ```bash
    tmux -L dev3 split-window -h -t "$(tmux -L dev3 display-message -p '#S')" \
      "dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823"
+   URL="http://localhost:47823/?token=$CODE"
    ```
    - `--no-detach` — `dev3 remote` backgrounds by default; keep it in the foreground
      so it stays tied to this pane (killable by pane, live logs visible).
    - `--no-tunnel` — local only, no public Cloudflare exposure.
    - `--static-code` — fixed token (a rotating JWT would expire). Local-only.
-   - `--port` — fixed port → predictable URL: `http://localhost:47823/?token=<CODE>`
-   - *Alternative:* skip this and use the **already-running dev app's** web server at the
-     same `$CODE` — but its port is random (find it in the app's Remote Access panel / QR).
-     The agent-owned server above is simpler because the port is fixed.
+   - `--port` — fixed port → predictable URL.
 3. **Drive it with agent-browser** (load the `/agent-browser` skill for the full command set):
    ```bash
    agent-browser set viewport 1440 900
-   agent-browser open "http://localhost:47823/?token=$CODE"
+   agent-browser open "$URL"
    agent-browser wait --load networkidle
    agent-browser snapshot -i          # interactive elements with @refs
    agent-browser click @e1            # drive the UI
@@ -76,9 +103,10 @@ your live working tree:
    agent-browser errors               # confirm no console errors
    ```
    **Read the screenshot back with the Read tool** to actually look at it.
-4. **Clean up**: `agent-browser close`, then stop the server. **Ctrl+C currently
-   does NOT stop `dev3 remote`** (known issue — the interactive env-resolution shell orphans
-   the tty's foreground process group). Kill it by port or pane instead:
+4. **Clean up**: `agent-browser close`. The already-running dev app needs no teardown.
+   If you started the **fallback** `dev3 remote`, stop it — **Ctrl+C currently does NOT
+   stop it** (known issue — the interactive env-resolution shell orphans the tty's
+   foreground process group). Kill it by port or pane instead:
    ```bash
    lsof -nP -iTCP:47823 -sTCP:LISTEN -t | xargs -r kill   # by port
    tmux -L dev3 kill-pane -t <pane-id>                      # or kill the pane

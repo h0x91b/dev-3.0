@@ -1,6 +1,7 @@
 {
   "setupScript": "echo setup\nbun install",
   "devScript": "bun run dev",
+  "portCount": 1,
   "clonePaths": [
     "node_modules",
     "build",

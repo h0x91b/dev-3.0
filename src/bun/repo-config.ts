@@ -1,9 +1,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
 import type { Project, Dev3RepoConfig, ConfigSourceEntry } from "../shared/types";
 import { DEV3_REPO_CONFIG_KEYS } from "../shared/types";
 import { createLogger } from "./logger";
-import { DEV3_HOME } from "./paths";
 import * as git from "./git";
 
 const log = createLogger("repo-config");
@@ -100,30 +98,6 @@ export async function saveRepoLocalConfig(projectPath: string, config: Dev3RepoC
 	await ensureGitignore(projectPath);
 }
 
-/** Path to app-level config for a project: ~/.dev3.0/data/<slug>/config.json */
-function appConfigPath(projectPath: string): string {
-	return `${DEV3_HOME}/data/${git.projectSlug(projectPath)}/config.json`;
-}
-
-/** Load app-level config (~/.dev3.0/data/<slug>/config.json). Returns {} if missing. */
-export function loadAppConfig(projectPath: string): Dev3RepoConfig {
-	return readJsonFile<Dev3RepoConfig>(appConfigPath(projectPath)) ?? {};
-}
-
-/** Save app-level config to ~/.dev3.0/data/<slug>/config.json. */
-export async function saveAppConfig(projectPath: string, config: Dev3RepoConfig): Promise<void> {
-	const filePath = appConfigPath(projectPath);
-	const dir = dirname(filePath);
-	mkdirSync(dir, { recursive: true });
-	writeFileSync(filePath, JSON.stringify(config, null, 2) + "\n");
-	log.info("Saved app config", { path: filePath });
-}
-
-/** Check if app-level config exists for this project. */
-export function hasAppConfig(projectPath: string): boolean {
-	return existsSync(appConfigPath(projectPath));
-}
-
 /** Ensure .dev3/config.local.json is in the repo's .gitignore. */
 export async function ensureGitignore(projectPath: string): Promise<void> {
 	const gitignorePath = `${projectPath}/.gitignore`;
@@ -146,16 +120,12 @@ export async function ensureGitignore(projectPath: string): Promise<void> {
 
 /**
  * Return per-field source provenance for UI display.
- * Sources: "local" (.dev3/config.local.json), "repo" (.dev3/config.json), "app" (app-level).
+ * Sources: "local" (.dev3/config.local.json), "repo" (.dev3/config.json).
  * Fields not set in any config file have no entry.
  */
-export async function getConfigSources(
-	projectPath: string,
-	originalProjectPath?: string,
-): Promise<ConfigSourceEntry[]> {
+export async function getConfigSources(projectPath: string): Promise<ConfigSourceEntry[]> {
 	const repoConfig = readJsonFile<Dev3RepoConfig>(`${projectPath}/${CONFIG_FILE}`);
 	const localConfig = readJsonFile<Dev3RepoConfig>(`${projectPath}/${LOCAL_CONFIG_FILE}`);
-	const appConfig = loadAppConfig(originalProjectPath ?? projectPath);
 
 	const entries: ConfigSourceEntry[] = [];
 	for (const field of DEV3_REPO_CONFIG_KEYS) {
@@ -163,66 +133,71 @@ export async function getConfigSources(
 			entries.push({ field, source: "local" });
 		} else if (repoConfig && effective(repoConfig[field]) !== undefined) {
 			entries.push({ field, source: "repo" });
-		} else if (effective(appConfig[field]) !== undefined) {
-			entries.push({ field, source: "app" });
 		}
 	}
 	return entries;
 }
 
 /**
- * Resolve project settings using 4-level hierarchy (highest → lowest priority):
- * 1. .dev3/config.local.json in configPath — personal overrides, gitignored
- * 2. .dev3/config.json in configPath — branch config, committed to git
- * 3. ~/.dev3.0/data/<slug>/config.json — app-level project config (NOT in git)
- * 4. projects.json field values (on the Project object) → then DEFAULTS
- *
- * Per-field, first-defined wins. No deep merge.
- *
- * @param configPath Optional path override to read .dev3/ files from (e.g. worktree path).
- *                   Falls back to project.path when not provided.
+ * Build the ordered raw config layers for one path (highest → lowest):
+ * .dev3/config.local.json (personal, gitignored), then .dev3/config.json (committed).
  */
-export async function resolveProjectConfig(project: Project, configPath?: string): Promise<Project> {
-	const basePath = configPath ?? project.path;
-	const localConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`);
-	const repoConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`);
-	const appConfig = loadAppConfig(project.path); // always from project.path, not worktree
+function pathConfigLayers(basePath: string): (Dev3RepoConfig | null)[] {
+	return [
+		readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`),
+		readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`),
+	];
+}
 
+/**
+ * Merge config layers (highest priority first) onto the project object, then
+ * DEFAULTS — the single source of truth for the config cascade. Shared by
+ * single-path resolution (resolveProjectConfig) and worktree+main resolution
+ * (resolveOperationalProjectConfig) so the rules live in exactly one place.
+ *
+ * Per field, the first layer with an "effective" value wins (empty arrays count
+ * as "not configured" so a phantom `[]` can't shadow a real value, #378), then
+ * the project object, then DEFAULTS. `compareRefBasePath` is the dir used to
+ * auto-detect `defaultCompareRef` when nothing sets it (skipped if missing).
+ */
+async function applyConfigCascade(
+	project: Project,
+	layers: (Dev3RepoConfig | null)[],
+	compareRefBasePath: string,
+): Promise<Project> {
 	const resolved = { ...project };
 	for (const key of DEV3_REPO_CONFIG_KEYS) {
-		// For array fields, treat empty arrays from file-based configs as "not configured"
-		// so they fall through to lower-priority layers. This prevents phantom empty arrays
-		// (e.g. clonePaths: []) from shadowing project-level values. See #378.
-		const localVal = effective(localConfig?.[key]);
-		const repoVal = effective(repoConfig?.[key]);
-		const appVal = effective(appConfig?.[key]);
-		const val = localVal ?? repoVal ?? appVal ?? (project as any)[key] ?? DEFAULTS[key];
+		let val: unknown;
+		for (const layer of layers) {
+			const v = effective(layer?.[key]);
+			if (v !== undefined) { val = v; break; }
+		}
+		val = val ?? (project as any)[key] ?? DEFAULTS[key];
 		if (val !== undefined) (resolved as any)[key] = val;
 	}
 
-	const config = {
-		...appConfig,
-		...repoConfig,
-		...localConfig,
-	};
-	if (config.defaultCompareRef !== undefined) {
-		resolved.defaultCompareRef = config.defaultCompareRef;
-	} else if (config.defaultCompareRefMode !== undefined) {
-		resolved.defaultCompareRef = config.defaultCompareRefMode === "local"
+	// defaultCompareRef: explicit value wins; else derive from mode + base branch;
+	// else auto-detect from git (resilient to a missing/broken folder). Merge raw
+	// layer values low→high so the highest-priority layer wins, matching the cascade.
+	const merged: Dev3RepoConfig = {};
+	for (let i = layers.length - 1; i >= 0; i--) Object.assign(merged, layers[i] ?? {});
+	if (merged.defaultCompareRef !== undefined) {
+		resolved.defaultCompareRef = merged.defaultCompareRef;
+	} else if (merged.defaultCompareRefMode !== undefined) {
+		resolved.defaultCompareRef = merged.defaultCompareRefMode === "local"
 			? resolved.defaultBaseBranch
 			: `origin/${resolved.defaultBaseBranch}`;
 	} else if (resolved.defaultCompareRef === undefined) {
-		// Only auto-detect if no explicit value was set at any level (including project).
 		// A deleted project folder (or any git/spawn failure) must not reject — one broken
 		// project would otherwise blow up the whole project list (Promise.all in getProjects).
-		if (!existsSync(basePath)) {
+		if (!existsSync(compareRefBasePath)) {
 			resolved.defaultCompareRef = resolved.defaultBaseBranch;
 		} else {
 			try {
-				resolved.defaultCompareRef = await git.detectDefaultCompareRef(basePath, resolved.defaultBaseBranch);
+				resolved.defaultCompareRef = await git.detectDefaultCompareRef(compareRefBasePath, resolved.defaultBaseBranch);
 			} catch (err) {
 				log.warn("Failed to detect default compare ref, falling back to base branch", {
-					path: basePath,
+					path: compareRefBasePath,
 					error: String(err),
 				});
 				resolved.defaultCompareRef = resolved.defaultBaseBranch;
@@ -231,6 +206,52 @@ export async function resolveProjectConfig(project: Project, configPath?: string
 	}
 
 	return resolved;
+}
+
+/**
+ * Resolve project settings from a single path's .dev3 files (highest → lowest):
+ * 1. .dev3/config.local.json (personal, gitignored)
+ * 2. .dev3/config.json (committed)
+ * 3. projects.json field values (the Project object) → then DEFAULTS
+ *
+ * Per-field, first-defined wins. No deep merge.
+ *
+ * @param configPath Optional path override to read .dev3/ files from (e.g. worktree path).
+ *                   Falls back to project.path when not provided.
+ */
+export async function resolveProjectConfig(project: Project, configPath?: string): Promise<Project> {
+	const basePath = configPath ?? project.path;
+	return applyConfigCascade(project, pathConfigLayers(basePath), basePath);
+}
+
+/**
+ * Resolve config for a task that runs in a WORKTREE, combining the worktree's
+ * own .dev3 files with the project main checkout's, in ONE uniform cascade
+ * applied to EVERY field (scripts included — no special-casing). Highest → lowest:
+ *
+ *   1. <worktree>/.dev3/config.local.json   (gitignored, personal)
+ *   2. <worktree>/.dev3/config.json         (committed on the task branch)
+ *   3. <main>/.dev3/config.local.json       (gitignored, personal)
+ *   4. <main>/.dev3/config.json             (committed on the base branch)
+ *   5. projects.json field values (Project object, Project Settings UI → Project tab)
+ *   6. DEFAULTS
+ *
+ * Per field, the highest layer that sets it wins (empty arrays = "not set"). The
+ * worktree always outranks main, so a stale/empty value from main or the project
+ * object can never shadow a worktree value.
+ *
+ * Lives here (not in settings-config.ts) because it depends only on the config
+ * cascade — keeping it pure and integration-testable with real files.
+ */
+export async function resolveOperationalProjectConfig(project: Project, worktreePath?: string): Promise<Project> {
+	// No worktree (or worktree == project root): plain single-path resolution.
+	if (!worktreePath || worktreePath === project.path) {
+		return resolveProjectConfig(project);
+	}
+	// Worktree files first, then main checkout's — both as [local, repo].
+	const layers = [...pathConfigLayers(worktreePath), ...pathConfigLayers(project.path)];
+	// Compare-ref auto-detection uses the worktree dir (matches its branch).
+	return applyConfigCascade(project, layers, worktreePath);
 }
 
 /**

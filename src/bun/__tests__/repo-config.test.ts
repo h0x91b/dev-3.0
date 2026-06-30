@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, readFileSync, writeFileSync, existsSync } from "node
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-// Mock DEV3_HOME and projectSlug for app-level config tests
+// Mock paths + git so repo-config resolves against tmp dirs and a stubbed git
 const MOCK_DEV3_HOME = join(tmpdir(), `dev3-home-test-${process.pid}`);
 vi.mock("../paths", () => ({ DEV3_HOME: join(tmpdir(), `dev3-home-test-${process.pid}`) }));
 const { detectDefaultCompareRef } = vi.hoisted(() => ({
@@ -24,12 +24,10 @@ import {
 	ensureGitignore,
 	getConfigSources,
 	resolveProjectConfig,
+	resolveOperationalProjectConfig,
 	migrateProjectConfig,
 	hasRepoConfig,
 	hasLocalConfig,
-	loadAppConfig,
-	saveAppConfig,
-	hasAppConfig,
 } from "../repo-config";
 import type { Project, Dev3RepoConfig } from "../../shared/types";
 
@@ -574,56 +572,21 @@ describe("migrateProjectConfig with configPath override", () => {
 	});
 });
 
-describe("app-level config (loadAppConfig / saveAppConfig / hasAppConfig)", () => {
-	it("returns empty object when no app config exists", () => {
-		const config = loadAppConfig(TEST_DIR);
-		expect(config).toEqual({});
-	});
-
-	it("saves and loads app config", async () => {
-		await saveAppConfig(TEST_DIR, { setupScript: "app-setup", devScript: "app-dev" });
-		const config = loadAppConfig(TEST_DIR);
-		expect(config.setupScript).toBe("app-setup");
-		expect(config.devScript).toBe("app-dev");
-	});
-
-	it("hasAppConfig returns false when no config exists", () => {
-		expect(hasAppConfig(TEST_DIR)).toBe(false);
-	});
-
-	it("hasAppConfig returns true after saving", async () => {
-		await saveAppConfig(TEST_DIR, { setupScript: "test" });
-		expect(hasAppConfig(TEST_DIR)).toBe(true);
-	});
-});
-
-describe("4-level resolution (local > repo > app > project > defaults)", () => {
-	it("app config overrides project values", async () => {
-		await saveAppConfig(TEST_DIR, { setupScript: "app-script" });
-
-		const project = makeProject({ setupScript: "project-script" });
-		const resolved = await resolveProjectConfig(project);
-		expect(resolved.setupScript).toBe("app-script");
-	});
-
-	it("repo config overrides app config", async () => {
-		await saveAppConfig(TEST_DIR, { setupScript: "app-script", devScript: "app-dev" });
-
+describe("config resolution (local > repo > project > defaults)", () => {
+	it("repo config overrides project, project fills the rest", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
 			setupScript: "repo-script",
 		}));
 
-		const project = makeProject();
+		const project = makeProject({ setupScript: "project-script", devScript: "project-dev" });
 		const resolved = await resolveProjectConfig(project);
-		expect(resolved.setupScript).toBe("repo-script"); // repo wins over app
-		expect(resolved.devScript).toBe("app-dev"); // app wins for fields not in repo
+		expect(resolved.setupScript).toBe("repo-script"); // repo wins over project
+		expect(resolved.devScript).toBe("project-dev");    // project fills fields not in repo
 	});
 
-	it("local config overrides everything", async () => {
-		await saveAppConfig(TEST_DIR, { setupScript: "app-script" });
-
+	it("local config overrides repo and project", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
@@ -638,9 +601,7 @@ describe("4-level resolution (local > repo > app > project > defaults)", () => {
 		expect(resolved.setupScript).toBe("local-script"); // local wins
 	});
 
-	it("full fallback chain: local > repo > app > project > default", async () => {
-		await saveAppConfig(TEST_DIR, { devScript: "app-dev", cleanupScript: "app-cleanup" });
-
+	it("full fallback chain: local > repo > project > default", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
@@ -650,27 +611,12 @@ describe("4-level resolution (local > repo > app > project > defaults)", () => {
 			defaultBaseBranch: "local-branch",
 		}));
 
-		const project = makeProject({ peerReviewEnabled: false });
+		const project = makeProject({ peerReviewEnabled: false, devScript: "project-dev" });
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.defaultBaseBranch).toBe("local-branch"); // level 1: local
 		expect(resolved.setupScript).toBe("repo-setup");          // level 2: repo
-		expect(resolved.devScript).toBe("app-dev");                // level 3: app
-		expect(resolved.peerReviewEnabled).toBe(false);            // level 4: project
-		expect(resolved.sparseCheckoutEnabled).toBe(false);        // level 5: default
-	});
-
-	it("app config is read from project.path, not worktree path", async () => {
-		// Set app config keyed by project.path
-		await saveAppConfig(TEST_DIR, { setupScript: "app-from-project-path" });
-
-		const WORKTREE = join(tmpdir(), `dev3-wt-app-test-${process.pid}`);
-		mkdirSync(WORKTREE, { recursive: true });
-
-		const project = makeProject();
-		const resolved = await resolveProjectConfig(project, WORKTREE);
-		expect(resolved.setupScript).toBe("app-from-project-path");
-
-		rmSync(WORKTREE, { recursive: true, force: true });
+		expect(resolved.devScript).toBe("project-dev");           // level 3: project object
+		expect(resolved.sparseCheckoutEnabled).toBe(false);       // level 4: default
 	});
 });
 
@@ -700,14 +646,6 @@ describe("resolveProjectConfig — empty array fallthrough (#378)", () => {
 		const project = makeProject({ clonePaths: ["node_modules"] });
 		const resolved = await resolveProjectConfig(project);
 		expect(resolved.clonePaths).toEqual(["node_modules"]);
-	});
-
-	it("empty clonePaths in app config falls through to project values", async () => {
-		await saveAppConfig(TEST_DIR, { clonePaths: [] });
-
-		const project = makeProject({ clonePaths: [".venv"] });
-		const resolved = await resolveProjectConfig(project);
-		expect(resolved.clonePaths).toEqual([".venv"]);
 	});
 
 	it("non-empty clonePaths in repo config still overrides project values", async () => {
@@ -754,15 +692,7 @@ describe("resolveProjectConfig — empty array fallthrough (#378)", () => {
 	});
 });
 
-describe("getConfigSources with app-level", () => {
-	it("reports app source for fields only in app config", async () => {
-		await saveAppConfig(TEST_DIR, { devScript: "app-dev" });
-
-		const sources = await getConfigSources(TEST_DIR, TEST_DIR);
-		const devSource = sources.find((s) => s.field === "devScript");
-		expect(devSource?.source).toBe("app");
-	});
-
+describe("getConfigSources — provenance", () => {
 	it("empty clonePaths in repo config is not reported as source (#378)", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });
@@ -770,23 +700,130 @@ describe("getConfigSources with app-level", () => {
 			clonePaths: [],
 		}));
 
-		const sources = await getConfigSources(TEST_DIR, TEST_DIR);
+		const sources = await getConfigSources(TEST_DIR);
 		const cloneSource = sources.find((s) => s.field === "clonePaths");
 		// Empty array should not be reported as a source — it's "not configured"
 		expect(cloneSource).toBeUndefined();
 	});
 
-	it("repo overrides app in source report", async () => {
-		await saveAppConfig(TEST_DIR, { setupScript: "app-setup" });
-
+	it("local overrides repo in source report", async () => {
 		const configDir = join(TEST_DIR, ".dev3");
 		mkdirSync(configDir, { recursive: true });
 		writeFileSync(join(configDir, "config.json"), JSON.stringify({
 			setupScript: "repo-setup",
 		}));
+		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
+			setupScript: "local-setup",
+		}));
 
-		const sources = await getConfigSources(TEST_DIR, TEST_DIR);
+		const sources = await getConfigSources(TEST_DIR);
 		const setupSource = sources.find((s) => s.field === "setupScript");
-		expect(setupSource?.source).toBe("repo");
+		expect(setupSource?.source).toBe("local");
+	});
+});
+
+describe("resolveOperationalProjectConfig — worktree + main cascade", () => {
+	const WT_DIR = join(tmpdir(), `dev3-op-wt-${process.pid}`);
+
+	function writeCfg(dir: string, file: "config.json" | "config.local.json", obj: Record<string, unknown>): void {
+		const d = join(dir, ".dev3");
+		mkdirSync(d, { recursive: true });
+		writeFileSync(join(d, file), JSON.stringify(obj));
+	}
+
+	beforeEach(() => { mkdirSync(WT_DIR, { recursive: true }); });
+	afterEach(() => { rmSync(WT_DIR, { recursive: true, force: true }); });
+
+	it("no worktree path → single-path project resolution", async () => {
+		writeCfg(TEST_DIR, "config.json", { setupScript: "main-setup" });
+		const resolved = await resolveOperationalProjectConfig(makeProject());
+		expect(resolved.setupScript).toBe("main-setup");
+	});
+
+	it("worktreePath === project.path → single-path resolution", async () => {
+		writeCfg(TEST_DIR, "config.json", { setupScript: "main-setup" });
+		const resolved = await resolveOperationalProjectConfig(makeProject(), TEST_DIR);
+		expect(resolved.setupScript).toBe("main-setup");
+	});
+
+	// Scenario 1: main has NO .dev3 config; worktree has config.json + config.local.json.
+	it("main has no config: worktree provides scripts AND non-scripts; local beats repo", async () => {
+		writeCfg(WT_DIR, "config.json", { setupScript: "wt-setup", devScript: "wt-dev-repo", portCount: 3 });
+		writeCfg(WT_DIR, "config.local.json", { devScript: "wt-dev-local" });
+
+		// Project object keeps its own scripts (makeProject defaults) — worktree must win.
+		const project = makeProject({ cleanupScript: "proj-cleanup" });
+		const resolved = await resolveOperationalProjectConfig(project, WT_DIR);
+
+		expect(resolved.setupScript).toBe("wt-setup");        // worktree repo beats project object
+		expect(resolved.devScript).toBe("wt-dev-local");      // worktree local beats worktree repo
+		expect(resolved.portCount).toBe(3);                   // non-script field from worktree
+		expect(resolved.cleanupScript).toBe("proj-cleanup");  // unset in worktree/main → project object
+	});
+
+	// Scenario 2a: worktree outranks main for EVERY field, scripts included (the inversion).
+	it("worktree config wins over main config for all fields incl scripts", async () => {
+		writeCfg(TEST_DIR, "config.json", { setupScript: "main-setup", devScript: "main-dev", portCount: 9 });
+		writeCfg(WT_DIR, "config.json", { setupScript: "wt-setup", devScript: "wt-dev", portCount: 2 });
+
+		const resolved = await resolveOperationalProjectConfig(makeProject(), WT_DIR);
+		expect(resolved.setupScript).toBe("wt-setup");
+		expect(resolved.devScript).toBe("wt-dev");
+		expect(resolved.portCount).toBe(2);
+	});
+
+	// Scenario 2b: main config.local.json (level 3) fills a field the worktree omits,
+	// and beats main config.json (level 4).
+	it("main config.local.json fills fields the worktree does not set", async () => {
+		writeCfg(WT_DIR, "config.json", { setupScript: "wt-setup" });
+		writeCfg(TEST_DIR, "config.local.json", { devScript: "main-local-dev" });
+		writeCfg(TEST_DIR, "config.json", { devScript: "main-repo-dev" });
+
+		const resolved = await resolveOperationalProjectConfig(makeProject({ devScript: "" }), WT_DIR);
+		expect(resolved.setupScript).toBe("wt-setup");      // level 2
+		expect(resolved.devScript).toBe("main-local-dev");  // level 3 beats level 4
+	});
+
+	// Scenario 2c: main config.json (level 4) is a fallback for NON-script fields too —
+	// the behavior the old resolver lacked (it ignored main for non-scripts).
+	it("main config.json portCount reaches a worktree with no config of its own", async () => {
+		writeCfg(TEST_DIR, "config.json", { portCount: 7 });
+		// WT_DIR has no .dev3
+		const resolved = await resolveOperationalProjectConfig(makeProject(), WT_DIR);
+		expect(resolved.portCount).toBe(7);
+	});
+
+	it("honours full precedence wt-local > wt-repo > main-local > main-repo > project", async () => {
+		writeCfg(WT_DIR, "config.local.json", { setupScript: "L1-wt-local" });
+		writeCfg(WT_DIR, "config.json", { setupScript: "L2-wt-repo" });
+		writeCfg(TEST_DIR, "config.local.json", { setupScript: "L3-main-local" });
+		writeCfg(TEST_DIR, "config.json", { setupScript: "L4-main-repo" });
+		const project = makeProject({ setupScript: "L5-project" });
+
+		const resolved = await resolveOperationalProjectConfig(project, WT_DIR);
+		expect(resolved.setupScript).toBe("L1-wt-local");
+	});
+
+	it("main-repo (level 4) beats the project object (level 5) when higher levels are absent", async () => {
+		writeCfg(TEST_DIR, "config.json", { setupScript: "L4-main-repo" });
+		const project = makeProject({ setupScript: "L5-project" });
+		const resolved = await resolveOperationalProjectConfig(project, WT_DIR);
+		expect(resolved.setupScript).toBe("L4-main-repo");
+	});
+
+	// Empty arrays are "not configured" across the combined cascade too (#378).
+	it("phantom empty clonePaths in worktree falls through to main config.json", async () => {
+		writeCfg(WT_DIR, "config.json", { clonePaths: [] });
+		writeCfg(TEST_DIR, "config.json", { clonePaths: ["main-cache"] });
+		const project = makeProject({ clonePaths: ["proj-cache"] });
+		const resolved = await resolveOperationalProjectConfig(project, WT_DIR);
+		expect(resolved.clonePaths).toEqual(["main-cache"]);
+	});
+
+	it("auto-detects defaultCompareRef using the worktree path", async () => {
+		writeCfg(WT_DIR, "config.json", { setupScript: "wt-setup" });
+		const resolved = await resolveOperationalProjectConfig(makeProject({ defaultCompareRef: undefined }), WT_DIR);
+		expect(resolved.defaultCompareRef).toBe("origin/main");
+		expect(detectDefaultCompareRef).toHaveBeenCalledWith(WT_DIR, "main");
 	});
 });

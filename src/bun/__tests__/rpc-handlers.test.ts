@@ -141,17 +141,39 @@ vi.mock("../settings", () => ({
 	saveSettings: vi.fn(),
 }));
 
-vi.mock("../repo-config", () => ({
-	resolveProjectConfig: vi.fn((project: any) => project),
-	migrateProjectConfig: vi.fn(),
-	loadRepoConfigRaw: vi.fn(() => ({})),
-	loadLocalConfigRaw: vi.fn(() => ({})),
-	saveRepoConfig: vi.fn(),
-	saveRepoLocalConfig: vi.fn(),
-	getConfigSources: vi.fn(() => []),
-	hasRepoConfig: vi.fn(() => false),
-	hasLocalConfig: vi.fn(() => false),
-}));
+vi.mock("../repo-config", () => {
+	const resolveProjectConfig = vi.fn((project: any, _configPath?: string) => project);
+	const pickScript = (p: string | undefined, w: string | undefined): string =>
+		p && p.trim() !== "" ? p : (w ?? "");
+	// resolveOperationalProjectConfig now lives in repo-config (its real worktree+main
+	// cascade is integration-tested in repo-config.test.ts). Here it delegates to the
+	// test-overridable resolveProjectConfig mock the same number of times the real one
+	// reads configs, so existing mockResolvedValueOnce setups are consumed identically.
+	const resolveOperationalProjectConfig = vi.fn(async (project: any, worktreePath?: string) => {
+		const projectResolved = await resolveProjectConfig(project);
+		if (!worktreePath || worktreePath === project.path) return projectResolved;
+		const worktreeResolved = await resolveProjectConfig(project, worktreePath);
+		return {
+			...worktreeResolved,
+			setupScript: pickScript(projectResolved.setupScript, worktreeResolved.setupScript),
+			setupScriptLaunchMode: projectResolved.setupScriptLaunchMode ?? worktreeResolved.setupScriptLaunchMode ?? "parallel",
+			devScript: pickScript(projectResolved.devScript, worktreeResolved.devScript),
+			cleanupScript: pickScript(projectResolved.cleanupScript, worktreeResolved.cleanupScript),
+		};
+	});
+	return {
+		resolveProjectConfig,
+		resolveOperationalProjectConfig,
+		migrateProjectConfig: vi.fn(),
+		loadRepoConfigRaw: vi.fn(() => ({})),
+		loadLocalConfigRaw: vi.fn(() => ({})),
+		saveRepoConfig: vi.fn(),
+		saveRepoLocalConfig: vi.fn(),
+		getConfigSources: vi.fn(() => []),
+		hasRepoConfig: vi.fn(() => false),
+		hasLocalConfig: vi.fn(() => false),
+	};
+});
 
 vi.mock("../agent-hooks", () => ({
 	setupAgentHooks: vi.fn(),
@@ -249,7 +271,6 @@ const {
 	launchTaskPty,
 	addVirtualShellPane,
 	activateTask,
-	resolveOperationalProjectConfig,
 	triggerColumnAgentIfNeeded,
 	notifyWatchedTaskStatusChange,
 	notifyWatchedTaskEvent,
@@ -2501,116 +2522,6 @@ describe("handlers.renameTask", () => {
 			customTitle: null,
 			titleEditedByUser: false,
 		});
-	});
-});
-
-describe("resolveOperationalProjectConfig", () => {
-	beforeEach(() => vi.clearAllMocks());
-
-	it("prefers project-level operational scripts over stale worktree config", async () => {
-		const projectResolved = makeProject({
-			setupScript: "project setup",
-			devScript: "project dev",
-			cleanupScript: "project cleanup",
-			...( { setupScriptLaunchMode: "blocking" } as any ),
-		});
-		const worktreeResolved = makeProject({
-			setupScript: "worktree setup",
-			devScript: "worktree dev",
-			cleanupScript: "worktree cleanup",
-			defaultBaseBranch: "release",
-			...( { setupScriptLaunchMode: "parallel" } as any ),
-		});
-
-		vi.mocked(repoConfig.resolveProjectConfig)
-			.mockResolvedValueOnce(projectResolved)
-			.mockResolvedValueOnce(worktreeResolved);
-
-		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
-
-		expect(repoConfig.resolveProjectConfig).toHaveBeenNthCalledWith(1, projectResolved);
-		expect(repoConfig.resolveProjectConfig).toHaveBeenNthCalledWith(2, projectResolved, "/tmp/wt");
-		expect(resolved.setupScript).toBe("project setup");
-		expect(resolved.devScript).toBe("project dev");
-		expect(resolved.cleanupScript).toBe("project cleanup");
-		expect((resolved as any).setupScriptLaunchMode).toBe("blocking");
-		expect(resolved.defaultBaseBranch).toBe("release");
-	});
-
-	it("falls back to worktree-resolved scripts when project-level scripts are empty", async () => {
-		// Reproduces bug: new project has .dev3/config.json with devScript only in the
-		// feature-branch worktree (not yet merged to main). project.path has no
-		// .dev3/config.json, so projectResolved.devScript is "" (DEFAULTS). The operational
-		// resolver must NOT shadow the worktree value with this empty string, otherwise the
-		// dev-server button is green (worktree has devScript) but start fails with
-		// "No dev script configured".
-		const projectResolved = makeProject({
-			setupScript: "",
-			devScript: "",
-			cleanupScript: "",
-		});
-		const worktreeResolved = makeProject({
-			setupScript: "bun install",
-			devScript: "PORT=${DEV3_PORT0:-8080} bun run dev",
-			cleanupScript: "rm -rf node_modules",
-		});
-
-		vi.mocked(repoConfig.resolveProjectConfig)
-			.mockResolvedValueOnce(projectResolved)
-			.mockResolvedValueOnce(worktreeResolved);
-
-		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
-
-		expect(resolved.setupScript).toBe("bun install");
-		expect(resolved.devScript).toBe("PORT=${DEV3_PORT0:-8080} bun run dev");
-		expect(resolved.cleanupScript).toBe("rm -rf node_modules");
-	});
-
-	it("falls back to worktree scripts when project-level scripts are whitespace-only", async () => {
-		const projectResolved = makeProject({
-			setupScript: "   ",
-			devScript: "\n\t ",
-			cleanupScript: "",
-		});
-		const worktreeResolved = makeProject({
-			setupScript: "bun install",
-			devScript: "bun run dev",
-			cleanupScript: "echo cleanup",
-		});
-
-		vi.mocked(repoConfig.resolveProjectConfig)
-			.mockResolvedValueOnce(projectResolved)
-			.mockResolvedValueOnce(worktreeResolved);
-
-		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
-
-		expect(resolved.setupScript).toBe("bun install");
-		expect(resolved.devScript).toBe("bun run dev");
-		expect(resolved.cleanupScript).toBe("echo cleanup");
-	});
-
-	it("mixes project and worktree scripts per-field when project only defines some", async () => {
-		const projectResolved = makeProject({
-			setupScript: "project setup",
-			devScript: "",
-			cleanupScript: "project cleanup",
-		});
-		const worktreeResolved = makeProject({
-			setupScript: "worktree setup",
-			devScript: "worktree dev",
-			cleanupScript: "worktree cleanup",
-		});
-
-		vi.mocked(repoConfig.resolveProjectConfig)
-			.mockResolvedValueOnce(projectResolved)
-			.mockResolvedValueOnce(worktreeResolved);
-
-		const resolved = await resolveOperationalProjectConfig(projectResolved, "/tmp/wt");
-
-		// Project wins for setupScript and cleanupScript (both set); worktree fills devScript.
-		expect(resolved.setupScript).toBe("project setup");
-		expect(resolved.devScript).toBe("worktree dev");
-		expect(resolved.cleanupScript).toBe("project cleanup");
 	});
 });
 

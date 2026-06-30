@@ -556,7 +556,7 @@ export const DEV3_REPO_CONFIG_KEYS: (keyof Dev3RepoConfig)[] = [
 	"portCount",
 ];
 
-export type ConfigSource = "repo" | "local" | "app";
+export type ConfigSource = "repo" | "local";
 
 export interface ConfigSourceEntry {
 	field: string;
@@ -1383,17 +1383,12 @@ export type AppRPCSchema = {
 			/** Load raw contents of .dev3/config.json and .dev3/config.local.json + app-level config. */
 			getProjectConfigs: {
 				params: { projectId: string; worktreePath?: string };
-				response: { repo: Dev3RepoConfig; local: Dev3RepoConfig; app: Dev3RepoConfig };
+				response: { repo: Dev3RepoConfig; local: Dev3RepoConfig };
 			};
 			/** Check which .dev3/ config files exist in the project root. */
 			getProjectConfigFiles: {
 				params: { projectId: string };
 				response: { hasRepoConfig: boolean; hasLocalConfig: boolean };
-			};
-			/** Save app-level config (~/.dev3.0/data/<slug>/config.json). */
-			saveAppConfig: {
-				params: { projectId: string } & Dev3RepoConfig;
-				response: void;
 			};
 			/** Update project settings in projects.json (scripts, clone paths, AI Review, etc.). */
 			updateProjectSettings: {

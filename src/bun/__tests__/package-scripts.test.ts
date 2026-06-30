@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parsePackageScripts, detectRunner, resolveRunnerCommand } from "../package-scripts";
 
 describe("package-scripts", () => {
@@ -141,6 +142,26 @@ describe("package-scripts", () => {
 			expect(() => resolveRunnerCommand("bun", "dev; rm -rf /")).toThrow(/invalid/);
 			expect(() => resolveRunnerCommand("bun", "dev`whoami`")).toThrow(/invalid/);
 			expect(() => resolveRunnerCommand("bun", "dev$(echo)")).toThrow(/invalid/);
+		});
+	});
+
+	// Guards the deterministic-remote-port wiring (decision 093): the repo's own
+	// `dev` script must pin the dev app's remote web server to the task's first
+	// pool-allocated port ($DEV3_PORT0), falling back to 0 (random) when unset so
+	// a bare `bun run dev` still works. Removing this silently reverts the dev
+	// QA URL to being unpredictable.
+	describe("repo dev script (deterministic remote port)", () => {
+		const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
+		const rootPkg = JSON.parse(
+			readFileSync(resolve(repoRoot, "package.json"), "utf-8"),
+		) as { scripts: Record<string, string> };
+
+		it("pins DEV3_REMOTE_PORT to $DEV3_PORT0 with a :-0 fallback", () => {
+			expect(rootPkg.scripts.dev).toContain("DEV3_REMOTE_PORT=${DEV3_PORT0:-0}");
+		});
+
+		it("still sets the stable dev web-access code", () => {
+			expect(rootPkg.scripts.dev).toContain("DEV3_REMOTE_STATIC_CODE=$(bun scripts/dev-web-code.ts)");
 		});
 	});
 });

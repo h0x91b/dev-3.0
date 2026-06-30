@@ -768,8 +768,13 @@ const handlers: Record<string, Handler> = {
 		const sources = await repoConfig.getConfigSources(configPath);
 		const hasRepoFile = repoConfig.hasRepoConfig(configPath);
 		return {
+			// Map unset fields (no value at any layer and no default — e.g. portCount)
+			// to `null` rather than leaving them `undefined`: JSON.stringify drops
+			// `undefined` properties, which would silently hide a valid, settable
+			// config key from `dev3 config show` and make it undiscoverable. `null`
+			// survives serialization and the CLI renders it as "(not set)".
 			settings: Object.fromEntries(
-				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (resolved as any)[key]]),
+				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (resolved as any)[key] ?? null]),
 			),
 			sources: Object.fromEntries(sources.map((s) => [s.field, s.source])),
 			hasRepoConfig: hasRepoFile,
