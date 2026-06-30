@@ -1,123 +1,64 @@
 ---
 name: debug-ui
-description: Drive and visually QA the dev-3.0 UI in a real browser (headless Chromium via agent-browser) by serving it with `dev3 remote`. Use when verifying a UI/UX change, reproducing a visual bug, taking screenshots of the running app, or self-QA before review. Triggers — "check the UI", "screenshot the app", "does this render", "QA this screen", "verify the UI change in a browser", "drive the app".
+description: Drive and visually QA the dev-3.0 UI in a real browser (headless Chromium via agent-browser). Use when verifying a UI/UX change, reproducing a visual bug, taking screenshots of the running app, or self-QA before review. Triggers — "check the UI", "screenshot the app", "does this render", "QA this screen", "verify the UI change in a browser", "drive the app".
 ---
 
 # debug-ui — QA the dev-3.0 UI in a real browser
 
-Lets you (the agent) actually **see and drive** the running dev-3.0 UI — click, type,
-screenshot, read console errors — instead of guessing whether a UI change works. Runs in
-headless Chromium, so there's no desktop/native dependency: it works the same in a plain
-terminal session.
+See and drive the running dev-3.0 UI in headless Chromium — click, type, screenshot, read
+console errors — instead of guessing whether a UI change works. No desktop/native dependency;
+it works the same in a plain terminal session.
 
-This is **dev-internal tooling for working on the dev-3.0 repo** — it is NOT one of the
-skills dev3 ships to its users (those live in `src/bun/agent-skills.ts`).
+This is **dev-internal tooling for the dev-3.0 repo** — NOT one of the skills dev3 ships to
+its users (those live in `src/bun/agent-skills.ts`).
 
-## How it fits together
+## The whole flow
 
-- **`dev3 remote`** is the headless server: the same backend as the desktop app, serving
-  the full web UI over HTTP + WebSocket. Since decision 084 it runs **in-process inside the
-  single `dev3` binary** (no separate `dev3-server`).
-- **`agent-browser`** is a CLI-scripted headless Chromium. Point it at the server URL with
-  an access token and you have a full, controllable instance of the app.
-
-## The shared dev access code
-
-`bun run dev` launches the desktop app with a **stable per-machine web-access token**
-(`DEV3_REMOTE_STATIC_CODE`). The token is a random UUID generated ONCE per machine on the
-first `bun run dev` (by `scripts/dev-web-code.ts`) and persisted at
-`~/.dev3.0/dev-web-access-code` — it is **not** hardcoded in source. So whenever the dev app
-is running it already serves the full web UI at that token, and any `dev3 remote` you start
-can reuse the same one. Read it from that file — never hardcode it (delete the file to rotate):
+This task's dev-server **is** the web UI: `bun run dev` serves the full app in local remote
+mode at a stable per-machine token and a CLI-derivable port — no separate `dev3 remote`. The
+loop is always the same four beats: **values → server → browser → clean up.**
 
 ```bash
+# 1. Two values, both instant: token from a file, port from the env (or CLI fallback).
 CODE=$(cat "$HOME/.dev3.0/dev-web-access-code" 2>/dev/null || bun scripts/dev-web-code.ts)
+PORT=${DEV3_PORT0:-$(dev3 dev-server status | grep -oE 'DEV3_PORT0=[0-9]+' | cut -d= -f2)}
+
+# 2. Start a FRESH dev-server and wait for it to come up. (Skip the start only if one is
+#    already running for THIS task — but see the build-snapshot gotcha: stale code needs a
+#    restart, so when in doubt restart.)
+dev3 dev-server start
+until curl -sf "http://localhost:$PORT/?token=$CODE" >/dev/null; do sleep 2; done
+
+# 3. Drive it. (Load /agent-browser for the full command set: snapshot, click, type, …)
+agent-browser set viewport 1440 900
+agent-browser open "http://localhost:$PORT/?token=$CODE"
+agent-browser wait --load networkidle
+agent-browser screenshot /tmp/dev3-ui.png    # then Read it back to actually look
+agent-browser errors                          # confirm no console errors
+
+# 4. Always clean up what you started.
+agent-browser close
+dev3 dev-server stop          # the port frees a second or two later (graceful shutdown)
 ```
 
-## The dev app's port is deterministic too
+That's it. `DEV3_REMOTE_PORT=${DEV3_PORT0:-0}` is wired into the repo's `dev` script and
+`portCount: 1` is committed in `.dev3/config.json`, so the dev app binds the exact port shown
+above (see [decision 093](../../../decisions/093-dev-remote-port-from-pool.md)).
 
-The `dev` script binds the dev app's remote web server to the task's first
-pool-allocated port: `DEV3_REMOTE_PORT=${DEV3_PORT0:-0} electrobun dev` (see
-[decision 093](../../../decisions/093-dev-remote-port-from-pool.md)). So when the
-dev-server is running, the **already-running dev app** is reachable at a port you
-can read from the CLI — no separate `dev3 remote`, no banner scraping:
+## Gotchas
 
-```bash
-# "Assigned Ports:  DEV3_PORT0=<port>, ..." → pull the first pool port
-PORT=$(dev3 dev-server status 2>/dev/null | grep -oE 'DEV3_PORT0=[0-9]+' | head -1 | cut -d= -f2)
-# then: http://localhost:$PORT/?token=$CODE
-```
-
-**Prerequisite:** the dev-3.0 project's **Port Allocation must be ≥ 1** (Project
-Settings → Port Allocation). At 0 there is no `DEV3_PORT0`, the dev app falls back
-to a random port, and you must use the standalone-server path below instead.
-
-## Freshness — read this first
-
-`dev3 remote` serves the UI bundle (and runs the CLI code) from the **last dev build**, not
-your live working tree:
-
-- The **dev-server provides fresh UI + a fresh `dev3` CLI**. `dev3 dev-server start` runs
-  the project `devScript` (`bun run dev`), which rebuilds the bundle and reinstalls the
-  current `dev3` into `~/.dev3.0/bin/`. If a dev build is already running, you're fresh.
-- **Do NOT** hand-run `vite build` / rebuild manually — let the dev-server do it.
-- Sanity check you're on current code: `dev3 --version` prints the build's commit hash.
-- `dev3 dev-server start` has visible side effects — run `dev3 dev-server status` first and
-  reuse a running build; tell the user before starting one.
-
-## Recipe
-
-1. **Ensure a fresh build is up** (dev-server running, or start it — see above).
-2. **Resolve the URL.** Prefer the **already-running dev app** — its web UI is at a
-   deterministic, CLI-derivable port (no second server to start):
-   ```bash
-   CODE=$(cat "$HOME/.dev3.0/dev-web-access-code" 2>/dev/null || bun scripts/dev-web-code.ts)
-   PORT=$(dev3 dev-server status 2>/dev/null | grep -oE 'DEV3_PORT0=[0-9]+' | head -1 | cut -d= -f2)
-   URL="http://localhost:$PORT/?token=$CODE"
-   ```
-   - This needs Port Allocation ≥ 1 on the dev-3.0 project (see the section above). If
-     `$PORT` comes back empty, either set it and restart the dev-server, or use the
-     fallback below.
-
-   **Fallback — agent-owned headless server in a split tmux pane** (when the dev app
-   isn't running, or Port Allocation is 0). You pick the port, so the URL is known; it's
-   long-running, so don't run it inline:
-   ```bash
-   tmux -L dev3 split-window -h -t "$(tmux -L dev3 display-message -p '#S')" \
-     "dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823"
-   URL="http://localhost:47823/?token=$CODE"
-   ```
-   - `--no-detach` — `dev3 remote` backgrounds by default; keep it in the foreground
-     so it stays tied to this pane (killable by pane, live logs visible).
-   - `--no-tunnel` — local only, no public Cloudflare exposure.
-   - `--static-code` — fixed token (a rotating JWT would expire). Local-only.
-   - `--port` — fixed port → predictable URL.
-3. **Drive it with agent-browser** (load the `/agent-browser` skill for the full command set):
-   ```bash
-   agent-browser set viewport 1440 900
-   agent-browser open "$URL"
-   agent-browser wait --load networkidle
-   agent-browser snapshot -i          # interactive elements with @refs
-   agent-browser click @e1            # drive the UI
-   agent-browser screenshot /tmp/dev3-ui.png
-   agent-browser errors               # confirm no console errors
-   ```
-   **Read the screenshot back with the Read tool** to actually look at it.
-4. **Clean up**: `agent-browser close`. The already-running dev app needs no teardown.
-   If you started the **fallback** `dev3 remote`, stop it — **Ctrl+C currently does NOT
-   stop it** (known issue — the interactive env-resolution shell orphans the tty's
-   foreground process group). Kill it by port or pane instead:
-   ```bash
-   lsof -nP -iTCP:47823 -sTCP:LISTEN -t | xargs -r kill   # by port
-   tmux -L dev3 kill-pane -t <pane-id>                      # or kill the pane
-   ```
-
-## Notes / gotchas
-
-- One `dev3 remote` per port. If a start seems to hang, check the port:
-  `lsof -nP -iTCP:47823 -sTCP:LISTEN`.
-- This is browser mode, so the app must obey the project's **"no native dialogs"** rule.
-  If a flow silently does nothing where a confirm/file-picker is expected, that's an app
-  bug (a forbidden native dialog), not a tooling problem — report it.
-- Verifying a fix: after the dev-server rebuilds, `agent-browser reload` rather than
-  reopening from scratch.
+- **The dev-server is a build snapshot — no watch/HMR.** Your code only appears after a
+  (re)start. After changing code, `dev3 dev-server restart`, re-wait for the port, then
+  `agent-browser reload` — a bare reload re-serves the *old* bundle. Don't keep a stale server
+  around; never hand-run `vite build`.
+- **Is the running build actually yours?** An already-running app/remote is often production or
+  *another* worktree — it won't have your changes. (Re)start THIS task's dev-server and confirm
+  with `dev3 --version` (commit hash should match `git log -1`) + that your change actually
+  renders. Don't assume.
+- **Tell the user before `dev3 dev-server start`** (visible side effect), and stop it after
+  (step 4) unless they want it kept.
+- **No `DEV3_PORT0`?** (portCount 0, or an older worktree where it was never allocated) — run
+  your own fixed-port server instead:
+  `dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823` → `:47823/?token=$CODE`.
+- **No native dialogs** in browser mode. If a confirm/file-picker flow silently no-ops, that's
+  an app bug, not a tooling problem — report it.
