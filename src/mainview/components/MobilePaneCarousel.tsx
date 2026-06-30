@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { confirm } from "../confirm";
+import BottomSheet from "./BottomSheet";
 import PaneMapSheet from "./PaneMapSheet";
+
+type ManageAction = "splitH" | "splitV" | "newWindow" | "killPane";
 
 /**
  * Narrow-viewport terminal pane switcher. The tmux window is kept zoomed to one
@@ -39,6 +43,7 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 	const [dragDx, setDragDx] = useState(0);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [mapOpen, setMapOpen] = useState(false);
+	const [sheetOpen, setSheetOpen] = useState(false);
 	// Auto-zoom only the FIRST time a multi-pane session is seen, so we never
 	// fight a user who deliberately un-zoomed to inspect the split.
 	const zoomedOnEntryRef = useRef(false);
@@ -64,6 +69,47 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 			}
 		},
 		[taskId],
+	);
+
+	// Create / close panes and windows from the sheet. The ⌃B prefix is the only
+	// other path and is impractical on a phone, so these touch controls are the
+	// canonical mobile way to split or open a tmux window. After the action we
+	// refresh+zoom immediately (don't wait up to PANE_POLL_MS for the poll) so the
+	// freshly-created split / new window's shell shows at once.
+	const runManageAction = useCallback(
+		async (action: ManageAction) => {
+			setSheetOpen(false);
+			if (action === "killPane") {
+				// Closing the only pane in the session tears down tmux (and the agent).
+				// Count session-wide (matches the backend's last-pane guard) and confirm.
+				let count = 0;
+				try {
+					count = (await api.request.tmuxPaneCount({ taskId })).count;
+				} catch {
+					count = 0;
+				}
+				if (count <= 1) {
+					let confirmed = false;
+					try {
+						confirmed = await confirm({
+							title: t("tmux.closePaneConfirmTitle"),
+							message: t("tmux.closePaneConfirmMessage"),
+							danger: true,
+						});
+					} catch {
+						confirmed = false;
+					}
+					if (!confirmed) return;
+					await api.request.tmuxAction({ taskId, action, force: true }).catch(() => {});
+				} else {
+					await api.request.tmuxAction({ taskId, action }).catch(() => {});
+				}
+			} else {
+				await api.request.tmuxAction({ taskId, action }).catch(() => {});
+			}
+			await navigate({ zoom: true });
+		},
+		[taskId, navigate, t],
 	);
 
 	// Poll the layout while mounted (panes appear/vanish outside React — dev
@@ -212,6 +258,56 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 	const chevronBtn =
 		"flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 hover:text-accent hover:bg-raised-hover transition-colors";
 
+	// Show the top bar whenever the session has at least one pane — the manage
+	// button (which opens the create/close sheet) must be reachable even on a
+	// single-pane window, since that is the common starting state on a phone.
+	const showBar = info.count >= 1;
+
+	const svgProps = {
+		className: "w-5 h-5 flex-shrink-0",
+		viewBox: "0 0 24 24",
+		fill: "none",
+		stroke: "currentColor",
+		strokeWidth: 1.5,
+		strokeLinecap: "round" as const,
+		strokeLinejoin: "round" as const,
+	};
+	const manageActions: { action: ManageAction; labelKey: Parameters<typeof t>[0]; icon: ReactNode; danger?: boolean }[] = [
+		{
+			action: "splitH",
+			labelKey: "tmux.splitHDesc",
+			icon: (
+				<svg {...svgProps}>
+					<rect x="2" y="4" width="20" height="16" rx="2" />
+					<line x1="2" y1="12" x2="22" y2="12" strokeDasharray="4 3" />
+					<path d="M12 15 L12 19 M10 17 L14 17" />
+				</svg>
+			),
+		},
+		{
+			action: "splitV",
+			labelKey: "tmux.splitVDesc",
+			icon: (
+				<svg {...svgProps}>
+					<rect x="2" y="4" width="20" height="16" rx="2" />
+					<line x1="12" y1="4" x2="12" y2="20" strokeDasharray="4 3" />
+					<path d="M16 12 L20 12 M18 10 L18 14" />
+				</svg>
+			),
+		},
+		{
+			action: "newWindow",
+			labelKey: "cheatSheet.newWindow",
+			icon: (
+				<svg {...svgProps}>
+					<rect x="2" y="4" width="20" height="16" rx="2" />
+					<line x1="2" y1="9" x2="22" y2="9" />
+					<path d="M12 12.5 L12 17.5 M9.5 15 L14.5 15" />
+				</svg>
+			),
+		},
+	];
+
 	return (
 		<div
 			className="flex-1 min-h-0 flex flex-col isolate"
@@ -220,10 +316,14 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 			tabIndex={multi ? 0 : -1}
 			onKeyDown={handleKeyDown}
 		>
-			{/* Pane switcher — ‹ prev · named dropdown · next › — never overlaps the
+			{/* Top bar — pane switcher (‹ prev · named dropdown · next ›) when there
+			    are multiple panes, else just the current pane name, plus a "Panes &
+			    windows" button that opens the create/close sheet. Never overlaps the
 			    terminal and sits at the top, off the on-screen keyboard. */}
-			{multi && (
+			{showBar && (
 				<div className="relative z-10 flex-shrink-0 flex items-center gap-1 px-2 py-1 border-b border-edge/60 glass-header">
+					{multi ? (
+					<>
 					<button
 						type="button"
 						onClick={() => setMapOpen(true)}
@@ -297,6 +397,25 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 					>
 						<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F054}"}</span>
 					</button>
+					</>
+					) : (
+						<span className="flex-1 min-w-0 truncate px-1 text-xs font-medium text-fg-muted">
+							{paneLabel(0)}
+						</span>
+					)}
+
+					<button
+						type="button"
+						onClick={() => setSheetOpen(true)}
+						aria-label={t("panePager.manage")}
+						title={t("panePager.manage")}
+						className={chevronBtn}
+					>
+						<svg className="w-[1.125rem] h-[1.125rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+							<rect x="3" y="4" width="18" height="16" rx="2" />
+							<line x1="12" y1="4" x2="12" y2="20" />
+						</svg>
+					</button>
 				</div>
 			)}
 
@@ -320,6 +439,50 @@ function MobilePaneCarousel({ taskId, children }: { taskId: string; children: Re
 					void navigate({ paneId, zoom: true });
 				}}
 			/>
+
+			<BottomSheet
+				open={sheetOpen}
+				onClose={() => setSheetOpen(false)}
+				title={t("panePager.manage")}
+				testId="pane-manage-sheet"
+			>
+				<div className="flex flex-col gap-1">
+					<div className="px-1 pb-1 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">
+						{t("panePager.create")}
+					</div>
+					{manageActions.map(({ action, labelKey, icon }) => (
+						<button
+							key={action}
+							type="button"
+							onClick={() => void runManageAction(action)}
+							className="w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-fg-2 hover:bg-elevated transition-colors"
+						>
+							<span className="text-fg-3">{icon}</span>
+							<span className="flex-1">{t(labelKey)}</span>
+						</button>
+					))}
+
+					<div className="my-1 border-t border-edge/60" />
+
+					<button
+						type="button"
+						onClick={() => void runManageAction("killPane")}
+						className="w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-danger hover:bg-danger/10 transition-colors"
+					>
+						<span>
+							<svg {...svgProps}>
+								<rect x="2" y="4" width="20" height="16" rx="2" />
+								<path d="M9 9 L15 15 M15 9 L9 15" />
+							</svg>
+						</span>
+						<span className="flex-1">{t("tmux.closePaneDesc")}</span>
+					</button>
+
+					<p className="mt-2 px-1 text-[0.6875rem] leading-snug text-fg-muted">
+						{t("panePager.windowHint")}
+					</p>
+				</div>
+			</BottomSheet>
 		</div>
 	);
 }

@@ -1,0 +1,1 @@
+On a narrow viewport (phone via dev3 remote / narrow window) the terminal now shows a "Panes & windows" button above the pane that opens a bottom sheet to split the pane (horizontally/vertically), open a new tmux window, or close the current pane — previously only reachable via the ⌃B prefix, which is impractical on a phone.
