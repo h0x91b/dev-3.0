@@ -378,4 +378,55 @@ describe("ActivityOverview — narrow viewport", () => {
 		// The sheet closes after a navigation action.
 		expect(screen.queryByTestId("activity-project-action-sheet")).toBeNull();
 	});
+
+	it("caps the per-project list at 3 rows and reveals the rest behind a toggle", async () => {
+		const user = userEvent.setup();
+		const many = Array.from({ length: 5 }, (_, i) => ({
+			...mockTask,
+			id: `m${i}`,
+			title: `Review item ${i + 1}`,
+			status: "review-by-user" as const,
+		}));
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks: many }]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		await screen.findByText("Review item 1");
+
+		// Only the first 3 of 5 attention rows render before the fold.
+		expect(screen.getByText("Review item 3")).toBeInTheDocument();
+		expect(screen.queryByText("Review item 4")).toBeNull();
+		expect(screen.queryByText("Review item 5")).toBeNull();
+
+		// The toggle announces how many are hidden and reveals them on tap.
+		await user.click(screen.getByText("Show 2 more"));
+		expect(screen.getByText("Review item 4")).toBeInTheDocument();
+		expect(screen.getByText("Review item 5")).toBeInTheDocument();
+
+		// …and collapses again.
+		await user.click(screen.getByText("Show fewer"));
+		expect(screen.queryByText("Review item 4")).toBeNull();
+	});
+
+	it("orders 'your turn' tasks above colleague reviews on narrow", async () => {
+		// Passed colleague-first; the narrow sort must surface "your review" first.
+		const tasks = [
+			{ ...mockTask, id: "pr", title: "Colleague PR", status: "review-by-colleague" as const },
+			{ ...mockTask, id: "mine", title: "My review", status: "review-by-user" as const },
+		];
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks }]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+		const mine = await screen.findByText("My review");
+		const colleague = screen.getByText("Colleague PR");
+
+		expect(mine.compareDocumentPosition(colleague) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
 });

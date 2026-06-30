@@ -29,6 +29,21 @@ const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user", "r
 /** Statuses that are "background work" — collapsed into a summary line. */
 const BACKGROUND_STATUSES: TaskStatus[] = ["in-progress", "review-by-ai"];
 
+/** Statuses that mean "it's your turn" — surfaced above colleague reviews and
+ * given an accent strip on narrow viewports. */
+const NEEDS_ME_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
+
+/** Narrow-viewport ordering of attention rows so the cap never hides your turn:
+ * your questions → your review → colleague PR review → custom-column tasks. */
+const ATTENTION_RANK: Partial<Record<TaskStatus, number>> = {
+	"user-questions": 0,
+	"review-by-user": 1,
+	"review-by-colleague": 2,
+};
+
+/** Max attention rows shown per project on narrow before the "show more" fold. */
+const NARROW_ROW_CAP = 3;
+
 type DropSide = "before" | "after";
 
 function timeAgo(isoDate: string | undefined, t: (key: any, vars?: any) => string): string {
@@ -88,9 +103,21 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 	// touch, so per-project actions + reorder collapse into a single kebab that
 	// opens this action sheet (the project whose id is set here).
 	const [actionSheetProjectId, setActionSheetProjectId] = useState<string | null>(null);
+	// Narrow viewport: per-project task lists are capped to NARROW_ROW_CAP rows;
+	// these are the projects the user has explicitly expanded past the cap.
+	const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
 
 	function openProject(projectId: string) {
 		navigate({ screen: "project", projectId });
+	}
+
+	function toggleProjectExpanded(projectId: string) {
+		setExpandedProjects((prev) => {
+			const next = new Set(prev);
+			if (next.has(projectId)) next.delete(projectId);
+			else next.add(projectId);
+			return next;
+		});
 	}
 
 	const fetchAllTasks = useCallback(async () => {
@@ -279,6 +306,20 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						}
 					}
 
+					// Narrow viewport: order attention rows so "your turn" sits first, then
+					// cap the list to NARROW_ROW_CAP behind a "show more" fold. Desktop keeps
+					// the natural order and always shows every row.
+					const rankOf = (task: Task) =>
+						columnOf(task) !== null ? 3 : ATTENTION_RANK[task.status] ?? 3;
+					const orderedRowTasks = narrow
+						? [...rowTasks].sort((a, b) => rankOf(a) - rankOf(b))
+						: rowTasks;
+					const isExpanded = expandedProjects.has(project.id);
+					const canCollapse = narrow && orderedRowTasks.length > NARROW_ROW_CAP;
+					const visibleRowTasks =
+						canCollapse && !isExpanded ? orderedRowTasks.slice(0, NARROW_ROW_CAP) : orderedRowTasks;
+					const hiddenRowCount = orderedRowTasks.length - visibleRowTasks.length;
+
 					return (
 						<div
 							key={project.id}
@@ -377,10 +418,12 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 												<span className="text-fg-muted text-[0.5625rem] font-mono border border-edge rounded px-1 py-0.5 leading-none flex-shrink-0">⌘0</span>
 											)}
 										</div>
+										{/* Subtitle (path / virtual hint) is dead weight on a phone —
+										    name + badge already identify the board. Desktop only. */}
 										{project.kind === "virtual" ? (
-											<div className="text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
+											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
 										) : (
-											<div className="text-fg-3 text-xs mt-0.5 truncate font-mono">{project.path}</div>
+											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate font-mono">{project.path}</div>
 										)}
 									</div>
 								</button>
@@ -393,8 +436,24 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										className="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
 									/>
 								</div>
-								{/* Narrow: a single kebab folds every per-project action +
-								    reorder into a bottom sheet (no hover, no overflow row). */}
+								<button
+									type="button"
+									onClick={() => openProject(project.id)}
+									className="flex items-center gap-3 pr-1 text-left"
+								>
+									{hasActiveTasks ? (
+										<span className="text-fg-3 text-xs">{t.plural("activity.taskCount", tasks.length)}</span>
+									) : (
+										<span className="text-fg-muted text-xs">{t("activity.noActiveInProject")}</span>
+									)}
+									{/* Chevron is redundant on narrow — the name + count already
+									    navigate, so it only crowds the row end where the kebab sits. */}
+									<svg className="hidden md:block w-4 h-4 text-fg-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+									</svg>
+								</button>
+								{/* Narrow: a single kebab folds every per-project action + reorder
+								    into a bottom sheet. Rendered last so it sits at the true row end. */}
 								{narrow && (
 									<button
 										type="button"
@@ -410,61 +469,74 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
 									</button>
 								)}
-								<button
-									type="button"
-									onClick={() => openProject(project.id)}
-									className="flex items-center gap-3 pr-1 text-left"
-								>
-									{hasActiveTasks ? (
-										<span className="text-fg-3 text-xs">{t.plural("activity.taskCount", tasks.length)}</span>
-									) : (
-										<span className="text-fg-muted text-xs">{t("activity.noActiveInProject")}</span>
-									)}
-									<svg className="w-4 h-4 text-fg-muted flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-										<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-									</svg>
-								</button>
 							</div>
 
 							{hasActiveTasks && (
 								<div className="border-t border-edge">
-									{/* Attention + custom-column tasks — shown individually */}
-									{rowTasks.map((task) => {
+									{/* Attention + custom-column tasks — shown individually. On narrow
+									    each row stacks (title on its own line, meta below) so the title
+									    is readable instead of squeezed by the status + time cluster. */}
+									{visibleRowTasks.map((task) => {
 										const col = columnOf(task);
 										const rowColor = col ? col.color : statusColors[task.status];
 										const rowLabel = col ? col.name : getStatusLabel(task.status, t, project);
+										const needsMe = !col && NEEDS_ME_STATUSES.includes(task.status);
 										return (
 										<button
 											key={task.id}
 											data-hint-id={`task:${task.id}`}
 											onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
-											className="w-full flex items-center gap-3 px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0"
+											className="relative w-full flex items-start md:items-center gap-3 px-4 md:px-5 py-3 md:py-2.5 min-h-[44px] hover:bg-raised-hover transition-colors text-left border-b border-edge last:border-b-0"
 										>
+											{/* "Your turn" accent strip — narrow only (keeps desktop intact). */}
+											{narrow && needsMe && (
+												<span
+													className="absolute left-0 top-0 bottom-0 w-0.5"
+													style={{ backgroundColor: rowColor }}
+												/>
+											)}
 											<span
-												className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+												className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${narrow ? "mt-1.5" : ""}`}
 												style={{ backgroundColor: rowColor }}
 												title={rowLabel}
 											/>
-											<span className="text-fg-2 text-sm truncate flex-1">
-												{getTaskTitle(task)}
-											</span>
-											{bellCounts.has(task.id) && (
-												<span className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0" />
-											)}
-											<span
-												className="text-xs flex-shrink-0"
-												style={{ color: rowColor }}
-											>
-												{rowLabel}
-											</span>
-											{task.movedAt && (
-												<span className="text-fg-muted text-xs flex-shrink-0 w-16 text-right">
-													{timeAgo(task.movedAt, t)}
+											<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
+												<span
+													className={`text-fg-2 text-sm min-w-0 md:flex-1 ${narrow ? "line-clamp-2" : "truncate"}`}
+												>
+													{getTaskTitle(task)}
 												</span>
-											)}
+												<span className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+													{bellCounts.has(task.id) && (
+														<span className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0" />
+													)}
+													<span className="text-xs flex-shrink-0" style={{ color: rowColor }}>
+														{rowLabel}
+													</span>
+													{task.movedAt && (
+														<span className="text-fg-muted text-xs flex-shrink-0 md:w-16 md:text-right">
+															{timeAgo(task.movedAt, t)}
+														</span>
+													)}
+												</span>
+											</span>
 										</button>
 										);
 									})}
+
+									{/* Narrow: fold the long tail behind a touch-sized toggle. */}
+									{canCollapse && (
+										<button
+											type="button"
+											onClick={() => toggleProjectExpanded(project.id)}
+											aria-expanded={isExpanded}
+											className="w-full flex items-center justify-center gap-2 px-4 py-3 min-h-[44px] text-xs text-fg-3 hover:text-fg hover:bg-raised-hover transition-colors border-b border-edge last:border-b-0"
+										>
+											{isExpanded
+												? t("activity.showFewerTasks")
+												: t.plural("activity.showMoreTasks", hiddenRowCount)}
+										</button>
+									)}
 
 									{/* Background tasks — collapsed summary line */}
 									{summarySegments.length > 0 && (
