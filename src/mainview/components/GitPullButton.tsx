@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { startVisibilityAwarePoll } from "../utils/poll";
+import { useReducedMotion } from "../utils/useReducedMotion";
 import GitPullErrorModal from "./GitPullErrorModal";
 
 interface GitPullButtonProps {
@@ -30,6 +31,7 @@ function classifySuccess(output: string): "pulled" | "up-to-date" {
 
 function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	const t = useT();
+	const reducedMotion = useReducedMotion();
 	const [branch, setBranch] = useState<string | null | undefined>(undefined);
 	const [behindOrigin, setBehindOrigin] = useState(0);
 	const [pulling, setPulling] = useState(false);
@@ -211,13 +213,27 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				aria-label={title}
 				data-behind-origin={behindOrigin > 0 ? behindOrigin : undefined}
 			>
-				<span className="relative inline-flex" aria-hidden="true">
-					<span
-						className={`text-[1.125rem] leading-none${iconSpin ? " animate-spin inline-block" : ""}`}
-						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-					>
-						{icon}
-					</span>
+				<span className="relative inline-flex items-center justify-center w-[1.125rem] h-[1.125rem]" aria-hidden="true">
+					{iconSpin ? (
+						// Pull in progress: a circular ring spinner. A ring is radially symmetric, so
+						// animate-spin rotates it perfectly around its own center — zero wobble. (A
+						// spinning Nerd Font glyph wobbles instead, because its ink center never lines
+						// up with its advance-width × line-height layout box.) The fixed-size icon slot
+						// above is shared by the idle glyph and this ring, so the icon does not shift
+						// sideways when the spin starts; the ring is sized below the slot so it reads no
+						// larger than the neighboring toolbar icons.
+						<span
+							data-testid="git-pull-spinner"
+							className={`w-3.5 h-3.5 rounded-full border-2 border-current/30 border-t-current${reducedMotion ? "" : " animate-spin"}`}
+						/>
+					) : (
+						<span
+							className="text-[1.125rem] leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{icon}
+						</span>
+					)}
 					{behindOrigin > 0 && !pulling && !lastResult && (
 						<span
 							className="absolute -top-0.5 -right-1 w-1.5 h-1.5 rounded-full bg-accent"
