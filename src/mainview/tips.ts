@@ -1037,6 +1037,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal"],
 	},
+	{
+		id: "llm-provider",
+		titleKey: "tip.llmProvider.title",
+		bodyKey: "tip.llmProvider.body",
+		icon: "\u{F0E7}", // nf-fa-cloud
+		score: 4,
+		contexts: ["settings"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

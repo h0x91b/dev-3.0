@@ -254,6 +254,8 @@ const tips = {
 	"tip.mobileWindowPager.body": "On a narrow screen a bar above the panes lets you move between tmux windows — tap ‹ › or the name to jump between separate workspaces in the session.",
 	"tip.devServerStatus.title": "See dev server at a glance",
 	"tip.devServerStatus.body": "The Dev Server button glows green with a live dot while running, and shows a spinner while it starts up.",
+	"tip.llmProvider.title": "Run Claude on Amazon Bedrock",
+	"tip.llmProvider.body": "Settings → Coding Agents → LLM Provider lets you point the Claude agent at Amazon Bedrock — dev3 injects the model and region for you.",
 } as const;
 
 export default tips;
