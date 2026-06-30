@@ -1,0 +1,1 @@
+The `bun run dev` script now binds the dev app's remote web UI to the task's first pool-allocated port (`DEV3_REMOTE_PORT=${DEV3_PORT0:-0}`), so the QA URL is derivable from `dev3 dev-server status` instead of scraping a random port or starting a separate `dev3 remote`. Requires the project's Port Allocation ≥ 1; a bare `bun run dev` still falls back to a random port.

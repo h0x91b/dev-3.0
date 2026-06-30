@@ -434,7 +434,7 @@ bun run test:watch    # Watch mode
 
 ### Manual UI QA in a browser
 
-Beyond automated tests, you can **drive the real running UI** in headless Chromium and screenshot it — to verify a UI/UX change, reproduce a visual bug, or self-QA before review. Serve the app with `dev3 remote --no-tunnel --static-code <code> --port <port>` (from a fresh dev build — the dev-server provides it) and point `agent-browser` at `http://localhost:<port>/?token=<code>`. Full recipe: the **`/debug-ui`** skill (`.claude/skills/debug-ui/SKILL.md`). This is dev-internal tooling, not a dev3-shipped skill.
+Beyond automated tests, you can **drive the real running UI** in headless Chromium and screenshot it — to verify a UI/UX change, reproduce a visual bug, or self-QA before review. When the dev-server is running and the project's Port Allocation is ≥ 1, the dev app already serves the web UI at a deterministic port (`dev3 dev-server status` → `DEV3_PORT0=<port>`), so the URL is `http://localhost:<DEV3_PORT0>/?token=<code>` — no separate server needed (see [decision 093](decisions/093-dev-remote-port-from-pool.md)). Otherwise serve it yourself with `dev3 remote --no-tunnel --static-code <code> --port <port>`. Either way, point `agent-browser` at the URL. Full recipe: the **`/debug-ui`** skill (`.claude/skills/debug-ui/SKILL.md`). This is dev-internal tooling, not a dev3-shipped skill.
 
 ### Coverage requirements
 
