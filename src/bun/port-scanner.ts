@@ -87,30 +87,16 @@ export function getSessionPanePids(socket: string, sessionName: string): number[
 }
 
 /**
- * Recursively get all descendant PIDs of a given PID using pgrep.
+ * Recursively get all descendant PIDs of a given PID.
+ *
+ * Built on a single `ps -eo pid,ppid` snapshot (via {@link buildProcessTree}),
+ * NOT `pgrep -P`. `pgrep` returns nothing when spawned from the packaged GUI
+ * `.app` (its KERN_PROC_PPID sysctl is blocked under the hardened runtime /
+ * sandbox), whereas `ps` enumerates the full table unaffected. Using `pgrep`
+ * here silently orphaned the dev-server process tree on Stop. See decision 095.
  */
 export function getDescendantPids(pid: number): number[] {
-	const descendants: number[] = [];
-	const queue = [pid];
-	while (queue.length > 0) {
-		const current = queue.shift()!;
-		try {
-			const result = spawnSync(["pgrep", "-P", String(current)]);
-			if (result.exitCode !== 0) continue;
-			const output = decoder.decode(result.stdout).trim();
-			if (!output) continue;
-			for (const line of output.split("\n")) {
-				const childPid = parseInt(line.trim(), 10);
-				if (!isNaN(childPid)) {
-					descendants.push(childPid);
-					queue.push(childPid);
-				}
-			}
-		} catch {
-			// ignore
-		}
-	}
-	return descendants;
+	return collectDescendants(pid, buildProcessTree());
 }
 
 /**
@@ -225,7 +211,7 @@ export function collectDescendants(pid: number, tree: Map<number, number[]>): nu
  * if one exists, so that ports opened by `runDevServer` are detected.
  *
  * When `processTree` is provided, uses in-memory BFS (no extra spawns).
- * Otherwise falls back to per-PID `pgrep -P` calls.
+ * Otherwise falls back to {@link getDescendantPids} (one `ps` snapshot per pane).
  */
 export function collectTaskPids(socket: string, sessionName: string, processTree?: Map<number, number[]>): Set<number> {
 	const panePids = getSessionPanePids(socket, sessionName);

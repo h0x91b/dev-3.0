@@ -6,7 +6,7 @@ import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
-import { getDescendantPids, getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scanner";
+import { buildProcessTree, collectDescendants, getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scanner";
 import { getResourceUsage } from "../resource-monitor";
 import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
@@ -72,10 +72,20 @@ const DEV_SERVER_KILL_GRACE_MS = 600;
 function collectDevServerTreePids(devSession: string, socket: string): number[] {
 	const panePids = getSessionPanePids(socket, devSession);
 	if (panePids.length === 0) return [];
+	// Walk the descendant tree from a SINGLE `ps -eo pid,ppid` snapshot rather
+	// than per-PID `pgrep -P`. When spawned from the packaged GUI `.app`,
+	// `pgrep` returns nothing (its KERN_PROC_PPID sysctl is blocked under the
+	// hardened runtime / sandbox), while `ps` is unaffected. With `pgrep`, the
+	// reap captured ONLY the pane PID (which `tmux kill-session` already SIGHUPs)
+	// and orphaned the entire dev-server tree — the Electrobun `.app` (and any
+	// vite/webpack) kept running after Stop. A `ps`-based walk also crosses the
+	// process-group boundary Electrobun creates for the launched app. See
+	// decision 095.
+	const processTree = buildProcessTree();
 	const tree = new Set<number>();
 	for (const pid of panePids) {
 		tree.add(pid);
-		for (const child of getDescendantPids(pid)) tree.add(child);
+		for (const child of collectDescendants(pid, processTree)) tree.add(child);
 	}
 	return [...tree];
 }

@@ -1,0 +1,1 @@
+Fixed Stop (and Restart) leaving the dev server running: the process-tree reap used `pgrep -P`, which returns nothing when spawned from the packaged GUI `.app` (sandbox blocks its sysctl), so only the tmux pane was killed and the launched app stayed alive. Descendant collection now uses a single `ps` snapshot, reaping the whole tree.
