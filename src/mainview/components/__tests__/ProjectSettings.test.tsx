@@ -13,7 +13,7 @@ vi.mock("../../rpc", () => ({
 			deleteLabel: vi.fn(),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
 			listBranches: vi.fn().mockResolvedValue([]),
-			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {}, app: {} }),
+			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {} }),
 			getProjectConfigFiles: vi.fn().mockResolvedValue({ hasRepoConfig: false, hasLocalConfig: false }),
 			getGitHubCliStatus: vi.fn().mockResolvedValue({
 				authStatus: "authenticated",

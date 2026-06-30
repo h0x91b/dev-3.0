@@ -14,33 +14,11 @@ import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
 
-/**
- * Resolve config for runtime operational scripts.
- *
- * Prefers the project-level .dev3 config (avoids running stale scripts from older
- * task branches that carry a committed `.dev3/config.json` copy), but falls back
- * to the worktree-resolved value when the project-level script is empty/unset.
- * That fallback is important for new projects where `.dev3/config.json` lives
- * only in a feature branch/worktree before it is merged to the main branch.
- */
-export async function resolveOperationalProjectConfig(project: Project, worktreePath?: string): Promise<Project> {
-	const projectResolved = await repoConfig.resolveProjectConfig(project);
-	if (!worktreePath || worktreePath === project.path) return projectResolved;
-
-	const worktreeResolved = await repoConfig.resolveProjectConfig(project, worktreePath);
-	const pickScript = (projectVal: string | undefined, worktreeVal: string | undefined): string => {
-		if (projectVal && projectVal.trim() !== "") return projectVal;
-		return worktreeVal ?? "";
-	};
-
-	return {
-		...worktreeResolved,
-		setupScript: pickScript(projectResolved.setupScript, worktreeResolved.setupScript),
-		setupScriptLaunchMode: projectResolved.setupScriptLaunchMode ?? worktreeResolved.setupScriptLaunchMode ?? "parallel",
-		devScript: pickScript(projectResolved.devScript, worktreeResolved.devScript),
-		cleanupScript: pickScript(projectResolved.cleanupScript, worktreeResolved.cleanupScript),
-	};
-}
+// `resolveOperationalProjectConfig` moved to ../repo-config (it depends only on
+// resolveProjectConfig, so it belongs next to the config resolver and stays
+// integration-testable without this module's heavy deps). Re-exported here so
+// existing `./settings-config` importers keep working.
+export { resolveOperationalProjectConfig } from "../repo-config";
 
 async function getResolvedProject(params: { projectId: string; worktreePath: string }): Promise<Project> {
 	log.debug("→ getResolvedProject", { projectId: params.projectId, worktreePath: params.worktreePath });
@@ -50,15 +28,14 @@ async function getResolvedProject(params: { projectId: string; worktreePath: str
 	return resolved;
 }
 
-async function getProjectConfigs(params: { projectId: string; worktreePath?: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig; app: Dev3RepoConfig }> {
+async function getProjectConfigs(params: { projectId: string; worktreePath?: string }): Promise<{ repo: Dev3RepoConfig; local: Dev3RepoConfig }> {
 	log.info("→ getProjectConfigs", { projectId: params.projectId, worktreePath: params.worktreePath });
 	const project = await data.getProject(params.projectId);
 	const configPath = params.worktreePath || project.path;
 	const repo = repoConfig.loadRepoConfigRaw(configPath);
 	const local = repoConfig.loadLocalConfigRaw(configPath);
-	const app = repoConfig.loadAppConfig(project.path);
 	log.info("← getProjectConfigs");
-	return { repo, local, app };
+	return { repo, local };
 }
 
 async function getProjectConfigFiles(params: { projectId: string }): Promise<{ hasRepoConfig: boolean; hasLocalConfig: boolean }> {
@@ -67,14 +44,6 @@ async function getProjectConfigFiles(params: { projectId: string }): Promise<{ h
 		hasRepoConfig: repoConfig.hasRepoConfig(project.path),
 		hasLocalConfig: repoConfig.hasLocalConfig(project.path),
 	};
-}
-
-async function saveAppConfig(params: { projectId: string } & Dev3RepoConfig): Promise<void> {
-	log.info("→ saveAppConfig", { projectId: params.projectId });
-	const project = await data.getProject(params.projectId);
-	const config = extractConfigFromParams(params) as Dev3RepoConfig;
-	await repoConfig.saveAppConfig(project.path, config);
-	log.info("← saveAppConfig done");
 }
 
 async function updateProjectSettings(params: { projectId: string } & ProjectSettingsUpdate): Promise<Project> {
@@ -125,7 +94,7 @@ async function getRepoConfigSources(params: { projectId: string; worktreePath?: 
 	log.info("→ getRepoConfigSources", { projectId: params.projectId, worktreePath: params.worktreePath });
 	const project = await data.getProject(params.projectId);
 	const configPath = params.worktreePath || project.path;
-	const sources = await repoConfig.getConfigSources(configPath, project.path);
+	const sources = await repoConfig.getConfigSources(configPath);
 	log.info("← getRepoConfigSources", { count: sources.length });
 	return sources;
 }
@@ -348,7 +317,6 @@ export const settingsConfigHandlers = {
 	getResolvedProject,
 	getProjectConfigs,
 	getProjectConfigFiles,
-	saveAppConfig,
 	updateProjectSettings,
 	saveRepoConfig,
 	saveLocalConfig,
