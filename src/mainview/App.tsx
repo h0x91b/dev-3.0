@@ -975,9 +975,11 @@ function App() {
 				// If the user is currently inside this task's view, leave it BEFORE the
 				// worktree is destroyed (otherwise TaskTerminal reacts to ptyDied /
 				// missing worktree and shows the "session ended / restart session"
-				// screen). Stay on the same surface: a task view collapses to "no task
-				// selected", a Kanban board is left untouched.
-				const dest = routeAfterTaskClosed(routeRef.current, taskId);
+				// screen). routeAfterTaskClosed sends the user back to their configured
+				// home surface: fullscreen open-mode → the board, split open-mode → the
+				// split task view (task deselected). A Kanban board is left untouched.
+				const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+				const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
 				if (dest) navigate(dest);
 				dispatch({
 					type: "updateTask",
@@ -1043,9 +1045,11 @@ function App() {
 			}
 			if (approved) {
 				// Leave the task's view BEFORE the worktree is destroyed (same
-				// reasoning as the branch-merged flow above). Stay on the same
-				// surface: a task view collapses to "no task selected".
-				const dest = routeAfterTaskClosed(routeRef.current, taskId);
+				// reasoning as the branch-merged flow above). routeAfterTaskClosed sends
+				// the user to their configured home (fullscreen → board, split → split
+				// task view, deselected).
+				const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+				const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
 				if (dest) navigate(dest);
 				dispatch({ type: "clearBell", taskId });
 				trackEvent("task_moved", { to_status: "completed", agent_requested: true });

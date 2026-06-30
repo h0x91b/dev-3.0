@@ -885,33 +885,44 @@ describe("routeTaskId", () => {
 });
 
 describe("routeAfterTaskClosed", () => {
-	it("collapses a full-page task view to task-view with no task selected", () => {
-		expect(routeAfterTaskClosed({ screen: "task", projectId: "p1", taskId: "t9" }, "t9")).toEqual({
+	it("fullscreen open-mode: a full-page task view returns to the Kanban board (no split task list)", () => {
+		expect(routeAfterTaskClosed({ screen: "task", projectId: "p1", taskId: "t9" }, "t9", "fullscreen")).toEqual({
+			screen: "project",
+			projectId: "p1",
+		});
+	});
+
+	it("split open-mode: deselects the task in a split task view", () => {
+		expect(
+			routeAfterTaskClosed({ screen: "project", projectId: "p1", taskView: true, activeTaskId: "t5" }, "t5", "split"),
+		).toEqual({ screen: "project", projectId: "p1", taskView: true });
+	});
+
+	it("split open-mode: a zoomed (full-page) task returns to the split task view, not the board", () => {
+		// A split-mode user can temporarily "zoom" a task to full-page (screen: "task").
+		// On completion they must land back in their split view, not the bare board.
+		expect(routeAfterTaskClosed({ screen: "task", projectId: "p1", taskId: "t9" }, "t9", "split")).toEqual({
 			screen: "project",
 			projectId: "p1",
 			taskView: true,
 		});
 	});
 
-	it("deselects the task in a split task view", () => {
-		expect(
-			routeAfterTaskClosed({ screen: "project", projectId: "p1", taskView: true, activeTaskId: "t5" }, "t5"),
-		).toEqual({ screen: "project", projectId: "p1", taskView: true });
-	});
-
-	it("returns null on the bare Kanban board (no navigation)", () => {
-		expect(routeAfterTaskClosed({ screen: "project", projectId: "p1" }, "t9")).toBeNull();
+	it("returns null on the bare Kanban board (no navigation), regardless of open-mode", () => {
+		expect(routeAfterTaskClosed({ screen: "project", projectId: "p1" }, "t9", "split")).toBeNull();
+		expect(routeAfterTaskClosed({ screen: "project", projectId: "p1" }, "t9", "fullscreen")).toBeNull();
 	});
 
 	it("returns null when viewing a different task", () => {
-		expect(routeAfterTaskClosed({ screen: "task", projectId: "p1", taskId: "other" }, "t9")).toBeNull();
+		expect(routeAfterTaskClosed({ screen: "task", projectId: "p1", taskId: "other" }, "t9", "fullscreen")).toBeNull();
 		expect(
-			routeAfterTaskClosed({ screen: "project", projectId: "p1", activeTaskId: "other" }, "t9"),
+			routeAfterTaskClosed({ screen: "project", projectId: "p1", activeTaskId: "other" }, "t9", "split"),
 		).toBeNull();
 	});
 
 	it("returns null for non-project screens", () => {
-		expect(routeAfterTaskClosed({ screen: "dashboard" }, "t9")).toBeNull();
+		expect(routeAfterTaskClosed({ screen: "dashboard" }, "t9", "split")).toBeNull();
+		expect(routeAfterTaskClosed({ screen: "dashboard" }, "t9", "fullscreen")).toBeNull();
 	});
 });
 
