@@ -85,3 +85,68 @@ describe("level gating", () => {
 		expect(appendFileSync).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("self-healing when the log directory disappears", () => {
+	// Regression: the logger caches which directories it has created in a
+	// module-level `ensuredDirs` set. When that directory is later removed out
+	// from under it — a tmp dir wiped between tests (the settings test does this
+	// in `beforeEach`), or a user clearing ~/.dev3.0/logs at runtime — the stale
+	// cache made `ensureDir` skip the mkdir, so the synchronous append hit a
+	// missing directory and spammed "[logger] Failed to write log file" on every
+	// subsequent line. The fix recreates the directory and retries once.
+	beforeEach(() => {
+		appendFileSync.mockReset();
+		mkdirSync.mockReset();
+		appendFileSync.mockImplementation(() => {});
+		mkdirSync.mockImplementation(() => {});
+		setMinLevel("debug");
+	});
+
+	it("invalidates the cached dir, recreates it, and retries once on a write error", () => {
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const log = createLogger("test");
+
+		// Warm the dir cache with a first successful write.
+		log.info("first");
+		const mkdirCallsAfterWarm = mkdirSync.mock.calls.length;
+
+		// The directory is now gone: the next append fails with ENOENT because the
+		// stale cache skipped the mkdir. The retry must recreate it and succeed.
+		appendFileSync.mockImplementationOnce(() => {
+			const err = new Error("ENOENT") as NodeJS.ErrnoException;
+			err.code = "ENOENT";
+			throw err;
+		});
+
+		log.info("second-marker");
+
+		// Retry recreated the directory (at least one extra mkdir beyond warm-up).
+		expect(mkdirSync.mock.calls.length).toBeGreaterThan(mkdirCallsAfterWarm);
+		// The line was ultimately written (initial failure + successful retry).
+		const wrote = appendFileSync.mock.calls.some((c) => String(c[1]).includes("[test] second-marker"));
+		expect(wrote).toBe(true);
+		// No "[logger] Failed to write log file" noise.
+		expect(errSpy).not.toHaveBeenCalled();
+
+		errSpy.mockRestore();
+	});
+
+	it("logs a single console.error only when the retry also fails", () => {
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		const log = createLogger("test");
+		log.info("warm");
+
+		// Both the initial write and the retry fail (e.g. permission denied) — the
+		// logger gives up after one retry and surfaces exactly one error.
+		appendFileSync.mockImplementation(() => {
+			throw new Error("EACCES: permission denied");
+		});
+
+		log.info("doomed");
+
+		expect(errSpy).toHaveBeenCalledTimes(1);
+		expect(String(errSpy.mock.calls[0]?.[0])).toContain("Failed to write log file");
+
+		errSpy.mockRestore();
+	});
+});

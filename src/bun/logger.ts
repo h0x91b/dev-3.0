@@ -94,13 +94,25 @@ function ensureDir(filePath: string): void {
 }
 
 function appendToFile(line: string): void {
+	const filePath = getLogFile();
 	try {
-		const filePath = getLogFile();
 		ensureDir(filePath);
 		appendFileSync(filePath, line + "\n");
-	} catch (err) {
-		// Last resort — don't let file logging break the app
-		console.error("[logger] Failed to write log file:", err);
+	} catch {
+		// The log directory may have been removed out from under us after we
+		// cached it in `ensuredDirs` — e.g. a tmp dir wiped between tests, or a
+		// user clearing ~/.dev3.0/logs while the app runs. The stale cache then
+		// makes `ensureDir` skip the mkdir, so the append hits a missing dir.
+		// Drop the cache entry, recreate the directory, and retry once.
+		try {
+			const dir = filePath.slice(0, filePath.lastIndexOf("/"));
+			ensuredDirs.delete(dir);
+			ensureDir(filePath);
+			appendFileSync(filePath, line + "\n");
+		} catch (retryErr) {
+			// Last resort — don't let file logging break the app.
+			console.error("[logger] Failed to write log file:", retryErr);
+		}
 	}
 }
 
