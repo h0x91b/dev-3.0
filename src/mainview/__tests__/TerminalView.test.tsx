@@ -37,6 +37,7 @@ const {
 		attachCustomWheelEventHandler: vi.fn(),
 		hasMouseTracking: vi.fn(() => false),
 		hasSelection: vi.fn(() => false),
+		isAlternateScreen: vi.fn(() => false),
 		getSelection: vi.fn(() => ""),
 		renderer: {
 			getCanvas: () => mockCanvas,
@@ -738,11 +739,13 @@ describe("clearStaleSelectionOnWrite", () => {
 	function makeTerm(over: {
 		alt: boolean;
 		hasSelection: boolean;
+		mouseTracking?: boolean;
 	}) {
 		const clearSelection = vi.fn();
 		return {
 			term: {
 				isAlternateScreen: vi.fn(() => over.alt),
+				hasMouseTracking: vi.fn(() => over.mouseTracking ?? false),
 				hasSelection: vi.fn(() => over.hasSelection),
 				clearSelection,
 			},
@@ -758,7 +761,20 @@ describe("clearStaleSelectionOnWrite", () => {
 		expect(clearSelection).toHaveBeenCalledTimes(1);
 	});
 
-	it("does NOT clear selection on the primary screen (scrollback stays anchored)", () => {
+	// Repro: the decision-077 regression. Claude Code renders inline on the
+	// PRIMARY screen (alt:false) with mouse tracking on and repaints the same
+	// rows in place, so a selection over it goes stale and must be dropped too.
+	it("clears the selection on the primary screen when mouse tracking is on", () => {
+		const { term, clearSelection } = makeTerm({
+			alt: false,
+			hasSelection: true,
+			mouseTracking: true,
+		});
+		clearStaleSelectionOnWrite(term);
+		expect(clearSelection).toHaveBeenCalledTimes(1);
+	});
+
+	it("does NOT clear selection on the primary screen without mouse tracking (scrollback stays anchored)", () => {
 		const { term, clearSelection } = makeTerm({ alt: false, hasSelection: true });
 		clearStaleSelectionOnWrite(term);
 		expect(clearSelection).not.toHaveBeenCalled();
@@ -766,6 +782,16 @@ describe("clearStaleSelectionOnWrite", () => {
 
 	it("does nothing on alt-screen when there is no selection", () => {
 		const { term, clearSelection } = makeTerm({ alt: true, hasSelection: false });
+		clearStaleSelectionOnWrite(term);
+		expect(clearSelection).not.toHaveBeenCalled();
+	});
+
+	it("does nothing with mouse tracking on but no selection", () => {
+		const { term, clearSelection } = makeTerm({
+			alt: false,
+			hasSelection: false,
+			mouseTracking: true,
+		});
 		clearStaleSelectionOnWrite(term);
 		expect(clearSelection).not.toHaveBeenCalled();
 	});

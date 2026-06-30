@@ -118,24 +118,30 @@ export function buildResizeDance(cols: number, rows: number): [string, string] {
 }
 
 // ghostty-web 0.4.0 never invalidates the selection when the terminal content
-// changes. On the primary screen that's fine — the selection is anchored to an
-// absolute buffer row and scrolls away with its text. But on the ALTERNATE
-// screen (full-screen TUIs like Claude Code, vim, htop) there is no scrollback:
-// the app repaints the same cells in place. The selection overlay stays glued
-// to those screen cells while fresh text is drawn under it — a stale highlight
-// floating over the wrong characters. Clear the selection on any alt-screen
-// write so the overlay never outlives the content it was made over. Primary
-// screen / scrollback selections are intentionally left untouched.
+// changes. A selection goes stale whenever the app OWNS THE SCREEN and repaints
+// cells in place instead of scrolling the buffer — the highlight is anchored to
+// a viewport row whose text is rewritten under it, leaving a stale overlay over
+// the wrong characters. Two cases:
+//   • Alternate screen (vim, htop, less): no scrollback, repaint in place.
+//   • Primary screen WITH mouse tracking (Claude Code and other inline TUIs):
+//     they render on the primary buffer (isAlternateScreen()===false) with SGR
+//     mouse mode on, and repaint the same rows on every keystroke/scroll while
+//     viewportY stays put. Confirmed via runtime logs: alt:false, mouseTracking:
+//     true, viewportY:0, selStartY frozen across repaints (decision 077 update).
+// Clear the selection on a write in either case. A plain primary-screen
+// scrollback selection (no mouse tracking) is left untouched — it is anchored to
+// an absolute buffer row and correctly scrolls away with its text.
 export function clearStaleSelectionOnWrite(term: {
 	isAlternateScreen?: () => boolean;
+	hasMouseTracking?: () => boolean;
 	hasSelection?: () => boolean;
 	clearSelection?: () => void;
 }): void {
 	try {
-		if (
-			term.isAlternateScreen?.() &&
-			term.hasSelection?.()
-		) {
+		const appOwnsScreen =
+			(term.isAlternateScreen?.() ?? false) ||
+			(term.hasMouseTracking?.() ?? false);
+		if (appOwnsScreen && term.hasSelection?.()) {
 			term.clearSelection?.();
 		}
 	} catch {
@@ -766,8 +772,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 					if (!batch) return;
 					try {
 						batchTerm.write(batch);
-						// Drop any stale alt-screen selection left floating over
-						// the just-repainted cells (ghostty-web won't do it).
+						// Drop any stale selection left floating over the
+						// just-repainted cells when the app owns the screen
+						// (alt-screen or primary+mouse-tracking); ghostty-web
+						// won't do it on its own.
 						clearStaleSelectionOnWrite(batchTerm);
 					} catch {
 						// Swallow ghostty-web rendering errors
