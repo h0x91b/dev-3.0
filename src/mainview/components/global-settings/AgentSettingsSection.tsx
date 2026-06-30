@@ -2,10 +2,14 @@ import { useCallback, useEffect, useState, type DragEvent } from "react";
 import type {
 	AgentCheckResult,
 	AgentConfiguration,
+	BedrockGeo,
 	CodingAgent,
 	EffortLevel,
 	GlobalSettings,
+	LlmProvider,
 	PermissionMode,
+	ProviderConfig,
+	ProviderSettings,
 } from "../../../shared/types";
 import { randomUUID } from "../../uuid";
 import { ListEditor } from "../ListEditor";
@@ -13,6 +17,13 @@ import AgentConfigPicker from "../AgentConfigPicker";
 import { api } from "../../rpc";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
+import {
+	BEDROCK_GEOS,
+	DEFAULT_BEDROCK_GEO,
+	defaultModelMap,
+	getProviderDefinition,
+	providersForAgent,
+} from "../../../shared/llm-provider";
 import {
 	buildCommandPreview,
 	moveItem,
@@ -380,22 +391,23 @@ export default function AgentSettingsSection({
 					}}
 				/>
 
-				{defaultAgentConfigs.length > 0 ? (() => {
-					const selectedConfig =
-						defaultAgentConfigs.find(
-							(config) => config.id === globalSettings.defaultConfigId,
-						) ?? defaultAgentConfigs[0];
-					if (!selectedConfig) return null;
-					return (
-						<div className="mt-4">
-							<ConfigPreviewCard
-								config={selectedConfig}
-								agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
-								t={t}
-							/>
-						</div>
-					);
-				})() : null}
+{defaultAgentConfigs.length > 0 ? (() => {
+				const selectedConfig =
+					defaultAgentConfigs.find(
+						(config) => config.id === globalSettings.defaultConfigId,
+					) ?? defaultAgentConfigs[0];
+				if (!selectedConfig) return null;
+				return (
+					<div className="mt-4">
+						<ConfigPreviewCard
+							config={selectedConfig}
+							agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
+							t={t}
+							llmProvider={selectedDefaultAgent?.llmProvider}
+						/>
+					</div>
+				);
+			})() : null}
 			</div>
 
 			<div>
@@ -711,6 +723,15 @@ export default function AgentSettingsSection({
 											/>
 										</div>
 
+										<ProviderSelector
+											t={t}
+											baseCommand={agent.baseCommand}
+											provider={agent.llmProvider ?? "anthropic"}
+											providerConfig={agent.providerConfig}
+											models={modelsForAgent(agent)}
+											onChange={(patch) => updateAgent(agent.id, patch)}
+										/>
+
 										<div>
 											<label className="block text-fg-2 text-xs font-semibold mb-2">
 												{t("settings.configurations")}
@@ -862,10 +883,12 @@ function ConfigPreviewCard({
 	config,
 	agentBaseCommand,
 	t,
+	llmProvider,
 }: {
 	config: AgentConfiguration;
 	agentBaseCommand: string;
 	t: TFunction;
+	llmProvider?: LlmProvider;
 }) {
 	const tags: { label: string; value: string }[] = [];
 	const cmdName = (
@@ -909,7 +932,7 @@ function ConfigPreviewCard({
 		});
 	}
 
-	const { command, envLine } = buildCommandPreview(agentBaseCommand, config);
+	const { command, envLine } = buildCommandPreview(agentBaseCommand, config, llmProvider);
 
 	return (
 		<div className="mt-3 bg-base border border-edge rounded-xl p-3 space-y-2">
@@ -1331,6 +1354,224 @@ function KeyValueEditor({
 			<button onClick={add} className="text-accent text-xs hover:underline">
 				+ {addLabel}
 			</button>
+		</div>
+	);
+}
+
+/** Distinct model aliases across an agent's configs — the rows of the provider
+ *  model-override table. */
+function modelsForAgent(agent: CodingAgent): string[] {
+	const seen = new Set<string>();
+	const models: string[] = [];
+	for (const config of agent.configurations) {
+		if (config.model && !seen.has(config.model)) {
+			seen.add(config.model);
+			models.push(config.model);
+		}
+	}
+	return models;
+}
+
+/**
+ * Per-agent LLM-backend selector: the agent's native API (default) or any
+ * third-party backend registered for that agent (e.g. Amazon Bedrock for
+ * Claude). Selecting a third-party provider injects its enable flag + the mapped
+ * model into the agent's launches and drops dev3's --model alias.
+ * Credentials/region are NOT set here — the customer owns those in their own
+ * agent config. Renders nothing for agents with no registered backend; provider
+ * fields appear only for the selected provider, driven by its registry entry.
+ */
+function ProviderSelector({
+	t,
+	baseCommand,
+	provider,
+	providerConfig,
+	models,
+	onChange,
+}: {
+	t: TFunction;
+	baseCommand: string;
+	provider: LlmProvider;
+	providerConfig: ProviderConfig | undefined;
+	models: string[];
+	onChange: (patch: Partial<CodingAgent>) => void;
+}) {
+	const options = providersForAgent(baseCommand);
+	const setProvider = (next: LlmProvider) => onChange({ llmProvider: next });
+
+	const activeDef = getProviderDefinition(provider);
+	const settings = activeDef ? providerConfig?.[activeDef.id] : undefined;
+	const geo = settings?.geo ?? DEFAULT_BEDROCK_GEO;
+
+	const patchProvider = (patch: Partial<ProviderSettings>) => {
+		if (!activeDef) return;
+		onChange({
+			providerConfig: {
+				...providerConfig,
+				[activeDef.id]: { ...settings, ...patch },
+			},
+		});
+	};
+
+	// No registered backend for this agent → no toggle at all.
+	if (options.length === 0) return null;
+
+	return (
+		<div className="mt-2 pt-4 border-t border-edge">
+			<label className="block text-fg-2 text-xs font-semibold mb-1">
+				{t("settings.llmProvider")}
+			</label>
+			<p className="text-fg-3 text-xs mb-2">{t("settings.llmProviderDesc")}</p>
+
+			<div className="inline-flex rounded-xl border border-edge bg-base p-1 gap-1">
+				{options.map((opt) => {
+					const active = provider === opt.id;
+					return (
+						<button
+							key={opt.id}
+							type="button"
+							onClick={() => setProvider(opt.id)}
+							className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+								active
+									? "bg-accent text-white"
+									: "text-fg-2 hover:bg-elevated"
+							}`}
+						>
+							{t(opt.labelKey as Parameters<TFunction>[0])}
+						</button>
+					);
+				})}
+			</div>
+
+			{activeDef ? (
+				<div className="mt-4 space-y-3">
+					<p className="text-fg-3 text-xs">
+						{t(activeDef.hintKey as Parameters<TFunction>[0])}
+					</p>
+					{activeDef.usesGeo ? (
+						<div>
+							<span className="block text-fg-2 text-xs mb-1">
+								{t("settings.providerBedrockGeo")}
+							</span>
+							<div className="inline-flex rounded-lg border border-edge bg-base p-0.5 gap-0.5">
+								{BEDROCK_GEOS.map((g) => {
+									const active = geo === g;
+									return (
+										<button
+											key={g}
+											type="button"
+											onClick={() => patchProvider({ geo: g })}
+											className={`px-3 py-1 rounded-md text-xs font-mono transition-colors ${
+												active ? "bg-accent text-white" : "text-fg-2 hover:bg-elevated"
+											}`}
+										>
+											{g}
+										</button>
+									);
+								})}
+							</div>
+						</div>
+					) : null}
+					<ModelOverrideTable
+						t={t}
+						provider={activeDef.id}
+						geo={geo}
+						models={models}
+						overrides={settings?.modelOverrides}
+						onOverridesChange={(modelOverrides) => patchProvider({ modelOverrides })}
+					/>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+/**
+ * Pre-populated table of the agent's model aliases → the provider-native id each
+ * maps to. Each row's id is inline-editable; an edited row shows a "manual" badge
+ * and a revert-to-default control. Editing/reverting updates the per-model
+ * overrides map keyed by the dev3 alias.
+ */
+function ModelOverrideTable({
+	t,
+	provider,
+	geo,
+	models,
+	overrides,
+	onOverridesChange,
+}: {
+	t: TFunction;
+	provider: LlmProvider;
+	geo?: BedrockGeo;
+	models: string[];
+	overrides: Record<string, string> | undefined;
+	onOverridesChange: (next: Record<string, string> | undefined) => void;
+}) {
+	const rows = defaultModelMap(models, provider, geo);
+
+	const setOverride = (model: string, value: string) => {
+		onOverridesChange({ ...overrides, [model]: value });
+	};
+	const revert = (model: string) => {
+		if (!overrides || !(model in overrides)) return;
+		const next = { ...overrides };
+		delete next[model];
+		onOverridesChange(Object.keys(next).length > 0 ? next : undefined);
+	};
+
+	if (rows.length === 0) return null;
+
+	return (
+		<div>
+			<div className="flex items-baseline justify-between mb-1">
+				<span className="block text-fg-2 text-xs">{t("settings.providerModelTable")}</span>
+				<span className="text-fg-muted text-xs">{t("settings.providerModelTableHint")}</span>
+			</div>
+			<div className="rounded-lg border border-edge overflow-hidden divide-y divide-edge">
+				{rows.map(({ model, defaultId }) => {
+					const overridden =
+						overrides != null && model in overrides && (overrides[model]?.trim() ?? "") !== "";
+					const value = overridden ? overrides[model] : defaultId;
+					return (
+						<div key={model} className="flex items-center gap-2 px-3 py-2 bg-base">
+							<span
+								className="text-fg text-xs font-mono shrink-0 w-44 truncate"
+								title={model}
+							>
+								{model}
+							</span>
+							<input
+								type="text"
+								value={value ?? ""}
+								placeholder={defaultId}
+								autoCapitalize="off"
+								autoCorrect="off"
+								spellCheck={false}
+								onChange={(event) => setOverride(model, event.target.value)}
+								className="flex-1 min-w-0 px-2 py-1 bg-raised border border-edge rounded text-fg text-xs font-mono outline-none focus:border-accent/40 transition-colors"
+							/>
+							{overridden ? (
+								<>
+									<span className="text-accent text-[10px] uppercase tracking-wide shrink-0">
+										{t("settings.providerModelManual")}
+									</span>
+									<button
+										type="button"
+										onClick={() => revert(model)}
+										className="text-fg-3 text-xs hover:text-fg hover:underline shrink-0"
+									>
+										{t("settings.providerModelRevert")}
+									</button>
+								</>
+							) : (
+								<span className="text-fg-muted text-[10px] uppercase tracking-wide shrink-0">
+									{t("settings.providerModelDefault")}
+								</span>
+							)}
+						</div>
+					);
+				})}
+			</div>
 		</div>
 	);
 }

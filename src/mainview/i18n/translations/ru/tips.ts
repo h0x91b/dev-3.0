@@ -212,6 +212,8 @@ const tips = {
 	"tip.makefileTargets.body": "Кнопка ƒ Scripts показывает и таргеты Makefile — выберите один, чтобы запустить make <target> в живой панели.",
 	"tip.cliDoctor.title": "Диагностика установки",
 	"tip.cliDoctor.body": "Что-то сломалось после обновления? Запустите `dev3 doctor` в любом терминале — проверит приложение, tmux и Homebrew и подскажет команды для починки.",
+	"tip.llmProvider.title": "Claude через Amazon Bedrock",
+	"tip.llmProvider.body": "Настройки → Coding Agents → LLM Provider направляет агента Claude в Amazon Bedrock — dev3 подставит модель; учётные данные и регион остаются в вашей конфигурации.",
 };
 
 export default tips;

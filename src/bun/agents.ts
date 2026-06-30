@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AgentConfiguration, CodingAgent, Project } from "../shared/types";
+import type { AgentConfiguration, CodingAgent, LlmProvider, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
+import { buildProviderEnv, getProviderDefinition, isThirdPartyProvider } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { DEV3_HOME } from "./paths";
@@ -408,6 +409,11 @@ export interface CommandOptions {
 	 *  agents. Set automatically by resolveCommandForAgent/resolveCommandForProject
 	 *  when rate-limit tracking is enabled. */
 	statuslineSettingsFile?: string;
+	/** The LLM backend selected in global settings. For Bedrock, dev3 omits the
+	 *  Anthropic-API --model alias (the provider would reject it); the model is
+	 *  supplied via injected provider env (ANTHROPIC_MODEL) instead.
+	 *  Only affects the Claude agent. */
+	llmProvider?: LlmProvider;
 }
 
 /**
@@ -498,7 +504,14 @@ export function resolveAgentCommand(
 		}
 	}
 
-	if (config?.model) {
+	// Under a third-party backend (e.g. Bedrock for Claude), the agent selects the
+	// model from the injected provider env (ANTHROPIC_MODEL) using a provider-native
+	// id; the native alias dev3 would pass via --model is rejected by the provider
+	// with a 400. So omit --model. `options.llmProvider` is only set when it's a
+	// backend registered for this agent (see withProviderOptions), so no per-command
+	// guard is needed here. Agents on their native provider are unaffected.
+	const skipModelForProvider = isThirdPartyProvider(options?.llmProvider);
+	if (config?.model && !skipModelForProvider) {
 		// Model names may contain shell metacharacters (e.g. brackets in
 		// `claude-opus-4-8[1m]`). Quote them so zsh doesn't glob-expand.
 		args.push("--model", quoteIfUnsafe(config.model));
@@ -682,13 +695,48 @@ export async function resolveCommandForAgent(
 	const settings = await loadSettings();
 	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 
-	const command = resolveAgentCommand(agentWithPath, config, ctx, applyStatusLineOption(options, settings));
-	// Agent-type defaults first, then config envVars override
-	const extraEnv: Record<string, string> = { ...getDefaultEnvForAgent(agent, config) };
+	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
+	const command = resolveAgentCommand(agentWithPath, config, ctx, providerOpts);
+	// Order: agent-type defaults → provider env (Bedrock) → config envVars
+	// wins last, so an explicit envVars override still applies.
+	const extraEnv: Record<string, string> = {
+		...getDefaultEnvForAgent(agent, config),
+		...providerEnvForAgent(agentWithPath, config),
+	};
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
 	return { command, agent, config, extraEnv };
+}
+
+/** The provider selected on this agent, but only if it's a backend actually
+ *  registered for this agent's command (defends against a stale/mismatched id). */
+function agentProvider(agent: CodingAgent, config: AgentConfiguration | undefined): LlmProvider | undefined {
+	const def = getProviderDefinition(agent.llmProvider);
+	if (!def) return undefined;
+	const baseCmd = (config?.baseCommandOverride || agent.baseCommand).split("/").pop() ?? "";
+	return def.agentCommand === baseCmd ? agent.llmProvider : undefined;
+}
+
+/** Provider env to inject for this agent's launch under its selected backend.
+ *  Empty for the native (default) provider or an agent with no backend. */
+function providerEnvForAgent(
+	agent: CodingAgent,
+	config: AgentConfiguration | undefined,
+): Record<string, string> {
+	return buildProviderEnv(agentProvider(agent, config), agent.providerConfig, config?.model);
+}
+
+/** Attach the agent's selected provider to CommandOptions, so
+ *  resolveAgentCommand omits the --model alias under a third-party backend. */
+function withProviderOptions(
+	options: CommandOptions | undefined,
+	agent: CodingAgent,
+	config: AgentConfiguration | undefined,
+): CommandOptions {
+	const provider = agentProvider(agent, config);
+	if (!provider) return options ?? {};
+	return { ...options, llmProvider: provider };
 }
 
 export async function resolveCommandForProject(
@@ -715,10 +763,17 @@ export async function resolveCommandForProject(
 		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
-		const command = resolveAgentCommand(agentWithPath, config, ctx, applyStatusLineOption(options, settings));
-		// Agent-type defaults first, then buildTaskEnv (which includes config envVars) overrides
+		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
+		const command = resolveAgentCommand(agentWithPath, config, ctx, providerOpts);
+		// Order: agent-type defaults → provider env (Bedrock) → config envVars
+		// (via buildTaskEnv) wins last, so an explicit envVars override still applies.
 		const agentDefaults = getDefaultEnvForAgent(agent, config);
-		const extraEnv = { ...agentDefaults, ...buildTaskEnv(project, taskTitle, "", worktreePath, config) };
+		const providerEnv = providerEnvForAgent(agentWithPath, config);
+		const extraEnv = {
+			...agentDefaults,
+			...providerEnv,
+			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
+		};
 		return { command, agent, config, extraEnv };
 	}
 

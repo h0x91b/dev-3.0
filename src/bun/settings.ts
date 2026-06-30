@@ -99,6 +99,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 	}
 }
 
+
 export async function saveSettings(settings: GlobalSettings): Promise<void> {
 	log.info("Saving global settings", { settings });
 	await withFileLock(SETTINGS_FILE, async () => {
