@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
@@ -769,12 +769,12 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		// Reverse a few default configs.
 		const reorderedConfigs = [
 			claude.configurations.find((c) => c.id === "claude-plan")!,
-			claude.configurations.find((c) => c.id === "claude-plan-sonnet")!,
+			claude.configurations.find((c) => c.id === "claude-plan-sonnet5")!,
 			claude.configurations.find((c) => c.id === "claude-default")!,
 		];
 		// Plus the rest unchanged.
 		const others = claude.configurations.filter(
-			(c) => !["claude-plan", "claude-plan-sonnet", "claude-default"].includes(c.id),
+			(c) => !["claude-plan", "claude-plan-sonnet5", "claude-default"].includes(c.id),
 		);
 		const stored: CodingAgent[] = [
 			{ ...claude, configurations: [...reorderedConfigs, ...others] },
@@ -782,7 +782,7 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		const result = mergeWithDefaults(stored);
 		const claudeResult = result.find((a) => a.id === "builtin-claude")!;
 		expect(claudeResult.configurations[0].id).toBe("claude-plan");
-		expect(claudeResult.configurations[1].id).toBe("claude-plan-sonnet");
+		expect(claudeResult.configurations[1].id).toBe("claude-plan-sonnet5");
 		expect(claudeResult.configurations[2].id).toBe("claude-default");
 	});
 
@@ -899,6 +899,46 @@ describe("mergeMcpApproval", () => {
 			{ enabledMcpjsonServers: ["a", 42, null, "b"] as unknown[] },
 		]);
 		expect(result.enabledMcpjsonServers).toEqual(["a", "b"]);
+	});
+});
+
+describe("applyLayoutResync", () => {
+	it("reorders a stale legacy config order to match the current DEFAULT_AGENTS order", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		// Simulate a fossilized stored order — reverse of the current declared order.
+		const staleOrder = [...claude.configurations].reverse();
+		const stored: CodingAgent[] = [{ ...claude, configurations: staleOrder }];
+
+		const result = applyLayoutResync(stored);
+		const resyncedClaude = result.find((a) => a.id === "builtin-claude")!;
+
+		expect(resyncedClaude.configurations.map((c) => c.id)).toEqual(
+			claude.configurations.map((c) => c.id),
+		);
+	});
+
+	it("appends user-created configs after the resynced built-ins, preserving their relative order", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
+		const custom: AgentConfiguration = { id: "my-custom-config", name: "My Custom" };
+		const stored: CodingAgent[] = [
+			{ ...claude, configurations: [custom, ...[...claude.configurations].reverse()] },
+		];
+
+		const result = applyLayoutResync(stored);
+		const resyncedClaude = result.find((a) => a.id === "builtin-claude")!;
+
+		const ids = resyncedClaude.configurations.map((c) => c.id);
+		expect(ids[ids.length - 1]).toBe("my-custom-config");
+		expect(ids.slice(0, -1)).toEqual(claude.configurations.map((c) => c.id));
+	});
+
+	it("leaves fully custom agents untouched", () => {
+		const custom = makeAgent({
+			id: "my-custom-agent",
+			configurations: [{ id: "b", name: "B" }, { id: "a", name: "A" }],
+		});
+		const result = applyLayoutResync([custom]);
+		expect(result[0].configurations.map((c) => c.id)).toEqual(["b", "a"]);
 	});
 });
 

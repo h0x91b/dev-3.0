@@ -95,6 +95,21 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).tipsDisabled).toBeUndefined();
 	});
 
+	it("remaps a stored defaultConfigId that was removed in a preset cleanup", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-bypass-opus48" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-bypass-opus48-xhigh");
+	});
+
+	it("falls back to the current default for a dangling builtin-looking id with no remap entry", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-some-preset-that-never-existed" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus48-xhigh");
+	});
+
+	it("leaves a non-builtin (custom) defaultConfigId untouched", async () => {
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "my-custom-config" }), null, 2), "utf-8");
+		expect((await loadSettings()).defaultConfigId).toBe("my-custom-config");
+	});
+
 	it("preserves every GlobalSettings field across a save→load round-trip (drift guard + downgrade safety)", async () => {
 		// `Required<>` forces this object to enumerate EVERY field of the shared
 		// GlobalSettings type. Adding a field to the type without handling it in
@@ -126,6 +141,7 @@ describe("saveSettings", () => {
 			importShellEnv: false,
 			focusMode: true,
 			watchByDefault: true,
+			agentsLayoutRevision: 1,
 		};
 
 		await saveSettings(full);

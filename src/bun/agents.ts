@@ -7,7 +7,7 @@ import { DEFAULT_AGENTS } from "../shared/types";
 import { createLogger } from "./logger";
 import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { DEV3_HOME } from "./paths";
-import { loadSettings } from "./settings";
+import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 
@@ -24,6 +24,27 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"claude-plan-then-bypass-sonnet",
 	"claude-approvals-opus",
 	"claude-bypass-opus",
+	// Removed when Opus 4.8's plain Auto/Bypass were replaced by explicit
+	// Medium/X-High effort tiers, "Don't Ask" presets were dropped, the
+	// generic "Sonnet" alias block was replaced by the pinned Sonnet 5
+	// block, and Opus 4.7 was trimmed to a cold Auto/Bypass fallback.
+	"claude-auto-opus48",
+	"claude-bypass-opus48",
+	"claude-dontask-opus48",
+	"claude-auto-sonnet",
+	"claude-bypass-sonnet",
+	"claude-default-sonnet",
+	"claude-plan-sonnet",
+	"claude-approvals-sonnet",
+	"claude-dontask-sonnet",
+	"claude-dontask",
+	"claude-default-opus47",
+	"claude-plan-opus47",
+	"claude-approvals-opus47",
+	"claude-dontask-opus47",
+	"claude-auto-sonnet5",
+	"claude-bypass-sonnet5",
+	"claude-dontask-sonnet5",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
@@ -109,6 +130,42 @@ function mergeAgentWithDefault(
 	};
 }
 
+/** Bumped whenever DEFAULT_AGENTS' preset *order* changes meaningfully enough
+ *  to warrant a one-time resync of already-onboarded users' stored order
+ *  (mergeWithDefaults otherwise preserves stored order forever). See
+ *  decisions/ for the write-up. */
+export const AGENTS_LAYOUT_REVISION = 2;
+
+/** One-time reorder of each built-in agent's configurations to match the
+ *  current DEFAULT_AGENTS declared order. Custom (non-default) configs are
+ *  left in place, appended after the reordered built-ins, in their existing
+ *  relative order. Pure function — callers decide when/whether to persist
+ *  the result and bump `agentsLayoutRevision`. */
+export function applyLayoutResync(agents: CodingAgent[]): CodingAgent[] {
+	const defAgentById = new Map(DEFAULT_AGENTS.map((a) => [a.id, a]));
+	return agents.map((agent) => {
+		const def = defAgentById.get(agent.id);
+		if (!def) return agent; // fully custom agent — nothing to resync against
+
+		const defOrderIds = def.configurations.map((c) => c.id);
+		const byId = new Map(agent.configurations.map((c) => [c.id, c]));
+		const reordered: AgentConfiguration[] = [];
+		for (const id of defOrderIds) {
+			const cfg = byId.get(id);
+			if (cfg) {
+				reordered.push(cfg);
+				byId.delete(id);
+			}
+		}
+		// Anything left over (user-created configs) keeps its existing relative order, appended at the end.
+		for (const cfg of agent.configurations) {
+			if (byId.has(cfg.id)) reordered.push(cfg);
+		}
+
+		return { ...agent, configurations: reordered };
+	});
+}
+
 /** Remove keys with undefined values so they don't shadow defaults in spread. */
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
 	const result: any = {};
@@ -160,7 +217,19 @@ async function saveAgents(agents: CodingAgent[]): Promise<void> {
 
 export async function getAllAgents(): Promise<CodingAgent[]> {
 	const stored = await loadStoredAgents();
-	return mergeWithDefaults(stored);
+	const merged = mergeWithDefaults(stored);
+
+	const settings = await loadSettings();
+	if ((settings.agentsLayoutRevision ?? 0) >= AGENTS_LAYOUT_REVISION) {
+		return merged;
+	}
+
+	// One-time resync: existing installs otherwise keep whatever stale order
+	// their configs happened to have from whenever they first ran, forever.
+	const resynced = applyLayoutResync(merged);
+	await saveAgents(resynced);
+	await saveSettings({ ...settings, agentsLayoutRevision: AGENTS_LAYOUT_REVISION });
+	return resynced;
 }
 
 export async function saveAllAgents(agents: CodingAgent[]): Promise<void> {

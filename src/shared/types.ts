@@ -155,7 +155,7 @@ export function getPrimaryStopTarget(autoReviewEnabled?: boolean): TaskStatus {
 // ---- Coding Agents ----
 
 export type PermissionMode = "default" | "acceptEdits" | "bypassPermissions" | "dontAsk" | "plan" | "auto";
-export type EffortLevel = "low" | "medium" | "high";
+export type EffortLevel = "low" | "medium" | "high" | "xhigh";
 
 export interface AgentConfiguration {
 	id: string;
@@ -193,35 +193,34 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install claude-code",
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
-			// --- Opus 4.8 (current default â Fable 5 temporarily unavailable) â order: Auto, Bypass, Default, then the rest ---
-			{ id: "claude-auto-opus48", name: "Auto (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "auto", version: 1 },
-			{ id: "claude-bypass-opus48", name: "Bypass (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-default-opus48", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-plan-opus48", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-dontask-opus48", name: "Don't Ask (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			// --- Fable 5 (temporarily unavailable, kept for when it returns) â order: Auto, Bypass, Default, then the rest ---
-			{ id: "claude-auto", name: "Auto (Fable 5)", model: "claude-fable-5", permissionMode: "auto", version: 6 },
-			{ id: "claude-auto-sonnet", name: "Auto (Sonnet)", model: "sonnet", permissionMode: "auto", version: 1 },
-			{ id: "claude-bypass", name: "Bypass (Fable 5)", model: "claude-fable-5", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
-			{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: "sonnet", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-default", name: "Default (Fable 5)", model: "claude-fable-5", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
-			{ id: "claude-default-sonnet", name: "Default (Sonnet)", model: "sonnet", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-plan", name: "Plan (Fable 5)", model: "claude-fable-5", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 7 },
-			{ id: "claude-plan-sonnet", name: "Plan (Sonnet)", model: "sonnet", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-approvals", name: "Accept Edits (Fable 5)", model: "claude-fable-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
-			{ id: "claude-approvals-sonnet", name: "Accept Edits (Sonnet)", model: "sonnet", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 2 },
-			{ id: "claude-dontask", name: "Don't Ask (Fable 5)", model: "claude-fable-5", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 6 },
-			{ id: "claude-dontask-sonnet", name: "Don't Ask (Sonnet)", model: "sonnet", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			// --- Opus 4.7 (previous generation, kept for fallback) ---
-			{ id: "claude-default-opus47", name: "Default (Opus 4.7)", model: "claude-opus-4-7[1m]", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-plan-opus47", name: "Plan (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-bypass-opus47", name: "Bypass (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-auto-opus47", name: "Auto (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "auto", version: 1 },
-			{ id: "claude-approvals-opus47", name: "Accept Edits (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
-			{ id: "claude-dontask-opus47", name: "Don't Ask (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "dontAsk", additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+			// --- Auto (Fable 5 first — flagship — then Opus 4.8/Sonnet 5 effort tiers, then Opus 4.7) ---
+			{ id: "claude-auto", name: "Auto (Fable 5)", model: "claude-fable-5", permissionMode: "auto", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
+			{ id: "claude-auto-opus48-medium", name: "Auto (Opus 4.8, Medium)", model: "claude-opus-4-8[1m]", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-opus48-xhigh", name: "Auto (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-sonnet5-medium", name: "Auto (Sonnet 5, Medium)", model: "claude-sonnet-5", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-sonnet5-xhigh", name: "Auto (Sonnet 5, X-High)", model: "claude-sonnet-5", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-opus47", name: "Auto (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "auto", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
+			// --- Bypass (same model order as Auto) ---
+			{ id: "claude-bypass", name: "Bypass (Fable 5)", model: "claude-fable-5", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
+			{ id: "claude-bypass-opus48-medium", name: "Bypass (Opus 4.8, Medium)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-opus48-xhigh", name: "Bypass (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-sonnet5-medium", name: "Bypass (Sonnet 5, Medium)", model: "claude-sonnet-5", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-sonnet5-xhigh", name: "Bypass (Sonnet 5, X-High)", model: "claude-sonnet-5", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-opus47", name: "Bypass (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "bypassPermissions", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
+			// --- Default (no Opus 4.7 — trimmed to a cold Auto/Bypass fallback) ---
+			{ id: "claude-default", name: "Default (Fable 5)", model: "claude-fable-5", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
+			{ id: "claude-default-opus48", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-default-sonnet5", name: "Default (Sonnet 5)", model: "claude-sonnet-5", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			// --- Plan ---
+			{ id: "claude-plan", name: "Plan (Fable 5)", model: "claude-fable-5", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 9 },
+			{ id: "claude-plan-opus48", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-plan-sonnet5", name: "Plan (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "plan", additionalArgs: ["--allow-dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			// --- Accept Edits ---
+			{ id: "claude-approvals", name: "Accept Edits (Fable 5)", model: "claude-fable-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
+			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-approvals-sonnet5", name: "Accept Edits (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 		],
-		defaultConfigId: "claude-auto-opus48",
+		defaultConfigId: "claude-auto-opus48-xhigh",
 	},
 	{
 		id: "builtin-codex",
@@ -387,6 +386,29 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 	},
 ];
 
+/** Maps config ids removed/renamed from DEFAULT_AGENTS to their closest surviving
+ *  equivalent. Applied to `GlobalSettings.defaultConfigId` on load so a stale
+ *  reference to a deleted preset doesn't leave "Launch Task" with no selection. */
+export const DEPRECATED_DEFAULT_CONFIG_REMAP: Record<string, string> = {
+	"claude-auto-opus48": "claude-auto-opus48-xhigh",
+	"claude-bypass-opus48": "claude-bypass-opus48-xhigh",
+	"claude-dontask-opus48": "claude-auto-opus48-xhigh",
+	"claude-auto-sonnet": "claude-auto-sonnet5-xhigh",
+	"claude-bypass-sonnet": "claude-bypass-sonnet5-xhigh",
+	"claude-default-sonnet": "claude-default-sonnet5",
+	"claude-plan-sonnet": "claude-plan-sonnet5",
+	"claude-approvals-sonnet": "claude-approvals-sonnet5",
+	"claude-dontask-sonnet": "claude-default-sonnet5",
+	"claude-dontask": "claude-approvals",
+	"claude-default-opus47": "claude-auto-opus47",
+	"claude-plan-opus47": "claude-auto-opus47",
+	"claude-approvals-opus47": "claude-auto-opus47",
+	"claude-dontask-opus47": "claude-auto-opus47",
+	"claude-auto-sonnet5": "claude-auto-sonnet5-xhigh",
+	"claude-bypass-sonnet5": "claude-bypass-sonnet5-xhigh",
+	"claude-dontask-sonnet5": "claude-default-sonnet5",
+};
+
 export type TerminalKeymapPreset = "default" | "iterm2";
 
 // ---- External Apps ("Open in...") ----
@@ -445,6 +467,13 @@ export interface GlobalSettings {
 	 * reused as the default for the next launch. Undefined â default to unwatched.
 	 */
 	watchByDefault?: boolean;
+	/**
+	 * One-time migration marker: when this is behind the app's current
+	 * revision, built-in agent presets get their configuration order
+	 * resynced to match the declared order in DEFAULT_AGENTS once, then
+	 * this is bumped so the user's own future drag-reordering sticks again.
+	 */
+	agentsLayoutRevision?: number;
 }
 
 export interface TipState {

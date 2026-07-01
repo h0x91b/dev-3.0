@@ -726,7 +726,7 @@ describe("GlobalSettings", () => {
 			const effortSelect = screen.getAllByRole("combobox").find(
 				(s) => {
 					const el = s as HTMLSelectElement;
-					return el.value === "" && el.options.length === 4;
+					return el.value === "" && el.options.length === 5;
 				},
 			)!;
 			await user.selectOptions(effortSelect, "high");

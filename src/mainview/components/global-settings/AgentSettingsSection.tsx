@@ -1165,6 +1165,7 @@ function ConfigEditor({
 							<option value="low">{t("settings.effortLow")}</option>
 							<option value="medium">{t("settings.effortMedium")}</option>
 							<option value="high">{t("settings.effortHigh")}</option>
+							<option value="xhigh">{t("settings.effortXHigh")}</option>
 						</select>
 					</div>
 

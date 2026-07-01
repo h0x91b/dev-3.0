@@ -201,7 +201,7 @@ function LaunchVariantsModal({
 				role="dialog"
 				aria-modal="true"
 				tabIndex={-1}
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-lg mx-4 overflow-hidden outline-none"
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-xl mx-4 overflow-hidden outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
