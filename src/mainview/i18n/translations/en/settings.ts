@@ -51,6 +51,7 @@ const settings = {
 	"settings.effortLow": "Low",
 	"settings.effortMedium": "Medium",
 	"settings.effortHigh": "High",
+	"settings.effortXHigh": "X-High",
 	"settings.configMaxBudget": "Max Budget (USD)",
 	"settings.configMaxBudgetHint": "Maximum dollar amount for API calls per session",
 	"settings.agentInstalled": "Installed",
