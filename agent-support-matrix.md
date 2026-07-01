@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-05-25
+Last updated: 2026-06-29
 
 ## Agents
 
@@ -24,7 +24,8 @@ Last updated: 2026-05-25
 | **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` | — |
 | **Effort level** | `--effort` | — | `--effort` | — | — |
 | **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — |
-| **Model selection** | `--model` | `--model` | `--model` | `--model` | `--model` |
+| **Model selection** | `--model` (omitted on a third-party provider — see below) | `--model` | `--model` | `--model` | `--model` |
+| **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — |
 | **Agent selection** | — | — | — | — | `--agent` |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
 | **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (4 hooks) | — | — |
@@ -75,6 +76,42 @@ A supplementary skill that teaches agents about `.dev3/config.json` and `.dev3/c
 A user-invocable skill that turns the agent into a seeded bug hunter. It generates a random seed, derives an identity letter, chooses a starting area plus analysis style, and then forces the hunt to begin from that assigned area before branching out. The skill is read-only, uses a terminal-friendly findings format with a compact ASCII summary table plus detail sections, asks whether `critical` and `medium` findings should become separate dev3 tasks, and requires those follow-up tasks to validate and reproduce the bug before any fix is attempted. Same content for all agents.
 
 For Gemini CLI specifically, dev-3.0 installs these managed skills only via the shared `~/.agents/skills/` alias. Gemini also discovers `~/.gemini/skills/`, but duplicating the same skill name in both user-scope directories triggers same-tier conflict warnings and the alias already has precedence.
+
+## LLM provider (per-agent backend)
+
+Each agent can run against its **native API** (default) or a registered
+third-party backend (today: **Amazon Bedrock** for Claude), chosen via a
+**per-agent** toggle inside that agent's row in **Settings → Coding Agents**
+(`CodingAgent.llmProvider` / `CodingAgent.providerConfig`). dev3's built-in
+configs select a model with `--model` using native aliases (e.g.
+`claude-opus-4-8[1m]`); third-party providers reject those, so when one is
+selected dev3 **omits `--model`** for that agent and injects the provider env
+instead. Agents on their native provider — and agents with no registered
+backend at all (Codex, Gemini, …, which show no toggle) — are unaffected.
+
+Providers are data, not code: each one is a `ProviderDefinition` in the
+`PROVIDER_REGISTRY` (`src/shared/llm-provider.ts`), keyed by an `LLM_PROVIDER` id
+(`src/shared/types.ts`) and bound to an agent via its `agentCommand`. Adding a
+backend = one id + one registry entry + i18n labels; the toggle, env injection,
+and model table all read the registry. The toggle only appears on agents that
+have ≥1 registered backend.
+
+dev3 injects only the provider's enable flag + the pinned model (merged into the
+launch env; a config's own `envVars` still win). **Credentials, AWS
+region/profile are NOT set by dev3** — the customer configures those in their own
+global agent setup (shell env / `~/.claude/settings.json`).
+
+| Provider | Injected env | Model id source |
+|----------|--------------|-----------------|
+| Anthropic | _(none)_ | `--model <alias>` as usual |
+| Bedrock | `CLAUDE_CODE_USE_BEDROCK=1`, `ANTHROPIC_MODEL` | alias→`<geo>.anthropic.*` map (geo = `global`/`us`/`eu`/`apac` toggle), or the per-model override |
+
+Known model aliases map to provider-native ids automatically
+(`src/shared/llm-provider.ts`); unknown/new models are derived from the alias so
+dev3 **always pins the model** (the agent never falls back to a different default
+than dev3 expects). The settings model-mapping table is pre-populated and
+inline-editable per model (Manual badge + Revert); a geo-aware provider's geo
+toggle re-prefixes all non-overridden rows. See [decision 089](decisions/089-llm-provider-toggle.md).
 
 ## Additional Integrations
 

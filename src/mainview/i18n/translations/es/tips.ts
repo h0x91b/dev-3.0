@@ -254,6 +254,8 @@ const tips = {
 	"tip.paneZoomRestore.body": "Cuando un panel de tmux está en zoom (p. ej. heredado del móvil), aparece una insignia «Zoom» arriba a la derecha del terminal — tócala para restaurar la división completa.",
 	"tip.mobileWindowPager.title": "Cambia de ventana en el móvil",
 	"tip.mobileWindowPager.body": "En una pantalla estrecha, una barra sobre los paneles permite moverte entre ventanas de tmux — toca ‹ › o el nombre para saltar entre espacios de trabajo de la sesión.",
+	"tip.llmProvider.title": "Claude en Amazon Bedrock",
+	"tip.llmProvider.body": "Ajustes → Coding Agents → LLM Provider permite apuntar el agente Claude a Amazon Bedrock — dev3 inyecta el modelo y la región por ti.",
 };
 
 export default tips;

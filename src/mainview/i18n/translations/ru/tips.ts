@@ -254,6 +254,8 @@ const tips = {
 	"tip.paneZoomRestore.body": "Когда панель tmux зазумлена (например, осталось с телефона), справа сверху терминала появляется плашка «Зум» — тапни её, чтобы вернуть полный сплит.",
 	"tip.mobileWindowPager.title": "Переключай окна с телефона",
 	"tip.mobileWindowPager.body": "На узком экране панель над панелями терминала позволяет переходить между окнами tmux — тапни ‹ › или имя, чтобы прыгать между рабочими пространствами сессии.",
+	"tip.llmProvider.title": "Claude через Amazon Bedrock",
+	"tip.llmProvider.body": "Настройки → Coding Agents → LLM Provider позволяют направить агента Claude в Amazon Bedrock — dev3 сам подставит модель и регион.",
 };
 
 export default tips;
