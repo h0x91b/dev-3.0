@@ -305,14 +305,14 @@ describe("DEFAULT_AGENTS", () => {
 		expect(claude!.baseCommand).toBe("claude");
 	});
 
-	it("uses the current Claude Code Sonnet model alias in Sonnet presets", () => {
+	it("uses the pinned Sonnet 5 model in Sonnet 5 presets", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
 		expect(claude).toBeDefined();
 
-		const sonnetConfigs = claude!.configurations.filter((config) => config.id.endsWith("-sonnet"));
+		const sonnetConfigs = claude!.configurations.filter((config) => config.id.includes("-sonnet5"));
 		expect(sonnetConfigs.length).toBeGreaterThan(0);
 		for (const config of sonnetConfigs) {
-			expect(config.model).toBe("sonnet");
+			expect(config.model).toBe("claude-sonnet-5");
 			expect(config.version).toBeGreaterThan(0);
 		}
 	});

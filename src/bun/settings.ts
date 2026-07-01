@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import type { GlobalSettings } from "../shared/types";
+import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -17,10 +18,31 @@ export type { GlobalSettings };
 
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-auto",
+	defaultConfigId: "claude-auto-opus48-xhigh",
 	taskDropPosition: "top",
 	updateChannel: "stable",
 };
+
+const ALL_BUILTIN_CONFIG_IDS = new Set(DEFAULT_AGENTS.flatMap((a) => a.configurations.map((c) => c.id)));
+// Derived (not hardcoded) so this stays correct if a builtin agent's id prefix ever changes.
+const BUILTIN_ID_PREFIXES = Array.from(
+	new Set(DEFAULT_AGENTS.flatMap((a) => a.configurations.map((c) => `${c.id.split("-")[0]}-`))),
+);
+
+/** Remaps a stored `defaultConfigId` that no longer exists (preset removed/renamed
+ *  in DEFAULT_AGENTS) to its closest surviving equivalent. If it's still not a
+ *  known builtin id after that (e.g. we removed a preset and forgot to add a
+ *  remap entry above), falls back to our current default rather than leaving
+ *  "Launch Task" with a dangling reference and no selection. Ids that don't
+ *  look like one of our builtin prefixes are assumed to be genuine
+ *  user-created custom configs and are left untouched. */
+function resolveDefaultConfigId(stored: unknown): string {
+	if (typeof stored !== "string" || !stored) return DEFAULT_SETTINGS.defaultConfigId;
+	const remapped = DEPRECATED_DEFAULT_CONFIG_REMAP[stored] ?? stored;
+	if (ALL_BUILTIN_CONFIG_IDS.has(remapped)) return remapped;
+	const looksBuiltin = BUILTIN_ID_PREFIXES.some((prefix) => remapped.startsWith(prefix));
+	return looksBuiltin ? DEFAULT_SETTINGS.defaultConfigId : remapped;
+}
 
 export async function loadSettings(): Promise<GlobalSettings> {
 	try {
@@ -31,7 +53,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 		const data = await file.json();
 		return {
 			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
-			defaultConfigId: data.defaultConfigId ?? DEFAULT_SETTINGS.defaultConfigId,
+			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
 			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
@@ -59,6 +81,7 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			// Boolean preference — both true (watch) and false (don't watch) are
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
+			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -85,7 +108,7 @@ export function loadSettingsSync(): GlobalSettings {
 		const data = JSON.parse(readFileSync(SETTINGS_FILE, "utf-8"));
 		return {
 			defaultAgentId: data.defaultAgentId ?? DEFAULT_SETTINGS.defaultAgentId,
-			defaultConfigId: data.defaultConfigId ?? DEFAULT_SETTINGS.defaultConfigId,
+			defaultConfigId: resolveDefaultConfigId(data.defaultConfigId),
 			taskDropPosition: data.taskDropPosition === "bottom" ? "bottom" : "top",
 			updateChannel: data.updateChannel === "canary" ? "canary" : "stable",
 			theme: data.theme === "light" || data.theme === "system" || data.theme === "dark" ? data.theme : undefined,
@@ -113,6 +136,7 @@ export function loadSettingsSync(): GlobalSettings {
 			// Boolean preference — both true (watch) and false (don't watch) are
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
+			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

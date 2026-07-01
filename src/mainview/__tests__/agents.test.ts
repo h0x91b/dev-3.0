@@ -293,10 +293,10 @@ describe("mergeWithDefaults", () => {
 		expect(cfg.version).toBe(defCfg.version);
 	});
 
-	it("updates stored Claude Sonnet aliases when preset versions are older", () => {
+	it("updates stored Claude Opus 4.8 preset when its version is older", () => {
 		const defClaude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
-		const defCfg = defClaude.configurations.find((c) => c.id === "claude-bypass-sonnet")!;
-		const staleTimedSonnetAlias = `sonnet${"[1m]"}`;
+		const defCfg = defClaude.configurations.find((c) => c.id === "claude-default-opus48")!;
+		const staleModel = "claude-opus-4-7[1m]";
 
 		const stored: CodingAgent[] = [
 			{
@@ -304,16 +304,16 @@ describe("mergeWithDefaults", () => {
 				name: "Claude",
 				baseCommand: "claude",
 				configurations: [
-					{ id: "claude-bypass-sonnet", name: "Bypass (Sonnet)", model: staleTimedSonnetAlias, additionalArgs: ["--dangerously-skip-permissions"], version: 1 },
+					{ id: "claude-default-opus48", name: "Default (Opus 4.7)", model: staleModel, additionalArgs: ["--dangerously-skip-permissions"], version: 0 },
 				],
-				defaultConfigId: "claude-bypass-sonnet",
+				defaultConfigId: "claude-default-opus48",
 			},
 		];
 		const result = mergeWithDefaults(stored);
 		const claude = result.find((a) => a.id === "builtin-claude")!;
-		const cfg = claude.configurations.find((c) => c.id === "claude-bypass-sonnet")!;
+		const cfg = claude.configurations.find((c) => c.id === "claude-default-opus48")!;
 
-		expect(cfg.model).toBe("sonnet");
+		expect(cfg.model).toBe(defCfg.model);
 		expect(cfg.version).toBe(defCfg.version);
 	});
 
