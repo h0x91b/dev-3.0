@@ -13,6 +13,7 @@ import { ContributionHeatmap } from "./stats/ContributionHeatmap";
 import { Milestones } from "./stats/Milestones";
 import { CountUp } from "./stats/CountUp";
 import { TimeRangeSwitch } from "./stats/TimeRangeSwitch";
+import { PeriodStepper } from "./stats/PeriodStepper";
 
 interface ProductivityStatsViewProps {
 	navigate: (route: Route) => void;
@@ -48,6 +49,8 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	const [error, setError] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [range, setRange] = useState<StatsRange>(loadRange);
+	// Periods stepped back from now (0 = current). Ephemeral — resets on range change.
+	const [offset, setOffset] = useState(0);
 
 	const fetchStats = useCallback(() => {
 		setLoading(true);
@@ -65,6 +68,8 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 
 	const changeRange = useCallback((r: StatsRange) => {
 		setRange(r);
+		// Offsets aren't comparable across granularities — snap back to the present.
+		setOffset(0);
 		try {
 			localStorage.setItem(RANGE_KEY, r);
 		} catch {
@@ -73,8 +78,8 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	}, []);
 
 	const data = useMemo(
-		() => computeProductivityStats(events ?? [], range, Date.now()),
-		[events, range],
+		() => computeProductivityStats(events ?? [], range, Date.now(), offset),
+		[events, range, offset],
 	);
 
 	const rangeLabels: Record<StatsRange, string> = {
@@ -84,7 +89,23 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 		all: t("stats.range.all"),
 	};
 	const periodLabel = t(`stats.period.${range}` as Parameters<typeof t>[0]);
-	const trendSuffix = range === "all" ? undefined : t(`stats.periodPrev.${range}` as Parameters<typeof t>[0]);
+	// When navigated into the past, "vs yesterday/last week" is misleading — use a neutral suffix.
+	const trendSuffix =
+		range === "all"
+			? undefined
+			: offset > 0
+				? t("stats.periodPrev.generic")
+				: t(`stats.periodPrev.${range}` as Parameters<typeof t>[0]);
+
+	// Relative label for the period navigator (e.g. "Today", "Last week", "3 months ago").
+	const periodNavLabel = (() => {
+		const base = range === "day" ? "day" : range === "month" ? "month" : "week";
+		if (offset === 0) return t(`stats.rel.${base}Current` as Parameters<typeof t>[0]);
+		if (offset === 1) return t(`stats.rel.${base}Prev` as Parameters<typeof t>[0]);
+		return t.plural(`stats.rel.${base}Ago` as Parameters<typeof t.plural>[0], offset);
+	})();
+	const periodRange = `${new Date(data.periodFrom).toLocaleDateString()} – ${new Date(data.periodTo).toLocaleDateString()}`;
+	const periodNavTitle = offset === 0 ? periodRange : `${t("stats.nav.current")} · ${periodRange}`;
 
 	const projMax = gaugeMax(Math.max(0, ...data.perProject.map((p) => p.completed)), 2);
 
@@ -100,7 +121,8 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 			case "lifetime":
 				return t("stats.momentum.lifetime", { count: String(data.counters.allTimeCompleted) });
 			case "idle":
-				return t("stats.momentum.idle");
+				// "Ship a task" only makes sense for the present period.
+				return offset > 0 ? t("stats.momentum.idlePast") : t("stats.momentum.idle");
 			default:
 				return t("stats.momentum.steady");
 		}
@@ -136,6 +158,21 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 						</div>
 					</div>
 					<div className="flex items-center gap-2">
+						{range !== "all" && (
+							<PeriodStepper
+								label={periodNavLabel}
+								labelTitle={periodNavTitle}
+								groupLabel={t("stats.nav.group")}
+								atCurrent={offset === 0}
+								canOlder={data.canGoOlder}
+								canNewer={data.canGoNewer}
+								onOlder={() => setOffset((o) => o + 1)}
+								onNewer={() => setOffset((o) => Math.max(0, o - 1))}
+								onReset={() => setOffset(0)}
+								prevLabel={t("stats.nav.prev")}
+								nextLabel={t("stats.nav.next")}
+							/>
+						)}
 						<TimeRangeSwitch value={range} onChange={changeRange} labels={rangeLabels} />
 						<button
 							type="button"

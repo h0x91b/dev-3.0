@@ -1,0 +1,1 @@
+Added prev/next period navigation to the Productivity Stats page so you can browse past days, weeks, and months instead of only the current period. Lifetime views (heatmap, streaks, all-time counters) stay anchored to now; the offset resets when you change the range and is hidden for the All view.

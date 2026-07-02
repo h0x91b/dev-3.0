@@ -1,5 +1,14 @@
 # UX Manifest Changelog
 
+## 2026-07-02 — Velocity Cockpit gains period navigation (temporal nav clarified as allowed)
+
+Clarified the `stats_dashboard` read-only guardrail so it distinguishes **temporal navigation of the
+existing time range** (allowed — a prev/next period stepper on the same axis, read-only, ephemeral
+offset, hidden for range `all`) from **data filters** (still forbidden — slicing by project/agent/label
+adds a new dimension). Updated `PRODUCT_UX_BIBLE.md §1.1` guardrail + §5 surface row and
+`ux-architecture.yaml surfaces.stats_dashboard.allowed/forbidden`. Rationale + implementation in
+UX decision 2026-07-02 and `feature-plans/stats-period-navigation.md`.
+
 ## 2026-06-29 — Standing rule: countable progress feeds the Velocity Cockpit
 
 Added a forward-looking UX principle that makes the read-only Productivity Stats / Velocity Cockpit

@@ -30,7 +30,7 @@ Litmus test when choosing a default or flag polarity: *"who is typing this, and 
 - **Then surface it — selectively.** If the metric is *motivational* (progress, momentum, achievement, milestone), add a visualization to the cockpit. If it is merely *diagnostic*, keep the data but do **not** clutter the cockpit with it.
 
 **Guardrails — this is not a license to dump every counter onto one screen:**
-- The cockpit is **read-only**. Never add a control, a filter beyond the existing time-range switch, durable config, or any mutation there (`ux-architecture.yaml surfaces.stats_dashboard.forbidden`). It celebrates; it does not operate.
+- The cockpit is **read-only**. Never add a **data filter** (slicing by project/agent/label — a new dimension beyond the time axis), durable config, or any mutation there (`ux-architecture.yaml surfaces.stats_dashboard.forbidden`). It celebrates; it does not operate. **Permitted exception — temporal navigation of the existing time range:** the prev/next period stepper (browse past days/weeks/months) is an *extension of the time-range switch on the same axis*, not a new control class — it stays read-only, its offset is ephemeral (not persisted), and it adds no new data dimension. Time is the one axis the cockpit already governs; navigating along it is allowed, filtering across new ones is not.
 - Respect a **complexity + honesty budget**. Prefer one strong motivational signal over five weak ones; consolidate; a new metric must *earn* its place. A wall of near-zero gauges is worse than no gauge.
 - **Forward-only honesty.** If a signal only starts being recorded now, show an honest "tracking since" / empty-state treatment (as the LOC views do) — never backfill fake history or imply data you don't have.
 - **Motivational ≠ vanity-at-any-cost.** The number must be *true*. Don't inflate or double-count to look impressive — a dishonest cockpit destroys the trust that makes it motivating.
@@ -117,7 +117,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
-| Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch, per-project→board jump | mutation, lifecycle/config action, header button | `ProductivityStatsView.tsx`, `components/stats/*` |
+| Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch + prev/next period navigation, per-project→board jump | mutation, lifecycle/config action, header button, data filter (new dimension beyond time) | `ProductivityStatsView.tsx`, `components/stats/*` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
 
