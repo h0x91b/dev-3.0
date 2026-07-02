@@ -12,7 +12,7 @@ import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
-import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, resolveBinaryPath, shellQuote } from "./shared-pure";
+import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
@@ -417,7 +417,9 @@ export async function launchTaskPty(
 		const setupOkClose = [
 			"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
 			"printf '\\033[2mClosing in 15s — press any key to close now\\033[0m\\n'",
-			"read -t 15 -n 1 -s",
+			// Wrapper runs under the user's login shell (often zsh), so use a
+			// shell-portable read — bash's `read -n 1 -s` crashes zsh.
+			portableReadKey({ timeoutSeconds: 15 }),
 			"exit 0",
 		].join("\n");
 

@@ -2,6 +2,7 @@ export {
 	escapeForDoubleQuotes,
 	shellQuote,
 	buildEnvExports,
+	portableReadKey,
 	buildCmdScript,
 	setPushMessage,
 	getPushMessage,

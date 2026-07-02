@@ -6,6 +6,7 @@ export {
 	getScriptShellPath,
 	buildScriptRunnerCommand,
 	buildEnvExports,
+	portableReadKey,
 	buildCmdScript,
 	resolveBinaryPath,
 	setPushMessage,
