@@ -41,6 +41,21 @@ export function buildEnvExports(env: Record<string, string>): string[] {
 	return Object.entries(env).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
 }
 
+/**
+ * Emit a shell-portable "read a single keypress silently" snippet.
+ *
+ * The setup/startup wrapper scripts carry a `#!/bin/bash` shebang but are
+ * executed via the user's login shell (`buildScriptRunnerCommand` → `zsh script`,
+ * shebang ignored). bash-only `read -n 1 -s` then breaks under zsh with
+ * "not an identifier: -s", because zsh spells "read N chars" as `-k N` (not `-n N`).
+ * Branch on `$ZSH_VERSION` so the snippet works under both shells.
+ */
+export function portableReadKey(options?: { timeoutSeconds?: number }): string {
+	const t = options?.timeoutSeconds;
+	const timeout = typeof t === "number" ? `-t ${t} ` : "";
+	return `if [ -n "$ZSH_VERSION" ]; then read ${timeout}-k 1 -s; else read ${timeout}-n 1 -s; fi`;
+}
+
 export function buildCmdScript(
 	tmuxCmd: string,
 	env?: Record<string, string>,

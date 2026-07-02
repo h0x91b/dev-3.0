@@ -283,6 +283,7 @@ const {
 	setActiveContext,
 	emitTaskSound,
 	runCleanupScript,
+	portableReadKey,
 } = await import("../rpc-handlers");
 
 // ---- Test helpers ----
@@ -800,6 +801,34 @@ describe("buildCmdScript", () => {
 	it("does not include onExitCommand when not provided", () => {
 		const result = buildCmdScript("claude", undefined, { keepShell: true });
 		expect(result).not.toContain("dev3 task move");
+	});
+});
+
+// ================================================================
+// portableReadKey
+// ================================================================
+
+describe("portableReadKey", () => {
+	// Regression for the setup pane crash: the wrapper carries a #!/bin/bash
+	// shebang but runs under the user's login shell (usually zsh). A bare
+	// `read -t 15 -n 1 -s` makes zsh die with "not an identifier: -s".
+	it("branches on $ZSH_VERSION so it is safe under both bash and zsh", () => {
+		const snippet = portableReadKey({ timeoutSeconds: 15 });
+		expect(snippet).toContain('[ -n "$ZSH_VERSION" ]');
+		// zsh spells "read N chars" as -k, bash as -n
+		expect(snippet).toContain("read -t 15 -k 1 -s");
+		expect(snippet).toContain("read -t 15 -n 1 -s");
+	});
+
+	it("is a single line (safe to inline in a wrapper script)", () => {
+		expect(portableReadKey({ timeoutSeconds: 15 })).not.toContain("\n");
+	});
+
+	it("omits the timeout flag when no timeout is given", () => {
+		const snippet = portableReadKey();
+		expect(snippet).not.toContain("-t ");
+		expect(snippet).toContain("read -k 1 -s");
+		expect(snippet).toContain("read -n 1 -s");
 	});
 });
 

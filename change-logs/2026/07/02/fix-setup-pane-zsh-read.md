@@ -1,0 +1,1 @@
+Fixed the task setup pane crashing with "not an identifier: -s" when pressing a key at the "press any key to close" prompt. The bash-only `read -n 1 -s` was running under zsh; replaced it with a shell-portable read that branches on `$ZSH_VERSION`.
