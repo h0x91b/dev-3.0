@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskDetailModal from "../TaskDetailModal";
 import { I18nProvider } from "../../i18n";
-import type { Project, Task } from "../../../shared/types";
+import type { Project, Task, TaskStatus } from "../../../shared/types";
 import type { AppAction } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -15,6 +15,8 @@ vi.mock("../../rpc", () => ({
 			addTaskNote: vi.fn(),
 			updateTaskNote: vi.fn(),
 			deleteTaskNote: vi.fn(),
+			deleteTask: vi.fn(),
+			setTaskLabels: vi.fn(),
 		},
 	},
 }));
@@ -24,9 +26,15 @@ vi.mock("../../analytics", () => ({
 	agentNameFromId: vi.fn(() => "unknown"),
 }));
 
+vi.mock("../../confirm", () => ({
+	confirm: vi.fn(() => Promise.resolve(true)),
+}));
+
 import { api } from "../../rpc";
+import { confirm } from "../../confirm";
 
 const mockedApi = vi.mocked(api, true);
+const mockedConfirm = vi.mocked(confirm);
 
 const mockProject: Project = {
 	id: "p1",
@@ -60,7 +68,14 @@ function makeTodoTask(overrides: Partial<Task> = {}): Task {
 	};
 }
 
-function renderModal(task: Task, props: { dispatch?: React.Dispatch<AppAction>; onClose?: () => void } = {}) {
+function renderModal(
+	task: Task,
+	props: {
+		dispatch?: React.Dispatch<AppAction>;
+		onClose?: () => void;
+		onLaunchVariants?: (task: Task, targetStatus: TaskStatus) => void;
+	} = {},
+) {
 	return render(
 		<I18nProvider>
 			<TaskDetailModal
@@ -68,6 +83,7 @@ function renderModal(task: Task, props: { dispatch?: React.Dispatch<AppAction>; 
 				project={mockProject}
 				dispatch={props.dispatch ?? vi.fn()}
 				onClose={props.onClose ?? vi.fn()}
+				onLaunchVariants={props.onLaunchVariants ?? vi.fn()}
 			/>
 		</I18nProvider>,
 	);
@@ -167,6 +183,97 @@ describe("TaskDetailModal", () => {
 			renderModal(task);
 
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("footer actions", () => {
+		it("shows the Run button for todo tasks", () => {
+			renderModal(makeTodoTask());
+			expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
+		});
+
+		it("does not show the footer (Run/Delete) for active tasks", () => {
+			renderModal(makeTodoTask({ status: "in-progress", worktreePath: "/tmp/wt" }));
+			expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+		});
+
+		it("does not show the footer for archived tasks", () => {
+			renderModal(makeTodoTask({ status: "completed" }));
+			expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
+		});
+
+		it("clicking Run closes the modal and launches the variants flow", async () => {
+			const task = makeTodoTask();
+			const onClose = vi.fn();
+			const onLaunchVariants = vi.fn();
+			renderModal(task, { onClose, onLaunchVariants });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByRole("button", { name: "Run" }));
+
+			expect(onClose).toHaveBeenCalledTimes(1);
+			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
+		});
+
+		it("clicking Delete confirms, deletes the task and closes", async () => {
+			const task = makeTodoTask();
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			mockedConfirm.mockResolvedValueOnce(true);
+			mockedApi.request.deleteTask.mockResolvedValue(undefined as never);
+			renderModal(task, { dispatch, onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByRole("button", { name: "Delete" }));
+
+			expect(mockedConfirm).toHaveBeenCalledTimes(1);
+			expect(mockedApi.request.deleteTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(dispatch).toHaveBeenCalledWith({ type: "removeTask", taskId: "t1" });
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not delete when the confirmation is declined", async () => {
+			const task = makeTodoTask();
+			const onClose = vi.fn();
+			mockedConfirm.mockResolvedValueOnce(false);
+			renderModal(task, { onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByRole("button", { name: "Delete" }));
+
+			expect(mockedApi.request.deleteTask).not.toHaveBeenCalled();
+			expect(onClose).not.toHaveBeenCalled();
+		});
+
+		it("removes an assigned label via the chip remove button", async () => {
+			const task = makeTodoTask({ labelIds: ["L1"] });
+			const project: Project = {
+				...mockProject,
+				labels: [{ id: "L1", name: "Bug", color: "#ef4444" }],
+			};
+			const dispatch = vi.fn();
+			mockedApi.request.setTaskLabels.mockResolvedValue({ ...task, labelIds: [] });
+			const user = userEvent.setup();
+			render(
+				<I18nProvider>
+					<TaskDetailModal
+						task={task}
+						project={project}
+						dispatch={dispatch}
+						onClose={vi.fn()}
+						onLaunchVariants={vi.fn()}
+					/>
+				</I18nProvider>,
+			);
+
+			await user.click(screen.getByRole("button", { name: /remove/i }));
+
+			expect(mockedApi.request.setTaskLabels).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				labelIds: [],
+			});
 		});
 	});
 });

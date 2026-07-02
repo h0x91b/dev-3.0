@@ -1045,6 +1045,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "todo-detail-run",
+		titleKey: "tip.todoDetailRun.title",
+		bodyKey: "tip.todoDetailRun.body",
+		icon: "\u{F040A}", // nf-md-play
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
