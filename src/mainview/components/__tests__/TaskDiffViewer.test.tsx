@@ -2574,3 +2574,73 @@ describe("TaskDiffViewer", () => {
 		await screen.findAllByTestId("mock-diff");
 	});
 });
+
+describe("TaskDiffViewer narrow viewport", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) => ({
+			...diffPayload,
+			mode,
+			compareRef: mode === "uncommitted" ? null : "origin/main",
+			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
+		}));
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		});
+		localStorage.clear();
+		document.documentElement.dataset.theme = "dark";
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+		Object.defineProperty(window.screen, "availWidth", { configurable: true, value: 390 });
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("hides the Split toggle and moves the file list into a bottom sheet", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+
+		// Split view is unusable at phone width — its toggle is not rendered.
+		expect(screen.queryByRole("button", { name: "Split" })).not.toBeInTheDocument();
+
+		// The files aside is not inline; a "Files" button opens it in a bottom sheet.
+		expect(screen.queryByTestId("diff-files-sheet")).not.toBeInTheDocument();
+		await user.click(screen.getByTestId("diff-files-sheet-trigger"));
+		expect(await screen.findByTestId("diff-files-sheet")).toBeInTheDocument();
+	});
+});

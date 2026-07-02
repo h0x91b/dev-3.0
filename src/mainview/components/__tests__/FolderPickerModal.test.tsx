@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import FolderPickerHost from "../FolderPickerModal";
 import { openFolderPicker } from "../../folder-picker";
 import { I18nProvider } from "../../i18n";
@@ -187,5 +187,55 @@ describe("FolderPickerHost", () => {
 		expect(screen.getByText("zebra-notes")).toBeInTheDocument();
 		expect(screen.queryByText("aardvark")).not.toBeInTheDocument();
 		expect(screen.queryByText("midnight")).not.toBeInTheDocument();
+	});
+});
+
+describe("FolderPickerHost narrow viewport", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.removeItem("dev3-folder-picker-recent");
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("replaces the vertical sidebar with a horizontal Places chip strip", async () => {
+		mockedApi.request.listDirectory.mockResolvedValue(
+			mockListing("/Users/test", [
+				{ name: "Desktop", isDir: true },
+				{ name: "Documents", isDir: true },
+			]),
+		);
+
+		renderHost();
+		openFolderPicker();
+		await screen.findByTestId("folder-picker-backdrop");
+
+		// The dense vertical sidebar cannot fit a phone width, so it is not rendered;
+		// Places collapse into the scrollable chip strip instead.
+		const strip = await screen.findByTestId("folder-picker-places-strip");
+		expect(strip).toBeInTheDocument();
+		expect(screen.queryByTestId("folder-picker-sidebar")).not.toBeInTheDocument();
+		// The Home shortcut is reachable from the strip.
+		expect(within(strip).getByText("Home")).toBeInTheDocument();
 	});
 });

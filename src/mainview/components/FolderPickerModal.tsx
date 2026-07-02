@@ -11,6 +11,8 @@ import type { FolderListing } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import {
 	subscribeFolderPicker,
@@ -179,6 +181,7 @@ interface ModalProps {
 function FolderPickerModal({ options, onClose }: ModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [currentRoot, setCurrentRoot] = useState<string | null>(null);
 	const [manualPath, setManualPath] = useState("");
 	const [listingError, setListingError] = useState<string | null>(null);
@@ -339,9 +342,49 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 					</button>
 				</div>
 
-				{/* Body: sidebar + main */}
-				<div className="flex flex-1 min-h-[24rem] max-h-[min(36rem,80vh)]">
-					{/* Sidebar */}
+				{/* Body: sidebar + main. On narrow the vertical sidebar cannot fit
+				     alongside the tree — Places collapse into a horizontal chip strip
+				     above a full-width main column. */}
+				<div className={narrow
+					? "flex flex-col flex-1 min-h-[18rem] max-h-[80dvh]"
+					: "flex flex-1 min-h-[24rem] max-h-[min(36rem,80vh)]"}>
+					{narrow ? (
+						<div data-testid="folder-picker-places-strip" className="flex gap-1.5 px-3 py-2 border-b border-edge bg-raised/40 overflow-x-auto flex-shrink-0">
+							{quickPlaces.map((place) => {
+								const active = currentRoot === place.path;
+								return (
+									<button
+										key={place.path}
+										type="button"
+										onClick={() => void navigateTo(place.path)}
+										className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-full whitespace-nowrap text-[13px] border transition-colors ${
+											active ? "bg-accent/15 border-accent text-fg font-medium" : "bg-raised border-edge text-fg-2 hover:text-fg"
+										}`}
+									>
+										<Glyph glyph={place.glyph} size="0.9rem" className={active ? "text-accent" : "text-fg-3"} />
+										<span>{place.label}</span>
+									</button>
+								);
+							})}
+							{recentPaths.map((p) => {
+								const active = currentRoot === p;
+								return (
+									<button
+										key={p}
+										type="button"
+										onClick={() => void navigateTo(p)}
+										title={displayPath(p, home)}
+										className={`flex items-center gap-1.5 px-3 min-h-[44px] rounded-full whitespace-nowrap text-[13px] border transition-colors ${
+											active ? "bg-accent/15 border-accent text-fg font-medium" : "bg-raised border-edge text-fg-2 hover:text-fg"
+										}`}
+									>
+										<Glyph glyph={NF.clock} size="0.8rem" className="text-fg-3" />
+										<span>{basename(p)}</span>
+									</button>
+								);
+							})}
+						</div>
+					) : (
 					<aside data-testid="folder-picker-sidebar" className="w-[11.5rem] flex-shrink-0 border-r border-edge bg-raised/40 py-2 overflow-y-auto flex flex-col gap-3">
 						<SidebarSection title={t("folderPicker.sectionPlaces")}>
 							{quickPlaces.map((place) => (
@@ -371,6 +414,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 							</SidebarSection>
 						)}
 					</aside>
+					)}
 
 					{/* Main */}
 					<main className="flex-1 min-w-0 flex flex-col">
@@ -393,8 +437,11 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 							))}
 						</div>
 
-						{/* Path input + filter */}
-						<div className="px-4 py-2 border-b border-edge grid grid-cols-[1fr_14rem] gap-2 flex-shrink-0">
+						{/* Path input + filter. The fixed 14rem filter column overflows a
+						     phone width, so stack the two inputs on narrow. */}
+						<div className={`px-4 py-2 border-b border-edge gap-2 flex-shrink-0 ${
+							narrow ? "flex flex-col" : "grid grid-cols-[1fr_14rem]"
+						}`}>
 							<form onSubmit={handleManualSubmit}>
 								<input
 									type="text"
