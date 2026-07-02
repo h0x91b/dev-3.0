@@ -20,7 +20,24 @@
 <meta name="twitter:image" content="https://dev3.h0x91b.com/og-image.jpg">
 <meta name="theme-color" content="#060915">
 <link rel="canonical" href="https://dev3.h0x91b.com/">
-<link rel="icon" type="image/png" href="icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "dev-3.0",
+  "description": "Mission control for the One Person Studio — a Kanban-first desktop cockpit for running a fleet of AI coding agents in parallel. Each task gets its own git worktree, tmux session, and terminal.",
+  "url": "https://dev3.h0x91b.com/",
+  "image": "https://dev3.h0x91b.com/og-image.jpg",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS, Linux",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "downloadUrl": "https://github.com/h0x91b/dev-3.0/releases/latest",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "author": { "@type": "Person", "name": "Arseny Pavlenko", "url": "https://github.com/h0x91b" }
+}
+</script>
 <!-- Google Analytics (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-L1NSQH6FGY"></script>
 <!-- Google Ads (gtag.js) -->
@@ -1021,6 +1038,90 @@ nav.scrolled {
   opacity: 0.4;
 }
 
+/* ======= INSTALL PLATFORM CARDS ======= */
+.install-cards {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  max-width: 920px;
+  margin: 48px auto 0;
+  text-align: left;
+}
+.install-card {
+  padding: 28px;
+  border-radius: 14px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  transition: all 0.3s;
+}
+.install-card:hover {
+  border-color: var(--border-hover);
+  transform: translateY(-2px);
+}
+.install-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.install-card-head h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+.install-card-badge {
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid rgba(68, 150, 255, 0.2);
+}
+.install-code {
+  position: relative;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 14px 44px 14px 16px;
+  margin-bottom: 8px;
+}
+.install-code code {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  transition: all 0.2s;
+}
+.copy-btn:hover { color: var(--text-1); background: rgba(255, 255, 255, 0.12); }
+.copy-btn.copied { color: var(--green); border-color: rgba(52, 211, 153, 0.4); }
+.install-card-note {
+  font-size: 13px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin-top: 12px;
+}
+.install-card-note a { color: var(--accent); text-decoration: none; }
+.install-card-note a:hover { text-decoration: underline; }
+
 /* ======= STAR HISTORY ======= */
 .star-history {
   padding: 80px 0;
@@ -1043,6 +1144,7 @@ nav.scrolled {
   .install-steps { flex-direction: column; gap: 12px; }
   .install-arrow { transform: rotate(90deg); }
   .install-step { min-width: auto; width: 100%; }
+  .install-cards { grid-template-columns: 1fr; }
 }
 
 /* ======= ARCHITECTURE ======= */
@@ -1227,6 +1329,34 @@ footer {
   .hero { padding: 120px 20px 60px; }
   .hero h1 { letter-spacing: -1px; }
   .nav-links { display: none; }
+  .nav-links.show {
+    display: flex;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 8px 24px 20px;
+    background: rgba(6, 9, 21, 0.97);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-links.show a {
+    display: block;
+    padding: 13px 0;
+    font-size: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .nav-links.show li:last-child a { border-bottom: none; }
+  .nav-links.show .nav-github {
+    display: inline-flex;
+    justify-content: center;
+    margin-top: 12px;
+    padding: 12px 16px;
+  }
   .nav-toggle { display: block; }
   .problem-grid { grid-template-columns: 1fr; }
   .features-grid { grid-template-columns: 1fr; }
@@ -1252,7 +1382,7 @@ footer {
 <nav id="nav">
   <div class="nav-inner">
     <a href="#" class="nav-logo">
-      <img src="icon.png" alt="dev-3.0">
+      <img src="icon-192.png" alt="dev-3.0" width="36" height="36">
       <span>dev-3.0</span>
     </a>
     <ul class="nav-links">
@@ -1298,7 +1428,7 @@ footer {
   </p>
 
   <div class="hero-actions reveal reveal-delay-3">
-    <a href="https://github.com/h0x91b/dev-3.0/releases" class="btn btn-primary" target="_blank" rel="noopener">
+    <a href="https://github.com/h0x91b/dev-3.0/releases/latest" class="btn btn-primary" target="_blank" rel="noopener">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Download
     </a>
@@ -1325,19 +1455,19 @@ footer {
         <div class="window-title" id="windowTitle">dev-3.0</div>
       </div>
       <div class="carousel-track" id="heroCarousel">
-        <img src="screenshots/kanban-board.jpg" alt="Kanban board — tasks across To Do, Working, Review and Done columns" class="active" data-duration="5000" data-caption="One board for every task and every agent — drag to move, glance to track">
-        <img src="screenshots/activity-dashboard.jpg" alt="Multi-project activity dashboard with live agent status" data-duration="4000" data-caption="All your projects and agents — one dashboard">
-        <img src="screenshots/terminal-view.jpg" alt="Three AI agents running in parallel — Claude Code, Codex and opencode in one task window" data-duration="4000" data-caption="Every task is an isolated worktree. Run multiple agents inside each.">
-        <img src="screenshots/remote-access.jpg" alt="Remote Access modal with a QR code to open the UI on a phone" data-duration="4500" data-caption="Run it on a server, drive it from your browser — even your phone">
-        <img src="screenshots/code-review.jpg" alt="Built-in diff viewer with syntax highlighting and an inline review comment" data-duration="4500" data-caption="Review every diff in-app — syntax highlight, inline comments, export to the agent">
-        <img src="screenshots/bug-hunters.jpg" alt="Spawn bug hunters dialog — launch several read-only bug-hunting agents" data-duration="4000" data-caption="Unleash a pack of read-only bug hunters — one click">
-        <img src="screenshots/command-palette.jpg" alt="Command palette listing runnable actions" data-duration="3500" data-caption="Run any command from the keyboard — ⌘⇧P">
-        <img src="screenshots/project-quick-switch.jpg" alt="Project quick-switch palette with fuzzy search" data-duration="3500" data-caption="Jump to any project instantly — ⌘K">
-        <img src="screenshots/task-switcher.jpg" alt="Task switcher overlay with live terminal previews" data-duration="4000" data-caption="Flip between tasks with live previews — Option+Tab">
-        <img src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000" data-caption="Dark or light — your workspace, your rules">
-        <img src="screenshots/multi-attempt.jpg" alt="One task with 3 parallel attempts by different agents" data-duration="4000" data-caption="One task. Multiple attempts. Pick the best result.">
-        <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000" data-caption="Pick any agent. Hit Run. That's it.">
-        <img src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000" data-caption="One config for all your agents and projects">
+        <img fetchpriority="high" decoding="async" src="screenshots/kanban-board.jpg" alt="Kanban board — tasks across To Do, Working, Review and Done columns" class="active" data-duration="5000" data-caption="One board for every task and every agent — drag to move, glance to track">
+        <img data-src="screenshots/activity-dashboard.jpg" alt="Multi-project activity dashboard with live agent status" data-duration="4000" data-caption="All your projects and agents — one dashboard">
+        <img data-src="screenshots/terminal-view.jpg" alt="Three AI agents running in parallel — Claude Code, Codex and opencode in one task window" data-duration="4000" data-caption="Every task is an isolated worktree. Run multiple agents inside each.">
+        <img data-src="screenshots/remote-access.jpg" alt="Remote Access modal with a QR code to open the UI on a phone" data-duration="4500" data-caption="Run it on a server, drive it from your browser — even your phone">
+        <img data-src="screenshots/code-review.jpg" alt="Built-in diff viewer with syntax highlighting and an inline review comment" data-duration="4500" data-caption="Review every diff in-app — syntax highlight, inline comments, export to the agent">
+        <img data-src="screenshots/bug-hunters.jpg" alt="Spawn bug hunters dialog — launch several read-only bug-hunting agents" data-duration="4000" data-caption="Unleash a pack of read-only bug hunters — one click">
+        <img data-src="screenshots/command-palette.jpg" alt="Command palette listing runnable actions" data-duration="3500" data-caption="Run any command from the keyboard — ⌘⇧P">
+        <img data-src="screenshots/project-quick-switch.jpg" alt="Project quick-switch palette with fuzzy search" data-duration="3500" data-caption="Jump to any project instantly — ⌘K">
+        <img data-src="screenshots/task-switcher.jpg" alt="Task switcher overlay with live terminal previews" data-duration="4000" data-caption="Flip between tasks with live previews — Option+Tab">
+        <img data-src="screenshots/light-theme-kanban.jpg" alt="Light theme — Kanban board" data-duration="3000" data-caption="Dark or light — your workspace, your rules">
+        <img data-src="screenshots/multi-attempt.jpg" alt="One task with 3 parallel attempts by different agents" data-duration="4000" data-caption="One task. Multiple attempts. Pick the best result.">
+        <img data-src="screenshots/multi-agent-launch.jpg" alt="Launch task with Claude, Cursor, Codex, Gemini" data-duration="3000" data-caption="Pick any agent. Hit Run. That's it.">
+        <img data-src="screenshots/global-settings.jpg" alt="Global settings — agents, configs, languages" data-duration="3000" data-caption="One config for all your agents and projects">
       </div>
       <div class="carousel-progress" id="carouselProgress"></div>
     </div>
@@ -1457,7 +1587,7 @@ footer {
             <div class="window-title">Kanban Board</div>
           </div>
           <!-- Kanban board with siblings popup -->
-          <img src="screenshots/light-theme-kanban.jpg" alt="Kanban board in light theme" class="step-screenshot"
+          <img loading="lazy" decoding="async" src="screenshots/light-theme-kanban.jpg" alt="Kanban board in light theme" class="step-screenshot"
                onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'18\' rx=\'2\'/><line x1=\'8\' y1=\'3\' x2=\'8\' y2=\'21\'/><line x1=\'14\' y1=\'3\' x2=\'14\' y2=\'21\'/></svg><span>screenshots/light-theme-kanban.jpg</span></div>'">
         </div>
       </div>
@@ -1483,7 +1613,7 @@ footer {
             <div class="window-title">Launch Task &mdash; Multi-agent</div>
           </div>
           <!-- Multi-agent launch: Claude, Cursor, Codex, Gemini -->
-          <img src="screenshots/multi-agent-launch.jpg" alt="Launch task with multiple AI agents" class="step-screenshot"
+          <img loading="lazy" decoding="async" src="screenshots/multi-agent-launch.jpg" alt="Launch task with multiple AI agents" class="step-screenshot"
                onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><circle cx=\'12\' cy=\'12\' r=\'3\'/><path d=\'M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4\'/></svg><span>screenshots/multi-agent-launch.jpg</span></div>'">
         </div>
       </div>
@@ -1509,7 +1639,7 @@ footer {
             <div class="window-title">Terminal &mdash; multiple agents in one task</div>
           </div>
           <!-- Multiple agents running in parallel in split panes -->
-          <img src="screenshots/terminal-view.jpg" alt="Three AI agents running in parallel in split panes" class="step-screenshot"
+          <img loading="lazy" decoding="async" src="screenshots/terminal-view.jpg" alt="Three AI agents running in parallel in split panes" class="step-screenshot"
                onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\'><svg width=\'40\' height=\'40\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><polyline points=\'4 17 10 11 4 5\'/><line x1=\'12\' y1=\'19\' x2=\'20\' y2=\'19\'/></svg><span>screenshots/terminal-view.jpg</span></div>'">
         </div>
       </div>
@@ -1545,8 +1675,12 @@ footer {
           </p>
         </div>
         <div class="feature-hero-visual">
-          <img src="screenshots/hover-preview.gif" alt="Live per-second progress on kanban cards across columns" style="width:100%;display:block;border-radius:8px;"
-               onerror="this.outerHTML='<div class=\'step-screenshot-placeholder\' style=\'aspect-ratio:4/3\'><svg width=\'36\' height=\'36\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\' style=\'opacity:0.3\'><rect x=\'2\' y=\'3\' width=\'20\' height=\'14\' rx=\'2\'/><line x1=\'8\' y1=\'21\' x2=\'16\' y2=\'21\'/><line x1=\'12\' y1=\'17\' x2=\'12\' y2=\'21\'/></svg><span>screenshots/hover-preview.gif</span></div>'">
+          <!-- mp4 instead of the original 2.3MB gif — same animation, ~150KB -->
+          <video autoplay muted loop playsinline preload="metadata"
+                 aria-label="Live per-second progress on kanban cards across columns"
+                 style="width:100%;display:block;border-radius:8px;">
+            <source src="screenshots/hover-preview.mp4" type="video/mp4">
+          </video>
         </div>
       </div>
 
@@ -1601,7 +1735,7 @@ footer {
           </p>
         </div>
         <div class="feature-hero-visual">
-          <img src="screenshots/new-task-modal.jpg" alt="New Task modal with labels and branch fetch" style="width:100%;display:block;border-radius:8px;">
+          <img loading="lazy" decoding="async" src="screenshots/new-task-modal.jpg" alt="New Task modal with labels and branch fetch" style="width:100%;display:block;border-radius:8px;">
         </div>
       </div>
 
@@ -1621,7 +1755,7 @@ footer {
           </p>
         </div>
         <div class="feature-hero-visual">
-          <img src="screenshots/multi-attempt.jpg" alt="One task with 3 parallel attempts running simultaneously" style="width:100%;display:block;border-radius:8px;">
+          <img loading="lazy" decoding="async" src="screenshots/multi-attempt.jpg" alt="One task with 3 parallel attempts running simultaneously" style="width:100%;display:block;border-radius:8px;">
         </div>
       </div>
 
@@ -1658,7 +1792,7 @@ footer {
           </p>
         </div>
         <div class="feature-hero-visual">
-          <img src="screenshots/dev-server.jpg" alt="Dev Server controls — launch, restart, stop in one click" style="width:100%;display:block;border-radius:8px;">
+          <img loading="lazy" decoding="async" src="screenshots/dev-server.jpg" alt="Dev Server controls — launch, restart, stop in one click" style="width:100%;display:block;border-radius:8px;">
         </div>
       </div>
 
@@ -1679,7 +1813,7 @@ footer {
           </p>
         </div>
         <div class="feature-hero-visual">
-          <img src="screenshots/keyboard-shortcuts.jpg" alt="Keyboard Shortcuts panel showing the tmux keymap — panes, layout, windows, sessions" style="width:100%;display:block;border-radius:8px;">
+          <img loading="lazy" decoding="async" src="screenshots/keyboard-shortcuts.jpg" alt="Keyboard Shortcuts panel showing the tmux keymap — panes, layout, windows, sessions" style="width:100%;display:block;border-radius:8px;">
         </div>
       </div>
 
@@ -1753,6 +1887,368 @@ footer {
         </div>
         <h3>Monorepo file filter</h3>
         <p>Working in a giant monorepo? Sparse-checkout just the directories each task needs &mdash; worktrees create faster and use a fraction of the disk.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STAR HISTORY -->
+<section class="star-history">
+  <div class="container">
+    <div class="section-eyebrow reveal" style="justify-content:center">Community</div>
+    <h2 class="section-title reveal reveal-delay-1" style="text-align:center">
+      Developers are noticing
+    </h2>
+    <p class="section-desc reveal reveal-delay-2" style="margin:0 auto;text-align:center">
+      Free, open source, and climbing. Join the developers who already command
+      their agent fleets with dev-3.0 &mdash; and star the repo to keep the curve going.
+    </p>
+    <div class="star-history-frame reveal reveal-delay-3">
+      <a href="https://star-history.com/#h0x91b/dev-3.0&Date" target="_blank" rel="noopener">
+        <img loading="lazy" decoding="async" src="https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=Date&theme=dark" alt="Star History Chart"
+             onerror="this.parentElement.parentElement.innerHTML='<div style=\'padding:48px;color:var(--text-3);font-family:var(--font-mono);font-size:14px\'>Star the repo to see the chart grow!<br><br><a href=&quot;https://github.com/h0x91b/dev-3.0&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; style=&quot;color:var(--accent);text-decoration:none&quot;>github.com/h0x91b/dev-3.0</a></div>'">
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- PHILOSOPHY -->
+<section class="features" id="philosophy">
+  <div class="container">
+    <div class="section-eyebrow reveal">Philosophy</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Built for you. Not your org chart.
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      AI writes the code now &mdash; your job is to command the fleet. The bottleneck
+      moved from your editor to your focus. Two things we optimize for, above all.
+    </p>
+    <div class="problem-grid">
+      <div class="problem-card reveal reveal-delay-1">
+        <div class="problem-icon problem-icon-orange">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <h3>Your speed &mdash; as one person</h3>
+        <p>dev-3.0 optimizes a single developer: you. The unit is always the individual, never the org. Use it on a team if you like &mdash; but it&rsquo;s not for managing other people; it&rsquo;s for each person to command their own fleet at their own top speed.</p>
+      </div>
+      <div class="problem-card reveal reveal-delay-2">
+        <div class="problem-icon problem-icon-purple">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10l-5.1 1.2L12 17l-1.9-5.8L5 10l5.1-1.2L12 3z"/></svg>
+        </div>
+        <h3>Beautiful, and built around you</h3>
+        <p>A cockpit you stare at all day should be fast, gorgeous, and keyboard-first &mdash; and bend to your way of working, not force one on you. Great tooling doesn&rsquo;t just make you productive; it makes the work fun again. We sweat the polish.</p>
+      </div>
+    </div>
+    <p class="section-desc reveal" style="margin-top:40px">
+      And what we refuse:
+      <strong style="color:var(--text-1)">dev-3.0 is not an IDE &mdash; and won&rsquo;t become one.</strong>
+      Code and git are the agent&rsquo;s job. Need an editor? One click to your real
+      VS Code or Cursor &mdash; the goal is to need it less. Integrations? Your agent
+      already speaks MCP to Linear, Jira and the rest. dev-3.0 is the cockpit;
+      your agent is the adapter.
+    </p>
+  </div>
+</section>
+
+<!-- WAYS TO WORK -->
+<section class="features" id="ways-to-work">
+  <div class="container">
+    <div class="section-eyebrow reveal">Ways to work</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      One tool, your workflow
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      dev-3.0 doesn&rsquo;t impose a flow. Size your tasks and arrange your space
+      around how you actually work. A few of the ways people run it:
+    </p>
+    <div class="features-grid">
+      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
+        <div class="feature-icon fi-blue">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </div>
+        <h3>Solo at full speed</h3>
+        <p>One task, one worktree; spin up many in parallel and let agents run to done. Size each task so you can verify it in ~90 seconds &mdash; if you can&rsquo;t, it&rsquo;s too big. AI review, one-click dev server and live preview make checking instant.</p>
+      </div>
+      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--purple);">
+        <div class="feature-icon fi-purple">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </div>
+        <h3>Research swarm</h3>
+        <p>Barely writing code? Fan many tasks &mdash; each with several variants &mdash; at a question: measure, analyze, search. Then a roll-up task merges the findings, surfaces conflicts, and spawns the next round. A whole investigation, parallelized.</p>
+      </div>
+      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--green);">
+        <div class="feature-icon fi-green">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        </div>
+        <h3>One big feature, many small steps</h3>
+        <p>Branch off your own branch instead of main, then knock out small, isolated sub-tasks &mdash; each trivial to verify &mdash; that merge back up. The big branch assembles itself into your feature, with near-zero cognitive load per step.</p>
+      </div>
+    </div>
+    <p class="section-desc reveal" style="margin-top:32px">
+      &hellip;and more &mdash; multiple windows, multiple boards, many projects, many
+      agents per task. Arrange it however fits you.
+    </p>
+  </div>
+</section>
+
+<!-- REMOTE -->
+<section class="solution" id="remote">
+  <div class="container">
+    <div class="section-eyebrow reveal">Remote</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Your fleet, from anywhere
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      dev-3.0 doesn&rsquo;t need your laptop open. Run it headless on any Linux box
+      and command your agents from wherever you are.
+    </p>
+
+    <div class="solution-steps">
+      <div class="step reveal">
+        <div class="step-content">
+          <div class="step-number step-number-blue">&#x2192;</div>
+          <h3>One command: <code style="font-family:var(--font-mono);font-size:0.85em">dev3 remote</code></h3>
+          <p>
+            Start it on a cloud VM or home server &mdash; it prints a
+            <strong style="color:var(--text-1)">QR code and URL</strong>. Scan with your phone
+            or open in any browser: the full UI, boards, live terminals, everything.
+            A built-in Cloudflare tunnel means no SSH gymnastics, and agents keep
+            working while you&rsquo;re away. Check on the fleet from the couch,
+            approve a review from the train.
+          </p>
+        </div>
+        <div class="step-visual">
+          <div class="window-chrome">
+            <div class="window-dot window-dot-red"></div>
+            <div class="window-dot window-dot-yellow"></div>
+            <div class="window-dot window-dot-green"></div>
+            <div class="window-title">Remote Access &mdash; QR login</div>
+          </div>
+          <img loading="lazy" decoding="async" src="screenshots/remote-access.jpg" alt="Remote Access modal with a QR code to open the UI on a phone" class="step-screenshot">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHICH IS FOR YOU -->
+<section class="features" id="compare">
+  <div class="container">
+    <div class="section-eyebrow reveal">Which is for you?</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      We didn&rsquo;t build another editor.
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      Everyone else is building an editor for agents. We&rsquo;re building mission
+      control for <em>you</em>. Pick by your goal, not a feature checklist.
+    </p>
+    <div class="problem-grid">
+      <div class="problem-card reveal reveal-delay-1">
+        <h3>You want to live in the code</h3>
+        <p>Hands on the editor and git, reviewing every line yourself? An <strong style="color:var(--text-1)">agent IDE</strong> will feel like home.</p>
+      </div>
+      <div class="problem-card reveal reveal-delay-2">
+        <h3>You&rsquo;re buying for a team</h3>
+        <p>Need SSO, seats, audit logs and a managed platform? A <strong style="color:var(--text-1)">team orchestrator</strong> fits better.</p>
+      </div>
+      <div class="problem-card reveal reveal-delay-3">
+        <h3>You&rsquo;re a One Person Studio</h3>
+        <p>AI writes the code; your job is running the fleet at full speed without drowning. <strong style="color:var(--text-1)">That&rsquo;s dev-3.0.</strong></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GET STARTED -->
+<section class="terminal-demo" id="get-started">
+  <div class="container" style="text-align:center">
+    <div class="section-eyebrow reveal" style="justify-content:center">Get Started</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Download. Open. Go.
+    </h2>
+    <p class="section-desc reveal reveal-delay-2" style="margin-left:auto;margin-right:auto">
+      dev-3.0 is a native app for macOS and Linux. One command installs everything
+      &mdash; including <code style="font-family:var(--font-mono);font-size:0.9em">git</code> and <code style="font-family:var(--font-mono);font-size:0.9em">tmux</code>. No build steps, no configuration.
+    </p>
+
+    <div class="install-cards reveal reveal-delay-3">
+      <div class="install-card">
+        <div class="install-card-head">
+          <h3>macOS</h3>
+          <span class="install-card-badge">Homebrew &mdash; recommended</span>
+        </div>
+        <div class="install-code">
+          <code>brew tap h0x91b/dev3 && brew install --cask dev3</code>
+          <button class="copy-btn" data-copy="brew tap h0x91b/dev3 && brew install --cask dev3" aria-label="Copy command">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+        <p class="install-card-note">
+          Apple Silicon &amp; Intel. Prefer a classic install? Grab the DMG:
+          <a href="https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-arm64-dev-3.0.dmg">Apple&nbsp;Silicon</a> &middot;
+          <a href="https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-x64-dev-3.0.dmg">Intel</a>
+        </p>
+      </div>
+      <div class="install-card">
+        <div class="install-card-head">
+          <h3>Linux</h3>
+          <span class="install-card-badge" style="background: var(--green-glow); color: var(--green); border-color: rgba(52, 211, 153, 0.2);">Headless &mdash; any server</span>
+        </div>
+        <div class="install-code">
+          <code>brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3
+dev3 remote</code>
+          <button class="copy-btn" data-copy="brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3 && dev3 remote" aria-label="Copy command">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          </button>
+        </div>
+        <p class="install-card-note">
+          Prints a QR + URL &mdash; drive the full UI from any browser, even your phone.
+          Desktop GUI via <code style="font-family:var(--font-mono);font-size:0.95em">dev3 gui</code>.
+          No Homebrew? <a href="https://github.com/h0x91b/dev-3.0#pre-built-cli-tarball-no-homebrew" target="_blank" rel="noopener">CLI tarball</a>.
+        </p>
+      </div>
+    </div>
+
+    <div class="install-steps reveal reveal-delay-3">
+      <div class="install-step">
+        <div class="install-step-number" style="background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(68, 150, 255, 0.2);">1</div>
+        <div class="install-step-content">
+          <h3>Install with one command</h3>
+          <p>Homebrew pulls the app and its dependencies</p>
+        </div>
+      </div>
+      <div class="install-arrow">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+      <div class="install-step">
+        <div class="install-step-number" style="background: var(--purple-glow); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.2);">2</div>
+        <div class="install-step-content">
+          <h3>Add a project</h3>
+          <p>Point it at any git repo you already have</p>
+        </div>
+      </div>
+      <div class="install-arrow">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </div>
+      <div class="install-step">
+        <div class="install-step-number" style="background: var(--green-glow); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.2);">3</div>
+        <div class="install-step-content">
+          <h3>Create a task &amp; go</h3>
+          <p>Describe the work &mdash; your first agent is running</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="reveal reveal-delay-4" style="margin-top: 40px;">
+      <a href="https://github.com/h0x91b/dev-3.0/releases/latest" class="btn btn-primary" target="_blank" rel="noopener" style="font-size: 16px; padding: 16px 32px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download latest release
+      </a>
+      <p style="margin-top: 16px; font-size: 13px; color: var(--text-3);">
+        macOS (Apple Silicon &amp; Intel) and Linux &mdash; Windows coming soon
+        <br><span style="font-size: 11px; color: var(--text-4);">Free &amp; open source (Apache 2.0) &bull; Upgrade anytime: <code style="color: var(--text-3); background: rgba(255,255,255,0.04); padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); font-size: 11px;">brew upgrade --cask dev3</code></span>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="architecture" id="architecture">
+  <div class="container">
+    <div class="section-eyebrow reveal">Architecture</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Native performance,<br>modern stack
+    </h2>
+    <p class="section-desc reveal reveal-delay-2">
+      Built on a native webview runtime, GPU-accelerated terminal, and the fastest JS runtime available.
+      Instant startup, minimal memory footprint, and a silky-smooth experience.
+    </p>
+
+    <div class="arch-grid">
+      <div class="arch-card reveal reveal-delay-1">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20"/><circle cx="6" cy="6" r="0.5" fill="var(--accent)"/><circle cx="9" cy="6" r="0.5" fill="var(--accent)"/></svg>
+        </div>
+        <h3>Electrobun</h3>
+        <p>Native macOS webview runtime. Lightweight, fast startup, tiny memory footprint.</p>
+      </div>
+
+      <div class="arch-card reveal reveal-delay-2">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+        </div>
+        <h3>Bun</h3>
+        <p>All-in-one JS runtime. Fast installs, native APIs, built-in bundling. Main process runs in Bun.</p>
+      </div>
+
+      <div class="arch-card reveal reveal-delay-3">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        <h3>Ghostty</h3>
+        <p>GPU-accelerated terminal rendering engine. Buttery smooth, true-color, fast as native.</p>
+      </div>
+
+      <div class="arch-card reveal reveal-delay-4">
+        <div class="arch-card-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
+        </div>
+        <h3>tmux</h3>
+        <p>Battle-tested terminal multiplexer. Persistent sessions, split panes, keyboard-driven workflow.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AGENT COMPATIBILITY -->
+<section class="agents">
+  <div class="container" style="text-align:center">
+    <div class="section-eyebrow reveal" style="justify-content:center">Compatibility</div>
+    <h2 class="section-title reveal reveal-delay-1">
+      Your agent, your rules
+    </h2>
+    <p class="section-desc reveal reveal-delay-2" style="margin:0 auto 16px">
+      dev-3.0 doesn&rsquo;t integrate with agents &mdash; it hosts them. Any tool that runs
+      in a terminal works out of the box. When agents ship new features &mdash; like
+      Claude&rsquo;s multi-agent teams &mdash; you get them instantly, no update needed.
+    </p>
+
+    <div class="agents-grid reveal reveal-delay-3">
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--accent-soft); color: var(--accent);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 2H3a1 1 0 00-1 1v18a1 1 0 001 1h18a1 1 0 001-1V3a1 1 0 00-1-1zM9.8 18.4L5 12l4.8-6.4 1.6 1.2L7.5 12l3.9 5.2-1.6 1.2zm4.4 0l-1.6-1.2 3.9-5.2-3.9-5.2 1.6-1.2L19 12l-4.8 6.4z"/></svg>
+        </div>
+        Claude Code
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--green-glow); color: var(--green);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        OpenAI Codex
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--purple-glow); color: var(--purple);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
+        </div>
+        Gemini CLI
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: var(--orange-glow); color: var(--orange);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        </div>
+        opencode
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: rgba(255,255,255,0.06); color: var(--text-2);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+        </div>
+        Cursor Agent
+      </div>
+      <div class="agent-badge">
+        <div class="agent-badge-icon" style="background: rgba(255,255,255,0.06); color: var(--text-2);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        Any CLI&hellip;
       </div>
     </div>
   </div>
@@ -1937,217 +2433,6 @@ footer {
   </div>
 </section>
 
-<!-- PHILOSOPHY -->
-<section class="features" id="philosophy">
-  <div class="container">
-    <div class="section-eyebrow reveal">Philosophy</div>
-    <h2 class="section-title reveal reveal-delay-1">
-      Built for you. Not your org chart.
-    </h2>
-    <p class="section-desc reveal reveal-delay-2">
-      AI writes the code now &mdash; your job is to command the fleet. The bottleneck
-      moved from your editor to your focus. Two things we optimize for, above all.
-    </p>
-    <div class="problem-grid">
-      <div class="problem-card reveal reveal-delay-1">
-        <div class="problem-icon problem-icon-orange">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        </div>
-        <h3>Your speed &mdash; as one person</h3>
-        <p>dev-3.0 optimizes a single developer: you. The unit is always the individual, never the org. Use it on a team if you like &mdash; but it&rsquo;s not for managing other people; it&rsquo;s for each person to command their own fleet at their own top speed.</p>
-      </div>
-      <div class="problem-card reveal reveal-delay-2">
-        <div class="problem-icon problem-icon-purple">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.8L20 10l-5.1 1.2L12 17l-1.9-5.8L5 10l5.1-1.2L12 3z"/></svg>
-        </div>
-        <h3>Beautiful, and built around you</h3>
-        <p>A cockpit you stare at all day should be fast, gorgeous, and keyboard-first &mdash; and bend to your way of working, not force one on you. Great tooling doesn&rsquo;t just make you productive; it makes the work fun again. We sweat the polish.</p>
-      </div>
-    </div>
-    <p class="section-desc reveal" style="margin-top:40px">
-      And what we refuse:
-      <strong style="color:var(--text-1)">dev-3.0 is not an IDE &mdash; and won&rsquo;t become one.</strong>
-      Code and git are the agent&rsquo;s job. Need an editor? One click to your real
-      VS Code or Cursor &mdash; the goal is to need it less. Integrations? Your agent
-      already speaks MCP to Linear, Jira and the rest. dev-3.0 is the cockpit;
-      your agent is the adapter.
-    </p>
-  </div>
-</section>
-
-<!-- WAYS TO WORK -->
-<section class="features" id="ways-to-work">
-  <div class="container">
-    <div class="section-eyebrow reveal">Ways to work</div>
-    <h2 class="section-title reveal reveal-delay-1">
-      One tool, your workflow
-    </h2>
-    <p class="section-desc reveal reveal-delay-2">
-      dev-3.0 doesn&rsquo;t impose a flow. Size your tasks and arrange your space
-      around how you actually work. A few of the ways people run it:
-    </p>
-    <div class="features-grid">
-      <div class="feature-card reveal reveal-delay-1" style="--card-accent: var(--accent);">
-        <div class="feature-icon fi-blue">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-        </div>
-        <h3>Solo at full speed</h3>
-        <p>One task, one worktree; spin up many in parallel and let agents run to done. Size each task so you can verify it in ~90 seconds &mdash; if you can&rsquo;t, it&rsquo;s too big. AI review, one-click dev server and live preview make checking instant.</p>
-      </div>
-      <div class="feature-card reveal reveal-delay-2" style="--card-accent: var(--purple);">
-        <div class="feature-icon fi-purple">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        </div>
-        <h3>Research swarm</h3>
-        <p>Barely writing code? Fan many tasks &mdash; each with several variants &mdash; at a question: measure, analyze, search. Then a roll-up task merges the findings, surfaces conflicts, and spawns the next round. A whole investigation, parallelized.</p>
-      </div>
-      <div class="feature-card reveal reveal-delay-3" style="--card-accent: var(--green);">
-        <div class="feature-icon fi-green">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-        </div>
-        <h3>One big feature, many small steps</h3>
-        <p>Branch off your own branch instead of main, then knock out small, isolated sub-tasks &mdash; each trivial to verify &mdash; that merge back up. The big branch assembles itself into your feature, with near-zero cognitive load per step.</p>
-      </div>
-    </div>
-    <p class="section-desc reveal" style="margin-top:32px">
-      &hellip;and more &mdash; multiple windows, multiple boards, many projects, many
-      agents per task. Arrange it however fits you.
-    </p>
-  </div>
-</section>
-
-<!-- WHICH IS FOR YOU -->
-<section class="features" id="compare">
-  <div class="container">
-    <div class="section-eyebrow reveal">Which is for you?</div>
-    <h2 class="section-title reveal reveal-delay-1">
-      We didn&rsquo;t build another editor.
-    </h2>
-    <p class="section-desc reveal reveal-delay-2">
-      Everyone else is building an editor for agents. We&rsquo;re building mission
-      control for <em>you</em>. Pick by your goal, not a feature checklist.
-    </p>
-    <div class="problem-grid">
-      <div class="problem-card reveal reveal-delay-1">
-        <h3>You want to live in the code</h3>
-        <p>Hands on the editor and git, reviewing every line yourself? An <strong style="color:var(--text-1)">agent IDE</strong> will feel like home.</p>
-      </div>
-      <div class="problem-card reveal reveal-delay-2">
-        <h3>You&rsquo;re buying for a team</h3>
-        <p>Need SSO, seats, audit logs and a managed platform? A <strong style="color:var(--text-1)">team orchestrator</strong> fits better.</p>
-      </div>
-      <div class="problem-card reveal reveal-delay-3">
-        <h3>You&rsquo;re a One Person Studio</h3>
-        <p>AI writes the code; your job is running the fleet at full speed without drowning. <strong style="color:var(--text-1)">That&rsquo;s dev-3.0.</strong></p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- GET STARTED -->
-<section class="terminal-demo" id="get-started">
-  <div class="container" style="text-align:center">
-    <div class="section-eyebrow reveal" style="justify-content:center">Get Started</div>
-    <h2 class="section-title reveal reveal-delay-1">
-      Download. Open. Go.
-    </h2>
-    <p class="section-desc reveal reveal-delay-2" style="margin-left:auto;margin-right:auto">
-      dev-3.0 is a native desktop app. Download the DMG, drag to Applications, and you're ready.
-      No build steps, no dependencies, no configuration.
-    </p>
-
-    <div class="install-steps reveal reveal-delay-3">
-      <div class="install-step">
-        <div class="install-step-number" style="background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(68, 150, 255, 0.2);">1</div>
-        <div class="install-step-content">
-          <h3>Download the DMG</h3>
-          <p>Grab the latest release from GitHub Releases</p>
-        </div>
-      </div>
-      <div class="install-arrow">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </div>
-      <div class="install-step">
-        <div class="install-step-number" style="background: var(--purple-glow); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.2);">2</div>
-        <div class="install-step-content">
-          <h3>Drag to Applications</h3>
-          <p>Standard macOS install &mdash; nothing else needed</p>
-        </div>
-      </div>
-      <div class="install-arrow">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </div>
-      <div class="install-step">
-        <div class="install-step-number" style="background: var(--green-glow); color: var(--green); border: 1px solid rgba(52, 211, 153, 0.2);">3</div>
-        <div class="install-step-content">
-          <h3>Add a project &amp; go</h3>
-          <p>Point it at any git repo, create a task, and your first agent is running</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="reveal reveal-delay-4" style="margin-top: 40px;">
-      <a href="https://github.com/h0x91b/dev-3.0/releases" class="btn btn-primary" target="_blank" rel="noopener" style="font-size: 16px; padding: 16px 32px;">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Download latest release
-      </a>
-      <p style="margin-top: 16px; font-size: 13px; color: var(--text-3);">
-        macOS (Apple Silicon &amp; Intel) and Linux &mdash; Windows coming soon
-        <br>Or install via Homebrew: <code style="color: var(--text-2); background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 12px;">brew tap h0x91b/dev3 && brew install --cask dev3</code>
-        <br><span style="font-size: 11px; color: var(--text-4);">Installs dependencies (git, tmux) automatically &bull; Upgrade: <code style="color: var(--text-3); background: rgba(255,255,255,0.04); padding: 1px 5px; border-radius: 3px; font-family: var(--font-mono); font-size: 11px;">brew upgrade --cask dev3</code></span>
-      </p>
-    </div>
-  </div>
-</section>
-
-<!-- ARCHITECTURE -->
-<section class="architecture" id="architecture">
-  <div class="container">
-    <div class="section-eyebrow reveal">Architecture</div>
-    <h2 class="section-title reveal reveal-delay-1">
-      Native performance,<br>modern stack
-    </h2>
-    <p class="section-desc reveal reveal-delay-2">
-      Built on a native webview runtime, GPU-accelerated terminal, and the fastest JS runtime available.
-      Instant startup, minimal memory footprint, and a silky-smooth experience.
-    </p>
-
-    <div class="arch-grid">
-      <div class="arch-card reveal reveal-delay-1">
-        <div class="arch-card-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M2 9h20"/><circle cx="6" cy="6" r="0.5" fill="var(--accent)"/><circle cx="9" cy="6" r="0.5" fill="var(--accent)"/></svg>
-        </div>
-        <h3>Electrobun</h3>
-        <p>Native macOS webview runtime. Lightweight, fast startup, tiny memory footprint.</p>
-      </div>
-
-      <div class="arch-card reveal reveal-delay-2">
-        <div class="arch-card-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--purple)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
-        </div>
-        <h3>Bun</h3>
-        <p>All-in-one JS runtime. Fast installs, native APIs, built-in bundling. Main process runs in Bun.</p>
-      </div>
-
-      <div class="arch-card reveal reveal-delay-3">
-        <div class="arch-card-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.5" stroke-linecap="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        </div>
-        <h3>Ghostty</h3>
-        <p>GPU-accelerated terminal rendering engine. Buttery smooth, true-color, fast as native.</p>
-      </div>
-
-      <div class="arch-card reveal reveal-delay-4">
-        <div class="arch-card-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="1.5" stroke-linecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="12" x2="12" y2="21"/></svg>
-        </div>
-        <h3>tmux</h3>
-        <p>Battle-tested terminal multiplexer. Persistent sessions, split panes, keyboard-driven workflow.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
 <!-- KEYBOARD SHORTCUTS -->
 <section class="shortcuts" id="shortcuts">
   <div class="container">
@@ -2192,79 +2477,6 @@ footer {
   </div>
 </section>
 
-<!-- AGENT COMPATIBILITY -->
-<section class="agents">
-  <div class="container" style="text-align:center">
-    <div class="section-eyebrow reveal" style="justify-content:center">Compatibility</div>
-    <h2 class="section-title reveal reveal-delay-1">
-      Your agent, your rules
-    </h2>
-    <p class="section-desc reveal reveal-delay-2" style="margin:0 auto 16px">
-      dev-3.0 doesn&rsquo;t integrate with agents &mdash; it hosts them. Any tool that runs
-      in a terminal works out of the box. When agents ship new features &mdash; like
-      Claude&rsquo;s multi-agent teams &mdash; you get them instantly, no update needed.
-    </p>
-
-    <div class="agents-grid reveal reveal-delay-3">
-      <div class="agent-badge">
-        <div class="agent-badge-icon" style="background: var(--accent-soft); color: var(--accent);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M21 2H3a1 1 0 00-1 1v18a1 1 0 001 1h18a1 1 0 001-1V3a1 1 0 00-1-1zM9.8 18.4L5 12l4.8-6.4 1.6 1.2L7.5 12l3.9 5.2-1.6 1.2zm4.4 0l-1.6-1.2 3.9-5.2-3.9-5.2 1.6-1.2L19 12l-4.8 6.4z"/></svg>
-        </div>
-        Claude Code
-      </div>
-      <div class="agent-badge">
-        <div class="agent-badge-icon" style="background: var(--green-glow); color: var(--green);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-        </div>
-        OpenAI Codex
-      </div>
-      <div class="agent-badge">
-        <div class="agent-badge-icon" style="background: var(--purple-glow); color: var(--purple);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3"/><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83"/></svg>
-        </div>
-        Gemini CLI
-      </div>
-      <div class="agent-badge">
-        <div class="agent-badge-icon" style="background: var(--orange-glow); color: var(--orange);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
-        </div>
-        opencode
-      </div>
-      <div class="agent-badge">
-        <div class="agent-badge-icon" style="background: rgba(255,255,255,0.06); color: var(--text-2);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        </div>
-        Cursor Agent
-      </div>
-      <div class="agent-badge">
-        <div class="agent-badge-icon" style="background: rgba(255,255,255,0.06); color: var(--text-2);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-        </div>
-        Any CLI&hellip;
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- STAR HISTORY -->
-<section class="star-history">
-  <div class="container">
-    <div class="section-eyebrow reveal" style="justify-content:center">Community</div>
-    <h2 class="section-title reveal reveal-delay-1" style="text-align:center">
-      Star History
-    </h2>
-    <p class="section-desc reveal reveal-delay-2" style="margin:0 auto;text-align:center">
-      Join the growing community of developers managing AI agents with dev-3.0.
-    </p>
-    <div class="star-history-frame reveal reveal-delay-3">
-      <a href="https://star-history.com/#h0x91b/dev-3.0&Date" target="_blank" rel="noopener">
-        <img src="https://api.star-history.com/svg?repos=h0x91b/dev-3.0&type=Date&theme=dark" alt="Star History Chart"
-             onerror="this.parentElement.parentElement.innerHTML='<div style=\'padding:48px;color:var(--text-3);font-family:var(--font-mono);font-size:14px\'>Star the repo to see the chart grow!<br><br><a href=&quot;https://github.com/h0x91b/dev-3.0&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot; style=&quot;color:var(--accent);text-decoration:none&quot;>github.com/h0x91b/dev-3.0</a></div>'">
-      </a>
-    </div>
-  </div>
-</section>
-
 <!-- CTA -->
 <section class="cta">
   <div class="container">
@@ -2277,7 +2489,7 @@ footer {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
           Get started on GitHub
         </a>
-        <a href="https://github.com/h0x91b/dev-3.0/releases" class="btn btn-secondary" target="_blank" rel="noopener">
+        <a href="https://github.com/h0x91b/dev-3.0/releases/latest" class="btn btn-secondary" target="_blank" rel="noopener">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download latest release
         </a>
@@ -2291,7 +2503,7 @@ footer {
   <div class="container">
     <div class="footer-inner">
       <div class="footer-left">
-        <img src="icon.png" alt="dev-3.0">
+        <img src="icon-192.png" alt="dev-3.0" width="24" height="24" loading="lazy">
         <span>dev-3.0 &mdash; Apache 2.0 License &mdash; &copy; Arseny Pavlenko</span>
       </div>
       <ul class="footer-links">
@@ -2323,12 +2535,26 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 
 
-// Smooth scroll for anchor links
+// Smooth scroll for anchor links (also closes the mobile menu)
 document.querySelectorAll('a[href^="#"]').forEach(a => {
   a.addEventListener('click', e => {
     e.preventDefault();
+    document.querySelector('.nav-links').classList.remove('show');
     const target = document.querySelector(a.getAttribute('href'));
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+});
+
+// Copy-to-clipboard for install commands
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 1500);
+      if (typeof gtag === 'function') {
+        gtag('event', 'install_command_copy', { command: btn.dataset.copy });
+      }
+    });
   });
 });
 
@@ -2368,7 +2594,24 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
     return parseInt(slides[index].dataset.duration) || 4000;
   }
 
+  // Slides 2+ ship with data-src so the initial page load only fetches the
+  // first slide; swap them in once the page is loaded (or on first navigation).
+  let hydrated = false;
+  function hydrateSlides() {
+    if (hydrated) return;
+    hydrated = true;
+    slides.forEach(img => {
+      if (img.dataset.src) {
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+      }
+    });
+  }
+  window.addEventListener('load', hydrateSlides);
+  setTimeout(hydrateSlides, 3500);
+
   function goTo(index) {
+    hydrateSlides();
     var prev = current;
     current = ((index % count) + count) % count;
     if (prev === current) return;
