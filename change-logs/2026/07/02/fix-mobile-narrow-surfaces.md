@@ -1,0 +1,1 @@
+Folder picker now adapts to narrow (phone) viewports: the fixed vertical Places sidebar and the clipped fixed-width filter column are replaced with a horizontal Places chip strip and stacked full-width path/filter inputs, so nothing overflows a 390px screen.
