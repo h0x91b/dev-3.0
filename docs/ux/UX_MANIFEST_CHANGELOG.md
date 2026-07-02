@@ -1,5 +1,17 @@
 # UX Manifest Changelog
 
+## 2026-07-02 — New surface: task image viewer (`dev3 show-image`)
+
+Registered a new **task image viewer** overlay surface — a task-bound lightbox for images an
+agent surfaces via a new `dev3 show-image <path...>` CLI command, with a clickable history (newest
+activated first). Added `ux-architecture.yaml surfaces.task_image_viewer` +
+`responsive.surface_adaptation.task_image_viewer`, a `PRODUCT_UX_BIBLE.md §5` surface row and a §12.3
+narrow row. Placement: a Modal-family overlay (not a nav destination, not embedded in the inspector),
+opened via an arrival push (auto-open only when already focused on the task), a conditional
+image-count badge in the inspector Context bar, and a ⇧⌘P/native-menu action. Storage is additive
+(`~/.dev3.0/data/{slug}/task-images/{taskId}/`, respecting the frozen layout invariants). Rationale +
+full brief in UX decision 2026-07-02 and `feature-plans/show-image-viewer.md`.
+
 ## 2026-07-02 — Velocity Cockpit gains period navigation (temporal nav clarified as allowed)
 
 Clarified the `stats_dashboard` read-only guardrail so it distinguishes **temporal navigation of the

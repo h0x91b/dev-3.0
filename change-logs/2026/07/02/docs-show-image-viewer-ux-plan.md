@@ -1,0 +1,1 @@
+UX plan for a new `dev3 show-image <path...>` CLI command and a task-bound image viewer overlay (lightbox with clickable history, newest activated first). Added the feature plan, a UX decision, a new manifest surface, its narrow-viewport form, and a manifest-changelog entry. Planning only — no product code yet.

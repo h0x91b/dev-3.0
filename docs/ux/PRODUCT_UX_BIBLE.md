@@ -108,6 +108,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Task card | Compact task summary | status dot, labels, variant dots, open, context menu, git badge | full settings, global destination | `TaskCard.tsx` (large — watch density) |
 | Task info panel (inspector) | Active-task control: git, dev server, scripts, notes, tmux, open-in | object/git/dev-server actions, metadata, notes | global destination, cross-project action | `TaskInfoPanel.tsx` (densest surface) |
 | Diff review viewer | Full-screen read + inline-review of a task's diff | view-mode toggle, file-tree nav, search, mark-read, per-file copy-path, inline comments, review export/copy/reset | task lifecycle action, git mutation, global destination | `TaskDiffViewer.tsx` (see 5.3) |
+| Task image viewer | Task-bound lightbox for images an agent surfaced via `dev3 show-image` (history rail, newest first) | image display, history nav (thumbnails + prev/next + arrows), copy image, reveal path, clear (destructive) | global destination, task lifecycle/git mutation, persistent inspector button (badge is conditional), SVG render (v1) | `TaskImageViewer.tsx` (planned; see UX_DECISIONS 2026-07-02) |
 | Modal | Focused create/confirm | create flow, confirm, focused config | navigation, persistent dashboard | `*Modal.tsx` |
 | Popover | Contextual preview/hint | preview, hint, quick action, remediation | multi-step flow, primary destination | `*Popover.tsx` |
 | Context menu | Right-click object actions | object action, open-in, destructive | global destination | `OpenInMenu.tsx` |
@@ -320,6 +321,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Command palette (Cmd+K / Cmd+Shift+P) | keyboard-summoned, `34rem` | needs a **touch entry** + `w-full max-w-[calc(100vw-2rem)]` — see §12.4 (it is the action fallback for the absent native menu) | `Proposed` |
 | Global header | single row, ≤9 utility buttons | reflow: logo + truncated breadcrumb + **one overflow (kebab)** for all utilities; never a 9-icon row (`useCompact` at 1600 only hides labels, it does not reflow for 390px) | `Proposed` |
 | Hover terminal preview | popover on card hover | **disabled** on touch/narrow (no hover; popover obscures) — already gated in `useTerminalPreview` | `Observed` |
+| Task image viewer | lightbox + thumbnail rail | full-bleed; filmstrip → bottom scroll strip; image is live-content (axis-arbitrated swipe + prev/next + dots); touch entry = inspector badge + palette action | `Proposed` |
 | Toast | top-right, clamped | already `max-w-[calc(100vw-2rem)]` — OK | `Observed` (OK) |
 
 ### 12.4 Navigation & action reachability on touch — `Proposed`
