@@ -31,21 +31,32 @@ describe("parseSkillFrontmatter", () => {
 
 describe("listAgentSkills", () => {
 	let home: string;
+	let project: string;
 
 	beforeEach(() => {
 		home = mkdtempSync(join(tmpdir(), "dev3-skills-test-"));
+		project = mkdtempSync(join(tmpdir(), "dev3-skills-proj-"));
 	});
 
 	afterEach(() => {
 		rmSync(home, { recursive: true, force: true });
+		rmSync(project, { recursive: true, force: true });
 	});
 
-	function addSkill(dir: string, slug: string, frontmatter: string | null) {
-		const skillDir = join(home, dir, slug);
+	function addSkillIn(base: string, dir: string, slug: string, frontmatter: string | null) {
+		const skillDir = join(base, dir, slug);
 		mkdirSync(skillDir, { recursive: true });
 		if (frontmatter !== null) {
 			writeFileSync(join(skillDir, "SKILL.md"), frontmatter);
 		}
+	}
+
+	function addSkill(dir: string, slug: string, frontmatter: string | null) {
+		addSkillIn(home, dir, slug, frontmatter);
+	}
+
+	function addProjectSkill(dir: string, slug: string, frontmatter: string | null) {
+		addSkillIn(project, dir, slug, frontmatter);
 	}
 
 	it("returns empty when no skill directories exist", () => {
@@ -82,5 +93,28 @@ describe("listAgentSkills", () => {
 		addSkill(".claude/skills", ".hidden", "---\nname: hidden\n---\n");
 		const result = listAgentSkills(home);
 		expect(result.map((s) => s.name)).toEqual(["real"]);
+	});
+
+	it("includes project-local skills alongside global ones", () => {
+		addSkill(".claude/skills", "global-skill", "---\nname: global-skill\ndescription: G\n---\n");
+		addProjectSkill(".claude/skills", "debug-ui", "---\nname: debug-ui\ndescription: Drive the UI\n---\n");
+		const result = listAgentSkills(home, project);
+		expect(result).toEqual([
+			{ name: "debug-ui", description: "Drive the UI", source: "claude" },
+			{ name: "global-skill", description: "G", source: "claude" },
+		]);
+	});
+
+	it("prefers a project-local skill over a same-named global one", () => {
+		addSkill(".claude/skills", "shared", "---\nname: shared\ndescription: from global\n---\n");
+		addProjectSkill(".claude/skills", "shared", "---\nname: shared\ndescription: from project\n---\n");
+		const result = listAgentSkills(home, project);
+		expect(result).toHaveLength(1);
+		expect(result[0]).toEqual({ name: "shared", description: "from project", source: "claude" });
+	});
+
+	it("ignores project scanning when projectPath is not given", () => {
+		addProjectSkill(".claude/skills", "debug-ui", "---\nname: debug-ui\ndescription: Drive the UI\n---\n");
+		expect(listAgentSkills(home)).toEqual([]);
 	});
 });

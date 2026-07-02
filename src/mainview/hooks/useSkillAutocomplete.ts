@@ -37,13 +37,16 @@ export function filterSkills(skills: AgentSkillInfo[], query: string): AgentSkil
 
 /**
  * Slash-trigger skill-name autocomplete for a textarea. Typing "/" at a word
- * boundary opens a suggestion list of globally installed agent skills
- * (~/.agents/skills, ~/.claude/skills, ~/.codex/skills via `listAgentSkills`).
+ * boundary opens a suggestion list of installed agent skills — the project's
+ * local `.agents/.claude/.codex/skills` (when `projectPath` is given) plus the
+ * global home directories, via `listAgentSkills`. Project-local skills win over
+ * same-named global ones.
  */
 export function useSkillAutocomplete(
 	textareaRef: RefObject<HTMLTextAreaElement | null>,
 	value: string,
 	setValue: (next: string) => void,
+	projectPath?: string | null,
 ) {
 	const [skills, setSkills] = useState<AgentSkillInfo[]>([]);
 	const [token, setToken] = useState<SlashToken | null>(null);
@@ -53,7 +56,7 @@ export function useSkillAutocomplete(
 	useEffect(() => {
 		let cancelled = false;
 		api.request
-			.listAgentSkills()
+			.listAgentSkills({ projectPath })
 			.then((result) => {
 				if (!cancelled) setSkills(result);
 			})
@@ -63,7 +66,7 @@ export function useSkillAutocomplete(
 		return () => {
 			cancelled = true;
 		};
-	}, []);
+	}, [projectPath]);
 
 	const sync = useCallback(() => {
 		const el = textareaRef.current;
