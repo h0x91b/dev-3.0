@@ -216,6 +216,7 @@ Commands:
 - \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows in the card's hover preview (reasons accumulate, newest kept, up to 5). The badge persists until the user opens the task. This is the default for anything that needs the user.
 - \`dev3 notify "message" [--level info|success|error]\` — a clickable in-app toast; clicking opens this task. Ephemeral. Use \`--level error\` for failures, \`success\` for "done".
 - \`dev3 notify "message" --desktop\` — a native OS notification (shows even when the app is backgrounded/hidden); clicking focuses this task.
+- \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show the user actual images** (screenshots, \`agent-browser\` captures, rendered charts/diagrams) in an in-app viewer bound to this task, with a clickable history (newest shown first). A terminal can't render pixels — this is how you let the human *see* what you found. Paths may be relative or absolute (png/jpg/gif/webp/bmp); they're copied into the worktree so it survives the original (often /tmp) file being deleted. **Each \`--caption\` annotates the image path it immediately follows** — use it to say what to look at in that shot (e.g. \`dev3 show-image before.png --caption "current bug" after.png --caption "after my fix"\`). Captions are the agent's voice on the image — prefer them over describing the picture in text the user has to cross-reference.
 - \`dev3 ui state\` — reports focused task/project, app foreground, **how long the user has been idle** (\`userActivity\`), and this worktree's tmux layout (\`--json\` for raw data). Check this BEFORE pinging to choose the right channel and avoid redundant pings.
 
 When to ping (MUST — always do one):
@@ -223,6 +224,7 @@ When to ping (MUST — always do one):
 - You **asked a question** and are waiting → \`dev3 attention "..."\`.
 - You **finished** something important / it's ready for review → \`dev3 notify "..." --level success\`.
 - Something **broke** the user must know about → \`dev3 notify "..." --level error\`.
+- You **have an image the user should see** — the user asked to see something visual, or you took/produced a screenshot, \`agent-browser\` capture, chart, or diagram while working → **proactively** \`dev3 show-image ... --caption "..."\`. Do NOT just describe a picture in words or leave it as a file path the user has to open themselves; if pixels exist and they're relevant, put them in front of the user. This is the default whenever your work produced something worth looking at.
 
 When to ping (SHOULD — judgment, only if the run is long and the user likely stepped away):
 - A major milestone mid-task (a big phase/migration completed).

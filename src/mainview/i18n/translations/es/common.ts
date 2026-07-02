@@ -183,6 +183,25 @@ const common = {
 	"unsavedChanges.discard": "Descartar",
 	"unsavedChanges.cancel": "Cancelar",
 	"unsavedChanges.banner": "Tienes cambios sin guardar",
+	// Shared images (dev3 show-image)
+	"imageViewer.title": "Imágenes compartidas",
+	"imageViewer.close": "Cerrar",
+	"imageViewer.prev": "Imagen anterior",
+	"imageViewer.next": "Imagen siguiente",
+	"imageViewer.copyPath": "Copiar ruta de la imagen",
+	"imageViewer.copyFailed": "No se pudo copiar la ruta",
+	"imageViewer.open": "Abrir en la app predeterminada",
+	"imageViewer.openFailed": "No se pudo abrir la imagen",
+	"imageViewer.loadError": "Imagen no disponible",
+	"imageViewer.loading": "Cargando…",
+	"imageViewer.fitScreen": "Ajustar a pantalla",
+	"imageViewer.fitWidth": "Ajustar al ancho",
+	"imageViewer.enterFullscreen": "Pantalla completa",
+	"imageViewer.exitFullscreen": "Salir de pantalla completa",
+	"showImage.toast_one": "El agente compartió una imagen",
+	"showImage.toast_other": "El agente compartió {count} imágenes",
+	"showImage.attention_one": "Compartió una imagen",
+	"showImage.attention_other": "Compartió {count} imágenes",
 };
 
 export default common;

@@ -316,6 +316,26 @@ ux_architecture:
         - "Action palette can grow to cover more menu actions by adding a registry entry in commands.ts AND a handleMenuAction case — destructive/modal flows still excluded by policy."
       observed: ["ProjectQuickSwitchModal", "CommandPaletteModal", "PaletteShell", "commands.ts", "utils/fuzzyMatch.ts"]
       evidence: ["src/mainview/components/PaletteShell.tsx", "src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/commands.ts", "src/mainview/menuRouter.ts", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P handlers)", "UX_DECISIONS 2026-06-18"]
+    task_image_viewer:
+      purpose: "Task-bound lightbox overlay showing images an agent surfaced via `dev3 show-image`, with a clickable history (thumbnail rail; newest activated first). One large image + prev/next + Esc; opened for a taskId regardless of route (closing restores position). Read/view only — no git/lifecycle/mutation (same rule as the diff viewer)."
+      feature_class: ["overlay_viewer", "object_action", "notification"]
+      reached_from: ["arrival_push (rpc:cliShowImage — auto-open only when already focused on that task + window foreground; else toast + attention badge)", "inspector:image_count_badge (Context bar, conditional count>0, next to diff_summary_badge)", "command_palette ⇧⌘P (Show shared images, scope task)", "application_menu.Task"]
+      allowed: ["image_display", "history_nav (thumbnail rail + prev/next + arrows)", "copy_image", "reveal_original_path", "clear_images (destructive, confirm)"]
+      forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "persistent_inspector_button (badge is conditional on count>0)", "native_os_dialog", "svg_render (v1 — webview XSS)"]
+      transport: "Reuses the notify/attention socket+pushMessage machinery: CLI `ui.show-image` -> bun copies files -> getPushMessage()('cliShowImage', …) -> rpc:cliShowImage CustomEvent -> App.tsx listener (badge + toast + auto-open rule)."
+      persistence:
+        store: "~/.dev3.0/worktrees/{slug}/shared-images/ — copied by bun (src/bun/shared-images.ts), sibling of the DnD uploads/ dir (decision 036), in the worktree tree (shares its lifecycle). Model: Task.sharedImages: SharedImage[] in tasks.json (atomic write)."
+        rationale: "Worktree location per the user's call (not data/). ADDITIVE — no rename/move/delete of existing on-disk state (frozen ~/.dev3.0/ layout invariants). Works in remote/browser because bun reads the file and returns base64; the renderer never reads a local path."
+        bytes_to_webview: "Reuses the existing readImageBase64(path) -> { dataUrl } RPC (base64), works on both transports. Follow-up: custom protocol / dev-server static route if base64 is heavy."
+        retention: "Bounded — last 50 images/task, drop+delete oldest at write time (pruneSharedImages, app-managed content cleanup; NOT a load-time user-state migration)."
+      arrival_policy:
+        always: "copy+persist images, mark unseen, raise attention badge (cliAttention/addBell path) + toast (cliToast path with custom onClick -> open viewer)."
+        focused_on_this_task: "auto-open the viewer at the newest image (you are already here — it 'pops')."
+        elsewhere: "NO focus-steal; toast + attention badge; click either to open."
+        toggle: "Settings->Behavior 'Auto-open shared images' (default on) disables auto-open."
+      status: "observed"
+      observed: ["TaskImageViewer.tsx", "shared-images.ts", "show-image.ts", "ui.show-image handler"]
+      evidence: ["decisions/097-show-image-viewer.md", "docs/ux/feature-plans/show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/036-worktree-uploaded-dnd-files.md"]
 
   action_types:
     primary_action:
@@ -520,6 +540,7 @@ ux_architecture:
       global_header: { narrow: "reflow: logo + truncated breadcrumb + ONE overflow kebab for all utilities; never a 9-icon row (useCompact at 1600 only hides labels)", status: proposed, evidence: "GlobalHeader.tsx flex justify-between, useCompact.ts" }
       hover_terminal_preview: { narrow: "DISABLED on touch/narrow (no hover; popover obscures)", status: observed, evidence: "useTerminalPreview.ts hoverPreviewEnabled()" }
       toast: { narrow: "already max-w-[calc(100vw-2rem)] — OK", status: ok, evidence: "toast.tsx" }
+      task_image_viewer: { narrow: "lightbox is full-bleed; filmstrip -> bottom horizontal-scroll strip; image area is live-content -> axis-arbitrated horizontal swipe + visible prev/next + dots (swipe never the only way); touch entry = inspector badge (>=44px) + palette action (native menu absent in remote). Clamp inner panels to max-w-[calc(100vw-2rem)]; prefers-reduced-motion snaps.", status: proposed }
     navigation_touch:
       problem: "Keyboard-first nav is DEAD on touch (Cmd+K/Cmd+Shift+P palettes, Cmd+1..9, Cmd+/ hint overlay) and the native application menu is ABSENT in remote/browser mode."
       backbone: "breadcrumb spine stays the touch nav backbone (logo->dashboard, project->board, chevron->switcher, back/forward). Keep reachable (>=44px targets, right-0 dropdown fallback, not pushed off-screen by long task titles)."

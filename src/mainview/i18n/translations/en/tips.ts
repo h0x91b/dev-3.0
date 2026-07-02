@@ -262,6 +262,8 @@ const tips = {
 	"tip.altClickMoveCursor.body": "At a shell prompt, hold Option/Alt and click anywhere on the line to jump the cursor there — no arrow-key holding.",
 	"tip.statsTokenCost.title": "See your token spend",
 	"tip.statsTokenCost.body": "Productivity Stats now shows agent tokens used and their API-equivalent cost — read from local Claude Code transcripts, no API calls.",
+	"tip.agentShowImage.title": "Agents can show you images",
+	"tip.agentShowImage.body": "Run `dev3 show-image <path>` in a task and screenshots or renders pop open in an in-app viewer with a clickable history.",
 } as const;
 
 export default tips;

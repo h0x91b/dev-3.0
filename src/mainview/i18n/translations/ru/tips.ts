@@ -262,6 +262,8 @@ const tips = {
 	"tip.todoDetailRun.body": "Открой любой To Do таск, чтобы прочитать полное описание — и сразу запусти его кнопкой Run в футере.",
 	"tip.statsTokenCost.title": "Смотри расход токенов",
 	"tip.statsTokenCost.body": "На странице статистики теперь видно токены агента и их цену по API-тарифу — из локальных транскриптов Claude Code, без вызовов API.",
+	"tip.agentShowImage.title": "Агенты могут показывать картинки",
+	"tip.agentShowImage.body": "Запусти `dev3 show-image <path>` в задаче — скриншоты или рендеры откроются во встроенном вьюере с кликабельной историей.",
 };
 
 export default tips;

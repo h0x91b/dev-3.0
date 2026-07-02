@@ -786,7 +786,29 @@ export interface Task {
 	 * See {@link CompletedDiffStats}.
 	 */
 	completedDiffStats?: CompletedDiffStats | null;
+	/**
+	 * Images the agent surfaced to the human via `dev3 show-image`, oldest→newest.
+	 * Displayed in the TaskImageViewer lightbox. Capped at
+	 * {@link MAX_SHARED_IMAGES_PER_TASK}; the copied files live in the project
+	 * worktree `shared-images/` dir. See {@link SharedImage}.
+	 */
+	sharedImages?: SharedImage[];
 }
+
+/** Per-task cap on retained shared images; oldest are pruned (files deleted) past this. */
+export const MAX_SHARED_IMAGES_PER_TASK = 50;
+
+/** Raster image extensions accepted by `dev3 show-image` (lowercase, no dot).
+ * SVG is excluded on purpose — an inline data-URI SVG in the webview is an XSS
+ * vector, and screenshots/renders are raster anyway. Shared by the CLI (early
+ * validation) and the bun copy path (authoritative check). */
+export const SHARED_IMAGE_EXTS: readonly string[] = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+
+/** Per-image size cap for `dev3 show-image` (bytes). */
+export const MAX_SHARED_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/** Max images accepted in a single `dev3 show-image` invocation. */
+export const MAX_SHARED_IMAGES_PER_CALL = 20;
 
 // ---- Package scripts runner ----
 
@@ -928,6 +950,30 @@ export interface TaskNote {
 	source: NoteSource;
 	createdAt: string;
 	updatedAt: string;
+}
+
+/**
+ * An image an agent surfaced to the human via `dev3 show-image`, bound to a task.
+ * The source file is copied into the project's worktree `shared-images/` dir (next
+ * to `uploads/`), so the record survives the original (often /tmp) file being
+ * removed. Rendered in the {@link https://…|TaskImageViewer} lightbox with a
+ * clickable history (newest activated first). Bytes reach the webview via the
+ * existing `readImageBase64` RPC (works in desktop and browser transports).
+ */
+export interface SharedImage {
+	id: string;
+	/** Absolute path of the copied file under ~/.dev3.0/worktrees/<slug>/shared-images/. */
+	storedPath: string;
+	/** The path the agent originally passed (kept for provenance / tooltip). */
+	originalPath: string;
+	/** Basename of the original file. */
+	name: string;
+	mime: string;
+	bytes: number;
+	/** Optional batch caption from `dev3 show-image --caption`. */
+	caption?: string;
+	/** ms epoch when the image was shared. */
+	createdAt: number;
 }
 
 /** Generate a short title from a description (first ~maxLen chars, word-boundary truncated). */

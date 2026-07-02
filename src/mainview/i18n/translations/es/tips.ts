@@ -262,6 +262,8 @@ const tips = {
 	"tip.todoDetailRun.body": "Abre cualquier tarea Por hacer para leer la descripción completa y arráncala ahí mismo con el botón Run del pie.",
 	"tip.statsTokenCost.title": "Mira tu gasto de tokens",
 	"tip.statsTokenCost.body": "Estadísticas de productividad ahora muestra los tokens del agente y su coste equivalente en API — leído de transcripciones locales de Claude Code, sin llamadas a la API.",
+	"tip.agentShowImage.title": "Los agentes pueden mostrarte imágenes",
+	"tip.agentShowImage.body": "Ejecuta `dev3 show-image <path>` en una tarea y las capturas o renders se abren en un visor integrado con historial.",
 };
 
 export default tips;

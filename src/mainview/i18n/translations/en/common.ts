@@ -184,6 +184,25 @@ const common = {
 	"unsavedChanges.discard": "Discard",
 	"unsavedChanges.cancel": "Cancel",
 	"unsavedChanges.banner": "You have unsaved changes",
+	// Shared images (dev3 show-image)
+	"imageViewer.title": "Shared images",
+	"imageViewer.close": "Close",
+	"imageViewer.prev": "Previous image",
+	"imageViewer.next": "Next image",
+	"imageViewer.copyPath": "Copy image path",
+	"imageViewer.copyFailed": "Couldn't copy the path",
+	"imageViewer.open": "Open in default app",
+	"imageViewer.openFailed": "Couldn't open the image",
+	"imageViewer.loadError": "Image unavailable",
+	"imageViewer.loading": "Loading…",
+	"imageViewer.fitScreen": "Fit to screen",
+	"imageViewer.fitWidth": "Fill width",
+	"imageViewer.enterFullscreen": "Fullscreen",
+	"imageViewer.exitFullscreen": "Exit fullscreen",
+	"showImage.toast_one": "Agent shared an image",
+	"showImage.toast_other": "Agent shared {count} images",
+	"showImage.attention_one": "Shared an image",
+	"showImage.attention_other": "Shared {count} images",
 } as const;
 
 export default common;

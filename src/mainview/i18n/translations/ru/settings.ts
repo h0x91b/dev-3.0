@@ -1,5 +1,7 @@
 const settings = {
 	// GlobalSettings
+	"settings.autoOpenImages": "Автооткрытие присланных изображений",
+	"settings.autoOpenImagesDesc": "Когда агент присылает изображение (dev3 show-image), а ты смотришь на эту задачу, вьюер откроется сам. Выключено — только бейдж и тост.",
 	"settings.theme": "Тема",
 	"settings.themeDark": "Тёмная",
 	"settings.themeDarkDesc": "Полуночный индиго",

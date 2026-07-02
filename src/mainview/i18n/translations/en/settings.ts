@@ -1,5 +1,7 @@
 const settings = {
 	// GlobalSettings
+	"settings.autoOpenImages": "Auto-open shared images",
+	"settings.autoOpenImagesDesc": "When an agent shares an image (dev3 show-image) while you're looking at that task, pop the viewer open automatically. Off = just a badge and a toast.",
 	"settings.theme": "Theme",
 	"settings.themeDark": "Dark",
 	"settings.themeDarkDesc": "Midnight indigo",

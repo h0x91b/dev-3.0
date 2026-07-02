@@ -5,7 +5,7 @@ import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, SharedImage, Task, TaskStatus } from "../shared/types";
 import { orderProjectsForDisplay } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
@@ -43,6 +43,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
+import TaskImageViewer from "./components/TaskImageViewer";
 import HintOverlay from "./components/HintOverlay";
 
 /**
@@ -196,6 +197,8 @@ function App() {
 	const [hintMode, setHintMode] = useState(false);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
+	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
+	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number } | null>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
@@ -942,6 +945,69 @@ function App() {
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
 	}, [navigate]);
+
+	// Keep the current viewer visible to the cliShowImage listener without
+	// re-subscribing it every time the viewer opens/closes.
+	const imageViewerRef = useRef(imageViewer);
+	imageViewerRef.current = imageViewer;
+
+	// CLI-shared images (`dev3 show-image`). Always raise the attention badge; auto-open
+	// the lightbox ONLY when the user is already looking at this task (never steal focus).
+	useEffect(() => {
+		function onCliShowImage(e: Event) {
+			const { taskId, images, newCount, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				images: SharedImage[];
+				newCount: number;
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
+			if (!taskId || !images?.length) return;
+
+			// Attention badge (the reducer self-suppresses it when already viewing the task).
+			dispatch({ type: "addBell", taskId, reason: t.plural("showImage.attention", newCount ?? 1) });
+
+			const viewingThisTask =
+				(state.route.screen === "task" && state.route.taskId === taskId) ||
+				(state.route.screen === "project" && state.route.activeTaskId === taskId);
+			const autoOpen = localStorage.getItem("dev3-auto-open-shared-images") !== "off";
+			const foreground = typeof document === "undefined" || document.visibilityState === "visible";
+			const alreadyOpenForTask = imageViewerRef.current?.taskId === taskId;
+
+			if (alreadyOpenForTask || (viewingThisTask && autoOpen && foreground)) {
+				setImageViewer({ taskId, images, index: images.length - 1 });
+				return;
+			}
+
+			// Elsewhere: don't steal focus — a clickable toast opens the viewer.
+			const context = taskSeq !== undefined
+				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
+				: undefined;
+			toast.info(t.plural("showImage.toast", newCount ?? 1), {
+				context,
+				onClick: () => setImageViewer({ taskId, images, index: images.length - 1 }),
+			});
+		}
+		window.addEventListener("rpc:cliShowImage", onCliShowImage);
+		return () => window.removeEventListener("rpc:cliShowImage", onCliShowImage);
+	}, [dispatch, t, state.route]);
+
+	// Reopen the image viewer from a task-scoped trigger (the inspector image badge).
+	useEffect(() => {
+		function onOpenViewer(e: Event) {
+			const { taskId, images, index } = (e as CustomEvent).detail as {
+				taskId: string;
+				images: SharedImage[];
+				index?: number;
+			};
+			if (!taskId || !images?.length) return;
+			setImageViewer({ taskId, images, index: index ?? images.length - 1 });
+		}
+		window.addEventListener("dev3:openImageViewer", onOpenViewer);
+		return () => window.removeEventListener("dev3:openImageViewer", onOpenViewer);
+	}, []);
 
 	// Browser Web Notifications (remote mode). The desktop WKWebView already shows
 	// the native banner, so it ignores this push; only browsers act on it, falling
@@ -1804,6 +1870,13 @@ function App() {
 				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
 			/>
 			<ConfirmHost />
+			{imageViewer && (
+				<TaskImageViewer
+					images={imageViewer.images}
+					initialIndex={imageViewer.index}
+					onClose={() => setImageViewer(null)}
+				/>
+			)}
 			{aboutVersion && <AboutModal version={aboutVersion} onClose={() => setAboutVersion(null)} />}
 		</div>
 	);

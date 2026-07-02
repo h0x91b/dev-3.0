@@ -21,6 +21,7 @@ import SpawnAgentModal from "./SpawnAgentModal";
 import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
 import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
+import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
@@ -838,6 +839,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								</>
 							)}
 							<TaskExposedPorts task={task} />
+							<TaskSharedImages task={task} />
 						</div>
 						<div className="border-t border-edge pt-3">
 							{taskDetailsBody}
@@ -933,6 +935,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								</>
 							)}
 							<TaskExposedPorts task={task} />
+							<TaskSharedImages task={task} />
 						</div>
 					</div>
 				</div>
@@ -1003,6 +1006,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 									</>
 								)}
 								<TaskExposedPorts task={task} />
+								<TaskSharedImages task={task} />
 							</div>
 						</div>
 					</div>

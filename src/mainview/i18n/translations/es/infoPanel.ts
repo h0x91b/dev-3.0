@@ -154,6 +154,8 @@ const infoPanel = {
 	"infoPanel.diffReviewReset": "Restablecer revisión",
 	"infoPanel.diffReviewResetConfirmTitle": "¿Restablecer revisión?",
 	"infoPanel.diffReviewResetConfirmMessage": "Esto elimina permanentemente todos los comentarios de revisión en línea de esta tarea. No se puede deshacer.",
+	"infoPanel.imagesBadge": "Ver imágenes compartidas ({count})",
+	"infoPanel.imagesLabel": "Imágenes",
 };
 
 export default infoPanel;

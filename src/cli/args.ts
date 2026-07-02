@@ -50,7 +50,7 @@ export function resolveFileArgs(args: ParsedArgs): ParsedArgs {
 	};
 }
 
-function resolveValue(value: string): string {
+export function resolveValue(value: string): string {
 	if (value === "true") return value;
 	if (value.startsWith("@@")) return value.slice(1);
 	if (!value.startsWith("@")) return value;

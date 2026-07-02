@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type {
 	GlobalSettings,
 	TerminalKeymapPreset,
@@ -5,6 +6,8 @@ import type {
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
 import BrowserNotificationsSetting from "./BrowserNotificationsSetting";
+
+const AUTO_OPEN_IMAGES_KEY = "dev3-auto-open-shared-images";
 
 interface BehaviorSettingsSectionProps {
 	t: TFunction;
@@ -39,6 +42,24 @@ export default function BehaviorSettingsSection({
 	onTipsDisabledToggle,
 	onTipsReset,
 }: BehaviorSettingsSectionProps) {
+	// Auto-open the shared-image viewer when an agent pushes an image while you're
+	// already looking at the task. Local UI preference (like theme/task-open-mode).
+	const [autoOpenImages, setAutoOpenImages] = useState(() => {
+		try {
+			return localStorage.getItem(AUTO_OPEN_IMAGES_KEY) !== "off";
+		} catch {
+			return true;
+		}
+	});
+	const toggleAutoOpenImages = () => {
+		const next = !autoOpenImages;
+		setAutoOpenImages(next);
+		try {
+			localStorage.setItem(AUTO_OPEN_IMAGES_KEY, next ? "on" : "off");
+		} catch {
+			/* storage blocked — in-memory value still applies this session */
+		}
+	};
 	return (
 		<SettingsSection title={t("settings.behaviorSection")}>
 			<div>
@@ -139,6 +160,16 @@ export default function BehaviorSettingsSection({
 					checked={globalSettings.focusMode === true}
 					onToggle={() => onFocusModeToggle(globalSettings.focusMode !== true)}
 				/>
+			</div>
+
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.autoOpenImages")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.autoOpenImagesDesc")}
+				</p>
+				<ToggleSwitch checked={autoOpenImages} onToggle={toggleAutoOpenImages} />
 			</div>
 
 			<BrowserNotificationsSetting t={t} />
