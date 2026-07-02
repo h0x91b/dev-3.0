@@ -107,19 +107,40 @@ function isJsonFlagUnsupported(result: GitHubCommandResult): boolean {
 function parsePlainAuthStatus(output: string): GitHubAccount[] {
 	const accounts: GitHubAccount[] = [];
 	const seen = new Set<string>();
-	const loggedInPattern = /Logged in to (\S+) as ([^\s(]+)/g;
-	let match: RegExpExecArray | null;
-	let isFirst = true;
-	while ((match = loggedInPattern.exec(output)) !== null) {
-		const host = match[1];
-		const login = match[2];
-		const key = `${host}\0${login}`;
-		if (seen.has(key)) continue;
-		seen.add(key);
-		accounts.push({ host, login, active: isFirst });
-		isFirst = false;
+	// gh < ~2.50 prints "Logged in to <host> as <login>"; newer versions
+	// (e.g. v2.63) print "Logged in to <host> account <login>" and add an
+	// explicit "- Active account: true/false" line under each account.
+	const loggedInPattern = /Logged in to (\S+) (?:as|account) ([^\s(]+)/;
+	const activePattern = /Active account:\s*true/;
+	let lastAccount: GitHubAccount | null = null;
+	for (const line of output.split("\n")) {
+		const loggedIn = loggedInPattern.exec(line);
+		if (loggedIn) {
+			const [, host, login] = loggedIn;
+			const key = `${host}\0${login}`;
+			if (seen.has(key)) {
+				lastAccount = null;
+				continue;
+			}
+			seen.add(key);
+			lastAccount = { host, login, active: false };
+			accounts.push(lastAccount);
+			continue;
+		}
+		if (lastAccount && activePattern.test(line)) {
+			lastAccount.active = true;
+		}
 	}
-	return accounts;
+	// Old-format output has no "Active account" lines — treat the first
+	// listed account as active, matching gh's own ordering.
+	if (accounts.length > 0 && !accounts.some((account) => account.active)) {
+		accounts[0].active = true;
+	}
+	return accounts.sort((a, b) => {
+		if (a.active !== b.active) return a.active ? -1 : 1;
+		if (a.host !== b.host) return a.host.localeCompare(b.host);
+		return a.login.localeCompare(b.login);
+	});
 }
 
 function parseAccounts(payload: GhAuthStatusResponse): GitHubAccount[] {
