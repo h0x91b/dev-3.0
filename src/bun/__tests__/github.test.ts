@@ -161,6 +161,62 @@ describe("github", () => {
 		]);
 	});
 
+	it("fallback parses modern plain wording ('account X' instead of 'as X')", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc("", "unknown flag: --json\n\nUsage:  gh auth status [flags]\n", 1);
+			}
+			if (cmd.join(" ") === "gh auth status") {
+				// gh ~2.50+ (e.g. v2.63.2) wording: "Logged in to <host> account <login>".
+				const text =
+					"github.com\n" +
+					"  ✓ Logged in to github.com account barvolovski (keyring)\n" +
+					"  - Active account: true\n" +
+					"  - Git operations protocol: https\n" +
+					"  - Token: gho_******\n" +
+					"  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'\n";
+				return fakeProc(text, "", 0);
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const { getGitHubCliStatus } = await import("../github");
+		await expect(getGitHubCliStatus()).resolves.toEqual({
+			authStatus: "authenticated",
+			binaryPath: "/opt/homebrew/bin/gh",
+			accounts: [{ login: "barvolovski", host: "github.com", active: true }],
+		});
+	});
+
+	it("fallback marks the account flagged 'Active account: true' as active, not the first listed", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc("", "unknown flag: --json\n", 1);
+			}
+			if (cmd.join(" ") === "gh auth status") {
+				const text =
+					"github.com\n" +
+					"  ✓ Logged in to github.com account h0x91b-wix (keyring)\n" +
+					"  - Active account: false\n" +
+					"\n" +
+					"  ✓ Logged in to github.com account h0x91b (keyring)\n" +
+					"  - Active account: true\n";
+				return fakeProc(text, "", 0);
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const { getGitHubCliStatus } = await import("../github");
+		const status = await getGitHubCliStatus();
+		expect(status.authStatus).toBe("authenticated");
+		expect(status.accounts).toEqual([
+			{ login: "h0x91b", host: "github.com", active: true },
+			{ login: "h0x91b-wix", host: "github.com", active: false },
+		]);
+	});
+
 	it("returns not_authenticated when fallback gh auth status also fails", async () => {
 		whichMock.mockResolvedValue("/usr/bin/gh");
 		spawnMock.mockImplementation((cmd: string[]) => {
