@@ -171,6 +171,8 @@ const defaultDevServerStatus: DevServerStatus = {
 	panePids: [12345],
 	assignedPorts: [],
 	ports: [],
+	devPorts: [],
+	portConflicts: [],
 };
 
 function renderPanel(

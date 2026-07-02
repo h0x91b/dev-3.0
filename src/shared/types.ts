@@ -1185,6 +1185,20 @@ export interface DevServerStatus {
 	panePids: number[];
 	assignedPorts: number[];
 	ports: PortInfo[];
+	/**
+	 * Listening ports bound by processes inside the dev-server tmux session's
+	 * own process tree (empty when stopped). Unlike `ports` (whole task session,
+	 * cached), this is a live scan scoped to the dev server — a non-empty list
+	 * is the readiness signal `dev3 dev-server start --wait` polls for.
+	 */
+	devPorts: PortInfo[];
+	/**
+	 * Assigned pool ports currently bound by a process OUTSIDE the dev-server
+	 * tree — a conflicting owner that will make the devScript crash-loop on
+	 * bind. Surfaced so a squatted port is visible at start/status instead of
+	 * only as a downstream 502.
+	 */
+	portConflicts: PortInfo[];
 	resourceUsage?: ResourceUsage;
 }
 

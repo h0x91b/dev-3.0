@@ -4,6 +4,9 @@ import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 
+const WAIT_POLL_MS = 500;
+const WAIT_DEFAULT_TIMEOUT_S = 120;
+
 function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | undefined {
 	const raw = args.positional[0] || args.flags.id || context?.taskId;
 	if (!raw) return undefined;
@@ -15,9 +18,9 @@ function formatAssignedPorts(status: DevServerStatus): string {
 	return status.assignedPorts.map((port, index) => `DEV3_PORT${index}=${port}`).join(", ");
 }
 
-function formatDetectedPorts(status: DevServerStatus): string {
-	if (status.ports.length === 0) return "(none detected)";
-	return status.ports.map((port) => `${port.port} (${port.processName} pid ${port.pid})`).join(", ");
+function formatPortInfos(ports: DevServerStatus["ports"]): string {
+	if (ports.length === 0) return "(none detected)";
+	return ports.map((port) => `${port.port} (${port.processName} pid ${port.pid})`).join(", ");
 }
 
 function formatPids(status: DevServerStatus): string {
@@ -52,7 +55,8 @@ function printStatusDetails(status: DevServerStatus): void {
 		["Worktree:", status.worktreePath ?? "(none)"],
 		["Pane PIDs:", formatPids(status)],
 		["Assigned Ports:", formatAssignedPorts(status)],
-		["Detected Ports:", formatDetectedPorts(status)],
+		["Detected Ports:", formatPortInfos(status.ports)],
+		["Dev Ports:", formatPortInfos(status.devPorts)],
 	];
 
 	if (status.resourceUsage) {
@@ -61,6 +65,56 @@ function printStatusDetails(status: DevServerStatus): void {
 	}
 
 	printDetail(fields);
+	printPortConflicts(status);
+}
+
+function printPortConflicts(status: DevServerStatus): void {
+	for (const conflict of status.portConflicts) {
+		process.stdout.write(
+			`WARNING: port ${conflict.port} is already in use by ${conflict.processName} (pid ${conflict.pid}) — not owned by this dev server\n`,
+		);
+	}
+}
+
+/**
+ * Poll `devServer.status` until the dev server's own process tree is
+ * LISTENing on at least one port. With verified teardown on stop/restart the
+ * old server is confirmed dead first, so a bound port here really is the NEW
+ * server — not a stale process still serving the previous build.
+ */
+async function waitForDevServerReady(
+	socketPath: string,
+	params: Record<string, unknown>,
+	timeoutSec: number,
+): Promise<void> {
+	process.stdout.write(`Waiting for the dev server to open a port (timeout ${timeoutSec}s)...\n`);
+	const timeoutMs = timeoutSec * 1000;
+	for (let waited = 0; ; waited += WAIT_POLL_MS) {
+		const resp = await sendRequest(socketPath, "devServer.status", params);
+		if (!resp.ok) exitError(resp.error || "Failed to poll dev server status");
+		const status = resp.data as DevServerStatus;
+		if (!status.running) {
+			exitError("Dev server exited before opening a port — check the dev server pane for errors");
+		}
+		if (status.devPorts.length > 0) {
+			process.stdout.write(`Ready: listening on ${status.devPorts.map((p) => p.port).join(", ")}\n`);
+			return;
+		}
+		if (waited >= timeoutMs) {
+			exitError(`Dev server did not open a port within ${timeoutSec}s (build still in progress?)`);
+		}
+		await new Promise((resolve) => setTimeout(resolve, WAIT_POLL_MS));
+	}
+}
+
+function parseWaitTimeout(args: ParsedArgs): number {
+	const raw = args.flags.timeout;
+	if (raw === undefined) return WAIT_DEFAULT_TIMEOUT_S;
+	const parsed = parseInt(raw, 10);
+	if (isNaN(parsed) || parsed <= 0) {
+		exitUsage(`Invalid --timeout value: ${raw} (expected a positive number of seconds)`);
+	}
+	return parsed;
 }
 
 async function runAction(
@@ -83,6 +137,10 @@ async function runAction(
 
 	printStatusLine(action, resp.data as DevServerStatus);
 	printStatusDetails(resp.data as DevServerStatus);
+
+	if ((action === "start" || action === "restart") && args.flags.wait !== undefined) {
+		await waitForDevServerReady(socketPath, params, parseWaitTimeout(args));
+	}
 }
 
 export async function handleDevServer(

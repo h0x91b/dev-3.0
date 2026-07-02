@@ -1085,6 +1085,14 @@ const ALL_TIPS: Tip[] = [
 		score: 2,
 		contexts: ["terminal"],
 	},
+	{
+		id: "dev-server-wait",
+		titleKey: "tip.devServerWait.title",
+		bodyKey: "tip.devServerWait.body",
+		icon: "\u{F048B}", // nf-md-server
+		score: 2,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

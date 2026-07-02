@@ -212,23 +212,23 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "start",
-				usage: "dev3 dev-server start [task-id]",
-				summary: "Start a task's dev server.",
+				usage: "dev3 dev-server start [task-id] [--wait] [--timeout <sec>]",
+				summary: "Start a task's dev server. --wait blocks until it is listening on a port (default timeout 120s).",
 			},
 			{
 				name: "stop",
 				usage: "dev3 dev-server stop [task-id]",
-				summary: "Stop a task's dev server.",
+				summary: "Stop a task's dev server (verified: waits until its processes are dead and ports released).",
 			},
 			{
 				name: "restart",
-				usage: "dev3 dev-server restart [task-id]",
-				summary: "Restart a task's dev server.",
+				usage: "dev3 dev-server restart [task-id] [--wait] [--timeout <sec>]",
+				summary: "Restart a task's dev server. --wait blocks until the NEW server is listening on a port.",
 			},
 			{
 				name: "status",
 				usage: "dev3 dev-server status [task-id]",
-				summary: "Show a task's dev server status (default subcommand).",
+				summary: "Show a task's dev server status, including dev-owned ports and port conflicts (default subcommand).",
 			},
 		],
 	},

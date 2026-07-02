@@ -205,6 +205,14 @@ Before doing so, briefly tell the user what you are about to do.
 
 Prefer \`status\` before \`start\` to avoid unnecessary restarts.
 If you started the dev server only for verification, stop it afterwards unless the user asked to keep it running.
+
+When you need the server actually serving before testing (curl, browser QA), use
+\`dev3 dev-server start --wait\` / \`restart --wait\` — it blocks until the dev
+server's own process tree is listening on a port (\`--timeout <sec>\`, default 120).
+Do NOT probe the port yourself right after a plain restart. \`stop\`/\`restart\`
+verify teardown (processes dead, ports released) before returning, and \`status\`
+reports \`Dev Ports\` (owned by the dev server) plus WARNING lines when an assigned
+port is squatted by a foreign process.
 `;
 
 const SKILL_GET_ATTENTION = `

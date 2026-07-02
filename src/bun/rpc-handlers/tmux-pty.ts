@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import type { ColumnAgentConfig, DevServerStatus, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
@@ -6,7 +6,8 @@ import * as pty from "../pty-server";
 import * as agents from "../agents";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
-import { buildProcessTree, collectDescendants, getPortsForTask, getSessionPanePids, scanTaskPorts } from "../port-scanner";
+import { buildProcessTree, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, waitForPortsFree } from "../port-scanner";
+import { getPidCwd, terminatePidsVerified } from "../process-reaper";
 import { getResourceUsage } from "../resource-monitor";
 import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
@@ -68,7 +69,14 @@ async function killDevServerViewerPane(taskId: string, taskSession: string, devS
 // reparented to init when the wrapper dies, so they survive the teardown and
 // keep holding ports (or windows) open. Snapshot the dev session's full
 // descendant tree and reap it explicitly. See decision 092.
-const DEV_SERVER_KILL_GRACE_MS = 600;
+//
+// Teardown is VERIFIED, not fire-and-forget: after SIGTERM we poll for actual
+// process exit before escalating to SIGKILL, poll again, and finally wait for
+// the task's pool ports to be released — so when stop/restart returns, the
+// next start can really bind. See decision 099.
+const DEV_SERVER_TERM_GRACE_MS = 1500;
+const DEV_SERVER_KILL_WAIT_MS = 2000;
+const DEV_SERVER_PORT_RELEASE_WAIT_MS = 3000;
 
 function collectDevServerTreePids(devSession: string, socket: string): number[] {
 	const panePids = getSessionPanePids(socket, devSession);
@@ -91,39 +99,114 @@ function collectDevServerTreePids(devSession: string, socket: string): number[] 
 	return [...tree];
 }
 
-function signalPids(pids: number[], signal: NodeJS.Signals): void {
-	for (const pid of pids) {
-		try {
-			process.kill(pid, signal);
-		} catch {
-			// Process already gone or not permitted — best-effort reaping.
+// Reap a previously-captured PID set with verification: SIGTERM for a graceful
+// shutdown (lets dev servers release ports / flush state), poll for actual
+// exit, SIGKILL the survivors, poll again. Pass the PIDs captured *before* the
+// tmux session was torn down — they stay valid after the wrapper dies
+// (children just reparent to init). Returns PIDs still alive at the end.
+async function reapDevServerTree(pids: number[], devSession: string): Promise<number[]> {
+	if (pids.length === 0) return [];
+	const leftovers = await terminatePidsVerified(pids, {
+		termGraceMs: DEV_SERVER_TERM_GRACE_MS,
+		killWaitMs: DEV_SERVER_KILL_WAIT_MS,
+	});
+	if (leftovers.length > 0) {
+		log.error("Dev server processes survived SIGKILL", { devSession, leftovers });
+	} else {
+		log.info("Reaped dev server process tree (verified dead)", { devSession, count: pids.length });
+	}
+	return leftovers;
+}
+
+// A devScript child that daemonizes (double-fork → reparented to init BEFORE
+// our snapshot) is invisible to the ppid tree walk, yet keeps holding the
+// task's pool ports after Stop. Find such orphans by port ownership: whoever
+// LISTENs on an assigned port, is not in any of our live session trees, and
+// has its cwd inside the task worktree is ours to reap. Anything else holding
+// the port is a foreign process — reported, never killed. Ownership is checked
+// via `lsof -d cwd` because env/args inspection (`ps -E`) is blocked for other
+// PIDs under the packaged `.app` hardened runtime (see decisions 095/099).
+function findOrphanedPortHolders(
+	taskId: string,
+	worktreePath: string | undefined,
+	knownPids: Set<number>,
+): { orphanPids: number[]; foreignHolders: PortInfo[] } {
+	const assignedPorts = portPool.getPortAssignments(taskId);
+	if (assignedPorts.length === 0 || !worktreePath) return { orphanPids: [], foreignHolders: [] };
+
+	const holders = findPortHolders(assignedPorts);
+	if (holders.length === 0) return { orphanPids: [], foreignHolders: [] };
+
+	// lsof resolves symlinks in cwd paths (e.g. /tmp → /private/tmp).
+	let resolvedWorktree = worktreePath;
+	try {
+		resolvedWorktree = realpathSync(worktreePath);
+	} catch {
+		// Worktree already removed — fall back to the raw path.
+	}
+
+	const orphanPids = new Set<number>();
+	const foreignHolders: PortInfo[] = [];
+	let processTree: Map<number, number[]> | null = null;
+	for (const holder of holders) {
+		if (knownPids.has(holder.pid) || orphanPids.has(holder.pid)) continue;
+		const cwd = getPidCwd(holder.pid);
+		const isOurs = cwd !== null && [worktreePath, resolvedWorktree].some(
+			(root) => cwd === root || cwd.startsWith(root + "/"),
+		);
+		if (isOurs) {
+			processTree ??= buildProcessTree();
+			orphanPids.add(holder.pid);
+			for (const child of collectDescendants(holder.pid, processTree)) orphanPids.add(child);
+		} else {
+			foreignHolders.push(holder);
 		}
 	}
+	return { orphanPids: [...orphanPids], foreignHolders };
 }
 
-// Reap a previously-captured PID set: SIGTERM for a graceful shutdown (lets dev
-// servers release ports / flush state), then SIGKILL the survivors after a
-// short grace. Pass the PIDs captured *before* the tmux session was torn down —
-// they stay valid after the wrapper dies (children just reparent to init).
-async function reapDevServerTree(pids: number[], devSession: string): Promise<void> {
-	if (pids.length === 0) return;
-	signalPids(pids, "SIGTERM");
-	await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_KILL_GRACE_MS));
-	signalPids(pids, "SIGKILL");
-	log.info("Reaped dev server process tree", { devSession, count: pids.length });
-}
-
-export async function killDevServerSession(taskId: string, socket: string): Promise<void> {
+export async function killDevServerSession(taskId: string, socket: string, worktreePath?: string | null): Promise<void> {
 	const devSession = devServerSessionName(taskId);
 	const taskSession = `dev3-${taskId.slice(0, 8)}`;
 	// Snapshot the process tree while the dev session still exists — afterwards
 	// its pane PIDs are unreachable via tmux.
 	const treePids = collectDevServerTreePids(devSession, socket);
+	// Detached/daemonized devScript children are missed by the tree walk — find
+	// them by pool-port ownership. Processes in the TASK session tree (agent
+	// panes) are excluded: an agent-launched server on a pool port is not the
+	// dev server's to kill.
+	const taskTreePids = collectTaskPids(socket, taskSession);
+	for (const pid of treePids) taskTreePids.add(pid);
+	const { orphanPids, foreignHolders } = findOrphanedPortHolders(taskId, worktreePath ?? undefined, taskTreePids);
+	if (orphanPids.length > 0) {
+		log.warn("Reaping detached dev-server processes found via port ownership", { taskId: taskId.slice(0, 8), orphanPids });
+	}
+	if (foreignHolders.length > 0) {
+		log.warn("Assigned ports held by foreign processes — not killing", { taskId: taskId.slice(0, 8), foreignHolders });
+	}
+
 	await killDevServerViewerPane(taskId, taskSession, devSession, socket);
 	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 	await kill.exited;
-	await reapDevServerTree(treePids, devSession);
-	log.info("Killed dev server session", { taskId: taskId.slice(0, 8), devSession });
+	const leftovers = await reapDevServerTree([...treePids, ...orphanPids], devSession);
+
+	// "Stop returned" must mean "the next start can bind": wait for the pool
+	// ports to actually be released. Ports squatted by foreign processes are
+	// excluded — they will never free and are already reported above.
+	const foreignPorts = new Set(foreignHolders.map((h) => h.port));
+	const waitPorts = portPool.getPortAssignments(taskId).filter((port) => !foreignPorts.has(port));
+	const stuckHolders = await waitForPortsFree(waitPorts, DEV_SERVER_PORT_RELEASE_WAIT_MS);
+	if (stuckHolders.length > 0) {
+		log.warn("Assigned ports still held after teardown", { taskId: taskId.slice(0, 8), stuckHolders });
+	}
+	clearPortDataForTask(taskId);
+	log.info("Killed dev server session", {
+		taskId: taskId.slice(0, 8),
+		devSession,
+		reaped: treePids.length + orphanPids.length,
+		leftovers: leftovers.length,
+		stuckPorts: stuckHolders.map((h) => h.port),
+	});
 }
 
 async function buildDevServerStatus(task: Task, projectId: string, hasDevScript: boolean, socket?: string): Promise<DevServerStatus> {
@@ -136,10 +219,22 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		? await findDevServerViewerPaneId(task.id, taskSessionName, devSessionName, resolvedSocket)
 		: null;
 	const panePids = running ? getSessionPanePids(resolvedSocket, devSessionName) : [];
+	// One live lsof snapshot shared by the dev-port scan, the conflict check,
+	// and the whole-task-session fallback below. Skipped entirely when there is
+	// nothing to look at (stopped + no assigned ports).
+	const lsofOutput = running || assignedPorts.length > 0 ? getLsofOutput() : "";
+	const devTreePids = running ? collectTaskPids(resolvedSocket, devSessionName) : new Set<number>();
+	const devPorts = running && lsofOutput ? parseLsofOutput(lsofOutput, devTreePids) : [];
+	// An assigned pool port bound by a PID outside the dev-server tree is a
+	// conflict: either a foreign squatter, or (when stopped) a leftover that
+	// will make the next start crash-loop on bind.
+	const portConflicts = lsofOutput
+		? findPortHolders(assignedPorts, lsofOutput).filter((holder) => !devTreePids.has(holder.pid))
+		: [];
 	const ports = running
 		? (() => {
 			const cached = getPortsForTask(task.id);
-			return cached.length > 0 ? cached : scanTaskPorts(resolvedSocket, taskSessionName);
+			return cached.length > 0 ? cached : scanTaskPorts(resolvedSocket, taskSessionName, lsofOutput);
 		})()
 		: [];
 	const resourceUsage = running ? getResourceUsage(task.id) : undefined;
@@ -157,6 +252,8 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		panePids,
 		assignedPorts,
 		ports,
+		devPorts,
+		portConflicts,
 		resourceUsage,
 	};
 }
@@ -643,7 +740,7 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 		if (await isDevServerRunning(task.id, socket)) {
-			await killDevServerSession(task.id, socket);
+			await killDevServerSession(task.id, socket, task.worktreePath);
 		}
 
 		// Ensure pool ports exist for this task before launching. allocatePorts is
@@ -664,6 +761,18 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 				});
 			}
 		}
+		// Surface "port already in use" at start time instead of leaving the
+		// devScript to crash-loop on bind with only a downstream 502 as evidence.
+		// The start still proceeds (the script may not use the squatted port) —
+		// the conflict is logged here and returned in the status' portConflicts.
+		const preStartConflicts = findPortHolders(devPorts);
+		if (preStartConflicts.length > 0) {
+			log.warn("Assigned ports already in use before dev-server start", {
+				taskId: task.id.slice(0, 8),
+				conflicts: preStartConflicts,
+			});
+		}
+
 		const portExports = devPorts.length > 0
 			? buildEnvExports(portPool.buildPortEnv(devPorts)).join("\n") + "\n"
 			: "";
@@ -773,7 +882,7 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 		const task = await data.getTask(project, params.taskId);
 		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-		await killDevServerSession(task.id, socket);
+		await killDevServerSession(task.id, socket, task.worktreePath);
 		const taskSession = `dev3-${task.id.slice(0, 8)}`;
 		spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited.catch(() => {});
 		log.info("← stopDevServer done");
@@ -787,11 +896,11 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 	}
 }
 
-// Restart must fully stop the old server, wait for the OS to release its
-// ports (and for the inner tmux session to tear down), then start fresh.
-// Starting immediately after a kill races the dying dev process — the new
-// server fails to bind or tmux glitches mid-teardown.
-const DEV_SERVER_RESTART_DELAY_MS = 1000;
+// stopDevServer already VERIFIES teardown (processes confirmed dead, pool
+// ports confirmed released), so restart no longer needs a long blind sleep.
+// A short buffer remains only for the inner tmux session/client to finish
+// tearing down, avoiding redraw glitches in the viewer pane.
+const DEV_SERVER_RESTART_DELAY_MS = 250;
 
 export async function restartDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
 	log.info("→ restartDevServer", params);
@@ -1360,7 +1469,9 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 	if (!params.sessionName.startsWith("dev3-dev-")) {
 		const devSession = `dev3-dev-${params.sessionName.slice("dev3-".length)}`;
 		// Same orphaned-children problem as the Stop button: snapshot the dev
-		// server's process tree before tearing the session down, then reap it.
+		// server's process tree before tearing the session down, then reap it
+		// with verification. (No full task ID here, so the port-ownership orphan
+		// sweep is skipped — the tree reap covers the common case.)
 		const treePids = collectDevServerTreePids(devSession, pty.DEFAULT_TMUX_SOCKET);
 		const devKill = spawn(pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 		await devKill.exited;

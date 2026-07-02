@@ -38,6 +38,8 @@ const STATUS: DevServerStatus = {
 	panePids: [81231],
 	assignedPorts: [50001, 55930, 55937],
 	ports: [{ port: 5173, pid: 81298, processName: "bun" }],
+	devPorts: [{ port: 5173, pid: 81298, processName: "bun" }],
+	portConflicts: [],
 	resourceUsage: { cpu: 3.1, rss: 104857600 },
 };
 
@@ -142,6 +144,104 @@ describe("dev-server start/stop/restart", () => {
 			projectId: CTX.projectId,
 		});
 		expect(stdoutOutput).toContain("Restarted dev server");
+	});
+});
+
+describe("dev-server port conflicts", () => {
+	it("prints a warning for each conflicting port holder", async () => {
+		mockSend.mockResolvedValue(okResp({
+			...STATUS,
+			portConflicts: [
+				{ port: 50001, pid: 999, processName: "node" },
+				{ port: 55930, pid: 1001, processName: "python3" },
+			],
+		}));
+
+		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("WARNING: port 50001 is already in use by node (pid 999)");
+		expect(stdoutOutput).toContain("WARNING: port 55930 is already in use by python3 (pid 1001)");
+	});
+
+	it("prints no warnings when there are no conflicts", async () => {
+		mockSend.mockResolvedValue(okResp(STATUS));
+
+		await handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(stdoutOutput).not.toContain("WARNING: port");
+	});
+});
+
+describe("dev-server start --wait", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("polls status until the dev server opens a port, then prints Ready", async () => {
+		vi.useFakeTimers();
+		let statusCalls = 0;
+		mockSend.mockImplementation(async (_socket: string, method: string) => {
+			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [] });
+			statusCalls++;
+			return okResp(statusCalls >= 2 ? STATUS : { ...STATUS, devPorts: [] });
+		});
+
+		const promise = handleDevServer("start", { positional: [], flags: { wait: "true" } }, SOCKET, CTX);
+		await vi.advanceTimersByTimeAsync(1000);
+		await promise;
+
+		expect(statusCalls).toBe(2);
+		expect(stdoutOutput).toContain("Ready: listening on 5173");
+	});
+
+	it("exits with an error when the timeout elapses before a port appears", async () => {
+		vi.useFakeTimers();
+		mockSend.mockImplementation(async (_socket: string, method: string) => {
+			if (method === "devServer.restart") return okResp({ ...STATUS, devPorts: [] });
+			return okResp({ ...STATUS, devPorts: [] });
+		});
+
+		const promise = handleDevServer(
+			"restart",
+			{ positional: [], flags: { wait: "true", timeout: "1" } },
+			SOCKET,
+			CTX,
+		).catch((err: Error) => err);
+		await vi.advanceTimersByTimeAsync(5000);
+		const err = await promise;
+
+		expect(String(err)).toContain("EXIT_1");
+		expect(stderrOutput).toContain("did not open a port within 1s");
+	});
+
+	it("exits with an error when the dev server dies while waiting", async () => {
+		mockSend.mockImplementation(async (_socket: string, method: string) => {
+			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [] });
+			return okResp({ ...STATUS, running: false, devPorts: [] });
+		});
+
+		await expect(
+			handleDevServer("start", { positional: [], flags: { wait: "true" } }, SOCKET, CTX),
+		).rejects.toThrow("EXIT_1");
+		expect(stderrOutput).toContain("exited before opening a port");
+	});
+
+	it("rejects an invalid --timeout value", async () => {
+		mockSend.mockResolvedValue(okResp({ ...STATUS, devPorts: [] }));
+
+		await expect(
+			handleDevServer("start", { positional: [], flags: { wait: "true", timeout: "zero" } }, SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("Invalid --timeout value");
+	});
+
+	it("does not poll when --wait is not passed", async () => {
+		mockSend.mockResolvedValue(okResp({ ...STATUS, devPorts: [] }));
+
+		await handleDevServer("start", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(stdoutOutput).not.toContain("Waiting for the dev server");
 	});
 });
 

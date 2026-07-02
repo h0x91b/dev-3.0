@@ -5432,8 +5432,10 @@ describe("handlers.stopDevServer", () => {
 		let killCalls: [number | NodeJS.Signals, ...unknown[]][] = [];
 		try {
 			const pending = handlers.stopDevServer({ taskId: task.id, projectId: "proj-1" });
-			// Drive past the SIGTERM→SIGKILL grace delay without a real sleep.
-			await vi.advanceTimersByTimeAsync(1000);
+			// The kill spy never throws, so liveness probes (signal 0) report every
+			// pid as alive forever — teardown must exhaust the full verified path:
+			// SIGTERM grace poll (1.5s) + SIGKILL wait poll (2s). Drive past both.
+			await vi.advanceTimersByTimeAsync(4000);
 			await pending;
 			killCalls = [...killSpy.mock.calls] as typeof killCalls;
 		} finally {
