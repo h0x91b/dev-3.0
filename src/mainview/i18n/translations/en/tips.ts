@@ -256,6 +256,8 @@ const tips = {
 	"tip.devServerStatus.body": "The Dev Server button glows green with a live dot while running, and shows a spinner while it starts up.",
 	"tip.statsTimeTravel.title": "Browse past periods",
 	"tip.statsTimeTravel.body": "On Productivity Stats, use the ‹ › arrows next to the range switch to step back through past days, weeks, and months.",
+	"tip.todoDetailRun.title": "Run a task from its details",
+	"tip.todoDetailRun.body": "Open any To Do task to read the full description — then start it right there with the Run button in the footer.",
 } as const;
 
 export default tips;

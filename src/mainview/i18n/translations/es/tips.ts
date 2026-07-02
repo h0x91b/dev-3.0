@@ -256,6 +256,8 @@ const tips = {
 	"tip.mobileWindowPager.body": "En una pantalla estrecha, una barra sobre los paneles permite moverte entre ventanas de tmux — toca ‹ › o el nombre para saltar entre espacios de trabajo de la sesión.",
 	"tip.statsTimeTravel.title": "Explora períodos pasados",
 	"tip.statsTimeTravel.body": "En Estadísticas de productividad, usa las flechas ‹ › junto al selector de rango para retroceder por días, semanas y meses.",
+	"tip.todoDetailRun.title": "Inicia una tarea desde sus detalles",
+	"tip.todoDetailRun.body": "Abre cualquier tarea Por hacer para leer la descripción completa y arráncala ahí mismo con el botón Run del pie.",
 };
 
 export default tips;

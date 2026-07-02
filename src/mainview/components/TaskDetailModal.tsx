@@ -5,9 +5,11 @@ import type { Project, Task, TaskStatus } from "../../shared/types";
 import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
+import LabelPicker from "./LabelPicker";
 import { NoteItem, formatDate } from "./NoteItem";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
+import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -19,9 +21,11 @@ interface TaskDetailModalProps {
 	project: Project;
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
+	/** Opens the LaunchVariantsModal to start a todo task (agent + variant picker). */
+	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 }
 
-function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalProps) {
+function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }: TaskDetailModalProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const trapRef = useFocusTrap<HTMLDivElement>();
@@ -35,11 +39,16 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 	const [isRenaming, setIsRenaming] = useState(false);
 	const [renameValue, setRenameValue] = useState("");
 	const [renameSaving, setRenameSaving] = useState(false);
+	const [pickerOpen, setPickerOpen] = useState(false);
+	const [deleting, setDeleting] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
+	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
 
 	useEscapeKey(() => {
-		if (statusMenuOpen) {
+		if (pickerOpen) {
+			setPickerOpen(false);
+		} else if (statusMenuOpen) {
 			setStatusMenuOpen(false);
 		} else if (isRenaming) {
 			setIsRenaming(false);
@@ -177,6 +186,46 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 		});
 	}
 
+	// ---- Footer action handlers (todo) ----
+
+	/** Start the task: close this modal and hand off to the launch-variants flow. */
+	function handleRun() {
+		onClose();
+		onLaunchVariants(task, "in-progress");
+	}
+
+	async function handleDelete() {
+		const confirmed = await confirm({
+			title: t("task.delete"),
+			message: t("task.confirmDelete", { title: getTaskTitle(task) }),
+			danger: true,
+		});
+		if (!confirmed) return;
+		setDeleting(true);
+		try {
+			await api.request.deleteTask({ taskId: task.id, projectId: project.id });
+			dispatch({ type: "removeTask", taskId: task.id });
+			trackEvent("task_deleted", { project_id: project.id });
+			onClose();
+		} catch (err) {
+			toast.error(t("task.failedDelete", { error: String(err) }));
+			setDeleting(false);
+		}
+	}
+
+	async function handleRemoveLabel(labelId: string) {
+		try {
+			const updated = await api.request.setTaskLabels({
+				taskId: task.id,
+				projectId: project.id,
+				labelIds: (task.labelIds ?? []).filter((id) => id !== labelId),
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			toast.error(t("labels.failedSetLabels", { error: String(err) }));
+		}
+	}
+
 	// ---- Notes handlers ----
 
 	async function handleAddNote() {
@@ -222,6 +271,9 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 
 	const color = statusColors[task.status];
 	const generatedTitle = editValue.trim() ? titleFromDescription(editValue) : "";
+	const assignedLabels = (task.labelIds ?? [])
+		.map((id) => (project.labels ?? []).find((l) => l.id === id))
+		.filter(Boolean) as NonNullable<typeof project.labels>[number][];
 
 	if (isArchived) {
 		return <ArchivedView
@@ -405,6 +457,65 @@ function TaskDetailModal({ task, project, dispatch, onClose }: TaskDetailModalPr
 						)}
 					</div>
 				</div>
+
+				{/* Footer — actions for a not-yet-started task */}
+				{isTodo && (
+					<div className="flex-shrink-0 border-t border-edge px-6 py-4 space-y-3">
+						{/* Labels */}
+						<div className="flex flex-wrap items-center gap-1.5">
+							{assignedLabels.map((label) => (
+								<LabelChip
+									key={label.id}
+									label={label}
+									size="xs"
+									onRemove={(e) => {
+										e.stopPropagation();
+										handleRemoveLabel(label.id);
+									}}
+								/>
+							))}
+							<button
+								ref={pickerAnchorRef}
+								type="button"
+								onClick={() => setPickerOpen(true)}
+								className="flex flex-shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-fg-3 transition-colors hover:bg-fg/8 hover:text-fg"
+							>
+								{t("labels.addLabel")}
+							</button>
+							{pickerOpen && pickerAnchorRef.current && (
+								<LabelPicker
+									project={project}
+									task={task}
+									dispatch={dispatch}
+									onClose={() => setPickerOpen(false)}
+									anchorEl={pickerAnchorRef.current}
+								/>
+							)}
+						</div>
+
+						{/* Primary + destructive actions */}
+						<div className="flex items-center justify-between">
+							<button
+								onClick={handleDelete}
+								disabled={deleting}
+								className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-fg-3 transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+							>
+								{t("task.delete")}
+							</button>
+							<button
+								onClick={handleRun}
+								disabled={deleting}
+								className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
+								title={t("task.run")}
+							>
+								<svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M8 5v14l11-7z" />
+								</svg>
+								{t("task.run")}
+							</button>
+						</div>
+					</div>
+				)}
 			</div>
 		</div>
 	);

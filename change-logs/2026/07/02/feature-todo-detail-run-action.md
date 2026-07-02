@@ -1,0 +1,1 @@
+The To Do task detail modal now has a footer where you can start the task: a green Run button (opens the launch-variants picker), an editable labels row, and a Delete action. Previously you could only read and edit the description from that view and had to close it to start the task.

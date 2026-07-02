@@ -586,6 +586,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					project={project}
 					dispatch={dispatch}
 					onClose={() => setDetailOpen(false)}
+					onLaunchVariants={onLaunchVariants}
 				/>,
 				document.body
 			)}
