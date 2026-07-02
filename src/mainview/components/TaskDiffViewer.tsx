@@ -13,7 +13,10 @@ import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { formatBytes } from "../utils/formatBytes";
+import BottomSheet from "./BottomSheet";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { resolveAutoDiffViewMode, resolveDiffViewMode } from "./global-settings/utils";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { isTestFile } from "../../shared/test-files";
@@ -1475,7 +1478,7 @@ function TaskDiffFileSection({
 						aria-expanded={expanded}
 						className="min-w-0 flex items-center text-left hover:text-fg transition-colors"
 					>
-						<span className={`font-mono text-sm break-all min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
+						<span className={`font-mono text-sm break-words min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
 							{renderHighlightedText(file.displayPath, searchQuery, isCurrentPathMatch)}
 						</span>
 					</button>
@@ -1647,6 +1650,17 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [searchQuery, setSearchQuery] = useState("");
 	const [activeSearchIndex, setActiveSearchIndex] = useState(0);
 	const [filesCollapsed, setFilesCollapsed] = useState<boolean>(() => readFilesCollapsed());
+	// Narrow (phone / narrow window): the 22rem files aside cannot sit beside the
+	// diff — it would starve the diff to a sliver. Instead the diff owns the full
+	// width and the file list moves into a bottom sheet behind a "Files" button.
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const [filesSheetOpen, setFilesSheetOpen] = useState(false);
+	// Split view is unusable at phone width (two code columns); force Unified on
+	// narrow, and close the files sheet if the viewport widens back out.
+	useEffect(() => {
+		if (narrow && viewMode === "split") setViewMode("unified");
+		if (!narrow) setFilesSheetOpen(false);
+	}, [narrow, viewMode]);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
 	const toggleFilesCollapsed = useCallback(() => {
 		setFilesCollapsed((prev) => {
@@ -2506,7 +2520,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		? (searchMatches.length > 0 ? `${activeSearchIndex + 1} / ${searchMatches.length}` : t("infoPanel.diffSearchNoMatches"))
 		: null;
 
-	function renderFileTreeNode(node: DiffTreeNode, depth = 0): ReactElement {
+	function renderFileTreeNode(node: DiffTreeNode, depth = 0, onFileClick?: () => void): ReactElement {
 		if (node.type === "folder") {
 			const collapsed = collapsedFolders[node.key] ?? false;
 			const isCurrentPathMatch = currentSearchMatch?.kind === "path" && currentSearchMatch.filePath === node.path;
@@ -2532,7 +2546,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					</button>
 					{!collapsed && (
 						<div>
-							{node.children.map((child) => renderFileTreeNode(child, depth + 1))}
+							{node.children.map((child) => renderFileTreeNode(child, depth + 1, onFileClick))}
 						</div>
 					)}
 				</div>
@@ -2546,7 +2560,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return (
 			<button
 				key={node.key}
-				onClick={() => scrollToFile(node.fileId, { expand: true })}
+				onClick={() => { scrollToFile(node.fileId, { expand: true }); onFileClick?.(); }}
 				aria-label={t("infoPanel.diffOpenFile", { file: node.path })}
 				className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm transition-colors ${
 					isActive
@@ -2850,14 +2864,30 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								</button>
 							</div>
 						)}
-						{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
-						{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
+						{narrow ? (
+							totalFileCount > 0 && (
+								<button
+									type="button"
+									onClick={() => setFilesSheetOpen(true)}
+									data-testid="diff-files-sheet-trigger"
+									className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-edge bg-raised text-fg-2 text-[0.6875rem] font-semibold hover:bg-elevated-hover transition-colors"
+								>
+									<span aria-hidden="true" className="text-[0.85rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
+									<span>{t("infoPanel.diffFiles")} ({totalFileCount})</span>
+								</button>
+							)
+						) : (
+							<>
+								{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
+								{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
+							</>
+						)}
 					</div>
 				</div>
 			</div>
 
 			<div className="flex-1 min-h-0 flex overflow-hidden">
-				{!error && !isBusy && payload && totalFileCount > 0 && filesCollapsed && (
+				{!narrow && !error && !isBusy && payload && totalFileCount > 0 && filesCollapsed && (
 					<button
 						type="button"
 						onClick={toggleFilesCollapsed}
@@ -2885,7 +2915,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						</span>
 					</button>
 				)}
-				{!error && !isBusy && payload && totalFileCount > 0 && !filesCollapsed && (
+				{!narrow && !error && !isBusy && payload && totalFileCount > 0 && !filesCollapsed && (
 					<aside className="w-[22rem] shrink-0 border-r border-edge bg-raised/35 flex flex-col min-h-0">
 							<div className="shrink-0 px-3 pt-2 pb-2">
 								<button
@@ -3045,6 +3075,38 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								</div>
 							</div>
 					</aside>
+				)}
+
+				{narrow && !error && !isBusy && payload && totalFileCount > 0 && (
+					<BottomSheet
+						open={filesSheetOpen}
+						onClose={() => setFilesSheetOpen(false)}
+						title={t("infoPanel.diffFiles")}
+						testId="diff-files-sheet"
+					>
+						<div className="mb-2 flex items-center justify-end px-1">
+							<span className="text-[0.6875rem] text-fg-3 font-mono">
+								{readCount}/{totalFileCount} {t("infoPanel.diffRead")}
+							</span>
+						</div>
+						<div className="mb-3 grid grid-cols-2 gap-2">
+							<button
+								onClick={() => setAllFilesExpanded(!allFilesExpanded)}
+								className="inline-flex h-9 items-center justify-center rounded-md border border-edge bg-base px-2 text-xs font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
+							>
+								{allFilesExpanded ? t("infoPanel.diffCollapseAll") : t("infoPanel.diffExpandAll")}
+							</button>
+							<button
+								onClick={() => setAllFilesRead(!allFilesRead)}
+								className="inline-flex h-9 items-center justify-center rounded-md border border-edge bg-base px-2 text-xs font-medium text-fg-2 transition-colors hover:bg-elevated-hover"
+							>
+								{allFilesRead ? t("infoPanel.diffMarkAllUnread") : t("infoPanel.diffMarkAllRead")}
+							</button>
+						</div>
+						<div className="space-y-1">
+							{fileTree.map((node) => renderFileTreeNode(node, 0, () => setFilesSheetOpen(false)))}
+						</div>
+					</BottomSheet>
 				)}
 
 				<div ref={scrollRegionRef} className="flex-1 min-w-0 overflow-auto px-4 pt-1 pb-4" data-testid="inline-diff-scroll-region">
