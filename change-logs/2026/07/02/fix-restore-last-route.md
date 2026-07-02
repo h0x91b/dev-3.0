@@ -1,0 +1,1 @@
+Restore the last route (project/task/screen) across app restarts — quit, reboot, and auto-update — not just the window position. The current route is persisted to ~/.dev3.0/last-route.json (debounced on navigation) and reopened at launch, falling back to the dashboard if the saved project no longer exists.

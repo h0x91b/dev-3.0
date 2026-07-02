@@ -172,7 +172,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			countdownRef.current = null;
 		}
 		try {
-			await api.request.saveUpdateRoute({ route: JSON.stringify(route) });
+			// Belt-and-suspenders: the route is already persisted (debounced) on
+			// every navigation, but flush the exact current route synchronously
+			// here so an update triggered right after a navigation still restores
+			// to the correct surface.
+			await api.request.saveLastRoute({ route: JSON.stringify(route) });
 			await api.request.applyUpdate();
 		} catch {
 			setRestarting(false);

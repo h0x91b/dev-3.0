@@ -263,6 +263,28 @@ function App() {
 		routeRef.current = state.route;
 	}, [state.route]);
 
+	// Route persistence is enabled only after the initial restore attempt has
+	// run (see the projects-load effect). Without this gate, the bootstrap
+	// dashboard render would immediately overwrite the persisted last route
+	// before we get a chance to read it back.
+	const routePersistEnabledRef = useRef(false);
+
+	// Persist the current route (debounced) so the app reopens on the same
+	// surface after any restart — quit, reboot, or auto-update — mirroring the
+	// window position restore. Read back once at launch by the projects-load
+	// effect below.
+	useEffect(() => {
+		if (!routePersistEnabledRef.current) return;
+		const route = state.route;
+		const id = setTimeout(() => {
+			api.request.saveLastRoute({ route: JSON.stringify(route) }).catch(() => {
+				// Best-effort persistence — a failed write just means the next
+				// launch falls back to the previous saved route (or dashboard).
+			});
+		}, 400);
+		return () => clearTimeout(id);
+	}, [state.route]);
+
 	// Close the task-hint overlay on any navigation so it never lingers with
 	// detached card references (e.g. after a hint commits or an async route change).
 	useEffect(() => {
@@ -799,18 +821,29 @@ function App() {
 				const projects = await api.request.getProjects();
 				dispatch({ type: "setProjects", projects });
 
-				// Restore route saved before an update restart
+				// Restore the last route the user was on (persisted across quit,
+				// reboot, and update restarts). Guard against a stale project route
+				// whose project no longer exists — fall back to the dashboard.
 				try {
-					const { route: savedRoute } = await api.request.getUpdateRoute();
+					const { route: savedRoute } = await api.request.getLastRoute();
 					if (savedRoute) {
 						const route = JSON.parse(savedRoute) as Route;
-						dispatch({ type: "navigate", route });
+						const projectId = projectIdForRoute(route);
+						const projectExists =
+							!projectId || projects.some((p) => p.id === projectId && !p.deleted);
+						if (projectExists && route.screen !== "dashboard") {
+							dispatch({ type: "navigate", route });
+						}
 					}
 				} catch {
-					// Ignore — file may not exist or be malformed
+					// Ignore — file may not exist or be malformed.
 				}
 			} catch (err) {
 				console.error("Failed to load projects:", err);
+			} finally {
+				// Enable route persistence now that the restore attempt is done,
+				// so subsequent navigations (and the restored route) are saved.
+				routePersistEnabledRef.current = true;
 			}
 			dispatch({ type: "setLoading", loading: false });
 		})();
