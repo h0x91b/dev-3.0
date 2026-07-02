@@ -9,6 +9,7 @@ import { MobileProvider } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
 import { api } from "./rpc";
 import { bootstrapZoom } from "./zoom";
+import { bootstrapScrollSpeed } from "./scroll-speed";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 
 // ── Global crash handlers (renderer) ──
@@ -53,6 +54,9 @@ systemThemeMq.addEventListener("change", applySavedTheme);
 
 // Apply saved zoom before React mounts (see zoom.ts for implementation)
 bootstrapZoom();
+
+// Load saved terminal scroll speed into cache before terminals mount
+bootstrapScrollSpeed();
 
 // Apply saved locale before React mounts
 const savedLocale = localStorage.getItem("dev3-locale") || "en";

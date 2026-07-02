@@ -8,6 +8,7 @@ import { getShiftKeySequence } from "./shift-key-sequences";
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
+import { getScrollThreshold } from "./scroll-speed";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
@@ -749,7 +750,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			document.addEventListener("mouseup", onMouseUp);
 
 			let scrollAccumulator = 0;
-			const SCROLL_THRESHOLD = 50;
 
 			term.attachCustomWheelEventHandler((e: WheelEvent) => {
 				if (disposed) return false;
@@ -757,10 +757,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 					if (!term.hasMouseTracking()) return false;
 					const [col, row] = cellCoords(e);
 
+					// Read live so the Settings → Appearance scroll-speed slider
+					// takes effect without rebuilding the terminal (cheap cache read).
+					const threshold = getScrollThreshold();
 					scrollAccumulator += e.deltaY;
-					const lines = Math.trunc(scrollAccumulator / SCROLL_THRESHOLD);
+					const lines = Math.trunc(scrollAccumulator / threshold);
 					if (lines !== 0) {
-						scrollAccumulator -= lines * SCROLL_THRESHOLD;
+						scrollAccumulator -= lines * threshold;
 						const code = lines < 0 ? 64 : 65;
 						const count = Math.abs(lines);
 						for (let i = 0; i < count; i++) {

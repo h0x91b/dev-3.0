@@ -16,6 +16,7 @@ import { api } from "../rpc";
 import { openFolderPicker } from "../folder-picker";
 import { getInitialThemeState, getWindowInjectedThemeState } from "../theme-bootstrap";
 import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
+import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
 import { trackEvent } from "../analytics";
 import AgentSettingsSection from "./global-settings/AgentSettingsSection";
@@ -61,6 +62,7 @@ function GlobalSettings() {
 			}).preference,
 	);
 	const [zoomLevel, setZoomLevel] = useState(() => getZoom());
+	const [scrollSpeed, setScrollSpeed] = useState(() => getScrollSpeed());
 	const [cliInstallStatus, setCliInstallStatus] = useState<string | null>(null);
 	const [keymapPreset, setKeymapPresetState] = useState<TerminalKeymapPreset>(
 		() => getKeymapPreset(),
@@ -124,6 +126,19 @@ function GlobalSettings() {
 
 		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
+	}, []);
+
+	useEffect(() => {
+		function onScrollSpeedChanged(event: Event) {
+			setScrollSpeed((event as CustomEvent<number>).detail);
+		}
+
+		window.addEventListener(SCROLL_SPEED_CHANGED_EVENT, onScrollSpeedChanged);
+		return () =>
+			window.removeEventListener(
+				SCROLL_SPEED_CHANGED_EVENT,
+				onScrollSpeedChanged,
+			);
 	}, []);
 
 	useEffect(() => {
@@ -418,6 +433,7 @@ function GlobalSettings() {
 						locale={locale}
 						theme={theme}
 						zoomLevel={zoomLevel}
+						scrollSpeed={scrollSpeed}
 						onThemeChange={applyThemeChange}
 						onLocaleChange={handleLocaleChange}
 					/>

@@ -84,6 +84,8 @@ const settings = {
 	"settings.zoom": "Zoom",
 	"settings.zoomDesc": "Escalar toda la interfaz",
 	"settings.zoomReset": "Restablecer",
+	"settings.scrollSpeed": "Velocidad de desplazamiento del terminal",
+	"settings.scrollSpeedDesc": "Ajusta la velocidad de desplazamiento del terminal con la rueda del ratón",
 	"settings.terminalKeymap": "Mapa de teclas del terminal",
 	"settings.terminalKeymapDesc": "Los atajos Ctrl+B siempre funcionan. Activa la compatibilidad con iTerm2 para usar atajos ⌘.",
 	"settings.keymapIterm2": "Compatibilidad con iTerm2 (⌘D, ⌘W, ⌘T, ⌘[/])",

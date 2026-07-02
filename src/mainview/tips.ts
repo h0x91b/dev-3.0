@@ -1077,6 +1077,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["terminal"],
 	},
+	{
+		id: "terminal-scroll-speed",
+		titleKey: "tip.terminalScrollSpeed.title",
+		bodyKey: "tip.terminalScrollSpeed.body",
+		icon: "\u{F037D}", // nf-md-mouse
+		score: 2,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -84,6 +84,8 @@ const settings = {
 	"settings.zoom": "Zoom",
 	"settings.zoomDesc": "Scale the entire UI",
 	"settings.zoomReset": "Reset",
+	"settings.scrollSpeed": "Terminal scroll speed",
+	"settings.scrollSpeedDesc": "Adjust how fast the terminal scrolls with the mouse wheel",
 	"settings.terminalKeymap": "Terminal Keymap",
 	"settings.terminalKeymapDesc": "Ctrl+B shortcuts always work. Enable iTerm2 compatibility to also use ⌘ shortcuts.",
 	"settings.keymapIterm2": "iTerm2 compatibility (⌘D, ⌘W, ⌘T, ⌘[/])",

@@ -12,6 +12,13 @@ import {
 	MIN_ZOOM,
 	ZOOM_STEP,
 } from "../../zoom";
+import {
+	applyScrollSpeed,
+	DEFAULT_SCROLL_SPEED,
+	MAX_SCROLL_SPEED,
+	MIN_SCROLL_SPEED,
+	SCROLL_SPEED_STEP,
+} from "../../scroll-speed";
 import SettingsSection from "./SettingsSection";
 import type { Theme } from "./utils";
 
@@ -20,6 +27,7 @@ interface AppearanceSettingsSectionProps {
 	locale: Locale;
 	theme: Theme;
 	zoomLevel: number;
+	scrollSpeed: number;
 	onThemeChange: (theme: Theme) => void;
 	onLocaleChange: (locale: Locale) => void;
 }
@@ -29,6 +37,7 @@ export default function AppearanceSettingsSection({
 	locale,
 	theme,
 	zoomLevel,
+	scrollSpeed,
 	onThemeChange,
 	onLocaleChange,
 }: AppearanceSettingsSectionProps) {
@@ -123,6 +132,35 @@ export default function AppearanceSettingsSection({
 					<button
 						onClick={() => applyZoom(DEFAULT_ZOOM)}
 						disabled={zoomLevel === DEFAULT_ZOOM}
+						className="px-3 h-10 rounded-lg bg-raised border border-edge text-fg-2 text-sm hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+					>
+						{t("settings.zoomReset")}
+					</button>
+				</div>
+			</div>
+
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.scrollSpeed")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">{t("settings.scrollSpeedDesc")}</p>
+				<div className="flex items-center gap-4">
+					<input
+						type="range"
+						min={MIN_SCROLL_SPEED}
+						max={MAX_SCROLL_SPEED}
+						step={SCROLL_SPEED_STEP}
+						value={scrollSpeed}
+						onChange={(e) => applyScrollSpeed(parseFloat(e.target.value))}
+						aria-label={t("settings.scrollSpeed")}
+						className="flex-1 h-2 rounded-full appearance-none cursor-pointer bg-raised border border-edge accent-accent"
+					/>
+					<span className="w-12 text-right text-fg text-lg font-semibold tabular-nums">
+						{scrollSpeed}×
+					</span>
+					<button
+						onClick={() => applyScrollSpeed(DEFAULT_SCROLL_SPEED)}
+						disabled={scrollSpeed === DEFAULT_SCROLL_SPEED}
 						className="px-3 h-10 rounded-lg bg-raised border border-edge text-fg-2 text-sm hover:border-edge-active transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
 					>
 						{t("settings.zoomReset")}
