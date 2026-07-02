@@ -72,6 +72,11 @@ const stats = {
 	"stats.counters.agentsRunHint": "Approximate — counts tasks that launched an agent",
 	"stats.counters.allTimeCompleted": "Shipped all-time",
 	"stats.counters.bestStreak": "Best streak",
+	"stats.counters.tokensUsed": "Tokens used",
+	"stats.counters.tokensUsedHint": "Total agent tokens (input + output + cache) for this period, parsed from local Claude Code transcripts.",
+	"stats.counters.apiCost": "~API cost",
+	"stats.counters.apiCostHint": "What this usage would cost at public API rates. On your subscription it's included/subsidized — not a bill.",
+	"stats.counters.apiCostHintPartial": "Estimate excludes some models with unknown pricing, so the real API-rate figure is higher.",
 	// Per-project
 	"stats.perProject.title": "By project",
 	"stats.perProject.empty": "No completed tasks in this period",

@@ -260,6 +260,8 @@ const tips = {
 	"tip.statsTimeTravel.body": "En Estadísticas de productividad, usa las flechas ‹ › junto al selector de rango para retroceder por días, semanas y meses.",
 	"tip.todoDetailRun.title": "Inicia una tarea desde sus detalles",
 	"tip.todoDetailRun.body": "Abre cualquier tarea Por hacer para leer la descripción completa y arráncala ahí mismo con el botón Run del pie.",
+	"tip.statsTokenCost.title": "Mira tu gasto de tokens",
+	"tip.statsTokenCost.body": "Estadísticas de productividad ahora muestra los tokens del agente y su coste equivalente en API — leído de transcripciones locales de Claude Code, sin llamadas a la API.",
 };
 
 export default tips;

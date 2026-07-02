@@ -1,0 +1,1 @@
+The Velocity Cockpit now shows agent token usage and an API-equivalent cost for the selected period, reconstructed entirely from local Claude Code transcripts (no API calls). The cost is what the usage would run at public API rates — on a subscription it's included/subsidized, not a bill.
