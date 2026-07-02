@@ -961,6 +961,29 @@ I could not reproduce this bug, so I did not attempt a fix. Please verify it man
 \`\`\`
 
 When you create these follow-up tasks in dev3, include enough detail that a separate agent can execute them without re-reading the original bug-hunt report.
+
+## Task mode: record findings as dev3 notes
+
+Sometimes you are launched inside a dev3 task (for example as one of several parallel hunters split into their own tmux panes). In that case the invocation tells you explicitly to record your findings as dev3 notes. This matters because your on-screen report stays trapped in your own pane — the **main agent that will actually fix the bugs never sees it**. dev3 notes are your report channel to that agent.
+
+When instructed to record findings as dev3 notes:
+
+- Still print the identity line, Findings summary, Finding details, and Coverage on screen as usual — a human may be watching your pane.
+- ADDITIONALLY, record every confirmed \`critical\`, \`high\`, or \`medium\` finding as its own dev3 note — one note per finding, never batched:
+
+  \`\`\`bash
+  dev3 note add "[bug-hunt] <severity> <path:lines> — <short title>. Why it breaks: <failure mode>. Repro hint: <validation idea>."
+  \`\`\`
+
+  The literal \`[bug-hunt]\` marker at the very start is mandatory — it is how the main agent locates these notes with \`dev3 note list\` among any pre-existing task notes. Do NOT record low-confidence suspicions as notes; keep those on screen only.
+- In this mode, do NOT emit the "Next step offer" question and do NOT create dev3 tasks yourself. Recording the notes replaces both.
+- Finish with exactly one line:
+
+  \`\`\`text
+  Recorded N finding(s) as dev3 notes ([bug-hunt] prefix). Main agent: run \`dev3 note list\`, then \`dev3 note show <id>\` for each, and fix them.
+  \`\`\`
+
+If you found no confirmed bugs, record no notes and print \`No confirmed bugs found — no notes recorded.\`
 `;
 
 const BUG_HUNTER_OPENAI_YAML = `interface:

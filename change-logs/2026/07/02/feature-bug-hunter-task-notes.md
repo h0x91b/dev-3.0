@@ -1,0 +1,1 @@
+In-task bug hunters now report findings as dev3 notes instead of leaving them trapped in their own tmux pane. Each confirmed critical/high/medium finding is recorded as a `[bug-hunt]`-prefixed dev3 note, so the main task agent can pick them all up with `dev3 note list` and fix them. Standalone `/dev3-bug-hunter` keeps its human-facing stdout report unchanged.

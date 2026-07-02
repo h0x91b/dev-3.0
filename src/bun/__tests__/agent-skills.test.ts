@@ -236,6 +236,24 @@ describe("dev3 Bug Hunter skill content", () => {
 			"I could not reproduce this bug, so I did not attempt a fix. Please verify it manually; the issue may be invalid.",
 		);
 	});
+
+	it("documents the in-task note reporting channel", () => {
+		const skill = getBugHunterSkillContent();
+
+		expect(skill).toContain("## Task mode: record findings as dev3 notes");
+		// The main agent, not the pane, is the real consumer in task mode.
+		expect(skill).toContain(
+			"the **main agent that will actually fix the bugs never sees it**",
+		);
+		// One note per finding, marker-prefixed, via the dev3 note CLI.
+		expect(skill).toContain('dev3 note add "[bug-hunt] <severity> <path:lines>');
+		expect(skill).toContain("one note per finding, never batched");
+		expect(skill).toContain("The literal `[bug-hunt]` marker at the very start is mandatory");
+		// Note mode suppresses the standalone task-creation offer.
+		expect(skill).toContain(
+			'do NOT emit the "Next step offer" question and do NOT create dev3 tasks yourself',
+		);
+	});
 });
 
 describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)", () => {

@@ -6232,6 +6232,12 @@ describe("handlers.spawnBugHuntersInTask", () => {
 			expect(prompt).toContain('git diff --name-only "$BASE" HEAD');
 			expect(prompt).not.toContain("origin/main...HEAD");
 			expect(prompt).toContain("dev3/task-test");
+			// In-task hunters must route findings to the main agent via dev3
+			// notes — their on-screen report is trapped in their own pane.
+			expect(prompt).toContain("record it as dev3 notes instead");
+			expect(prompt).toContain("dev3 note add");
+			expect(prompt).toContain("[bug-hunt]");
+			expect(prompt).toContain("do NOT create any");
 		}
 
 		// Enter not pressed yet.

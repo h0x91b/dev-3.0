@@ -1971,7 +1971,16 @@ export function buildBugHunterPrompt(task: Task, project: Project): string {
 		`Use that merge-base two-dot form — do NOT diff against ${ref} directly, because if this branch is not rebased that pulls in unrelated files changed only on ${ref}. ` +
 		`Hunt for bugs ONLY in those changed files and the code paths they touch. ` +
 		`Do NOT inspect files changed only on ${ref}, and do NOT inspect unrelated parts of the codebase. ` +
-		`Branch: ${branch}. Base: ${ref}.`
+		`Branch: ${branch}. Base: ${ref}. ` +
+		// In-task hunters run in their own pane, so their stdout report never reaches
+		// the main agent — route findings into `[bug-hunt]` dev3 notes instead. Injected
+		// only here; standalone `/dev3-bug-hunter` keeps its stdout report.
+		`You are running inside a dev3 task, so your on-screen report will NOT reach the main agent — record it as dev3 notes instead. ` +
+		`After presenting your normal report, add EACH confirmed critical/high/medium finding as its own dev3 note (one note per finding) via ` +
+		`\`dev3 note add "..."\`, starting every note body with the literal marker "[bug-hunt]" followed by the severity, the "path:lines" location, a short title, the failure mode, and a repro hint. ` +
+		`The "[bug-hunt]" marker is mandatory so the main agent can find them. ` +
+		`Do NOT ask whether to create dev3 tasks and do NOT create any — recording the notes replaces the Next step offer. ` +
+		`Finish with one line: the count of findings recorded and the instruction for the main agent to run \`dev3 note list\` then \`dev3 note show <id>\` and fix each.`
 	);
 }
 
