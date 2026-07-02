@@ -715,19 +715,31 @@ const handlers: Record<string, Handler> = {
 	// the human to look at, bound to the task and kept as a clickable history.
 	"ui.show-image": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
-		const rawPaths = Array.isArray(params.paths) ? (params.paths as unknown[]) : [];
-		const paths = rawPaths.filter((p): p is string => typeof p === "string" && p.length > 0);
-		if (paths.length === 0) throw new Error("At least one image path is required");
-		const caption = typeof params.caption === "string" && params.caption.trim() ? params.caption.trim() : undefined;
+		// Preferred shape: images: [{ path, caption? }] — one note per image.
+		// Back-compat: paths: string[] + a single caption applied to all.
+		const items: { path: string; caption?: string }[] = [];
+		if (Array.isArray(params.images)) {
+			for (const raw of params.images as unknown[]) {
+				if (!raw || typeof raw !== "object") continue;
+				const rec = raw as { path?: unknown; caption?: unknown };
+				if (typeof rec.path !== "string" || rec.path.length === 0) continue;
+				const caption = typeof rec.caption === "string" && rec.caption.trim() ? rec.caption.trim() : undefined;
+				items.push({ path: rec.path, caption });
+			}
+		} else {
+			const rawPaths = Array.isArray(params.paths) ? (params.paths as unknown[]) : [];
+			const caption = typeof params.caption === "string" && params.caption.trim() ? params.caption.trim() : undefined;
+			for (const p of rawPaths) {
+				if (typeof p === "string" && p.length > 0) items.push({ path: p, caption });
+			}
+		}
+		if (items.length === 0) throw new Error("At least one image path is required");
 
 		// Copy every file into the worktree first — fail fast (usage error) if any
 		// path is invalid, so the agent gets a clear signal and nothing half-lands.
 		let incoming: SharedImage[];
 		try {
-			incoming = paths.map((p) => {
-				const img = saveSharedImage(project.path, p);
-				return caption ? { ...img, caption } : img;
-			});
+			incoming = items.map((it) => saveSharedImage(project.path, it.path, it.caption));
 		} catch (err) {
 			if (err instanceof SharedImageError) throw err;
 			throw new Error(`Failed to store image: ${err instanceof Error ? err.message : String(err)}`);

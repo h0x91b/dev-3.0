@@ -54,7 +54,7 @@ Commands:
   dev3 dev-server status [task-id]      Show task dev server status
   dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
-  dev3 show-image <path...> [--caption "..."] [--task <id>]  Show images (screenshots/renders) to the user in an in-app viewer, bound to the task
+  dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
@@ -178,9 +178,10 @@ async function main(): Promise<void> {
 				// Same shape as `notify`: first positional is the reason.
 				return await handleAttention(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath, context);
 			case "show-image":
-				// First positionals are image paths (no subcommand) — re-parse from
-				// the raw args without the subcommand split, same as notify/attention.
-				return await handleShowImage(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath, context);
+				// Parsing is order-aware (a `--caption` binds to the preceding image
+				// path), so hand the raw tokens straight to the handler rather than
+				// through the order-losing `parseArgs`.
+				return await handleShowImage(rawArgs.slice(1), socketPath, context);
 			case "ui":
 				return await handleUi(subcommand, args, socketPath, context);
 			default:

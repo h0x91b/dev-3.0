@@ -50,3 +50,32 @@ with a browsable history.
 - **Toast-only** — no history; toast is the arrival signal, not the viewer.
 
 See `docs/ux/feature-plans/show-image-viewer.md` and UX_DECISIONS 2026-07-02.
+
+## Addendum — viewer v2 (windowed + captions + scrim fix)
+
+First cut shipped a full-bleed fullscreen lightbox. User feedback: it read as a
+takeover ("why did it blur everything") rather than something bound to the task,
+the image floated tiny (never upscaled), tall full-page captures collapsed to a
+sliver, and on the desktop the terminal shone *through* the dark scrim.
+
+- **Windowed by default (`TaskImageViewer.tsx`).** A centred modal card capped at
+  ~85vw × 860px with the task board dimmed behind it, so it clearly belongs to
+  the task. A **fullscreen toggle** (button or `f`) expands it to full-bleed for
+  detailed viewing; `Esc` steps out of fullscreen first, then closes.
+- **Image actually fills the frame.** Switched the `<img>` from `max-w/max-h`
+  (caps at natural size → tiny) to `w-full h-full object-contain`, which scales up
+  to the stage. Tall images (h/w ≥ 2.2) auto-switch to **fill-width + vertical
+  scroll** (`w-full h-auto` in an `overflow-y-auto` stage) so a full-page capture
+  is readable top-to-bottom; a per-image toggle flips between the two modes.
+- **Scrim fix — hide the WebGL terminal.** ghostty-web's WebGL canvas is promoted
+  to a WKWebView hardware overlay plane that paints above any DOM scrim (verified:
+  the scrim is correct in a Chromium browser, leaks only in the desktop shell).
+  The viewer sets `<html data-image-viewer="open">` and `index.css` hides
+  `[data-terminal="true"]` via `visibility:hidden` (keeps its box → no ghostty
+  reflow, snaps back on close).
+- **Per-image captions.** `dev3 show-image` parsing is now order-aware: each
+  `--caption`/`-c` binds to the image path it follows (`src/cli/commands/show-image.ts`),
+  sent as `images:[{path,caption?}]` (handler keeps back-compat for the old
+  `paths`+`caption`). Captions render as a readable, wrapping note bar under the
+  image — the agent's voice on each shot. Skill text (`agent-skills.ts`) now tells
+  agents to **proactively** show images they produce.

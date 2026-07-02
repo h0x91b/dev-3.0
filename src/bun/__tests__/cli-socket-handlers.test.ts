@@ -22,7 +22,7 @@ vi.mock("../git", () => ({
 
 vi.mock("../shared-images", () => ({
 	SharedImageError: class SharedImageError extends Error {},
-	saveSharedImage: vi.fn((_projectPath: string, src: string) => ({
+	saveSharedImage: vi.fn((_projectPath: string, src: string, caption?: string) => ({
 		id: `img-${src}`,
 		storedPath: `/wt/shared-images/${src.split("/").pop()}`,
 		originalPath: src,
@@ -30,6 +30,7 @@ vi.mock("../shared-images", () => ({
 		mime: "image/png",
 		bytes: 1,
 		createdAt: 1,
+		...(caption ? { caption } : {}),
 	})),
 	pruneSharedImages: vi.fn((existing: unknown[] | undefined, incoming: unknown[]) => ({
 		kept: [...(existing ?? []), ...incoming],
@@ -126,6 +127,7 @@ import { flushAndEnd } from "../socket-backpressure";
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import { addVent } from "../vents";
 import { getServerPort } from "../remote-access-server";
+import { saveSharedImage } from "../shared-images";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
 	"../cli-socket-server"
@@ -602,6 +604,38 @@ describe("ui.show-image", () => {
 		expect(resp.data).toMatchObject({ delivered: false, suppressed: true, stored: 1 });
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
 		expect(pushFn).not.toHaveBeenCalledWith("cliShowImage", expect.anything());
+	});
+
+	it("accepts the images:[{path,caption}] shape and threads per-image captions", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 3 });
+		const pushFn = vi.fn();
+		wireShowImage(project, task, pushFn);
+		const saveSpy = vi.mocked(saveSharedImage);
+		saveSpy.mockClear();
+
+		const resp = await handleRequest(
+			makeRequest("ui.show-image", {
+				taskId: task.id,
+				projectId: project.id,
+				images: [
+					{ path: "/tmp/a.png", caption: "before" },
+					{ path: "/tmp/b.png", caption: "after" },
+				],
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, stored: 2 });
+		expect(saveSpy).toHaveBeenCalledWith(project.path, "/tmp/a.png", "before");
+		expect(saveSpy).toHaveBeenCalledWith(project.path, "/tmp/b.png", "after");
+		const cliPush = pushFn.mock.calls.find((c) => c[0] === "cliShowImage");
+		expect(cliPush?.[1].images).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ originalPath: "/tmp/a.png", caption: "before" }),
+				expect.objectContaining({ originalPath: "/tmp/b.png", caption: "after" }),
+			]),
+		);
 	});
 
 	it("errors when no paths are given", async () => {

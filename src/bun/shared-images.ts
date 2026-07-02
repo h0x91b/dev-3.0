@@ -51,9 +51,10 @@ export class SharedImageError extends Error {}
  * Copy one image into the project's worktree `shared-images/` dir and return the
  * {@link SharedImage} record. Validates the source path (absolute, no `..`,
  * exists, supported type, within the size cap). Throws {@link SharedImageError}
- * on any validation failure so the caller can report it verbatim.
+ * on any validation failure so the caller can report it verbatim. An optional
+ * per-image `caption` is the agent's note about what to look at in this shot.
  */
-export function saveSharedImage(projectPath: string, sourcePath: string): SharedImage {
+export function saveSharedImage(projectPath: string, sourcePath: string, caption?: string): SharedImage {
 	if (!sourcePath.startsWith("/") || sourcePath.includes("..")) {
 		throw new SharedImageError(`Path must be absolute and free of "..": ${sourcePath}`);
 	}
@@ -79,6 +80,7 @@ export function saveSharedImage(projectPath: string, sourcePath: string): Shared
 	const storedPath = `${dir}/shared-${Date.now()}-${hex}.${ext}`;
 	copyFileSync(sourcePath, storedPath);
 
+	const trimmedCaption = caption?.trim();
 	return {
 		id: crypto.randomUUID(),
 		storedPath,
@@ -87,6 +89,7 @@ export function saveSharedImage(projectPath: string, sourcePath: string): Shared
 		mime: MIME_BY_EXT[ext] ?? "application/octet-stream",
 		bytes: stat.size,
 		createdAt: Date.now(),
+		...(trimmedCaption ? { caption: trimmedCaption } : {}),
 	};
 }
 

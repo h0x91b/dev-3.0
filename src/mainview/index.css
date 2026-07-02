@@ -409,3 +409,14 @@ button {
 		overscroll-behavior: contain;
 	}
 }
+
+/* ---- Image viewer: hide the WebGL terminal behind it -----------------------
+   ghostty-web renders to a WebGL canvas, which WKWebView promotes to a hardware
+   overlay plane painted ABOVE any DOM scrim. While the task image viewer is open
+   (<html data-image-viewer="open">, set by TaskImageViewer) that would make the
+   live terminal shine through around the modal card, so hide the terminal
+   container outright. visibility:hidden keeps its box size, so ghostty does not
+   reflow to 0×0 and snaps back instantly on close. */
+html[data-image-viewer="open"] [data-terminal="true"] {
+	visibility: hidden;
+}

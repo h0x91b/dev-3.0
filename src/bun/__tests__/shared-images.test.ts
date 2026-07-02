@@ -100,6 +100,14 @@ describe("saveSharedImage", () => {
 		expect(readFileSync(rec.storedPath, "utf8")).toBe("PNGDATA");
 	});
 
+	it("stores a trimmed per-image caption when given, omits it otherwise", () => {
+		const src = join(SRC_DIR, "caption.png");
+		writeFileSync(src, "PNGDATA");
+		expect(saveSharedImage("/my/project", src, "  look here  ").caption).toBe("look here");
+		expect(saveSharedImage("/my/project", src, "   ").caption).toBeUndefined();
+		expect(saveSharedImage("/my/project", src).caption).toBeUndefined();
+	});
+
 	it("rejects a relative path", () => {
 		expect(() => saveSharedImage("/my/project", "rel/a.png")).toThrow(SharedImageError);
 	});

@@ -90,4 +90,36 @@ describe("TaskImageViewer", () => {
 			expect(screen.getByText(/image unavailable/i)).toBeInTheDocument();
 		});
 	});
+
+	it("toggles fullscreen and flips the button label", async () => {
+		renderViewer();
+		const btn = screen.getByTestId("image-viewer-fullscreen");
+		expect(btn).toHaveAttribute("aria-label", "Fullscreen");
+		await userEvent.click(btn);
+		expect(screen.getByTestId("image-viewer-fullscreen")).toHaveAttribute("aria-label", "Exit fullscreen");
+	});
+
+	it("renders the agent's caption for the active image", async () => {
+		const withCaption: SharedImage[] = [
+			img("a", "one.png"),
+			{ ...img("b", "two.png"), caption: "look at the header" },
+		];
+		render(
+			<I18nProvider>
+				<TaskImageViewer images={withCaption} initialIndex={1} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		expect(screen.getByTestId("viewer-caption")).toHaveTextContent("look at the header");
+	});
+
+	it("marks <html> while open so the terminal is hidden behind it", async () => {
+		const { unmount } = render(
+			<I18nProvider>
+				<TaskImageViewer images={IMAGES} initialIndex={0} onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+		expect(document.documentElement.getAttribute("data-image-viewer")).toBe("open");
+		unmount();
+		expect(document.documentElement.getAttribute("data-image-viewer")).toBeNull();
+	});
 });
