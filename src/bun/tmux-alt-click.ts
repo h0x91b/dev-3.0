@@ -5,7 +5,7 @@
  * the OUTER terminal for the whole session — so the renderer cannot tell a
  * plain shell pane from a mouse-owning TUI (Claude Code, vim, htop) by looking
  * at `hasMouseTracking()` (verified empirically: tmux emits \x1b[?1000h/1002h/
- * 1006h on attach; see decision 093). The gate therefore lives here, on the
+ * 1006h on attach; see decision 098). The gate therefore lives here, on the
  * backend, where tmux can be asked what actually runs in the clicked pane.
  *
  * The flow (handler `tmuxAltClickMoveCursor` in rpc-handlers/tmux-pty.ts):

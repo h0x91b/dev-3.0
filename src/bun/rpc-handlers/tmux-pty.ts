@@ -1734,7 +1734,7 @@ async function tmuxWindowNavigate(params: {
  *
  * The renderer cannot gate this on `hasMouseTracking()` — dev3's tmux runs
  * with `mouse on`, which keeps the OUTER terminal's mouse tracking enabled
- * for the whole session, plain shell or not (decision 093). So the renderer
+ * for the whole session, plain shell or not (decision 098). So the renderer
  * forwards the clicked cell here, and tmux is asked what actually runs in
  * that pane: only plain shells (zsh/bash/fish/…) get arrow keys; TUIs that
  * own the mouse (Claude Code, vim, htop) are left untouched — the alt-click

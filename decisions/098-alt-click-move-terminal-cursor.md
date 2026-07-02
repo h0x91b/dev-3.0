@@ -1,4 +1,4 @@
-# 093 — Alt/Option-click to move the terminal cursor
+# 098 — Alt/Option-click to move the terminal cursor
 
 ## Context
 iTerm2-style "Option-click to move the cursor": alt-clicking a cell in a plain

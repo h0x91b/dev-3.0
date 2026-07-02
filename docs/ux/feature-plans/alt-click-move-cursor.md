@@ -52,7 +52,7 @@ No visible elements, no tokens. (Pure gesture — no buttons, labels, or colors.
 
 > Revised 2026-07-02: renderer-only gating on `!hasMouseTracking()` proved impossible —
 > dev3's tmux runs `mouse on`, which keeps outer mouse tracking permanently enabled
-> (decision 093). The shell-vs-TUI decision moved to the backend.
+> (decision 098). The shell-vs-TUI decision moved to the backend.
 
 - Trigger: `mousedown` with `e.altKey` and `e.button === 0` on the terminal surface (capture on the canvas parent).
 - Normal case — tracking ON (tmux): the renderer forwards the clicked cell to the `tmuxAltClickMoveCursor` RPC and does **not** swallow the event (the SGR bridge, now Alt-bit-aware, still delivers the M-click to mouse-owning apps). The backend hit-tests the pane (`list-panes` geometry, zoom-aware), requires a live shell (`zsh/bash/fish/…`) not in copy-mode, requires the click on the cursor's row, clamps the target to the row's text length, focuses the pane, then `send-keys Left/Right × N`.
@@ -71,7 +71,7 @@ No visible elements, no tokens. (Pure gesture — no buttons, labels, or colors.
 3. Handler `tmuxAltClickMoveCursor` in `rpc-handlers/tmux-pty.ts` (+ `shared/types.ts` schema): list-panes → hit-test → capture-pane row → select-pane (skip when active — unzoom gotcha) → send-keys.
 4. Renderer `onAltClickMove`: tracking ON → fire-and-forget RPC, no swallow; tracking OFF → local arrows + swallow. `sgrMouse` call sites add the Alt bit (8).
 5. One "Did you know?" tip (`tips.ts` + en/ru/es).
-6. Decision record 093 + changelog entry. No `keymap.ts` change (mouse gesture, not an app shortcut).
+6. Decision record 098 + changelog entry. No `keymap.ts` change (mouse gesture, not an app shortcut).
 
 ## What NOT to implement
 

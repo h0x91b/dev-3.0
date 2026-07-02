@@ -684,7 +684,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 			// Two paths, because dev3's tmux runs with `mouse on`, which keeps
 			// the OUTER terminal's mouse tracking enabled for the whole session
 			// (verified: tmux emits ?1000h/?1002h/?1006h on attach — decision
-			// 093). So `hasMouseTracking()` can NOT distinguish a plain shell
+			// 098). So `hasMouseTracking()` can NOT distinguish a plain shell
 			// pane from a TUI here:
 			//
 			// - tracking ON (tmux/app owns the mouse): delegate to the backend,
