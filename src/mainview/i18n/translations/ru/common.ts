@@ -185,6 +185,25 @@ const common = {
 	"unsavedChanges.discard": "Отменить",
 	"unsavedChanges.cancel": "Назад",
 	"unsavedChanges.banner": "Есть несохранённые изменения",
+	// Shared images (dev3 show-image)
+	"imageViewer.title": "Присланные изображения",
+	"imageViewer.close": "Закрыть",
+	"imageViewer.prev": "Предыдущее изображение",
+	"imageViewer.next": "Следующее изображение",
+	"imageViewer.copyPath": "Скопировать путь к изображению",
+	"imageViewer.copyFailed": "Не удалось скопировать путь",
+	"imageViewer.open": "Открыть в приложении по умолчанию",
+	"imageViewer.openFailed": "Не удалось открыть изображение",
+	"imageViewer.loadError": "Изображение недоступно",
+	"imageViewer.loading": "Загрузка…",
+	"showImage.toast_one": "Агент прислал изображение",
+	"showImage.toast_few": "Агент прислал {count} изображения",
+	"showImage.toast_many": "Агент прислал {count} изображений",
+	"showImage.toast_other": "Агент прислал {count} изображений",
+	"showImage.attention_one": "Прислал изображение",
+	"showImage.attention_few": "Прислал {count} изображения",
+	"showImage.attention_many": "Прислал {count} изображений",
+	"showImage.attention_other": "Прислал {count} изображений",
 };
 
 export default common;

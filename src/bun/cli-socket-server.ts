@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource } from "../shared/types";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedImage } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext } from "./rpc-handlers";
@@ -708,6 +709,58 @@ const handlers: Record<string, Handler> = {
 		if (!push) return { delivered: false, taskId: task.id };
 		push("cliAttention", { taskId: task.id, reason });
 		return { delivered: true, taskId: task.id, projectId: project.id };
+	},
+
+	// UI control: surface images (screenshots, renders, QA captures) an agent wants
+	// the human to look at, bound to the task and kept as a clickable history.
+	"ui.show-image": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const rawPaths = Array.isArray(params.paths) ? (params.paths as unknown[]) : [];
+		const paths = rawPaths.filter((p): p is string => typeof p === "string" && p.length > 0);
+		if (paths.length === 0) throw new Error("At least one image path is required");
+		const caption = typeof params.caption === "string" && params.caption.trim() ? params.caption.trim() : undefined;
+
+		// Copy every file into the worktree first — fail fast (usage error) if any
+		// path is invalid, so the agent gets a clear signal and nothing half-lands.
+		let incoming: SharedImage[];
+		try {
+			incoming = paths.map((p) => {
+				const img = saveSharedImage(project.path, p);
+				return caption ? { ...img, caption } : img;
+			});
+		} catch (err) {
+			if (err instanceof SharedImageError) throw err;
+			throw new Error(`Failed to store image: ${err instanceof Error ? err.message : String(err)}`);
+		}
+
+		// Append + enforce the per-task cap inside the file lock; delete pruned files.
+		const { task: updated, result: dropped } = await data.updateTaskWith<SharedImage[]>(project, task.id, (current) => {
+			const { kept, dropped } = pruneSharedImages(current.sharedImages, incoming, MAX_SHARED_IMAGES_PER_TASK);
+			return { updates: { sharedImages: kept }, result: dropped };
+		});
+		if (dropped.length > 0) deleteSharedImageFiles(dropped);
+
+		// Persist to state everywhere (badge + history) regardless of focus mode.
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+
+		// Focus mode: the user opted out of agent-initiated interruptions — keep the
+		// history/badge (pushed above) but skip the toast / auto-open / attention.
+		if ((await loadSettings()).focusMode) {
+			return { delivered: false, suppressed: true, stored: incoming.length, taskId: task.id };
+		}
+
+		const push = getPushMessage();
+		if (!push) return { delivered: false, stored: incoming.length, taskId: task.id };
+		push("cliShowImage", {
+			taskId: task.id,
+			projectId: project.id,
+			images: updated.sharedImages ?? [],
+			newCount: incoming.length,
+			taskSeq: task.seq,
+			taskTitle: getTaskTitle(task),
+			projectName: project.name,
+		});
+		return { delivered: true, stored: incoming.length, taskId: task.id };
 	},
 
 	// UI control: report what the app is currently showing, so the agent can decide

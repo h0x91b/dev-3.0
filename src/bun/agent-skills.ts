@@ -216,6 +216,7 @@ Commands:
 - \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows in the card's hover preview (reasons accumulate, newest kept, up to 5). The badge persists until the user opens the task. This is the default for anything that needs the user.
 - \`dev3 notify "message" [--level info|success|error]\` — a clickable in-app toast; clicking opens this task. Ephemeral. Use \`--level error\` for failures, \`success\` for "done".
 - \`dev3 notify "message" --desktop\` — a native OS notification (shows even when the app is backgrounded/hidden); clicking focuses this task.
+- \`dev3 show-image <path...> [--caption "..."]\` — **show the user actual images** (screenshots, \`agent-browser\` captures, rendered charts/diagrams) in an in-app viewer bound to this task, with a clickable history (newest shown first). A terminal can't render pixels — this is how you let the human *see* what you found. Paths may be relative or absolute (png/jpg/gif/webp/bmp); they're copied into the worktree so it survives the original (often /tmp) file being deleted. Use it whenever a picture would tell the user more than words.
 - \`dev3 ui state\` — reports focused task/project, app foreground, **how long the user has been idle** (\`userActivity\`), and this worktree's tmux layout (\`--json\` for raw data). Check this BEFORE pinging to choose the right channel and avoid redundant pings.
 
 When to ping (MUST — always do one):

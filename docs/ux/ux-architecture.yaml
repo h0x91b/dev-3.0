@@ -324,18 +324,18 @@ ux_architecture:
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "persistent_inspector_button (badge is conditional on count>0)", "native_os_dialog", "svg_render (v1 — webview XSS)"]
       transport: "Reuses the notify/attention socket+pushMessage machinery: CLI `ui.show-image` -> bun copies files -> getPushMessage()('cliShowImage', …) -> rpc:cliShowImage CustomEvent -> App.tsx listener (badge + toast + auto-open rule)."
       persistence:
-        store: "~/.dev3.0/data/{slug}/task-images/{taskId}/<id>.<ext> — persistent per-task data dir; copied by bun (CLI + app share one host). Model: Task.sharedImages: SharedImage[] in tasks.json (atomic write)."
-        rationale: "Survives worktree destruction, works in remote/browser (renderer can't read local paths), ADDITIVE — no rename/move/delete of existing on-disk state (frozen ~/.dev3.0/ layout invariants). Mirrors decision 036 DnD uploads but in data/ not the ephemeral worktree."
-        bytes_to_webview: "getSharedImage(taskId,imageId) -> { dataUrl } RPC (base64), works on both transports; mirrors uploadFileBase64 / imageAttachments.ts. Follow-up: custom protocol / dev-server static route if base64 is heavy."
-        retention: "Bounded — last ~50 images/task, drop+delete oldest at write time (app-managed content cleanup, in spirit of the diff-review global sweep; NOT a load-time user-state migration). Plus a manual Clear images (destructive, confirm)."
+        store: "~/.dev3.0/worktrees/{slug}/shared-images/ — copied by bun (src/bun/shared-images.ts), sibling of the DnD uploads/ dir (decision 036), in the worktree tree (shares its lifecycle). Model: Task.sharedImages: SharedImage[] in tasks.json (atomic write)."
+        rationale: "Worktree location per the user's call (not data/). ADDITIVE — no rename/move/delete of existing on-disk state (frozen ~/.dev3.0/ layout invariants). Works in remote/browser because bun reads the file and returns base64; the renderer never reads a local path."
+        bytes_to_webview: "Reuses the existing readImageBase64(path) -> { dataUrl } RPC (base64), works on both transports. Follow-up: custom protocol / dev-server static route if base64 is heavy."
+        retention: "Bounded — last 50 images/task, drop+delete oldest at write time (pruneSharedImages, app-managed content cleanup; NOT a load-time user-state migration)."
       arrival_policy:
         always: "copy+persist images, mark unseen, raise attention badge (cliAttention/addBell path) + toast (cliToast path with custom onClick -> open viewer)."
         focused_on_this_task: "auto-open the viewer at the newest image (you are already here — it 'pops')."
         elsewhere: "NO focus-steal; toast + attention badge; click either to open."
         toggle: "Settings->Behavior 'Auto-open shared images' (default on) disables auto-open."
-      status: "planned"
-      observed: ["TaskImageViewer (planned)"]
-      evidence: ["docs/ux/feature-plans/show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/ui-control.ts (notify/attention pattern to mirror)", "src/bun/cli-socket-server.ts", "src/mainview/rpc.ts (cliToast/cliAttention)", "src/mainview/toast.tsx", "decisions/036-worktree-uploaded-dnd-files.md"]
+      status: "observed"
+      observed: ["TaskImageViewer.tsx", "shared-images.ts", "show-image.ts", "ui.show-image handler"]
+      evidence: ["decisions/097-show-image-viewer.md", "docs/ux/feature-plans/show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/036-worktree-uploaded-dnd-files.md"]
 
   action_types:
     primary_action:

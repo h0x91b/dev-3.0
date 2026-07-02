@@ -407,6 +407,25 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			)}
 		</button>
 	) : null;
+	// Conditional badge: only renders when the agent has shared images for this task
+	// (`dev3 show-image`). Opens the app-level lightbox at the newest image. It is a
+	// status indicator (like the diff badge), not a persistent action — no button-creep.
+	const sharedImageCount = task.sharedImages?.length ?? 0;
+	const imagesBadge = sharedImageCount > 0 ? (
+		<button
+			type="button"
+			className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-elevated border border-edge text-[0.6875rem] font-mono text-fg-2 flex-shrink-0 cursor-pointer transition-colors hover:bg-elevated-hover"
+			onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+				detail: { taskId: task.id, images: task.sharedImages, index: sharedImageCount - 1 },
+			}))}
+			title={t("infoPanel.imagesBadge", { count: String(sharedImageCount) })}
+			aria-label={t("infoPanel.imagesBadge", { count: String(sharedImageCount) })}
+			data-testid="shared-images-badge"
+		>
+			<span className="text-fg-muted text-[0.8rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F02E9}"}</span>
+			<span>{sharedImageCount}</span>
+		</button>
+	) : null;
 	const diffIncludeTestsToggle = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
 		<button
 			type="button"
@@ -784,7 +803,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
 					{statusDropdownButton}
 					<span className="flex-1 min-w-0 truncate text-fg-2 text-sm font-semibold">{getTaskTitle(task)}</span>
-					{diffSummaryBadge}
+					{diffSummaryBadge}{imagesBadge}
 					<button
 						type="button"
 						onClick={() => setActionsSheetOpen(true)}
@@ -871,7 +890,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						{watchToggleButton}
 						{statusDropdownButton}
 						{statusDropdownPortal}
-						{diffSummaryBadge}
+						{diffSummaryBadge}{imagesBadge}
 						{diffIncludeTestsToggle}
 						{labelStrip}
 						<div className="flex-1" />
@@ -943,7 +962,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							{watchToggleButton}
 							{statusDropdownButton}
 							{statusDropdownPortal}
-							{diffSummaryBadge}
+							{diffSummaryBadge}{imagesBadge}
 						{diffIncludeTestsToggle}
 							{labelStrip}
 							<div className="flex-1" />

@@ -1,5 +1,7 @@
 const settings = {
 	// GlobalSettings
+	"settings.autoOpenImages": "Abrir imágenes compartidas automáticamente",
+	"settings.autoOpenImagesDesc": "Cuando un agente comparte una imagen (dev3 show-image) mientras miras esa tarea, el visor se abre solo. Desactivado = solo una insignia y un aviso.",
 	"settings.theme": "Tema",
 	"settings.themeDark": "Oscuro",
 	"settings.themeDarkDesc": "Índigo nocturno",

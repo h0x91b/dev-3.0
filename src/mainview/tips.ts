@@ -1069,6 +1069,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "agent-show-image",
+		titleKey: "tip.agentShowImage.title",
+		bodyKey: "tip.agentShowImage.body",
+		icon: "\u{F02E9}", // nf-md-image
+		score: 4,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

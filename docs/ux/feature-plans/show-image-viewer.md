@@ -1,9 +1,16 @@
 # Feature plan — `dev3 show-image` + task-bound image viewer
 
-Status: Planned (UX brief; no code yet)
+Status: Implemented (2026-07-02) — see decision 097
 Owner: UX Principal
 Date: 2026-07-02
-Related: UX_DECISIONS 2026-07-02 (show-image viewer), decision record (persistent per-task image store)
+Related: UX_DECISIONS 2026-07-02 (show-image viewer), decision 097 (show-image viewer)
+
+> **Note (as-built):** two choices changed during implementation vs the brief
+> below — (1) images are stored in the **worktree** `~/.dev3.0/worktrees/<slug>/shared-images/`
+> (next to DnD `uploads/`), not under `data/`, per the user's call — so history
+> shares the worktree lifecycle; (2) the viewer reuses the existing
+> `readImageBase64` RPC rather than a new `getSharedImage`. Everything else shipped
+> as planned. Decision 097 records the final shape.
 
 ## 1. User job
 

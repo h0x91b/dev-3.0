@@ -20,6 +20,24 @@ vi.mock("../git", () => ({
 	removeWorktree: vi.fn(),
 }));
 
+vi.mock("../shared-images", () => ({
+	SharedImageError: class SharedImageError extends Error {},
+	saveSharedImage: vi.fn((_projectPath: string, src: string) => ({
+		id: `img-${src}`,
+		storedPath: `/wt/shared-images/${src.split("/").pop()}`,
+		originalPath: src,
+		name: src.split("/").pop() ?? src,
+		mime: "image/png",
+		bytes: 1,
+		createdAt: 1,
+	})),
+	pruneSharedImages: vi.fn((existing: unknown[] | undefined, incoming: unknown[]) => ({
+		kept: [...(existing ?? []), ...incoming],
+		dropped: [],
+	})),
+	deleteSharedImageFiles: vi.fn(),
+}));
+
 vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
 	getTmuxLayout: vi.fn(async () => ({ sessionName: "dev3-task1234", exists: false, windows: [], panes: [] })),
@@ -536,6 +554,65 @@ describe("task.create", () => {
 			makeRequest("task.create", { projectId: "proj-1", title: "New task" }),
 		);
 		expect(resp.ok).toBe(true);
+	});
+});
+
+describe("ui.show-image", () => {
+	function wireShowImage(project: Project, task: Task, pushFn: ReturnType<typeof vi.fn>) {
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn as never);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
+			return { task: { ...task, ...updates }, result } as never;
+		});
+	}
+
+	it("stores images, pushes taskUpdated + cliShowImage", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 12 });
+		const pushFn = vi.fn();
+		wireShowImage(project, task, pushFn);
+
+		const resp = await handleRequest(
+			makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: ["/tmp/a.png", "/tmp/b.png"] }),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, stored: 2, taskId: task.id });
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
+		expect(pushFn).toHaveBeenCalledWith(
+			"cliShowImage",
+			expect.objectContaining({ taskId: task.id, newCount: 2, taskSeq: task.seq, projectName: project.name }),
+		);
+	});
+
+	it("focus mode: persists (taskUpdated) but suppresses cliShowImage", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const pushFn = vi.fn();
+		wireShowImage(project, task, pushFn);
+		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+
+		const resp = await handleRequest(
+			makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: ["/tmp/a.png"] }),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: false, suppressed: true, stored: 1 });
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
+		expect(pushFn).not.toHaveBeenCalledWith("cliShowImage", expect.anything());
+	});
+
+	it("errors when no paths are given", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: [] }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("At least one image path is required");
 	});
 });
 
