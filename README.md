@@ -13,12 +13,12 @@
   <a href="https://github.com/h0x91b/dev-3.0/releases"><img src="https://img.shields.io/github/v/release/h0x91b/dev-3.0?style=flat-square&color=4496ff" alt="Release"></a>
   <a href="https://github.com/h0x91b/dev-3.0/stargazers"><img src="https://img.shields.io/github/stars/h0x91b/dev-3.0?style=flat-square&color=4496ff" alt="Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-4496ff?style=flat-square" alt="License"></a>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=h0x91b.dev-3.0" alt="visitors">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-4496ff?style=flat-square" alt="Platform: macOS and Linux">
 </p>
 
 <p align="center">
-  <a href="https://h0x91b.github.io/dev-3.0/">Website</a> ·
-  <a href="https://github.com/h0x91b/dev-3.0/releases">Download</a> ·
+  <a href="https://dev3.h0x91b.com/">Website</a> ·
+  <a href="https://github.com/h0x91b/dev-3.0/releases/latest">Download</a> ·
   <a href="https://github.com/h0x91b/dev-3.0/issues">Issues</a>
 </p>
 
@@ -27,6 +27,32 @@
 <p align="center">
   <img src="docs/screenshots/kanban-board.jpg" width="800" alt="Kanban board — tasks across To Do, Working, Review and Done columns">
 </p>
+
+## Quick start
+
+🤖 **The fastest way** — paste this into Claude Code, Codex, Gemini CLI, whatever you already run:
+
+```text
+Install dev-3.0 by following the guide at https://dev3.h0x91b.com/ai-install.txt
+```
+
+The agent reads the guide, detects your OS, and does the whole install itself.
+
+Or by hand — **macOS**:
+
+```sh
+brew tap h0x91b/dev3
+brew install --cask dev3
+```
+
+**Linux** (headless box, full UI in your browser):
+
+```sh
+brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3
+dev3 remote
+```
+
+Every option — direct DMG download, CLI tarball without Homebrew, cloud-VM caveats, build from source — in [Install](#install).
 
 ## Philosophy
 
@@ -120,44 +146,9 @@ dev-3.0 makes a different bet. Pick by your goal, not a feature checklist:
 | Buy a platform for a whole team (SSO, seats, audit) | a **team orchestrator** |
 | Run a fleet of agents **solo**, at speed, without drowning | **dev-3.0** |
 
-## Keyboard shortcuts
-
-Press **⌘/** (**Ctrl+/** on Linux) inside the app — or open **Help → Keyboard Shortcuts** — to see
-every shortcut in one panel (App + Terminal/tmux tabs). The full list is defined in one place,
-`src/mainview/keymap.ts`.
-
-| Action | macOS | Linux |
-|---|---|---|
-| Go to project (quick switch) | ⌘K | Ctrl+K |
-| Command palette | ⇧⌘P | Ctrl+Shift+P |
-| Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
-| Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
-| Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |
-| Switch to project 1–9 (flip view) | ⇧⌘1–9 | Ctrl+Shift+1–9 |
-| Cycle active tasks (this project / all) | ⌥Tab / ⌥⇧Tab | Ctrl+Tab / Ctrl+Shift+Tab |
-| New task | ⌘N | Ctrl+N |
-| Add project | ⌘P | Ctrl+P |
-| New window | ⇧⌘N | Ctrl+Shift+N |
-| Settings | ⌘, | Ctrl+, |
-| Zoom in / out / reset | ⌘= / ⌘- / ⌘0 | Ctrl+= / Ctrl+- / Ctrl+0 |
-| Hard refresh | ⌘R | Ctrl+R |
-| Toggle project terminal / open Quick Shell | ⌘` / ⇧⌘` | Ctrl+` / Ctrl+Shift+` |
-| Close dialog / step back | Esc | Esc |
-| Quit / Hide | ⌘Q / ⌘H | Ctrl+Q / Ctrl+H |
-
-Terminal multiplexing uses tmux's `⌃B` prefix bindings — see the **Terminal (tmux)** tab in the same panel.
-
 ## Install
 
-### 🤖 The fastest way — your coding agent installs it
-
-Paste this into Claude Code, Codex, Gemini CLI — whatever you already run:
-
-```text
-Install dev-3.0 by following the guide at https://dev3.h0x91b.com/ai-install.txt
-```
-
-The agent reads the guide, detects your OS, and does the whole install itself. Prefer doing it by hand? Read on.
+The two fastest paths (agent-driven and Homebrew) are in [Quick start](#quick-start) above. Everything else lives here.
 
 ### Desktop app — macOS
 
@@ -177,7 +168,7 @@ brew uninstall --cask dev3 # remove
 
 #### Manual download
 
-Download the latest `.dmg` from [**Releases**](https://github.com/h0x91b/dev-3.0/releases), drag to Applications, and run. Make sure `git`, `tmux`, and `cloudflared` are installed (`brew install cloudflared` for the public-tunnel feature; safe to skip if you don't need it).
+Grab the latest `.dmg` directly — [**Apple Silicon**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-arm64-dev-3.0.dmg) or [**Intel**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-x64-dev-3.0.dmg) — drag to Applications, and run. Make sure `git`, `tmux`, and `cloudflared` are installed (`brew install cloudflared` for the public-tunnel feature; safe to skip if you don't need it).
 
 Apple Silicon and Intel are both supported. Windows is on the roadmap.
 
@@ -275,6 +266,33 @@ bun build src/cli/main.ts --compile --outfile dist/dev3
 
 ./dist/dev3 remote
 ```
+
+## Keyboard shortcuts
+
+Press **⌘/** (**Ctrl+/** on Linux) inside the app — or open **Help → Keyboard Shortcuts** — to see
+every shortcut in one panel (App + Terminal/tmux tabs). The full list is defined in one place,
+`src/mainview/keymap.ts`.
+
+| Action | macOS | Linux |
+|---|---|---|
+| Go to project (quick switch) | ⌘K | Ctrl+K |
+| Command palette | ⇧⌘P | Ctrl+Shift+P |
+| Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
+| Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
+| Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |
+| Switch to project 1–9 (flip view) | ⇧⌘1–9 | Ctrl+Shift+1–9 |
+| Cycle active tasks (this project / all) | ⌥Tab / ⌥⇧Tab | Ctrl+Tab / Ctrl+Shift+Tab |
+| New task | ⌘N | Ctrl+N |
+| Add project | ⌘P | Ctrl+P |
+| New window | ⇧⌘N | Ctrl+Shift+N |
+| Settings | ⌘, | Ctrl+, |
+| Zoom in / out / reset | ⌘= / ⌘- / ⌘0 | Ctrl+= / Ctrl+- / Ctrl+0 |
+| Hard refresh | ⌘R | Ctrl+R |
+| Toggle project terminal / open Quick Shell | ⌘` / ⇧⌘` | Ctrl+` / Ctrl+Shift+` |
+| Close dialog / step back | Esc | Esc |
+| Quit / Hide | ⌘Q / ⌘H | Ctrl+Q / Ctrl+H |
+
+Terminal multiplexing uses tmux's `⌃B` prefix bindings — see the **Terminal (tmux)** tab in the same panel.
 
 ## Tech stack
 

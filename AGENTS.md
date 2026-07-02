@@ -536,4 +536,4 @@ Local documentation for key dependencies lives in `vendor-docs/`:
 
 ## Landing page (GitHub Pages)
 
-The `docs/` directory hosts the **public landing page** served via GitHub Pages at `https://h0x91b.github.io/dev-3.0/`. Source: `docs/index.html`. Screenshots live in `docs/screenshots/`.
+The `docs/` directory hosts the **public landing page** served via GitHub Pages at `https://dev3.h0x91b.com/` (custom domain, see `docs/CNAME`; the old `https://h0x91b.github.io/dev-3.0/` URL redirects there). Source: `docs/index.html`. Screenshots live in `docs/screenshots/`.
