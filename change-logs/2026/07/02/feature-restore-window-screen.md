@@ -1,0 +1,1 @@
+The main window now remembers its position, size, screen, and macOS fullscreen state, and restores them on relaunch — so an auto-update restart no longer yanks the window to the center of the primary display. On multi-monitor setups the window returns to the same physical screen; if that screen is gone it falls back to the centered default.
