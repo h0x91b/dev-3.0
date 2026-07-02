@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { HeatmapDay } from "../../utils/productivityStats";
 
 interface ContributionHeatmapProps {
@@ -39,6 +39,24 @@ export function ContributionHeatmap({ days, maxCount, legendLess, legendMore, to
 		return out;
 	}, [days]);
 
+	// The trailing year overflows a phone width. Anchor the scroll to the most
+	// recent weeks (right edge) so the current period is visible without a manual
+	// swipe. A ResizeObserver re-anchors on viewport/orientation changes; it's a
+	// no-op on wide viewports where the full grid already fits.
+	const scrollRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const anchor = () => {
+			el.scrollLeft = el.scrollWidth;
+		};
+		anchor();
+		if (typeof ResizeObserver === "undefined") return;
+		const ro = new ResizeObserver(anchor);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [days]);
+
 	// Month label per week column: shown only when the month changes vs the prior week.
 	const monthLabels = useMemo(() => {
 		let prev = -1;
@@ -55,7 +73,7 @@ export function ContributionHeatmap({ days, maxCount, legendLess, legendMore, to
 	}, [weeks]);
 
 	return (
-		<div className="overflow-x-auto">
+		<div ref={scrollRef} className="overflow-x-auto">
 			<div className="inline-flex flex-col gap-1">
 				{/* Month labels, column-aligned with the grid below. */}
 				<div

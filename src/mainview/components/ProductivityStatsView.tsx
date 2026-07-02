@@ -14,6 +14,8 @@ import { Milestones } from "./stats/Milestones";
 import { CountUp } from "./stats/CountUp";
 import { TimeRangeSwitch } from "./stats/TimeRangeSwitch";
 import { PeriodStepper } from "./stats/PeriodStepper";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 interface ProductivityStatsViewProps {
 	navigate: (route: Route) => void;
@@ -45,6 +47,9 @@ function loadRange(): StatsRange {
 
 function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStatsViewProps) {
 	const t = useT();
+	// Phone widths can't fit the speedometer cockpit — swap it for compact stat
+	// cards and tighten page padding.
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [events, setEvents] = useState<ProductivityStatEvent[] | null>(null);
 	const [error, setError] = useState(false);
 	const [loading, setLoading] = useState(true);
@@ -130,7 +135,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 
 	return (
 		<div className="h-full overflow-y-auto">
-			<div className="max-w-6xl mx-auto p-7 space-y-6">
+			<div className={`max-w-6xl mx-auto space-y-6 ${narrow ? "p-4" : "p-7"}`}>
 				{/* Header */}
 				<div className="flex items-center justify-between gap-4 flex-wrap">
 					<div className="flex items-center gap-3 min-w-0">
@@ -157,7 +162,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							)}
 						</div>
 					</div>
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-2 flex-wrap justify-end">
 						{range !== "all" && (
 							<PeriodStepper
 								label={periodNavLabel}
@@ -208,7 +213,50 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 					</div>
 				) : (
 					<>
-						{/* Hero gauge cockpit */}
+						{/* Hero gauge cockpit — compact stat cards on phones, speedometers on wide */}
+						{narrow ? (
+							<div className="grid grid-cols-2 gap-2" data-testid="hero-stats-compact">
+								<HeroStat
+									value={data.hero.tasksShipped.value}
+									format={fmtInt}
+									caption={t("stats.heroCaption.tasksShipped")}
+									unit={periodLabel}
+									trendPct={data.hero.tasksShipped.trendPct}
+									trendSuffix={trendSuffix}
+								/>
+								{data.hasAnyLines ? (
+									<HeroStat
+										value={data.hero.linesChanged.value}
+										format={compact}
+										caption={t("stats.heroCaption.linesChanged")}
+										unit={periodLabel}
+										trendPct={data.hero.linesChanged.trendPct}
+										trendSuffix={trendSuffix}
+									/>
+								) : (
+									<CompactLocPlaceholder label={t("stats.hero.linesChanged")} body={t("stats.locEmpty.badge")} />
+								)}
+								<HeroStat
+									value={data.hero.velocity.value}
+									format={fmtOne}
+									caption={t("stats.heroCaption.velocity")}
+									unit={t("stats.unit.perDay")}
+									trendPct={data.hero.velocity.trendPct}
+									trendSuffix={trendSuffix}
+								/>
+								<HeroStat
+									value={data.hero.completionRate.value}
+									format={fmtPct}
+									caption={t("stats.heroCaption.completionRate")}
+								/>
+								<HeroStat
+									value={data.hero.streak.value}
+									format={fmtInt}
+									caption={t("stats.heroCaption.streak")}
+									unit={t("stats.unit.days")}
+								/>
+							</div>
+						) : (
 						<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
 							<StatGauge
 								value={data.hero.tasksShipped.value}
@@ -267,6 +315,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 								format={fmtInt}
 							/>
 						</div>
+						)}
 
 						{/* Charts */}
 						<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -402,6 +451,61 @@ function Counter({ value, label, hint }: { value: number; label: string; hint?: 
 				<CountUp value={value} format={fmtInt} />
 			</div>
 			<div className="text-fg-3 text-xs">{label}</div>
+		</div>
+	);
+}
+
+/**
+ * Compact hero metric card for narrow (phone) viewports. Conveys the same number
+ * + trend as the desktop {@link StatGauge} speedometer at a fraction of the height.
+ */
+function HeroStat({
+	value,
+	format,
+	displayValue,
+	caption,
+	unit,
+	trendPct,
+	trendSuffix,
+}: {
+	value: number;
+	format?: (n: number) => string;
+	displayValue?: string;
+	caption: string;
+	unit?: string;
+	trendPct?: number | null;
+	trendSuffix?: string;
+}) {
+	const hasTrend = trendPct != null;
+	const up = (trendPct ?? 0) >= 0;
+	return (
+		<div className="flex flex-col gap-1 rounded-xl border border-edge bg-raised px-3 py-2.5">
+			<div className="flex items-baseline justify-between gap-1.5">
+				<span className="text-fg text-[1.375rem] font-bold tabular-nums leading-none">
+					{format ? <CountUp value={value} format={format} /> : (displayValue ?? String(value))}
+				</span>
+				{hasTrend && (
+					<span
+						className={`inline-flex items-center gap-0.5 text-[0.6875rem] font-semibold tabular-nums ${up ? "text-success" : "text-danger"}`}
+						title={trendSuffix}
+					>
+						<span>{up ? "▲" : "▼"}</span>
+						<span>{Math.abs(trendPct ?? 0)}%</span>
+					</span>
+				)}
+			</div>
+			<div className="text-fg-2 text-xs font-semibold leading-tight">{caption}</div>
+			{unit && <div className="text-fg-muted text-[0.625rem] leading-tight">{unit}</div>}
+		</div>
+	);
+}
+
+/** Compact Lines placeholder for narrow viewports (desktop uses a tall dashed card). */
+function CompactLocPlaceholder({ label, body }: { label: string; body: string }) {
+	return (
+		<div className="flex flex-col gap-1 rounded-xl border border-edge border-dashed bg-raised px-3 py-2.5">
+			<div className="text-fg-2 text-xs font-semibold leading-tight">{label}</div>
+			<div className="text-fg-muted text-[0.625rem] leading-tight">{body}</div>
 		</div>
 	);
 }

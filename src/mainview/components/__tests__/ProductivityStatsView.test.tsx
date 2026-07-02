@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProductivityStatEvent } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import ProductivityStatsView from "../ProductivityStatsView";
@@ -103,5 +103,52 @@ describe("ProductivityStatsView", () => {
 		expect(await screen.findByRole("group", { name: "Time period" })).toBeInTheDocument();
 		await userEvent.click(screen.getByRole("tab", { name: "All" }));
 		expect(screen.queryByRole("group", { name: "Time period" })).not.toBeInTheDocument();
+	});
+
+	it("renders the speedometer cockpit (not the compact grid) on wide viewports", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		renderView();
+		// Wait for data, then confirm the desktop gauge branch is used.
+		expect(await screen.findByText("Tasks shipped")).toBeInTheDocument();
+		expect(screen.queryByTestId("hero-stats-compact")).not.toBeInTheDocument();
+	});
+});
+
+describe("ProductivityStatsView narrow viewport", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: true,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("swaps the speedometer cockpit for the compact hero grid on phones", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		renderView();
+		// The compact grid appears, still carrying the same hero metric caption.
+		const grid = await screen.findByTestId("hero-stats-compact");
+		expect(grid).toBeInTheDocument();
+		expect(within(grid).getByText("Tasks shipped")).toBeInTheDocument();
+		expect(within(grid).getByText("Completion rate")).toBeInTheDocument();
 	});
 });
