@@ -675,6 +675,28 @@ describe("TaskInfoPanel", () => {
 			}));
 		});
 
+		it("navigates to the Kanban board on completed in fullscreen open-mode", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			try {
+				const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+				const dispatch = vi.fn();
+				const navigate = vi.fn();
+				const task = makeTask({ status: "in-progress" });
+				mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+				await act(async () => {
+					renderPanel(task, { dispatch, navigate });
+				});
+
+				await user.click(screen.getByText("Agent is Working"));
+				await user.click(screen.getByText("Completed"));
+
+				expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			} finally {
+				localStorage.removeItem("dev3-task-open-mode");
+			}
+		});
+
 		it("sets movedAt when moving to completed via fast-path", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const dispatch = vi.fn();
@@ -1861,6 +1883,31 @@ describe("TaskInfoPanel", () => {
 					clientPlayedSound: true,
 				});
 			});
+		});
+
+		it("returns fullscreen open-mode users to the Kanban board after auto-complete", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			try {
+				const dispatch = vi.fn();
+				const navigate = vi.fn();
+				const task = makeTask({ status: "review-by-colleague" });
+				mockedApi.request.getBranchStatus.mockResolvedValue({
+					...defaultBranchStatus,
+					mergedByContent: true,
+				});
+				vi.mocked(confirm).mockResolvedValue(true);
+				mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+				await act(async () => {
+					renderPanel(task, { dispatch, navigate });
+				});
+
+				await waitFor(() => {
+					expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+				});
+			} finally {
+				localStorage.removeItem("dev3-task-open-mode");
+			}
 		});
 
 		it("offers auto-complete for merged Has Questions tasks", async () => {

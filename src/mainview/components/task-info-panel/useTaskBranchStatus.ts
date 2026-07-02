@@ -6,7 +6,7 @@ import {
 	type Task,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 } from "../../../shared/types";
-import type { AppAction, Route } from "../../state";
+import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../../state";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
@@ -77,8 +77,9 @@ export function useTaskBranchStatus({
 			t,
 			confirm: false,
 			revertOnFailure: false,
-			// Keep the user in task view (no task selected) rather than the bare board.
-			afterOptimistic: () => navigate({ screen: "project", projectId: project.id, taskView: true }),
+			// Land on the user's home surface: fullscreen open-mode → the board,
+			// split open-mode → the split task view with nothing selected.
+			afterOptimistic: () => navigate(taskClosedHomeRoute(project.id, getTaskOpenMode())),
 		});
 	}, [dispatch, navigate, project, task, t]);
 

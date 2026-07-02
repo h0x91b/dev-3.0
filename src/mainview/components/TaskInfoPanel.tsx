@@ -7,7 +7,7 @@ import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import InlineRename from "./InlineRename";
-import type { AppAction, Route } from "../state";
+import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
@@ -214,14 +214,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			// Terminal moves leave the screen immediately (fire-and-forget); other
 			// screen-leaving moves wait for the server to confirm so a failed +
 			// reverted move doesn't kick the user off the task screen.
-			// Stay in task view with nothing selected instead of dropping to the bare
-			// Kanban board — the panel only renders on a task surface (full-page or
-			// split), so taskView keeps the user where they were.
+			// Land on the user's home surface: fullscreen open-mode → the board,
+			// split open-mode → the split task view with nothing selected.
 			afterOptimistic: terminal && leaveScreen
-				? () => navigate({ screen: "project", projectId: project.id, taskView: true })
+				? () => navigate(taskClosedHomeRoute(project.id, getTaskOpenMode()))
 				: undefined,
 			onSuccess: !terminal && leaveScreen
-				? () => navigate({ screen: "project", projectId: project.id, taskView: true })
+				? () => navigate(taskClosedHomeRoute(project.id, getTaskOpenMode()))
 				: undefined,
 		});
 	}

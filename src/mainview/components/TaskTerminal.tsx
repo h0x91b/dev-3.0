@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
-import type { AppAction, Route } from "../state";
+import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
@@ -141,9 +141,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			t,
 			confirm: false,
 			revertOnFailure: false,
-			// Stay in task view with nothing selected, rather than dropping to the
-			// bare Kanban board (works for both full-page and split task surfaces).
-			afterOptimistic: () => navigate({ screen: "project", projectId, taskView: true }),
+			// Land on the user's home surface: fullscreen open-mode → the board,
+			// split open-mode → the split task view with nothing selected.
+			afterOptimistic: () => navigate(taskClosedHomeRoute(projectId, getTaskOpenMode())),
 		});
 	}
 
@@ -206,7 +206,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 						project={project}
 						onCancelled={(updated) => {
 							dispatch({ type: "updateTask", task: updated });
-							navigate({ screen: "project", projectId, taskView: true });
+							navigate(taskClosedHomeRoute(projectId, getTaskOpenMode()));
 						}}
 					/>
 				</div>
