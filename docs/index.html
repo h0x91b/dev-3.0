@@ -1044,7 +1044,7 @@ nav.scrolled {
   grid-template-columns: repeat(2, 1fr);
   gap: 20px;
   max-width: 920px;
-  margin: 48px auto 0;
+  margin: 24px auto 0;
   text-align: left;
 }
 .install-card {
@@ -1121,6 +1121,59 @@ nav.scrolled {
 }
 .install-card-note a { color: var(--accent); text-decoration: none; }
 .install-card-note a:hover { text-decoration: underline; }
+
+/* ======= AGENT INSTALL (primary install path) ======= */
+.agent-prompt {
+  max-width: 920px;
+  margin: 48px auto 0;
+  padding: 28px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(68, 150, 255, 0.08), rgba(168, 85, 247, 0.06));
+  border: 1px solid rgba(68, 150, 255, 0.35);
+  text-align: left;
+}
+.agent-prompt h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin: 10px 0 6px;
+}
+.agent-prompt > p {
+  font-size: 14px;
+  color: var(--text-3);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.agent-prompt .install-code code {
+  font-size: 14px;
+  color: var(--text-1);
+}
+.agent-prompt-note {
+  font-size: 12px;
+  color: var(--text-4);
+  margin-top: 10px;
+}
+.agent-prompt-note a { color: var(--accent); text-decoration: none; }
+.agent-prompt-note a:hover { text-decoration: underline; }
+.install-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 920px;
+  margin: 36px auto 0;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.install-divider::before,
+.install-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 
 /* ======= STAR HISTORY ======= */
 .star-history {
@@ -2067,9 +2120,29 @@ footer {
       Download. Open. Go.
     </h2>
     <p class="section-desc reveal reveal-delay-2" style="margin-left:auto;margin-right:auto">
-      dev-3.0 is a native app for macOS and Linux. One command installs everything
-      &mdash; including <code style="font-family:var(--font-mono);font-size:0.9em">git</code> and <code style="font-family:var(--font-mono);font-size:0.9em">tmux</code>. No build steps, no configuration.
+      dev-3.0 is a native app for macOS and Linux. The fastest way in: paste one line
+      into the coding agent you already use &mdash; it installs everything for you.
     </p>
+
+    <div class="agent-prompt reveal reveal-delay-3">
+      <span class="install-card-badge">&#129302; Recommended &mdash; zero manual steps</span>
+      <h3>Tell your coding agent to install it</h3>
+      <p>
+        Paste this into Claude Code, Codex, Gemini CLI &mdash; whatever you already run.
+        The agent reads the guide, detects your OS, and does the whole install itself.
+      </p>
+      <div class="install-code">
+        <code>Install dev-3.0 by following the guide at https://dev3.h0x91b.com/ai-install.txt</code>
+        <button class="copy-btn" data-copy="Install dev-3.0 by following the guide at https://dev3.h0x91b.com/ai-install.txt" aria-label="Copy agent prompt">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        </button>
+      </div>
+      <p class="agent-prompt-note">
+        Machine-readable docs: <a href="ai-install.txt">ai-install.txt</a> &middot; <a href="llms.txt">llms.txt</a>
+      </p>
+    </div>
+
+    <div class="install-divider reveal reveal-delay-3">Or install manually</div>
 
     <div class="install-cards reveal reveal-delay-3">
       <div class="install-card">
@@ -2113,8 +2186,8 @@ dev3 remote</code>
       <div class="install-step">
         <div class="install-step-number" style="background: var(--accent-soft); color: var(--accent); border: 1px solid rgba(68, 150, 255, 0.2);">1</div>
         <div class="install-step-content">
-          <h3>Install with one command</h3>
-          <p>Homebrew pulls the app and its dependencies</p>
+          <h3>Paste the prompt</h3>
+          <p>Your agent installs the app and its dependencies</p>
         </div>
       </div>
       <div class="install-arrow">

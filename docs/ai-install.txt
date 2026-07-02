@@ -1,0 +1,69 @@
+# Install dev-3.0 — instructions for an AI coding agent
+
+You are installing **dev-3.0** for your user — a desktop/headless app that runs a fleet of AI coding agents on a Kanban board, with an isolated git worktree + tmux session per task. Website: https://dev3.h0x91b.com — full docs: https://github.com/h0x91b/dev-3.0#readme
+
+Follow the steps for the user's OS. Ask before installing anything beyond dev-3.0 itself.
+
+## 1. Detect the platform
+
+```sh
+uname -s   # Darwin = macOS, Linux = Linux
+```
+
+Windows is not supported yet — tell the user it's on the roadmap and stop.
+
+## 2a. macOS (Darwin)
+
+Requires Homebrew (https://brew.sh). If `brew` is missing, ask the user to install it first — do not pipe the Homebrew installer yourself without their explicit OK.
+
+```sh
+brew tap h0x91b/dev3
+brew install --cask dev3
+```
+
+This installs the app plus its dependencies (`git`, `tmux`, `cloudflared`) automatically. Then launch it:
+
+```sh
+open -a "dev-3.0"
+```
+
+## 2b. Linux
+
+Works on any box, including headless cloud VMs. Never run Homebrew as root — on a fresh VM create a regular user first (`useradd -m -s /bin/bash dev3 && su - dev3`). Glibc >= 2.28 required (Ubuntu 18.04+, Debian 10+, RHEL 8+).
+
+With Homebrew (https://docs.brew.sh/Homebrew-on-Linux):
+
+```sh
+brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3
+dev3 remote
+```
+
+`dev3 remote` prints an access URL + QR code — the user opens it in any browser (even a phone) and gets the full UI. A Cloudflare quick tunnel is started by default so no SSH forwarding is needed; pass `--no-tunnel` for local-only.
+
+Without Homebrew (minimal container etc.) — pre-built CLI tarball:
+
+```sh
+case "$(uname -m)" in aarch64|arm64) A=arm64;; *) A=x64;; esac
+curl -fsSL -o /tmp/dev3.tar.gz \
+  "https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-$A.tar.gz"
+mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
+~/.dev3/dev3 remote
+```
+
+For the tarball path, make sure `git` and `tmux` are installed via the system package manager (`cloudflared` is optional — without it `dev3 remote` falls back to LAN/SSH-forward URLs).
+
+For a desktop GUI on Linux instead of the browser UI: `dev3 gui` (lazily downloads the bundle on first run and prints the exact `apt`/`dnf`/`pacman` command if GTK/WebKit libs are missing).
+
+## 3. Verify
+
+```sh
+dev3 --version
+```
+
+On macOS also confirm the app launches. If `git`/`tmux` hang inside dev-3.0 task terminals on macOS, the fix is System Settings → Privacy & Security → **Full Disk Access** → add dev-3.0, then relaunch (details: https://github.com/h0x91b/dev-3.0#troubleshooting).
+
+## 4. First run (tell the user)
+
+1. Add a project — point dev-3.0 at any existing git repo.
+2. Create a task and describe the work — the first agent starts automatically in an isolated worktree.
+3. Press ⌘/ (Ctrl+/ on Linux) inside the app for all keyboard shortcuts.

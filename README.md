@@ -149,6 +149,16 @@ Terminal multiplexing uses tmux's `⌃B` prefix bindings — see the **Terminal 
 
 ## Install
 
+### 🤖 The fastest way — your coding agent installs it
+
+Paste this into Claude Code, Codex, Gemini CLI — whatever you already run:
+
+```text
+Install dev-3.0 by following the guide at https://dev3.h0x91b.com/ai-install.txt
+```
+
+The agent reads the guide, detects your OS, and does the whole install itself. Prefer doing it by hand? Read on.
+
 ### Desktop app — macOS
 
 #### Homebrew (recommended)
