@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProductivityStatEvent } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -75,5 +76,32 @@ describe("ProductivityStatsView", () => {
 		mockGet.mockRejectedValue(new Error("boom"));
 		renderView();
 		expect(await screen.findByText("Couldn't load stats")).toBeInTheDocument();
+	});
+
+	it("navigates to a past period via the ‹ arrow", async () => {
+		// One recent + one shipped 10 days ago, so there is older data to step into.
+		mockGet.mockResolvedValue({
+			events: [
+				ev(),
+				ev({
+					movedAt: new Date(Date.now() - 10 * DAY).toISOString(),
+					createdAt: new Date(Date.now() - 20 * DAY).toISOString(),
+				}),
+			],
+			generatedAt: new Date().toISOString(),
+		});
+		renderView();
+		// Default range is "week" → navigator shows "This week".
+		expect(await screen.findByText("This week")).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("button", { name: "Previous period" }));
+		expect(await screen.findByText("Last week")).toBeInTheDocument();
+	});
+
+	it("hides the period navigator for the All range", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		renderView();
+		expect(await screen.findByRole("group", { name: "Time period" })).toBeInTheDocument();
+		await userEvent.click(screen.getByRole("tab", { name: "All" }));
+		expect(screen.queryByRole("group", { name: "Time period" })).not.toBeInTheDocument();
 	});
 });

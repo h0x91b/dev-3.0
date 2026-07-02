@@ -254,6 +254,8 @@ const tips = {
 	"tip.paneZoomRestore.body": "Cuando un panel de tmux está en zoom (p. ej. heredado del móvil), aparece una insignia «Zoom» arriba a la derecha del terminal — tócala para restaurar la división completa.",
 	"tip.mobileWindowPager.title": "Cambia de ventana en el móvil",
 	"tip.mobileWindowPager.body": "En una pantalla estrecha, una barra sobre los paneles permite moverte entre ventanas de tmux — toca ‹ › o el nombre para saltar entre espacios de trabajo de la sesión.",
+	"tip.statsTimeTravel.title": "Explora períodos pasados",
+	"tip.statsTimeTravel.body": "En Estadísticas de productividad, usa las flechas ‹ › junto al selector de rango para retroceder por días, semanas y meses.",
 };
 
 export default tips;

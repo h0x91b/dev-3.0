@@ -254,6 +254,8 @@ const tips = {
 	"tip.mobileWindowPager.body": "On a narrow screen a bar above the panes lets you move between tmux windows — tap ‹ › or the name to jump between separate workspaces in the session.",
 	"tip.devServerStatus.title": "See dev server at a glance",
 	"tip.devServerStatus.body": "The Dev Server button glows green with a live dot while running, and shows a spinner while it starts up.",
+	"tip.statsTimeTravel.title": "Browse past periods",
+	"tip.statsTimeTravel.body": "On Productivity Stats, use the ‹ › arrows next to the range switch to step back through past days, weeks, and months.",
 } as const;
 
 export default tips;

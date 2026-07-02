@@ -265,11 +265,11 @@ ux_architecture:
       forbidden: ["durable_configuration"]
       evidence: ["src/mainview/components/ActiveTasksSidebar.tsx", "src/mainview/components/ActiveTasksStrip.tsx"]
     stats_dashboard:
-      purpose: "Read-only full-screen 'Velocity Cockpit' proving how much the user ships: hero speedometer gauges (tasks shipped, lines changed, velocity, completion rate, streak), SVG bar/area charts over time, a per-project gauge wall, and a counters strip — all re-scoped by a Day/Week/Month/All time range."
+      purpose: "Read-only full-screen 'Velocity Cockpit' proving how much the user ships: hero speedometer gauges (tasks shipped, lines changed, velocity, completion rate, streak), SVG bar/area charts over time, a per-project gauge wall, and a counters strip — all re-scoped by a Day/Week/Month/All time range and browsable across past periods via a prev/next stepper."
       feature_class: ["destination", "data_visualization"]
       reached_from: ["dashboard:entry_card", "application_menu.View (Show Productivity Stats)", "command_palette ⇧⌘P (view-stats)"]
-      allowed: ["data_visualization", "time_range_switch", "navigation (per-project card → board)"]
-      forbidden: ["mutation", "task_lifecycle_action", "durable_configuration", "global_header_button"]
+      allowed: ["data_visualization", "time_range_switch", "period_navigation (prev/next stepper on the same time axis — read-only, ephemeral offset, not persisted; hidden for range 'all')", "navigation (per-project card → board)"]
+      forbidden: ["mutation", "task_lifecycle_action", "durable_configuration", "global_header_button", "data_filter (slicing by project/agent/label — a NEW dimension beyond the time axis)"]
       data: "Local only. Completed-task counts/streaks from movedAt (full history); LOC forward-only via Task.completedDiffStats (captured at completion) + live diff for active tasks. Aggregated client-side by utils/productivityStats.ts over the getProductivityStats RPC."
       instrumentation: "First-class consumer of new features: any feature producing a countable, motivational signal should emit it into the stats pipeline at build time and surface a read-only viz here when it motivates — within the honesty/complexity budget. Governed by placement_rules.instrument-and-surface-countable-metrics + PRODUCT_UX_BIBLE §1.1."
       tokens: "Gauge reused verbatim (self-contained palette, accepted exception); new charts use semantic tokens (accent/success/danger, bg-raised, border-edge, text-fg-*)."

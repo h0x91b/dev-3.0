@@ -310,3 +310,58 @@ describe("computeProductivityStats — LOC tracking hint", () => {
 		expect(r.locTrackingSince).toBe(new Date(NOW - 3 * DAY).toISOString().slice(0, 10));
 	});
 });
+
+describe("computeProductivityStats — period navigation (offset)", () => {
+	it("offset 0 matches the default (no-arg) computation", () => {
+		const events = [ev(), ev({ movedAt: new Date(NOW - 9 * DAY).toISOString() })];
+		const base = computeProductivityStats(events, "week", NOW);
+		const zero = computeProductivityStats(events, "week", NOW, 0);
+		expect(zero.hero.tasksShipped.value).toBe(base.hero.tasksShipped.value);
+		expect(zero.offset).toBe(0);
+		expect(zero.canGoNewer).toBe(false);
+	});
+
+	it("shifts the week window one whole period into the past", () => {
+		const events = [
+			ev({ movedAt: new Date(NOW - 1 * DAY).toISOString() }),
+			ev({ movedAt: new Date(NOW - 2 * DAY).toISOString() }),
+			ev({ movedAt: new Date(NOW - 9 * DAY).toISOString() }),
+		];
+		const cur = computeProductivityStats(events, "week", NOW, 0);
+		const prev = computeProductivityStats(events, "week", NOW, 1);
+		expect(cur.hero.tasksShipped.value).toBe(2);
+		expect(prev.hero.tasksShipped.value).toBe(1);
+		expect(prev.offset).toBe(1);
+		expect(prev.periodTo).toBe(cur.periodTo - 7 * DAY);
+	});
+
+	it("gates the older/newer arrows on available data and offset", () => {
+		const events = [
+			ev({
+				movedAt: new Date(NOW - 1 * DAY).toISOString(),
+				createdAt: new Date(NOW - 20 * DAY).toISOString(),
+			}),
+		];
+		const cur = computeProductivityStats(events, "week", NOW, 0);
+		expect(cur.canGoOlder).toBe(true); // activity exists before the shown week
+		expect(cur.canGoNewer).toBe(false); // already at the present
+		const back = computeProductivityStats(events, "week", NOW, 1);
+		expect(back.canGoNewer).toBe(true);
+	});
+
+	it("ignores offset entirely for range 'all'", () => {
+		const all = computeProductivityStats([ev()], "all", NOW, 3);
+		expect(all.offset).toBe(0);
+		expect(all.canGoOlder).toBe(false);
+		expect(all.canGoNewer).toBe(false);
+	});
+
+	it("keeps lifetime views (heatmap, all-time counter) anchored to now while navigating", () => {
+		const events = [ev({ movedAt: new Date(NOW - 1 * DAY).toISOString() })];
+		const cur = computeProductivityStats(events, "week", NOW, 0);
+		const back = computeProductivityStats(events, "week", NOW, 2);
+		const lastCell = (d: typeof cur) => d.heatmap.days[d.heatmap.days.length - 1].ms;
+		expect(lastCell(back)).toBe(lastCell(cur));
+		expect(back.counters.allTimeCompleted).toBe(cur.counters.allTimeCompleted);
+	});
+});

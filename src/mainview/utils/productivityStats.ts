@@ -86,6 +86,12 @@ export interface ProductivityDashboardData {
 	range: StatsRange;
 	periodFrom: number;
 	periodTo: number;
+	/** Periods stepped back from now (0 = current period). Always 0 for range "all". */
+	offset: number;
+	/** True when data exists before the shown window — the "older" (‹) arrow is live. */
+	canGoOlder: boolean;
+	/** True when the shown window sits in the past — the "newer" (›) arrow is live. */
+	canGoNewer: boolean;
 	hasAnyData: boolean;
 	/** True once any completed task has real diff data — gates the LOC empty-state. */
 	hasAnyLines: boolean;
@@ -222,6 +228,18 @@ interface Window {
 	to: number;
 	prevFrom: number | null;
 	prevTo: number | null;
+}
+
+/** How far (ms) one navigation step moves the window for a given range. */
+function periodSpanMs(range: StatsRange): number {
+	switch (range) {
+		case "week":
+			return 7 * DAY_MS;
+		case "month":
+			return 30 * DAY_MS;
+		default:
+			return DAY_MS;
+	}
 }
 
 function rangeWindow(range: StatsRange, nowMs: number, earliestMs: number): Window {
@@ -377,13 +395,21 @@ function computeStreaks(completedDayKeys: Set<string>, nowMs: number): { current
 /**
  * Pure aggregation of raw stat events into everything the dashboard renders, for
  * the selected time range. `nowMs` is injected for determinism/testability.
+ *
+ * `offset` steps the *period window* back in time (0 = current, 1 = previous
+ * period, …) so the user can browse past days/weeks/months. Only the period-
+ * scoped aggregates shift; lifetime views (heatmap, streaks, all-time counters,
+ * the rolling-average red zone) stay anchored to the real `nowMs`. Ignored for
+ * range "all".
  */
 export function computeProductivityStats(
 	events: ProductivityStatEvent[],
 	range: StatsRange,
 	nowMs: number,
+	offset = 0,
 ): ProductivityDashboardData {
-	// Earliest event (creation or completion) — anchors the "all" window.
+	// Earliest event (creation or completion) — anchors the "all" window and
+	// gates how far back navigation can go.
 	let earliest = nowMs;
 	for (const e of events) {
 		const c = Date.parse(e.createdAt);
@@ -392,7 +418,10 @@ export function computeProductivityStats(
 		if (m != null) earliest = Math.min(earliest, m);
 	}
 
-	const win = rangeWindow(range, nowMs, earliest);
+	// Shift the window anchor back by `offset` whole periods. "all" never steps.
+	const steps = range === "all" ? 0 : Math.max(0, Math.floor(offset));
+	const anchorMs = nowMs - steps * periodSpanMs(range);
+	const win = rangeWindow(range, anchorMs, earliest);
 
 	const inPeriod = (at: number | null, from: number, to: number) => at != null && at >= from && at < to;
 
@@ -578,6 +607,9 @@ export function computeProductivityStats(
 		range,
 		periodFrom: win.from,
 		periodTo: win.to,
+		offset: steps,
+		canGoOlder: range !== "all" && earliest < win.from,
+		canGoNewer: range !== "all" && steps > 0,
 		hasAnyData: events.length > 0,
 		hasAnyLines: allTimeLines > 0,
 		locTrackingSince: locTrackingSince != null ? dayKey(locTrackingSince) : null,

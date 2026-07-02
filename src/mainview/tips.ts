@@ -1037,6 +1037,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal"],
 	},
+	{
+		id: "stats-time-travel",
+		titleKey: "tip.statsTimeTravel.title",
+		bodyKey: "tip.statsTimeTravel.body",
+		icon: "\uF1DA", // nf-fa-history
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

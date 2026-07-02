@@ -21,6 +21,26 @@ const stats = {
 	"stats.periodPrev.week": "vs last week",
 	"stats.periodPrev.month": "vs prev. 30d",
 	"stats.periodPrev.all": "",
+	// Neutral trend suffix when browsing a past period (relative-to-now labels don't fit)
+	"stats.periodPrev.generic": "vs prev.",
+	// Period navigator (prev/next stepper)
+	"stats.nav.group": "Time period",
+	"stats.nav.prev": "Previous period",
+	"stats.nav.next": "Next period",
+	"stats.nav.current": "Jump to current period",
+	// Relative period labels shown in the navigator
+	"stats.rel.dayCurrent": "Today",
+	"stats.rel.dayPrev": "Yesterday",
+	"stats.rel.dayAgo_one": "{count} day ago",
+	"stats.rel.dayAgo_other": "{count} days ago",
+	"stats.rel.weekCurrent": "This week",
+	"stats.rel.weekPrev": "Last week",
+	"stats.rel.weekAgo_one": "{count} week ago",
+	"stats.rel.weekAgo_other": "{count} weeks ago",
+	"stats.rel.monthCurrent": "This month",
+	"stats.rel.monthPrev": "Last month",
+	"stats.rel.monthAgo_one": "{count} month ago",
+	"stats.rel.monthAgo_other": "{count} months ago",
 	// Hero gauge labels (inside the gauge face — keep short)
 	"stats.hero.tasksShipped": "Shipped",
 	"stats.hero.linesChanged": "Lines",
@@ -67,6 +87,7 @@ const stats = {
 	"stats.momentum.behind": "Down {pct}% — time to pick it back up",
 	"stats.momentum.steady": "Holding a steady pace",
 	"stats.momentum.idle": "Ship a task to get the needle moving",
+	"stats.momentum.idlePast": "Nothing shipped in this period",
 	"stats.momentum.lifetime": "{count} tasks shipped, all-time. Respect.",
 	// Contribution heatmap
 	"stats.heatmap.title": "Activity",
