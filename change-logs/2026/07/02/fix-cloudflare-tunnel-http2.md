@@ -1,0 +1,1 @@
+Fixed remote access via the Cloudflare tunnel silently failing (QR/link showed as active but the trycloudflare.com URL never resolved) on networks that block outbound QUIC/UDP 7844. cloudflared quick tunnels now use the http2 transport by default (override with DEV3_CLOUDFLARED_PROTOCOL=quic|http2|auto).

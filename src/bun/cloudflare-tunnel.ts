@@ -56,6 +56,29 @@ export function isCloudflaredAvailable(): boolean {
 }
 
 /**
+ * Transport protocol cloudflared uses to reach Cloudflare's edge.
+ *
+ * We default to **http2** (TCP/443) instead of cloudflared's own default of
+ * `quic` (UDP/7844). Quick tunnels pin `protocol:quic` and, on any network that
+ * blocks outbound UDP/7844 — extremely common on corporate/VPN/hotel Wi-Fi —
+ * cloudflared prints the `*.trycloudflare.com` URL optimistically ("it may take
+ * some time to be reachable"), then fails to dial the edge over QUIC and retries
+ * forever WITHOUT falling back to http2. The tunnel never registers, so the
+ * hostname is never provisioned → NXDOMAIN → the QR/link silently never works
+ * even though the UI shows a URL. http2 uses TCP/443, which is effectively
+ * always allowed, and carries WebSockets (our RPC + PTY) transparently, so there
+ * is no functional downside for the remote-access use case.
+ *
+ * Override via `DEV3_CLOUDFLARED_PROTOCOL` (`quic` | `http2` | `auto`) for users
+ * on networks where QUIC works and lower latency is wanted. See decision 097.
+ */
+export function resolveTunnelProtocol(): string {
+	const raw = process.env.DEV3_CLOUDFLARED_PROTOCOL?.trim().toLowerCase();
+	if (raw === "quic" || raw === "http2" || raw === "auto") return raw;
+	return "http2";
+}
+
+/**
  * Parse a Cloudflare Tunnel URL from a line of cloudflared stderr output.
  * cloudflared prints lines like:
  *   INF |  https://something-random.trycloudflare.com
@@ -147,7 +170,7 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 
 	try {
 		const proc = spawn(
-			["cloudflared", "tunnel", "--url", `http://localhost:${opts.targetPort}`],
+			["cloudflared", "tunnel", "--protocol", resolveTunnelProtocol(), "--url", `http://localhost:${opts.targetPort}`],
 			{ stdout: "ignore", stderr: "pipe" },
 		);
 		entry.process = proc;

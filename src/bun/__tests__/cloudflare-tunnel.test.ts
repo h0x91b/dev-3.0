@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from "vitest";
 
 vi.mock("../spawn", () => ({
 	spawn: vi.fn(),
@@ -22,9 +22,41 @@ import {
 	getTunnelUrl,
 	getTunnelState,
 	parseTunnelUrl,
+	resolveTunnelProtocol,
 	tunnelManager,
 	_resetState,
 } from "../cloudflare-tunnel";
+
+// ================================================================
+// resolveTunnelProtocol — QUIC/UDP-7844-blocked networks need http2
+// ================================================================
+
+describe("resolveTunnelProtocol", () => {
+	const orig = process.env.DEV3_CLOUDFLARED_PROTOCOL;
+	afterEach(() => {
+		if (orig === undefined) delete process.env.DEV3_CLOUDFLARED_PROTOCOL;
+		else process.env.DEV3_CLOUDFLARED_PROTOCOL = orig;
+	});
+
+	it("defaults to http2 (QUIC is blocked on many corporate networks)", () => {
+		delete process.env.DEV3_CLOUDFLARED_PROTOCOL;
+		expect(resolveTunnelProtocol()).toBe("http2");
+	});
+
+	it("honours a valid override", () => {
+		process.env.DEV3_CLOUDFLARED_PROTOCOL = "quic";
+		expect(resolveTunnelProtocol()).toBe("quic");
+		process.env.DEV3_CLOUDFLARED_PROTOCOL = "auto";
+		expect(resolveTunnelProtocol()).toBe("auto");
+		process.env.DEV3_CLOUDFLARED_PROTOCOL = "HTTP2";
+		expect(resolveTunnelProtocol()).toBe("http2");
+	});
+
+	it("falls back to http2 for an unknown/garbage value", () => {
+		process.env.DEV3_CLOUDFLARED_PROTOCOL = "wireguard";
+		expect(resolveTunnelProtocol()).toBe("http2");
+	});
+});
 
 // ================================================================
 // parseTunnelUrl — unit tests for stderr parser
@@ -152,7 +184,7 @@ describe("startTunnel", () => {
 		expect(getTunnelState()).toBe("connected");
 
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["cloudflared", "tunnel", "--url", "http://localhost:8080"],
+			["cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:8080"],
 			{ stdout: "ignore", stderr: "pipe" },
 		);
 	});
