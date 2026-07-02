@@ -84,6 +84,8 @@ const settings = {
 	"settings.zoom": "Масштаб",
 	"settings.zoomDesc": "Масштабирование всего интерфейса",
 	"settings.zoomReset": "Сбросить",
+	"settings.scrollSpeed": "Скорость прокрутки терминала",
+	"settings.scrollSpeedDesc": "Настройка скорости прокрутки терминала колёсиком мыши",
 	"settings.terminalKeymap": "Раскладка клавиш терминала",
 	"settings.terminalKeymapDesc": "Шорткаты Ctrl+B всегда работают. Включите совместимость с iTerm2 для использования ⌘-шорткатов.",
 	"settings.keymapIterm2": "Совместимость с iTerm2 (⌘D, ⌘W, ⌘T, ⌘[/])",

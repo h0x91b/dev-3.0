@@ -264,6 +264,8 @@ const tips = {
 	"tip.statsTokenCost.body": "Productivity Stats now shows agent tokens used and their API-equivalent cost — read from local Claude Code transcripts, no API calls.",
 	"tip.agentShowImage.title": "Agents can show you images",
 	"tip.agentShowImage.body": "Run `dev3 show-image <path>` in a task and screenshots or renders pop open in an in-app viewer with a clickable history.",
+	"tip.terminalScrollSpeed.title": "Tune terminal scroll speed",
+	"tip.terminalScrollSpeed.body": "In Settings → Appearance, drag the Terminal scroll speed slider to make mouse-wheel scrolling faster or slower.",
 } as const;
 
 export default tips;

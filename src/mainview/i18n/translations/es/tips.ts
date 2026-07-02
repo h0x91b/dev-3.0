@@ -264,6 +264,8 @@ const tips = {
 	"tip.statsTokenCost.body": "Estadísticas de productividad ahora muestra los tokens del agente y su coste equivalente en API — leído de transcripciones locales de Claude Code, sin llamadas a la API.",
 	"tip.agentShowImage.title": "Los agentes pueden mostrarte imágenes",
 	"tip.agentShowImage.body": "Ejecuta `dev3 show-image <path>` en una tarea y las capturas o renders se abren en un visor integrado con historial.",
+	"tip.terminalScrollSpeed.title": "Ajusta la velocidad de scroll",
+	"tip.terminalScrollSpeed.body": "En Ajustes → Apariencia, arrastra el control «Velocidad de desplazamiento del terminal» para desplazarte más rápido o más lento con la rueda.",
 };
 
 export default tips;

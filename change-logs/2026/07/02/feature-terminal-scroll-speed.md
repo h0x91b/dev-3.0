@@ -1,0 +1,1 @@
+Added a global Terminal scroll speed slider in Settings → Appearance. It controls how fast the mouse wheel scrolls the terminal by scaling the wheel-to-tmux threshold, persists per-device in localStorage, and applies live to open terminals without a rebuild (same pattern as the Zoom control).
