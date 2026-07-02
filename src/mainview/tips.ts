@@ -1053,6 +1053,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board"],
 	},
+	{
+		id: "alt-click-move-cursor",
+		titleKey: "tip.altClickMoveCursor.title",
+		bodyKey: "tip.altClickMoveCursor.body",
+		icon: "\u{F0453}", // nf-md-cursor_move
+		score: 4,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

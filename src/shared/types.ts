@@ -1782,6 +1782,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; step?: "next" | "prev"; index?: number };
 				response: { count: number; activeIndex: number; labels: string[] };
 			};
+			tmuxAltClickMoveCursor: {
+				params: { taskId: string; col: number; row: number };
+				response: { moved: boolean };
+			};
 			exitCopyModeAllPanes: {
 				params: { taskId: string };
 				response: { panesExited: number };

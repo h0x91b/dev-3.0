@@ -9,6 +9,16 @@ adds a new dimension). Updated `PRODUCT_UX_BIBLE.md §1.1` guardrail + §5 surfa
 `ux-architecture.yaml surfaces.stats_dashboard.allowed/forbidden`. Rationale + implementation in
 UX decision 2026-07-02 and `feature-plans/stats-period-navigation.md`.
 
+## 2026-06-29 — Terminal expert gesture: Alt/Option-click to move the shell cursor
+
+Recorded an `expert_shortcut` pointer gesture on the live terminal: Alt/Option + left-click walks the
+shell/readline cursor to the clicked cell. The shell-vs-TUI decision is made on the backend by asking
+tmux what runs in the clicked pane (renderer gating on `!hasMouseTracking()` is impossible — dev3's
+tmux runs `mouse on`, keeping outer tracking permanently enabled); horizontal-only on the cursor's
+row. No chrome (no button/menu/palette/setting/keymap entry) — discoverability via one "Did you
+know?" tip. Inert in Claude Code/vim/htop by design (they now receive real M-clicks instead). See UX
+decision 2026-06-29 (revised 2026-07-02) and `feature-plans/alt-click-move-cursor.md`.
+
 ## 2026-06-29 — Standing rule: countable progress feeds the Velocity Cockpit
 
 Added a forward-looking UX principle that makes the read-only Productivity Stats / Velocity Cockpit
