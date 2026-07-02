@@ -266,6 +266,8 @@ const tips = {
 	"tip.agentShowImage.body": "Запусти `dev3 show-image <path>` в задаче — скриншоты или рендеры откроются во встроенном вьюере с кликабельной историей.",
 	"tip.terminalScrollSpeed.title": "Настрой скорость прокрутки",
 	"tip.terminalScrollSpeed.body": "В Настройках → Внешний вид потяни ползунок «Скорость прокрутки терминала», чтобы прокрутка колёсиком стала быстрее или медленнее.",
+	"tip.devServerWait.title": "Дождись готовности dev-сервера",
+	"tip.devServerWait.body": "Запусти dev3 dev-server start --wait — команда вернётся, только когда сервер реально слушает порт, а не устаревшая сборка.",
 };
 
 export default tips;

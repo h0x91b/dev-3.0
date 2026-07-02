@@ -266,6 +266,8 @@ const tips = {
 	"tip.agentShowImage.body": "Ejecuta `dev3 show-image <path>` en una tarea y las capturas o renders se abren en un visor integrado con historial.",
 	"tip.terminalScrollSpeed.title": "Ajusta la velocidad de scroll",
 	"tip.terminalScrollSpeed.body": "En Ajustes → Apariencia, arrastra el control «Velocidad de desplazamiento del terminal» para desplazarte más rápido o más lento con la rueda.",
+	"tip.devServerWait.title": "Espera al dev server listo",
+	"tip.devServerWait.body": "Ejecuta dev3 dev-server start --wait — vuelve solo cuando el servidor realmente escucha el puerto, sin builds obsoletas.",
 };
 
 export default tips;

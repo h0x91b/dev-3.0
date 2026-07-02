@@ -126,7 +126,7 @@ async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<
 		});
 	}
 
-	killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET).catch((err) => {
+	killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
 		log.warn("killDevServerSession failed while cancelling preparation", {
 			taskId: task.id.slice(0, 8),
 			error: String(err),
@@ -855,7 +855,7 @@ export async function moveTask(params: {
 				});
 			}
 
-			killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET).catch((err) => {
+			killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
 				log.warn("killDevServerSession on task move failed (best-effort)", {
 					taskId: task.id.slice(0, 8), error: String(err),
 				});
@@ -970,7 +970,7 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	}
 
 	if (isActive(task.status) || task.worktreePath) {
-		killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET).catch((err) => {
+		killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
 			log.warn("killDevServerSession on task delete failed (best-effort)", {
 				taskId: task.id.slice(0, 8), error: String(err),
 			});

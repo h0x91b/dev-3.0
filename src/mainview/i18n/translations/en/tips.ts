@@ -266,6 +266,8 @@ const tips = {
 	"tip.agentShowImage.body": "Run `dev3 show-image <path>` in a task and screenshots or renders pop open in an in-app viewer with a clickable history.",
 	"tip.terminalScrollSpeed.title": "Tune terminal scroll speed",
 	"tip.terminalScrollSpeed.body": "In Settings → Appearance, drag the Terminal scroll speed slider to make mouse-wheel scrolling faster or slower.",
+	"tip.devServerWait.title": "Wait for a ready dev server",
+	"tip.devServerWait.body": "Run dev3 dev-server start --wait — it returns only when the server is actually listening, so tests never hit a stale build.",
 } as const;
 
 export default tips;

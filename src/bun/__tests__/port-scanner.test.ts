@@ -36,6 +36,9 @@ import {
 	startPortScanPoller,
 	stopPortScanPoller,
 	getPortsForTask,
+	parsePortHolders,
+	findPortHolders,
+	waitForPortsFree,
 } from "../port-scanner";
 import { spawnSync } from "../spawn";
 
@@ -146,6 +149,115 @@ describe("parseLsofOutput", () => {
 		const result = parseLsofOutput(output, new Set([123]));
 		expect(result).toHaveLength(1);
 		expect(result[0].port).toBe(65535);
+	});
+});
+
+describe("parsePortHolders", () => {
+	it("returns holders of the requested ports regardless of owner pid", () => {
+		const output = [
+			"p123",
+			"cnode",
+			"n*:3000",
+			"p456",
+			"cbun",
+			"n127.0.0.1:8080",
+		].join("\n");
+
+		const result = parsePortHolders(output, new Set([3000, 8080]));
+		expect(result).toEqual([
+			{ port: 3000, pid: 123, processName: "node" },
+			{ port: 8080, pid: 456, processName: "bun" },
+		]);
+	});
+
+	it("ignores ports outside the requested set", () => {
+		const output = [
+			"p123",
+			"cnode",
+			"n*:3000",
+			"n*:5173",
+		].join("\n");
+
+		const result = parsePortHolders(output, new Set([5173]));
+		expect(result).toEqual([{ port: 5173, pid: 123, processName: "node" }]);
+	});
+
+	it("deduplicates a port bound on multiple interfaces", () => {
+		const output = [
+			"p123",
+			"cnode",
+			"n*:3000",
+			"n127.0.0.1:3000",
+		].join("\n");
+
+		const result = parsePortHolders(output, new Set([3000]));
+		expect(result).toHaveLength(1);
+	});
+
+	it("handles malformed network lines gracefully", () => {
+		const output = "p123\ncnode\nngarbage-no-port\nn*:3000\n";
+		const result = parsePortHolders(output, new Set([3000]));
+		expect(result).toEqual([{ port: 3000, pid: 123, processName: "node" }]);
+	});
+});
+
+describe("findPortHolders", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("returns empty for an empty port list without spawning lsof", () => {
+		expect(findPortHolders([])).toEqual([]);
+		expect(mockSpawnSync).not.toHaveBeenCalled();
+	});
+
+	it("uses provided lsof output without spawning", () => {
+		const output = "p123\ncnode\nn*:3000\n";
+		const result = findPortHolders([3000], output);
+		expect(result).toEqual([{ port: 3000, pid: 123, processName: "node" }]);
+		expect(mockSpawnSync).not.toHaveBeenCalled();
+	});
+
+	it("spawns lsof when no output is provided", () => {
+		mockSpawnSync.mockReturnValue(makeResult("p9\ncbun\nn*:4000\n"));
+		const result = findPortHolders([4000]);
+		expect(result).toEqual([{ port: 4000, pid: 9, processName: "bun" }]);
+		expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("waitForPortsFree", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("returns immediately when the ports are already free", async () => {
+		mockSpawnSync.mockReturnValue(makeResult(""));
+		const holders = await waitForPortsFree([3000], 5000, 10);
+		expect(holders).toEqual([]);
+		expect(mockSpawnSync).toHaveBeenCalledTimes(1);
+	});
+
+	it("polls until the holder releases the port", async () => {
+		mockSpawnSync
+			.mockReturnValueOnce(makeResult("p123\ncnode\nn*:3000\n"))
+			.mockReturnValueOnce(makeResult("p123\ncnode\nn*:3000\n"))
+			.mockReturnValue(makeResult(""));
+		const holders = await waitForPortsFree([3000], 5000, 10);
+		expect(holders).toEqual([]);
+		expect(mockSpawnSync).toHaveBeenCalledTimes(3);
+	});
+
+	it("returns the surviving holders when the timeout elapses", async () => {
+		mockSpawnSync.mockReturnValue(makeResult("p123\ncnode\nn*:3000\n"));
+		const holders = await waitForPortsFree([3000], 30, 10);
+		expect(holders).toEqual([{ port: 3000, pid: 123, processName: "node" }]);
+	});
+
+	it("returns immediately for an empty port list", async () => {
+		const holders = await waitForPortsFree([], 5000, 10);
+		expect(holders).toEqual([]);
+		expect(mockSpawnSync).not.toHaveBeenCalled();
 	});
 });
 

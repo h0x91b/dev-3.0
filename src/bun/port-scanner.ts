@@ -142,6 +142,67 @@ export function parseLsofOutput(output: string, pidSet: Set<number>): PortInfo[]
 }
 
 /**
+ * Parse lsof output (`-F pcn` format, same as {@link parseLsofOutput}) and
+ * return the holders of the given PORTS, regardless of which process owns
+ * them. Used to detect port conflicts and orphaned dev-server processes.
+ */
+export function parsePortHolders(output: string, portSet: Set<number>): PortInfo[] {
+	const holders: PortInfo[] = [];
+	const seenPorts = new Set<number>();
+
+	let currentPid = 0;
+	let currentName = "";
+
+	for (const line of output.split("\n")) {
+		if (!line) continue;
+		const tag = line[0];
+		const value = line.slice(1);
+
+		if (tag === "p") {
+			currentPid = parseInt(value, 10);
+			currentName = "";
+		} else if (tag === "c") {
+			currentName = value;
+		} else if (tag === "n") {
+			const colonIdx = value.lastIndexOf(":");
+			if (colonIdx < 0) continue;
+			const port = parseInt(value.slice(colonIdx + 1), 10);
+			if (isNaN(port) || !portSet.has(port) || seenPorts.has(port)) continue;
+			seenPorts.add(port);
+			holders.push({ port, pid: currentPid, processName: currentName });
+		}
+	}
+
+	holders.sort((a, b) => a.port - b.port);
+	return holders;
+}
+
+/**
+ * Which processes are currently LISTENing on the given ports.
+ * Optionally accepts pre-fetched lsof output to avoid redundant calls.
+ */
+export function findPortHolders(ports: number[], lsofOutput?: string): PortInfo[] {
+	if (ports.length === 0) return [];
+	const output = lsofOutput ?? getLsofOutput();
+	if (!output) return [];
+	return parsePortHolders(output, new Set(ports));
+}
+
+/**
+ * Poll until none of the given ports has a LISTENing holder, or `timeoutMs`
+ * elapses. Returns the holders still present at the end (empty = all free).
+ */
+export async function waitForPortsFree(ports: number[], timeoutMs: number, pollMs = 150): Promise<PortInfo[]> {
+	if (ports.length === 0) return [];
+	let holders = findPortHolders(ports);
+	for (let waited = 0; holders.length > 0 && waited < timeoutMs; waited += pollMs) {
+		await new Promise((resolve) => setTimeout(resolve, pollMs));
+		holders = findPortHolders(ports);
+	}
+	return holders;
+}
+
+/**
  * Run lsof once and return raw stdout. Shared across all tasks in a poll cycle.
  */
 export function getLsofOutput(): string {
@@ -336,4 +397,14 @@ export function stopPortScanPoller(): void {
  */
 export function getPortsForTask(taskId: string): PortInfo[] {
 	return portData.get(taskId) ?? [];
+}
+
+/**
+ * Drop the cached port scan for a task. Called after a dev-server teardown so
+ * status/UI don't keep showing the dead server's ports for up to one poll
+ * cycle (10s) after stop.
+ */
+export function clearPortDataForTask(taskId: string): void {
+	portCache.delete(taskId);
+	portData.delete(taskId);
 }
