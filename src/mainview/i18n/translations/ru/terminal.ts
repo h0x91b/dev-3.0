@@ -191,6 +191,14 @@ const terminal = {
 	"quickShell.open": "Быстрая консоль",
 	"quickShell.tooltipWithShortcut": "Быстрая консоль — новый scratch в Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
+
+	// Touch composer (mobile input mode)
+	"terminal.composerPlaceholder": "Введите промпт или команду…",
+	"terminal.composerSend": "Отправить (вставка + Enter)",
+	"terminal.composerInsert": "Вставить без Enter",
+	"terminal.composerExpand": "Развернуть редактор",
+	"terminal.composerCollapse": "Свернуть редактор",
+	"terminal.rawKeyboard": "Прямой ввод с клавиатуры",
 };
 
 export default terminal;

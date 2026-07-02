@@ -182,7 +182,10 @@ export function clearStaleSelectionOnWrite(term: {
 
 export interface TerminalHandle {
 	sendInput: (data: string) => void;
+	/** Paste text through ghostty — wraps in bracketed-paste (DEC 2004) only if the app enabled it. */
+	paste: (data: string) => void;
 	focus: () => void;
+	blur: () => void;
 }
 
 /** Set once the user has seen the one-time "select text to copy" hint toast. */
@@ -193,9 +196,16 @@ interface TerminalViewProps {
 	taskId: string;
 	projectId: string;
 	onReady?: (handle: TerminalHandle) => void;
+	/**
+	 * Touch compose mode (mobile/tablet in browser mode): the terminal must NOT
+	 * summon the on-screen keyboard — taps neither focus the hidden textarea nor
+	 * forward touch→mouse to the canvas. Text entry goes through TerminalComposer;
+	 * the ⌨ raw toggle on ExtraKeyBar flips this off for direct typing.
+	 */
+	touchComposeMode?: boolean;
 }
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: TerminalViewProps) {
 	const t = useT();
 	// Mirror t in a ref so the long-lived terminal-setup effect's closures
 	// (e.g. the select-to-copy hint) always read the latest translator.
@@ -205,6 +215,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const wsRef = useRef<WebSocket | null>(null);
+	// Mirrored in a ref so the long-lived setup effect's touch/blur closures see
+	// mode flips without re-creating the terminal.
+	const touchComposeModeRef = useRef(touchComposeMode ?? false);
+	touchComposeModeRef.current = touchComposeMode ?? false;
 	const copyDiagnosticsRef = useRef<TerminalCopyDiagnostics | null>(null);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
@@ -402,10 +416,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				if (!isElectrobun) {
 					hiddenTextarea.addEventListener("blur", () => {
 						if (disposed) return;
+						// Compose mode owns the keyboard: re-grabbing focus here would
+						// re-summon the OSK right after the composer closes.
+						if (touchComposeModeRef.current) return;
 						const active = document.activeElement;
 						if (!active || active === document.body) {
 							setTimeout(() => {
-								if (!disposed) hiddenTextarea.focus();
+								if (disposed || touchComposeModeRef.current) return;
+								hiddenTextarea.focus();
 							}, 50);
 						}
 					});
@@ -490,6 +508,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				}
 
 				canvas.addEventListener("touchstart", (e) => {
+					// Compose mode: taps must not summon the OSK or start a
+					// tmux/SGR drag-selection — the composer owns text entry and
+					// the ⌨ raw toggle restores direct interaction.
+					if (touchComposeModeRef.current) return;
 					if (e.touches.length === 1) {
 						touchToMouse("mousedown", e.touches[0]);
 						// Focus textarea on tap — user gesture opens mobile keyboard
@@ -500,12 +522,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 				}, { passive: true });
 
 				canvas.addEventListener("touchend", (e) => {
+					if (touchComposeModeRef.current) return;
 					if (e.changedTouches.length === 1) {
 						touchToMouse("mouseup", e.changedTouches[0]);
 					}
 				}, { passive: true });
 
 				canvas.addEventListener("touchmove", (e) => {
+					if (touchComposeModeRef.current) return;
 					if (e.touches.length === 1) {
 						touchToMouse("mousemove", e.touches[0]);
 					}
@@ -568,14 +592,25 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady }: TerminalViewProps)
 								}
 							}));
 
-							// Expose terminal handle for external input (e.g. ExtraKeyBar)
+							// Expose terminal handle for external input (ExtraKeyBar, TerminalComposer)
 							onReady?.({
 								sendInput: (data: string) => {
 									if (wsRef.current?.readyState === WebSocket.OPEN) {
 										wsRef.current.send(data);
 									}
 								},
-								focus: () => { try { term.focus(); } catch { /* disposed */ } },
+								// ghostty's paste() wraps in \x1b[200~…\x1b[201~ only when the
+								// running app enabled DEC 2004 and routes through onData → WS.
+								paste: (data: string) => { try { term.paste(data); } catch { /* disposed */ } },
+								// In browser mode focus the hidden textarea directly: term.focus()
+								// lands on ghostty's container div, which never summons the OSK.
+								focus: () => {
+									try {
+										if (!isElectrobun && hiddenTextarea) hiddenTextarea.focus();
+										else term.focus();
+									} catch { /* disposed */ }
+								},
+								blur: () => { try { hiddenTextarea?.blur(); } catch { /* disposed */ } },
 							});
 
 							console.log("[TerminalView] Terminal fitted, connecting PTY...");

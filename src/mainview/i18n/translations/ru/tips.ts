@@ -203,7 +203,7 @@ const tips = {
 	"tip.keyboardGoTo.title": "Переход куда угодно по G",
 	"tip.keyboardGoTo.body": "Нажмите G, затем D, P, T или S — либо цифру, чтобы перейти к проекту N (P/T + цифра = его доска или задачи).",
 	"tip.terminalSelectCopies.title": "Выделил — скопировал",
-	"tip.terminalSelectCopies.body": "Просто выделите текст в любой панели терминала — он автоматически попадает в буфер обмена, ⌘C не нужен.",
+	"tip.terminalSelectCopies.body": "Выделите текст в панели терминала — он скопируется сам, без ⌘C. На сенсорном экране сначала включите режим ⌨.",
 	"tip.quickSwitchRecentFirst.title": "Недавние проекты сверху",
 	"tip.quickSwitchRecentFirst.body": "Откройте Cmd/Ctrl+K — проекты, к которым вы переходили последними, будут вверху списка.",
 	"tip.agentCanPingYou.title": "Агенты могут позвать вас",
@@ -268,6 +268,8 @@ const tips = {
 	"tip.terminalScrollSpeed.body": "В Настройках → Внешний вид потяни ползунок «Скорость прокрутки терминала», чтобы прокрутка колёсиком стала быстрее или медленнее.",
 	"tip.devServerWait.title": "Дождись готовности dev-сервера",
 	"tip.devServerWait.body": "Запусти dev3 dev-server start --wait — команда вернётся, только когда сервер реально слушает порт, а не устаревшая сборка.",
+	"tip.mobileComposer.title": "Поле ввода для телефона",
+	"tip.mobileComposer.body": "На телефоне пишите промпты в поле над рядом клавиш — «Отправить» вставит их в терминал с Enter.",
 };
 
 export default tips;

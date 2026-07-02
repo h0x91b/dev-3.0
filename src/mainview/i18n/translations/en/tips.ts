@@ -203,7 +203,7 @@ const tips = {
 	"tip.keyboardGoTo.title": "Go anywhere with G",
 	"tip.keyboardGoTo.body": "Press G then D, P, T or S — or a number to jump to that project (P/T + number = its board or tasks).",
 	"tip.terminalSelectCopies.title": "Select to copy",
-	"tip.terminalSelectCopies.body": "Just select text in any terminal pane — it's copied to your clipboard automatically, no ⌘C needed.",
+	"tip.terminalSelectCopies.body": "Select text in any terminal pane — it's copied automatically, no ⌘C. On touch, enable ⌨ raw mode first.",
 	"tip.quickSwitchRecentFirst.title": "Recent projects float up",
 	"tip.quickSwitchRecentFirst.body": "Open Cmd/Ctrl+K and the projects you jumped to most recently are listed first.",
 	"tip.agentCanPingYou.title": "Agents can ping you",
@@ -268,6 +268,8 @@ const tips = {
 	"tip.terminalScrollSpeed.body": "In Settings → Appearance, drag the Terminal scroll speed slider to make mouse-wheel scrolling faster or slower.",
 	"tip.devServerWait.title": "Wait for a ready dev server",
 	"tip.devServerWait.body": "Run dev3 dev-server start --wait — it returns only when the server is actually listening, so tests never hit a stale build.",
+	"tip.mobileComposer.title": "Phone-friendly prompt box",
+	"tip.mobileComposer.body": "On a phone, type prompts in the box above the key bar — Send pastes them into the terminal with Enter.",
 } as const;
 
 export default tips;

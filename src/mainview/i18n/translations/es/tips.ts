@@ -203,7 +203,7 @@ const tips = {
 	"tip.keyboardGoTo.title": "Ve a cualquier sitio con G",
 	"tip.keyboardGoTo.body": "Pulsa G y luego D, P, T o S — o un número para ir a ese proyecto (P/T + número = su tablero o tareas).",
 	"tip.terminalSelectCopies.title": "Selecciona para copiar",
-	"tip.terminalSelectCopies.body": "Solo selecciona texto en cualquier panel de terminal — se copia al portapapeles automáticamente, sin ⌘C.",
+	"tip.terminalSelectCopies.body": "Selecciona texto en un panel de terminal — se copia automáticamente, sin ⌘C. En táctil, activa antes el modo ⌨.",
 	"tip.quickSwitchRecentFirst.title": "Proyectos recientes primero",
 	"tip.quickSwitchRecentFirst.body": "Abre Cmd/Ctrl+K y los proyectos a los que saltaste más recientemente aparecen primero.",
 	"tip.agentCanPingYou.title": "Los agentes pueden avisarte",
@@ -268,6 +268,8 @@ const tips = {
 	"tip.terminalScrollSpeed.body": "En Ajustes → Apariencia, arrastra el control «Velocidad de desplazamiento del terminal» para desplazarte más rápido o más lento con la rueda.",
 	"tip.devServerWait.title": "Espera al dev server listo",
 	"tip.devServerWait.body": "Ejecuta dev3 dev-server start --wait — vuelve solo cuando el servidor realmente escucha el puerto, sin builds obsoletas.",
+	"tip.mobileComposer.title": "Cuadro de prompts para móvil",
+	"tip.mobileComposer.body": "En un móvil, escribe prompts en el cuadro sobre la barra de teclas — Enviar los pega en el terminal con Enter.",
 };
 
 export default tips;

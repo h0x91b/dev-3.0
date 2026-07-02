@@ -1093,6 +1093,14 @@ const ALL_TIPS: Tip[] = [
 		score: 2,
 		contexts: ["terminal"],
 	},
+	{
+		id: "mobile-composer",
+		titleKey: "tip.mobileComposer.title",
+		bodyKey: "tip.mobileComposer.body",
+		icon: "\u{F030C}", // nf-md-keyboard
+		score: 4,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
