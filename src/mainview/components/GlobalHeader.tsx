@@ -56,11 +56,11 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const projectDropdownRef = useRef<HTMLDivElement>(null);
 	const countsCacheTimeRef = useRef<number>(0);
 
-	// Show toast with 15min countdown when updateVersion first appears
+	// Show toast with 5min countdown when updateVersion first appears
 	useEffect(() => {
 		if (updateVersion) {
 			setShowToast(true);
-			setCountdown(900);
+			setCountdown(300);
 			countdownRef.current = setInterval(() => {
 				setCountdown((prev) => {
 					if (prev <= 1) return 0;

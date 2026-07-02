@@ -10,6 +10,9 @@ type FakeWindow = {
 	};
 	getSize: ReturnType<typeof vi.fn>;
 	setSize: ReturnType<typeof vi.fn>;
+	getFrame: ReturnType<typeof vi.fn>;
+	isFullScreen: ReturnType<typeof vi.fn>;
+	setFullScreen: ReturnType<typeof vi.fn>;
 	focus: ReturnType<typeof vi.fn>;
 	on: ReturnType<typeof vi.fn>;
 	handlers: Record<string, () => void>;
@@ -29,6 +32,9 @@ vi.mock("electrobun/bun", () => {
 		webview: any;
 		getSize: ReturnType<typeof vi.fn>;
 		setSize: ReturnType<typeof vi.fn>;
+		getFrame: ReturnType<typeof vi.fn>;
+		isFullScreen: ReturnType<typeof vi.fn>;
+		setFullScreen: ReturnType<typeof vi.fn>;
 		focus: ReturnType<typeof vi.fn>;
 		on: ReturnType<typeof vi.fn>;
 		handlers: Record<string, () => void>;
@@ -52,6 +58,9 @@ vi.mock("electrobun/bun", () => {
 			};
 			this.getSize = vi.fn(() => ({ width: 800, height: 600 }));
 			this.setSize = vi.fn();
+			this.getFrame = vi.fn(() => this.frame ?? { x: 0, y: 0, width: 800, height: 600 });
+			this.isFullScreen = vi.fn(() => false);
+			this.setFullScreen = vi.fn();
 			this.focus = vi.fn();
 			this.on = vi.fn((name: string, handler: () => void) => {
 				handlers[name] = handler;
@@ -67,11 +76,29 @@ vi.mock("electrobun/bun", () => {
 		BrowserWindow: FakeBrowserWindow,
 		Screen: {
 			getPrimaryDisplay: () => ({
+				id: 1,
+				bounds: { x: 0, y: 0, width: 1920, height: 1080 },
 				workArea: { x: 0, y: 0, width: 1920, height: 1080 },
 			}),
+			getAllDisplays: () => [
+				{
+					id: 1,
+					bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+					workArea: { x: 0, y: 0, width: 1920, height: 1080 },
+				},
+			],
 		},
 	};
 });
+
+// Isolate from any real ~/.dev3.0/window-state.json so createAppWindow always
+// takes the default centered-placement path (loadWindowState → null).
+vi.mock("node:fs", () => ({
+	existsSync: () => false,
+	readFileSync: vi.fn(),
+	writeFileSync: vi.fn(),
+	mkdirSync: vi.fn(),
+}));
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
