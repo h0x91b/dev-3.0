@@ -74,6 +74,25 @@ export function routeTaskId(route: Route): string | null {
 /** The task open-mode preference (`dev3-task-open-mode`); "split" is the default. */
 export type TaskOpenMode = "split" | "fullscreen";
 
+/** Read the persisted task open-mode preference; "split" is the default. */
+export function getTaskOpenMode(): TaskOpenMode {
+	return localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+}
+
+/**
+ * The home surface a user lands on after leaving a closed task's view:
+ * fullscreen open-mode → the project's Kanban board; split open-mode → the
+ * split task view with no task selected. Call sites that already know the user
+ * is on the closing task's surface (info panel, task terminal) use this
+ * directly; App-level dialog flows that may fire while the user is elsewhere
+ * go through routeAfterTaskClosed, which adds the "viewing this task?" gate.
+ */
+export function taskClosedHomeRoute(projectId: string, openMode: TaskOpenMode): Route {
+	return openMode === "fullscreen"
+		? { screen: "project", projectId }
+		: { screen: "project", projectId, taskView: true };
+}
+
 /**
  * Where to land after `taskId` is completed/cancelled and its worktree is
  * destroyed. The destination is driven by the user's *configured* open-mode,
@@ -99,9 +118,7 @@ export function routeAfterTaskClosed(route: Route, taskId: string, openMode: Tas
 		(route.screen === "task" && route.taskId === taskId) ||
 		(route.screen === "project" && route.activeTaskId === taskId);
 	if (!viewingClosingTask) return null;
-	return openMode === "fullscreen"
-		? { screen: "project", projectId: route.projectId }
-		: { screen: "project", projectId: route.projectId, taskView: true };
+	return taskClosedHomeRoute(route.projectId, openMode);
 }
 
 /** The project id a route lands on, or null for project-less screens (dashboard, settings…). */

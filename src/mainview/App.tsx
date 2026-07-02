@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, type Route } from "./state";
+import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, type Route } from "./state";
 import { api, isElectrobun } from "./rpc";
 import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
@@ -322,7 +322,7 @@ function App() {
 	const navigateToProject = useCallback(
 		(projectId: string) => {
 			const route = state.route;
-			const taskOpenMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+			const taskOpenMode = getTaskOpenMode();
 			const inTaskView =
 				route.screen === "task" ||
 				(route.screen === "project" && (Boolean(route.activeTaskId) || Boolean(route.taskView)));
@@ -928,7 +928,7 @@ function App() {
 			const onClick =
 				taskId && projectId
 					? () => {
-							const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+							const openMode = getTaskOpenMode();
 							if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
 							else navigate({ screen: "project", projectId, activeTaskId: taskId });
 						}
@@ -952,7 +952,7 @@ function App() {
 			const detail = (e as CustomEvent).detail as WebNotificationDetail;
 			if (!detail?.body) return;
 			showWebNotificationOrToast(detail, (taskId, projectId) => {
-				const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+				const openMode = getTaskOpenMode();
 				if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
 				else navigate({ screen: "project", projectId, activeTaskId: taskId });
 			});
@@ -1011,7 +1011,7 @@ function App() {
 				// screen). routeAfterTaskClosed sends the user back to their configured
 				// home surface: fullscreen open-mode → the board, split open-mode → the
 				// split task view (task deselected). A Kanban board is left untouched.
-				const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+				const openMode = getTaskOpenMode();
 				const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
 				if (dest) navigate(dest);
 				dispatch({
@@ -1081,7 +1081,7 @@ function App() {
 				// reasoning as the branch-merged flow above). routeAfterTaskClosed sends
 				// the user to their configured home (fullscreen → board, split → split
 				// task view, deselected).
-				const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+				const openMode = getTaskOpenMode();
 				const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
 				if (dest) navigate(dest);
 				dispatch({ type: "clearBell", taskId });
@@ -1145,7 +1145,7 @@ function App() {
 			// Open the task the same way a normal card click does — honoring the user's
 			// `dev3-task-open-mode` preference. Default is "split" (task terminal next to
 			// the board), NOT fullscreen zoom. Only users who chose fullscreen get zoomed.
-			const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+			const openMode = getTaskOpenMode();
 			if (openMode === "fullscreen") {
 				navigate({ screen: "task", projectId, taskId });
 			} else {

@@ -3,7 +3,7 @@ import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
-import type { AppAction, Route } from "../state";
+import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
@@ -300,7 +300,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		if (cancellingPreparation) return;
 		if (isActive && !menuOpen) {
 			preview.close();
-			const openMode = localStorage.getItem("dev3-task-open-mode") === "fullscreen" ? "fullscreen" : "split";
+			const openMode = getTaskOpenMode();
 			if (openMode === "fullscreen") {
 				navigate({ screen: "task", projectId: project.id, taskId: task.id });
 			} else if (isActiveInSplit) {

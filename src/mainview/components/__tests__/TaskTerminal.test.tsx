@@ -220,6 +220,33 @@ describe("TaskTerminal", () => {
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
 		});
 
+		it("returns fullscreen open-mode users to the Kanban board on complete", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			try {
+				const user = userEvent.setup();
+				const dispatch = vi.fn();
+				const navigate = vi.fn();
+
+				mockedApi.request.getPtyUrl.mockRejectedValue(new Error("no pty"));
+				mockedApi.request.checkWorktreeExists.mockResolvedValue(true);
+				mockedApi.request.moveTask.mockResolvedValue({ ...makeTask(), status: "completed" });
+
+				await act(async () => {
+					renderTerminal({ dispatch, navigate });
+				});
+
+				await waitFor(() => {
+					expect(screen.getByText(/Complete/i)).toBeInTheDocument();
+				});
+
+				await user.click(screen.getByText(/Complete/i));
+
+				expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			} finally {
+				localStorage.removeItem("dev3-task-open-mode");
+			}
+		});
+
 		it("fires moveTask API call in background", async () => {
 			const user = userEvent.setup();
 
@@ -435,6 +462,34 @@ describe("TaskTerminal", () => {
 			expect(mockedApi.request.cancelTaskPreparation).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
 			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: revertedTask });
 			expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1", taskView: true });
+		});
+
+		it("cancelling preparation returns fullscreen open-mode users to the Kanban board", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			try {
+				const user = userEvent.setup();
+				const dispatch = vi.fn();
+				const navigate = vi.fn();
+				const preparingTask = makeTask({ preparing: true, preparingStage: "creating-worktree" });
+				const revertedTask = makeTask({ status: "todo", preparing: false, worktreePath: null });
+				mockedApi.request.cancelTaskPreparation.mockResolvedValue(revertedTask);
+
+				await act(async () => {
+					renderTerminal({ tasks: [preparingTask], dispatch, navigate });
+				});
+
+				await waitFor(() => {
+					expect(screen.getByText("Preparing…")).toBeInTheDocument();
+				});
+
+				await act(async () => {
+					await user.click(screen.getByText("Cancel"));
+				});
+
+				expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+			} finally {
+				localStorage.removeItem("dev3-task-open-mode");
+			}
 		});
 
 		it("connects to the PTY once preparing flips to false", async () => {

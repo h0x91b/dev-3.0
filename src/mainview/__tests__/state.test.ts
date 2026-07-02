@@ -1,4 +1,4 @@
-import { reducer, initialState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
+import { reducer, initialState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, taskClosedHomeRoute, getTaskOpenMode, HISTORY_LIMIT, canGoBack, canGoForward } from "../state";
 import type { AppState, AppAction } from "../state";
 import type { Project, Task } from "../../shared/types";
 
@@ -923,6 +923,33 @@ describe("routeAfterTaskClosed", () => {
 	it("returns null for non-project screens", () => {
 		expect(routeAfterTaskClosed({ screen: "dashboard" }, "t9", "split")).toBeNull();
 		expect(routeAfterTaskClosed({ screen: "dashboard" }, "t9", "fullscreen")).toBeNull();
+	});
+});
+
+describe("taskClosedHomeRoute", () => {
+	it("fullscreen open-mode: the Kanban board", () => {
+		expect(taskClosedHomeRoute("p1", "fullscreen")).toEqual({ screen: "project", projectId: "p1" });
+	});
+
+	it("split open-mode: the split task view with no task selected", () => {
+		expect(taskClosedHomeRoute("p1", "split")).toEqual({ screen: "project", projectId: "p1", taskView: true });
+	});
+});
+
+describe("getTaskOpenMode", () => {
+	afterEach(() => {
+		localStorage.removeItem("dev3-task-open-mode");
+	});
+
+	it("returns fullscreen when the preference is set", () => {
+		localStorage.setItem("dev3-task-open-mode", "fullscreen");
+		expect(getTaskOpenMode()).toBe("fullscreen");
+	});
+
+	it("defaults to split when unset or unrecognized", () => {
+		expect(getTaskOpenMode()).toBe("split");
+		localStorage.setItem("dev3-task-open-mode", "banana");
+		expect(getTaskOpenMode()).toBe("split");
 	});
 });
 
