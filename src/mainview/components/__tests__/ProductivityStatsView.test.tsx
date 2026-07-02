@@ -6,11 +6,12 @@ import { I18nProvider } from "../../i18n";
 import ProductivityStatsView from "../ProductivityStatsView";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { getProductivityStats: vi.fn() } },
+	api: { request: { getProductivityStats: vi.fn(), getAgentUsage: vi.fn() } },
 }));
 
 import { api } from "../../rpc";
 const mockGet = api.request.getProductivityStats as unknown as ReturnType<typeof vi.fn>;
+const mockUsage = api.request.getAgentUsage as unknown as ReturnType<typeof vi.fn>;
 
 const DAY = 86_400_000;
 
@@ -47,6 +48,8 @@ describe("ProductivityStatsView", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
+		// Default: no agent usage on disk (the two usage counters stay hidden).
+		mockUsage.mockResolvedValue({ days: [], generatedAt: new Date().toISOString(), hasUnpricedModels: false });
 	});
 
 	it("shows the empty state when there are no events", async () => {
@@ -112,6 +115,40 @@ describe("ProductivityStatsView", () => {
 		expect(await screen.findByText("Tasks shipped")).toBeInTheDocument();
 		expect(screen.queryByTestId("hero-stats-compact")).not.toBeInTheDocument();
 	});
+
+	it("shows token + API-cost counters when agent usage exists in the period", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		const now = new Date();
+		const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+		mockUsage.mockResolvedValue({
+			days: [
+				{
+					date: `${now.getFullYear()}-01-01`,
+					startMs: midnight,
+					source: "claude",
+					inputTokens: 1_000_000,
+					outputTokens: 500_000,
+					cacheCreationInputTokens: 0,
+					cacheReadInputTokens: 0,
+					costUsd: 17.5,
+					fullyPriced: true,
+				},
+			],
+			generatedAt: new Date().toISOString(),
+			hasUnpricedModels: false,
+		});
+		renderView();
+		expect(await screen.findByText("Tokens used")).toBeInTheDocument();
+		expect(screen.getByText("~API cost")).toBeInTheDocument();
+		expect(screen.getByText("$17.50")).toBeInTheDocument();
+	});
+
+	it("hides the usage counters when no agent usage is on disk", async () => {
+		mockGet.mockResolvedValue({ events: [ev()], generatedAt: new Date().toISOString() });
+		renderView();
+		expect(await screen.findByText("Productivity")).toBeInTheDocument();
+		expect(screen.queryByText("~API cost")).not.toBeInTheDocument();
+	});
 });
 
 describe("ProductivityStatsView narrow viewport", () => {
@@ -121,6 +158,7 @@ describe("ProductivityStatsView narrow viewport", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
+		mockUsage.mockResolvedValue({ days: [], generatedAt: new Date().toISOString(), hasUnpricedModels: false });
 		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
 		Object.defineProperty(window, "matchMedia", {
 			configurable: true,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ProductivityStatEvent } from "../../shared/types";
+import type { AgentUsageDay, ProductivityStatEvent } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import type { Route } from "../state";
@@ -34,6 +34,11 @@ function compact(n: number): string {
 const fmtInt = (n: number): string => String(Math.round(n));
 const fmtPct = (n: number): string => `${Math.round(n)}%`;
 const fmtOne = (n: number): string => n.toFixed(1);
+/** Compact-with-sub-unit currency: "$0.42", "$12.30", "$1.2K". */
+const fmtUsd = (n: number): string =>
+	n >= 1000
+		? `$${new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n)}`
+		: `$${n.toFixed(2)}`;
 
 /** Only surface a red "beat-your-average" zone once there's a real average (>0). */
 function redZoneOf(avg: number | null): number | undefined {
@@ -51,6 +56,8 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	// cards and tighten page padding.
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [events, setEvents] = useState<ProductivityStatEvent[] | null>(null);
+	// Agent token/cost usage (supplementary — never blocks the dashboard on failure).
+	const [usage, setUsage] = useState<AgentUsageDay[] | null>(null);
 	const [error, setError] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [range, setRange] = useState<StatsRange>(loadRange);
@@ -65,6 +72,11 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 			.then((res) => setEvents(res.events))
 			.catch(() => setError(true))
 			.finally(() => setLoading(false));
+		// Best-effort: token/cost usage is additive; a failure just hides the two counters.
+		api.request
+			.getAgentUsage()
+			.then((res) => setUsage(res.days))
+			.catch(() => setUsage([]));
 	}, []);
 
 	useEffect(() => {
@@ -86,6 +98,25 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 		() => computeProductivityStats(events ?? [], range, Date.now(), offset),
 		[events, range, offset],
 	);
+
+	// Token/cost totals for the visible period. "all" sums everything; other ranges
+	// filter by the same [periodFrom, periodTo] window the task stats use (day-aligned).
+	const usagePeriod = useMemo(() => {
+		const rows = usage ?? [];
+		const inPeriod =
+			range === "all"
+				? rows
+				: rows.filter((r) => r.startMs >= data.periodFrom && r.startMs <= data.periodTo);
+		let tokens = 0;
+		let cost = 0;
+		let fullyPriced = true;
+		for (const r of inPeriod) {
+			tokens += r.inputTokens + r.outputTokens + r.cacheCreationInputTokens + r.cacheReadInputTokens;
+			cost += r.costUsd;
+			if (!r.fullyPriced) fullyPriced = false;
+		}
+		return { tokens, cost, fullyPriced, hasData: rows.length > 0 };
+	}, [usage, range, data.periodFrom, data.periodTo]);
 
 	const rangeLabels: Record<StatsRange, string> = {
 		day: t("stats.range.day"),
@@ -372,6 +403,26 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							<Counter value={data.counters.agentsRun} label={t("stats.counters.agentsRun")} hint={t("stats.counters.agentsRunHint")} />
 							<Counter value={data.counters.allTimeCompleted} label={t("stats.counters.allTimeCompleted")} />
 							<Counter value={data.counters.bestStreak} label={t("stats.counters.bestStreak")} />
+							{usagePeriod.hasData && (
+								<>
+									<Counter
+										value={usagePeriod.tokens}
+										label={t("stats.counters.tokensUsed")}
+										hint={t("stats.counters.tokensUsedHint")}
+										format={compact}
+									/>
+									<Counter
+										value={usagePeriod.cost}
+										label={t("stats.counters.apiCost")}
+										hint={
+											usagePeriod.fullyPriced
+												? t("stats.counters.apiCostHint")
+												: `${t("stats.counters.apiCostHint")} ${t("stats.counters.apiCostHintPartial")}`
+										}
+										format={fmtUsd}
+									/>
+								</>
+							)}
 						</div>
 
 						{/* Lifetime shipping medals */}
@@ -444,11 +495,21 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	);
 }
 
-function Counter({ value, label, hint }: { value: number; label: string; hint?: string }) {
+function Counter({
+	value,
+	label,
+	hint,
+	format = fmtInt,
+}: {
+	value: number;
+	label: string;
+	hint?: string;
+	format?: (n: number) => string;
+}) {
 	return (
 		<div className="rounded-xl border border-edge bg-raised px-4 py-3 flex flex-col gap-0.5" title={hint}>
 			<div className="text-fg text-2xl font-bold tabular-nums leading-none">
-				<CountUp value={value} format={fmtInt} />
+				<CountUp value={value} format={format} />
 			</div>
 			<div className="text-fg-3 text-xs">{label}</div>
 		</div>

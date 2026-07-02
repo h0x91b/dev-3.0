@@ -1061,6 +1061,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["terminal"],
 	},
+	{
+		id: "stats-token-cost",
+		titleKey: "tip.statsTokenCost.title",
+		bodyKey: "tip.statsTokenCost.body",
+		icon: "\u{F0BC5}", // nf-md-cash_multiple
+		score: 3,
+		contexts: ["board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

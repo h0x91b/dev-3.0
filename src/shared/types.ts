@@ -1330,6 +1330,40 @@ export interface ProductivityStats {
 	generatedAt: string;
 }
 
+// ---- Agent usage (tokens & cost) ----
+
+/** Which coding agent a usage row was parsed from. */
+export type AgentUsageSource = "claude" | "codex";
+
+/**
+ * One agent's token usage for a single local calendar day, as reconstructed from
+ * on-disk agent state (Claude transcripts / Codex rollouts). No API calls.
+ * The renderer buckets these client-side per the selected dashboard range.
+ */
+export interface AgentUsageDay {
+	/** Local calendar day, YYYY-MM-DD. */
+	date: string;
+	/** Local-midnight epoch ms for `date` — lets the renderer filter by the dashboard period window. */
+	startMs: number;
+	source: AgentUsageSource;
+	inputTokens: number;
+	outputTokens: number;
+	cacheCreationInputTokens: number;
+	cacheReadInputTokens: number;
+	/** API-equivalent cost in USD (what per-token API billing *would* cost; subscription-subsidised in reality). */
+	costUsd: number;
+	/** True if every model seen on this day had a known price; false means costUsd under-counts. */
+	fullyPriced: boolean;
+}
+
+export interface AgentUsageReport {
+	days: AgentUsageDay[];
+	/** ISO time the report was generated (server clock). */
+	generatedAt: string;
+	/** True if some parsed usage referenced a model with no known price (costUsd is a lower bound). */
+	hasUnpricedModels: boolean;
+}
+
 // ---- RPC schema ----
 
 export type AppRPCSchema = {
@@ -1475,6 +1509,10 @@ export type AppRPCSchema = {
 			getProductivityStats: {
 				params: void;
 				response: ProductivityStats;
+			};
+			getAgentUsage: {
+				params: void;
+				response: AgentUsageReport;
 			};
 			searchConversations: {
 				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };

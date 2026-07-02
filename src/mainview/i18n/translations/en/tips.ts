@@ -260,6 +260,8 @@ const tips = {
 	"tip.todoDetailRun.body": "Open any To Do task to read the full description — then start it right there with the Run button in the footer.",
 	"tip.altClickMoveCursor.title": "Alt-click moves the cursor",
 	"tip.altClickMoveCursor.body": "At a shell prompt, hold Option/Alt and click anywhere on the line to jump the cursor there — no arrow-key holding.",
+	"tip.statsTokenCost.title": "See your token spend",
+	"tip.statsTokenCost.body": "Productivity Stats now shows agent tokens used and their API-equivalent cost — read from local Claude Code transcripts, no API calls.",
 } as const;
 
 export default tips;
