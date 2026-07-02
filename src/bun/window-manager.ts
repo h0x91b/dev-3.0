@@ -1,6 +1,7 @@
 import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
+import { loadWindowState, saveWindowState, resolveRestoreFrame, displayContaining, type Rect } from "./window-state";
 
 const log = createLogger("window-manager");
 
@@ -13,6 +14,42 @@ type WindowEntry = { window: BrowserWindow; id: number };
 const windows = new Set<WindowEntry>();
 let focusedWindow: BrowserWindow | null = null;
 let seq = 0;
+
+// Debounced persistence of the main window's geometry so we can restore it after
+// an update restart (otherwise the window jumps to center on relaunch).
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+// Last known *windowed* frame — kept separately because getFrame() while the
+// window is in fullscreen returns the fullscreen rect, not the size to exit into.
+let lastWindowedFrame: Rect | null = null;
+
+function captureWindowState(win: BrowserWindow): void {
+	try {
+		const fullscreen = win.isFullScreen();
+		const frame = win.getFrame();
+		if (!fullscreen) lastWindowedFrame = frame;
+		const windowed = lastWindowedFrame ?? frame;
+		const displays = Screen.getAllDisplays();
+		const disp = displayContaining(fullscreen ? frame : windowed, displays) ?? Screen.getPrimaryDisplay();
+		saveWindowState({ frame: windowed, fullscreen, displayId: disp.id, displayBounds: disp.bounds });
+	} catch (err) {
+		log.debug("captureWindowState failed", { error: String(err) });
+	}
+}
+
+function scheduleWindowStateSave(win: BrowserWindow): void {
+	if (saveTimer) clearTimeout(saveTimer);
+	saveTimer = setTimeout(() => captureWindowState(win), 500);
+}
+
+/** Persist the focused window's geometry immediately (called on quit / update restart). */
+export function flushWindowState(): void {
+	if (saveTimer) {
+		clearTimeout(saveTimer);
+		saveTimer = null;
+	}
+	const win = getFocusedWindow();
+	if (win) captureWindowState(win);
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Handlers = Record<string, (...args: any[]) => any>;
@@ -54,24 +91,38 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		},
 	});
 
-	// ~95% of the primary display work area, centered. Additional windows are
-	// offset so they don't land exactly on top of each other.
-	const primary = Screen.getPrimaryDisplay();
-	const wa = primary.workArea;
-	const RATIO = 0.95;
-	const width = Math.round(wa.width * RATIO);
-	const height = Math.round(wa.height * RATIO);
-	const offset = windows.size * 40;
-	// Clamp so the window never extends beyond the work area, even when
-	// many windows are open (cascade stagger can exceed the available margin).
-	const x = Math.min(wa.x + Math.round((wa.width - width) / 2) + offset, wa.x + wa.width - width);
-	const y = Math.min(wa.y + Math.round((wa.height - height) / 2) + offset, wa.y + wa.height - height);
+	// Restore the *first* window to its last position/screen (incl. macOS
+	// fullscreen). Extra windows keep the centered cascade so they don't stack.
+	let frame: Rect;
+	let restoreFullScreen = false;
+	const saved = windows.size === 0 ? loadWindowState() : null;
+	const restored = saved ? resolveRestoreFrame(saved, Screen.getAllDisplays()) : null;
+	if (restored) {
+		frame = restored.frame;
+		restoreFullScreen = restored.fullscreen;
+		lastWindowedFrame = restored.frame;
+		log.info("Restoring window geometry", { fullscreen: restoreFullScreen, ...restored.frame });
+	} else {
+		// ~95% of the primary display work area, centered. Additional windows are
+		// offset so they don't land exactly on top of each other.
+		const primary = Screen.getPrimaryDisplay();
+		const wa = primary.workArea;
+		const RATIO = 0.95;
+		const width = Math.round(wa.width * RATIO);
+		const height = Math.round(wa.height * RATIO);
+		const offset = windows.size * 40;
+		// Clamp so the window never extends beyond the work area, even when
+		// many windows are open (cascade stagger can exceed the available margin).
+		const x = Math.min(wa.x + Math.round((wa.width - width) / 2) + offset, wa.x + wa.width - width);
+		const y = Math.min(wa.y + Math.round((wa.height - height) / 2) + offset, wa.y + wa.height - height);
+		frame = { x, y, width, height };
+	}
 
 	const win = new BrowserWindow({
 		title: opts.title,
 		url: opts.url,
 		rpc,
-		frame: { width, height, x, y },
+		frame,
 	});
 
 	const id = ++seq;
@@ -95,20 +146,38 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		opts.onClosed?.(win, windows.size);
 	});
 
-	// WKWebView clips the bottom ~16px after the first paint on some macOS
-	// versions. A quick resize nudge forces the viewport into the post-resize
-	// layout immediately so the app's pb-8 padding stays reliable.
-	setTimeout(() => {
-		try {
-			const size = win.getSize();
-			win.setSize(size.width, size.height - 1);
+	// Persist geometry as the user drags/resizes (debounced) so an update restart
+	// can put the window back where it was.
+	win.on("move", () => scheduleWindowStateSave(win));
+	win.on("resize", () => scheduleWindowStateSave(win));
+
+	if (restoreFullScreen) {
+		// macOS can't restore the exact Space, but re-entering fullscreen while the
+		// window sits on the saved monitor recreates it on the right screen. Do it
+		// after dom-ready (a small delay — the style mask isn't reliably applied at
+		// creation time).
+		win.webview.on("dom-ready", () => {
 			setTimeout(() => {
-				try { win.setSize(size.width, size.height); } catch { /* ignore */ }
-			}, 50);
-		} catch (err) {
-			log.warn("Resize nudge failed", { error: String(err) });
-		}
-	}, 200);
+				try { win.setFullScreen(true); } catch (err) { log.warn("Restore fullscreen failed", { error: String(err) }); }
+			}, 100);
+		});
+	} else {
+		// WKWebView clips the bottom ~16px after the first paint on some macOS
+		// versions. A quick resize nudge forces the viewport into the post-resize
+		// layout immediately so the app's pb-8 padding stays reliable. Skipped when
+		// restoring fullscreen (setSize would fight the fullscreen transition).
+		setTimeout(() => {
+			try {
+				const size = win.getSize();
+				win.setSize(size.width, size.height - 1);
+				setTimeout(() => {
+					try { win.setSize(size.width, size.height); } catch { /* ignore */ }
+				}, 50);
+			} catch (err) {
+				log.warn("Resize nudge failed", { error: String(err) });
+			}
+		}, 200);
+	}
 
 	if (opts.onDomReady) {
 		win.webview.on("dom-ready", () => opts.onDomReady!(win));
