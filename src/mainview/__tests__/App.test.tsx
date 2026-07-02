@@ -11,7 +11,8 @@ vi.mock("../rpc", () => ({
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
-			getUpdateRoute: vi.fn().mockResolvedValue({ route: null }),
+			getLastRoute: vi.fn().mockResolvedValue({ route: null }),
+			saveLastRoute: vi.fn().mockResolvedValue(undefined),
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			requestQuit: vi.fn().mockResolvedValue(undefined),
 			consumePendingQuitDialog: vi.fn().mockResolvedValue(false),
@@ -159,7 +160,7 @@ describe("App keyboard shortcuts", () => {
 		vi.clearAllMocks();
 		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);
-		vi.mocked(api.request.getUpdateRoute).mockResolvedValue({ route: null });
+		vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: null });
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
 	});
 
@@ -283,7 +284,7 @@ describe("App keyboard shortcuts", () => {
 
 		it("preserves task view: Cmd+2 from a task switches project and keeps task-view layout with no task selected", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
 			});
 
@@ -302,7 +303,7 @@ describe("App keyboard shortcuts", () => {
 
 		it("preserves task view from the full-page task screen too", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -318,7 +319,7 @@ describe("App keyboard shortcuts", () => {
 
 		it("keeps board view: Cmd+2 from the Kanban board switches project without task view", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1" }),
 			});
 
@@ -338,7 +339,7 @@ describe("App keyboard shortcuts", () => {
 		it("fullscreen open-mode: Cmd+2 from a task jumps to the board, not an empty split", async () => {
 			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
 			});
 
@@ -356,7 +357,7 @@ describe("App keyboard shortcuts", () => {
 		it("fullscreen open-mode: Cmd+2 from the full-page task screen jumps to the board", async () => {
 			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -368,6 +369,62 @@ describe("App keyboard shortcuts", () => {
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
 			expect(after).toHaveAttribute("data-task-view", "false");
+		});
+	});
+
+	describe("route restore on launch", () => {
+		const oneProject = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+
+		it("restores the saved project route on launch", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p1");
+			expect(screen.queryByTestId("dashboard-screen")).not.toBeInTheDocument();
+		});
+
+		it("falls back to the dashboard when the saved project no longer exists", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([]); // p1 was completed/removed
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("task-screen")).not.toBeInTheDocument();
+		});
+
+		it("restores a non-project screen (settings)", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "settings" }),
+			});
+
+			await renderApp();
+
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+		});
+
+		it("persists the current route to disk on navigation", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: null });
+
+			await renderApp();
+			await userEvent.keyboard("{Meta>},{/Meta}");
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+
+			await waitFor(() =>
+				expect(api.request.saveLastRoute).toHaveBeenCalledWith({
+					route: JSON.stringify({ screen: "settings" }),
+				}),
+			);
 		});
 	});
 
@@ -383,7 +440,7 @@ describe("App keyboard shortcuts", () => {
 
 		it("from the board: Cmd+Shift+2 switches project and opens task view", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1" }),
 			});
 
@@ -402,7 +459,7 @@ describe("App keyboard shortcuts", () => {
 
 		it("from a task: Cmd+Shift+2 switches project and drops to the board", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
 			});
 
@@ -419,7 +476,7 @@ describe("App keyboard shortcuts", () => {
 
 		it("from the full-page task screen: Cmd+Shift+2 drops to the board", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -436,7 +493,7 @@ describe("App keyboard shortcuts", () => {
 		it("ignores open-mode: from the board in fullscreen mode it still opens task view", async () => {
 			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			vi.mocked(api.request.getProjects).mockResolvedValue(twoProjects);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "project", projectId: "p1" }),
 			});
 
@@ -470,7 +527,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -487,7 +544,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -548,7 +605,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -564,7 +621,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -583,7 +640,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 
@@ -894,7 +951,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 			vi.mocked(confirm).mockResolvedValue(true);
@@ -922,7 +979,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 			vi.mocked(confirm).mockResolvedValue(false);
@@ -945,7 +1002,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t2" }),
 			});
 			vi.mocked(confirm).mockResolvedValue(true);
@@ -980,7 +1037,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 			vi.mocked(confirm).mockResolvedValue(true);
@@ -1007,7 +1064,7 @@ describe("App keyboard shortcuts", () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([
 				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
 			]);
-			vi.mocked(api.request.getUpdateRoute).mockResolvedValue({
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
 				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
 			});
 			vi.mocked(confirm).mockResolvedValue(false);

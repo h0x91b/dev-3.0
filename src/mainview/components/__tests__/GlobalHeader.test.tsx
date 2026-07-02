@@ -10,7 +10,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTasks: vi.fn(),
 			applyUpdate: vi.fn(),
-			saveUpdateRoute: vi.fn(),
+			saveLastRoute: vi.fn(),
 			renameTask: vi.fn(),
 			getProjectCurrentBranch: vi.fn().mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false }),
 			pullProjectMain: vi.fn(),
@@ -483,7 +483,7 @@ describe("GlobalHeader — update countdown", () => {
 		vi.useFakeTimers();
 		mockedApi.request.getTasks.mockResolvedValue([]);
 		mockedApi.request.applyUpdate.mockResolvedValue(undefined as any);
-		mockedApi.request.saveUpdateRoute.mockResolvedValue(undefined as any);
+		mockedApi.request.saveLastRoute.mockResolvedValue(undefined as any);
 	});
 
 	afterEach(() => {
@@ -553,7 +553,7 @@ describe("GlobalHeader — update countdown", () => {
 		);
 
 		act(() => { vi.advanceTimersByTime(300_000); });
-		// Flush the async handleRestart (saveUpdateRoute → applyUpdate)
+		// Flush the async handleRestart (saveLastRoute → applyUpdate)
 		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
 		expect(mockedApi.request.applyUpdate).toHaveBeenCalled();
@@ -570,7 +570,7 @@ describe("GlobalHeader — update countdown", () => {
 
 		act(() => { vi.advanceTimersByTime(300_000); });
 
-		expect(mockedApi.request.saveUpdateRoute).toHaveBeenCalledWith({
+		expect(mockedApi.request.saveLastRoute).toHaveBeenCalledWith({
 			route: JSON.stringify({ screen: "project", projectId: "p1" }),
 		});
 	});

@@ -178,14 +178,14 @@ async function applyUpdate(): Promise<void> {
 	await updater.applyUpdate();
 }
 
-async function saveUpdateRoute({ route }: { route: string }): Promise<void> {
-	log.info("-> saveUpdateRoute");
-	await data.saveUpdateRoute(route);
+async function saveLastRoute({ route }: { route: string }): Promise<void> {
+	log.info("-> saveLastRoute");
+	await data.saveLastRoute(route);
 }
 
-async function getUpdateRoute(): Promise<{ route: string | null }> {
-	log.info("-> getUpdateRoute");
-	const route = await data.loadAndClearUpdateRoute();
+async function getLastRoute(): Promise<{ route: string | null }> {
+	log.info("-> getLastRoute");
+	const route = await data.loadLastRoute();
 	return { route };
 }
 
@@ -330,8 +330,8 @@ export const settingsConfigHandlers = {
 	checkForUpdate,
 	downloadUpdate,
 	applyUpdate,
-	saveUpdateRoute,
-	getUpdateRoute,
+	saveLastRoute,
+	getLastRoute,
 	getAppVersion,
 	checkSystemRequirements,
 	checkGhAvailable,

@@ -1142,23 +1142,27 @@ export async function resetTipState(): Promise<TipState> {
 	});
 }
 
-// ---- Update Route (persisted across app restarts for auto-update) ----
+// ---- Last Route (persisted across every app restart: quit, reboot, update) ----
+//
+// The renderer persists the current route here (debounced on navigation) so the
+// app reopens on the surface the user last had open, mirroring the window
+// position restore. Unlike a one-shot update handoff, this file is NOT cleared
+// on read — it always reflects the last known route until the next navigation
+// overwrites it.
 
-const UPDATE_ROUTE_FILE = `${DEV3_HOME}/update-route.json`;
+const LAST_ROUTE_FILE = `${DEV3_HOME}/last-route.json`;
 
-export async function saveUpdateRoute(route: string): Promise<void> {
-	await ensureDir(UPDATE_ROUTE_FILE);
-	await Bun.write(UPDATE_ROUTE_FILE, route);
+export async function saveLastRoute(route: string): Promise<void> {
+	await ensureDir(LAST_ROUTE_FILE);
+	await writeFile(LAST_ROUTE_FILE, route, "utf-8");
 }
 
-export async function loadAndClearUpdateRoute(): Promise<string | null> {
+export async function loadLastRoute(): Promise<string | null> {
 	try {
-		const file = Bun.file(UPDATE_ROUTE_FILE);
-		if (!(await file.exists())) return null;
-		const data = await file.text();
-		await unlink(UPDATE_ROUTE_FILE);
+		const data = await readFile(LAST_ROUTE_FILE, "utf-8");
 		return data || null;
 	} catch {
+		// Missing/unreadable file — no route to restore.
 		return null;
 	}
 }

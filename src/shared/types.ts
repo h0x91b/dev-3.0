@@ -1658,11 +1658,11 @@ export type AppRPCSchema = {
 				params: void;
 				response: void;
 			};
-			saveUpdateRoute: {
+			saveLastRoute: {
 				params: { route: string };
 				response: void;
 			};
-			getUpdateRoute: {
+			getLastRoute: {
 				params: void;
 				response: { route: string | null };
 			};
