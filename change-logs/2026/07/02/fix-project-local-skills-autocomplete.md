@@ -1,0 +1,1 @@
+Fixed the New Task slash-command autocomplete so it now also lists project-local skills (`.agents/.claude/.codex/skills` inside the repo, e.g. `/debug-ui`), not only the global ones under the home directory. A project-local skill wins over a same-named global one.

@@ -97,7 +97,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		});
 	}, []);
 
-	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription);
+	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription, project.path);
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);

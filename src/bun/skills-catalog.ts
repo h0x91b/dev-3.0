@@ -47,39 +47,54 @@ export function parseSkillFrontmatter(content: string): { name: string | null; d
 	return result;
 }
 
-/**
- * Scan the global agent skill directories (`~/.agents/skills`,
- * `~/.claude/skills`, `~/.codex/skills`) for `<skill>/SKILL.md` entries.
- * Skills with the same name are deduplicated; the first source in the
- * priority order above wins. Result is sorted by name.
- */
-export function listAgentSkills(home: string = homedir()): AgentSkillInfo[] {
-	const byName = new Map<string, AgentSkillInfo>();
-
-	for (const { dir, source } of SOURCE_DIRS) {
-		const root = join(home, dir);
-		if (!existsSync(root)) continue;
-		let entries: string[];
+/** Scan one `<root>/<skill>/SKILL.md` tree into `byName` (first name wins). */
+function scanSkillRoot(root: string, source: AgentSkillInfo["source"], byName: Map<string, AgentSkillInfo>): void {
+	if (!existsSync(root)) return;
+	let entries: string[];
+	try {
+		entries = readdirSync(root);
+	} catch {
+		return;
+	}
+	for (const entry of entries) {
+		if (entry.startsWith(".")) continue;
+		const skillFile = join(root, entry, "SKILL.md");
 		try {
-			entries = readdirSync(root);
+			if (!statSync(join(root, entry)).isDirectory()) continue;
+			if (!existsSync(skillFile)) continue;
+			const parsed = parseSkillFrontmatter(readFileSync(skillFile, "utf8"));
+			const name = parsed.name ?? entry;
+			if (byName.has(name)) continue;
+			byName.set(name, { name, description: parsed.description ?? "", source });
 		} catch {
+			// Unreadable skill dir/file (permissions, broken symlink) — skip it.
 			continue;
 		}
-		for (const entry of entries) {
-			if (entry.startsWith(".")) continue;
-			const skillFile = join(root, entry, "SKILL.md");
-			try {
-				if (!statSync(join(root, entry)).isDirectory()) continue;
-				if (!existsSync(skillFile)) continue;
-				const parsed = parseSkillFrontmatter(readFileSync(skillFile, "utf8"));
-				const name = parsed.name ?? entry;
-				if (byName.has(name)) continue;
-				byName.set(name, { name, description: parsed.description ?? "", source });
-			} catch {
-				// Unreadable skill dir/file (permissions, broken symlink) — skip it.
-				continue;
-			}
+	}
+}
+
+/**
+ * Scan agent skill directories for `<skill>/SKILL.md` entries.
+ *
+ * When `projectPath` is given, its project-local `.agents/skills`,
+ * `.claude/skills`, `.codex/skills` are scanned **first** so a project-local
+ * skill wins over a same-named global one. Then the global directories under
+ * `home` (`~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`) are added.
+ * Skills with the same name are deduplicated (first seen wins). Result is
+ * sorted by name.
+ */
+export function listAgentSkills(home: string = homedir(), projectPath?: string | null): AgentSkillInfo[] {
+	const byName = new Map<string, AgentSkillInfo>();
+
+	// Project-local skills first — they win dedup over global ones.
+	if (projectPath) {
+		for (const { dir, source } of SOURCE_DIRS) {
+			scanSkillRoot(join(projectPath, dir), source, byName);
 		}
+	}
+
+	for (const { dir, source } of SOURCE_DIRS) {
+		scanSkillRoot(join(home, dir), source, byName);
 	}
 
 	return [...byName.values()].sort((a, b) =>

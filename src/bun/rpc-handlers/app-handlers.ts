@@ -235,10 +235,14 @@ async function listDirectory(params?: { path?: string | null; includeFiles?: boo
 	}
 }
 
-/** List skills found in the global agent skill directories for autocomplete. */
-async function listAgentSkills(): Promise<AgentSkillInfo[]> {
+/**
+ * List skills for autocomplete: project-local `.agents/.claude/.codex/skills`
+ * (when `projectPath` is given) plus the global home directories. Project-local
+ * skills win over same-named global ones.
+ */
+async function listAgentSkills(params?: { projectPath?: string | null }): Promise<AgentSkillInfo[]> {
 	try {
-		const skills = scanAgentSkills();
+		const skills = scanAgentSkills(undefined, params?.projectPath ?? null);
 		log.info("← listAgentSkills", { count: skills.length });
 		return skills;
 	} catch (err) {
