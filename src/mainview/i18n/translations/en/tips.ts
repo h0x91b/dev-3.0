@@ -272,6 +272,8 @@ const tips = {
 	"tip.mobileComposer.body": "On a phone, type prompts in the box above the key bar — Send pastes them into the terminal with Enter.",
 	"tip.closePanePicker.title": "Pick the pane to close",
 	"tip.closePanePicker.body": "Click Close Pane, then hover the split you mean — it turns red — and click to close exactly that pane.",
+	"tip.closePaneEof.title": "Close a pane fast",
+	"tip.closePaneEof.body": "Press Ctrl+D in a terminal pane to exit the shell and close the pane instantly.",
 } as const;
 
 export default tips;

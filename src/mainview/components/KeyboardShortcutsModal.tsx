@@ -75,6 +75,7 @@ function buildTmuxSections(t: T): Section[] {
 				{ keys: "⌃B |", desc: t("tmux.splitVDesc") },
 				{ keys: "⌃B z", desc: t("tmux.zoomDesc") },
 				{ keys: "⌃B x", desc: t("tmux.closePaneDesc") },
+				{ keys: "⌃D", desc: t("tmux.closePaneEofDesc") },
 				{ keys: "⌃B o", desc: t("cheatSheet.nextPane") },
 				{ keys: "⌃B ;", desc: t("cheatSheet.lastPane") },
 				{ keys: "⌃B q", desc: t("cheatSheet.showPaneNumbers") },

@@ -1109,6 +1109,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal"],
 	},
+	{
+		id: "close-pane-eof",
+		titleKey: "tip.closePaneEof.title",
+		bodyKey: "tip.closePaneEof.body",
+		icon: "\u{F030C}", // nf-md-keyboard
+		score: 3,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
