@@ -693,6 +693,257 @@
 		*, *::before, *::after { animation: none !important; transition: none !important; }
 	}
 
+	/* ============================================================
+	   HEADER ROW — hover animations for the approved redesigned defaults
+	   ============================================================ */
+
+	.badge.header { color: #fbbf24; background: rgba(251 191 36 / .12); border: 1px solid rgba(251 191 36 / .3); }
+
+	/* Back / Forward — chevron lunges, a ghost echo trails off */
+	@keyframes hd-back {
+		0%, 12%  { transform: translateX(0); }
+		38%      { transform: translateX(-2.6px); }
+		62%      { transform: translateX(.6px); }
+		88%,100% { transform: translateX(0); }
+	}
+	@keyframes hd-back-ghost {
+		0%, 20%  { transform: translateX(0); opacity: 0; }
+		45%      { transform: translateX(-4.5px); opacity: .5; }
+		75%,100% { transform: translateX(-6px); opacity: 0; }
+	}
+	@keyframes hd-fwd {
+		0%, 12%  { transform: translateX(0); }
+		38%      { transform: translateX(2.6px); }
+		62%      { transform: translateX(-.6px); }
+		88%,100% { transform: translateX(0); }
+	}
+	@keyframes hd-fwd-ghost {
+		0%, 20%  { transform: translateX(0); opacity: 0; }
+		45%      { transform: translateX(4.5px); opacity: .5; }
+		75%,100% { transform: translateX(6px); opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-back       { animation: hd-back 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-back-ghost { animation: hd-back-ghost 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-fwd        { animation: hd-fwd 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-fwd-ghost  { animation: hd-fwd-ghost 2.4s ease-in-out infinite; }
+
+	/* Home — the prompt types itself, cursor blinks */
+	@keyframes hd-home-prompt { 0%, 8% { stroke-dashoffset: 1; } 35% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes hd-home-cursor {
+		0%, 30%  { opacity: 0; }
+		40%, 55% { opacity: 1; }
+		60%, 75% { opacity: 0; }
+		80%, 95% { opacity: 1; }
+		100%     { opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-home-prompt { animation: hd-home-prompt 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-home-cursor { animation: hd-home-cursor 2.4s steps(1) infinite; }
+
+	/* Dropdown — chevron dips, ghost drips down */
+	@keyframes hd-dd {
+		0%, 12%  { transform: translateY(0); }
+		38%      { transform: translateY(2.4px); }
+		62%      { transform: translateY(-.5px); }
+		88%,100% { transform: translateY(0); }
+	}
+	@keyframes hd-dd-ghost {
+		0%, 20%  { transform: translateY(0); opacity: 0; }
+		45%      { transform: translateY(3.5px); opacity: .45; }
+		75%,100% { transform: translateY(5px); opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-dd       { animation: hd-dd 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-dd-ghost { animation: hd-dd-ghost 2.4s ease-in-out infinite; }
+
+	/* Coffee — steam rises off the fresh cup */
+	@keyframes hd-steam {
+		0%, 10%  { transform: translateY(0); opacity: .25; }
+		45%      { opacity: 1; }
+		85%,100% { transform: translateY(-2.8px); opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-steam1 { animation: hd-steam 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-steam2 { animation: hd-steam 2.4s ease-in-out .5s infinite; }
+
+	/* Lock — shackle tugs but snaps shut, keyhole blinks a "no" */
+	@keyframes hd-shackle {
+		0%, 15%  { transform: translateY(0); }
+		35%      { transform: translateY(-1.8px); }
+		50%      { transform: translateY(-1.8px); }
+		62%      { transform: translateY(.35px); }
+		70%,100% { transform: translateY(0); }
+	}
+	@keyframes hd-keyhole {
+		0%, 60%  { opacity: 1; }
+		66%      { opacity: .2; }
+		72%      { opacity: 1; }
+		78%      { opacity: .2; }
+		84%,100% { opacity: 1; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-shackle { animation: hd-shackle 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-keyhole { animation: hd-keyhole 2.4s steps(1) infinite; }
+
+	/* Quick Shell — the bolt double-flashes, prompt nudges along */
+	@keyframes hd-bolt {
+		0%, 10%  { opacity: 1; transform: scale(1); }
+		18%      { opacity: .25; }
+		26%      { opacity: 1; transform: scale(1.12); }
+		34%      { opacity: .35; }
+		42%,100% { opacity: 1; transform: scale(1); }
+	}
+	@keyframes hd-qs-prompt {
+		0%, 45%  { transform: translateX(0); }
+		60%      { transform: translateX(1.6px); }
+		75%,100% { transform: translateX(0); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-bolt      { transform-origin: 12.5px 12px; animation: hd-bolt 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-qs-prompt { animation: hd-qs-prompt 2.4s ease-in-out infinite; }
+
+	/* Project Terminal — title-bar dots pulse, prompt types, cursor blinks */
+	@keyframes hd-pt-dot { 0%, 10% { opacity: .35; } 25% { opacity: 1; } 40%, 100% { opacity: .35; } }
+	@keyframes hd-pt-prompt { 0%, 15% { stroke-dashoffset: 1; } 45% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes hd-pt-cursor {
+		0%, 40%  { opacity: 0; }
+		50%, 62% { opacity: 1; }
+		68%, 80% { opacity: 0; }
+		86%, 96% { opacity: 1; }
+		100%     { opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-ptd1      { animation: hd-pt-dot 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-ptd2      { animation: hd-pt-dot 2.4s ease-in-out .2s infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-pt-prompt { animation: hd-pt-prompt 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-pt-cursor { animation: hd-pt-cursor 2.4s steps(1) infinite; }
+
+	/* Pull — the arrow drops out of the cloud; cloud bobs */
+	@keyframes hd-pull-arrow {
+		0%, 12%  { transform: translateY(-3.5px); opacity: 0; }
+		28%      { opacity: 1; }
+		55%      { transform: translateY(0); opacity: 1; }
+		80%,100% { transform: translateY(2.2px); opacity: 0; }
+	}
+	@keyframes hd-cloud-bob {
+		0%, 15%  { transform: translateY(0); }
+		45%      { transform: translateY(-.9px); }
+		80%,100% { transform: translateY(0); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-pull-arrow { animation: hd-pull-arrow 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-cloud-bob  { animation: hd-cloud-bob 2.4s ease-in-out infinite; }
+
+	/* Update ready — the arrow launches up into the cloud */
+	@keyframes hd-up-arrow {
+		0%, 12%  { transform: translateY(3px); opacity: 0; }
+		28%      { opacity: 1; }
+		55%      { transform: translateY(0); opacity: 1; }
+		80%,100% { transform: translateY(-2.5px); opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-up-arrow { animation: hd-up-arrow 2.4s ease-in-out infinite; }
+
+	/* Refresh — one full confident revolution, then settle */
+	@keyframes hd-spin { 0%, 10% { transform: rotate(0deg); } 70% { transform: rotate(360deg); } 100% { transform: rotate(360deg); } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-spin { transform-origin: 12px 12px; animation: hd-spin 2.6s ease-in-out infinite; }
+
+	/* Success — the check draws itself */
+	@keyframes hd-check { 0%, 10% { stroke-dashoffset: 1; } 55% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-check { animation: hd-check 2.4s ease-in-out infinite; }
+
+	/* Alert — the triangle quakes, the bang blinks */
+	@keyframes hd-quake {
+		0%, 55%  { transform: rotate(0deg); }
+		60%      { transform: rotate(2.4deg); }
+		65%      { transform: rotate(-2.2deg); }
+		70%      { transform: rotate(1.6deg); }
+		75%      { transform: rotate(-1.2deg); }
+		80%,100% { transform: rotate(0deg); }
+	}
+	@keyframes hd-bang {
+		0%, 15%  { opacity: 1; }
+		25%      { opacity: .15; }
+		35%      { opacity: 1; }
+		45%      { opacity: .15; }
+		55%,100% { opacity: 1; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-quake { transform-origin: 12px 14px; animation: hd-quake 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-bang  { animation: hd-bang 2.4s steps(1) infinite; }
+
+	/* QR — the inner marks flicker like a scan pass */
+	@keyframes hd-qr-blink { 0%, 100% { opacity: .3; } 15% { opacity: 1; } 30% { opacity: .3; } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-qr1 { animation: hd-qr-blink 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-qr2 { animation: hd-qr-blink 2.4s ease-in-out .3s infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-qr3 { animation: hd-qr-blink 2.4s ease-in-out .6s infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-qr4 { animation: hd-qr-blink 2.4s ease-in-out .9s infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-qr5 { animation: hd-qr-blink 2.4s ease-in-out 1.2s infinite; }
+
+	/* Gauge — the needle revs to the redline and falls back */
+	@keyframes hd-needle {
+		0%, 8%   { transform: rotate(0deg); }
+		25%      { transform: rotate(-55deg); }
+		55%      { transform: rotate(32deg); }
+		68%      { transform: rotate(22deg); }
+		78%      { transform: rotate(28deg); }
+		92%,100% { transform: rotate(0deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-needle { transform-origin: 12px 14px; animation: hd-needle 2.6s ease-in-out infinite; }
+
+	/* GitHub — the octocat takes a polite bow */
+	@keyframes hd-gh {
+		0%, 15%  { transform: rotate(0deg); }
+		35%      { transform: rotate(-7deg); }
+		55%      { transform: rotate(6deg); }
+		75%      { transform: rotate(-3deg); }
+		90%,100% { transform: rotate(0deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-gh { transform-origin: 12px 12px; animation: hd-gh 2.4s ease-in-out infinite; }
+
+	/* Bug — antennae twitch, the whole bug wiggles */
+	@keyframes hd-bug-body {
+		0%, 20%  { transform: rotate(0deg); }
+		32%      { transform: rotate(-2.5deg); }
+		44%      { transform: rotate(2.5deg); }
+		56%      { transform: rotate(-1.5deg); }
+		68%,100% { transform: rotate(0deg); }
+	}
+	@keyframes hd-ant {
+		0%, 10%  { transform: rotate(0deg); }
+		22%      { transform: rotate(-14deg); }
+		34%      { transform: rotate(6deg); }
+		46%,100% { transform: rotate(0deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-bug-body { transform-origin: 12px 14px; animation: hd-bug-body 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-ant-l    { transform-origin: 9.9px 3.9px; animation: hd-ant 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-ant-r    { transform-origin: 14.1px 3.9px; animation: hd-ant 2.4s ease-in-out .25s infinite; }
+
+	/* Changelog — new entries write themselves onto the list */
+	@keyframes hd-cl-line1 { 0%, 15% { stroke-dashoffset: 1; } 40% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes hd-cl-line2 { 0%, 35% { stroke-dashoffset: 1; } 60% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes hd-cl-dot1  { 0%, 10% { opacity: 0; } 20%, 100% { opacity: 1; } }
+	@keyframes hd-cl-dot2  { 0%, 30% { opacity: 0; } 42%, 100% { opacity: 1; } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-cl-line1 { animation: hd-cl-line1 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-cl-line2 { animation: hd-cl-line2 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-cl-dot1  { animation: hd-cl-dot1 2.4s steps(1) infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-cl-dot2  { animation: hd-cl-dot2 2.4s steps(1) infinite; }
+
+	/* Kebab — the dots do the wave */
+	@keyframes hd-kb { 0%, 10%, 40%, 100% { transform: translateY(0); } 22% { transform: translateY(-2.2px); } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-kb1 { animation: hd-kb 2s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-kb2 { animation: hd-kb 2s ease-in-out .15s infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-kb3 { animation: hd-kb 2s ease-in-out .3s infinite; }
+
+	/* Wrench — two ratchet turns on the bolt */
+	@keyframes hd-wrench {
+		0%, 12%  { transform: rotate(0deg); }
+		30%      { transform: rotate(-24deg); }
+		45%      { transform: rotate(2deg); }
+		60%      { transform: rotate(-24deg); }
+		78%,100% { transform: rotate(0deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-wrench { transform-origin: 17px 7px; animation: hd-wrench 2.4s ease-in-out infinite; }
+
+	/* Sliders — the knobs seek their new mix */
+	@keyframes hd-sl1 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(-5px); } 60% { transform: translateY(-5px); } 88%, 100% { transform: translateY(0); } }
+	@keyframes hd-sl2 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(6px); } 60% { transform: translateY(6px); } 88%, 100% { transform: translateY(0); } }
+	@keyframes hd-sl3 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(-3.5px); } 60% { transform: translateY(-3.5px); } 88%, 100% { transform: translateY(0); } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-sl1 { animation: hd-sl1 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-sl2 { animation: hd-sl2 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-sl3 { animation: hd-sl3 2.4s ease-in-out infinite; }
+
 	/* ---- "Still to redo" inventory: dense, static, just the icons as they are ---- */
 	.inv-group { margin-top: 26px; }
 	.inv-group > h4 {
@@ -1613,6 +1864,333 @@
 					<span class="git-btn tests"><span>without</span><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" class="st" /><path d="M8.2 11.6 L11 14.4 L16 8.4" pathLength="1" class="green drawable a-tp-check" /><line x1="4.5" y1="17.5" x2="19.5" y2="17.5" pathLength="1" class="green drawable a-tp-bar" /></svg></span>
 					<span class="badge variant">C</span>
 				</div>
+			</div>
+
+		</div>
+	</section>
+
+	<section id="header-icons">
+		<div class="section-title">Top header row — animated</div>
+		<p class="section-sub">The approved redesigned defaults from the candidates batch, now with hover animations. Each icon acts out its own operation — hover a card (or hit Play all).</p>
+		<div class="grid">
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M14.5 5.5 8 12l6.5 6.5" class="st a-hd-back" />
+						<path d="M14.5 5.5 8 12l6.5 6.5" class="st a-hd-back-ghost" opacity="0" />
+					</svg>
+				</div>
+				<h3>Back</h3>
+				<p class="desc">Navigation history — one step back.</p>
+				<p class="anim-note">The chevron lunges left; a ghost echo trails off in the travel direction.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">01</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M9.5 5.5 16 12l-6.5 6.5" class="st a-hd-fwd" />
+						<path d="M9.5 5.5 16 12l-6.5 6.5" class="st a-hd-fwd-ghost" opacity="0" />
+					</svg>
+				</div>
+				<h3>Forward</h3>
+				<p class="desc">Navigation history — one step forward.</p>
+				<p class="anim-note">Mirror of Back: lunge right, echo follows.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">02</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="4.5" width="18" height="15" rx="3" class="st" />
+						<path d="m7.5 9.5 3 2.5-3 2.5" pathLength="1" class="st drawable a-hd-home-prompt" />
+						<path d="M12.5 14.5H16" class="st a-hd-home-cursor" />
+					</svg>
+				</div>
+				<h3>Home breadcrumb</h3>
+				<p class="desc">Takes you back to the dashboard — the app's home prompt.</p>
+				<p class="anim-note">The prompt chevron types itself, then the cursor blinks, waiting.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">03</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="m7 9.5 5 5 5-5" class="st a-hd-dd" />
+						<path d="m7 9.5 5 5 5-5" class="st a-hd-dd-ghost" opacity="0" />
+					</svg>
+				</div>
+				<h3>Project dropdown</h3>
+				<p class="desc">Opens the project switcher next to the breadcrumb.</p>
+				<p class="anim-note">The chevron dips down and a ghost drips after it — "there's a list under here".</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">04</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M5.5 9.5H16v5.5a4 4 0 0 1-4 4H9.5a4 4 0 0 1-4-4z" class="st" />
+						<path d="M16 10.5h1.25a2.5 2.5 0 0 1 0 5H16" class="st" />
+						<path d="M9 6.5c0-1 .7-1 .7-2" class="st a-hd-steam1" />
+						<path d="M12.6 6.5c0-1 .7-1 .7-2" class="st a-hd-steam2" />
+					</svg>
+				</div>
+				<h3>No Sleep (coffee)</h3>
+				<p class="desc">Keep-awake toggle, idle state — the machine may doze off.</p>
+				<p class="anim-note">Fresh steam curls rise off the cup, one after the other.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">05</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="6.5" y="11" width="11" height="8.5" rx="2" class="st" />
+						<path d="M9.5 11V8.5a2.5 2.5 0 0 1 5 0V11" class="st a-hd-shackle" />
+						<path d="M12 14.2v1.8" class="st a-hd-keyhole" />
+					</svg>
+				</div>
+				<h3>No Sleep (locked)</h3>
+				<p class="desc">Keep-awake engaged — sleep is locked out.</p>
+				<p class="anim-note">Sleep tugs at the shackle; it snaps shut and the keyhole blinks "no".</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">06</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M14.5 3 6.5 12.5H12L10.5 21l8-9.5H13z" class="st a-hd-bolt" />
+						<path d="m3.5 14 2.8 2.8-2.8 2.7" class="st a-hd-qs-prompt" />
+					</svg>
+				</div>
+				<h3>Quick Shell</h3>
+				<p class="desc">Instant scratch terminal, no task attached.</p>
+				<p class="anim-note">The bolt double-flashes like a loose contact; the little prompt nudges forward.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">07</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2.5" y="4" width="19" height="16" rx="2.5" class="st" />
+						<path d="M2.5 8h19" class="st" />
+						<circle cx="5.4" cy="6" r=".55" fill="currentColor" stroke="none" class="a-hd-ptd1" />
+						<circle cx="7.6" cy="6" r=".55" fill="currentColor" stroke="none" class="a-hd-ptd2" />
+						<path d="m6.5 11.5 2.5 2.25L6.5 16" pathLength="1" class="st drawable a-hd-pt-prompt" />
+						<path d="M12 16h4.5" class="st a-hd-pt-cursor" />
+					</svg>
+				</div>
+				<h3>Project Terminal</h3>
+				<p class="desc">Full terminal window scoped to the project root.</p>
+				<p class="anim-note">Title-bar dots pulse in order, the prompt types, the cursor blinks.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">08</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24" class="st a-hd-cloud-bob" />
+						<g class="a-hd-pull-arrow">
+							<path d="M12 12v9" class="st" />
+							<path d="m8 17 4 4 4-4" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Pull</h3>
+				<p class="desc">git pull — fetch the latest from origin.</p>
+				<p class="anim-note">The arrow drops out of the cloud, delivering fresh commits; the cloud bobs.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">09</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-hd-spin">
+							<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" class="st" />
+							<path d="M21 3v5h-5" class="st" />
+							<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" class="st" />
+							<path d="M3 21v-5h5" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Pull refresh</h3>
+				<p class="desc">Pull in progress — the working state of the same button.</p>
+				<p class="anim-note">One full confident revolution, then it settles.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">10</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="m4.5 12.5 5 5L19.5 7" pathLength="1" class="green drawable a-hd-check" />
+					</svg>
+				</div>
+				<h3>Pull success</h3>
+				<p class="desc">Pull finished clean — shown briefly on the button.</p>
+				<p class="anim-note">The check draws itself, left to right.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">11</kbd></div>
+			</div>
+
+			<div class="card hoverable danger-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-hd-quake">
+							<path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z" class="st" />
+							<g class="a-hd-bang">
+								<path d="M12 9v4" class="st" />
+								<path d="M12 17h.01" class="st" />
+							</g>
+						</g>
+					</svg>
+				</div>
+				<h3>Pull alert</h3>
+				<p class="desc">Pull hit a conflict or error — needs a human.</p>
+				<p class="anim-note">The triangle quakes and the exclamation blinks urgently.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">12</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="3" width="5" height="5" rx="1" class="st" />
+						<rect x="16" y="3" width="5" height="5" rx="1" class="st" />
+						<rect x="3" y="16" width="5" height="5" rx="1" class="st" />
+						<path d="M12 7v3a2 2 0 0 1-2 2H7" class="st a-hd-qr1" />
+						<path d="M21 16h-3a2 2 0 0 0-2 2v3" class="st a-hd-qr2" />
+						<g class="a-hd-qr3"><path d="M3 12h.01" class="st" /><path d="M12 3h.01" class="st" /></g>
+						<g class="a-hd-qr4"><path d="M12 16v.01" class="st" /><path d="M16 12h1" class="st" /></g>
+						<g class="a-hd-qr5"><path d="M21 21v.01" class="st" /><path d="M21 12v.01" class="st" /><path d="M12 21v-1" class="st" /></g>
+					</svg>
+				</div>
+				<h3>Remote / QR</h3>
+				<p class="desc">Remote access — scan the QR to open the app from a phone.</p>
+				<p class="anim-note">The inner marks flicker in sequence, like a scanner sweeping the code.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">13</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M3.34 19a10 10 0 1 1 17.32 0" class="st" />
+						<path d="m12 14 4-4" class="st a-hd-needle" />
+					</svg>
+				</div>
+				<h3>Productivity stats</h3>
+				<p class="desc">Opens the productivity dashboard.</p>
+				<p class="anim-note">The needle revs to the redline, wavers, and falls back to idle.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">14</kbd></div>
+			</div>
+
+			<div class="card hoverable neutral-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="currentColor">
+						<path class="a-hd-gh" d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/>
+					</svg>
+				</div>
+				<h3>GitHub</h3>
+				<p class="desc">Opens the repo on GitHub. Brand mark — shape untouched.</p>
+				<p class="anim-note">The octocat takes a polite little bow. That's all a brand is allowed.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">15</kbd></div>
+			</div>
+
+			<div class="card hoverable danger-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-hd-bug-body">
+							<path d="m8 2 1.88 1.88" class="st a-hd-ant-l" />
+							<path d="M14.12 3.88 16 2" class="st a-hd-ant-r" />
+							<path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" class="st" />
+							<path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" class="st" />
+							<path d="M12 20v-9" class="st" />
+							<path d="M6.53 9C4.6 8.8 3 7.1 3 5" class="st" />
+							<path d="M6 13H2" class="st" />
+							<path d="M3 21c0-2.1 1.7-3.9 3.8-4" class="st" />
+							<path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" class="st" />
+							<path d="M22 13h-4" class="st" />
+							<path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Report a bug</h3>
+				<p class="desc">Opens the bug-report flow.</p>
+				<p class="anim-note">The bug wiggles and its antennae twitch — alive, and about to be caught.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">16</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="8" y="2" width="8" height="4" rx="1" class="st" />
+						<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" class="st" />
+						<path d="M12 11h4" pathLength="1" class="st drawable a-hd-cl-line1" />
+						<path d="M12 16h4" pathLength="1" class="st drawable a-hd-cl-line2" />
+						<path d="M8 11h.01" class="st a-hd-cl-dot1" />
+						<path d="M8 16h.01" class="st a-hd-cl-dot2" />
+					</svg>
+				</div>
+				<h3>Changelog</h3>
+				<p class="desc">What's new — the release notes list.</p>
+				<p class="anim-note">New entries write themselves onto the clipboard, bullet first, then the line.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">17</kbd></div>
+			</div>
+
+			<div class="card hoverable neutral-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+						<circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" class="a-hd-kb1" />
+						<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" class="a-hd-kb2" />
+						<circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" class="a-hd-kb3" />
+					</svg>
+				</div>
+				<h3>Overflow kebab</h3>
+				<p class="desc">Collapsed header actions when the row runs out of room.</p>
+				<p class="anim-note">The dots do the wave — top to bottom.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">18</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" class="st a-hd-wrench" />
+					</svg>
+				</div>
+				<h3>Project settings</h3>
+				<p class="desc">Per-project settings — scripts, ports, branches.</p>
+				<p class="anim-note">The wrench gives the bolt two ratchet turns.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">19</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M6 4v16" class="st" />
+						<path d="M12 4v16" class="st" />
+						<path d="M18 4v16" class="st" />
+						<circle cx="6" cy="15.5" r="2" fill="currentColor" stroke="none" class="a-hd-sl1" />
+						<circle cx="12" cy="8" r="2" fill="currentColor" stroke="none" class="a-hd-sl2" />
+						<circle cx="18" cy="13" r="2" fill="currentColor" stroke="none" class="a-hd-sl3" />
+					</svg>
+				</div>
+				<h3>Global settings</h3>
+				<p class="desc">App-wide preferences — the mixing desk.</p>
+				<p class="anim-note">The knobs slide to a new mix and settle back.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">20</kbd></div>
+			</div>
+
+			<div class="card hoverable new-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24" class="st a-hd-cloud-bob" />
+						<g class="a-hd-up-arrow">
+							<path d="M12 21v-8" class="st" />
+							<path d="m8 17 4-4 4 4" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Update ready</h3>
+				<p class="desc">A new app version is downloaded and ready to install.</p>
+				<p class="anim-note">The arrow launches up into the cloud — upgrade waiting for lift-off.</p>
+				<div class="meta"><span class="badge header">Header</span><kbd class="chip">21</kbd></div>
 			</div>
 
 		</div>
