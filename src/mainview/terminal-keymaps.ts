@@ -33,10 +33,13 @@ export const TERMINAL_KEYMAPS: Record<TerminalKeymapPreset, KeyBinding[]> = {
 export const KEYMAP_LS_KEY = "dev3-terminal-keymap";
 export const KEYMAP_CHANGED_EVENT = "dev3-terminal-keymap-changed";
 
-/** Normalizes legacy preset values saved before the simplified two-option model. */
+/** Resolves the stored preset. iTerm2 hotkeys ship on by default, so a value
+ *  that was never chosen (null) resolves to "iterm2". Any explicitly-stored
+ *  value is honored: "iterm2" stays iterm2, while "default" and legacy preset
+ *  names (e.g. "tmux-native", "dev3") mean the plain no-app-shortcuts baseline. */
 function normalize(raw: string | null): TerminalKeymapPreset {
-	if (raw === "iterm2") return "iterm2";
-	return "default";
+	if (raw === null) return "iterm2";
+	return raw === "iterm2" ? "iterm2" : "default";
 }
 
 export function getKeymapPreset(): TerminalKeymapPreset {

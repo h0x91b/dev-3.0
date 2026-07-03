@@ -67,6 +67,22 @@ describe("saveSettings", () => {
 		expect((await loadSettings()).importShellEnv).toBeUndefined();
 	});
 
+	it("defaults terminalKeymap to iTerm2 (undefined) and preserves an explicit opt-out", async () => {
+		// No file → undefined means "iTerm2 on" (the renderer treats a missing
+		// preset as the iterm2 default).
+		expect((await loadSettings()).terminalKeymap).toBeUndefined();
+
+		// Explicit "default" is a real opt-out and must survive a round-trip —
+		// collapsing it to undefined would silently re-enable the hotkeys.
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ terminalKeymap: "default" }), null, 2), "utf-8");
+		expect((await loadSettings()).terminalKeymap).toBe("default");
+		expect(loadSettingsSync().terminalKeymap).toBe("default");
+
+		// Explicit "iterm2" is preserved as well.
+		writeFileSync(settingsPath, JSON.stringify(makeSettings({ terminalKeymap: "iterm2" }), null, 2), "utf-8");
+		expect((await loadSettings()).terminalKeymap).toBe("iterm2");
+	});
+
 	it("reads tipsDisabled back from disk (async + sync)", async () => {
 		// User toggled "Disable feature tips" → the flag lives in settings.json.
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ tipsDisabled: true }), null, 2), "utf-8");

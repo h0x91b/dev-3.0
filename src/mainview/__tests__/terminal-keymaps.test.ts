@@ -11,13 +11,18 @@ beforeEach(() => {
 });
 
 describe("getKeymapPreset", () => {
-	it("returns 'default' when nothing is stored", () => {
-		expect(getKeymapPreset()).toBe("default");
+	it("returns 'iterm2' when nothing is stored (iTerm2 is the default)", () => {
+		expect(getKeymapPreset()).toBe("iterm2");
 	});
 
 	it("returns 'iterm2' when iterm2 is stored", () => {
 		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
 		expect(getKeymapPreset()).toBe("iterm2");
+	});
+
+	it("returns 'default' when 'default' is explicitly stored (opt-out)", () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "default");
+		expect(getKeymapPreset()).toBe("default");
 	});
 
 	it("normalizes legacy 'dev3' value to 'default'", () => {

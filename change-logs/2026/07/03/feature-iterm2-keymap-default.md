@@ -1,0 +1,1 @@
+iTerm2 terminal hotkeys (⌘D/⌘⇧D split, ⌘W close pane, ⌘T new window, ⌘[/⌘] navigate) now ship on by default instead of being opt-in. Anyone who explicitly picked the plain "Default" keymap keeps it, and the opt-out now survives a settings round-trip.
