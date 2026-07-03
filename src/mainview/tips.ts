@@ -1117,14 +1117,6 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal"],
 	},
-	{
-		id: "tmux-icon-animations",
-		titleKey: "tip.tmuxIconAnimations.title",
-		bodyKey: "tip.tmuxIconAnimations.body",
-		icon: "\u{F0645}", // nf-md-view_split_vertical
-		score: 2,
-		contexts: ["terminal"],
-	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
