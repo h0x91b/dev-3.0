@@ -1,0 +1,1 @@
+`dev3 config show` now reports an accurate source for every setting — local, repo, project, default, or unset — instead of collapsing project-object values, defaults, and truly-unset keys into a misleading "global". Object-valued fields like builtinColumnAgents render as a readable summary rather than "[object Object]".

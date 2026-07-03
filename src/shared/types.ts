@@ -592,6 +592,19 @@ export interface ConfigSourceEntry {
 	source: ConfigSource;
 }
 
+/**
+ * Full provenance of a resolved config field, for `dev3 config show`.
+ * Wider than ConfigSource (repo/local, used for the UI badge): it attributes
+ * EVERY key to exactly one origin so the CLI never falls back to a blanket
+ * label that hides where a value actually came from.
+ *   local   → .dev3/config.local.json
+ *   repo    → .dev3/config.json
+ *   project → projects.json Project object (Project Settings → Project tab)
+ *   default → built-in DEFAULTS or a derived value (e.g. defaultCompareRef)
+ *   unset   → no value at any layer (rendered "(not set)")
+ */
+export type ResolvedConfigSource = "local" | "repo" | "project" | "default" | "unset";
+
 export interface ProjectSettingsUpdate extends Dev3RepoConfig {
 	githubAuthHost?: string | null;
 	githubAuthLogin?: string | null;

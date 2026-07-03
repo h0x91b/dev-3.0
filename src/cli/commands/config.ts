@@ -3,6 +3,27 @@ import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { resolveProjectId, type CliContext } from "../context";
 
+/**
+ * Render a resolved config value for the `dev3 config show` table. Handles every
+ * shape a config field can take so nothing prints as an opaque "[object Object]":
+ * arrays → comma list, empty → "(empty)", objects → a readable summary (e.g. the
+ * builtin column-agent map as a count), null/undefined → "(not set)".
+ */
+function formatConfigValue(field: string, value: unknown): string {
+	if (Array.isArray(value)) return value.join(", ") || "(empty)";
+	if (typeof value === "boolean") return String(value);
+	if (typeof value === "number") return String(value);
+	if (typeof value === "string") return value || "(empty)";
+	if (value !== null && typeof value === "object") {
+		const keys = Object.keys(value as Record<string, unknown>);
+		if (field === "builtinColumnAgents") {
+			return keys.length === 1 ? "1 column" : `${keys.length} columns`;
+		}
+		return JSON.stringify(value);
+	}
+	return "(not set)";
+}
+
 export async function handleConfig(
 	subcommand: string | undefined,
 	args: ParsedArgs,
@@ -37,11 +58,10 @@ export async function handleConfig(
 		printTable(
 			["FIELD", "VALUE", "SOURCE"],
 			Object.entries(result.settings).map(([field, value]) => {
-				const display = Array.isArray(value) ? value.join(", ") || "(empty)" :
-					typeof value === "boolean" ? String(value) :
-					typeof value === "string" ? (value || "(empty)") :
-					String(value ?? "(not set)");
-				return [field, display.length > 60 ? display.slice(0, 57) + "..." : display, result.sources[field] || "global"];
+				const display = formatConfigValue(field, value);
+				// The backend sends a source for every key (local/repo/project/default/
+				// unset); "unset" is only a defensive fallback if one is ever missing.
+				return [field, display.length > 60 ? display.slice(0, 57) + "..." : display, result.sources[field] || "unset"];
 			}),
 		);
 		return;
