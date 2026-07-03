@@ -5,6 +5,7 @@ const kanban = {
 	"kanban.cancel": "Отмена",
 	"kanban.newTask": "+ Новая задача",
 	"kanban.failedCreate": "Не удалось создать задачу: {error}",
+	"kanban.createdButFollowUpFailed": "Задача создана, но не удалось применить заголовок/метки: {error}",
 	"kanban.columnAgentFailed": "Не удалось запустить агента для колонки «{columnName}»: {error}",
 	"kanban.taskPreparationFailed": "Не удалось подготовить «{taskTitle}» — задача возвращена в To Do: {error}",
 	"kanban.failedReorderColumns": "Не удалось изменить порядок колонок: {error}",
