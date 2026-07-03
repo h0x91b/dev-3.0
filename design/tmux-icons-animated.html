@@ -745,6 +745,48 @@
 		border: 1px solid rgba(var(--accent) / .4); border-radius: 999px; padding: 2px 9px;
 	}
 	.inv-group.up-next .inv-item { border-color: rgba(var(--accent) / .3); background: rgba(var(--surface-raised) / .85); }
+
+	/* ---- Redesigned-default candidates (static, pre-animation, awaiting approval) ---- */
+	.inv-group.rd-candidates {
+		border: 1px solid rgba(var(--success) / .45);
+		background: rgba(var(--success) / .04);
+		border-radius: 16px; padding: 18px 18px 20px; margin-top: 16px;
+	}
+	.inv-group.rd-candidates > h4 { color: rgb(var(--success)); }
+	.rd-chip {
+		font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+		color: rgb(var(--success)); background: rgba(var(--success) / .15);
+		border: 1px solid rgba(var(--success) / .4); border-radius: 999px; padding: 2px 9px;
+	}
+	.rd-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+	.rd-item {
+		position: relative;
+		display: flex; flex-direction: column; align-items: center; gap: 8px;
+		padding: 16px 8px 10px;
+		background: rgba(var(--surface-raised) / .85);
+		border: 1px solid rgba(var(--success) / .25);
+		border-radius: 12px; text-align: center;
+	}
+	.rd-item .num {
+		position: absolute; top: 6px; left: 8px;
+		font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+		font-size: 10px; font-weight: 700; color: rgb(var(--text-muted));
+	}
+	.rd-pair { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+	.rd-pair .old { color: rgb(var(--text-muted)); opacity: .55; line-height: 1; }
+	.rd-pair .old.nf { font-family: 'JetBrainsMono Nerd Font Mono'; font-size: 18px; }
+	.rd-pair .old svg { width: 18px; height: 18px; display: block; }
+	.rd-pair .arr { color: rgb(var(--text-muted)); font-size: 11px; }
+	.rd-pair .new { color: rgb(var(--text-primary)); line-height: 1; }
+	.rd-pair .new svg { width: 30px; height: 30px; display: block; }
+	.rd-item .lbl { font-size: 11px; color: rgb(var(--text-secondary)); line-height: 1.25; }
+	.rd-item .tag {
+		font-size: 9.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+		border-radius: 999px; padding: 1px 7px;
+	}
+	.rd-item .tag.metaphor { color: #fbbf24; background: rgba(251 191 36 / .12); border: 1px solid rgba(251 191 36 / .3); }
+	.rd-item .tag.style { color: rgb(var(--accent)); background: rgba(var(--accent) / .1); border: 1px solid rgba(var(--accent) / .25); }
+	.rd-item .tag.keep { color: rgb(var(--text-muted)); background: rgba(var(--surface-elevated)); border: 1px solid rgb(var(--border-default)); }
 </style>
 </head>
 <body>
@@ -1609,6 +1651,97 @@
 				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></span><span class="lbl">Project settings (wrench)</span><span class="cp">SVG</span></div>
 				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></span><span class="lbl">Global settings (sliders)</span><span class="cp">SVG</span></div>
 				<div class="inv-item"><span class="ico nf">&#xF0A39;</span><span class="lbl">Update ready ·pulse</span><span class="cp">F0A39</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group rd-candidates" id="rd-candidates">
+			<h4><span class="rd-chip">Candidates</span> Redesigned defaults — top header row <span class="count">21</span></h4>
+			<p class="inv-legend">Static redraws in the new stroke style, <b>before</b> any animation. Old on the left → candidate on the right. Tags: <b style="color:#fbbf24">metaphor</b> = pictogram itself changed · <b style="color:rgb(var(--accent))">style</b> = same idea, redrawn · <b>keep</b> = deliberately unchanged.</p>
+			<div class="rd-grid">
+				<div class="rd-item"><span class="num">01</span>
+					<span class="rd-pair"><span class="old nf">&#xF0141;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></span></span>
+					<span class="lbl">Back</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">02</span>
+					<span class="rd-pair"><span class="old nf">&#xF0142;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></span></span>
+					<span class="lbl">Forward</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">03</span>
+					<span class="rd-pair"><span class="old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-width="1.5"/></svg></span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M12.5 14.5H16"/></svg></span></span>
+					<span class="lbl">Home breadcrumb</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">04</span>
+					<span class="rd-pair"><span class="old nf">&#xF0140;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 9.5 5 5 5-5"/></svg></span></span>
+					<span class="lbl">Project dropdown</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">05</span>
+					<span class="rd-pair"><span class="old nf">&#xEC15;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 9.5H16v5.5a4 4 0 0 1-4 4H9.5a4 4 0 0 1-4-4z"/><path d="M16 10.5h1.25a2.5 2.5 0 0 1 0 5H16"/><path d="M9 6.5c0-1 .7-1 .7-2"/><path d="M12.6 6.5c0-1 .7-1 .7-2"/></svg></span></span>
+					<span class="lbl">No Sleep (coffee)</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">06</span>
+					<span class="rd-pair"><span class="old nf">&#xF033E;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="11" width="11" height="8.5" rx="2"/><path d="M9.5 11V8.5a2.5 2.5 0 0 1 5 0V11"/><path d="M12 14.2v1.8"/></svg></span></span>
+					<span class="lbl">No Sleep (locked)</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">07</span>
+					<span class="rd-pair"><span class="old nf">&#xF018D;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 3 6.5 12.5H12L10.5 21l8-9.5H13z"/><path d="m3.5 14 2.8 2.8-2.8 2.7"/></svg></span></span>
+					<span class="lbl">Quick Shell — bolt + prompt</span><span class="tag metaphor">metaphor</span>
+				</div>
+				<div class="rd-item"><span class="num">08</span>
+					<span class="rd-pair"><span class="old nf">&#xF489;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M2.5 8h19"/><circle cx="5.4" cy="6" r=".55" fill="currentColor" stroke="none"/><circle cx="7.6" cy="6" r=".55" fill="currentColor" stroke="none"/><path d="m6.5 11.5 2.5 2.25L6.5 16"/><path d="M12 16h4.5"/></svg></span></span>
+					<span class="lbl">Project Terminal — window w/ title bar</span><span class="tag metaphor">metaphor</span>
+				</div>
+				<div class="rd-item"><span class="num">09</span>
+					<span class="rd-pair"><span class="old nf">&#xF0164;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg></span></span>
+					<span class="lbl">Pull — cloud + down arrow</span><span class="tag metaphor">metaphor</span>
+				</div>
+				<div class="rd-item"><span class="num">10</span>
+					<span class="rd-pair"><span class="old nf">&#xF0450;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg></span></span>
+					<span class="lbl">Pull refresh</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">11</span>
+					<span class="rd-pair"><span class="old nf">&#xF0E1E;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5L19.5 7"/></svg></span></span>
+					<span class="lbl">Pull success</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">12</span>
+					<span class="rd-pair"><span class="old nf">&#xF0027;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></span></span>
+					<span class="lbl">Pull alert — triangle</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">13</span>
+					<span class="rd-pair"><span class="old nf">&#xF0433;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg></span></span>
+					<span class="lbl">Remote / QR — lighter</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">14</span>
+					<span class="rd-pair"><span class="old nf">&#xF04C5;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></span></span>
+					<span class="lbl">Productivity stats — gauge</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">15</span>
+					<span class="rd-pair"><span class="old"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg></span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg></span></span>
+					<span class="lbl">GitHub — brand mark</span><span class="tag keep">keep</span>
+				</div>
+				<div class="rd-item"><span class="num">16</span>
+					<span class="rd-pair"><span class="old nf">&#xF188;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg></span></span>
+					<span class="lbl">Report a bug — outline</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">17</span>
+					<span class="rd-pair"><span class="old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg></span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg></span></span>
+					<span class="lbl">Changelog — clipboard list</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">18</span>
+					<span class="rd-pair"><span class="old nf">&#xF01D9;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none"/></svg></span></span>
+					<span class="lbl">Overflow kebab</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">19</span>
+					<span class="rd-pair"><span class="old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span></span>
+					<span class="lbl">Project settings — wrench</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">20</span>
+					<span class="rd-pair"><span class="old"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4v9.5"/><circle cx="6" cy="15.5" r="2"/><path d="M6 17.5V20"/><path d="M12 4v2"/><circle cx="12" cy="8" r="2"/><path d="M12 10v10"/><path d="M18 4v7"/><circle cx="18" cy="13" r="2"/><path d="M18 15v5"/></svg></span></span>
+					<span class="lbl">Global settings — sliders w/ knobs</span><span class="tag style">style</span>
+				</div>
+				<div class="rd-item"><span class="num">21</span>
+					<span class="rd-pair"><span class="old nf">&#xF0A39;</span><span class="arr">→</span><span class="new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.24"/><path d="M12 21v-8"/><path d="m8 17 4-4 4 4"/></svg></span></span>
+					<span class="lbl">Update ready — cloud + up (upgrade)</span><span class="tag metaphor">metaphor</span>
+				</div>
 			</div>
 		</div>
 
