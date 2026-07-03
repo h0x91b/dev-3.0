@@ -272,6 +272,8 @@ const tips = {
 	"tip.mobileComposer.body": "На телефоне пишите промпты в поле над рядом клавиш — «Отправить» вставит их в терминал с Enter.",
 	"tip.closePanePicker.title": "Выберите панель для закрытия",
 	"tip.closePanePicker.body": "Нажмите «Закрыть панель», наведите на нужный сплит — он станет красным — и кликните, чтобы закрыть именно его.",
+	"tip.closePaneEof.title": "Быстро закрыть панель",
+	"tip.closePaneEof.body": "Нажмите Ctrl+D в терминальной панели — shell выйдет, и панель закроется мгновенно.",
 };
 
 export default tips;

@@ -1,0 +1,1 @@
+Surface how to close a terminal pane in the hotkeys reference: the "i" tmux hints popover and the ⌘/ Keyboard Shortcuts overlay now list Ctrl+D (exit shell → close pane) alongside the existing ⌃B x. Added a matching "Did you know?" tip. Cmd+W already closes a pane in iTerm2 keyboard mode (shown under the popover's Keyboard Mode toggle).

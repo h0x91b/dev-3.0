@@ -72,6 +72,7 @@ const terminal = {
 	"tmux.layoutMenuTitle": "Раскладки tmux",
 	"tmux.chooseLayout": "Выбрать раскладку tmux",
 	"tmux.closePaneDesc": "Закрыть панель",
+	"tmux.closePaneEofDesc": "Закрыть панель (выход из shell)",
 	"tmux.pickPaneHint": "Нажмите на панель, чтобы закрыть её",
 	"tmux.pickPaneCancel": "Esc — отмена",
 	"tmux.pickPaneClose": "Закрыть",
