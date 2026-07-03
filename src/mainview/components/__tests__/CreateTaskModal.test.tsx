@@ -10,6 +10,7 @@ vi.mock("../../rpc", () => ({
 	api: {
 	request: {
 			createTask: vi.fn(),
+			renameTask: vi.fn(),
 			listBranches: vi.fn(),
 			fetchBranches: vi.fn(),
 			setTaskLabels: vi.fn(),
@@ -925,6 +926,157 @@ describe("CreateTaskModal labels", () => {
 				labelIds: ["lbl-bug"],
 			});
 		});
+	});
+});
+
+// ================================================================
+// Partial create failure — invisible task / duplicate on retry
+// ================================================================
+//
+// Repro for the bug: createTask succeeds (task persisted on disk in "todo",
+// which pushes NO taskUpdated), then a follow-up (renameTask / setTaskLabels)
+// throws. The old flow only dispatched addTask AFTER all follow-ups succeeded,
+// so on a follow-up failure the task existed on disk but never entered the
+// board state and the modal stayed open — inviting a duplicate on retry.
+describe("CreateTaskModal — partial create failure", () => {
+	const labeledProject: Project = {
+		...mockProject,
+		labels: [
+			{ id: "lbl-bug", name: "Bug", color: "#ef4444" },
+			{ id: "lbl-feat", name: "Feature", color: "#84cc16" },
+		],
+	};
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.renameTask.mockResolvedValue(mockTask);
+		mockedApi.request.setTaskLabels.mockResolvedValue(mockTask);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+		mockedApi.request.listAgentSkills.mockResolvedValue([]);
+	});
+
+	it("still shows the created task when setTaskLabels fails (no invisible orphan)", async () => {
+		mockedApi.request.setTaskLabels.mockRejectedValue(new Error("timeout"));
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		renderModal({ dispatch, onClose, project: labeledProject });
+
+		// Select an existing label so the failing setTaskLabels call is reached.
+		await userEvent.click(screen.getByTitle("+ Add Label"));
+		await userEvent.type(screen.getByPlaceholderText("Label name"), "bug{Enter}");
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Do the thing");
+		await userEvent.click(screen.getByText("Save"));
+
+		// The base task must reach the board even though labels could not be applied.
+		await waitFor(() => {
+			expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
+		});
+		// The label failure must not create a second task, and the modal must
+		// close so a retry cannot duplicate the already-created task.
+		expect(mockedApi.request.createTask).toHaveBeenCalledTimes(1);
+		await waitFor(() => {
+			expect(onClose).toHaveBeenCalled();
+		});
+	});
+
+	it("still shows the created task when renameTask fails (no invisible orphan)", async () => {
+		mockedApi.request.renameTask.mockRejectedValue(new Error("timeout"));
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		renderModal({ dispatch, onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Do the thing");
+
+		// Enter title-edit mode and set a custom title so renameTask is reached.
+		await userEvent.click(screen.getByText("Title:"));
+		const titleInput = screen.getAllByRole("textbox").find((el) => el.tagName === "INPUT") as HTMLInputElement;
+		await userEvent.clear(titleInput);
+		await userEvent.type(titleInput, "Custom title{Enter}");
+
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.renameTask).toHaveBeenCalled();
+		});
+		await waitFor(() => {
+			expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
+		});
+		expect(mockedApi.request.createTask).toHaveBeenCalledTimes(1);
+		await waitFor(() => {
+			expect(onClose).toHaveBeenCalled();
+		});
+	});
+
+	it("applies the renamed/labeled task to state when follow-ups succeed", async () => {
+		const renamed: Task = { ...mockTask, title: "Custom title", labelIds: ["lbl-bug"] };
+		mockedApi.request.renameTask.mockResolvedValue({ ...mockTask, title: "Custom title" });
+		mockedApi.request.setTaskLabels.mockResolvedValue(renamed);
+		const dispatch = vi.fn();
+		const onClose = vi.fn();
+		renderModal({ dispatch, onClose, project: labeledProject });
+
+		await userEvent.click(screen.getByTitle("+ Add Label"));
+		await userEvent.type(screen.getByPlaceholderText("Label name"), "bug{Enter}");
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Do the thing");
+		await userEvent.click(screen.getByText("Title:"));
+		const titleInput = screen.getAllByRole("textbox").find((el) => el.tagName === "INPUT") as HTMLInputElement;
+		await userEvent.clear(titleInput);
+		await userEvent.type(titleInput, "Custom title{Enter}");
+
+		await userEvent.click(screen.getByText("Save"));
+
+		// Base task appears immediately, then the fully-updated task replaces it.
+		await waitFor(() => {
+			expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
+		});
+		await waitFor(() => {
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: renamed });
+		});
+		await waitFor(() => {
+			expect(onClose).toHaveBeenCalled();
+		});
+	});
+
+	// ---- Backward compatibility guards ----
+
+	it("keeps the createTask request payload shape unchanged (no new required keys)", async () => {
+		const onClose = vi.fn();
+		renderModal({ onClose });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Plain task");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledTimes(1);
+		});
+		// Exactly the original keys — the fix must not add required request fields.
+		const payload = mockedApi.request.createTask.mock.calls[0][0];
+		expect(Object.keys(payload).sort()).toEqual(["description", "projectId"]);
+	});
+
+	it("dispatches the backend task object verbatim (no client-added fields)", async () => {
+		const dispatch = vi.fn();
+		renderModal({ dispatch });
+
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		await userEvent.type(textarea, "Plain task");
+		await userEvent.click(screen.getByText("Save"));
+
+		await waitFor(() => {
+			expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
+		});
+		// The dispatched task must be the exact object returned by createTask —
+		// the fixed flow does not mutate it or graft on new fields, so an older
+		// data layer parsing this task sees no unexpected shape.
+		const addCall = dispatch.mock.calls.find((c) => c[0]?.type === "addTask");
+		expect(addCall?.[0].task).toBe(mockTask);
 	});
 });
 

@@ -206,7 +206,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 		if (creating) return;
 		setCreating(true);
 		try {
-			let task = await api.request.createTask({
+			const created = await api.request.createTask({
 				projectId: project.id,
 				// For scratch tasks the backend generates its own placeholder description —
 				// we still send an empty string here to match the RPC shape.
@@ -215,21 +215,38 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 				...(branch ? { existingBranch: branch } : {}),
 				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
 			});
-			if (customTitle) {
-				task = await api.request.renameTask({
-					taskId: task.id,
-					projectId: project.id,
-					customTitle,
-				});
+			// The task is now persisted on disk. Make it visible on the board
+			// IMMEDIATELY — a task created into "todo" pushes no taskUpdated, so
+			// if a follow-up (renameTask/setTaskLabels) fails, deferring the
+			// dispatch would leave an invisible orphan and tempt a duplicate on
+			// retry. Title/labels are non-fatal follow-ups on the created task.
+			dispatch({ type: "addTask", task: created });
+			let task = created;
+			let followUpError: unknown = null;
+			try {
+				if (customTitle) {
+					task = await api.request.renameTask({
+						taskId: created.id,
+						projectId: project.id,
+						customTitle,
+					});
+				}
+				if (selectedLabelIds.length > 0) {
+					task = await api.request.setTaskLabels({
+						taskId: created.id,
+						projectId: project.id,
+						labelIds: selectedLabelIds,
+					});
+				}
+				if (task !== created) {
+					dispatch({ type: "updateTask", task });
+				}
+			} catch (followUpErr) {
+				followUpError = followUpErr;
 			}
-			if (selectedLabelIds.length > 0) {
-				task = await api.request.setTaskLabels({
-					taskId: task.id,
-					projectId: project.id,
-					labelIds: selectedLabelIds,
-				});
+			if (followUpError) {
+				toast.error(t("kanban.createdButFollowUpFailed", { error: String(followUpError) }));
 			}
-			dispatch({ type: "addTask", task });
 			trackEvent("task_created", {
 				project_id: project.id,
 				...(mode === "run" ? { source: "create_and_run" } : {}),

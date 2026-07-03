@@ -5,6 +5,7 @@ const kanban = {
 	"kanban.cancel": "Cancelar",
 	"kanban.newTask": "+ Nueva tarea",
 	"kanban.failedCreate": "Error al crear tarea: {error}",
+	"kanban.createdButFollowUpFailed": "Tarea creada, pero no se pudieron aplicar el título/las etiquetas: {error}",
 	"kanban.columnAgentFailed": "No se pudo iniciar el agente de la columna \"{columnName}\": {error}",
 	"kanban.taskPreparationFailed": "No se pudo preparar \"{taskTitle}\" — devuelta a Por hacer: {error}",
 	"kanban.failedReorderColumns": "No se pudo reordenar las columnas: {error}",
