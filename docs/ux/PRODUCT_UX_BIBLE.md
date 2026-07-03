@@ -159,7 +159,7 @@ toolbar/header button (toolbar-button-creep) and never a navigation destination 
 ≠ a place). The same `keymap.ts` data renders the README table and the website
 (`docs/index.html`) section. Adding a new app-level shortcut **must** add a `keymap.ts` entry.
 
-See `UX_DECISIONS.md` (2026-06-19) and `feature-plans/keyboard-shortcuts-registry.md`.
+See `UX_DECISIONS.md` (2026-06-19).
 
 ### 5.3 Diff review viewer — `Observed`
 
@@ -275,7 +275,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 
 ## 12. Narrow-viewport (mobile) doctrine — board `Observed`, rest `Proposed`
 
-The app's secondary form factor is a **phone reached over `dev3 remote`** (any sub-768px viewport: a phone browser, a narrowed desktop browser window, or a hypothetical Electrobun-mobile build). The desktop UI is dense, wide, and keyboard-first; it must **degrade to a touch-first, one-thing-at-a-time form** on narrow screens — without becoming a second app. This section is the canonical ruleset; the Kanban board carousel (Ittai Zeidman's idea) is the **reference implementation** the rest generalises from. Full plans: `feature-plans/mobile-carousel-navigation.md`, `feature-plans/narrow-viewport-doctrine.md`.
+The app's secondary form factor is a **phone reached over `dev3 remote`** (any sub-768px viewport: a phone browser, a narrowed desktop browser window, or a hypothetical Electrobun-mobile build). The desktop UI is dense, wide, and keyboard-first; it must **degrade to a touch-first, one-thing-at-a-time form** on narrow screens — without becoming a second app. This section is the canonical ruleset; the Kanban board carousel (Ittai Zeidman's idea) is the **reference implementation** the rest generalises from. Full plans preserved in git history (removed feature-plans/).
 
 **The one principle:** *On a narrow viewport, show exactly one sibling at a time and move between siblings by swipe + a visible pager.* Columns, tasks-in-a-column, terminal panes, active tasks, settings sections, diff files — all collapse to the same one-at-a-time carousel/stack idiom. This is a **responsive view-mode of existing screens**, never a new destination, nav item, route, or "mobile mode" setting. Layout follows the viewport automatically.
 
@@ -311,7 +311,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Board filters/search | inline `LabelFilterBar` | **bottom sheet** behind a header funnel button | `Proposed` |
 | Terminal panes | tiled tmux panes | **pane carousel** — one zoomed pane + axis-arbitrated horizontal swipe over the terminal, a slim non-overlapping top dots strip, Arrow keys; keep-zoom via `tmuxPaneNavigate` (`MobilePaneCarousel.tsx`) | `Observed` |
 | Terminal windows | tmux windows (workspaces) | **window switcher** — a slim ‹ prev · named dropdown · next › bar ABOVE the pane bar, buttons + dropdown + Arrow-while-focused (no swipe; the terminal swipe is the pane carousel's). Renders only when window count > 1; via `tmuxWindowNavigate` (`MobileWindowCarousel.tsx`) | `Observed` |
-| Terminal text input (touch) | direct typing into the focused terminal | **docked composer** (gate = `!isElectrobun && isTouchDevice`, NOT width — an input-model switch): terminal tap never summons the OSK; an autogrow chat-style composer between the terminal and `ExtraKeyBar` owns text entry (Send = mode-2004-aware paste + Enter; Insert = paste only; expand state for long prompts; terminal tail stays visible); sticky `⌨` **raw** toggle on `ExtraKeyBar` restores direct typing + select-to-copy/TUI mouse; covers Quick Shell too. See `feature-plans/mobile-terminal-composer.md` | `Proposed` |
+| Terminal text input (touch) | direct typing into the focused terminal | **docked composer** (gate = `!isElectrobun && isTouchDevice`, NOT width — an input-model switch): terminal tap never summons the OSK; an autogrow chat-style composer between the terminal and `ExtraKeyBar` owns text entry (Send = mode-2004-aware paste + Enter; Insert = paste only; expand state for long prompts; terminal tail stays visible); sticky `⌨` **raw** toggle on `ExtraKeyBar` restores direct typing + select-to-copy/TUI mouse; covers Quick Shell too. See `UX_DECISIONS.md` (2026-07-02) | `Proposed` |
 | Active tasks | `ActiveTasksSidebar` (split, 240px) | already a stacked **`ActiveTasksStrip`** (horizontal task carousel) in browser mode (`ProjectView` `isBrowserMode`) — formalise as the narrow task carousel; `SplitLayout` is never used <768 | `Observed` (strip) |
 | Task inspector (`TaskInfoPanel`, 2×2 bars) | 2×2 quickbar grid | the 2×2 cannot fit — collapse to **one summary bar + a "task actions" bottom sheet** (the bars' actions become sheet sections); metadata grid already reflows | `Proposed` |
 | Diff viewer | 22rem files-aside + diff stream | **stack/one-at-a-time** — files-aside becomes a bottom-sheet file picker; the diff stream owns the screen (live-content: pager/explicit nav, no full-surface swipe) | `Proposed` |
@@ -364,3 +364,20 @@ The doctrine needs **one** reusable bottom-sheet primitive; none exists today (o
 - Narrow nav: is a persistent bottom tab bar (Dashboard · Board · Task · More) the right touch nav spine, or do the breadcrumb + a touch palette entry suffice? (§12.4)
 - Does the mobile primary action want a FAB, or stay in the (reflowed) header? One per screen either way. (§12.6)
 - Should `useMobile()` become reactive (it is mount-once at 1024) so the viewport-meta decision tracks live resizes, or is mount-once acceptable since device class rarely changes mid-session? (§12.1)
+
+## 14. Glossary
+
+Shared UX vocabulary, specialized for this project (was `UX_GLOSSARY.md`).
+
+- **Destination** — a stable place users navigate to; in dev-3.0 a **screen** in the `Route` union (`dashboard`, `project`, `task`, `settings`, …), not a URL.
+- **Action** — a command that changes state or performs work: primary, object, git, dev-server, lifecycle, configuration, destructive, expert-shortcut.
+- **Surface** — a UI container that owns a class of interaction: global header, application menu (native), Kanban board, task card, task info panel (inspector), modal, popover, context menu, settings, sidebar, toast.
+- **Primary action** — the one main safe action for the current screen/flow. Styled `bg-accent`. Max one visible per screen.
+- **Destructive action** — delete, remove, cancel, reset, hard refresh. Styled `text-danger`/`bg-danger`, requires confirmation, never primary styling.
+- **Configuration** — a durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account). Lives in Global or Project Settings.
+- **Complexity budget** — a project-specific cap on visible controls per surface (e.g. ≤2 inline actions on a task card, ≤4 visible toolbar actions); exists because of dev-3.0's documented toolbar-button-creep history.
+- **Inspector** — the `TaskInfoPanel`: the contextual control surface for the active task (git, dev server, scripts, notes, tmux, open-in). The densest surface in the app.
+- **Variant / Attempt** — multiple parallel agent runs of the same task; each gets its own worktree + terminal, shown via variant dots on the card.
+- **Custom column** — a user-defined Kanban column with a name, color, optional LLM instruction, and optional auto-spawn agent config.
+- **Token** — a semantic CSS custom property (`bg-accent`, `text-fg`, `border-edge`, `--success`…) mapped to Tailwind; components must use tokens, never raw hex — except `STATUS_COLORS`.
+- **Status color** — per-status hex (`STATUS_COLORS` / `STATUS_COLORS_LIGHT`) used inline for column headers, card borders, and dots; the one documented exception to the no-hardcoded-color rule.

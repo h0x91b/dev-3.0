@@ -1,0 +1,170 @@
+ux_architecture:
+  version: 1
+  updated_at: "YYYY-MM-DD"
+  source: "derived_from_repository"
+  confidence: "medium"
+
+  product:
+    name: "TBD"
+    app_type: "web_app"
+    primary_users: []
+    primary_jobs: []
+
+  evidence:
+    audited_paths: []
+    key_files: []
+    ignored_paths:
+      - node_modules
+      - .git
+      - dist
+      - build
+      - .next
+      - coverage
+    limitations: []
+
+  objects: {}
+
+  navigation:
+    global_nav:
+      purpose: "Stable top-level product destinations."
+      allowed: ["destination", "workspace", "major_product_area"]
+      forbidden: ["one_off_action", "filter", "temporary_state", "object_specific_control"]
+      max_top_level_items: 7
+      max_depth: 2
+      status: "proposed"
+      evidence: []
+
+  surfaces:
+    global_nav:
+      purpose: "Stable destinations."
+      allowed: ["destination"]
+      forbidden: ["action", "filter", "temporary_state", "object_specific_control"]
+      evidence: []
+    page_header:
+      purpose: "Page identity, status, and the most important page action."
+      allowed: ["title", "status", "primary_action", "secondary_action"]
+      forbidden: ["dense_filters", "row_actions", "advanced_settings"]
+      visible_budget:
+        max_primary_actions: 1
+        max_secondary_actions: 2
+      evidence: []
+    page_toolbar:
+      purpose: "Frequent page-scoped utilities."
+      allowed: ["search", "filter", "view_mode", "page_action"]
+      forbidden: ["global_destination", "durable_configuration"]
+      visible_budget:
+        max_actions: 3
+        overflow_after: 3
+      evidence: []
+    selection_toolbar:
+      purpose: "Actions on selected objects."
+      allowed: ["bulk_action"]
+      visible_only_when: "selection_count > 0"
+      forbidden: ["global_action", "row_action_without_selection"]
+      evidence: []
+    row_actions:
+      purpose: "Actions on one row object."
+      allowed: ["object_action"]
+      visible_budget:
+        max_actions: 1
+        overflow_after: 1
+      forbidden: ["global_action", "bulk_action"]
+      evidence: []
+    settings:
+      purpose: "Durable configuration, preferences, permissions, and integrations."
+      allowed: ["configuration", "preference", "integration", "permission"]
+      forbidden: ["daily_operational_action"]
+      evidence: []
+    command_palette:
+      purpose: "Expert shortcuts, jumps, and rare known actions."
+      allowed: ["expert_shortcut", "cross_product_jump", "rare_action"]
+      forbidden: ["only_path_to_core_feature"]
+      evidence: []
+
+  action_types:
+    primary_action:
+      definition: "The main safe action for the current screen."
+      placement: ["page_header.primary", "flow_footer.primary"]
+      max_visible_per_screen: 1
+    page_action:
+      definition: "Action that applies to the current page or collection."
+      placement: ["page_toolbar", "page_header.secondary"]
+    object_action:
+      definition: "Action that applies to one object."
+      placement: ["object_header", "row_actions", "inspector"]
+    bulk_action:
+      definition: "Action that applies to selected objects."
+      placement: ["selection_toolbar"]
+      required_state: ["selection"]
+    configuration:
+      definition: "Durable change to product behavior."
+      placement: ["settings", "object_settings"]
+    destructive:
+      definition: "Delete, revoke, reset, disable, irreversible, or security-sensitive action."
+      placement: ["overflow", "danger_zone", "confirmation_dialog"]
+      token_role: "destructive"
+    expert_shortcut:
+      definition: "Rare but known action for expert users."
+      placement: ["command_palette", "overflow"]
+
+  design_tokens:
+    button_roles:
+      primary:
+        component_variant: "TBD"
+        use_for: "One main safe action for the current screen."
+        max_per_screen: 1
+      secondary:
+        component_variant: "TBD"
+        use_for: "Visible supporting action."
+      tertiary:
+        component_variant: "TBD"
+        use_for: "Low-emphasis visible action."
+      destructive:
+        component_variant: "TBD"
+        use_for: "Delete, revoke, reset, disable, irreversible, or security-sensitive action."
+      link:
+        component_variant: "TBD"
+        use_for: "Navigation or inline action."
+
+  complexity_budgets:
+    global_nav:
+      max_top_level_items: 7
+      max_depth: 2
+    page_header:
+      max_primary_actions: 1
+      max_secondary_actions: 2
+    page_toolbar:
+      max_visible_actions: 3
+      overflow_after: 3
+    row_actions:
+      max_visible_actions: 1
+      overflow_after: 1
+    tabs:
+      max_visible_tabs: 6
+
+  placement_rules:
+    - id: "navigation-destinations-only"
+      when:
+        feature_class: "destination"
+      place_in: ["global_nav", "section_nav", "object_subnav"]
+      reject: ["toolbar", "modal", "row_actions"]
+      status: "proposed"
+      rationale: "Navigation should contain places, not commands."
+    - id: "bulk-actions-selection-toolbar"
+      when:
+        feature_class: "bulk_action"
+        scope: "selected_items"
+      place_in: ["selection_toolbar"]
+      reject: ["global_nav", "page_header", "row_actions"]
+      status: "proposed"
+      rationale: "Bulk actions only apply after selection exists."
+
+  anti_patterns:
+    - id: "random-toolbar-button"
+      description: "Adding a new visible button to an already dense toolbar without checking action scope and budget."
+    - id: "settings-in-dashboard"
+      description: "Putting durable configuration controls into operational dashboards."
+    - id: "actions-in-global-nav"
+      description: "Using navigation as a command launcher for one-off actions."
+
+  open_questions: []
