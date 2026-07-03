@@ -26,6 +26,10 @@ import { api } from "../../rpc";
 const mockedApi = vi.mocked(api, true);
 
 // ---- Fixtures ----
+//
+// Realistic shape for the Provider → Model → Mode cascade: presets carry a
+// `model` (so they group) and structured `permissionMode`/`effort` where the
+// agent uses them. Claude spans 3 model groups; Codex spans 2.
 
 const claudeAgent: CodingAgent = {
 	id: "builtin-claude",
@@ -33,9 +37,10 @@ const claudeAgent: CodingAgent = {
 	baseCommand: "claude",
 	isDefault: true,
 	configurations: [
-		{ id: "claude-default", name: "Default", model: "sonnet" },
-		{ id: "claude-plan", name: "Plan (Opus 4.7)" },
-		{ id: "claude-bypass", name: "Bypass (Opus 4.7)" },
+		{ id: "claude-default", name: "Default (Sonnet 5)", model: "claude-sonnet-5" },
+		{ id: "claude-auto-opus", name: "Auto (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "auto", effort: "xhigh" },
+		{ id: "claude-bypass-opus", name: "Bypass (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", effort: "xhigh" },
+		{ id: "claude-bypass-fable", name: "Bypass (Fable 5)", model: "claude-fable-5", permissionMode: "bypassPermissions" },
 	],
 	defaultConfigId: "claude-default",
 };
@@ -46,43 +51,11 @@ const codexAgent: CodingAgent = {
 	baseCommand: "codex",
 	isDefault: true,
 	configurations: [
-		{
-			id: "codex-default",
-			name: "Default (GPT-5.5 Heavy Bypass)",
-			model: "gpt-5.5",
-			additionalArgs: ["--search", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
-		},
-		{
-			id: "codex-plan",
-			name: "Plan (GPT-5.5)",
-			model: "gpt-5.5",
-			appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
-			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
-		},
-		{
-			id: "codex-heavy",
-			name: "Heavy (GPT-5.5 High)",
-			model: "gpt-5.5",
-			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
-		},
-		{
-			id: "codex-heavy-confirm",
-			name: "Heavy (GPT-5.5 High Confirm)",
-			model: "gpt-5.5",
-			additionalArgs: ["--search", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
-		},
-		{
-			id: "codex-codex-medium",
-			name: "GPT-5.3 Codex Medium",
-			model: "gpt-5.3-codex",
-			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="medium"'],
-		},
-		{
-			id: "codex-codex-high",
-			name: "GPT-5.3 Codex High",
-			model: "gpt-5.3-codex",
-			additionalArgs: ["--search", "--full-auto", "--no-alt-screen", "-c", 'model_reasoning_effort="high"'],
-		},
+		{ id: "codex-default", name: "Default (GPT-5.5 Heavy Bypass)", model: "gpt-5.5", additionalArgs: ["--sandbox", "danger-full-access"] },
+		{ id: "codex-plan", name: "Plan (GPT-5.5)", model: "gpt-5.5", appendPrompt: "Plan first." },
+		{ id: "codex-heavy", name: "Heavy (GPT-5.5 High)", model: "gpt-5.5" },
+		{ id: "codex-codex-medium", name: "GPT-5.3 Codex Medium", model: "gpt-5.3-codex" },
+		{ id: "codex-codex-high", name: "GPT-5.3 Codex High", model: "gpt-5.3-codex" },
 	],
 	defaultConfigId: "codex-default",
 };
@@ -92,7 +65,7 @@ const geminiAgent: CodingAgent = {
 	name: "Gemini",
 	baseCommand: "gemini",
 	isDefault: true,
-	configurations: [{ id: "gemini-default", name: "Default" }],
+	configurations: [{ id: "gemini-default", name: "Default (3.1 Pro)", model: "gemini-3.1-pro-preview" }],
 	defaultConfigId: "gemini-default",
 };
 
@@ -168,29 +141,22 @@ function renderModal(
 }
 
 /**
- * Custom Select helpers.
- * The Select component renders a <button> with id="variant-agent-N" / "variant-config-N".
- * The button text is the selected option's label.
+ * Custom Select helpers. Each cascade field renders a <button> with id
+ * "variant-provider-N" / "variant-model-N" / "variant-mode-N"; its text is the
+ * selected option's label.
  */
-function getAgentButtons(): HTMLButtonElement[] {
+function getButtonsById(prefix: string): HTMLButtonElement[] {
 	const buttons: HTMLButtonElement[] = [];
 	for (let i = 0; ; i++) {
-		const el = document.getElementById(`variant-agent-${i}`);
+		const el = document.getElementById(`variant-${prefix}-${i}`);
 		if (!el) break;
 		buttons.push(el as HTMLButtonElement);
 	}
 	return buttons;
 }
-
-function getConfigButtons(): HTMLButtonElement[] {
-	const buttons: HTMLButtonElement[] = [];
-	for (let i = 0; ; i++) {
-		const el = document.getElementById(`variant-config-${i}`);
-		if (!el) break;
-		buttons.push(el as HTMLButtonElement);
-	}
-	return buttons;
-}
+const getProviderButtons = () => getButtonsById("provider");
+const getModelButtons = () => getButtonsById("model");
+const getModeButtons = () => getButtonsById("mode");
 
 function getSelectedText(button: HTMLButtonElement): string {
 	return button.textContent?.trim() ?? "";
@@ -199,22 +165,20 @@ function getSelectedText(button: HTMLButtonElement): string {
 /** Click a custom Select trigger to open it, then click the option with the given label */
 async function selectOption(user: ReturnType<typeof userEvent.setup>, button: HTMLButtonElement, optionLabel: string) {
 	await user.click(button);
-	// The dropdown is rendered via portal — find the option by text (may be wrapped in spans via renderOption)
-	const el = screen.getByText(optionLabel);
-	const option = el.closest("button") ?? el;
+	const overlays = document.querySelectorAll(".bg-overlay.border");
+	const dropdown = overlays[overlays.length - 1];
+	const option = Array.from(dropdown?.querySelectorAll("button") ?? []).find((b) => b.textContent?.trim() === optionLabel);
+	if (!option) throw new Error(`Option "${optionLabel}" not found in dropdown`);
 	await user.click(option);
 }
 
 /** Open a custom Select and return all option labels */
 async function getDropdownOptions(user: ReturnType<typeof userEvent.setup>, button: HTMLButtonElement): Promise<string[]> {
 	await user.click(button);
-	// Dropdown is a portal with buttons as options
-	// Find the dropdown container — it's the last .bg-overlay in the DOM (portaled)
 	const overlays = document.querySelectorAll(".bg-overlay.border");
 	const dropdown = overlays[overlays.length - 1];
 	const optionButtons = dropdown?.querySelectorAll("button") ?? [];
 	const labels = Array.from(optionButtons).map((b) => b.textContent?.trim() ?? "");
-	// Close by clicking outside
 	await user.click(button);
 	return labels;
 }
@@ -226,26 +190,25 @@ describe("LaunchVariantsModal", () => {
 		vi.clearAllMocks();
 	});
 
-	describe("initial config resolution", () => {
-		it("uses agent.defaultConfigId when globalSettings.defaultConfigId is not matching", () => {
-			const project = makeProject();
+	describe("initial cascade resolution", () => {
+		it("decomposes the default config into Provider/Model/Mode", () => {
 			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-default" });
-			renderModal(project, { globalSettings: gs });
+			renderModal(makeProject(), { globalSettings: gs });
 
-			const configBtn = getConfigButtons()[0];
-			expect(getSelectedText(configBtn)).toBe("Default");
+			expect(getSelectedText(getProviderButtons()[0])).toBe("Claude");
+			expect(getSelectedText(getModelButtons()[0])).toBe("Sonnet 5");
+			expect(getSelectedText(getModeButtons()[0])).toBe("Default");
 		});
 
-		it("uses globalSettings.defaultConfigId when set", () => {
-			const project = makeProject();
-			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-plan" });
-			renderModal(project, { globalSettings: gs });
+		it("decomposes a globalSettings.defaultConfigId with effort into model + mode", () => {
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude", defaultConfigId: "claude-bypass-opus" });
+			renderModal(makeProject(), { globalSettings: gs });
 
-			const configBtn = getConfigButtons()[0];
-			expect(getSelectedText(configBtn)).toBe("Plan (Opus 4.7)");
+			expect(getSelectedText(getModelButtons()[0])).toBe("Opus 4.8");
+			expect(getSelectedText(getModeButtons()[0])).toBe("Bypass · X-High");
 		});
 
-		it("falls back to first config when agent has no defaultConfigId and global config is null", () => {
+		it("falls back to first config for a custom agent with no defaultConfigId", () => {
 			const customAgent: CodingAgent = {
 				id: "custom",
 				name: "Custom",
@@ -254,17 +217,14 @@ describe("LaunchVariantsModal", () => {
 					{ id: "cfg-a", name: "Alpha" },
 					{ id: "cfg-b", name: "Beta" },
 				],
-				// No defaultConfigId
 			};
-			const project = makeProject();
-			// globalSettings.defaultConfigId must be null/undefined to trigger fallback
 			const gs = { defaultAgentId: "custom", taskDropPosition: "top" as const } as GlobalSettings;
 
 			render(
 				<I18nProvider>
 					<LaunchVariantsModal
 						task={baseTask}
-						project={project}
+						project={makeProject()}
 						targetStatus="in-progress"
 						agents={[...agents, customAgent]}
 						globalSettings={gs}
@@ -274,176 +234,160 @@ describe("LaunchVariantsModal", () => {
 				</I18nProvider>,
 			);
 
-			const configBtn = getConfigButtons()[0];
-			expect(getSelectedText(configBtn)).toBe("Alpha");
+			// Model-less custom configs collapse to one "Default" group; mode = first.
+			expect(getSelectedText(getModelButtons()[0])).toBe("Default");
+			expect(getSelectedText(getModeButtons()[0])).toBe("Alpha");
 		});
 	});
 
-	describe("config dropdown population", () => {
-		it("shows all configurations for Claude (multi-config agent)", async () => {
+	describe("cascade dropdown population", () => {
+		it("provider dropdown lists all agents", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
-			renderModal(project, { globalSettings: gs });
-
-			const options = await getDropdownOptions(user, getConfigButtons()[0]);
-			expect(options).toHaveLength(3);
-			expect(options[0]).toBe("Default");
-			expect(options[1]).toBe("Plan (Opus 4.7)");
-			expect(options[2]).toBe("Bypass (Opus 4.7)");
+			renderModal(makeProject());
+			const options = await getDropdownOptions(user, getProviderButtons()[0]);
+			expect(options).toEqual(["Claude", "Codex", "Gemini"]);
 		});
 
-		it("shows curated configurations for Codex", async () => {
+		it("model dropdown lists Claude's model groups (first-seen order)", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			const gs = makeGlobalSettings({ defaultAgentId: "builtin-codex", defaultConfigId: "codex-default" });
-			renderModal(project, { globalSettings: gs });
-
-			const options = await getDropdownOptions(user, getConfigButtons()[0]);
-			expect(options).toHaveLength(6);
-			expect(options[0]).toBe("Default (GPT-5.5 Heavy Bypass)");
-			expect(options[1]).toBe("Plan (GPT-5.5)");
-			expect(options[2]).toBe("Heavy (GPT-5.5 High)");
-			expect(options[3]).toBe("Heavy (GPT-5.5 High Confirm)");
-			expect(options[4]).toBe("GPT-5.3 Codex Medium");
-			expect(options[5]).toBe("GPT-5.3 Codex High");
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
+			const options = await getDropdownOptions(user, getModelButtons()[0]);
+			expect(options).toEqual(["Sonnet 5", "Opus 4.8", "Fable 5"]);
 		});
 
-		it("agent dropdown shows all agents", async () => {
+		it("mode dropdown shows a single-preset group (Sonnet 5)", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			renderModal(project);
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings({ defaultConfigId: "claude-default" }) });
+			expect(await getDropdownOptions(user, getModeButtons()[0])).toEqual(["Default"]);
+		});
 
-			const options = await getDropdownOptions(user, getAgentButtons()[0]);
-			expect(options).toHaveLength(3);
-			expect(options[0]).toBe("Claude");
-			expect(options[1]).toBe("Codex");
-			expect(options[2]).toBe("Gemini");
+		it("mode dropdown lists only the presets in the current model group (Opus 4.8)", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings({ defaultConfigId: "claude-bypass-opus" }) });
+			expect(await getDropdownOptions(user, getModeButtons()[0])).toEqual(["Auto · X-High", "Bypass · X-High"]);
+		});
+
+		it("derives readable mode leaves for arg-encoded Codex presets", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings({ defaultAgentId: "builtin-codex", defaultConfigId: "codex-default" }) });
+			expect(getSelectedText(getModelButtons()[0])).toBe("GPT-5.5");
+			const modes = await getDropdownOptions(user, getModeButtons()[0]);
+			expect(modes).toEqual(["Default (Heavy Bypass)", "Plan", "Heavy (High)"]);
 		});
 	});
 
-	describe("agent switching", () => {
-		it("resets config to agent default when switching agents", async () => {
+	describe("provider switching", () => {
+		it("resets model + mode to the new provider's default", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
-			renderModal(project, { globalSettings: gs });
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
 
-			const agentBtn = getAgentButtons()[0];
-			const configBtn = getConfigButtons()[0];
+			expect(getSelectedText(getProviderButtons()[0])).toBe("Claude");
 
-			// Initially Claude with Default
-			expect(getSelectedText(agentBtn)).toBe("Claude");
-			expect(getSelectedText(configBtn)).toBe("Default");
+			await selectOption(user, getProviderButtons()[0], "Codex");
 
-			// Switch to Codex
-			await selectOption(user, agentBtn, "Codex");
-
-			const configBtnAfter = getConfigButtons()[0];
-			expect(getSelectedText(configBtnAfter)).toBe("Default (GPT-5.5 Heavy Bypass)");
-
-			// Config dropdown should show Codex curated configs
-			const options = await getDropdownOptions(user, configBtnAfter);
-			expect(options).toHaveLength(6);
-			expect(options[0]).toBe("Default (GPT-5.5 Heavy Bypass)");
+			expect(getSelectedText(getProviderButtons()[0])).toBe("Codex");
+			expect(getSelectedText(getModelButtons()[0])).toBe("GPT-5.5");
+			expect(getSelectedText(getModeButtons()[0])).toBe("Default (Heavy Bypass)");
 		});
 
-		it("switching back to Claude restores all Claude configs", async () => {
+		it("switching back to Claude restores its default cascade", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			const gs = makeGlobalSettings({ defaultAgentId: "builtin-claude" });
-			renderModal(project, { globalSettings: gs });
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings() });
 
-			const agentBtn = getAgentButtons()[0];
+			await selectOption(user, getProviderButtons()[0], "Codex");
+			await selectOption(user, getProviderButtons()[0], "Claude");
 
-			// Switch to Codex, then back to Claude
-			await selectOption(user, agentBtn, "Codex");
-			await selectOption(user, agentBtn, "Claude");
+			expect(getSelectedText(getModelButtons()[0])).toBe("Sonnet 5");
+			expect(getSelectedText(getModeButtons()[0])).toBe("Default");
+		});
+	});
 
-			const configBtn = getConfigButtons()[0];
-			expect(getSelectedText(configBtn)).toBe("Default");
+	describe("model switching", () => {
+		it("preserves the current mode kind across a model change when it exists", async () => {
+			const user = userEvent.setup();
+			// Start on Bypass · X-High (Opus 4.8); switch to Fable 5, which has a
+			// Bypass preset (no effort tier) → mode stays Bypass.
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings({ defaultConfigId: "claude-bypass-opus" }) });
 
-			const options = await getDropdownOptions(user, configBtn);
-			expect(options).toHaveLength(3);
+			expect(getSelectedText(getModeButtons()[0])).toBe("Bypass · X-High");
+
+			await selectOption(user, getModelButtons()[0], "Fable 5");
+
+			expect(getSelectedText(getModelButtons()[0])).toBe("Fable 5");
+			expect(getSelectedText(getModeButtons()[0])).toBe("Bypass");
+		});
+
+		it("falls back to the group's first mode when the kind does not exist", async () => {
+			const user = userEvent.setup();
+			// Start on Sonnet 5 / Default; switch to Opus 4.8 (no plain Default) →
+			// first mode of that group.
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings({ defaultConfigId: "claude-default" }) });
+
+			await selectOption(user, getModelButtons()[0], "Opus 4.8");
+
+			expect(getSelectedText(getModeButtons()[0])).toBe("Auto · X-High");
 		});
 	});
 
 	describe("add/remove variants", () => {
 		it("adds a variant row with defaults", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			renderModal(project);
+			renderModal(makeProject());
 
-			// Initially 1 variant row
-			expect(getAgentButtons()).toHaveLength(1);
+			expect(getProviderButtons()).toHaveLength(1);
 
-			// Click "+ Add Variant"
 			await user.click(screen.getByText("+ Add Variant"));
 
-			// Now 2 variant rows
-			expect(getAgentButtons()).toHaveLength(2);
-
-			// Second row should also have Claude + Default
-			const agentBtns = getAgentButtons();
-			const configBtns = getConfigButtons();
-			expect(getSelectedText(agentBtns[1])).toBe("Claude");
-			expect(getSelectedText(configBtns[1])).toBe("Default");
+			expect(getProviderButtons()).toHaveLength(2);
+			expect(getSelectedText(getProviderButtons()[1])).toBe("Claude");
+			expect(getSelectedText(getModelButtons()[1])).toBe("Sonnet 5");
+			expect(getSelectedText(getModeButtons()[1])).toBe("Default");
 		});
 
 		it("remove button appears only when multiple variants exist", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			renderModal(project);
+			renderModal(makeProject());
 
-			// With 1 variant, no remove button
 			expect(screen.queryByTitle("Remove")).not.toBeInTheDocument();
 
-			// Add variant
 			await user.click(screen.getByText("+ Add Variant"));
 
-			// Now remove buttons appear
-			const removeButtons = screen.getAllByTitle("Remove");
-			expect(removeButtons).toHaveLength(2);
+			expect(screen.getAllByTitle("Remove")).toHaveLength(2);
 		});
 
 		it("removing a variant updates the list", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-			renderModal(project);
+			renderModal(makeProject());
 
 			await user.click(screen.getByText("+ Add Variant"));
-			expect(getAgentButtons()).toHaveLength(2);
+			expect(getProviderButtons()).toHaveLength(2);
 
-			// Remove first variant
-			const removeButtons = screen.getAllByTitle("Remove");
-			await user.click(removeButtons[0]);
+			await user.click(screen.getAllByTitle("Remove")[0]);
 
-			expect(getAgentButtons()).toHaveLength(1);
+			expect(getProviderButtons()).toHaveLength(1);
 		});
 
 		it("hides the Add Variant button for virtual (Operations) boards", () => {
-			// Operations run a single agent per operation — no parallel attempts.
 			const project = makeProject({ kind: "virtual" });
 			renderModal(project);
 
 			expect(screen.queryByText("+ Add Variant")).not.toBeInTheDocument();
-			expect(getAgentButtons()).toHaveLength(1);
+			expect(getProviderButtons()).toHaveLength(1);
 		});
 	});
 
 	describe("launch action", () => {
-		it("calls spawnVariants with correct params and dispatches", async () => {
+		it("calls spawnVariants with the flat configId (storage unchanged) and dispatches", async () => {
 			const user = userEvent.setup();
 			const dispatch = vi.fn();
 			const onClose = vi.fn();
-			const project = makeProject();
 
 			const resultTasks: Task[] = [
 				{ ...baseTask, id: "v1", status: "in-progress", groupId: "g1", variantIndex: 1, agentId: "builtin-claude", configId: "claude-default" },
 			];
 			mockedApi.request.spawnVariants.mockResolvedValue(resultTasks);
 
-			renderModal(project, { dispatch, onClose });
+			renderModal(makeProject(), { dispatch, onClose });
 
 			await user.click(screen.getByText("Launch"));
 
@@ -454,7 +398,6 @@ describe("LaunchVariantsModal", () => {
 				variants: [{ agentId: "builtin-claude", configId: "claude-default" }],
 			});
 
-			// Wait for async
 			await vi.waitFor(() => {
 				expect(dispatch).toHaveBeenCalledWith({
 					type: "spawnVariants",
@@ -466,13 +409,27 @@ describe("LaunchVariantsModal", () => {
 			expect(onClose).toHaveBeenCalled();
 		});
 
+		it("launches the leaf configId chosen through the cascade", async () => {
+			const user = userEvent.setup();
+			mockedApi.request.spawnVariants.mockResolvedValue([]);
+			renderModal(makeProject(), { globalSettings: makeGlobalSettings({ defaultConfigId: "claude-default" }) });
+
+			await selectOption(user, getModelButtons()[0], "Opus 4.8");
+			await selectOption(user, getModeButtons()[0], "Bypass · X-High");
+
+			await user.click(screen.getByText("Launch"));
+
+			expect(mockedApi.request.spawnVariants).toHaveBeenCalledWith(
+				expect.objectContaining({
+					variants: [{ agentId: "builtin-claude", configId: "claude-bypass-opus" }],
+				}),
+			);
+		});
+
 		it("shows error when spawnVariants fails", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
-
 			mockedApi.request.spawnVariants.mockRejectedValue(new Error("boom"));
-
-			renderModal(project);
+			renderModal(makeProject());
 
 			await user.click(screen.getByText("Launch"));
 
@@ -483,41 +440,24 @@ describe("LaunchVariantsModal", () => {
 	});
 
 	describe("fallback when globalSettings agent is missing", () => {
-		it("populates config dropdown when globalSettings agent is valid", async () => {
-			const user = userEvent.setup();
-			const project = makeProject();
-			renderModal(project);
-
-			const options = await getDropdownOptions(user, getConfigButtons()[0]);
-			expect(options.length).toBeGreaterThan(0);
+		it("selects the global default provider", () => {
+			renderModal(makeProject());
+			expect(getSelectedText(getProviderButtons()[0])).toBe("Claude");
 		});
 
-		it("selects global default agent", () => {
-			const project = makeProject();
-			renderModal(project);
-
-			const agentBtn = getAgentButtons()[0];
-			expect(getSelectedText(agentBtn)).toBe("Claude");
-		});
-
-		it("falls back to first agent when globalSettings agent is nonexistent", async () => {
+		it("falls back to the first agent when globalSettings agent is nonexistent", async () => {
 			const user = userEvent.setup();
-			const project = makeProject();
 			const gs = makeGlobalSettings({ defaultAgentId: "deleted-agent" });
-			renderModal(project, { globalSettings: gs });
+			renderModal(makeProject(), { globalSettings: gs });
 
-			const options = await getDropdownOptions(user, getConfigButtons()[0]);
+			const options = await getDropdownOptions(user, getModeButtons()[0]);
 			expect(options.length).toBeGreaterThan(0);
 		});
 
-		it("sends correct agentId in spawnVariants using global default", async () => {
+		it("sends the global-default configId in spawnVariants", async () => {
 			const user = userEvent.setup();
-			const dispatch = vi.fn();
-			const onClose = vi.fn();
-			const project = makeProject();
-
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
-			renderModal(project, { dispatch, onClose });
+			renderModal(makeProject());
 
 			await user.click(screen.getByText("Launch"));
 
@@ -540,7 +480,6 @@ describe("LaunchVariantsModal", () => {
 			const onClose = vi.fn();
 			renderModal(makeProject(), { onClose });
 
-			// Click backdrop (the outer fixed div)
 			const backdrop = screen.getByText("Launch Task").closest(".fixed");
 			if (backdrop) await user.click(backdrop);
 
@@ -552,7 +491,6 @@ describe("LaunchVariantsModal", () => {
 		it("initializes the Watch toggle from globalSettings.watchByDefault for a new task", () => {
 			const gs = makeGlobalSettings({ watchByDefault: true });
 			renderModal(makeProject(), { globalSettings: gs });
-			// baseTask has no explicit `watched` → falls back to the remembered preference.
 			expect(screen.getByText("Watching")).toBeInTheDocument();
 		});
 
@@ -641,8 +579,6 @@ describe("LaunchVariantsModal", () => {
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
 			renderModal(makeProject(), { onClose });
 
-			// The URL input in AddProjectModal isn't here, but we can simulate
-			// by focusing a regular input via jsdom
 			const input = document.createElement("input");
 			document.body.appendChild(input);
 			input.focus();
@@ -652,25 +588,18 @@ describe("LaunchVariantsModal", () => {
 			document.body.removeChild(input);
 		});
 
-		// Regression: the custom Select renders a <button>. A keyboard user who
-		// tab-focuses the Agent/Config picker and presses Enter to open the
-		// dropdown must NOT spawn agents (accidental, costly launch).
-		it("Enter does not trigger launch when the agent Select button is focused", async () => {
+		// Regression: a keyboard user who tab-focuses any cascade Select and
+		// presses Enter to open it must NOT spawn agents (accidental, costly launch).
+		it.each([
+			["provider", () => getProviderButtons()[0]],
+			["model", () => getModelButtons()[0]],
+			["mode", () => getModeButtons()[0]],
+		])("Enter does not trigger launch when the %s Select button is focused", async (_name, getBtn) => {
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
 			renderModal(makeProject());
 
-			getAgentButtons()[0].focus();
+			getBtn().focus();
 			expect(document.activeElement?.tagName).toBe("BUTTON");
-
-			await userEvent.keyboard("{Enter}");
-			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
-		});
-
-		it("Enter does not trigger launch when the config Select button is focused", async () => {
-			mockedApi.request.spawnVariants.mockResolvedValue([]);
-			renderModal(makeProject());
-
-			getConfigButtons()[0].focus();
 
 			await userEvent.keyboard("{Enter}");
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
@@ -680,8 +609,7 @@ describe("LaunchVariantsModal", () => {
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
 			renderModal(makeProject());
 
-			const cancel = screen.getByText("Cancel") as HTMLButtonElement;
-			cancel.focus();
+			(screen.getByText("Cancel") as HTMLButtonElement).focus();
 
 			await userEvent.keyboard("{Enter}");
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
@@ -691,15 +619,12 @@ describe("LaunchVariantsModal", () => {
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
 			renderModal(makeProject());
 
-			const watch = screen.getByText("Watch").closest("button") as HTMLButtonElement;
-			watch.focus();
+			(screen.getByText("Watch").closest("button") as HTMLButtonElement).focus();
 
 			await userEvent.keyboard("{Enter}");
 			expect(mockedApi.request.spawnVariants).not.toHaveBeenCalled();
 		});
 
-		// Backward-compat: the modifier-Enter contract must stay unchanged —
-		// only a plain Enter (no focused control) launches.
 		it("Cmd/Ctrl/Shift+Enter do not trigger launch", async () => {
 			mockedApi.request.spawnVariants.mockResolvedValue([]);
 			renderModal(makeProject());
@@ -713,24 +638,19 @@ describe("LaunchVariantsModal", () => {
 	});
 
 	describe("single open dropdown", () => {
-		// Regression: opening one Select via keyboard (Enter) then Tabbing to the
-		// next Select used to leave BOTH dropdowns open, stacked on top of each
-		// other. Moving focus off a Select must close its dropdown.
 		it("closes an open Select dropdown when focus moves to another control", async () => {
 			const user = userEvent.setup();
 			renderModal(makeProject());
 
-			const agentBtn = getAgentButtons()[0];
-			agentBtn.focus();
+			const providerBtn = getProviderButtons()[0];
+			providerBtn.focus();
 			await user.keyboard("{Enter}");
 
-			// Agent dropdown is open — "Codex" only appears as an agent option.
+			// Provider dropdown is open — "Codex" only appears as a provider option.
 			expect(screen.getByText("Codex")).toBeInTheDocument();
 
-			// Tab to the next control (the config Select).
 			await user.tab();
 
-			// The agent dropdown must have closed.
 			expect(screen.queryByText("Codex")).not.toBeInTheDocument();
 		});
 	});
@@ -771,7 +691,6 @@ describe("LaunchVariantsModal", () => {
 			renderModal(makeProject());
 			const dialog = screen.getByRole("dialog");
 
-			// Something focusable behind the modal.
 			const outside = document.createElement("button");
 			outside.textContent = "behind";
 			document.body.appendChild(outside);

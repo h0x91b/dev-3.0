@@ -168,6 +168,16 @@ export interface AgentConfiguration {
 	additionalArgs?: string[];
 	envVars?: Record<string, string>;
 	baseCommandOverride?: string;
+	/** Presentation-only override for the picker's 2nd field ("Model" group).
+	 *  When set, this preset groups under `groupLabel` instead of the label
+	 *  derived from `model` — used where the meaningful primary axis is not the
+	 *  model (e.g. an OpenCode persona). Optional; never affects command
+	 *  resolution or storage (the flat `id`/`configId` remains the key). */
+	groupLabel?: string;
+	/** Presentation-only override for the picker's 3rd field ("Mode" leaf) label.
+	 *  When set, overrides the label derived from `permissionMode`+`effort` (or
+	 *  the preset name minus its model). Optional; presentation only. */
+	modeLabel?: string;
 	/** Preset version. When the default version is bumped, stored additionalArgs
 	 *  and model are reset to the new defaults. */
 	version?: number;
