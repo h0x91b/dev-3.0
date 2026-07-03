@@ -138,7 +138,7 @@ export default function TaskGitActions({
 	) : null;
 
 	const prBadge = branchStatus && branchStatus.prNumber !== null ? (
-		<Tooltip content={t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) })}>
+		<Tooltip content={t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) })} detail={t("ttip.task.openPR")}>
 			<button
 				onClick={(event) => {
 					event.stopPropagation();
@@ -155,7 +155,7 @@ export default function TaskGitActions({
 	) : null;
 
 	const refDropdownButton = branchStatus ? (
-		<Tooltip content="Change comparison branch">
+		<Tooltip content={t("ttip.git.changeRef")} detail={t("ttip.git.refDropdown")}>
 			<button
 				ref={refTriggerRef}
 				onClick={(event) => {
@@ -293,7 +293,7 @@ export default function TaskGitActions({
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
-			<Tooltip content={showDiffTooltip}>
+			<Tooltip content={showDiffTooltip} detail={t("ttip.infoPanel.showDiff")}>
 				<button
 					onClick={() => onOpenInlineDiff?.({
 						mode: "branch",
@@ -309,7 +309,7 @@ export default function TaskGitActions({
 					{btnContent(<ShowDiffIcon className={iconClass} />, t("infoPanel.showDiffShort"))}
 				</button>
 			</Tooltip>
-			<Tooltip content={rebaseTooltip}>
+			<Tooltip content={rebaseTooltip} detail={t("ttip.git.rebase")}>
 				<button
 					onClick={handleRebase}
 					disabled={rebaseDisabled}
@@ -321,7 +321,7 @@ export default function TaskGitActions({
 					{btnContent(<RebaseIcon className={iconClass} />, rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase"), rebasing)}
 				</button>
 			</Tooltip>
-			<Tooltip content={pushTooltip}>
+			<Tooltip content={pushTooltip} detail={t("ttip.git.push")}>
 				<button
 					onClick={handlePush}
 					disabled={pushDisabled}
@@ -336,7 +336,7 @@ export default function TaskGitActions({
 			{/* When a PR already exists, the "PR #N" badge above already links to it - no Open PR button needed. */}
 			{!hasPR && (
 				<>
-					<Tooltip content={getPRTooltip()}>
+					<Tooltip content={getPRTooltip()} detail={t("ttip.git.createPR")}>
 						<button
 							onClick={() => void handleCreatePR(false)}
 							disabled={createPRDisabled}
@@ -348,7 +348,7 @@ export default function TaskGitActions({
 							{btnContent(<CreatePRIcon className={iconClass} />, getPRButtonLabel(), creatingPR)}
 						</button>
 					</Tooltip>
-					<Tooltip content={getPRAutoMergeTooltip()}>
+					<Tooltip content={getPRAutoMergeTooltip()} detail={t("ttip.git.autoMerge")}>
 						<button
 							onClick={() => void handleCreatePR(true)}
 							disabled={createPRDisabled}
@@ -362,7 +362,7 @@ export default function TaskGitActions({
 					</Tooltip>
 				</>
 			)}
-			<Tooltip content={mergeTooltip}>
+			<Tooltip content={mergeTooltip} detail={t("ttip.git.merge")}>
 				<button
 					onClick={handleMerge}
 					disabled={mergeDisabled}
@@ -374,7 +374,7 @@ export default function TaskGitActions({
 					{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : t("infoPanel.merge"), merging)}
 				</button>
 			</Tooltip>
-			<Tooltip content={t("infoPanel.refreshStatus")}>
+			<Tooltip content={t("infoPanel.refreshStatus")} detail={t("ttip.git.refresh")}>
 				<button
 					onClick={handleRefreshStatus}
 					disabled={refreshingStatus}
@@ -408,7 +408,7 @@ export default function TaskGitActions({
 			{showWorktreeCopy && task.worktreePath && (
 				<>
 					<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-					<Tooltip content={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}>
+					<Tooltip content={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")} detail={t("ttip.infoPanel.copyPath")}>
 						<button
 							onClick={handleCopyPath}
 							className="flex-shrink-0 flex items-center gap-1 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"

@@ -322,7 +322,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 
 	return (
 		<>
-			<Tooltip content={devServerTitle}>
+			<Tooltip content={devServerTitle} detail={t("ttip.devServer")}>
 				<button
 					ref={devServerBtnRef}
 					onClick={handleDevServer}

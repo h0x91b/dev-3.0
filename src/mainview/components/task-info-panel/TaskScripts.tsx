@@ -364,7 +364,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 
 	return (
 		<>
-			<Tooltip content={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")}>
+			<Tooltip content={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")} detail={t("ttip.scripts.run")}>
 				<button
 					ref={btnRef}
 					onClick={openDropdown}

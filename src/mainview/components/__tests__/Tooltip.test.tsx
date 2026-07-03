@@ -65,6 +65,19 @@ describe("Tooltip", () => {
 		expect(screen.getByRole("tooltip")).toHaveTextContent("second");
 	});
 
+	it("renders the two-tier layout when detail is provided", async () => {
+		const user = userEvent.setup();
+		render(
+			<Tooltip content="Split horizontally" detail="tmux: splits the current pane in two, side by side.">
+				<button>split</button>
+			</Tooltip>,
+		);
+		await user.hover(screen.getByRole("button", { name: "split" }));
+		const tip = await screen.findByRole("tooltip");
+		expect(tip).toHaveTextContent("Split horizontally");
+		expect(tip).toHaveTextContent("tmux: splits the current pane in two, side by side.");
+	});
+
 	it("renders children untouched when disabled", async () => {
 		const user = userEvent.setup();
 		render(

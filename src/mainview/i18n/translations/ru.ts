@@ -15,6 +15,7 @@ import tunnels from "./ru/tunnels";
 import keymap from "./ru/keymap";
 import stats from "./ru/stats";
 import help from "./ru/help";
+import { tooltips } from "./ru/tooltips";
 
 const ru: TranslationRecord & Record<string, string> = {
 	...common,
@@ -33,6 +34,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	...keymap,
 	...stats,
 	...help,
+	...tooltips,
 };
 
 export default ru;

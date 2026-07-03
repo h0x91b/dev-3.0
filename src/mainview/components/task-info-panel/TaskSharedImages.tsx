@@ -22,7 +22,7 @@ export default function TaskSharedImages({ task }: TaskSharedImagesProps) {
 
 	const label = t("infoPanel.imagesBadge", { count: String(count) });
 	return (
-		<Tooltip content={label}>
+		<Tooltip content={label} detail={t("ttip.sharedImages")}>
 			<button
 				type="button"
 				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {

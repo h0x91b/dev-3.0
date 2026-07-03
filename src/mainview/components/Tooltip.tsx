@@ -44,6 +44,11 @@ let lastHiddenAt = 0;
 
 interface TooltipProps {
 	content: ReactNode;
+	/**
+	 * Optional second tier: `content` becomes the bold "what" headline and
+	 * `detail` explains why the control exists / what happens when you use it.
+	 */
+	detail?: ReactNode;
 	/** Optional keyboard-shortcut chip rendered after the text, e.g. "⌘K". */
 	kbd?: string;
 	placement?: PopoverPlacement;
@@ -72,7 +77,7 @@ function mergeRefs<T>(...refs: (Ref<T> | undefined)[]): RefCallback<T> {
 	};
 }
 
-export default function Tooltip({ content, kbd, placement = "top", disabled, children }: TooltipProps) {
+export default function Tooltip({ content, detail, kbd, placement = "top", disabled, children }: TooltipProps) {
 	const [open, setOpen] = useState(false);
 	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 	const anchorRef = useRef<HTMLElement | null>(null);
@@ -191,18 +196,25 @@ export default function Tooltip({ content, kbd, placement = "top", disabled, chi
 							ref={popRef}
 							id={tooltipId}
 							role="tooltip"
-							className="fixed z-[1200] pointer-events-none bg-overlay border border-edge-active rounded-lg shadow-xl shadow-black/30 px-2.5 py-1.5 text-xs text-fg-2 max-w-[18rem] flex items-center gap-2"
+							className={`fixed z-[1200] pointer-events-none bg-overlay border border-edge-active ring-1 ring-black/30 rounded-lg shadow-2xl shadow-black/60 text-xs ${
+								detail ? "px-3 py-2 max-w-[22rem]" : "px-2.5 py-1.5 max-w-[18rem]"
+							}`}
 							style={{
 								top: pos?.top ?? 0,
 								left: pos?.left ?? 0,
 								visibility: pos ? "visible" : "hidden",
 							}}
 						>
-							<span className="min-w-0">{content}</span>
-							{kbd ? (
-								<kbd className="flex-shrink-0 font-mono text-[0.625rem] text-fg-3 bg-raised border border-edge rounded px-1 py-px">
-									{kbd}
-								</kbd>
+							<div className="flex items-center gap-2">
+								<span className={`min-w-0 ${detail ? "font-medium text-fg" : "text-fg-2"}`}>{content}</span>
+								{kbd ? (
+									<kbd className="flex-shrink-0 font-mono text-[0.625rem] text-fg-3 bg-raised border border-edge rounded px-1 py-px">
+										{kbd}
+									</kbd>
+								) : null}
+							</div>
+							{detail ? (
+								<div className="mt-1 text-[0.6875rem] leading-relaxed text-fg-3">{detail}</div>
 							) : null}
 						</div>,
 						document.body,

@@ -46,7 +46,7 @@ function CopyUrlRow({ url }: { url: string }) {
 		} catch { /* clipboard blocked */ }
 	}
 	return (
-		<Tooltip content={copied ? t("tunnel.urlCopied") : t("tunnel.copyUrl")}>
+		<Tooltip content={copied ? t("tunnel.urlCopied") : t("tunnel.copyUrl")} detail={t("ttip.ports.copyUrl")}>
 		<button
 			onClick={handleClick}
 			className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover w-full text-left rounded px-1 -mx-1 hover:bg-accent/10 transition-colors"
@@ -115,7 +115,7 @@ export default function TaskExposedPorts({ task }: TaskExposedPortsProps) {
 
 	return (
 		<>
-			<Tooltip content={t("tunnel.exposedPortsSection")}>
+			<Tooltip content={t("tunnel.exposedPortsSection")} detail={t("ttip.ports.section")}>
 			<button
 				ref={btnRef}
 				onClick={openMenu}

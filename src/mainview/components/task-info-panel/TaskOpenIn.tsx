@@ -58,7 +58,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 	return (
 		<>
 			<div className="relative flex-shrink-0">
-				<Tooltip content={t("openIn.menuTitle")}>
+				<Tooltip content={t("openIn.menuTitle")} detail={t("ttip.openIn.menu")}>
 					<button
 						ref={openInBtnRef}
 						onClick={handleOpenInClick}
@@ -79,7 +79,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 
 			{showFileBrowser && (
 				<div className="relative flex-shrink-0">
-					<Tooltip content={t("header.fileBrowser")}>
+					<Tooltip content={t("header.fileBrowser")} detail={t("ttip.openIn.fileBrowser")}>
 						<button
 							onClick={handleFileBrowser}
 							disabled={!isTaskActive}
@@ -106,7 +106,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 									<code className="flex-1 text-warning bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all">
 										{yaziInstallCmd}
 									</code>
-									<Tooltip content={t("openIn.copyPath")}>
+									<Tooltip content={t("openIn.copyPath")} detail={t("ttip.infoPanel.copyPath")}>
 									<button
 										onClick={() => {
 											navigator.clipboard.writeText(yaziInstallCmd);

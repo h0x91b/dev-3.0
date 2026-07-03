@@ -290,12 +290,12 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 	return (
 		<>
 			<div className="flex items-center gap-1.5 flex-shrink-0">
-				<Tooltip content={t("tmux.splitHDesc")}>
+				<Tooltip content={t("tmux.splitHDesc")} detail={t("ttip.tmux.splitH")}>
 					<button className={tmuxBtnClass} onClick={handleTmuxAction("splitH")} aria-label={t("tmux.splitHDesc")}>
 						<SplitHIcon className={tmuxSvgClass} />
 					</button>
 				</Tooltip>
-				<Tooltip content={t("tmux.splitVDesc")}>
+				<Tooltip content={t("tmux.splitVDesc")} detail={t("ttip.tmux.splitV")}>
 					<button className={tmuxBtnClass} onClick={handleTmuxAction("splitV")} aria-label={t("tmux.splitVDesc")}>
 						<SplitVIcon className={tmuxSvgClass} />
 					</button>
@@ -311,7 +311,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					onMouseEnter={showLayout}
 					onMouseLeave={hideLayout}
 				>
-					<Tooltip content={t("tmux.nextLayoutDesc")}>
+					<Tooltip content={t("tmux.nextLayoutDesc")} detail={t("ttip.tmux.nextLayout")}>
 						<button
 							className="tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors hover:bg-accent/20 flex items-center gap-1"
 							onClick={cycleLayout}
@@ -321,7 +321,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 							<span>tmux layout</span>
 						</button>
 					</Tooltip>
-					<Tooltip content={t("tmux.chooseLayout")}>
+					<Tooltip content={t("tmux.chooseLayout")} detail={t("ttip.tmux.chooseLayout")}>
 						<button
 							ref={layoutTriggerRef}
 							className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
@@ -340,7 +340,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					</Tooltip>
 				</div>
 
-				<Tooltip content={t("tmux.zoomDesc")}>
+				<Tooltip content={t("tmux.zoomDesc")} detail={t("ttip.tmux.zoom")}>
 					<button className={tmuxBtnClass} onClick={handleTmuxAction("zoom")} aria-label={t("tmux.zoomDesc")}>
 						<ZoomPaneIcon className={tmuxSvgClass} />
 					</button>
@@ -362,7 +362,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 
 				<div className="w-px self-stretch bg-edge mx-0.5" aria-hidden="true" />
 
-				<Tooltip content={t("tmux.closePaneDesc")}>
+				<Tooltip content={t("tmux.closePaneDesc")} detail={t("ttip.tmux.closePane")}>
 					<button
 						className={`${tmuxBtnClass} text-danger hover:bg-danger/20 bg-danger/10 border-danger/25`}
 						onClick={handleClosePane}

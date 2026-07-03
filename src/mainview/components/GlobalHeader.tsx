@@ -327,7 +327,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			<div className="flex items-center gap-2 text-sm min-w-0">
 				{/* Back / forward navigation — segmented history control (Safari toolbar style) */}
 				<div className="flex items-stretch flex-shrink-0 -ml-1.5 rounded-md border border-edge bg-raised overflow-hidden">
-				<Tooltip content={t("header.navBack")}>
+					<Tooltip content={t("header.navBack")} detail={t("ttip.header.navBack")}>
 						<button
 							onClick={goBack}
 							disabled={!canGoBack}
@@ -342,7 +342,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						</button>
 				</Tooltip>
 					<span className="w-px self-stretch bg-edge" aria-hidden="true" />
-				<Tooltip content={t("header.navForward")}>
+					<Tooltip content={t("header.navForward")} detail={t("ttip.header.navForward")}>
 						<button
 							onClick={goForward}
 							disabled={!canGoForward}
@@ -391,7 +391,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 								) : (
 									<span className="text-fg font-semibold truncate">{seg.label}</span>
 								)}
-							<Tooltip content={t("header.switchProject")}>
+								<Tooltip content={t("header.switchProject")} detail={t("ttip.header.switchProject")}>
 									<button
 										onClick={() => setShowProjectDropdown((v) => !v)}
 										className="header-anim text-fg-muted hover:text-fg transition-colors flex-shrink-0 p-0.5 rounded hover:bg-elevated"
@@ -494,7 +494,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{/* Update available indicator */}
 				{updateVersion && (
 					<div className="relative" ref={dropdownRef}>
-					<Tooltip content={t("update.readyTooltip", { version: updateVersion })}>
+						<Tooltip content={t("update.readyTooltip", { version: updateVersion })} detail={t("ttip.header.updateReady")}>
 							<button
 								onClick={() => setShowUpdateDropdown((v) => !v)}
 								className="header-anim flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors animate-pulse"
@@ -534,7 +534,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Quick Shell — opens the built-in Operations shell in $HOME (folded into the kebab on narrow) */}
 				{!isNarrow && (
-				<Tooltip content={t("quickShell.tooltipWithShortcut")}>
+					<Tooltip content={t("quickShell.tooltipWithShortcut")} detail={t("ttip.header.quickShell")}>
 						<button
 							onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
 							className="header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
@@ -551,7 +551,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				    lazily per-task, so opening one throws "Project path does not
 				    exist" (same reason Git Pull below is hidden). */}
 				{"projectId" in route && !isVirtualProject && !isNarrow && (
-				<Tooltip content={t("projectTerminal.tooltipWithShortcut")}>
+					<Tooltip content={t("projectTerminal.tooltipWithShortcut")} detail={t("ttip.header.projectTerminal")}>
 						<button
 							onClick={() => {
 								if (route.screen === "project-terminal") {
@@ -581,7 +581,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Remote Access QR Code (folded into the kebab on narrow) */}
 				{!isNarrow && (
-				<Tooltip content={t("header.remoteAccessTooltip")}>
+					<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
 						<button
 							onClick={async () => {
 								try {
@@ -608,7 +608,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					<>
 						{/* Productivity stats — icon-only, sits to the left of the website link */}
 						{route.screen !== "stats" && (
-						<Tooltip content={t("header.statsTooltip")}>
+							<Tooltip content={t("header.statsTooltip")} detail={t("ttip.header.stats")}>
 								<button
 									onClick={() => navigate({ screen: "stats" })}
 									className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
@@ -620,7 +620,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						)}
 
 						{/* GitHub website */}
-						<Tooltip content={t("header.githubTooltip")}>
+						<Tooltip content={t("header.githubTooltip")} detail={t("ttip.header.github")}>
 						<button
 							onClick={() => window.open("https://h0x91b.github.io/dev-3.0/", "_blank")}
 							className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
@@ -631,7 +631,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						</Tooltip>
 
 						{/* Report a bug */}
-					<Tooltip content={t("header.reportBugTooltip")}>
+						<Tooltip content={t("header.reportBugTooltip")} detail={t("ttip.header.reportBug")}>
 							<button
 								onClick={() => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank")}
 								className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
@@ -643,7 +643,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 						{/* Changelog */}
 						{route.screen !== "changelog" && (
-							<Tooltip content={t("header.changelogTooltip")}>
+							<Tooltip content={t("header.changelogTooltip")} detail={t("ttip.header.changelog")}>
 							<button
 								onClick={() => navigate({ screen: "changelog" })}
 								className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
@@ -660,7 +660,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				    On narrow the whole cluster folds into the action sheet below instead. */}
 				{compact && !isNarrow && (
 					<div className="relative" ref={overflowMenuRef}>
-					<Tooltip content={t("header.moreActions")}>
+						<Tooltip content={t("header.moreActions")} detail={t("ttip.header.moreActions")}>
 							<button
 								onClick={() => setShowOverflowMenu((v) => !v)}
 								className={`header-anim flex items-center transition-colors px-1.5 py-1 rounded-lg ${
@@ -730,7 +730,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}
 				{"projectId" in route && route.screen !== "project-settings" && !isNarrow && (
-					<Tooltip content={t("header.projectSettings")}>
+					<Tooltip content={t("header.projectSettings")} detail={t("ttip.header.projectSettings")}>
 					<button
 						onClick={() =>
 							navigate({
@@ -749,7 +749,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Global settings (folded into the kebab on narrow) */}
 				{route.screen !== "settings" && !isNarrow && (
-					<Tooltip content={t("header.globalSettingsTooltip")}>
+					<Tooltip content={t("header.globalSettingsTooltip")} detail={t("ttip.header.globalSettings")}>
 					<button
 						onClick={() => navigate({ screen: "settings" })}
 						className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
@@ -763,7 +763,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Narrow viewport: one kebab folds the simple cluster actions into a bottom sheet. */}
 				{isNarrow && (
-				<Tooltip content={t("header.moreActions")}>
+					<Tooltip content={t("header.moreActions")} detail={t("ttip.header.moreActions")}>
 						<button
 							onClick={() => setShowActionSheet(true)}
 							className="header-anim flex items-center justify-center w-9 h-9 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"

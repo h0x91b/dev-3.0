@@ -349,7 +349,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
 	const prBadge = prInfo ? (
-		<Tooltip content={t("task.openPR", { number: String(prInfo.number) })}>
+		<Tooltip content={t("task.openPR", { number: String(prInfo.number) })} detail={t("ttip.task.openPR")}>
 			<button
 				onClick={(e) => {
 					e.stopPropagation();
@@ -380,7 +380,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	};
 	const ciMeta = prInfo?.ciStatus ? CI_BADGE[prInfo.ciStatus] : null;
 	const ciBadge = ciMeta ? (
-		<Tooltip content={t(ciMeta.key)}>
+		<Tooltip content={t(ciMeta.key)} detail={t("ttip.task.ci")}>
 			<button
 				onClick={(e) => {
 					e.stopPropagation();
@@ -396,7 +396,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	) : null;
 	const reviewMeta = prInfo?.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const reviewBadge = reviewMeta ? (
-		<Tooltip content={t(reviewMeta.key)}>
+		<Tooltip content={t(reviewMeta.key)} detail={t("ttip.task.review")}>
 			<button
 				onClick={(e) => {
 					e.stopPropagation();
@@ -482,7 +482,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</div>
 						<div className="mt-2 flex items-center justify-end gap-2">
 							{hasLongDescription && (
-								<Tooltip content={t("task.showDescription")}>
+								<Tooltip content={t("task.showDescription")} detail={t("ttip.task.showDescription")}>
 									<button
 										onClick={handleShowDescription}
 										className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-[0.6875rem] text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
@@ -491,7 +491,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 									</button>
 								</Tooltip>
 							)}
-							<Tooltip content={t("task.cancel")}>
+							<Tooltip content={t("task.cancel")} detail={t("ttip.task.cancel")}>
 								<button
 									onClick={handleCancelPreparation}
 									disabled={cancellingPreparation}
@@ -507,7 +507,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 			{/* Dismiss button — top-right, visible on hover */}
 			{showDismissButton && (
-				<Tooltip content={isCancelled ? t("task.delete") : t("task.cancel")}>
+				<Tooltip content={isCancelled ? t("task.delete") : t("task.cancel")} detail={isCancelled ? t("ttip.task.delete") : t("ttip.task.cancel")}>
 					<button
 						onClick={handleDismiss}
 						className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-all"
@@ -579,7 +579,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{displayTitle}
 			</div>
 			{hasLongDescription && !isTodo && (
-				<Tooltip content={t("task.showDescription")}>
+				<Tooltip content={t("task.showDescription")} detail={t("ttip.task.showDescription")}>
 					<button
 						onClick={handleShowDescription}
 						className="mt-1 text-[0.6875rem] text-fg-muted hover:text-accent transition-colors flex items-center gap-1"
@@ -680,7 +680,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						)}
 					</div>
 					{!isActive && (
-						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}>
+						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")} detail={t("ttip.task.watch")}>
 							<button
 								onClick={async (e) => {
 									e.stopPropagation();
@@ -750,7 +750,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 				{/* Sibling variant dots */}
 				{hasSiblings && (
-					<Tooltip content={t.plural("task.siblingsCount", siblings.length)}>
+					<Tooltip content={t.plural("task.siblingsCount", siblings.length)} detail={t("ttip.task.siblings")}>
 						<button
 							ref={siblingAnchorRef}
 							onClick={(e) => { e.stopPropagation(); preview.close(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
@@ -770,7 +770,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 				{/* Port indicator for active tasks */}
 				{isActive && ports && ports.length > 0 && (
-					<Tooltip content={t.plural("ports.count", ports.length)}>
+					<Tooltip content={t.plural("ports.count", ports.length)} detail={t("ttip.task.ports")}>
 						<button
 							ref={portsAnchorRef}
 							onClick={(e) => {
@@ -820,7 +820,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{isTodo && (
 					<>
 						<div className="flex-1" />
-						<Tooltip content={t("task.run")}>
+						<Tooltip content={t("task.run")} detail={t("ttip.task.run")}>
 							<button
 								onClick={(e) => {
 									e.stopPropagation();
@@ -855,7 +855,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<div data-testid="task-card-action-row" className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
 					<div className="flex min-w-0 items-center gap-1">
 						{task.worktreePath && (
-							<Tooltip content={t("openIn.menuTitle")}>
+							<Tooltip content={t("openIn.menuTitle")} detail={t("ttip.openIn.menu")}>
 								<button
 									onClick={(e) => {
 										e.stopPropagation();
@@ -870,7 +870,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								</button>
 							</Tooltip>
 						)}
-						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}>
+						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")} detail={t("ttip.task.watch")}>
 							<button
 								onClick={async (e) => {
 									e.stopPropagation();
@@ -901,7 +901,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</Tooltip>
 					</div>
 					<div className="min-w-0" />
-					<Tooltip content={t("task.addVariant")}>
+					<Tooltip content={t("task.addVariant")} detail={t("ttip.task.addVariant")}>
 						<button
 							onClick={(e) => {
 								e.stopPropagation();
