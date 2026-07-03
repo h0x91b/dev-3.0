@@ -270,6 +270,8 @@ const tips = {
 	"tip.devServerWait.body": "Запусти dev3 dev-server start --wait — команда вернётся, только когда сервер реально слушает порт, а не устаревшая сборка.",
 	"tip.mobileComposer.title": "Поле ввода для телефона",
 	"tip.mobileComposer.body": "На телефоне пишите промпты в поле над рядом клавиш — «Отправить» вставит их в терминал с Enter.",
+	"tip.closePanePicker.title": "Выберите панель для закрытия",
+	"tip.closePanePicker.body": "Нажмите «Закрыть панель», наведите на нужный сплит — он станет красным — и кликните, чтобы закрыть именно его.",
 };
 
 export default tips;

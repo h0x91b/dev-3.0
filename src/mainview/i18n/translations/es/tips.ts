@@ -270,6 +270,8 @@ const tips = {
 	"tip.devServerWait.body": "Ejecuta dev3 dev-server start --wait — vuelve solo cuando el servidor realmente escucha el puerto, sin builds obsoletas.",
 	"tip.mobileComposer.title": "Cuadro de prompts para móvil",
 	"tip.mobileComposer.body": "En un móvil, escribe prompts en el cuadro sobre la barra de teclas — Enviar los pega en el terminal con Enter.",
+	"tip.closePanePicker.title": "Elige el panel a cerrar",
+	"tip.closePanePicker.body": "Pulsa Cerrar panel, pasa el ratón por la división que quieras — se pone roja — y haz clic para cerrar ese panel.",
 };
 
 export default tips;

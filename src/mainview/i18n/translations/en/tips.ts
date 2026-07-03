@@ -270,6 +270,8 @@ const tips = {
 	"tip.devServerWait.body": "Run dev3 dev-server start --wait — it returns only when the server is actually listening, so tests never hit a stale build.",
 	"tip.mobileComposer.title": "Phone-friendly prompt box",
 	"tip.mobileComposer.body": "On a phone, type prompts in the box above the key bar — Send pastes them into the terminal with Enter.",
+	"tip.closePanePicker.title": "Pick the pane to close",
+	"tip.closePanePicker.body": "Click Close Pane, then hover the split you mean — it turns red — and click to close exactly that pane.",
 } as const;
 
 export default tips;

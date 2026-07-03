@@ -14,6 +14,7 @@ import TerminalComposer from "./TerminalComposer";
 import MobilePaneCarousel from "./MobilePaneCarousel";
 import MobileWindowCarousel from "./MobileWindowCarousel";
 import PaneZoomBadge from "./PaneZoomBadge";
+import ClosePanePicker from "./ClosePanePicker";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
@@ -349,6 +350,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				<div className="relative isolate flex-1 min-h-0 overflow-hidden">
 					{terminalArea}
 					{ptyUrl && <PaneZoomBadge taskId={taskId} />}
+					{ptyUrl && <ClosePanePicker taskId={taskId} />}
 				</div>
 			)}
 			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}

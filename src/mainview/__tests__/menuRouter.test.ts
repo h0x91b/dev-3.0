@@ -27,3 +27,28 @@ describe("handleMenuAction — palette openers", () => {
 		expect(listener).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("handleMenuAction — term-close-pane", () => {
+	const taskCtx = {
+		state: { route: { screen: "task", projectId: "p1", taskId: "task-42" } } as unknown as AppState,
+		dispatch: vi.fn(),
+		setLocale: vi.fn(),
+	};
+
+	it("opens the two-step pane picker for the current task", async () => {
+		const listener = vi.fn();
+		window.addEventListener("dev3:closePanePicker", listener);
+		await handleMenuAction("term-close-pane", taskCtx);
+		window.removeEventListener("dev3:closePanePicker", listener);
+		expect(listener).toHaveBeenCalledTimes(1);
+		expect((listener.mock.calls[0][0] as CustomEvent).detail).toEqual({ taskId: "task-42" });
+	});
+
+	it("is a no-op when no task is focused", async () => {
+		const listener = vi.fn();
+		window.addEventListener("dev3:closePanePicker", listener);
+		await handleMenuAction("term-close-pane", ctx);
+		window.removeEventListener("dev3:closePanePicker", listener);
+		expect(listener).not.toHaveBeenCalled();
+	});
+});

@@ -394,6 +394,36 @@ button {
 	}
 }
 
+/* ---- Close-pane picker: marching-ants selection marquee -------------------
+   A moving dashed border that draws the eye to the pickable panes. Color comes
+   from `currentColor`, so the same class is neutral (accent/blue) while idle and
+   turns destructive (danger/red) on hover via a text-color swap on the element.
+   The four gradients are the top/bottom/left/right dash tracks; the keyframe
+   marches them clockwise. Size-independent (fixed 2px lines, 20px period). */
+@keyframes dev3-marching-ants {
+	to {
+		background-position: 20px 0, -20px 100%, 0 -20px, 100% 20px;
+	}
+}
+
+.dev3-marching-ants {
+	background-image:
+		linear-gradient(90deg, currentColor 50%, transparent 50%),
+		linear-gradient(90deg, currentColor 50%, transparent 50%),
+		linear-gradient(0deg, currentColor 50%, transparent 50%),
+		linear-gradient(0deg, currentColor 50%, transparent 50%);
+	background-size: 20px 2px, 20px 2px, 2px 20px, 2px 20px;
+	background-position: 0 0, 0 100%, 0 0, 100% 0;
+	background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+	animation: dev3-marching-ants 0.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dev3-marching-ants {
+		animation: none;
+	}
+}
+
 /* ---- Narrow-viewport modal clamp ------------------------------------------
    On a phone-width viewport, centered modal/palette panels keep their fixed
    `w-[..rem]` width and overflow off-screen. Clamp every modal (role="dialog"

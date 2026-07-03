@@ -1,4 +1,5 @@
 import { api } from "./rpc";
+import { startClosePanePicker } from "./close-pane-picker";
 import type { AppState, AppAction, Route } from "./state";
 import type { Locale } from "./i18n/types";
 import type { TaskStatus } from "../shared/types";
@@ -298,10 +299,17 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		}
 
 		// ── Terminal: pane ops piggy-back on tmuxAction (taskId required) ──
+		case "term-close-pane": {
+			// Close Pane opens the two-step visual picker (overlay in TaskTerminal),
+			// matching the toolbar button. Desktop-only menu → no narrow fallback.
+			const taskId = currentTaskId(state);
+			if (!taskId) return;
+			startClosePanePicker(taskId);
+			return;
+		}
 		case "term-split-h":
 		case "term-split-v":
 		case "term-zoom-pane":
-		case "term-close-pane":
 		case "term-layout-tiled":
 		case "term-layout-even-h":
 		case "term-layout-even-v":
@@ -390,7 +398,6 @@ const TMUX_ACTION_MAP = {
 	"term-split-h": "splitH",
 	"term-split-v": "splitV",
 	"term-zoom-pane": "zoom",
-	"term-close-pane": "killPane",
 	"term-layout-tiled": "layoutTiled",
 	"term-layout-even-h": "layoutEvenH",
 	"term-layout-even-v": "layoutEvenV",

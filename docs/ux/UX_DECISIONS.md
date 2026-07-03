@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-03 — Close Pane: two-step visual pane picker (no new button; destructive gets spatial friction)
+
+- **Rule:** The red Close Pane control (inspector `tmux_controls` + native menu) no longer blind-kills the active pane — it arms a transient overlay over the terminal that draws one hit-box per pane from real tmux geometry (cells → %, PaneMapSheet math); hover arms a pane in `danger` red (idle = neutral `accent` marching-ants), click kills exactly it, Esc / scrim cancels, last-pane kill routes through the `confirm()` service. Narrow/touch keeps the old direct-kill (no hover). No new toolbar button.
+- **Why:** Blind-kill closed the wrong pane and gave a destructive action zero friction; a spatial two-step pick supplies the friction + `destructive` token + confirmation the rubric wants while adding zero chrome (avoids toolbar-button-creep, the #1 anti-pattern) and reusing the mini-map geometry. Rejected: a dropdown pane list (loses the on-screen spatial mapping); a persistent per-pane close affordance (control creep). Decision 101.
+- **Status:** Observed (verified in-browser). Evidence: `ClosePanePicker.tsx`, `close-pane-picker.ts`, `rpc-handlers/tmux-pty.ts` (tmuxKillPane), `TaskTmuxControls.tsx`, `menuRouter.ts`.
+
 ## 2026-07-03 — Agent picker: Provider → Model → Mode cascade (UI-only grouping, flat `configId` stays the key)
 
 - **Rule:** The launch picker's 3-field cascade is a presentation grouping over the existing flat preset list — the selected leaf resolves to a single `configId`, which stays the durable storage key and command-resolution unit; no data-model decomposition, no migration. Optional `groupLabel?`/`modeLabel?` on `AgentConfiguration` override derivation only when curation beats it. Changing Model preserves the current Mode kind when it exists in the new group (bible §1.0).

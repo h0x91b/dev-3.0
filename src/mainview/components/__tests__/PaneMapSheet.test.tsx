@@ -15,8 +15,8 @@ const LAYOUT: TmuxLayout = {
 	sessionName: "dev3-task1",
 	exists: true,
 	windows: [
-		{ index: 0, name: "main", active: true, panes: 2 },
-		{ index: 1, name: "logs", active: false, panes: 1 },
+		{ index: 0, name: "main", active: true, panes: 2, zoomed: false },
+		{ index: 1, name: "logs", active: false, panes: 1, zoomed: false },
 	],
 	panes: [
 		{ windowIndex: 0, paneId: "%1", active: true, left: 0, top: 0, width: 99, height: 50, command: "claude", title: "Agent" },
