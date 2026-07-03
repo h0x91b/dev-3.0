@@ -944,6 +944,170 @@
 	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-sl2 { animation: hd-sl2 2.4s ease-in-out infinite; }
 	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-hd-sl3 { animation: hd-sl3 2.4s ease-in-out infinite; }
 
+	/* ============================================================
+	   TASK HEADER ROW — hover animations for the approved candidates
+	   ============================================================ */
+
+	.badge.task { color: #5eead4; background: rgba(94 234 212 / .12); border: 1px solid rgba(94 234 212 / .3); }
+
+	/* Watching — the bell rings, sound waves radiate */
+	@keyframes th-bell {
+		0%, 12%  { transform: rotate(0deg); }
+		24%      { transform: rotate(9deg); }
+		38%      { transform: rotate(-8deg); }
+		52%      { transform: rotate(5deg); }
+		64%      { transform: rotate(-3deg); }
+		76%,100% { transform: rotate(0deg); }
+	}
+	@keyframes th-wave {
+		0%, 15%  { opacity: .2; }
+		35%      { opacity: 1; }
+		60%,100% { opacity: .2; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-bell   { transform-origin: 12px 4.5px; animation: th-bell 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-wave-l { animation: th-wave 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-wave-r { animation: th-wave 2.4s ease-in-out .15s infinite; }
+
+	/* Watch (off) — a hopeful little nudge: "poke me" */
+	@keyframes th-bell-nudge {
+		0%, 40%  { transform: rotate(0deg); }
+		50%      { transform: rotate(4deg); }
+		60%      { transform: rotate(-3.5deg); }
+		70%      { transform: rotate(2deg); }
+		80%,100% { transform: rotate(0deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-bell-nudge { transform-origin: 12px 4.5px; animation: th-bell-nudge 2.4s ease-in-out infinite; }
+
+	/* Find bugs — the lens focuses in, the caught bug squirms */
+	@keyframes th-fb-lens {
+		0%, 15%  { transform: scale(1); }
+		35%      { transform: scale(1.06); }
+		55%      { transform: scale(.99); }
+		70%,100% { transform: scale(1); }
+	}
+	@keyframes th-fb-bug {
+		0%, 10%  { transform: rotate(0deg) translate(0, 0); }
+		25%      { transform: rotate(-6deg) translate(-.5px, .3px); }
+		45%      { transform: rotate(5deg) translate(.5px, -.3px); }
+		65%      { transform: rotate(-3deg) translate(-.3px, 0); }
+		80%,100% { transform: rotate(0deg) translate(0, 0); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fb-lens { transform-origin: 10.5px 10.5px; animation: th-fb-lens 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fb-bug  { transform-origin: 10.5px 11.4px; animation: th-fb-bug 2.4s ease-in-out infinite; }
+
+	/* Robot — eyes blink, the antenna pings, the head tilts hello */
+	@keyframes th-ro-blink {
+		0%, 20%  { opacity: 1; }
+		26%, 32% { opacity: 0; }
+		38%, 58% { opacity: 1; }
+		64%, 70% { opacity: 0; }
+		76%,100% { opacity: 1; }
+	}
+	@keyframes th-ro-ping {
+		0%, 10%  { transform: scale(1); opacity: 1; }
+		30%      { transform: scale(1.7); opacity: .25; }
+		50%,100% { transform: scale(1); opacity: 1; }
+	}
+	@keyframes th-ro-head {
+		0%, 15%  { transform: rotate(0deg); }
+		35%      { transform: rotate(-3deg); }
+		60%      { transform: rotate(2.5deg); }
+		80%,100% { transform: rotate(0deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-ro-eye  { animation: th-ro-blink 2.4s steps(1) infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-ro-ping { transform-origin: 12px 4.3px; animation: th-ro-ping 2.4s ease-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-ro-head { transform-origin: 12px 13.5px; animation: th-ro-head 2.4s ease-in-out infinite; }
+
+	/* Open in… — the arrow launches out of the box, the box recoils */
+	@keyframes th-oi-arrow {
+		0%, 15%  { transform: translate(0, 0); }
+		40%      { transform: translate(1.8px, -1.8px); }
+		60%      { transform: translate(-.4px, .4px); }
+		80%,100% { transform: translate(0, 0); }
+	}
+	@keyframes th-oi-box {
+		0%, 15%  { transform: translate(0, 0); }
+		40%      { transform: translate(-.4px, .4px); }
+		70%,100% { transform: translate(0, 0); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-oi-arrow { animation: th-oi-arrow 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-oi-box   { animation: th-oi-box 2.4s ease-in-out infinite; }
+
+	/* File tree — connectors wire up, child folders pop into place */
+	@keyframes th-ft-branch { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes th-ft-trunk  { 0%, 20% { stroke-dashoffset: 1; } 48% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes th-ft-c1 { 0%, 26% { opacity: 0; transform: scale(.6); } 38%, 100% { opacity: 1; transform: scale(1); } }
+	@keyframes th-ft-c2 { 0%, 44% { opacity: 0; transform: scale(.6); } 56%, 100% { opacity: 1; transform: scale(1); } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-ft-branch { animation: th-ft-branch 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-ft-trunk  { animation: th-ft-trunk 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-ft-c1 { transform-origin: 17.25px 11.5px; animation: th-ft-c1 2.4s ease-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-ft-c2 { transform-origin: 17.25px 19px; animation: th-ft-c2 2.4s ease-out infinite; }
+
+	/* Scripts — the ƒ writes itself, crossbar last */
+	@keyframes th-fn-stroke { 0%, 8% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes th-fn-bar    { 0%, 50% { stroke-dashoffset: 1; } 72% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fn-stroke { animation: th-fn-stroke 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fn-bar    { animation: th-fn-bar 2.4s ease-in-out infinite; }
+
+	/* Ports — the wiring connects, then both endpoints come online */
+	@keyframes th-po-link1 { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes th-po-link2 { 0%, 25% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes th-po-c1 { 0%, 40% { opacity: .35; } 58%, 100% { opacity: 1; } }
+	@keyframes th-po-c2 { 0%, 50% { opacity: .35; } 68%, 100% { opacity: 1; } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-po-link1 { animation: th-po-link1 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-po-link2 { animation: th-po-link2 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-po-c1 { animation: th-po-c1 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-po-c2 { animation: th-po-c2 2.4s ease-in-out infinite; }
+
+	/* Images — golden hour: the sun lifts, the ridges catch the light */
+	@keyframes th-im-sun {
+		0%, 15%  { transform: translateY(0); }
+		40%, 60% { transform: translateY(-1.4px); }
+		85%,100% { transform: translateY(0); }
+	}
+	@keyframes th-im-m {
+		0%, 20%  { transform: translateY(0); }
+		45%      { transform: translateY(-.8px); }
+		75%,100% { transform: translateY(0); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-sun { animation: th-im-sun 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-m1  { animation: th-im-m 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-m2  { animation: th-im-m 2.4s ease-in-out .15s infinite; }
+
+	/* Gear — one ratchet turn forward, then wind back */
+	@keyframes th-gear {
+		0%, 12%  { transform: rotate(0deg); }
+		45%      { transform: rotate(48deg); }
+		58%      { transform: rotate(42deg); }
+		90%,100% { transform: rotate(0deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-gear { transform-origin: 12px 12px; animation: th-gear 2.6s ease-in-out infinite; }
+
+	/* Full screen — the corners fly along their diagonals and settle */
+	@keyframes th-fs-nw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, -1.6px); } }
+	@keyframes th-fs-ne { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, -1.6px); } }
+	@keyframes th-fs-se { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, 1.6px); } }
+	@keyframes th-fs-sw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, 1.6px); } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fs-nw { animation: th-fs-nw 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fs-ne { animation: th-fs-ne 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fs-se { animation: th-fs-se 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-fs-sw { animation: th-fs-sw 2.4s ease-in-out infinite; }
+
+	/* Collapse — the chevron dips, a ghost drips after it */
+	@keyframes th-col {
+		0%, 12%  { transform: translateY(0); }
+		38%      { transform: translateY(2.2px); }
+		62%      { transform: translateY(-.5px); }
+		88%,100% { transform: translateY(0); }
+	}
+	@keyframes th-col-ghost {
+		0%, 20%  { transform: translateY(0); opacity: 0; }
+		45%      { transform: translateY(3.2px); opacity: .45; }
+		75%,100% { transform: translateY(4.6px); opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-col       { animation: th-col 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-col-ghost { animation: th-col-ghost 2.4s ease-in-out infinite; }
+
 	/* ---- "Still to redo" inventory: dense, static, just the icons as they are ---- */
 	.inv-group { margin-top: 26px; }
 	.inv-group > h4 {
@@ -2191,6 +2355,226 @@
 				<p class="desc">A new app version is downloaded and ready to install.</p>
 				<p class="anim-note">The arrow launches up into the cloud — upgrade waiting for lift-off.</p>
 				<div class="meta"><span class="badge header">Header</span><kbd class="chip">21</kbd></div>
+			</div>
+
+		</div>
+	</section>
+
+	<section id="task-icons">
+		<div class="section-title">Task header row — animated</div>
+		<p class="section-sub">The approved redesigned defaults for the task header (watch, bug hunters, agents, open-in, scripts, ports, images, panel chrome), now with hover animations. Hover a card or hit Play all.</p>
+		<div class="grid">
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-th-bell">
+							<path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4.6 1.9 6 1.9 6H4.6s1.9-1.4 1.9-6" class="st" />
+							<path d="M10.4 19.3a1.8 1.8 0 0 0 3.2 0" class="st" />
+						</g>
+						<path d="M2.6 6.4c.5-1.5 1.5-2.7 2.8-3.5" class="st a-th-wave-l" />
+						<path d="M21.4 6.4c-.5-1.5-1.5-2.7-2.8-3.5" class="st a-th-wave-r" />
+					</svg>
+				</div>
+				<h3>Watching</h3>
+				<p class="desc">Watch toggle, active — notifications on for this task.</p>
+				<p class="anim-note">The bell rings and the sound waves radiate off it.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">01</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-th-bell-nudge">
+							<path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4.6 1.9 6 1.9 6H4.6s1.9-1.4 1.9-6" class="st" />
+							<path d="M10.4 19.3a1.8 1.8 0 0 0 3.2 0" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Watch (off)</h3>
+				<p class="desc">Watch toggle, idle — click to subscribe to this task.</p>
+				<p class="anim-note">A hopeful little nudge — the bell asks to be rung.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">02</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-th-fb-lens">
+							<circle cx="10.5" cy="10.5" r="7" class="st" />
+						</g>
+						<path d="m20.7 20.7-5.25-5.25" class="st" />
+						<g class="a-th-fb-bug">
+							<ellipse cx="10.5" cy="11.4" rx="2.1" ry="2.7" class="st" />
+							<path d="m8.9 7.7.9 1.2" class="st" />
+							<path d="m12.1 7.7-.9 1.2" class="st" />
+							<path d="M10.5 8.7v5.4" class="st" />
+							<path d="M8.4 10.6H6.4" class="st" />
+							<path d="M12.6 10.6h2" class="st" />
+							<path d="m6.7 13.7 1.7-.9" class="st" />
+							<path d="m14.3 13.7-1.7-.9" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Find bugs</h3>
+				<p class="desc">Launches the bug-hunter swarm on this task's worktree.</p>
+				<p class="anim-note">The lens focuses in and the caught bug squirms under it.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">03</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-th-ro-head">
+							<rect x="4.5" y="8.5" width="15" height="10" rx="2.5" class="st" />
+							<circle cx="9.2" cy="13" r="1" class="fillq a-th-ro-eye" />
+							<circle cx="14.8" cy="13" r="1" class="fillq a-th-ro-eye" />
+							<path d="M9.7 16c.7.6 3.9.6 4.6 0" class="st" />
+							<path d="M12 8.5V5.6" class="st" />
+							<circle cx="12" cy="4.3" r="1.1" class="st a-th-ro-ping" />
+						</g>
+						<path d="M4.5 12.5h-2" class="st" />
+						<path d="M19.5 12.5h2" class="st" />
+					</svg>
+				</div>
+				<h3>+ Agent</h3>
+				<p class="desc">Spawns an extra agent into this task's tmux session.</p>
+				<p class="anim-note">The head tilts hello, the eyes blink, the antenna pings.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">04</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M18.5 13v5a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5" class="st a-th-oi-box" />
+						<g class="a-th-oi-arrow">
+							<path d="M15 3.5h5.5V9" class="st" />
+							<path d="M20.5 3.5 12 12" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Open in…</h3>
+				<p class="desc">Opens the worktree in Finder, editor, or a custom app.</p>
+				<p class="anim-note">The arrow launches out of the box; the box recoils slightly.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">05</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="2.5" width="7.5" height="5" rx="1.2" class="st" />
+						<path d="M6.75 11.5h6.75" pathLength="1" class="st drawable a-th-ft-branch" />
+						<path d="M6.75 7.5v10a1.5 1.5 0 0 0 1.5 1.5h5.25" pathLength="1" class="st drawable a-th-ft-trunk" />
+						<rect x="13.5" y="9" width="7.5" height="5" rx="1.2" class="st a-th-ft-c1" />
+						<rect x="13.5" y="16.5" width="7.5" height="5" rx="1.2" class="st a-th-ft-c2" />
+					</svg>
+				</div>
+				<h3>File browser</h3>
+				<p class="desc">Opens yazi over the worktree in a terminal pane.</p>
+				<p class="anim-note">The connectors wire up and the child folders pop into place.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">06</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M15.8 4.3c-2.3-.7-3.6.9-4 3.1l-1.9 10.2c-.4 2.2-1.7 3.2-3.7 2.6" pathLength="1" class="st drawable a-th-fn-stroke" />
+						<path d="M7.8 10.5h7.2" pathLength="1" class="st drawable a-th-fn-bar" />
+					</svg>
+				</div>
+				<h3>Scripts</h3>
+				<p class="desc">Project scripts menu — setup, dev, cleanup, custom.</p>
+				<p class="anim-note">The ƒ writes itself in one stroke, crossbar last.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">07</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="8.75" y="2.5" width="6.5" height="5.5" rx="1.2" class="st" />
+						<path d="M12 8v3.5" pathLength="1" class="st drawable a-th-po-link1" />
+						<path d="M5.75 16v-2.5a2 2 0 0 1 2-2h8.5a2 2 0 0 1 2 2V16" pathLength="1" class="st drawable a-th-po-link2" />
+						<rect x="2.5" y="16" width="6.5" height="5.5" rx="1.2" class="st a-th-po-c1" />
+						<rect x="15" y="16" width="6.5" height="5.5" rx="1.2" class="st a-th-po-c2" />
+					</svg>
+				</div>
+				<h3>Ports</h3>
+				<p class="desc">Listening ports detected in this task's worktree.</p>
+				<p class="anim-note">The wiring connects, then both endpoints come online.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">08</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="4.5" width="18" height="15" rx="2.5" class="st" />
+						<circle cx="9" cy="9.8" r="1.7" class="st a-th-im-sun" />
+						<path d="m3 16.8 4.2-4.2a1.8 1.8 0 0 1 2.6 0l6.7 6.7" class="st a-th-im-m1" />
+						<path d="m13.5 14.5 1.8-1.8a1.8 1.8 0 0 1 2.6 0l3.1 3.1" class="st a-th-im-m2" />
+					</svg>
+				</div>
+				<h3>Images</h3>
+				<p class="desc">Screenshots and captures the agent shared with you.</p>
+				<p class="anim-note">Golden hour — the sun lifts and the ridges catch the light.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">09</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-th-gear">
+							<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" class="st" />
+							<circle cx="12" cy="12" r="3" class="st" />
+						</g>
+					</svg>
+				</div>
+				<h3>Worktree settings</h3>
+				<p class="desc">Per-worktree settings tab in project settings.</p>
+				<p class="anim-note">One ratchet turn forward, then it winds back to rest.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">10</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9" class="st a-th-fs-nw" />
+						<path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9" class="st a-th-fs-ne" />
+						<path d="M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15" class="st a-th-fs-se" />
+						<path d="M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" class="st a-th-fs-sw" />
+					</svg>
+				</div>
+				<h3>Full screen (enter)</h3>
+				<p class="desc">Expands the task view to fill the window.</p>
+				<p class="anim-note">The corners fly outward along their diagonals — more room.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">11</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M9 4v3.5A1.5 1.5 0 0 1 7.5 9H4" class="st a-th-fs-se" />
+						<path d="M15 4v3.5A1.5 1.5 0 0 0 16.5 9H20" class="st a-th-fs-sw" />
+						<path d="M20 15h-3.5a1.5 1.5 0 0 0-1.5 1.5V20" class="st a-th-fs-nw" />
+						<path d="M4 15h3.5A1.5 1.5 0 0 1 9 16.5V20" class="st a-th-fs-ne" />
+					</svg>
+				</div>
+				<h3>Full screen (exit)</h3>
+				<p class="desc">Returns the task view to the split layout.</p>
+				<p class="anim-note">Mirror move — the corners tuck back in toward the center.</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">12</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="m6.5 9.5 5.5 5.5 5.5-5.5" class="st a-th-col" />
+						<path d="m6.5 9.5 5.5 5.5 5.5-5.5" class="st a-th-col-ghost" opacity="0" />
+					</svg>
+				</div>
+				<h3>Collapse panel</h3>
+				<p class="desc">Expands / collapses the task info panel.</p>
+				<p class="anim-note">The chevron dips and a ghost drips after it — "more below".</p>
+				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">13</kbd></div>
 			</div>
 
 		</div>
