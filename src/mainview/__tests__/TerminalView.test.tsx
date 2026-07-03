@@ -415,8 +415,21 @@ describe("TerminalView – keymap shortcuts", () => {
 		target.remove();
 	});
 
-	it("dev3 mode: Cmd+W does NOT call tmuxAction", async () => {
-		// dev3 is the default — no localStorage entry needed
+	it("default preset (nothing stored): Cmd+W calls tmuxAction (iTerm2 is the default)", async () => {
+		// No localStorage entry — iTerm2 hotkeys ship on by default.
+		await renderAndSetup();
+		const target = focusInsideTerminal();
+
+		await act(async () => {
+			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
+		});
+
+		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "killPane" });
+		target.remove();
+	});
+
+	it("default mode (explicit opt-out): Cmd+W does NOT call tmuxAction", async () => {
+		localStorage.setItem(KEYMAP_LS_KEY, "default");
 		await renderAndSetup();
 		const target = focusInsideTerminal();
 

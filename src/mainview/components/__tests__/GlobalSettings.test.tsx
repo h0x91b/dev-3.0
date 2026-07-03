@@ -915,40 +915,16 @@ describe("GlobalSettings", () => {
 			expect(getKeymapToggle()).toBeInTheDocument();
 		});
 
-		it("toggle is inactive by default", async () => {
+		it("toggle is active by default (iTerm2 ships on)", async () => {
 			setupMocks();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			expect(getKeymapToggle().className).not.toContain("border-accent");
+			expect(getKeymapToggle().className).toContain("border-accent");
 		});
 
-		it("clicking the toggle saves terminalKeymap iterm2 to backend", async () => {
+		it("clicking the toggle opts out, saving terminalKeymap default to backend", async () => {
 			setupMocks();
-			const user = userEvent.setup();
-			renderGlobalSettings();
-			await waitForLoad();
-
-			await user.click(getKeymapToggle());
-
-			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
-				expect.objectContaining({ terminalKeymap: "iterm2" }),
-			);
-		});
-
-		it("clicking the toggle persists iterm2 preset to localStorage", async () => {
-			setupMocks();
-			const user = userEvent.setup();
-			renderGlobalSettings();
-			await waitForLoad();
-
-			await user.click(getKeymapToggle());
-
-			expect(localStorage.getItem(KEYMAP_LS_KEY)).toBe("iterm2");
-		});
-
-		it("clicking the toggle again reverts to default", async () => {
-			setupMocks(mockAgents, { ...mockGlobalSettings, terminalKeymap: "iterm2" });
 			const user = userEvent.setup();
 			renderGlobalSettings();
 			await waitForLoad();
@@ -957,6 +933,30 @@ describe("GlobalSettings", () => {
 
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({ terminalKeymap: "default" }),
+			);
+		});
+
+		it("clicking the toggle persists the default (opt-out) preset to localStorage", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(getKeymapToggle());
+
+			expect(localStorage.getItem(KEYMAP_LS_KEY)).toBe("default");
+		});
+
+		it("clicking the toggle from an explicit opt-out turns iTerm2 back on", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings, terminalKeymap: "default" });
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(getKeymapToggle());
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ terminalKeymap: "iterm2" }),
 			);
 		});
 

@@ -63,7 +63,15 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			agentBinaryPaths: data.agentBinaryPaths ?? undefined,
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
-			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
+			// iTerm2 is the default (undefined ⇒ iterm2 in the renderer), so an
+			// explicit "default" is a real opt-out that must survive a round-trip;
+			// collapsing it to undefined would silently re-enable the hotkeys.
+			terminalKeymap:
+				data.terminalKeymap === "iterm2"
+					? "iterm2"
+					: data.terminalKeymap === "default"
+						? "default"
+						: undefined,
 			tipsDisabled: data.tipsDisabled === true ? true : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			defaultDiffViewMode:
@@ -118,7 +126,15 @@ export function loadSettingsSync(): GlobalSettings {
 			agentBinaryPaths: data.agentBinaryPaths ?? undefined,
 			playSoundOnTaskComplete: data.playSoundOnTaskComplete ?? true,
 			externalApps: Array.isArray(data.externalApps) ? data.externalApps : undefined,
-			terminalKeymap: data.terminalKeymap === "iterm2" ? "iterm2" : undefined,
+			// iTerm2 is the default (undefined ⇒ iterm2 in the renderer), so an
+			// explicit "default" is a real opt-out that must survive a round-trip;
+			// collapsing it to undefined would silently re-enable the hotkeys.
+			terminalKeymap:
+				data.terminalKeymap === "iterm2"
+					? "iterm2"
+					: data.terminalKeymap === "default"
+						? "default"
+						: undefined,
 			tipsDisabled: data.tipsDisabled === true ? true : undefined,
 			taskOpenMode: data.taskOpenMode === "fullscreen" ? "fullscreen" : undefined,
 			defaultDiffViewMode:
