@@ -25,6 +25,7 @@ import TaskSharedImages from "./task-info-panel/TaskSharedImages";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
+import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskTmuxControls from "./task-info-panel/TaskTmuxControls";
@@ -413,7 +414,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			type="button"
 			data-testid="diff-include-tests-toggle"
 			onClick={() => setIncludeTests(!includeTests)}
-			className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[0.6875rem] font-mono flex-shrink-0 transition-colors ${
+			className={`git-anim inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[0.6875rem] font-mono flex-shrink-0 transition-colors ${
 				includeTests
 					? "bg-elevated border-edge text-fg-2 hover:bg-elevated-hover"
 					: "bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
@@ -423,12 +424,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			aria-pressed={includeTests}
 		>
 			{!compact && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
-			<span
-				className="text-[0.85rem] leading-none"
-				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-			>
-				{"\u{F0668}"}
-			</span>
+			<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" />
 		</button>
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(

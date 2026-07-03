@@ -680,3 +680,153 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 		animation: none;
 	}
 }
+
+/* ---- Animated git-action icons --------------------------------------------
+   The hand-drawn git glyphs (GitIcons.tsx) act out their operation when the
+   hosting control — any element with .git-anim (a git-row button or the diff
+   include-tests toggle) — is hovered. Pure CSS, loops while hovered,
+   pixel-identical to the static glyph when idle.
+   Animated design reference: design/tmux-icons-animated.html (Git actions). */
+
+/* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
+svg .gtx { transform-box: view-box; }
+/* pathLength="1" draw trick — renders the full stroke when idle. */
+svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* -- Show Diff (unified): + pops in, added line types out, removed line blinks -- */
+@keyframes gtx-gd-add {
+	0%, 10% { stroke-dashoffset: 1; opacity: 0; }
+	16% { opacity: 1; }
+	38% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes gtx-gd-plus {
+	0%, 6% { transform: scale(0); opacity: 0; }
+	18% { transform: scale(1.35); opacity: 1; }
+	28% { transform: scale(1); }
+	100% { transform: scale(1); opacity: 1; }
+}
+@keyframes gtx-gd-del {
+	0%, 40% { opacity: 1; }
+	56% { opacity: .25; }
+	66% { opacity: 1; }
+	78% { opacity: .25; }
+	100% { opacity: .25; }
+}
+.git-anim:hover .gtx-gd-add { animation: gtx-gd-add 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gd-plus { transform-origin: 7px 9px; animation: gtx-gd-plus 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gd-del { animation: gtx-gd-del 2.4s ease-in-out infinite; }
+
+/* -- Rebase (replant): rail marches, the commit rides it up, the tip pulses -- */
+@keyframes gtx-gr-ants { to { stroke-dashoffset: -23; } }
+@keyframes gtx-gr-dot {
+	/* waypoints sampled from the bezier M17.5 14.9 C17.5 10.2 15.2 7 11 5.6,
+	   relative to the dot's idle center (17.5, 17) */
+	0%, 8% { transform: translate(0, 0); opacity: 1; }
+	22% { transform: translate(-0.7px, -6.3px); opacity: 1; }
+	36% { transform: translate(-2.9px, -9.4px); opacity: 1; }
+	48% { transform: translate(-6.5px, -11.4px); opacity: 1; }
+	56% { transform: translate(-6.5px, -11.4px); opacity: 0; }
+	64% { transform: translate(0, 0); opacity: 0; }
+	74%, 100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes gtx-gr-land {
+	0%, 44% { transform: scale(1); }
+	54% { transform: scale(1.45); }
+	66%, 100% { transform: scale(1); }
+}
+.git-anim:hover .gtx-gr-ants { animation: gtx-gr-ants 1.6s linear infinite; }
+.git-anim:hover .gtx-gr-dot { animation: gtx-gr-dot 2.6s ease-in-out infinite; }
+.git-anim:hover .gtx-gr-land { transform-origin: 6px 5px; animation: gtx-gr-land 2.6s ease-in-out infinite; }
+
+/* -- Push (cloud): the arrow launches up and vanishes, the cloud gulps -- */
+@keyframes gtx-gp-arrow {
+	0%, 8% { transform: translateY(0); opacity: 1; }
+	42% { transform: translateY(-5.5px); opacity: 1; }
+	54% { transform: translateY(-7px); opacity: 0; }
+	60% { transform: translateY(2.5px); opacity: 0; }
+	74% { transform: translateY(2.5px); opacity: 1; }
+	92%, 100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes gtx-gp-cloud {
+	0%, 34% { transform: scale(1); }
+	48% { transform: scale(1.09); }
+	62%, 100% { transform: scale(1); }
+}
+.git-anim:hover .gtx-gp-arrow { animation: gtx-gp-arrow 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gp-cloud { transform-origin: 11.5px 11px; animation: gtx-gp-cloud 2.4s ease-in-out infinite; }
+
+/* -- Create PR (sparkle): branch curve draws over, dot lands, sparkle twinkles -- */
+@keyframes gtx-gc-curve {
+	0%, 10% { stroke-dashoffset: 1; }
+	46% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes gtx-gc-dot {
+	0%, 40% { transform: scale(1); }
+	52% { transform: scale(1.4); }
+	64%, 100% { transform: scale(1); }
+}
+@keyframes gtx-gc-spark {
+	0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+	25% { transform: scale(1.35) rotate(20deg); opacity: 1; }
+	45% { transform: scale(.55) rotate(-12deg); opacity: .55; }
+	65% { transform: scale(1.2) rotate(8deg); opacity: 1; }
+}
+.git-anim:hover .gtx-gc-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gc-dot { transform-origin: 15.5px 18.5px; animation: gtx-gc-dot 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gc-spark { transform-origin: 19.7px 5.6px; animation: gtx-gc-spark 2.4s ease-in-out infinite; }
+
+/* -- PR + auto-merge (lightning): curve draws, the bolt strikes and crackles -- */
+@keyframes gtx-gl-bolt {
+	0%, 26% { transform: scale(0); opacity: 0; }
+	36% { transform: scale(1.35); opacity: 1; }
+	44% { transform: scale(1); }
+	52% { opacity: 1; }
+	58% { opacity: .35; }
+	64% { opacity: 1; }
+	70% { opacity: .45; }
+	76%, 96% { opacity: 1; }
+	100% { transform: scale(1); opacity: 1; }
+}
+.git-anim:hover .gtx-gl-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gl-bolt { transform-origin: 16.8px 15.4px; animation: gtx-gl-bolt 2.4s ease-in-out infinite; }
+
+/* -- Merge (classic): branch flows into the base, merge commit pops in -- */
+@keyframes gtx-gm-dot {
+	0%, 38% { transform: scale(0); opacity: 0; }
+	52% { transform: scale(1.5); opacity: 1; }
+	64% { transform: scale(1); }
+	100% { transform: scale(1); opacity: 1; }
+}
+.git-anim:hover .gtx-gm-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gm-dot { transform-origin: 17px 14px; animation: gtx-gm-dot 2.4s ease-in-out infinite; }
+
+/* -- Include tests (boiling flask): liquid sloshes, bubbles rise out -- */
+@keyframes gtx-tf-b1 {
+	0%, 12% { transform: translateY(0); opacity: 0; }
+	20% { opacity: 1; }
+	48% { transform: translateY(-6.5px); opacity: 0; }
+	100% { transform: translateY(-6.5px); opacity: 0; }
+}
+@keyframes gtx-tf-b2 {
+	0%, 38% { transform: translateY(0); opacity: 0; }
+	46% { opacity: 1; }
+	76% { transform: translateY(-5.5px); opacity: 0; }
+	100% { transform: translateY(-5.5px); opacity: 0; }
+}
+@keyframes gtx-tf-liquid {
+	0%, 100% { transform: translateY(0); }
+	30% { transform: translateY(-1px); }
+	60% { transform: translateY(.4px); }
+}
+.git-anim:hover .gtx-tf-b1 { animation: gtx-tf-b1 2.2s ease-out infinite; }
+.git-anim:hover .gtx-tf-b2 { animation: gtx-tf-b2 2.2s ease-out infinite; }
+.git-anim:hover .gtx-tf-liquid { animation: gtx-tf-liquid 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+	.git-anim:hover [class^="gtx-"],
+	.git-anim:hover [class*=" gtx-"] {
+		animation: none;
+	}
+}
