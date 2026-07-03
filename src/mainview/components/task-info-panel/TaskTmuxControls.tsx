@@ -16,6 +16,7 @@ import {
 	LayoutMainHIcon,
 	LayoutMainVIcon,
 	LayoutTiledIcon,
+	NewWindowIcon,
 	SplitHIcon,
 	SplitVIcon,
 	TmuxHintsIcon,
@@ -29,6 +30,7 @@ interface TaskTmuxControlsProps {
 type TmuxAction =
 	| "splitH"
 	| "splitV"
+	| "newWindow"
 	| "zoom"
 	| "nextLayout"
 	| "killPane"
@@ -258,6 +260,8 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 	};
 
 	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
+	// New window is a "create" action — green, to set it apart from the blue pane splits.
+	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
 	const tmuxIconBtnClass = "tmux-anim px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
 	const tmuxSvgClass = "w-4 h-4";
 	const popoverKbd = "font-mono text-xs text-fg-2 min-w-[3.5rem]";
@@ -290,6 +294,9 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 				</button>
 				<button className={tmuxBtnClass} onClick={handleTmuxAction("splitV")} title={t("tmux.splitVDesc")} aria-label={t("tmux.splitVDesc")}>
 					<SplitVIcon className={tmuxSvgClass} />
+				</button>
+				<button className={tmuxNewWindowBtnClass} onClick={handleTmuxAction("newWindow")} title={t("tmux.newWindowDesc")} aria-label={t("tmux.newWindowDesc")}>
+					<NewWindowIcon className={tmuxSvgClass} />
 				</button>
 
 				<div

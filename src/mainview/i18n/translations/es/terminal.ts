@@ -60,6 +60,7 @@ const terminal = {
 	"tmux.panes": "Paneles",
 	"tmux.splitHDesc": "Dividir horizontalmente",
 	"tmux.splitVDesc": "Dividir verticalmente",
+	"tmux.newWindowDesc": "Nueva ventana",
 	"tmux.zoomDesc": "Zoom del panel (alternar)",
 	"tmux.nextLayoutDesc": "Rotar diseños",
 	"tmux.layoutTiledDesc": "Mosaico (cuadrícula)",
