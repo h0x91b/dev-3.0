@@ -61,7 +61,7 @@ export default function BehaviorSettingsSection({
 		}
 	};
 	return (
-		<SettingsSection title={t("settings.behaviorSection")}>
+		<SettingsSection title={t("settings.behaviorSection")} helpTopicId="settings.behavior">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.taskDropPosition")}

@@ -42,7 +42,7 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Search & filters",
 	"help.board.filterBar.body":
-		"Narrow the board: type to filter cards by title, click label chips to show only matching tasks.",
+		"Narrow the board: type to filter cards by title, click label chips to show only matching tasks. To rename, recolor or delete labels, open Project Settings → Labels.",
 	"help.board.taskCard.title": "Task card",
 	"help.board.taskCard.body":
 		"The colored dots are parallel agent variants (each in its own worktree), the bell means the agent is calling you, and the #123 badge is the task's PR with its CI and review state. Right-click the card for every task action.",

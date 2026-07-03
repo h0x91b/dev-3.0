@@ -13,7 +13,7 @@ export default function DeveloperToolsSection({
 	onInstallDev3Cli,
 }: DeveloperToolsSectionProps) {
 	return (
-		<SettingsSection title={t("settings.devTools")}>
+		<SettingsSection title={t("settings.devTools")} helpTopicId="settings.devtools">
 			<div className="flex items-center gap-3">
 				<button
 					onClick={onInstallDev3Cli}

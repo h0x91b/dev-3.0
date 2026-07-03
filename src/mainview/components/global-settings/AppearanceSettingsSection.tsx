@@ -42,7 +42,7 @@ export default function AppearanceSettingsSection({
 	onLocaleChange,
 }: AppearanceSettingsSectionProps) {
 	return (
-		<SettingsSection title={t("settings.appearanceSection")}>
+		<SettingsSection title={t("settings.appearanceSection")} helpTopicId="settings.appearance">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-3">
 					{t("settings.theme")}

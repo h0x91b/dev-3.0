@@ -3,6 +3,7 @@ import type { Label } from "../../shared/types";
 import { useT } from "../i18n";
 import LabelChip from "./LabelChip";
 import BottomSheet from "./BottomSheet";
+import HelpSpot from "./HelpSpot";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
@@ -193,14 +194,7 @@ function LabelFilterBar({
 				<>
 					<span className="flex items-center gap-1 text-xs text-fg-3 font-medium flex-shrink-0">
 						{t("labels.filterTitle")}:
-						<span
-							className="cursor-help text-fg-muted hover:text-fg transition-colors leading-none"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							title={t("labels.manageHint")}
-							aria-label={t("labels.manageHint")}
-						>
-							{"\u{F02FC}"}
-						</span>
+						<HelpSpot topicId="board.filter-bar" />
 					</span>
 					<div className="flex items-center gap-1.5 flex-wrap">
 						{labels.map((label) => (

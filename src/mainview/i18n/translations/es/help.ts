@@ -36,7 +36,7 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Búsqueda y filtros",
 	"help.board.filterBar.body":
-		"Acota el tablero: escribe para filtrar tarjetas por título, haz clic en las etiquetas para mostrar solo las tareas que coinciden.",
+		"Acota el tablero: escribe para filtrar tarjetas por título, haz clic en las etiquetas para mostrar solo las tareas que coinciden. Para renombrar, recolorear o eliminar etiquetas, abre Configuración del proyecto → Etiquetas.",
 	"help.board.taskCard.title": "Tarjeta de tarea",
 	"help.board.taskCard.body":
 		"Los puntos de colores son variantes paralelas de agentes (cada una en su worktree), la campana significa que el agente te llama, y la insignia #123 es el PR de la tarea con su estado de CI y revisión. Clic derecho para todas las acciones.",

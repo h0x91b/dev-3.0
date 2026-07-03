@@ -22,7 +22,7 @@ export default function WorkspaceSettingsSection({
 	onUpdateExternalApp,
 }: WorkspaceSettingsSectionProps) {
 	return (
-		<SettingsSection title={t("settings.workspaceSection")}>
+		<SettingsSection title={t("settings.workspaceSection")} helpTopicId="settings.workspace">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.updateChannel")}

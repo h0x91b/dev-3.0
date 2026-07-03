@@ -47,6 +47,7 @@ import { useCompact } from "../utils/useCompact";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
+import HelpSpot from "./HelpSpot";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -944,17 +945,22 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 				<div className="flex flex-col h-full">
 					<div className="flex flex-col px-4">
 						<div className="flex items-center gap-1.5 min-w-0 pt-1">
-							{watchToggleButton}
-							{statusDropdownButton}
-							{statusDropdownPortal}
-							{diffSummaryBadge}
-						{diffIncludeTestsToggle}
-							{labelStrip}
+							<div className="flex items-center gap-1.5 min-w-0" data-help-id="inspector.context-bar">
+								{watchToggleButton}
+								{statusDropdownButton}
+								{statusDropdownPortal}
+								{diffSummaryBadge}
+								{diffIncludeTestsToggle}
+								{labelStrip}
+							</div>
 							<div className="flex-1" />
-							{bugHuntersButton}
-							{spawnAgentButton}
-							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-							<TaskTmuxControls taskId={task.id} />
+							<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
+								{bugHuntersButton}
+								{spawnAgentButton}
+								<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
+								<TaskTmuxControls taskId={task.id} />
+							</div>
+							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							<button
 								onClick={() => isFullPage
 									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
@@ -977,23 +983,25 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
-							{project.kind === "virtual" ? (
-								<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
-							) : (
-								<TaskGitActions
-									task={task}
-									project={project}
-									dispatch={dispatch}
-									navigate={navigate}
-									isTaskActive={isTaskActive}
-									branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
-									compact={compact}
-									onBranchStatusChange={setMetadataBranchState}
-									onOpenInlineDiff={onOpenInlineDiff}
-								/>
-							)}
+							<div className="flex items-center gap-1.5 min-w-0" data-help-id="inspector.git-bar">
+								{project.kind === "virtual" ? (
+									<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+								) : (
+									<TaskGitActions
+										task={task}
+										project={project}
+										dispatch={dispatch}
+										navigate={navigate}
+										isTaskActive={isTaskActive}
+										branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
+										compact={compact}
+										onBranchStatusChange={setMetadataBranchState}
+										onOpenInlineDiff={onOpenInlineDiff}
+									/>
+								)}
+							</div>
 							<div className="flex-1" />
-							<div className="flex items-center gap-2 flex-shrink-0">
+							<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
 								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
 								{project.kind !== "virtual" && (
 									<>

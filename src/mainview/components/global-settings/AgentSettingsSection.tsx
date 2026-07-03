@@ -353,7 +353,7 @@ export default function AgentSettingsSection({
 	}
 
 	return (
-		<SettingsSection title={t("settings.agents")}>
+		<SettingsSection title={t("settings.agents")} helpTopicId="settings.agents">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.defaultAgent")}
