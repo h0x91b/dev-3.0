@@ -68,7 +68,7 @@ A non-git, cross-project Kanban for ad-hoc, code-driven tasks that are not tied 
 (back up prod, stop a server, mail/Slack triage, throwaway experiments) and that persist in
 history. Modeled as `Project.kind: "virtual"` — reuses the dashboard, board, cards, sidebar,
 labels, and notes; the git worktree is excluded entirely (no branch/diff/PR/review columns).
-Replaces the single `home-terminal`. Full spec: `docs/ux/feature-plans/virtual-operations-board.md`.
+Replaces the single `home-terminal`. Full spec: `docs/ux/UX_DECISIONS.md` (2026-06-23, 2026-06-24; details in git history).
 
 - [x] `Project.kind: "git" | "virtual"` discriminator; virtual projects stored in a separate `~/.dev3.0/virtual-projects.json` (forward-compat: old versions stay blind to them)
 - [x] Virtual identity = synthetic `path = ~/.dev3.0/ops/<readable-slug>` so `projectSlug()`/CLI stay unchanged

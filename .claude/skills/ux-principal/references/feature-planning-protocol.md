@@ -29,6 +29,12 @@ feature:
   discoverability_need: "high|medium|low"
 ```
 
+## Step 2b: Triage
+
+Run the Architecture-change gate from `SKILL.md`. If the feature is manifest-compliant
+(no new destination, surface, placement rule, budget exception, token role, or object),
+produce the **Lite report** inline with zero doc writes and skip Step 6.
+
 ## Step 3: Surface decision
 
 Answer:
@@ -76,6 +82,10 @@ Patch docs only when the feature introduces durable architecture:
 - New action placement rule.
 - New token role mapping.
 - New exception to a complexity budget.
+
+The rule goes into the bible/yaml; the *why* goes into `UX_DECISIONS.md` as one compact
+entry (≤5 lines). No changelog files, no per-feature plan files — git history and the PR
+carry those. If none of the bullets above apply, this step writes nothing.
 
 ## Step 7: Implementation brief
 

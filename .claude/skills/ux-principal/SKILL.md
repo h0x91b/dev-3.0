@@ -28,13 +28,32 @@ This skill is not a visual inspiration skill. It is the authority for:
 
 Unless the user explicitly asks for implementation, do not edit product UI code.
 
-You may create or update planning and manifest docs:
+**The default number of files this skill writes is ZERO.** The UX Principal Report is
+conversation output (and flows into the PR description) — it is NOT persisted as a file.
+Do not create per-feature plan files, changelog entries, or audit files. Git history is
+the changelog.
+
+The only files this skill may touch — and only when the architecture-change gate below
+passes — are:
 
 - `docs/ux/PRODUCT_UX_BIBLE.md`
 - `docs/ux/ux-architecture.yaml`
 - `docs/ux/UX_DECISIONS.md`
-- `docs/ux/UX_MANIFEST_CHANGELOG.md`
-- `docs/ux/feature-plans/*.md`
+
+## Architecture-change gate
+
+Manifest files are updated only when the feature introduces durable architecture, meaning
+at least one of:
+
+- A new destination (top-level or section navigation change).
+- A new surface or a new surface pattern.
+- A new placement rule, or an exception to a complexity budget.
+- A new semantic token role or token-role remapping.
+- A new object in the object model.
+
+If none apply — and most features are manifest-compliant — write nothing. State
+"Manifest: compliant, no updates" in the report and stop there. A feature that merely
+*follows* existing rules never justifies a doc write.
 
 ## Manifest dependency
 
@@ -67,6 +86,14 @@ If missing or obviously stale:
    - Identify frequency: constant, daily, occasional, rare.
    - Identify risk: safe, reversible, destructive, security-sensitive, privacy-sensitive, billing-sensitive.
 
+2b. **Triage: compliant vs architecture-changing**
+   - Run the Architecture-change gate (above) on the classified feature.
+   - **Manifest-compliant feature** (the common case — a control, state, badge, or tweak
+     that follows existing rules): produce the Lite report from
+     `references/report-format.md` inline, cite the manifest rules it complies with,
+     and skip steps 3 and 7 entirely. Zero doc writes.
+   - **Architecture-changing feature**: continue with the full workflow below.
+
 3. **Use sub-agents for complex features**
    - If the environment supports sub-agents, spawn the relevant sub-agents from `references/subagent-briefs.md`.
    - Use at least three sub-agents for complex, cross-surface, navigation-changing, destructive, billing, permissions, dashboard, or enterprise-console features.
@@ -96,18 +123,35 @@ If missing or obviously stale:
    - Accessibility requirements.
    - Copy and labels.
 
-7. **Update manifest docs when needed**
-   - Add new object, route, surface, rule, token mapping, or UX decision only if the feature introduces durable architecture.
-   - Append to `docs/ux/UX_DECISIONS.md`.
-   - Update `docs/ux/ux-architecture.yaml` if placement rules, budgets, or tokens change.
-   - Add a changelog entry.
-   - Create a feature plan in `docs/ux/feature-plans/`.
+7. **Update manifest docs — only if the Architecture-change gate passed**
+   - The durable rule itself goes into `docs/ux/PRODUCT_UX_BIBLE.md` and/or
+     `docs/ux/ux-architecture.yaml` — those are the canonical rule stores.
+   - Append ONE compact entry to `docs/ux/UX_DECISIONS.md` recording the *why*
+     (see the Decision log diet below).
+   - Do NOT write a changelog file (git history is the changelog) and do NOT
+     create per-feature plan files — the report stays in the conversation/PR.
 
 8. **Return the UX Principal Report**
    - Use `references/report-format.md`.
    - Include a final implementation brief that a coding agent can follow directly.
    - State what not to implement.
    - State which files/surfaces are likely to change.
+
+## Decision log diet
+
+`docs/ux/UX_DECISIONS.md` is an index of *why*s, not a narrative archive. Hard rules:
+
+- One entry per decision, **max ~5 lines / ~600 characters**: heading
+  (`## YYYY-MM-DD — <title>`), the rule in one sentence, the rationale in one
+  sentence (including the strongest rejected alternative), status + key evidence paths.
+- Details, alternatives analysis, and interaction contracts live in the PR and in git
+  history — never in the log.
+- **Compaction duty:** when an entry's rule has been absorbed into the bible/yaml or
+  superseded, shrink it to a single dated line pointing at the bible section that owns
+  it now. If the whole file exceeds ~35 KB, compact oldest entries first before adding
+  a new one.
+- Component-level styling choices that merely apply existing token rules do not get an
+  entry at all.
 
 ## Placement rules that always apply unless the manifest overrides them
 

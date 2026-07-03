@@ -1,6 +1,7 @@
 # Final report format for ux-create-manifest
 
-Use this structure in the final response.
+Use this structure in the final response. The report (including the audit findings)
+is chat output only — do not persist it as a repo file.
 
 ```md
 # UX Manifest Created
@@ -9,8 +10,6 @@ Use this structure in the final response.
 - `docs/ux/PRODUCT_UX_BIBLE.md`
 - `docs/ux/ux-architecture.yaml`
 - `docs/ux/UX_DECISIONS.md`
-- `docs/ux/UX_MANIFEST_CHANGELOG.md`
-- `docs/ux/UX_AUDIT_REPORT.md`
 
 ## Evidence coverage
 | Area | Coverage | Key files |

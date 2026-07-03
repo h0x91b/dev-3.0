@@ -180,3 +180,11 @@ Evidence:
 ## 12. Open questions
 
 - TBD
+
+## 13. Glossary
+
+Shared UX vocabulary for this project (destination, action, surface, primary action,
+complexity budget, token, …) — project-specific meanings, one short paragraph each.
+This section replaces any separate glossary file.
+
+- **Term** — definition.

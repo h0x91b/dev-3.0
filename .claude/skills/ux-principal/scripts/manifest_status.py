@@ -10,7 +10,6 @@ EXPECTED = [
     "docs/ux/PRODUCT_UX_BIBLE.md",
     "docs/ux/ux-architecture.yaml",
     "docs/ux/UX_DECISIONS.md",
-    "docs/ux/UX_MANIFEST_CHANGELOG.md",
 ]
 
 

@@ -21,12 +21,13 @@ Create a trustworthy, project-specific UX manifest derived from the current repo
 
 You may create or update only UX documentation unless the user explicitly requests implementation changes:
 
-- `docs/ux/PRODUCT_UX_BIBLE.md`
+- `docs/ux/PRODUCT_UX_BIBLE.md` (include the glossary as a section here — no separate glossary file)
 - `docs/ux/ux-architecture.yaml`
-- `docs/ux/UX_DECISIONS.md`
-- `docs/ux/UX_MANIFEST_CHANGELOG.md`
-- `docs/ux/UX_AUDIT_REPORT.md`
-- `docs/ux/UX_GLOSSARY.md`
+- `docs/ux/UX_DECISIONS.md` (seeded, kept compact — see `ux-principal`'s decision log diet)
+
+Do NOT create `UX_MANIFEST_CHANGELOG.md` (git history is the changelog), `UX_AUDIT_REPORT.md`
+(the audit is your final chat response, not a repo file), or `UX_GLOSSARY.md` (a bible
+section). Three files is the complete on-disk footprint of this skill.
 
 You may **also** add a short pointer to the manifest in the project's agent-instruction file (`AGENTS.md` / `CLAUDE.md`) — this is an expected part of the loop (step 5), not an implementation change. Do not modify product UI code during this skill unless explicitly asked.
 
@@ -56,7 +57,7 @@ You may **also** add a short pointer to the manifest in the project's agent-inst
    - Use the templates in `templates/`.
    - Create a human-readable bible and a machine-readable YAML policy.
    - Preserve useful existing docs. Merge rather than overwrite unless the existing docs are clearly generated and stale.
-   - Add a changelog entry explaining what was created or changed.
+   - Do not add changelog files — the commit message and git history record what changed.
 
 5. **Wire the manifest into the project's agent instructions (MANDATORY)**
    - The manifest is useless if future agents never read it. Add a short pointer to the project's agent-instruction file — `AGENTS.md` and/or `CLAUDE.md` (often `CLAUDE.md` is a symlink to `AGENTS.md`; edit the real file once, do not duplicate).
@@ -123,15 +124,16 @@ Classify variants semantically:
 
 Never invent exact color values unless the repo lacks tokens and the manifest explicitly proposes a token schema.
 
-## Required output file minimums
+## Required output files
 
-At minimum, create or update:
+Create or update exactly these — nothing more:
 
-1. `docs/ux/PRODUCT_UX_BIBLE.md`
+1. `docs/ux/PRODUCT_UX_BIBLE.md` (with the glossary as a section)
 2. `docs/ux/ux-architecture.yaml`
 3. `docs/ux/UX_DECISIONS.md`
-4. `docs/ux/UX_MANIFEST_CHANGELOG.md`
-5. `docs/ux/UX_AUDIT_REPORT.md`
+
+The audit report is delivered as the final chat response (see
+`references/report-format.md`), never as a committed file.
 
 ## Read more bundled references
 

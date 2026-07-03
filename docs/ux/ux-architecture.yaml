@@ -273,7 +273,7 @@ ux_architecture:
       data: "Local only. Completed-task counts/streaks from movedAt (full history); LOC forward-only via Task.completedDiffStats (captured at completion) + live diff for active tasks. Aggregated client-side by utils/productivityStats.ts over the getProductivityStats RPC."
       instrumentation: "First-class consumer of new features: any feature producing a countable, motivational signal should emit it into the stats pipeline at build time and surface a read-only viz here when it motivates — within the honesty/complexity budget. Governed by placement_rules.instrument-and-surface-countable-metrics + PRODUCT_UX_BIBLE §1.1."
       tokens: "Gauge reused verbatim (self-contained palette, accepted exception); new charts use semantic tokens (accent/success/danger, bg-raised, border-edge, text-fg-*)."
-      evidence: ["src/mainview/components/ProductivityStatsView.tsx", "src/mainview/components/stats/*", "src/mainview/utils/productivityStats.ts", "src/bun/rpc-handlers/productivity-stats.ts", "decisions/084-productivity-stats-loc-capture.md", "docs/ux/feature-plans/productivity-stats-dashboard.md", "UX_DECISIONS 2026-06-28"]
+      evidence: ["src/mainview/components/ProductivityStatsView.tsx", "src/mainview/components/stats/*", "src/mainview/utils/productivityStats.ts", "src/bun/rpc-handlers/productivity-stats.ts", "decisions/084-productivity-stats-loc-capture.md", "UX_DECISIONS 2026-06-28"]
     toast:
       purpose: "Transient operation feedback (errors)."
       allowed: ["status_message", "error"]
@@ -287,13 +287,13 @@ ux_architecture:
       entry_points: ["application_menu.Help (Keyboard Shortcuts — wires the currently-dead help-keyboard-shortcuts action; Tmux Cheat Sheet opens the Terminal tab)", "keyboard: Cmd+/ (Ctrl+/ on Linux), App.tsx capture-phase handler, label shows (⌘/)", "command_palette ⇧⌘P via commands.ts entry"]
       rationale: "No toolbar/header button (toolbar-button-creep is the #1 anti-pattern); not a nav destination (ephemeral reference ≠ a place; nav budget ≤7). One modal with tabs per the user's 'единый вид'; tab split keeps ~40 tmux bindings from drowning ~25 app shortcuts. Cmd+/ over bare ? because the live terminal must receive a bare ?."
       observed: ["KeyboardShortcutsModal (planned)", "keymap.ts (planned)", "TmuxCheatSheetModal"]
-      evidence: ["docs/ux/feature-plans/keyboard-shortcuts-registry.md", "UX_DECISIONS 2026-06-19", "src/bun/application-menu.ts (helpKeyboardShortcuts)", "src/mainview/components/TmuxCheatSheetModal.tsx"]
+      evidence: ["UX_DECISIONS 2026-06-19", "src/bun/application-menu.ts (helpKeyboardShortcuts)", "src/mainview/components/TmuxCheatSheetModal.tsx"]
     task_switcher:
       purpose: "Transient keyboard-summoned HUD overlay for hold-cycle jumping between active tasks (Option+Tab project / Option+Shift+Tab global). A presentation of the sidebar's task_jump action, not a command palette."
       allowed: ["task_jump", "terminal_preview"]
       forbidden: ["command_runner", "object_action", "durable_configuration", "primary_navigation"]
       observed: ["TaskSwitcherOverlay (planned)"]
-      evidence: ["docs/ux/feature-plans/option-tab-task-switcher.md", "UX_DECISIONS 2026-06-15"]
+      evidence: ["UX_DECISIONS 2026-06-15"]
     command_palette:
       purpose: "Transient keyboard-summoned overlay built on the shared PaletteShell (portal, fuzzy input, keyboard nav). TWO sibling modes, kept cleanly separated by intent (the navigation-vs-action question is now resolved as two-surfaces-one-shell, not one-palette-with-modes). Distinct from task_switcher, which is hold-cycle (Option+Tab) over only the active tasks — the palette is type-to-search."
       modes:
@@ -335,7 +335,7 @@ ux_architecture:
         toggle: "Settings->Behavior 'Auto-open shared images' (default on) disables auto-open."
       status: "observed"
       observed: ["TaskImageViewer.tsx", "shared-images.ts", "show-image.ts", "ui.show-image handler"]
-      evidence: ["decisions/097-show-image-viewer.md", "docs/ux/feature-plans/show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/036-worktree-uploaded-dnd-files.md"]
+      evidence: ["decisions/097-show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/036-worktree-uploaded-dnd-files.md"]
 
   action_types:
     primary_action:
@@ -500,7 +500,7 @@ ux_architecture:
       rationale: "The Velocity Cockpit is the product's motivation engine. New features that produce a countable, repeatable signal should emit it into the stats pipeline at BUILD time (so the data exists even before it is charted) and surface a visualization on the read-only cockpit WHEN motivational — within the complexity + honesty budget (prefer one strong signal; forward-only 'tracking since', never fake history; numbers must be true). Diagnostic-only metrics keep the data but stay off the cockpit. See PRODUCT_UX_BIBLE §1.1 + UX_DECISIONS 2026-06-29."
 
   responsive:
-    status: "partial" # board_carousel implemented; full mobile doctrine proposed — see bible §12 + feature-plans/narrow-viewport-doctrine.md
+    status: "partial" # board_carousel implemented; full mobile doctrine proposed — see bible §12 (full doctrine plan in git history)
     idea_credit: "Ittai Zeidman (carousel reference)"
     principle: "On a narrow viewport show exactly ONE sibling at a time and move between siblings by swipe + a visible pager. Columns, tasks-in-column, terminal panes, active tasks, settings sections, diff files all collapse to this one-at-a-time idiom. A responsive view-mode of existing screens — never a new destination, route, or 'mobile mode' setting."
     no_new_nav: "Narrow layouts are responsive view-modes of existing screens. They MUST NOT add a destination, nav item, route, or be entered via a setting. Layout follows the viewport automatically."
@@ -529,7 +529,7 @@ ux_architecture:
       board_filters: { narrow: "bottom sheet behind a header funnel button (LabelFilterBar + search)", status: proposed }
       terminal_panes: { narrow: "pane carousel — one zoomed pane + axis-arbitrated horizontal swipe over the terminal + a slim non-overlapping top dots strip + Arrow keys; keep-zoom via tmuxPaneNavigate (select-pane then idempotent resize-pane -Z)", status: observed, evidence: "MobilePaneCarousel.tsx, TaskTerminal.tsx, tmux-pty.ts tmuxPaneNavigate, decision 089" }
       terminal_windows: { narrow: "window switcher — a slim 'prev / named dropdown / next' bar ABOVE the pane bar (window = outer workspace, pane = inner split); buttons + dropdown + Arrow-while-focused, NO swipe (terminal swipe is the pane carousel's); renders only when window count > 1; via tmuxWindowNavigate (list-windows + select-window :+/:-)", status: observed, evidence: "MobileWindowCarousel.tsx, TaskTerminal.tsx, tmux-pty.ts tmuxWindowNavigate, decision 093" }
-      terminal_input: { narrow: "touch input model (gate = !isElectrobun && isTouchDevice, NOT width — an input-model switch, tablets included): terminal tap never summons the OSK; a docked autogrow chat composer between the terminal and ExtraKeyBar owns text entry — Send = mode-2004-aware paste + Enter, Insert = paste only, expand state for long prompts, terminal tail stays visible; sticky '⌨ raw' toggle on ExtraKeyBar restores direct typing + select-to-copy/TUI mouse; chrome collapses on composer FOCUS (not visualViewport); covers TaskTerminal AND ProjectTerminal (Quick Shell); Android-first, iOS visualViewport pinning additive", status: proposed, evidence: "feature-plans/mobile-terminal-composer.md, UX decision 2026-07-02" }
+      terminal_input: { narrow: "touch input model (gate = !isElectrobun && isTouchDevice, NOT width — an input-model switch, tablets included): terminal tap never summons the OSK; a docked autogrow chat composer between the terminal and ExtraKeyBar owns text entry — Send = mode-2004-aware paste + Enter, Insert = paste only, expand state for long prompts, terminal tail stays visible; sticky '⌨ raw' toggle on ExtraKeyBar restores direct typing + select-to-copy/TUI mouse; chrome collapses on composer FOCUS (not visualViewport); covers TaskTerminal AND ProjectTerminal (Quick Shell); Android-first, iOS visualViewport pinning additive", status: proposed, evidence: "UX decision 2026-07-02" }
       active_tasks: { narrow: "ActiveTasksStrip (horizontal task carousel) — already used in ProjectView isBrowserMode; SplitLayout/ActiveTasksSidebar never shown <768 (SplitLayout breaks ~<600px)", status: observed, evidence: "ProjectView.tsx isBrowserMode branch, ActiveTasksStrip, SplitLayout.tsx" }
       task_inspector: { narrow: "2x2 bar grid cannot fit -> one summary bar + 'task actions' bottom sheet (bars become sheet sections); metadata grid already reflows", status: proposed, evidence: "TaskInfoPanel.tsx (uses useCompact)" }
       diff_viewer: { narrow: "files-aside (22rem) -> bottom-sheet file picker; diff stream owns screen (live-content: explicit nav, no full-surface swipe)", status: proposed, evidence: "TaskDiffViewer.tsx w-[22rem] aside" }

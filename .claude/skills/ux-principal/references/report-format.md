@@ -1,6 +1,34 @@
 # UX Principal Report format
 
-Use this format for the final response and for `docs/ux/feature-plans/<feature>.md`.
+The report is **conversation output only** — never persist it as a file in the repo.
+It flows into the PR description; git history preserves it.
+
+## Lite report (default — manifest-compliant features)
+
+Use this when the Architecture-change gate did NOT pass. Keep it under ~30 lines.
+
+```md
+# UX plan: <feature>
+
+Manifest: compliant, no updates. Complies with: <bible §, yaml rule ids>
+
+## Placement
+- Surface / entry point / visibility rule: ...
+- Rejected: <one line, only if a wrong placement is tempting>
+
+## Tokens
+| Element | Label | Semantic role | Concrete variant | Visibility |
+|---|---|---|---|---|
+
+## Interaction contract
+- Trigger / states (loading, empty, error, success) / keyboard & focus / responsive: ...
+
+## Implementation brief
+1. ...
+Do not implement: ...
+```
+
+## Full report (architecture-changing features only)
 
 ```md
 # UX Principal Report: <feature>
@@ -93,15 +121,11 @@ Evidence:
 
 ## 8. Manifest updates
 
-Files updated or to update:
+Files updated (bible/yaml hold the rule; decisions log holds the compact why):
 
+- `docs/ux/PRODUCT_UX_BIBLE.md`:
 - `docs/ux/ux-architecture.yaml`:
-- `docs/ux/UX_DECISIONS.md`:
-- `docs/ux/UX_MANIFEST_CHANGELOG.md`:
-
-Summary of changes:
-
-- ...
+- `docs/ux/UX_DECISIONS.md`: one compact entry (≤5 lines)
 
 ## 9. Implementation brief for coding agent
 
