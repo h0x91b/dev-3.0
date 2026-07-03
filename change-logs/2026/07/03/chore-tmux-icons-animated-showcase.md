@@ -1,0 +1,1 @@
+Added a standalone design page (design/tmux-icons-animated.html) showcasing every hand-drawn tmux icon (pane toolbar, layout menu, mobile carousel) with hover-triggered CSS animations that act out each operation, plus a proposed New Window icon for the desktop toolbar. Not integrated into the app.

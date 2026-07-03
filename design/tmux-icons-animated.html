@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>dev-3.0 · tmux icon animations</title>
+<style>
+	/* ---- Design tokens (mirrors src/mainview/index.css dark theme) ---- */
+	:root {
+		--surface-base: 6 9 21;
+		--surface-raised: 14 18 30;
+		--surface-elevated: 21 26 41;
+		--text-primary: 250 252 255;
+		--text-secondary: 170 187 212;
+		--text-tertiary: 115 133 160;
+		--text-muted: 82 98 121;
+		--border-default: 32 38 55;
+		--border-active: 52 58 83;
+		--accent: 68 150 255;
+		--danger: 255 130 130;
+		--success: 74 222 128;
+		--warning: 250 204 21;
+	}
+
+	* { box-sizing: border-box; margin: 0; padding: 0; }
+
+	html, body { min-height: 100%; }
+
+	body {
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+		color: rgb(var(--text-primary));
+		background:
+			radial-gradient(1200px 600px at 85% -10%, rgba(24 13 41 / .9), transparent 60%),
+			radial-gradient(900px 500px at -10% 30%, rgba(15 23 49 / .9), transparent 55%),
+			linear-gradient(115deg, #060915 0%, #0f1731 45%, #180d29 100%);
+		background-attachment: fixed;
+		padding: 48px 32px 96px;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	code, kbd { font-family: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace; }
+
+	.wrap { max-width: 1180px; margin: 0 auto; }
+
+	/* ---- Header ---- */
+	header { margin-bottom: 40px; }
+	h1 {
+		font-size: 28px;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		display: flex; align-items: center; gap: 14px;
+	}
+	h1 .logo-chip {
+		display: inline-flex; align-items: center; justify-content: center;
+		width: 44px; height: 44px; border-radius: 12px;
+		background: rgba(var(--accent) / .12);
+		border: 1px solid rgba(var(--accent) / .3);
+		color: rgb(var(--accent));
+		flex-shrink: 0;
+	}
+	.subtitle { margin-top: 10px; color: rgb(var(--text-tertiary)); font-size: 14px; max-width: 720px; line-height: 1.55; }
+	.subtitle b { color: rgb(var(--text-secondary)); font-weight: 600; }
+
+	.header-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; }
+
+	.play-toggle {
+		display: inline-flex; align-items: center; gap: 8px;
+		padding: 8px 14px; border-radius: 10px;
+		background: rgba(var(--accent) / .1);
+		border: 1px solid rgba(var(--accent) / .25);
+		color: rgb(var(--accent));
+		font-size: 12px; font-weight: 600;
+		cursor: pointer; user-select: none;
+		transition: background .15s ease;
+	}
+	.play-toggle:hover { background: rgba(var(--accent) / .2); }
+	body.play .play-toggle { background: rgba(var(--accent) / .3); }
+	.play-toggle .dot {
+		width: 7px; height: 7px; border-radius: 50%;
+		background: rgb(var(--text-muted));
+		transition: background .15s ease;
+	}
+	body.play .play-toggle .dot { background: rgb(var(--success)); box-shadow: 0 0 8px rgba(var(--success) / .8); }
+
+	/* ---- Fake real-size toolbar (context strip) ---- */
+	.toolbar-demo {
+		margin-top: 28px;
+		display: flex; align-items: center; gap: 6px;
+		padding: 10px 14px;
+		border-radius: 14px;
+		background: rgba(12 15 23 / .6);
+		border: 1px solid rgb(var(--border-default));
+		backdrop-filter: blur(16px);
+		width: fit-content;
+		max-width: 100%;
+		flex-wrap: wrap;
+	}
+	.toolbar-demo .tb-label {
+		font-size: 10px; text-transform: uppercase; letter-spacing: .12em;
+		color: rgb(var(--text-muted)); font-weight: 700; margin-right: 8px;
+	}
+	.tb-btn {
+		display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+		padding: 5px 7px; border-radius: 6px;
+		background: rgba(var(--accent) / .1);
+		border: 1px solid rgba(var(--accent) / .25);
+		color: rgb(var(--accent));
+		font-size: 10px; font-weight: 500;
+		cursor: default;
+		transition: background .15s ease;
+	}
+	.tb-btn:hover { background: rgba(var(--accent) / .2); }
+	.tb-btn.danger {
+		background: rgba(var(--danger) / .1);
+		border-color: rgba(var(--danger) / .25);
+		color: rgb(var(--danger));
+	}
+	.tb-btn.danger:hover { background: rgba(var(--danger) / .2); }
+	.tb-btn.new {
+		background: rgba(var(--success) / .1);
+		border-color: rgba(var(--success) / .35);
+		color: rgb(var(--success));
+	}
+	.tb-btn.new:hover { background: rgba(var(--success) / .2); }
+	.tb-btn svg { width: 16px; height: 16px; }
+	.tb-sep { width: 1px; align-self: stretch; background: rgb(var(--border-default)); margin: 0 3px; }
+
+	/* ---- Sections ---- */
+	section { margin-top: 52px; }
+	.section-title {
+		font-size: 12px; font-weight: 700;
+		text-transform: uppercase; letter-spacing: .14em;
+		color: rgb(var(--text-muted));
+		display: flex; align-items: center; gap: 12px;
+		margin-bottom: 18px;
+	}
+	.section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, rgb(var(--border-default)), transparent); }
+	.section-sub { font-size: 12.5px; color: rgb(var(--text-muted)); margin: -10px 0 18px; }
+
+	/* ---- Cards grid ---- */
+	.grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+		gap: 18px;
+	}
+
+	.card {
+		position: relative;
+		border-radius: 16px;
+		background: rgba(255 255 255 / .04);
+		border: 1px solid rgb(var(--border-default));
+		backdrop-filter: blur(12px);
+		padding: 22px 20px 18px;
+		transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+		cursor: default;
+	}
+	.card:hover, .card.pin {
+		transform: translateY(-3px);
+		border-color: rgba(var(--accent) / .45);
+		background: rgba(255 255 255 / .06);
+		box-shadow: 0 12px 32px -12px rgba(0 0 0 / .6), 0 0 0 1px rgba(var(--accent) / .08);
+	}
+	.card.danger-card:hover, .card.danger-card.pin { border-color: rgba(var(--danger) / .45); }
+	.card.new-card { border-color: rgba(var(--success) / .3); }
+	.card.new-card:hover, .card.new-card.pin { border-color: rgba(var(--success) / .55); }
+
+	.card .stage {
+		display: flex; align-items: center; justify-content: center;
+		height: 130px;
+		border-radius: 12px;
+		background: rgba(6 9 21 / .55);
+		border: 1px solid rgba(var(--border-default) / .8);
+		margin-bottom: 16px;
+		overflow: hidden;
+		position: relative;
+	}
+	.card .stage svg.big { width: 96px; height: 96px; color: rgb(var(--accent)); }
+	.card.danger-card .stage svg.big { color: rgb(var(--danger)); }
+	.card.neutral-card .stage svg.big { color: rgb(var(--text-tertiary)); }
+	.card.new-card .stage svg.big { color: rgb(var(--success)); }
+
+	.card h3 { font-size: 14.5px; font-weight: 650; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+	.card .desc { margin-top: 6px; font-size: 12.5px; line-height: 1.5; color: rgb(var(--text-tertiary)); min-height: 38px; }
+	.card .anim-note { margin-top: 8px; font-size: 11.5px; line-height: 1.45; color: rgb(var(--text-muted)); font-style: italic; }
+	.card .meta { margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+	kbd.chip {
+		font-size: 10.5px; color: rgb(var(--text-secondary));
+		background: rgba(var(--surface-elevated) / 1);
+		border: 1px solid rgb(var(--border-active));
+		border-bottom-width: 2px;
+		border-radius: 5px; padding: 2px 7px;
+	}
+	.badge {
+		font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em;
+		border-radius: 999px; padding: 3px 9px;
+	}
+	.badge.toolbar { color: rgb(var(--accent)); background: rgba(var(--accent) / .12); border: 1px solid rgba(var(--accent) / .25); }
+	.badge.menu { color: #a78bfa; background: rgba(167 139 250 / .12); border: 1px solid rgba(167 139 250 / .3); }
+	.badge.mobile { color: #2dd4bf; background: rgba(45 212 191 / .12); border: 1px solid rgba(45 212 191 / .3); }
+	.badge.newb { color: rgb(var(--success)); background: rgba(var(--success) / .14); border: 1px solid rgba(var(--success) / .35); }
+	.badge.dangerb { color: rgb(var(--danger)); background: rgba(var(--danger) / .12); border: 1px solid rgba(var(--danger) / .3); }
+
+	footer { margin-top: 64px; color: rgb(var(--text-muted)); font-size: 12px; line-height: 1.7; border-top: 1px solid rgb(var(--border-default)); padding-top: 20px; }
+	footer code { color: rgb(var(--text-tertiary)); font-size: 11px; }
+
+	/* ============================================================
+	   SVG base styles
+	   ============================================================ */
+	svg .st { stroke: currentColor; }
+	svg .green { color: rgb(var(--success)); stroke: currentColor; }
+	svg .fillq { fill: currentColor; stroke: none; }
+
+	/* pathLength=1 draw trick — full when idle */
+	svg .drawable { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+	/* Every transform hook uses viewBox coordinates */
+	svg [class^="a-"], svg [class*=" a-"] { transform-box: view-box; }
+
+	/* Convenience: PLAY = card hovered, pinned, or global play mode */
+	/* (rules below all use the .hoverable wrapper) */
+
+	/* ============================================================
+	   1. SPLIT HORIZONTAL — divider marches across, bottom half born
+	   ============================================================ */
+	@keyframes sh-div {
+		0%       { opacity: 0; stroke-dashoffset: 42; }
+		12%      { opacity: 1; }
+		55%      { stroke-dashoffset: 0; }
+		88%      { opacity: 1; stroke-dashoffset: -10; }
+		100%     { opacity: 0; stroke-dashoffset: -14; }
+	}
+	@keyframes sh-plus {
+		0%, 30%  { transform: scale(0); opacity: 0; }
+		46%      { transform: scale(1.4); opacity: 1; }
+		56%      { transform: scale(1); }
+		86%      { transform: scale(1); opacity: 1; }
+		100%     { transform: scale(.6); opacity: 0; }
+	}
+	@keyframes sh-half {
+		0%, 38%  { opacity: 0; }
+		58%      { opacity: .3; }
+		82%      { opacity: .18; }
+		100%     { opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-sh-div  { animation: sh-div 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-sh-plus { transform-origin: 12px 17px; animation: sh-plus 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-sh-half { animation: sh-half 2.4s ease-in-out infinite; }
+
+	/* ============================================================
+	   2. SPLIT VERTICAL — mirrored
+	   ============================================================ */
+	@keyframes sv-plus {
+		0%, 30%  { transform: scale(0); opacity: 0; }
+		46%      { transform: scale(1.4); opacity: 1; }
+		56%      { transform: scale(1); }
+		86%      { transform: scale(1); opacity: 1; }
+		100%     { transform: scale(.6); opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-sv-div  { animation: sh-div 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-sv-plus { transform-origin: 18px 12px; animation: sv-plus 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-sv-half { animation: sh-half 2.4s ease-in-out infinite; }
+
+	/* ============================================================
+	   3. CYCLE LAYOUT — the two panes swap places, arrows orbit
+	   ============================================================ */
+	@keyframes cy-left {
+		0%, 8%   { transform: translate(0, 0); }
+		26%      { transform: translate(6px, -6.5px); }
+		44%      { transform: translate(12px, 0); }
+		56%      { transform: translate(12px, 0); }
+		74%      { transform: translate(6px, 6.5px); }
+		92%, 100%{ transform: translate(0, 0); }
+	}
+	@keyframes cy-right {
+		0%, 8%   { transform: translate(0, 0); }
+		26%      { transform: translate(-6px, 6.5px); }
+		44%      { transform: translate(-12px, 0); }
+		56%      { transform: translate(-12px, 0); }
+		74%      { transform: translate(-6px, -6.5px); }
+		92%, 100%{ transform: translate(0, 0); }
+	}
+	@keyframes cy-orbit {
+		0%, 8%   { transform: rotate(0deg); }
+		44%      { transform: rotate(180deg); }
+		56%      { transform: rotate(180deg); }
+		92%, 100%{ transform: rotate(360deg); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-cy-left  { animation: cy-left 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-cy-right { animation: cy-right 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-cy-orbit { transform-origin: 12px 12px; animation: cy-orbit 2.6s ease-in-out infinite; }
+
+	/* ============================================================
+	   4. ZOOM — pane grows to the brackets, arrows shoot outward
+	   ============================================================ */
+	@keyframes z-rect {
+		0%, 8%   { transform: scale(1); }
+		38%      { transform: scale(1.22); }
+		58%      { transform: scale(1.22); }
+		88%, 100%{ transform: scale(1); }
+	}
+	@keyframes z-diag {
+		0%, 12%  { stroke-dashoffset: 1; opacity: 0; }
+		20%      { opacity: 1; }
+		42%      { stroke-dashoffset: 0; opacity: 1; }
+		60%      { stroke-dashoffset: 0; opacity: 1; }
+		80%      { stroke-dashoffset: 1; opacity: 0; }
+		100%     { stroke-dashoffset: 1; opacity: 0; }
+	}
+	@keyframes z-tl { 0%,8%{transform:translate(0,0)} 38%{transform:translate(-1.6px,-1.6px)} 58%{transform:translate(-1.6px,-1.6px)} 88%,100%{transform:translate(0,0)} }
+	@keyframes z-tr { 0%,8%{transform:translate(0,0)} 38%{transform:translate(1.6px,-1.6px)}  58%{transform:translate(1.6px,-1.6px)}  88%,100%{transform:translate(0,0)} }
+	@keyframes z-br { 0%,8%{transform:translate(0,0)} 38%{transform:translate(1.6px,1.6px)}   58%{transform:translate(1.6px,1.6px)}   88%,100%{transform:translate(0,0)} }
+	@keyframes z-bl { 0%,8%{transform:translate(0,0)} 38%{transform:translate(-1.6px,1.6px)}  58%{transform:translate(-1.6px,1.6px)}  88%,100%{transform:translate(0,0)} }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-z-rect { transform-origin: 12px 12px; animation: z-rect 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-z-diag { animation: z-diag 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-z-tl { animation: z-tl 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-z-tr { animation: z-tr 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-z-br { animation: z-br 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-z-bl { animation: z-bl 2.4s ease-in-out infinite; }
+
+	/* ============================================================
+	   5. CLOSE PANE — X is drawn, the pane shudders and dies
+	   ============================================================ */
+	@keyframes k-x1 {
+		0%, 8%   { stroke-dashoffset: 1; }
+		28%      { stroke-dashoffset: 0; }
+		100%     { stroke-dashoffset: 0; }
+	}
+	@keyframes k-x2 {
+		0%, 22%  { stroke-dashoffset: 1; }
+		42%      { stroke-dashoffset: 0; }
+		100%     { stroke-dashoffset: 0; }
+	}
+	@keyframes k-shake {
+		0%, 44%  { transform: translateX(0); }
+		48%      { transform: translateX(-.9px); }
+		52%      { transform: translateX(.9px); }
+		56%      { transform: translateX(-.7px); }
+		60%      { transform: translateX(.5px); }
+		64%      { transform: translateX(0); }
+		100%     { transform: translateX(0); }
+	}
+	@keyframes k-die {
+		0%, 66%  { opacity: 1; }
+		84%      { opacity: .08; }
+		92%      { opacity: .08; }
+		100%     { opacity: 1; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-k-x1    { animation: k-x1 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-k-x2    { animation: k-x2 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-k-shake { animation: k-shake 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-k-die   { animation: k-die 2.4s ease-in-out infinite; }
+
+	/* ============================================================
+	   6. TMUX HINTS — sonar ping around the info glyph
+	   ============================================================ */
+	@keyframes i-pulse {
+		0%, 10%  { transform: scale(1); }
+		30%      { transform: scale(1.12); }
+		50%, 100%{ transform: scale(1); }
+	}
+	@keyframes i-ring {
+		0%, 12%  { transform: scale(.55); opacity: 0; }
+		22%      { opacity: .7; }
+		62%      { transform: scale(1.45); opacity: 0; }
+		100%     { transform: scale(1.45); opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-i-glyph { transform-origin: 8px 8px; animation: i-pulse 2.2s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-i-ring  { transform-origin: 8px 8px; animation: i-ring 2.2s ease-out infinite; }
+
+	/* ============================================================
+	   7. TILED — cross draws in, four quadrants light up in tmux order
+	   ============================================================ */
+	@keyframes lt-v  { 0%,6%{stroke-dashoffset:1} 26%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes lt-h  { 0%,20%{stroke-dashoffset:1} 40%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes lt-q1 { 0%,42%{opacity:0} 50%{opacity:.35} 62%{opacity:.12} 88%{opacity:.12} 100%{opacity:0} }
+	@keyframes lt-q2 { 0%,52%{opacity:0} 60%{opacity:.35} 72%{opacity:.12} 88%{opacity:.12} 100%{opacity:0} }
+	@keyframes lt-q3 { 0%,62%{opacity:0} 70%{opacity:.35} 82%{opacity:.12} 88%{opacity:.12} 100%{opacity:0} }
+	@keyframes lt-q4 { 0%,72%{opacity:0} 80%{opacity:.35} 88%{opacity:.12} 100%{opacity:0} }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-lt-v  { animation: lt-v 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-lt-h  { animation: lt-h 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-lt-q1 { animation: lt-q1 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-lt-q2 { animation: lt-q2 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-lt-q3 { animation: lt-q3 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-lt-q4 { animation: lt-q4 2.6s ease-in-out infinite; }
+
+	/* ============================================================
+	   8. EVEN HORIZONTAL — rows stack in one after another
+	   ============================================================ */
+	@keyframes eh-l1 { 0%,6%{stroke-dashoffset:1} 24%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes eh-l2 { 0%,18%{stroke-dashoffset:1} 36%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes eh-r1 { 0%,40%{opacity:0} 48%{opacity:.32} 60%{opacity:.1} 86%{opacity:.1} 100%{opacity:0} }
+	@keyframes eh-r2 { 0%,52%{opacity:0} 60%{opacity:.32} 72%{opacity:.1} 86%{opacity:.1} 100%{opacity:0} }
+	@keyframes eh-r3 { 0%,64%{opacity:0} 72%{opacity:.32} 84%{opacity:.1} 100%{opacity:0} }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-eh-l1 { animation: eh-l1 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-eh-l2 { animation: eh-l2 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-eh-r1 { animation: eh-r1 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-eh-r2 { animation: eh-r2 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-eh-r3 { animation: eh-r3 2.6s ease-in-out infinite; }
+
+	/* ============================================================
+	   9. EVEN VERTICAL — columns march in left to right
+	   ============================================================ */
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-ev-l1 { animation: eh-l1 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-ev-l2 { animation: eh-l2 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-ev-c1 { animation: eh-r1 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-ev-c2 { animation: eh-r2 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-ev-c3 { animation: eh-r3 2.6s ease-in-out infinite; }
+
+	/* ============================================================
+	   10. MAIN HORIZONTAL — main pane claims the top, minions below
+	   ============================================================ */
+	@keyframes mh-l1   { 0%,6%{stroke-dashoffset:1} 26%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes mh-l2   { 0%,24%{stroke-dashoffset:1} 40%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes mh-main { 0%,44%{opacity:0} 56%{opacity:.35} 74%{opacity:.16} 88%{opacity:.16} 100%{opacity:0} }
+	@keyframes mh-sub  { 0%,60%{opacity:0} 70%{opacity:.14} 88%{opacity:.14} 100%{opacity:0} }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mh-l1   { animation: mh-l1 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mh-l2   { animation: mh-l2 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mh-main { animation: mh-main 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mh-sub  { animation: mh-sub 2.6s ease-in-out infinite; }
+
+	/* ============================================================
+	   11. MAIN VERTICAL — mirrored: main pane owns the left
+	   ============================================================ */
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mv-l1   { animation: mh-l1 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mv-l2   { animation: mh-l2 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mv-main { animation: mh-main 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mv-sub  { animation: mh-sub 2.6s ease-in-out infinite; }
+
+	/* ============================================================
+	   12. NEW WINDOW (proposed) — a fresh window pops into existence
+	   ============================================================ */
+	@keyframes nw-pop {
+		0%       { transform: scale(.55); opacity: 0; }
+		16%      { transform: scale(1.07); opacity: 1; }
+		26%      { transform: scale(1); }
+		82%      { transform: scale(1); opacity: 1; }
+		100%     { transform: scale(.9); opacity: 0; }
+	}
+	@keyframes nw-tab {
+		0%, 18%  { stroke-dashoffset: 1; }
+		42%      { stroke-dashoffset: 0; }
+		100%     { stroke-dashoffset: 0; }
+	}
+	@keyframes nw-plus {
+		0%, 38%  { transform: scale(0) rotate(-90deg); opacity: 0; }
+		56%      { transform: scale(1.35) rotate(0deg); opacity: 1; }
+		66%      { transform: scale(1) rotate(0deg); }
+		100%     { transform: scale(1) rotate(0deg); opacity: 1; }
+	}
+	@keyframes nw-bar {
+		0%, 26%  { opacity: 0; }
+		44%      { opacity: .3; }
+		82%      { opacity: .18; }
+		100%     { opacity: 0; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-nw-pop  { transform-origin: 12px 12px; animation: nw-pop 2.6s cubic-bezier(.34,1.4,.64,1) infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-nw-tab  { animation: nw-tab 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-nw-plus { transform-origin: 12px 15px; animation: nw-plus 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-nw-bar  { animation: nw-bar 2.6s ease-in-out infinite; }
+
+	/* ============================================================
+	   13. PANES & WINDOWS (mobile manage) — focus hops between panes
+	   ============================================================ */
+	@keyframes mg-line { 0%,6%{stroke-dashoffset:1} 26%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes mg-left  { 0%,30%{opacity:0} 40%{opacity:.32} 52%{opacity:0} 100%{opacity:0} }
+	@keyframes mg-right { 0%,54%{opacity:0} 64%{opacity:.32} 76%{opacity:0} 100%{opacity:0} }
+	@keyframes mg-back  { 0%,78%{opacity:0} 86%{opacity:.32} 96%{opacity:0} 100%{opacity:0} }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mg-line  { animation: mg-line 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mg-left  { animation: mg-left 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mg-right { animation: mg-right 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mg-back  { animation: mg-back 2.6s ease-in-out infinite; }
+
+	@media (prefers-reduced-motion: reduce) {
+		*, *::before, *::after { animation: none !important; transition: none !important; }
+	}
+</style>
+</head>
+<body>
+<div class="wrap">
+	<header>
+		<div class="header-row">
+			<div>
+				<h1>
+					<span class="logo-chip">
+						<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+							<line x1="12" y1="4" x2="12" y2="20" class="st" />
+							<line x1="12" y1="12" x2="22" y2="12" class="st" />
+						</svg>
+					</span>
+					tmux icon animations
+				</h1>
+				<p class="subtitle">
+					Every hand-drawn tmux glyph from the dev-3.0 terminal toolbar, layout menu, and mobile pane
+					carousel — animated. <b>Hover any card</b> (or tap it) to watch the icon act out the operation
+					it triggers. The green <b>New Window</b> icon is the proposed addition to the desktop toolbar.
+				</p>
+			</div>
+			<button class="play-toggle" id="playAll" type="button"><span class="dot"></span>Animate everything</button>
+		</div>
+
+		<!-- Real-size context strip: the toolbar as it looks in the app -->
+		<div class="toolbar-demo">
+			<span class="tb-label">Actual size</span>
+
+			<span class="tb-btn hoverable" title="Split pane horizontally">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+					<line x1="2" y1="12" x2="22" y2="12" class="st a-sh-div" stroke-dasharray="4 3" />
+					<path d="M12 15 L12 19 M10 17 L14 17" class="green a-sh-plus" />
+				</svg>
+			</span>
+
+			<span class="tb-btn hoverable" title="Split pane vertically">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+					<line x1="12" y1="4" x2="12" y2="20" class="st a-sv-div" stroke-dasharray="4 3" />
+					<path d="M16 12 L20 12 M18 10 L18 14" class="green a-sv-plus" />
+				</svg>
+			</span>
+
+			<span class="tb-btn hoverable" title="Cycle layout">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="2" y="10" width="8" height="6" rx="1" class="st a-cy-left" />
+					<rect x="14" y="10" width="8" height="6" rx="1" class="st a-cy-right" />
+					<g class="a-cy-orbit">
+						<path d="M 6 8 C 8 3, 16 3, 18 8" class="green" />
+						<path d="M 15 6 L 18 8 L 21 6" class="green" />
+						<path d="M 18 18 C 16 23, 8 23, 6 18" class="green" />
+						<path d="M 9 20 L 6 18 L 3 20" class="green" />
+					</g>
+				</svg>
+				<span>tmux layout</span>
+			</span>
+
+			<span class="tb-btn hoverable" title="Zoom pane">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="4" y="6" width="16" height="12" rx="1" class="st a-z-rect" />
+					<path d="M2 5 L2 2 L5 2"    class="st a-z-tl" />
+					<path d="M19 2 L22 2 L22 5" class="st a-z-tr" />
+					<path d="M22 19 L22 22 L19 22" class="st a-z-br" />
+					<path d="M5 22 L2 22 L2 19" class="st a-z-bl" />
+					<path d="M6 6 L2 2"   pathLength="1" class="st drawable a-z-diag" />
+					<path d="M18 6 L22 2" pathLength="1" class="st drawable a-z-diag" />
+					<path d="M18 18 L22 22" pathLength="1" class="st drawable a-z-diag" />
+					<path d="M6 18 L2 22"  pathLength="1" class="st drawable a-z-diag" />
+				</svg>
+			</span>
+
+			<span class="tb-btn new hoverable" title="New window (proposed)">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<g class="a-nw-pop">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<line x1="2" y1="9" x2="22" y2="9" pathLength="1" class="st drawable a-nw-tab" />
+						<path d="M12 12.5 L12 17.5 M9.5 15 L14.5 15" class="st a-nw-plus" />
+					</g>
+				</svg>
+			</span>
+
+			<span class="tb-sep"></span>
+
+			<span class="tb-btn danger hoverable" title="Close pane">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<g class="a-k-shake"><g class="a-k-die">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<path d="M9 9 L15 15" pathLength="1" class="st drawable a-k-x1" />
+						<path d="M15 9 L9 15" pathLength="1" class="st drawable a-k-x2" />
+					</g></g>
+				</svg>
+			</span>
+		</div>
+	</header>
+
+	<!-- ============================ TOOLBAR ============================ -->
+	<section>
+		<div class="section-title">Pane toolbar</div>
+		<p class="section-sub">The buttons above every task terminal — <code>TaskTmuxControls.tsx</code>.</p>
+		<div class="grid">
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="3" y="13" width="18" height="6.25" rx="1" fill="rgb(74 222 128)" stroke="none" opacity="0" class="a-sh-half" />
+						<line x1="2" y1="12" x2="22" y2="12" class="st a-sh-div" stroke-dasharray="4 3" />
+						<path d="M12 15 L12 19 M10 17 L14 17" class="green a-sh-plus" />
+					</svg>
+				</div>
+				<h3>Split Horizontal</h3>
+				<p class="desc">Cuts the current pane in two, stacked top and bottom. The new pane opens below.</p>
+				<p class="anim-note">Dashed cut-line saws across, the newborn bottom half flashes green, the plus pops in.</p>
+				<div class="meta"><span class="badge toolbar">Toolbar</span><kbd class="chip">⌃B −</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="13" y="5" width="8" height="14" rx="1" fill="rgb(74 222 128)" stroke="none" opacity="0" class="a-sv-half" />
+						<line x1="12" y1="4" x2="12" y2="20" class="st a-sv-div" stroke-dasharray="4 3" />
+						<path d="M16 12 L20 12 M18 10 L18 14" class="green a-sv-plus" />
+					</svg>
+				</div>
+				<h3>Split Vertical</h3>
+				<p class="desc">Cuts the current pane in two, side by side. The new pane opens to the right.</p>
+				<p class="anim-note">Same saw-cut, falling top-to-bottom; the right half is born and lights up.</p>
+				<div class="meta"><span class="badge toolbar">Toolbar</span><kbd class="chip">⌃B |</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="10" width="8" height="6" rx="1" class="st a-cy-left" />
+						<rect x="14" y="10" width="8" height="6" rx="1" class="st a-cy-right" />
+						<g class="a-cy-orbit">
+							<path d="M 6 8 C 8 3, 16 3, 18 8" class="green" />
+							<path d="M 15 6 L 18 8 L 21 6" class="green" />
+							<path d="M 18 18 C 16 23, 8 23, 6 18" class="green" />
+							<path d="M 9 20 L 6 18 L 3 20" class="green" />
+						</g>
+					</svg>
+				</div>
+				<h3>Cycle Layout</h3>
+				<p class="desc">Steps through tmux's built-in layout rotation for the current window.</p>
+				<p class="anim-note">The two panes physically trade places while the green arrows orbit around them.</p>
+				<div class="meta"><span class="badge toolbar">Toolbar</span><kbd class="chip">⌃B ␣</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="4" y="6" width="16" height="12" rx="1" class="st a-z-rect" />
+						<path d="M2 5 L2 2 L5 2"    class="st a-z-tl" />
+						<path d="M19 2 L22 2 L22 5" class="st a-z-tr" />
+						<path d="M22 19 L22 22 L19 22" class="st a-z-br" />
+						<path d="M5 22 L2 22 L2 19" class="st a-z-bl" />
+						<path d="M6 6 L2 2"   pathLength="1" class="st drawable a-z-diag" />
+						<path d="M18 6 L22 2" pathLength="1" class="st drawable a-z-diag" />
+						<path d="M18 18 L22 22" pathLength="1" class="st drawable a-z-diag" />
+						<path d="M6 18 L2 22"  pathLength="1" class="st drawable a-z-diag" />
+					</svg>
+				</div>
+				<h3>Zoom Pane</h3>
+				<p class="desc">Expands the focused pane to fill the whole window; run again to restore the split. Also used by the un-zoom badge.</p>
+				<p class="anim-note">The pane inflates toward the corner brackets as the arrows fire outward.</p>
+				<div class="meta"><span class="badge toolbar">Toolbar</span><kbd class="chip">⌃B z</kbd></div>
+			</div>
+
+			<div class="card hoverable danger-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-k-shake"><g class="a-k-die">
+							<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+							<path d="M9 9 L15 15" pathLength="1" class="st drawable a-k-x1" />
+							<path d="M15 9 L9 15" pathLength="1" class="st drawable a-k-x2" />
+						</g></g>
+					</svg>
+				</div>
+				<h3>Close Pane</h3>
+				<p class="desc">Kills the focused pane. Closing the last one tears down the whole session (asks first).</p>
+				<p class="anim-note">The X is slashed on, the pane shudders, then blinks out of existence.</p>
+				<div class="meta"><span class="badge dangerb">Danger</span><span class="badge toolbar">Toolbar</span><kbd class="chip">⌃B x</kbd></div>
+			</div>
+
+			<div class="card hoverable neutral-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 16 16" fill="currentColor">
+						<circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width=".9" opacity="0" class="a-i-ring" />
+						<path class="a-i-glyph" d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5a5.5 5.5 0 110-11 5.5 5.5 0 010 11zM7.25 5a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM7.25 7.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z" />
+					</svg>
+				</div>
+				<h3>tmux Hints</h3>
+				<p class="desc">Opens the cheat-sheet popover: every prefix shortcut plus the iTerm2 keyboard-mode toggle.</p>
+				<p class="anim-note">A sonar ring pings outward — "help radiates from here".</p>
+				<div class="meta"><span class="badge toolbar">Toolbar</span><kbd class="chip">hover</kbd></div>
+			</div>
+
+		</div>
+	</section>
+
+	<!-- ============================ LAYOUT MENU ============================ -->
+	<section>
+		<div class="section-title">Layout menu</div>
+		<p class="section-sub">The five named presets in the <code>tmux layout ▾</code> dropdown.</p>
+		<div class="grid">
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="3" y="5" width="8" height="6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-lt-q1" />
+						<rect x="13" y="5" width="8" height="6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-lt-q2" />
+						<rect x="3" y="13" width="8" height="6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-lt-q3" />
+						<rect x="13" y="13" width="8" height="6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-lt-q4" />
+						<line x1="12" y1="4" x2="12" y2="20" pathLength="1" class="st drawable a-lt-v" />
+						<line x1="2" y1="12" x2="22" y2="12" pathLength="1" class="st drawable a-lt-h" />
+					</svg>
+				</div>
+				<h3>Tiled</h3>
+				<p class="desc">Every pane gets an equal cell in a grid — the fair-share layout.</p>
+				<p class="anim-note">The cross draws itself, then all four cells light up in tmux order.</p>
+				<div class="meta"><span class="badge menu">Layout menu</span><kbd class="chip">⌃B M-5</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="3" y="5" width="18" height="3.6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-eh-r1" />
+						<rect x="3" y="10" width="18" height="3.9" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-eh-r2" />
+						<rect x="3" y="15.4" width="18" height="3.6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-eh-r3" />
+						<line x1="2" y1="9.33" x2="22" y2="9.33" pathLength="1" class="st drawable a-eh-l1" />
+						<line x1="2" y1="14.66" x2="22" y2="14.66" pathLength="1" class="st drawable a-eh-l2" />
+					</svg>
+				</div>
+				<h3>Even Horizontal</h3>
+				<p class="desc">Panes become full-width rows of equal height, stacked top to bottom.</p>
+				<p class="anim-note">Both dividers sweep in, then the rows check in one by one, top to bottom.</p>
+				<div class="meta"><span class="badge menu">Layout menu</span><kbd class="chip">⌃B M-1</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="3" y="5" width="4.9" height="14" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-ev-c1" />
+						<rect x="9.4" y="5" width="5.2" height="14" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-ev-c2" />
+						<rect x="16" y="5" width="5" height="14" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-ev-c3" />
+						<line x1="8.66" y1="4" x2="8.66" y2="20" pathLength="1" class="st drawable a-ev-l1" />
+						<line x1="15.33" y1="4" x2="15.33" y2="20" pathLength="1" class="st drawable a-ev-l2" />
+					</svg>
+				</div>
+				<h3>Even Vertical</h3>
+				<p class="desc">Panes become full-height columns of equal width, left to right.</p>
+				<p class="anim-note">Dividers drop in, then the columns march across, left to right.</p>
+				<div class="meta"><span class="badge menu">Layout menu</span><kbd class="chip">⌃B M-2</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="3" y="5" width="18" height="7" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mh-main" />
+						<rect x="3" y="14" width="8" height="5" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mh-sub" />
+						<rect x="13" y="14" width="8" height="5" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mh-sub" />
+						<line x1="2" y1="13" x2="22" y2="13" pathLength="1" class="st drawable a-mh-l1" />
+						<line x1="12" y1="13" x2="12" y2="20" pathLength="1" class="st drawable a-mh-l2" />
+					</svg>
+				</div>
+				<h3>Main Horizontal</h3>
+				<p class="desc">One big main pane on top; everything else shares a strip along the bottom.</p>
+				<p class="anim-note">The floor is drawn, the bottom splits, then the main pane claims the spotlight.</p>
+				<div class="meta"><span class="badge menu">Layout menu</span><kbd class="chip">⌃B M-3</kbd></div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="3" y="5" width="9" height="14" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mv-main" />
+						<rect x="14" y="5" width="7" height="6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mv-sub" />
+						<rect x="14" y="13" width="7" height="6" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mv-sub" />
+						<line x1="13" y1="4" x2="13" y2="20" pathLength="1" class="st drawable a-mv-l1" />
+						<line x1="13" y1="12" x2="22" y2="12" pathLength="1" class="st drawable a-mv-l2" />
+					</svg>
+				</div>
+				<h3>Main Vertical</h3>
+				<p class="desc">One big main pane on the left; the rest stack in a column on the right.</p>
+				<p class="anim-note">The wall goes up, the right side splits, and the main pane lights up.</p>
+				<div class="meta"><span class="badge menu">Layout menu</span><kbd class="chip">⌃B M-4</kbd></div>
+			</div>
+
+		</div>
+	</section>
+
+	<!-- ============================ WINDOWS & MOBILE ============================ -->
+	<section>
+		<div class="section-title">Windows &amp; mobile</div>
+		<p class="section-sub">Window-level actions and the phone pane carousel — <code>MobilePaneCarousel.tsx</code>.</p>
+		<div class="grid">
+
+			<div class="card hoverable new-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<g class="a-nw-pop">
+							<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+							<rect x="3" y="10" width="18" height="9" fill="rgb(74 222 128)" stroke="none" opacity="0" class="a-nw-bar" />
+							<line x1="2" y1="9" x2="22" y2="9" pathLength="1" class="st drawable a-nw-tab" />
+							<path d="M12 12.5 L12 17.5 M9.5 15 L14.5 15" class="st a-nw-plus" />
+						</g>
+					</svg>
+				</div>
+				<h3>New Window <span class="badge newb">New</span></h3>
+				<p class="desc">Opens a fresh tmux window (tab) in the session. Exists on mobile — proposed for the desktop toolbar.</p>
+				<p class="anim-note">A whole new window pops into existence: frame springs in, tab bar draws, plus spins on.</p>
+				<div class="meta"><span class="badge newb">Proposed · desktop</span><span class="badge mobile">Mobile</span><kbd class="chip">⌃B c</kbd></div>
+			</div>
+
+			<div class="card hoverable neutral-card">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="4" width="18" height="16" rx="2" class="st" />
+						<rect x="4" y="5" width="7.25" height="14" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mg-left" />
+						<rect x="12.75" y="5" width="7.25" height="14" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mg-right" />
+						<rect x="4" y="5" width="7.25" height="14" fill="rgb(68 150 255)" stroke="none" opacity="0" class="a-mg-back" />
+						<line x1="12" y1="4" x2="12" y2="20" pathLength="1" class="st drawable a-mg-line" />
+					</svg>
+				</div>
+				<h3>Panes &amp; Windows</h3>
+				<p class="desc">Opens the mobile manage sheet: create or close panes and windows from a phone.</p>
+				<p class="anim-note">Focus hops left → right → left, like swiping between panes in the carousel.</p>
+				<div class="meta"><span class="badge mobile">Mobile</span><kbd class="chip">tap</kbd></div>
+			</div>
+
+		</div>
+	</section>
+
+	<footer>
+		<p>
+			Source glyphs: <code>src/mainview/components/task-info-panel/TaskTmuxControls.tsx</code> ·
+			<code>src/mainview/components/MobilePaneCarousel.tsx</code> ·
+			<code>src/mainview/components/PaneZoomBadge.tsx</code> (reuses the Zoom glyph).
+			Trivial primitives (dropdown chevron, checkmark) and generic feather icons (copy, refresh) are not included.
+		</p>
+		<p>All motion is pure CSS on the original 24×24 paths — no icon shapes were changed. Honors <code>prefers-reduced-motion</code>.</p>
+	</footer>
+</div>
+
+<script>
+	// Tap/click a card pins its animation (mobile has no hover); the header
+	// button loops everything at once.
+	document.querySelectorAll(".card.hoverable").forEach((card) => {
+		card.addEventListener("click", () => card.classList.toggle("pin"));
+	});
+	document.getElementById("playAll").addEventListener("click", () => {
+		document.body.classList.toggle("play");
+	});
+</script>
+</body>
+</html>
