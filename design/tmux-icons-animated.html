@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>dev-3.0 · tmux icon animations</title>
 <style>
+	/* Bundled Nerd Font so the "still to redo" inventory renders real glyphs,
+	   not tofu. Path is relative to design/ → src/mainview/assets/fonts/. */
+	@font-face {
+		font-family: 'JetBrainsMono Nerd Font Mono';
+		src: url('../src/mainview/assets/fonts/JetBrainsMonoNerdFontMono-Regular.woff2') format('woff2');
+		font-weight: normal;
+		font-display: swap;
+	}
+
 	/* ---- Design tokens (mirrors src/mainview/index.css dark theme) ---- */
 	:root {
 		--surface-base: 6 9 21;
@@ -683,6 +692,45 @@
 	@media (prefers-reduced-motion: reduce) {
 		*, *::before, *::after { animation: none !important; transition: none !important; }
 	}
+
+	/* ---- "Still to redo" inventory: dense, static, just the icons as they are ---- */
+	.inv-group { margin-top: 26px; }
+	.inv-group > h4 {
+		font-size: 13px; font-weight: 600; color: rgb(var(--text-secondary));
+		letter-spacing: .01em; margin-bottom: 12px;
+		display: flex; align-items: center; gap: 8px;
+	}
+	.inv-group > h4 .count {
+		font-size: 11px; font-weight: 500; color: rgb(var(--text-muted));
+		background: rgba(var(--surface-elevated)); border: 1px solid rgb(var(--border-default));
+		border-radius: 999px; padding: 1px 8px;
+	}
+	.inv-grid {
+		display: grid; gap: 10px;
+		grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+	}
+	.inv-item {
+		display: flex; flex-direction: column; align-items: center; gap: 8px;
+		padding: 14px 8px 10px;
+		background: rgba(var(--surface-raised) / .7);
+		border: 1px solid rgb(var(--border-default));
+		border-radius: 12px; text-align: center;
+	}
+	.inv-item .ico { color: rgb(var(--text-primary)); line-height: 1; }
+	.inv-item .ico.nf {
+		font-family: 'JetBrainsMono Nerd Font Mono';
+		font-size: 26px;
+	}
+	.inv-item .ico svg { width: 26px; height: 26px; display: block; }
+	.inv-item .lbl { font-size: 11px; color: rgb(var(--text-secondary)); line-height: 1.25; }
+	.inv-item .cp {
+		font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+		font-size: 10px; color: rgb(var(--text-muted));
+	}
+	.inv-item.svg .cp { color: rgb(var(--accent)); }
+	.inv-legend { font-size: 12px; color: rgb(var(--text-tertiary)); margin: 4px 0 8px; }
+	.inv-legend b { color: rgb(var(--text-secondary)); font-weight: 600; }
+	.inv-legend b.cp-svg { color: rgb(var(--accent)); }
 </style>
 </head>
 <body>
@@ -1511,6 +1559,178 @@
 				</div>
 			</div>
 
+		</div>
+	</section>
+
+	<section id="todo-icons">
+		<div class="section-title">Still to redo — the un-animated inventory</div>
+		<p class="section-sub">
+			Every icon in the app that has <b>not</b> been reworked yet, dropped in exactly as it ships today —
+			Nerd Font glyphs render as glyphs, inline SVGs render as SVG — so we can see how many there are and where they live.
+			Grouped by the surface that owns them.
+		</p>
+		<p class="inv-legend">Legend: codepoint shown = <b>Nerd Font</b> glyph (e.g. <code>F0141</code>) · <b class="cp-svg">SVG</b> = hand-written inline SVG. <code>·pulse</code>/<code>·spin</code> = already has a spinner/pulse (not a real hover animation).</p>
+
+		<div class="inv-group">
+			<h4>GlobalHeader <span class="count">15</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3"/><rect x="3" y="3" width="18" height="18" rx="3" stroke-width="1.5"/></svg></span><span class="lbl">Home breadcrumb</span><span class="cp">SVG</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0141;</span><span class="lbl">Back</span><span class="cp">F0141</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0142;</span><span class="lbl">Forward</span><span class="cp">F0142</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0140;</span><span class="lbl">Project dropdown</span><span class="cp">F0140</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF018D;</span><span class="lbl">Quick Shell</span><span class="cp">F018D</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF489;</span><span class="lbl">Project Terminal</span><span class="cp">F489</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0433;</span><span class="lbl">Remote / QR</span><span class="cp">F0433</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF04C5;</span><span class="lbl">Productivity stats</span><span class="cp">F04C5</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF188;</span><span class="lbl">Report a bug</span><span class="cp">f188</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF01D9;</span><span class="lbl">Overflow kebab</span><span class="cp">F01D9</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0A39;</span><span class="lbl">Update ready ·pulse</span><span class="cp">F0A39</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg></span><span class="lbl">GitHub logo</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg></span><span class="lbl">Changelog</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></span><span class="lbl">Project settings (wrench)</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg></span><span class="lbl">Global settings (sliders)</span><span class="cp">SVG</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>TaskCard <span class="count">17</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item"><span class="ico nf">&#xF0401;</span><span class="lbl">PR badge</span><span class="cp">F0401</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF00C;</span><span class="lbl">CI success</span><span class="cp">F00C</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF00D;</span><span class="lbl">CI failure</span><span class="cp">F00D</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF252;</span><span class="lbl">CI pending</span><span class="cp">F252</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF164;</span><span class="lbl">Review approved</span><span class="cp">F164</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF071;</span><span class="lbl">Review changes</span><span class="cp">F071</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF075;</span><span class="lbl">Review commented</span><span class="cp">F075</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF018D;</span><span class="lbl">Scratch indicator</span><span class="cp">F018D</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF009A;</span><span class="lbl">Watched</span><span class="cp">F009A</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0F1C;</span><span class="lbl">Unwatched</span><span class="cp">F0F1C</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0AC;</span><span class="lbl">Port</span><span class="cp">F0AC</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF035B;</span><span class="lbl">Memory / CPU</span><span class="cp">F035B</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0379;</span><span class="lbl">Open in…</span><span class="cp">F0379</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span><span class="lbl">Dismiss (X)</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h10"/></svg></span><span class="lbl">Show description</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg></span><span class="lbl">Add label (+)</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></span><span class="lbl">Play / run</span><span class="cp">SVG</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>TaskInfoPanel &amp; sub-panels <span class="count">18</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item"><span class="ico nf">&#xF0912;</span><span class="lbl">Task section</span><span class="cp">F0912</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0CB;</span><span class="lbl">Diff / branch marker</span><span class="cp">F0CB</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF4D2;</span><span class="lbl">Info glyph</span><span class="cp">F4D2</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0379;</span><span class="lbl">Open in external</span><span class="cp">F0379</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF16A6;</span><span class="lbl">Gear / settings</span><span class="cp">F16A6</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF013;</span><span class="lbl">Settings cog</span><span class="cp">F013</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF012C;</span><span class="lbl">Copied ✓</span><span class="cp">F012C</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0C5;</span><span class="lbl">Copy</span><span class="cp">F0C5</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0317;</span><span class="lbl">Link / path</span><span class="cp">F0317</span></div>
+				<div class="inv-item"><span class="ico nf">&#xEF81;</span><span class="lbl">Worktree folder</span><span class="cp">EF81</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0295;</span><span class="lbl">Script play</span><span class="cp">F0295</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF02E9;</span><span class="lbl">Shared image</span><span class="cp">F02E9</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF1087;</span><span class="lbl">Exposed port link</span><span class="cp">F1087</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0645;</span><span class="lbl">Folder / file-tree</span><span class="cp">F0645</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF009A;</span><span class="lbl">Watched</span><span class="cp">F009A</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0F1C;</span><span class="lbl">Unwatched</span><span class="cp">F0F1C</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF035B;</span><span class="lbl">Memory</span><span class="cp">F035B</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF01D9;</span><span class="lbl">Panel menu</span><span class="cp">F01D9</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>Dashboard · ActivityOverview · ProductivityStats <span class="count">16</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item"><span class="ico nf">&#xF04C5;</span><span class="lbl">Stats circle</span><span class="cp">F04C5</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0142;</span><span class="lbl">Next arrow</span><span class="cp">F0142</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF01DB;</span><span class="lbl">Collapse</span><span class="cp">F01DB</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF01D9;</span><span class="lbl">Kebab</span><span class="cp">F01D9</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0493;</span><span class="lbl">New task</span><span class="cp">F0493</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF115;</span><span class="lbl">Git / VCS</span><span class="cp">F115</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF489;</span><span class="lbl">Terminal</span><span class="cp">F489</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF062;</span><span class="lbl">Up arrow</span><span class="cp">F062</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF063;</span><span class="lbl">Down arrow</span><span class="cp">F063</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0A79;</span><span class="lbl">Settings</span><span class="cp">F0A79</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0238;</span><span class="lbl">Fire / streak</span><span class="cp">F0238</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0141;</span><span class="lbl">Back</span><span class="cp">F0141</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0450;</span><span class="lbl">Org / refresh</span><span class="cp">F0450</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0241;</span><span class="lbl">Peak / crown</span><span class="cp">F0241</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0645;</span><span class="lbl">Big stats</span><span class="cp">F0645</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0450;</span><span class="lbl">Stats refresh</span><span class="cp">F0450</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>Git pull (button + error modal) <span class="count">6</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item"><span class="ico nf">&#xF0164;</span><span class="lbl">Pull / download</span><span class="cp">F0164</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0450;</span><span class="lbl">Refresh ·spin</span><span class="cp">F0450</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0E1E;</span><span class="lbl">Success ✓</span><span class="cp">F0E1E</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0027;</span><span class="lbl">Alert / error</span><span class="cp">F0027</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0027;</span><span class="lbl">Modal alert</span><span class="cp">F0027</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0450;</span><span class="lbl">Modal refresh</span><span class="cp">F0450</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>Terminal · tmux session · mobile panes · sleep <span class="count">15</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item"><span class="ico nf">&#xF0294;</span><span class="lbl">Composer expand</span><span class="cp">F0294</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0293;</span><span class="lbl">Composer collapse</span><span class="cp">F0293</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0192;</span><span class="lbl">Send</span><span class="cp">F0192</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF048A;</span><span class="lbl">Clear history</span><span class="cp">F048A</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0645;</span><span class="lbl">Terminal / code</span><span class="cp">F0645</span></div>
+				<div class="inv-item"><span class="ico nf">&#xEBC8;</span><span class="lbl">Session</span><span class="cp">EBC8</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0AC;</span><span class="lbl">Session port</span><span class="cp">F0AC</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF035B;</span><span class="lbl">Session memory</span><span class="cp">F035B</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0570;</span><span class="lbl">Fullscreen / zoom</span><span class="cp">F0570</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF053;</span><span class="lbl">Prev pane</span><span class="cp">F053</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF054;</span><span class="lbl">Next pane</span><span class="cp">F054</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF078;</span><span class="lbl">Scroll chevron</span><span class="cp">F078</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF00C;</span><span class="lbl">Pane check</span><span class="cp">F00C</span></div>
+				<div class="inv-item"><span class="ico nf">&#xEC15;</span><span class="lbl">Caffeinate (coffee)</span><span class="cp">EC15</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF033E;</span><span class="lbl">Locked by remote</span><span class="cp">F033E</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>Open-In menu (external editors) <span class="count">9</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item"><span class="ico nf">&#xF024;</span><span class="lbl">Finder</span><span class="cp">F024</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0A1E;</span><span class="lbl">VS Code / Cursor</span><span class="cp">F0A1E</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF489;</span><span class="lbl">Ghostty / iTerm / Terminal</span><span class="cp">F489</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0184;</span><span class="lbl">IntelliJ / PyCharm</span><span class="cp">F0184</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0599;</span><span class="lbl">Zed</span><span class="cp">F0599</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0CC5;</span><span class="lbl">Sublime Text</span><span class="cp">F0CC5</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0645;</span><span class="lbl">Generic app</span><span class="cp">F0645</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF012C;</span><span class="lbl">Copied ✓</span><span class="cp">F012C</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0C5;</span><span class="lbl">Copy path</span><span class="cp">F0C5</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>Filters · attachments · variants · project bar <span class="count">7</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item"><span class="ico nf">&#xF02FC;</span><span class="lbl">Filter help</span><span class="cp">F02FC</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF09ED;</span><span class="lbl">Attachment doc</span><span class="cp">F09ED</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF009A;</span><span class="lbl">Variant watched</span><span class="cp">F009A</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0F1C;</span><span class="lbl">Variant unwatched</span><span class="cp">F0F1C</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0493;</span><span class="lbl">Project new task</span><span class="cp">F0493</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF115;</span><span class="lbl">Project git</span><span class="cp">F115</span></div>
+				<div class="inv-item"><span class="ico nf">&#xF0A79;</span><span class="lbl">Project settings</span><span class="cp">F0A79</span></div>
+			</div>
+		</div>
+
+		<div class="inv-group">
+			<h4>Inline SVG primitives (rename · search · dot) <span class="count">5</span></h4>
+			<div class="inv-grid">
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></span><span class="lbl">Rename save ✓</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></span><span class="lbl">Rename cancel</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></span><span class="lbl">Rename edit (pencil)</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg></span><span class="lbl">Filter search</span><span class="cp">SVG</span></div>
+				<div class="inv-item svg"><span class="ico"><svg viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="5"/></svg></span><span class="lbl">Kanban status dot</span><span class="cp">SVG</span></div>
+			</div>
 		</div>
 	</section>
 
