@@ -229,7 +229,7 @@ describe("ui state", () => {
 				tmux: {
 					sessionName: "dev3-aaaaaaaa",
 					exists: true,
-					windows: [{ index: 0, name: "agent", active: true, panes: 2 }],
+					windows: [{ index: 0, name: "agent", active: true, panes: 2, zoomed: false }],
 					panes: [
 						{ windowIndex: 0, paneId: "%0", active: true, left: 0, top: 0, width: 80, height: 24, command: "claude", title: "" },
 						{ windowIndex: 0, paneId: "%1", active: false, left: 0, top: 25, width: 80, height: 24, command: "zsh", title: "" },

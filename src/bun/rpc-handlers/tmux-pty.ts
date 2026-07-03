@@ -1598,6 +1598,61 @@ async function tmuxPaneCount(params: { taskId: string }): Promise<{ count: numbe
 	}
 }
 
+/**
+ * Kill ONE specific pane by its tmux id (`%N`) — the target the two-step close-
+ * pane picker committed to. Unlike {@link tmuxAction}'s `killPane` (which kills
+ * whatever tmux thinks is active), this closes exactly the hovered pane the user
+ * clicked, regardless of which pane is currently focused.
+ *
+ * Mirrors the killPane guards: refuse to kill the last pane in the session unless
+ * `force` is set (the frontend confirms first, since that tears down the agent's
+ * own session), and clean up sessionState via handlePaneExited (kill-pane does
+ * not fire tmux's pane-exited hook).
+ */
+async function tmuxKillPane(params: { taskId: string; paneId: string; force?: boolean }): Promise<{ killed: boolean }> {
+	log.info("→ tmuxKillPane", { taskId: params.taskId.slice(0, 8), paneId: params.paneId, force: params.force === true });
+	// The pane id always originates from our own tmuxLayout (`%N`); validate the
+	// shape defensively before it reaches a spawn arg.
+	if (!/^%\d+$/.test(params.paneId)) {
+		log.warn("tmuxKillPane rejected — malformed pane id", { paneId: params.paneId });
+		return { killed: false };
+	}
+
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+
+	if (!params.force) {
+		try {
+			const countProc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+			const countStdout = await new Response(countProc.stdout).text();
+			const countExit = await countProc.exited;
+			if (countExit === 0) {
+				const paneCount = countStdout.trim().split("\n").filter((l) => l.length > 0).length;
+				if (paneCount <= 1) {
+					log.info("tmuxKillPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
+					return { killed: false };
+				}
+			}
+		} catch { /* best effort — if counting fails, fall through to the normal kill */ }
+	}
+
+	const proc = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", params.paneId), { stdout: "pipe", stderr: "pipe" });
+	const stderr = await new Response(proc.stderr).text();
+	const exitCode = await proc.exited;
+	if (exitCode !== 0) {
+		log.error("tmuxKillPane failed", { paneId: params.paneId, exitCode, stderr: stderr.trim() });
+		throw new Error(`tmux kill-pane failed: ${stderr.trim() || "unknown error"}`);
+	}
+
+	// kill-pane does NOT trigger tmux's pane-exited hook, so clean up sessionState here.
+	handlePaneExited(params.taskId, params.paneId).catch((err) => {
+		log.warn("Failed to clean up killed pane from sessionState", { error: String(err) });
+	});
+
+	log.info("← tmuxKillPane done", { taskId: params.taskId.slice(0, 8), paneId: params.paneId });
+	return { killed: true };
+}
+
 interface PaneLayoutInfo {
 	count: number;
 	activeIndex: number;
@@ -2344,6 +2399,7 @@ export const tmuxPtyHandlers = {
 	killTmuxSession,
 	tmuxAction,
 	tmuxPaneCount,
+	tmuxKillPane,
 	tmuxPaneNavigate,
 	tmuxLayout,
 	tmuxWindowNavigate,

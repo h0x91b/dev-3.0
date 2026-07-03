@@ -5069,6 +5069,54 @@ describe("handlers.pushTask", () => {
 // handlers.runDevServer
 // ================================================================
 
+describe("handlers.tmuxKillPane", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	function killPaneCall() {
+		return mockSpawn.mock.calls.map((c) => c[0] as string[]).find((a) => a.includes("kill-pane"));
+	}
+
+	it("kills the targeted pane by id when more than one pane exists", async () => {
+		mockSpawn
+			.mockReturnValueOnce({ stdout: "%1\n%2\n", stderr: new Response(""), exited: Promise.resolve(0) }) // count
+			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }); // kill-pane
+
+		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "%2" });
+
+		expect(res).toEqual({ killed: true });
+		const kill = killPaneCall();
+		expect(kill).toBeDefined();
+		expect(kill!).toContain("%2");
+	});
+
+	it("refuses to kill the last pane without force", async () => {
+		mockSpawn.mockReturnValueOnce({ stdout: "%1\n", stderr: new Response(""), exited: Promise.resolve(0) }); // count → 1
+
+		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "%1" });
+
+		expect(res).toEqual({ killed: false });
+		expect(killPaneCall()).toBeUndefined();
+	});
+
+	it("force-kills the last pane (bypasses the count guard)", async () => {
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+
+		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "%1", force: true });
+
+		expect(res).toEqual({ killed: true });
+		expect(killPaneCall()).toBeDefined();
+		// No list-panes count call when forced.
+		expect(mockSpawn.mock.calls.some((c) => (c[0] as string[]).includes("list-panes"))).toBe(false);
+	});
+
+	it("rejects a malformed pane id without spawning tmux", async () => {
+		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "; rm -rf /" });
+
+		expect(res).toEqual({ killed: false });
+		expect(mockSpawn).not.toHaveBeenCalled();
+	});
+});
+
 describe("handlers.runDevServer", () => {
 	beforeEach(() => vi.clearAllMocks());
 

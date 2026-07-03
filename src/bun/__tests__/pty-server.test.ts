@@ -618,18 +618,23 @@ describe("pty-server", () => {
 
 		// Two side-by-side panes in a single window (a 200-col window split down
 		// the middle, with a 1-col divider at column 99). The window_layout (5th
-		// field) is the zoom-independent geometry source.
-		const WINDOWS = "0\tmain\t1\t2\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\n";
+		// field) is the zoom-independent geometry source; the trailing field is the
+		// window_zoomed_flag (0 = not zoomed).
+		const WINDOWS = "0\tmain\t1\t2\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\t0\n";
 		const PANES =
 			"0\t%1\t1\t0\t0\t99\t50\tclaude\tAgent\n" + "0\t%2\t0\t100\t0\t100\t50\tzsh\tShell\n";
 
-		function mockLayoutSpawn(opts: { windows?: string; windowsExit?: number; panes?: string; panesExit?: number } = {}) {
+		function mockLayoutSpawn(opts: { windows?: string; windowsExit?: number; panes?: string; panesExit?: number; status?: string } = {}) {
 			mockSpawn.mockImplementation((cmd: any) => {
 				if (Array.isArray(cmd) && cmd.includes("list-windows")) {
 					return makeProc(opts.windows ?? WINDOWS, opts.windowsExit ?? 0) as any;
 				}
 				if (Array.isArray(cmd) && cmd.includes("list-panes")) {
 					return makeProc(opts.panes ?? PANES, opts.panesExit ?? 0) as any;
+				}
+				if (Array.isArray(cmd) && cmd.includes("display-message")) {
+					// client_height \t window_height \t status \t status-position
+					return makeProc(opts.status ?? "51\t50\ton\tbottom\n", 0) as any;
 				}
 				return defaultSpawnReturn() as any;
 			});
@@ -641,7 +646,7 @@ describe("pty-server", () => {
 
 			expect(layout.exists).toBe(true);
 			expect(layout.windows).toHaveLength(1);
-			expect(layout.windows[0]).toMatchObject({ index: 0, name: "main", active: true, panes: 2 });
+			expect(layout.windows[0]).toMatchObject({ index: 0, name: "main", active: true, panes: 2, zoomed: false });
 
 			expect(layout.panes).toHaveLength(2);
 			expect(layout.panes[0]).toMatchObject({
@@ -681,6 +686,32 @@ describe("pty-server", () => {
 			mockLayoutSpawn({ panes: "0\t%1\t1\t0\t0\t200\t50\tvim\tmy file.txt\n" });
 			const layout = await getTmuxLayout("task-layout-04");
 			expect(layout.panes[0].title).toBe("my file.txt");
+		});
+
+		it("reports the status-bar reservation (client_height - window_height)", async () => {
+			mockLayoutSpawn({ status: "51\t50\ton\tbottom\n" });
+			const layout = await getTmuxLayout("task-status-01");
+			expect(layout.statusLines).toBe(1);
+			expect(layout.statusAtTop).toBe(false);
+		});
+
+		it("reports statusLines 0 when the status bar is off", async () => {
+			mockLayoutSpawn({ status: "50\t50\toff\tbottom\n" });
+			const layout = await getTmuxLayout("task-status-02");
+			expect(layout.statusLines).toBe(0);
+		});
+
+		it("flags a top-positioned status bar", async () => {
+			mockLayoutSpawn({ status: "52\t50\ton\ttop\n" });
+			const layout = await getTmuxLayout("task-status-03");
+			expect(layout.statusLines).toBe(2);
+			expect(layout.statusAtTop).toBe(true);
+		});
+
+		it("reports a zoomed window via window_zoomed_flag", async () => {
+			mockLayoutSpawn({ windows: "0\tmain\t1\t2\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\t1\n" });
+			const layout = await getTmuxLayout("task-layout-zoom");
+			expect(layout.windows[0].zoomed).toBe(true);
 		});
 
 		it("uses zoom-independent window_layout geometry over collapsed pane fields", async () => {

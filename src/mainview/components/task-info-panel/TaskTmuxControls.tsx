@@ -5,6 +5,9 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { getKeymapPreset, KEYMAP_CHANGED_EVENT, setKeymapPreset } from "../../terminal-keymaps";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { useNarrowViewport } from "../../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
+import { startClosePanePicker } from "../../close-pane-picker";
 
 interface TaskTmuxControlsProps {
 	taskId: string;
@@ -26,6 +29,10 @@ type LayoutAction = "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH
 
 export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 	const t = useT();
+	// Hover-to-pick only makes sense on a real split with a pointer. On a narrow
+	// viewport the terminal is a one-pane carousel (no hover, no visible split),
+	// so Close Pane keeps its direct-kill behavior there.
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [keymapPreset, setKeymapPresetState] = useState(() => getKeymapPreset());
 	const [hintsOpen, setHintsOpen] = useState(false);
 	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
@@ -210,6 +217,19 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 		api.request.tmuxAction({ taskId, action }).catch(() => {});
 	};
 
+	// The red Close Pane button. On a real desktop split it opens the two-step
+	// picker (an overlay over the terminal in TaskTerminal); on narrow viewports it
+	// falls back to the direct kill of the visible pane (reusing the last-pane
+	// teardown confirm baked into handleTmuxAction("killPane")).
+	const handleClosePane = (event: ReactMouseEvent<HTMLButtonElement>) => {
+		event.stopPropagation();
+		if (narrow) {
+			void handleTmuxAction("killPane")(event);
+			return;
+		}
+		startClosePanePicker(taskId);
+	};
+
 	// Cycling steps through tmux's own layout rotation, so the toolbar can no longer
 	// know which named preset is active — clear the highlight to avoid lying about it.
 	const cycleLayout = (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -374,7 +394,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 
 				<button
 					className={`${tmuxBtnClass} text-danger hover:bg-danger/20 bg-danger/10 border-danger/25`}
-					onClick={handleTmuxAction("killPane")}
+					onClick={handleClosePane}
 					title={t("tmux.closePaneDesc")}
 					aria-label={t("tmux.closePaneDesc")}
 				>

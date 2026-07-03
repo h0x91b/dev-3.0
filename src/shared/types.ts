@@ -1171,6 +1171,13 @@ export interface TmuxWindowInfo {
 	name: string;
 	active: boolean;
 	panes: number;
+	/**
+	 * Whether this window is currently zoomed to a single pane. When true, only
+	 * the active pane is visible on screen even though `panes` still reports the
+	 * real split — the close-pane picker uses this to overlay a single hit-box
+	 * instead of the (invisible) multi-pane geometry.
+	 */
+	zoomed: boolean;
 }
 
 export interface TmuxPaneInfo {
@@ -1191,6 +1198,15 @@ export interface TmuxLayout {
 	exists: boolean;
 	windows: TmuxWindowInfo[];
 	panes: TmuxPaneInfo[];
+	/**
+	 * Rows the tmux status bar reserves from the terminal. Pane geometry above is
+	 * the WINDOW (pane area) and excludes these rows, but the rendered canvas
+	 * includes them — the close-pane picker adds this back so its overlay lines up
+	 * vertically. Omitted/0 when the status bar is off or couldn't be measured.
+	 */
+	statusLines?: number;
+	/** True when the status bar sits on top (so the pane area starts `statusLines` rows down). */
+	statusAtTop?: boolean;
 }
 
 // ---- Task dev server ----
@@ -1890,6 +1906,10 @@ export type AppRPCSchema = {
 			tmuxPaneCount: {
 				params: { taskId: string };
 				response: { count: number };
+			};
+			tmuxKillPane: {
+				params: { taskId: string; paneId: string; force?: boolean };
+				response: { killed: boolean };
 			};
 			tmuxPaneNavigate: {
 				params: { taskId: string; step?: "next" | "prev"; index?: number; paneId?: string; zoom?: boolean };

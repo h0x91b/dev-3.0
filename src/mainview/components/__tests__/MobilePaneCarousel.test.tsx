@@ -25,7 +25,7 @@ const THREE_PANES = { count: 3, activeIndex: 0, zoomed: true, labels: ["claude",
 const LAYOUT = {
 	sessionName: "dev3-task1",
 	exists: true,
-	windows: [{ index: 0, name: "main", active: true, panes: 2 }],
+	windows: [{ index: 0, name: "main", active: true, panes: 2, zoomed: false }],
 	panes: [
 		{ windowIndex: 0, paneId: "%1", active: true, left: 0, top: 0, width: 99, height: 50, command: "claude", title: "Agent" },
 		{ windowIndex: 0, paneId: "%2", active: false, left: 100, top: 0, width: 100, height: 50, command: "zsh", title: "Shell" },

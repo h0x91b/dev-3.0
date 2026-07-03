@@ -567,7 +567,9 @@ export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMU
 		"-t",
 		sessionName,
 		"-F",
-		"#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}",
+		// `window_layout` can contain `{`/`}`/digits/commas but never a tab, so the
+		// zoomed flag is appended AFTER it and split back out cleanly.
+		"#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}\t#{window_layout}\t#{window_zoomed_flag}",
 	);
 	if (windowsOut === null) return empty;
 
@@ -579,7 +581,7 @@ export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMU
 		.split("\n")
 		.filter(Boolean)
 		.map((line) => {
-			const [index, name, active, panes, layout] = line.split("\t");
+			const [index, name, active, panes, layout, zoomed] = line.split("\t");
 			const windowIndex = Number(index);
 			geomByWindow.set(windowIndex, parseWindowLayout(layout ?? ""));
 			return {
@@ -587,6 +589,7 @@ export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMU
 				name: name ?? "",
 				active: active === "1",
 				panes: Number(panes) || 0,
+				zoomed: zoomed === "1",
 			};
 		});
 
@@ -623,7 +626,38 @@ export async function getTmuxLayout(taskId: string, socket: string = DEFAULT_TMU
 			};
 		});
 
-	return { sessionName, exists: windows.length > 0, windows, panes };
+	// Status-bar reservation: pane geometry above is the WINDOW (excludes the tmux
+	// status bar), but the rendered canvas includes it. Measure the reserved rows so
+	// the frontend overlay can line up vertically. `client_height - window_height`
+	// is the total reserved rows (robust to multi-line status); fall back to the
+	// `status` option (off → 0, numeric → that many, on → 1) when no client is
+	// attached to read a height from.
+	let statusLines = 0;
+	let statusAtTop = false;
+	const statusOut = await run(
+		"display-message",
+		"-p",
+		"-t",
+		sessionName,
+		"#{client_height}\t#{window_height}\t#{status}\t#{status-position}",
+	);
+	if (statusOut !== null) {
+		const [clientH, winHeight, status, position] = statusOut.trim().split("\t");
+		statusAtTop = (position ?? "").trim() === "top";
+		const ch = Number(clientH) || 0;
+		const wh = Number(winHeight) || 0;
+		const statusOpt = (status ?? "").trim();
+		if (statusOpt === "off") {
+			statusLines = 0;
+		} else if (ch > wh) {
+			statusLines = ch - wh;
+		} else {
+			const n = Number(statusOpt);
+			statusLines = Number.isFinite(n) && n > 0 ? n : 1;
+		}
+	}
+
+	return { sessionName, exists: windows.length > 0, windows, panes, statusLines, statusAtTop };
 }
 
 /**
