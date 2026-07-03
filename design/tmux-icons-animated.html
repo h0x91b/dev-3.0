@@ -472,9 +472,192 @@
 	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-mg-back  { animation: mg-back 2.6s ease-in-out infinite; }
 
 	/* ============================================================
-	   GIT ACTIONS — icon candidates (pass 1: static, pick a variant)
+	   GIT ACTIONS — icon candidates (picked variants animated)
 	   ============================================================ */
 	svg .red { color: rgb(var(--danger)); stroke: currentColor; }
+
+	/* Real-size strip for the git row: these buttons are SMALLER than the
+	   tmux toolbar ones (10px font, ~14px icon, py 2px) — matches
+	   TaskGitActions.tsx px-1.5 py-0.5 text-[0.625rem]. */
+	.git-btn {
+		display: inline-flex; align-items: center; gap: 5px;
+		padding: 2px 6px; border-radius: 4px;
+		background: rgba(var(--accent) / .1);
+		border: 1px solid rgba(var(--accent) / .25);
+		color: rgb(var(--accent));
+		font-size: 10px; font-weight: 600;
+		cursor: default;
+		transition: background .15s ease;
+	}
+	.git-btn:hover { background: rgba(var(--accent) / .2); }
+	.git-btn svg { width: 13.6px; height: 13.6px; flex-shrink: 0; }
+	.git-btn.tests {
+		background: rgba(var(--surface-elevated) / 1);
+		border-color: rgb(var(--border-default));
+		color: rgb(var(--text-secondary));
+		font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+		font-weight: 500;
+		border-radius: 8px; padding: 3px 7px;
+	}
+	.badge.picked { color: rgb(var(--success)); background: rgba(var(--success) / .14); border: 1px solid rgba(var(--success) / .35); }
+	.card.dim { opacity: .45; }
+	.card.dim:hover { opacity: 1; }
+
+	/* ---- G1. SHOW DIFF (unified) — + line types in, − line struck out ---- */
+	@keyframes gd-add {
+		0%, 10%  { stroke-dashoffset: 1; opacity: 0; }
+		16%      { opacity: 1; }
+		38%      { stroke-dashoffset: 0; }
+		88%      { stroke-dashoffset: 0; opacity: 1; }
+		100%     { stroke-dashoffset: 0; opacity: 1; }
+	}
+	@keyframes gd-plus {
+		0%, 6%   { transform: scale(0); opacity: 0; }
+		18%      { transform: scale(1.35); opacity: 1; }
+		28%      { transform: scale(1); }
+		100%     { transform: scale(1); opacity: 1; }
+	}
+	@keyframes gd-del {
+		0%, 40%  { opacity: 1; }
+		56%      { opacity: .25; }
+		66%      { opacity: 1; }
+		78%      { opacity: .25; }
+		100%     { opacity: .25; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gd-add  { animation: gd-add 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gd-plus { transform-origin: 7px 9px; animation: gd-plus 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gd-del  { animation: gd-del 2.4s ease-in-out infinite; }
+
+	/* ---- G2. REBASE (replant) — the commit rides the dashed rail to the tip ---- */
+	@keyframes gr-ants { to { stroke-dashoffset: -23; } }
+	@keyframes gr-dot {
+		/* waypoints sampled from the bezier M17.5 14.9 C17.5 10.2 15.2 7 11 5.6,
+		   relative to the dot's idle center (17.5, 17) */
+		0%, 8%   { transform: translate(0, 0); opacity: 1; }
+		22%      { transform: translate(-0.7px, -6.3px); opacity: 1; }
+		36%      { transform: translate(-2.9px, -9.4px); opacity: 1; }
+		48%      { transform: translate(-6.5px, -11.4px); opacity: 1; }
+		56%      { transform: translate(-6.5px, -11.4px); opacity: 0; }
+		64%      { transform: translate(0, 0); opacity: 0; }
+		74%, 100%{ transform: translate(0, 0); opacity: 1; }
+	}
+	@keyframes gr-land {
+		0%, 44%  { transform: scale(1); }
+		54%      { transform: scale(1.45); }
+		66%, 100%{ transform: scale(1); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gr-ants { animation: gr-ants 1.6s linear infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gr-dot  { animation: gr-dot 2.6s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gr-land { transform-origin: 6px 5px; animation: gr-land 2.6s ease-in-out infinite; }
+
+	/* ---- G3. PUSH (cloud) — the arrow launches up into the cloud, cloud gulps ---- */
+	@keyframes gp-arrow {
+		0%, 8%   { transform: translateY(0); opacity: 1; }
+		42%      { transform: translateY(-5.5px); opacity: 1; }
+		54%      { transform: translateY(-7px); opacity: 0; }
+		60%      { transform: translateY(2.5px); opacity: 0; }
+		74%      { transform: translateY(2.5px); opacity: 1; }
+		92%, 100%{ transform: translateY(0); opacity: 1; }
+	}
+	@keyframes gp-cloud {
+		0%, 34%  { transform: scale(1); }
+		48%      { transform: scale(1.09); }
+		62%, 100%{ transform: scale(1); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gp-arrow { animation: gp-arrow 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gp-cloud { transform-origin: 11.5px 11px; animation: gp-cloud 2.4s ease-in-out infinite; }
+
+	/* ---- G4. CREATE PR (sparkle) — branch curve draws over, sparkle twinkles ---- */
+	@keyframes gc-curve {
+		0%, 10%  { stroke-dashoffset: 1; }
+		46%      { stroke-dashoffset: 0; }
+		100%     { stroke-dashoffset: 0; }
+	}
+	@keyframes gc-dot {
+		0%, 40%  { transform: scale(1); }
+		52%      { transform: scale(1.4); }
+		64%, 100%{ transform: scale(1); }
+	}
+	@keyframes gc-spark {
+		0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+		25%      { transform: scale(1.35) rotate(20deg); opacity: 1; }
+		45%      { transform: scale(.55) rotate(-12deg); opacity: .55; }
+		65%      { transform: scale(1.2) rotate(8deg); opacity: 1; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gc-curve { animation: gc-curve 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gc-dot   { transform-origin: 15.5px 18.5px; animation: gc-dot 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gc-spark { transform-origin: 19.7px 5.6px; animation: gc-spark 2.4s ease-in-out infinite; }
+
+	/* ---- G5. PR + AUTO-MERGE (lightning) — curve draws, the bolt strikes ---- */
+	@keyframes gl-bolt {
+		0%, 26%  { transform: scale(0); opacity: 0; }
+		36%      { transform: scale(1.35); opacity: 1; }
+		44%      { transform: scale(1); }
+		52%      { opacity: 1; }
+		58%      { opacity: .35; }
+		64%      { opacity: 1; }
+		70%      { opacity: .45; }
+		76%, 96% { opacity: 1; }
+		100%     { transform: scale(1); opacity: 1; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gl-curve { animation: gc-curve 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gl-bolt  { transform-origin: 16.8px 15.4px; animation: gl-bolt 2.4s ease-in-out infinite; }
+
+	/* ---- G6. MERGE (classic) — branch flows into the base, merge commit lands ---- */
+	@keyframes gm-dot {
+		0%, 38%  { transform: scale(0); opacity: 0; }
+		52%      { transform: scale(1.5); opacity: 1; }
+		64%      { transform: scale(1); }
+		100%     { transform: scale(1); opacity: 1; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gm-curve { animation: gc-curve 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-gm-dot   { transform-origin: 17px 14px; animation: gm-dot 2.4s ease-in-out infinite; }
+
+	/* ---- G7. TESTS TOGGLE — three flask candidates, all animated ---- */
+	/* A: flask boils — bubbles rise, liquid sloshes */
+	@keyframes tf-b1 {
+		0%, 12%  { transform: translateY(0); opacity: 0; }
+		20%      { opacity: 1; }
+		48%      { transform: translateY(-6.5px); opacity: 0; }
+		100%     { transform: translateY(-6.5px); opacity: 0; }
+	}
+	@keyframes tf-b2 {
+		0%, 38%  { transform: translateY(0); opacity: 0; }
+		46%      { opacity: 1; }
+		76%      { transform: translateY(-5.5px); opacity: 0; }
+		100%     { transform: translateY(-5.5px); opacity: 0; }
+	}
+	@keyframes tf-liquid {
+		0%, 100% { transform: translateY(0); }
+		30%      { transform: translateY(-1px); }
+		60%      { transform: translateY(.4px); }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tf-b1     { animation: tf-b1 2.2s ease-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tf-b2     { animation: tf-b2 2.2s ease-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tf-liquid { animation: tf-liquid 2.2s ease-in-out infinite; }
+
+	/* B: checklist — cases get ticked one after another */
+	@keyframes tc-t1 { 0%,10%{stroke-dashoffset:1} 26%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes tc-t2 { 0%,34%{stroke-dashoffset:1} 50%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	@keyframes tc-t3 { 0%,58%{stroke-dashoffset:1} 74%{stroke-dashoffset:0} 100%{stroke-dashoffset:0} }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tc-t1 { animation: tc-t1 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tc-t2 { animation: tc-t2 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tc-t3 { animation: tc-t3 2.4s ease-in-out infinite; }
+
+	/* C: pane runs its suite — progress bar fills, verdict check pops */
+	@keyframes tp-bar {
+		0%, 8%   { stroke-dashoffset: 1; }
+		52%      { stroke-dashoffset: 0; }
+		100%     { stroke-dashoffset: 0; }
+	}
+	@keyframes tp-check {
+		0%, 52%  { stroke-dashoffset: 1; opacity: 0; }
+		58%      { opacity: 1; }
+		76%      { stroke-dashoffset: 0; opacity: 1; }
+		100%     { stroke-dashoffset: 0; opacity: 1; }
+	}
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tp-bar   { animation: tp-bar 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-tp-check { animation: tp-check 2.4s ease-in-out infinite; }
 
 	.pick-title {
 		font-size: 14px; font-weight: 650; letter-spacing: -0.01em;
@@ -847,15 +1030,58 @@
 		<div class="section-title">Git actions — icon candidates</div>
 		<p class="section-sub">
 			The git button row from the task info panel — <code>TaskGitActions.tsx</code>.
-			Three hand-drawn candidates per action; the small button under each card shows it at the real 16px size.
-			<b style="color: rgb(var(--text-secondary))">Pass 1: pick a variant per action.</b> Animations come in pass 2.
+			<b style="color: rgb(var(--success))">Picked variants are animated</b> — hover them; the losing candidates are dimmed.
+			These buttons are <b style="color: rgb(var(--text-secondary))">smaller than the tmux toolbar</b> (10px label, ~14px icon):
+			the strip below shows the picked set at that exact size, same bar height as today.
 		</p>
+
+		<!-- Real-size context strip: the git row at its true (small) size -->
+		<div class="toolbar-demo">
+			<span class="tb-label">Actual size</span>
+
+			<span class="git-btn hoverable" title="Show Diff — unified diff">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" class="st" /><path d="M7 7.2 L7 10.8 M5.2 9 L8.8 9" class="green a-gd-plus" /><line x1="11.5" y1="9" x2="18.5" y2="9" pathLength="1" class="green drawable a-gd-add" /><g class="a-gd-del"><path d="M5.2 15 L8.8 15" class="red" /><line x1="11.5" y1="15" x2="18.5" y2="15" class="red" /></g></svg>
+				<span>Show Diff</span>
+			</span>
+
+			<span class="git-btn hoverable" title="Rebase — replant the branch">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="1.9" class="st a-gr-land" /><line x1="6" y1="7.1" x2="6" y2="16.9" class="st" /><circle cx="6" cy="19" r="1.9" class="st" /><circle cx="17.5" cy="17" r="1.9" class="green a-gr-dot" /><path d="M17.5 14.9 C17.5 10.2 15.2 7 11 5.6" stroke-dasharray="2.4 2.2" class="green a-gr-ants" /><path d="M13.6 3.4 L10.6 5.5 L13.2 8" class="green" /></svg>
+				<span>Rebase</span>
+			</span>
+
+			<span class="git-btn hoverable" title="Push — up to the cloud">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 16.2 A4.2 4.2 0 0 0 17.2 8.1 A6.4 6.4 0 0 0 4.9 9.9 A3.9 3.9 0 0 0 5.4 16.1" class="st a-gp-cloud" /><path d="M12 21 L12 11.5 M8.6 14.9 L12 11.5 L15.4 14.9" class="green a-gp-arrow" /></svg>
+				<span>Push</span>
+			</span>
+
+			<span class="git-btn hoverable" title="Create PR — PR + AI sparkle">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6" r="1.9" class="st" /><line x1="6.5" y1="8.1" x2="6.5" y2="16.4" class="st" /><circle cx="6.5" cy="18.5" r="1.9" class="st" /><path d="M10.5 6 H11.5 A4 4 0 0 1 15.5 10 V16.4" pathLength="1" class="st drawable a-gc-curve" /><circle cx="15.5" cy="18.5" r="1.9" class="st a-gc-dot" /><path d="M19.7 2.6 C20.1 4.5 20.8 5.2 22.7 5.6 C20.8 6 20.1 6.7 19.7 8.6 C19.3 6.7 18.6 6 16.7 5.6 C18.6 5.2 19.3 4.5 19.7 2.6 Z" class="green fillq a-gc-spark" /></svg>
+				<span>Create PR</span>
+			</span>
+
+			<span class="git-btn hoverable" title="PR + auto-merge — lightning">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="1.9" class="st" /><line x1="6" y1="7.6" x2="6" y2="16.4" class="st" /><circle cx="6" cy="18.5" r="1.9" class="st" /><path d="M10 5.5 H11.5 A4.5 4.5 0 0 1 16 10 V10.5" pathLength="1" class="st drawable a-gl-curve" /><path d="M17.8 10 L13.8 15.6 H16.4 L14.9 20.8 L19.9 14.4 H17 L18.9 10 Z" class="green fillq a-gl-bolt" /></svg>
+				<span>PR + auto-merge</span>
+			</span>
+
+			<span class="git-btn hoverable" title="Merge — classic git-merge">
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="5.5" r="1.9" class="st" /><line x1="7" y1="7.6" x2="7" y2="16.4" class="st" /><circle cx="7" cy="18.5" r="1.9" class="st" /><path d="M7.2 7.9 C7.6 11.6 11 13.7 14.8 14" pathLength="1" class="st drawable a-gm-curve" /><circle cx="17" cy="14" r="1.9" class="green a-gm-dot" /></svg>
+				<span>Merge</span>
+			</span>
+
+			<span class="tb-sep"></span>
+
+			<span class="git-btn tests hoverable" title="Include tests toggle — flask candidate">
+				<span>without</span>
+				<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.8 3.2 H15.2" class="st" /><path d="M10 3.2 V9 L5.6 17.6 A1.8 1.8 0 0 0 7.2 20.3 H16.8 A1.8 1.8 0 0 0 18.4 17.6 L14 9 V3.2" class="st" /><g class="a-tf-liquid"><path d="M7.7 14.3 L6.1 17.7 A1.1 1.1 0 0 0 7.1 19.3 H16.9 A1.1 1.1 0 0 0 17.9 17.7 L16.3 14.3 Z" class="green fillq" opacity=".3" /><path d="M7.7 14.3 H16.3" class="green" /></g><circle cx="10.6" cy="17" r=".9" class="green a-tf-b1" /><circle cx="13.6" cy="17.8" r=".7" class="green a-tf-b2" /></svg>
+			</span>
+		</div>
 
 		<!-- ---------- 1. SHOW DIFF ---------- -->
 		<h4 class="pick-title"><span class="num">1</span> Show Diff <span class="now">currently: Nerd Font glyph &#xEC0B;</span></h4>
 		<div class="grid pick-grid">
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
@@ -876,21 +1102,25 @@
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
-						<path d="M7 7.2 L7 10.8 M5.2 9 L8.8 9" class="green" />
-						<line x1="11.5" y1="9" x2="18.5" y2="9" class="green" />
-						<path d="M5.2 15 L8.8 15" class="red" />
-						<line x1="11.5" y1="15" x2="18.5" y2="15" class="red" />
+						<path d="M7 7.2 L7 10.8 M5.2 9 L8.8 9" class="green a-gd-plus" />
+						<line x1="11.5" y1="9" x2="18.5" y2="9" pathLength="1" class="green drawable a-gd-add" />
+						<g class="a-gd-del">
+							<path d="M5.2 15 L8.8 15" class="red" />
+							<line x1="11.5" y1="15" x2="18.5" y2="15" class="red" />
+						</g>
 					</svg>
 				</div>
 				<h3>Unified diff</h3>
 				<p class="desc">Gutter marks and code lines: a green + line over a red − line, like a patch file.</p>
+				<p class="anim-note">The + pops in, the added line types itself out, the removed line blinks away.</p>
 				<div class="meta">
-					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" class="st" /><path d="M7 7.2 L7 10.8 M5.2 9 L8.8 9" class="green" /><line x1="11.5" y1="9" x2="18.5" y2="9" class="green" /><path d="M5.2 15 L8.8 15" class="red" /><line x1="11.5" y1="15" x2="18.5" y2="15" class="red" /></svg><span>Show Diff</span></span>
+					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" class="st" /><path d="M7 7.2 L7 10.8 M5.2 9 L8.8 9" class="green a-gd-plus" /><line x1="11.5" y1="9" x2="18.5" y2="9" pathLength="1" class="green drawable a-gd-add" /><g class="a-gd-del"><path d="M5.2 15 L8.8 15" class="red" /><line x1="11.5" y1="15" x2="18.5" y2="15" class="red" /></g></svg><span>Show Diff</span></span>
 					<span class="badge variant">B</span>
+					<span class="badge picked">Picked</span>
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M16.5 8 V6 a2 2 0 0 0 -2 -2 H5.5 a2 2 0 0 0 -2 2 v8 a2 2 0 0 0 2 2 h2" class="st" />
@@ -916,23 +1146,25 @@
 			<div class="card hoverable">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="6" cy="5" r="1.9" class="st" />
+						<circle cx="6" cy="5" r="1.9" class="st a-gr-land" />
 						<line x1="6" y1="7.1" x2="6" y2="16.9" class="st" />
 						<circle cx="6" cy="19" r="1.9" class="st" />
-						<circle cx="17.5" cy="17" r="1.9" class="green" />
-						<path d="M17.5 14.9 C17.5 10.2 15.2 7 11 5.6" stroke-dasharray="2.4 2.2" class="green" />
+						<circle cx="17.5" cy="17" r="1.9" class="green a-gr-dot" />
+						<path d="M17.5 14.9 C17.5 10.2 15.2 7 11 5.6" stroke-dasharray="2.4 2.2" class="green a-gr-ants" />
 						<path d="M13.6 3.4 L10.6 5.5 L13.2 8" class="green" />
 					</svg>
 				</div>
 				<h3>Replant the branch</h3>
 				<p class="desc">Your commit lifts off and is replayed onto the tip of the base branch.</p>
+				<p class="anim-note">The rail marches, the green commit rides it up and lands on the tip — which pulses.</p>
 				<div class="meta">
-					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="1.9" class="st" /><line x1="6" y1="7.1" x2="6" y2="16.9" class="st" /><circle cx="6" cy="19" r="1.9" class="st" /><circle cx="17.5" cy="17" r="1.9" class="green" /><path d="M17.5 14.9 C17.5 10.2 15.2 7 11 5.6" stroke-dasharray="2.4 2.2" class="green" /><path d="M13.6 3.4 L10.6 5.5 L13.2 8" class="green" /></svg><span>Rebase</span></span>
+					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="1.9" class="st a-gr-land" /><line x1="6" y1="7.1" x2="6" y2="16.9" class="st" /><circle cx="6" cy="19" r="1.9" class="st" /><circle cx="17.5" cy="17" r="1.9" class="green a-gr-dot" /><path d="M17.5 14.9 C17.5 10.2 15.2 7 11 5.6" stroke-dasharray="2.4 2.2" class="green a-gr-ants" /><path d="M13.6 3.4 L10.6 5.5 L13.2 8" class="green" /></svg><span>Rebase</span></span>
 					<span class="badge variant">A</span>
+					<span class="badge picked">Picked</span>
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="3" y1="19.5" x2="21" y2="19.5" class="st" />
@@ -952,7 +1184,7 @@
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="12" cy="12" r="2" class="st" />
@@ -979,19 +1211,21 @@
 			<div class="card hoverable">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M17.8 16.2 A4.2 4.2 0 0 0 17.2 8.1 A6.4 6.4 0 0 0 4.9 9.9 A3.9 3.9 0 0 0 5.4 16.1" class="st" />
-						<path d="M12 21 L12 11.5 M8.6 14.9 L12 11.5 L15.4 14.9" class="green" />
+						<path d="M17.8 16.2 A4.2 4.2 0 0 0 17.2 8.1 A6.4 6.4 0 0 0 4.9 9.9 A3.9 3.9 0 0 0 5.4 16.1" class="st a-gp-cloud" />
+						<path d="M12 21 L12 11.5 M8.6 14.9 L12 11.5 L15.4 14.9" class="green a-gp-arrow" />
 					</svg>
 				</div>
 				<h3>Up to the cloud</h3>
 				<p class="desc">Straight to the point: your work rises into the remote cloud.</p>
+				<p class="anim-note">The arrow launches up and vanishes into the cloud, which gulps it down.</p>
 				<div class="meta">
-					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 16.2 A4.2 4.2 0 0 0 17.2 8.1 A6.4 6.4 0 0 0 4.9 9.9 A3.9 3.9 0 0 0 5.4 16.1" class="st" /><path d="M12 21 L12 11.5 M8.6 14.9 L12 11.5 L15.4 14.9" class="green" /></svg><span>Push</span></span>
+					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 16.2 A4.2 4.2 0 0 0 17.2 8.1 A6.4 6.4 0 0 0 4.9 9.9 A3.9 3.9 0 0 0 5.4 16.1" class="st a-gp-cloud" /><path d="M12 21 L12 11.5 M8.6 14.9 L12 11.5 L15.4 14.9" class="green a-gp-arrow" /></svg><span>Push</span></span>
 					<span class="badge variant">A</span>
+					<span class="badge picked">Picked</span>
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="12" cy="19" r="1.8" class="st" />
@@ -1008,7 +1242,7 @@
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="4.5" y1="20" x2="19.5" y2="20" class="st" />
@@ -1030,7 +1264,7 @@
 		<h4 class="pick-title"><span class="num">4</span> Create PR <span class="now">currently: the robot &#x1F916;-style glyph</span></h4>
 		<div class="grid pick-grid">
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="6.5" cy="5.5" r="1.9" class="st" />
@@ -1054,20 +1288,22 @@
 						<circle cx="6.5" cy="6" r="1.9" class="st" />
 						<line x1="6.5" y1="8.1" x2="6.5" y2="16.4" class="st" />
 						<circle cx="6.5" cy="18.5" r="1.9" class="st" />
-						<path d="M10.5 6 H11.5 A4 4 0 0 1 15.5 10 V16.4" class="st" />
-						<circle cx="15.5" cy="18.5" r="1.9" class="st" />
-						<path d="M19.7 2.6 C20.1 4.5 20.8 5.2 22.7 5.6 C20.8 6 20.1 6.7 19.7 8.6 C19.3 6.7 18.6 6 16.7 5.6 C18.6 5.2 19.3 4.5 19.7 2.6 Z" class="green fillq" />
+						<path d="M10.5 6 H11.5 A4 4 0 0 1 15.5 10 V16.4" pathLength="1" class="st drawable a-gc-curve" />
+						<circle cx="15.5" cy="18.5" r="1.9" class="st a-gc-dot" />
+						<path d="M19.7 2.6 C20.1 4.5 20.8 5.2 22.7 5.6 C20.8 6 20.1 6.7 19.7 8.6 C19.3 6.7 18.6 6 16.7 5.6 C18.6 5.2 19.3 4.5 19.7 2.6 Z" class="green fillq a-gc-spark" />
 					</svg>
 				</div>
 				<h3>PR + AI sparkle</h3>
 				<p class="desc">The PR graph plus a sparkle — the agent writes it for you, no robot face needed.</p>
+				<p class="anim-note">The branch curve draws itself over to the base, the dot lands, the sparkle twinkles.</p>
 				<div class="meta">
-					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6" r="1.9" class="st" /><line x1="6.5" y1="8.1" x2="6.5" y2="16.4" class="st" /><circle cx="6.5" cy="18.5" r="1.9" class="st" /><path d="M10.5 6 H11.5 A4 4 0 0 1 15.5 10 V16.4" class="st" /><circle cx="15.5" cy="18.5" r="1.9" class="st" /><path d="M19.7 2.6 C20.1 4.5 20.8 5.2 22.7 5.6 C20.8 6 20.1 6.7 19.7 8.6 C19.3 6.7 18.6 6 16.7 5.6 C18.6 5.2 19.3 4.5 19.7 2.6 Z" class="green fillq" /></svg><span>Create PR</span></span>
+					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.5" cy="6" r="1.9" class="st" /><line x1="6.5" y1="8.1" x2="6.5" y2="16.4" class="st" /><circle cx="6.5" cy="18.5" r="1.9" class="st" /><path d="M10.5 6 H11.5 A4 4 0 0 1 15.5 10 V16.4" pathLength="1" class="st drawable a-gc-curve" /><circle cx="15.5" cy="18.5" r="1.9" class="st a-gc-dot" /><path d="M19.7 2.6 C20.1 4.5 20.8 5.2 22.7 5.6 C20.8 6 20.1 6.7 19.7 8.6 C19.3 6.7 18.6 6 16.7 5.6 C18.6 5.2 19.3 4.5 19.7 2.6 Z" class="green fillq a-gc-spark" /></svg><span>Create PR</span></span>
 					<span class="badge variant">B</span>
+					<span class="badge picked">Picked</span>
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M8 20 L8 6.5 M4.6 9.9 L8 6.5 L11.4 9.9" class="st" />
@@ -1094,19 +1330,21 @@
 						<circle cx="6" cy="5.5" r="1.9" class="st" />
 						<line x1="6" y1="7.6" x2="6" y2="16.4" class="st" />
 						<circle cx="6" cy="18.5" r="1.9" class="st" />
-						<path d="M10 5.5 H11.5 A4.5 4.5 0 0 1 16 10 V10.5" class="st" />
-						<path d="M17.8 10 L13.8 15.6 H16.4 L14.9 20.8 L19.9 14.4 H17 L18.9 10 Z" class="green fillq" />
+						<path d="M10 5.5 H11.5 A4.5 4.5 0 0 1 16 10 V10.5" pathLength="1" class="st drawable a-gl-curve" />
+						<path d="M17.8 10 L13.8 15.6 H16.4 L14.9 20.8 L19.9 14.4 H17 L18.9 10 Z" class="green fillq a-gl-bolt" />
 					</svg>
 				</div>
 				<h3>PR + lightning</h3>
 				<p class="desc">The PR graph ends in a lightning bolt — it merges itself, instantly, hands-free.</p>
+				<p class="anim-note">The curve draws over, then the bolt strikes in and crackles like a short-circuit.</p>
 				<div class="meta">
-					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="1.9" class="st" /><line x1="6" y1="7.6" x2="6" y2="16.4" class="st" /><circle cx="6" cy="18.5" r="1.9" class="st" /><path d="M10 5.5 H11.5 A4.5 4.5 0 0 1 16 10 V10.5" class="st" /><path d="M17.8 10 L13.8 15.6 H16.4 L14.9 20.8 L19.9 14.4 H17 L18.9 10 Z" class="green fillq" /></svg><span>PR + auto-merge</span></span>
+					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5.5" r="1.9" class="st" /><line x1="6" y1="7.6" x2="6" y2="16.4" class="st" /><circle cx="6" cy="18.5" r="1.9" class="st" /><path d="M10 5.5 H11.5 A4.5 4.5 0 0 1 16 10 V10.5" pathLength="1" class="st drawable a-gl-curve" /><path d="M17.8 10 L13.8 15.6 H16.4 L14.9 20.8 L19.9 14.4 H17 L18.9 10 Z" class="green fillq a-gl-bolt" /></svg><span>PR + auto-merge</span></span>
 					<span class="badge variant">A</span>
+					<span class="badge picked">Picked</span>
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="6.5" cy="5.5" r="1.9" class="st" />
@@ -1125,7 +1363,7 @@
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="6" cy="5.5" r="1.9" class="st" />
@@ -1156,19 +1394,21 @@
 						<circle cx="7" cy="5.5" r="1.9" class="st" />
 						<line x1="7" y1="7.6" x2="7" y2="16.4" class="st" />
 						<circle cx="7" cy="18.5" r="1.9" class="st" />
-						<path d="M7.2 7.9 C7.6 11.6 11 13.7 14.8 14" class="st" />
-						<circle cx="17" cy="14" r="1.9" class="green" />
+						<path d="M7.2 7.9 C7.6 11.6 11 13.7 14.8 14" pathLength="1" class="st drawable a-gm-curve" />
+						<circle cx="17" cy="14" r="1.9" class="green a-gm-dot" />
 					</svg>
 				</div>
 				<h3>Classic git-merge</h3>
 				<p class="desc">The canonical merge graph; the green dot is the merge commit landing on the base.</p>
+				<p class="anim-note">The branch flows into the base, then the merge commit pops into place.</p>
 				<div class="meta">
-					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="5.5" r="1.9" class="st" /><line x1="7" y1="7.6" x2="7" y2="16.4" class="st" /><circle cx="7" cy="18.5" r="1.9" class="st" /><path d="M7.2 7.9 C7.6 11.6 11 13.7 14.8 14" class="st" /><circle cx="17" cy="14" r="1.9" class="green" /></svg><span>Merge</span></span>
+					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="5.5" r="1.9" class="st" /><line x1="7" y1="7.6" x2="7" y2="16.4" class="st" /><circle cx="7" cy="18.5" r="1.9" class="st" /><path d="M7.2 7.9 C7.6 11.6 11 13.7 14.8 14" pathLength="1" class="st drawable a-gm-curve" /><circle cx="17" cy="14" r="1.9" class="green a-gm-dot" /></svg><span>Merge</span></span>
 					<span class="badge variant">A</span>
+					<span class="badge picked">Picked</span>
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="6.5" cy="4.8" r="1.7" class="st" />
@@ -1187,7 +1427,7 @@
 				</div>
 			</div>
 
-			<div class="card hoverable">
+			<div class="card hoverable dim">
 				<div class="stage">
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 						<line x1="2.5" y1="12" x2="6.5" y2="12" class="st" />
@@ -1201,6 +1441,72 @@
 				<p class="desc">Two sides pressed into one commit — abstract, symmetric, reads at any size.</p>
 				<div class="meta">
 					<span class="tb-btn"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2.5" y1="12" x2="6.5" y2="12" class="st" /><path d="M5 9.3 L7.7 12 L5 14.7" class="st" /><line x1="21.5" y1="12" x2="17.5" y2="12" class="st" /><path d="M19 9.3 L16.3 12 L19 14.7" class="st" /><circle cx="12" cy="12" r="2.2" class="green" /></svg><span>Merge</span></span>
+					<span class="badge variant">C</span>
+				</div>
+			</div>
+
+		</div>
+
+		<!-- ---------- 7. TESTS TOGGLE ---------- -->
+		<h4 class="pick-title"><span class="num">7</span> Include tests toggle <span class="now">currently: Nerd Font flask &#xF0668;-style glyph · all three animated — pick one</span></h4>
+		<div class="grid pick-grid">
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M8.8 3.2 H15.2" class="st" />
+						<path d="M10 3.2 V9 L5.6 17.6 A1.8 1.8 0 0 0 7.2 20.3 H16.8 A1.8 1.8 0 0 0 18.4 17.6 L14 9 V3.2" class="st" />
+						<g class="a-tf-liquid">
+							<path d="M7.7 14.3 L6.1 17.7 A1.1 1.1 0 0 0 7.1 19.3 H16.9 A1.1 1.1 0 0 0 17.9 17.7 L16.3 14.3 Z" class="green fillq" opacity=".3" />
+							<path d="M7.7 14.3 H16.3" class="green" />
+						</g>
+						<circle cx="10.6" cy="17" r=".9" class="green a-tf-b1" />
+						<circle cx="13.6" cy="17.8" r=".7" class="green a-tf-b2" />
+					</svg>
+				</div>
+				<h3>Boiling flask</h3>
+				<p class="desc">The lab flask, hand-drawn — closest to today's glyph, so zero relearning.</p>
+				<p class="anim-note">The experiment is running: liquid sloshes, bubbles rise out of it.</p>
+				<div class="meta">
+					<span class="git-btn tests"><span>without</span><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8.8 3.2 H15.2" class="st" /><path d="M10 3.2 V9 L5.6 17.6 A1.8 1.8 0 0 0 7.2 20.3 H16.8 A1.8 1.8 0 0 0 18.4 17.6 L14 9 V3.2" class="st" /><g class="a-tf-liquid"><path d="M7.7 14.3 L6.1 17.7 A1.1 1.1 0 0 0 7.1 19.3 H16.9 A1.1 1.1 0 0 0 17.9 17.7 L16.3 14.3 Z" class="green fillq" opacity=".3" /><path d="M7.7 14.3 H16.3" class="green" /></g><circle cx="10.6" cy="17" r=".9" class="green a-tf-b1" /><circle cx="13.6" cy="17.8" r=".7" class="green a-tf-b2" /></svg></span>
+					<span class="badge variant">A</span>
+				</div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<rect x="4.8" y="6.9" width="3.4" height="3.4" rx=".6" class="st" />
+						<rect x="4.8" y="13.7" width="3.4" height="3.4" rx=".6" class="st" />
+						<line x1="10.8" y1="8.6" x2="19.2" y2="8.6" class="st" />
+						<line x1="10.8" y1="15.4" x2="19.2" y2="15.4" class="st" />
+						<path d="M5.4 8.7 L6.4 9.8 L8.1 7.4" pathLength="1" class="green drawable a-tc-t1" />
+						<path d="M5.4 15.5 L6.4 16.6 L8.1 14.2" pathLength="1" class="green drawable a-tc-t2" />
+					</svg>
+				</div>
+				<h3>Test checklist</h3>
+				<p class="desc">A suite of cases with checkboxes — "tests" without any chemistry metaphor.</p>
+				<p class="anim-note">The suite runs: each case gets its green tick, top to bottom.</p>
+				<div class="meta">
+					<span class="git-btn tests"><span>without</span><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" class="st" /><rect x="4.8" y="6.9" width="3.4" height="3.4" rx=".6" class="st" /><rect x="4.8" y="13.7" width="3.4" height="3.4" rx=".6" class="st" /><line x1="10.8" y1="8.6" x2="19.2" y2="8.6" class="st" /><line x1="10.8" y1="15.4" x2="19.2" y2="15.4" class="st" /><path d="M5.4 8.7 L6.4 9.8 L8.1 7.4" pathLength="1" class="green drawable a-tc-t1" /><path d="M5.4 15.5 L6.4 16.6 L8.1 14.2" pathLength="1" class="green drawable a-tc-t2" /></svg></span>
+					<span class="badge variant">B</span>
+				</div>
+			</div>
+
+			<div class="card hoverable">
+				<div class="stage">
+					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="2" y="4" width="20" height="16" rx="2" class="st" />
+						<path d="M8.2 11.6 L11 14.4 L16 8.4" pathLength="1" class="green drawable a-tp-check" />
+						<line x1="4.5" y1="17.5" x2="19.5" y2="17.5" pathLength="1" class="green drawable a-tp-bar" />
+					</svg>
+				</div>
+				<h3>Suite verdict</h3>
+				<p class="desc">A pane whose test run finished green — progress bar plus the verdict check.</p>
+				<p class="anim-note">The progress bar fills across, then the big green check draws itself.</p>
+				<div class="meta">
+					<span class="git-btn tests"><span>without</span><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" class="st" /><path d="M8.2 11.6 L11 14.4 L16 8.4" pathLength="1" class="green drawable a-tp-check" /><line x1="4.5" y1="17.5" x2="19.5" y2="17.5" pathLength="1" class="green drawable a-tp-bar" /></svg></span>
 					<span class="badge variant">C</span>
 				</div>
 			</div>
