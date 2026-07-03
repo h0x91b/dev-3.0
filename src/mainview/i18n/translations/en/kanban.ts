@@ -68,6 +68,8 @@ const kanban = {
 	"task.run": "Run",
 	"task.addVariant": "+ Variant",
 	"task.preparing": "Preparing…",
+	"task.shuttingDown": "Shutting down…",
+	"task.shuttingDownDetail": "Closing session & worktree",
 	"task.preparingStage.resolvingConfig": "Resolving project config",
 	"task.preparingStage.fetchingOrigin": "Fetching origin",
 	"task.preparingStage.creatingWorktree": "Creating worktree",

@@ -1146,6 +1146,19 @@ export interface Task {
 	preparingProgress?: number | null;
 	/** ISO timestamp when preparation started. Used to detect stuck clones. */
 	preparingStartedAt?: string | null;
+	/**
+	 * True while a terminal move (→ completed/cancelled) is tearing the task down
+	 * server-side: destroying the tmux session, running the cleanup script, and
+	 * removing the git worktree. This window can last many seconds and is the
+	 * "opposite" of {@link preparing} — the card shows a muted "shutting down"
+	 * state and is not openable (there is nothing left to open).
+	 *
+	 * TRANSIENT — decorated only onto the pushed task snapshot at teardown start
+	 * and cleared by the terminal `taskUpdated` push. It is **never persisted**
+	 * (unlike `preparing`): the data layer must not receive it, so a crash
+	 * mid-teardown or an app reload can never leave a task stuck "shutting down".
+	 */
+	shuttingDown?: boolean;
 	/** When true, native macOS notifications fire on status changes. */
 	watched?: boolean;
 	/** Persisted agent session state for recovery after tmux/app crash. */

@@ -2121,6 +2121,36 @@ describe("handlers.moveTask", () => {
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 	});
 
+	it("in-progress → completed: pushes a transient shuttingDown snapshot before teardown, never persisting it", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
+		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
+		const push = vi.fn();
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		vi.mocked(existsSync).mockReturnValue(true);
+		setPushMessage(push);
+
+		await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
+
+		// A shuttingDown snapshot is pushed to renderers…
+		const idx = push.mock.calls.findIndex(
+			(call: any[]) => call[0] === "taskUpdated" && call[1]?.task?.shuttingDown === true,
+		);
+		expect(idx).toBeGreaterThanOrEqual(0);
+		// …before the slow teardown (removeWorktree) runs.
+		expect(push.mock.invocationCallOrder[idx]).toBeLessThan(
+			vi.mocked(git.removeWorktree).mock.invocationCallOrder[0],
+		);
+
+		// The transient flag is NEVER written to disk (patch is data.updateTask's 3rd arg).
+		for (const call of vi.mocked(data.updateTask).mock.calls) {
+			expect(call[2]).not.toHaveProperty("shuttingDown");
+		}
+	});
+
 	it("in-progress → completed: emits renderer sound before cleanup finishes", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });

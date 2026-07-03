@@ -788,6 +788,54 @@ describe("TaskCard", () => {
 		});
 	});
 
+	describe("shutting down state", () => {
+		it("shows the muted shutting-down overlay while tearing down", () => {
+			renderCard(makeTask({
+				status: "review-by-user",
+				shuttingDown: true,
+				worktreePath: "/tmp/wt",
+				branchName: "dev3/test",
+			}));
+
+			const status = screen.getByRole("status");
+			expect(status).toHaveAttribute("aria-busy", "true");
+			expect(screen.getByText("Shutting down…")).toBeInTheDocument();
+			expect(screen.getByText("Closing session & worktree")).toBeInTheDocument();
+			// No fake progress bar — teardown duration is unknowable.
+			expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+		});
+
+		it("does not open a shutting-down task on click", async () => {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			renderCard(makeTask({
+				id: "sd-1",
+				status: "review-by-user",
+				shuttingDown: true,
+				worktreePath: "/tmp/wt",
+				branchName: "dev3/test",
+			}), { navigate });
+
+			await user.click(screen.getByText("Shutting down…"));
+			await user.click(screen.getByText("My task"));
+
+			expect(navigate).not.toHaveBeenCalled();
+			expect(screen.queryByTestId("task-detail-modal")).not.toBeInTheDocument();
+		});
+
+		it("is not draggable while shutting down", () => {
+			const { container } = renderCard(makeTask({
+				status: "review-by-user",
+				shuttingDown: true,
+				worktreePath: "/tmp/wt",
+				branchName: "dev3/test",
+			}));
+
+			const card = container.querySelector("[data-task-id]");
+			expect(card).toHaveAttribute("draggable", "false");
+		});
+	});
+
 	describe("bell badge", () => {
 		it("shows bell badge when bellCount > 0", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }), {
