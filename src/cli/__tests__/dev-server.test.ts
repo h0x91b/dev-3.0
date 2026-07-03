@@ -97,6 +97,40 @@ describe("dev-server status", () => {
 			projectId: CTX.projectId,
 		});
 	});
+
+	// Regression: `dev3 dev-server status` used to crash with
+	// "undefined is not an object (evaluating 'ports.length')" when a CLI newer
+	// than the running app received a status payload missing the array fields the
+	// older backend never sent (`devPorts`/`portConflicts`, added after v1.27.4).
+	it("renders a clean stopped status when the backend omits newer array fields", async () => {
+		// Shape produced by a pre-v1.27.4 backend: no devPorts / portConflicts.
+		const legacyStopped = {
+			projectId: "proj-001",
+			taskId: "aaaaaaaa-1111-2222-3333-444444444444",
+			running: false,
+			hasDevScript: true,
+			worktreePath: "/tmp/worktrees/proj/aaaaaaaa/worktree",
+			tmuxSocket: "dev3",
+			taskSessionName: "dev3-aaaaaaaa",
+			devSessionName: "dev3-dev-aaaaaaaa",
+			viewerPaneId: null,
+			panePids: [],
+			assignedPorts: [],
+			ports: [],
+			resourceUsage: undefined,
+		};
+		mockSend.mockResolvedValue(okResp(legacyStopped));
+
+		await expect(
+			handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX),
+		).resolves.toBeUndefined();
+
+		expect(stdoutOutput).toContain("Dev server is stopped");
+		expect(stdoutOutput).toContain("Detected Ports:");
+		expect(stdoutOutput).toContain("Dev Ports:");
+		expect(stdoutOutput).toContain("(none detected)");
+		expect(stdoutOutput).not.toContain("WARNING: port");
+	});
 });
 
 describe("dev-server start/stop/restart", () => {

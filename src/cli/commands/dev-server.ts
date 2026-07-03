@@ -7,6 +7,28 @@ import { expandShortId, resolveProjectId, type CliContext } from "../context";
 const WAIT_POLL_MS = 500;
 const WAIT_DEFAULT_TIMEOUT_S = 120;
 
+/**
+ * Coerce a raw `devServer.*` RPC payload into a DevServerStatus with every
+ * array field guaranteed present. Guards against version skew: the `dev3` CLI
+ * and the running app are versioned independently, so a CLI newer than the app
+ * receives a status missing fields the older backend never sent (e.g.
+ * `devPorts`/`portConflicts`, added after v1.27.4). Without this, the rendering
+ * helpers below dereference `undefined.length` and the whole command crashes
+ * with "undefined is not an object (evaluating 'ports.length')" instead of
+ * printing a clean status.
+ */
+function asStatus(data: unknown): DevServerStatus {
+	const raw = (data ?? {}) as DevServerStatus;
+	return {
+		...raw,
+		panePids: raw.panePids ?? [],
+		assignedPorts: raw.assignedPorts ?? [],
+		ports: raw.ports ?? [],
+		devPorts: raw.devPorts ?? [],
+		portConflicts: raw.portConflicts ?? [],
+	};
+}
+
 function resolveTaskId(args: ParsedArgs, context: CliContext | null): string | undefined {
 	const raw = args.positional[0] || args.flags.id || context?.taskId;
 	if (!raw) return undefined;
@@ -92,7 +114,7 @@ async function waitForDevServerReady(
 	for (let waited = 0; ; waited += WAIT_POLL_MS) {
 		const resp = await sendRequest(socketPath, "devServer.status", params);
 		if (!resp.ok) exitError(resp.error || "Failed to poll dev server status");
-		const status = resp.data as DevServerStatus;
+		const status = asStatus(resp.data);
 		if (!status.running) {
 			exitError("Dev server exited before opening a port — check the dev server pane for errors");
 		}
@@ -135,8 +157,9 @@ async function runAction(
 	const resp = await sendRequest(socketPath, `devServer.${action}`, params);
 	if (!resp.ok) exitError(resp.error || `Failed to ${action} dev server`);
 
-	printStatusLine(action, resp.data as DevServerStatus);
-	printStatusDetails(resp.data as DevServerStatus);
+	const status = asStatus(resp.data);
+	printStatusLine(action, status);
+	printStatusDetails(status);
 
 	if ((action === "start" || action === "restart") && args.flags.wait !== undefined) {
 		await waitForDevServerReady(socketPath, params, parseWaitTimeout(args));

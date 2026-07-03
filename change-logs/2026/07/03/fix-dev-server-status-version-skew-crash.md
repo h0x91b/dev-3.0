@@ -1,0 +1,1 @@
+Fixed `dev3 dev-server status` crashing with "undefined is not an object (evaluating 'ports.length')" when a newer CLI talks to an older running app that never sent the `devPorts`/`portConflicts` fields. The CLI now normalizes the status payload, defaulting missing array fields to empty, so status renders cleanly regardless of CLI/app version skew.
