@@ -598,11 +598,13 @@ describe("GlobalHeader — project terminal button", () => {
 		).toBeTruthy();
 	});
 
-	it("renders a non-empty Quick Shell icon glyph (regression: was an empty placeholder)", () => {
+	it("renders a Quick Shell icon (regression: was an empty placeholder)", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		const quickShellButton = screen.getByTitle("Quick Shell — new scratch in Operations (⌘⇧`)");
-		const icon = quickShellButton.querySelector("span");
-		expect(icon?.textContent).toBe("\u{F018D}");
+		// The glyph was replaced by an animated hand-drawn SVG (QuickShellIcon).
+		const icon = quickShellButton.querySelector("svg");
+		expect(icon).toBeTruthy();
+		expect(quickShellButton.className).toContain("header-anim");
 	});
 
 	it("does not show terminal button on dashboard", () => {

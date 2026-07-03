@@ -4,6 +4,9 @@ import { useT } from "../i18n";
 import { startVisibilityAwarePoll } from "../utils/poll";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import GitPullErrorModal from "./GitPullErrorModal";
+import { PullIcon, PullSuccessIcon, PullAlertIcon } from "./HeaderIcons";
+
+type PullIconComponent = typeof PullIcon;
 
 interface GitPullButtonProps {
 	projectId: string;
@@ -141,16 +144,15 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 	// Compute visuals: pulling > flash > normal
 	let title: string;
 	let stateClass: string;
-	let icon: string;
+	let IconComp: PullIconComponent = PullIcon;
 	let iconSpin = false;
 	let label: string;
 
-	const baseClass = "flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg";
+	const baseClass = "header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg";
 
 	if (pulling) {
 		title = t("kanban.gitPullInProgress");
 		stateClass = "text-accent bg-accent/15";
-		icon = "\u{F0450}"; // refresh
 		iconSpin = true;
 		label = t("header.gitPullLabel");
 	} else if (lastResult) {
@@ -159,19 +161,19 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				title = t("kanban.gitPullFlashPulled", { branch: lastResult.branch });
 				// Use semantic success color — matches status-completed in STATUS_COLORS
 				stateClass = "bg-[#10b981]/15 text-[#10b981]";
-				icon = "\u{F0E1E}"; // nf-md-check_circle_outline
+				IconComp = PullSuccessIcon;
 				label = t("kanban.gitPullFlashPulledLabel");
 				break;
 			case "up-to-date":
 				title = t("kanban.gitPullFlashUpToDate", { branch: lastResult.branch });
 				stateClass = "bg-[#10b981]/10 text-[#10b981]";
-				icon = "\u{F0E1E}"; // nf-md-check_circle_outline
+				IconComp = PullSuccessIcon;
 				label = t("kanban.gitPullFlashUpToDateLabel");
 				break;
 			case "failed":
 				title = t("kanban.gitPullFlashFailed", { branch: lastResult.branch });
 				stateClass = "bg-danger/15 text-danger";
-				icon = "\u{F0027}"; // nf-md-alert_circle
+				IconComp = PullAlertIcon;
 				label = t("kanban.gitPullFlashFailedLabel");
 				break;
 		}
@@ -185,7 +187,6 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 			title = t("kanban.gitPullTooltip", { branch });
 			stateClass = "text-fg-3 hover:text-fg hover:bg-elevated";
 		}
-		icon = "\u{F0164}"; // cloud_download_outline
 		label = t("header.gitPullLabel");
 	} else {
 		if (branch === null) {
@@ -196,7 +197,6 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 			title = t("kanban.gitPullDisabledUnknown");
 		}
 		stateClass = "text-fg-muted cursor-not-allowed opacity-60";
-		icon = "\u{F0164}";
 		label = t("header.gitPullLabel");
 	}
 
@@ -227,12 +227,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 							className={`w-3.5 h-3.5 rounded-full border-2 border-current/30 border-t-current${reducedMotion ? "" : " animate-spin"}`}
 						/>
 					) : (
-						<span
-							className="text-[1.125rem] leading-none"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{icon}
-						</span>
+						<IconComp className="w-[1.125rem] h-[1.125rem]" />
 					)}
 					{behindOrigin > 0 && !pulling && !lastResult && (
 						<span
