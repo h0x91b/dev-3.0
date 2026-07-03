@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-03 — Inline help: one registry, three layers (Tooltip / HelpSpot / help mode)
+
+- **Rule:** Help content lives in a `src/mainview/help.ts` registry (declare-as-data, like `keymap.ts`/`tips.ts`); a fast `Tooltip` primitive progressively replaces native `title=` on icon controls; a ghost (i) `HelpSpot` → rich read-only `HelpCard` is allowed only in header-bearing sections (≤1 each); dense headerless zones (inspector quickbars, task card) are covered by a screen-wide help-mode overlay (`⇧⌘/`, Help menu, palette, kebab on narrow) via `data-help-id` — never by permanent icons. Bible §5.4.
+- **Why:** Native `title=` (~227 usages) is slow and control-scoped, and per-section (i) icons everywhere would be toolbar-button-creep wearing a help hat. Rejected: (i) in every zone (creep); help-mode-only (no ambient discoverability); tooltip-migration-only (explains buttons, not sections).
+- **Status:** Proposed (UX plan; implementation pending). Evidence: bible §5.4, yaml `surfaces.inline_help`.
+
 ## 2026-07-03 — Close Pane: two-step visual pane picker (no new button; destructive gets spatial friction)
 
 - **Rule:** The red Close Pane control (inspector `tmux_controls` + native menu) no longer blind-kills the active pane — it arms a transient overlay over the terminal that draws one hit-box per pane from real tmux geometry (cells → %, PaneMapSheet math); hover arms a pane in `danger` red (idle = neutral `accent` marching-ants), click kills exactly it, Esc / scrim cancels, last-pane kill routes through the `confirm()` service. Narrow/touch keeps the old direct-kill (no hover). No new toolbar button.

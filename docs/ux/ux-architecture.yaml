@@ -279,6 +279,31 @@ ux_architecture:
       allowed: ["status_message", "error"]
       forbidden: ["persistent_action", "primary_action"]
       evidence: ["src/mainview/components/ErrorToast.tsx"]
+    inline_help:
+      purpose: "Explain what a section/zone is, why it exists, and what to do in it. One registry (src/mainview/help.ts — declare-as-data like keymap.ts/tips.ts), three layers: fast Tooltip primitive (replaces native title= on icon controls), HelpSpot (i) -> HelpCard in header-bearing sections, and a screen-wide help-mode overlay for dense/headerless zones."
+      status: "proposed"
+      layers:
+        tooltip:
+          role: "control-level 'what does this button do'"
+          spec: "portal popover, shared positioning util, ~250ms hover-intent, instant re-show grace; progressive migration off native title= (densest surfaces first: inspector bars, GlobalHeader, TaskCard)"
+        help_spot:
+          role: "section-level (i) -> HelpCard"
+          allowed_hosts: ["SettingsSection headings", "modal headers", "KanbanColumn header", "TaskDiffViewer toolbar", "stats section titles", "TaskInfoPanel chrome (panel-level topic only)"]
+          budget: "<= 1 HelpSpot per section header; icon role ghost; hover emphasis reuses accent (no new --info token)"
+        help_mode:
+          role: "screen-wide 'Explain this screen' overlay"
+          mechanism: "zones tagged data-help-id (mirrors HintOverlay's data-hint-id) get an (i) badge + outline; hover/click opens the same HelpCard; Esc exits"
+          entry_points: ["application_menu.Help", "keyboard ⇧⌘/ (Cmd+Shift+/)", "command_palette ⇧⌘P entry", "header kebab on narrow (native menu absent in remote — touch-reachability rule)"]
+      help_card:
+        content: ["topic title", "2-4 sentence body", "optional 'what you can do here' bullets", "optional shortcut chips crosslinked to keymap.ts ids", "optional nav link (e.g. Open Keyboard Shortcuts)"]
+        allowed: ["read_only_content", "navigation_link"]
+        forbidden: ["mutation", "multi_step_flow", "durable_configuration"]
+        responsive: "clamps to max-w-[calc(100vw-2rem)]; prefers-reduced-motion honoured; HelpSpot is a focusable button (Enter pins, Esc closes); aria-describedby / role=dialog when pinned"
+      registry:
+        file: "src/mainview/help.ts (HELP_TOPICS: id, titleKey, bodyKey, bullets?, shortcutIds?, link?)"
+        i18n_domain: "help.ts in en/ru/es"
+        rule: "help copy is never hardcoded in components; topics may crosslink tips instead of duplicating text"
+      evidence: ["docs/ux/PRODUCT_UX_BIBLE.md §5.4", "UX_DECISIONS 2026-07-03 (inline help)"]
     keyboard_shortcuts_reference:
       purpose: "Read-only keymap reference overlay (Modal). ONE component with two tabs — App (renders from the keymap.ts registry) and Terminal (tmux) (folds in the tmux cheat sheet). onboarding/help + expert_shortcut content, same shell as TmuxCheatSheetModal."
       allowed: ["shortcut_reference", "tab_switch"]
@@ -368,6 +393,10 @@ ux_architecture:
     expert_shortcut:
       definition: "Rare known action (debug screens, tmux cheat sheet, gauge/viewport lab, zoom)."
       placement: ["application_menu.View", "application_menu.Debug", "keyboard_shortcut"]
+    onboarding_help:
+      definition: "Explains a surface/section: help topics, tips, shortcuts reference. Read-only content."
+      placement: ["inline_help.help_spot (header-bearing sections)", "inline_help.help_mode (dense/headerless zones)", "application_menu.Help", "tip_card"]
+      token_role: "ghost icon; accent reused for informational emphasis (no dedicated --info token)"
 
   design_tokens:
     note: "Tokens are CSS custom properties in src/mainview/index.css, mapped to Tailwind in tailwind.config.js. NEVER hardcode hex/rgb in components (AGENTS.md). STATUS_COLORS in types.ts are the documented exception (inline status hex)."
@@ -498,6 +527,12 @@ ux_architecture:
       reject: ["controls_or_config_on_cockpit", "new_top_level_screen_per_metric", "global_header_counter", "diagnostic_only_metric_on_cockpit"]
       status: "proposed"
       rationale: "The Velocity Cockpit is the product's motivation engine. New features that produce a countable, repeatable signal should emit it into the stats pipeline at BUILD time (so the data exists even before it is charted) and surface a visualization on the read-only cockpit WHEN motivational — within the complexity + honesty budget (prefer one strong signal; forward-only 'tracking since', never fake history; numbers must be true). Diagnostic-only metrics keep the data but stay off the cockpit. See PRODUCT_UX_BIBLE §1.1 + UX_DECISIONS 2026-06-29."
+    - id: "inline-help-placement"
+      when: { feature_class: "onboarding_help" }
+      place_in: ["help.ts registry topic + HelpSpot in a header-bearing section", "help-mode coverage via data-help-id (dense/headerless zones)", "application_menu.Help / ⇧⌘/ / command_palette entry"]
+      reject: ["permanent_info_icon_in_quickbars_cards_or_toolbars", "hardcoded_help_strings_in_components", "multi_step_tour_v1", "new_nav_destination_for_help"]
+      status: "proposed"
+      rationale: "Help must add ZERO chrome to budget-protected zones (quickbars, task cards, toolbars) — they are covered by the help-mode overlay, not by standing icons. Header-bearing sections may carry at most one ghost (i). Content is data (help.ts + i18n domain), never JSX, so the same topics feed HelpSpot, help mode, and any future docs surface. See PRODUCT_UX_BIBLE §5.4 + UX_DECISIONS 2026-07-03."
 
   responsive:
     status: "partial" # board_carousel implemented; full mobile doctrine proposed — see bible §12 (full doctrine plan in git history)
@@ -583,6 +618,8 @@ ux_architecture:
       description: "Putting task/project commands into the GlobalHeader breadcrumb area, which is for location + switching only."
     - id: "debug-surface-leak"
       description: "Exposing gauge-demo / viewport-lab outside the Debug menu."
+    - id: "help-icon-creep"
+      description: "Scattering permanent (i) icons across dense zones (inspector quickbars, task cards, action toolbars) as the way to explain them. This is toolbar-button-creep wearing a help hat. Dense/headerless zones get help via the help-mode overlay (data-help-id); a standing HelpSpot is allowed only in a section header, max one."
 
   open_questions:
     - "Is there a need for multi-select + a real selection toolbar on the Kanban board, or is per-task action intentional?"
