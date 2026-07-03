@@ -16,8 +16,6 @@ import type { SVGProps } from "react";
  * up, the scripts ƒ writes itself, the images sun rises at golden hour, the
  * settings gear ratchets, the fullscreen corners fly, the panel chevron dips
  * with a ghost echo. Idle rendering is pixel-identical to the static icon.
- *
- * Animated design reference: design/tmux-icons-animated.html (Task header row).
  */
 
 interface TaskIconProps {

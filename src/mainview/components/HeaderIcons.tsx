@@ -16,8 +16,6 @@ import type { SVGProps } from "react";
  * the octocat bows, the bug twitches its antennae, changelog lines write
  * themselves, kebab dots wave, the wrench ratchets, slider knobs seek a new mix.
  * Idle rendering is pixel-identical to the static icon.
- *
- * Animated design reference: design/tmux-icons-animated.html (Top header row).
  */
 
 interface HeaderIconProps {

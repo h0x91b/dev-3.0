@@ -10,8 +10,6 @@ import type { SVGProps } from "react";
  * the operation the icon triggers — the split saws its divider across, the
  * zoomed pane inflates, the closed pane shudders and blinks out, and so on.
  * Idle rendering is pixel-identical to the original static glyphs.
- *
- * Animated design reference: design/tmux-icons-animated.html.
  */
 
 interface TmuxIconProps {

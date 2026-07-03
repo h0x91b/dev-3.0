@@ -11,8 +11,6 @@ import type { SVGProps } from "react";
  * launches into the cloud, the PR curve draws over and the sparkle twinkles,
  * the auto-merge bolt strikes, the merge commit lands, the tests flask boils.
  * Idle rendering is pixel-identical to the static glyph.
- *
- * Animated design reference: design/tmux-icons-animated.html (Git actions).
  */
 
 interface GitIconProps {
