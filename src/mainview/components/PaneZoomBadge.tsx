@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import { ZoomPaneIcon } from "./TmuxIcons";
 
 /**
  * Full-viewport (non-narrow) tmux zoom indicator.
@@ -62,22 +63,10 @@ function PaneZoomBadge({ taskId }: { taskId: string }) {
 			onClick={() => read(false)}
 			title={t("paneZoom.restore")}
 			aria-label={t("paneZoom.restore")}
-			className="absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-full border border-hint-border bg-hint px-3 py-1 text-xs font-bold uppercase tracking-wide text-hint-fg shadow-lg shadow-black/40 transition-[filter] hover:brightness-110"
+			className="tmux-anim absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-full border border-hint-border bg-hint px-3 py-1 text-xs font-bold uppercase tracking-wide text-hint-fg shadow-lg shadow-black/40 transition-[filter] hover:brightness-110"
 		>
 			{/* Same custom zoom glyph as the tmux zoom control (TaskTmuxControls). */}
-			<svg
-				className="h-3.5 w-3.5"
-				viewBox="0 0 24 24"
-				fill="none"
-				strokeWidth={1.5}
-				strokeLinecap="round"
-				strokeLinejoin="round"
-				aria-hidden="true"
-			>
-				<rect x="4" y="6" width="16" height="12" rx="1" stroke="currentColor" />
-				<path d="M2 5 L2 2 L5 2 M19 2 L22 2 L22 5 M22 19 L22 22 L19 22 M5 22 L2 22 L2 19" stroke="currentColor" />
-				<path d="M2 2 L6 6 M22 2 L18 6 M22 22 L18 18 M2 22 L6 18" stroke="currentColor" />
-			</svg>
+			<ZoomPaneIcon className="h-3.5 w-3.5" />
 			{t("paneZoom.badge")}
 		</button>
 	);

@@ -274,6 +274,8 @@ const tips = {
 	"tip.closePanePicker.body": "Click Close Pane, then hover the split you mean — it turns red — and click to close exactly that pane.",
 	"tip.closePaneEof.title": "Close a pane fast",
 	"tip.closePaneEof.body": "Press Ctrl+D in a terminal pane to exit the shell and close the pane instantly.",
+	"tip.tmuxIconAnimations.title": "Icons that show, not tell",
+	"tip.tmuxIconAnimations.body": "Hover any tmux toolbar icon — it animates the exact operation it performs, from splitting a pane to zooming it.",
 } as const;
 
 export default tips;

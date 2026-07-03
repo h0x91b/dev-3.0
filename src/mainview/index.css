@@ -460,3 +460,223 @@ html[data-image-viewer="open"] [data-terminal="true"] {
 html[data-composer-focused] [data-collapse-on-compose] {
 	display: none;
 }
+
+/* ---- Animated tmux icons ---------------------------------------------------
+   The hand-drawn tmux glyphs (TmuxIcons.tsx) act out their operation when the
+   hosting control — any element with .tmux-anim (toolbar button, layout menu
+   row, un-zoom badge, mobile sheet row) — is hovered. Pure CSS, loops while
+   hovered, pixel-identical to the static glyph when idle.
+   Animated design reference: design/tmux-icons-animated.html. */
+
+/* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
+svg .tmx { transform-box: view-box; }
+/* pathLength="1" draw trick — renders the full stroke when idle. */
+svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* -- Split (horizontal / vertical): the cut-line saws across, the newborn
+      half flashes, the plus pops in -- */
+@keyframes tmx-sh-div {
+	0% { opacity: 0; stroke-dashoffset: 42; }
+	12% { opacity: 1; }
+	55% { stroke-dashoffset: 0; }
+	88% { opacity: 1; stroke-dashoffset: -10; }
+	100% { opacity: 0; stroke-dashoffset: -14; }
+}
+@keyframes tmx-sh-plus {
+	0%, 30% { transform: scale(0); opacity: 0; }
+	46% { transform: scale(1.4); opacity: 1; }
+	56% { transform: scale(1); }
+	86% { transform: scale(1); opacity: 1; }
+	100% { transform: scale(.6); opacity: 0; }
+}
+@keyframes tmx-sh-half {
+	0%, 38% { opacity: 0; }
+	58% { opacity: .3; }
+	82% { opacity: .18; }
+	100% { opacity: 0; }
+}
+.tmux-anim:hover .tmx-sh-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sh-plus { transform-origin: 12px 17px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sh-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sv-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sv-plus { transform-origin: 18px 12px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sv-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
+
+/* -- Cycle layout: the two panes trade places while the arrows orbit -- */
+@keyframes tmx-cy-left {
+	0%, 8% { transform: translate(0, 0); }
+	26% { transform: translate(6px, -6.5px); }
+	44% { transform: translate(12px, 0); }
+	56% { transform: translate(12px, 0); }
+	74% { transform: translate(6px, 6.5px); }
+	92%, 100% { transform: translate(0, 0); }
+}
+@keyframes tmx-cy-right {
+	0%, 8% { transform: translate(0, 0); }
+	26% { transform: translate(-6px, 6.5px); }
+	44% { transform: translate(-12px, 0); }
+	56% { transform: translate(-12px, 0); }
+	74% { transform: translate(-6px, -6.5px); }
+	92%, 100% { transform: translate(0, 0); }
+}
+@keyframes tmx-cy-orbit {
+	0%, 8% { transform: rotate(0deg); }
+	44% { transform: rotate(180deg); }
+	56% { transform: rotate(180deg); }
+	92%, 100% { transform: rotate(360deg); }
+}
+.tmux-anim:hover .tmx-cy-left { animation: tmx-cy-left 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-cy-right { animation: tmx-cy-right 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-cy-orbit { transform-origin: 12px 12px; animation: tmx-cy-orbit 2.6s ease-in-out infinite; }
+
+/* -- Zoom: the pane inflates toward the brackets, arrows fire outward -- */
+@keyframes tmx-z-rect {
+	0%, 8% { transform: scale(1); }
+	38% { transform: scale(1.22); }
+	58% { transform: scale(1.22); }
+	88%, 100% { transform: scale(1); }
+}
+@keyframes tmx-z-diag {
+	0%, 12% { stroke-dashoffset: 1; opacity: 0; }
+	20% { opacity: 1; }
+	42% { stroke-dashoffset: 0; opacity: 1; }
+	60% { stroke-dashoffset: 0; opacity: 1; }
+	80% { stroke-dashoffset: 1; opacity: 0; }
+	100% { stroke-dashoffset: 1; opacity: 0; }
+}
+@keyframes tmx-z-tl { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(-1.6px, -1.6px); } 58% { transform: translate(-1.6px, -1.6px); } 88%, 100% { transform: translate(0, 0); } }
+@keyframes tmx-z-tr { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(1.6px, -1.6px); } 58% { transform: translate(1.6px, -1.6px); } 88%, 100% { transform: translate(0, 0); } }
+@keyframes tmx-z-br { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(1.6px, 1.6px); } 58% { transform: translate(1.6px, 1.6px); } 88%, 100% { transform: translate(0, 0); } }
+@keyframes tmx-z-bl { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(-1.6px, 1.6px); } 58% { transform: translate(-1.6px, 1.6px); } 88%, 100% { transform: translate(0, 0); } }
+.tmux-anim:hover .tmx-z-rect { transform-origin: 12px 12px; animation: tmx-z-rect 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-diag { animation: tmx-z-diag 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-tl { animation: tmx-z-tl 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-tr { animation: tmx-z-tr 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-br { animation: tmx-z-br 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-bl { animation: tmx-z-bl 2.4s ease-in-out infinite; }
+
+/* -- Close pane: the X is slashed on, the pane shudders and blinks out -- */
+@keyframes tmx-k-x1 {
+	0%, 8% { stroke-dashoffset: 1; }
+	28% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes tmx-k-x2 {
+	0%, 22% { stroke-dashoffset: 1; }
+	42% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes tmx-k-shake {
+	0%, 44% { transform: translateX(0); }
+	48% { transform: translateX(-.9px); }
+	52% { transform: translateX(.9px); }
+	56% { transform: translateX(-.7px); }
+	60% { transform: translateX(.5px); }
+	64% { transform: translateX(0); }
+	100% { transform: translateX(0); }
+}
+@keyframes tmx-k-die {
+	0%, 66% { opacity: 1; }
+	84% { opacity: .08; }
+	92% { opacity: .08; }
+	100% { opacity: 1; }
+}
+.tmux-anim:hover .tmx-k-x1 { animation: tmx-k-x1 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-k-x2 { animation: tmx-k-x2 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-k-shake { animation: tmx-k-shake 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-k-die { animation: tmx-k-die 2.4s ease-in-out infinite; }
+
+/* -- tmux hints: a sonar ring pings outward from the info glyph -- */
+@keyframes tmx-i-pulse {
+	0%, 10% { transform: scale(1); }
+	30% { transform: scale(1.12); }
+	50%, 100% { transform: scale(1); }
+}
+@keyframes tmx-i-ring {
+	0%, 12% { transform: scale(.55); opacity: 0; }
+	22% { opacity: .7; }
+	62% { transform: scale(1.45); opacity: 0; }
+	100% { transform: scale(1.45); opacity: 0; }
+}
+.tmux-anim:hover .tmx-i-glyph { transform-origin: 8px 8px; animation: tmx-i-pulse 2.2s ease-in-out infinite; }
+.tmux-anim:hover .tmx-i-ring { transform-origin: 8px 8px; animation: tmx-i-ring 2.2s ease-out infinite; }
+
+/* -- Layout presets: dividers draw in, panes light up in tmux order -- */
+@keyframes tmx-l-d1 { 0%, 6% { stroke-dashoffset: 1; } 26% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes tmx-l-d2 { 0%, 20% { stroke-dashoffset: 1; } 40% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes tmx-l-f1 { 0%, 42% { opacity: 0; } 50% { opacity: .35; } 62% { opacity: .12; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-f2 { 0%, 52% { opacity: 0; } 60% { opacity: .35; } 72% { opacity: .12; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-f3 { 0%, 62% { opacity: 0; } 70% { opacity: .35; } 82% { opacity: .12; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-f4 { 0%, 72% { opacity: 0; } 80% { opacity: .35; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-main { 0%, 44% { opacity: 0; } 56% { opacity: .35; } 74% { opacity: .16; } 88% { opacity: .16; } 100% { opacity: 0; } }
+@keyframes tmx-l-sub { 0%, 60% { opacity: 0; } 70% { opacity: .14; } 88% { opacity: .14; } 100% { opacity: 0; } }
+.tmux-anim:hover .tmx-lt-v { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-h { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q4 { animation: tmx-l-f4 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-r1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-r2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-r3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-c1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-c2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-c3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
+
+/* -- New window: a fresh window pops into existence -- */
+@keyframes tmx-nw-pop {
+	0% { transform: scale(.55); opacity: 0; }
+	16% { transform: scale(1.07); opacity: 1; }
+	26% { transform: scale(1); }
+	82% { transform: scale(1); opacity: 1; }
+	100% { transform: scale(.9); opacity: 0; }
+}
+@keyframes tmx-nw-tab {
+	0%, 18% { stroke-dashoffset: 1; }
+	42% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes tmx-nw-plus {
+	0%, 38% { transform: scale(0) rotate(-90deg); opacity: 0; }
+	56% { transform: scale(1.35) rotate(0deg); opacity: 1; }
+	66% { transform: scale(1) rotate(0deg); }
+	100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes tmx-nw-bar {
+	0%, 26% { opacity: 0; }
+	44% { opacity: .3; }
+	82% { opacity: .18; }
+	100% { opacity: 0; }
+}
+.tmux-anim:hover .tmx-nw-pop { transform-origin: 12px 12px; animation: tmx-nw-pop 2.6s cubic-bezier(.34, 1.4, .64, 1) infinite; }
+.tmux-anim:hover .tmx-nw-tab { animation: tmx-nw-tab 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-nw-plus { transform-origin: 12px 15px; animation: tmx-nw-plus 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-nw-bar { animation: tmx-nw-bar 2.6s ease-in-out infinite; }
+
+/* -- Panes & windows (mobile manage): focus hops between panes -- */
+@keyframes tmx-mg-left { 0%, 30% { opacity: 0; } 40% { opacity: .32; } 52% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes tmx-mg-right { 0%, 54% { opacity: 0; } 64% { opacity: .32; } 76% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes tmx-mg-back { 0%, 78% { opacity: 0; } 86% { opacity: .32; } 96% { opacity: 0; } 100% { opacity: 0; } }
+.tmux-anim:hover .tmx-mg-line { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mg-left { animation: tmx-mg-left 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mg-right { animation: tmx-mg-right 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mg-back { animation: tmx-mg-back 2.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+	.tmux-anim:hover [class^="tmx-"],
+	.tmux-anim:hover [class*=" tmx-"] {
+		animation: none;
+	}
+}

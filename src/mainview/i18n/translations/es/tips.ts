@@ -274,6 +274,8 @@ const tips = {
 	"tip.closePanePicker.body": "Pulsa Cerrar panel, pasa el ratón por la división que quieras — se pone roja — y haz clic para cerrar ese panel.",
 	"tip.closePaneEof.title": "Cierra un panel rápido",
 	"tip.closePaneEof.body": "Pulsa Ctrl+D en un panel de terminal para salir del shell y cerrarlo al instante.",
+	"tip.tmuxIconAnimations.title": "Iconos que muestran, no cuentan",
+	"tip.tmuxIconAnimations.body": "Pasa el cursor por cualquier icono de la barra tmux — anima la operación exacta que realiza, de dividir un panel a hacer zoom.",
 };
 
 export default tips;

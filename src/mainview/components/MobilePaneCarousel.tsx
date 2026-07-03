@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { confirm } from "../confirm";
 import BottomSheet from "./BottomSheet";
 import PaneMapSheet from "./PaneMapSheet";
+import { ClosePaneIcon, ManagePanesIcon, NewWindowIcon, SplitHIcon, SplitVIcon } from "./TmuxIcons";
 
 type ManageAction = "splitH" | "splitV" | "newWindow" | "killPane";
 
@@ -266,48 +267,22 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 	// single-pane window, since that is the common starting state on a phone.
 	const showBar = info.count >= 1;
 
-	const svgProps = {
-		className: "w-5 h-5 flex-shrink-0",
-		viewBox: "0 0 24 24",
-		fill: "none",
-		stroke: "currentColor",
-		strokeWidth: 1.5,
-		strokeLinecap: "round" as const,
-		strokeLinejoin: "round" as const,
-	};
+	const manageIconClass = "w-5 h-5 flex-shrink-0";
 	const manageActions: { action: ManageAction; labelKey: Parameters<typeof t>[0]; icon: ReactNode; danger?: boolean }[] = [
 		{
 			action: "splitH",
 			labelKey: "tmux.splitHDesc",
-			icon: (
-				<svg {...svgProps}>
-					<rect x="2" y="4" width="20" height="16" rx="2" />
-					<line x1="2" y1="12" x2="22" y2="12" strokeDasharray="4 3" />
-					<path d="M12 15 L12 19 M10 17 L14 17" />
-				</svg>
-			),
+			icon: <SplitHIcon className={manageIconClass} />,
 		},
 		{
 			action: "splitV",
 			labelKey: "tmux.splitVDesc",
-			icon: (
-				<svg {...svgProps}>
-					<rect x="2" y="4" width="20" height="16" rx="2" />
-					<line x1="12" y1="4" x2="12" y2="20" strokeDasharray="4 3" />
-					<path d="M16 12 L20 12 M18 10 L18 14" />
-				</svg>
-			),
+			icon: <SplitVIcon className={manageIconClass} />,
 		},
 		{
 			action: "newWindow",
 			labelKey: "cheatSheet.newWindow",
-			icon: (
-				<svg {...svgProps}>
-					<rect x="2" y="4" width="20" height="16" rx="2" />
-					<line x1="2" y1="9" x2="22" y2="9" />
-					<path d="M12 12.5 L12 17.5 M9.5 15 L14.5 15" />
-				</svg>
-			),
+			icon: <NewWindowIcon className={manageIconClass} />,
 		},
 	];
 
@@ -412,12 +387,9 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						onClick={() => setSheetOpen(true)}
 						aria-label={t("panePager.manage")}
 						title={t("panePager.manage")}
-						className={chevronBtn}
+						className={`tmux-anim ${chevronBtn}`}
 					>
-						<svg className="w-[1.125rem] h-[1.125rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-							<rect x="3" y="4" width="18" height="16" rx="2" />
-							<line x1="12" y1="4" x2="12" y2="20" />
-						</svg>
+						<ManagePanesIcon className="w-[1.125rem] h-[1.125rem]" />
 					</button>
 				</div>
 			)}
@@ -458,7 +430,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 							key={action}
 							type="button"
 							onClick={() => void runManageAction(action)}
-							className="w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-fg-2 hover:bg-elevated transition-colors"
+							className="tmux-anim w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-fg-2 hover:bg-elevated transition-colors"
 						>
 							<span className="text-fg-3">{icon}</span>
 							<span className="flex-1">{t(labelKey)}</span>
@@ -470,13 +442,10 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 					<button
 						type="button"
 						onClick={() => void runManageAction("killPane")}
-						className="w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-danger hover:bg-danger/10 transition-colors"
+						className="tmux-anim w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-danger hover:bg-danger/10 transition-colors"
 					>
 						<span>
-							<svg {...svgProps}>
-								<rect x="2" y="4" width="20" height="16" rx="2" />
-								<path d="M9 9 L15 15 M15 9 L9 15" />
-							</svg>
+							<ClosePaneIcon className={manageIconClass} />
 						</span>
 						<span className="flex-1">{t("tmux.closePaneDesc")}</span>
 					</button>
