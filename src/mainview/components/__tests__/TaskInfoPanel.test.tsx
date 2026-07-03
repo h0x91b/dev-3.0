@@ -387,14 +387,14 @@ describe("TaskInfoPanel", () => {
 			await act(async () => {
 				renderPanel(makeTask());
 			});
-			expect(screen.getByTitle("Expand panel")).toBeInTheDocument();
+			expect(screen.getByLabelText("Expand panel")).toBeInTheDocument();
 		});
 
 		it("renders full screen button", async () => {
 			await act(async () => {
 				renderPanel(makeTask());
 			});
-			expect(screen.getByTitle("Full screen")).toBeInTheDocument();
+			expect(screen.getByLabelText("Full screen")).toBeInTheDocument();
 		});
 	});
 
@@ -447,11 +447,12 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask({ worktreePath: "/tmp/wt/abc" }));
 			});
 
-			const copyBtn = screen.getByTitle("Copy path to this git worktree");
+			const copyBtn = screen.getByLabelText("Copy path to this git worktree");
 			await userEvent.click(copyBtn);
 
 			expect(writeText).toHaveBeenCalledWith("/tmp/wt/abc");
-			expect(screen.getByText("Copied!")).toBeInTheDocument();
+			// The inline confirmation and the (possibly open) tooltip both read "Copied!".
+			expect(screen.getAllByText("Copied!").length).toBeGreaterThan(0);
 		});
 
 		it("renders notes section with empty state", async () => {
@@ -507,7 +508,7 @@ describe("TaskInfoPanel", () => {
 			await act(async () => {
 				renderPanel(makeTask());
 			});
-			expect(screen.getByTitle("Collapse panel")).toBeInTheDocument();
+			expect(screen.getByLabelText("Collapse panel")).toBeInTheDocument();
 		});
 	});
 
@@ -521,7 +522,7 @@ describe("TaskInfoPanel", () => {
 			// Collapsed initially — no description
 			expect(screen.queryByText("Some desc")).not.toBeInTheDocument();
 
-			await user.click(screen.getByTitle("Expand panel"));
+			await user.click(screen.getByLabelText("Expand panel"));
 
 			// Now expanded — description visible
 			expect(screen.getByText("Some desc")).toBeInTheDocument();
@@ -538,7 +539,7 @@ describe("TaskInfoPanel", () => {
 			// Expanded — description visible
 			expect(screen.getByText("Visible desc")).toBeInTheDocument();
 
-			await user.click(screen.getByTitle("Collapse panel"));
+			await user.click(screen.getByLabelText("Collapse panel"));
 
 			// Now collapsed — no description
 			expect(screen.queryByText("Visible desc")).not.toBeInTheDocument();
@@ -553,7 +554,7 @@ describe("TaskInfoPanel", () => {
 			// Default is collapsed=true
 			expect(localStorage.getItem("dev3-panel-collapsed")).toBe("true");
 
-			await user.click(screen.getByTitle("Expand panel"));
+			await user.click(screen.getByLabelText("Expand panel"));
 			expect(localStorage.getItem("dev3-panel-collapsed")).toBe("false");
 		});
 	});
@@ -1724,7 +1725,9 @@ describe("TaskInfoPanel", () => {
 
 			const badges = screen.getAllByText(/PR #42/);
 			const btn = badges[0].closest("button")!;
-			expect(btn.title).toContain("42");
+			await userEvent.hover(btn);
+			const tooltip = await screen.findByRole("tooltip");
+			expect(tooltip.textContent).toContain("42");
 		});
 
 		it("PR badge does not open a tab when prUrl is null", async () => {
@@ -1780,7 +1783,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask(), { navigate });
 			});
 
-			await user.click(screen.getByTitle("Full screen"));
+			await user.click(screen.getByLabelText("Full screen"));
 
 			expect(navigate).toHaveBeenCalledWith({
 				screen: "task",
@@ -1796,7 +1799,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask(), { navigate, isFullPage: true });
 			});
 
-			await user.click(screen.getByTitle("Exit full screen"));
+			await user.click(screen.getByLabelText("Exit full screen"));
 
 			expect(navigate).toHaveBeenCalledWith({
 				screen: "project",

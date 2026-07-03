@@ -48,6 +48,7 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
+import Tooltip from "./Tooltip";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -421,6 +422,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		</button>
 	) : null;
 	const diffIncludeTestsToggle = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+		<Tooltip content={t("infoPanel.diffIncludeTestsTooltip")}>
 		<button
 			type="button"
 			data-testid="diff-include-tests-toggle"
@@ -430,13 +432,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					? "bg-elevated border-edge text-fg-2 hover:bg-elevated-hover"
 					: "bg-accent/10 border-accent/30 text-accent hover:bg-accent/20"
 			}`}
-			title={t("infoPanel.diffIncludeTestsTooltip")}
 			aria-label={t("infoPanel.diffIncludeTestsAria")}
 			aria-pressed={includeTests}
 		>
 			{!compact && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
 			<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" />
 		</button>
+		</Tooltip>
 	) : null;
 	const diffFilesPopover = diffFilesHover && metadataBranchStatus && visibleDiffFileStats.length > 0 && createPortal(
 		<div
@@ -459,22 +461,24 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						</span>
 					)}
 					<div className="flex items-center gap-1.5 flex-shrink-0">
-						<button
-							onClick={(event) => handleFileDiff(event, fileName)}
-							aria-label={t("infoPanel.showDiff")}
-							className="text-sm text-accent hover:text-accent-hover w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
-							title={t("infoPanel.showDiff")}
-						>
-							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
-						</button>
-						<button
-							onClick={(event) => handleFileOpenIn(event, fileName)}
-							aria-label={t("openIn.menuTitle")}
-							className="text-sm text-fg-3 hover:text-fg-2 w-6 h-6 flex items-center justify-center rounded bg-raised hover:bg-elevated-hover transition-colors"
-							title={t("openIn.menuTitle")}
-						>
-							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
-						</button>
+						<Tooltip content={t("infoPanel.showDiff")}>
+							<button
+								onClick={(event) => handleFileDiff(event, fileName)}
+								aria-label={t("infoPanel.showDiff")}
+								className="text-sm text-accent hover:text-accent-hover w-6 h-6 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 transition-colors"
+							>
+								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF4D2"}</span>
+							</button>
+						</Tooltip>
+						<Tooltip content={t("openIn.menuTitle")}>
+							<button
+								onClick={(event) => handleFileOpenIn(event, fileName)}
+								aria-label={t("openIn.menuTitle")}
+								className="text-sm text-fg-3 hover:text-fg-2 w-6 h-6 flex items-center justify-center rounded bg-raised hover:bg-elevated-hover transition-colors"
+							>
+								<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+							</button>
+						</Tooltip>
 					</div>
 				</div>
 			))}
@@ -506,6 +510,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	) : null;
 
 	const watchToggleButton = (
+		<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}>
 		<button
 			onClick={handleToggleWatch}
 			className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
@@ -513,7 +518,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					? "text-accent bg-accent/10 border border-accent/25"
 					: "text-fg-3 hover:text-fg hover:bg-elevated"
 			}`}
-			title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+			aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 		>
 			{task.watched
 				? <WatchingIcon className="w-[0.95rem] h-[0.95rem]" />
@@ -524,6 +529,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 				</span>
 			)}
 		</button>
+		</Tooltip>
 	);
 
 	const statusDropdownButton = (
@@ -570,35 +576,41 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	);
 
 	const spawnAgentButton = isTaskActive && task.worktreePath ? (
-		<button
-			onClick={() => setSpawnModalOpen(true)}
-			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
-			title={t("tmux.spawnExtraAgentDesc")}
-		>
-			<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
-			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
-		</button>
+	<Tooltip content={t("tmux.spawnExtraAgentDesc")}>
+			<button
+				onClick={() => setSpawnModalOpen(true)}
+				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+				aria-label={t("tmux.spawnExtraAgentDesc")}
+			>
+				<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
+				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
+			</button>
+	</Tooltip>
 	) : null;
 
 	const bugHuntersButton = project.kind !== "virtual" && isTaskActive && task.worktreePath ? (
+		<Tooltip content={t("bugHunters.buttonTooltip")}>
 		<button
 			onClick={() => setBugHuntersOpen(true)}
 			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-danger hover:text-danger hover:bg-danger/15 border border-danger/30"
-			title={t("bugHunters.buttonTooltip")}
+			aria-label={t("bugHunters.buttonTooltip")}
 		>
 			<FindBugsIcon className="w-[1.05rem] h-[1.05rem]" />
 			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
 		</button>
+		</Tooltip>
 	) : null;
 
 	const worktreeSettingsButton = task.worktreePath ? (
-		<button
-			onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
-			className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-			title={t("projectSettings.tabWorktree")}
-		>
-			<WorktreeSettingsIcon className="w-4 h-4" />
-		</button>
+	<Tooltip content={t("projectSettings.tabWorktree")}>
+			<button
+				onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
+				className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+				aria-label={t("projectSettings.tabWorktree")}
+			>
+				<WorktreeSettingsIcon className="w-4 h-4" />
+			</button>
+	</Tooltip>
 	) : null;
 
 	const taskDetailsBody = (
@@ -671,19 +683,21 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 									<span className="text-fg-3">{t("infoPanel.worktree")}</span>
 									<span className="flex items-center gap-1.5 min-w-0">
 										<span className="text-fg-3 font-mono truncate">{task.worktreePath}</span>
-										<button
-											onClick={() => {
-												navigator.clipboard.writeText(task.worktreePath!);
-												setCopiedPath(true);
-												setTimeout(() => setCopiedPath(false), 1500);
-											}}
-											className="flex-shrink-0 text-fg-muted hover:text-fg transition-colors"
-											title={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
-										>
-											<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-												{copiedPath ? "\u{F012C}" : "\uF0C5"}
-											</span>
-										</button>
+										<Tooltip content={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}>
+											<button
+												onClick={() => {
+													navigator.clipboard.writeText(task.worktreePath!);
+													setCopiedPath(true);
+													setTimeout(() => setCopiedPath(false), 1500);
+												}}
+												className="flex-shrink-0 text-fg-muted hover:text-fg transition-colors"
+												aria-label={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
+											>
+												<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+													{copiedPath ? "\u{F012C}" : "\uF0C5"}
+												</span>
+											</button>
+										</Tooltip>
 										{copiedPath && <span className="text-[0.625rem] text-accent flex-shrink-0">{t("infoPanel.pathCopied")}</span>}
 									</span>
 								</>
@@ -732,15 +746,15 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 									</div>
 									<div className="flex flex-wrap gap-1.5">
 										{ports.map((port) => (
-											<button
-												key={port.port}
-												onClick={() => window.open(`http://localhost:${port.port}`, "_blank")}
-												className="inline-flex items-center gap-1.5 text-xs font-mono text-accent bg-accent/10 hover:bg-accent/20 px-2 py-1 rounded-md transition-colors"
-												title={`${port.processName} (PID ${port.pid}) — ${t("ports.openInBrowser")}`}
-											>
-												<span className="font-bold">:{port.port}</span>
-												<span className="text-fg-muted text-[0.625rem]">{port.processName}</span>
-											</button>
+											<Tooltip key={port.port} content={`${port.processName} (PID ${port.pid}) — ${t("ports.openInBrowser")}`}>
+												<button
+													onClick={() => window.open(`http://localhost:${port.port}`, "_blank")}
+													className="inline-flex items-center gap-1.5 text-xs font-mono text-accent bg-accent/10 hover:bg-accent/20 px-2 py-1 rounded-md transition-colors"
+												>
+													<span className="font-bold">:{port.port}</span>
+													<span className="text-fg-muted text-[0.625rem]">{port.processName}</span>
+												</button>
+											</Tooltip>
 										))}
 									</div>
 								</div>
@@ -793,16 +807,17 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					{statusDropdownButton}
 					<span className="flex-1 min-w-0 truncate text-fg-2 text-sm font-semibold">{getTaskTitle(task)}</span>
 					{diffSummaryBadge}
-					<button
-						type="button"
-						onClick={() => setActionsSheetOpen(true)}
-						aria-label={t("infoPanel.actionsTitle")}
-						title={t("infoPanel.actionsTitle")}
-						data-testid="task-actions-kebab"
-						className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
-					>
-						<span className="text-lg leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
-					</button>
+					<Tooltip content={t("infoPanel.actionsTitle")}>
+						<button
+							type="button"
+							onClick={() => setActionsSheetOpen(true)}
+							aria-label={t("infoPanel.actionsTitle")}
+							data-testid="task-actions-kebab"
+							className="flex-shrink-0 flex h-9 w-9 items-center justify-center rounded-lg text-fg-3 hover:bg-elevated hover:text-fg transition-colors"
+						>
+							<span className="text-lg leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01D9}"}</span>
+						</button>
+					</Tooltip>
 				</div>
 
 				<BottomSheet
@@ -889,25 +904,29 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
 						{worktreeSettingsButton}
-						<button
-							onClick={() => isFullPage
-								? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
-								: navigate({ screen: "task", projectId: project.id, taskId: task.id })
-							}
-							className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-							title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
-						>
-							{isFullPage
-								? <FullscreenExitIcon className="w-3.5 h-3.5" />
-								: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
-						</button>
-						<button
-							onClick={toggleCollapsed}
-							className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-							title={t("infoPanel.expand")}
-						>
-							<PanelChevronIcon direction="down" className="w-3.5 h-3.5" />
-						</button>
+					<Tooltip content={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}>
+							<button
+								onClick={() => isFullPage
+									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+								}
+								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								aria-label={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
+							>
+								{isFullPage
+									? <FullscreenExitIcon className="w-3.5 h-3.5" />
+									: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
+							</button>
+					</Tooltip>
+					<Tooltip content={t("infoPanel.expand")}>
+							<button
+								onClick={toggleCollapsed}
+								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								aria-label={t("infoPanel.expand")}
+							>
+								<PanelChevronIcon direction="down" className="w-3.5 h-3.5" />
+							</button>
+					</Tooltip>
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
@@ -961,25 +980,29 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								<TaskTmuxControls taskId={task.id} />
 							</div>
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
-							<button
-								onClick={() => isFullPage
-									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
-									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
-								}
-								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
-							>
-								{isFullPage
-									? <FullscreenExitIcon className="w-3.5 h-3.5" />
-									: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
-							</button>
-							<button
-								onClick={toggleCollapsed}
-								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								title={t("infoPanel.collapse")}
-							>
-								<PanelChevronIcon direction="up" className="w-3.5 h-3.5" />
-							</button>
+						<Tooltip content={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}>
+								<button
+									onClick={() => isFullPage
+										? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
+										: navigate({ screen: "task", projectId: project.id, taskId: task.id })
+									}
+									className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+									aria-label={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
+								>
+									{isFullPage
+										? <FullscreenExitIcon className="w-3.5 h-3.5" />
+										: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
+								</button>
+						</Tooltip>
+						<Tooltip content={t("infoPanel.collapse")}>
+								<button
+									onClick={toggleCollapsed}
+									className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+									aria-label={t("infoPanel.collapse")}
+								>
+									<PanelChevronIcon direction="up" className="w-3.5 h-3.5" />
+								</button>
+						</Tooltip>
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">

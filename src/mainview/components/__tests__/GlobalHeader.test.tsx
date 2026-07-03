@@ -590,8 +590,8 @@ describe("GlobalHeader — project terminal button", () => {
 	it("shows quick shell before project terminal", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 
-		const quickShellButton = screen.getByTitle("Quick Shell \u2014 new scratch in Operations (\u2318\u21e7`)");
-		const projectButton = screen.getByTitle("Project Terminal (\u2318`)");
+		const quickShellButton = screen.getByLabelText("Quick Shell \u2014 new scratch in Operations (\u2318\u21e7`)");
+		const projectButton = screen.getByLabelText("Project Terminal (\u2318`)");
 
 		expect(
 			quickShellButton.compareDocumentPosition(projectButton) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -600,8 +600,8 @@ describe("GlobalHeader — project terminal button", () => {
 
 	it("renders a Quick Shell icon (regression: was an empty placeholder)", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
-		const quickShellButton = screen.getByTitle("Quick Shell — new scratch in Operations (⌘⇧`)");
-		// The glyph was replaced by an animated hand-drawn SVG (QuickShellIcon).
+		// Migrated to Tooltip (aria-label, no native title) with an animated SVG icon.
+		const quickShellButton = screen.getByLabelText("Quick Shell — new scratch in Operations (⌘⇧`)");
 		const icon = quickShellButton.querySelector("svg");
 		expect(icon).toBeTruthy();
 		expect(quickShellButton.className).toContain("header-anim");
@@ -614,7 +614,7 @@ describe("GlobalHeader — project terminal button", () => {
 
 	it("terminal button has active style on project-terminal screen", () => {
 		renderHeader({ screen: "project-terminal", projectId: "p1" });
-		const btn = screen.getByTitle("Project Terminal (\u2318`)");
+		const btn = screen.getByLabelText("Project Terminal (\u2318`)");
 		expect(btn.className).toContain("text-accent");
 	});
 
@@ -622,7 +622,7 @@ describe("GlobalHeader — project terminal button", () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();
 		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
-		await user.click(screen.getByTitle("Project Terminal (\u2318`)"));
+		await user.click(screen.getByLabelText("Project Terminal (\u2318`)"));
 		expect(navigate).toHaveBeenCalledWith({
 			screen: "project-terminal",
 			projectId: "p1",
@@ -633,7 +633,7 @@ describe("GlobalHeader — project terminal button", () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();
 		renderHeader({ screen: "project-terminal", projectId: "p1" }, [project1, project2], navigate);
-		await user.click(screen.getByTitle("Project Terminal (\u2318`)"));
+		await user.click(screen.getByLabelText("Project Terminal (\u2318`)"));
 		expect(navigate).toHaveBeenCalledWith({
 			screen: "project",
 			projectId: "p1",
@@ -651,7 +651,7 @@ describe("GlobalHeader — compact layout", () => {
 		mockMatchMedia(true);
 		renderHeader({ screen: "project", projectId: "p1" });
 		// Buttons stay reachable by title, but their text labels collapse away.
-		expect(screen.getByTitle("Project Terminal (⌘`)")).toBeInTheDocument();
+		expect(screen.getByLabelText("Project Terminal (⌘`)")).toBeInTheDocument();
 		expect(screen.queryByText("Project Terminal")).not.toBeInTheDocument();
 		expect(screen.queryByText("Report")).not.toBeInTheDocument();
 		expect(screen.queryByText("Change Log")).not.toBeInTheDocument();
@@ -663,7 +663,7 @@ describe("GlobalHeader — compact layout", () => {
 		const navigate = vi.fn();
 		renderHeader({ screen: "project", projectId: "p1" }, [project1, project2], navigate);
 
-		const more = screen.getByTitle("More");
+		const more = screen.getByLabelText("More");
 		expect(more).toBeInTheDocument();
 
 		await user.click(more);
@@ -677,10 +677,11 @@ describe("GlobalHeader — compact layout", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		// Roomy layout keeps text labels (e.g. Project Terminal) and does not collapse
 		// actions into the overflow menu. Changelog/Report are icon-only by design now,
-		// so assert Changelog by its title rather than visible text.
+		// and migrated to Tooltip, so assert Changelog by its accessible label (aria-label,
+		// no native title) rather than visible text.
 		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
-		expect(screen.getByTitle("View changelog")).toBeInTheDocument();
-		expect(screen.queryByTitle("More")).not.toBeInTheDocument();
+		expect(screen.getByLabelText("View changelog")).toBeInTheDocument();
+		expect(screen.queryByLabelText("More")).not.toBeInTheDocument();
 	});
 });
 
@@ -789,7 +790,7 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		expect(screen.getByLabelText("More")).toBeInTheDocument();
 		// Inline simple-action buttons are gone (folded into the sheet).
-		expect(screen.queryByTitle("Project Terminal (⌘`)")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Project Terminal (⌘`)")).not.toBeInTheDocument();
 	});
 
 	it("opens a bottom sheet exposing the command palette and folded actions", async () => {

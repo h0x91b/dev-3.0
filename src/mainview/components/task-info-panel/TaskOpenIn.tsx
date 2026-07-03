@@ -5,6 +5,7 @@ import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import OpenInMenu from "../OpenInMenu";
+import Tooltip from "../Tooltip";
 import { OpenInIcon, FileTreeIcon } from "../TaskIcons";
 
 interface TaskOpenInProps {
@@ -57,15 +58,16 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 	return (
 		<>
 			<div className="relative flex-shrink-0">
-				<button
-					ref={openInBtnRef}
-					onClick={handleOpenInClick}
-					className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
-					title={t("openIn.menuTitle")}
-				>
-					<OpenInIcon className="w-[1.05rem] h-[1.05rem]" />
-					<span className="text-[0.6875rem] font-semibold">{t("openIn.menuTitle")}</span>
-				</button>
+				<Tooltip content={t("openIn.menuTitle")}>
+					<button
+						ref={openInBtnRef}
+						onClick={handleOpenInClick}
+						className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
+					>
+						<OpenInIcon className="w-[1.05rem] h-[1.05rem]" />
+						<span className="text-[0.6875rem] font-semibold">{t("openIn.menuTitle")}</span>
+					</button>
+				</Tooltip>
 				{openInMenuOpen && (
 					<OpenInMenu
 						position={openInMenuPos}
@@ -77,19 +79,20 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 
 			{showFileBrowser && (
 				<div className="relative flex-shrink-0">
-					<button
-						onClick={handleFileBrowser}
-						disabled={!isTaskActive}
-						className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-							!isTaskActive
-								? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
-								: "text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
-						}`}
-						title={t("header.fileBrowser")}
-						aria-label={t("header.fileBrowser")}
-					>
-						<FileTreeIcon className="w-[1.125rem] h-[1.125rem]" />
-					</button>
+					<Tooltip content={t("header.fileBrowser")}>
+						<button
+							onClick={handleFileBrowser}
+							disabled={!isTaskActive}
+							className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+								!isTaskActive
+									? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
+									: "text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
+							}`}
+							aria-label={t("header.fileBrowser")}
+						>
+							<FileTreeIcon className="w-[1.125rem] h-[1.125rem]" />
+						</button>
+					</Tooltip>
 					{yaziInstallPopup && createPortal(
 						<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setYaziInstallPopup(false)}>
 							<div
@@ -103,6 +106,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 									<code className="flex-1 text-warning bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all">
 										{yaziInstallCmd}
 									</code>
+									<Tooltip content={t("openIn.copyPath")}>
 									<button
 										onClick={() => {
 											navigator.clipboard.writeText(yaziInstallCmd);
@@ -110,7 +114,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 											setTimeout(() => setYaziCopied(false), 2000);
 										}}
 										className="p-2 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
-										title={t("openIn.copyPath")}
+										aria-label={t("openIn.copyPath")}
 									>
 										{yaziCopied ? (
 											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -123,6 +127,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 											</svg>
 										)}
 									</button>
+									</Tooltip>
 								</div>
 								{yaziCopied && <p className="text-success text-xs mb-3">{t("requirements.copied")}</p>}
 								<p className="text-fg-muted text-xs mb-3">{t("fileBrowser.clickAgainHint")}</p>

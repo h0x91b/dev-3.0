@@ -118,7 +118,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
-| Inline help (Tooltip / HelpSpot → HelpCard / help mode) | Explain what a section is, why it exists, what to do in it | fast control tooltip, section (i) in header-bearing surfaces, rich read-only HelpCard, screen-wide help-mode overlay | mutation, multi-step tour, permanent (i) in quickbars/cards/toolbars | planned; see §5.4 |
+| Inline help (Tooltip / HelpSpot → HelpCard / help mode) | Explain what a section is, why it exists, what to do in it | fast control tooltip, section (i) in header-bearing surfaces, rich read-only HelpCard, screen-wide help-mode overlay | mutation, multi-step tour, permanent (i) in quickbars/cards/toolbars | `Tooltip.tsx`, `HelpSpot.tsx`, `HelpCard.tsx`, `HelpOverlay.tsx`, `help.ts` (see §5.4) |
 | Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch + prev/next period navigation, per-project→board jump | mutation, lifecycle/config action, header button, data filter (new dimension beyond time) | `ProductivityStatsView.tsx`, `components/stats/*` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
@@ -187,7 +187,7 @@ Rules specific to this surface:
 - **The inline review is a short-lived safety net, not clipboard-only or permanent.** Comments persist per task (`localStorage`) and survive unmount / diff reload / app restart, but only for a **3-day TTL** measured from when the review was first created — after that they auto-expire on next read. The clipboard is a *transport*, not the store: if a stray terminal selection clobbers the copied review, reopen the diff and copy again. The review is cleared by the **Reset review** button or by TTL expiry. A **global sweep** on every diff-viewer mount prunes expired/corrupt review keys across all tasks, so entries for never-reopened or deleted tasks cannot accumulate in `localStorage`. Leaving the surface does **not** discard it — so no "discard review?" guard on close.
 - No new top-level destination, no toolbar-creep into the inspector: the whole review lifecycle lives inside this surface.
 
-### 5.4 Inline help system — Tooltip / HelpSpot / help mode — `Proposed`
+### 5.4 Inline help system — Tooltip / HelpSpot / help mode — `Observed`
 
 **Problem.** The app explains itself through ~227 native `title=` attributes: slow (OS hover delay), unstyled, control-scoped — they can name a button but never explain a *section* ("what is this toolbar, why does it exist, what do I do here"). No shared Tooltip primitive exists; each custom popover re-implements positioning.
 

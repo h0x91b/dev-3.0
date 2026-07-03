@@ -24,6 +24,7 @@ import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
 import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBadge";
 import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
+import Tooltip from "./Tooltip";
 
 interface TaskCardProps {
 	task: Task;
@@ -348,17 +349,19 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
 	const prBadge = prInfo ? (
-		<button
-			onClick={(e) => {
-				e.stopPropagation();
-				window.open(prInfo.url, "_blank");
-			}}
-			className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-green-400 transition-colors hover:bg-green-500/20"
-			title={t("task.openPR", { number: String(prInfo.number) })}
-		>
-			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
-			<span className="leading-none">#{prInfo.number}</span>
-		</button>
+		<Tooltip content={t("task.openPR", { number: String(prInfo.number) })}>
+			<button
+				onClick={(e) => {
+					e.stopPropagation();
+					window.open(prInfo.url, "_blank");
+				}}
+				className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-green-400 transition-colors hover:bg-green-500/20"
+				aria-label={t("task.openPR", { number: String(prInfo.number) })}
+			>
+				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+				<span className="leading-none">#{prInfo.number}</span>
+			</button>
+		</Tooltip>
 	) : null;
 
 	// CI + PR-review status badges. Clicking a badge bounces the task to your
@@ -377,30 +380,34 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	};
 	const ciMeta = prInfo?.ciStatus ? CI_BADGE[prInfo.ciStatus] : null;
 	const ciBadge = ciMeta ? (
-		<button
-			onClick={(e) => {
-				e.stopPropagation();
-				handleMove("review-by-user");
-			}}
-			className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${ciMeta.cls}`}
-			title={t(ciMeta.key)}
-		>
-			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ciMeta.glyph}</span>
-			<span className="leading-none">CI</span>
-		</button>
+		<Tooltip content={t(ciMeta.key)}>
+			<button
+				onClick={(e) => {
+					e.stopPropagation();
+					handleMove("review-by-user");
+				}}
+				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${ciMeta.cls}`}
+				aria-label={t(ciMeta.key)}
+			>
+				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ciMeta.glyph}</span>
+				<span className="leading-none">CI</span>
+			</button>
+		</Tooltip>
 	) : null;
 	const reviewMeta = prInfo?.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const reviewBadge = reviewMeta ? (
-		<button
-			onClick={(e) => {
-				e.stopPropagation();
-				handleMove("review-by-user");
-			}}
-			className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${reviewMeta.cls}`}
-			title={t(reviewMeta.key)}
-		>
-			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{reviewMeta.glyph}</span>
-		</button>
+		<Tooltip content={t(reviewMeta.key)}>
+			<button
+				onClick={(e) => {
+					e.stopPropagation();
+					handleMove("review-by-user");
+				}}
+				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${reviewMeta.cls}`}
+				aria-label={t(reviewMeta.key)}
+			>
+				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{reviewMeta.glyph}</span>
+			</button>
+		</Tooltip>
 	) : null;
 
 	function handleShowDescription(e: React.MouseEvent) {
@@ -475,22 +482,24 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</div>
 						<div className="mt-2 flex items-center justify-end gap-2">
 							{hasLongDescription && (
-								<button
-									onClick={handleShowDescription}
-									className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-[0.6875rem] text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
-									title={t("task.showDescription")}
-								>
-									{t("task.showDescription")}
-								</button>
+								<Tooltip content={t("task.showDescription")}>
+									<button
+										onClick={handleShowDescription}
+										className="rounded-lg border border-edge bg-elevated/90 px-2.5 py-1 text-[0.6875rem] text-fg-2 transition-colors hover:border-edge-active hover:text-fg"
+									>
+										{t("task.showDescription")}
+									</button>
+								</Tooltip>
 							)}
-							<button
-								onClick={handleCancelPreparation}
-								disabled={cancellingPreparation}
-								className="rounded-lg border border-danger/50 bg-danger/10 px-2.5 py-1 text-[0.6875rem] text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
-								title={t("task.cancel")}
-							>
-								{t("task.cancel")}
-							</button>
+							<Tooltip content={t("task.cancel")}>
+								<button
+									onClick={handleCancelPreparation}
+									disabled={cancellingPreparation}
+									className="rounded-lg border border-danger/50 bg-danger/10 px-2.5 py-1 text-[0.6875rem] text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
+								>
+									{t("task.cancel")}
+								</button>
+							</Tooltip>
 						</div>
 					</div>
 				</div>
@@ -498,16 +507,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 			{/* Dismiss button — top-right, visible on hover */}
 			{showDismissButton && (
-				<button
-					onClick={handleDismiss}
-					className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-all"
-					title={isCancelled ? t("task.delete") : t("task.cancel")}
-					disabled={isDisabled}
-				>
-					<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
+				<Tooltip content={isCancelled ? t("task.delete") : t("task.cancel")}>
+					<button
+						onClick={handleDismiss}
+						className="absolute top-2.5 right-2.5 opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded-md bg-fg/5 text-fg-3 hover:bg-danger/15 hover:text-danger transition-all"
+						aria-label={isCancelled ? t("task.delete") : t("task.cancel")}
+						disabled={isDisabled}
+					>
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				</Tooltip>
 			)}
 
 			{/* Bell badge — macOS Dock style, peeking outside the card */}
@@ -568,16 +579,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{displayTitle}
 			</div>
 			{hasLongDescription && !isTodo && (
-				<button
-					onClick={handleShowDescription}
-					className="mt-1 text-[0.6875rem] text-fg-muted hover:text-accent transition-colors flex items-center gap-1"
-					title={t("task.showDescription")}
-				>
-					<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-						<path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
-					</svg>
-					{t("task.showDescription")}
-				</button>
+				<Tooltip content={t("task.showDescription")}>
+					<button
+						onClick={handleShowDescription}
+						className="mt-1 text-[0.6875rem] text-fg-muted hover:text-accent transition-colors flex items-center gap-1"
+					>
+						<svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+							<path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+						</svg>
+						{t("task.showDescription")}
+					</button>
+				</Tooltip>
 			)}
 
 			{/* Task detail modal — portal to body so it's not clipped by card */}
@@ -668,33 +680,35 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						)}
 					</div>
 					{!isActive && (
-						<button
-							onClick={async (e) => {
-								e.stopPropagation();
-								try {
-									const updated = await api.request.toggleTaskWatch({
-										taskId: task.id,
-										projectId: project.id,
-										watched: !task.watched,
-									});
-									dispatch({ type: "updateTask", task: updated });
-								} catch {
-									// Toggle failed silently — secondary action
-								}
-							}}
-							className={`flex-shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs transition-all hover:bg-fg/5 ${
-								task.watched
-									? "text-accent"
-									: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
-							}`}
-							title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
-							disabled={isDisabled}
-						>
-							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
-							</span>
-							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
-						</button>
+						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}>
+							<button
+								onClick={async (e) => {
+									e.stopPropagation();
+									try {
+										const updated = await api.request.toggleTaskWatch({
+											taskId: task.id,
+											projectId: project.id,
+											watched: !task.watched,
+										});
+										dispatch({ type: "updateTask", task: updated });
+									} catch {
+										// Toggle failed silently — secondary action
+									}
+								}}
+								className={`flex-shrink-0 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs transition-all hover:bg-fg/5 ${
+									task.watched
+										? "text-accent"
+										: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
+								}`}
+								aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+								disabled={isDisabled}
+							>
+								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+									{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+								</span>
+								<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
+							</button>
+						</Tooltip>
 					)}
 				</div>
 				);
@@ -736,41 +750,45 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 				{/* Sibling variant dots */}
 				{hasSiblings && (
-					<button
-						ref={siblingAnchorRef}
-						onClick={(e) => { e.stopPropagation(); preview.close(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
-						className="flex items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-fg/5"
-						title={t.plural("task.siblingsCount", siblings.length)}
-					>
-						{groupMembers.map((s) => (
-							<span
-								key={s.id}
-								className={`h-2 w-2 flex-shrink-0 rounded-full ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
-								style={{ background: statusColors[s.status] }}
-							/>
-						))}
-					</button>
+					<Tooltip content={t.plural("task.siblingsCount", siblings.length)}>
+						<button
+							ref={siblingAnchorRef}
+							onClick={(e) => { e.stopPropagation(); preview.close(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
+							className="flex items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-fg/5"
+							aria-label={t.plural("task.siblingsCount", siblings.length)}
+						>
+							{groupMembers.map((s) => (
+								<span
+									key={s.id}
+									className={`h-2 w-2 flex-shrink-0 rounded-full ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
+									style={{ background: statusColors[s.status] }}
+								/>
+							))}
+						</button>
+					</Tooltip>
 				)}
 
 				{/* Port indicator for active tasks */}
 				{isActive && ports && ports.length > 0 && (
-					<button
-						ref={portsAnchorRef}
-						onClick={(e) => {
-							e.stopPropagation();
-							if (!portsPopoverOpen && portsAnchorRef.current) {
-								const rect = portsAnchorRef.current.getBoundingClientRect();
-								setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
-								setPortsPopoverVisible(false);
-							}
-							setPortsPopoverOpen(!portsPopoverOpen);
-						}}
-						className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[0.625rem] text-accent transition-colors hover:bg-accent/20"
-						title={t.plural("ports.count", ports.length)}
-					>
-						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
-						{ports.length}
-					</button>
+					<Tooltip content={t.plural("ports.count", ports.length)}>
+						<button
+							ref={portsAnchorRef}
+							onClick={(e) => {
+								e.stopPropagation();
+								if (!portsPopoverOpen && portsAnchorRef.current) {
+									const rect = portsAnchorRef.current.getBoundingClientRect();
+									setPortsPopoverPos({ top: rect.bottom + 6, left: rect.left });
+									setPortsPopoverVisible(false);
+								}
+								setPortsPopoverOpen(!portsPopoverOpen);
+							}}
+							className="inline-flex flex-shrink-0 items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 font-mono text-[0.625rem] text-accent transition-colors hover:bg-accent/20"
+							aria-label={t.plural("ports.count", ports.length)}
+						>
+							<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+							{ports.length}
+						</button>
+					</Tooltip>
 				)}
 
 				{/* Resource usage badge */}
@@ -802,20 +820,21 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{isTodo && (
 					<>
 						<div className="flex-1" />
-						<button
-							onClick={(e) => {
-								e.stopPropagation();
-								onLaunchVariants(task, "in-progress");
-							}}
-							className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500"
-							title={t("task.run")}
-							disabled={isDisabled}
-						>
-							<svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
-								<path d="M8 5v14l11-7z" />
-							</svg>
-							{t("task.run")}
-						</button>
+						<Tooltip content={t("task.run")}>
+							<button
+								onClick={(e) => {
+									e.stopPropagation();
+									onLaunchVariants(task, "in-progress");
+								}}
+								className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500"
+								disabled={isDisabled}
+							>
+								<svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
+									<path d="M8 5v14l11-7z" />
+								</svg>
+								{t("task.run")}
+							</button>
+						</Tooltip>
 					</>
 				)}
 			</div>
@@ -836,60 +855,65 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<div data-testid="task-card-action-row" className="mt-1 grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
 					<div className="flex min-w-0 items-center gap-1">
 						{task.worktreePath && (
-							<button
-								onClick={(e) => {
-									e.stopPropagation();
-									const rect = (e.target as HTMLElement).getBoundingClientRect();
-									setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
-									setCtxMenuOpen(true);
-								}}
-								className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-all hover:bg-accent/15"
-								title={t("openIn.menuTitle")}
-							>
-								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
-							</button>
+							<Tooltip content={t("openIn.menuTitle")}>
+								<button
+									onClick={(e) => {
+										e.stopPropagation();
+										const rect = (e.target as HTMLElement).getBoundingClientRect();
+										setCtxMenuPos({ top: rect.bottom + 4, left: rect.left });
+										setCtxMenuOpen(true);
+									}}
+									className="flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-accent transition-all hover:bg-accent/15"
+									aria-label={t("openIn.menuTitle")}
+								>
+									<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+								</button>
+							</Tooltip>
 						)}
-						<button
-							onClick={async (e) => {
-								e.stopPropagation();
-								try {
-									const updated = await api.request.toggleTaskWatch({
-										taskId: task.id,
-										projectId: project.id,
-										watched: !task.watched,
-									});
-									dispatch({ type: "updateTask", task: updated });
-								} catch {
-									// Toggle failed silently — secondary action
-								}
-							}}
-							className={`flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-all hover:bg-fg/5 ${
-								task.watched
-									? "text-accent font-medium"
-									: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
-							}`}
-							title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
-							disabled={isDisabled}
-						>
-							<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
-							</span>
-							<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
-						</button>
+						<Tooltip content={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}>
+							<button
+								onClick={async (e) => {
+									e.stopPropagation();
+									try {
+										const updated = await api.request.toggleTaskWatch({
+											taskId: task.id,
+											projectId: project.id,
+											watched: !task.watched,
+										});
+										dispatch({ type: "updateTask", task: updated });
+									} catch {
+										// Toggle failed silently — secondary action
+									}
+								}}
+								className={`flex flex-shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs transition-all hover:bg-fg/5 ${
+									task.watched
+										? "text-accent font-medium"
+										: "opacity-0 group-hover:opacity-70 text-fg-3 hover:!opacity-100"
+								}`}
+								aria-label={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+								disabled={isDisabled}
+							>
+								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+									{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
+								</span>
+								<span className="text-[0.6875rem]">{task.watched ? t("task.watching") : t("task.watch")}</span>
+							</button>
+						</Tooltip>
 					</div>
 					<div className="min-w-0" />
-					<button
-						onClick={(e) => {
-							e.stopPropagation();
-							preview.close();
-							onAddAttempts(task);
-						}}
-						className="flex flex-shrink-0 justify-self-end items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
-						title={t("task.addVariant")}
-						disabled={isDisabled}
-					>
-						{t("task.addVariant")}
-					</button>
+					<Tooltip content={t("task.addVariant")}>
+						<button
+							onClick={(e) => {
+								e.stopPropagation();
+								preview.close();
+								onAddAttempts(task);
+							}}
+							className="flex flex-shrink-0 justify-self-end items-center rounded-lg px-2 py-1 text-xs font-medium text-accent transition-all hover:bg-accent/15"
+							disabled={isDisabled}
+						>
+							{t("task.addVariant")}
+						</button>
+					</Tooltip>
 				</div>
 			)}
 

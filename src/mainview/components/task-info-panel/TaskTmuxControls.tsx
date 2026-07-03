@@ -8,6 +8,7 @@ import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import { startClosePanePicker } from "../../close-pane-picker";
+import Tooltip from "../Tooltip";
 import {
 	ClosePaneIcon,
 	CycleLayoutIcon,
@@ -289,51 +290,61 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 	return (
 		<>
 			<div className="flex items-center gap-1.5 flex-shrink-0">
-				<button className={tmuxBtnClass} onClick={handleTmuxAction("splitH")} title={t("tmux.splitHDesc")} aria-label={t("tmux.splitHDesc")}>
-					<SplitHIcon className={tmuxSvgClass} />
-				</button>
-				<button className={tmuxBtnClass} onClick={handleTmuxAction("splitV")} title={t("tmux.splitVDesc")} aria-label={t("tmux.splitVDesc")}>
-					<SplitVIcon className={tmuxSvgClass} />
-				</button>
-				<button className={tmuxNewWindowBtnClass} onClick={handleTmuxAction("newWindow")} title={t("tmux.newWindowDesc")} aria-label={t("tmux.newWindowDesc")}>
-					<NewWindowIcon className={tmuxSvgClass} />
-				</button>
+				<Tooltip content={t("tmux.splitHDesc")}>
+					<button className={tmuxBtnClass} onClick={handleTmuxAction("splitH")} aria-label={t("tmux.splitHDesc")}>
+						<SplitHIcon className={tmuxSvgClass} />
+					</button>
+				</Tooltip>
+				<Tooltip content={t("tmux.splitVDesc")}>
+					<button className={tmuxBtnClass} onClick={handleTmuxAction("splitV")} aria-label={t("tmux.splitVDesc")}>
+						<SplitVIcon className={tmuxSvgClass} />
+					</button>
+				</Tooltip>
+				<Tooltip content={t("tmux.newWindowDesc")}>
+					<button className={tmuxNewWindowBtnClass} onClick={handleTmuxAction("newWindow")} aria-label={t("tmux.newWindowDesc")}>
+						<NewWindowIcon className={tmuxSvgClass} />
+					</button>
+				</Tooltip>
 
 				<div
 					className="flex items-stretch rounded text-accent bg-accent/10 border border-accent/25 overflow-hidden"
 					onMouseEnter={showLayout}
 					onMouseLeave={hideLayout}
 				>
-					<button
-						className="tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors hover:bg-accent/20 flex items-center gap-1"
-						onClick={cycleLayout}
-						title={t("tmux.nextLayoutDesc")}
-						aria-label={t("tmux.nextLayoutDesc")}
-					>
-						{cycleIcon}
-						<span>tmux layout</span>
-					</button>
-					<button
-						ref={layoutTriggerRef}
-						className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
-						onClick={(event) => {
-							event.stopPropagation();
-							showLayout();
-						}}
-						title={t("tmux.chooseLayout")}
-						aria-label={t("tmux.chooseLayout")}
-						aria-haspopup="menu"
-						aria-expanded={layoutOpen}
-					>
-						<svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-							<path d="M6 9 L12 15 L18 9" stroke="currentColor" />
-						</svg>
-					</button>
+					<Tooltip content={t("tmux.nextLayoutDesc")}>
+						<button
+							className="tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors hover:bg-accent/20 flex items-center gap-1"
+							onClick={cycleLayout}
+							aria-label={t("tmux.nextLayoutDesc")}
+						>
+							{cycleIcon}
+							<span>tmux layout</span>
+						</button>
+					</Tooltip>
+					<Tooltip content={t("tmux.chooseLayout")}>
+						<button
+							ref={layoutTriggerRef}
+							className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
+							onClick={(event) => {
+								event.stopPropagation();
+								showLayout();
+							}}
+							aria-label={t("tmux.chooseLayout")}
+							aria-haspopup="menu"
+							aria-expanded={layoutOpen}
+						>
+							<svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+								<path d="M6 9 L12 15 L18 9" stroke="currentColor" />
+							</svg>
+						</button>
+					</Tooltip>
 				</div>
 
-				<button className={tmuxBtnClass} onClick={handleTmuxAction("zoom")} title={t("tmux.zoomDesc")} aria-label={t("tmux.zoomDesc")}>
-					<ZoomPaneIcon className={tmuxSvgClass} />
-				</button>
+				<Tooltip content={t("tmux.zoomDesc")}>
+					<button className={tmuxBtnClass} onClick={handleTmuxAction("zoom")} aria-label={t("tmux.zoomDesc")}>
+						<ZoomPaneIcon className={tmuxSvgClass} />
+					</button>
+				</Tooltip>
 				<button
 					ref={hintsTriggerRef}
 					className={tmuxIconBtnClass}
@@ -351,14 +362,15 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 
 				<div className="w-px self-stretch bg-edge mx-0.5" aria-hidden="true" />
 
-				<button
-					className={`${tmuxBtnClass} text-danger hover:bg-danger/20 bg-danger/10 border-danger/25`}
-					onClick={handleClosePane}
-					title={t("tmux.closePaneDesc")}
-					aria-label={t("tmux.closePaneDesc")}
-				>
-					<ClosePaneIcon className={tmuxSvgClass} />
-				</button>
+				<Tooltip content={t("tmux.closePaneDesc")}>
+					<button
+						className={`${tmuxBtnClass} text-danger hover:bg-danger/20 bg-danger/10 border-danger/25`}
+						onClick={handleClosePane}
+						aria-label={t("tmux.closePaneDesc")}
+					>
+						<ClosePaneIcon className={tmuxSvgClass} />
+					</button>
+				</Tooltip>
 			</div>
 
 			{layoutOpen && createPortal(

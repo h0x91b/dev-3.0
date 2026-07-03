@@ -274,6 +274,10 @@ const tips = {
 	"tip.closePanePicker.body": "Click Close Pane, then hover the split you mean — it turns red — and click to close exactly that pane.",
 	"tip.closePaneEof.title": "Close a pane fast",
 	"tip.closePaneEof.body": "Press Ctrl+D in a terminal pane to exit the shell and close the pane instantly.",
+	"tip.helpMode.title": "Explain this screen",
+	"tip.helpMode.body": "Press ⇧⌘/ (or Help → Explain This Screen) — every zone gets an (i) badge; click one to learn what it does.",
+	"tip.helpSpots.title": "Little (i) icons know things",
+	"tip.helpSpots.body": "Section headers carry a small (i) — hover or click it for what the section is and how to use it.",
 } as const;
 
 export default tips;

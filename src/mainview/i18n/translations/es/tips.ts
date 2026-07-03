@@ -274,6 +274,10 @@ const tips = {
 	"tip.closePanePicker.body": "Pulsa Cerrar panel, pasa el ratón por la división que quieras — se pone roja — y haz clic para cerrar ese panel.",
 	"tip.closePaneEof.title": "Cierra un panel rápido",
 	"tip.closePaneEof.body": "Pulsa Ctrl+D en un panel de terminal para salir del shell y cerrarlo al instante.",
+	"tip.helpMode.title": "Explica esta pantalla",
+	"tip.helpMode.body": "Pulsa ⇧⌘/ (o Help → Explain This Screen) — cada zona recibe una insignia (i); haz clic para saber qué hace.",
+	"tip.helpSpots.title": "Los pequeños (i) saben cosas",
+	"tip.helpSpots.body": "Los encabezados de sección llevan una pequeña (i) — pasa el cursor o haz clic para saber qué es la sección y cómo usarla.",
 };
 
 export default tips;

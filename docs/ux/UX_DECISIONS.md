@@ -8,7 +8,7 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
 - **Rule:** Help content lives in a `src/mainview/help.ts` registry (declare-as-data, like `keymap.ts`/`tips.ts`); a fast `Tooltip` primitive progressively replaces native `title=` on icon controls; a ghost (i) `HelpSpot` → rich read-only `HelpCard` is allowed only in header-bearing sections (≤1 each); dense headerless zones (inspector quickbars, task card) are covered by a screen-wide help-mode overlay (`⇧⌘/`, Help menu, palette, kebab on narrow) via `data-help-id` — never by permanent icons. Bible §5.4.
 - **Why:** Native `title=` (~227 usages) is slow and control-scoped, and per-section (i) icons everywhere would be toolbar-button-creep wearing a help hat. Rejected: (i) in every zone (creep); help-mode-only (no ambient discoverability); tooltip-migration-only (explains buttons, not sections).
-- **Status:** Proposed (UX plan; implementation pending). Evidence: bible §5.4, yaml `surfaces.inline_help`.
+- **Status:** Observed. Evidence: bible §5.4, yaml `surfaces.inline_help`, `help.ts`, `Tooltip.tsx`, `HelpSpot.tsx`, `HelpCard.tsx`, `HelpOverlay.tsx`.
 
 ## 2026-07-03 — Close Pane: two-step visual pane picker (no new button; destructive gets spatial friction)
 

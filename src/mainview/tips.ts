@@ -1117,6 +1117,22 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal"],
 	},
+	{
+		id: "help-mode",
+		titleKey: "tip.helpMode.title",
+		bodyKey: "tip.helpMode.body",
+		icon: "\u{F02FD}", // nf-md-information_outline
+		score: 4,
+		contexts: ["board", "terminal"],
+	},
+	{
+		id: "help-spots",
+		titleKey: "tip.helpSpots.title",
+		bodyKey: "tip.helpSpots.body",
+		icon: "\u{F02FC}", // nf-md-information
+		score: 3,
+		contexts: ["board", "settings"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

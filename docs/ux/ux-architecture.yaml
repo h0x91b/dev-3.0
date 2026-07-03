@@ -281,7 +281,7 @@ ux_architecture:
       evidence: ["src/mainview/components/ErrorToast.tsx"]
     inline_help:
       purpose: "Explain what a section/zone is, why it exists, and what to do in it. One registry (src/mainview/help.ts — declare-as-data like keymap.ts/tips.ts), three layers: fast Tooltip primitive (replaces native title= on icon controls), HelpSpot (i) -> HelpCard in header-bearing sections, and a screen-wide help-mode overlay for dense/headerless zones."
-      status: "proposed"
+      status: "observed"
       layers:
         tooltip:
           role: "control-level 'what does this button do'"
@@ -531,7 +531,7 @@ ux_architecture:
       when: { feature_class: "onboarding_help" }
       place_in: ["help.ts registry topic + HelpSpot in a header-bearing section", "help-mode coverage via data-help-id (dense/headerless zones)", "application_menu.Help / ⇧⌘/ / command_palette entry"]
       reject: ["permanent_info_icon_in_quickbars_cards_or_toolbars", "hardcoded_help_strings_in_components", "multi_step_tour_v1", "new_nav_destination_for_help"]
-      status: "proposed"
+      status: "observed"
       rationale: "Help must add ZERO chrome to budget-protected zones (quickbars, task cards, toolbars) — they are covered by the help-mode overlay, not by standing icons. Header-bearing sections may carry at most one ghost (i). Content is data (help.ts + i18n domain), never JSX, so the same topics feed HelpSpot, help mode, and any future docs surface. See PRODUCT_UX_BIBLE §5.4 + UX_DECISIONS 2026-07-03."
 
   responsive:
