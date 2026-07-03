@@ -637,19 +637,20 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						{/* Report a bug */}
 						<button
 							onClick={() => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank")}
-							className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+							className="flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 							title={t("header.reportBugTooltip")}
+							aria-label={t("header.reportBugTooltip")}
 						>
 							<span className="text-[1.125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uf188"}</span>
-							<span className="text-[0.6875rem] font-medium">{t("header.reportLabel")}</span>
 						</button>
 
 						{/* Changelog */}
 						{route.screen !== "changelog" && (
 							<button
 								onClick={() => navigate({ screen: "changelog" })}
-								className="flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+								className="flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
 								title={t("header.changelogTooltip")}
+								aria-label={t("header.changelogTooltip")}
 							>
 								<svg
 									className="w-[1.125rem] h-[1.125rem]"
@@ -665,7 +666,6 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 										d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
 									/>
 								</svg>
-								<span className="text-[0.6875rem] font-medium">{t("header.changelogLabel")}</span>
 							</button>
 						)}
 					</>

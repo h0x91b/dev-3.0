@@ -673,7 +673,11 @@ describe("GlobalHeader — compact layout", () => {
 	it("keeps labels and shows no overflow menu when roomy", () => {
 		mockMatchMedia(false);
 		renderHeader({ screen: "project", projectId: "p1" });
-		expect(screen.getByText("Change Log")).toBeInTheDocument();
+		// Roomy layout keeps text labels (e.g. Project Terminal) and does not collapse
+		// actions into the overflow menu. Changelog/Report are icon-only by design now,
+		// so assert Changelog by its title rather than visible text.
+		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
+		expect(screen.getByTitle("View changelog")).toBeInTheDocument();
 		expect(screen.queryByTitle("More")).not.toBeInTheDocument();
 	});
 });
