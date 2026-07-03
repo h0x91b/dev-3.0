@@ -1059,20 +1059,17 @@
 	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-po-c1 { animation: th-po-c1 2.4s ease-in-out infinite; }
 	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-po-c2 { animation: th-po-c2 2.4s ease-in-out infinite; }
 
-	/* Images — golden hour: the sun lifts, the ridges catch the light */
+	/* Images — golden hour: the sun rises and swells, the ridges draw themselves */
 	@keyframes th-im-sun {
-		0%, 15%  { transform: translateY(0); }
-		40%, 60% { transform: translateY(-1.4px); }
-		85%,100% { transform: translateY(0); }
+		0%, 12%  { transform: translateY(0) scale(1); }
+		45%, 62% { transform: translateY(-2.3px) scale(1.18); }
+		92%,100% { transform: translateY(0) scale(1); }
 	}
-	@keyframes th-im-m {
-		0%, 20%  { transform: translateY(0); }
-		45%      { transform: translateY(-.8px); }
-		75%,100% { transform: translateY(0); }
-	}
-	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-sun { animation: th-im-sun 2.4s ease-in-out infinite; }
-	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-m1  { animation: th-im-m 2.4s ease-in-out infinite; }
-	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-m2  { animation: th-im-m 2.4s ease-in-out .15s infinite; }
+	@keyframes th-im-m1 { 0%, 10% { stroke-dashoffset: 1; } 45% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	@keyframes th-im-m2 { 0%, 28% { stroke-dashoffset: 1; } 62% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-sun { transform-origin: 9px 9.8px; animation: th-im-sun 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-m1  { animation: th-im-m1 2.4s ease-in-out infinite; }
+	:is(.hoverable:hover, .hoverable.pin, body.play .hoverable) .a-th-im-m2  { animation: th-im-m2 2.4s ease-in-out infinite; }
 
 	/* Gear — one ratchet turn forward, then wind back */
 	@keyframes th-gear {
@@ -2509,13 +2506,13 @@
 					<svg class="big" viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
 						<rect x="3" y="4.5" width="18" height="15" rx="2.5" class="st" />
 						<circle cx="9" cy="9.8" r="1.7" class="st a-th-im-sun" />
-						<path d="m3 16.8 4.2-4.2a1.8 1.8 0 0 1 2.6 0l6.7 6.7" class="st a-th-im-m1" />
-						<path d="m13.5 14.5 1.8-1.8a1.8 1.8 0 0 1 2.6 0l3.1 3.1" class="st a-th-im-m2" />
+						<path d="m3 16.8 4.2-4.2a1.8 1.8 0 0 1 2.6 0l6.7 6.7" pathLength="1" class="st drawable a-th-im-m1" />
+						<path d="m13.5 14.5 1.8-1.8a1.8 1.8 0 0 1 2.6 0l3.1 3.1" pathLength="1" class="st drawable a-th-im-m2" />
 					</svg>
 				</div>
 				<h3>Images</h3>
 				<p class="desc">Screenshots and captures the agent shared with you.</p>
-				<p class="anim-note">Golden hour — the sun lifts and the ridges catch the light.</p>
+				<p class="anim-note">Golden hour — the sun rises and swells, the ridges draw themselves.</p>
 				<div class="meta"><span class="badge task">Task header</span><kbd class="chip">09</kbd></div>
 			</div>
 

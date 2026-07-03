@@ -26,6 +26,16 @@ import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
 import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
+import {
+	WatchingIcon,
+	WatchIcon,
+	FindBugsIcon,
+	AddAgentIcon,
+	WorktreeSettingsIcon,
+	FullscreenEnterIcon,
+	FullscreenExitIcon,
+	PanelChevronIcon,
+} from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
 import TaskTmuxControls from "./task-info-panel/TaskTmuxControls";
@@ -497,16 +507,16 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const watchToggleButton = (
 		<button
 			onClick={handleToggleWatch}
-			className={`flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+			className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 				task.watched
 					? "text-accent bg-accent/10 border border-accent/25"
 					: "text-fg-3 hover:text-fg hover:bg-elevated"
 			}`}
 			title={task.watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
 		>
-			<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-				{task.watched ? "\u{F009A}" : "\u{F0F1C}"}
-			</span>
+			{task.watched
+				? <WatchingIcon className="w-[0.95rem] h-[0.95rem]" />
+				: <WatchIcon className="w-[0.95rem] h-[0.95rem]" />}
 			{!compact && (
 				<span className="text-[0.6875rem] font-medium">
 					{task.watched ? t("task.watching") : t("task.watch")}
@@ -561,10 +571,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const spawnAgentButton = isTaskActive && task.worktreePath ? (
 		<button
 			onClick={() => setSpawnModalOpen(true)}
-			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
 			title={t("tmux.spawnExtraAgentDesc")}
 		>
-			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F16A6}"}</span>
+			<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
 			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
 		</button>
 	) : null;
@@ -572,10 +582,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const bugHuntersButton = project.kind !== "virtual" && isTaskActive && task.worktreePath ? (
 		<button
 			onClick={() => setBugHuntersOpen(true)}
-			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-danger hover:text-danger hover:bg-danger/15 border border-danger/30"
+			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-danger hover:text-danger hover:bg-danger/15 border border-danger/30"
 			title={t("bugHunters.buttonTooltip")}
 		>
-			<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+			<FindBugsIcon className="w-[1.05rem] h-[1.05rem]" />
 			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
 		</button>
 	) : null;
@@ -583,10 +593,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const worktreeSettingsButton = task.worktreePath ? (
 		<button
 			onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
-			className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+			className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 			title={t("projectSettings.tabWorktree")}
 		>
-			<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF013"}</span>
+			<WorktreeSettingsIcon className="w-4 h-4" />
 		</button>
 	) : null;
 
@@ -883,24 +893,19 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
 								: navigate({ screen: "task", projectId: project.id, taskId: task.id })
 							}
-							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+							className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 							title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
 						>
-							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								{isFullPage
-									? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
-									: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
-								}
-							</svg>
+							{isFullPage
+								? <FullscreenExitIcon className="w-3.5 h-3.5" />
+								: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
 						</button>
 						<button
 							onClick={toggleCollapsed}
-							className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+							className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 							title={t("infoPanel.expand")}
 						>
-							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-							</svg>
+							<PanelChevronIcon direction="down" className="w-3.5 h-3.5" />
 						</button>
 					</div>
 
@@ -955,24 +960,19 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
 									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
 								}
-								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 								title={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
 							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									{isFullPage
-										? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4v4H4M16 4v4h4M8 20v-4H4M16 20v-4h4" />
-										: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
-									}
-								</svg>
+								{isFullPage
+									? <FullscreenExitIcon className="w-3.5 h-3.5" />
+									: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
 							</button>
 							<button
 								onClick={toggleCollapsed}
-								className="flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 								title={t("infoPanel.collapse")}
 							>
-								<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-								</svg>
+								<PanelChevronIcon direction="up" className="w-3.5 h-3.5" />
 							</button>
 						</div>
 

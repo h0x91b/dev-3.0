@@ -1088,3 +1088,190 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 		animation: none;
 	}
 }
+
+/* ---- Animated task-header icons -------------------------------------------
+   The hand-drawn task glyphs (TaskIcons.tsx) act out their operation when the
+   hosting control — any element with .task-anim (a task-header button in
+   TaskInfoPanel or its sub-panels) — is hovered. Pure CSS, loops while hovered,
+   pixel-identical to the static icon when idle.
+   Animated design reference: design/tmux-icons-animated.html (Task header row). */
+
+/* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
+svg [class^="th-"], svg [class*=" th-"] { transform-box: view-box; }
+/* pathLength="1" draw trick — renders the full stroke when idle. */
+svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* -- Watching: the bell rings, sound waves radiate off it -- */
+@keyframes th-bell {
+	0%, 12% { transform: rotate(0deg); }
+	24% { transform: rotate(9deg); }
+	38% { transform: rotate(-8deg); }
+	52% { transform: rotate(5deg); }
+	64% { transform: rotate(-3deg); }
+	76%, 100% { transform: rotate(0deg); }
+}
+@keyframes th-wave {
+	0%, 15% { opacity: .2; }
+	35% { opacity: 1; }
+	60%, 100% { opacity: .2; }
+}
+.task-anim:hover .th-bell { transform-origin: 12px 4.5px; animation: th-bell 2.4s ease-in-out infinite; }
+.task-anim:hover .th-wave-l { animation: th-wave 2.4s ease-in-out infinite; }
+.task-anim:hover .th-wave-r { animation: th-wave 2.4s ease-in-out .15s infinite; }
+
+/* -- Watch (off): a hopeful little nudge, "poke me" -- */
+@keyframes th-bell-nudge {
+	0%, 40% { transform: rotate(0deg); }
+	50% { transform: rotate(4deg); }
+	60% { transform: rotate(-3.5deg); }
+	70% { transform: rotate(2deg); }
+	80%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-bell-nudge { transform-origin: 12px 4.5px; animation: th-bell-nudge 2.4s ease-in-out infinite; }
+
+/* -- Find bugs: the lens focuses in, the caught bug squirms -- */
+@keyframes th-fb-lens {
+	0%, 15% { transform: scale(1); }
+	35% { transform: scale(1.06); }
+	55% { transform: scale(.99); }
+	70%, 100% { transform: scale(1); }
+}
+@keyframes th-fb-bug {
+	0%, 10% { transform: rotate(0deg) translate(0, 0); }
+	25% { transform: rotate(-6deg) translate(-.5px, .3px); }
+	45% { transform: rotate(5deg) translate(.5px, -.3px); }
+	65% { transform: rotate(-3deg) translate(-.3px, 0); }
+	80%, 100% { transform: rotate(0deg) translate(0, 0); }
+}
+.task-anim:hover .th-fb-lens { transform-origin: 10.5px 10.5px; animation: th-fb-lens 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fb-bug { transform-origin: 10.5px 11.4px; animation: th-fb-bug 2.4s ease-in-out infinite; }
+
+/* -- Add agent: the head tilts hello, eyes blink, the antenna pings -- */
+@keyframes th-ro-blink {
+	0%, 20% { opacity: 1; }
+	26%, 32% { opacity: 0; }
+	38%, 58% { opacity: 1; }
+	64%, 70% { opacity: 0; }
+	76%, 100% { opacity: 1; }
+}
+@keyframes th-ro-ping {
+	0%, 10% { transform: scale(1); opacity: 1; }
+	30% { transform: scale(1.7); opacity: .25; }
+	50%, 100% { transform: scale(1); opacity: 1; }
+}
+@keyframes th-ro-head {
+	0%, 15% { transform: rotate(0deg); }
+	35% { transform: rotate(-3deg); }
+	60% { transform: rotate(2.5deg); }
+	80%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-ro-eye { animation: th-ro-blink 2.4s steps(1) infinite; }
+.task-anim:hover .th-ro-ping { transform-origin: 12px 4.3px; animation: th-ro-ping 2.4s ease-out infinite; }
+.task-anim:hover .th-ro-head { transform-origin: 12px 13.5px; animation: th-ro-head 2.4s ease-in-out infinite; }
+
+/* -- Open in…: the arrow launches out of the box, the box recoils -- */
+@keyframes th-oi-arrow {
+	0%, 15% { transform: translate(0, 0); }
+	40% { transform: translate(1.8px, -1.8px); }
+	60% { transform: translate(-.4px, .4px); }
+	80%, 100% { transform: translate(0, 0); }
+}
+@keyframes th-oi-box {
+	0%, 15% { transform: translate(0, 0); }
+	40% { transform: translate(-.4px, .4px); }
+	70%, 100% { transform: translate(0, 0); }
+}
+.task-anim:hover .th-oi-arrow { animation: th-oi-arrow 2.4s ease-in-out infinite; }
+.task-anim:hover .th-oi-box { animation: th-oi-box 2.4s ease-in-out infinite; }
+
+/* -- File tree: connectors wire up, child folders pop into place -- */
+@keyframes th-ft-branch { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-ft-trunk { 0%, 20% { stroke-dashoffset: 1; } 48% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-ft-c1 { 0%, 26% { opacity: 0; transform: scale(.6); } 38%, 100% { opacity: 1; transform: scale(1); } }
+@keyframes th-ft-c2 { 0%, 44% { opacity: 0; transform: scale(.6); } 56%, 100% { opacity: 1; transform: scale(1); } }
+.task-anim:hover .th-ft-branch { animation: th-ft-branch 2.4s ease-in-out infinite; }
+.task-anim:hover .th-ft-trunk { animation: th-ft-trunk 2.4s ease-in-out infinite; }
+.task-anim:hover .th-ft-c1 { transform-origin: 17.25px 11.5px; animation: th-ft-c1 2.4s ease-out infinite; }
+.task-anim:hover .th-ft-c2 { transform-origin: 17.25px 19px; animation: th-ft-c2 2.4s ease-out infinite; }
+
+/* -- Scripts: the ƒ writes itself, crossbar last -- */
+@keyframes th-fn-stroke { 0%, 8% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-fn-bar { 0%, 50% { stroke-dashoffset: 1; } 72% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+.task-anim:hover .th-fn-stroke { animation: th-fn-stroke 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fn-bar { animation: th-fn-bar 2.4s ease-in-out infinite; }
+
+/* -- Ports: the wiring connects, then both endpoints come online -- */
+@keyframes th-po-link1 { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-po-link2 { 0%, 25% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-po-c1 { 0%, 40% { opacity: .35; } 58%, 100% { opacity: 1; } }
+@keyframes th-po-c2 { 0%, 50% { opacity: .35; } 68%, 100% { opacity: 1; } }
+.task-anim:hover .th-po-link1 { animation: th-po-link1 2.4s ease-in-out infinite; }
+.task-anim:hover .th-po-link2 { animation: th-po-link2 2.4s ease-in-out infinite; }
+.task-anim:hover .th-po-c1 { animation: th-po-c1 2.4s ease-in-out infinite; }
+.task-anim:hover .th-po-c2 { animation: th-po-c2 2.4s ease-in-out infinite; }
+
+/* -- Images: golden hour — the sun rises and swells, the ridges draw themselves -- */
+@keyframes th-im-sun {
+	0%, 12% { transform: translateY(0) scale(1); }
+	45%, 62% { transform: translateY(-2.3px) scale(1.18); }
+	92%, 100% { transform: translateY(0) scale(1); }
+}
+@keyframes th-im-m1 { 0%, 10% { stroke-dashoffset: 1; } 45% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-im-m2 { 0%, 28% { stroke-dashoffset: 1; } 62% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+.task-anim:hover .th-im-sun { transform-origin: 9px 9.8px; animation: th-im-sun 2.4s ease-in-out infinite; }
+.task-anim:hover .th-im-m1 { animation: th-im-m1 2.4s ease-in-out infinite; }
+.task-anim:hover .th-im-m2 { animation: th-im-m2 2.4s ease-in-out infinite; }
+
+/* -- Worktree settings: one ratchet turn forward, then wind back -- */
+@keyframes th-gear {
+	0%, 12% { transform: rotate(0deg); }
+	45% { transform: rotate(48deg); }
+	58% { transform: rotate(42deg); }
+	90%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-gear { transform-origin: 12px 12px; animation: th-gear 2.6s ease-in-out infinite; }
+
+/* -- Full screen: the corners fly along their diagonals and settle -- */
+@keyframes th-fs-nw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, -1.6px); } }
+@keyframes th-fs-ne { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, -1.6px); } }
+@keyframes th-fs-se { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, 1.6px); } }
+@keyframes th-fs-sw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, 1.6px); } }
+.task-anim:hover .th-fs-nw { animation: th-fs-nw 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fs-ne { animation: th-fs-ne 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fs-se { animation: th-fs-se 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fs-sw { animation: th-fs-sw 2.4s ease-in-out infinite; }
+
+/* -- Panel chevron: it dips in its pointing direction, a ghost drips after -- */
+@keyframes th-col {
+	0%, 12% { transform: translateY(0); }
+	38% { transform: translateY(2.2px); }
+	62% { transform: translateY(-.5px); }
+	88%, 100% { transform: translateY(0); }
+}
+@keyframes th-col-ghost {
+	0%, 20% { transform: translateY(0); opacity: 0; }
+	45% { transform: translateY(3.2px); opacity: .45; }
+	75%, 100% { transform: translateY(4.6px); opacity: 0; }
+}
+@keyframes th-col-up {
+	0%, 12% { transform: translateY(0); }
+	38% { transform: translateY(-2.2px); }
+	62% { transform: translateY(.5px); }
+	88%, 100% { transform: translateY(0); }
+}
+@keyframes th-col-up-ghost {
+	0%, 20% { transform: translateY(0); opacity: 0; }
+	45% { transform: translateY(-3.2px); opacity: .45; }
+	75%, 100% { transform: translateY(-4.6px); opacity: 0; }
+}
+.task-anim:hover .th-col { animation: th-col 2.4s ease-in-out infinite; }
+.task-anim:hover .th-col-ghost { animation: th-col-ghost 2.4s ease-in-out infinite; }
+.task-anim:hover .th-col-up { animation: th-col-up 2.4s ease-in-out infinite; }
+.task-anim:hover .th-col-up-ghost { animation: th-col-up-ghost 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+	.task-anim:hover [class^="th-"],
+	.task-anim:hover [class*=" th-"] {
+		animation: none;
+	}
+}

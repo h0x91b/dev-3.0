@@ -1,5 +1,6 @@
 import type { Task } from "../../../shared/types";
 import { useT } from "../../i18n";
+import { ImagesIcon } from "../TaskIcons";
 
 interface TaskSharedImagesProps {
 	task: Task;
@@ -25,18 +26,12 @@ export default function TaskSharedImages({ task }: TaskSharedImagesProps) {
 			onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
 				detail: { taskId: task.id, images: task.sharedImages, index: count - 1 },
 			}))}
-			className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge"
+			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge"
 			title={label}
 			aria-label={label}
 			data-testid="shared-images-badge"
 		>
-			<span
-				className="w-[1.125rem] h-[1.125rem] flex items-center justify-center leading-none"
-				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				aria-hidden
-			>
-				{"\u{F02E9}"}
-			</span>
+			<ImagesIcon className="w-[1.125rem] h-[1.125rem]" />
 			<span className="text-[0.6875rem] font-semibold">{t("infoPanel.imagesLabel")}</span>
 			<span className="text-[0.6875rem] font-semibold text-accent tabular-nums">{count}</span>
 		</button>

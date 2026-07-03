@@ -5,6 +5,7 @@ import type { Project, Task } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import OpenInMenu from "../OpenInMenu";
+import { OpenInIcon, FileTreeIcon } from "../TaskIcons";
 
 interface TaskOpenInProps {
 	task: Task;
@@ -59,10 +60,10 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 				<button
 					ref={openInBtnRef}
 					onClick={handleOpenInClick}
-					className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
+					className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
 					title={t("openIn.menuTitle")}
 				>
-					<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0379}"}</span>
+					<OpenInIcon className="w-[1.05rem] h-[1.05rem]" />
 					<span className="text-[0.6875rem] font-semibold">{t("openIn.menuTitle")}</span>
 				</button>
 				{openInMenuOpen && (
@@ -79,7 +80,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 					<button
 						onClick={handleFileBrowser}
 						disabled={!isTaskActive}
-						className={`flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+						className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 							!isTaskActive
 								? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
 								: "text-accent hover:text-accent-hover hover:bg-accent/15 border border-accent/30"
@@ -87,7 +88,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 						title={t("header.fileBrowser")}
 						aria-label={t("header.fileBrowser")}
 					>
-						<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "1.125rem", lineHeight: 1 }}>{"\u{F0645}"}</span>
+						<FileTreeIcon className="w-[1.125rem] h-[1.125rem]" />
 					</button>
 					{yaziInstallPopup && createPortal(
 						<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setYaziInstallPopup(false)}>
