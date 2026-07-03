@@ -23,6 +23,7 @@ import {
 	saveRepoLocalConfig,
 	ensureGitignore,
 	getConfigSources,
+	resolveConfigProvenance,
 	resolveProjectConfig,
 	resolveOperationalProjectConfig,
 	migrateProjectConfig,
@@ -247,6 +248,67 @@ describe("getConfigSources", () => {
 
 		const setupSource = sources.find((s) => s.field === "setupScript");
 		expect(setupSource?.source).toBe("local");
+	});
+});
+
+describe("resolveConfigProvenance", () => {
+	it("attributes every key when no config files exist (project / default / unset)", async () => {
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project);
+		const prov = resolveConfigProvenance(resolved, project);
+
+		// Values carried on the Project object (projects.json) → "project"
+		expect(prov.setupScript).toBe("project");
+		expect(prov.cleanupScript).toBe("project");
+		expect(prov.defaultBaseBranch).toBe("project");
+		expect(prov.clonePaths).toBe("project");
+		expect(prov.peerReviewEnabled).toBe("project");
+
+		// Values that only exist because of DEFAULTS / derivation → "default"
+		expect(prov.setupScriptLaunchMode).toBe("default");
+		expect(prov.autoReviewEnabled).toBe("default");
+		expect(prov.sparseCheckoutEnabled).toBe("default");
+		expect(prov.sparseCheckoutPaths).toBe("default");
+		expect(prov.defaultCompareRef).toBe("default"); // derived origin/main
+
+		// No value at any layer and no default → "unset" (CLI renders "(not set)")
+		expect(prov.defaultCompareRefMode).toBe("unset");
+		expect(prov.portCount).toBe("unset");
+		expect(prov.builtinColumnAgents).toBe("unset");
+	});
+
+	it("labels file-backed keys local/repo and treats a phantom empty array as unconfigured", async () => {
+		const configDir = join(TEST_DIR, ".dev3");
+		mkdirSync(configDir, { recursive: true });
+		writeFileSync(join(configDir, "config.json"), JSON.stringify({
+			setupScript: "bun install",
+			clonePaths: [], // empty array must NOT claim the key (see effective())
+			portCount: 2,
+		}));
+		writeFileSync(join(configDir, "config.local.json"), JSON.stringify({
+			devScript: "bun run dev:local",
+		}));
+
+		const project = makeProject();
+		const resolved = await resolveProjectConfig(project);
+		const prov = resolveConfigProvenance(resolved, project);
+
+		expect(prov.setupScript).toBe("repo");
+		expect(prov.devScript).toBe("local"); // local layer wins over project
+		expect(prov.portCount).toBe("repo");
+		// clonePaths [] in the file is "not configured" → falls through to the project value
+		expect(prov.clonePaths).toBe("project");
+		expect(resolved.clonePaths).toEqual(["node_modules"]);
+	});
+
+	it("does not label a field 'default' when its value came from the project object", async () => {
+		// defaultBaseBranch lives on the Project object, not in any file — the source
+		// must be "project", never a blanket "default"/"global".
+		const project = makeProject({ defaultBaseBranch: "develop" });
+		const resolved = await resolveProjectConfig(project);
+		const prov = resolveConfigProvenance(resolved, project);
+		expect(resolved.defaultBaseBranch).toBe("develop");
+		expect(prov.defaultBaseBranch).toBe("project");
 	});
 });
 

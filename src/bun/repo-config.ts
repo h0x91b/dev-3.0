@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
-import type { Project, Dev3RepoConfig, ConfigSourceEntry } from "../shared/types";
+import type { Project, Dev3RepoConfig, ConfigSourceEntry, ResolvedConfigSource } from "../shared/types";
 import { DEV3_REPO_CONFIG_KEYS } from "../shared/types";
 import { createLogger } from "./logger";
 import * as git from "./git";
@@ -136,6 +136,49 @@ export async function getConfigSources(projectPath: string): Promise<ConfigSourc
 		}
 	}
 	return entries;
+}
+
+/**
+ * Full per-field provenance for the resolved config cascade — used by
+ * `dev3 config show` so every key shows exactly where its value came from,
+ * never a blanket fallback that hides project/default/unset behind one label.
+ *
+ * Unlike getConfigSources (repo/local only, for the UI badge), this attributes
+ * EVERY key in DEV3_REPO_CONFIG_KEYS to one origin, mirroring applyConfigCascade
+ * so the label always matches the value the cascade actually resolved:
+ *   local   → effective value in .dev3/config.local.json
+ *   repo    → effective value in .dev3/config.json
+ *   project → value on the Project object (projects.json), no file value
+ *   default → value from DEFAULTS or a derived field (e.g. defaultCompareRef)
+ *   unset   → no value at any layer (the CLI renders this "(not set)")
+ *
+ * `resolved` is the output of resolveProjectConfig for the same project+path;
+ * `project` is the raw Project object. Empty arrays count as "not configured"
+ * for file layers (matches effective()), so a phantom `[]` can't claim a key.
+ */
+export function resolveConfigProvenance(
+	resolved: Project,
+	project: Project,
+	configPath?: string,
+): Record<string, ResolvedConfigSource> {
+	const basePath = configPath ?? project.path;
+	const localConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${LOCAL_CONFIG_FILE}`);
+	const repoConfig = readJsonFile<Dev3RepoConfig>(`${basePath}/${CONFIG_FILE}`);
+	const provenance: Record<string, ResolvedConfigSource> = {};
+	for (const key of DEV3_REPO_CONFIG_KEYS) {
+		if (effective(localConfig?.[key]) !== undefined) {
+			provenance[key] = "local";
+		} else if (effective(repoConfig?.[key]) !== undefined) {
+			provenance[key] = "repo";
+		} else if ((project as any)[key] != null) {
+			provenance[key] = "project";
+		} else if ((resolved as any)[key] != null) {
+			provenance[key] = "default";
+		} else {
+			provenance[key] = "unset";
+		}
+	}
+	return provenance;
 }
 
 /**

@@ -830,7 +830,11 @@ const handlers: Record<string, Handler> = {
 		const project = await data.getProject(projectId);
 		const configPath = worktreePath || project.path;
 		const resolved = await repoConfig.resolveProjectConfig(project, configPath);
-		const sources = await repoConfig.getConfigSources(configPath);
+		// Full provenance for every key (local/repo/project/default/unset) — the CLI
+		// renders it verbatim, so it never has to guess a blanket "global" fallback
+		// that would hide whether a value is a real default, a project setting, or
+		// genuinely unset. Wider than getConfigSources (repo/local, for the UI badge).
+		const provenance = repoConfig.resolveConfigProvenance(resolved, project, configPath);
 		const hasRepoFile = repoConfig.hasRepoConfig(configPath);
 		return {
 			// Map unset fields (no value at any layer and no default — e.g. portCount)
@@ -841,7 +845,7 @@ const handlers: Record<string, Handler> = {
 			settings: Object.fromEntries(
 				DEV3_REPO_CONFIG_KEYS.map((key) => [key, (resolved as any)[key] ?? null]),
 			),
-			sources: Object.fromEntries(sources.map((s) => [s.field, s.source])),
+			sources: provenance,
 			hasRepoConfig: hasRepoFile,
 		};
 	},

@@ -126,6 +126,51 @@ describe("config show", () => {
 		expect(stdoutOutput).toContain("(not set)");
 		expect(stdoutOutput).not.toContain("null");
 	});
+
+	// The backend now sends a real source for every key (local/repo/project/
+	// default/unset). The CLI must print those verbatim and never fall back to
+	// the old misleading blanket "global" label.
+	it("renders per-field sources verbatim and never prints 'global'", async () => {
+		mockSend.mockResolvedValue(okResp({
+			settings: {
+				setupScript: "bun install",
+				setupScriptLaunchMode: "blocking",
+				defaultBaseBranch: "main",
+				defaultCompareRefMode: null,
+			},
+			sources: {
+				setupScript: "repo",
+				setupScriptLaunchMode: "project",
+				defaultBaseBranch: "default",
+				defaultCompareRefMode: "unset",
+			},
+			hasRepoConfig: true,
+		}));
+
+		await handleConfig("show", EMPTY_ARGS, SOCKET, CTX_WITH_WT);
+
+		expect(stdoutOutput).toContain("project");
+		expect(stdoutOutput).toContain("default");
+		expect(stdoutOutput).toContain("unset");
+		expect(stdoutOutput).not.toContain("global");
+	});
+
+	// A non-null object field (builtinColumnAgents) must render as a readable
+	// summary, not the opaque "[object Object]".
+	it("renders an object-valued field as a readable summary, not [object Object]", async () => {
+		mockSend.mockResolvedValue(okResp({
+			settings: {
+				builtinColumnAgents: { "review-by-ai": { agentId: "builtin-claude" } },
+			},
+			sources: { builtinColumnAgents: "repo" },
+			hasRepoConfig: true,
+		}));
+
+		await handleConfig("show", EMPTY_ARGS, SOCKET, CTX_WITH_WT);
+
+		expect(stdoutOutput).toContain("1 column");
+		expect(stdoutOutput).not.toContain("[object Object]");
+	});
 });
 
 describe("config export", () => {
