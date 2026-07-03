@@ -1,11 +1,12 @@
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import type { BranchStatus, Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
+import { AutoMergeIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 
 export interface TaskBranchStatusMeta {
 	branchStatus: BranchStatus | null;
@@ -26,16 +27,6 @@ interface TaskGitActionsProps {
 	onBranchStatusChange?: (meta: TaskBranchStatusMeta) => void;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
-
-// Nerd Font git glyphs used for the icon-only (compact) git action buttons.
-const GIT_GLYPH = {
-	showDiff: "\uEC0B", // cod-git-pull-request-go-to-changes
-	rebase: "\uEAFD", // cod-git-compare
-	push: "\uF062", // fa-arrow-up
-	createPR: "\uEBBC", // cod-git-pull-request-create
-	createPRAutoMerge: "\uF4DB", // oct-git-merge-queue
-	merge: "\uEAFE", // cod-git-merge
-} as const;
 
 export default function TaskGitActions({
 	task,
@@ -234,7 +225,8 @@ export default function TaskGitActions({
 
 	function getPRButtonLabel(): string {
 		if (creatingPR) return t("infoPanel.creatingPR");
-		return t("infoPanel.createPR");
+		// Short visible label — the icon carries the semantics; the aria-label stays descriptive.
+		return t("infoPanel.createPRShort");
 	}
 
 	function getPRTooltip(): string {
@@ -264,8 +256,8 @@ export default function TaskGitActions({
 	const disabledBtnClass = "text-fg-muted/50 cursor-not-allowed bg-raised/50";
 	const enabledBtnClass = "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25";
 
-	const gitGlyph = (glyph: string, spin = false) => (
-		// Fixed square slot so the idle glyph and the in-progress ring share one footprint
+	const gitIcon = (icon: ReactNode, spin = false) => (
+		// Fixed square slot so the idle icon and the in-progress ring share one footprint
 		// (the icon does not shift sideways when the spin starts) and both stay centered.
 		<span
 			className="inline-flex items-center justify-center w-[0.85rem] h-[0.85rem]"
@@ -273,21 +265,28 @@ export default function TaskGitActions({
 		>
 			{spin ? (
 				// Circular ring spinner: radially symmetric, so animate-spin rotates it perfectly
-				// around its own center — zero wobble. (A spinning Nerd Font glyph wobbles instead,
-				// because its ink center never lines up with its advance-width × line-height box.)
+				// around its own center — zero wobble.
 				<span
 					className={`w-2.5 h-2.5 rounded-full border-2 border-current/30 border-t-current${reducedMotion ? "" : " animate-spin"}`}
 				/>
 			) : (
-				<span
-					className="text-[0.85rem] leading-none"
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{glyph}
-				</span>
+				icon
 			)}
 		</span>
 	);
+
+	const iconClass = "w-[0.85rem] h-[0.85rem]";
+
+	// Compact = icon only; full = icon + label. Every git button now carries an icon.
+	const btnContent = (icon: ReactNode, label: string, spin = false) =>
+		compact ? (
+			gitIcon(icon, spin)
+		) : (
+			<span className="inline-flex items-center gap-1">
+				{gitIcon(icon, spin)}
+				<span>{label}</span>
+			</span>
+		);
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
@@ -298,40 +297,35 @@ export default function TaskGitActions({
 					compareLabel: displayRef,
 				})}
 				disabled={showDiffDisabled}
-				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
+				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
 					showDiffDisabled ? disabledBtnClass : "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
 				}`}
 				title={showDiffTooltip}
 				aria-label={t("infoPanel.showDiff")}
 			>
-				{compact ? gitGlyph(GIT_GLYPH.showDiff) : (
-					<span className="inline-flex items-center gap-1.5">
-						{gitGlyph(GIT_GLYPH.showDiff)}
-						<span>{t("infoPanel.showDiff")}</span>
-					</span>
-				)}
+				{btnContent(<ShowDiffIcon className={iconClass} />, t("infoPanel.showDiffShort"))}
 			</button>
 			<button
 				onClick={handleRebase}
 				disabled={rebaseDisabled}
-				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					rebaseDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={rebaseTooltip}
 				aria-label={t("infoPanel.rebase")}
 			>
-				{compact ? gitGlyph(GIT_GLYPH.rebase, rebasing) : (rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase"))}
+				{btnContent(<RebaseIcon className={iconClass} />, rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase"), rebasing)}
 			</button>
 			<button
 				onClick={handlePush}
 				disabled={pushDisabled}
-				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					pushDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={pushTooltip}
 				aria-label={t("infoPanel.push")}
 			>
-				{compact ? gitGlyph(GIT_GLYPH.push, pushing) : (pushing ? t("infoPanel.pushing") : t("infoPanel.push"))}
+				{btnContent(<PushIcon className={iconClass} />, pushing ? t("infoPanel.pushing") : t("infoPanel.push"), pushing)}
 			</button>
 			{/* When a PR already exists, the "PR #N" badge above already links to it - no Open PR button needed. */}
 			{!hasPR && (
@@ -339,56 +333,42 @@ export default function TaskGitActions({
 					<button
 						onClick={() => void handleCreatePR(false)}
 						disabled={createPRDisabled}
-						className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 							createPRDisabled ? disabledBtnClass : enabledBtnClass
 						}`}
 						title={getPRTooltip()}
 						aria-label={t("infoPanel.createPR")}
 					>
-						{compact ? gitGlyph(GIT_GLYPH.createPR, creatingPR) : (
-							<span className="inline-flex items-center gap-1.5">
-								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{"\u{F16A6}"}
-								</span>
-								<span>{getPRButtonLabel()}</span>
-							</span>
-						)}
+						{btnContent(<CreatePRIcon className={iconClass} />, getPRButtonLabel(), creatingPR)}
 					</button>
 					<button
 						onClick={() => void handleCreatePR(true)}
 						disabled={createPRDisabled}
-						className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 							createPRDisabled ? disabledBtnClass : enabledBtnClass
 						}`}
 						title={getPRAutoMergeTooltip()}
 						aria-label={t("infoPanel.createPRAutoMerge")}
 					>
-						{compact ? gitGlyph(GIT_GLYPH.createPRAutoMerge, creatingPR) : (
-							<span className="inline-flex items-center gap-1.5">
-								<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-									{"\u{F16A6}"}
-								</span>
-								<span>{creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMerge")}</span>
-							</span>
-						)}
+						{btnContent(<AutoMergeIcon className={iconClass} />, creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMergeShort"), creatingPR)}
 					</button>
 				</>
 			)}
 			<button
 				onClick={handleMerge}
 				disabled={mergeDisabled}
-				className={`px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 					mergeDisabled ? disabledBtnClass : enabledBtnClass
 				}`}
 				title={mergeTooltip}
 				aria-label={t("infoPanel.merge")}
 			>
-				{compact ? gitGlyph(GIT_GLYPH.merge, merging) : (merging ? t("infoPanel.merging") : t("infoPanel.merge"))}
+				{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : t("infoPanel.merge"), merging)}
 			</button>
 			<button
 				onClick={handleRefreshStatus}
 				disabled={refreshingStatus}
-				className="p-0.5 rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
+				className="inline-flex items-center justify-center p-0.5 rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
 				title={t("infoPanel.refreshStatus")}
 			>
 				<svg

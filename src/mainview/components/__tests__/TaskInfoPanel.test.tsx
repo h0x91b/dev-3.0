@@ -1212,7 +1212,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			expect(screen.getAllByText("Show Diff").length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByText("Diff").length).toBeGreaterThanOrEqual(1);
 			expect(screen.queryByText("Unpushed")).not.toBeInTheDocument();
 			expect(screen.getAllByText("Rebase").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Push").length).toBeGreaterThanOrEqual(1);
@@ -1375,7 +1375,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask(), { onOpenInlineDiff });
 			});
 
-			const diffButtons = screen.getAllByText("Show Diff");
+			const diffButtons = screen.getAllByText("Diff");
 			const enabledBtn = diffButtons.find(b => !b.closest("button")!.disabled);
 			expect(enabledBtn).toBeTruthy();
 			await user.click(enabledBtn!.closest("button")!);
@@ -1395,7 +1395,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask(), { onOpenInlineDiff });
 			});
 
-			const diffButtons = screen.getAllByText("Show Diff");
+			const diffButtons = screen.getAllByText("Diff");
 			const enabledBtn = diffButtons.find((button) => !button.closest("button")!.disabled);
 			expect(enabledBtn).toBeTruthy();
 
@@ -1595,7 +1595,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			const createPRButtons = screen.getAllByText("Create PR");
+			const createPRButtons = screen.getAllByText("PR");
 			expect(createPRButtons.length).toBeGreaterThanOrEqual(1);
 			expect(screen.queryByText("Open PR")).not.toBeInTheDocument();
 		});
@@ -1615,7 +1615,7 @@ describe("TaskInfoPanel", () => {
 
 			const badges = screen.getAllByText(/PR #42/);
 			expect(badges.length).toBeGreaterThanOrEqual(1);
-			expect(screen.queryByText("Create PR")).not.toBeInTheDocument();
+			expect(screen.queryByText("PR")).not.toBeInTheDocument();
 		});
 
 		it("shows PR badge even when ahead=0", async () => {
@@ -1671,7 +1671,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			const createPRButtons = screen.getAllByText("Create PR");
+			const createPRButtons = screen.getAllByText("PR");
 			const enabledBtn = createPRButtons.find(b => !b.closest("button")!.disabled);
 			expect(enabledBtn).toBeTruthy();
 			await user.click(enabledBtn!.closest("button")!);
@@ -1697,7 +1697,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask());
 			});
 
-			const autoMergeButtons = screen.getAllByText("PR + auto-merge");
+			const autoMergeButtons = screen.getAllByText("Auto PR");
 			const enabledBtn = autoMergeButtons.find(b => !b.closest("button")!.disabled);
 			expect(enabledBtn).toBeTruthy();
 			await user.click(enabledBtn!.closest("button")!);
@@ -1765,7 +1765,7 @@ describe("TaskInfoPanel", () => {
 			});
 
 			// Labels collapse to glyphs; the actions remain reachable via aria-label/title.
-			expect(screen.queryByText("Create PR")).not.toBeInTheDocument();
+			expect(screen.queryByText("PR")).not.toBeInTheDocument();
 			expect(screen.queryByText("Rebase")).not.toBeInTheDocument();
 			expect(screen.getAllByLabelText("Create PR").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByLabelText("Merge").length).toBeGreaterThanOrEqual(1);

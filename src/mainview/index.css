@@ -460,3 +460,818 @@ html[data-image-viewer="open"] [data-terminal="true"] {
 html[data-composer-focused] [data-collapse-on-compose] {
 	display: none;
 }
+
+/* ---- Animated tmux icons ---------------------------------------------------
+   The hand-drawn tmux glyphs (TmuxIcons.tsx) act out their operation when the
+   hosting control — any element with .tmux-anim (toolbar button, layout menu
+   row, un-zoom badge, mobile sheet row) — is hovered. Pure CSS, loops while
+   hovered, pixel-identical to the static glyph when idle.
+   Animated design reference: design/tmux-icons-animated.html. */
+
+/* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
+svg .tmx { transform-box: view-box; }
+/* pathLength="1" draw trick — renders the full stroke when idle. */
+svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* -- Split (horizontal / vertical): the cut-line saws across, the newborn
+      half flashes, the plus pops in -- */
+@keyframes tmx-sh-div {
+	0% { opacity: 0; stroke-dashoffset: 42; }
+	12% { opacity: 1; }
+	55% { stroke-dashoffset: 0; }
+	88% { opacity: 1; stroke-dashoffset: -10; }
+	100% { opacity: 0; stroke-dashoffset: -14; }
+}
+@keyframes tmx-sh-plus {
+	0%, 30% { transform: scale(0); opacity: 0; }
+	46% { transform: scale(1.4); opacity: 1; }
+	56% { transform: scale(1); }
+	86% { transform: scale(1); opacity: 1; }
+	100% { transform: scale(.6); opacity: 0; }
+}
+@keyframes tmx-sh-half {
+	0%, 38% { opacity: 0; }
+	58% { opacity: .3; }
+	82% { opacity: .18; }
+	100% { opacity: 0; }
+}
+.tmux-anim:hover .tmx-sh-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sh-plus { transform-origin: 12px 17px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sh-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sv-div { animation: tmx-sh-div 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sv-plus { transform-origin: 18px 12px; animation: tmx-sh-plus 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-sv-half { animation: tmx-sh-half 2.4s ease-in-out infinite; }
+
+/* -- Cycle layout: the two panes trade places while the arrows orbit -- */
+@keyframes tmx-cy-left {
+	0%, 8% { transform: translate(0, 0); }
+	26% { transform: translate(6px, -6.5px); }
+	44% { transform: translate(12px, 0); }
+	56% { transform: translate(12px, 0); }
+	74% { transform: translate(6px, 6.5px); }
+	92%, 100% { transform: translate(0, 0); }
+}
+@keyframes tmx-cy-right {
+	0%, 8% { transform: translate(0, 0); }
+	26% { transform: translate(-6px, 6.5px); }
+	44% { transform: translate(-12px, 0); }
+	56% { transform: translate(-12px, 0); }
+	74% { transform: translate(-6px, -6.5px); }
+	92%, 100% { transform: translate(0, 0); }
+}
+@keyframes tmx-cy-orbit {
+	0%, 8% { transform: rotate(0deg); }
+	44% { transform: rotate(180deg); }
+	56% { transform: rotate(180deg); }
+	92%, 100% { transform: rotate(360deg); }
+}
+.tmux-anim:hover .tmx-cy-left { animation: tmx-cy-left 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-cy-right { animation: tmx-cy-right 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-cy-orbit { transform-origin: 12px 12px; animation: tmx-cy-orbit 2.6s ease-in-out infinite; }
+
+/* -- Zoom: the pane inflates toward the brackets, arrows fire outward -- */
+@keyframes tmx-z-rect {
+	0%, 8% { transform: scale(1); }
+	38% { transform: scale(1.22); }
+	58% { transform: scale(1.22); }
+	88%, 100% { transform: scale(1); }
+}
+@keyframes tmx-z-diag {
+	0%, 12% { stroke-dashoffset: 1; opacity: 0; }
+	20% { opacity: 1; }
+	42% { stroke-dashoffset: 0; opacity: 1; }
+	60% { stroke-dashoffset: 0; opacity: 1; }
+	80% { stroke-dashoffset: 1; opacity: 0; }
+	100% { stroke-dashoffset: 1; opacity: 0; }
+}
+@keyframes tmx-z-tl { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(-1.6px, -1.6px); } 58% { transform: translate(-1.6px, -1.6px); } 88%, 100% { transform: translate(0, 0); } }
+@keyframes tmx-z-tr { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(1.6px, -1.6px); } 58% { transform: translate(1.6px, -1.6px); } 88%, 100% { transform: translate(0, 0); } }
+@keyframes tmx-z-br { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(1.6px, 1.6px); } 58% { transform: translate(1.6px, 1.6px); } 88%, 100% { transform: translate(0, 0); } }
+@keyframes tmx-z-bl { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(-1.6px, 1.6px); } 58% { transform: translate(-1.6px, 1.6px); } 88%, 100% { transform: translate(0, 0); } }
+.tmux-anim:hover .tmx-z-rect { transform-origin: 12px 12px; animation: tmx-z-rect 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-diag { animation: tmx-z-diag 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-tl { animation: tmx-z-tl 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-tr { animation: tmx-z-tr 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-br { animation: tmx-z-br 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-bl { animation: tmx-z-bl 2.4s ease-in-out infinite; }
+
+/* -- Close pane: the X is slashed on, the pane shudders and blinks out -- */
+@keyframes tmx-k-x1 {
+	0%, 8% { stroke-dashoffset: 1; }
+	28% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes tmx-k-x2 {
+	0%, 22% { stroke-dashoffset: 1; }
+	42% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes tmx-k-shake {
+	0%, 44% { transform: translateX(0); }
+	48% { transform: translateX(-.9px); }
+	52% { transform: translateX(.9px); }
+	56% { transform: translateX(-.7px); }
+	60% { transform: translateX(.5px); }
+	64% { transform: translateX(0); }
+	100% { transform: translateX(0); }
+}
+@keyframes tmx-k-die {
+	0%, 66% { opacity: 1; }
+	84% { opacity: .08; }
+	92% { opacity: .08; }
+	100% { opacity: 1; }
+}
+.tmux-anim:hover .tmx-k-x1 { animation: tmx-k-x1 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-k-x2 { animation: tmx-k-x2 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-k-shake { animation: tmx-k-shake 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-k-die { animation: tmx-k-die 2.4s ease-in-out infinite; }
+
+/* -- tmux hints: a sonar ring pings outward from the info glyph -- */
+@keyframes tmx-i-pulse {
+	0%, 10% { transform: scale(1); }
+	30% { transform: scale(1.12); }
+	50%, 100% { transform: scale(1); }
+}
+@keyframes tmx-i-ring {
+	0%, 12% { transform: scale(.55); opacity: 0; }
+	22% { opacity: .7; }
+	62% { transform: scale(1.45); opacity: 0; }
+	100% { transform: scale(1.45); opacity: 0; }
+}
+.tmux-anim:hover .tmx-i-glyph { transform-origin: 8px 8px; animation: tmx-i-pulse 2.2s ease-in-out infinite; }
+.tmux-anim:hover .tmx-i-ring { transform-origin: 8px 8px; animation: tmx-i-ring 2.2s ease-out infinite; }
+
+/* -- Layout presets: dividers draw in, panes light up in tmux order -- */
+@keyframes tmx-l-d1 { 0%, 6% { stroke-dashoffset: 1; } 26% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes tmx-l-d2 { 0%, 20% { stroke-dashoffset: 1; } 40% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes tmx-l-f1 { 0%, 42% { opacity: 0; } 50% { opacity: .35; } 62% { opacity: .12; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-f2 { 0%, 52% { opacity: 0; } 60% { opacity: .35; } 72% { opacity: .12; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-f3 { 0%, 62% { opacity: 0; } 70% { opacity: .35; } 82% { opacity: .12; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-f4 { 0%, 72% { opacity: 0; } 80% { opacity: .35; } 88% { opacity: .12; } 100% { opacity: 0; } }
+@keyframes tmx-l-main { 0%, 44% { opacity: 0; } 56% { opacity: .35; } 74% { opacity: .16; } 88% { opacity: .16; } 100% { opacity: 0; } }
+@keyframes tmx-l-sub { 0%, 60% { opacity: 0; } 70% { opacity: .14; } 88% { opacity: .14; } 100% { opacity: 0; } }
+.tmux-anim:hover .tmx-lt-v { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-h { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-lt-q4 { animation: tmx-l-f4 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-r1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-r2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-eh-r3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-c1 { animation: tmx-l-f1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-c2 { animation: tmx-l-f2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-ev-c3 { animation: tmx-l-f3 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mh-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-l1 { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-l2 { animation: tmx-l-d2 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-main { animation: tmx-l-main 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mv-sub { animation: tmx-l-sub 2.6s ease-in-out infinite; }
+
+/* -- New window: a fresh window pops into existence -- */
+@keyframes tmx-nw-pop {
+	0% { transform: scale(.55); opacity: 0; }
+	16% { transform: scale(1.07); opacity: 1; }
+	26% { transform: scale(1); }
+	82% { transform: scale(1); opacity: 1; }
+	100% { transform: scale(.9); opacity: 0; }
+}
+@keyframes tmx-nw-tab {
+	0%, 18% { stroke-dashoffset: 1; }
+	42% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes tmx-nw-plus {
+	0%, 38% { transform: scale(0) rotate(-90deg); opacity: 0; }
+	56% { transform: scale(1.35) rotate(0deg); opacity: 1; }
+	66% { transform: scale(1) rotate(0deg); }
+	100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes tmx-nw-bar {
+	0%, 26% { opacity: 0; }
+	44% { opacity: .3; }
+	82% { opacity: .18; }
+	100% { opacity: 0; }
+}
+.tmux-anim:hover .tmx-nw-pop { transform-origin: 12px 12px; animation: tmx-nw-pop 2.6s cubic-bezier(.34, 1.4, .64, 1) infinite; }
+.tmux-anim:hover .tmx-nw-tab { animation: tmx-nw-tab 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-nw-plus { transform-origin: 12px 15px; animation: tmx-nw-plus 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-nw-bar { animation: tmx-nw-bar 2.6s ease-in-out infinite; }
+
+/* -- Panes & windows (mobile manage): focus hops between panes -- */
+@keyframes tmx-mg-left { 0%, 30% { opacity: 0; } 40% { opacity: .32; } 52% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes tmx-mg-right { 0%, 54% { opacity: 0; } 64% { opacity: .32; } 76% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes tmx-mg-back { 0%, 78% { opacity: 0; } 86% { opacity: .32; } 96% { opacity: 0; } 100% { opacity: 0; } }
+.tmux-anim:hover .tmx-mg-line { animation: tmx-l-d1 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mg-left { animation: tmx-mg-left 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mg-right { animation: tmx-mg-right 2.6s ease-in-out infinite; }
+.tmux-anim:hover .tmx-mg-back { animation: tmx-mg-back 2.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+	.tmux-anim:hover [class^="tmx-"],
+	.tmux-anim:hover [class*=" tmx-"] {
+		animation: none;
+	}
+}
+
+/* ---- Animated git-action icons --------------------------------------------
+   The hand-drawn git glyphs (GitIcons.tsx) act out their operation when the
+   hosting control — any element with .git-anim (a git-row button or the diff
+   include-tests toggle) — is hovered. Pure CSS, loops while hovered,
+   pixel-identical to the static glyph when idle.
+   Animated design reference: design/tmux-icons-animated.html (Git actions). */
+
+/* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
+svg .gtx { transform-box: view-box; }
+/* pathLength="1" draw trick — renders the full stroke when idle. */
+svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* -- Show Diff (unified): + pops in, added line types out, removed line blinks -- */
+@keyframes gtx-gd-add {
+	0%, 10% { stroke-dashoffset: 1; opacity: 0; }
+	16% { opacity: 1; }
+	38% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes gtx-gd-plus {
+	0%, 6% { transform: scale(0); opacity: 0; }
+	18% { transform: scale(1.35); opacity: 1; }
+	28% { transform: scale(1); }
+	100% { transform: scale(1); opacity: 1; }
+}
+@keyframes gtx-gd-del {
+	0%, 40% { opacity: 1; }
+	56% { opacity: .25; }
+	66% { opacity: 1; }
+	78% { opacity: .25; }
+	100% { opacity: .25; }
+}
+.git-anim:hover .gtx-gd-add { animation: gtx-gd-add 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gd-plus { transform-origin: 7px 9px; animation: gtx-gd-plus 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gd-del { animation: gtx-gd-del 2.4s ease-in-out infinite; }
+
+/* -- Rebase (replant): rail marches, the commit rides it up, the tip pulses -- */
+@keyframes gtx-gr-ants { to { stroke-dashoffset: -23; } }
+@keyframes gtx-gr-dot {
+	/* waypoints sampled from the bezier M17.5 14.9 C17.5 10.2 15.2 7 11 5.6,
+	   relative to the dot's idle center (17.5, 17) */
+	0%, 8% { transform: translate(0, 0); opacity: 1; }
+	22% { transform: translate(-0.7px, -6.3px); opacity: 1; }
+	36% { transform: translate(-2.9px, -9.4px); opacity: 1; }
+	48% { transform: translate(-6.5px, -11.4px); opacity: 1; }
+	56% { transform: translate(-6.5px, -11.4px); opacity: 0; }
+	64% { transform: translate(0, 0); opacity: 0; }
+	74%, 100% { transform: translate(0, 0); opacity: 1; }
+}
+@keyframes gtx-gr-land {
+	0%, 44% { transform: scale(1); }
+	54% { transform: scale(1.45); }
+	66%, 100% { transform: scale(1); }
+}
+.git-anim:hover .gtx-gr-ants { animation: gtx-gr-ants 1.6s linear infinite; }
+.git-anim:hover .gtx-gr-dot { animation: gtx-gr-dot 2.6s ease-in-out infinite; }
+.git-anim:hover .gtx-gr-land { transform-origin: 6px 5px; animation: gtx-gr-land 2.6s ease-in-out infinite; }
+
+/* -- Push (cloud): the arrow launches up and vanishes, the cloud gulps -- */
+@keyframes gtx-gp-arrow {
+	0%, 8% { transform: translateY(0); opacity: 1; }
+	42% { transform: translateY(-5.5px); opacity: 1; }
+	54% { transform: translateY(-7px); opacity: 0; }
+	60% { transform: translateY(2.5px); opacity: 0; }
+	74% { transform: translateY(2.5px); opacity: 1; }
+	92%, 100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes gtx-gp-cloud {
+	0%, 34% { transform: scale(1); }
+	48% { transform: scale(1.09); }
+	62%, 100% { transform: scale(1); }
+}
+.git-anim:hover .gtx-gp-arrow { animation: gtx-gp-arrow 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gp-cloud { transform-origin: 11.5px 11px; animation: gtx-gp-cloud 2.4s ease-in-out infinite; }
+
+/* -- Create PR (sparkle): branch curve draws over, dot lands, sparkle twinkles -- */
+@keyframes gtx-gc-curve {
+	0%, 10% { stroke-dashoffset: 1; }
+	46% { stroke-dashoffset: 0; }
+	100% { stroke-dashoffset: 0; }
+}
+@keyframes gtx-gc-dot {
+	0%, 40% { transform: scale(1); }
+	52% { transform: scale(1.4); }
+	64%, 100% { transform: scale(1); }
+}
+@keyframes gtx-gc-spark {
+	0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
+	25% { transform: scale(1.35) rotate(20deg); opacity: 1; }
+	45% { transform: scale(.55) rotate(-12deg); opacity: .55; }
+	65% { transform: scale(1.2) rotate(8deg); opacity: 1; }
+}
+.git-anim:hover .gtx-gc-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gc-dot { transform-origin: 15.5px 18.5px; animation: gtx-gc-dot 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gc-spark { transform-origin: 19.7px 5.6px; animation: gtx-gc-spark 2.4s ease-in-out infinite; }
+
+/* -- PR + auto-merge (lightning): curve draws, the bolt strikes and crackles -- */
+@keyframes gtx-gl-bolt {
+	0%, 26% { transform: scale(0); opacity: 0; }
+	36% { transform: scale(1.35); opacity: 1; }
+	44% { transform: scale(1); }
+	52% { opacity: 1; }
+	58% { opacity: .35; }
+	64% { opacity: 1; }
+	70% { opacity: .45; }
+	76%, 96% { opacity: 1; }
+	100% { transform: scale(1); opacity: 1; }
+}
+.git-anim:hover .gtx-gl-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gl-bolt { transform-origin: 16.8px 15.4px; animation: gtx-gl-bolt 2.4s ease-in-out infinite; }
+
+/* -- Merge (classic): branch flows into the base, merge commit pops in -- */
+@keyframes gtx-gm-dot {
+	0%, 38% { transform: scale(0); opacity: 0; }
+	52% { transform: scale(1.5); opacity: 1; }
+	64% { transform: scale(1); }
+	100% { transform: scale(1); opacity: 1; }
+}
+.git-anim:hover .gtx-gm-curve { animation: gtx-gc-curve 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gm-dot { transform-origin: 17px 14px; animation: gtx-gm-dot 2.4s ease-in-out infinite; }
+
+/* -- Include tests (boiling flask): liquid sloshes, bubbles rise out -- */
+@keyframes gtx-tf-b1 {
+	0%, 12% { transform: translateY(0); opacity: 0; }
+	20% { opacity: 1; }
+	48% { transform: translateY(-6.5px); opacity: 0; }
+	100% { transform: translateY(-6.5px); opacity: 0; }
+}
+@keyframes gtx-tf-b2 {
+	0%, 38% { transform: translateY(0); opacity: 0; }
+	46% { opacity: 1; }
+	76% { transform: translateY(-5.5px); opacity: 0; }
+	100% { transform: translateY(-5.5px); opacity: 0; }
+}
+@keyframes gtx-tf-liquid {
+	0%, 100% { transform: translateY(0); }
+	30% { transform: translateY(-1px); }
+	60% { transform: translateY(.4px); }
+}
+.git-anim:hover .gtx-tf-b1 { animation: gtx-tf-b1 2.2s ease-out infinite; }
+.git-anim:hover .gtx-tf-b2 { animation: gtx-tf-b2 2.2s ease-out infinite; }
+.git-anim:hover .gtx-tf-liquid { animation: gtx-tf-liquid 2.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+	.git-anim:hover [class^="gtx-"],
+	.git-anim:hover [class*=" gtx-"] {
+		animation: none;
+	}
+}
+
+/* ---- Animated header-row icons --------------------------------------------
+   The hand-drawn header glyphs (HeaderIcons.tsx) act out their operation when
+   the hosting control — any element with .header-anim (a header-row button,
+   the prevent-sleep toggle, the git-pull button) — is hovered. Pure CSS, loops
+   while hovered, pixel-identical to the static icon when idle.
+   Animated design reference: design/tmux-icons-animated.html (Top header row). */
+
+/* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
+svg .hdr { transform-box: view-box; }
+/* pathLength="1" draw trick — renders the full stroke when idle. */
+svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* -- Back / Forward: the chevron lunges, a ghost echo trails off -- */
+@keyframes hdr-back {
+	0%, 12% { transform: translateX(0); }
+	38% { transform: translateX(-2.6px); }
+	62% { transform: translateX(.6px); }
+	88%, 100% { transform: translateX(0); }
+}
+@keyframes hdr-back-ghost {
+	0%, 20% { transform: translateX(0); opacity: 0; }
+	45% { transform: translateX(-4.5px); opacity: .5; }
+	75%, 100% { transform: translateX(-6px); opacity: 0; }
+}
+@keyframes hdr-fwd {
+	0%, 12% { transform: translateX(0); }
+	38% { transform: translateX(2.6px); }
+	62% { transform: translateX(-.6px); }
+	88%, 100% { transform: translateX(0); }
+}
+@keyframes hdr-fwd-ghost {
+	0%, 20% { transform: translateX(0); opacity: 0; }
+	45% { transform: translateX(4.5px); opacity: .5; }
+	75%, 100% { transform: translateX(6px); opacity: 0; }
+}
+.header-anim:hover .hdr-back { animation: hdr-back 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-back-ghost { animation: hdr-back-ghost 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-fwd { animation: hdr-fwd 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-fwd-ghost { animation: hdr-fwd-ghost 2.4s ease-in-out infinite; }
+
+/* -- Home: the prompt types itself, the cursor blinks -- */
+@keyframes hdr-home-prompt { 0%, 8% { stroke-dashoffset: 1; } 35% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes hdr-home-cursor {
+	0%, 30% { opacity: 0; }
+	40%, 55% { opacity: 1; }
+	60%, 75% { opacity: 0; }
+	80%, 95% { opacity: 1; }
+	100% { opacity: 0; }
+}
+.header-anim:hover .hdr-home-prompt { animation: hdr-home-prompt 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-home-cursor { animation: hdr-home-cursor 2.4s steps(1) infinite; }
+
+/* -- Dropdown: the chevron dips, a ghost drips down -- */
+@keyframes hdr-dd {
+	0%, 12% { transform: translateY(0); }
+	38% { transform: translateY(2.4px); }
+	62% { transform: translateY(-.5px); }
+	88%, 100% { transform: translateY(0); }
+}
+@keyframes hdr-dd-ghost {
+	0%, 20% { transform: translateY(0); opacity: 0; }
+	45% { transform: translateY(3.5px); opacity: .45; }
+	75%, 100% { transform: translateY(5px); opacity: 0; }
+}
+.header-anim:hover .hdr-dd { animation: hdr-dd 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-dd-ghost { animation: hdr-dd-ghost 2.4s ease-in-out infinite; }
+
+/* -- Coffee: steam rises off the fresh cup -- */
+@keyframes hdr-steam {
+	0%, 10% { transform: translateY(0); opacity: .25; }
+	45% { opacity: 1; }
+	85%, 100% { transform: translateY(-2.8px); opacity: 0; }
+}
+.header-anim:hover .hdr-steam1 { animation: hdr-steam 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-steam2 { animation: hdr-steam 2.4s ease-in-out .5s infinite; }
+
+/* -- Lock: the shackle tugs but snaps shut, the keyhole blinks "no" -- */
+@keyframes hdr-shackle {
+	0%, 15% { transform: translateY(0); }
+	35% { transform: translateY(-1.8px); }
+	50% { transform: translateY(-1.8px); }
+	62% { transform: translateY(.35px); }
+	70%, 100% { transform: translateY(0); }
+}
+@keyframes hdr-keyhole {
+	0%, 60% { opacity: 1; }
+	66% { opacity: .2; }
+	72% { opacity: 1; }
+	78% { opacity: .2; }
+	84%, 100% { opacity: 1; }
+}
+.header-anim:hover .hdr-shackle { animation: hdr-shackle 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-keyhole { animation: hdr-keyhole 2.4s steps(1) infinite; }
+
+/* -- Quick Shell: the bolt double-flashes, the prompt nudges along -- */
+@keyframes hdr-bolt {
+	0%, 10% { opacity: 1; transform: scale(1); }
+	18% { opacity: .25; }
+	26% { opacity: 1; transform: scale(1.12); }
+	34% { opacity: .35; }
+	42%, 100% { opacity: 1; transform: scale(1); }
+}
+@keyframes hdr-qs-prompt {
+	0%, 45% { transform: translateX(0); }
+	60% { transform: translateX(1.6px); }
+	75%, 100% { transform: translateX(0); }
+}
+.header-anim:hover .hdr-bolt { transform-origin: 12.5px 12px; animation: hdr-bolt 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-qs-prompt { animation: hdr-qs-prompt 2.4s ease-in-out infinite; }
+
+/* -- Project Terminal: title-bar dots pulse, prompt types, cursor blinks -- */
+@keyframes hdr-pt-dot { 0%, 10% { opacity: .35; } 25% { opacity: 1; } 40%, 100% { opacity: .35; } }
+@keyframes hdr-pt-prompt { 0%, 15% { stroke-dashoffset: 1; } 45% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes hdr-pt-cursor {
+	0%, 40% { opacity: 0; }
+	50%, 62% { opacity: 1; }
+	68%, 80% { opacity: 0; }
+	86%, 96% { opacity: 1; }
+	100% { opacity: 0; }
+}
+.header-anim:hover .hdr-ptd1 { animation: hdr-pt-dot 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-ptd2 { animation: hdr-pt-dot 2.4s ease-in-out .2s infinite; }
+.header-anim:hover .hdr-pt-prompt { animation: hdr-pt-prompt 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-pt-cursor { animation: hdr-pt-cursor 2.4s steps(1) infinite; }
+
+/* -- Pull / Update: the arrow drops out of / launches into the cloud -- */
+@keyframes hdr-pull-arrow {
+	0%, 12% { transform: translateY(-3.5px); opacity: 0; }
+	28% { opacity: 1; }
+	55% { transform: translateY(0); opacity: 1; }
+	80%, 100% { transform: translateY(2.2px); opacity: 0; }
+}
+@keyframes hdr-up-arrow {
+	0%, 12% { transform: translateY(3px); opacity: 0; }
+	28% { opacity: 1; }
+	55% { transform: translateY(0); opacity: 1; }
+	80%, 100% { transform: translateY(-2.5px); opacity: 0; }
+}
+@keyframes hdr-cloud-bob {
+	0%, 15% { transform: translateY(0); }
+	45% { transform: translateY(-.9px); }
+	80%, 100% { transform: translateY(0); }
+}
+.header-anim:hover .hdr-pull-arrow { animation: hdr-pull-arrow 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-up-arrow { animation: hdr-up-arrow 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-cloud-bob { animation: hdr-cloud-bob 2.4s ease-in-out infinite; }
+
+/* -- Success: the check draws itself -- */
+@keyframes hdr-check { 0%, 10% { stroke-dashoffset: 1; } 55% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+.header-anim:hover .hdr-check { animation: hdr-check 2.4s ease-in-out infinite; }
+
+/* -- Alert: the triangle quakes, the bang blinks -- */
+@keyframes hdr-quake {
+	0%, 55% { transform: rotate(0deg); }
+	60% { transform: rotate(2.4deg); }
+	65% { transform: rotate(-2.2deg); }
+	70% { transform: rotate(1.6deg); }
+	75% { transform: rotate(-1.2deg); }
+	80%, 100% { transform: rotate(0deg); }
+}
+@keyframes hdr-bang {
+	0%, 15% { opacity: 1; }
+	25% { opacity: .15; }
+	35% { opacity: 1; }
+	45% { opacity: .15; }
+	55%, 100% { opacity: 1; }
+}
+.header-anim:hover .hdr-quake { transform-origin: 12px 14px; animation: hdr-quake 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-bang { animation: hdr-bang 2.4s steps(1) infinite; }
+
+/* -- QR: the inner marks flicker like a scan pass -- */
+@keyframes hdr-qr-blink { 0%, 100% { opacity: .3; } 15% { opacity: 1; } 30% { opacity: .3; } }
+.header-anim:hover .hdr-qr1 { animation: hdr-qr-blink 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-qr2 { animation: hdr-qr-blink 2.4s ease-in-out .3s infinite; }
+.header-anim:hover .hdr-qr3 { animation: hdr-qr-blink 2.4s ease-in-out .6s infinite; }
+.header-anim:hover .hdr-qr4 { animation: hdr-qr-blink 2.4s ease-in-out .9s infinite; }
+.header-anim:hover .hdr-qr5 { animation: hdr-qr-blink 2.4s ease-in-out 1.2s infinite; }
+
+/* -- Gauge: the needle revs to the redline and falls back -- */
+@keyframes hdr-needle {
+	0%, 8% { transform: rotate(0deg); }
+	25% { transform: rotate(-55deg); }
+	55% { transform: rotate(32deg); }
+	68% { transform: rotate(22deg); }
+	78% { transform: rotate(28deg); }
+	92%, 100% { transform: rotate(0deg); }
+}
+.header-anim:hover .hdr-needle { transform-origin: 12px 14px; animation: hdr-needle 2.6s ease-in-out infinite; }
+
+/* -- GitHub: the octocat takes a polite bow -- */
+@keyframes hdr-gh {
+	0%, 15% { transform: rotate(0deg); }
+	35% { transform: rotate(-7deg); }
+	55% { transform: rotate(6deg); }
+	75% { transform: rotate(-3deg); }
+	90%, 100% { transform: rotate(0deg); }
+}
+.header-anim:hover .hdr-gh { transform-origin: 12px 12px; animation: hdr-gh 2.4s ease-in-out infinite; }
+
+/* -- Bug: antennae twitch, the whole bug wiggles -- */
+@keyframes hdr-bug-body {
+	0%, 20% { transform: rotate(0deg); }
+	32% { transform: rotate(-2.5deg); }
+	44% { transform: rotate(2.5deg); }
+	56% { transform: rotate(-1.5deg); }
+	68%, 100% { transform: rotate(0deg); }
+}
+@keyframes hdr-ant {
+	0%, 10% { transform: rotate(0deg); }
+	22% { transform: rotate(-14deg); }
+	34% { transform: rotate(6deg); }
+	46%, 100% { transform: rotate(0deg); }
+}
+.header-anim:hover .hdr-bug-body { transform-origin: 12px 14px; animation: hdr-bug-body 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-ant-l { transform-origin: 9.9px 3.9px; animation: hdr-ant 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-ant-r { transform-origin: 14.1px 3.9px; animation: hdr-ant 2.4s ease-in-out .25s infinite; }
+
+/* -- Changelog: new entries write themselves onto the list -- */
+@keyframes hdr-cl-line1 { 0%, 15% { stroke-dashoffset: 1; } 40% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes hdr-cl-line2 { 0%, 35% { stroke-dashoffset: 1; } 60% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes hdr-cl-dot1 { 0%, 10% { opacity: 0; } 20%, 100% { opacity: 1; } }
+@keyframes hdr-cl-dot2 { 0%, 30% { opacity: 0; } 42%, 100% { opacity: 1; } }
+.header-anim:hover .hdr-cl-line1 { animation: hdr-cl-line1 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-cl-line2 { animation: hdr-cl-line2 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-cl-dot1 { animation: hdr-cl-dot1 2.4s steps(1) infinite; }
+.header-anim:hover .hdr-cl-dot2 { animation: hdr-cl-dot2 2.4s steps(1) infinite; }
+
+/* -- Kebab: the dots do the wave -- */
+@keyframes hdr-kb { 0%, 10%, 40%, 100% { transform: translateY(0); } 22% { transform: translateY(-2.2px); } }
+.header-anim:hover .hdr-kb1 { animation: hdr-kb 2s ease-in-out infinite; }
+.header-anim:hover .hdr-kb2 { animation: hdr-kb 2s ease-in-out .15s infinite; }
+.header-anim:hover .hdr-kb3 { animation: hdr-kb 2s ease-in-out .3s infinite; }
+
+/* -- Wrench: two ratchet turns on the bolt -- */
+@keyframes hdr-wrench {
+	0%, 12% { transform: rotate(0deg); }
+	30% { transform: rotate(-24deg); }
+	45% { transform: rotate(2deg); }
+	60% { transform: rotate(-24deg); }
+	78%, 100% { transform: rotate(0deg); }
+}
+.header-anim:hover .hdr-wrench { transform-origin: 17px 7px; animation: hdr-wrench 2.4s ease-in-out infinite; }
+
+/* -- Sliders: the knobs seek their new mix -- */
+@keyframes hdr-sl1 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(-5px); } 60% { transform: translateY(-5px); } 88%, 100% { transform: translateY(0); } }
+@keyframes hdr-sl2 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(6px); } 60% { transform: translateY(6px); } 88%, 100% { transform: translateY(0); } }
+@keyframes hdr-sl3 { 0%, 12% { transform: translateY(0); } 40% { transform: translateY(-3.5px); } 60% { transform: translateY(-3.5px); } 88%, 100% { transform: translateY(0); } }
+.header-anim:hover .hdr-sl1 { animation: hdr-sl1 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-sl2 { animation: hdr-sl2 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-sl3 { animation: hdr-sl3 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+	.header-anim:hover [class^="hdr-"],
+	.header-anim:hover [class*=" hdr-"] {
+		animation: none;
+	}
+}
+
+/* ---- Animated task-header icons -------------------------------------------
+   The hand-drawn task glyphs (TaskIcons.tsx) act out their operation when the
+   hosting control — any element with .task-anim (a task-header button in
+   TaskInfoPanel or its sub-panels) — is hovered. Pure CSS, loops while hovered,
+   pixel-identical to the static icon when idle.
+   Animated design reference: design/tmux-icons-animated.html (Task header row). */
+
+/* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
+svg [class^="th-"], svg [class*=" th-"] { transform-box: view-box; }
+/* pathLength="1" draw trick — renders the full stroke when idle. */
+svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
+
+/* -- Watching: the bell rings, sound waves radiate off it -- */
+@keyframes th-bell {
+	0%, 12% { transform: rotate(0deg); }
+	24% { transform: rotate(9deg); }
+	38% { transform: rotate(-8deg); }
+	52% { transform: rotate(5deg); }
+	64% { transform: rotate(-3deg); }
+	76%, 100% { transform: rotate(0deg); }
+}
+@keyframes th-wave {
+	0%, 15% { opacity: .2; }
+	35% { opacity: 1; }
+	60%, 100% { opacity: .2; }
+}
+.task-anim:hover .th-bell { transform-origin: 12px 4.5px; animation: th-bell 2.4s ease-in-out infinite; }
+.task-anim:hover .th-wave-l { animation: th-wave 2.4s ease-in-out infinite; }
+.task-anim:hover .th-wave-r { animation: th-wave 2.4s ease-in-out .15s infinite; }
+
+/* -- Watch (off): a hopeful little nudge, "poke me" -- */
+@keyframes th-bell-nudge {
+	0%, 40% { transform: rotate(0deg); }
+	50% { transform: rotate(4deg); }
+	60% { transform: rotate(-3.5deg); }
+	70% { transform: rotate(2deg); }
+	80%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-bell-nudge { transform-origin: 12px 4.5px; animation: th-bell-nudge 2.4s ease-in-out infinite; }
+
+/* -- Find bugs: the lens focuses in, the caught bug squirms -- */
+@keyframes th-fb-lens {
+	0%, 15% { transform: scale(1); }
+	35% { transform: scale(1.06); }
+	55% { transform: scale(.99); }
+	70%, 100% { transform: scale(1); }
+}
+@keyframes th-fb-bug {
+	0%, 10% { transform: rotate(0deg) translate(0, 0); }
+	25% { transform: rotate(-6deg) translate(-.5px, .3px); }
+	45% { transform: rotate(5deg) translate(.5px, -.3px); }
+	65% { transform: rotate(-3deg) translate(-.3px, 0); }
+	80%, 100% { transform: rotate(0deg) translate(0, 0); }
+}
+.task-anim:hover .th-fb-lens { transform-origin: 10.5px 10.5px; animation: th-fb-lens 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fb-bug { transform-origin: 10.5px 11.4px; animation: th-fb-bug 2.4s ease-in-out infinite; }
+
+/* -- Add agent: the head tilts hello, eyes blink, the antenna pings -- */
+@keyframes th-ro-blink {
+	0%, 20% { opacity: 1; }
+	26%, 32% { opacity: 0; }
+	38%, 58% { opacity: 1; }
+	64%, 70% { opacity: 0; }
+	76%, 100% { opacity: 1; }
+}
+@keyframes th-ro-ping {
+	0%, 10% { transform: scale(1); opacity: 1; }
+	30% { transform: scale(1.7); opacity: .25; }
+	50%, 100% { transform: scale(1); opacity: 1; }
+}
+@keyframes th-ro-head {
+	0%, 15% { transform: rotate(0deg); }
+	35% { transform: rotate(-3deg); }
+	60% { transform: rotate(2.5deg); }
+	80%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-ro-eye { animation: th-ro-blink 2.4s steps(1) infinite; }
+.task-anim:hover .th-ro-ping { transform-origin: 12px 4.3px; animation: th-ro-ping 2.4s ease-out infinite; }
+.task-anim:hover .th-ro-head { transform-origin: 12px 13.5px; animation: th-ro-head 2.4s ease-in-out infinite; }
+
+/* -- Open in…: the arrow launches out of the box, the box recoils -- */
+@keyframes th-oi-arrow {
+	0%, 15% { transform: translate(0, 0); }
+	40% { transform: translate(1.8px, -1.8px); }
+	60% { transform: translate(-.4px, .4px); }
+	80%, 100% { transform: translate(0, 0); }
+}
+@keyframes th-oi-box {
+	0%, 15% { transform: translate(0, 0); }
+	40% { transform: translate(-.4px, .4px); }
+	70%, 100% { transform: translate(0, 0); }
+}
+.task-anim:hover .th-oi-arrow { animation: th-oi-arrow 2.4s ease-in-out infinite; }
+.task-anim:hover .th-oi-box { animation: th-oi-box 2.4s ease-in-out infinite; }
+
+/* -- File tree: connectors wire up, child folders pop into place -- */
+@keyframes th-ft-branch { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-ft-trunk { 0%, 20% { stroke-dashoffset: 1; } 48% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-ft-c1 { 0%, 26% { opacity: 0; transform: scale(.6); } 38%, 100% { opacity: 1; transform: scale(1); } }
+@keyframes th-ft-c2 { 0%, 44% { opacity: 0; transform: scale(.6); } 56%, 100% { opacity: 1; transform: scale(1); } }
+.task-anim:hover .th-ft-branch { animation: th-ft-branch 2.4s ease-in-out infinite; }
+.task-anim:hover .th-ft-trunk { animation: th-ft-trunk 2.4s ease-in-out infinite; }
+.task-anim:hover .th-ft-c1 { transform-origin: 17.25px 11.5px; animation: th-ft-c1 2.4s ease-out infinite; }
+.task-anim:hover .th-ft-c2 { transform-origin: 17.25px 19px; animation: th-ft-c2 2.4s ease-out infinite; }
+
+/* -- Scripts: the ƒ writes itself, crossbar last -- */
+@keyframes th-fn-stroke { 0%, 8% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-fn-bar { 0%, 50% { stroke-dashoffset: 1; } 72% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+.task-anim:hover .th-fn-stroke { animation: th-fn-stroke 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fn-bar { animation: th-fn-bar 2.4s ease-in-out infinite; }
+
+/* -- Ports: the wiring connects, then both endpoints come online -- */
+@keyframes th-po-link1 { 0%, 10% { stroke-dashoffset: 1; } 30% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-po-link2 { 0%, 25% { stroke-dashoffset: 1; } 50% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-po-c1 { 0%, 40% { opacity: .35; } 58%, 100% { opacity: 1; } }
+@keyframes th-po-c2 { 0%, 50% { opacity: .35; } 68%, 100% { opacity: 1; } }
+.task-anim:hover .th-po-link1 { animation: th-po-link1 2.4s ease-in-out infinite; }
+.task-anim:hover .th-po-link2 { animation: th-po-link2 2.4s ease-in-out infinite; }
+.task-anim:hover .th-po-c1 { animation: th-po-c1 2.4s ease-in-out infinite; }
+.task-anim:hover .th-po-c2 { animation: th-po-c2 2.4s ease-in-out infinite; }
+
+/* -- Images: golden hour — the sun rises and swells, the ridges draw themselves -- */
+@keyframes th-im-sun {
+	0%, 12% { transform: translateY(0) scale(1); }
+	45%, 62% { transform: translateY(-2.3px) scale(1.18); }
+	92%, 100% { transform: translateY(0) scale(1); }
+}
+@keyframes th-im-m1 { 0%, 10% { stroke-dashoffset: 1; } 45% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+@keyframes th-im-m2 { 0%, 28% { stroke-dashoffset: 1; } 62% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: 0; } }
+.task-anim:hover .th-im-sun { transform-origin: 9px 9.8px; animation: th-im-sun 2.4s ease-in-out infinite; }
+.task-anim:hover .th-im-m1 { animation: th-im-m1 2.4s ease-in-out infinite; }
+.task-anim:hover .th-im-m2 { animation: th-im-m2 2.4s ease-in-out infinite; }
+
+/* -- Worktree settings: one ratchet turn forward, then wind back -- */
+@keyframes th-gear {
+	0%, 12% { transform: rotate(0deg); }
+	45% { transform: rotate(48deg); }
+	58% { transform: rotate(42deg); }
+	90%, 100% { transform: rotate(0deg); }
+}
+.task-anim:hover .th-gear { transform-origin: 12px 12px; animation: th-gear 2.6s ease-in-out infinite; }
+
+/* -- Full screen: the corners fly along their diagonals and settle -- */
+@keyframes th-fs-nw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, -1.6px); } }
+@keyframes th-fs-ne { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, -1.6px); } }
+@keyframes th-fs-se { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, 1.6px); } }
+@keyframes th-fs-sw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, 1.6px); } }
+.task-anim:hover .th-fs-nw { animation: th-fs-nw 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fs-ne { animation: th-fs-ne 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fs-se { animation: th-fs-se 2.4s ease-in-out infinite; }
+.task-anim:hover .th-fs-sw { animation: th-fs-sw 2.4s ease-in-out infinite; }
+
+/* -- Panel chevron: it dips in its pointing direction, a ghost drips after -- */
+@keyframes th-col {
+	0%, 12% { transform: translateY(0); }
+	38% { transform: translateY(2.2px); }
+	62% { transform: translateY(-.5px); }
+	88%, 100% { transform: translateY(0); }
+}
+@keyframes th-col-ghost {
+	0%, 20% { transform: translateY(0); opacity: 0; }
+	45% { transform: translateY(3.2px); opacity: .45; }
+	75%, 100% { transform: translateY(4.6px); opacity: 0; }
+}
+@keyframes th-col-up {
+	0%, 12% { transform: translateY(0); }
+	38% { transform: translateY(-2.2px); }
+	62% { transform: translateY(.5px); }
+	88%, 100% { transform: translateY(0); }
+}
+@keyframes th-col-up-ghost {
+	0%, 20% { transform: translateY(0); opacity: 0; }
+	45% { transform: translateY(-3.2px); opacity: .45; }
+	75%, 100% { transform: translateY(-4.6px); opacity: 0; }
+}
+.task-anim:hover .th-col { animation: th-col 2.4s ease-in-out infinite; }
+.task-anim:hover .th-col-ghost { animation: th-col-ghost 2.4s ease-in-out infinite; }
+.task-anim:hover .th-col-up { animation: th-col-up 2.4s ease-in-out infinite; }
+.task-anim:hover .th-col-up-ghost { animation: th-col-up-ghost 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+	.task-anim:hover [class^="th-"],
+	.task-anim:hover [class*=" th-"] {
+		animation: none;
+	}
+}

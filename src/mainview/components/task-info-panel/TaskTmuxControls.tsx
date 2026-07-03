@@ -8,6 +8,20 @@ import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useNarrowViewport } from "../../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "../MobileBoardCarousel";
 import { startClosePanePicker } from "../../close-pane-picker";
+import {
+	ClosePaneIcon,
+	CycleLayoutIcon,
+	LayoutEvenHIcon,
+	LayoutEvenVIcon,
+	LayoutMainHIcon,
+	LayoutMainVIcon,
+	LayoutTiledIcon,
+	NewWindowIcon,
+	SplitHIcon,
+	SplitVIcon,
+	TmuxHintsIcon,
+	ZoomPaneIcon,
+} from "../TmuxIcons";
 
 interface TaskTmuxControlsProps {
 	taskId: string;
@@ -16,6 +30,7 @@ interface TaskTmuxControlsProps {
 type TmuxAction =
 	| "splitH"
 	| "splitV"
+	| "newWindow"
 	| "zoom"
 	| "nextLayout"
 	| "killPane"
@@ -244,68 +259,23 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 		void handleTmuxAction(action)(event);
 	};
 
-	const tmuxBtnClass = "px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
-	const tmuxIconBtnClass = "px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
+	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
+	// New window is a "create" action — green, to set it apart from the blue pane splits.
+	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
+	const tmuxIconBtnClass = "tmux-anim px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
 	const tmuxSvgClass = "w-4 h-4";
-	const svgProps = {
-		className: tmuxSvgClass,
-		viewBox: "0 0 24 24",
-		fill: "none",
-		strokeWidth: 1.5,
-		strokeLinecap: "round" as const,
-		strokeLinejoin: "round" as const,
-	};
 	const popoverKbd = "font-mono text-xs text-fg-2 min-w-[3.5rem]";
 	const popoverDesc = "text-xs text-fg-3";
 	const popoverSection = "text-[0.625rem] text-fg-muted uppercase tracking-wider font-semibold mb-1.5";
 
-	const cycleIcon: ReactNode = (
-		<>
-			<rect x="2" y="10" width="8" height="6" rx="1" stroke="currentColor" />
-			<rect x="14" y="10" width="8" height="6" rx="1" stroke="currentColor" />
-			<path d="M 6 8 C 8 3, 16 3, 18 8" className="text-success" stroke="currentColor" />
-			<path d="M 15 6 L 18 8 L 21 6" className="text-success" stroke="currentColor" />
-			<path d="M 18 18 C 16 23, 8 23, 6 18" className="text-success" stroke="currentColor" />
-			<path d="M 9 20 L 6 18 L 3 20" className="text-success" stroke="currentColor" />
-		</>
-	);
+	const cycleIcon: ReactNode = <CycleLayoutIcon className={tmuxSvgClass} />;
 
 	const layoutIcons: Record<LayoutAction, ReactNode> = {
-		layoutTiled: (
-			<>
-				<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-				<line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" />
-				<line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" />
-			</>
-		),
-		layoutEvenH: (
-			<>
-				<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-				<line x1="2" y1="9.33" x2="22" y2="9.33" stroke="currentColor" />
-				<line x1="2" y1="14.66" x2="22" y2="14.66" stroke="currentColor" />
-			</>
-		),
-		layoutEvenV: (
-			<>
-				<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-				<line x1="8.66" y1="4" x2="8.66" y2="20" stroke="currentColor" />
-				<line x1="15.33" y1="4" x2="15.33" y2="20" stroke="currentColor" />
-			</>
-		),
-		layoutMainH: (
-			<>
-				<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-				<line x1="2" y1="13" x2="22" y2="13" stroke="currentColor" />
-				<line x1="12" y1="13" x2="12" y2="20" stroke="currentColor" />
-			</>
-		),
-		layoutMainV: (
-			<>
-				<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-				<line x1="13" y1="4" x2="13" y2="20" stroke="currentColor" />
-				<line x1="13" y1="12" x2="22" y2="12" stroke="currentColor" />
-			</>
-		),
+		layoutTiled: <LayoutTiledIcon className={tmuxSvgClass} />,
+		layoutEvenH: <LayoutEvenHIcon className={tmuxSvgClass} />,
+		layoutEvenV: <LayoutEvenVIcon className={tmuxSvgClass} />,
+		layoutMainH: <LayoutMainHIcon className={tmuxSvgClass} />,
+		layoutMainV: <LayoutMainVIcon className={tmuxSvgClass} />,
 	};
 
 	const layouts: { action: LayoutAction; descKey: Parameters<typeof t>[0]; shortcut: string }[] = [
@@ -320,18 +290,13 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 		<>
 			<div className="flex items-center gap-1.5 flex-shrink-0">
 				<button className={tmuxBtnClass} onClick={handleTmuxAction("splitH")} title={t("tmux.splitHDesc")} aria-label={t("tmux.splitHDesc")}>
-					<svg {...svgProps}>
-						<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-						<line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" strokeDasharray="4 3" />
-						<path d="M12 15 L12 19 M10 17 L14 17" className="text-success" stroke="currentColor" />
-					</svg>
+					<SplitHIcon className={tmuxSvgClass} />
 				</button>
 				<button className={tmuxBtnClass} onClick={handleTmuxAction("splitV")} title={t("tmux.splitVDesc")} aria-label={t("tmux.splitVDesc")}>
-					<svg {...svgProps}>
-						<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-						<line x1="12" y1="4" x2="12" y2="20" stroke="currentColor" strokeDasharray="4 3" />
-						<path d="M16 12 L20 12 M18 10 L18 14" className="text-success" stroke="currentColor" />
-					</svg>
+					<SplitVIcon className={tmuxSvgClass} />
+				</button>
+				<button className={tmuxNewWindowBtnClass} onClick={handleTmuxAction("newWindow")} title={t("tmux.newWindowDesc")} aria-label={t("tmux.newWindowDesc")}>
+					<NewWindowIcon className={tmuxSvgClass} />
 				</button>
 
 				<div
@@ -340,12 +305,12 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					onMouseLeave={hideLayout}
 				>
 					<button
-						className="px-1.5 py-1 text-[0.625rem] font-medium transition-colors hover:bg-accent/20 flex items-center gap-1"
+						className="tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors hover:bg-accent/20 flex items-center gap-1"
 						onClick={cycleLayout}
 						title={t("tmux.nextLayoutDesc")}
 						aria-label={t("tmux.nextLayoutDesc")}
 					>
-						<svg {...svgProps}>{cycleIcon}</svg>
+						{cycleIcon}
 						<span>tmux layout</span>
 					</button>
 					<button
@@ -367,11 +332,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 				</div>
 
 				<button className={tmuxBtnClass} onClick={handleTmuxAction("zoom")} title={t("tmux.zoomDesc")} aria-label={t("tmux.zoomDesc")}>
-					<svg {...svgProps}>
-						<rect x="4" y="6" width="16" height="12" rx="1" stroke="currentColor" />
-						<path d="M2 5 L2 2 L5 2 M19 2 L22 2 L22 5 M22 19 L22 22 L19 22 M5 22 L2 22 L2 19" stroke="currentColor" />
-						<path d="M2 2 L6 6 M22 2 L18 6 M22 22 L18 18 M2 22 L6 18" stroke="currentColor" />
-					</svg>
+					<ZoomPaneIcon className={tmuxSvgClass} />
 				</button>
 				<button
 					ref={hintsTriggerRef}
@@ -385,9 +346,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					title={t("tmux.title")}
 					aria-label={t("tmux.title")}
 				>
-					<svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="currentColor">
-						<path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5a5.5 5.5 0 110-11 5.5 5.5 0 010 11zM7.25 5a.75.75 0 111.5 0 .75.75 0 01-1.5 0zM7.25 7.25a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5z" />
-					</svg>
+					<TmuxHintsIcon className="w-3.5 h-3.5" />
 				</button>
 
 				<div className="w-px self-stretch bg-edge mx-0.5" aria-hidden="true" />
@@ -398,10 +357,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 					title={t("tmux.closePaneDesc")}
 					aria-label={t("tmux.closePaneDesc")}
 				>
-					<svg {...svgProps}>
-						<rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" />
-						<path d="M9 9 L15 15 M15 9 L9 15" stroke="currentColor" />
-					</svg>
+					<ClosePaneIcon className={tmuxSvgClass} />
 				</button>
 			</div>
 
@@ -422,10 +378,10 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 							setLayoutVisible(false);
 							cycleLayout(event);
 						}}
-						className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
+						className="tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
 					>
 						<span className="flex-shrink-0 text-fg-2">
-							<svg {...svgProps}>{cycleIcon}</svg>
+							{cycleIcon}
 						</span>
 						<span className="text-xs flex-1 text-fg-2">{t("tmux.nextLayoutDesc")}</span>
 						<kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">⌃B ␣</kbd>
@@ -439,12 +395,12 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 								role="menuitemradio"
 								aria-checked={active}
 								onClick={applyLayout(action)}
-								className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors ${
+								className={`tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors ${
 									active ? "bg-accent/10 border border-accent/20" : "hover:bg-elevated border border-transparent"
 								}`}
 							>
 								<span className={`flex-shrink-0 ${active ? "text-accent" : "text-fg-2"}`}>
-									<svg {...svgProps}>{layoutIcons[action]}</svg>
+									{layoutIcons[action]}
 								</span>
 								<span className={`text-xs flex-1 ${active ? "text-accent font-medium" : "text-fg-2"}`}>{t(descKey)}</span>
 								{active && (

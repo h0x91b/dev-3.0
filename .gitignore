@@ -16,3 +16,5 @@ changelog.json
 # Playwright MCP browser-test artifacts (screenshots, snapshots, console logs)
 .playwright-mcp/
 verify-*.png
+
+scratch-shots/

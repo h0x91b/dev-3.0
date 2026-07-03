@@ -62,6 +62,7 @@ const terminal = {
 	"tmux.panes": "Панели",
 	"tmux.splitHDesc": "Разделить горизонтально",
 	"tmux.splitVDesc": "Разделить вертикально",
+	"tmux.newWindowDesc": "Новое окно",
 	"tmux.zoomDesc": "Увеличить панель (переключение)",
 	"tmux.nextLayoutDesc": "Переключить layout",
 	"tmux.layoutTiledDesc": "Плитка (сетка)",

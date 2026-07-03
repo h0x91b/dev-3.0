@@ -12,6 +12,7 @@ import { SCRIPT_PLACEMENTS } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import { ScriptsIcon } from "../TaskIcons";
 
 const DEFAULT_PLACEMENT_IDX = SCRIPT_PLACEMENTS.indexOf("right");
 
@@ -366,7 +367,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				ref={btnRef}
 				onClick={openDropdown}
 				disabled={!isTaskActive}
-				className={`flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+				className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
 					!isTaskActive
 						? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
 						: "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
@@ -374,9 +375,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				title={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")}
 				aria-label={t("scripts.button")}
 			>
-				<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'", fontSize: "1.125rem", lineHeight: 1 }}>
-					{"\u{F0295}"}
-				</span>
+				<ScriptsIcon className="w-[1.125rem] h-[1.125rem]" />
 			</button>
 			{dropdown}
 		</>

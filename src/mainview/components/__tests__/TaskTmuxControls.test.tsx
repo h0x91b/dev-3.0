@@ -152,6 +152,22 @@ describe("TaskTmuxControls", () => {
 		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "splitH" });
 	});
 
+	it("opens a new tmux window from the green new-window button", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+
+		render(
+			<I18nProvider>
+				<TaskTmuxControls taskId="task-1" />
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTitle("New window"));
+
+		expect(confirm).not.toHaveBeenCalled();
+		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "newWindow" });
+	});
+
 	it("cycles tmux layouts from the split-button primary action", async () => {
 		const user = userEvent.setup();
 		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);

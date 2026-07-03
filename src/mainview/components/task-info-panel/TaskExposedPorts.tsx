@@ -5,6 +5,7 @@ import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useTaskAllocatedPorts } from "./useTaskAllocatedPorts";
+import { PortsIcon } from "../TaskIcons";
 
 interface TaskExposedPortsProps {
 	task: Task;
@@ -115,19 +116,14 @@ export default function TaskExposedPorts({ task }: TaskExposedPortsProps) {
 			<button
 				ref={btnRef}
 				onClick={openMenu}
-				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 border ${
+				className={`task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 border ${
 					activeCount > 0
 						? "text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
 						: "text-fg-2 border-edge hover:bg-elevated hover:text-fg"
 				}`}
 				title={t("tunnel.exposedPortsSection")}
 			>
-				<span
-					className="text-[1.125rem] leading-none"
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{"\u{F1087}"}
-				</span>
+				<PortsIcon className="w-[1.125rem] h-[1.125rem]" />
 				<span className="text-[0.6875rem] font-semibold">
 					{activeCount > 0 ? `${t("tunnel.portsLabel")} (${activeCount})` : t("tunnel.portsLabel")}
 				</span>
