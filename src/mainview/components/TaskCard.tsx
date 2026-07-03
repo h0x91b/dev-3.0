@@ -425,6 +425,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			ref={cardRef}
 			data-task-id={task.id}
 			data-hint-id={task.id}
+			data-help-id="board.task-card"
 			draggable={!isDisabled && !detailOpen}
 			onDragStart={handleDragStart}
 			onContextMenu={handleContextMenu}

@@ -348,6 +348,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "help-keyboard-shortcuts":
 			window.dispatchEvent(new CustomEvent("menu:show-keyboard-shortcuts"));
 			return;
+		case "help-explain-screen":
+			window.dispatchEvent(new CustomEvent("menu:enter-help-mode"));
+			return;
 
 		default:
 			console.warn("[menu] Unhandled menu action", action);
@@ -391,7 +394,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"term-layout-tiled", "term-layout-even-h", "term-layout-even-v", "term-layout-main-h", "term-layout-main-v", "term-layout-cycle",
 	"term-toggle-project-terminal", "term-open-quick-shell", "term-cheat-sheet",
 	// Help
-	"help-keyboard-shortcuts", "help-documentation", "help-github", "help-report-bug",
+	"help-keyboard-shortcuts", "help-explain-screen", "help-documentation", "help-github", "help-report-bug",
 ]);
 
 const TMUX_ACTION_MAP = {

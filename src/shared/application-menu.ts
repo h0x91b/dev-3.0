@@ -178,6 +178,7 @@ export const MENU_ACTIONS = {
 	// ── Help ──
 	helpDocumentation: "help-documentation",
 	helpKeyboardShortcuts: "help-keyboard-shortcuts",
+	helpExplainScreen: "help-explain-screen",
 	helpReportBug: "help-report-bug",
 	helpGithub: "help-github",
 	showRemoteQr: "show-remote-qr",
@@ -842,6 +843,7 @@ function helpMenu(): ApplicationMenuItemConfig {
 		label: "Help",
 		submenu: [
 			item({ label: "dev-3.0 Documentation", action: MENU_ACTIONS.helpDocumentation }),
+			item({ label: "Explain This Screen (⇧⌘/)", action: MENU_ACTIONS.helpExplainScreen }),
 			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			item({ label: "Tmux Cheat Sheet", action: MENU_ACTIONS.termCheatSheet }),
 			SEP,

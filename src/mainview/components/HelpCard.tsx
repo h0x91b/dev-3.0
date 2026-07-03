@@ -29,6 +29,12 @@ interface HelpCardProps {
 	placement?: PopoverPlacement;
 	/** Pinned cards close on Escape / outside click; hover cards are closed by the opener. */
 	pinned: boolean;
+	/**
+	 * Disable the pinned card's own outside-click closing. HelpOverlay hosts the
+	 * card behind its own click-shield backdrop and owns the close/exit staging —
+	 * two competing mousedown handlers would race and skip a stage.
+	 */
+	closeOnOutsideClick?: boolean;
 	onClose: () => void;
 	onLinkAction?: (action: HelpLinkAction) => void;
 	onMouseEnter?: () => void;
@@ -41,6 +47,7 @@ export default function HelpCard({
 	anchorEl,
 	placement = "bottom",
 	pinned,
+	closeOnOutsideClick = true,
 	onClose,
 	onLinkAction,
 	onMouseEnter,
@@ -65,7 +72,7 @@ export default function HelpCard({
 	useEscapeKey(onClose, { enabled: pinned });
 
 	useEffect(() => {
-		if (!pinned) return;
+		if (!pinned || !closeOnOutsideClick) return;
 		function handleMouseDown(e: MouseEvent) {
 			if (
 				cardRef.current &&

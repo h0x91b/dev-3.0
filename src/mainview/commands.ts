@@ -42,6 +42,9 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	{ id: "open-new-task", labelKey: "command.newTask", category: "create", scope: "always" },
 	{ id: "open-add-project", labelKey: "command.addProject", category: "create", scope: "always" },
 
+	// ── App: help ──
+	{ id: "help-explain-screen", labelKey: "keymap.shortcut.helpMode", category: "app", scope: "always" },
+
 	// ── Navigation ──
 	{ id: "view-dashboard", labelKey: "command.viewDashboard", category: "nav", scope: "always" },
 	{ id: "view-kanban", labelKey: "command.viewKanban", category: "nav", scope: "project" },

@@ -38,6 +38,7 @@ const keymap = {
 	"keymap.shortcut.zoomReset": "Reset zoom",
 	"keymap.shortcut.hardRefresh": "Hard refresh",
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
+	"keymap.shortcut.helpMode": "Explain this screen (help mode)",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
 	"keymap.shortcut.openQuickShell": "Open Quick Shell",
 	"keymap.shortcut.quit": "Quit",

@@ -45,6 +45,8 @@ import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
 import TaskImageViewer from "./components/TaskImageViewer";
 import HintOverlay from "./components/HintOverlay";
+import HelpOverlay from "./components/HelpOverlay";
+import { HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
 
 /**
  * True when keystrokes should go to a focused field or the terminal rather than
@@ -106,11 +108,14 @@ function App() {
 	useEffect(() => {
 		function onShowTmux() { setShortcutsModal({ open: true, tab: "terminal" }); }
 		function onShowKeyboard() { setShortcutsModal({ open: true, tab: "app" }); }
+		function onEnterHelpMode() { setHelpMode(true); }
 		window.addEventListener("menu:show-tmux-cheat-sheet", onShowTmux);
 		window.addEventListener("menu:show-keyboard-shortcuts", onShowKeyboard);
+		window.addEventListener("menu:enter-help-mode", onEnterHelpMode);
 		return () => {
 			window.removeEventListener("menu:show-tmux-cheat-sheet", onShowTmux);
 			window.removeEventListener("menu:show-keyboard-shortcuts", onShowKeyboard);
+			window.removeEventListener("menu:enter-help-mode", onEnterHelpMode);
 		};
 	}, []);
 
@@ -195,6 +200,21 @@ function App() {
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	// Vimium-style task hint navigation overlay (toggled with `f` on the board).
 	const [hintMode, setHintMode] = useState(false);
+	// Help mode — the "Explain this screen" overlay (bible §5.4). Entered via
+	// ⇧⌘/, Help menu, the ⇧⌘P palette, or a HelpCard "Explain this screen" link.
+	const [helpMode, setHelpMode] = useState(false);
+
+	// HelpCard navigation links dispatch a window event (no prop drilling from
+	// arbitrary HelpSpot hosts) — route them to the owning overlays here.
+	useEffect(() => {
+		function onHelpLink(e: Event) {
+			const action = (e as CustomEvent<HelpLinkAction>).detail;
+			if (action === "open-keyboard-shortcuts") setShortcutsModal({ open: true, tab: "app" });
+			else if (action === "enter-help-mode") setHelpMode(true);
+		}
+		window.addEventListener(HELP_LINK_ACTION_EVENT, onHelpLink);
+		return () => window.removeEventListener(HELP_LINK_ACTION_EVENT, onHelpLink);
+	}, []);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
@@ -580,6 +600,14 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				setShortcutsModal((s) => (s.open ? { ...s, open: false } : { open: true, tab: "app" }));
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "Slash") {
+				// Cmd/Ctrl+Shift+/ — toggle help mode ("Explain this screen"): every
+				// data-help-id zone gets an (i) badge with a HelpCard. `e.code` because
+				// Shift+/ yields "?" in `e.key`. Sibling of ⌘/ (shortcuts reference).
+				e.preventDefault();
+				e.stopPropagation();
+				if (showQuitDialog) return;
+				setHelpMode((open) => !open);
 			} else if ((e.metaKey || e.ctrlKey) && e.key === ",") {
 				e.preventDefault();
 				e.stopPropagation();
@@ -1570,6 +1598,7 @@ function App() {
 				/>
 			)}
 			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
+			{helpMode && <HelpOverlay onExit={() => setHelpMode(false)} />}
 			{showProjectSwitch && (
 				<ProjectQuickSwitchModal
 					projects={quickSwitch.projects}

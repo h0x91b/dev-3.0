@@ -149,7 +149,7 @@ function LabelFilterBar({
 	}
 
 	return (
-		<div className="flex items-center gap-2 px-6 py-2 border-b border-edge/50 flex-wrap">
+		<div className="flex items-center gap-2 px-6 py-2 border-b border-edge/50 flex-wrap" data-help-id="board.filter-bar">
 			{/* Search input */}
 			<div className="relative flex-shrink-0">
 				<svg

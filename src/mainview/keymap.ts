@@ -91,6 +91,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "zoom-reset", keys: { mac: "⇧⌘0", other: "Ctrl+Shift+0" }, descKey: "keymap.shortcut.zoomReset", category: "view", scope: "desktop" },
 	{ id: "hard-refresh", keys: { mac: "⌘R", other: "Ctrl+R" }, descKey: "keymap.shortcut.hardRefresh", category: "view", scope: "desktop" },
 	{ id: "keyboard-shortcuts", keys: { mac: "⌘/", other: "Ctrl+/" }, descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },
+	{ id: "help-mode", keys: { mac: "⇧⌘/", other: "Ctrl+Shift+/" }, descKey: "keymap.shortcut.helpMode", category: "view" },
 
 	// ── Terminal ──
 	{ id: "toggle-project-terminal", keys: { mac: "⌘`", other: "Ctrl+`" }, descKey: "keymap.shortcut.toggleProjectTerminal", category: "terminal" },

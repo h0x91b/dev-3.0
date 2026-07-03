@@ -283,6 +283,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const headerSheetRows: { key: string; label: string; run: () => void }[] = isNarrow
 		? [
 				{ key: "palette", label: t("header.commandPalette"), run: () => window.dispatchEvent(new CustomEvent("menu:open-command-palette")) },
+				// Help mode's keyboard entry (⇧⌘/) and the native Help menu are both
+				// dead on touch/remote — the kebab is its touch-reachability path.
+				{ key: "helpMode", label: t("keymap.shortcut.helpMode"), run: () => window.dispatchEvent(new CustomEvent("menu:enter-help-mode")) },
 				{ key: "quickShell", label: t("quickShell.open"), run: () => window.dispatchEvent(new CustomEvent("menu:open-quick-shell")) },
 				...(currentProjectId && !isVirtualProject
 					? [{
@@ -471,7 +474,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			</div>
 
 			{/* Actions — tmux sessions, changelog, project settings, global settings, external links */}
-			<div className="flex items-center gap-0.5 flex-shrink-0">
+			<div className="flex items-center gap-0.5 flex-shrink-0" data-help-id="header.utilities">
 				{/* Update download progress indicator */}
 				{updateDownloadStatus && updateDownloadStatus !== "error" && !updateVersion && (
 					<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/10 text-accent">

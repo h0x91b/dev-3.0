@@ -23,8 +23,8 @@ function renderBar(
 	);
 }
 
-describe("LabelFilterBar manage hint", () => {
-	it("shows a manage hint pointing to Project Settings when labels exist", () => {
+describe("LabelFilterBar inline help", () => {
+	it("shows the section HelpSpot when labels exist", () => {
 		render(
 			<I18nProvider>
 				<LabelFilterBar
@@ -37,16 +37,30 @@ describe("LabelFilterBar manage hint", () => {
 				/>
 			</I18nProvider>,
 		);
-		expect(
-			screen.getByTitle("To rename, recolor or delete labels, open Project Settings → Labels."),
-		).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "About this section" })).toBeInTheDocument();
 	});
 
-	it("does not show the manage hint when there are no labels", () => {
+	it("opens the help card with the manage hint on click", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<LabelFilterBar
+					labels={[{ id: "l1", name: "Bug", color: "#ef4444" }]}
+					activeFilters={[]}
+					onToggle={vi.fn()}
+					onClear={vi.fn()}
+					searchQuery=""
+					onSearchChange={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await user.click(screen.getByRole("button", { name: "About this section" }));
+		expect(screen.getByText(/open Project Settings → Labels/)).toBeInTheDocument();
+	});
+
+	it("does not show the HelpSpot when there are no labels", () => {
 		renderBar();
-		expect(
-			screen.queryByTitle("To rename, recolor or delete labels, open Project Settings → Labels."),
-		).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "About this section" })).not.toBeInTheDocument();
 	});
 });
 
