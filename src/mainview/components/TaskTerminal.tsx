@@ -10,6 +10,7 @@ import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskPreparingView from "./TaskPreparingView";
 import ExtraKeyBar from "./ExtraKeyBar";
+import TerminalComposer from "./TerminalComposer";
 import MobilePaneCarousel from "./MobilePaneCarousel";
 import MobileWindowCarousel from "./MobileWindowCarousel";
 import PaneZoomBadge from "./PaneZoomBadge";
@@ -37,6 +38,11 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// is unavailable. navigator.maxTouchPoints is more reliable than screen width
 	// because the viewport meta tag overrides CSS dimensions on mobile.
 	const isTouchDevice = navigator.maxTouchPoints > 0;
+	// Touch input model (browser mode): compose mode is the default — the
+	// terminal never summons the OSK; TerminalComposer owns text entry. The ⌨
+	// toggle on ExtraKeyBar flips to raw mode (direct typing) and back.
+	const touchInput = !isElectrobun && isTouchDevice;
+	const [rawMode, setRawMode] = useState(false);
 	// On a narrow viewport we keep the tmux window zoomed to one pane and offer a
 	// pager to move between panes (instead of a cramped multi-pane split).
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -297,8 +303,25 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		);
 	}
 
+	function toggleRawMode() {
+		setRawMode((prev) => {
+			const next = !prev;
+			// Entering raw mode inside the tap gesture opens the OSK immediately;
+			// leaving it drops terminal focus so compose mode owns the keyboard.
+			if (next) termHandle?.focus();
+			else termHandle?.blur();
+			return next;
+		});
+	}
+
 	const terminalArea = ptyUrl ? (
-		<TerminalView ptyUrl={ptyUrl} taskId={taskId} projectId={projectId} onReady={setTermHandle} />
+		<TerminalView
+			ptyUrl={ptyUrl}
+			taskId={taskId}
+			projectId={projectId}
+			onReady={setTermHandle}
+			touchComposeMode={touchInput && !rawMode}
+		/>
 	) : (
 		<div className="flex items-center justify-center h-full">
 			<div className="flex items-center gap-3">
@@ -309,8 +332,12 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	);
 
 	return (
-		<div className="h-full w-full flex flex-col overflow-hidden">
-			{!hideInfoPanel && task && project && <TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />}
+		<div className="relative h-full w-full flex flex-col overflow-hidden">
+			{!hideInfoPanel && task && project && (
+				<div className="contents" data-collapse-on-compose>
+					<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+				</div>
+			)}
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
 				// Pane swipe / dots / Arrow keys move panes; the window bar moves
@@ -324,7 +351,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					{ptyUrl && <PaneZoomBadge taskId={taskId} />}
 				</div>
 			)}
-			{!isElectrobun && isTouchDevice && termHandle && <ExtraKeyBar handle={termHandle} />}
+			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
+			{touchInput && termHandle && (
+				<div className={rawMode ? "hidden" : "contents"}>
+					<TerminalComposer handle={termHandle} />
+				</div>
+			)}
+			{touchInput && termHandle && <ExtraKeyBar handle={termHandle} rawMode={rawMode} onToggleRaw={toggleRawMode} />}
 		</div>
 	);
 }

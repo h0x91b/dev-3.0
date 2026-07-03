@@ -4,6 +4,7 @@ import ProjectTerminal from "../ProjectTerminal";
 import { I18nProvider } from "../../i18n";
 
 vi.mock("../../rpc", () => ({
+	isElectrobun: false,
 	api: {
 		request: {
 			getProjectPtyUrl: vi.fn().mockResolvedValue("ws://localhost:1234"),

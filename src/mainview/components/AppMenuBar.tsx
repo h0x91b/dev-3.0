@@ -223,7 +223,7 @@ export default function AppMenuBar({ context, onAction }: AppMenuBarProps) {
 		const open = openIndex === -1;
 		const asSubmenus: MenuNode[] = topLevel.map((m) => ({ kind: "submenu", label: m.label, children: m.children }));
 		return (
-			<div ref={rootRef} role="menubar" aria-label={t("menubar.label")} className="relative flex items-center h-8 px-1 bg-base border-b border-edge shrink-0">
+			<div ref={rootRef} role="menubar" aria-label={t("menubar.label")} data-collapse-on-compose className="relative flex items-center h-8 px-1 bg-base border-b border-edge shrink-0">
 				<button
 					type="button"
 					role="menuitem"
@@ -241,7 +241,7 @@ export default function AppMenuBar({ context, onAction }: AppMenuBarProps) {
 	}
 
 	return (
-		<div ref={rootRef} role="menubar" aria-label={t("menubar.label")} className="relative flex items-center h-8 px-1 gap-0.5 bg-base border-b border-edge shrink-0">
+		<div ref={rootRef} role="menubar" aria-label={t("menubar.label")} data-collapse-on-compose className="relative flex items-center h-8 px-1 gap-0.5 bg-base border-b border-edge shrink-0">
 			{topLevel.map((menu, i) => {
 				const open = openIndex === i;
 				return (

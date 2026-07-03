@@ -183,6 +183,14 @@ const terminal = {
 	"quickShell.open": "Shell rápido",
 	"quickShell.tooltipWithShortcut": "Shell rápido — nuevo scratch en Operations (⌘⇧`)",
 	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
+
+	// Touch composer (mobile input mode)
+	"terminal.composerPlaceholder": "Escribe un prompt o comando…",
+	"terminal.composerSend": "Enviar (pegar + Enter)",
+	"terminal.composerInsert": "Insertar sin Enter",
+	"terminal.composerExpand": "Expandir editor",
+	"terminal.composerCollapse": "Contraer editor",
+	"terminal.rawKeyboard": "Entrada directa de teclado",
 };
 
 export default terminal;

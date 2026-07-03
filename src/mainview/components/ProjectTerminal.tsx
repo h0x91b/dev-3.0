@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { api } from "../rpc";
+import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
 import TerminalView from "../TerminalView";
+import type { TerminalHandle } from "../TerminalView";
+import ExtraKeyBar from "./ExtraKeyBar";
+import TerminalComposer from "./TerminalComposer";
 
 interface ProjectTerminalProps {
 	projectId: string;
@@ -14,6 +17,19 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
 	const [error, setError] = useState(false);
 	const [restarting, setRestarting] = useState(false);
+	// Same touch input model as TaskTerminal: compose mode by default, ⌨ raw toggle.
+	const touchInput = !isElectrobun && navigator.maxTouchPoints > 0;
+	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
+	const [rawMode, setRawMode] = useState(false);
+
+	function toggleRawMode() {
+		setRawMode((prev) => {
+			const next = !prev;
+			if (next) termHandle?.focus();
+			else termHandle?.blur();
+			return next;
+		});
+	}
 
 	const sessionKey = `project-${projectId}`;
 
@@ -84,9 +100,9 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 	}
 
 	return (
-		<div className="h-full w-full flex flex-col overflow-hidden">
+		<div className="relative h-full w-full flex flex-col overflow-hidden">
 			{/* Back to board toolbar */}
-			<div className="flex items-center justify-between px-4 py-1.5 border-b border-edge flex-shrink-0 bg-raised">
+			<div className="flex items-center justify-between px-4 py-1.5 border-b border-edge flex-shrink-0 bg-raised" data-collapse-on-compose>
 				<button
 					onClick={onBack}
 					className="flex items-center gap-1.5 text-fg-3 hover:text-fg transition-colors text-sm"
@@ -105,7 +121,13 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 			</div>
 			<div className="flex-1 min-h-0 overflow-hidden">
 				{ptyUrl ? (
-					<TerminalView ptyUrl={ptyUrl} taskId={sessionKey} projectId={projectId} />
+					<TerminalView
+						ptyUrl={ptyUrl}
+						taskId={sessionKey}
+						projectId={projectId}
+						onReady={setTermHandle}
+						touchComposeMode={touchInput && !rawMode}
+					/>
 				) : (
 					<div className="flex items-center justify-center h-full">
 						<div className="flex items-center gap-3">
@@ -115,6 +137,13 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 					</div>
 				)}
 			</div>
+			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
+			{touchInput && termHandle && (
+				<div className={rawMode ? "hidden" : "contents"}>
+					<TerminalComposer handle={termHandle} />
+				</div>
+			)}
+			{touchInput && termHandle && <ExtraKeyBar handle={termHandle} rawMode={rawMode} onToggleRaw={toggleRawMode} />}
 		</div>
 	);
 }
