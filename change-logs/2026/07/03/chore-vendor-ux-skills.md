@@ -1,0 +1,1 @@
+Vendored the ux-principal and ux-create-manifest agent skills (SKILL.md plus their references, scripts, and templates) into .claude/skills so they are versioned with the repo instead of only living in the developer's global ~/.agents/skills directory.
