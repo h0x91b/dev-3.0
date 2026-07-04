@@ -248,10 +248,17 @@ function KanbanColumn({
 		e.preventDefault();
 		e.dataTransfer.dropEffect = "move";
 
-		// Calculate drop index for same-column reorder (built-in columns only)
+		// Calculate drop index for same-column reorder (built-in columns only).
+		// `:scope > [data-task-id]` targets only the per-task wrapper divs — the
+		// TaskCard root also carries `data-task-id`, so a plain `[data-task-id]`
+		// query returns 2N interleaved elements and doubles the computed index.
+		// The default is `visibleTasks.length` (not `tasks.length`): in a
+		// truncated column only the first COLUMN_TASK_LIMIT cards are rendered, so
+		// a drop below them must land right after the last visible card — where
+		// the drop indicator (keyed off `visibleTasks.length`) is actually drawn.
 		if (isSameColumnDrag && !isCustomColumn && taskListRef.current) {
-			const taskElements = taskListRef.current.querySelectorAll("[data-task-id]");
-			let newDropIndex = tasks.length;
+			const taskElements = taskListRef.current.querySelectorAll(":scope > [data-task-id]");
+			let newDropIndex = visibleTasks.length;
 			for (let i = 0; i < taskElements.length; i++) {
 				const rect = taskElements[i].getBoundingClientRect();
 				const midY = rect.top + rect.height / 2;

@@ -25,7 +25,10 @@ export function ageParts(iso: string | null | undefined, now: number = Date.now(
 	if (days < 30) return { value: days, unit: "d" };
 	const months = Math.floor(days / 30);
 	if (months < 12) return { value: months, unit: "M" };
-	return { value: Math.floor(days / 365), unit: "y" };
+	// Years are derived from the same 30-day months (12 months = 1 year), not a
+	// separate 365-day divisor — otherwise the 360–364 day window (months === 12,
+	// days < 365) fell through to `floor(days / 365) === 0` and rendered "0y".
+	return { value: Math.floor(months / 12), unit: "y" };
 }
 
 /** Compact "digit(s)+letter" form, e.g. `25s`, `5m`, `7h`, `13d`, `7M`, `3y`. */

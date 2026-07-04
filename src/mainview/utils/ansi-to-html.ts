@@ -141,10 +141,50 @@ function parseSgr(codes: number[], state: State): void {
 	}
 }
 
-// Matches CSI SGR sequences: ESC [ ... m
-const SGR_RE = /\x1b\[([0-9;]*)m/g;
-// Matches all other escape sequences (CSI, OSC, etc.) to strip them
-const OTHER_ESC_RE = /\x1b(?:\[[0-9;?]*[A-Za-ln-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|\([A-Za-z])/g;
+// Matches CSI SGR sequences: ESC [ ... m. The parameter class allows `:` so the
+// ITU / kitty "colon form" (e.g. `38:5:196`, `4:3`) is matched and consumed here
+// rather than leaking through OTHER_ESC_RE as visible text.
+const SGR_RE = /\x1b\[([0-9;:]*)m/g;
+// Matches all other escape sequences (CSI, OSC, etc.) to strip them. `:` is
+// allowed in the CSI parameter class for the same colon-form reason; SGR ('m')
+// is excluded by the terminator class so it stays with SGR_RE above.
+const OTHER_ESC_RE = /\x1b(?:\[[0-9;?:]*[A-Za-ln-z]|\][^\x07\x1b]*(?:\x07|\x1b\\)|\([A-Za-z])/g;
+
+/**
+ * Expand a raw SGR parameter string into the flat numeric-code array that
+ * parseSgr expects. Semicolon-separated params pass through as-is; colon-form
+ * sub-parameters are normalized so the existing 38/48 extended-color handling
+ * (which reads the following codes) keeps working:
+ *   - `38:5:196`      → [38, 5, 196]
+ *   - `38:2::255:0:0` → [38, 2, 255, 0, 0]   (empty colorspace slot dropped)
+ *   - `4:3` / `4:0`   → [4] / [24]           (underline style on / off)
+ */
+function expandSgrCodes(raw: string): number[] {
+	if (raw === "") return [0];
+	const out: number[] = [];
+	for (const token of raw.split(";")) {
+		if (!token.includes(":")) {
+			out.push(Number(token));
+			continue;
+		}
+		const subs = token.split(":");
+		const head = Number(subs[0]);
+		if (head === 38 || head === 48) {
+			// Extended color colon-form: keep the numeric sub-params, drop the
+			// empty colorspace-id slot that `38:2::r:g:b` carries.
+			for (const s of subs) {
+				if (s !== "") out.push(Number(s));
+			}
+		} else if (head === 4) {
+			// Colon-form underline style: `4:0` turns it off, any other style on.
+			out.push(subs[1] === "0" ? 24 : 4);
+		} else {
+			// Unknown colon-form attribute: keep the base code, ignore sub-params.
+			out.push(head);
+		}
+	}
+	return out;
+}
 
 export function ansiToHtml(input: string): string {
 	// First, strip all non-SGR escape sequences
@@ -169,10 +209,8 @@ export function ansiToHtml(input: string): string {
 			}
 		}
 
-		// Parse SGR codes
-		const rawCodes = match[1];
-		const codes = rawCodes === "" ? [0] : rawCodes.split(";").map(Number);
-		parseSgr(codes, state);
+		// Parse SGR codes (handles both `;` and colon-form `:` sub-parameters)
+		parseSgr(expandSgrCodes(match[1]), state);
 
 		lastIndex = match.index + match[0].length;
 	}

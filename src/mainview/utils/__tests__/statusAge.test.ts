@@ -55,6 +55,15 @@ describe("ageParts", () => {
 		expect(ageParts(ago(365 * DAY), NOW)).toEqual({ value: 1, unit: "y" });
 		expect(ageParts(ago(3 * 365 * DAY), NOW)).toEqual({ value: 3, unit: "y" });
 	});
+
+	it("does not report 0y in the 360–364 day gap between 12 months and a 365-day year", () => {
+		// 12 * 30-day months = 360 days, but a year was 365 days: the 360–364 day
+		// window fell through to `floor(days / 365) = 0` and rendered "0y".
+		for (let d = 360; d <= 364; d++) {
+			const part = ageParts(ago(d * DAY), NOW);
+			expect(part).toEqual({ value: 1, unit: "y" });
+		}
+	});
 });
 
 describe("compactAge", () => {
