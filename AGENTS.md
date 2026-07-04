@@ -156,7 +156,17 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 
 ## Feature discovery tips
 
-**Every user-facing feature must include 1–2 "Did you know?" tips** (small feature → 1, large → 2). Bug fixes/refactors — skip. Include tips in the same commit as the feature.
+**A tip is earned, not mandatory.** The "Did you know?" registry exists to surface **non-obvious capabilities the user would otherwise never find** — it is NOT a changelog. The default for any change, including most user-facing features, is **zero tips**. Bug fixes/refactors — never. Every low-value tip dilutes the good ones: a user who meets noise a few times stops reading tips at all.
+
+**The gate — add a tip only if ALL three hold:**
+
+1. **Hidden value.** The capability is invisible or unlikely to be discovered by normal UI exploration: a keyboard shortcut, hover/drag/right-click behavior, a CLI power, a non-obvious workflow. If a visible button, badge, or toggle already explains itself on screen, a tip about it is spam — don't write it.
+2. **Honest score ≥ 3** on the rubric below. A would-be score of 1–2 means no tip (rare exception: a truly invisible auto-behavior that saves real pain may ship at 2).
+3. **Not already covered.** Check `ALL_TIPS` first. If an existing tip covers the same feature, or the same feature cluster (stats screen, mobile gestures, remote access, diff review…) already has 2–3 tips, **update or reword the existing tip** in the same commit instead of stacking a near-duplicate.
+
+**Count:** 0 by default; 1 for a feature that passes the gate; 2 only for a genuine flagship (score 5). Include tips in the same commit as the feature.
+
+**Never write a tip for:** self-describing UI (a labeled button that does what it says), visible visual states (spinners, glows, badges), settings toggles that restate their own label, behavior users already expect by default, or anything a first-time user meets naturally on the happy path.
 
 **Files:** tip registry in `src/mainview/tips.ts` (`ALL_TIPS` array), i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. See existing tips for the pattern.
 
@@ -166,11 +176,11 @@ This is a no-op for collaborators who don't have the `h0x91b` account — `gh` w
 
 - **5** — flagship "wow" that sells the product: multi-agent variants, the bug-hunter swarm, CoW worktree deps, AI Review, live terminal preview. Reserve for genuinely demo-reel features.
 - **4** — strong, distinctive capability most users will love (agent-driven PRs, command palette, OSC52 clipboard, port auto-allocation, image/large-text paste).
-- **3** — useful everyday convenience (search, status badges, right-click open, dev servers).
-- **2** — minor convenience or a settings toggle (rename column, hide sidebar, pick gh account).
-- **1** — niche/power-user edge or near-invisible auto-behavior. If you're tempted to write a `1`, reconsider whether the tip is worth adding at all.
+- **3** — useful everyday convenience that is still non-obvious (search operators, right-click open, hover previews).
+- **2** — minor convenience or a settings toggle. Below the gate — normally no tip; allowed only via the invisible-but-valuable exception.
+- **1** — niche/power-user trivia. Never add.
 
-Default conservatively: when unsure between two tiers, pick the lower one. Add the new tip at the end of the `ALL_TIPS` array (order within a tier doesn't matter — selection is random within the tier).
+Default conservatively: when unsure between two tiers, pick the lower one — and remember that below 3 the answer is usually "no tip". Add the new tip at the end of the `ALL_TIPS` array (order within a tier doesn't matter — selection is random within the tier). **Registry hygiene:** if your new tip supersedes or overlaps an older one, delete or merge the old one in the same commit (drop its `ALL_TIPS` entry and its keys from all three locales).
 
 ## Keyboard shortcuts
 
