@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedImage } from "../shared/types";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
@@ -17,7 +17,7 @@ import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
 
 const log = createLogger("cli-socket");
 
-const MIN_PREFIX_LENGTH = 8;
+const MIN_PREFIX_LENGTH = ID_PREFIX_MIN_LENGTH;
 
 function findByIdPrefix<T extends { id: string }>(items: T[], prefix: string, entityName: string): T | null {
 	const exact = items.find((item) => item.id === prefix);
@@ -306,16 +306,22 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		const now = new Date().toISOString();
-		const note: TaskNote = {
-			id: crypto.randomUUID(),
-			content,
-			source: (params.source as NoteSource) ?? "ai",
-			createdAt: now,
-			updatedAt: now,
-		};
-		const notes = [...(task.notes ?? []), note];
-		const updated = await data.updateTask(project, task.id, { notes });
+		// Recompute the notes array from the CURRENT task inside the per-task lock.
+		// Appending to a pre-lock snapshot (`task.notes`) races with any concurrent
+		// note write — two parallel `dev3 note add` calls (routine for multi-variant
+		// bug-hunters) would both read the same snapshot and the last writer would
+		// silently drop the other's note. Mirrors the RPC addTaskNote handler.
+		const { task: updated } = await data.updateTaskWith(project, task.id, async (current) => {
+			const now = new Date().toISOString();
+			const note: TaskNote = {
+				id: crypto.randomUUID(),
+				content,
+				source: (params.source as NoteSource) ?? "ai",
+				createdAt: now,
+				updatedAt: now,
+			};
+			return { updates: { notes: [...(current.notes ?? []), note] }, result: note };
+		});
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
 	},
@@ -360,13 +366,20 @@ const handlers: Record<string, Handler> = {
 			task = found.task;
 		}
 
-		const before = task.notes ?? [];
-		const noteToDelete = findByIdPrefix(before, noteId, "note");
-		if (!noteToDelete) {
+		// Resolve + filter against the CURRENT task inside the per-task lock so a
+		// concurrent note write is not clobbered (same lost-update race the RPC twin
+		// avoids via updateTaskWith). Resolving the prefix on the pre-lock snapshot
+		// first lets us fail fast with a clear "Note not found" before taking the lock.
+		if (!findByIdPrefix(task.notes ?? [], noteId, "note")) {
 			throw new Error(`Note not found: ${noteId}`);
 		}
-		const notes = before.filter((n) => n.id !== noteToDelete.id);
-		const updated = await data.updateTask(project, task.id, { notes });
+		const { task: updated } = await data.updateTaskWith(project, task.id, async (current) => {
+			const before = current.notes ?? [];
+			const noteToDelete = findByIdPrefix(before, noteId, "note");
+			// Vanished between snapshot and lock (concurrent delete) — treat as done.
+			const notes = noteToDelete ? before.filter((n) => n.id !== noteToDelete.id) : before;
+			return { updates: { notes }, result: undefined };
+		});
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		return updated;
 	},
@@ -397,17 +410,18 @@ const handlers: Record<string, Handler> = {
 		if (!projectId) throw new Error("projectId is required");
 		if (!name) throw new Error("name is required");
 
-		const project = await data.getProject(projectId);
-		const labels = project.labels ?? [];
-		const usedColors = new Set(labels.map((l) => l.color));
-		const color = (params.color as string) ?? LABEL_COLORS.find((c) => !usedColors.has(c)) ?? LABEL_COLORS[labels.length % LABEL_COLORS.length];
-
-		const label: Label = {
-			id: crypto.randomUUID(),
-			name,
-			color,
-		};
-		await data.updateProject(projectId, { labels: [...labels, label] });
+		// Build + append the label from the CURRENT project inside the project lock.
+		// Reading project.labels before the lock and writing back [...labels, label]
+		// races with any concurrent label write (another create, or a label.delete):
+		// the last writer clobbers the other's change. updateProjectWith recomputes
+		// inside the lock. Mirrors the RPC createLabel handler.
+		const { result: label } = await data.updateProjectWith(projectId, async (current) => {
+			const labels = current.labels ?? [];
+			const usedColors = new Set(labels.map((l) => l.color));
+			const color = (params.color as string) ?? LABEL_COLORS.find((c) => !usedColors.has(c)) ?? LABEL_COLORS[labels.length % LABEL_COLORS.length];
+			const newLabel: Label = { id: crypto.randomUUID(), name, color };
+			return { updates: { labels: [...labels, newLabel] }, result: newLabel };
+		});
 		getPushMessage()?.("projectUpdated", { project: await data.getProject(projectId) });
 		return label;
 	},
@@ -419,11 +433,16 @@ const handlers: Record<string, Handler> = {
 		if (!labelId) throw new Error("labelId is required");
 
 		const project = await data.getProject(projectId);
-		const labels = project.labels ?? [];
-		const label = findByIdPrefix(labels, labelId, "label");
+		const label = findByIdPrefix(project.labels ?? [], labelId, "label");
 		if (!label) throw new Error(`Label not found: ${labelId}`);
 
-		await data.updateProject(projectId, { labels: labels.filter((l) => l.id !== label.id) });
+		// Recompute the surviving labels from the CURRENT project inside the lock so
+		// a concurrent label.create is not clobbered (same lost-update race the
+		// per-task loop below already avoids). Mirrors the RPC deleteLabel handler.
+		await data.updateProjectWith(projectId, async (current) => ({
+			updates: { labels: (current.labels ?? []).filter((l) => l.id !== label.id) },
+			result: undefined,
+		}));
 		// Remove from all tasks. Recompute labelIds from the CURRENT task inside the
 		// per-task lock (updateTaskWith) — filtering a pre-lock snapshot would clobber
 		// any concurrent labelIds change. Mirrors the RPC deleteLabel handler.
@@ -451,12 +470,23 @@ const handlers: Record<string, Handler> = {
 		const project = await data.getProject(projectId);
 		const projectLabels = project.labels ?? [];
 
-		// Resolve short label ID prefixes to full UUIDs
+		// Resolve short label ID prefixes to full UUIDs, rejecting any that do not
+		// match a real project label. The CLI does not validate, so without this an
+		// id typo would be persisted verbatim into task.labelIds as permanent garbage
+		// (nothing prunes dangling labelIds, unlike customColumnId), the UI would
+		// silently render zero labels for it, and the CLI would still report success.
+		const unknown: string[] = [];
 		const labelIds = rawLabelIds.map((raw) => {
 			const found = findByIdPrefix(projectLabels, raw, "label");
 			if (found) return found.id;
-			return raw; // pass through if not found — validation is caller's job
+			unknown.push(raw);
+			return raw;
 		});
+		if (unknown.length > 0) {
+			throw new Error(
+				`Label not found: ${unknown.join(", ")}. Run "dev3 label list" to see valid label IDs.`,
+			);
+		}
 
 		const task = await data.updateTask(project, taskId, { labelIds });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task });

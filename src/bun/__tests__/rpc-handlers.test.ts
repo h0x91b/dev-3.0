@@ -3101,6 +3101,45 @@ describe("handlers.spawnVariants", () => {
 		);
 	});
 
+	// A task can sit in To Do and accumulate notes + an overview before being
+	// launched with variants. spawnVariants deletes the source, so without carrying
+	// them onto the variants that context is silently lost.
+	it("preserves notes and overview from the source task on spawned variants", async () => {
+		const project = makeProject();
+		const notes = [
+			{ id: "n1", content: "important context", source: "user" as const, createdAt: "2026-04-15T00:00:00Z", updatedAt: "2026-04-15T00:00:00Z" },
+		];
+		const sourceTask = makeTask({
+			status: "todo",
+			seq: 5,
+			notes,
+			overview: "agent overview",
+			userOverview: "user overview",
+		});
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true, notes });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", notes });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ notes, overview: "agent overview", userOverview: "user overview" }),
+		);
+	});
+
 	// Virtual ("Operations") projects: Run / Create-and-Run funnels through
 	// spawnVariants with an active target. The background preparation must NOT
 	// touch git — it launches the agent + shell in a managed/chosen folder.

@@ -13,6 +13,7 @@ vi.mock("../data", () => ({
 	updateTask: vi.fn(),
 	updateTaskWith: vi.fn(),
 	updateProject: vi.fn(),
+	updateProjectWith: vi.fn(),
 }));
 
 vi.mock("../git", () => ({
@@ -1054,22 +1055,32 @@ describe("note.add", () => {
 		expect(resp.error).toContain("content is required");
 	});
 
+	// note.add now recomputes the notes array inside the per-task lock via
+	// updateTaskWith (avoids the lost-update race), so the tests wire that mutator
+	// and assert on the resulting task instead of a pre-lock updateTask snapshot.
+	function wireUpdateTaskWith(task: Task): void {
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
+			return { task: { ...task, ...updates }, result } as never;
+		});
+	}
+
 	it("adds note with default source ai", async () => {
 		const project = makeProject();
 		const task = makeTask({ notes: [] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(task);
+		wireUpdateTaskWith(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
 			makeRequest("note.add", { taskId: task.id, projectId: "proj-1", content: "Hello" }),
 		);
 		expect(resp.ok).toBe(true);
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(updateCall.notes).toHaveLength(1);
-		expect(updateCall.notes![0].content).toBe("Hello");
-		expect(updateCall.notes![0].source).toBe("ai");
+		const notes = (resp.data as Task).notes ?? [];
+		expect(notes).toHaveLength(1);
+		expect(notes[0].content).toBe("Hello");
+		expect(notes[0].source).toBe("ai");
 	});
 
 	it("adds note with explicit source", async () => {
@@ -1077,10 +1088,10 @@ describe("note.add", () => {
 		const task = makeTask({ notes: [] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(task);
+		wireUpdateTaskWith(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
-		await handleRequest(
+		const resp = await handleRequest(
 			makeRequest("note.add", {
 				taskId: task.id,
 				projectId: "proj-1",
@@ -1088,8 +1099,8 @@ describe("note.add", () => {
 				source: "user",
 			}),
 		);
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(updateCall.notes![0].source).toBe("user");
+		const notes = (resp.data as Task).notes ?? [];
+		expect(notes[0].source).toBe("user");
 	});
 
 	it("appends to existing notes", async () => {
@@ -1104,16 +1115,16 @@ describe("note.add", () => {
 		const task = makeTask({ notes: [existingNote] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(task);
+		wireUpdateTaskWith(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
-		await handleRequest(
+		const resp = await handleRequest(
 			makeRequest("note.add", { taskId: task.id, projectId: "proj-1", content: "New" }),
 		);
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(updateCall.notes).toHaveLength(2);
-		expect(updateCall.notes![0]).toEqual(existingNote);
-		expect(updateCall.notes![1].content).toBe("New");
+		const notes = (resp.data as Task).notes ?? [];
+		expect(notes).toHaveLength(2);
+		expect(notes[0]).toEqual(existingNote);
+		expect(notes[1].content).toBe("New");
 	});
 
 	it("resolves across projects when no projectId", async () => {
@@ -1121,7 +1132,7 @@ describe("note.add", () => {
 		const task = makeTask({ notes: [] });
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue(task);
+		wireUpdateTaskWith(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -1194,6 +1205,15 @@ describe("note.delete", () => {
 		expect(resp.error).toContain("noteId is required");
 	});
 
+	// note.delete recomputes the surviving notes inside the per-task lock via
+	// updateTaskWith, so success-path tests wire that mutator against the seeded task.
+	function wireUpdateTaskWith(task: Task): void {
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
+			return { task: { ...task, ...updates }, result } as never;
+		});
+	}
+
 	it("deletes note by full ID", async () => {
 		const note: TaskNote = {
 			id: "note-full-uuid-1234",
@@ -1206,7 +1226,7 @@ describe("note.delete", () => {
 		const task = makeTask({ notes: [note] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, notes: [] });
+		wireUpdateTaskWith(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -1217,8 +1237,7 @@ describe("note.delete", () => {
 			}),
 		);
 		expect(resp.ok).toBe(true);
-		const updateCall = vi.mocked(data.updateTask).mock.calls[0][2];
-		expect(updateCall.notes).toHaveLength(0);
+		expect((resp.data as Task).notes).toHaveLength(0);
 	});
 
 	it("deletes note by prefix", async () => {
@@ -1233,7 +1252,7 @@ describe("note.delete", () => {
 		const task = makeTask({ notes: [note] });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, notes: [] });
+		wireUpdateTaskWith(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -1282,7 +1301,7 @@ describe("note.delete", () => {
 		const task = makeTask({ notes: [note] });
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, notes: [] });
+		wireUpdateTaskWith(task);
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -1816,6 +1835,16 @@ describe("label.list", () => {
 });
 
 describe("label.create", () => {
+	// label.create now appends the label inside the project lock via
+	// updateProjectWith (avoids the lost-update race), so tests wire that mutator
+	// against the seeded project.
+	function wireUpdateProjectWith(project: Project): void {
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await (mutator as (p: Project) => Promise<{ updates: Partial<Project>; result: unknown }>)(project);
+			return { project: { ...project, ...updates }, result } as never;
+		});
+	}
+
 	it("errors when projectId is missing", async () => {
 		const resp = await handleRequest(makeRequest("label.create", { name: "bug" }));
 		expect(resp.ok).toBe(false);
@@ -1830,9 +1859,7 @@ describe("label.create", () => {
 
 	it("creates label with auto-assigned color", async () => {
 		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
-		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
-		// Return updated project for the push message
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
+		wireUpdateProjectWith(makeProject({ labels: [] }));
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
 
 		const resp = await handleRequest(
@@ -1847,7 +1874,7 @@ describe("label.create", () => {
 
 	it("creates label with custom color", async () => {
 		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
-		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		wireUpdateProjectWith(makeProject({ labels: [] }));
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
 
 		const resp = await handleRequest(
@@ -1861,7 +1888,7 @@ describe("label.create", () => {
 	it("skips colors already used by existing labels", async () => {
 		const existing = [{ id: "lbl-1", name: "bug", color: "#ef4444" }];
 		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: existing }));
-		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		wireUpdateProjectWith(makeProject({ labels: existing }));
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -1874,7 +1901,7 @@ describe("label.create", () => {
 
 	it("trims label name", async () => {
 		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels: [] }));
-		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		wireUpdateProjectWith(makeProject({ labels: [] }));
 		vi.mocked(getPushMessage).mockReturnValue(null);
 
 		const resp = await handleRequest(
@@ -1908,7 +1935,12 @@ describe("label.delete", () => {
 		const taskWithout = makeTask({ id: "t2", labelIds: [] });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		// label removal now goes through the project lock (updateProjectWith) so a
+		// concurrent label.create is not clobbered.
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await (mutator as (p: Project) => Promise<{ updates: Partial<Project>; result: unknown }>)(project);
+			return { project: { ...project, ...updates }, result } as never;
+		});
 		vi.mocked(data.loadTasks).mockResolvedValue([taskWithLabel, taskWithout]);
 		vi.mocked(data.updateTaskWith).mockResolvedValue({ task: taskWithLabel, result: undefined } as any);
 
@@ -1916,9 +1948,12 @@ describe("label.delete", () => {
 			makeRequest("label.delete", { projectId: "proj-1", labelId: "lbl-full-uuid-1234" }),
 		);
 		expect(resp.ok).toBe(true);
-		// Should update project labels (remove the deleted one)
-		expect(data.updateProject).toHaveBeenCalledWith("proj-1", {
-			labels: [labels[1]],
+		// Should remove the deleted label from the project inside the lock. The mutator
+		// recomputes from the CURRENT project, so surviving labels are preserved.
+		const projMutator = vi.mocked(data.updateProjectWith).mock.calls[0][1];
+		expect(await projMutator(project)).toEqual({
+			updates: { labels: [labels[1]] },
+			result: undefined,
 		});
 		// Should update affected task via the locked mutator (no lost-update race)
 		expect(data.updateTaskWith).toHaveBeenCalledWith(project, "t1", expect.any(Function));
@@ -1934,8 +1969,12 @@ describe("label.delete", () => {
 
 	it("matches label by prefix", async () => {
 		const labels = [{ id: "lbl-abcd-1234-5678", name: "bug", color: "#ef4444" }];
-		vi.mocked(data.getProject).mockResolvedValue(makeProject({ labels }));
-		vi.mocked(data.updateProject).mockResolvedValue(undefined as any);
+		const project = makeProject({ labels });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await (mutator as (p: Project) => Promise<{ updates: Partial<Project>; result: unknown }>)(project);
+			return { project: { ...project, ...updates }, result } as never;
+		});
 		vi.mocked(data.loadTasks).mockResolvedValue([]);
 
 		const resp = await handleRequest(
@@ -1995,7 +2034,12 @@ describe("task.setLabels", () => {
 	});
 
 	it("sets labels on task", async () => {
-		const project = makeProject();
+		const project = makeProject({
+			labels: [
+				{ id: "lbl-1", name: "bug", color: "#ef4444" },
+				{ id: "lbl-2", name: "feature", color: "#14b8a6" },
+			],
+		});
 		const task = makeTask({ labelIds: [] });
 		const updated = { ...task, labelIds: ["lbl-1", "lbl-2"] };
 
@@ -2014,6 +2058,30 @@ describe("task.setLabels", () => {
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
 			labelIds: ["lbl-1", "lbl-2"],
 		});
+	});
+
+	it("rejects unknown label IDs instead of persisting garbage", async () => {
+		const project = makeProject({
+			labels: [{ id: "lbl-real", name: "bug", color: "#ef4444" }],
+		});
+		const task = makeTask({ labelIds: [] });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: task.id,
+				projectId: "proj-1",
+				labelIds: ["lbl-real", "deadbeef-does-not-exist"],
+			}),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Label not found");
+		expect(resp.error).toContain("deadbeef-does-not-exist");
+		// Nothing is persisted when validation fails.
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("resolves short label ID prefixes to full UUIDs", async () => {

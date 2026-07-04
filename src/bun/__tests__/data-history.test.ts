@@ -118,3 +118,28 @@ describe("task title/overview history", () => {
 		expect(updated.history!.map((entry) => entry.title)).toEqual(["v1", "v2", "v2", "v3"]);
 	});
 });
+
+describe("addTask — carried extras", () => {
+	it("persists notes, overview and userOverview passed via extras", async () => {
+		const notes = [
+			{ id: "n1", content: "carried note", source: "user" as const, createdAt: "2026-04-15T00:00:00Z", updatedAt: "2026-04-15T00:00:00Z" },
+		];
+		const task = await addTask(testProject, "Launched with variants", "in-progress", {
+			notes,
+			overview: "agent overview",
+			userOverview: "user overview",
+		});
+		expect(task.notes).toEqual(notes);
+		expect(task.overview).toBe("agent overview");
+		expect(task.userOverview).toBe("user overview");
+		// The seeded 'created' history entry reflects the carried (effective) overview.
+		expect(task.history![0]).toMatchObject({ overview: "user overview", changed: "created" });
+	});
+
+	it("omits the carried fields when not provided (no empty-notes noise)", async () => {
+		const task = await addTask(testProject, "Plain task");
+		expect(task.notes).toBeUndefined();
+		expect(task.overview).toBeUndefined();
+		expect(task.userOverview).toBeUndefined();
+	});
+});

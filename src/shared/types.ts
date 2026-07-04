@@ -15,6 +15,16 @@ export interface ChangelogEntry {
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
+/**
+ * Minimum length of a short ID prefix (task/project/label/note) accepted for
+ * prefix matching. Below this, a prefix is treated as "not a prefix" (too broad
+ * to disambiguate) rather than resolved to whichever entity happens to match
+ * first. Single source of truth: the CLI-side resolver (`expandShortId`) and the
+ * server-side `findByIdPrefix` MUST use the same threshold, or a short prefix the
+ * CLI silently expands would bypass the server's own guard. See decision 102.
+ */
+export const ID_PREFIX_MIN_LENGTH = 8;
+
 // ---- Data models ----
 
 export type TaskStatus =

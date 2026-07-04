@@ -411,6 +411,47 @@ describe("expandShortProjectId", () => {
 	});
 });
 
+describe("expandShortId — prefix guards", () => {
+	it("resolves an unambiguous >=8-char task prefix to its full id", async () => {
+		const { expandShortId } = await import("../context");
+		expect(expandShortId(TEST_SHORT_ID, null)).toBe(TEST_TASK_ID);
+	});
+
+	it("leaves a too-short prefix unchanged (below the min length, server rejects it)", async () => {
+		const { expandShortId } = await import("../context");
+		// A 3-char prefix must NOT be resolved to whatever task happens to match
+		// first — that is exactly the silent-misresolution bug this guard closes.
+		expect(expandShortId("aab", null)).toBe("aab");
+	});
+
+	it("throws on an ambiguous prefix matching more than one task", async () => {
+		// Two tasks in the test project share the same 8-char prefix.
+		writeFileSync(
+			`${TEST_TASK_DATA_DIR}/tasks.json`,
+			JSON.stringify([
+				{ id: "dupe1234-1111-2222-3333-444444444444" },
+				{ id: "dupe1234-5555-6666-7777-888888888888" },
+			]),
+		);
+		const { expandShortId } = await import("../context");
+		expect(() => expandShortId("dupe1234", null)).toThrow(/Ambiguous task prefix/);
+	});
+
+	it("still honors a context task match even below the min length", async () => {
+		const { expandShortId } = await import("../context");
+		const ctx = { projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID, socketPath: "" };
+		// Context is authoritative — an in-worktree short prefix means "this task".
+		expect(expandShortId("aab", ctx)).toBe(TEST_TASK_ID);
+	});
+});
+
+describe("expandShortProjectId — prefix guards", () => {
+	it("leaves a too-short project prefix unchanged", async () => {
+		const { expandShortProjectId } = await import("../context");
+		expect(expandShortProjectId("pro", null)).toBe("pro");
+	});
+});
+
 describe("resolveProjectId", () => {
 	it("expands a short --project flag value", async () => {
 		const { resolveProjectId } = await import("../context");
