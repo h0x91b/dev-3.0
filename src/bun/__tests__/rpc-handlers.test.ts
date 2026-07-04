@@ -108,6 +108,8 @@ vi.mock("../pty-server", () => ({
 	getTmuxBinary: vi.fn(() => "tmux"),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
+	tmuxClientCwd: vi.fn(() => "/mock/dev3-home"),
+	PANE_CWD_FORMAT: "#{?pane_current_path,#{pane_current_path},#{session_path}}",
 }));
 
 vi.mock("../system-clipboard", () => ({
@@ -419,8 +421,13 @@ describe("runCleanupScript", () => {
 		});
 
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
+		// The tmux CLIENT spawns from the stable dev3 home (tmuxClientCwd), NOT
+		// the worktree — otherwise a server started by this client would keep a
+		// cwd that this very cleanup is about to delete (tmux 3.7 then ignores
+		// `-c` for all future panes). The script itself runs in the worktree via
+		// the `-c` flag asserted below.
 		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
-			cwd: "/tmp/test-worktree",
+			cwd: "/mock/dev3-home",
 			env: expect.objectContaining({
 				TERM: "xterm-256color",
 				DEV3_TASK_TITLE: "Ship it",
@@ -434,6 +441,10 @@ describe("runCleanupScript", () => {
 				DEV3_TASK_TO_STATUS: "completed",
 			}),
 		});
+		const cleanupArgs = mockSpawn.mock.calls[0]?.[0] as string[];
+		const cFlagIndex = cleanupArgs.indexOf("-c");
+		expect(cFlagIndex).toBeGreaterThan(-1);
+		expect(cleanupArgs[cFlagIndex + 1]).toBe("/tmp/test-worktree");
 	});
 
 	it("reports status 'deleted' when the worktree dies via task deletion", async () => {
@@ -5638,8 +5649,12 @@ describe("handlers.tmuxAction", () => {
 		});
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
+		// -c must carry a session_path fallback: tmux 3.7 on macOS sometimes
+		// reports an empty pane_current_path (unreadable foreground cwd), and a
+		// bare #{pane_current_path} then expands to "" — tmux falls back to the
+		// split CLIENT's cwd, i.e. the app bundle dir, opening the pane there.
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-v", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-v", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
@@ -5653,7 +5668,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-h", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-h", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});

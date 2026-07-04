@@ -590,7 +590,11 @@ export async function runCleanupScript(
 		{
 			terminal: { cols: 220, rows: 50, data: () => {} },
 			env: buildCleanupScriptEnv(task, project, transition),
-			cwd: task.worktreePath,
+			// NOT the worktree: if this client is the one that starts the tmux
+			// server, the server would daemonize with a cwd this very cleanup is
+			// about to delete — poisoning `-c` for all future panes (tmux 3.7).
+			// The script still runs in the worktree via the `-c` flag above.
+			cwd: pty.tmuxClientCwd(),
 		},
 	);
 

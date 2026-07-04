@@ -806,7 +806,9 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			"-s", devSession,
 			"-c", task.worktreePath,
 			`bash "${devScriptPath}"`,
-		), { stdout: "pipe", stderr: "pipe" });
+			// Client cwd must never be a mortal worktree — a tmux server started
+			// by this client keeps that cwd forever (see pty.tmuxClientCwd).
+		), { stdout: "pipe", stderr: "pipe", cwd: pty.tmuxClientCwd() });
 		const stderrOutput = await new Response(proc.stderr).text();
 		const exitCode = await proc.exited;
 
@@ -1522,10 +1524,10 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	let args: string[];
 	switch (params.action) {
 		case "splitH":
-			args = pty.tmuxArgs(socket, "split-window", "-v", "-c", "#{pane_current_path}", "-t", tmuxSession);
+			args = pty.tmuxArgs(socket, "split-window", "-v", "-c", pty.PANE_CWD_FORMAT, "-t", tmuxSession);
 			break;
 		case "splitV":
-			args = pty.tmuxArgs(socket, "split-window", "-h", "-c", "#{pane_current_path}", "-t", tmuxSession);
+			args = pty.tmuxArgs(socket, "split-window", "-h", "-c", pty.PANE_CWD_FORMAT, "-t", tmuxSession);
 			break;
 		case "zoom":
 			args = pty.tmuxArgs(socket, "resize-pane", "-Z", "-t", tmuxSession);
@@ -1540,7 +1542,7 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 			args = pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.-`);
 			break;
 		case "newWindow":
-			args = pty.tmuxArgs(socket, "new-window", "-c", "#{pane_current_path}", "-t", tmuxSession);
+			args = pty.tmuxArgs(socket, "new-window", "-c", pty.PANE_CWD_FORMAT, "-t", tmuxSession);
 			break;
 		case "nextLayout":
 			args = pty.tmuxArgs(socket, "next-layout", "-t", tmuxSession);

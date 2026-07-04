@@ -1,7 +1,8 @@
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { access } from "node:fs/promises";
 import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { createLogger } from "./logger";
+import { DEV3_HOME } from "./paths";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
@@ -11,6 +12,34 @@ import { writeShellInit } from "./shell-init";
 // Two theme-specific configs are written at startup: dark and light.
 // Each sets @catppuccin_flavor, sources the Catppuccin plugin for styling,
 // then applies our functional settings (keybindings, scrollback, etc.).
+
+/**
+ * Working directory for every spawned tmux CLIENT process (`new-session`,
+ * `start-server`, …). The tmux server daemonizes with the cwd of the first
+ * client that starts it and keeps it for its whole lifetime. If that cwd is a
+ * task worktree, it gets deleted when the task completes — and tmux 3.7 then
+ * silently ignores `-c` on every subsequent new-session/split-window, spawning
+ * all new panes in the server's (deleted) cwd instead. The pane cwd must
+ * always travel via an explicit `-c` flag; the client itself starts here.
+ * See decisions/103-tmux-server-immortal-cwd.md.
+ */
+export function tmuxClientCwd(): string {
+	try {
+		mkdirSync(DEV3_HOME, { recursive: true });
+	} catch { /* already exists or unwritable — spawn falls back below */ }
+	return DEV3_HOME;
+}
+
+/**
+ * Working directory format for split-window / new-window `-c` flags.
+ * tmux 3.7 on macOS sometimes reports an EMPTY `pane_current_path` for a live
+ * pane (the foreground process's cwd is unreadable). A bare
+ * `#{pane_current_path}` then expands to "", and tmux falls back to the split
+ * CLIENT's cwd — for RPC-spawned clients that's the app bundle directory, so
+ * the new pane opens inside the .app. Fall back to `#{session_path}`, which
+ * dev3 always sets to the task worktree via `new-session -c`.
+ */
+export const PANE_CWD_FORMAT = "#{?pane_current_path,#{pane_current_path},#{session_path}}";
 
 export const TMUX_CONF_DARK_PATH = "/tmp/dev3-tmux-dark.conf";
 export const TMUX_CONF_LIGHT_PATH = "/tmp/dev3-tmux-light.conf";
@@ -62,10 +91,11 @@ setw -g automatic-rename on
 # Renumber windows when one is closed
 set -g renumber-windows on
 
-# Intuitive splits (open in same directory)
-bind | split-window -h -c "#{pane_current_path}"
-bind \\ split-window -h -c "#{pane_current_path}"
-bind - split-window -v -c "#{pane_current_path}"
+# Intuitive splits (open in same directory; fall back to the session's
+# start dir — the task worktree — when pane_current_path is unreadable)
+bind | split-window -h -c "${PANE_CWD_FORMAT}"
+bind \\ split-window -h -c "${PANE_CWD_FORMAT}"
+bind - split-window -v -c "${PANE_CWD_FORMAT}"
 
 # Alt+arrow pane switching (no prefix required)
 bind -n M-Left select-pane -L
@@ -984,7 +1014,11 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			envFlags.push("-e", `${key}=${value}`);
 		}
 		envFlags.push("-e", `DEV3_WORKTREE_ROOT=${session.cwd}`);
-		const newSessionArgs = tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", ...envFlags, "-s", tmuxSessionName, tmuxCmd);
+		// The pane cwd MUST be an explicit `-c` — it cannot ride on the client
+		// process cwd, because the client is deliberately spawned from DEV3_HOME
+		// (see tmuxClientCwd) so a task worktree never becomes the tmux server's
+		// permanent working directory.
+		const newSessionArgs = tmuxArgs(session.tmuxSocket, "-f", TMUX_CONF_PATH, "new-session", "-A", "-c", session.cwd, ...envFlags, "-s", tmuxSessionName, tmuxCmd);
 		log.debug("PTY: calling Bun.spawn", { taskId: shortId(session.taskId), tmuxSession: tmuxSessionName });
 		proc = spawn(
 			newSessionArgs,
@@ -1034,7 +1068,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 					HOME: process.env.HOME || "/",
 					...session.env,
 				},
-				cwd: session.cwd,
+				cwd: tmuxClientCwd(),
 			},
 		);
 		log.debug("PTY: Bun.spawn returned", { taskId: shortId(session.taskId), pid: proc.pid, msSinceSpawn: Date.now() - spawnStartedAt });
