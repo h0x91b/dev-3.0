@@ -32,6 +32,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
+import { DEV3_HOME } from "../paths";
 import {
 	tmuxArgs,
 	cwdExists,
@@ -159,7 +160,28 @@ describe("pty-server", () => {
 			expect(tmuxCall![0]).toContain("-A");
 			expect(tmuxCall![0]).toContain("-s");
 			expect(tmuxCall![0]).toContain("dev3-task-spa");
-			expect(tmuxCall![1]).toEqual(expect.objectContaining({ cwd: "/tmp/test-cwd" }));
+		});
+
+		it("passes -c <cwd> to new-session and spawns the tmux client from DEV3_HOME", () => {
+			// Regression (tmux 3.7): the dev3 tmux server daemonizes with the cwd
+			// of the first client that starts it. If that client is spawned from a
+			// task worktree, the server's cwd dies when that task completes and its
+			// worktree is deleted — after which tmux 3.7 silently ignores `-c` on
+			// every subsequent new-session/split-window and spawns panes in the
+			// server's (deleted) cwd. Fix: the client process always starts from
+			// the immortal DEV3_HOME, and the pane cwd travels via explicit `-c`.
+			const id = track("task-safe-cwd");
+			createSession(id, "proj-1", "/tmp/test-cwd", "bash", {});
+
+			const tmuxCall = mockSpawn.mock.calls.find(
+				(c) => Array.isArray(c[0]) && c[0].includes("new-session"),
+			);
+			expect(tmuxCall).toBeDefined();
+			const args = tmuxCall![0] as string[];
+			const cIndex = args.indexOf("-c");
+			expect(cIndex).toBeGreaterThan(-1);
+			expect(args[cIndex + 1]).toBe("/tmp/test-cwd");
+			expect(tmuxCall![1]).toEqual(expect.objectContaining({ cwd: DEV3_HOME }));
 		});
 
 		it("passes session env vars to tmux via -e KEY=VAL on new-session (no leak across tasks)", () => {

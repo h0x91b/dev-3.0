@@ -806,7 +806,9 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			"-s", devSession,
 			"-c", task.worktreePath,
 			`bash "${devScriptPath}"`,
-		), { stdout: "pipe", stderr: "pipe" });
+			// Client cwd must never be a mortal worktree — a tmux server started
+			// by this client keeps that cwd forever (see pty.tmuxClientCwd).
+		), { stdout: "pipe", stderr: "pipe", cwd: pty.tmuxClientCwd() });
 		const stderrOutput = await new Response(proc.stderr).text();
 		const exitCode = await proc.exited;
 
