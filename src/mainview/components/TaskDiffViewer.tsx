@@ -12,6 +12,7 @@ import type {
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { formatBytes } from "../utils/formatBytes";
@@ -2740,6 +2741,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"))}
 					{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"))}
 					{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"))}
+						<HelpSpot topicId="diff.modes" />
 					<div className="ml-auto flex items-center gap-2">
 						<button
 							type="button"
@@ -2950,6 +2952,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 													<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
 														{t("infoPanel.diffReviewExport")}
 													</span>
+													<HelpSpot topicId="diff.review" />
 												</div>
 												<p className="text-[0.6875rem] leading-snug text-fg-3">
 													{reviewExportEntries.length > 0

@@ -5,6 +5,7 @@ import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useTaskAllocatedPorts } from "./useTaskAllocatedPorts";
+import Tooltip from "../Tooltip";
 import { PortsIcon } from "../TaskIcons";
 
 interface TaskExposedPortsProps {
@@ -45,10 +46,10 @@ function CopyUrlRow({ url }: { url: string }) {
 		} catch { /* clipboard blocked */ }
 	}
 	return (
+		<Tooltip content={copied ? t("tunnel.urlCopied") : t("tunnel.copyUrl")} detail={t("ttip.ports.copyUrl")}>
 		<button
 			onClick={handleClick}
 			className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover w-full text-left rounded px-1 -mx-1 hover:bg-accent/10 transition-colors"
-			title={copied ? t("tunnel.urlCopied") : t("tunnel.copyUrl")}
 		>
 			<span className="truncate flex-1">{copied ? t("tunnel.copied") : url}</span>
 			<span
@@ -58,6 +59,7 @@ function CopyUrlRow({ url }: { url: string }) {
 				{copied ? "\u{F012C}" : "\uF0C5"}
 			</span>
 		</button>
+		</Tooltip>
 	);
 }
 
@@ -113,6 +115,7 @@ export default function TaskExposedPorts({ task }: TaskExposedPortsProps) {
 
 	return (
 		<>
+			<Tooltip content={t("tunnel.exposedPortsSection")} detail={t("ttip.ports.section")}>
 			<button
 				ref={btnRef}
 				onClick={openMenu}
@@ -121,13 +124,13 @@ export default function TaskExposedPorts({ task }: TaskExposedPortsProps) {
 						? "text-accent border-accent/40 bg-accent/10 hover:bg-accent/20"
 						: "text-fg-2 border-edge hover:bg-elevated hover:text-fg"
 				}`}
-				title={t("tunnel.exposedPortsSection")}
 			>
 				<PortsIcon className="w-[1.125rem] h-[1.125rem]" />
 				<span className="text-[0.6875rem] font-semibold">
 					{activeCount > 0 ? `${t("tunnel.portsLabel")} (${activeCount})` : t("tunnel.portsLabel")}
 				</span>
 			</button>
+			</Tooltip>
 
 			{menuOpen && createPortal(
 				<ExposedPortsMenu
@@ -292,13 +295,14 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 								</div>
 							)}
 							<div className="flex items-center gap-3 mt-1.5">
-								<button
-									onClick={() => handleAddToShared(port)}
-									className="text-[0.6875rem] text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"
-									title={t("tunnel.sharedDescription")}
-								>
-									{t("tunnel.addToShared")}
-								</button>
+								<Tooltip content={t("tunnel.sharedDescription")}>
+									<button
+										onClick={() => handleAddToShared(port)}
+										className="text-[0.6875rem] text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"
+									>
+										{t("tunnel.addToShared")}
+									</button>
+								</Tooltip>
 								<button
 									onClick={() => copySsh(port)}
 									className="text-[0.6875rem] text-fg-3 hover:text-fg-2 underline-offset-2 hover:underline"

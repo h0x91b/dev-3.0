@@ -305,7 +305,7 @@ describe("TaskCard", () => {
 		it("shows Run button and status dropdown", () => {
 			renderCard(makeTask({ status: "todo" }));
 
-			expect(screen.getByTitle("Run")).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
 			expect(screen.getByText("Run")).toBeInTheDocument();
 			expect(screen.getByText("To Do")).toBeInTheDocument();
 		});
@@ -316,7 +316,7 @@ describe("TaskCard", () => {
 			const task = makeTask({ status: "todo" });
 			renderCard(task, { onLaunchVariants });
 
-			await user.click(screen.getByTitle("Run"));
+			await user.click(screen.getByRole("button", { name: "Run" }));
 
 			expect(onLaunchVariants).toHaveBeenCalledWith(task, "in-progress");
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
@@ -328,7 +328,7 @@ describe("TaskCard", () => {
 			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" });
 			renderCard(task, { onAddAttempts });
 
-			await user.click(screen.getByTitle("+ Variant"));
+			await user.click(screen.getByRole("button", { name: "+ Variant" }));
 
 			expect(onAddAttempts).toHaveBeenCalledWith(task);
 		});
@@ -340,7 +340,7 @@ describe("TaskCard", () => {
 
 			renderCard(task);
 
-			await user.click(screen.getByTitle("Cancel"));
+			await user.click(screen.getByLabelText("Cancel"));
 
 			expect(vi.mocked(confirm)).toHaveBeenCalled();
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
@@ -355,7 +355,7 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch });
 
-			await user.click(screen.getByTitle("Cancel"));
+			await user.click(screen.getByLabelText("Cancel"));
 
 			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -396,7 +396,7 @@ describe("TaskCard", () => {
 
 			renderCard(task);
 
-			await user.click(screen.getByTitle("Delete"));
+			await user.click(screen.getByLabelText("Delete"));
 
 			expect(vi.mocked(confirm)).toHaveBeenCalled();
 			expect(mockedApi.request.deleteTask).not.toHaveBeenCalled();
@@ -411,7 +411,7 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch });
 
-			await user.click(screen.getByTitle("Delete"));
+			await user.click(screen.getByLabelText("Delete"));
 
 			expect(mockedApi.request.deleteTask).toHaveBeenCalledWith({
 				taskId: "t1",
@@ -448,7 +448,7 @@ describe("TaskCard", () => {
 		it("in-progress task does not show Run button", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
 
-			expect(screen.queryByTitle("Run")).not.toBeInTheDocument();
+			expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
 		});
 
 		it("menu closes on second click of status trigger", async () => {
@@ -824,24 +824,24 @@ describe("TaskCard", () => {
 	describe("dismiss button visibility", () => {
 		it("shows dismiss button for todo tasks", () => {
 			renderCard(makeTask({ status: "todo" }));
-			expect(screen.getByTitle("Cancel")).toBeInTheDocument();
+			expect(screen.getByLabelText("Cancel")).toBeInTheDocument();
 		});
 
 		it("shows dismiss button for cancelled tasks", () => {
 			renderCard(makeTask({ status: "cancelled" }));
-			expect(screen.getByTitle("Delete")).toBeInTheDocument();
+			expect(screen.getByLabelText("Delete")).toBeInTheDocument();
 		});
 
 		it("does not show dismiss button for in-progress tasks", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
-			expect(screen.queryByTitle("Cancel")).not.toBeInTheDocument();
-			expect(screen.queryByTitle("Delete")).not.toBeInTheDocument();
+			expect(screen.queryByLabelText("Cancel")).not.toBeInTheDocument();
+			expect(screen.queryByLabelText("Delete")).not.toBeInTheDocument();
 		});
 
 		it("does not show dismiss button for completed tasks", () => {
 			renderCard(makeTask({ status: "completed" }));
-			expect(screen.queryByTitle("Cancel")).not.toBeInTheDocument();
-			expect(screen.queryByTitle("Delete")).not.toBeInTheDocument();
+			expect(screen.queryByLabelText("Cancel")).not.toBeInTheDocument();
+			expect(screen.queryByLabelText("Delete")).not.toBeInTheDocument();
 		});
 	});
 
@@ -966,7 +966,7 @@ describe("TaskCard", () => {
 
 			renderCard(task);
 
-			await user.click(screen.getByTitle("Cancel"));
+			await user.click(screen.getByLabelText("Cancel"));
 
 			await waitFor(() => {
 				expect(mockedTrackEvent).toHaveBeenCalledWith("task_moved", {
@@ -988,7 +988,7 @@ describe("TaskCard", () => {
 
 			renderCard(task, { dispatch });
 
-			await user.click(screen.getByTitle("Delete"));
+			await user.click(screen.getByLabelText("Delete"));
 
 			await waitFor(() => {
 				expect(dispatch).toHaveBeenCalledWith({ type: "removeTask", taskId: "t1" });
@@ -1004,7 +1004,7 @@ describe("TaskCard", () => {
 
 			renderCard(task);
 
-			await user.click(screen.getByTitle("Delete"));
+			await user.click(screen.getByLabelText("Delete"));
 
 			await waitFor(() => {
 				expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("delete failed"));
@@ -1327,21 +1327,21 @@ describe("TaskCard", () => {
 				prInfo: { number: 123, url: "https://github.com/test/repo/pull/123" },
 			});
 			const badge = screen.getByText("#123").closest("button");
-			expect(badge).toHaveAttribute("title", "Open PR #123");
+			expect(badge).toHaveAttribute("aria-label", "Open PR #123");
 		});
 	});
 
 	describe("watch toggle", () => {
 		it("renders bell outline icon with Watch text for unwatched task", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }));
-			const btn = screen.getByTitle("Watch — notify on status changes");
+			const btn = screen.getByLabelText("Watch — notify on status changes");
 			expect(btn).toBeInTheDocument();
 			expect(btn.textContent).toContain("Watch");
 		});
 
 		it("renders filled bell icon with Watching text for watched task", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test", watched: true }));
-			const btn = screen.getByTitle("Unwatch — stop notifications");
+			const btn = screen.getByLabelText("Unwatch — stop notifications");
 			expect(btn).toBeInTheDocument();
 			expect(btn.textContent).toContain("Watching");
 		});
@@ -1354,7 +1354,7 @@ describe("TaskCard", () => {
 			renderCard(task, { dispatch });
 
 			const user = userEvent.setup();
-			await user.click(screen.getByTitle("Watch — notify on status changes"));
+			await user.click(screen.getByLabelText("Watch — notify on status changes"));
 
 			expect(mockedApi.request.toggleTaskWatch).toHaveBeenCalledWith({
 				taskId: task.id,
@@ -1368,7 +1368,7 @@ describe("TaskCard", () => {
 
 		it("watched bell icon has text-accent class", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test", watched: true }));
-			const btn = screen.getByTitle("Unwatch — stop notifications");
+			const btn = screen.getByLabelText("Unwatch — stop notifications");
 			expect(btn.className).toContain("text-accent");
 		});
 	});
@@ -1379,22 +1379,22 @@ describe("TaskCard", () => {
 
 		it("shows no CI/review badge when prInfo carries no status", () => {
 			renderCard(reviewTask(), { prInfo: { number: 12, url: "https://example/pr/12" } });
-			expect(screen.queryByTitle(/CI failed/)).not.toBeInTheDocument();
-			expect(screen.queryByTitle(/PR approved/)).not.toBeInTheDocument();
+			expect(screen.queryByLabelText(/CI failed/)).not.toBeInTheDocument();
+			expect(screen.queryByLabelText(/PR approved/)).not.toBeInTheDocument();
 		});
 
 		it("renders a CI-failed badge with tooltip", () => {
 			renderCard(reviewTask(), {
 				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
 			});
-			expect(screen.getByTitle(/CI failed/)).toBeInTheDocument();
+			expect(screen.getByLabelText(/CI failed/)).toBeInTheDocument();
 		});
 
 		it("renders a review-approved badge with tooltip", () => {
 			renderCard(reviewTask(), {
 				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: null, reviewState: "approved" },
 			});
-			expect(screen.getByTitle(/PR approved/)).toBeInTheDocument();
+			expect(screen.getByLabelText(/PR approved/)).toBeInTheDocument();
 		});
 
 		it("clicking a badge moves the task to review-by-user", async () => {
@@ -1403,7 +1403,7 @@ describe("TaskCard", () => {
 			renderCard(reviewTask(), {
 				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
 			});
-			await user.click(screen.getByTitle(/CI failed/));
+			await user.click(screen.getByLabelText(/CI failed/));
 			await waitFor(() => {
 				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
 					expect.objectContaining({ taskId: "t1", newStatus: "review-by-user" }),

@@ -1,5 +1,6 @@
 import type { Task } from "../../../shared/types";
 import { useT } from "../../i18n";
+import Tooltip from "../Tooltip";
 import { ImagesIcon } from "../TaskIcons";
 
 interface TaskSharedImagesProps {
@@ -21,19 +22,20 @@ export default function TaskSharedImages({ task }: TaskSharedImagesProps) {
 
 	const label = t("infoPanel.imagesBadge", { count: String(count) });
 	return (
-		<button
-			type="button"
-			onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-				detail: { taskId: task.id, images: task.sharedImages, index: count - 1 },
-			}))}
-			className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge"
-			title={label}
-			aria-label={label}
-			data-testid="shared-images-badge"
-		>
-			<ImagesIcon className="w-[1.125rem] h-[1.125rem]" />
-			<span className="text-[0.6875rem] font-semibold">{t("infoPanel.imagesLabel")}</span>
-			<span className="text-[0.6875rem] font-semibold text-accent tabular-nums">{count}</span>
-		</button>
+		<Tooltip content={label} detail={t("ttip.sharedImages")}>
+			<button
+				type="button"
+				onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+					detail: { taskId: task.id, images: task.sharedImages, index: count - 1 },
+				}))}
+				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 text-fg-2 hover:text-fg hover:bg-elevated-hover border border-edge"
+				aria-label={label}
+				data-testid="shared-images-badge"
+			>
+				<ImagesIcon className="w-[1.125rem] h-[1.125rem]" />
+				<span className="text-[0.6875rem] font-semibold">{t("infoPanel.imagesLabel")}</span>
+				<span className="text-[0.6875rem] font-semibold text-accent tabular-nums">{count}</span>
+			</button>
+		</Tooltip>
 	);
 }

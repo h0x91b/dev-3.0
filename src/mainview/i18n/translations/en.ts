@@ -13,6 +13,8 @@ import scripts from "./en/scripts";
 import tunnels from "./en/tunnels";
 import keymap from "./en/keymap";
 import stats from "./en/stats";
+import help from "./en/help";
+import { tooltips } from "./en/tooltips";
 
 const en = {
 	...common,
@@ -30,6 +32,8 @@ const en = {
 	...tunnels,
 	...keymap,
 	...stats,
+	...help,
+	...tooltips,
 } as const;
 
 export type TranslationKey = keyof typeof en;

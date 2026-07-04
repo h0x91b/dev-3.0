@@ -7,6 +7,7 @@ import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import { useResolvedTaskProject } from "./useResolvedTaskProject";
+import Tooltip from "../Tooltip";
 
 interface TaskDevServerProps {
 	task: Task;
@@ -321,17 +322,18 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 
 	return (
 		<>
-			<button
-				ref={devServerBtnRef}
-				onClick={handleDevServer}
-				className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${stateClasses}`}
-				title={devServerTitle}
-				aria-label={devServerTitle}
-				aria-busy={isStarting}
-			>
-				{devServerIcon}
-				<span className="text-[0.6875rem] font-semibold">{devServerLabel}</span>
-			</button>
+			<Tooltip content={devServerTitle} detail={t("ttip.devServer")}>
+				<button
+					ref={devServerBtnRef}
+					onClick={handleDevServer}
+					className={`flex items-center gap-1 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${stateClasses}`}
+					aria-label={devServerTitle}
+					aria-busy={isStarting}
+				>
+					{devServerIcon}
+					<span className="text-[0.6875rem] font-semibold">{devServerLabel}</span>
+				</button>
+			</Tooltip>
 
 			{devServerHintOpen && createPortal(
 				<div

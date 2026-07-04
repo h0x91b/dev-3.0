@@ -16,6 +16,7 @@ import { TimeRangeSwitch } from "./stats/TimeRangeSwitch";
 import { PeriodStepper } from "./stats/PeriodStepper";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import HelpSpot from "./HelpSpot";
 
 interface ProductivityStatsViewProps {
 	navigate: (route: Route) => void;
@@ -182,7 +183,10 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 						)}
 						<span className="text-accent text-2xl leading-none" style={{ fontFamily: ICON }}>{"\u{F04C5}"}</span>
 						<div className="min-w-0">
-							<h1 className="text-fg text-xl font-bold leading-tight">{t("stats.title")}</h1>
+							<div className="flex items-center gap-1.5">
+								<h1 className="text-fg text-xl font-bold leading-tight">{t("stats.title")}</h1>
+								<HelpSpot topicId="stats.overview" />
+							</div>
 							{data.hasAnyData ? (
 								<p className={`text-xs flex items-center gap-1 ${data.onFire ? "text-stat-fire font-semibold" : "text-fg-3"}`}>
 									{data.onFire && <span className="leading-none" style={{ fontFamily: ICON }}>{FIRE}</span>}

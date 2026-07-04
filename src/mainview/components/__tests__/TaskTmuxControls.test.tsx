@@ -44,7 +44,7 @@ describe("TaskTmuxControls", () => {
 		);
 
 		const infoButton = screen.getByTitle("tmux Shortcuts");
-		const closeButton = screen.getByTitle("Close pane");
+		const closeButton = screen.getByLabelText("Close pane");
 
 		expect(infoButton).toHaveClass("px-1.5", "py-1", "rounded", "border", "border-edge");
 		expect(closeButton).not.toHaveClass("ml-2");
@@ -61,7 +61,7 @@ describe("TaskTmuxControls", () => {
 			</I18nProvider>,
 		);
 
-		await user.click(screen.getByTitle("Close pane"));
+		await user.click(screen.getByLabelText("Close pane"));
 
 		expect(onPicker).toHaveBeenCalledTimes(1);
 		expect((onPicker.mock.calls[0][0] as CustomEvent).detail).toEqual({ taskId: "task-1" });
@@ -89,7 +89,7 @@ describe("TaskTmuxControls", () => {
 				</I18nProvider>,
 			);
 
-			await user.click(screen.getByTitle("Close pane"));
+			await user.click(screen.getByLabelText("Close pane"));
 
 			await waitFor(() => expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "killPane" }));
 			expect(confirm).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe("TaskTmuxControls", () => {
 				</I18nProvider>,
 			);
 
-			await user.click(screen.getByTitle("Close pane"));
+			await user.click(screen.getByLabelText("Close pane"));
 
 			expect(confirm).toHaveBeenCalledWith({
 				title: "Close the last pane?",
@@ -128,7 +128,7 @@ describe("TaskTmuxControls", () => {
 				</I18nProvider>,
 			);
 
-			await user.click(screen.getByTitle("Close pane"));
+			await user.click(screen.getByLabelText("Close pane"));
 
 			expect(confirm).toHaveBeenCalled();
 			expect(api.request.tmuxAction).not.toHaveBeenCalled();
@@ -145,7 +145,7 @@ describe("TaskTmuxControls", () => {
 			</I18nProvider>,
 		);
 
-		await user.click(screen.getByTitle("Split horizontally"));
+		await user.click(screen.getByLabelText("Split horizontally"));
 
 		expect(confirm).not.toHaveBeenCalled();
 		expect(api.request.tmuxPaneCount).not.toHaveBeenCalled();
@@ -162,7 +162,7 @@ describe("TaskTmuxControls", () => {
 			</I18nProvider>,
 		);
 
-		await user.click(screen.getByTitle("New window"));
+		await user.click(screen.getByLabelText("New window"));
 
 		expect(confirm).not.toHaveBeenCalled();
 		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "newWindow" });
@@ -178,7 +178,7 @@ describe("TaskTmuxControls", () => {
 			</I18nProvider>,
 		);
 
-		await user.click(screen.getByTitle("Cycle layouts"));
+		await user.click(screen.getByLabelText("Cycle layouts"));
 
 		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "nextLayout" });
 	});
@@ -196,7 +196,7 @@ describe("TaskTmuxControls", () => {
 		// Layout presets are hidden behind the dropdown caret, not shown inline.
 		expect(screen.queryByText("Tiled (grid)")).not.toBeInTheDocument();
 
-		await user.click(screen.getByTitle("Choose tmux layout"));
+		await user.click(screen.getByLabelText("Choose tmux layout"));
 
 		const tiled = await screen.findByText("Tiled (grid)");
 		await user.click(tiled);

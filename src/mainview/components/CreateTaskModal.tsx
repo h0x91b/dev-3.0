@@ -17,6 +17,7 @@ import BranchSelector from "./BranchSelector";
 import SkillAutocompleteDropdown from "./SkillAutocompleteDropdown";
 import { openFolderPicker } from "../folder-picker";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import HelpSpot from "./HelpSpot";
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -377,9 +378,12 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
 			<div ref={trapRef} role="dialog" aria-modal="true" tabIndex={-1} className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
 				<div className="flex items-center justify-between">
-					<h2 className="text-fg text-lg font-semibold">
-						{t("createTask.title")}
-					</h2>
+					<div className="flex items-center gap-1.5">
+						<h2 className="text-fg text-lg font-semibold">
+							{t("createTask.title")}
+						</h2>
+						<HelpSpot topicId="modal.create-task" />
+					</div>
 					<button
 						onClick={handleRequestClose}
 						className="text-fg-muted hover:text-fg transition-colors p-1 -mr-1 rounded-lg hover:bg-fg/5"

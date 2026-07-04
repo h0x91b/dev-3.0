@@ -118,6 +118,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
+| Inline help (Tooltip / HelpSpot → HelpCard / help mode) | Explain what a section is, why it exists, what to do in it | fast control tooltip, section (i) in header-bearing surfaces, rich read-only HelpCard, screen-wide help-mode overlay | mutation, multi-step tour, permanent (i) in quickbars/cards/toolbars | `Tooltip.tsx`, `HelpSpot.tsx`, `HelpCard.tsx`, `HelpOverlay.tsx`, `help.ts` (see §5.4) |
 | Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch + prev/next period navigation, per-project→board jump | mutation, lifecycle/config action, header button, data filter (new dimension beyond time) | `ProductivityStatsView.tsx`, `components/stats/*` |
 
 Note: native menu is the **overflow/expert** surface; frequent actions are mirrored into DOM toolbars (inspector, board).
@@ -186,6 +187,23 @@ Rules specific to this surface:
 - **The inline review is a short-lived safety net, not clipboard-only or permanent.** Comments persist per task (`localStorage`) and survive unmount / diff reload / app restart, but only for a **3-day TTL** measured from when the review was first created — after that they auto-expire on next read. The clipboard is a *transport*, not the store: if a stray terminal selection clobbers the copied review, reopen the diff and copy again. The review is cleared by the **Reset review** button or by TTL expiry. A **global sweep** on every diff-viewer mount prunes expired/corrupt review keys across all tasks, so entries for never-reopened or deleted tasks cannot accumulate in `localStorage`. Leaving the surface does **not** discard it — so no "discard review?" guard on close.
 - No new top-level destination, no toolbar-creep into the inspector: the whole review lifecycle lives inside this surface.
 
+### 5.4 Inline help system — Tooltip / HelpSpot / help mode — `Observed`
+
+**Problem.** The app explains itself through ~227 native `title=` attributes: slow (OS hover delay), unstyled, control-scoped — they can name a button but never explain a *section* ("what is this toolbar, why does it exist, what do I do here"). No shared Tooltip primitive exists; each custom popover re-implements positioning.
+
+**One registry, three layers:**
+
+1. **`Tooltip`** — a fast styled popover primitive (portal, shared positioning util, ~250 ms hover-intent, instant re-show grace) that progressively replaces native `title=` on icon-only controls. Control-level: *what does this button do*. Migration is incremental — densest surfaces first (inspector bars, GlobalHeader, TaskCard).
+2. **`HelpSpot` → `HelpCard`** — a small ghost **(i)** icon allowed **only** in surfaces that already have a header/title row (SettingsSection headings, modal headers, Kanban column headers, diff-viewer toolbar, stats section titles). Hover (intent) or click (pins) opens a **HelpCard**: topic title, 2–4 sentence body, optional "what you can do here" bullets, optional shortcut chips (crosslinked to `keymap.ts` ids), optional nav link (e.g. "Open Keyboard Shortcuts"). Budget: **≤ 1 HelpSpot per section header**; icon role `ghost`, hover emphasis reuses `accent` (no new `--info` token).
+3. **Help mode** — a screen-wide "Explain this screen" overlay. Entry points: Help menu, `⇧⌘/`, `⇧⌘P` palette entry, header kebab (narrow/touch — the native menu is absent in remote). Every registered zone (tagged `data-help-id`, mirroring the hint overlay's `data-hint-id`) gets an (i) badge + outline; hover/click any zone opens the same HelpCard; `Esc` exits. This is how dense, headerless zones (inspector quickbars, task card, active-tasks strip) get help **with zero permanent chrome**.
+
+**Registry:** `src/mainview/help.ts` (`HELP_TOPICS`: id, titleKey, bodyKey, optional bullets/shortcutIds/link) — the same declare-as-data pattern as `keymap.ts` and `tips.ts`; content localized in an `help.ts` i18n domain (en/ru/es). Help copy is never hardcoded in components. Topics may crosslink tips (`tip.*`) instead of duplicating text.
+
+**Hard rules:**
+- A permanent (i) never sits inside quickbars, task cards, or action toolbars — those zones are covered by help mode only (creep protection; see §11).
+- HelpCard is **read-only**: navigation links allowed, mutations forbidden; no multi-step tours in v1.
+- HelpCard clamps to the viewport (`max-w-[calc(100vw-2rem)]`), honours `prefers-reduced-motion`, is keyboard-reachable (HelpSpot is a focusable button, `Enter` pins, `Esc` closes) and announced via `aria-describedby`/`role="dialog"` when pinned.
+
 ## 6. Action taxonomy — `Observed`
 
 | Action type | Definition | Placement | Token role |
@@ -198,6 +216,7 @@ Rules specific to this surface:
 | configuration | durable behavior change (scripts, columns, labels, theme, locale, gh account) | settings, project settings | secondary |
 | destructive | delete task, remove project, cancel, reset terminal, hard refresh | overflow, context menu, confirm dialog, danger zone | destructive (`text-danger`/`bg-danger`), confirmation required |
 | expert_shortcut | rare known action (debug screens, tmux cheat sheet, zoom, gauge/viewport lab) | menu `View`/`Debug`, keyboard | neutral |
+| onboarding_help | explains a surface/section (help topics, tips, shortcuts reference) | HelpSpot in section headers, help-mode overlay, menu `Help`, TipCard | ghost icon; accent reused for informational emphasis |
 
 ## 7. Design token & variant policy — `Observed`
 
@@ -260,6 +279,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 | hint navigation (jump) | `HintOverlay` over any `[data-hint-id]` target; activate with bare `f` / `⌘G` | mutation or destructive targets, visible button | hints are destinations, not actions; keyboard-only avoids button-creep |
 | keyboard expert nav | bare-key + `g`-prefix sequences (`g d/p/t/s`), `/` focus search, `c` new task — declared in `keymap.ts`, matched on `e.code` | native menu accelerators (Electrobun can't bind chords/sequences) | layout-independent; reserve `g` for the go-to prefix |
 | countable/motivational metric (`data_visualization`) | emit into the stats engine first (`productivity-stats.ts` + `productivityStats.ts`), then a viz on the Velocity Cockpit (`stats`) | controls/config on the cockpit, a new top-level screen per metric, a header counter, diagnostic noise | the cockpit is the one home for shipping signal — keep it read-only and within the honesty/complexity budget (see §1.1) |
+| onboarding_help (inline help) | `help.ts` registry topic + HelpSpot in a header-bearing section, or help-mode coverage via `data-help-id`; entries in menu `Help` / `⇧⌘/` / palette | permanent (i) in quickbars/cards/toolbars, hardcoded help strings in components, multi-step tours (v1) | help must add zero chrome to budget-protected zones; content is data, not JSX (see §5.4) |
 
 ## 11. Known anti-patterns in this project
 

@@ -11,6 +11,7 @@ import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
 import PreventSleepToggle from "./PreventSleepToggle";
 import BottomSheet from "./BottomSheet";
+import Tooltip from "./Tooltip";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import {
@@ -283,6 +284,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const headerSheetRows: { key: string; label: string; run: () => void }[] = isNarrow
 		? [
 				{ key: "palette", label: t("header.commandPalette"), run: () => window.dispatchEvent(new CustomEvent("menu:open-command-palette")) },
+				// Help mode's keyboard entry (⇧⌘/) and the native Help menu are both
+				// dead on touch/remote — the kebab is its touch-reachability path.
+				{ key: "helpMode", label: t("keymap.shortcut.helpMode"), run: () => window.dispatchEvent(new CustomEvent("menu:enter-help-mode")) },
 				{ key: "quickShell", label: t("quickShell.open"), run: () => window.dispatchEvent(new CustomEvent("menu:open-quick-shell")) },
 				...(currentProjectId && !isVirtualProject
 					? [{
@@ -323,33 +327,35 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			<div className="flex items-center gap-2 text-sm min-w-0">
 				{/* Back / forward navigation — segmented history control (Safari toolbar style) */}
 				<div className="flex items-stretch flex-shrink-0 -ml-1.5 rounded-md border border-edge bg-raised overflow-hidden">
-					<button
-						onClick={goBack}
-						disabled={!canGoBack}
-						className={`header-anim px-1.5 py-1 transition-colors ${
-							canGoBack
-								? "text-fg-3 hover:text-fg hover:bg-elevated"
-								: "text-fg-muted/40 cursor-default"
-						}`}
-						title={t("header.navBack")}
-						aria-label={t("header.navBack")}
-					>
-						<BackIcon className="w-3.5 h-3.5 block" />
-					</button>
+					<Tooltip content={t("header.navBack")} detail={t("ttip.header.navBack")}>
+						<button
+							onClick={goBack}
+							disabled={!canGoBack}
+							className={`header-anim px-1.5 py-1 transition-colors ${
+								canGoBack
+									? "text-fg-3 hover:text-fg hover:bg-elevated"
+									: "text-fg-muted/40 cursor-default"
+							}`}
+							aria-label={t("header.navBack")}
+						>
+							<BackIcon className="w-3.5 h-3.5 block" />
+						</button>
+				</Tooltip>
 					<span className="w-px self-stretch bg-edge" aria-hidden="true" />
-					<button
-						onClick={goForward}
-						disabled={!canGoForward}
-						className={`header-anim px-1.5 py-1 transition-colors ${
-							canGoForward
-								? "text-fg-3 hover:text-fg hover:bg-elevated"
-								: "text-fg-muted/40 cursor-default"
-						}`}
-						title={t("header.navForward")}
-						aria-label={t("header.navForward")}
-					>
-						<ForwardIcon className="w-3.5 h-3.5 block" />
-					</button>
+					<Tooltip content={t("header.navForward")} detail={t("ttip.header.navForward")}>
+						<button
+							onClick={goForward}
+							disabled={!canGoForward}
+							className={`header-anim px-1.5 py-1 transition-colors ${
+								canGoForward
+									? "text-fg-3 hover:text-fg hover:bg-elevated"
+									: "text-fg-muted/40 cursor-default"
+							}`}
+							aria-label={t("header.navForward")}
+						>
+							<ForwardIcon className="w-3.5 h-3.5 block" />
+						</button>
+				</Tooltip>
 				</div>
 				{segments.map((seg, i) => (
 					<Fragment key={i}>
@@ -385,16 +391,17 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 								) : (
 									<span className="text-fg font-semibold truncate">{seg.label}</span>
 								)}
-								<button
-									onClick={() => setShowProjectDropdown((v) => !v)}
-									className="header-anim text-fg-muted hover:text-fg transition-colors flex-shrink-0 p-0.5 rounded hover:bg-elevated"
-									title={t("header.switchProject")}
-									aria-label={t("header.switchProject")}
-								>
-									<span className={`inline-block transition-transform ${showProjectDropdown ? "rotate-180" : ""}`}>
-										<DropdownIcon className="w-3 h-3 block" />
-									</span>
-								</button>
+								<Tooltip content={t("header.switchProject")} detail={t("ttip.header.switchProject")}>
+									<button
+										onClick={() => setShowProjectDropdown((v) => !v)}
+										className="header-anim text-fg-muted hover:text-fg transition-colors flex-shrink-0 p-0.5 rounded hover:bg-elevated"
+										aria-label={t("header.switchProject")}
+									>
+										<span className={`inline-block transition-transform ${showProjectDropdown ? "rotate-180" : ""}`}>
+											<DropdownIcon className="w-3 h-3 block" />
+										</span>
+									</button>
+							</Tooltip>
 								{showProjectDropdown && (
 									<div className="absolute left-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1 max-h-80 overflow-y-auto">
 										{availableProjects.map((p, idx) => {
@@ -471,7 +478,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			</div>
 
 			{/* Actions — tmux sessions, changelog, project settings, global settings, external links */}
-			<div className="flex items-center gap-0.5 flex-shrink-0">
+			<div className="flex items-center gap-0.5 flex-shrink-0" data-help-id="header.utilities">
 				{/* Update download progress indicator */}
 				{updateDownloadStatus && updateDownloadStatus !== "error" && !updateVersion && (
 					<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/10 text-accent">
@@ -487,14 +494,16 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{/* Update available indicator */}
 				{updateVersion && (
 					<div className="relative" ref={dropdownRef}>
-						<button
-							onClick={() => setShowUpdateDropdown((v) => !v)}
-							className="header-anim flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors animate-pulse"
-							title={t("update.readyTooltip", { version: updateVersion })}
-						>
-							<UpdateReadyIcon className="w-4 h-4" />
-							<span className="text-[0.6875rem] font-semibold">{t("update.readyLabel")}</span>
-						</button>
+						<Tooltip content={t("update.readyTooltip", { version: updateVersion })} detail={t("ttip.header.updateReady")}>
+							<button
+								onClick={() => setShowUpdateDropdown((v) => !v)}
+								className="header-anim flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-accent/15 text-accent hover:bg-accent/25 transition-colors animate-pulse"
+								aria-label={t("update.readyTooltip", { version: updateVersion })}
+							>
+								<UpdateReadyIcon className="w-4 h-4" />
+								<span className="text-[0.6875rem] font-semibold">{t("update.readyLabel")}</span>
+							</button>
+					</Tooltip>
 						{showUpdateDropdown && (
 							<div className="absolute right-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 p-4 space-y-3">
 								<div className="flex items-center gap-2">
@@ -525,14 +534,16 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Quick Shell — opens the built-in Operations shell in $HOME (folded into the kebab on narrow) */}
 				{!isNarrow && (
-					<button
-						onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
-						className="header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
-						title={t("quickShell.tooltipWithShortcut")}
-					>
-						<QuickShellIcon className="w-[1.125rem] h-[1.125rem]" />
-						{!compact && <span className="text-[0.6875rem] font-medium">{t("quickShell.open")}</span>}
-					</button>
+					<Tooltip content={t("quickShell.tooltipWithShortcut")} detail={t("ttip.header.quickShell")}>
+						<button
+							onClick={() => window.dispatchEvent(new CustomEvent("menu:open-quick-shell"))}
+							className="header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated"
+							aria-label={t("quickShell.tooltipWithShortcut")}
+						>
+							<QuickShellIcon className="w-[1.125rem] h-[1.125rem]" />
+							{!compact && <span className="text-[0.6875rem] font-medium">{t("quickShell.open")}</span>}
+						</button>
+				</Tooltip>
 				)}
 
 				{/* Project Terminal — visible when inside a git project. Hidden for
@@ -540,24 +551,26 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				    lazily per-task, so opening one throws "Project path does not
 				    exist" (same reason Git Pull below is hidden). */}
 				{"projectId" in route && !isVirtualProject && !isNarrow && (
-					<button
-						onClick={() => {
-							if (route.screen === "project-terminal") {
-								navigate({ screen: "project", projectId: route.projectId });
-							} else {
-								navigate({ screen: "project-terminal", projectId: route.projectId });
-							}
-						}}
-						className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
-							route.screen === "project-terminal"
-								? "text-accent bg-accent/15 hover:bg-accent/25"
-								: "text-fg-3 hover:text-fg hover:bg-elevated"
-						}`}
-						title={t("projectTerminal.tooltipWithShortcut")}
-					>
-						<ProjectTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
-						{!compact && <span className="text-[0.6875rem] font-medium">{t("projectTerminal.open")}</span>}
-					</button>
+					<Tooltip content={t("projectTerminal.tooltipWithShortcut")} detail={t("ttip.header.projectTerminal")}>
+						<button
+							onClick={() => {
+								if (route.screen === "project-terminal") {
+									navigate({ screen: "project", projectId: route.projectId });
+								} else {
+									navigate({ screen: "project-terminal", projectId: route.projectId });
+								}
+							}}
+							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
+								route.screen === "project-terminal"
+									? "text-accent bg-accent/15 hover:bg-accent/25"
+									: "text-fg-3 hover:text-fg hover:bg-elevated"
+							}`}
+							aria-label={t("projectTerminal.tooltipWithShortcut")}
+						>
+							<ProjectTerminalIcon className="w-[1.125rem] h-[1.125rem]" />
+							{!compact && <span className="text-[0.6875rem] font-medium">{t("projectTerminal.open")}</span>}
+						</button>
+				</Tooltip>
 				)}
 
 				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
@@ -568,21 +581,23 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Remote Access QR Code (folded into the kebab on narrow) */}
 				{!isNarrow && (
-					<button
-						onClick={async () => {
-							try {
-								const result = await api.request.getRemoteAccessQR({});
-								window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
-							} catch {
-								// Remote access server may not be running
-							}
-						}}
-						className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-						title={t("header.remoteAccessTooltip")}
-					>
-						<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
-						{!compact && <span className="text-[0.6875rem] font-medium">Remote</span>}
-					</button>
+					<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
+						<button
+							onClick={async () => {
+								try {
+									const result = await api.request.getRemoteAccessQR({});
+									window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
+								} catch {
+									// Remote access server may not be running
+								}
+							}}
+							className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+							aria-label={t("header.remoteAccessTooltip")}
+						>
+							<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
+							{!compact && <span className="text-[0.6875rem] font-medium">Remote</span>}
+						</button>
+				</Tooltip>
 				)}
 
 				{/* Tmux Session Manager */}
@@ -593,45 +608,50 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					<>
 						{/* Productivity stats — icon-only, sits to the left of the website link */}
 						{route.screen !== "stats" && (
-							<button
-								onClick={() => navigate({ screen: "stats" })}
-								className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-								title={t("header.statsTooltip")}
-								aria-label={t("header.statsTooltip")}
-							>
-								<StatsIcon className="w-[1.125rem] h-[1.125rem]" />
-							</button>
+							<Tooltip content={t("header.statsTooltip")} detail={t("ttip.header.stats")}>
+								<button
+									onClick={() => navigate({ screen: "stats" })}
+									className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+									aria-label={t("header.statsTooltip")}
+								>
+									<StatsIcon className="w-[1.125rem] h-[1.125rem]" />
+								</button>
+						</Tooltip>
 						)}
 
 						{/* GitHub website */}
+						<Tooltip content={t("header.githubTooltip")} detail={t("ttip.header.github")}>
 						<button
 							onClick={() => window.open("https://h0x91b.github.io/dev-3.0/", "_blank")}
 							className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-							title={t("header.githubTooltip")}
+							aria-label={t("header.githubTooltip")}
 						>
 							<GitHubIcon className="w-[1.125rem] h-[1.125rem]" />
 						</button>
+						</Tooltip>
 
 						{/* Report a bug */}
-						<button
-							onClick={() => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank")}
-							className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-							title={t("header.reportBugTooltip")}
-							aria-label={t("header.reportBugTooltip")}
-						>
-							<ReportBugIcon className="w-[1.125rem] h-[1.125rem]" />
-						</button>
+						<Tooltip content={t("header.reportBugTooltip")} detail={t("ttip.header.reportBug")}>
+							<button
+								onClick={() => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank")}
+								className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+								aria-label={t("header.reportBugTooltip")}
+							>
+								<ReportBugIcon className="w-[1.125rem] h-[1.125rem]" />
+							</button>
+					</Tooltip>
 
 						{/* Changelog */}
 						{route.screen !== "changelog" && (
+							<Tooltip content={t("header.changelogTooltip")} detail={t("ttip.header.changelog")}>
 							<button
 								onClick={() => navigate({ screen: "changelog" })}
 								className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-								title={t("header.changelogTooltip")}
 								aria-label={t("header.changelogTooltip")}
 							>
 								<ChangelogIcon className="w-[1.125rem] h-[1.125rem]" />
 							</button>
+							</Tooltip>
 						)}
 					</>
 				)}
@@ -640,18 +660,19 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				    On narrow the whole cluster folds into the action sheet below instead. */}
 				{compact && !isNarrow && (
 					<div className="relative" ref={overflowMenuRef}>
-						<button
-							onClick={() => setShowOverflowMenu((v) => !v)}
-							className={`header-anim flex items-center transition-colors px-1.5 py-1 rounded-lg ${
-								showOverflowMenu ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
-							}`}
-							title={t("header.moreActions")}
-							aria-label={t("header.moreActions")}
-							aria-haspopup="menu"
-							aria-expanded={showOverflowMenu}
-						>
-							<KebabIcon className="w-[1.125rem] h-[1.125rem]" />
-						</button>
+						<Tooltip content={t("header.moreActions")} detail={t("ttip.header.moreActions")}>
+							<button
+								onClick={() => setShowOverflowMenu((v) => !v)}
+								className={`header-anim flex items-center transition-colors px-1.5 py-1 rounded-lg ${
+									showOverflowMenu ? "text-fg bg-elevated" : "text-fg-3 hover:text-fg hover:bg-elevated"
+								}`}
+								aria-label={t("header.moreActions")}
+								aria-haspopup="menu"
+								aria-expanded={showOverflowMenu}
+							>
+								<KebabIcon className="w-[1.125rem] h-[1.125rem]" />
+							</button>
+					</Tooltip>
 						{showOverflowMenu && (
 							<div className="absolute right-0 top-full mt-1.5 w-52 bg-overlay border border-edge rounded-xl shadow-2xl z-50 py-1" role="menu">
 								{route.screen !== "stats" && (
@@ -709,6 +730,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}
 				{"projectId" in route && route.screen !== "project-settings" && !isNarrow && (
+					<Tooltip content={t("header.projectSettings")} detail={t("ttip.header.projectSettings")}>
 					<button
 						onClick={() =>
 							navigate({
@@ -717,36 +739,40 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							})
 						}
 						className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-						title={t("header.projectSettings")}
+						aria-label={t("header.projectSettings")}
 					>
 						<WrenchIcon className="w-[1.125rem] h-[1.125rem]" />
 						{!compact && <span className="text-[0.6875rem] font-medium">{t("header.projLabel")}</span>}
 					</button>
+					</Tooltip>
 				)}
 
 				{/* Global settings (folded into the kebab on narrow) */}
 				{route.screen !== "settings" && !isNarrow && (
+					<Tooltip content={t("header.globalSettingsTooltip")} detail={t("ttip.header.globalSettings")}>
 					<button
 						onClick={() => navigate({ screen: "settings" })}
 						className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-						title={t("header.globalSettingsTooltip")}
+						aria-label={t("header.globalSettingsTooltip")}
 					>
 						<SlidersIcon className="w-[1.125rem] h-[1.125rem]" />
 						{!compact && <span className="text-[0.6875rem] font-medium">{t("header.globalLabel")}</span>}
 					</button>
+					</Tooltip>
 				)}
 
 				{/* Narrow viewport: one kebab folds the simple cluster actions into a bottom sheet. */}
 				{isNarrow && (
-					<button
-						onClick={() => setShowActionSheet(true)}
-						className="header-anim flex items-center justify-center w-9 h-9 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
-						title={t("header.moreActions")}
-						aria-label={t("header.moreActions")}
-						aria-haspopup="dialog"
-					>
-						<KebabIcon className="w-[1.125rem] h-[1.125rem]" />
-					</button>
+					<Tooltip content={t("header.moreActions")} detail={t("ttip.header.moreActions")}>
+						<button
+							onClick={() => setShowActionSheet(true)}
+							className="header-anim flex items-center justify-center w-9 h-9 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors"
+							aria-label={t("header.moreActions")}
+							aria-haspopup="dialog"
+						>
+							<KebabIcon className="w-[1.125rem] h-[1.125rem]" />
+						</button>
+				</Tooltip>
 				)}
 			</div>
 		</div>

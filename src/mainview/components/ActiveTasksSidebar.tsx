@@ -507,7 +507,7 @@ function ActiveTasksSidebar({
 			)}
 
 			{/* Task list */}
-			<div className="flex-1 overflow-y-auto overflow-x-hidden">
+			<div className="flex-1 overflow-y-auto overflow-x-hidden" data-help-id="sidebar.active-tasks">
 				{(scope === "global" || scope === "attention") && globalLoading && grouped.length === 0 ? (
 					<div className="px-3 py-6 text-center text-xs text-fg-muted">
 						{t("sidebar.globalLoading")}

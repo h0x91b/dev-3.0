@@ -7,6 +7,8 @@ import { useStatusColors } from "../hooks/useStatusColors";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import TaskCard from "./TaskCard";
 import TipCard from "./TipCard";
+import HelpSpot from "./HelpSpot";
+import { statusHelpTopicId } from "../help";
 import type { Tip } from "../tips";
 
 const COLUMN_TASK_LIMIT = 15;
@@ -124,17 +126,12 @@ function KanbanColumn({
 	const [dragOver, setDragOver] = useState(false);
 	const [dropIndex, setDropIndex] = useState<number | null>(null);
 	const [columnDragSide, setColumnDragSide] = useState<"before" | "after" | null>(null);
-	const [showInfo, setShowInfo] = useState(false);
-	const [infoPos, setInfoPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState(false);
 	const [editValue, setEditValue] = useState("");
 	const [compactExpanded, setCompactExpanded] = useState(false);
 	const renameInputRef = useRef<HTMLInputElement>(null);
-	const infoBtnRef = useRef<HTMLButtonElement>(null);
-	const infoPopupRef = useRef<HTMLDivElement>(null);
 	const taskListRef = useRef<HTMLDivElement>(null);
-	const infoHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const compactDwellTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const isNarrowViewport = useNarrowViewport(COMPACT_VIEWPORT_PX);
@@ -151,11 +148,6 @@ function KanbanColumn({
 	useEffect(() => {
 		setExpanded(false);
 	}, [columnKey]);
-
-	// Cleanup info hover timer
-	useEffect(() => {
-		return () => { if (infoHideTimer.current) clearTimeout(infoHideTimer.current); };
-	}, []);
 
 	// Cleanup compact dwell timer on unmount
 	useEffect(() => {
@@ -194,23 +186,6 @@ function KanbanColumn({
 			compactDwellTimer.current = null;
 		}
 		if (compactExpanded) setCompactExpanded(false);
-	}
-
-	function showInfoHover() {
-		if (infoHideTimer.current) { clearTimeout(infoHideTimer.current); infoHideTimer.current = null; }
-		if (infoBtnRef.current) {
-			const r = infoBtnRef.current.getBoundingClientRect();
-			setInfoPos({ top: r.bottom + 6, left: r.left });
-		}
-		setShowInfo(true);
-	}
-
-	function scheduleHideInfo() {
-		infoHideTimer.current = setTimeout(() => setShowInfo(false), 150);
-	}
-
-	function cancelHideInfo() {
-		if (infoHideTimer.current) { clearTimeout(infoHideTimer.current); infoHideTimer.current = null; }
 	}
 
 	function startEditing() {
@@ -534,17 +509,20 @@ function KanbanColumn({
 							{"\u{F11E7}"}
 						</button>
 					)}
-					{description && !isCompactNarrow && (
-						<button
-							ref={infoBtnRef}
-							onMouseEnter={showInfoHover}
-							onMouseLeave={scheduleHideInfo}
-							className="text-fg-muted hover:text-fg-3 transition-colors w-4 h-4 flex items-center justify-center text-xs leading-none flex-shrink-0 opacity-0 group-hover/col:opacity-100 focus:opacity-100"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							aria-label="Column info"
-						>
-							{"\uF449"}
-						</button>
+					{!editing && !isCompactNarrow && (
+						isCustomColumn ? (
+							description ? (
+								<HelpSpot
+									content={{ title: label, body: description }}
+									className="opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+								/>
+							) : null
+						) : (
+							<HelpSpot
+								topicId={statusHelpTopicId(status)}
+								className="opacity-0 group-hover/col:opacity-100 focus:opacity-100"
+							/>
+						)
 					)}
 					{tasks.length > 0 && (
 						<span
@@ -659,18 +637,6 @@ function KanbanColumn({
 				</div>
 			)}
 		</div>
-		{/* Info tooltip — rendered outside column div to escape stacking context */}
-		{showInfo && description && (
-			<div
-				ref={infoPopupRef}
-				className="fixed z-[9999] w-56 px-3.5 py-2.5 rounded-xl border border-edge shadow-xl text-xs text-fg leading-relaxed"
-				style={{ top: infoPos.top, left: infoPos.left, background: "rgb(var(--surface-overlay))" }}
-				onMouseEnter={cancelHideInfo}
-				onMouseLeave={scheduleHideInfo}
-			>
-				{description}
-			</div>
-		)}
 		</>
 	);
 }

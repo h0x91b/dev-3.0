@@ -7,6 +7,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import HelpSpot from "./HelpSpot";
 import Select, { useAgentRenderOption } from "./Select";
 import { buildPickerGroups, getModeLeafLabel, groupLabelForConfig, pickConfigForModelChange } from "../utils/agentPicker";
 
@@ -220,7 +221,10 @@ function LaunchVariantsModal({
 				<div className="px-6 py-4 border-b border-edge">
 					<div className="flex items-center justify-between gap-3">
 						<div className="min-w-0">
-							<h2 className="text-fg text-lg font-semibold">{title}</h2>
+							<div className="flex items-center gap-1.5">
+								<h2 className="text-fg text-lg font-semibold">{title}</h2>
+								<HelpSpot topicId="modal.launch-variants" />
+							</div>
 							<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
 						</div>
 						<button

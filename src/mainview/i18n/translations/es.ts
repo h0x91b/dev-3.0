@@ -14,6 +14,8 @@ import scripts from "./es/scripts";
 import tunnels from "./es/tunnels";
 import keymap from "./es/keymap";
 import stats from "./es/stats";
+import help from "./es/help";
+import { tooltips } from "./es/tooltips";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -31,6 +33,8 @@ const es: TranslationRecord & Record<string, string> = {
 	...tunnels,
 	...keymap,
 	...stats,
+	...help,
+	...tooltips,
 };
 
 export default es;

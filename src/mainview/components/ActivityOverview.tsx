@@ -9,6 +9,7 @@ import { getStatusLabel } from "../utils/statusLabel";
 import { useStatusColors } from "../hooks/useStatusColors";
 import ProjectActionButtons from "./ProjectActionButtons";
 import BottomSheet from "./BottomSheet";
+import HelpSpot from "./HelpSpot";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
@@ -236,6 +237,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 				<button
 					type="button"
 					data-hint-id="dashboard-stats"
+					data-help-id="dashboard.stats-entry"
 					onClick={() => navigate({ screen: "stats" })}
 					className="group w-full flex items-center gap-4 rounded-2xl border border-edge bg-raised hover:bg-raised-hover hover:border-edge-active px-5 py-4 transition-all text-left"
 				>
@@ -248,8 +250,9 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 				</button>
 				<div className="flex items-start justify-between gap-4">
 					<div>
-						<div className="text-fg-2 text-sm font-medium">
+						<div className="flex items-center gap-1.5 text-fg-2 text-sm font-medium">
 							{t.plural("dashboard.projectCount", visibleProjects.length)}
+							<HelpSpot topicId="dashboard.projects" />
 						</div>
 						{totalActive === 0 && (
 							<div className="text-fg-3 text-xs mt-1">{t("activity.noActiveTasks")}</div>
@@ -323,6 +326,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 					return (
 						<div
 							key={project.id}
+							data-help-id="dashboard.project-row"
 							className={`relative bg-raised rounded-2xl border border-edge overflow-hidden transition-opacity ${isDragged ? "opacity-60" : ""}`}
 							onDragOver={(event) => handleDragOver(event, project.id)}
 							onDragLeave={() => setDropTarget((current) => current?.projectId === project.id ? null : current)}

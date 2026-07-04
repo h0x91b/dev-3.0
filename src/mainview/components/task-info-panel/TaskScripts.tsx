@@ -12,6 +12,7 @@ import { SCRIPT_PLACEMENTS } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
+import Tooltip from "../Tooltip";
 import { ScriptsIcon } from "../TaskIcons";
 
 const DEFAULT_PLACEMENT_IDX = SCRIPT_PLACEMENTS.indexOf("right");
@@ -292,21 +293,21 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 						</div>
 						<div className="grid grid-cols-5 gap-1.5">
 							{SCRIPT_PLACEMENTS.map((p, idx) => (
-								<button
-									key={p}
-									onClick={() => launch(pickerFor, p)}
-									onMouseEnter={() => setPlacementIdx(idx)}
-									disabled={busy}
-									className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg transition-colors disabled:opacity-50 ${
-										idx === placementIdx
-											? "bg-accent/15 border border-accent"
-											: "bg-elevated border border-edge hover:border-accent hover:bg-accent/10"
-									}`}
-									title={placementLabel(t, p)}
-								>
-									<PlacementGlyph placement={p} />
-									<span className="text-[0.625rem] text-fg-2">{placementLabel(t, p)}</span>
-								</button>
+								<Tooltip key={p} content={placementLabel(t, p)}>
+									<button
+										onClick={() => launch(pickerFor, p)}
+										onMouseEnter={() => setPlacementIdx(idx)}
+										disabled={busy}
+										className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg transition-colors disabled:opacity-50 ${
+											idx === placementIdx
+												? "bg-accent/15 border border-accent"
+												: "bg-elevated border border-edge hover:border-accent hover:bg-accent/10"
+										}`}
+									>
+										<PlacementGlyph placement={p} />
+										<span className="text-[0.625rem] text-fg-2">{placementLabel(t, p)}</span>
+									</button>
+								</Tooltip>
 							))}
 						</div>
 						<button
@@ -363,20 +364,21 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 
 	return (
 		<>
-			<button
-				ref={btnRef}
-				onClick={openDropdown}
-				disabled={!isTaskActive}
-				className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
-					!isTaskActive
-						? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
-						: "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
-				}`}
-				title={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")}
-				aria-label={t("scripts.button")}
-			>
-				<ScriptsIcon className="w-[1.125rem] h-[1.125rem]" />
-			</button>
+			<Tooltip content={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")} detail={t("ttip.scripts.run")}>
+				<button
+					ref={btnRef}
+					onClick={openDropdown}
+					disabled={!isTaskActive}
+					className={`task-anim flex items-center justify-center px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+						!isTaskActive
+							? "text-fg-muted/50 cursor-not-allowed border border-edge/40"
+							: "text-success hover:text-success-hover hover:bg-success/15 border border-success/30"
+					}`}
+					aria-label={t("scripts.button")}
+				>
+					<ScriptsIcon className="w-[1.125rem] h-[1.125rem]" />
+				</button>
+			</Tooltip>
 			{dropdown}
 		</>
 	);
@@ -421,13 +423,14 @@ function RunnerChip({ runner, pkg, onSelect }: { runner: ScriptRunner; pkg: Pack
 		: t("scripts.dropdown.runner.fallback");
 	return (
 		<div ref={ref} className="relative">
-			<button
-				onClick={() => setOpen((o) => !o)}
-				className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-elevated border border-edge text-fg-2 hover:bg-elevated-hover"
-				title={title}
-			>
-				{runner} ▾
-			</button>
+			<Tooltip content={title}>
+				<button
+					onClick={() => setOpen((o) => !o)}
+					className="text-[0.6875rem] px-1.5 py-0.5 rounded bg-elevated border border-edge text-fg-2 hover:bg-elevated-hover"
+				>
+					{runner} ▾
+				</button>
+			</Tooltip>
 			{open && (
 				<div className="absolute right-0 top-full mt-1 bg-overlay border border-edge-active rounded-lg shadow-xl py-1 min-w-[5rem] z-10">
 					{(["bun", "pnpm", "yarn", "npm"] as ScriptRunner[]).map((r) => (

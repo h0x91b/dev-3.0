@@ -5,6 +5,7 @@ import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
 import { useReducedMotion } from "../../utils/useReducedMotion";
+import Tooltip from "../Tooltip";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 import { AutoMergeIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 
@@ -137,37 +138,39 @@ export default function TaskGitActions({
 	) : null;
 
 	const prBadge = branchStatus && branchStatus.prNumber !== null ? (
-		<button
-			onClick={(event) => {
-				event.stopPropagation();
-				if (branchStatus.prUrl) {
-					window.open(branchStatus.prUrl, "_blank");
-				}
-			}}
-			className="inline-flex items-center gap-1 text-[0.625rem] font-mono font-semibold text-success bg-success/10 hover:bg-success/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
-			title={t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) })}
-		>
-			<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
-			PR #{branchStatus.prNumber}
-		</button>
+		<Tooltip content={t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) })} detail={t("ttip.task.openPR")}>
+			<button
+				onClick={(event) => {
+					event.stopPropagation();
+					if (branchStatus.prUrl) {
+						window.open(branchStatus.prUrl, "_blank");
+					}
+				}}
+				className="inline-flex items-center gap-1 text-[0.625rem] font-mono font-semibold text-success bg-success/10 hover:bg-success/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
+			>
+				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+				PR #{branchStatus.prNumber}
+			</button>
+		</Tooltip>
 	) : null;
 
 	const refDropdownButton = branchStatus ? (
-		<button
-			ref={refTriggerRef}
-			onClick={(event) => {
-				event.stopPropagation();
-				if (!refMenuOpen && refTriggerRef.current) {
-					const rect = refTriggerRef.current.getBoundingClientRect();
-					setRefMenuPos({ top: rect.bottom + 4, left: rect.left });
-				}
-				setRefMenuOpen((open) => !open);
-			}}
-			className="text-[0.6875rem] text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer flex-shrink-0"
-			title="Change comparison branch"
-		>
-			vs {displayRef} ▾
-		</button>
+		<Tooltip content={t("ttip.git.changeRef")} detail={t("ttip.git.refDropdown")}>
+			<button
+				ref={refTriggerRef}
+				onClick={(event) => {
+					event.stopPropagation();
+					if (!refMenuOpen && refTriggerRef.current) {
+						const rect = refTriggerRef.current.getBoundingClientRect();
+						setRefMenuPos({ top: rect.bottom + 4, left: rect.left });
+					}
+					setRefMenuOpen((open) => !open);
+				}}
+				className="text-[0.6875rem] text-accent font-normal hover:text-accent-hover transition-colors cursor-pointer flex-shrink-0"
+			>
+				vs {displayRef} ▾
+			</button>
+		</Tooltip>
 	) : null;
 
 	const refDropdownPortal = refMenuOpen && createPortal(
@@ -290,97 +293,105 @@ export default function TaskGitActions({
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
-			<button
-				onClick={() => onOpenInlineDiff?.({
-					mode: "branch",
-					compareRef: compareRef || undefined,
-					compareLabel: displayRef,
-				})}
-				disabled={showDiffDisabled}
-				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
-					showDiffDisabled ? disabledBtnClass : "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
-				}`}
-				title={showDiffTooltip}
-				aria-label={t("infoPanel.showDiff")}
-			>
-				{btnContent(<ShowDiffIcon className={iconClass} />, t("infoPanel.showDiffShort"))}
-			</button>
-			<button
-				onClick={handleRebase}
-				disabled={rebaseDisabled}
-				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-					rebaseDisabled ? disabledBtnClass : enabledBtnClass
-				}`}
-				title={rebaseTooltip}
-				aria-label={t("infoPanel.rebase")}
-			>
-				{btnContent(<RebaseIcon className={iconClass} />, rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase"), rebasing)}
-			</button>
-			<button
-				onClick={handlePush}
-				disabled={pushDisabled}
-				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-					pushDisabled ? disabledBtnClass : enabledBtnClass
-				}`}
-				title={pushTooltip}
-				aria-label={t("infoPanel.push")}
-			>
-				{btnContent(<PushIcon className={iconClass} />, pushing ? t("infoPanel.pushing") : t("infoPanel.push"), pushing)}
-			</button>
+			<Tooltip content={showDiffTooltip} detail={t("ttip.infoPanel.showDiff")}>
+				<button
+					onClick={() => onOpenInlineDiff?.({
+						mode: "branch",
+						compareRef: compareRef || undefined,
+						compareLabel: displayRef,
+					})}
+					disabled={showDiffDisabled}
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-semibold transition-colors ${
+						showDiffDisabled ? disabledBtnClass : "text-accent hover:bg-accent/20 bg-accent/10 border border-accent/30"
+					}`}
+					aria-label={t("infoPanel.showDiff")}
+				>
+					{btnContent(<ShowDiffIcon className={iconClass} />, t("infoPanel.showDiffShort"))}
+				</button>
+			</Tooltip>
+			<Tooltip content={rebaseTooltip} detail={t("ttip.git.rebase")}>
+				<button
+					onClick={handleRebase}
+					disabled={rebaseDisabled}
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						rebaseDisabled ? disabledBtnClass : enabledBtnClass
+					}`}
+					aria-label={t("infoPanel.rebase")}
+				>
+					{btnContent(<RebaseIcon className={iconClass} />, rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase"), rebasing)}
+				</button>
+			</Tooltip>
+			<Tooltip content={pushTooltip} detail={t("ttip.git.push")}>
+				<button
+					onClick={handlePush}
+					disabled={pushDisabled}
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						pushDisabled ? disabledBtnClass : enabledBtnClass
+					}`}
+					aria-label={t("infoPanel.push")}
+				>
+					{btnContent(<PushIcon className={iconClass} />, pushing ? t("infoPanel.pushing") : t("infoPanel.push"), pushing)}
+				</button>
+			</Tooltip>
 			{/* When a PR already exists, the "PR #N" badge above already links to it - no Open PR button needed. */}
 			{!hasPR && (
 				<>
-					<button
-						onClick={() => void handleCreatePR(false)}
-						disabled={createPRDisabled}
-						className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-							createPRDisabled ? disabledBtnClass : enabledBtnClass
-						}`}
-						title={getPRTooltip()}
-						aria-label={t("infoPanel.createPR")}
-					>
-						{btnContent(<CreatePRIcon className={iconClass} />, getPRButtonLabel(), creatingPR)}
-					</button>
-					<button
-						onClick={() => void handleCreatePR(true)}
-						disabled={createPRDisabled}
-						className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-							createPRDisabled ? disabledBtnClass : enabledBtnClass
-						}`}
-						title={getPRAutoMergeTooltip()}
-						aria-label={t("infoPanel.createPRAutoMerge")}
-					>
-						{btnContent(<AutoMergeIcon className={iconClass} />, creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMergeShort"), creatingPR)}
-					</button>
+					<Tooltip content={getPRTooltip()} detail={t("ttip.git.createPR")}>
+						<button
+							onClick={() => void handleCreatePR(false)}
+							disabled={createPRDisabled}
+							className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+								createPRDisabled ? disabledBtnClass : enabledBtnClass
+							}`}
+							aria-label={t("infoPanel.createPR")}
+						>
+							{btnContent(<CreatePRIcon className={iconClass} />, getPRButtonLabel(), creatingPR)}
+						</button>
+					</Tooltip>
+					<Tooltip content={getPRAutoMergeTooltip()} detail={t("ttip.git.autoMerge")}>
+						<button
+							onClick={() => void handleCreatePR(true)}
+							disabled={createPRDisabled}
+							className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+								createPRDisabled ? disabledBtnClass : enabledBtnClass
+							}`}
+							aria-label={t("infoPanel.createPRAutoMerge")}
+						>
+							{btnContent(<AutoMergeIcon className={iconClass} />, creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMergeShort"), creatingPR)}
+						</button>
+					</Tooltip>
 				</>
 			)}
-			<button
-				onClick={handleMerge}
-				disabled={mergeDisabled}
-				className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
-					mergeDisabled ? disabledBtnClass : enabledBtnClass
-				}`}
-				title={mergeTooltip}
-				aria-label={t("infoPanel.merge")}
-			>
-				{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : t("infoPanel.merge"), merging)}
-			</button>
-			<button
-				onClick={handleRefreshStatus}
-				disabled={refreshingStatus}
-				className="inline-flex items-center justify-center p-0.5 rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
-				title={t("infoPanel.refreshStatus")}
-			>
-				<svg
-					className={`w-3 h-3 ${refreshingStatus ? "animate-spin" : ""}`}
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
+			<Tooltip content={mergeTooltip} detail={t("ttip.git.merge")}>
+				<button
+					onClick={handleMerge}
+					disabled={mergeDisabled}
+					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+						mergeDisabled ? disabledBtnClass : enabledBtnClass
+					}`}
+					aria-label={t("infoPanel.merge")}
 				>
-					<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-						d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-				</svg>
-			</button>
+					{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : t("infoPanel.merge"), merging)}
+				</button>
+			</Tooltip>
+			<Tooltip content={t("infoPanel.refreshStatus")} detail={t("ttip.git.refresh")}>
+				<button
+					onClick={handleRefreshStatus}
+					disabled={refreshingStatus}
+					className="inline-flex items-center justify-center p-0.5 rounded text-fg-muted hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
+					aria-label={t("infoPanel.refreshStatus")}
+				>
+					<svg
+						className={`w-3 h-3 ${refreshingStatus ? "animate-spin" : ""}`}
+						fill="none"
+						stroke="currentColor"
+						viewBox="0 0 24 24"
+					>
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+							d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+					</svg>
+				</button>
+			</Tooltip>
 		</span>
 	) : null;
 
@@ -397,16 +408,18 @@ export default function TaskGitActions({
 			{showWorktreeCopy && task.worktreePath && (
 				<>
 					<span className="text-fg-muted text-xs flex-shrink-0">|</span>
-					<button
-						onClick={handleCopyPath}
-						className="flex-shrink-0 flex items-center gap-1 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"
-						title={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
-					>
-						<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uEF81"}</span>
-						<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-							{copiedPath ? "\u{F012C}" : "\uF0C5"}
-						</span>
-					</button>
+					<Tooltip content={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")} detail={t("ttip.infoPanel.copyPath")}>
+						<button
+							onClick={handleCopyPath}
+							className="flex-shrink-0 flex items-center gap-1 p-0.5 rounded hover:bg-elevated transition-colors text-fg-muted hover:text-fg"
+							aria-label={copiedPath ? t("infoPanel.pathCopied") : t("infoPanel.copyPath")}
+						>
+							<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uEF81"}</span>
+							<span className="text-xs leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+								{copiedPath ? "\u{F012C}" : "\uF0C5"}
+							</span>
+						</button>
+					</Tooltip>
 				</>
 			)}
 
