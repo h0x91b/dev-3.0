@@ -34,6 +34,23 @@ export function consumeQuitDialogPending(): boolean {
 	return was;
 }
 
+// Terminal/OS signals — Ctrl+C in `bun run dev`, `kill <pid>`, system
+// shutdown — are deliberate quit requests and must never be gated behind the
+// GUI confirmation dialog (from the terminal it just looks like Ctrl+C is
+// ignored).
+//
+// Electrobun's runtime registers its own SIGINT/SIGTERM listeners at import
+// time; they synchronously call `Utils.quit()`, which hits the `before-quit`
+// gate. We prepend our listener so the confirmed flag is already set when that
+// quit runs — the gate then does its cleanup and lets the app exit.
+export function installSignalQuitConfirmation(
+	proc: NodeJS.Process = process,
+): void {
+	for (const sig of ["SIGINT", "SIGTERM"] as const) {
+		proc.prependListener(sig, markQuitConfirmed);
+	}
+}
+
 /** Test-only: reset between cases. */
 export function __resetQuitConfirmedForTests(): void {
 	quitConfirmed = false;

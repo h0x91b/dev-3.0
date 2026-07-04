@@ -1,0 +1,1 @@
+Fixed Ctrl+C (SIGINT/SIGTERM) being ignored when the app runs under `bun run dev`: terminal/OS signals now bypass the GUI quit-confirmation dialog and shut the app down gracefully with full cleanup, instead of silently popping a confirm dialog in the app window.

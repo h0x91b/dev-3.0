@@ -1,7 +1,9 @@
+import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	__resetQuitConfirmedForTests,
 	consumeQuitDialogPending,
+	installSignalQuitConfirmation,
 	isQuitConfirmed,
 	markQuitConfirmed,
 	markQuitDialogPending,
@@ -47,6 +49,44 @@ describe("quit-manager", () => {
 			markQuitDialogPending();
 			__resetQuitConfirmedForTests();
 			expect(consumeQuitDialogPending()).toBe(false);
+		});
+	});
+
+	describe("signal quit confirmation (Ctrl+C in `bun run dev`)", () => {
+		const makeProc = () => new EventEmitter() as unknown as NodeJS.Process;
+
+		it("marks quit confirmed when SIGINT is delivered", () => {
+			const proc = makeProc();
+			installSignalQuitConfirmation(proc);
+			(proc as unknown as EventEmitter).emit("SIGINT");
+			expect(isQuitConfirmed()).toBe(true);
+		});
+
+		it("marks quit confirmed when SIGTERM is delivered", () => {
+			const proc = makeProc();
+			installSignalQuitConfirmation(proc);
+			(proc as unknown as EventEmitter).emit("SIGTERM");
+			expect(isQuitConfirmed()).toBe(true);
+		});
+
+		it("does not confirm before any signal arrives", () => {
+			installSignalQuitConfirmation(makeProc());
+			expect(isQuitConfirmed()).toBe(false);
+		});
+
+		it("runs before listeners registered earlier (Electrobun's quit handler)", () => {
+			// Electrobun's runtime registers its SIGINT listener at import time,
+			// before our code runs. That listener synchronously calls Utils.quit(),
+			// which hits the before-quit gate — so the confirmed flag must already
+			// be set by the time it fires. prependListener guarantees that.
+			const proc = makeProc();
+			let confirmedWhenQuitRan: boolean | null = null;
+			(proc as unknown as EventEmitter).on("SIGINT", () => {
+				confirmedWhenQuitRan = isQuitConfirmed();
+			});
+			installSignalQuitConfirmation(proc);
+			(proc as unknown as EventEmitter).emit("SIGINT");
+			expect(confirmedWhenQuitRan).toBe(true);
 		});
 	});
 });
