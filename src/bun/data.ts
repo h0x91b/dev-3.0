@@ -760,6 +760,15 @@ export async function addTask(
 	extras?: {
 		groupId?: string;
 		variantIndex?: number;
+		/**
+		 * When true (and `groupId` is set), assign the next free variantIndex for
+		 * the group by scanning the freshly-loaded task list INSIDE the file lock,
+		 * instead of trusting a caller-precomputed `variantIndex`. This makes
+		 * concurrent "add attempts" calls on one group race-safe: each addTask
+		 * re-reads under the lock and increments atomically, so two callers can
+		 * never hand out the same index. Ignored without a groupId.
+		 */
+		autoVariantIndex?: boolean;
 		agentId?: string | null;
 		configId?: string | null;
 		seq?: number;
@@ -785,6 +794,19 @@ export async function addTask(
 		log.info("Creating task", { projectId: project.id, title, status });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const now = new Date().toISOString();
+		// Race-safe variant index allocation — see `autoVariantIndex` above. The
+		// scan runs against the under-lock snapshot, so it reflects any variants a
+		// concurrent addTask already persisted for this group.
+		let variantIndex = extras?.variantIndex ?? null;
+		if (extras?.autoVariantIndex && extras.groupId) {
+			let maxVariantIndex = 0;
+			for (const t of tasks) {
+				if (t.groupId === extras.groupId && typeof t.variantIndex === "number" && t.variantIndex > maxVariantIndex) {
+					maxVariantIndex = t.variantIndex;
+				}
+			}
+			variantIndex = maxVariantIndex + 1;
+		}
 		const task: Task = {
 			id: crypto.randomUUID(),
 			seq: extras?.seq ?? nextSeq(tasks),
@@ -796,7 +818,7 @@ export async function addTask(
 			worktreePath: null,
 			branchName: null,
 			groupId: extras?.groupId ?? null,
-			variantIndex: extras?.variantIndex ?? null,
+			variantIndex,
 			agentId: extras?.agentId ?? null,
 			configId: extras?.configId ?? null,
 			createdAt: now,
