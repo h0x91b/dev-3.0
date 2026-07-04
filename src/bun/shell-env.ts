@@ -215,7 +215,13 @@ export async function resolveShellEnv(): Promise<ResolvedShellEnv> {
 	}
 
 	try {
-		const proc = spawn([shell, "-ilc", ENV_DUMP_COMMAND], {
+		// `+m` disables job control (monitor). Without it, an interactive shell
+		// attached to a controlling terminal (present under `bun run dev` /
+		// `electrobun dev`) calls tcsetpgrp to move itself and its rc-file jobs
+		// into the tty's foreground — and after it exits the foreground process
+		// group is left pointing at a dead pgid, so Ctrl+C delivers SIGINT to
+		// nobody and the app looks unkillable from the terminal.
+		const proc = spawn([shell, "+m", "-ilc", ENV_DUMP_COMMAND], {
 			stdout: "pipe",
 			stderr: "pipe",
 		});

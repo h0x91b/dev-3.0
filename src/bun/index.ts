@@ -7,7 +7,7 @@ import Electrobun, {
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
-import { isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
+import { installSignalQuitConfirmation, isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
@@ -494,8 +494,13 @@ function runGlobalQuitCleanup(): void {
 	try { stopTunnel(); } catch (err) { log.warn("stopTunnel failed", { error: String(err) }); }
 }
 
+// Terminal/OS signals (Ctrl+C in `bun run dev`, kill, shutdown) bypass the
+// quit dialog below — they mark the quit confirmed before Electrobun's own
+// SIGINT/SIGTERM handlers call Utils.quit().
+installSignalQuitConfirmation();
+
 // Single quit gate for EVERY quit trigger — Cmd+Q, menu Quit, closing the last
-// window (red X / Cmd+W), updater restart, signals. Fires once per attempt.
+// window (red X / Cmd+W), updater restart. Fires once per attempt.
 //
 // Unless the user already confirmed (via the React dialog → `quitApp`) or opted
 // out (`skipQuitDialog`), we cancel the quit and ask the renderer to show the

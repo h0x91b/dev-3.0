@@ -133,6 +133,21 @@ describe("shell environment bootstrap", () => {
 		expect(result.fullEnv?.URL_WITH_EQUALS).toBe("https://x.test/?a=1&b=2");
 	});
 
+	it("disables job control (+m) so the login shell never steals the tty foreground group", async () => {
+		// Under `bun run dev` the app has a controlling terminal. An interactive
+		// zsh with job control (monitor) tcsetpgrp's itself (and its rc-file
+		// jobs) onto that tty and, once it exits, leaves the foreground process
+		// group pointing at a dead pgid — Ctrl+C then delivers SIGINT to nobody.
+		process.env.SHELL = "/bin/zsh";
+		spawnMock.mockReturnValue(fakeProc(nullEnv({ PATH: "/usr/bin" })));
+
+		const { resolveShellEnv } = await import("../shell-env");
+		await resolveShellEnv();
+
+		const args = spawnMock.mock.calls[0][0] as string[];
+		expect(args.slice(0, 3)).toEqual(["/bin/zsh", "+m", "-ilc"]);
+	});
+
 	it("strips login-shell startup noise that precedes the awk sentinel", async () => {
 		process.env.SHELL = "/bin/zsh";
 		// Simulate .zshrc that echoes a welcome banner to stdout before awk runs.
