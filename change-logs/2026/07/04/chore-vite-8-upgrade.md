@@ -1,0 +1,1 @@
+Upgraded Vite 6 to 8 (Rolldown-based) and @vitejs/plugin-react 4 to 6. Build output structure, asset paths, and dev-server behavior are unchanged; production builds are noticeably faster. Also made remote-access-server tests hermetic against the DEV3_REMOTE_STATIC_CODE env var that dev3 agent sessions export.
