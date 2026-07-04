@@ -122,6 +122,28 @@ describe("port-pool", () => {
 			}
 		});
 
+		it("does not assign overlapping ports to concurrent allocations", async () => {
+			// Regression: two task variants created in parallel each called
+			// allocatePorts() concurrently. Without serialization, both took the
+			// same assigned-port snapshot before either persisted, so they could
+			// pick the same OS-free ports and collide (overlapping DEV3_PORT0 →
+			// dev-server bind clashes). Constrain the free window to exactly the
+			// number of ports both need combined: a correct implementation must
+			// partition them, a racing one overlaps.
+			for (let i = 10000; i < 20000; i++) portsInUse.add(i);
+			for (let i = 10000; i < 10020; i++) portsInUse.delete(i);
+
+			const [a, b] = await Promise.all([
+				allocatePorts("task-concurrent-a", 10),
+				allocatePorts("task-concurrent-b", 10),
+			]);
+
+			expect(a).toHaveLength(10);
+			expect(b).toHaveLength(10);
+			const overlap = a.filter((p) => b.includes(p));
+			expect(overlap).toEqual([]);
+		});
+
 		it("persists allocations to disk", async () => {
 			await allocatePorts("task-persist", 2);
 			const filePath = join(TEST_HOME, "port-assignments.json");

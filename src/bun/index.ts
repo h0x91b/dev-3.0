@@ -64,7 +64,7 @@ log.info("Log files", { dir: getLogPath() });
 // the CLI after it means agents hit "no such file or directory" on startup.
 {
 	const { existsSync: fExists, mkdirSync: fMkdir, copyFileSync: fCopy, chmodSync: fChmod,
-		readFileSync: fRead, appendFileSync: fAppend } = await import("node:fs");
+		readFileSync: fRead, appendFileSync: fAppend, renameSync: fRename, unlinkSync: fUnlink } = await import("node:fs");
 	const { resolve: fResolve } = await import("node:path");
 
 	// Copy the compiled CLI binary from the app bundle to ~/.dev3.0/bin/.
@@ -83,8 +83,22 @@ log.info("Log files", { dir: getLogPath() });
 		try {
 			fMkdir(cliBinDir, { recursive: true });
 			if (fExists(bundledSrc)) {
-				fCopy(bundledSrc, dest);
-				fChmod(dest, 0o755);
+				// Write to a temp sibling, chmod it, then atomically rename over the
+				// live path. copyFileSync truncates the destination in place, so an
+				// agent exec'ing `dev3` mid-copy (a real possibility — ~/.dev3.0 is
+				// shared across concurrently-running app instances, and every start
+				// rewrites this) could hit a partial binary → ENOEXEC. rename() is
+				// atomic within the same filesystem. (Same tmp+rename pattern as the
+				// data-layer atomic writes in data.ts.)
+				const tmpDest = `${dest}.tmp-${process.pid}`;
+				try {
+					fCopy(bundledSrc, tmpDest);
+					fChmod(tmpDest, 0o755);
+					fRename(tmpDest, dest);
+				} catch (copyErr) {
+					try { fUnlink(tmpDest); } catch { /* best-effort cleanup */ }
+					throw copyErr;
+				}
 				log.info(`${name} binary installed`, { from: bundledSrc, to: dest });
 			} else {
 				log.warn(`${name} binary not found in bundle (skip)`, { prodSrc, devSrc });
@@ -244,7 +258,11 @@ async function getMainViewUrl(): Promise<string> {
 	log.info("App channel", { channel });
 	if (channel === "dev") {
 		try {
-			await fetch(DEV_SERVER_URL, { method: "HEAD" });
+			// Bound the probe: fetch() has no default timeout, so a process that
+			// accepts the connection on 5173 but never answers would hang this
+			// await forever — and the window is opened after it, so the app would
+			// boot to nothing. A short timeout falls back to bundled assets.
+			await fetch(DEV_SERVER_URL, { method: "HEAD", signal: AbortSignal.timeout(1000) });
 			log.info(`HMR enabled: Vite dev server at ${DEV_SERVER_URL}`);
 			return DEV_SERVER_URL;
 		} catch {
