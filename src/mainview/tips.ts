@@ -130,14 +130,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["board"],
 	},
 	{
-		id: "cmd-n-shortcut",
-		titleKey: "tip.cmdN.title",
-		bodyKey: "tip.cmdN.body",
-		icon: "\u{F030C}", // nf-md-keyboard
-		score: 2,
-		contexts: ["board"],
-	},
-	{
 		id: "terminal-preview",
 		titleKey: "tip.terminalPreview.title",
 		bodyKey: "tip.terminalPreview.body",
@@ -150,14 +142,6 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.taskOverviewHover.title",
 		bodyKey: "tip.taskOverviewHover.body",
 		icon: "\u{F02FC}", // nf-md-information_outline
-		score: 3,
-		contexts: ["board"],
-	},
-	{
-		id: "user-overview-override",
-		titleKey: "tip.userOverviewOverride.title",
-		bodyKey: "tip.userOverviewOverride.body",
-		icon: "\u{F040}", // nf-md-pencil
 		score: 3,
 		contexts: ["board"],
 	},
@@ -226,14 +210,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal", "diff"],
 	},
 	{
-		id: "diff-default-layout",
-		titleKey: "tip.diffDefaultLayout.title",
-		bodyKey: "tip.diffDefaultLayout.body",
-		icon: "\u{F0156}", // nf-md-view_split_vertical
-		score: 2,
-		contexts: ["diff"],
-	},
-	{
 		id: "diff-exclude-tests",
 		titleKey: "tip.diffExcludeTests.title",
 		bodyKey: "tip.diffExcludeTests.body",
@@ -247,14 +223,6 @@ const ALL_TIPS: Tip[] = [
 		bodyKey: "tip.inlineDiffComments.body",
 		icon: "\u{F027B}", // nf-md-comment_plus_outline
 		score: 4,
-		contexts: ["diff"],
-	},
-	{
-		id: "inline-diff-multiline-comments",
-		titleKey: "tip.inlineDiffMultilineComments.title",
-		bodyKey: "tip.inlineDiffMultilineComments.body",
-		icon: "\u{F0453}", // nf-md-cursor_move
-		score: 3,
 		contexts: ["diff"],
 	},
 	{
@@ -370,36 +338,12 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["board", "terminal"],
 	},
 	{
-		id: "zoom-support",
-		titleKey: "tip.zoomSupport.title",
-		bodyKey: "tip.zoomSupport.body",
-		icon: "", // nf-fa-search_plus
-		score: 2,
-		contexts: ["board", "terminal"],
-	},
-	{
 		id: "configurable-agents",
 		titleKey: "tip.configurableAgents.title",
 		bodyKey: "tip.configurableAgents.body",
 		icon: "\u{F0219}", // nf-md-robot
 		score: 4,
 		contexts: ["settings"],
-	},
-	{
-		id: "osc52-clipboard",
-		titleKey: "tip.osc52Clipboard.title",
-		bodyKey: "tip.osc52Clipboard.body",
-		icon: "", // nf-fa-copy
-		score: 4,
-		contexts: ["terminal"],
-	},
-	{
-		id: "task-info-panel",
-		titleKey: "tip.taskInfoPanel.title",
-		bodyKey: "tip.taskInfoPanel.body",
-		icon: "\u{F05A}", // nf-fa-info_circle
-		score: 2,
-		contexts: ["terminal"],
 	},
 	{
 		id: "git-branch-status",
@@ -433,7 +377,6 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board", "terminal", "diff"],
 	},
-	// Batch 8: tmux manager, CLI, snapshots, sound, siblings
 	{
 		id: "tmux-session-manager",
 		titleKey: "tip.tmuxSessionManager.title",
@@ -491,14 +434,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal"],
 	},
 	{
-		id: "setup-script-panes",
-		titleKey: "tip.setupScriptPanes.title",
-		bodyKey: "tip.setupScriptPanes.body",
-		icon: "\u{F0259}", // nf-md-console
-		score: 2,
-		contexts: ["terminal", "settings"],
-	},
-	{
 		id: "custom-task-title",
 		titleKey: "tip.customTaskTitle.title",
 		bodyKey: "tip.customTaskTitle.body",
@@ -513,14 +448,6 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F0219}", // nf-md-robot
 		score: 4,
 		contexts: ["terminal"],
-	},
-	{
-		id: "branch-start-choice",
-		titleKey: "tip.autoFillBranch.title",
-		bodyKey: "tip.autoFillBranch.body",
-		icon: "\u{F0F09}", // nf-md-alert_circle_outline
-		score: 2,
-		contexts: ["board"],
 	},
 	{
 		id: "task-open-mode",
@@ -603,28 +530,12 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["board"],
 	},
 	{
-		id: "config-hierarchy",
-		titleKey: "tip.configHierarchy.title",
-		bodyKey: "tip.configHierarchy.body",
-		icon: "\u{F0493}", // nf-md-tune
-		score: 2,
-		contexts: ["settings"],
-	},
-	{
 		id: "worktree-config",
 		titleKey: "tip.worktreeConfig.title",
 		bodyKey: "tip.worktreeConfig.body",
 		icon: "\u{F0645}", // nf-md-file_tree
 		score: 3,
 		contexts: ["settings"],
-	},
-	{
-		id: "diff-compare-default",
-		titleKey: "tip.diffCompareDefault.title",
-		bodyKey: "tip.diffCompareDefault.body",
-		icon: "\u{F04CB}", // nf-md-source_compare
-		score: 2,
-		contexts: ["diff"],
 	},
 	{
 		id: "project-terminal",
@@ -675,14 +586,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal"],
 	},
 	{
-		id: "cancel-preparing",
-		titleKey: "tip.cancelPreparing.title",
-		bodyKey: "tip.cancelPreparing.body",
-		icon: "\u{F0159}", // nf-md-cancel
-		score: 2,
-		contexts: ["preparing"],
-	},
-	{
 		id: "folder-picker-paste-path",
 		titleKey: "tip.folderPickerPastePath.title",
 		bodyKey: "tip.folderPickerPastePath.body",
@@ -721,22 +624,6 @@ const ALL_TIPS: Tip[] = [
 		icon: "\u{F018D}", // nf-md-console
 		score: 4,
 		contexts: ["board"],
-	},
-	{
-		id: "review-discard-guard",
-		titleKey: "tip.reviewDiscardGuard.title",
-		bodyKey: "tip.reviewDiscardGuard.body",
-		icon: "\u{F0156}", // nf-md-shield_check
-		score: 3,
-		contexts: ["diff"],
-	},
-	{
-		id: "fda-stuck-prep",
-		titleKey: "tip.fdaStuckPrep.title",
-		bodyKey: "tip.fdaStuckPrep.body",
-		icon: "\u{F0156}", // nf-md-shield_check
-		score: 2,
-		contexts: ["preparing"],
 	},
 	{
 		id: "bug-hunters-lightbox",
@@ -835,14 +722,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal", "preparing"],
 	},
 	{
-		id: "quick-switch-recent-first",
-		titleKey: "tip.quickSwitchRecentFirst.title",
-		bodyKey: "tip.quickSwitchRecentFirst.body",
-		icon: "\u{F0954}", // nf-md-clock_outline
-		score: 3,
-		contexts: ["board", "terminal"],
-	},
-	{
 		id: "agent-can-ping-you",
 		titleKey: "tip.agentCanPingYou.title",
 		bodyKey: "tip.agentCanPingYou.body",
@@ -883,22 +762,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["board"],
 	},
 	{
-		id: "watch-remembers",
-		titleKey: "tip.watchRemembers.title",
-		bodyKey: "tip.watchRemembers.body",
-		icon: "\u{F009A}", // nf-md-eye_check
-		score: 2,
-		contexts: ["board"],
-	},
-	{
-		id: "remote-menu-bar",
-		titleKey: "tip.remoteMenuBar.title",
-		bodyKey: "tip.remoteMenuBar.body",
-		icon: "\u{F0204}", // nf-md-menu
-		score: 3,
-		contexts: ["board", "terminal"],
-	},
-	{
 		id: "browser-notifications",
 		titleKey: "tip.browserNotifications.title",
 		bodyKey: "tip.browserNotifications.body",
@@ -907,35 +770,11 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["settings", "board"],
 	},
 	{
-		id: "remote-command-palette",
-		titleKey: "tip.remoteCommandPalette.title",
-		bodyKey: "tip.remoteCommandPalette.body",
-		icon: "\u{F0E7}", // nf-fa-bolt
-		score: 2,
-		contexts: ["board", "terminal"],
-	},
-	{
 		id: "remote-detach-lifecycle",
 		titleKey: "tip.remoteDetachLifecycle.title",
 		bodyKey: "tip.remoteDetachLifecycle.body",
 		icon: "\u{F048D}", // nf-md-server
 		score: 3,
-		contexts: ["board"],
-	},
-	{
-		id: "remote-remembers-device",
-		titleKey: "tip.remoteRemembersDevice.title",
-		bodyKey: "tip.remoteRemembersDevice.body",
-		icon: "\u{F0FA9}", // nf-md-cellphone_link
-		score: 3,
-		contexts: ["board"],
-	},
-	{
-		id: "remote-pick-interface",
-		titleKey: "tip.remotePickInterface.title",
-		bodyKey: "tip.remotePickInterface.body",
-		icon: "\u{F0200}", // nf-md-lan
-		score: 2,
 		contexts: ["board"],
 	},
 	{
@@ -947,111 +786,12 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["board"],
 	},
 	{
-		id: "stats-time-range",
-		titleKey: "tip.statsTimeRange.title",
-		bodyKey: "tip.statsTimeRange.body",
-		icon: "\u{F0240}", // nf-md-chart_line
-		score: 3,
-		contexts: ["board"],
-	},
-	{
-		id: "stats-beat-average",
-		titleKey: "tip.statsBeatAverage.title",
-		bodyKey: "tip.statsBeatAverage.body",
-		icon: "\u{F04C5}", // nf-md-speedometer
-		score: 3,
-		contexts: ["board"],
-	},
-	{
-		id: "stats-heatmap",
-		titleKey: "tip.statsHeatmap.title",
-		bodyKey: "tip.statsHeatmap.body",
-		icon: "\u{F0238}", // nf-md-fire
-		score: 4,
-		contexts: ["board"],
-	},
-	{
-		id: "stats-milestones",
-		titleKey: "tip.statsMilestones.title",
-		bodyKey: "tip.statsMilestones.body",
-		icon: "\u{F0699}", // nf-md-trophy
-		score: 3,
-		contexts: ["board"],
-	},
-	// Batch 42: mobile board carousel
-	{
-		id: "mobile-board-carousel",
-		titleKey: "tip.mobileBoardCarousel.title",
-		bodyKey: "tip.mobileBoardCarousel.body",
-		icon: "\u{F1252}", // nf-md-gesture_swipe_horizontal
-		score: 2,
-		contexts: ["board"],
-	},
-	// Batch 43: mobile terminal pane pager
-	{
 		id: "mobile-pane-pager",
 		titleKey: "tip.mobilePanePager.title",
 		bodyKey: "tip.mobilePanePager.body",
 		icon: "\u{F0BCA}", // nf-md-arrow_left_right
 		score: 3,
 		contexts: ["terminal"],
-	},
-	{
-		id: "mobile-pane-map",
-		titleKey: "tip.mobilePaneMap.title",
-		bodyKey: "tip.mobilePaneMap.body",
-		icon: "\u{F0570}", // nf-md-view_grid
-		score: 3,
-		contexts: ["terminal"],
-	},
-	{
-		id: "pane-zoom-restore",
-		titleKey: "tip.paneZoomRestore.title",
-		bodyKey: "tip.paneZoomRestore.body",
-		icon: "\u{F0294}", // nf-md-fullscreen_exit
-		score: 2,
-		contexts: ["terminal"],
-	},
-	// Batch 44: mobile terminal window switcher
-	{
-		id: "mobile-window-pager",
-		titleKey: "tip.mobileWindowPager.title",
-		bodyKey: "tip.mobileWindowPager.body",
-		icon: "\u{F05C2}", // nf-md-window_restore
-		score: 3,
-		contexts: ["terminal"],
-	},
-	{
-		id: "dev-server-status",
-		titleKey: "tip.devServerStatus.title",
-		bodyKey: "tip.devServerStatus.body",
-		icon: "\u{F048B}", // nf-md-server
-		score: 3,
-		contexts: ["terminal", "board"],
-	},
-	{
-		id: "mobile-pane-create",
-		titleKey: "tip.mobilePaneCreate.title",
-		bodyKey: "tip.mobilePaneCreate.body",
-		icon: "\u{F0578}", // nf-md-view_split_vertical
-		score: 3,
-		contexts: ["terminal"],
-	},
-	{
-		id: "stats-time-travel",
-		titleKey: "tip.statsTimeTravel.title",
-		bodyKey: "tip.statsTimeTravel.body",
-		icon: "\uF1DA", // nf-fa-history
-		score: 3,
-		contexts: ["board"],
-	},
-	{
-		id: "todo-detail-run",
-		titleKey: "tip.todoDetailRun.title",
-		bodyKey: "tip.todoDetailRun.body",
-		icon: "\u{F040A}", // nf-md-play
-		score: 3,
-		contexts: ["board"],
 	},
 	{
 		id: "alt-click-move-cursor",
@@ -1078,22 +818,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal"],
 	},
 	{
-		id: "terminal-scroll-speed",
-		titleKey: "tip.terminalScrollSpeed.title",
-		bodyKey: "tip.terminalScrollSpeed.body",
-		icon: "\u{F037D}", // nf-md-mouse
-		score: 2,
-		contexts: ["terminal"],
-	},
-	{
-		id: "dev-server-wait",
-		titleKey: "tip.devServerWait.title",
-		bodyKey: "tip.devServerWait.body",
-		icon: "\u{F048B}", // nf-md-server
-		score: 2,
-		contexts: ["terminal"],
-	},
-	{
 		id: "mobile-composer",
 		titleKey: "tip.mobileComposer.title",
 		bodyKey: "tip.mobileComposer.body",
@@ -1110,28 +834,12 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["terminal"],
 	},
 	{
-		id: "close-pane-eof",
-		titleKey: "tip.closePaneEof.title",
-		bodyKey: "tip.closePaneEof.body",
-		icon: "\u{F030C}", // nf-md-keyboard
-		score: 3,
-		contexts: ["terminal"],
-	},
-	{
 		id: "help-mode",
 		titleKey: "tip.helpMode.title",
 		bodyKey: "tip.helpMode.body",
 		icon: "\u{F02FD}", // nf-md-information_outline
 		score: 4,
 		contexts: ["board", "terminal"],
-	},
-	{
-		id: "help-spots",
-		titleKey: "tip.helpSpots.title",
-		bodyKey: "tip.helpSpots.body",
-		icon: "\u{F02FC}", // nf-md-information
-		score: 3,
-		contexts: ["board", "settings"],
 	},
 ];
 
