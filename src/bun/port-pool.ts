@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createSocket } from "node:dgram";
 import { createServer } from "node:net";
 import { createLogger } from "./logger";
+import { withFileLock } from "./file-lock";
 import { DEV3_HOME } from "./paths";
 
 const log = createLogger("port-pool");
@@ -20,20 +21,23 @@ interface PortAssignmentData {
 
 let assignments: PortAssignmentData | null = null;
 
-function ensureLoaded(): PortAssignmentData {
-	if (assignments !== null) return assignments;
+/** Read the assignment map straight from disk (no cache). Returns {} if the
+ *  file is missing or corrupt. */
+function readFromDisk(): PortAssignmentData {
 	try {
 		if (existsSync(ASSIGNMENTS_FILE)) {
-			const raw = readFileSync(ASSIGNMENTS_FILE, "utf-8");
-			assignments = JSON.parse(raw) as PortAssignmentData;
-			log.info("Loaded port assignments", { count: Object.keys(assignments).length });
-		} else {
-			assignments = {};
+			return JSON.parse(readFileSync(ASSIGNMENTS_FILE, "utf-8")) as PortAssignmentData;
 		}
 	} catch (err) {
 		log.warn("Failed to load port assignments, starting fresh", { error: String(err) });
-		assignments = {};
 	}
+	return {};
+}
+
+function ensureLoaded(): PortAssignmentData {
+	if (assignments !== null) return assignments;
+	assignments = readFromDisk();
+	log.info("Loaded port assignments", { count: Object.keys(assignments).length });
 	return assignments;
 }
 
@@ -100,53 +104,65 @@ export async function allocatePorts(taskId: string, count: number): Promise<numb
 		throw new Error(`portCount ${count} exceeds maximum ${MAX_PORT_COUNT}`);
 	}
 
-	const data = ensureLoaded();
+	// Serialize the whole read-decide-write section with a cross-process file
+	// lock. Without it, two concurrent callers (task variants created in
+	// parallel, or a second app instance sharing ~/.dev3.0) each took the
+	// assigned-port snapshot before either persisted, and could pick the same
+	// OS-free ports — handing two tasks overlapping DEV3_PORT0 values. The lock
+	// also lets us refresh from disk inside the critical section so a peer's
+	// just-persisted picks are visible here.
+	return withFileLock(ASSIGNMENTS_FILE, async () => {
+		// Re-read under the lock: the in-memory cache may be stale relative to a
+		// peer that allocated while we were waiting for the lock.
+		assignments = readFromDisk();
+		const data = assignments;
 
-	// Return existing allocation if count matches
-	const existing = data[taskId];
-	if (existing && existing.length === count) {
-		log.info("Returning existing port allocation", { taskId: taskId.slice(0, 8), ports: existing });
-		return existing;
-	}
-
-	// Release old allocation if count changed
-	if (existing) {
-		delete data[taskId];
-	}
-
-	const assignedPorts = getAllAssignedPorts();
-	const allocated: number[] = [];
-
-	// Walk the range with a random starting offset to reduce collisions
-	// between concurrent allocations.
-	const rangeSize = PORT_RANGE_END - PORT_RANGE_START;
-	const startOffset = Math.floor(Math.random() * rangeSize);
-
-	for (let i = 0; i < rangeSize && allocated.length < count; i++) {
-		const port = PORT_RANGE_START + ((startOffset + i) % rangeSize);
-
-		// Skip ports already assigned to other tasks
-		if (assignedPorts.has(port)) continue;
-
-		// Verify the port is free at the OS level
-		const free = await isPortFree(port);
-		if (free) {
-			allocated.push(port);
-			assignedPorts.add(port); // prevent double-pick within this loop
+		// Return existing allocation if count matches
+		const existing = data[taskId];
+		if (existing && existing.length === count) {
+			log.info("Returning existing port allocation", { taskId: taskId.slice(0, 8), ports: existing });
+			return existing;
 		}
-	}
 
-	if (allocated.length < count) {
-		throw new Error(
-			`Could not allocate ${count} free ports (only found ${allocated.length}). ` +
-			`Range ${PORT_RANGE_START}-${PORT_RANGE_END} may be exhausted.`,
-		);
-	}
+		// Release old allocation if count changed
+		if (existing) {
+			delete data[taskId];
+		}
 
-	data[taskId] = allocated;
-	save();
-	log.info("Ports allocated", { taskId: taskId.slice(0, 8), ports: allocated });
-	return allocated;
+		const assignedPorts = getAllAssignedPorts();
+		const allocated: number[] = [];
+
+		// Walk the range with a random starting offset so unrelated allocations
+		// tend to start in different regions of the range.
+		const rangeSize = PORT_RANGE_END - PORT_RANGE_START;
+		const startOffset = Math.floor(Math.random() * rangeSize);
+
+		for (let i = 0; i < rangeSize && allocated.length < count; i++) {
+			const port = PORT_RANGE_START + ((startOffset + i) % rangeSize);
+
+			// Skip ports already assigned to other tasks
+			if (assignedPorts.has(port)) continue;
+
+			// Verify the port is free at the OS level
+			const free = await isPortFree(port);
+			if (free) {
+				allocated.push(port);
+				assignedPorts.add(port); // prevent double-pick within this loop
+			}
+		}
+
+		if (allocated.length < count) {
+			throw new Error(
+				`Could not allocate ${count} free ports (only found ${allocated.length}). ` +
+				`Range ${PORT_RANGE_START}-${PORT_RANGE_END} may be exhausted.`,
+			);
+		}
+
+		data[taskId] = allocated;
+		save();
+		log.info("Ports allocated", { taskId: taskId.slice(0, 8), ports: allocated });
+		return allocated;
+	});
 }
 
 /** Release ports assigned to a task. Returns the released ports. */
