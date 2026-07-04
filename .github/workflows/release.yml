@@ -555,7 +555,11 @@ jobs:
             depends_on arch: :arm64
             depends_on macos: ">= :ventura"
             depends_on formula: "git"
-            depends_on formula: "tmux"
+            # Pinned keg-only tmux from this tap: tmux 3.7 regressed (client
+            # busy-spins on a congested server socket). The app prefers the
+            # /opt/homebrew/opt/tmux@3.6 keg and shims it into agent PATHs,
+            # so it does not need to be linked.
+            depends_on formula: "h0x91b/dev3/tmux@3.6"
             depends_on formula: "cloudflared"
 
             app "dev-3.0.app"
@@ -649,7 +653,8 @@ jobs:
               ${LINUX_ARM_BLOCK}
             end
 
-            depends_on "tmux"
+            # Pinned keg-only tmux — see the cask above for the 3.7 regression.
+            depends_on "h0x91b/dev3/tmux@3.6"
             depends_on "git"
             depends_on "cloudflared"
 

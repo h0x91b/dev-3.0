@@ -107,7 +107,27 @@ const FALLBACK_BIN_PATHS = [
 	...(process.env.HOME ? [`${process.env.HOME}/.local/bin`, `${process.env.HOME}/bin`] : []),
 ];
 
-export function resolveBinaryPath(binaryName: string, customPath?: string): { resolvedPath?: string; customPathError: boolean } {
+/**
+ * Known-good tmux kegs vendored via the h0x91b/dev3 Homebrew tap.
+ *
+ * tmux 3.7 regressed: its client busy-spins at 100% CPU on a congested server
+ * socket (imsg flush loop) instead of waiting for writability, which cascades
+ * into 10-35s UI freezes when several dev3 instances share one machine. The
+ * dev3 cask/formula therefore depend on the keg-only `h0x91b/dev3/tmux@3.6`,
+ * and the app prefers that keg over whatever `tmux` happens to be in PATH.
+ * A user-configured custom path still wins over these.
+ */
+export const VENDORED_TMUX_PATHS = [
+	"/opt/homebrew/opt/tmux@3.6/bin/tmux",
+	"/usr/local/opt/tmux@3.6/bin/tmux",
+	"/home/linuxbrew/.linuxbrew/opt/tmux@3.6/bin/tmux",
+];
+
+export function resolveBinaryPath(
+	binaryName: string,
+	customPath?: string,
+	vendoredPaths?: string[],
+): { resolvedPath?: string; customPathError: boolean } {
 	let resolvedPath: string | undefined;
 	let customPathError = false;
 
@@ -117,6 +137,10 @@ export function resolveBinaryPath(binaryName: string, customPath?: string): { re
 		} else {
 			customPathError = true;
 		}
+	}
+
+	if (!resolvedPath && vendoredPaths) {
+		resolvedPath = vendoredPaths.find((p) => existsSync(p));
 	}
 
 	if (!resolvedPath) {

@@ -248,6 +248,17 @@ const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, get
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
 
+// Pin the tmux binary before any poller talks to the tmux server — the bare
+// PATH `tmux` may be a version the running server rejects, or missing entirely
+// (keg-only tmux@3.6 install). Fire-and-forget: the renderer's requirements
+// check re-runs the same selection later, and both are idempotent.
+{
+	const { resolveTmuxBinaryAtStartup } = await import("./rpc-handlers/settings-config");
+	resolveTmuxBinaryAtStartup().catch((err) => {
+		log.warn("Startup tmux binary resolution failed (non-fatal)", { err: String(err) });
+	});
+}
+
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
