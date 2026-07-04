@@ -1068,6 +1068,13 @@ async function spawnVariants(params: {
 				// Carry the labels the user picked in the Create-Task modal — the
 				// source task is deleted below, so without this every label is lost.
 				labelIds: sourceTask.labelIds,
+				// Carry notes + overview for the same reason: a task can sit in To Do
+				// and accumulate notes/overview before being launched with variants;
+				// the source is deleted below, so without this that context is lost.
+				// (history is intentionally regenerated fresh per new task id.)
+				notes: sourceTask.notes,
+				overview: sourceTask.overview,
+				userOverview: sourceTask.userOverview,
 				// Virtual ("Operations") tasks: carry the chosen working folder onto
 				// each variant so the worktree-less launch path targets it instead
 				// of falling back to a managed dir (the source task is deleted below).
@@ -1177,6 +1184,10 @@ async function addAttempts(params: {
 				titleEditedByUser: sourceTask.titleEditedByUser,
 				// Attempts share the source task's labels (same group).
 				labelIds: sourceTask.labelIds,
+				// NOTE: notes/overview are intentionally NOT copied here — addAttempts
+				// keeps the source task (returns it alongside the new attempts), so its
+				// notes are not lost; copying them would duplicate them across siblings.
+				// (spawnVariants DOES copy them because it deletes the source.)
 			},
 		);
 

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 
 const HOME = process.env.HOME || "/tmp";
 const DEV3_HOME = `${HOME}/.dev3.0`;
@@ -407,23 +408,46 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
 /**
  * Expand a short task ID (e.g. 8-char prefix from `tasks list`) to full UUID.
  * First checks the current context, then falls back to reading data files.
+ *
+ * The fallback scan mirrors the server's `findByIdPrefix` guard: a prefix shorter
+ * than {@link ID_PREFIX_MIN_LENGTH} is NOT resolved (returned as-is so the server
+ * rejects it), and a prefix that matches more than one task — across ALL projects,
+ * which the server cannot see when no `--project` is passed — throws instead of
+ * silently expanding to whichever task the project-iteration order hit first.
+ * Without this, a typo'd `--task` prefix would be resolved to a full UUID and the
+ * server's exact match would then mutate an arbitrary, wrong task. See decision 102.
  */
 export function expandShortId(id: string, context: CliContext | null): string {
 	// Already a full UUID
 	if (id.length >= 36) return id;
-	// Check if context task matches the prefix
+	// Check if context task matches the prefix (context is authoritative — an
+	// in-worktree short prefix legitimately means "this task", even below the min).
 	if (context?.taskId?.startsWith(id)) return context.taskId;
-	// Fall back to scanning data files across all projects (git + virtual)
+	// Too short to safely disambiguate — leave as-is; the server will reject it.
+	if (id.length < ID_PREFIX_MIN_LENGTH) return id;
+	// Fall back to scanning data files across all projects (git + virtual).
 	try {
+		const matches: string[] = [];
 		for (const project of readAllProjectsRaw()) {
 			const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
 			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
 			if (!existsSync(tasksFile)) continue;
 			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
-			const match = tasks.find((t) => t.id.startsWith(id));
-			if (match) return match.id;
+			for (const t of tasks) {
+				if (t.id === id) return t.id; // exact match wins immediately
+				if (t.id.startsWith(id)) matches.push(t.id);
+			}
 		}
-	} catch {
+		if (matches.length > 1) {
+			const shown = matches.slice(0, 5).map((m) => m.slice(0, 12)).join(", ");
+			throw new Error(
+				`Ambiguous task prefix "${id}" matches ${matches.length} tasks (${shown}). Use a longer prefix or pass --project.`,
+			);
+		}
+		if (matches.length === 1) return matches[0];
+	} catch (err) {
+		// Re-throw the ambiguity error; swallow only genuine read failures.
+		if (err instanceof Error && err.message.startsWith("Ambiguous")) throw err;
 		// Data files not available — return as-is
 	}
 	return id;
@@ -437,13 +461,25 @@ export function expandShortId(id: string, context: CliContext | null): string {
 export function expandShortProjectId(id: string, context: CliContext | null): string {
 	// Already a full UUID
 	if (id.length >= 36) return id;
-	// Check if context project matches the prefix
+	// Check if context project matches the prefix (context is authoritative).
 	if (context?.projectId?.startsWith(id)) return context.projectId;
-	// Fall back to scanning projects (git + virtual)
+	// Too short to safely disambiguate — leave as-is; the server will reject it.
+	if (id.length < ID_PREFIX_MIN_LENGTH) return id;
+	// Fall back to scanning projects (git + virtual).
 	try {
-		const match = readAllProjectsRaw().find((p) => p.id.startsWith(id));
-		if (match) return match.id;
-	} catch {
+		const projects = readAllProjectsRaw();
+		const exact = projects.find((p) => p.id === id);
+		if (exact) return exact.id;
+		const matches = projects.filter((p) => p.id.startsWith(id));
+		if (matches.length > 1) {
+			const shown = matches.slice(0, 5).map((m) => m.id.slice(0, 12)).join(", ");
+			throw new Error(
+				`Ambiguous project prefix "${id}" matches ${matches.length} projects (${shown}). Use a longer prefix.`,
+			);
+		}
+		if (matches.length === 1) return matches[0].id;
+	} catch (err) {
+		if (err instanceof Error && err.message.startsWith("Ambiguous")) throw err;
 		// Data files not available — return as-is
 	}
 	return id;
