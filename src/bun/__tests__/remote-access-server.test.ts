@@ -425,6 +425,17 @@ describe("resolveAccessHost", () => {
 });
 
 describe("getAccessUrl host override", () => {
+	// dev3-managed shells export DEV3_REMOTE_STATIC_CODE (the dev app's own
+	// web-access code), and getAccessUrl prefers it over the mocked QR token.
+	// Unset it so these tests stay hermetic when run inside a dev3 worktree.
+	beforeEach(() => {
+		vi.stubEnv("DEV3_REMOTE_STATIC_CODE", undefined);
+	});
+
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
 	it("embeds an allowed host in the URL", async () => {
 		const url = await getAccessUrl("127.0.0.1");
 		expect(url).toContain("http://127.0.0.1:");

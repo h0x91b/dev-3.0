@@ -5,7 +5,12 @@
  * directory. Third-party packages (e.g. electrobun) ship raw `.ts` source
  * files instead of `.d.ts` declarations, so `skipLibCheck` does not suppress
  * their errors. We own only `src/` — errors there must be zero.
+ *
+ * A tsc run that failed without per-file diagnostics (corrupt tsconfig,
+ * missing binary, crash) is a lint failure too — see evaluateTscOutput.
  */
+
+import { evaluateTscOutput } from "../src/bun/lint-tsc-output";
 
 // Ensure build-info.generated.ts exists (it's created during build,
 // but in a fresh worktree it won't be there yet).
@@ -45,10 +50,14 @@ const combined = [result.stdout, result.stderr]
 	.map((b) => (b ? Buffer.from(b as ArrayBuffer).toString() : ""))
 	.join("");
 
-const srcErrors = combined.split("\n").filter((l) => l.startsWith("src/"));
+const evaluation = evaluateTscOutput(result.exitCode ?? 1, combined);
 
-if (srcErrors.length > 0) {
-	process.stderr.write(srcErrors.join("\n") + "\n");
+if (evaluation.failed) {
+	if (evaluation.errorLines.length > 0) {
+		process.stderr.write(evaluation.errorLines.join("\n") + "\n");
+	} else {
+		process.stderr.write(`tsc exited with code ${result.exitCode} and produced no diagnostics\n`);
+	}
 	process.exit(1);
 }
 

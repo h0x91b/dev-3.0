@@ -421,7 +421,7 @@ Call with `t.plural("dashboard.projectCount", count)`.
 
 ```bash
 bun run lint          # TypeScript type-check (must pass before committing)
-bun run test          # Fast tests — mainview + bun in parallel, excludes 3 slow e2e files (~6s)
+bun run test          # Fast tests — mainview + bun + cli in parallel, excludes 3 slow e2e files (~6s)
 bun run test:full     # Full tests — everything including slow e2e files (~42s, for CI/PR)
 bun run test:bun      # Backend tests only
 bun run test:cli      # CLI tests
