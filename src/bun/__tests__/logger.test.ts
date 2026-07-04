@@ -69,7 +69,7 @@ describe("level gating", () => {
 
 		log.debug("now visible");
 		expect(appendFileSync).toHaveBeenCalledTimes(1);
-		expect(String(appendFileSync.mock.calls[0]?.[1])).toContain("[test] now visible");
+		expect(String(appendFileSync.mock.calls[0]?.[1])).toContain(`[${process.pid}:test] now visible`);
 	});
 
 	it("only writes errors at error level", () => {
@@ -123,7 +123,7 @@ describe("self-healing when the log directory disappears", () => {
 		// Retry recreated the directory (at least one extra mkdir beyond warm-up).
 		expect(mkdirSync.mock.calls.length).toBeGreaterThan(mkdirCallsAfterWarm);
 		// The line was ultimately written (initial failure + successful retry).
-		const wrote = appendFileSync.mock.calls.some((c) => String(c[1]).includes("[test] second-marker"));
+		const wrote = appendFileSync.mock.calls.some((c) => String(c[1]).includes(`[${process.pid}:test] second-marker`));
 		expect(wrote).toBe(true);
 		// No "[logger] Failed to write log file" noise.
 		expect(errSpy).not.toHaveBeenCalled();

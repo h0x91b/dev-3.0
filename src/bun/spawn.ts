@@ -29,10 +29,28 @@ export function spawn(cmd: string[], opts?: any) {
 	return proc;
 }
 
+// A synchronous spawn blocks the event loop for its full duration — under
+// system load a normally-instant fork can take hundreds of ms. Anything above
+// this threshold is logged so loop stalls can be attributed from the field
+// instead of guessed at. (Lazy logger import: logger has no dependency on this
+// module today, but a static import would make any future logger→spawn use a
+// cycle, and spawnSync must never fail because logging did.)
+const SLOW_SPAWN_SYNC_MS = 250;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function spawnSync(cmd: string[], opts?: any) {
-	return Bun.spawnSync(cmd, {
+	const startedAt = Date.now();
+	const result = Bun.spawnSync(cmd, {
 		...opts,
 		env: { ...process.env, ...(opts?.env ?? {}) },
 	});
+	const elapsedMs = Date.now() - startedAt;
+	if (elapsedMs >= SLOW_SPAWN_SYNC_MS) {
+		import("./logger")
+			.then(({ createLogger }) => {
+				createLogger("spawn").warn("Slow spawnSync blocked the event loop", { cmd: cmd.slice(0, 4).join(" "), elapsedMs });
+			})
+			.catch(() => {});
+	}
+	return result;
 }

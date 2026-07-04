@@ -1,6 +1,4 @@
-import { spawnSync } from "./spawn";
-
-const decoder = new TextDecoder();
+import { spawn } from "./spawn";
 
 /**
  * Injectable primitives so the terminate/wait logic is unit-testable without
@@ -94,11 +92,11 @@ export async function terminatePidsVerified(
  * when the cwd cannot be read. Note lsof resolves symlinks (`/tmp` →
  * `/private/tmp`), so compare against a realpath'd reference.
  */
-export function getPidCwd(pid: number): string | null {
+export async function getPidCwd(pid: number): Promise<string | null> {
 	try {
-		const result = spawnSync(["lsof", "-a", "-p", String(pid), "-d", "cwd", "-F", "n"]);
-		if (result.exitCode !== 0) return null;
-		const output = decoder.decode(result.stdout);
+		const proc = spawn(["lsof", "-a", "-p", String(pid), "-d", "cwd", "-F", "n"], { stdout: "pipe", stderr: "pipe" });
+		const [output, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+		if (exitCode !== 0) return null;
 		for (const line of output.split("\n")) {
 			if (line.startsWith("n")) {
 				const cwd = line.slice(1).trim();

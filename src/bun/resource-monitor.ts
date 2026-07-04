@@ -1,14 +1,11 @@
 import type { ResourceUsage } from "../shared/types";
-import { collectProcessInfo, collectDescendants, getSessionPanePids } from "./port-scanner";
-import { tmuxArgs } from "./pty-server";
-import { spawnSync } from "./spawn";
+import { collectProcessInfo, collectDescendants, getAllSessionPanePids } from "./port-scanner";
 import { createLogger } from "./logger";
 import { updateCaffeinateState } from "./caffeinate";
 
 const log = createLogger("resource-monitor");
 const POLL_INTERVAL_MS = 10_000;
 const TMUX_SOCKET = "dev3";
-const decoder = new TextDecoder();
 
 type PushMessageFn = (name: string, payload: unknown) => void;
 
@@ -37,33 +34,27 @@ export function aggregateResources(
 }
 
 /**
- * Discover active task tmux sessions directly from tmux.
- * Returns session names like "dev3-abc12345" (excluding cleanup, dev-server, project-terminal).
+ * Task session names from a pane map (excluding cleanup, dev-server,
+ * project-terminal sessions).
  */
-function discoverTmuxSessions(): string[] {
-	try {
-		const result = spawnSync(tmuxArgs(TMUX_SOCKET, "list-sessions", "-F", "#{session_name}"));
-		if (result.exitCode !== 0) return [];
-		const output = decoder.decode(result.stdout).trim();
-		if (!output) return [];
-		return output.split("\n")
-			.map((s) => s.trim())
-			.filter((name) =>
-				name.startsWith("dev3-") &&
-				!name.startsWith("dev3-cl-") &&
-				!name.startsWith("dev3-dev-") &&
-				!name.startsWith("dev3-pt-"),
-			);
-	} catch {
-		return [];
-	}
+function filterTaskSessions(paneMap: Map<string, number[]>): string[] {
+	return [...paneMap.keys()].filter((name) =>
+		name.startsWith("dev3-") &&
+		!name.startsWith("dev3-cl-") &&
+		!name.startsWith("dev3-dev-") &&
+		!name.startsWith("dev3-pt-"),
+	);
 }
 
-function poll() {
+async function poll() {
 	try {
 		if (!pushMessageFn) return;
 
-		const sessionNames = discoverTmuxSessions();
+		// One tmux call for all sessions AND all their pane PIDs — this poller
+		// used to spawn `tmux list-sessions` + 2 `list-panes` per session,
+		// synchronously, which stalled the main loop under load.
+		const paneMap = await getAllSessionPanePids(TMUX_SOCKET);
+		const sessionNames = filterTaskSessions(paneMap);
 		const activeShortIds = new Set(sessionNames.map((n) => n.slice(5)));
 
 		// Keep the machine awake while the app runs (per setting) or while
@@ -88,15 +79,14 @@ function poll() {
 
 		// Shared process info — TTL-cached in port-scanner, so port-scanner poller
 		// firing in the same cycle reuses this result without a second ps spawn.
-		const { tree, resources } = collectProcessInfo();
+		const { tree, resources } = await collectProcessInfo();
 
 		for (const sessionName of sessionNames) {
 			const shortId = sessionName.slice(5);
 			try {
-				// Get pane PIDs from tmux (main session + dev server session)
-				const panePids = getSessionPanePids(TMUX_SOCKET, sessionName);
-				const devPanePids = getSessionPanePids(TMUX_SOCKET, `dev3-dev-${shortId}`);
-				panePids.push(...devPanePids);
+				// Pane PIDs from the shared map (main session + dev server session)
+				const panePids = [...(paneMap.get(sessionName) ?? [])];
+				panePids.push(...(paneMap.get(`dev3-dev-${shortId}`) ?? []));
 
 				if (panePids.length === 0) continue;
 

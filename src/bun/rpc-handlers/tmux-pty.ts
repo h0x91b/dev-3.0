@@ -78,8 +78,8 @@ const DEV_SERVER_TERM_GRACE_MS = 1500;
 const DEV_SERVER_KILL_WAIT_MS = 2000;
 const DEV_SERVER_PORT_RELEASE_WAIT_MS = 3000;
 
-function collectDevServerTreePids(devSession: string, socket: string): number[] {
-	const panePids = getSessionPanePids(socket, devSession);
+async function collectDevServerTreePids(devSession: string, socket: string): Promise<number[]> {
+	const panePids = await getSessionPanePids(socket, devSession);
 	if (panePids.length === 0) return [];
 	// Walk the descendant tree from a SINGLE `ps -eo pid,ppid` snapshot rather
 	// than per-PID `pgrep -P`. When spawned from the packaged GUI `.app`,
@@ -90,7 +90,7 @@ function collectDevServerTreePids(devSession: string, socket: string): number[] 
 	// vite/webpack) kept running after Stop. A `ps`-based walk also crosses the
 	// process-group boundary Electrobun creates for the launched app. See
 	// decision 095.
-	const processTree = buildProcessTree();
+	const processTree = await buildProcessTree();
 	const tree = new Set<number>();
 	for (const pid of panePids) {
 		tree.add(pid);
@@ -126,15 +126,15 @@ async function reapDevServerTree(pids: number[], devSession: string): Promise<nu
 // the port is a foreign process — reported, never killed. Ownership is checked
 // via `lsof -d cwd` because env/args inspection (`ps -E`) is blocked for other
 // PIDs under the packaged `.app` hardened runtime (see decisions 095/099).
-function findOrphanedPortHolders(
+async function findOrphanedPortHolders(
 	taskId: string,
 	worktreePath: string | undefined,
 	knownPids: Set<number>,
-): { orphanPids: number[]; foreignHolders: PortInfo[] } {
+): Promise<{ orphanPids: number[]; foreignHolders: PortInfo[] }> {
 	const assignedPorts = portPool.getPortAssignments(taskId);
 	if (assignedPorts.length === 0 || !worktreePath) return { orphanPids: [], foreignHolders: [] };
 
-	const holders = findPortHolders(assignedPorts);
+	const holders = await findPortHolders(assignedPorts);
 	if (holders.length === 0) return { orphanPids: [], foreignHolders: [] };
 
 	// lsof resolves symlinks in cwd paths (e.g. /tmp → /private/tmp).
@@ -150,12 +150,12 @@ function findOrphanedPortHolders(
 	let processTree: Map<number, number[]> | null = null;
 	for (const holder of holders) {
 		if (knownPids.has(holder.pid) || orphanPids.has(holder.pid)) continue;
-		const cwd = getPidCwd(holder.pid);
+		const cwd = await getPidCwd(holder.pid);
 		const isOurs = cwd !== null && [worktreePath, resolvedWorktree].some(
 			(root) => cwd === root || cwd.startsWith(root + "/"),
 		);
 		if (isOurs) {
-			processTree ??= buildProcessTree();
+			processTree ??= await buildProcessTree();
 			orphanPids.add(holder.pid);
 			for (const child of collectDescendants(holder.pid, processTree)) orphanPids.add(child);
 		} else {
@@ -170,14 +170,14 @@ export async function killDevServerSession(taskId: string, socket: string, workt
 	const taskSession = `dev3-${taskId.slice(0, 8)}`;
 	// Snapshot the process tree while the dev session still exists — afterwards
 	// its pane PIDs are unreachable via tmux.
-	const treePids = collectDevServerTreePids(devSession, socket);
+	const treePids = await collectDevServerTreePids(devSession, socket);
 	// Detached/daemonized devScript children are missed by the tree walk — find
 	// them by pool-port ownership. Processes in the TASK session tree (agent
 	// panes) are excluded: an agent-launched server on a pool port is not the
 	// dev server's to kill.
-	const taskTreePids = collectTaskPids(socket, taskSession);
+	const taskTreePids = await collectTaskPids(socket, taskSession);
 	for (const pid of treePids) taskTreePids.add(pid);
-	const { orphanPids, foreignHolders } = findOrphanedPortHolders(taskId, worktreePath ?? undefined, taskTreePids);
+	const { orphanPids, foreignHolders } = await findOrphanedPortHolders(taskId, worktreePath ?? undefined, taskTreePids);
 	if (orphanPids.length > 0) {
 		log.warn("Reaping detached dev-server processes found via port ownership", { taskId: taskId.slice(0, 8), orphanPids });
 	}
@@ -218,21 +218,21 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	const viewerPaneId = running
 		? await findDevServerViewerPaneId(task.id, taskSessionName, devSessionName, resolvedSocket)
 		: null;
-	const panePids = running ? getSessionPanePids(resolvedSocket, devSessionName) : [];
+	const panePids = running ? await getSessionPanePids(resolvedSocket, devSessionName) : [];
 	// One live lsof snapshot shared by the dev-port scan, the conflict check,
 	// and the whole-task-session fallback below. Skipped entirely when there is
 	// nothing to look at (stopped + no assigned ports).
-	const lsofOutput = running || assignedPorts.length > 0 ? getLsofOutput() : "";
-	const devTreePids = running ? collectTaskPids(resolvedSocket, devSessionName) : new Set<number>();
+	const lsofOutput = running || assignedPorts.length > 0 ? await getLsofOutput() : "";
+	const devTreePids = running ? await collectTaskPids(resolvedSocket, devSessionName) : new Set<number>();
 	const devPorts = running && lsofOutput ? parseLsofOutput(lsofOutput, devTreePids) : [];
 	// An assigned pool port bound by a PID outside the dev-server tree is a
 	// conflict: either a foreign squatter, or (when stopped) a leftover that
 	// will make the next start crash-loop on bind.
 	const portConflicts = lsofOutput
-		? findPortHolders(assignedPorts, lsofOutput).filter((holder) => !devTreePids.has(holder.pid))
+		? (await findPortHolders(assignedPorts, lsofOutput)).filter((holder) => !devTreePids.has(holder.pid))
 		: [];
 	const ports = running
-		? (() => {
+		? await (async () => {
 			const cached = getPortsForTask(task.id);
 			return cached.length > 0 ? cached : scanTaskPorts(resolvedSocket, taskSessionName, lsofOutput);
 		})()
@@ -765,7 +765,7 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 		// devScript to crash-loop on bind with only a downstream 502 as evidence.
 		// The start still proceeds (the script may not use the squatted port) —
 		// the conflict is logged here and returned in the status' portConflicts.
-		const preStartConflicts = findPortHolders(devPorts);
+		const preStartConflicts = await findPortHolders(devPorts);
 		if (preStartConflicts.length > 0) {
 			log.warn("Assigned ports already in use before dev-server start", {
 				taskId: task.id.slice(0, 8),
@@ -1474,7 +1474,7 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 		// server's process tree before tearing the session down, then reap it
 		// with verification. (No full task ID here, so the port-ownership orphan
 		// sweep is skipped — the tree reap covers the common case.)
-		const treePids = collectDevServerTreePids(devSession, pty.DEFAULT_TMUX_SOCKET);
+		const treePids = await collectDevServerTreePids(devSession, pty.DEFAULT_TMUX_SOCKET);
 		const devKill = spawn(pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
 		await devKill.exited;
 		await reapDevServerTree(treePids, devSession);
