@@ -282,6 +282,60 @@ describe("addTask — seq assignment", () => {
 	});
 });
 
+// ============================================================
+// addTask variant index tests
+// ============================================================
+
+describe("addTask — autoVariantIndex allocation", () => {
+	it("assigns the next free variant index for an existing group", async () => {
+		seedTasks([
+			makeRawTask({ id: "a", groupId: "g1", variantIndex: 1 }),
+			makeRawTask({ id: "b", groupId: "g1", variantIndex: 2 }),
+		]);
+
+		const task = await addTask(testProject, "Variant", "in-progress", { groupId: "g1", autoVariantIndex: true });
+
+		expect(task.variantIndex).toBe(3);
+	});
+
+	it("assigns 1 for the first variant of a fresh group", async () => {
+		seedTasks([]);
+
+		const task = await addTask(testProject, "Variant", "in-progress", { groupId: "g-new", autoVariantIndex: true });
+
+		expect(task.variantIndex).toBe(1);
+	});
+
+	it("ignores variants of other groups when computing the max", async () => {
+		seedTasks([
+			makeRawTask({ id: "a", groupId: "g1", variantIndex: 1 }),
+			makeRawTask({ id: "b", groupId: "other", variantIndex: 9 }),
+		]);
+
+		const task = await addTask(testProject, "Variant", "in-progress", { groupId: "g1", autoVariantIndex: true });
+
+		expect(task.variantIndex).toBe(2);
+	});
+
+	it("is a no-op without a groupId (keeps the explicit/null variant index)", async () => {
+		seedTasks([]);
+
+		const task = await addTask(testProject, "Loner", "in-progress", { autoVariantIndex: true });
+
+		expect(task.variantIndex).toBeNull();
+	});
+
+	it("sequential auto allocations keep incrementing without duplicates", async () => {
+		seedTasks([makeRawTask({ id: "src", groupId: "g1", variantIndex: 1 })]);
+
+		const t2 = await addTask(testProject, "V2", "in-progress", { groupId: "g1", autoVariantIndex: true });
+		const t3 = await addTask(testProject, "V3", "in-progress", { groupId: "g1", autoVariantIndex: true });
+
+		expect(t2.variantIndex).toBe(2);
+		expect(t3.variantIndex).toBe(3);
+	});
+});
+
 describe("tasks.json hourly backups", () => {
 	it("captures the previous tasks.json once per hour before overwriting it", async () => {
 		vi.useFakeTimers();

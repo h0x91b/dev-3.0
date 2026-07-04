@@ -500,8 +500,21 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 
 			log.info("Bell auto-transition: in-progress → user-questions", { taskId: taskId.slice(0, 8) });
 			const bellSettings = await loadSettings();
-			const updated = await data.updateTask(project, task.id, { status: "user-questions" }, { dropPosition: bellSettings.taskDropPosition });
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			// Guard the write on still-in-progress INSIDE the lock: the snapshot
+			// check above is a TOCTOU window — a concurrent Stop-hook may move the
+			// task to review-by-ai/review-by-user between our read and this write.
+			// Without the guard, a late bell would drag an already-reviewed task
+			// back to user-questions. If the guard blocks, updateTask no-ops and we
+			// skip the push (the concurrent writer already pushed the real status).
+			const updated = await data.updateTask(
+				project,
+				task.id,
+				{ status: "user-questions" },
+				{ dropPosition: bellSettings.taskDropPosition, ifStatus: "in-progress" },
+			);
+			if (updated.status === "user-questions") {
+				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			}
 			return;
 		}
 	} catch (err) {
@@ -801,17 +814,21 @@ export async function moveTask(params: {
 	};
 	const dropOpts = { dropPosition: settings.taskDropPosition, ...guardOpts } as const;
 
+	// Pre-check the move guard once, up front, before ANY side effect (worktree
+	// teardown, PTY kill, cleanup script, port release, merge-notification clear).
+	// A blocked guarded move would otherwise run all of that and only then have
+	// the in-lock updateTask no-op, leaving the task in its old status pointing at
+	// a destroyed worktree. The authoritative check still runs inside the lock.
+	if (isStatusGuardBlocked(oldStatus, guardOpts)) {
+		log.info("Move guard blocked; skipping move and all side effects", { taskId: task.id, oldStatus, newStatus });
+		return task;
+	}
+
 	log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id, force: !!params.force });
 
 	clearMergeNotification(task.id);
 
 	if (!isActive(oldStatus) && isActive(newStatus)) {
-		// Pre-check the move guard before activateTask so a blocked move does not
-		// leak a worktree/PTY. The authoritative check still runs inside the lock.
-		if (isStatusGuardBlocked(oldStatus, guardOpts)) {
-			log.info("Move guard blocked inactive → active; skipping activateTask", { taskId: task.id, oldStatus });
-			return task;
-		}
 		const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
 		log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
 		const wt = await activateTask(project, task, { isReopen });
@@ -1133,19 +1150,18 @@ async function addAttempts(params: {
 	const sourceTask = await data.getTask(project, params.taskId);
 
 	let groupId = sourceTask.groupId;
-	const allTasks = await data.loadTasks(project);
-	let maxVariantIndex = 0;
 
-	if (groupId) {
-		for (const task of allTasks) {
-			if (task.groupId === groupId && task.variantIndex !== null && task.variantIndex > maxVariantIndex) {
-				maxVariantIndex = task.variantIndex;
-			}
-		}
-	} else {
-		groupId = crypto.randomUUID();
-		maxVariantIndex = 1;
-		await data.updateTask(project, sourceTask.id, { groupId, variantIndex: 1 });
+	if (!groupId) {
+		// First attempt promotes a lone task into a group. Set the groupId under
+		// the task lock and only if it is still ungrouped, so two concurrent
+		// addAttempts calls cannot each mint a different groupId (which would
+		// orphan one caller's variants); the loser adopts the winner's groupId.
+		const newGroupId = crypto.randomUUID();
+		const { task: promotedSource } = await data.updateTaskWith(project, sourceTask.id, (current) => {
+			if (current.groupId) return { updates: {}, result: current.groupId };
+			return { updates: { groupId: newGroupId, variantIndex: 1 }, result: newGroupId };
+		});
+		groupId = promotedSource.groupId ?? newGroupId;
 	}
 
 	const sharedSeq = sourceTask.seq;
@@ -1156,7 +1172,6 @@ async function addAttempts(params: {
 
 	for (let i = 0; i < params.variants.length; i++) {
 		const variant = params.variants[i];
-		const variantIndex = maxVariantIndex + i + 1;
 
 		const task = await data.addTask(
 			project,
@@ -1164,7 +1179,11 @@ async function addAttempts(params: {
 			targetStatus,
 			{
 				groupId,
-				variantIndex,
+				// Allocate the variant index atomically inside addTask's file lock
+				// rather than from a snapshot taken here — otherwise two concurrent
+				// addAttempts on the same group would read the same base index and
+				// mint duplicate variant numbers.
+				autoVariantIndex: true,
 				agentId: variant.agentId,
 				configId: variant.configId,
 				seq: sharedSeq,

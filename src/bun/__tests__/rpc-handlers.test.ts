@@ -367,11 +367,31 @@ describe("handleBellAutoStatus", () => {
 
 		await handleBellAutoStatus("task-1");
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" }, { dropPosition: "top" });
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" }, { dropPosition: "top", ifStatus: "in-progress" });
 		expect(push).toHaveBeenCalledWith("taskUpdated", {
 			projectId: "proj-1",
 			task: expect.objectContaining({ status: "user-questions" }),
 		});
+	});
+
+	it("does not push when the in-lock guard blocks the transition (TOCTOU with a concurrent Stop-hook)", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		// The snapshot says in-progress, but by the time the write runs a concurrent
+		// Stop-hook has moved the task to review-by-ai. The ifStatus guard makes the
+		// write a no-op that returns the task in its current (non-user-questions)
+		// status — the bell must NOT drag it back, and must NOT push.
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "review-by-ai" });
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await handleBellAutoStatus("task-1");
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" }, { dropPosition: "top", ifStatus: "in-progress" });
+		expect(push).not.toHaveBeenCalled();
 	});
 
 	it("does not move task when status is not in-progress", async () => {
@@ -1891,6 +1911,32 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("todo");
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
+	it("blocked guard (in-progress → completed, --if-status review-by-user): does NOT tear down the worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		// Authoritative in-lock guard would return the unchanged task; without the
+		// up-front pre-check the completed branch destroys the PTY + worktree BEFORE
+		// that no-op update, orphaning the task on a deleted worktree.
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		const result = await handlers.moveTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			newStatus: "completed",
+			ifStatus: "review-by-user",
+		});
+
+		expect(result.status).toBe("in-progress");
+		expect(pty.destroySession).not.toHaveBeenCalled();
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+		// The whole path short-circuits before any write.
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("passing guard (todo, --if-status-not completed): still creates worktree", async () => {

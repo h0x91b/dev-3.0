@@ -115,6 +115,35 @@ describe("data race-safe mutators", () => {
 		expect(mergedNotes?.map((note) => note.content).sort()).toEqual(["Base", "One", "Two"]);
 	});
 
+	it("concurrent addTask with autoVariantIndex never mints duplicate variant indices", async () => {
+		const data = await import("../data");
+		const project = makeProject();
+		// Source task already occupies index 1 of group g1 (as after the first attempt).
+		const source = makeTask({ id: "src", groupId: "g1", variantIndex: 1 });
+		writeFileSync(join(dev3Home, "projects.json"), JSON.stringify([project], null, 2));
+		mkdirSync(join(dev3Home, "data", "tmp-race-test-project"), { recursive: true });
+		writeFileSync(join(dev3Home, "data", "tmp-race-test-project", "tasks.json"), JSON.stringify([source], null, 2));
+
+		// Five "add attempt" calls racing on the same group. Each addTask allocates
+		// its variant index inside the file lock from the freshly-read task list.
+		const added = await Promise.all(
+			Array.from({ length: 5 }, (_, i) =>
+				data.addTask(project, `Variant ${i}`, "in-progress", { groupId: "g1", autoVariantIndex: true }),
+			),
+		);
+
+		const indices = (added.map((t) => t.variantIndex).filter((v): v is number => v !== null)).sort((a, b) => a - b);
+		// Must be 2..6 with NO duplicates. The pre-fix snapshot-based allocation
+		// read one shared base index and handed the same number to every racer.
+		expect(indices).toEqual([2, 3, 4, 5, 6]);
+		expect(new Set(indices).size).toBe(5);
+
+		// And the persisted file agrees — no two tasks in the group share an index.
+		const persisted = await data.loadTasks(project);
+		const groupIndices = persisted.filter((t) => t.groupId === "g1").map((t) => t.variantIndex);
+		expect(new Set(groupIndices).size).toBe(groupIndices.length);
+	});
+
 	it("authoritative guard: blocked updateTask returns the unchanged task without throwing", async () => {
 		const data = await import("../data");
 		const project = makeProject();
