@@ -7,6 +7,9 @@ import { tmpdir } from "node:os";
 const testStaticRoot = join(tmpdir(), `dev3-static-test-${process.pid}`);
 
 beforeAll(() => {
+	// Agents run inside dev3 sessions where DEV3_REMOTE_STATIC_CODE is set;
+	// getStaticCode() would pick it up and break the token assertions.
+	delete process.env.DEV3_REMOTE_STATIC_CODE;
 	mkdirSync(join(testStaticRoot, "assets"), { recursive: true });
 	mkdirSync(join(testStaticRoot, "subdir"), { recursive: true });
 	writeFileSync(join(testStaticRoot, "index.html"), "<html>root</html>");
