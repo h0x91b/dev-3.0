@@ -30,6 +30,16 @@ in `task-lifecycle.ts`, dev-server session in `tmux-pty.ts`) now run from
 cwd always travels via an explicit `-c` flag (added to spawnPty's
 new-session, which previously relied on the client cwd).
 
+Second, related failure: tmux 3.7 on macOS sometimes reports an EMPTY
+`pane_current_path` for a live pane (foreground cwd unreadable). A bare
+`-c "#{pane_current_path}"` then expands to "" and tmux falls back to the
+split CLIENT's cwd — the app bundle dir for RPC-spawned clients — so UI
+splits/new-window opened inside the .app. All such `-c` flags (UI actions in
+`tmux-pty.ts`, prefix keybindings in the generated conf) now use
+`PANE_CWD_FORMAT` = `#{?pane_current_path,#{pane_current_path},#{session_path}}`
+(`session_path` is always the task worktree, set at `new-session -c`).
+Verified live against a pane with an empty `pane_current_path`.
+
 ## Risks
 
 An already-poisoned running server cannot be healed (a process cwd cannot be

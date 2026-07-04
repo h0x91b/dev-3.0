@@ -30,6 +30,17 @@ export function tmuxClientCwd(): string {
 	return DEV3_HOME;
 }
 
+/**
+ * Working directory format for split-window / new-window `-c` flags.
+ * tmux 3.7 on macOS sometimes reports an EMPTY `pane_current_path` for a live
+ * pane (the foreground process's cwd is unreadable). A bare
+ * `#{pane_current_path}` then expands to "", and tmux falls back to the split
+ * CLIENT's cwd — for RPC-spawned clients that's the app bundle directory, so
+ * the new pane opens inside the .app. Fall back to `#{session_path}`, which
+ * dev3 always sets to the task worktree via `new-session -c`.
+ */
+export const PANE_CWD_FORMAT = "#{?pane_current_path,#{pane_current_path},#{session_path}}";
+
 export const TMUX_CONF_DARK_PATH = "/tmp/dev3-tmux-dark.conf";
 export const TMUX_CONF_LIGHT_PATH = "/tmp/dev3-tmux-light.conf";
 /** Path currently loaded — kept for configureTmux() re-source. */
@@ -80,10 +91,11 @@ setw -g automatic-rename on
 # Renumber windows when one is closed
 set -g renumber-windows on
 
-# Intuitive splits (open in same directory)
-bind | split-window -h -c "#{pane_current_path}"
-bind \\ split-window -h -c "#{pane_current_path}"
-bind - split-window -v -c "#{pane_current_path}"
+# Intuitive splits (open in same directory; fall back to the session's
+# start dir — the task worktree — when pane_current_path is unreadable)
+bind | split-window -h -c "${PANE_CWD_FORMAT}"
+bind \\ split-window -h -c "${PANE_CWD_FORMAT}"
+bind - split-window -v -c "${PANE_CWD_FORMAT}"
 
 # Alt+arrow pane switching (no prefix required)
 bind -n M-Left select-pane -L

@@ -109,6 +109,7 @@ vi.mock("../pty-server", () => ({
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
 	tmuxClientCwd: vi.fn(() => "/mock/dev3-home"),
+	PANE_CWD_FORMAT: "#{?pane_current_path,#{pane_current_path},#{session_path}}",
 }));
 
 vi.mock("../system-clipboard", () => ({
@@ -5648,8 +5649,12 @@ describe("handlers.tmuxAction", () => {
 		});
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
+		// -c must carry a session_path fallback: tmux 3.7 on macOS sometimes
+		// reports an empty pane_current_path (unreadable foreground cwd), and a
+		// bare #{pane_current_path} then expands to "" — tmux falls back to the
+		// split CLIENT's cwd, i.e. the app bundle dir, opening the pane there.
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-v", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-v", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});
@@ -5663,7 +5668,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-h", "-c", "#{pane_current_path}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-h", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}", "-t", "dev3-abcd1234"],
 			expect.any(Object),
 		);
 	});

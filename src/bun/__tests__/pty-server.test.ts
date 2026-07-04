@@ -1305,7 +1305,7 @@ describe("pty-server", () => {
 
 		it("writes a backslash split binding with a literal double backslash", async () => {
 			const config = await reimportAndGetDarkConfig();
-			expect(config).toContain(String.raw`bind \\ split-window -h -c "#{pane_current_path}"`);
+			expect(config).toContain(String.raw`bind \\ split-window -h -c "#{?pane_current_path,#{pane_current_path},#{session_path}}"`);
 		});
 	});
 
