@@ -349,6 +349,24 @@ function getCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
 	return cachedCodexProfileLaunchFlag;
 }
 
+/**
+ * `codex --version`, cached for the process lifetime. The probe is a
+ * synchronous child spawn — uncached it ran on EVERY task launch inside
+ * ensureCodexTrust, blocking the main loop each time.
+ */
+let cachedCodexVersion: string | null | undefined;
+function getCodexVersionCached(): string | null {
+	if (cachedCodexVersion === undefined) {
+		cachedCodexVersion = detectCodexVersion();
+	}
+	return cachedCodexVersion;
+}
+
+/** Reset the cached codex version. Exposed for test isolation. */
+export function __resetCodexVersionCache(): void {
+	cachedCodexVersion = undefined;
+}
+
 function applyCodexThemeProfile(args: string[]): void {
 	const themedProfile = getCodexProfileForCurrentUiTheme();
 	const launchFlag = getCodexProfileLaunchFlag();
@@ -760,7 +778,7 @@ export async function ensureCodexTrust(dirPath: string): Promise<void> {
 		}
 
 		const updated = ensureCodexConfig(content, worktreesPath, socketsPath, [worktreesPath, resolved], {
-			codexVersion: detectCodexVersion(),
+			codexVersion: getCodexVersionCached(),
 		});
 		if (updated === content) {
 			return;

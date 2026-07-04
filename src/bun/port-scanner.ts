@@ -1,11 +1,33 @@
 import type { PortInfo } from "../shared/types";
-import { spawnSync } from "./spawn";
+import { spawn } from "./spawn";
 import { tmuxArgs } from "./pty-server";
 import { createLogger } from "./logger";
 import { cleanupTaskTunnels } from "./port-tunnels";
 
 const log = createLogger("port-scanner");
-const decoder = new TextDecoder();
+
+// All process-inspection primitives here are ASYNC on purpose. They used to be
+// Bun.spawnSync and ran on the main event loop from two 10-second pollers —
+// with 30+ active sessions that meant 100+ synchronous forks per cycle, and
+// under system load (agents compiling/testing) each fork slows 10-100x. The
+// resulting multi-second loop stalls froze the whole UI, including terminal
+// WebSocket upgrades ("Connecting..." forever). Do not reintroduce spawnSync
+// in any code reachable from a poller or an RPC handler.
+
+/**
+ * Run a command asynchronously and return its stdout, or "" on failure.
+ * Stdout is drained concurrently with awaiting exit (pipe-buffer deadlock).
+ */
+async function runText(cmd: string[]): Promise<string> {
+	try {
+		const proc = spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+		const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+		if (exitCode !== 0) return "";
+		return stdout;
+	} catch {
+		return "";
+	}
+}
 
 // ── Shared process info cache ─────────────────────────────────────
 
@@ -16,11 +38,38 @@ type ProcessInfoResult = {
 	resources: Map<number, { rss: number; cpu: number }>;
 };
 
-let _processInfoCache: { result: ProcessInfoResult; expiry: number } | null = null;
+let _processInfoCache: { promise: Promise<ProcessInfoResult>; expiry: number } | null = null;
 
 /** Reset the process info cache. Exposed for test isolation. */
 export function clearProcessInfoCache(): void {
 	_processInfoCache = null;
+}
+
+/** Parse `ps -eo pid=,ppid=,rss=,%cpu=` output. Exported for tests. */
+export function parseProcessInfoOutput(output: string): ProcessInfoResult {
+	const tree = new Map<number, number[]>();
+	const resources = new Map<number, { rss: number; cpu: number }>();
+	for (const line of output.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		const parts = trimmed.split(/\s+/);
+		if (parts.length < 4) continue;
+		const pid = parseInt(parts[0], 10);
+		const ppid = parseInt(parts[1], 10);
+		const rss = parseInt(parts[2], 10);
+		const cpu = parseFloat(parts[3]);
+		if (isNaN(pid) || isNaN(ppid)) continue;
+		let children = tree.get(ppid);
+		if (!children) {
+			children = [];
+			tree.set(ppid, children);
+		}
+		children.push(pid);
+		if (!isNaN(rss) && !isNaN(cpu)) {
+			resources.set(pid, { rss: rss * 1024, cpu });
+		}
+	}
+	return { tree, resources };
 }
 
 /**
@@ -29,61 +78,55 @@ export function clearProcessInfoCache(): void {
  *
  * Results are cached for PROCESS_INFO_CACHE_MS so that both pollers
  * (port-scanner and resource-monitor) share a single spawn per cycle.
+ * The cache stores the promise, so concurrent callers share one spawn too.
  */
-export function collectProcessInfo(): ProcessInfoResult {
+export function collectProcessInfo(): Promise<ProcessInfoResult> {
 	const now = Date.now();
-	if (_processInfoCache && now < _processInfoCache.expiry) return _processInfoCache.result;
+	if (_processInfoCache && now < _processInfoCache.expiry) return _processInfoCache.promise;
 
-	const tree = new Map<number, number[]>();
-	const resources = new Map<number, { rss: number; cpu: number }>();
-	try {
-		const result = spawnSync(["ps", "-eo", "pid=,ppid=,rss=,%cpu="]);
-		if (result.exitCode !== 0) {
-			_processInfoCache = { result: { tree, resources }, expiry: now + PROCESS_INFO_CACHE_MS };
-			return { tree, resources };
-		}
-		const output = decoder.decode(result.stdout);
-		for (const line of output.split("\n")) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			const parts = trimmed.split(/\s+/);
-			if (parts.length < 4) continue;
-			const pid = parseInt(parts[0], 10);
-			const ppid = parseInt(parts[1], 10);
-			const rss = parseInt(parts[2], 10);
-			const cpu = parseFloat(parts[3]);
-			if (isNaN(pid) || isNaN(ppid)) continue;
-			let children = tree.get(ppid);
-			if (!children) {
-				children = [];
-				tree.set(ppid, children);
-			}
-			children.push(pid);
-			if (!isNaN(rss) && !isNaN(cpu)) {
-				resources.set(pid, { rss: rss * 1024, cpu });
-			}
-		}
-	} catch {
-		// ignore
-	}
-	const finalResult = { tree, resources };
-	_processInfoCache = { result: finalResult, expiry: now + PROCESS_INFO_CACHE_MS };
-	return finalResult;
+	const promise = runText(["ps", "-eo", "pid=,ppid=,rss=,%cpu="]).then(parseProcessInfoOutput);
+	_processInfoCache = { promise, expiry: now + PROCESS_INFO_CACHE_MS };
+	return promise;
 }
 
 /**
  * Get pane PIDs for a tmux session.
  */
-export function getSessionPanePids(socket: string, sessionName: string): number[] {
-	try {
-		const result = spawnSync(tmuxArgs(socket, "list-panes", "-t", sessionName, "-F", "#{pane_pid}"));
-		if (result.exitCode !== 0) return [];
-		const output = decoder.decode(result.stdout).trim();
-		if (!output) return [];
-		return output.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
-	} catch {
-		return [];
+export async function getSessionPanePids(socket: string, sessionName: string): Promise<number[]> {
+	const output = (await runText(tmuxArgs(socket, "list-panes", "-t", sessionName, "-F", "#{pane_pid}"))).trim();
+	if (!output) return [];
+	return output.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+}
+
+/** Parse `tmux list-panes -a -F '#{session_name}\t#{pane_pid}'` output. Exported for tests. */
+export function parseAllSessionPanePids(output: string): Map<string, number[]> {
+	const map = new Map<string, number[]>();
+	for (const line of output.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		const tabIdx = trimmed.lastIndexOf("\t");
+		if (tabIdx < 0) continue;
+		const session = trimmed.slice(0, tabIdx);
+		const pid = parseInt(trimmed.slice(tabIdx + 1), 10);
+		if (!session || isNaN(pid)) continue;
+		let pids = map.get(session);
+		if (!pids) {
+			pids = [];
+			map.set(session, pids);
+		}
+		pids.push(pid);
 	}
+	return map;
+}
+
+/**
+ * Pane PIDs for EVERY session on a tmux server, in one `tmux list-panes -a`
+ * call. The pollers use this instead of one `list-panes -t` per session —
+ * with N sessions that collapses 2N tmux spawns per cycle into 1.
+ */
+export async function getAllSessionPanePids(socket: string): Promise<Map<string, number[]>> {
+	const output = await runText(tmuxArgs(socket, "list-panes", "-a", "-F", "#{session_name}\t#{pane_pid}"));
+	return parseAllSessionPanePids(output);
 }
 
 /**
@@ -95,8 +138,8 @@ export function getSessionPanePids(socket: string, sessionName: string): number[
  * sandbox), whereas `ps` enumerates the full table unaffected. Using `pgrep`
  * here silently orphaned the dev-server process tree on Stop. See decision 095.
  */
-export function getDescendantPids(pid: number): number[] {
-	return collectDescendants(pid, buildProcessTree());
+export async function getDescendantPids(pid: number): Promise<number[]> {
+	return collectDescendants(pid, await buildProcessTree());
 }
 
 /**
@@ -181,9 +224,9 @@ export function parsePortHolders(output: string, portSet: Set<number>): PortInfo
  * Which processes are currently LISTENing on the given ports.
  * Optionally accepts pre-fetched lsof output to avoid redundant calls.
  */
-export function findPortHolders(ports: number[], lsofOutput?: string): PortInfo[] {
+export async function findPortHolders(ports: number[], lsofOutput?: string): Promise<PortInfo[]> {
 	if (ports.length === 0) return [];
-	const output = lsofOutput ?? getLsofOutput();
+	const output = lsofOutput ?? (await getLsofOutput());
 	if (!output) return [];
 	return parsePortHolders(output, new Set(ports));
 }
@@ -194,10 +237,10 @@ export function findPortHolders(ports: number[], lsofOutput?: string): PortInfo[
  */
 export async function waitForPortsFree(ports: number[], timeoutMs: number, pollMs = 150): Promise<PortInfo[]> {
 	if (ports.length === 0) return [];
-	let holders = findPortHolders(ports);
+	let holders = await findPortHolders(ports);
 	for (let waited = 0; holders.length > 0 && waited < timeoutMs; waited += pollMs) {
 		await new Promise((resolve) => setTimeout(resolve, pollMs));
-		holders = findPortHolders(ports);
+		holders = await findPortHolders(ports);
 	}
 	return holders;
 }
@@ -205,14 +248,8 @@ export async function waitForPortsFree(ports: number[], timeoutMs: number, pollM
 /**
  * Run lsof once and return raw stdout. Shared across all tasks in a poll cycle.
  */
-export function getLsofOutput(): string {
-	try {
-		const result = spawnSync(["lsof", "-i", "-P", "-n", "-sTCP:LISTEN", "-F", "pcn"]);
-		if (result.exitCode !== 0) return "";
-		return decoder.decode(result.stdout);
-	} catch {
-		return "";
-	}
+export function getLsofOutput(): Promise<string> {
+	return runText(["lsof", "-i", "-P", "-n", "-sTCP:LISTEN", "-F", "pcn"]);
 }
 
 /**
@@ -220,31 +257,8 @@ export function getLsofOutput(): string {
  * Returns a Map of parent PID → child PIDs.
  * Replaces per-PID `pgrep -P` calls with one O(1) spawn.
  */
-export function buildProcessTree(): Map<number, number[]> {
-	const tree = new Map<number, number[]>();
-	try {
-		const result = spawnSync(["ps", "-eo", "pid=,ppid="]);
-		if (result.exitCode !== 0) return tree;
-		const output = decoder.decode(result.stdout);
-		for (const line of output.split("\n")) {
-			const trimmed = line.trim();
-			if (!trimmed) continue;
-			const parts = trimmed.split(/\s+/);
-			if (parts.length < 2) continue;
-			const pid = parseInt(parts[0], 10);
-			const ppid = parseInt(parts[1], 10);
-			if (isNaN(pid) || isNaN(ppid)) continue;
-			let children = tree.get(ppid);
-			if (!children) {
-				children = [];
-				tree.set(ppid, children);
-			}
-			children.push(pid);
-		}
-	} catch {
-		// ignore
-	}
-	return tree;
+export async function buildProcessTree(): Promise<Map<number, number[]>> {
+	return (await collectProcessInfo()).tree;
 }
 
 /**
@@ -271,26 +285,37 @@ export function collectDescendants(pid: number, tree: Map<number, number[]>): nu
  * Also includes PIDs from the corresponding dev server session (dev3-dev-*)
  * if one exists, so that ports opened by `runDevServer` are detected.
  *
- * When `processTree` is provided, uses in-memory BFS (no extra spawns).
- * Otherwise falls back to {@link getDescendantPids} (one `ps` snapshot per pane).
+ * When `paneMap` (from {@link getAllSessionPanePids}) is provided, pane PIDs
+ * come from it with zero extra spawns. When `processTree` is provided,
+ * descendants come from in-memory BFS.
  */
-export function collectTaskPids(socket: string, sessionName: string, processTree?: Map<number, number[]>): Set<number> {
-	const panePids = getSessionPanePids(socket, sessionName);
+export async function collectTaskPids(
+	socket: string,
+	sessionName: string,
+	processTree?: Map<number, number[]>,
+	paneMap?: Map<string, number[]>,
+): Promise<Set<number>> {
+	const sessionNames = [sessionName];
 
 	// Dev server sessions (dev3-dev-XXXX) run in a separate tmux session
 	// that is not tracked as a PtySession. Include their PIDs too.
 	if (sessionName.startsWith("dev3-") && !sessionName.startsWith("dev3-dev-")) {
-		const devSessionName = `dev3-dev-${sessionName.slice("dev3-".length)}`;
-		const devPanePids = getSessionPanePids(socket, devSessionName);
-		panePids.push(...devPanePids);
+		sessionNames.push(`dev3-dev-${sessionName.slice("dev3-".length)}`);
 	}
 
+	const panePids: number[] = [];
+	for (const name of sessionNames) {
+		if (paneMap) {
+			panePids.push(...(paneMap.get(name) ?? []));
+		} else {
+			panePids.push(...(await getSessionPanePids(socket, name)));
+		}
+	}
+
+	const tree = processTree ?? (await buildProcessTree());
 	const allPids = new Set<number>(panePids);
 	for (const pid of panePids) {
-		const descendants = processTree
-			? collectDescendants(pid, processTree)
-			: getDescendantPids(pid);
-		for (const d of descendants) {
+		for (const d of collectDescendants(pid, tree)) {
 			allPids.add(d);
 		}
 	}
@@ -301,11 +326,17 @@ export function collectTaskPids(socket: string, sessionName: string, processTree
  * Scan listening TCP ports for a tmux session.
  * Optionally accepts pre-fetched lsof output to avoid redundant calls.
  */
-export function scanTaskPorts(socket: string, sessionName: string, lsofOutput?: string, processTree?: Map<number, number[]>): PortInfo[] {
-	const allPids = collectTaskPids(socket, sessionName, processTree);
+export async function scanTaskPorts(
+	socket: string,
+	sessionName: string,
+	lsofOutput?: string,
+	processTree?: Map<number, number[]>,
+	paneMap?: Map<string, number[]>,
+): Promise<PortInfo[]> {
+	const allPids = await collectTaskPids(socket, sessionName, processTree, paneMap);
 	if (allPids.size === 0) return [];
 
-	const output = lsofOutput ?? getLsofOutput();
+	const output = lsofOutput ?? (await getLsofOutput());
 	if (!output) return [];
 	return parseLsofOutput(output, allPids);
 }
@@ -326,7 +357,7 @@ const portCache = new Map<string, string>();
 // Cache: taskId → PortInfo[] (actual objects)
 const portData = new Map<string, PortInfo[]>();
 
-function poll() {
+async function poll() {
 	try {
 		if (!getActiveSessionsFn || !pushMessageFn) return;
 
@@ -344,15 +375,23 @@ function poll() {
 			}
 		}
 
-		// Build process tree and run lsof once for all tasks
-		// collectProcessInfo is TTL-cached — shared with resource-monitor poller to avoid duplicate ps spawns
-		const processTree = sessions.length > 0 ? collectProcessInfo().tree : new Map<number, number[]>();
-		const lsofOutput = sessions.length > 0 ? getLsofOutput() : "";
+		if (sessions.length === 0) return;
+
+		// One ps + one lsof + one tmux list-panes -a for the whole cycle.
+		// collectProcessInfo is TTL-cached — shared with the resource-monitor
+		// poller firing in the same cycle.
+		const processTree = (await collectProcessInfo()).tree;
+		const lsofOutput = await getLsofOutput();
+		const socketNames = new Set(sessions.map((s) => s.tmuxSocket));
+		const paneMaps = new Map<string, Map<string, number[]>>();
+		for (const socketName of socketNames) {
+			paneMaps.set(socketName, await getAllSessionPanePids(socketName));
+		}
 
 		for (const { taskId, tmuxSocket } of sessions) {
 			const sessionName = `dev3-${taskId.slice(0, 8)}`;
 			try {
-				const ports = scanTaskPorts(tmuxSocket, sessionName, lsofOutput, processTree);
+				const ports = await scanTaskPorts(tmuxSocket, sessionName, lsofOutput, processTree, paneMaps.get(tmuxSocket));
 				const serialized = JSON.stringify(ports);
 				if (portCache.get(taskId) !== serialized) {
 					portCache.set(taskId, serialized);

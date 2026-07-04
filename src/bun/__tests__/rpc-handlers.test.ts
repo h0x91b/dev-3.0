@@ -5309,22 +5309,22 @@ describe("handlers.runDevServer", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		const portPool = await import("../port-pool");
 		vi.spyOn(portPool, "getPortAssignments").mockReturnValue([50001, 55930, 55937]);
-		mockSpawn
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) })
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) })
-			.mockReturnValueOnce({ stdout: "%17\n", stderr: new Response(""), exited: Promise.resolve(0) })
-			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
-		mockSpawnSync.mockImplementation((args: string[]) => {
-			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) {
-				return { exitCode: 0, stdout: Buffer.from("81231\n"), stderr: Buffer.from("") };
-			}
-			if (args.includes("list-panes") && args.includes("dev3-abcd1234")) {
-				return { exitCode: 0, stdout: Buffer.from("81230\n"), stderr: Buffer.from("") };
-			}
-			if (args[0] === "lsof") {
-				return { exitCode: 0, stdout: Buffer.from("p81231\ncbun\nn*:5173\n"), stderr: Buffer.from("") };
-			}
-			return { exitCode: 0, stdout: Buffer.from(""), stderr: Buffer.from("") };
+		const portScanner = await import("../port-scanner");
+		portScanner.clearProcessInfoCache();
+		// Route by argv — the spawn sequence now includes async port/process
+		// scans and is not stable enough for positional mockReturnValueOnce.
+		let hasSessionCalls = 0;
+		mockSpawn.mockImplementation((args: string[]) => {
+			const proc = (stdout: string, code = 0) => ({ stdout, stderr: new Response(""), exited: Promise.resolve(code) });
+			// First has-session (isDevServerRunning) → not running; later ones
+			// (buildDevServerStatus after start) → running.
+			if (args.includes("has-session")) return proc("", hasSessionCalls++ === 0 ? 1 : 0);
+			if (args.includes("split-window")) return proc("%17\n");
+			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) return proc("81231\n");
+			if (args.includes("list-panes") && args.includes("dev3-abcd1234")) return proc("81230\n");
+			if (args[0] === "lsof") return proc("p81231\ncbun\nn*:5173\n");
+			if (args[0] === "ps") return proc("81231 1 0 0.0\n");
+			return proc("");
 		});
 
 		const result = await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
@@ -5402,21 +5402,26 @@ describe("handlers.runDevServer", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		// Use plain string for split-window stdout — new Response(new Response(...)) loses body in Bun test env
-		mockSpawn
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) }) // has-session → not running
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // new-session ok
-			.mockReturnValueOnce({ stdout: "%42\n", stderr: new Response(""), exited: Promise.resolve(0) }) // split-window → pane ID
-			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+		// Use plain string for split-window stdout — new Response(new Response(...)) loses body in Bun test env.
+		// Routed by argv: positional sequencing breaks now that async port/process
+		// scans interleave extra spawn calls.
+		mockSpawn.mockImplementation((args: string[]) => {
+			const proc = (stdout: string, code = 0) => ({ stdout, stderr: new Response(""), exited: Promise.resolve(code) });
+			if (args.includes("has-session")) return proc("", 1); // not running
+			if (args.includes("split-window")) return proc("%42\n"); // viewer pane ID
+			return proc("");
+		});
 
 		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
 
 		vi.clearAllMocks();
 
 		// Second call (restart): has-session=running → kill-pane %42, then kill-session, then new-session
-		mockSpawn
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
-			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+		const portScanner = await import("../port-scanner");
+		portScanner.clearProcessInfoCache();
+		// Every command succeeds (has-session exit 0 → running); async process
+		// scans in killDevServerSession get empty output and find nothing.
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
 
 		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
 
@@ -5435,12 +5440,20 @@ describe("handlers.runDevServer", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		// has-session → running; list-panes returns a pane running attach-session for dev3-dev-abcd1234
-		// Use plain strings — new Response(new Response(...)) loses body in Bun test env
-		mockSpawn
-			.mockReturnValueOnce({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }) // has-session → running
-			.mockReturnValueOnce({ stdout: "%99 TMUX= tmux attach-session -t dev3-dev-abcd1234\n", stderr: new Response(""), exited: Promise.resolve(0) }) // list-panes fallback
-			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
+		// has-session → running; the TASK session's list-panes returns a pane
+		// running attach-session for dev3-dev-abcd1234 (the viewer). The dev
+		// session's own list-panes (tree-pid snapshot) returns nothing.
+		// Routed by argv — positional sequencing breaks with async scans.
+		const portScanner = await import("../port-scanner");
+		portScanner.clearProcessInfoCache();
+		mockSpawn.mockImplementation((args: string[]) => {
+			const proc = (stdout: string, code = 0) => ({ stdout, stderr: new Response(""), exited: Promise.resolve(code) });
+			if (args.includes("has-session")) return proc(""); // running
+			if (args.includes("list-panes") && args.includes("dev3-abcd1234")) {
+				return proc("%99 TMUX= tmux attach-session -t dev3-dev-abcd1234\n");
+			}
+			return proc("");
+		});
 
 		await handlers.runDevServer({ taskId: task.id, projectId: "proj-1" });
 
@@ -5549,25 +5562,19 @@ describe("handlers.stopDevServer", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		const enc = (s: string) => new TextEncoder().encode(s);
 		// dev session pane pid = 1111, with children 2222 and 3333 (no grandchildren).
-		// Descendants are collected from a single `ps -eo pid,ppid` snapshot, not
-		// `pgrep -P` (which returns nothing from the packaged .app — decision 095).
-		mockSpawnSync.mockImplementation((args: string[]) => {
-			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) {
-				return { exitCode: 0, stdout: enc("1111\n") };
-			}
-			if (args[0] === "ps") {
-				return { exitCode: 0, stdout: enc("1111 1\n2222 1111\n3333 1111\n") };
-			}
-			return { exitCode: 1, stdout: enc("") };
-		});
+		// Descendants are collected from a single `ps` snapshot, not `pgrep -P`
+		// (which returns nothing from the packaged .app — decision 095).
 		// has-session reports "not running" so buildDevServerStatus short-circuits.
-		mockSpawn.mockImplementation((args: string[]) => ({
-			stdout: "",
-			stderr: new Response(""),
-			exited: Promise.resolve(args.includes("has-session") ? 1 : 0),
-		}));
+		const portScanner = await import("../port-scanner");
+		portScanner.clearProcessInfoCache();
+		mockSpawn.mockImplementation((args: string[]) => {
+			const proc = (stdout: string, code = 0) => ({ stdout, stderr: new Response(""), exited: Promise.resolve(code) });
+			if (args.includes("has-session")) return proc("", 1);
+			if (args.includes("list-panes") && args.includes("dev3-dev-abcd1234")) return proc("1111\n");
+			if (args[0] === "ps") return proc("1111 1 0 0.0\n2222 1111 0 0.0\n3333 1111 0 0.0\n");
+			return proc("");
+		});
 
 		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
 		vi.useFakeTimers();

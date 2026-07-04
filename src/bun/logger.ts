@@ -140,7 +140,11 @@ function formatForFile(
 ): string {
 	const lvl = level.toUpperCase().padEnd(5);
 	const t = `${dateStr()} ${timeStr()}`;
-	let line = `${t} ${lvl} [${tag}] ${msg}`;
+	// PID disambiguates writers: the app, CLI invocations, and test-spawned
+	// processes all append to the same daily file, and interleaved lines
+	// without a PID make stall/timing analysis attribute work to the wrong
+	// process.
+	let line = `${t} ${lvl} [${process.pid}:${tag}] ${msg}`;
 	if (extra && Object.keys(extra).length > 0) {
 		line += ` ${JSON.stringify(extra)}`;
 	}

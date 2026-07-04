@@ -18,6 +18,13 @@ const log = createLogger("caffeinate");
 let sleepInhibitProc: ReturnType<typeof spawn> | null = null;
 let inhibitAvailable: boolean | null = null; // cached after first check
 let detectedBackend: "caffeinate" | "systemd-inhibit" | null = null;
+let detectedBackendPath: string | null = null; // absolute path from `which`
+let consecutiveSpawnFailures = 0;
+
+// After this many consecutive spawn failures, stop retrying for the process
+// lifetime. A broken environment (e.g. posix_spawn ENOENT) otherwise produces
+// an error log + failed fork every 10-second poll cycle, forever.
+const MAX_SPAWN_FAILURES = 3;
 
 // Safety timeout: the inhibit process exits on its own after this period.
 // The 10-second poll cycle restarts it if sessions are still active.
@@ -35,16 +42,20 @@ function detectBackend(): "caffeinate" | "systemd-inhibit" | null {
 
 	// Try caffeinate first (macOS, always present)
 	try {
-		if (spawnSync(["which", "caffeinate"]).exitCode === 0) {
+		const result = spawnSync(["which", "caffeinate"], { stdout: "pipe", stderr: "pipe" });
+		if (result.exitCode === 0) {
 			detectedBackend = "caffeinate";
+			detectedBackendPath = new TextDecoder().decode(result.stdout).trim() || null;
 			return detectedBackend;
 		}
 	} catch { /* not found */ }
 
 	// Try systemd-inhibit (Linux with systemd)
 	try {
-		if (spawnSync(["which", "systemd-inhibit"]).exitCode === 0) {
+		const result = spawnSync(["which", "systemd-inhibit"], { stdout: "pipe", stderr: "pipe" });
+		if (result.exitCode === 0) {
 			detectedBackend = "systemd-inhibit";
+			detectedBackendPath = new TextDecoder().decode(result.stdout).trim() || null;
 			return detectedBackend;
 		}
 	} catch { /* not found */ }
@@ -87,12 +98,14 @@ function buildInhibitCommand(): string[] | null {
 	if (backend === "caffeinate") {
 		// -s: prevent system sleep (allows display sleep)
 		// -t: auto-exit after timeout
-		return ["caffeinate", "-s", "-t", String(INHIBIT_TIMEOUT_SECS)];
+		// Use the absolute path resolved by `which` — spawning the bare name
+		// intermittently failed with posix_spawn ENOENT (PATH drift at runtime).
+		return [detectedBackendPath ?? "caffeinate", "-s", "-t", String(INHIBIT_TIMEOUT_SECS)];
 	}
 
 	// systemd-inhibit wraps a command; we use `sleep` as the payload
 	return [
-		"systemd-inhibit",
+		detectedBackendPath ?? "systemd-inhibit",
 		"--what=sleep",
 		"--who=dev-3.0",
 		"--reason=Agents running",
@@ -112,6 +125,7 @@ function startInhibit(): void {
 
 	try {
 		sleepInhibitProc = spawn(cmd);
+		consecutiveSpawnFailures = 0;
 		log.info("Sleep inhibit started", { backend: detectedBackend, pid: sleepInhibitProc.pid });
 
 		// Clean up reference when the process exits (timeout or kill)
@@ -122,8 +136,13 @@ function startInhibit(): void {
 			sleepInhibitProc = null;
 		});
 	} catch (err) {
-		log.error("Failed to start sleep inhibit", { backend: detectedBackend, error: String(err) });
+		consecutiveSpawnFailures++;
+		log.error("Failed to start sleep inhibit", { backend: detectedBackend, error: String(err), attempt: consecutiveSpawnFailures });
 		sleepInhibitProc = null;
+		if (consecutiveSpawnFailures >= MAX_SPAWN_FAILURES) {
+			inhibitAvailable = false;
+			log.error("Sleep inhibit disabled after repeated spawn failures", { backend: detectedBackend });
+		}
 	}
 }
 
