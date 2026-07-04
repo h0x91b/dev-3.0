@@ -1,0 +1,1 @@
+Rewrote the "Feature discovery tips" policy in AGENTS.md: tips are no longer mandatory for every user-facing feature. A tip now has to pass a three-part gate (hidden/non-obvious value, honest score >= 3, not already covered by an existing tip or an over-served cluster), with an explicit "never write a tip for" list and a registry-hygiene rule to merge or delete superseded tips.
