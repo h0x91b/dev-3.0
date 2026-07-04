@@ -13,6 +13,8 @@ import { DEV3_HOME } from "../paths";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
+import { VENDORED_TMUX_PATHS } from "./shared-pure";
+import { whichSync } from "../which";
 
 // `resolveOperationalProjectConfig` moved to ../repo-config (it depends only on
 // resolveProjectConfig, so it belongs next to the config resolver and stays
@@ -202,12 +204,50 @@ async function getAppVersion(): Promise<{ version: string; channel: string; buil
 	return result;
 }
 
+/**
+ * Commit to a tmux binary: a live dev3 server started by a different tmux
+ * version rejects our clients outright, so selectTmuxBinary probes for that
+ * and may fall back (e.g. to the PATH tmux that started the server) until
+ * the server restarts.
+ */
+async function commitTmuxBinary(preferred: string): Promise<string> {
+	let pathTmux: string | null = null;
+	try {
+		pathTmux = whichSync("tmux");
+	} catch {
+		log.debug("which tmux failed while building fallback candidates");
+	}
+	const fallbacks = [pathTmux ?? "", ...VENDORED_TMUX_PATHS].filter(Boolean);
+	return pty.selectTmuxBinary(preferred, fallbacks);
+}
+
+/**
+ * Resolve and pin the tmux binary at app startup, before any poller talks to
+ * the tmux server. Waiting for the renderer's checkSystemRequirements RPC
+ * would leave early tmux calls on the bare PATH `tmux` — which may be a
+ * version the running server rejects, or absent entirely (keg-only install).
+ */
+export async function resolveTmuxBinaryAtStartup(): Promise<string | undefined> {
+	const settings = await loadSettings();
+	const { resolvedPath } = resolveBinaryPath("tmux", settings.customBinaryPaths?.tmux, VENDORED_TMUX_PATHS);
+	if (!resolvedPath) {
+		log.warn("startup tmux resolution: tmux not found anywhere");
+		return undefined;
+	}
+	const chosen = await commitTmuxBinary(resolvedPath);
+	log.info("startup tmux binary set to", { path: chosen });
+	return chosen;
+}
+
 async function checkSystemRequirements(): Promise<RequirementCheckResult[]> {
 	log.info("-> checkSystemRequirements", { PATH: process.env.PATH });
 	const settings = await loadSettings();
 	const results = getSystemRequirements().map((req) => {
 		const customPath = settings.customBinaryPaths?.[req.id];
-		const { resolvedPath, customPathError } = resolveBinaryPath(req.id, customPath);
+		// tmux ≥ 3.7 has a client busy-spin regression — prefer the vendored
+		// tmux@3.6 keg over PATH (see VENDORED_TMUX_PATHS in shared-pure.ts).
+		const vendored = req.id === "tmux" ? VENDORED_TMUX_PATHS : undefined;
+		const { resolvedPath, customPathError } = resolveBinaryPath(req.id, customPath, vendored);
 
 		if (resolvedPath) {
 			log.info(`  ${req.id}: found`, { path: resolvedPath });
@@ -225,8 +265,9 @@ async function checkSystemRequirements(): Promise<RequirementCheckResult[]> {
 
 	const tmuxResult = results.find((r) => r.id === "tmux");
 	if (tmuxResult?.resolvedPath) {
-		pty.setTmuxBinary(tmuxResult.resolvedPath);
-		log.info("tmux binary set to", { path: tmuxResult.resolvedPath });
+		const chosen = await commitTmuxBinary(tmuxResult.resolvedPath);
+		tmuxResult.resolvedPath = chosen;
+		log.info("tmux binary set to", { path: chosen });
 	}
 
 	log.info("<- checkSystemRequirements", { results: results.map((r) => `${r.id}:${r.installed}:${r.resolvedPath ?? "none"}`) });

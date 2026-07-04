@@ -159,7 +159,7 @@ brew tap h0x91b/dev3
 brew install --cask dev3
 ```
 
-Auto-installs the required `git`, `tmux`, and `cloudflared` dependencies (the last one powers the public-tunnel option used by `dev3 remote` and the in-app remote-access modal).
+Auto-installs the required `git`, `tmux`, and `cloudflared` dependencies (the last one powers the public-tunnel option used by `dev3 remote` and the in-app remote-access modal). The tmux dependency is the pinned `h0x91b/dev3/tmux@3.6` — tmux 3.7 has a client-side CPU regression; see [Troubleshooting](#tmux-37--cpu-storms-and-frozen-terminals-pinned-tmux36).
 
 ```sh
 brew upgrade --cask dev3   # update
@@ -342,6 +342,20 @@ Symptoms:
 </p>
 
 Why this happens: macOS evaluates permissions per-binary, and TCC (the system permissions database) can silently revoke network/file access for `git`/`tmux` spawned by another app — typically after an OS update or background security-agent activity. Granting Full Disk Access to dev-3.0 covers the app and all its child processes, so `git fetch` to remotes works again.
+
+### tmux 3.7 — CPU storms and frozen terminals (pinned tmux@3.6)
+
+tmux **3.7** (released June 2026) has a client-side regression: when the tmux server socket is congested, clients busy-spin at 100% CPU instead of waiting, which snowballs into 10–35 second UI freezes. It shows up mainly when **more than one dev-3.0 instance** runs on the same machine (e.g. developing dev-3.0 inside dev-3.0), but any sufficiently busy server can trigger it. tmux **3.6a and older are not affected**.
+
+Because of this, dev-3.0 depends on the pinned keg-only formula **`h0x91b/dev3/tmux@3.6`** and prefers it automatically over whatever `tmux` is in your PATH (a custom binary path set in Settings still wins). Agents inside dev-3.0 terminals pick up the same binary via a shim, so client and server versions never mix.
+
+If you installed dev-3.0 before this pin and already have tmux 3.7 from `brew`:
+
+```sh
+brew upgrade --cask dev3    # pulls in h0x91b/dev3/tmux@3.6 as a new dependency
+```
+
+The app switches to the 3.6a keg on its own. One caveat: a tmux server keeps its version until it dies, so if a 3.7 dev3 server is still running, the app keeps using 3.7 for that server's lifetime (mixed-version tmux clients can't talk to it at all). After your sessions wind down — or immediately via `tmux -L dev3 kill-server` (kills all dev-3.0 terminals!) or a reboot — everything runs on 3.6a. Your system-wide `tmux` stays untouched.
 
 ### Terminal colors — and the "ANSI colors only" agent theme
 

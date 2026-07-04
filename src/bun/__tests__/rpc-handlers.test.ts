@@ -106,6 +106,8 @@ vi.mock("../pty-server", () => ({
 	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
+	selectTmuxBinary: vi.fn(async (preferred: string) => preferred),
+	updateTmuxShim: vi.fn(),
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
 	tmuxClientCwd: vi.fn(() => "/mock/dev3-home"),
@@ -4631,6 +4633,50 @@ describe("handlers.checkSystemRequirements", () => {
 		expect(results[1].installed).toBe(true);
 		expect(results[1].resolvedPath).toBe("/custom/path/tmux");
 	});
+
+	it("prefers the vendored tmux@3.6 keg over the PATH tmux", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/opt/homebrew/bin/tmux") });
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/opt/homebrew/opt/tmux@3.6/bin/tmux");
+
+		const results = await handlers.checkSystemRequirements();
+		expect(results[1].installed).toBe(true);
+		expect(results[1].resolvedPath).toBe("/opt/homebrew/opt/tmux@3.6/bin/tmux");
+		expect(pty.selectTmuxBinary).toHaveBeenCalledWith(
+			"/opt/homebrew/opt/tmux@3.6/bin/tmux",
+			expect.arrayContaining(["/opt/homebrew/bin/tmux"]),
+		);
+	});
+});
+
+// ================================================================
+// resolveTmuxBinaryAtStartup
+// ================================================================
+
+describe("resolveTmuxBinaryAtStartup", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as any);
+	});
+
+	it("resolves and commits the vendored keg at startup", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/opt/homebrew/opt/tmux@3.6/bin/tmux");
+
+		const { resolveTmuxBinaryAtStartup } = await import("../rpc-handlers/settings-config");
+		const chosen = await resolveTmuxBinaryAtStartup();
+		expect(chosen).toBe("/opt/homebrew/opt/tmux@3.6/bin/tmux");
+		expect(pty.selectTmuxBinary).toHaveBeenCalled();
+	});
+
+	it("returns undefined when tmux is not found anywhere", async () => {
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		vi.mocked(existsSync).mockReturnValue(false);
+
+		const { resolveTmuxBinaryAtStartup } = await import("../rpc-handlers/settings-config");
+		const chosen = await resolveTmuxBinaryAtStartup();
+		expect(chosen).toBeUndefined();
+		expect(pty.selectTmuxBinary).not.toHaveBeenCalled();
+	});
 });
 
 // ================================================================
@@ -7749,6 +7795,26 @@ describe("resolveBinaryPath", () => {
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/claude") });
 		const result = resolveBinaryPath("claude", "/my/custom/claude");
 		expect(result.resolvedPath).toBe("/my/custom/claude");
+	});
+
+	it("prefers an existing vendored path over which", () => {
+		vi.mocked(existsSync).mockImplementation((path: any) => path === "/opt/homebrew/opt/tmux@3.6/bin/tmux");
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/opt/homebrew/bin/tmux") });
+		const result = resolveBinaryPath("tmux", undefined, ["/opt/homebrew/opt/tmux@3.6/bin/tmux"]);
+		expect(result.resolvedPath).toBe("/opt/homebrew/opt/tmux@3.6/bin/tmux");
+	});
+
+	it("prefers custom path over vendored paths", () => {
+		vi.mocked(existsSync).mockReturnValue(true);
+		const result = resolveBinaryPath("tmux", "/my/custom/tmux", ["/opt/homebrew/opt/tmux@3.6/bin/tmux"]);
+		expect(result.resolvedPath).toBe("/my/custom/tmux");
+	});
+
+	it("falls through to which when no vendored path exists", () => {
+		vi.mocked(existsSync).mockReturnValue(false);
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/opt/homebrew/bin/tmux") });
+		const result = resolveBinaryPath("tmux", undefined, ["/opt/homebrew/opt/tmux@3.6/bin/tmux"]);
+		expect(result.resolvedPath).toBe("/opt/homebrew/bin/tmux");
 	});
 });
 

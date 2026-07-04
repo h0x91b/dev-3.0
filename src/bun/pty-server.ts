@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, lstatSync, readlinkSync, unlinkSync, symlinkSync } from "node:fs";
 import { access } from "node:fs/promises";
 import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { createLogger } from "./logger";
@@ -192,6 +192,96 @@ export function setTmuxBinary(path: string) {
 
 export function getTmuxBinary(): string {
 	return tmuxBinary;
+}
+
+type TmuxServerProbe = "compatible" | "no-server" | "mismatch";
+
+/**
+ * Check whether `binary` can talk to a server already running on `socket`.
+ * tmux clients hard-fail against a server built from a different version
+ * ("server exited unexpectedly"), so a cheap `list-sessions` distinguishes
+ * three states: works, no server at all, or a version-mismatched server.
+ */
+async function probeTmuxServer(binary: string, socket: string): Promise<TmuxServerProbe> {
+	try {
+		const proc = spawn([binary, "-L", socket, "list-sessions"], { stdout: "pipe", stderr: "pipe" });
+		const stderr = await new Response(proc.stderr).text();
+		const exitCode = await proc.exited;
+		if (exitCode === 0) return "compatible";
+		if (stderr.includes("no server running") || stderr.includes("error connecting")) return "no-server";
+		return "mismatch";
+	} catch {
+		return "mismatch";
+	}
+}
+
+/**
+ * Keep `~/.dev3.0/bin/tmux` symlinked to the binary the app selected.
+ * That directory is prepended to PATH in every dev3 pane, so agents running
+ * bare `tmux -L dev3 ...` always hit the same binary as the app — mixing
+ * client versions against one server breaks every command.
+ */
+export function updateTmuxShim(binaryPath: string): void {
+	if (!binaryPath.startsWith("/")) return; // bare "tmux" — nothing concrete to pin
+	try {
+		const shimDir = `${DEV3_HOME}/bin`;
+		mkdirSync(shimDir, { recursive: true });
+		const shim = `${shimDir}/tmux`;
+		if (existsSync(shim) || isSymlink(shim)) {
+			if (!isSymlink(shim)) {
+				log.warn("~/.dev3.0/bin/tmux exists and is not a symlink — leaving it alone", { shim });
+				return;
+			}
+			if (readlinkSync(shim) === binaryPath) return;
+			unlinkSync(shim);
+		}
+		symlinkSync(binaryPath, shim);
+		log.info("tmux shim updated", { shim, target: binaryPath });
+	} catch (err) {
+		log.warn("failed to update tmux shim", { binaryPath, error: String(err) });
+	}
+}
+
+function isSymlink(path: string): boolean {
+	try {
+		return lstatSync(path).isSymbolicLink();
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Commit to a tmux binary for this app session: verify it against any
+ * already-running dev3 server first (upgrading the preferred binary while
+ * sessions are alive must not kill every terminal), fall back to a candidate
+ * the live server understands, then pin the choice via setTmuxBinary and the
+ * PATH shim. The preferred binary wins again after the next kill-server or
+ * reboot, when no incompatible server is left running.
+ */
+export async function selectTmuxBinary(preferred: string, fallbackCandidates: string[] = []): Promise<string> {
+	let chosen = preferred;
+	const probe = await probeTmuxServer(preferred, DEFAULT_TMUX_SOCKET);
+	if (probe === "mismatch") {
+		for (const candidate of fallbackCandidates) {
+			if (candidate === preferred || !existsSync(candidate)) continue;
+			if ((await probeTmuxServer(candidate, DEFAULT_TMUX_SOCKET)) === "compatible") {
+				log.warn("preferred tmux binary can't talk to the running dev3 server — falling back until the server restarts", {
+					preferred,
+					fallback: candidate,
+				});
+				chosen = candidate;
+				break;
+			}
+		}
+		if (chosen === preferred) {
+			log.warn("running dev3 tmux server is incompatible with every known tmux binary — a one-time `tmux -L dev3 kill-server` is required", {
+				preferred,
+			});
+		}
+	}
+	setTmuxBinary(chosen);
+	updateTmuxShim(chosen);
+	return chosen;
 }
 
 let tmuxBinaryLogged = false;
