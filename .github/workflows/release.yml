@@ -80,6 +80,25 @@ jobs:
           echo "Patched electrobun.config.ts for signing:"
           grep -E 'codesign|notarize' electrobun.config.ts
 
+      # Zig-built electrobun binaries (extractor/launcher/libasar) ship with
+      # zero headerpad; Apple codesign silently overwrites the start of
+      # __text when adding LC_CODE_SIGNATURE, producing a signed, notarized
+      # binary that segfaults on launch (issue #563, ziglang/zig#23704,
+      # blackboardsh/electrobun#485, decision 107). Reserve a signature slot
+      # BEFORE electrobun build signs them. No-op once upstream is fixed.
+      - name: Fix Mach-O headerpad in electrobun binaries
+        run: |
+          ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH=x64
+          DIST="node_modules/electrobun/dist-macos-${ARCH}"
+          if [ ! -d "$DIST" ]; then
+            EBVER=$(bun -p 'require("./node_modules/electrobun/package.json").version')
+            echo "dist missing before build — pre-fetching electrobun core v${EBVER}"
+            curl -fsSL "https://github.com/blackboardsh/electrobun/releases/download/v${EBVER}/electrobun-core-darwin-${ARCH}.tar.gz" -o "$RUNNER_TEMP/electrobun-core.tar.gz"
+            mkdir -p "$DIST"
+            tar xzf "$RUNNER_TEMP/electrobun-core.tar.gz" -C "$DIST"
+          fi
+          bun scripts/fix-macho-headerpad.ts fix "$DIST"
+
       - name: Clean build directory
         run: rm -rf ./build ./artifacts
 
@@ -105,6 +124,46 @@ jobs:
           find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
           echo "=== ./artifacts/ ==="
           ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
+
+      # Gate against the codesign __text clobber (issue #563): a corrupted
+      # binary is fully signed and notarized yet segfaults on launch, so the
+      # only reliable checks are structural (load commands vs sections) and
+      # actually executing the launcher stub.
+      - name: Verify signed binaries (Mach-O gate + launcher smoke run)
+        run: |
+          if [ -z "$(find ./build -maxdepth 2 -name '*.app' -type d)" ]; then
+            echo "::error::no .app found under ./build — nothing to verify"
+            exit 1
+          fi
+          bun scripts/fix-macho-headerpad.ts verify ./build
+          PAYLOAD=$(find ./build -path "*/Contents/Resources/*.tar.zst" -type f | head -1)
+          if [ -n "$PAYLOAD" ]; then
+            # verify the inner app tree packed into the self-extractor payload
+            command -v zstd >/dev/null || brew install --quiet zstd
+            mkdir -p "$RUNNER_TEMP/eb-payload"
+            zstd -d -q -f "$PAYLOAD" -o "$RUNNER_TEMP/eb-payload/app.tar"
+            tar xf "$RUNNER_TEMP/eb-payload/app.tar" -C "$RUNNER_TEMP/eb-payload"
+            bun scripts/fix-macho-headerpad.ts verify "$RUNNER_TEMP/eb-payload"
+            # smoke-run the self-extractor stub: outside a bundle it must
+            # print its banner and exit cleanly, not die of SIGSEGV
+            cp "$(dirname "$(dirname "$PAYLOAD")")/MacOS/launcher" "$RUNNER_TEMP/smoke-launcher"
+            set +e
+            OUT=$(perl -e 'alarm 60; exec @ARGV' "$RUNNER_TEMP/smoke-launcher" 2>&1)
+            CODE=$?
+            set -e
+            echo "$OUT"
+            echo "launcher exit code: $CODE"
+            if [ "$CODE" -ge 128 ]; then
+              echo "::error::launcher died with a signal (exit $CODE) — Mach-O corruption? (issue #563)"
+              exit 1
+            fi
+            if ! echo "$OUT" | grep -q "Electrobun self-extractor"; then
+              echo "::error::launcher did not print the self-extractor banner"
+              exit 1
+            fi
+          else
+            echo "::warning::no self-extractor payload (*.tar.zst) found — inner binaries and launcher not smoke-tested"
+          fi
 
       - name: Create release artifacts
         run: bash ./scripts/create-release-artifacts.sh macos arm64
@@ -181,6 +240,25 @@ jobs:
           echo "Patched electrobun.config.ts for signing:"
           grep -E 'codesign|notarize' electrobun.config.ts
 
+      # Zig-built electrobun binaries (extractor/launcher/libasar) ship with
+      # zero headerpad; Apple codesign silently overwrites the start of
+      # __text when adding LC_CODE_SIGNATURE, producing a signed, notarized
+      # binary that segfaults on launch (issue #563, ziglang/zig#23704,
+      # blackboardsh/electrobun#485, decision 107). Reserve a signature slot
+      # BEFORE electrobun build signs them. No-op once upstream is fixed.
+      - name: Fix Mach-O headerpad in electrobun binaries
+        run: |
+          ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && ARCH=x64
+          DIST="node_modules/electrobun/dist-macos-${ARCH}"
+          if [ ! -d "$DIST" ]; then
+            EBVER=$(bun -p 'require("./node_modules/electrobun/package.json").version')
+            echo "dist missing before build — pre-fetching electrobun core v${EBVER}"
+            curl -fsSL "https://github.com/blackboardsh/electrobun/releases/download/v${EBVER}/electrobun-core-darwin-${ARCH}.tar.gz" -o "$RUNNER_TEMP/electrobun-core.tar.gz"
+            mkdir -p "$DIST"
+            tar xzf "$RUNNER_TEMP/electrobun-core.tar.gz" -C "$DIST"
+          fi
+          bun scripts/fix-macho-headerpad.ts fix "$DIST"
+
       - name: Clean build directory
         run: rm -rf ./build ./artifacts
 
@@ -206,6 +284,45 @@ jobs:
           find ./build -maxdepth 3 -type f 2>/dev/null || echo "(empty)"
           echo "=== ./artifacts/ ==="
           ls -lhR ./artifacts/ 2>/dev/null || echo "(empty)"
+
+      # Gate against the codesign __text clobber (issue #563) — this job runs
+      # on a native Intel runner, so the smoke run exercises the exact code
+      # path that crashed for Intel users.
+      - name: Verify signed binaries (Mach-O gate + launcher smoke run)
+        run: |
+          if [ -z "$(find ./build -maxdepth 2 -name '*.app' -type d)" ]; then
+            echo "::error::no .app found under ./build — nothing to verify"
+            exit 1
+          fi
+          bun scripts/fix-macho-headerpad.ts verify ./build
+          PAYLOAD=$(find ./build -path "*/Contents/Resources/*.tar.zst" -type f | head -1)
+          if [ -n "$PAYLOAD" ]; then
+            # verify the inner app tree packed into the self-extractor payload
+            command -v zstd >/dev/null || brew install --quiet zstd
+            mkdir -p "$RUNNER_TEMP/eb-payload"
+            zstd -d -q -f "$PAYLOAD" -o "$RUNNER_TEMP/eb-payload/app.tar"
+            tar xf "$RUNNER_TEMP/eb-payload/app.tar" -C "$RUNNER_TEMP/eb-payload"
+            bun scripts/fix-macho-headerpad.ts verify "$RUNNER_TEMP/eb-payload"
+            # smoke-run the self-extractor stub: outside a bundle it must
+            # print its banner and exit cleanly, not die of SIGSEGV
+            cp "$(dirname "$(dirname "$PAYLOAD")")/MacOS/launcher" "$RUNNER_TEMP/smoke-launcher"
+            set +e
+            OUT=$(perl -e 'alarm 60; exec @ARGV' "$RUNNER_TEMP/smoke-launcher" 2>&1)
+            CODE=$?
+            set -e
+            echo "$OUT"
+            echo "launcher exit code: $CODE"
+            if [ "$CODE" -ge 128 ]; then
+              echo "::error::launcher died with a signal (exit $CODE) — Mach-O corruption? (issue #563)"
+              exit 1
+            fi
+            if ! echo "$OUT" | grep -q "Electrobun self-extractor"; then
+              echo "::error::launcher did not print the self-extractor banner"
+              exit 1
+            fi
+          else
+            echo "::warning::no self-extractor payload (*.tar.zst) found — inner binaries and launcher not smoke-tested"
+          fi
 
       - name: Create release artifacts
         run: bash ./scripts/create-release-artifacts.sh macos x64
