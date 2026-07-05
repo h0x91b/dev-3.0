@@ -1,8 +1,17 @@
 name: Release
 
+# Publishing runs ONLY for v* tags. Two dry-run paths build, sign, notarize
+# and gate everything identically but skip all user-visible publishing
+# (S3 syncs incl. the updater feed at the bucket root, GitHub Release, brew):
+#   - push a `test-*` tag (works from any branch, pre-merge)
+#   - `gh workflow run release.yml --ref <branch>` (workflow_dispatch;
+#     available once this file is on the default branch)
+# Dry-run artifacts (DMGs etc.) are still uploaded as GitHub Actions
+# artifacts on the run page.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "test-*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
       - uses: actions/checkout@v5
 
@@ -22,8 +32,14 @@ jobs:
         id: version
         run: |
           TAG="${{ github.ref_name }}"
+          if [ "${{ github.event_name }}" = "push" ] && [[ "$TAG" == v* ]]; then
+            echo "publish=true" >> $GITHUB_OUTPUT
+            echo "Version tag: $TAG (publishing release)"
+          else
+            echo "publish=false" >> $GITHUB_OUTPUT
+            echo "DRY RUN for ref '$TAG' — build/sign/verify only, nothing published"
+          fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "Version tag: $TAG"
 
   # ──────────────────────────────────────────────────
   # Build for each platform (parallel)
@@ -172,6 +188,7 @@ jobs:
         run: bash ./scripts/create-cli-tarball.sh macos arm64
 
       - name: Upload artifacts to S3
+        if: needs.prepare.outputs.publish == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -331,6 +348,7 @@ jobs:
         run: bash ./scripts/create-cli-tarball.sh macos x64
 
       - name: Upload artifacts to S3
+        if: needs.prepare.outputs.publish == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -414,6 +432,7 @@ jobs:
         run: bash ./scripts/create-cli-tarball.sh linux x64
 
       - name: Upload artifacts to S3
+        if: needs.prepare.outputs.publish == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -514,6 +533,7 @@ jobs:
             || echo "::warning::linux-arm64 GUI bundle not produced (Electrobun arm64 runtime may be unavailable) — shipping the CLI tarball only"
 
       - name: Upload artifacts to S3
+        if: needs.prepare.outputs.publish == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -535,6 +555,7 @@ jobs:
   # ──────────────────────────────────────────────────
   release:
     needs: [prepare, build-macos-arm64, build-macos-x64, build-linux-x64, build-linux-arm64]
+    if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
