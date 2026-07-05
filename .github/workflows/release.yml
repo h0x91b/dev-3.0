@@ -163,6 +163,13 @@ jobs:
             # smoke-run the self-extractor stub: outside a bundle it must
             # print its banner and exit cleanly, not die of SIGSEGV
             cp "$(dirname "$(dirname "$PAYLOAD")")/MacOS/launcher" "$RUNNER_TEMP/smoke-launcher"
+            # The release signature (hardened runtime) makes a bare out-of-bundle
+            # exec die with SIGKILL before main() even for healthy binaries
+            # (verified on the shipped v1.29.3 launcher). Re-sign ad-hoc: the
+            # issue #563 corruption lives in __text and survives re-signing, so
+            # the smoke run still catches it (corrupted v1.29.2 still segfaults).
+            codesign --remove-signature "$RUNNER_TEMP/smoke-launcher"
+            codesign -s - "$RUNNER_TEMP/smoke-launcher"
             set +e
             OUT=$(perl -e 'alarm 60; exec @ARGV' "$RUNNER_TEMP/smoke-launcher" 2>&1)
             CODE=$?
@@ -323,6 +330,13 @@ jobs:
             # smoke-run the self-extractor stub: outside a bundle it must
             # print its banner and exit cleanly, not die of SIGSEGV
             cp "$(dirname "$(dirname "$PAYLOAD")")/MacOS/launcher" "$RUNNER_TEMP/smoke-launcher"
+            # The release signature (hardened runtime) makes a bare out-of-bundle
+            # exec die with SIGKILL before main() even for healthy binaries
+            # (verified on the shipped v1.29.3 launcher). Re-sign ad-hoc: the
+            # issue #563 corruption lives in __text and survives re-signing, so
+            # the smoke run still catches it (corrupted v1.29.2 still segfaults).
+            codesign --remove-signature "$RUNNER_TEMP/smoke-launcher"
+            codesign -s - "$RUNNER_TEMP/smoke-launcher"
             set +e
             OUT=$(perl -e 'alarm 60; exec @ARGV' "$RUNNER_TEMP/smoke-launcher" 2>&1)
             CODE=$?

@@ -13,7 +13,7 @@ Reproduced deterministically: pristine upstream extractor runs under Rosetta; af
 Pre-build "surgery" plus a post-build gate, both in `release.yml` (mac jobs):
 
 1. `scripts/fix-macho-headerpad.ts fix` (logic in `src/bun/macho-headerpad.ts`) rewrites the droppable, same-size (16 B) `LC_SOURCE_VERSION` command into an `LC_CODE_SIGNATURE` pointing at a reserved slot appended to `__LINKEDIT` (minimal valid SuperBlob). With a pre-existing slot, codesign re-signs in place — same mechanism that keeps arm64 safe. Runs on `node_modules/electrobun/dist-macos-*` before `electrobun build` (pre-fetching the core tarball, since electrobun downloads it only during build).
-2. `... verify` + a launcher smoke run gate the built artifacts: fails the job if any Mach-O has load commands overlapping section content, or if the launcher stub dies with a signal. The x64 job runs on a native Intel runner, exercising the exact crashing path.
+2. `... verify` + a launcher smoke run gate the built artifacts: fails the job if any Mach-O has load commands overlapping section content, or if the launcher stub dies with a signal. The x64 job runs on a native Intel runner, exercising the exact crashing path. The smoke copy is re-signed ad-hoc first: a hardened-runtime (Developer ID, `--options runtime`) binary exec'd bare outside its bundle is SIGKILLed by macOS before `main()` even when healthy (verified on the shipped v1.29.3 launcher — in-bundle it runs fine). The #563 corruption lives in `__text` and survives re-signing, so the smoke run still catches it.
 
 ## Risks
 
