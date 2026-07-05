@@ -142,13 +142,14 @@ function renderModal(
 
 /**
  * Custom Select helpers. Each cascade field renders a <button> with id
- * "variant-provider-N" / "variant-model-N" / "variant-mode-N"; its text is the
- * selected option's label.
+ * "variant-N-provider" / "variant-N-model" / "variant-N-mode" (the shared
+ * AgentConfigPicker uses `${idPrefix}-<field>`); its text is the selected
+ * option's label.
  */
 function getButtonsById(prefix: string): HTMLButtonElement[] {
 	const buttons: HTMLButtonElement[] = [];
 	for (let i = 0; ; i++) {
-		const el = document.getElementById(`variant-${prefix}-${i}`);
+		const el = document.getElementById(`variant-${i}-${prefix}`);
 		if (!el) break;
 		buttons.push(el as HTMLButtonElement);
 	}

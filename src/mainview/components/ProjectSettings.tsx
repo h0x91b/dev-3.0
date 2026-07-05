@@ -7,6 +7,7 @@ import type { AppAction, Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { ListEditor } from "./ListEditor";
+import AgentConfigPicker from "./AgentConfigPicker";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
 
@@ -228,38 +229,21 @@ function CustomColumnRow({ column, saving, onUpdate, onDelete, availableAgents }
 				</div>
 				{agentEnabled && (
 					<div className="space-y-2 pl-1">
-						<div className="flex items-center gap-2">
-							<label className="text-fg-3 text-xs w-20 flex-shrink-0">{t("columnAgent.agent")}</label>
-							<select
-								value={agentId}
-								onChange={(e) => {
-									setAgentId(e.target.value);
-									const agent = availableAgents.find((a) => a.id === e.target.value);
-									if (agent?.configurations?.length) {
-										setConfigId(agent.configurations[0].id);
-									}
-								}}
-								onBlur={() => commitUpdate()}
-								className="flex-1 px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-xs outline-none focus:border-accent/40 transition-colors"
-							>
-								{availableAgents.map((a) => (
-									<option key={a.id} value={a.id}>{a.name}</option>
-								))}
-							</select>
-						</div>
-						<div className="flex items-center gap-2">
-							<label className="text-fg-3 text-xs w-20 flex-shrink-0">{t("columnAgent.config")}</label>
-							<select
-								value={configId}
-								onChange={(e) => setConfigId(e.target.value)}
-								onBlur={() => commitUpdate()}
-								className="flex-1 px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-xs outline-none focus:border-accent/40 transition-colors"
-							>
-								{(availableAgents.find((a) => a.id === agentId)?.configurations ?? []).map((c) => (
-									<option key={c.id} value={c.id}>{c.name || c.id}</option>
-								))}
-							</select>
-						</div>
+						<AgentConfigPicker
+							idPrefix={`column-agent-${column.id}`}
+							agents={availableAgents}
+							agentId={agentId}
+							configId={configId}
+							onChange={(next) => {
+								const nextAgentId = next.agentId ?? "builtin-claude";
+								const nextConfigId = next.configId ?? "claude-default";
+								setAgentId(nextAgentId);
+								setConfigId(nextConfigId);
+								// State updates are async, so persist with the fresh pair
+								// rather than relying on the (stale) state values.
+								commitUpdate(name, color, llmInstruction, { agentId: nextAgentId, configId: nextConfigId, prompt: agentPrompt });
+							}}
+						/>
 						<div>
 							<label className="block text-fg-3 text-xs mb-1">{t("columnAgent.prompt")}</label>
 							<textarea

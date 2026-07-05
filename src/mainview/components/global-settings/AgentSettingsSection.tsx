@@ -9,6 +9,7 @@ import type {
 } from "../../../shared/types";
 import { randomUUID } from "../../uuid";
 import { ListEditor } from "../ListEditor";
+import AgentConfigPicker from "../AgentConfigPicker";
 import { api } from "../../rpc";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
@@ -361,54 +362,40 @@ export default function AgentSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.defaultAgentDesc")}
 				</p>
-				<select
-					value={globalSettings.defaultAgentId}
-					onChange={(event) => onDefaultAgentChange(event.target.value)}
-					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
-				>
-					{agents.map((agent) => (
-						<option key={agent.id} value={agent.id}>
-							{agent.name}
-						</option>
-					))}
-				</select>
+				<AgentConfigPicker
+					idPrefix="default-agent"
+					agents={agents}
+					agentId={globalSettings.defaultAgentId}
+					configId={globalSettings.defaultConfigId}
+					agentAvailability={agentAvailability}
+					onChange={(next) => {
+						if (next.agentId && next.agentId !== globalSettings.defaultAgentId) {
+							// Switching provider also resets the config to that agent's
+							// default — the same value the picker just computed, so a
+							// single persist keeps agent + config consistent.
+							onDefaultAgentChange(next.agentId);
+						} else if (next.configId) {
+							onDefaultConfigChange(next.configId);
+						}
+					}}
+				/>
 
-				{defaultAgentConfigs.length > 0 ? (
-					<div className="mt-4">
-						<label className="block text-fg text-sm font-semibold mb-2">
-							{t("settings.defaultConfig")}
-						</label>
-						<p className="text-fg-3 text-sm mb-3">
-							{t("settings.defaultConfigDesc")}
-						</p>
-						<select
-							value={globalSettings.defaultConfigId}
-							onChange={(event) => onDefaultConfigChange(event.target.value)}
-							className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors appearance-none cursor-pointer"
-						>
-							{defaultAgentConfigs.map((config) => (
-								<option key={config.id} value={config.id}>
-									{config.name}
-									{config.model ? ` (${config.model})` : ""}
-								</option>
-							))}
-						</select>
-						{(() => {
-							const selectedConfig =
-								defaultAgentConfigs.find(
-									(config) => config.id === globalSettings.defaultConfigId,
-								) ?? defaultAgentConfigs[0];
-							if (!selectedConfig) return null;
-							return (
-								<ConfigPreviewCard
-									config={selectedConfig}
-									agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
-									t={t}
-								/>
-							);
-						})()}
-					</div>
-				) : null}
+				{defaultAgentConfigs.length > 0 ? (() => {
+					const selectedConfig =
+						defaultAgentConfigs.find(
+							(config) => config.id === globalSettings.defaultConfigId,
+						) ?? defaultAgentConfigs[0];
+					if (!selectedConfig) return null;
+					return (
+						<div className="mt-4">
+							<ConfigPreviewCard
+								config={selectedConfig}
+								agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
+								t={t}
+							/>
+						</div>
+					);
+				})() : null}
 			</div>
 
 			<div>

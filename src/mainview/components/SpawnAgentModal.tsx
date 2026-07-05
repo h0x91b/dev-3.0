@@ -4,7 +4,7 @@ import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
-import Select, { useAgentRenderOption } from "./Select";
+import AgentConfigPicker from "./AgentConfigPicker";
 import { useFocusTrap } from "../utils/useFocusTrap";
 
 interface SpawnAgentModalProps {
@@ -73,12 +73,6 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [spawning, globalSettings, agentId, configId]);
 
-	function handleAgentChange(newAgentId: string | null) {
-		setAgentId(newAgentId);
-		const agent = agents.find((a) => a.id === newAgentId);
-		setConfigId(agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? null);
-	}
-
 	async function handleSpawn() {
 		setSpawning(true);
 		setError(null);
@@ -98,9 +92,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 		setSpawning(false);
 	}
 
-	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
 	const selectedAgent = agents.find((a) => a.id === agentId);
-	const configs = selectedAgent?.configurations ?? [];
 	const selectedAvailability = agentAvailability.find((a) => a.agentId === agentId);
 	const agentNotInstalled = selectedAvailability ? !selectedAvailability.installed : false;
 
@@ -114,7 +106,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				role="dialog"
 				aria-modal="true"
 				tabIndex={-1}
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-md mx-4 overflow-hidden outline-none"
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-xl mx-4 overflow-hidden outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
@@ -125,29 +117,17 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				{/* Content */}
 				{globalSettings ? (
 					<div className="px-6 py-4 space-y-3">
-						<div>
-							<label htmlFor="spawn-agent" className="text-xs text-fg-3 block mb-1">
-								{t("launch.agent")}
-							</label>
-							<Select
-								id="spawn-agent"
-								value={agentId ?? ""}
-								options={agents.map((a) => ({ value: a.id, label: a.name }))}
-								onChange={(val) => handleAgentChange(val || null)}
-								renderOption={renderAgentOption}
-							/>
-						</div>
-						<div>
-							<label htmlFor="spawn-config" className="text-xs text-fg-3 block mb-1">
-								{t("launch.config")}
-							</label>
-							<Select
-								id="spawn-config"
-								value={configId ?? ""}
-								options={configs.map((c) => ({ value: c.id, label: c.name }))}
-								onChange={(val) => setConfigId(val || null)}
-							/>
-						</div>
+						<AgentConfigPicker
+							idPrefix="spawn"
+							agents={agents}
+							agentId={agentId}
+							configId={configId}
+							agentAvailability={agentAvailability}
+							onChange={(next) => {
+								setAgentId(next.agentId);
+								setConfigId(next.configId);
+							}}
+						/>
 
 						{/* Warning for uninstalled agents */}
 						{agentNotInstalled && selectedAgent && (
