@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import Tooltip from "./Tooltip";
+import { RateLimitIcon } from "./HeaderIcons";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import {
 	RATE_LIMIT_DANGER_PERCENT,
@@ -94,14 +95,9 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				role="status"
 				aria-label={ariaLabel}
 				data-help-id="header.rateLimits"
-				className={`header-anim flex select-none items-center gap-1 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
+				className={`header-anim flex cursor-pointer select-none items-center gap-1 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
 			>
-				<span
-					className="text-[1.125rem] leading-none"
-					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-				>
-					{"\u{F029A}"}
-				</span>
+				<RateLimitIcon className="w-[1.125rem] h-[1.125rem]" />
 				{!compact && <span className="text-[0.6875rem] font-medium tabular-nums">{percent}%</span>}
 			</div>
 		</Tooltip>
