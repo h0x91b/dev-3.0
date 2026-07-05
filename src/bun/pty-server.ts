@@ -8,6 +8,11 @@ import { getUserShell } from "./shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
 import { writeShellInit } from "./shell-init";
 
+// Must be initialized before any module-load code below — sanitizeTmuxShim()
+// runs at module evaluation and logs when it finds a broken shim. Declaring
+// this after that call crashed app startup on poisoned installs (v1.29.2).
+const log = createLogger("pty");
+
 // --- Bundled tmux configuration -------------------------------------------
 // Two theme-specific configs are written at startup: dark and light.
 // Each sets @catppuccin_flavor, sources the Catppuccin plugin for styling,
@@ -406,8 +411,6 @@ function logTmuxBinaryOnce(taskId: string): void {
 export function tmuxArgs(socket: string, ...args: string[]): string[] {
 	return [tmuxBinary, "-L", socket, ...args];
 }
-
-const log = createLogger("pty");
 
 let ptyWsPort = 0;
 

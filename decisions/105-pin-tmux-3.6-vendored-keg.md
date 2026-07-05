@@ -27,6 +27,8 @@ Four coordinated pieces:
 
 The shim shipped with a self-poisoning bug: `~/.dev3.0/bin` is first in PATH (it hosts the dev3 CLI), so on installs **without** the keg (the in-app updater cannot run brew) `whichSync("tmux")` returned the shim itself; `selectTmuxBinary` committed it and `updateTmuxShim` then repointed the shim at "itself" — a self-referential symlink that killed every tmux spawn with ELOOP. Fixed with three guards in `pty-server.ts`: `dereferenceTmuxShim` (resolution never commits the shim; broken shims are deleted), an identity guard in `updateTmuxShim`, and `sanitizeTmuxShim` at module load so already-poisoned installs self-heal. Lesson: any binary shim placed on PATH must be excluded from that same binary's PATH resolution.
 
+**Second incident (v1.29.2):** the self-heal itself crashed app startup on the very installs it was meant to fix. `sanitizeTmuxShim()` runs at module load of `pty-server.ts`, and its catch branch called `log.warn` — but `const log = createLogger("pty")` was declared ~150 lines below the call site, so the TDZ access threw and killed module evaluation before a window ever appeared. Healthy installs never entered the catch branch, so tests and most users saw nothing. Fixed by declaring the logger immediately after the imports; a module-load repro test (`pty-server-module-load.test.ts`) imports the module with a poisoned shim mocked in. Lesson: any code executed at module load must only reference bindings declared above it — and a self-heal path needs a test that runs it under the exact broken state it heals.
+
 ## Alternatives considered
 
 - **Linking tmux@3.6 into PATH**: conflicts with an existing core tmux install; brew link behavior becomes unpredictable.
