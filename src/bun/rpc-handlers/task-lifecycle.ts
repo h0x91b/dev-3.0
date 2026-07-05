@@ -1362,6 +1362,43 @@ async function openQuickShellInner(): Promise<Task> {
 	return updated;
 }
 
+/**
+ * Create the ordinary task an Automation fire produces: description = the
+ * stored prompt (the agent's initial prompt), title = the automation name +
+ * date, agent = the automation's choice. Preparation (worktree + PTY) runs in
+ * the background — same pipeline as Launch Variants — so the scheduler tick
+ * returns fast and the board card shows live progress. Works for git AND
+ * virtual (Operations) projects, since prepareTaskInBackground branches on
+ * project.kind itself.
+ */
+export async function createAutomationTask(
+	project: Project,
+	automation: { id: string; name: string; prompt: string; agentId: string | null; configId: string | null },
+): Promise<Task> {
+	const now = new Date();
+	const task = await data.addTask(project, automation.prompt, "in-progress", {
+		agentId: automation.agentId,
+		configId: automation.configId,
+		automationId: automation.id,
+		customTitle: `${automation.name} · ${now.toISOString().slice(0, 10)}`,
+		preparing: true,
+		preparingStage: INITIAL_PREPARING_STAGE,
+		preparingProgress: getPreparingStageProgress(INITIAL_PREPARING_STAGE),
+		preparingStartedAt: now.toISOString(),
+	});
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	log.info("Automation task created, preparing in background", {
+		taskId: task.id.slice(0, 8),
+		automationId: automation.id.slice(0, 8),
+	});
+	void prepareTaskInBackground(project, task, {
+		label: "automation",
+		agentId: automation.agentId,
+		configId: automation.configId,
+	});
+	return task;
+}
+
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,

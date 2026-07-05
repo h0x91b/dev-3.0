@@ -65,6 +65,9 @@ Evidence: `concept.md`, `AGENTS.md`, `src/mainview/state.ts`, `src/shared/types.
 | Label | — (overlay on tasks) | — | project | create, rename, recolor, assign, filter | `types.ts (Label)`, `LabelPicker.tsx`, `LabelFilterBar.tsx` |
 | Custom Column | — (board column) | — | project | create, rename, recolor, set LLM instruction, attach agent | `types.ts (CustomColumn)`, `KanbanBoard.tsx` |
 | Note | — (in inspector) | — | task | add, edit, delete | `types.ts (TaskNote)`, `NoteItem.tsx`, `task-info-panel/TaskNotes.tsx` |
+| Automation | — (managed in `project-settings` tab `automations`) | — | project | create, edit, enable/disable, run now, view run history, delete | `types.ts (Automation)`, `ProjectSettings.tsx`, `automations-scheduler.ts` |
+
+**Automation (`Observed`, 2026-07-05):** a per-project scheduled agent run — an RFC 5545 RRULE subset + IANA timezone, a stored prompt, and an agent choice. When a schedule fires (bun-process scheduler, runs in desktop **and** `dev3 remote` headless), it creates an **ordinary task** (worktree + tmux + agent, prompt = task description) on the board — automations never grow their own board, destination, or task list. Provenance: the created task records its `automationId` and the card shows a small clock glyph; run history (fired / task created / missed while app was offline) is persisted per automation and shown only inside the Automations tab. Missed runs are surfaced (toast + per-automation status), never silently skipped. A built-in **"What I shipped" report template** pre-fills the create form; the resulting digest is again just a task. CLI: `dev3 automations …`.
 
 Task lifecycle states (`ALL_STATUSES`): `todo`, `in-progress`, `user-questions`, `review-by-ai`, `review-by-user`, `review-by-colleague`, `completed`, `cancelled`. Most transitions are hook-driven, not manual.
 
@@ -92,7 +95,7 @@ Evidence: `GlobalHeader.tsx`.
 
 ### Tabs — `Observed`
 
-Only in `project-settings` (`global | project | worktree`). Budget ≤ 6 visible tabs.
+Only in `project-settings` (`global | project | worktree | automations`). Budget ≤ 6 visible tabs.
 
 ### Command palette (Cmd/Ctrl+K nav · Cmd/Ctrl+Shift+P actions) — `Observed`
 

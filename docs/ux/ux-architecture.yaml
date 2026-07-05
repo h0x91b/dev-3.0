@@ -96,6 +96,21 @@ ux_architecture:
       owner: "task"
       common_actions: ["add", "edit", "delete"]
       evidence: ["src/shared/types.ts (TaskNote)", "src/mainview/components/NoteItem.tsx", "src/mainview/components/task-info-panel/TaskNotes.tsx", "src/cli/commands/note.ts"]
+    automation:
+      label: "Automation"
+      plural: "Automations"
+      observed: true
+      owner: "project"
+      primary_route: "screen:project-settings"   # managed in the Automations tab; NOT a destination of its own
+      common_actions: ["create", "edit", "enable_disable", "run_now", "view_run_history", "delete"]
+      shape: "RFC 5545 RRULE subset + IANA timezone + stored prompt + agent choice; each fire creates an ORDINARY task (worktree + tmux + agent, prompt = description) on the board"
+      rules:
+        - "No new destination/surface: results are normal tasks; run history renders only inside the Automations tab."
+        - "Provenance: created tasks carry automationId; task card shows a small clock glyph (within the card's 2-inline-action budget — it is a status marker, not an action)."
+        - "Missed runs (app offline at fire time) are recorded and surfaced (toast + per-automation status) — never silently skipped."
+        - "Built-in 'What I shipped' report template pre-fills the create form; the digest result is again just a task."
+        - "CLI parity: dev3 automations list/create/update/delete/run/runs."
+      evidence: ["src/shared/types.ts (Automation)", "src/mainview/components/ProjectSettings.tsx (automations tab)", "src/bun/automations-scheduler.ts", "src/cli/commands/automations.ts"]
 
   navigation:
     model: "screen_router" # observed: useReducer Route union, not URL paths
@@ -127,7 +142,7 @@ ux_architecture:
       status: "observed"
       evidence: ["src/mainview/components/GlobalHeader.tsx (BreadcrumbSegment, project switcher)"]
     tabs:
-      observed_in: ["project-settings (global | project | worktree)"]
+      observed_in: ["project-settings (global | project | worktree | automations)"]
       max_visible_tabs: 6
       status: "observed"
     command_palette:

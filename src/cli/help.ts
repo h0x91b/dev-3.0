@@ -191,6 +191,56 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "automations",
+		summary: "Scheduled agent runs: recurring prompts that create real tasks on the board.",
+		subcommands: [
+			{
+				name: "list",
+				usage: "dev3 automations list",
+				summary: "List the project's automations with next/last run.",
+			},
+			{
+				name: "show",
+				usage: "dev3 automations show <id>",
+				summary: "Automation details, prompt, and run history (created / failed / missed).",
+			},
+			{
+				name: "create",
+				usage: 'dev3 automations create --name "..." --prompt "..." --rrule "FREQ=DAILY;BYHOUR=9" [--timezone <iana>]',
+				summary: "Create an automation.",
+				details: [
+					'--rrule        RFC 5545 subset: FREQ=HOURLY|DAILY|WEEKLY|MONTHLY, INTERVAL, BYDAY, BYMONTHDAY, BYHOUR, BYMINUTE.',
+					"--timezone     IANA name (default: this machine's timezone).",
+					"--agent <id>   Agent to launch (default: project default agent).",
+					"--catch-up     skip | runOnce — what to do with runs missed while the app was offline (default skip).",
+					"--template     Pre-fill from a built-in template (see: dev3 automations templates).",
+					"--disabled     Create paused.",
+					"--prompt @file reads the prompt from a file.",
+				],
+			},
+			{
+				name: "update",
+				usage: "dev3 automations update <id> [--name ...] [--prompt ...] [--rrule ...] [--timezone ...] [--enable|--disable]",
+				summary: "Update fields / pause / resume.",
+			},
+			{
+				name: "delete",
+				usage: "dev3 automations delete <id>",
+				summary: "Delete an automation (its already-created tasks stay).",
+			},
+			{
+				name: "run",
+				usage: "dev3 automations run <id>",
+				summary: "Fire now — creates the task immediately (schedule unaffected).",
+			},
+			{
+				name: "templates",
+				usage: "dev3 automations templates",
+				summary: "List built-in templates (e.g. shipped-report — the weekly 'What I shipped' digest).",
+			},
+		],
+	},
+	{
 		name: "conversations",
 		summary: "Search past task conversations (transcripts + notes/overview).",
 		subcommands: [

@@ -407,6 +407,12 @@ startRateLimitMonitor((name, payload) => {
 	}
 });
 
+// Start the Automations scheduler (scheduled agent runs). The first tick also
+// detects occurrences missed while the app was offline and surfaces them.
+// Runs in headless (`dev3 remote`) too — same main process.
+const { startAutomationsScheduler } = await import("./automations-scheduler");
+startAutomationsScheduler();
+
 // Wire PTY death notifications
 setOnPtyDied((sessionKey) => {
 	try {

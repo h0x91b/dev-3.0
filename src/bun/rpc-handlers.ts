@@ -60,6 +60,7 @@ import { portTunnelHandlers } from "./rpc-handlers/port-tunnels";
 import { conversationSearchHandlers } from "./rpc-handlers/conversation-search-handlers";
 import { productivityStatsHandlers } from "./rpc-handlers/productivity-stats";
 import { agentUsageHandlers } from "./rpc-handlers/agent-usage";
+import { automationsHandlers } from "./rpc-handlers/automations";
 
 export const handlers = {
 	...appHandlers,
@@ -74,4 +75,5 @@ export const handlers = {
 	...conversationSearchHandlers,
 	...productivityStatsHandlers,
 	...agentUsageHandlers,
+	...automationsHandlers,
 };
