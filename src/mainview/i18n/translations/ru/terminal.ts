@@ -183,7 +183,7 @@ const terminal = {
 	"resources.details": "{memory} · {cpu}% CPU",
 
 	// Project Terminal
-	"projectTerminal.open": "Терминал проекта",
+	"projectTerminal.open": "Терминал",
 	"projectTerminal.close": "Закрыть терминал",
 	"projectTerminal.tooltip": "Открыть терминал в корне проекта",
 	"projectTerminal.sessionEnded": "Сессия терминала завершена",

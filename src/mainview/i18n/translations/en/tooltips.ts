@@ -21,6 +21,8 @@ export const tooltips = {
 	"ttip.header.projectSettings":
 		"Everything project-level: lifecycle scripts, base branch, port allocation, custom columns, AI review.",
 	"ttip.header.globalSettings": "App-wide preferences: agents, appearance, behavior, language and integrations.",
+	"ttip.header.helpMode":
+		"Turns on help mode: every zone of the current screen gets an (i) badge — click one to learn what that area does and how to use it.",
 
 	// Task card
 	"ttip.task.openPR": "Shows the pull request state at a glance — open, merged or closed. Click to view it on GitHub.",

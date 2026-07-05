@@ -19,6 +19,8 @@ export const tooltips = {
 	"ttip.header.projectSettings":
 		"Todo a nivel de proyecto: scripts de ciclo de vida, rama base, asignación de puertos, columnas personalizadas, revisión por IA.",
 	"ttip.header.globalSettings": "Preferencias de toda la app: agentes, apariencia, comportamiento, idioma e integraciones.",
+	"ttip.header.helpMode":
+		"Activa el modo de ayuda: cada zona de la pantalla actual recibe una insignia (i) — haz clic en una para saber qué hace esa área y cómo usarla.",
 
 	// Task card
 	"ttip.task.openPR": "El estado del pull request de un vistazo — abierto, fusionado o cerrado. Clic para verlo en GitHub.",

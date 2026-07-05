@@ -1105,6 +1105,22 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:hover .hdr-sl2 { animation: hdr-sl2 2.4s ease-in-out infinite; }
 .header-anim:hover .hdr-sl3 { animation: hdr-sl3 2.4s ease-in-out infinite; }
 
+/* -- Help mode: the "?" redraws its curve, the dot drops in, the ring breathes -- */
+@keyframes hdr-help-q { 0%, 12% { stroke-dashoffset: 1; } 55%, 100% { stroke-dashoffset: 0; } }
+@keyframes hdr-help-dot {
+	0%, 48% { opacity: 0; transform: translateY(-2px); }
+	62% { opacity: 1; transform: translateY(.6px); }
+	74%, 100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes hdr-help-ring {
+	0%, 12% { transform: scale(1); }
+	55% { transform: scale(1.06); }
+	80%, 100% { transform: scale(1); }
+}
+.header-anim:hover .hdr-help-q { animation: hdr-help-q 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-help-dot { animation: hdr-help-dot 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-help-ring { transform-origin: 12px 12px; animation: hdr-help-ring 2.4s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
 	.header-anim:hover [class^="hdr-"],
 	.header-anim:hover [class*=" hdr-"] {

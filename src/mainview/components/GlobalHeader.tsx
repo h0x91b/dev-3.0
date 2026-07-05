@@ -32,7 +32,12 @@ import {
 	WrenchIcon,
 	SlidersIcon,
 	UpdateReadyIcon,
+	HelpModeIcon,
 } from "./HeaderIcons";
+import { APP_SHORTCUTS, shortcutKeysFor } from "../keymap";
+
+// Single source of truth for the ⇧⌘/ combo shown on the header help button.
+const HELP_MODE_SHORTCUT = APP_SHORTCUTS.find((s) => s.id === "help-mode");
 
 interface GlobalHeaderProps {
 	route: Route;
@@ -294,7 +299,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				...(currentProjectId && !isVirtualProject
 					? [{
 							key: "projectTerminal",
-							label: t("projectTerminal.open"),
+							// The sheet has room and no tooltip — keep the full descriptive name
+							// there; the inline header button uses the short "Terminal" label.
+							label: t("projectTerminal.label"),
 							run: () =>
 								route.screen === "project-terminal"
 									? navigate({ screen: "project", projectId: currentProjectId })
@@ -732,6 +739,25 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							</div>
 						)}
 					</div>
+				)}
+
+				{/* Help mode ("Explain this screen") — bright accent "?", always inline on
+				    every screen (never folds into the kebab); narrow gets it via the sheet. */}
+				{!isNarrow && (
+					<Tooltip
+						content={t("header.helpTooltip")}
+						detail={t("ttip.header.helpMode")}
+						kbd={HELP_MODE_SHORTCUT ? shortcutKeysFor(HELP_MODE_SHORTCUT) : undefined}
+					>
+						<button
+							onClick={() => window.dispatchEvent(new CustomEvent("menu:enter-help-mode"))}
+							className="header-anim flex items-center text-accent hover:text-accent-hover transition-colors px-1.5 py-1 rounded-lg hover:bg-accent/10"
+							aria-label={t("header.helpTooltip")}
+							data-testid="header-help-mode"
+						>
+							<HelpModeIcon className="w-[1.125rem] h-[1.125rem]" />
+						</button>
+					</Tooltip>
 				)}
 
 				{/* Project settings — anywhere inside a project (not on project-settings screen itself) */}
