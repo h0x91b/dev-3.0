@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api } from "../rpc";
+import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
@@ -196,8 +197,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 			// to the correct surface.
 			await api.request.saveLastRoute({ route: JSON.stringify(route) });
 			await api.request.applyUpdate();
-		} catch {
+		} catch (err) {
 			setRestarting(false);
+			toast.error(t("update.applyFailed", { error: String(err) }));
 		}
 	}
 
