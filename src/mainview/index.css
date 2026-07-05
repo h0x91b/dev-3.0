@@ -1020,20 +1020,28 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 .header-anim:hover .hdr-needle { transform-origin: 12px 14px; animation: hdr-needle 2.6s ease-in-out infinite; }
 
-/* -- Rate-limit hourglass: sand grains drip down into the lower bulb -- */
+/* -- Rate-limit hourglass: sand pours down, then the glass flips over.
+   The outline is 180°-symmetric so the flip lands pixel-identical. -- */
 @keyframes hdr-hg-drop {
-	0%, 10% { transform: translateY(0); opacity: 1; }
-	55% { transform: translateY(4.5px); opacity: 1; }
-	70%, 100% { transform: translateY(5.5px); opacity: 0; }
+	0%, 8% { transform: translateY(0); opacity: 1; }
+	38% { transform: translateY(5.6px); opacity: 1; }
+	46%, 100% { transform: translateY(6.4px); opacity: 0; }
 }
 @keyframes hdr-hg-drop-ghost {
-	0%, 35% { transform: translateY(0); opacity: 0; }
-	45% { opacity: .7; }
-	85% { transform: translateY(4.5px); opacity: .7; }
-	95%, 100% { transform: translateY(5.5px); opacity: 0; }
+	0%, 22% { transform: translateY(0); opacity: 0; }
+	30% { opacity: .8; }
+	52% { transform: translateY(5.6px); opacity: .8; }
+	60%, 100% { transform: translateY(6.4px); opacity: 0; }
+}
+@keyframes hdr-hg-flip {
+	0%, 62% { transform: rotate(0deg); }
+	84% { transform: rotate(189deg); }
+	92% { transform: rotate(176deg); }
+	100% { transform: rotate(180deg); }
 }
 .header-anim:hover .hdr-hg-drop { animation: hdr-hg-drop 2.4s ease-in-out infinite; }
 .header-anim:hover .hdr-hg-drop-ghost { animation: hdr-hg-drop-ghost 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-hg-body { transform-origin: 12px 12px; animation: hdr-hg-flip 2.4s ease-in-out infinite; }
 
 /* -- GitHub: the octocat takes a polite bow -- */
 @keyframes hdr-gh {
