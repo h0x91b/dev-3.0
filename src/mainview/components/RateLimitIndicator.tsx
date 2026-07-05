@@ -94,7 +94,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				role="status"
 				aria-label={ariaLabel}
 				data-help-id="header.rateLimits"
-				className={`header-anim flex items-center gap-1 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
+				className={`header-anim flex select-none items-center gap-1 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
 			>
 				<span
 					className="text-[1.125rem] leading-none"
