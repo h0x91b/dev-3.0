@@ -16,6 +16,7 @@ import keymap from "./ru/keymap";
 import stats from "./ru/stats";
 import help from "./ru/help";
 import { tooltips } from "./ru/tooltips";
+import automations from "./ru/automations";
 
 const ru: TranslationRecord & Record<string, string> = {
 	...common,
@@ -35,6 +36,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	...stats,
 	...help,
 	...tooltips,
+	...automations,
 };
 
 export default ru;

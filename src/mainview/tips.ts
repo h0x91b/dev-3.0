@@ -841,6 +841,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "automations",
+		titleKey: "tip.automations.title",
+		bodyKey: "tip.automations.body",
+		icon: "\u{F0150}", // nf-md-clock_outline
+		score: 4,
+		contexts: ["board", "settings"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

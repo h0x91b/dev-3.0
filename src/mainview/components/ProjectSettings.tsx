@@ -8,6 +8,7 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { ListEditor } from "./ListEditor";
 import AgentConfigPicker from "./AgentConfigPicker";
+import AutomationsPanel from "./AutomationsPanel";
 import { matchesBranchQuery } from "./BranchSelector";
 import type { NavigationGuard } from "../navigation-guard";
 
@@ -822,7 +823,7 @@ function ConfigForm({ config, onChange, inherited, projectId, projectPath }: Con
 
 // ---- Main component ----
 
-type ConfigTab = "global" | "project" | "worktree";
+type ConfigTab = "global" | "project" | "worktree" | "automations";
 type WorktreeSubTab = "repo" | "local";
 
 /**
@@ -869,7 +870,9 @@ function ProjectSettings({
 	// Operations boards only have the Board tab (no git → no Project/Worktree
 	// config); never let a deep-linked initialTab strand them on a hidden git tab.
 	const [activeTab, setActiveTab] = useState<ConfigTab>(
-		project?.kind === "virtual" ? "global" : (initialTab ?? "global"),
+		project?.kind === "virtual"
+			? (initialTab === "automations" ? "automations" : "global")
+			: (initialTab ?? "global"),
 	);
 
 	// ---- Project tab state (reads/writes projects.json) ----
@@ -1310,13 +1313,22 @@ function ProjectSettings({
 									</button>
 								</>
 							)}
+							<button type="button" onClick={() => setActiveTab("automations")} className={tabButtonClass("automations")}>
+								{t("automations.tabLabel")}
+							</button>
 						</div>
 						<p className="text-fg-muted text-xs px-1">
 							{activeTab === "global" && t("projectSettings.tabGlobalDesc")}
 							{activeTab === "project" && t("projectSettings.tabProjectDesc")}
 							{activeTab === "worktree" && t("projectSettings.tabWorktreeDesc")}
+							{activeTab === "automations" && t("automations.tabDesc")}
 						</p>
 					</div>
+
+					{/* ======== Automations tab ======== */}
+					{activeTab === "automations" && (
+						<AutomationsPanel project={project} />
+					)}
 
 					{/* ======== Global tab ======== */}
 					{activeTab === "global" && (

@@ -3,7 +3,6 @@ import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskS
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
-import { runAutomationNow } from "./automations-scheduler";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext } from "./rpc-handlers";
@@ -539,6 +538,10 @@ const handlers: Record<string, Handler> = {
 		const automations = await loadAutomations(project);
 		const automation = findByIdPrefix(automations, automationId, "automation");
 		if (!automation) throw new Error(`Automation not found: ${automationId}`);
+		// Lazy import: the scheduler pulls in the full task-creation pipeline
+		// (worktree/PTY/Electrobun), which must not load at module-import time
+		// for this file (unit tests import it with the pipeline mocked out).
+		const { runAutomationNow } = await import("./automations-scheduler");
 		return runAutomationNow(project, automation);
 	},
 

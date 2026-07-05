@@ -1350,6 +1350,26 @@ function App() {
 		return () => window.removeEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
 	}, []);
 
+	// Surface automation occurrences that were missed while the app was offline —
+	// missed runs are never silently skipped (scheduler pushes this on startup).
+	useEffect(() => {
+		function onAutomationRunsMissed(e: Event) {
+			const { automationName, missedCount, caughtUp } = (e as CustomEvent).detail as {
+				projectId: string;
+				automationId: string;
+				automationName: string;
+				missedCount: number;
+				caughtUp: boolean;
+			};
+			const message = caughtUp
+				? t("automations.missedToastCaughtUp", { name: automationName, count: String(missedCount) })
+				: t("automations.missedToast", { name: automationName, count: String(missedCount) });
+			toast.warning(message);
+		}
+		window.addEventListener("rpc:automationRunsMissed", onAutomationRunsMissed);
+		return () => window.removeEventListener("rpc:automationRunsMissed", onAutomationRunsMissed);
+	}, []);
+
 	// Listen for update download progress (minimum 5s display time)
 	useEffect(() => {
 		const MIN_DISPLAY_MS = 5_000;

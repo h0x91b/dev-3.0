@@ -576,6 +576,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						{"\u{F018D}"}
 					</span>
 				)}
+				{task.automationId && (
+					<span
+						className="text-fg-3 mr-1.5"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						title={t("task.automationRun")}
+					>
+						{"\u{F0150}"}
+					</span>
+				)}
 				{displayTitle}
 			</div>
 			{hasLongDescription && !isTodo && (

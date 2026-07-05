@@ -206,6 +206,8 @@ const tips = {
 	"tip.closePanePicker.body": "Click Close Pane and pick the split (it turns red) — or press Ctrl+D inside a pane to close it instantly.",
 	"tip.helpMode.title": "Explain this screen",
 	"tip.helpMode.body": "Click the ? in the header or press ⇧⌘/ — every zone gets an (i) badge; click one to learn what it does.",
+	"tip.automations.title": "Schedule agent runs",
+	"tip.automations.body": "Project Settings → Automations: recurring prompts (RRULE) that create real tasks — try the weekly “What I shipped” report.",
 } as const;
 
 export default tips;
