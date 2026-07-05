@@ -18,6 +18,7 @@ import { handleGui } from "./commands/gui";
 import { handleConversations } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleShowImage } from "./commands/show-image";
+import { handleStatusLine } from "./commands/statusline";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 import { resolveHelp } from "./help";
@@ -118,6 +119,12 @@ async function main(): Promise<void> {
 	}
 	if (command === "install-hooks") {
 		return await handleInstallHooks();
+	}
+	if (command === "statusline") {
+		// Internal: Claude Code statusLine wrapper (see commands/statusline.ts).
+		// Reads stdin, dumps rate limits, delegates to the user's original
+		// statusLine. Must work without the app running.
+		return await handleStatusLine();
 	}
 	if (command === "install-skills") {
 		return await handleInstallSkills();

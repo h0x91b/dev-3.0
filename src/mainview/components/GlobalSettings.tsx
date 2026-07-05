@@ -294,6 +294,13 @@ function GlobalSettings() {
 		[persistSettingChange],
 	);
 
+	const handleRateLimitTrackingToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ agentRateLimitTracking: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const saveExternalApps = useCallback(
 		(apps: ExternalApp[]) => {
 			api.request.saveGlobalSettings({
@@ -448,6 +455,7 @@ function GlobalSettings() {
 						onPreventSleepToggle={handlePreventSleepToggle}
 						onSoundToggle={handleSoundToggle}
 						onFocusModeToggle={handleFocusModeToggle}
+						onRateLimitTrackingToggle={handleRateLimitTrackingToggle}
 						onTaskDropPositionChange={handleTaskDropPositionChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}
 						onTipsDisabledToggle={handleTipsDisabledToggle}

@@ -156,6 +156,7 @@ describe("saveSettings", () => {
 			skipQuitDialog: true,
 			importShellEnv: false,
 			focusMode: true,
+			agentRateLimitTracking: false,
 			watchByDefault: true,
 			agentsLayoutRevision: 1,
 		};

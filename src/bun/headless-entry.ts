@@ -163,6 +163,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
+const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-limit-monitor");
 
 // Pin the tmux binary before any poller talks to the tmux server — the bare
 // PATH `tmux` may be a version the running server rejects, or missing entirely
@@ -330,6 +331,11 @@ startResourceMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
+// ── Agent rate-limit monitor (Claude statusLine dump / Codex rollouts) ──
+startRateLimitMonitor((name, payload) => {
+	pushToBrowserClients(name, payload);
+});
+
 // ── PTY event wiring (no mainWindow.webview.rpc — just push to browser) ──
 setOnPtyDied((sessionKey) => {
 	try {
@@ -396,6 +402,7 @@ function shutdown(signal: string): void {
 	stopQrAutoRefresh();
 	stopPortScanPoller();
 	stopResourceMonitor();
+	stopRateLimitMonitor();
 	stopSocketServer();
 	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();

@@ -1,5 +1,6 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
+import type { AgentRateLimitsReport } from "./rate-limits";
 
 // ---- Changelog ----
 
@@ -481,6 +482,13 @@ export interface GlobalSettings {
 	 */
 	importShellEnv?: boolean;
 	focusMode?: boolean; // when true, suppress agent-initiated attention UI (dev3 notify/attention)
+	/**
+	 * Track agent rate-limit windows (Claude via an injected statusLine wrapper,
+	 * Codex via rollout files) and show the ambient header indicator.
+	 * Default on; set to `false` to disable both the `--settings` statusLine
+	 * injection and the indicator.
+	 */
+	agentRateLimitTracking?: boolean;
 	/**
 	 * Remembered state of the Watch toggle in the launch/create-variant modal.
 	 * When a task is launched, the toggle's on/off choice is persisted here and
@@ -1623,6 +1631,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: AgentUsageReport;
 			};
+			getAgentRateLimits: {
+				params: void;
+				response: AgentRateLimitsReport;
+			};
 			searchConversations: {
 				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };
 				response: ConversationMatch[];
@@ -2171,6 +2183,11 @@ export type AppRPCSchema = {
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
+			/**
+			 * Fresh agent rate-limit data (Claude statusLine dump / Codex rollouts).
+			 * Pushed by the rate-limit monitor whenever the parsed windows change.
+			 */
+			agentRateLimitsUpdated: AgentRateLimitsReport;
 			updateDownloadProgress: { status: string; progress?: number };
 			/** Emitted when a column-agent launch fails (custom columns have no automatic fallback). */
 			columnAgentFailed: { taskId: string; projectId: string; columnName: string; error: string };

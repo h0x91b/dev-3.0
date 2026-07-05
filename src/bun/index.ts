@@ -247,6 +247,7 @@ log.info("CLI socket server ready", { path: cliSocketPath });
 const { setOnPtyDied, setOnBell, setOnIdle, setOnPaneExited, setOnOsc52Copy, getActiveSessionIds, getPtyPort } = await import("./pty-server");
 const { startPortScanPoller, stopPortScanPoller } = await import("./port-scanner");
 const { startResourceMonitor, stopResourceMonitor } = await import("./resource-monitor");
+const { startRateLimitMonitor, stopRateLimitMonitor } = await import("./rate-limit-monitor");
 
 // Pin the tmux binary before any poller talks to the tmux server — the bare
 // PATH `tmux` may be a version the running server rejects, or missing entirely
@@ -395,6 +396,15 @@ startResourceMonitor((name, payload) => {
 	}
 });
 
+// Start background agent rate-limit monitor (Claude statusLine dump / Codex rollouts)
+startRateLimitMonitor((name, payload) => {
+	try {
+		broadcastToAllWindows(name, payload);
+	} catch (err) {
+		log.error("Failed to push rate-limit update", { error: String(err) });
+	}
+});
+
 // Wire PTY death notifications
 setOnPtyDied((sessionKey) => {
 	try {
@@ -497,6 +507,7 @@ function runGlobalQuitCleanup(): void {
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
+	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }
 	// Tear down every per-task cloudflared process spawned by the GUI's
 	// `Expose port` button or by `--expose-ports`. Leaving them running

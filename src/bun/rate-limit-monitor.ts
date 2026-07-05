@@ -1,0 +1,227 @@
+/**
+ * Agent rate-limit monitor — periodically reads the two LOCAL rate-limit
+ * sources (no API calls) and pushes changes to the renderer:
+ *
+ * - Claude: ~/.dev3.0/data/rate-limits/claude.json, written by the injected
+ *   `dev3 statusline` wrapper on every statusLine refresh of any dev3-launched
+ *   Claude session (see src/cli/commands/statusline.ts).
+ * - Codex: the newest rollout file under ~/.codex/sessions/YYYY/MM/DD/ — the
+ *   tail contains `token_count` events with a `rate_limits` object.
+ *
+ * Also owns the static `--settings` file injected into Claude launches, which
+ * routes the session's statusLine through `dev3 statusline`.
+ */
+
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, openSync, readSync, closeSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../shared/rate-limits";
+import { extractCodexSnapshotFromRolloutLines, parseClaudeStatusLinePayload } from "../shared/rate-limits";
+import { DEV3_HOME } from "./paths";
+import { createLogger } from "./logger";
+import { loadSettings } from "./settings";
+
+const log = createLogger("rate-limit-monitor");
+const POLL_INTERVAL_MS = 30_000;
+/** How much of a rollout file tail to scan for the last rate_limits event. */
+const CODEX_TAIL_BYTES = 256 * 1024;
+/** How many most-recent day directories to consider when locating the live rollout. */
+const CODEX_DAY_DIRS_TO_SCAN = 3;
+
+export const RATE_LIMITS_DIR = join(DEV3_HOME, "data", "rate-limits");
+export const CLAUDE_RATE_LIMIT_DUMP_PATH = join(RATE_LIMITS_DIR, "claude.json");
+/** The static settings file injected via `claude --settings <path>`. */
+export const CLAUDE_STATUSLINE_SETTINGS_PATH = join(RATE_LIMITS_DIR, "claude-statusline-settings.json");
+
+type PushMessageFn = (name: string, payload: unknown) => void;
+
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let pushMessageFn: PushMessageFn | null = null;
+let lastPushedKey = "";
+let cachedReport: AgentRateLimitsReport | null = null;
+
+/**
+ * Write (once) the settings file whose statusLine routes through
+ * `dev3 statusline`, and return its path. Returns null when writing fails —
+ * callers then simply skip `--settings` injection.
+ */
+export function ensureClaudeStatusLineSettings(): string | null {
+	try {
+		mkdirSync(RATE_LIMITS_DIR, { recursive: true });
+		const dev3Bin = join(homedir(), ".dev3.0", "bin", "dev3");
+		const desired = JSON.stringify({
+			statusLine: { type: "command", command: `"${dev3Bin}" statusline` },
+		});
+		let current = "";
+		try {
+			current = readFileSync(CLAUDE_STATUSLINE_SETTINGS_PATH, "utf-8");
+		} catch {
+			// missing — will write below
+		}
+		if (current !== desired) writeFileSync(CLAUDE_STATUSLINE_SETTINGS_PATH, desired);
+		return CLAUDE_STATUSLINE_SETTINGS_PATH;
+	} catch (err) {
+		log.warn("Failed to write statusline settings file", { error: String(err) });
+		return null;
+	}
+}
+
+/** Parse the dump written by `dev3 statusline`. Null when absent/corrupt. */
+export function readClaudeSnapshot(dumpPath: string = CLAUDE_RATE_LIMIT_DUMP_PATH): AgentRateLimitSnapshot | null {
+	try {
+		if (!existsSync(dumpPath)) return null;
+		const parsed = JSON.parse(readFileSync(dumpPath, "utf-8")) as { capturedAt?: number; payload?: unknown };
+		const capturedAt = typeof parsed.capturedAt === "number" ? parsed.capturedAt : statSync(dumpPath).mtimeMs;
+		return parseClaudeStatusLinePayload(parsed.payload, capturedAt);
+	} catch {
+		return null; // torn write or corrupt file — keep whatever we knew before
+	}
+}
+
+function codexSessionsRoot(): string {
+	return process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "sessions") : join(homedir(), ".codex", "sessions");
+}
+
+function listSortedDirs(dir: string): string[] {
+	try {
+		return readdirSync(dir, { withFileTypes: true })
+			.filter((e) => e.isDirectory())
+			.map((e) => e.name)
+			.sort();
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Locate the most recently written rollout file. Sessions can span midnight
+ * (a file named for yesterday may still be the live one), so pick by mtime
+ * across the last few day directories rather than by filename alone.
+ */
+export function findLatestCodexRollout(root: string = codexSessionsRoot()): string | null {
+	const dayDirs: string[] = [];
+	for (const year of listSortedDirs(root).reverse()) {
+		for (const month of listSortedDirs(join(root, year)).reverse()) {
+			for (const day of listSortedDirs(join(root, year, month)).reverse()) {
+				dayDirs.push(join(root, year, month, day));
+				if (dayDirs.length >= CODEX_DAY_DIRS_TO_SCAN) break;
+			}
+			if (dayDirs.length >= CODEX_DAY_DIRS_TO_SCAN) break;
+		}
+		if (dayDirs.length >= CODEX_DAY_DIRS_TO_SCAN) break;
+	}
+
+	let newest: { path: string; mtimeMs: number } | null = null;
+	for (const dir of dayDirs) {
+		let entries: string[];
+		try {
+			entries = readdirSync(dir).filter((f) => f.startsWith("rollout-") && f.endsWith(".jsonl"));
+		} catch {
+			continue;
+		}
+		for (const file of entries) {
+			const path = join(dir, file);
+			try {
+				const mtimeMs = statSync(path).mtimeMs;
+				if (!newest || mtimeMs > newest.mtimeMs) newest = { path, mtimeMs };
+			} catch {
+				// file vanished mid-scan
+			}
+		}
+	}
+	return newest?.path ?? null;
+}
+
+/** Read the tail of a file (bounded), split into lines. */
+function readTailLines(path: string, maxBytes: number): string[] {
+	const size = statSync(path).size;
+	const start = Math.max(0, size - maxBytes);
+	const length = size - start;
+	if (length <= 0) return [];
+	const fd = openSync(path, "r");
+	try {
+		const buf = Buffer.alloc(length);
+		const read = readSync(fd, buf, 0, length, start);
+		return buf.toString("utf-8", 0, read).split("\n");
+	} finally {
+		closeSync(fd);
+	}
+}
+
+export function readCodexSnapshot(root: string = codexSessionsRoot()): AgentRateLimitSnapshot | null {
+	try {
+		const rollout = findLatestCodexRollout(root);
+		if (!rollout) return null;
+		return extractCodexSnapshotFromRolloutLines(readTailLines(rollout, CODEX_TAIL_BYTES));
+	} catch (err) {
+		log.warn("Codex rollout scan failed", { error: String(err) });
+		return null;
+	}
+}
+
+async function trackingEnabled(): Promise<boolean> {
+	try {
+		const settings = await loadSettings();
+		return settings.agentRateLimitTracking !== false;
+	} catch {
+		return true;
+	}
+}
+
+export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport> {
+	if (!(await trackingEnabled())) {
+		return { snapshots: [], generatedAt: Date.now() };
+	}
+	const snapshots: AgentRateLimitSnapshot[] = [];
+	const claude = readClaudeSnapshot();
+	if (claude) snapshots.push(claude);
+	const codex = readCodexSnapshot();
+	if (codex) snapshots.push(codex);
+	const report: AgentRateLimitsReport = { snapshots, generatedAt: Date.now() };
+	cachedReport = report;
+	return report;
+}
+
+/** Change-detection key: pushes happen only when the meaningful bits move. */
+function reportKey(report: AgentRateLimitsReport): string {
+	return report.snapshots
+		.map((s) => `${s.source}:${s.capturedAt}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}`)
+		.join("|");
+}
+
+async function poll() {
+	try {
+		if (!pushMessageFn) return;
+		const report = await getAgentRateLimitsReport();
+		const key = reportKey(report);
+		if (key !== lastPushedKey) {
+			lastPushedKey = key;
+			pushMessageFn("agentRateLimitsUpdated", report);
+		}
+	} catch (err) {
+		log.error("Rate-limit poll cycle failed", { error: String(err) });
+	} finally {
+		pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+	}
+}
+
+export function startRateLimitMonitor(push: PushMessageFn): void {
+	pushMessageFn = push;
+	log.info("Rate-limit monitor started", { intervalMs: POLL_INTERVAL_MS });
+	pollTimer = setTimeout(poll, 3_000); // first read shortly after startup
+}
+
+export function stopRateLimitMonitor(): void {
+	if (pollTimer) {
+		clearTimeout(pollTimer);
+		pollTimer = null;
+	}
+	pushMessageFn = null;
+	lastPushedKey = "";
+	cachedReport = null;
+}
+
+/** Last computed report (may be null before the first poll/RPC). */
+export function getCachedRateLimitsReport(): AgentRateLimitsReport | null {
+	return cachedReport;
+}

@@ -116,6 +116,8 @@ const settings = {
 	"settings.preventSleep": "Evitar suspensión",
 	"settings.preventSleepDesc": "Mantiene el sistema despierto mientras dev-3.0 está abierto (forzado cuando el acceso remoto está activo). También se alterna desde la cabecera.",
 	"settings.preventSleepNotAvailable": "No se encontró herramienta para inhibir suspensión (caffeinate en macOS, systemd-inhibit en Linux).",
+	"settings.rateLimitTracking": "Seguimiento de límites de agentes",
+	"settings.rateLimitTrackingDesc": "Muestra en la cabecera el uso en vivo de los límites de Claude/Codex. Los datos de Claude se capturan enrutando el statusLine de la sesión a través de dev3 — tu propio statusLine sigue funcionando, dev3 solo añade su segmento.",
 	"settings.tipsSection": "Consejos",
 	"settings.tipsDisabled": "Desactivar consejos de funciones",
 	"settings.tipsReset": "Restablecer consejos",

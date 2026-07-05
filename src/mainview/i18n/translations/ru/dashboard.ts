@@ -109,6 +109,12 @@ const dashboard = {
 	"caffeine.tooltipOff": "Компьютеру разрешён сон — нажмите, чтобы держать его активным, пока работает dev-3.0",
 	"caffeine.tooltipForced": "Принудительно включено, пока активен удалённый доступ — машина должна оставаться доступной",
 
+	// Ambient agent rate-limit indicator
+	"rateLimits.tooltipTitle": "Лимиты агентов",
+	"rateLimits.resetsIn": "сброс через {time}",
+	"rateLimits.credits": "кредиты: {balance}",
+	"rateLimits.stale": "Данные {time} назад — обновляются, пока активна сессия агента",
+
 	// Remote Access QR Modal
 	"remote.title": "Удалённый доступ",
 	"remote.subtitle": "Отсканируйте QR-код, чтобы открыть интерфейс на телефоне или другом устройстве",

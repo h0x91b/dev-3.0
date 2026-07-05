@@ -11,6 +11,7 @@ import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
 import PreventSleepToggle from "./PreventSleepToggle";
+import RateLimitIndicator from "./RateLimitIndicator";
 import BottomSheet from "./BottomSheet";
 import Tooltip from "./Tooltip";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -533,6 +534,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs */}
 				<PreventSleepToggle compact={compact} />
+
+				{/* Ambient agent rate-limit indicator — hidden until any limit data exists */}
+				<RateLimitIndicator compact={compact} />
 
 				{/* Quick Shell — opens the built-in Operations shell in $HOME (folded into the kebab on narrow) */}
 				{!isNarrow && (

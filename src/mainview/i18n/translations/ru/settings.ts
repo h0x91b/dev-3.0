@@ -116,6 +116,8 @@ const settings = {
 	"settings.preventSleep": "Не давать уснуть",
 	"settings.preventSleepDesc": "Не даёт системе уснуть, пока открыт dev-3.0 (форсится при активном удалённом доступе). Также переключается из шапки.",
 	"settings.preventSleepNotAvailable": "Инструмент для блокировки сна не найден (caffeinate на macOS, systemd-inhibit на Linux).",
+	"settings.rateLimitTracking": "Отслеживание лимитов агентов",
+	"settings.rateLimitTrackingDesc": "Показывает в шапке живое использование лимитов Claude/Codex. Данные Claude собираются через statusLine сессии, маршрутизируемый через dev3 — ваш собственный statusLine продолжает работать, dev3 лишь дописывает свой сегмент.",
 	"settings.tipsSection": "Подсказки",
 	"settings.tipsDisabled": "Отключить подсказки",
 	"settings.tipsReset": "Сбросить подсказки",

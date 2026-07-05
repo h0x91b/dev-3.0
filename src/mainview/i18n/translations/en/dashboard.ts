@@ -101,6 +101,12 @@ const dashboard = {
 	"caffeine.tooltipOff": "Letting the computer sleep — click to keep it awake while dev-3.0 runs",
 	"caffeine.tooltipForced": "Forced on while remote access is active — the machine must stay reachable",
 
+	// Ambient agent rate-limit indicator
+	"rateLimits.tooltipTitle": "Agent rate limits",
+	"rateLimits.resetsIn": "resets in {time}",
+	"rateLimits.credits": "credits: {balance}",
+	"rateLimits.stale": "Data from {time} ago — refreshes while an agent session is active",
+
 	// Remote Access QR Modal
 	"remote.title": "Remote Access",
 	"remote.subtitle": "Scan this QR code to open the UI on your phone or another device",

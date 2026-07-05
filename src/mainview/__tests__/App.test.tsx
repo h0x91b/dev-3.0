@@ -23,6 +23,7 @@ vi.mock("../rpc", () => ({
 			pullProjectMain: vi.fn(),
 			getPreventSleepState: vi.fn().mockResolvedValue({ enabled: false, available: false, forcedByRemote: false }),
 			setPreventSleep: vi.fn(),
+			getAgentRateLimits: vi.fn().mockResolvedValue({ generatedAt: 0, snapshots: [] }),
 			getAgents: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({
 				defaultAgentId: "builtin-claude",

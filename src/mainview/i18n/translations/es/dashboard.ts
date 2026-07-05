@@ -101,6 +101,12 @@ const dashboard = {
 	"caffeine.tooltipOff": "Permitiendo que el equipo se suspenda — haz clic para mantenerlo activo mientras dev-3.0 está abierto",
 	"caffeine.tooltipForced": "Forzado mientras el acceso remoto está activo — la máquina debe seguir accesible",
 
+	// Ambient agent rate-limit indicator
+	"rateLimits.tooltipTitle": "Límites de agentes",
+	"rateLimits.resetsIn": "se restablece en {time}",
+	"rateLimits.credits": "créditos: {balance}",
+	"rateLimits.stale": "Datos de hace {time} — se actualizan mientras hay una sesión de agente activa",
+
 	// Remote Access QR Modal
 	"remote.title": "Acceso remoto",
 	"remote.subtitle": "Escanea este código QR para abrir la interfaz en tu teléfono u otro dispositivo",

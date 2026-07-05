@@ -9,6 +9,7 @@ import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, ty
 import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
+import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 
 const log = createLogger("agents");
@@ -397,6 +398,12 @@ export interface CommandOptions {
 	/** When true, skip injecting the DEV3_SYSTEM_PROMPT via --append-system-prompt.
 	 *  Used for review agents that rely on hooks instead of system-prompt instructions. */
 	skipSystemPrompt?: boolean;
+	/** Path to the generated settings file that routes the Claude statusLine
+	 *  through `dev3 statusline` (rate-limit capture + delegation to the user's
+	 *  original statusLine). Injected as `--settings <path>` for Claude-based
+	 *  agents. Set automatically by resolveCommandForAgent/resolveCommandForProject
+	 *  when rate-limit tracking is enabled. */
+	statuslineSettingsFile?: string;
 }
 
 /**
@@ -533,6 +540,18 @@ export function resolveAgentCommand(
 		args.push("--append-system-prompt", shellEscape(DEV3_SYSTEM_PROMPT));
 	}
 
+	// Route the statusLine through `dev3 statusline` for rate-limit capture.
+	// statusLine is scalar (last-wins) across settings levels, so the wrapper
+	// DELEGATES to the user's original statusLine — see rate-limit-monitor.ts.
+	// Skip when the user passes their own --settings via additionalArgs.
+	if (
+		isClaudeCommand(baseCmd) &&
+		options?.statuslineSettingsFile &&
+		!config?.additionalArgs?.some((a) => a === "--settings" || a.startsWith("--settings="))
+	) {
+		args.push("--settings", quoteIfUnsafe(options.statuslineSettingsFile));
+	}
+
 	if (config?.additionalArgs) {
 		args.push(...config.additionalArgs);
 	}
@@ -623,6 +642,18 @@ export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfigur
 	return {};
 }
 
+/** Attach the statusLine-wrapper settings file to CommandOptions when
+ *  rate-limit tracking is enabled (only affects Claude-based commands). */
+function applyStatusLineOption(
+	options: CommandOptions | undefined,
+	settings: { agentRateLimitTracking?: boolean },
+): CommandOptions | undefined {
+	if (settings.agentRateLimitTracking === false) return options;
+	const settingsFile = ensureClaudeStatusLineSettings();
+	if (!settingsFile) return options;
+	return { ...options, statuslineSettingsFile: settingsFile };
+}
+
 /** Apply saved binary path override if the cached file still exists on disk. */
 function applyBinaryPathOverride(agent: CodingAgent, savedPaths: Record<string, string> | undefined): CodingAgent {
 	const savedPath = savedPaths?.[agent.id];
@@ -647,7 +678,7 @@ export async function resolveCommandForAgent(
 	const settings = await loadSettings();
 	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 
-	const command = resolveAgentCommand(agentWithPath, config, ctx, options);
+	const command = resolveAgentCommand(agentWithPath, config, ctx, applyStatusLineOption(options, settings));
 	// Agent-type defaults first, then config envVars override
 	const extraEnv: Record<string, string> = { ...getDefaultEnvForAgent(agent, config) };
 	if (config?.envVars) {
@@ -680,7 +711,7 @@ export async function resolveCommandForProject(
 		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
-		const command = resolveAgentCommand(agentWithPath, config, ctx, options);
+		const command = resolveAgentCommand(agentWithPath, config, ctx, applyStatusLineOption(options, settings));
 		// Agent-type defaults first, then buildTaskEnv (which includes config envVars) overrides
 		const agentDefaults = getDefaultEnvForAgent(agent, config);
 		const extraEnv = { ...agentDefaults, ...buildTaskEnv(project, taskTitle, "", worktreePath, config) };

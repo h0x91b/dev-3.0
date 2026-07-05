@@ -86,6 +86,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 			importShellEnv: data.importShellEnv === false ? false : undefined,
 			focusMode: data.focusMode === true ? true : undefined,
+			// Default-on toggle — only an explicit false is a stored opt-out.
+			agentRateLimitTracking: data.agentRateLimitTracking === false ? false : undefined,
 			// Boolean preference — both true (watch) and false (don't watch) are
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
@@ -149,6 +151,8 @@ export function loadSettingsSync(): GlobalSettings {
 			skipQuitDialog: data.skipQuitDialog === true ? true : undefined,
 			importShellEnv: data.importShellEnv === false ? false : undefined,
 			focusMode: data.focusMode === true ? true : undefined,
+			// Default-on toggle — only an explicit false is a stored opt-out.
+			agentRateLimitTracking: data.agentRateLimitTracking === false ? false : undefined,
 			// Boolean preference — both true (watch) and false (don't watch) are
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
