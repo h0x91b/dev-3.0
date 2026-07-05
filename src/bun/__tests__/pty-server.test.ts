@@ -1474,15 +1474,33 @@ describe("dereferenceTmuxShim", () => {
 	});
 
 	it("resolves the shim to its symlink target", () => {
+		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
 		vi.mocked(realpathSync).mockReturnValue(PATH_TMUX);
 		vi.mocked(readlinkSync).mockReturnValue(PATH_TMUX);
 		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBe(PATH_TMUX);
 	});
 
 	it("removes a broken/cyclic shim and returns undefined", () => {
+		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
 		vi.mocked(realpathSync).mockImplementation(() => { throw new Error("ELOOP"); });
 		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBeUndefined();
 		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
+	});
+
+	it("leaves a regular file at the shim path alone and uses it as-is", () => {
+		// The app only ever creates a symlink there — a regular file is the
+		// user's own binary and must never be deleted.
+		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
+		mockExistsSync.mockReturnValue(true);
+		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBe(TMUX_SHIM_PATH);
+		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
+	});
+
+	it("returns undefined for a missing shim path that is not a symlink", () => {
+		vi.mocked(lstatSync).mockImplementation(() => { throw new Error("ENOENT"); });
+		mockExistsSync.mockReturnValue(false);
+		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBeUndefined();
+		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
 	});
 });
 
