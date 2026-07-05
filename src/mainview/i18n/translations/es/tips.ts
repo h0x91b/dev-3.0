@@ -205,7 +205,7 @@ const tips = {
 	"tip.closePanePicker.title": "Elige el panel a cerrar",
 	"tip.closePanePicker.body": "Pulsa Cerrar panel y elige la división (se pone roja) — o pulsa Ctrl+D dentro de un panel para cerrarlo al instante.",
 	"tip.helpMode.title": "Explica esta pantalla",
-	"tip.helpMode.body": "Pulsa ⇧⌘/ (o Help → Explain This Screen) — cada zona recibe una insignia (i); haz clic para saber qué hace.",
+	"tip.helpMode.body": "Haz clic en el ? de la cabecera o pulsa ⇧⌘/ — cada zona recibe una insignia (i); haz clic para saber qué hace.",
 };
 
 export default tips;

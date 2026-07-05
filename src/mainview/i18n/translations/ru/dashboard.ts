@@ -82,6 +82,7 @@ const dashboard = {
 	"header.changelog": "Журнал изменений",
 	"header.changelogLabel": "Change Log",
 	"header.changelogTooltip": "Журнал изменений",
+	"header.helpTooltip": "Объяснить этот экран",
 	"header.githubTooltip": "Сайт проекта",
 	"header.githubLabel": "Сайт",
 	"header.statsTooltip": "Статистика продуктивности",

@@ -76,6 +76,7 @@ const dashboard = {
 	"header.changelog": "Registro de cambios",
 	"header.changelogLabel": "Change Log",
 	"header.changelogTooltip": "Ver registro de cambios",
+	"header.helpTooltip": "Explicar esta pantalla",
 	"header.githubTooltip": "Sitio web",
 	"header.githubLabel": "Sitio web",
 	"header.statsTooltip": "Estadísticas de productividad",

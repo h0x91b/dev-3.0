@@ -1,0 +1,1 @@
+Added a bright animated "?" button to the global header — visible on every screen, it triggers help mode ("Explain this screen", same as ⇧⌘/). The hand-drawn icon redraws its question-mark curve and drops the dot in on hover, matching the other animated header glyphs.

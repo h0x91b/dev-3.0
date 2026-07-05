@@ -76,6 +76,7 @@ const dashboard = {
 	"header.changelog": "Changelog",
 	"header.changelogLabel": "Change Log",
 	"header.changelogTooltip": "View changelog",
+	"header.helpTooltip": "Explain this screen",
 	"header.githubTooltip": "Website",
 	"header.githubLabel": "Website",
 	"header.statsTooltip": "Productivity stats",

@@ -714,6 +714,40 @@ describe("GlobalHeader — compact layout", () => {
 	});
 });
 
+describe("GlobalHeader — help mode button", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	it("renders the bright ? button on every screen", () => {
+		mockMatchMedia(false);
+		renderHeader({ screen: "dashboard" });
+		expect(screen.getByTestId("header-help-mode")).toBeInTheDocument();
+		expect(screen.getByLabelText("Explain this screen")).toBeInTheDocument();
+	});
+
+	it("stays inline even in compact layout (never folds into the kebab)", () => {
+		mockMatchMedia(true);
+		renderHeader({ screen: "project", projectId: "p1" });
+		expect(screen.getByTestId("header-help-mode")).toBeInTheDocument();
+	});
+
+	it("dispatches menu:enter-help-mode on click", async () => {
+		mockMatchMedia(false);
+		const user = userEvent.setup();
+		const listener = vi.fn();
+		window.addEventListener("menu:enter-help-mode", listener);
+		try {
+			renderHeader({ screen: "dashboard" });
+			await user.click(screen.getByTestId("header-help-mode"));
+			expect(listener).toHaveBeenCalledTimes(1);
+		} finally {
+			window.removeEventListener("menu:enter-help-mode", listener);
+		}
+	});
+});
+
 describe("GlobalHeader — back/forward navigation", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

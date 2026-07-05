@@ -300,3 +300,14 @@ export function UpdateReadyIcon({ className }: HeaderIconProps) {
 		</svg>
 	);
 }
+
+// 22 — Help mode: the question mark redraws itself, then the dot drops in.
+export function HelpModeIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<circle cx="12" cy="12" r="9.2" className="hdr hdr-help-ring" />
+			<path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2.5-3 4" pathLength={1} className="hdr-draw hdr-help-q" />
+			<path d="M12 17.5h.01" className="hdr hdr-help-dot" />
+		</svg>
+	);
+}
