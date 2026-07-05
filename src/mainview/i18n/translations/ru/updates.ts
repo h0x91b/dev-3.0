@@ -19,6 +19,7 @@ const updates = {
 	"update.downloading": "Загрузка...",
 	"update.upToDateVersion": "У вас последняя версия — v{version}",
 	"update.checkFailedDetail": "Не удалось проверить обновления: {error}",
+	"update.applyFailed": "Не удалось применить обновление: {error}",
 
 	// Requirements
 	"requirements.title": "Системные требования",

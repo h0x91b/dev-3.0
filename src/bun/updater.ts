@@ -8,6 +8,24 @@ const log = createLogger("updater");
 const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const BASE_URL = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
 
+// Electrobun's Updater keeps its state (updateReady flag, downloaded tar
+// bookkeeping) in module-level memory, and its checkForUpdate() OVERWRITES
+// that state with the parsed remote update.json — which has no `updateReady`
+// field. Any check that runs after a download therefore wipes the ready flag
+// (issue #813: dead "Restart to Update" button). Serialize every download /
+// apply through a single-flight queue so a periodic auto-check can never
+// interleave with (and wipe state under) a user-initiated apply.
+let updaterQueue: Promise<unknown> = Promise.resolve();
+
+function withUpdaterLock<T>(fn: () => Promise<T>): Promise<T> {
+	const run = updaterQueue.then(fn, fn);
+	updaterQueue = run.then(
+		() => undefined,
+		() => undefined,
+	);
+	return run;
+}
+
 interface UpdateJson {
 	version: string;
 	hash: string;
@@ -78,7 +96,14 @@ export async function checkForUpdateWithChannel(channel: string): Promise<Update
 	}
 }
 
-export async function downloadUpdateForChannel(
+export function downloadUpdateForChannel(
+	channel: string,
+	onProgress?: (status: string, progress?: number) => void,
+): Promise<{ ok: boolean; error?: string }> {
+	return withUpdaterLock(() => doDownloadUpdateForChannel(channel, onProgress));
+}
+
+async function doDownloadUpdateForChannel(
 	channel: string,
 	onProgress?: (status: string, progress?: number) => void,
 ): Promise<{ ok: boolean; error?: string }> {
@@ -101,28 +126,26 @@ export async function downloadUpdateForChannel(
 				hash: checkResult?.hash?.slice(0, 12),
 			});
 
-			if (checkResult?.updateReady) {
-				// Already downloaded from a previous attempt
-				log.info("Update already downloaded and ready");
-				onProgress?.("complete", 100);
-				return { ok: true };
-			}
-
 			if (!checkResult?.updateAvailable) {
 				const msg = "Built-in updater reports no update available";
 				log.warn(msg);
 				return { ok: false, error: msg };
 			}
 
-			// Step 2: download the update (patch or full bundle)
+			// Step 2: download the update (patch or full bundle). If the tar is
+			// already on disk from a previous attempt, this just re-marks the
+			// update as ready without downloading anything.
 			await Updater.downloadUpdate();
 
 			// Step 3: verify the update is actually ready after download.
 			// Electrobun may not mark updateReady synchronously after downloadUpdate resolves.
+			// Poll via updateInfo() ONLY — calling checkForUpdate() here would itself
+			// wipe the updateReady flag we are waiting for (it overwrites Electrobun's
+			// state with the remote update.json, which has no such field).
 			// Use exponential backoff: 500ms, 1s, 2s, 4s, 8s, 16s, 30s (~61.5s total).
 			const backoffDelays = [500, 1000, 2000, 4000, 8000, 16000, 30000];
 			for (let i = 0; i < backoffDelays.length; i++) {
-				const info = i === 0 ? Updater.updateInfo?.() : await Updater.checkForUpdate();
+				const info = Updater.updateInfo?.();
 				if (info?.updateReady) {
 					log.info("Update ready", { attempt: i + 1 });
 					onProgress?.("complete", 100);
@@ -136,7 +159,7 @@ export async function downloadUpdateForChannel(
 			}
 
 			// Final check after last delay
-			const final = await Updater.checkForUpdate();
+			const final = Updater.updateInfo?.();
 			if (final?.updateReady) {
 				log.info("Update ready after final re-check");
 				onProgress?.("complete", 100);
@@ -204,28 +227,39 @@ export async function downloadUpdateForChannel(
 	}
 }
 
-export async function applyUpdate(): Promise<void> {
-	// Verify the update is actually ready before attempting to apply.
-	// Without this guard, applyUpdate() may just restart the app
-	// without applying anything — causing an infinite update loop.
-	let info = Updater.updateInfo?.();
+export function applyUpdate(): Promise<void> {
+	return withUpdaterLock(doApplyUpdate);
+}
+
+async function doApplyUpdate(): Promise<void> {
+	const info = Updater.updateInfo?.();
 	log.info("Applying update...", {
 		updateReady: info?.updateReady,
 		version: info?.version,
 	});
 
-	if (info && !info.updateReady) {
-		// Try refreshing Electrobun's internal state — the download may have
-		// completed but the ready flag wasn't propagated yet.
-		log.warn("updateReady is false, refreshing via checkForUpdate...");
-		const refreshed = await Updater.checkForUpdate();
-		if (refreshed?.updateReady) {
-			log.info("Update now ready after re-check");
-			info = refreshed;
-		} else {
-			log.error("applyUpdate called but updateReady is still false after re-check — skipping to avoid restart loop");
-			throw new Error("Update not ready to apply");
-		}
+	// Always re-run downloadUpdate() before applying — it is the ONLY call that
+	// can (re)set Electrobun's in-memory updateReady flag, and it is cheap when
+	// the downloaded tar is already on disk (one update.json fetch + a stat).
+	// This heals two dead-button states in one move:
+	//   1. updateReady wiped by any checkForUpdate() that ran after the
+	//      download (periodic auto-check, menu check) — the tar is still on
+	//      disk, so this just re-marks it ready.
+	//   2. A newer release shipped after the download: updateReady points at a
+	//      stale tar and Electrobun's applyUpdate() would silently no-op on the
+	//      missing latest tar, leaving the UI stuck on "Restarting...". Here
+	//      the fresh tar gets downloaded instead.
+	if (!info?.updateReady) {
+		log.warn("updateReady is false, repairing via downloadUpdate...");
+	}
+	await Updater.downloadUpdate();
+
+	const repaired = Updater.updateInfo?.();
+	if (!repaired?.updateReady) {
+		log.error("applyUpdate: update still not ready after repair download — aborting to avoid a no-op restart", {
+			error: repaired?.error,
+		});
+		throw new Error("Update not ready to apply");
 	}
 
 	// The updater restarts the app via Utils.quit(). Mark the quit as confirmed
@@ -268,7 +302,7 @@ export function startAutoCheck(
 	// Check on startup (slight delay to not block init)
 	setTimeout(doCheck, 10_000);
 
-	// Then every 3 hours
+	// Then every CHECK_INTERVAL_MS
 	setInterval(doCheck, CHECK_INTERVAL_MS);
 
 	log.info("Auto-update check scheduled", { intervalMs: CHECK_INTERVAL_MS });

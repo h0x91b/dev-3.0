@@ -24,7 +24,16 @@ vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
 }));
 
+vi.mock("../../toast", () => ({
+	toast: {
+		error: vi.fn(),
+		info: vi.fn(),
+		success: vi.fn(),
+	},
+}));
+
 import { api } from "../../rpc";
+import { toast } from "../../toast";
 
 const mockedApi = vi.mocked(api, true);
 
@@ -557,6 +566,25 @@ describe("GlobalHeader — update countdown", () => {
 		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 
 		expect(mockedApi.request.applyUpdate).toHaveBeenCalled();
+	});
+
+	it("shows an error toast and re-enables restart when applyUpdate fails (issue #813)", async () => {
+		mockedApi.request.applyUpdate.mockRejectedValue(new Error("Update not ready to apply"));
+		renderHeader(
+			{ screen: "dashboard" },
+			[project1],
+			vi.fn(),
+			[],
+			{ updateVersion: "1.2.3" },
+		);
+
+		act(() => { fireEvent.click(screen.getByText(/Restart to Update \(\d+s\)/)); });
+		// Flush the async handleRestart (saveLastRoute → applyUpdate rejection)
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+
+		expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Update not ready to apply"));
+		// The UI must not stay stuck on "Restarting..."
+		expect(screen.queryByText("Restarting...")).not.toBeInTheDocument();
 	});
 
 	it("saves current route via RPC before applying update", () => {
