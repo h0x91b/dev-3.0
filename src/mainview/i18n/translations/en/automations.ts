@@ -48,6 +48,7 @@ const automations = {
 	"automations.saving": "Saving…",
 	"automations.missedToast": "Automation “{name}” missed {count} scheduled run(s) while the app was offline.",
 	"automations.missedToastCaughtUp": "Automation “{name}” missed {count} run(s) while offline — caught up with one run now.",
+	"automations.newTaskLink": "Runs on a schedule? Set up an Automation",
 	"task.automationRun": "Created by an automation",
 };
 

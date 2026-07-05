@@ -48,6 +48,7 @@ const automations = {
 	"automations.saving": "Guardando…",
 	"automations.missedToast": "La automatización «{name}» perdió {count} ejecución(es) programada(s) mientras la app estaba apagada.",
 	"automations.missedToastCaughtUp": "La automatización «{name}» perdió {count} ejecución(es) — recuperada con una ejecución ahora.",
+	"automations.newTaskLink": "¿Se repite según un horario? Configura una automatización",
 	"task.automationRun": "Creada por una automatización",
 };
 

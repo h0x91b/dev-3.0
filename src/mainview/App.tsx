@@ -1687,6 +1687,10 @@ function App() {
 						setCreateTaskProjectId(null);
 						setLaunchModal({ task, targetStatus: "in-progress", project: createTaskProject });
 					}}
+					onOpenAutomations={() => {
+						setCreateTaskProjectId(null);
+						navigate({ screen: "project-settings", projectId: createTaskProject.id, tab: "automations" });
+					}}
 				/>
 			)}
 			{launchModal && (

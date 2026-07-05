@@ -48,6 +48,7 @@ const automations = {
 	"automations.saving": "Сохранение…",
 	"automations.missedToast": "Автоматизация «{name}» пропустила запусков: {count} — приложение было выключено.",
 	"automations.missedToastCaughtUp": "Автоматизация «{name}» пропустила запусков: {count} — навёрстано одним запуском сейчас.",
+	"automations.newTaskLink": "Нужно по расписанию? Настройте автоматизацию",
 	"task.automationRun": "Создана автоматизацией",
 };
 
