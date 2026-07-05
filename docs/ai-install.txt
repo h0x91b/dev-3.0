@@ -18,6 +18,7 @@ Requires Homebrew (https://brew.sh). If `brew` is missing, ask the user to insta
 
 ```sh
 brew tap h0x91b/dev3
+brew trust h0x91b/dev3   # newer Homebrew refuses untrusted third-party taps; skip if `brew trust` doesn't exist
 brew install --cask dev3
 ```
 
@@ -34,9 +35,11 @@ Works on any box, including headless cloud VMs. Never run Homebrew as root — o
 With Homebrew (https://docs.brew.sh/Homebrew-on-Linux):
 
 ```sh
-brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3
+brew tap h0x91b/dev3 && brew trust h0x91b/dev3 && brew install h0x91b/dev3/dev3
 dev3 remote
 ```
+
+(On older Homebrew without `brew trust`, drop that step from the chain.)
 
 `dev3 remote` prints an access URL + QR code — the user opens it in any browser (even a phone) and gets the full UI. A Cloudflare quick tunnel is started by default so no SSH forwarding is needed; pass `--no-tunnel` for local-only.
 
