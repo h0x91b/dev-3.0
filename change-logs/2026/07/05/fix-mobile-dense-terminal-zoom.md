@@ -1,0 +1,1 @@
+On mobile devices the task terminal and diff screens now render at ~2/3 scale (1.5× denser), fitting noticeably more content where space is scarce. Board, dashboard, and settings keep the regular mobile scale. The dense factor multiplies the user's zoom setting without changing it, and the terminal font follows automatically.

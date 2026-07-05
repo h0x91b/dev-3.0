@@ -11,6 +11,7 @@ import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
+import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
 import GlobalSettings from "./components/GlobalSettings";
@@ -82,6 +83,7 @@ function App() {
 	const t = useT();
 	const [, setLocale] = useLocale();
 	useViewport(state.route);
+	useMobileDenseZoom(state.route);
 
 	// Listen for menu actions routed from the bun side. Any menu item that the
 	// renderer is responsible for arrives here as `rpc:menuAction` with
