@@ -1,4 +1,4 @@
-import { writeFileSync, mkdirSync, existsSync, lstatSync, readlinkSync, unlinkSync, symlinkSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, lstatSync, readlinkSync, realpathSync, unlinkSync, symlinkSync } from "node:fs";
 import { access } from "node:fs/promises";
 import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { createLogger } from "./logger";
@@ -215,6 +215,55 @@ async function probeTmuxServer(binary: string, socket: string): Promise<TmuxServ
 	}
 }
 
+/** PATH shim kept in sync with the app-selected tmux binary (see updateTmuxShim). */
+export const TMUX_SHIM_PATH = `${DEV3_HOME}/bin/tmux`;
+
+/**
+ * Resolve a candidate tmux path that may be the PATH shim itself.
+ * `~/.dev3.0/bin` sits first in PATH (it hosts the dev3 CLI), so whichSync
+ * happily returns our own shim. Committing THAT as the tmux binary and then
+ * repointing the shim at "itself" created a self-referential symlink — every
+ * subsequent tmux spawn died with ELOOP. Always dereference the shim to its
+ * real target; a broken/cyclic shim is deleted so it stops poisoning both
+ * resolution and bare `tmux` PATH lookups.
+ */
+export function dereferenceTmuxShim(binaryPath: string): string | undefined {
+	if (binaryPath !== TMUX_SHIM_PATH) return binaryPath;
+	try {
+		realpathSync(binaryPath); // throws on ELOOP cycles and dangling targets
+		return readlinkSync(binaryPath);
+	} catch {
+		log.warn("tmux shim is broken — removing it", { shim: binaryPath });
+		try {
+			unlinkSync(binaryPath);
+		} catch {
+			log.debug("could not remove broken tmux shim (already gone?)");
+		}
+		return undefined;
+	}
+}
+
+/**
+ * Delete `~/.dev3.0/bin/tmux` if it is a broken or self-referential symlink.
+ * Runs at module load, before anything spawns tmux: a poisoned shim sits
+ * first in PATH, so even bare `tmux` spawns fail with ELOOP until it's gone.
+ */
+export function sanitizeTmuxShim(): void {
+	if (!isSymlink(TMUX_SHIM_PATH)) return;
+	try {
+		realpathSync(TMUX_SHIM_PATH);
+	} catch {
+		log.warn("removing broken tmux shim", { shim: TMUX_SHIM_PATH });
+		try {
+			unlinkSync(TMUX_SHIM_PATH);
+		} catch {
+			log.debug("could not remove broken tmux shim (already gone?)");
+		}
+	}
+}
+
+sanitizeTmuxShim();
+
 /**
  * Keep `~/.dev3.0/bin/tmux` symlinked to the binary the app selected.
  * That directory is prepended to PATH in every dev3 pane, so agents running
@@ -223,6 +272,11 @@ async function probeTmuxServer(binary: string, socket: string): Promise<TmuxServ
  */
 export function updateTmuxShim(binaryPath: string): void {
 	if (!binaryPath.startsWith("/")) return; // bare "tmux" — nothing concrete to pin
+	if (binaryPath === TMUX_SHIM_PATH) {
+		// Guard against the ELOOP disaster: never point the shim at itself.
+		log.warn("refusing to point the tmux shim at itself", { shim: binaryPath });
+		return;
+	}
 	try {
 		const shimDir = `${DEV3_HOME}/bin`;
 		mkdirSync(shimDir, { recursive: true });
@@ -259,29 +313,60 @@ function isSymlink(path: string): boolean {
  * reboot, when no incompatible server is left running.
  */
 export async function selectTmuxBinary(preferred: string, fallbackCandidates: string[] = []): Promise<string> {
-	let chosen = preferred;
-	const probe = await probeTmuxServer(preferred, DEFAULT_TMUX_SOCKET);
+	// Never commit the PATH shim itself — dereference it to its real target
+	// (whichSync returns the shim because ~/.dev3.0/bin is first in PATH).
+	const preferredReal =
+		dereferenceTmuxShim(preferred) ??
+		fallbackCandidates.find((c) => c !== TMUX_SHIM_PATH && existsSync(c)) ??
+		"tmux";
+	let chosen = preferredReal;
+	const probe = await probeTmuxServer(preferredReal, DEFAULT_TMUX_SOCKET);
 	if (probe === "mismatch") {
 		for (const candidate of fallbackCandidates) {
-			if (candidate === preferred || !existsSync(candidate)) continue;
+			if (candidate === preferredReal || candidate === TMUX_SHIM_PATH || !existsSync(candidate)) continue;
 			if ((await probeTmuxServer(candidate, DEFAULT_TMUX_SOCKET)) === "compatible") {
 				log.warn("preferred tmux binary can't talk to the running dev3 server — falling back until the server restarts", {
-					preferred,
+					preferred: preferredReal,
 					fallback: candidate,
 				});
 				chosen = candidate;
 				break;
 			}
 		}
-		if (chosen === preferred) {
+		if (chosen === preferredReal) {
 			log.warn("running dev3 tmux server is incompatible with every known tmux binary — a one-time `tmux -L dev3 kill-server` is required", {
-				preferred,
+				preferred: preferredReal,
 			});
 		}
 	}
 	setTmuxBinary(chosen);
 	updateTmuxShim(chosen);
+	await warnIfKnownBadTmux(chosen);
 	return chosen;
+}
+
+// tmux 3.7 clients busy-spin on a congested server socket (10-35s UI freezes
+// when several dev3 instances run at once). Regular single-instance users are
+// unaffected, so this is a log-only warning, not a hard failure.
+const KNOWN_BAD_TMUX_VERSION = /^tmux 3\.7/;
+let badTmuxWarned = false;
+
+async function warnIfKnownBadTmux(binary: string): Promise<void> {
+	if (badTmuxWarned) return;
+	try {
+		const proc = spawn([binary, "-V"], { stdout: "pipe", stderr: "ignore" });
+		const version = (await new Response(proc.stdout).text()).trim();
+		await proc.exited;
+		if (KNOWN_BAD_TMUX_VERSION.test(version)) {
+			badTmuxWarned = true;
+			log.warn(
+				"tmux 3.7 detected — it has a client busy-spin regression when several dev3 instances share a machine. Install the pinned keg: brew trust h0x91b/dev3 && brew install h0x91b/dev3/tmux@3.6",
+				{ binary, version },
+			);
+		}
+	} catch {
+		log.debug("tmux version probe failed", { binary });
+	}
 }
 
 let tmuxBinaryLogged = false;

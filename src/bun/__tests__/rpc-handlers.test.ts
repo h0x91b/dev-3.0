@@ -108,6 +108,9 @@ vi.mock("../pty-server", () => ({
 	getTmuxBinary: vi.fn(() => "tmux"),
 	selectTmuxBinary: vi.fn(async (preferred: string) => preferred),
 	updateTmuxShim: vi.fn(),
+	dereferenceTmuxShim: vi.fn((p: string) => (p === "/mock/dev3-home/bin/tmux" ? "/opt/homebrew/bin/tmux" : p)),
+	sanitizeTmuxShim: vi.fn(),
+	TMUX_SHIM_PATH: "/mock/dev3-home/bin/tmux",
 	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
 	DEFAULT_TMUX_SOCKET: "dev3",
 	tmuxClientCwd: vi.fn(() => "/mock/dev3-home"),
@@ -4645,6 +4648,21 @@ describe("handlers.checkSystemRequirements", () => {
 			"/opt/homebrew/opt/tmux@3.6/bin/tmux",
 			expect.arrayContaining(["/opt/homebrew/bin/tmux"]),
 		);
+	});
+
+	it("dereferences the PATH shim in fallback candidates (ELOOP regression)", async () => {
+		// Without the tmux@3.6 keg, whichSync returns our own ~/.dev3.0/bin/tmux
+		// shim (that dir is first in PATH) — it must never survive as a fallback
+		// candidate, or the shim ends up symlinked onto itself.
+		const SHIM = "/mock/dev3-home/bin/tmux";
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode(SHIM) });
+		vi.mocked(existsSync).mockReturnValue(false); // vendored keg not installed
+
+		await handlers.checkSystemRequirements();
+		expect(pty.dereferenceTmuxShim).toHaveBeenCalledWith(SHIM);
+		const fallbacks = vi.mocked(pty.selectTmuxBinary).mock.calls[0][1] as string[];
+		expect(fallbacks).toContain("/opt/homebrew/bin/tmux");
+		expect(fallbacks).not.toContain(SHIM);
 	});
 });
 

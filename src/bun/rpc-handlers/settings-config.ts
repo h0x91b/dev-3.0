@@ -217,7 +217,10 @@ async function commitTmuxBinary(preferred: string): Promise<string> {
 	} catch {
 		log.debug("which tmux failed while building fallback candidates");
 	}
-	const fallbacks = [pathTmux ?? "", ...VENDORED_TMUX_PATHS].filter(Boolean);
+	// whichSync may hand us our own PATH shim (~/.dev3.0/bin is first in
+	// PATH) — dereference it so we never probe or commit the shim itself.
+	const pathTmuxReal = pathTmux ? pty.dereferenceTmuxShim(pathTmux) : undefined;
+	const fallbacks = [pathTmuxReal ?? "", ...VENDORED_TMUX_PATHS].filter(Boolean);
 	return pty.selectTmuxBinary(preferred, fallbacks);
 }
 

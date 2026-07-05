@@ -22,6 +22,7 @@ vi.mock("node:fs", async (importOriginal) => {
 		mkdirSync: vi.fn(),
 		lstatSync: vi.fn(() => { throw new Error("ENOENT"); }),
 		readlinkSync: vi.fn(() => { throw new Error("EINVAL"); }),
+		realpathSync: vi.fn((p: string) => p),
 		unlinkSync: vi.fn(),
 		symlinkSync: vi.fn(),
 	};
@@ -34,7 +35,7 @@ vi.mock("../spawn", () => ({
 
 // ---- Imports ----
 
-import { existsSync, lstatSync, readlinkSync, unlinkSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, realpathSync, unlinkSync, symlinkSync } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -63,6 +64,9 @@ import {
 	_resetTmuxBinaryLoggedForTests,
 	selectTmuxBinary,
 	updateTmuxShim,
+	dereferenceTmuxShim,
+	sanitizeTmuxShim,
+	TMUX_SHIM_PATH,
 	getTmuxBinary,
 	setTmuxBinary,
 } from "../pty-server";
@@ -1445,6 +1449,63 @@ describe("selectTmuxBinary", () => {
 		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("list-sessions"));
 		expect(probes).toHaveLength(1); // only the preferred binary was probed
 	});
+
+	it("dereferences the PATH shim instead of committing it (ELOOP regression)", async () => {
+		// ~/.dev3.0/bin is first in PATH, so whichSync can hand us our own shim
+		// as "preferred". Committing it and then repointing the shim at it
+		// created a self-referential symlink that broke every tmux spawn.
+		mockSpawn.mockReturnValue(probeResult(0, ""));
+		mockExistsSync.mockReturnValue(true);
+		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
+		vi.mocked(readlinkSync).mockReturnValue(PATH_TMUX);
+		vi.mocked(realpathSync).mockReturnValue(PATH_TMUX);
+		const chosen = await selectTmuxBinary(TMUX_SHIM_PATH, [TMUX_SHIM_PATH]);
+		expect(chosen).toBe(PATH_TMUX);
+		expect(getTmuxBinary()).toBe(PATH_TMUX);
+		expect(vi.mocked(symlinkSync)).not.toHaveBeenCalledWith(TMUX_SHIM_PATH, TMUX_SHIM_PATH);
+	});
+});
+
+describe("dereferenceTmuxShim", () => {
+	const PATH_TMUX = "/opt/homebrew/bin/tmux";
+
+	it("passes through non-shim paths untouched", () => {
+		expect(dereferenceTmuxShim(PATH_TMUX)).toBe(PATH_TMUX);
+	});
+
+	it("resolves the shim to its symlink target", () => {
+		vi.mocked(realpathSync).mockReturnValue(PATH_TMUX);
+		vi.mocked(readlinkSync).mockReturnValue(PATH_TMUX);
+		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBe(PATH_TMUX);
+	});
+
+	it("removes a broken/cyclic shim and returns undefined", () => {
+		vi.mocked(realpathSync).mockImplementation(() => { throw new Error("ELOOP"); });
+		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBeUndefined();
+		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
+	});
+});
+
+describe("sanitizeTmuxShim", () => {
+	it("removes the shim when the symlink cannot be resolved (ELOOP)", () => {
+		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
+		vi.mocked(realpathSync).mockImplementation(() => { throw new Error("ELOOP"); });
+		sanitizeTmuxShim();
+		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
+	});
+
+	it("keeps a healthy shim", () => {
+		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
+		vi.mocked(realpathSync).mockReturnValue("/opt/homebrew/bin/tmux");
+		sanitizeTmuxShim();
+		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
+	});
+
+	it("ignores a non-symlink file", () => {
+		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
+		sanitizeTmuxShim();
+		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
+	});
 });
 
 describe("updateTmuxShim", () => {
@@ -1490,6 +1551,15 @@ describe("updateTmuxShim", () => {
 		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
 		mockReadlinkSync.mockReturnValue(TARGET);
 		updateTmuxShim(TARGET);
+		expect(mockUnlinkSync).not.toHaveBeenCalled();
+		expect(mockSymlinkSync).not.toHaveBeenCalled();
+	});
+
+	it("refuses to point the shim at itself (ELOOP regression)", () => {
+		mockExistsSync.mockReturnValue(true);
+		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
+		mockReadlinkSync.mockReturnValue("/opt/homebrew/bin/tmux");
+		updateTmuxShim(SHIM);
 		expect(mockUnlinkSync).not.toHaveBeenCalled();
 		expect(mockSymlinkSync).not.toHaveBeenCalled();
 	});

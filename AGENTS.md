@@ -111,6 +111,19 @@ The `~/.dev3.0/` directory is shared between **every installed version** of the 
 
 These rules apply to any new code that touches `~/.dev3.0/`, any refactor of `src/bun/data.ts` / `src/bun/git.ts` / `src/bun/paths.ts` / `src/cli/context.ts`, and any "cleanup" that thinks it can tidy up the data directory.
 
+## Update channels — brew deps are NOT guaranteed (MANDATORY)
+
+The app reaches users through **two independent update channels**, and they deliver different things:
+
+1. **Homebrew** (`brew install/upgrade --cask dev3`) — installs the app **and** its brew dependencies (`git`, `tmux` → the pinned `h0x91b/dev3/tmux@3.6` keg, `cloudflared`).
+2. **In-app updater** (Electrobun `Updater`, also DMG/tarball installs) — swaps **only the `.app` bundle**. It cannot run brew, so any dependency added to the cask/formula after the user's original install **will be missing** on these machines.
+
+Consequences — hard rules for any feature that leans on an external binary:
+
+- **Never assume a brew dependency exists.** A new `depends_on` in `release.yml` reaches only brew users. Every code path must degrade gracefully when the vendored/pinned binary is absent (fall back to PATH, feature-gate, or log a warning with the install command — do not crash and do not break existing flows).
+- **Test the "in-app updated, dependency missing" configuration explicitly.** It is the *majority* upgrade path, not an edge case. The tmux@3.6 pin shipped green on dev machines (keg present) and immediately broke updater users: without the keg, resolution fell through to PATH, found our own `~/.dev3.0/bin/tmux` shim (that dir is first in PATH — it hosts the dev3 CLI), and symlinked the shim onto itself → ELOOP, every tmux spawn dead (v1.29.1 incident; see `decisions/105-pin-tmux-3.6-vendored-keg.md` post-mortem).
+- **Any shim placed into `~/.dev3.0/bin` must be excluded from that binary's own PATH resolution** (dereference it, never commit it as the resolved binary, and sanitize a broken shim at startup — see `dereferenceTmuxShim`/`sanitizeTmuxShim` in `src/bun/pty-server.ts` for the reference pattern).
+
 ## Git
 
 ### Worktree

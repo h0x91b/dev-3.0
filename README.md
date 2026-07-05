@@ -42,13 +42,14 @@ Or by hand — **macOS**:
 
 ```sh
 brew tap h0x91b/dev3
+brew trust h0x91b/dev3   # newer Homebrew refuses untrusted third-party taps (skip on older brew)
 brew install --cask dev3
 ```
 
 **Linux** (headless box, full UI in your browser):
 
 ```sh
-brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3
+brew tap h0x91b/dev3 && brew trust h0x91b/dev3 && brew install h0x91b/dev3/dev3
 dev3 remote
 ```
 
@@ -156,6 +157,7 @@ The two fastest paths (agent-driven and Homebrew) are in [Quick start](#quick-st
 
 ```sh
 brew tap h0x91b/dev3
+brew trust h0x91b/dev3   # newer Homebrew refuses untrusted third-party taps (skip on older brew)
 brew install --cask dev3
 ```
 
@@ -205,7 +207,7 @@ curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh | 
 **2. Install dev-3.0** (same tap as macOS):
 
 ```sh
-brew tap h0x91b/dev3 && brew install h0x91b/dev3/dev3
+brew tap h0x91b/dev3 && brew trust h0x91b/dev3 && brew install h0x91b/dev3/dev3
 ```
 
 **3. Go remote:**
@@ -352,8 +354,11 @@ Because of this, dev-3.0 depends on the pinned keg-only formula **`h0x91b/dev3/t
 If you installed dev-3.0 before this pin and already have tmux 3.7 from `brew`:
 
 ```sh
+brew trust h0x91b/dev3      # newer Homebrew refuses untrusted taps at upgrade time
 brew upgrade --cask dev3    # pulls in h0x91b/dev3/tmux@3.6 as a new dependency
 ```
+
+> **Note:** the in-app updater updates only the app itself — it cannot install the tmux@3.6 keg. Without the keg the app keeps using your PATH tmux (fine for a single dev-3.0 instance); run the two commands above once to get the pinned 3.6a.
 
 The app switches to the 3.6a keg on its own. One caveat: a tmux server keeps its version until it dies, so if a 3.7 dev3 server is still running, the app keeps using 3.7 for that server's lifetime (mixed-version tmux clients can't talk to it at all). After your sessions wind down — or immediately via `tmux -L dev3 kill-server` (kills all dev-3.0 terminals!) or a reboot — everything runs on 3.6a. Your system-wide `tmux` stays untouched.
 

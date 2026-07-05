@@ -23,6 +23,10 @@ Four coordinated pieces:
 - The shim lives under `~/.dev3.0/bin` next to the CLI binaries; it is never renamed, and a pre-existing non-symlink file there is left untouched.
 - Keg-only dep means a fresh install has no `tmux` in the user's own PATH; the app and agents don't need it, but users poking at sockets manually must use the keg path or install their own tmux.
 
+## Post-mortem addendum (v1.29.1 ELOOP incident)
+
+The shim shipped with a self-poisoning bug: `~/.dev3.0/bin` is first in PATH (it hosts the dev3 CLI), so on installs **without** the keg (the in-app updater cannot run brew) `whichSync("tmux")` returned the shim itself; `selectTmuxBinary` committed it and `updateTmuxShim` then repointed the shim at "itself" — a self-referential symlink that killed every tmux spawn with ELOOP. Fixed with three guards in `pty-server.ts`: `dereferenceTmuxShim` (resolution never commits the shim; broken shims are deleted), an identity guard in `updateTmuxShim`, and `sanitizeTmuxShim` at module load so already-poisoned installs self-heal. Lesson: any binary shim placed on PATH must be excluded from that same binary's PATH resolution.
+
 ## Alternatives considered
 
 - **Linking tmux@3.6 into PATH**: conflicts with an existing core tmux install; brew link behavior becomes unpredictable.
