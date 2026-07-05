@@ -116,6 +116,8 @@ const settings = {
 	"settings.preventSleep": "Prevent Sleep",
 	"settings.preventSleepDesc": "Keep your system awake while dev-3.0 is open (forced on while remote access is active). Also toggleable from the header.",
 	"settings.preventSleepNotAvailable": "No sleep inhibitor found (caffeinate on macOS, systemd-inhibit on Linux).",
+	"settings.rateLimitTracking": "Agent Rate-Limit Tracking",
+	"settings.rateLimitTrackingDesc": "Show live Claude/Codex rate-limit usage in the header. Claude data is captured by routing the session statusLine through dev3 — your own statusLine keeps working, dev3 only appends its usage segment.",
 	"settings.tipsSection": "Tips",
 	"settings.tipsDisabled": "Disable feature tips",
 	"settings.tipsReset": "Reset Tips",

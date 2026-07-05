@@ -20,6 +20,7 @@ interface BehaviorSettingsSectionProps {
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onSoundToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
+	onRateLimitTrackingToggle: (enabled: boolean) => void;
 	onTaskDropPositionChange: (position: "top" | "bottom") => void;
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
 	onTipsDisabledToggle: (disabled: boolean) => void;
@@ -37,6 +38,7 @@ export default function BehaviorSettingsSection({
 	onPreventSleepToggle,
 	onSoundToggle,
 	onFocusModeToggle,
+	onRateLimitTrackingToggle,
 	onTaskDropPositionChange,
 	onTaskOpenModeChange,
 	onTipsDisabledToggle,
@@ -198,6 +200,23 @@ export default function BehaviorSettingsSection({
 						{t("settings.preventSleepNotAvailable")}
 					</p>
 				) : null}
+			</div>
+
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.rateLimitTracking")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.rateLimitTrackingDesc")}
+				</p>
+				<ToggleSwitch
+					checked={globalSettings.agentRateLimitTracking !== false}
+					onToggle={() =>
+						onRateLimitTrackingToggle(
+							globalSettings.agentRateLimitTracking === false,
+						)
+					}
+				/>
 			</div>
 
 			<div>

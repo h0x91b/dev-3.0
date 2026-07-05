@@ -1020,6 +1020,21 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 .header-anim:hover .hdr-needle { transform-origin: 12px 14px; animation: hdr-needle 2.6s ease-in-out infinite; }
 
+/* -- Rate-limit hourglass: sand grains drip down into the lower bulb -- */
+@keyframes hdr-hg-drop {
+	0%, 10% { transform: translateY(0); opacity: 1; }
+	55% { transform: translateY(4.5px); opacity: 1; }
+	70%, 100% { transform: translateY(5.5px); opacity: 0; }
+}
+@keyframes hdr-hg-drop-ghost {
+	0%, 35% { transform: translateY(0); opacity: 0; }
+	45% { opacity: .7; }
+	85% { transform: translateY(4.5px); opacity: .7; }
+	95%, 100% { transform: translateY(5.5px); opacity: 0; }
+}
+.header-anim:hover .hdr-hg-drop { animation: hdr-hg-drop 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-hg-drop-ghost { animation: hdr-hg-drop-ghost 2.4s ease-in-out infinite; }
+
 /* -- GitHub: the octocat takes a polite bow -- */
 @keyframes hdr-gh {
 	0%, 15% { transform: rotate(0deg); }

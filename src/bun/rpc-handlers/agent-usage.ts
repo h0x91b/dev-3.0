@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentUsageReport } from "../../shared/types";
+import type { AgentRateLimitsReport } from "../../shared/rate-limits";
+import { getAgentRateLimitsReport } from "../rate-limit-monitor";
 import { finalizeUsage, foldClaudeEntry, newUsageState } from "./agent-usage-parse";
 import { log } from "./shared";
 
@@ -63,6 +65,12 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	return { days, generatedAt: new Date().toISOString(), hasUnpricedModels: hasUnpriced };
 }
 
+/** Current agent rate-limit windows (Claude statusLine dump / Codex rollouts). */
+async function getAgentRateLimits(): Promise<AgentRateLimitsReport> {
+	return getAgentRateLimitsReport();
+}
+
 export const agentUsageHandlers = {
 	getAgentUsage,
+	getAgentRateLimits,
 };

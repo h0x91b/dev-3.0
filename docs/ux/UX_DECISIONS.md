@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-05 — Agent rate-limit indicator is ambient header status, not a cockpit metric
+
+- **Rule:** account-wide agent rate-limit usage renders as a passive icon+percent indicator in the global header's stateful-indicators zone (next to prevent-sleep); hidden until data exists, `warning` token ≥80%, `danger` ≥95%; its enable toggle lives in Global Settings → Behavior.
+- **Why:** it is a diagnostic "battery gauge" the user must see before hitting a limit — not a motivational countable signal (cockpit rejected) and not task-scoped (task surfaces rejected).
+- **Status:** Implemented. Evidence: `GlobalHeader.tsx`, `ux-architecture.yaml` global_header.allowed.
+
 ## 2026-07-03 — Inline help: one registry, three layers (Tooltip / HelpSpot / help mode)
 
 - **Rule:** Help content lives in a `src/mainview/help.ts` registry (declare-as-data, like `keymap.ts`/`tips.ts`); a fast `Tooltip` primitive progressively replaces native `title=` on icon controls; a ghost (i) `HelpSpot` → rich read-only `HelpCard` is allowed only in header-bearing sections (≤1 each); dense headerless zones (inspector quickbars, task card) are covered by a screen-wide help-mode overlay (`⇧⌘/`, Help menu, palette, kebab on narrow) via `data-help-id` — never by permanent icons. Bible §5.4.

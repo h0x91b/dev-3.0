@@ -13,6 +13,7 @@ import type { SVGProps } from "react";
  * the quick-shell bolt double-flashes, the terminal cursor blinks, the pull /
  * update arrows drop into and launch out of the cloud, the check draws itself,
  * the alert triangle quakes, QR marks scan in sequence, the gauge needle revs,
+ * sand drips through the rate-limit hourglass,
  * the octocat bows, the bug twitches its antennae, changelog lines write
  * themselves, kebab dots wave, the wrench ratchets, slider knobs seek a new mix.
  * Idle rendering is pixel-identical to the static icon.
@@ -270,7 +271,21 @@ export function SlidersIcon({ className }: HeaderIconProps) {
 	);
 }
 
-// 21 — Update ready: the arrow launches up into the cloud.
+// 21 — Rate limit: hourglass; sand grains drip while the limit window runs down.
+export function RateLimitIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<path d="M6 3h12" />
+			<path d="M6 21h12" />
+			<path d="M16.5 3v3.172a2 2 0 0 1-.586 1.414L12 12 8.086 7.586A2 2 0 0 1 7.5 6.172V3" />
+			<path d="M16.5 21v-3.172a2 2 0 0 0-.586-1.414L12 12l-3.914 4.414a2 2 0 0 0-.586 1.414V21" />
+			<path d="M12 13.2v.01" className="hdr hdr-hg-drop" />
+			<path d="M12 13.2v.01" className="hdr hdr-hg-drop-ghost" opacity="0" />
+		</svg>
+	);
+}
+
+// 22 — Update ready: the arrow launches up into the cloud.
 export function UpdateReadyIcon({ className }: HeaderIconProps) {
 	return (
 		<svg {...svgBase(className)}>

@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-05-25
+Last updated: 2026-07-05
 
 ## Agents
 
@@ -29,6 +29,7 @@ Last updated: 2026-05-25
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
 | **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (4 hooks) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
+| **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (parsed from `~/.codex/sessions` rollout files) | — | — |
 
 ## Status Hooks
 
