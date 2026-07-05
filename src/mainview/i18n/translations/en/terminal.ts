@@ -175,7 +175,7 @@ const terminal = {
 	"resources.details": "{memory} · {cpu}% CPU",
 
 	// Project Terminal
-	"projectTerminal.open": "Project Terminal",
+	"projectTerminal.open": "Terminal",
 	"projectTerminal.close": "Close Terminal",
 	"projectTerminal.tooltip": "Open a terminal in the project root",
 	"projectTerminal.sessionEnded": "Terminal session ended",

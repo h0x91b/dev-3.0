@@ -667,6 +667,37 @@ describe("App keyboard shortcuts", () => {
 			await userEvent.keyboard("{Escape}");
 			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
 		});
+
+		it("Escape with help mode active only exits help mode — no navigation", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			await renderApp();
+			await userEvent.keyboard("{Meta>}1{/Meta}");
+			expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+
+			// happy-dom has no layout, so real zones report zero-size rects and the
+			// overlay would exit instantly. Inject one zone with a mocked rect.
+			const zone = document.createElement("div");
+			zone.setAttribute("data-help-id", "header.utilities");
+			zone.getBoundingClientRect = () =>
+				({ top: 10, left: 500, width: 200, height: 30, right: 700, bottom: 40, x: 500, y: 10, toJSON: () => ({}) }) as DOMRect;
+			document.body.appendChild(zone);
+			try {
+				act(() => {
+					window.dispatchEvent(new CustomEvent("menu:enter-help-mode"));
+				});
+				expect(screen.getByTestId("help-overlay")).toBeInTheDocument();
+
+				await userEvent.keyboard("{Escape}");
+				// Help mode closed…
+				expect(screen.queryByTestId("help-overlay")).not.toBeInTheDocument();
+				// …but the screen must NOT have navigated back to the dashboard.
+				expect(screen.getByTestId("project-screen")).toBeInTheDocument();
+			} finally {
+				zone.remove();
+			}
+		});
 	});
 
 	describe("project switching (Cmd+1..9)", () => {

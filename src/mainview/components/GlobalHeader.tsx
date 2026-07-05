@@ -299,7 +299,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				...(currentProjectId && !isVirtualProject
 					? [{
 							key: "projectTerminal",
-							label: t("projectTerminal.open"),
+							// The sheet has room and no tooltip — keep the full descriptive name
+							// there; the inline header button uses the short "Terminal" label.
+							label: t("projectTerminal.label"),
 							run: () =>
 								route.screen === "project-terminal"
 									? navigate({ screen: "project", projectId: currentProjectId })

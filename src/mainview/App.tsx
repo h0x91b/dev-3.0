@@ -1485,6 +1485,9 @@ function App() {
 	useGlobalShortcut(
 		(e) => {
 			if (e.key !== "Escape") return;
+			// Help mode owns Escape while active — HelpOverlay (or its open card)
+			// consumes it; navigating away at the same time would double-act.
+			if (helpMode) return;
 			const terminalEl = document.querySelector('[data-terminal="true"]');
 			if (terminalEl?.contains(document.activeElement)) return;
 			if (showQuitDialog) {
@@ -1513,7 +1516,7 @@ function App() {
 				navigate({ screen: "dashboard" });
 			}
 		},
-		[state, navigate, showQuitDialog],
+		[state, navigate, showQuitDialog, helpMode],
 	);
 
 	if (authFailed) {

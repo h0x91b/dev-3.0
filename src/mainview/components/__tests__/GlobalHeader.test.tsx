@@ -613,7 +613,7 @@ describe("GlobalHeader — project terminal button", () => {
 
 	it("shows terminal button when inside a project", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
-		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
+		expect(screen.getByText("Terminal")).toBeInTheDocument();
 	});
 
 	it("shows quick shell before project terminal", () => {
@@ -638,7 +638,7 @@ describe("GlobalHeader — project terminal button", () => {
 
 	it("does not show terminal button on dashboard", () => {
 		renderHeader({ screen: "dashboard" });
-		expect(screen.queryByText("Project Terminal")).not.toBeInTheDocument();
+		expect(screen.queryByText("Terminal")).not.toBeInTheDocument();
 	});
 
 	it("terminal button has active style on project-terminal screen", () => {
@@ -681,7 +681,7 @@ describe("GlobalHeader — compact layout", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		// Buttons stay reachable by title, but their text labels collapse away.
 		expect(screen.getByLabelText("Project Terminal (⌘`)")).toBeInTheDocument();
-		expect(screen.queryByText("Project Terminal")).not.toBeInTheDocument();
+		expect(screen.queryByText("Terminal")).not.toBeInTheDocument();
 		expect(screen.queryByText("Report")).not.toBeInTheDocument();
 		expect(screen.queryByText("Change Log")).not.toBeInTheDocument();
 	});
@@ -704,11 +704,12 @@ describe("GlobalHeader — compact layout", () => {
 	it("keeps labels and shows no overflow menu when roomy", () => {
 		mockMatchMedia(false);
 		renderHeader({ screen: "project", projectId: "p1" });
-		// Roomy layout keeps text labels (e.g. Project Terminal) and does not collapse
-		// actions into the overflow menu. Changelog/Report are icon-only by design now,
-		// and migrated to Tooltip, so assert Changelog by its accessible label (aria-label,
-		// no native title) rather than visible text.
-		expect(screen.getByText("Project Terminal")).toBeInTheDocument();
+		// Roomy layout keeps text labels (e.g. the project terminal's short
+		// "Terminal" label) and does not collapse actions into the overflow menu.
+		// Changelog/Report are icon-only by design now, and migrated to Tooltip,
+		// so assert Changelog by its accessible label (aria-label, no native title)
+		// rather than visible text.
+		expect(screen.getByText("Terminal")).toBeInTheDocument();
 		expect(screen.getByLabelText("View changelog")).toBeInTheDocument();
 		expect(screen.queryByLabelText("More")).not.toBeInTheDocument();
 	});
