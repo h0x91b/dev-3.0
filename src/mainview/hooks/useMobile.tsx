@@ -9,7 +9,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
  */
 const MOBILE_BREAKPOINT = 1024;
 
-function detectMobile(): boolean {
+export function detectMobile(): boolean {
 	if (typeof window === "undefined") return false;
 	return screen.width < MOBILE_BREAKPOINT;
 }

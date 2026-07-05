@@ -103,7 +103,7 @@ vi.mock("../toast", () => ({
 }));
 
 vi.mock("../zoom", () => ({
-	getZoom: () => 1,
+	getEffectiveZoom: () => 1,
 	ZOOM_CHANGED_EVENT: "dev3-zoom-changed",
 }));
 

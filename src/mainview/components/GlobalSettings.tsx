@@ -120,8 +120,10 @@ function GlobalSettings() {
 	);
 
 	useEffect(() => {
-		function onZoomChanged(event: Event) {
-			setZoomLevel((event as CustomEvent<number>).detail);
+		function onZoomChanged() {
+			// The event detail carries the effective zoom (incl. the mobile dense
+			// factor); settings display the user's saved zoom setting.
+			setZoomLevel(getZoom());
 		}
 
 		window.addEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);

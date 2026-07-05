@@ -7,7 +7,7 @@ import { getShiftKeySequence } from "./shift-key-sequences";
 // TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
-import { getZoom, ZOOM_CHANGED_EVENT } from "./zoom";
+import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { getScrollThreshold } from "./scroll-speed";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
@@ -367,7 +367,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			}
 
 			console.log("[TerminalView] Creating ghostty-web Terminal instance...");
-			const zoomLevel = getZoom();
+			const zoomLevel = getEffectiveZoom();
 			const term = new Terminal({
 				fontSize: Math.round(TERMINAL_BASE_FONT_SIZE * zoomLevel),
 				fontFamily: TERMINAL_FONT,
