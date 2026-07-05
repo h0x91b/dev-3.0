@@ -41,6 +41,8 @@ export default {
 			"changelog.json": "changelog.json",
 			"dist/dev3": "cli/dev3",
 			"src/assets/sounds": "sounds",
+			// macOS notification-click shim (empty dir on Linux) — see decisions/106.
+			"dist/native": "native",
 		},
 		linux: {
 			bundleCEF: false,

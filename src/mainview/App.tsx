@@ -1229,12 +1229,11 @@ function App() {
 		return () => window.removeEventListener("rpc:updateCheckOutcome", onUpdateCheckOutcome);
 	}, [t]);
 
-	// Click-to-open for watched-task notifications.
-	// Bun observes the main window's `focus` event after a notification fires and pushes us
-	// the target taskId/projectId. We navigate straight into the task.
-	useEffect(() => {
-		function onOpenTaskFromNotification(e: Event) {
-			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
+	// Click-to-open for task notifications.
+	// Bun pushes the clicked target (native delegate click on macOS, or the
+	// focus-proxy fallback elsewhere). We navigate straight into the task.
+	const openTaskFromNotification = useCallback(
+		(taskId: string, projectId: string) => {
 			if (!taskId || !projectId) return;
 			// Open the task the same way a normal card click does — honoring the user's
 			// `dev3-task-open-mode` preference. Default is "split" (task terminal next to
@@ -1245,10 +1244,36 @@ function App() {
 			} else {
 				navigate({ screen: "project", projectId, activeTaskId: taskId });
 			}
+		},
+		[navigate],
+	);
+
+	useEffect(() => {
+		function onOpenTaskFromNotification(e: Event) {
+			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
+			openTaskFromNotification(taskId, projectId);
 		}
 		window.addEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
 		return () => window.removeEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
-	}, [navigate]);
+	}, [openTaskFromNotification]);
+
+	// If this window was reopened by a notification click while the app sat
+	// window-less in the dock, the click target is waiting in the backend — pull
+	// it on mount and navigate. Pulling (rather than bun pushing) avoids racing
+	// the listener registration above; same pattern as consumePendingQuitDialog.
+	// Optional-chained: some tests mock `api.request` without this method.
+	useEffect(() => {
+		api.request
+			.consumePendingNotificationNav?.()
+			.then((target) => {
+				if (target) openTaskFromNotification(target.taskId, target.projectId);
+			})
+			.catch(() => {});
+		// Mount-only on purpose: the backend slot is consumed on first read, so
+		// re-running on `openTaskFromNotification` identity changes would only
+		// ever read null.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	// Report window focus state to the backend. It uses this to suppress
 	// notification click-to-open arming while the app is already in the foreground —

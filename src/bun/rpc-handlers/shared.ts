@@ -26,6 +26,7 @@ import { dlopen, FFIType } from "bun:ffi";
 import type { RendererLogLevel, RequirementCheckResult, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
+import { postNativeTaskNotification } from "../native-notifications";
 import { log, getPushMessage } from "./shared-pure";
 
 const rendererLog = createLogger("renderer");
@@ -159,16 +160,36 @@ function pushWebNotification(opts: {
 	});
 }
 
-export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
-	if (!task.watched || oldStatus === newStatus) return;
-	const body = `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`;
-	Utils.showNotification({
-		title: `#${task.seq} ${getTaskTitle(task)}`,
-		body,
+/**
+ * Deliver a task notification to the OS. Prefers the native shim
+ * (src/bun/native-notifications.ts): it encodes the task target in the
+ * notification identifier and reports REAL clicks through its delegate, so no
+ * focus-proxy arming is needed and false "click" positives are impossible.
+ *
+ * When the shim is unavailable (Linux, headless, dylib missing, permission not
+ * granted) this falls back to Electrobun's fire-and-forget path and arms the
+ * legacy focus-proxy slot below.
+ */
+function deliverTaskNotification(task: Task, body: string, projectName?: string): void {
+	const title = `#${task.seq} ${getTaskTitle(task)}`;
+	const nativePosted = postNativeTaskNotification({
+		taskId: task.id,
+		projectId: task.projectId,
+		title,
 		subtitle: projectName,
+		body,
 		silent: true,
 	});
-	pushWebNotification({ task, body, projectName });
+	if (!nativePosted) {
+		Utils.showNotification({
+			title,
+			body,
+			...(projectName ? { subtitle: projectName } : {}),
+			silent: true,
+		});
+	}
+	pushWebNotification({ task, body, projectName: projectName ?? "" });
+	if (nativePosted) return;
 	// Only arm click-to-open when the app is NOT already in the foreground. If the
 	// user is actively looking at the app, the banner is purely informational — a
 	// subsequent in-app click that happens to re-key the window must not be misread
@@ -182,53 +203,28 @@ export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, new
 	};
 }
 
+export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
+	if (!task.watched || oldStatus === newStatus) return;
+	deliverTaskNotification(task, `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`, projectName);
+}
+
 /**
- * Fire a native OS notification on behalf of `dev3 notify --desktop`, and arm
- * click-to-open so a subsequent app activation navigates to the task. Reuses the
- * exact same focus-proxy mechanism as watched-task notifications
- * (`notifyWatchedTaskStatusChange`) — Electrobun's `Utils.showNotification`
- * exposes no click callback, so we treat "app became foreground shortly after"
- * as the click.
+ * Fire a native OS notification on behalf of `dev3 notify --desktop`, so a
+ * click on it navigates to the task (native click delegate, or the focus-proxy
+ * fallback — see `deliverTaskNotification`).
  */
 export function notifyFromCliDesktop(opts: { task: Task; body: string; projectName?: string }): void {
-	Utils.showNotification({
-		title: `#${opts.task.seq} ${getTaskTitle(opts.task)}`,
-		body: opts.body,
-		...(opts.projectName ? { subtitle: opts.projectName } : {}),
-		silent: true,
-	});
-	pushWebNotification({ task: opts.task, body: opts.body, projectName: opts.projectName ?? "" });
-	// Don't arm click-to-open while the app is already focused — see the rationale
-	// in notifyWatchedTaskStatusChange.
-	if (appForeground) return;
-	lastWatchedNotification = {
-		taskId: opts.task.id,
-		projectId: opts.task.projectId,
-		timestamp: Date.now(),
-	};
+	deliverTaskNotification(opts.task, opts.body, opts.projectName);
 }
 
 /**
  * Fire a native OS notification for a watched task on a non-status event
  * (e.g. CI passed/failed, PR approved/changes-requested). No-op for unwatched
- * tasks. Reuses the same focus-proxy click-to-open mechanism as
- * `notifyWatchedTaskStatusChange`.
+ * tasks.
  */
 export function notifyWatchedTaskEvent(task: Task, body: string, projectName: string): void {
 	if (!task.watched) return;
-	Utils.showNotification({
-		title: `#${task.seq} ${getTaskTitle(task)}`,
-		body,
-		subtitle: projectName,
-		silent: true,
-	});
-	pushWebNotification({ task, body, projectName });
-	if (appForeground) return;
-	lastWatchedNotification = {
-		taskId: task.id,
-		projectId: task.projectId,
-		timestamp: Date.now(),
-	};
+	deliverTaskNotification(task, body, projectName);
 }
 
 /**

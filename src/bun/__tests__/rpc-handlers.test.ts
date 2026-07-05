@@ -236,7 +236,14 @@ vi.mock("bun:ffi", () => ({
 			objc_msgSend: mockObjcMsgSend,
 		},
 	})),
-	FFIType: { ptr: "ptr" },
+	FFIType: { ptr: "ptr", function: "function", i32: "i32", void: "void" },
+	// Used by native-notifications.ts (imported via rpc-handlers/shared.ts);
+	// never instantiated in these tests — the native channel stays uninitialized.
+	JSCallback: class {
+		ptr = 1;
+		close() {}
+	},
+	CString: class {},
 }));
 
 import * as data from "../data";
