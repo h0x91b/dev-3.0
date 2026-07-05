@@ -271,16 +271,19 @@ export function SlidersIcon({ className }: HeaderIconProps) {
 	);
 }
 
-// 21 — Rate limit: hourglass; sand grains drip while the limit window runs down.
+// 21 — Rate limit: hourglass; sand pours down, then the glass flips over.
+// The outline is 180°-symmetric, so the end-of-cycle flip lands pixel-identical.
 export function RateLimitIcon({ className }: HeaderIconProps) {
 	return (
 		<svg {...svgBase(className)}>
-			<path d="M6 3h12" />
-			<path d="M6 21h12" />
-			<path d="M16.5 3v3.172a2 2 0 0 1-.586 1.414L12 12 8.086 7.586A2 2 0 0 1 7.5 6.172V3" />
-			<path d="M16.5 21v-3.172a2 2 0 0 0-.586-1.414L12 12l-3.914 4.414a2 2 0 0 0-.586 1.414V21" />
-			<path d="M12 13.2v.01" className="hdr hdr-hg-drop" />
-			<path d="M12 13.2v.01" className="hdr hdr-hg-drop-ghost" opacity="0" />
+			<g className="hdr hdr-hg-body">
+				<path d="M6 3h12" />
+				<path d="M6 21h12" />
+				<path d="M16.5 3v3.172a2 2 0 0 1-.586 1.414L12 12 8.086 7.586A2 2 0 0 1 7.5 6.172V3" />
+				<path d="M16.5 21v-3.172a2 2 0 0 0-.586-1.414L12 12l-3.914 4.414a2 2 0 0 0-.586 1.414V21" />
+				<path d="M12 12.9v1" strokeWidth={2.2} className="hdr hdr-hg-drop" />
+				<path d="M12 12.9v1" strokeWidth={2.2} className="hdr hdr-hg-drop-ghost" opacity="0" />
+			</g>
 		</svg>
 	);
 }
