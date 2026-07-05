@@ -234,6 +234,10 @@ export const TMUX_SHIM_PATH = `${DEV3_HOME}/bin/tmux`;
  */
 export function dereferenceTmuxShim(binaryPath: string): string | undefined {
 	if (binaryPath !== TMUX_SHIM_PATH) return binaryPath;
+	// A regular file here is not ours — the app only ever creates a symlink.
+	// Treat it as the user's own tmux binary: use it as-is, never delete it
+	// (updateTmuxShim likewise leaves non-symlinks alone).
+	if (!isSymlink(binaryPath)) return existsSync(binaryPath) ? binaryPath : undefined;
 	try {
 		realpathSync(binaryPath); // throws on ELOOP cycles and dangling targets
 		return readlinkSync(binaryPath);
