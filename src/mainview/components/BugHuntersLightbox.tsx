@@ -4,7 +4,7 @@ import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
-import Select, { useAgentRenderOption } from "./Select";
+import AgentConfigPicker from "./AgentConfigPicker";
 
 interface BugHuntersLightboxProps {
 	task: Task;
@@ -69,12 +69,6 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [launching, globalSettings, agentId, configId, count]);
 
-	function handleAgentChange(newAgentId: string | null) {
-		setAgentId(newAgentId);
-		const agent = agents.find((a) => a.id === newAgentId);
-		setConfigId(agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? null);
-	}
-
 	async function handleLaunch() {
 		setLaunching(true);
 		setError(null);
@@ -102,9 +96,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 		setLaunching(false);
 	}
 
-	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
 	const selectedAgent = agents.find((a) => a.id === agentId);
-	const configs = selectedAgent?.configurations ?? [];
 	const selectedAvailability = agentAvailability.find((a) => a.agentId === agentId);
 	const agentNotInstalled = selectedAvailability ? !selectedAvailability.installed : false;
 
@@ -114,7 +106,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 			onClick={onClose}
 		>
 			<div
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-md mx-4 overflow-hidden"
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-xl mx-4 overflow-hidden"
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
@@ -173,32 +165,18 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 							</div>
 						</div>
 
-						{/* Agent picker */}
-						<div>
-							<label htmlFor="bughunt-agent" className="text-xs text-fg-3 block mb-1">
-								{t("launch.agent")}
-							</label>
-							<Select
-								id="bughunt-agent"
-								value={agentId ?? ""}
-								options={agents.map((a) => ({ value: a.id, label: a.name }))}
-								onChange={(val) => handleAgentChange(val || null)}
-								renderOption={renderAgentOption}
-							/>
-						</div>
-
-						{/* Config picker */}
-						<div>
-							<label htmlFor="bughunt-config" className="text-xs text-fg-3 block mb-1">
-								{t("launch.config")}
-							</label>
-							<Select
-								id="bughunt-config"
-								value={configId ?? ""}
-								options={configs.map((c) => ({ value: c.id, label: c.name }))}
-								onChange={(val) => setConfigId(val || null)}
-							/>
-						</div>
+						{/* Provider → Model → Mode picker */}
+						<AgentConfigPicker
+							idPrefix="bughunt"
+							agents={agents}
+							agentId={agentId}
+							configId={configId}
+							agentAvailability={agentAvailability}
+							onChange={(next) => {
+								setAgentId(next.agentId);
+								setConfigId(next.configId);
+							}}
+						/>
 
 						{/* Info note */}
 						<div className="p-3 rounded-lg bg-raised border border-edge">

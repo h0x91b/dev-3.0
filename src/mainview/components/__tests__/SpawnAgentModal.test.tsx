@@ -129,21 +129,22 @@ describe("SpawnAgentModal", () => {
 		expect(screen.getByText("Spawn Agent")).toBeInTheDocument();
 	});
 
-	it("shows agent and config selects after loading", async () => {
+	it("shows the Provider/Model/Mode picker after loading", async () => {
 		renderModal();
 		await vi.waitFor(() => {
-			expect(screen.getByText("Agent")).toBeInTheDocument();
-			expect(screen.getByText("Configuration")).toBeInTheDocument();
+			expect(screen.getByText("Provider")).toBeInTheDocument();
+			expect(screen.getByText("Model")).toBeInTheDocument();
+			expect(screen.getByText("Mode")).toBeInTheDocument();
 		});
 	});
 
 	it("defaults to global default agent and config", async () => {
 		renderModal();
 		await vi.waitFor(() => {
-			const agentBtn = document.getElementById("spawn-agent") as HTMLButtonElement;
+			const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
 			expect(agentBtn?.textContent?.trim()).toBe("Claude");
 		});
-		const configBtn = document.getElementById("spawn-config") as HTMLButtonElement;
+		const configBtn = document.getElementById("spawn-mode") as HTMLButtonElement;
 		expect(configBtn?.textContent?.trim()).toBe("Default");
 	});
 
@@ -215,12 +216,12 @@ describe("SpawnAgentModal", () => {
 		renderModal();
 
 		await vi.waitFor(() => {
-			const agentBtn = document.getElementById("spawn-agent") as HTMLButtonElement;
+			const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
 			// Falls back to first agent (Claude)
 			expect(agentBtn?.textContent?.trim()).toBe("Claude");
 		});
 
-		const configBtn = document.getElementById("spawn-config") as HTMLButtonElement;
+		const configBtn = document.getElementById("spawn-mode") as HTMLButtonElement;
 		// Should NOT show blank — should fall back to Claude's defaultConfigId
 		expect(configBtn?.textContent?.trim()).toBe("Default");
 	});
@@ -230,16 +231,16 @@ describe("SpawnAgentModal", () => {
 		renderModal();
 
 		await vi.waitFor(() => {
-			expect(document.getElementById("spawn-agent")).toBeInTheDocument();
+			expect(document.getElementById("spawn-provider")).toBeInTheDocument();
 		});
 
-		const agentBtn = document.getElementById("spawn-agent") as HTMLButtonElement;
+		const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
 		await user.click(agentBtn);
 		const codexEl = screen.getByText("Codex");
 		const codexOption = codexEl.closest("button") ?? codexEl;
 		await user.click(codexOption);
 
-		const configBtn = document.getElementById("spawn-config") as HTMLButtonElement;
+		const configBtn = document.getElementById("spawn-mode") as HTMLButtonElement;
 		expect(configBtn?.textContent?.trim()).toBe("Default");
 	});
 
@@ -249,10 +250,10 @@ describe("SpawnAgentModal", () => {
 		it("does not spawn when the agent Select button is focused", async () => {
 			renderModal();
 			await vi.waitFor(() => {
-				expect(document.getElementById("spawn-agent")).toBeInTheDocument();
+				expect(document.getElementById("spawn-provider")).toBeInTheDocument();
 			});
 
-			(document.getElementById("spawn-agent") as HTMLButtonElement).focus();
+			(document.getElementById("spawn-provider") as HTMLButtonElement).focus();
 			await userEvent.keyboard("{Enter}");
 
 			expect(mockedApi.request.spawnAgentInTask).not.toHaveBeenCalled();
@@ -262,7 +263,7 @@ describe("SpawnAgentModal", () => {
 			renderModal();
 			// Wait until agents + globalSettings have loaded (Enter is gated on globalSettings).
 			await vi.waitFor(() => {
-				const agentBtn = document.getElementById("spawn-agent") as HTMLButtonElement;
+				const agentBtn = document.getElementById("spawn-provider") as HTMLButtonElement;
 				expect(agentBtn?.textContent?.trim()).toBe("Claude");
 			});
 
@@ -301,7 +302,7 @@ describe("SpawnAgentModal", () => {
 			renderModal();
 			const dialog = await screen.findByRole("dialog");
 			await vi.waitFor(() => {
-				expect(document.getElementById("spawn-agent")).toBeInTheDocument();
+				expect(document.getElementById("spawn-provider")).toBeInTheDocument();
 			});
 
 			const outside = document.createElement("button");

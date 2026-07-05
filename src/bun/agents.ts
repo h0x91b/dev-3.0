@@ -46,6 +46,10 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"claude-auto-sonnet5",
 	"claude-bypass-sonnet5",
 	"claude-dontask-sonnet5",
+	// Removed when Fable 5's plain Auto/Bypass were replaced by explicit
+	// Medium/X-High effort tiers, mirroring Opus 4.8.
+	"claude-auto",
+	"claude-bypass",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
@@ -135,7 +139,7 @@ function mergeAgentWithDefault(
  *  to warrant a one-time resync of already-onboarded users' stored order
  *  (mergeWithDefaults otherwise preserves stored order forever). See
  *  decisions/ for the write-up. */
-export const AGENTS_LAYOUT_REVISION = 2;
+export const AGENTS_LAYOUT_REVISION = 3;
 
 /** One-time reorder of each built-in agent's configurations to match the
  *  current DEFAULT_AGENTS declared order. Custom (non-default) configs are

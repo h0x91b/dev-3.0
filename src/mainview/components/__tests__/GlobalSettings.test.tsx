@@ -82,12 +82,24 @@ function setupMocks(
 }
 
 /** Wait for async data (agents + settings) to be loaded into the UI.
- *  We wait for "Default Configuration" which only renders when BOTH agents
- *  and globalSettings are loaded (it requires defaultAgentId to match an
- *  agent that has configurations). Without this, tests race: agents arrive
- *  but globalSettings still has initial defaultAgentId "builtin-claude". */
+ *  We wait for the default-config preview card's "Model:" tag, which only
+ *  renders when BOTH agents and globalSettings are loaded (it requires
+ *  defaultAgentId to match an agent that has configurations). Without this,
+ *  tests race: agents arrive but globalSettings still has its initial
+ *  defaultAgentId "builtin-claude". */
 async function waitForLoad() {
-	await screen.findByText("Default Configuration");
+	await screen.findByText("Model:");
+}
+
+/** Open a custom Select trigger (by element id) and click the option labeled `label`. */
+async function pickFromSelect(user: ReturnType<typeof userEvent.setup>, triggerId: string, label: string) {
+	const trigger = document.getElementById(triggerId) as HTMLButtonElement;
+	await user.click(trigger);
+	const overlays = document.querySelectorAll(".bg-overlay.border");
+	const dropdown = overlays[overlays.length - 1];
+	const option = Array.from(dropdown?.querySelectorAll("button") ?? []).find((b) => b.textContent?.trim() === label);
+	if (!option) throw new Error(`Option "${label}" not found in dropdown`);
+	await user.click(option);
 }
 
 describe("GlobalSettings", () => {
@@ -302,13 +314,8 @@ describe("GlobalSettings", () => {
 			renderGlobalSettings();
 			await waitForLoad();
 
-			// Find the default agent select - it's the one with agent-1 selected
-			const agentSelects = screen.getAllByRole("combobox");
-			const agentSelect = agentSelects.find(
-				(s) => (s as HTMLSelectElement).value === "agent-1",
-			)!;
-
-			await user.selectOptions(agentSelect, "agent-2");
+			// Provider picker starts on Claude (agent-1); switch to Codex (agent-2).
+			await pickFromSelect(user, "default-agent-provider", "Codex");
 
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -318,12 +325,14 @@ describe("GlobalSettings", () => {
 			);
 		});
 
-		it("shows default config selector when agent has configs", async () => {
+		it("shows the Provider/Model/Mode default picker when agent has configs", async () => {
 			setupMocks();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			expect(screen.getByText("Default Configuration")).toBeInTheDocument();
+			expect(document.getElementById("default-agent-provider")).toBeInTheDocument();
+			expect(document.getElementById("default-agent-model")).toBeInTheDocument();
+			expect(document.getElementById("default-agent-mode")).toBeInTheDocument();
 		});
 
 		it("shows config preview card with model info", async () => {
@@ -355,12 +364,10 @@ describe("GlobalSettings", () => {
 			renderGlobalSettings();
 			await waitForLoad();
 
-			// Find the config select - should show Default (sonnet) config options
-			const configSelect = screen.getAllByRole("combobox").find(
-				(s) => (s as HTMLSelectElement).value === "cfg-1",
-			)!;
-
-			await user.selectOptions(configSelect, "cfg-2");
+			// cfg-1 (model "sonnet") and cfg-2 (model "opus") are in different Model
+			// groups; switching Model from Sonnet → Opus selects cfg-2 (the only
+			// preset in the Opus group).
+			await pickFromSelect(user, "default-agent-model", "Opus");
 
 			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
 				expect.objectContaining({ defaultConfigId: "cfg-2" }),

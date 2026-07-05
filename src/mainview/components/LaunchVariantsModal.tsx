@@ -8,8 +8,7 @@ import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import HelpSpot from "./HelpSpot";
-import Select, { useAgentRenderOption } from "./Select";
-import { buildPickerGroups, getModeLeafLabel, groupLabelForConfig, pickConfigForModelChange } from "../utils/agentPicker";
+import AgentConfigPicker from "./AgentConfigPicker";
 
 interface VariantRow {
 	agentId: string | null;
@@ -85,8 +84,6 @@ function LaunchVariantsModal({
 		api.request.checkAgentAvailability().then(setAgentAvailability).catch(() => {});
 	}, []);
 
-	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
-
 	// Keep Tab/Shift+Tab inside the dialog — otherwise focus escapes to the
 	// Kanban board behind the modal (labels, task cards), letting the user
 	// operate hidden UI.
@@ -125,24 +122,6 @@ function LaunchVariantsModal({
 		setVariants((prev) =>
 			prev.map((v, i) => (i === index ? { ...v, ...updates } : v)),
 		);
-	}
-
-	function handleProviderChange(index: number, agentId: string | null) {
-		// When provider changes, reset config to that agent's default (which
-		// also picks the default Model group + Mode via decomposition on render).
-		const agent = agents.find((a) => a.id === agentId);
-		const configId = agent?.defaultConfigId ?? agent?.configurations[0]?.id ?? null;
-		updateVariant(index, { agentId, configId });
-	}
-
-	function handleModelChange(index: number, agent: CodingAgent | undefined, prevConfigId: string | null, groupLabel: string) {
-		// Switching the Model group keeps the current Mode *kind* when the new
-		// group has it (bible §1.0 lazy-human), else falls back to its default.
-		const group = buildPickerGroups(agent).find((g) => g.label === groupLabel);
-		if (!group) return;
-		const prev = agent?.configurations.find((c) => c.id === prevConfigId) ?? null;
-		const next = pickConfigForModelChange(group, prev);
-		updateVariant(index, { configId: next?.id ?? group.configs[0]?.id ?? null });
 	}
 
 	async function handleLaunch() {
@@ -259,14 +238,6 @@ function LaunchVariantsModal({
 				{/* Variant rows */}
 				<div className="px-6 py-4 space-y-3 max-h-[50vh] overflow-y-auto">
 					{variants.map((variant, index) => {
-						const selectedAgent = agents.find((a) => a.id === variant.agentId);
-						// Provider → Model → Mode cascade: group the flat presets by
-						// model (UI-only; the leaf is still a plain configId).
-						const groups = buildPickerGroups(selectedAgent);
-						const currentGroupLabel = groupLabelForConfig(selectedAgent, variant.configId) ?? groups[0]?.label ?? "";
-						const currentGroup = groups.find((g) => g.label === currentGroupLabel) ?? groups[0];
-						const modeConfigs = currentGroup?.configs ?? [];
-
 						return (
 							<div
 								key={index}
@@ -278,47 +249,15 @@ function LaunchVariantsModal({
 								</span>
 
 								{/* Provider → Model → Mode (stacks on narrow) */}
-								<div className="flex-1 min-w-0 flex flex-col sm:flex-row gap-3">
-									{/* Provider select */}
-									<div className="flex-1 min-w-0">
-										<label htmlFor={`variant-provider-${index}`} className="text-xs text-fg-3 block mb-1">
-											{t("launch.provider")}
-										</label>
-										<Select
-											id={`variant-provider-${index}`}
-											value={variant.agentId ?? ""}
-											options={agents.map((a) => ({ value: a.id, label: a.name }))}
-											onChange={(val) => handleProviderChange(index, val || null)}
-											renderOption={renderAgentOption}
-										/>
-									</div>
-
-									{/* Model select */}
-									<div className="flex-1 min-w-0">
-										<label htmlFor={`variant-model-${index}`} className="text-xs text-fg-3 block mb-1">
-											{t("launch.model")}
-										</label>
-										<Select
-											id={`variant-model-${index}`}
-											value={currentGroupLabel}
-											options={groups.map((g) => ({ value: g.label, label: g.label }))}
-											onChange={(val) => handleModelChange(index, selectedAgent, variant.configId, val)}
-										/>
-									</div>
-
-									{/* Mode select */}
-									<div className="flex-1 min-w-0">
-										<label htmlFor={`variant-mode-${index}`} className="text-xs text-fg-3 block mb-1">
-											{t("launch.mode")}
-										</label>
-										<Select
-											id={`variant-mode-${index}`}
-											value={variant.configId ?? ""}
-											options={modeConfigs.map((c) => ({ value: c.id, label: getModeLeafLabel(c) }))}
-											onChange={(val) => updateVariant(index, { configId: val || null })}
-										/>
-									</div>
-								</div>
+								<AgentConfigPicker
+									idPrefix={`variant-${index}`}
+									agents={agents}
+									agentId={variant.agentId}
+									configId={variant.configId}
+									agentAvailability={agentAvailability}
+									onChange={(next) => updateVariant(index, next)}
+									className="flex-1 min-w-0 flex flex-col sm:flex-row gap-3"
+								/>
 
 								{/* Remove button */}
 								{variants.length > 1 && (
