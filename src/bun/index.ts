@@ -8,6 +8,8 @@ import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskI
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
+import { initNativeNotifications } from "./native-notifications";
+import { markPendingNotificationNav } from "./notification-nav";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
@@ -572,9 +574,35 @@ Electrobun.events.on("before-quit", (e: { response?: { allow: boolean } }) => {
 	}
 });
 
-// Click-to-open for watched-task notifications.
-// Electrobun's Utils.showNotification has no click callback, so we treat any "app became
-// foreground" signal that arrives shortly after a notification fired as a click-through.
+// Click-to-open for task notifications — native channel (macOS).
+//
+// The compiled shim (src/native/macos/dev3-notifications.m) owns a
+// UNUserNotificationCenterDelegate: a click hands us the exact task that fired
+// the notification, whenever it happens — no timing heuristics. When the shim
+// is active, shared.ts posts notifications through it and never arms the
+// focus-proxy slot below.
+const nativeNotificationClicks = initNativeNotifications((target) => {
+	log.info("[notif] native notification click", { taskId: target.taskId.slice(0, 8), projectId: target.projectId.slice(0, 8) });
+	if (getWindowCount() === 0) {
+		// App sits window-less in the dock: reopen a window; the renderer pulls
+		// the target on mount via consumePendingNotificationNav (a push would race
+		// its not-yet-registered listener).
+		markPendingNotificationNav(target);
+		void openMainWindow();
+		return;
+	}
+	// macOS already activates the app on notification click; make sure a window
+	// is key (e.g. it was miniaturized) and navigate.
+	focusFocusedWindow();
+	sendToFocusedWindow("openTaskFromNotification", target);
+});
+log.info(`[notif] click channel: ${nativeNotificationClicks ? "native delegate" : "focus-proxy fallback"}`);
+
+// Click-to-open FALLBACK (Linux, headless dylib-less builds, or notification
+// permission denied — cases where the native channel above reports false and
+// shared.ts posts via Electrobun's Utils.showNotification instead).
+// That path has no click callback, so we treat any "app became foreground"
+// signal that arrives shortly after a notification fired as a click-through.
 //
 // We listen on multiple events because none of them fire reliably in every scenario:
 //   - window focus  — fires on windowDidBecomeKey: (does NOT re-fire if the window was

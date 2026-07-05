@@ -1865,6 +1865,10 @@ export type AppRPCSchema = {
 				params: void;
 				response: boolean;
 			};
+			consumePendingNotificationNav: {
+				params: void;
+				response: { taskId: string; projectId: string } | null;
+			};
 			openNewWindow: {
 				params: void;
 				response: void;
