@@ -1787,6 +1787,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; compareRef?: string };
 				response: void;
 			};
+			rebaseTaskViaAgent: {
+				params: { taskId: string; projectId: string; compareRef?: string };
+				response: { handedOff: boolean };
+			};
 			mergeTask: {
 				params: { taskId: string; projectId: string };
 				response: void;

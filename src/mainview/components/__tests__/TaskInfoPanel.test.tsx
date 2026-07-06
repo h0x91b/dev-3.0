@@ -22,6 +22,7 @@ vi.mock("../../rpc", () => ({
 			prepareMergeCompletionPrompt: vi.fn(),
 			dismissMergeCompletionPrompt: vi.fn(),
 			rebaseTask: vi.fn(),
+			rebaseTaskViaAgent: vi.fn(),
 			mergeTask: vi.fn(),
 			pushTask: vi.fn(),
 			createPullRequest: vi.fn(),
@@ -1567,21 +1568,53 @@ describe("TaskInfoPanel", () => {
 			// alertSpy cleanup handled by clearAllMocks
 		});
 
-		it("rebase is disabled when canRebase is false", async () => {
+		it("hands the rebase off to the agent when canRebase is false (conflicts)", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				behind: 2,
 				canRebase: false,
 			});
+			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ handedOff: true });
 
 			await act(async () => {
 				renderPanel(makeTask());
 			});
 
-			const rebaseButtons = screen.getAllByText("Rebase");
-			for (const btn of rebaseButtons) {
-				expect(btn.closest("button")).toBeDisabled();
-			}
+			// The conflict state relabels the (enabled) button "Rebase (AI)".
+			const rebaseButtons = screen.getAllByText("Rebase (AI)");
+			const enabledBtn = rebaseButtons.find((b) => !b.closest("button")!.disabled);
+			expect(enabledBtn).toBeTruthy();
+			await user.click(enabledBtn!.closest("button")!);
+
+			expect(mockedApi.request.rebaseTaskViaAgent).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+			});
+			// The auto-rebase path must NOT run for a conflicting rebase.
+			expect(mockedApi.request.rebaseTask).not.toHaveBeenCalled();
+			await waitFor(() => expect(toast.info).toHaveBeenCalled());
+		});
+
+		it("warns when there is no agent terminal to hand the rebase to", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				behind: 2,
+				canRebase: false,
+			});
+			mockedApi.request.rebaseTaskViaAgent.mockResolvedValue({ handedOff: false });
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const enabledBtn = screen
+				.getAllByText("Rebase (AI)")
+				.find((b) => !b.closest("button")!.disabled);
+			await user.click(enabledBtn!.closest("button")!);
+
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
 		});
 
 		it("shows 'Create PR' when no open PR exists", async () => {
