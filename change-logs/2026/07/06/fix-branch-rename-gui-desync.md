@@ -1,0 +1,1 @@
+Fixed the task branch name shown in the GUI (header, cards, detail modal) staying stale after the branch was renamed inside the worktree. getBranchStatus already re-synced the stored name but never notified the renderer; it now broadcasts a taskUpdated push so every open surface re-renders with the live branch.

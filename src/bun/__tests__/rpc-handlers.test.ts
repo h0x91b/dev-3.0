@@ -3817,12 +3817,21 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 
+		const push = vi.fn();
+		setPushMessage(push);
+
 		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 		// Should have synced the stored branchName
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { branchName: "dev3/fix-login" });
 		// Should pass live branch name to getUnpushedCount
 		expect(git.getUnpushedCount).toHaveBeenCalledWith("/tmp/wt", "dev3/fix-login");
+		// Must notify the renderer so the header/cards re-render with the new
+		// branch instead of showing the stale name until a reload.
+		expect(push).toHaveBeenCalledWith("taskUpdated", {
+			projectId: "proj-1",
+			task: expect.objectContaining({ branchName: "dev3/fix-login" }),
+		});
 	});
 
 	it("does not update branchName when live matches stored", async () => {
@@ -3837,9 +3846,13 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 
+		const push = vi.fn();
+		setPushMessage(push);
+
 		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 		expect(data.updateTask).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalledWith("taskUpdated", expect.anything());
 	});
 
 	it("returns prNumber when gh pr list finds an open non-draft PR", async () => {
