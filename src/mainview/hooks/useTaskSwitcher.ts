@@ -59,7 +59,8 @@ function activeOf(tasks: Task[]): Task[] {
  *
  * Hold the modifier, tap Tab to advance (wrap-around), release to commit.
  * Arrows ↑/↓ move both ways; Enter commits; Escape cancels. Order is MRU so a
- * quick tap-tap toggles the two most recent tasks.
+ * quick tap-tap toggles the two most recent tasks. Tapping Shift toggles the
+ * scope between this project and all projects (a sticky toggle, not hold).
  */
 export function useTaskSwitcher({
 	projectTasks,
@@ -185,6 +186,13 @@ export function useTaskSwitcher({
 		[refreshGlobal],
 	);
 
+	// Sticky scope toggle driven by tapping Shift mid-session (no need to hold).
+	const toggleScope = useCallback(() => {
+		const s = sessionRef.current;
+		if (!s) return;
+		applyScope(s.scope === "global" ? "project" : "global");
+	}, [applyScope]);
+
 	const open = useCallback(
 		(scope: SwitcherScope): boolean => {
 			const source =
@@ -232,10 +240,11 @@ export function useTaskSwitcher({
 			const s = sessionRef.current;
 			if (s) {
 				if (e.key === "Shift") {
-					// Live scope toggle: hold Shift → global, release → project.
+					// Sticky scope toggle: each Shift tap flips project ↔ all
+					// projects. Ignore auto-repeat so a held Shift toggles once.
 					e.preventDefault();
 					e.stopPropagation();
-					applyScope("global");
+					if (!e.repeat) toggleScope();
 					return;
 				}
 				if (e.key === "Tab") {
@@ -286,11 +295,9 @@ export function useTaskSwitcher({
 		};
 		const onKeyUp = (e: KeyboardEvent) => {
 			if (!sessionRef.current) return;
-			if (e.key === "Shift") {
-				// Releasing Shift narrows back to the current project.
-				applyScope("project");
-				return;
-			}
+			// Shift is a sticky toggle now, so releasing it must not change scope
+			// or commit — only releasing the base modifier (Alt/Ctrl) commits.
+			if (e.key === "Shift") return;
 			const released = modIsAlt
 				? e.key === "Alt" || !e.altKey
 				: e.key === "Control" || !e.ctrlKey;
@@ -302,7 +309,7 @@ export function useTaskSwitcher({
 			window.removeEventListener("keydown", onKeyDown, { capture: true });
 			window.removeEventListener("keyup", onKeyUp, { capture: true });
 		};
-	}, [advance, commit, cancel, open, applyScope]);
+	}, [advance, commit, cancel, open, toggleScope]);
 
 	return { session, setIndex, commit, cancel };
 }

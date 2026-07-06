@@ -1,0 +1,1 @@
+In the Option+Tab task switcher, Shift now toggles the "all projects" scope with a single tap (sticky) instead of only working while held, with a clear scope-toggle hint in the footer. The overlay is also wider and each task's overview is shown on up to two more-legible lines with larger terminal thumbnails, so tasks are easier to tell apart.

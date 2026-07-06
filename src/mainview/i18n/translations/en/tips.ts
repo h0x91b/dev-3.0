@@ -167,7 +167,7 @@ const tips = {
 	"tip.agentCompletionRequest.title": "Agents can request completion",
 	"tip.agentCompletionRequest.body": "When an agent runs `dev3 task move --status completed`, you get an approval dialog — approve to complete or keep the session alive.",
 	"tip.taskSwitcher.title": "Option+Tab between tasks",
-	"tip.taskSwitcher.body": "Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.) Add Shift (Option+Shift+Tab) to switch across all projects.",
+	"tip.taskSwitcher.body": "Hold Option and tap Tab to flip through active tasks; release to jump. Arrows ↑↓ move both ways. (Ctrl+Tab on Linux.) Tap Shift to toggle across all projects.",
 	"tip.pasteLargeText.title": "Paste big logs as files",
 	"tip.pasteLargeText.body": "Paste a large text block and it's saved as a .txt attachment, keeping the task light instead of bloated.",
 	"tip.taskHintNav.title": "Jump with F",

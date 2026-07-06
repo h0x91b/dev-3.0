@@ -167,7 +167,7 @@ const tips = {
 	"tip.agentCompletionRequest.title": "Los agentes pueden pedir completar",
 	"tip.agentCompletionRequest.body": "Cuando un agente ejecuta `dev3 task move --status completed`, recibes un diálogo de aprobación: aprueba para completar o mantén la sesión viva.",
 	"tip.taskSwitcher.title": "Option+Tab entre tareas",
-	"tip.taskSwitcher.body": "Mantén Option y pulsa Tab para recorrer las tareas activas; suelta para saltar. Las flechas ↑↓ mueven en ambos sentidos. (Ctrl+Tab en Linux.) Con Shift (Option+Shift+Tab) cambias entre todos los proyectos.",
+	"tip.taskSwitcher.body": "Mantén Option y pulsa Tab para recorrer las tareas activas; suelta para saltar. Las flechas ↑↓ mueven en ambos sentidos. (Ctrl+Tab en Linux.) Pulsa Shift para alternar entre todos los proyectos.",
 	"tip.pasteLargeText.title": "Pega registros grandes como archivos",
 	"tip.pasteLargeText.body": "Pega un bloque de texto grande y se guarda como adjunto .txt, manteniendo la tarea ligera en vez de sobrecargada.",
 	"tip.taskHintNav.title": "Salta con F",

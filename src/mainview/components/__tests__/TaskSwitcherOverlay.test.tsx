@@ -107,4 +107,11 @@ describe("TaskSwitcherOverlay", () => {
 		renderOverlay({ ...session, scope: "global" });
 		expect(screen.getAllByText("My Project").length).toBeGreaterThan(0);
 	});
+
+	it("shows the Shift scope-toggle hint in the footer", () => {
+		renderOverlay(session);
+		const toggle = screen.getByTestId("task-switcher-scope-toggle");
+		expect(toggle).toHaveTextContent("⇧");
+		expect(toggle).toHaveTextContent("Toggle all projects");
+	});
 });
