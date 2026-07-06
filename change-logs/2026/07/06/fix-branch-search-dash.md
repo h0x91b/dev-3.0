@@ -1,0 +1,1 @@
+Fixed the "use existing branch" search in the new-task modal returning no results once the typed query contained a dash. The query is now tokenized on the same separators as branch names (/, -, _, .), so a dashed query like "login-page" matches instead of falling through.
