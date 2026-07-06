@@ -2,6 +2,7 @@ import { BrowserView, BrowserWindow, Screen } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/types";
 import { createLogger } from "./logger";
 import { loadWindowState, saveWindowState, resolveRestoreFrame, displayContaining, type Rect } from "./window-state";
+import { isFreshStartMode } from "./fresh-start";
 
 const log = createLogger("window-manager");
 
@@ -23,6 +24,9 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let lastWindowedFrame: Rect | null = null;
 
 function captureWindowState(win: BrowserWindow): void {
+	// Fresh-start (dev) mode never persists geometry — it must not clobber the
+	// shared ~/.dev3.0/window-state.json that the real install restores from.
+	if (isFreshStartMode()) return;
 	try {
 		const fullscreen = win.isFullScreen();
 		const frame = win.getFrame();
@@ -93,9 +97,11 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 
 	// Restore the *first* window to its last position/screen (incl. macOS
 	// fullscreen). Extra windows keep the centered cascade so they don't stack.
+	// In fresh-start (dev) mode we skip the restore entirely and always open a
+	// default centered, windowed frame — no geometry, no fullscreen.
 	let frame: Rect;
 	let restoreFullScreen = false;
-	const saved = windows.size === 0 ? loadWindowState() : null;
+	const saved = windows.size === 0 && !isFreshStartMode() ? loadWindowState() : null;
 	const restored = saved ? resolveRestoreFrame(saved, Screen.getAllDisplays()) : null;
 	if (restored) {
 		frame = restored.frame;
@@ -147,9 +153,13 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 	});
 
 	// Persist geometry as the user drags/resizes (debounced) so an update restart
-	// can put the window back where it was.
-	win.on("move", () => scheduleWindowStateSave(win));
-	win.on("resize", () => scheduleWindowStateSave(win));
+	// can put the window back where it was. Skipped in fresh-start (dev) mode,
+	// which must not touch the shared persisted state (captureWindowState also
+	// short-circuits, but not attaching avoids pointless timers).
+	if (!isFreshStartMode()) {
+		win.on("move", () => scheduleWindowStateSave(win));
+		win.on("resize", () => scheduleWindowStateSave(win));
+	}
 
 	if (restoreFullScreen) {
 		// macOS can't restore the exact Space, but re-entering fullscreen while the

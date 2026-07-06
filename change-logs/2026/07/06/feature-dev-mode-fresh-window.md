@@ -1,0 +1,1 @@
+Local dev launches (`bun run dev` / `bun run start`) now open a fresh, centered window on the dashboard instead of restoring the last window geometry, macOS fullscreen, and last open task. Gated by the `DEV3_FRESH_START=1` env var set by those scripts; dev runs also stop persisting window/route state so they never clobber the shared prod state. Prod builds are unaffected.

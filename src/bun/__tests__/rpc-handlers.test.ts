@@ -52,6 +52,8 @@ vi.mock("../data", () => ({
 	getLastPickedFolder: vi.fn(),
 	setLastPickedFolder: vi.fn(),
 	updateTaskWith: vi.fn(),
+	loadLastRoute: vi.fn(),
+	saveLastRoute: vi.fn(),
 }));
 
 vi.mock("../git", () => ({
@@ -8961,5 +8963,48 @@ describe("handlers.tmuxWindowNavigate", () => {
 		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID, step: "next" });
 		expect(res).toEqual({ count: 0, activeIndex: 0, labels: [] });
 		expect(called("select-window")).toBe(false);
+	});
+});
+
+describe("handlers.getLastRoute / saveLastRoute — fresh-start (dev) mode", () => {
+	const ORIGINAL_FRESH = process.env.DEV3_FRESH_START;
+
+	beforeEach(() => {
+		vi.mocked(data.loadLastRoute).mockReset();
+		vi.mocked(data.saveLastRoute).mockReset();
+	});
+
+	afterEach(() => {
+		if (ORIGINAL_FRESH === undefined) delete process.env.DEV3_FRESH_START;
+		else process.env.DEV3_FRESH_START = ORIGINAL_FRESH;
+	});
+
+	it("normally restores the persisted route", async () => {
+		delete process.env.DEV3_FRESH_START;
+		vi.mocked(data.loadLastRoute).mockResolvedValue(JSON.stringify({ screen: "project", projectId: "p1" }));
+		const res = await handlers.getLastRoute();
+		expect(res).toEqual({ route: JSON.stringify({ screen: "project", projectId: "p1" }) });
+		expect(data.loadLastRoute).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns no route in fresh-start mode (always land on dashboard)", async () => {
+		process.env.DEV3_FRESH_START = "1";
+		vi.mocked(data.loadLastRoute).mockResolvedValue(JSON.stringify({ screen: "project", projectId: "p1" }));
+		const res = await handlers.getLastRoute();
+		expect(res).toEqual({ route: null });
+		// Must not even read the persisted route.
+		expect(data.loadLastRoute).not.toHaveBeenCalled();
+	});
+
+	it("normally persists the route", async () => {
+		delete process.env.DEV3_FRESH_START;
+		await handlers.saveLastRoute({ route: JSON.stringify({ screen: "dashboard" }) });
+		expect(data.saveLastRoute).toHaveBeenCalledWith(JSON.stringify({ screen: "dashboard" }));
+	});
+
+	it("does not persist the route in fresh-start mode (never clobbers shared state)", async () => {
+		process.env.DEV3_FRESH_START = "1";
+		await handlers.saveLastRoute({ route: JSON.stringify({ screen: "project", projectId: "p1" }) });
+		expect(data.saveLastRoute).not.toHaveBeenCalled();
 	});
 });
