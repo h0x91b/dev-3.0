@@ -649,7 +649,12 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 
 	if (liveBranch && liveBranch !== task.branchName) {
 		log.info("getBranchStatus: branch renamed, syncing stored name", { old: task.branchName, new: liveBranch });
-		await data.updateTask(project, task.id, { branchName: liveBranch });
+		const updated = await data.updateTask(project, task.id, { branchName: liveBranch });
+		// Persisting alone leaves the renderer's in-memory task with the stale
+		// branch name (it only refreshes on a taskUpdated push), so the header,
+		// task cards, and detail modal keep showing the old branch until reload.
+		// Broadcast the update so every open surface re-renders with the new name.
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	}
 
 	log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
