@@ -96,7 +96,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent, codexAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -130,7 +129,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent, codexAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -186,7 +184,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -268,7 +265,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -324,7 +320,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map([["pr-signal", 1]])}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -354,7 +349,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -381,7 +375,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -414,7 +407,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent, codexAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -439,7 +431,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -456,7 +447,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -481,7 +471,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -512,7 +501,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -535,7 +523,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 					disableGlobalFindShortcut
 				/>
 			</I18nProvider>,
@@ -562,7 +549,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -582,7 +568,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -603,7 +588,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -626,7 +610,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -667,7 +650,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -724,7 +706,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
@@ -760,7 +741,6 @@ describe("ActiveTasksSidebar", () => {
 					agents={[claudeAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
-					onSwitchToBoard={vi.fn()}
 				/>
 			</I18nProvider>,
 		);

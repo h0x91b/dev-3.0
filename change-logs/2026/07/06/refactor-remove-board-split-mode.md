@@ -1,0 +1,1 @@
+Removed the Kanban board split-view mode from the task view. The "Show board" / "Show sidebar" toggle buttons are gone; the task view now always shows the Active Tasks sidebar next to the terminal. The full Kanban board is still reachable via the breadcrumb.
