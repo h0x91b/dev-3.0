@@ -18,6 +18,27 @@ import { ScriptsIcon } from "../TaskIcons";
 
 const DEFAULT_PLACEMENT_IDX = SCRIPT_PLACEMENTS.indexOf("right");
 
+/** Desired popover width (24rem) and the gutter kept on both sides of the viewport. */
+const MAX_DROPDOWN_WIDTH = 384;
+const VIEWPORT_MARGIN = 16;
+
+/**
+ * Compute the popover placement so it never overflows the viewport.
+ * On a narrow window the width shrinks to fit the gutter — clamping `left`
+ * alone (the old behavior) is not enough when the width is fixed. Exported for tests.
+ */
+export function computeScriptsDropdownGeometry(
+	rect: { left: number; bottom: number },
+	viewportWidth: number,
+): { top: number; left: number; width: number } {
+	const width = Math.min(MAX_DROPDOWN_WIDTH, Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2));
+	const left = Math.max(
+		VIEWPORT_MARGIN,
+		Math.min(rect.left, viewportWidth - width - VIEWPORT_MARGIN),
+	);
+	return { top: rect.bottom + 6, left, width };
+}
+
 interface TaskScriptsProps {
 	task: Task;
 	project: Project;
@@ -27,6 +48,7 @@ interface TaskScriptsProps {
 interface DropdownPosition {
 	top: number;
 	left: number;
+	width: number;
 }
 
 /** A single runnable row: an npm script or a Makefile target. */
@@ -61,7 +83,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	const btnRef = useRef<HTMLButtonElement>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const [open, setOpen] = useState(false);
-	const [pos, setPos] = useState<DropdownPosition>({ top: 0, left: 0 });
+	const [pos, setPos] = useState<DropdownPosition>({ top: 0, left: 0, width: MAX_DROPDOWN_WIDTH });
 	const [data, setData] = useState<WorktreeScripts | null>(null);
 	const [runner, setRunner] = useState<ScriptRunner | null>(null);
 	const [pickerFor, setPickerFor] = useState<PickerTarget | null>(null);
@@ -165,8 +187,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		if (!isTaskActive) return;
 		const rect = btnRef.current?.getBoundingClientRect();
 		if (!rect) return;
-		const width = 380;
-		setPos({ top: rect.bottom + 6, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) });
+		setPos(computeScriptsDropdownGeometry(rect, window.innerWidth));
 		setOpen(true);
 		setPickerFor(null);
 		setQuery("");
@@ -298,10 +319,11 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			/>
 			<div
 				data-task-scripts-popover
-				className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active w-[24rem] flex flex-col"
+				className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active flex flex-col"
 				style={{
 					top: pos.top,
 					left: pos.left,
+					width: pos.width,
 					maxHeight: `calc(100vh - ${pos.top + 16}px)`,
 				}}
 				onMouseDown={(e) => e.stopPropagation()}
