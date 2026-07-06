@@ -1,0 +1,1 @@
+Fixed the desktop window opening blank grey with "Resource not found" errors. A recent startup change moved the process working directory away from the .app bundle, which broke electrobun's views:// asset resolution and the native bridge. The process now stays put; child processes are instead pinned to ~/.dev3.0 so the original brew-upgrade resilience is preserved.
