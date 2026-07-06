@@ -208,6 +208,8 @@ const tips = {
 	"tip.helpMode.body": "Кликните ? в шапке или нажмите ⇧⌘/ — каждая зона получит значок (i); кликните, чтобы узнать, что она делает.",
 	"tip.automations.title": "Агенты по расписанию",
 	"tip.automations.body": "Настройки проекта → Автоматизации: повторяющиеся промпты (RRULE) создают настоящие задачи — попробуйте еженедельный отчёт «Что я сделал».",
+	"tip.makefileTargets.title": "Запуск таргетов Makefile",
+	"tip.makefileTargets.body": "Кнопка ƒ Scripts показывает и таргеты Makefile — выберите один, чтобы запустить make <target> в живой панели.",
 };
 
 export default tips;

@@ -84,7 +84,7 @@ export const tooltips = {
 	"ttip.openIn.fileBrowser": "Browse the worktree files in a terminal file manager (yazi), right in a pane next to the agent.",
 
 	// Scripts / dev server / ports / images
-	"ttip.scripts.run": "Runs a script from this worktree's package.json in a tmux pane, so you watch the output live.",
+	"ttip.scripts.run": "Runs a package.json script or Makefile target from this worktree in a tmux pane, so you watch the output live.",
 	"ttip.devServer":
 		"Starts the project's dev script in its own tmux window, on ports allocated to this task — parallel tasks never fight over a port.",
 	"ttip.sharedImages": "Screenshots, QA captures and diagrams the agent shared with you for this task. Click to view them.",

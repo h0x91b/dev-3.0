@@ -1,13 +1,14 @@
 /**
- * Stateless helper that opens a package.json script in a new tmux pane or window
- * inside the task's session. Intentionally no registry / no exit tracking — the
- * user owns the pane lifecycle from there (close it manually in tmux, or just
- * run the script again to open another pane).
+ * Stateless helper that opens a package.json script or Makefile target in a new
+ * tmux pane or window inside the task's session. Intentionally no registry / no
+ * exit tracking — the user owns the pane lifecycle from there (close it manually
+ * in tmux, or just run it again to open another pane).
  */
-import type { ScriptPlacement, ScriptRunner } from "../shared/types";
+import type { ScriptPlacement, ScriptRunner, ScriptSource } from "../shared/types";
 import * as pty from "./pty-server";
 import { spawn } from "./spawn";
 import { resolveRunnerCommand } from "./package-scripts";
+import { resolveMakeCommand } from "./makefile";
 import { createLogger } from "./logger";
 
 const log = createLogger("script-runner");
@@ -33,16 +34,20 @@ interface RunScriptOptions {
 	taskId: string;
 	worktreePath: string;
 	scriptName: string;
+	source: ScriptSource;
 	runner: ScriptRunner;
 	placement: ScriptPlacement;
 	socket?: string;
 }
 
 export async function runScript(opts: RunScriptOptions): Promise<void> {
-	const { taskId, worktreePath, scriptName, runner, placement } = opts;
+	const { taskId, worktreePath, scriptName, source, runner, placement } = opts;
 	const socket = opts.socket ?? pty.DEFAULT_TMUX_SOCKET;
 	const session = taskSessionName(taskId);
-	const command = resolveRunnerCommand(runner, scriptName);
+	const command = source === "make"
+		? resolveMakeCommand(scriptName)
+		: resolveRunnerCommand(runner, scriptName);
+	const label = source === "make" ? `make:${scriptName}` : `script:${scriptName}`;
 	// Keep the pane alive after the script exits so the user can read the tail
 	// of the output. They press Enter (or any key) to close the pane.
 	// Single quotes around the inner script protect against the outer shell —
@@ -71,7 +76,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 			"-c",
 			worktreePath,
 			"-n",
-			`script:${scriptName}`.slice(0, 20),
+			label.slice(0, 20),
 			"-P",
 			"-F",
 			"#{pane_id}",
@@ -93,7 +98,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 	}
 	const paneId = stdout.trim();
 	if (paneId) {
-		spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", `script:${scriptName}`), {
+		spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", label), {
 			stdout: "pipe",
 			stderr: "pipe",
 		}).exited.catch(() => {});

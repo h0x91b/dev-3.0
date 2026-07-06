@@ -208,6 +208,8 @@ const tips = {
 	"tip.helpMode.body": "Haz clic en el ? de la cabecera o pulsa ⇧⌘/ — cada zona recibe una insignia (i); haz clic para saber qué hace.",
 	"tip.automations.title": "Programa ejecuciones de agentes",
 	"tip.automations.body": "Ajustes del proyecto → Automatizaciones: prompts recurrentes (RRULE) crean tareas reales — prueba el informe semanal «Qué he entregado».",
+	"tip.makefileTargets.title": "Ejecuta targets de Makefile",
+	"tip.makefileTargets.body": "El botón ƒ Scripts también lista los targets de tu Makefile — elige uno para ejecutar make <target> en un panel en vivo.",
 };
 
 export default tips;

@@ -82,7 +82,7 @@ export const tooltips = {
 	"ttip.openIn.fileBrowser": "Explora los archivos del worktree en un gestor de archivos de terminal (yazi), en un panel junto al agente.",
 
 	// Scripts / dev server / ports / images
-	"ttip.scripts.run": "Ejecuta un script del package.json de este worktree en un panel tmux — ves la salida en vivo.",
+	"ttip.scripts.run": "Ejecuta un script de package.json o un target de Makefile de este worktree en un panel tmux — ves la salida en vivo.",
 	"ttip.devServer":
 		"Arranca el dev script del proyecto en su propia ventana tmux, en los puertos asignados a esta tarea — las tareas paralelas nunca pelean por un puerto.",
 	"ttip.sharedImages": "Capturas, imágenes de QA y diagramas que el agente compartió contigo en esta tarea. Clic para verlos.",

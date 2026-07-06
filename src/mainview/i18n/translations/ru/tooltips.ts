@@ -82,7 +82,7 @@ export const tooltips = {
 	"ttip.openIn.fileBrowser": "Просматривайте файлы worktree в терминальном файловом менеджере (yazi), прямо в панели рядом с агентом.",
 
 	// Scripts / dev server / ports / images
-	"ttip.scripts.run": "Запускает скрипт из package.json этого worktree в tmux-панели — вывод виден вживую.",
+	"ttip.scripts.run": "Запускает скрипт package.json или таргет Makefile этого worktree в tmux-панели — вывод виден вживую.",
 	"ttip.devServer":
 		"Запускает dev-скрипт проекта в отдельном tmux-окне, на портах этой таски — параллельные таски не дерутся за порт.",
 	"ttip.sharedImages": "Скриншоты, QA-снимки и диаграммы, которыми агент поделился по этой таске. Клик — посмотреть.",

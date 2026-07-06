@@ -849,6 +849,14 @@ const ALL_TIPS: Tip[] = [
 		score: 4,
 		contexts: ["board", "settings"],
 	},
+	{
+		id: "makefile-targets",
+		titleKey: "tip.makefileTargets.title",
+		bodyKey: "tip.makefileTargets.body",
+		icon: "\u{F0313}", // nf-md-console
+		score: 3,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

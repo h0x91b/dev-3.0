@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import fuzzysort from "fuzzysort";
 import type {
-	PackageScripts,
 	Project,
 	ScriptPlacement,
 	ScriptRunner,
+	ScriptSource,
 	Task,
+	WorktreeScripts,
 } from "../../../shared/types";
-import { SCRIPT_PLACEMENTS } from "../../../shared/types";
+import { SCRIPT_PLACEMENTS, scriptStorageKey } from "../../../shared/types";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
@@ -26,6 +27,18 @@ interface TaskScriptsProps {
 interface DropdownPosition {
 	top: number;
 	left: number;
+}
+
+/** A single runnable row: an npm script or a Makefile target. */
+interface RunnableEntry {
+	name: string;
+	command: string;
+	source: ScriptSource;
+}
+
+interface PickerTarget {
+	name: string;
+	source: ScriptSource;
 }
 
 function placementLabel(t: ReturnType<typeof useT>, p: ScriptPlacement): string {
@@ -49,9 +62,9 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	const searchRef = useRef<HTMLInputElement>(null);
 	const [open, setOpen] = useState(false);
 	const [pos, setPos] = useState<DropdownPosition>({ top: 0, left: 0 });
-	const [pkg, setPkg] = useState<PackageScripts | null>(null);
+	const [data, setData] = useState<WorktreeScripts | null>(null);
 	const [runner, setRunner] = useState<ScriptRunner | null>(null);
-	const [pickerFor, setPickerFor] = useState<string | null>(null);
+	const [pickerFor, setPickerFor] = useState<PickerTarget | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
@@ -64,11 +77,11 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 
 	const refresh = useCallback(async () => {
 		try {
-			const fn = api.request.parsePackageScripts;
+			const fn = api.request.parseRunnableScripts;
 			if (!fn) return;
-			const p = await fn({ taskId: task.id, projectId: project.id });
-			setPkg(p);
-			setRunner((prev) => prev ?? p.runner);
+			const d = await fn({ taskId: task.id, projectId: project.id });
+			setData(d);
+			setRunner((prev) => prev ?? d.package.runner);
 		} catch (err) {
 			setError(String(err));
 		}
@@ -86,22 +99,43 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		{ enabled: open },
 	);
 
+	// Merge package.json scripts and Makefile targets into one tagged list.
+	const entries = useMemo<RunnableEntry[]>(() => {
+		if (!data) return [];
+		const pkg = data.package.exists
+			? data.package.scripts.map((s) => ({ ...s, source: "package" as const }))
+			: [];
+		const mk = data.makefile.exists
+			? data.makefile.targets.map((tgt) => ({ ...tgt, source: "make" as const }))
+			: [];
+		return [...pkg, ...mk];
+	}, [data]);
+
+	const pkgHasScripts = !!data?.package.exists && data.package.scripts.length > 0;
+	const mkHasTargets = !!data?.makefile.exists && data.makefile.targets.length > 0;
+	const anyRunnable = entries.length > 0;
+	// True only once we've fetched and confirmed nothing is runnable — drives the
+	// disabled button tooltip without flashing it before the first parse lands.
+	const knownEmpty = !!data && !anyRunnable;
+
 	// Auto-focus the search input as soon as the dropdown opens (and not in picker mode).
-	// On the very first open `pkg` is still null while parsePackageScripts runs, so the
+	// On the very first open `data` is still null while parseRunnableScripts runs, so the
 	// input isn't mounted yet — we also re-run once the input becomes available.
-	const searchInputMounted = !!(pkg?.exists && pkg.scripts.length > 0);
 	useEffect(() => {
-		if (open && !pickerFor && searchInputMounted) {
+		if (open && !pickerFor && anyRunnable) {
 			const timer = setTimeout(() => searchRef.current?.focus(), 0);
 			return () => clearTimeout(timer);
 		}
-	}, [open, pickerFor, searchInputMounted]);
+	}, [open, pickerFor, anyRunnable]);
 
-	// Sort scripts: most recently run first, then keep package.json order for the rest.
+	// Sort: most recently run first, then keep source/file order for the rest.
 	const sortedScripts = useMemo(() => {
-		if (!pkg?.scripts) return [];
 		const lastRun = task.scriptLastRunAt ?? {};
-		const indexed = pkg.scripts.map((s, i) => ({ s, i, ts: lastRun[s.name] ?? "" }));
+		const indexed = entries.map((s, i) => ({
+			s,
+			i,
+			ts: lastRun[scriptStorageKey(s.source, s.name)] ?? "",
+		}));
 		indexed.sort((a, b) => {
 			if (a.ts && !b.ts) return -1;
 			if (!a.ts && b.ts) return 1;
@@ -109,14 +143,14 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 			return a.i - b.i;
 		});
 		return indexed.map((x) => x.s);
-	}, [pkg?.scripts, task.scriptLastRunAt]);
+	}, [entries, task.scriptLastRunAt]);
 
 	// Apply fuzzy filter on top of the sorted list.
 	const filteredScripts = useMemo(() => {
 		if (!query.trim()) return sortedScripts;
-		const targets = sortedScripts.map((s) => ({ ...s, key: `${s.name} ${s.command}` }));
+		const targets = sortedScripts.map((s) => ({ ...s, key: `${s.name} ${s.command} ${s.source}` }));
 		const results = fuzzysort.go(query, targets, { key: "key", threshold: -10000 });
-		return results.map((r) => ({ name: r.obj.name, command: r.obj.command }));
+		return results.map((r) => ({ name: r.obj.name, command: r.obj.command, source: r.obj.source }));
 	}, [query, sortedScripts]);
 
 	// Clamp active index whenever the filtered list changes.
@@ -157,20 +191,21 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [task.id, isTaskActive]);
 
-	async function launch(scriptName: string, placement: ScriptPlacement) {
+	async function launch(name: string, source: ScriptSource, placement: ScriptPlacement) {
 		setBusy(true);
 		setError(null);
 		try {
 			await api.request.runScript({
 				taskId: task.id,
 				projectId: project.id,
-				scriptName,
+				scriptName: name,
 				placement,
-				runner: runner ?? pkg?.runner,
+				source,
+				runner: source === "package" ? (runner ?? data?.package.runner) : undefined,
 			});
 			closeDropdown();
 		} catch (err) {
-			setError(t("scripts.error.runFailed", { name: scriptName, error: String(err) }));
+			setError(t("scripts.error.runFailed", { name, error: String(err) }));
 		} finally {
 			setBusy(false);
 		}
@@ -180,14 +215,14 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		if (!pickerFor) return;
 		// Read the last placement off the latest task ref so a server-side echo of
 		// scriptLastPlacement doesn't reset the user's mid-picker arrow key navigation.
-		const last = taskRef.current.scriptLastPlacement?.[pickerFor];
+		const last = taskRef.current.scriptLastPlacement?.[scriptStorageKey(pickerFor.source, pickerFor.name)];
 		const idx = last ? SCRIPT_PLACEMENTS.indexOf(last) : -1;
 		setPlacementIdx(idx >= 0 ? idx : DEFAULT_PLACEMENT_IDX);
 	}, [pickerFor]);
 
 	useEffect(() => {
 		if (!open || !pickerFor) return;
-		const scriptName = pickerFor;
+		const { name, source } = pickerFor;
 		// Arm Enter on the next tick so the keystroke that *opened* the picker
 		// (typed in the search input) doesn't also fire launch here.
 		let armed = false;
@@ -206,7 +241,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				if (!armed) return;
 				e.preventDefault();
 				const p = SCRIPT_PLACEMENTS[placementIdxRef.current];
-				if (p) void launch(scriptName, p);
+				if (p) void launch(name, source, p);
 			}
 		}
 		document.addEventListener("keydown", onKey);
@@ -227,9 +262,31 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 		} else if (e.key === "Enter") {
 			e.preventDefault();
 			const picked = filteredScripts[activeIdx];
-			if (picked) setPickerFor(picked.name);
+			if (picked) setPickerFor({ name: picked.name, source: picked.source });
 		}
 	}
+
+	function headerText(): string {
+		if (pkgHasScripts && mkHasTargets) {
+			return t("scripts.dropdown.headerBoth", {
+				scripts: data!.package.scripts.length,
+				targets: data!.makefile.targets.length,
+			});
+		}
+		if (pkgHasScripts) return t("scripts.dropdown.header", { count: data!.package.scripts.length });
+		if (mkHasTargets) return t("scripts.dropdown.headerMake", { count: data!.makefile.targets.length });
+		// Nothing runnable — surface the most informative reason.
+		const pkgErr = data?.package.error;
+		if (pkgErr?.startsWith("parse-failed")) return t("scripts.empty.parseError", { error: pkgErr });
+		if (data?.package.exists && pkgErr === "no-scripts" && !data.makefile.exists) {
+			return t("scripts.empty.noScripts");
+		}
+		return t("scripts.empty.none");
+	}
+
+	const pickedEntry = pickerFor
+		? entries.find((e) => e.name === pickerFor.name && e.source === pickerFor.source)
+		: null;
 
 	const dropdown = open ? createPortal(
 		<>
@@ -253,29 +310,19 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				{/* Sticky header */}
 				<div className="flex-shrink-0 flex items-center justify-between px-3 py-2 border-b border-edge">
 					<div className="text-xs text-fg-3 truncate">
-						{pickerFor
-							? t("scripts.picker.title", { name: pickerFor })
-							: pkg?.exists
-								? t("scripts.dropdown.header", { count: pkg.scripts.length })
-								: pkg?.error === "no-package-json"
-									? t("scripts.empty.noPackageJson")
-									: pkg?.error === "no-scripts"
-										? t("scripts.empty.noScripts")
-										: pkg?.error?.startsWith("parse-failed")
-											? t("scripts.empty.parseError", { error: pkg.error })
-											: t("scripts.empty.noPackageJson")}
+						{pickerFor ? t("scripts.picker.title", { name: pickerFor.name }) : headerText()}
 					</div>
-					{pkg?.exists && !pickerFor && (
+					{pkgHasScripts && !pickerFor && data && (
 						<RunnerChip
-							runner={runner ?? pkg.runner}
-							pkg={pkg}
+							runner={runner ?? data.package.runner}
+							pkg={data.package}
 							onSelect={setRunner}
 						/>
 					)}
 				</div>
-				{pkg?.multipleLockfiles && !pickerFor && (
+				{data?.package.multipleLockfiles && !pickerFor && (
 					<div className="flex-shrink-0 px-3 py-1.5 text-xs text-warning bg-warning/10 border-b border-warning/20">
-						⚠ {t("scripts.warning.multipleLockfiles")}: {pkg.lockfiles.join(", ")}
+						⚠ {t("scripts.warning.multipleLockfiles")}: {data.package.lockfiles.join(", ")}
 					</div>
 				)}
 				{error && (
@@ -287,15 +334,15 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				{/* Picker mode — replaces the list */}
 				{pickerFor ? (
 					<div className="px-3 py-4">
-						<div className="text-xs text-fg-2 mb-1">{pickerFor}</div>
+						<div className="text-xs text-fg-2 mb-1">{pickerFor.name}</div>
 						<div className="text-[0.6875rem] text-fg-3 font-mono mb-3 truncate">
-							{pkg?.scripts.find((s) => s.name === pickerFor)?.command}
+							{pickedEntry?.command}
 						</div>
 						<div className="grid grid-cols-5 gap-1.5">
 							{SCRIPT_PLACEMENTS.map((p, idx) => (
 								<Tooltip key={p} content={placementLabel(t, p)}>
 									<button
-										onClick={() => launch(pickerFor, p)}
+										onClick={() => launch(pickerFor.name, pickerFor.source, p)}
 										onMouseEnter={() => setPlacementIdx(idx)}
 										disabled={busy}
 										className={`flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg transition-colors disabled:opacity-50 ${
@@ -321,7 +368,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 				) : (
 					<>
 						{/* Search input */}
-						{pkg?.exists && pkg.scripts.length > 0 && (
+						{anyRunnable && (
 							<div className="flex-shrink-0 px-3 py-2 border-b border-edge">
 								<input
 									ref={searchRef}
@@ -344,14 +391,19 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 							)}
 							{filteredScripts.map((s, idx) => (
 								<button
-									key={s.name}
-									onClick={() => setPickerFor(s.name)}
+									key={`${s.source}:${s.name}`}
+									onClick={() => setPickerFor({ name: s.name, source: s.source })}
 									onMouseEnter={() => setActiveIdx(idx)}
 									disabled={busy}
-									className={`w-full text-left px-3 py-1.5 flex flex-col transition-colors disabled:opacity-50 ${idx === activeIdx ? "bg-elevated" : "hover:bg-elevated"}`}
+									className={`w-full text-left px-3 py-1.5 flex items-center gap-2 transition-colors disabled:opacity-50 ${idx === activeIdx ? "bg-elevated" : "hover:bg-elevated"}`}
 								>
-									<span className="text-sm text-fg font-medium truncate">{s.name}</span>
-									<span className="text-xs text-fg-3 truncate">{s.command}</span>
+									<span className="flex flex-col min-w-0 flex-1">
+										<span className="text-sm text-fg font-medium truncate">{s.name}</span>
+										{s.command && <span className="text-xs text-fg-3 truncate">{s.command}</span>}
+									</span>
+									<span className="flex-shrink-0 text-[0.625rem] px-1 py-0.5 rounded border border-edge text-fg-3 font-mono">
+										{s.source === "make" ? "make" : (runner ?? data?.package.runner)}
+									</span>
 								</button>
 							))}
 						</div>
@@ -364,7 +416,7 @@ export default function TaskScripts({ task, project, isTaskActive }: TaskScripts
 
 	return (
 		<>
-			<Tooltip content={pkg?.exists === false ? t("scripts.tooltip.disabled") : t("scripts.tooltip")} detail={t("ttip.scripts.run")}>
+			<Tooltip content={knownEmpty ? t("scripts.tooltip.disabled") : t("scripts.tooltip")} detail={t("ttip.scripts.run")}>
 				<button
 					ref={btnRef}
 					onClick={openDropdown}
@@ -407,7 +459,7 @@ function PlacementGlyph({ placement }: { placement: ScriptPlacement }) {
 	);
 }
 
-function RunnerChip({ runner, pkg, onSelect }: { runner: ScriptRunner; pkg: PackageScripts; onSelect: (r: ScriptRunner) => void }) {
+function RunnerChip({ runner, pkg, onSelect }: { runner: ScriptRunner; pkg: WorktreeScripts["package"]; onSelect: (r: ScriptRunner) => void }) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
