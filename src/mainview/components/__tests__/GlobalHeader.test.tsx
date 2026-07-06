@@ -886,4 +886,20 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		await user.click(screen.getByText("Project Terminal"));
 		expect(navigate).toHaveBeenCalledWith({ screen: "project-terminal", projectId: "p1" });
 	});
+
+	it("keeps the stateful widgets (git pull, tmux) out of the inline header", () => {
+		renderHeader({ screen: "project", projectId: "p1" });
+		// Folded into the kebab sheet — not sitting inline in the header row.
+		expect(screen.queryByTestId("git-pull-button")).not.toBeInTheDocument();
+		expect(screen.queryByTitle("tmux Sessions")).not.toBeInTheDocument();
+	});
+
+	it("surfaces the stateful widgets inside the bottom sheet", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "project", projectId: "p1" });
+		await user.click(screen.getByLabelText("More"));
+		// Git pull + tmux manager now live in the sheet's controls strip.
+		expect(screen.getByTestId("git-pull-button")).toBeInTheDocument();
+		expect(screen.getByTitle("tmux Sessions")).toBeInTheDocument();
+	});
 });
