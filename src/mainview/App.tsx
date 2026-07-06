@@ -366,10 +366,19 @@ function App() {
 
 	// Quick shell (⇧⌘`): spawn a fresh scratch op in the built-in Operations board
 	// and jump to it. The backend launches it with the default agent + config.
+	// Honor the `dev3-task-open-mode` preference like every other task-open path
+	// (card click, notification, toast) — default "split" lands on the Operations
+	// board with the task's workspace beside it (matching what the user sees when
+	// they open the same task from the board), NOT a bare fullscreen terminal.
 	const openQuickShell = useCallback(async () => {
 		try {
 			const task = await api.request.openQuickShell({});
-			navigate({ screen: "task", projectId: task.projectId, taskId: task.id });
+			const openMode = getTaskOpenMode();
+			if (openMode === "fullscreen") {
+				navigate({ screen: "task", projectId: task.projectId, taskId: task.id });
+			} else {
+				navigate({ screen: "project", projectId: task.projectId, activeTaskId: task.id });
+			}
 		} catch (err) {
 			toast.error(String(err));
 		}

@@ -1,0 +1,1 @@
+Fixed Quick Shell (⇧⌘`) opening a scratch op in a chrome-less terminal with no task header or tmux controls. The full-page task view now loads its project's tasks so the header always renders, and Quick Shell honors the task open-mode preference (split by default) instead of forcing a bare fullscreen terminal.
