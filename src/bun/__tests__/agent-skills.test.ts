@@ -140,6 +140,19 @@ describe("dev3-tmux skill content", () => {
 		expect(skill).toContain("Default: split-window (pane). Use new-window only when the user explicitly asks for a tab.");
 		expect(skill).toMatch(/always.*split-window.*never.*new-window/i);
 	});
+
+	it("tells the agent to give windows human names instead of the auto command-name", () => {
+		const skill = getTmuxSkillContent();
+		expect(skill).toContain("**Always name a window you open**");
+		expect(skill).toMatch(/turns off automatic-rename/i);
+	});
+
+	it("tells the agent to proactively rename generic windows it did not open", () => {
+		const skill = getTmuxSkillContent();
+		expect(skill).toContain("**Also tidy windows you did not open.**");
+		expect(skill).toMatch(/list-windows/);
+		expect(skill).toMatch(/proactively/i);
+	});
 });
 
 describe("dev3-project-config skill content", () => {
