@@ -274,6 +274,63 @@ async function setTmuxSessionPortEnv(taskId: string, socket: string): Promise<vo
 	log.info("Port env vars set on tmux session", { taskId: taskId.slice(0, 8), vars: Object.keys(envVars) });
 }
 
+/**
+ * Register worktree trust for the resolved agent's CLI before spawning it.
+ * Claude trust (with MCP pre-approval) is always ensured; Codex/Gemini trust
+ * only for their respective CLIs. Codex trust also re-patches ~/.codex/config.toml
+ * — stripping the legacy `[profiles.dev3-*]` tables / top-level `profile = "..."`
+ * selectors that codex ≥0.131 rejects and (re)writing the per-profile files. All
+ * calls are idempotent and non-fatal: a failure logs and continues so a trust
+ * hiccup never blocks the launch.
+ *
+ * MUST run before EVERY agent spawn. It used to be inlined only in the primary
+ * task launch; the extra-agent (`spawnAgentInTask`) and bug-hunter panes skipped
+ * it, so a spawned Codex pane launched against a stale config.toml and crashed
+ * with `--profile dev3-dark cannot be used while ... contains legacy profile`.
+ */
+async function ensureAgentTrust(
+	worktreePath: string,
+	projectPath: string,
+	resolvedBaseCmd: string,
+): Promise<void> {
+	try {
+		await agents.ensureClaudeTrust(worktreePath, projectPath);
+		log.info("Claude trust ensured", { worktreePath });
+	} catch (err) {
+		log.error("ensureClaudeTrust failed (non-fatal)", {
+			worktreePath,
+			error: String(err),
+			stack: (err as Error)?.stack ?? "no stack",
+		});
+	}
+
+	if (agents.isCodexCommand(resolvedBaseCmd)) {
+		try {
+			await agents.ensureCodexTrust(worktreePath);
+			log.info("Codex trust ensured", { worktreePath });
+		} catch (err) {
+			log.error("ensureCodexTrust failed (non-fatal)", {
+				worktreePath,
+				error: String(err),
+				stack: (err as Error)?.stack ?? "no stack",
+			});
+		}
+	}
+
+	if (agents.isGeminiCommand(resolvedBaseCmd)) {
+		try {
+			await agents.ensureGeminiTrust(worktreePath);
+			log.info("Gemini trust ensured", { worktreePath });
+		} catch (err) {
+			log.error("ensureGeminiTrust failed (non-fatal)", {
+				worktreePath,
+				error: String(err),
+				stack: (err as Error)?.stack ?? "no stack",
+			});
+		}
+	}
+}
+
 export async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -449,42 +506,7 @@ export async function launchTaskPty(
 		}
 	}
 
-	try {
-		await agents.ensureClaudeTrust(worktreePath, project.path);
-		log.info("Claude trust ensured", { worktreePath });
-	} catch (err) {
-		log.error("ensureClaudeTrust failed (non-fatal)", {
-			worktreePath,
-			error: String(err),
-			stack: (err as Error)?.stack ?? "no stack",
-		});
-	}
-
-	if (agents.isCodexCommand(resolvedBaseCmd)) {
-		try {
-			await agents.ensureCodexTrust(worktreePath);
-			log.info("Codex trust ensured", { worktreePath });
-		} catch (err) {
-			log.error("ensureCodexTrust failed (non-fatal)", {
-				worktreePath,
-				error: String(err),
-				stack: (err as Error)?.stack ?? "no stack",
-			});
-		}
-	}
-
-	if (agents.isGeminiCommand(resolvedBaseCmd)) {
-		try {
-			await agents.ensureGeminiTrust(worktreePath);
-			log.info("Gemini trust ensured", { worktreePath });
-		} catch (err) {
-			log.error("ensureGeminiTrust failed (non-fatal)", {
-				worktreePath,
-				error: String(err),
-				stack: (err as Error)?.stack ?? "no stack",
-			});
-		}
-	}
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	try {
@@ -2069,6 +2091,11 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 	}
 
+	// Register trust / re-patch the agent's config before spawning. The primary
+	// task launch does this; without it a spawned Codex pane runs against a stale
+	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
+	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd);
+
 	const env: Record<string, string> = buildAgentEnv(extraEnv, task.id);
 
 	const existingPorts = portPool.getPortAssignments(task.id);
@@ -2200,6 +2227,10 @@ async function spawnSingleBugHunterPane(opts: {
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
 	}
+
+	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
+	// otherwise launches against a stale config.toml and crashes.
+	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd);
 
 	const env: Record<string, string> = buildAgentEnv(extraEnv, opts.task.id);
 	const existingPorts = portPool.getPortAssignments(opts.task.id);

@@ -6450,6 +6450,41 @@ describe("handlers.spawnAgentInTask", () => {
 			handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: null }),
 		).rejects.toThrow("Failed to spawn agent");
 	});
+
+	// Regression: the primary launch path re-patches ~/.codex/config.toml via
+	// ensureCodexTrust before every codex launch (strips the legacy
+	// [profiles.dev3-*] tables codex ≥0.131 rejects). Spawning an extra Codex
+	// agent used to skip that step, so the pane crashed with
+	// "--profile dev3-dark cannot be used while config.toml contains legacy profile".
+	it("ensures Codex trust before spawning a Codex agent", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/codex-wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({
+			command: "codex -p dev3-dark",
+			extraEnv: {},
+			config: { baseCommandOverride: "codex" },
+		});
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-codex", configId: null });
+
+		expect(agents.ensureCodexTrust).toHaveBeenCalledWith("/tmp/codex-wt");
+	});
+
+	it("ensures Claude trust before spawning any agent", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude --resume", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
+
+		expect(agents.ensureClaudeTrust).toHaveBeenCalledWith("/tmp/wt", project.path);
+	});
 });
 
 // ================================================================
