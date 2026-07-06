@@ -8,7 +8,39 @@ vi.mock("node:fs", () => ({
 	mkdirSync: (...args: unknown[]) => mkdirSync(...args),
 }));
 
-import { createLogger, getMinLevel, resolveLogLevel, setMinLevel } from "../logger";
+import { createLogger, getLogPath, getMinLevel, resolveLogDir, resolveLogLevel, setMinLevel } from "../logger";
+
+describe("resolveLogDir", () => {
+	it("honors an explicit DEV3_LOG_DIR override above everything else", () => {
+		expect(resolveLogDir({ DEV3_LOG_DIR: "/custom/logs", VITEST: "true" })).toBe("/custom/logs");
+		expect(resolveLogDir({ DEV3_LOG_DIR: "  /trimmed  " })).toBe("/trimmed");
+	});
+
+	it("redirects to an isolated tmp dir under a test runner (never the real ~/.dev3.0/logs)", () => {
+		const underVitest = resolveLogDir({ VITEST: "true" });
+		const underNodeEnv = resolveLogDir({ NODE_ENV: "test" });
+		expect(underVitest).toContain("dev3-test-logs");
+		expect(underNodeEnv).toContain("dev3-test-logs");
+		expect(underVitest).not.toContain("/.dev3.0/logs");
+	});
+
+	it("uses the real ${DEV3_HOME}/logs for the app / CLI (no test signal, no override)", () => {
+		expect(resolveLogDir({})).toMatch(/\.dev3\.0\/logs$/);
+	});
+
+	it("ignores a blank DEV3_LOG_DIR and falls through to the next rule", () => {
+		expect(resolveLogDir({ DEV3_LOG_DIR: "   ", VITEST: "true" })).toContain("dev3-test-logs");
+	});
+});
+
+describe("test-run log isolation (regression: fake ERROR/WARN pollution)", () => {
+	// The whole suite runs under vitest (VITEST=true), so the live logger sink
+	// must already point away from the real user log. If this ever fails, unit
+	// tests are appending synthetic lines to ~/.dev3.0/logs again.
+	it("never resolves the live log directory inside the real ~/.dev3.0/logs", () => {
+		expect(getLogPath()).not.toContain("/.dev3.0/logs");
+	});
+});
 
 describe("resolveLogLevel", () => {
 	it("honors an explicit DEV3_LOG_LEVEL override (case-insensitive)", () => {
