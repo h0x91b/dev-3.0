@@ -261,6 +261,28 @@ const settings = {
 	// ProjectView
 	"project.notFound": "Project not found",
 	"project.selectTaskForTerminal": "Select a task to see its terminal",
+
+	// Token-saving proxy (pxpipe) — experimental, opt-in
+	"settings.pxpipeSection": "Token-saving proxy (experimental)",
+	"settings.pxpipeSectionDesc": "Route Claude through a local proxy (pxpipe) that renders bulky context as images to cut input tokens. Off by default.",
+	"pxpipe.enableLabel": "Enable token-saving proxy",
+	"pxpipe.warningTitle": "Experimental — slower, but often 2× cheaper (or more)",
+	"pxpipe.warningBody": "The pxpipe proxy renders bulky context as images to cut input tokens, which typically halves the request cost — often more. The trade-off is speed: replies take a bit longer. Accuracy stays virtually the same (only a negligible drop). Works best with Fable 5. Enabling this unlocks the \"Fable 5 (cost trick)\" preset.",
+	"pxpipe.npxAvailable": "npx is available",
+	"pxpipe.npxMissing": "npx not found",
+	"pxpipe.npxMissingHint": "Install Node.js (which provides npx) to run the proxy.",
+	"pxpipe.statusRunning": "Proxy running (pid {pid})",
+	"pxpipe.statusStarting": "Starting… (npx may be downloading the proxy)",
+	"pxpipe.statusStopped": "Proxy stopped — port {port} is free",
+	"pxpipe.statusForeign": "Port {port} is in use by another process: {name} (pid {pid})",
+	"pxpipe.start": "Start proxy",
+	"pxpipe.stop": "Stop proxy",
+	"pxpipe.openDashboard": "Open proxy dashboard ↗",
+	"pxpipe.viewRepo": "pxpipe on GitHub ↗",
+	"pxpipe.startError": "Failed to start proxy: {error}",
+	"pxpipe.stopError": "Failed to stop proxy: {error}",
+	"pxpipe.disabledPresetToast": "This preset needs the token-saving proxy — tap to enable it in Settings.",
+	"pxpipe.credit": "Token-saving trick and proxy by the pxpipe team.",
 } as const;
 
 export default settings;

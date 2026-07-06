@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, type Route } from "./state";
+import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type Route, type SettingsSectionId } from "./state";
 import { api, isElectrobun } from "./rpc";
 import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
@@ -343,6 +343,18 @@ function App() {
 		},
 		[commitNavigation],
 	);
+
+	// Deep-link into a Global Settings section (e.g. clicking a proxy-gated
+	// preset in the launch picker dispatches this). Kept as a window event so no
+	// surface needs a navigate prop threaded through it.
+	useEffect(() => {
+		function onOpenSettingsSection(e: Event) {
+			const section = (e as CustomEvent<SettingsSectionId>).detail;
+			navigate({ screen: "settings", section });
+		}
+		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettingsSection);
+		return () => window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettingsSection);
+	}, [navigate]);
 
 	// Switch to a project, preserving the current view shape the same way Cmd+1..9
 	// does: in a task view with split open-mode, land in the target's task view
@@ -2071,7 +2083,7 @@ function App() {
 					/>
 				);
 			case "settings":
-				return <GlobalSettings />;
+				return <GlobalSettings section={route.section} />;
 			case "changelog":
 				return (
 					<Changelog

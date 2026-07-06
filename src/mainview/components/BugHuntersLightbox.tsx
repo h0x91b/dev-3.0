@@ -176,6 +176,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 								setAgentId(next.agentId);
 								setConfigId(next.configId);
 							}}
+							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 						/>
 
 						{/* Info note */}

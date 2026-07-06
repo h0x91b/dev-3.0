@@ -138,6 +138,14 @@ export function buildPickerGroups(agent: CodingAgent | undefined | null): Picker
 	return order.map((label) => ({ label, configs: byLabel.get(label) as AgentConfiguration[] }));
 }
 
+/** True when a Model group is entirely gated behind the pxpipe token-saving
+ *  proxy (every preset in it sets `requiresPxpipeProxy`). The "Fable 5 (cost
+ *  trick)" group is the only such group today — used to disable its Model
+ *  option until the proxy is enabled in Settings. */
+export function groupRequiresPxpipeProxy(group: PickerGroup): boolean {
+	return group.configs.length > 0 && group.configs.every((c) => c.requiresPxpipeProxy === true);
+}
+
 /** The group label that owns a given configId (for decomposing a stored
  *  selection back into the cascade's 2nd field). Null when not found. */
 export function groupLabelForConfig(agent: CodingAgent | undefined | null, configId: string | null | undefined): string | null {

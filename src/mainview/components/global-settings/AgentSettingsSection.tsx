@@ -379,6 +379,7 @@ export default function AgentSettingsSection({
 					agentId={globalSettings.defaultAgentId}
 					configId={globalSettings.defaultConfigId}
 					agentAvailability={agentAvailability}
+					pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 					onChange={(next) => {
 						if (next.agentId && next.agentId !== globalSettings.defaultAgentId) {
 							// Switching provider also resets the config to that agent's

@@ -262,6 +262,28 @@ const settings = {
 	// ProjectView
 	"project.notFound": "Proyecto no encontrado",
 	"project.selectTaskForTerminal": "Selecciona una tarea para ver su terminal",
+
+	// Token-saving proxy (pxpipe) — experimental, opt-in
+	"settings.pxpipeSection": "Proxy de ahorro de tokens (experimental)",
+	"settings.pxpipeSectionDesc": "Enruta Claude a través de un proxy local (pxpipe) que convierte el contexto voluminoso en imágenes para reducir los tokens de entrada. Desactivado por defecto.",
+	"pxpipe.enableLabel": "Activar el proxy de ahorro de tokens",
+	"pxpipe.warningTitle": "Experimental — más lento, pero a menudo 2× más barato (o más)",
+	"pxpipe.warningBody": "El proxy pxpipe convierte el contexto voluminoso en imágenes para reducir los tokens de entrada, lo que suele reducir a la mitad el coste de la petición, y a menudo más. El precio a pagar es la velocidad: las respuestas tardan un poco más. La precisión se mantiene prácticamente igual (una caída insignificante). Funciona mejor con Fable 5. Activarlo desbloquea el preset «Fable 5 (cost trick)».",
+	"pxpipe.npxAvailable": "npx está disponible",
+	"pxpipe.npxMissing": "npx no encontrado",
+	"pxpipe.npxMissingHint": "Instala Node.js (incluye npx) para ejecutar el proxy.",
+	"pxpipe.statusRunning": "Proxy en ejecución (pid {pid})",
+	"pxpipe.statusStarting": "Iniciando… (npx puede estar descargando el proxy)",
+	"pxpipe.statusStopped": "Proxy detenido — el puerto {port} está libre",
+	"pxpipe.statusForeign": "El puerto {port} está en uso por otro proceso: {name} (pid {pid})",
+	"pxpipe.start": "Iniciar proxy",
+	"pxpipe.stop": "Detener proxy",
+	"pxpipe.openDashboard": "Abrir panel del proxy ↗",
+	"pxpipe.viewRepo": "pxpipe en GitHub ↗",
+	"pxpipe.startError": "No se pudo iniciar el proxy: {error}",
+	"pxpipe.stopError": "No se pudo detener el proxy: {error}",
+	"pxpipe.disabledPresetToast": "Este preset necesita el proxy de ahorro de tokens — toca para activarlo en Ajustes.",
+	"pxpipe.credit": "El truco de ahorro de tokens y el proxy son obra del equipo de pxpipe.",
 };
 
 export default settings;

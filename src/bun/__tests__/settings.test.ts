@@ -159,6 +159,7 @@ describe("saveSettings", () => {
 			agentRateLimitTracking: false,
 			watchByDefault: true,
 			agentsLayoutRevision: 1,
+			pxpipeProxyEnabled: true,
 		};
 
 		await saveSettings(full);
