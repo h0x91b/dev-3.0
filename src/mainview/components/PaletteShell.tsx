@@ -178,9 +178,13 @@ export function PaletteShell<T>({
 										}}
 										onMouseEnter={() => setIndex(i)}
 										onClick={() => commit(i)}
+										// A row with a header above it reserves top scroll-margin so
+										// scrollIntoView(block:"nearest") keeps its section header visible
+										// when the row is aligned to the top edge (e.g. wrapping from the
+										// bottom back up to the first row).
 										className={`flex items-center justify-between gap-3 w-full text-left px-2.5 py-2 rounded-lg transition-colors ${
-											isSelected ? "bg-accent/15" : "hover:bg-elevated-hover"
-										}`}
+											showHeader ? "scroll-mt-9" : ""
+										} ${isSelected ? "bg-accent/15" : "hover:bg-elevated-hover"}`}
 									>
 										<span className="flex items-center gap-2 min-w-0 flex-1">
 											{renderItemLeft?.(r.item, i, query.trim())}

@@ -137,6 +137,26 @@ describe("GoToPaletteModal", () => {
 		expect(headers).toEqual(["Today", "Yesterday", "This week", "Older", "Projects"]);
 	});
 
+	it("reserves top scroll-margin only on rows that sit under a section header", () => {
+		// Two tasks in the SAME (Today) bucket: the first carries the header, the
+		// second does not — so scrollIntoView keeps a header visible at the top edge.
+		render(
+			<I18nProvider>
+				<GoToPaletteModal
+					projects={[]}
+					tasks={[task("a", "p1", "Alpha task", TODAY), task("b", "p1", "Beta task", TODAY)]}
+					projectById={PROJECT_BY_ID}
+					onSelectProject={vi.fn()}
+					onSelectTask={vi.fn()}
+					onClose={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		const options = screen.getAllByRole("option");
+		expect(options[0].className).toContain("scroll-mt-9"); // first-in-bucket → header above
+		expect(options[1].className).not.toContain("scroll-mt-9"); // same bucket, no header
+	});
+
 	it("shows the project badge on task rows", () => {
 		renderModal();
 		const taskRow = screen.getByText("Fix login redirect").closest("[role=option]");
