@@ -113,6 +113,8 @@ const kanban = {
 	"launch.provider": "Provider",
 	"launch.model": "Model",
 	"launch.mode": "Mode",
+	"launch.accountTitle": "Account",
+	"launch.accountVia": "via {name}",
 	"launch.addVariant": "+ Add Variant",
 	"launch.removeVariant": "Remove",
 	"launch.launch": "Launch",

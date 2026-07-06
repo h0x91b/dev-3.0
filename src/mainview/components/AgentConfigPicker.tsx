@@ -2,6 +2,7 @@ import type { AgentCheckResult, CodingAgent } from "../../shared/types";
 import { useT } from "../i18n";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { toast } from "../toast";
+import AgentAccountIndicator from "./AgentAccountIndicator";
 import Select, { useAgentRenderOption } from "./Select";
 import {
 	buildPickerGroups,
@@ -115,6 +116,9 @@ function AgentConfigPicker({
 					onChange={(val) => handleProviderChange(val || null)}
 					renderOption={renderAgentOption}
 				/>
+				{/* Progressive disclosure: renders only when the selected provider has
+				    managed accounts (Settings → Agent Accounts). */}
+				<AgentAccountIndicator agent={selectedAgent} />
 			</div>
 
 			{/* Model */}

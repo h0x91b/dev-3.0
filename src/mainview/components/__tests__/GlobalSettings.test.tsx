@@ -27,6 +27,10 @@ vi.mock("../../rpc", () => ({
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			setTmuxTheme: vi.fn().mockResolvedValue(undefined),
 			checkCaffeinateAvailable: vi.fn().mockResolvedValue({ available: true }),
+			listAgentAccounts: vi.fn().mockResolvedValue({
+				claude: { accounts: [], activeId: null, systemIdentity: null },
+				codex: { accounts: [], activeId: null, currentIdentity: null },
+			}),
 		},
 	},
 }));

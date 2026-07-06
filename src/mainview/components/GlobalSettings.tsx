@@ -19,6 +19,7 @@ import { getZoom, ZOOM_CHANGED_EVENT } from "../zoom";
 import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
 import { trackEvent } from "../analytics";
+import AgentAccountsSection from "./global-settings/AgentAccountsSection";
 import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
@@ -499,6 +500,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onDefaultAgentChange={handleDefaultAgentChange}
 						onDefaultConfigChange={handleDefaultConfigChange}
 					/>
+					<AgentAccountsSection t={t} />
 					<PxpipeProxySettingsSection
 						t={t}
 						globalSettings={globalSettings}

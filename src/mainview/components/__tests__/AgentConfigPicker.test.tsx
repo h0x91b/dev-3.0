@@ -1,6 +1,21 @@
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
+
+// The picker renders AgentAccountIndicator, which pulls in rpc.ts (Electrobun).
+// Empty account registries keep the indicator hidden in these layout tests.
+vi.mock("../../rpc", () => ({
+	api: {
+		request: {
+			listAgentAccounts: vi.fn().mockResolvedValue({
+				claude: { accounts: [], activeId: null, systemIdentity: null },
+				codex: { accounts: [], activeId: null, currentIdentity: null },
+			}),
+			setActiveAgentAccount: vi.fn(),
+		},
+	},
+}));
+
 import AgentConfigPicker, { type AgentConfigSelection } from "../AgentConfigPicker";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent } from "../../../shared/types";

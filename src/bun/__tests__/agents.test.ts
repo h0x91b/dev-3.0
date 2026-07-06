@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { setCurrentUiTheme } from "../theme-state";
@@ -962,3 +962,65 @@ describe("applyLayoutResync", () => {
 	});
 });
 
+
+describe("applyModelOverride — API profile model beats the preset --model flag", () => {
+	it("replaces the preset model when ANTHROPIC_MODEL is in the session env", () => {
+		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
+		const result = applyModelOverride(config, "claude", { ANTHROPIC_MODEL: "openrouter/custom" });
+		expect(result?.model).toBe("openrouter/custom");
+		// Original config is not mutated.
+		expect(config.model).toBe("claude-opus-4-8[1m]");
+	});
+
+	it("produces a command with the overridden --model", () => {
+		const config = applyModelOverride(makeConfig({ model: "sonnet" }), "claude", { ANTHROPIC_MODEL: "my-model" });
+		const cmd = resolveAgentCommand(makeAgent(), config, makeCtx());
+		expect(cmd).toContain("--model my-model");
+		expect(cmd).not.toContain("--model sonnet");
+	});
+
+	it("does nothing without ANTHROPIC_MODEL in the env", () => {
+		const config = makeConfig({ model: "sonnet" });
+		expect(applyModelOverride(config, "claude", {})).toBe(config);
+	});
+
+	it("does nothing for non-Claude commands", () => {
+		const config = makeConfig({ model: "gpt-5.5" });
+		expect(applyModelOverride(config, "codex", { ANTHROPIC_MODEL: "my-model" })).toBe(config);
+	});
+
+	it("returns undefined config unchanged (env alone wins when no flag is emitted)", () => {
+		expect(applyModelOverride(undefined, "claude", { ANTHROPIC_MODEL: "my-model" })).toBeUndefined();
+	});
+
+	it("rewrites the preset to the family-slot override (dev3 presets pass concrete ids)", () => {
+		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
+		const result = applyModelOverride(config, "claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "openrouter/opus-alt" });
+		expect(result?.model).toBe("openrouter/opus-alt");
+	});
+
+	it("prefers the family-slot override over a bare ANTHROPIC_MODEL", () => {
+		const config = makeConfig({ model: "claude-sonnet-5" });
+		const result = applyModelOverride(config, "claude", {
+			ANTHROPIC_DEFAULT_SONNET_MODEL: "provider/sonnet",
+			ANTHROPIC_MODEL: "provider/generic",
+		});
+		expect(result?.model).toBe("provider/sonnet");
+	});
+
+	it("keeps the preset when the model's family has no override", () => {
+		const config = makeConfig({ model: "claude-fable-5" });
+		// Only an opus override is present — fable is untouched, no ANTHROPIC_MODEL fallback.
+		expect(applyModelOverride(config, "claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "x" })).toBe(config);
+	});
+});
+
+describe("claudeModelFamily", () => {
+	it("classifies dev3 preset model ids into alias families", () => {
+		expect(claudeModelFamily("claude-opus-4-8[1m]")).toBe("opus");
+		expect(claudeModelFamily("claude-sonnet-5")).toBe("sonnet");
+		expect(claudeModelFamily("claude-haiku-4-5")).toBe("haiku");
+		expect(claudeModelFamily("claude-fable-5")).toBe("fable");
+		expect(claudeModelFamily("openrouter/deepseek-v4")).toBeNull();
+	});
+});
