@@ -173,6 +173,26 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("--model claude-opus-4-8[1m]");
 	});
 
+	it("omits --model when a third-party provider is selected for the launch", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig({ model: "claude-opus-4-8[1m]" }),
+			makeCtx({ taskDescription: "Some task" }),
+			{ llmProvider: "bedrock" },
+		);
+		// On Bedrock the model comes from injected ANTHROPIC_MODEL, not --model.
+		expect(cmd).not.toContain("--model");
+	});
+
+	it("keeps --model when no provider is selected (native default)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "claude" }),
+			makeConfig({ model: "claude-opus-4-8[1m]" }),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+		expect(cmd).toContain("--model 'claude-opus-4-8[1m]'");
+	});
+
 	it("Codex: injects the dev3 reminder into new-session prompts", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),

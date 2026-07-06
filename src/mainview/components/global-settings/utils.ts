@@ -2,7 +2,10 @@ import type {
 	AgentConfiguration,
 	ExternalApp,
 	GlobalSettings,
+	LlmProvider,
+	ProviderConfig,
 } from "../../../shared/types";
+import { buildProviderEnv, isThirdPartyProvider } from "../../../shared/llm-provider";
 
 export type Theme = "dark" | "light" | "system";
 
@@ -117,19 +120,27 @@ function quoteIfUnsafeForPreview(s: string): string {
 export function buildCommandPreview(
 	agentBaseCommand: string,
 	config: AgentConfiguration,
+	llmProvider?: LlmProvider,
+	providerConfig?: ProviderConfig,
 ): { command: string; envLine: string | null } {
 	const baseCmd = config.baseCommandOverride || agentBaseCommand || "???";
 	const parts: string[] = [baseCmd];
 
-	if (config.model) {
+	const cmdName = baseCmd.split("/").pop() ?? "";
+	const isCursor = cmdName === "agent";
+	const isCodex = cmdName === "codex";
+	const isClaude = cmdName === "claude";
+
+	// Mirror the launcher: for Claude on a third-party provider, the model comes
+	// from the injected provider env (ANTHROPIC_MODEL), so --model is omitted —
+	// the Anthropic-API alias would be rejected by the provider with a 400.
+	const claudeOnProvider = isClaude && isThirdPartyProvider(llmProvider);
+
+	if (config.model && !claudeOnProvider) {
 		// Match the actual launcher: quote when the value would otherwise be
 		// glob-expanded by the shell (e.g. `claude-opus-4-8[1m]`).
 		parts.push("--model", quoteIfUnsafeForPreview(config.model));
 	}
-
-	const cmdName = baseCmd.split("/").pop() ?? "";
-	const isCursor = cmdName === "agent";
-	const isCodex = cmdName === "codex";
 
 	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
 		if (isCursor) {
@@ -170,7 +181,14 @@ export function buildCommandPreview(
 	}
 	parts.push(`'${prompt}'`);
 
-	const envPairs = Object.entries(config.envVars || {}).filter(([key]) => key);
+	// Mirror the launcher's env: provider env (Bedrock flag + pinned model)
+	// first, then config envVars (which win on conflict, as at launch time).
+	const providerEnv = claudeOnProvider
+		? buildProviderEnv(llmProvider, providerConfig, config.model)
+		: {};
+	const envPairs = Object.entries({ ...providerEnv, ...config.envVars }).filter(
+		([key]) => key,
+	);
 	const envLine =
 		envPairs.length > 0
 			? envPairs.map(([key, value]) => `${key}=${value}`).join(" ")

@@ -185,4 +185,78 @@ describe("global-settings utils", () => {
 			envLine: null,
 		});
 	});
+
+	it("omits --model for Claude when provider is bedrock", () => {
+		const config: AgentConfiguration = {
+			id: "c",
+			name: "Default",
+			model: "claude-opus-4-8[1m]",
+		};
+		expect(buildCommandPreview("claude", config, "bedrock").command).not.toContain("--model");
+	});
+
+	it("keeps --model for Claude on the anthropic provider (default)", () => {
+		const config: AgentConfiguration = {
+			id: "c",
+			name: "Default",
+			model: "claude-opus-4-8[1m]",
+		};
+		expect(buildCommandPreview("claude", config, "anthropic").command).toContain(
+			"--model 'claude-opus-4-8[1m]'",
+		);
+		// No provider arg → unchanged (back-compat)
+		expect(buildCommandPreview("claude", config).command).toContain("--model");
+	});
+
+	it("does not affect non-Claude agents under a provider", () => {
+		const config: AgentConfiguration = { id: "c", name: "Codex", model: "gpt-5.5" };
+		expect(buildCommandPreview("codex", config, "bedrock").command).toContain("--model gpt-5.5");
+	});
+
+	it("surfaces the injected provider env in the preview env line", () => {
+		const config: AgentConfiguration = {
+			id: "c",
+			name: "Default",
+			model: "claude-opus-4-8[1m]",
+		};
+		const { envLine } = buildCommandPreview("claude", config, "bedrock");
+		expect(envLine).toContain("CLAUDE_CODE_USE_BEDROCK=1");
+		expect(envLine).toContain("ANTHROPIC_MODEL=global.anthropic.claude-opus-4-8[1m]");
+	});
+
+	it("provider env respects the selected geo and model overrides", () => {
+		const config: AgentConfiguration = {
+			id: "c",
+			name: "Default",
+			model: "claude-opus-4-8[1m]",
+		};
+		const { envLine } = buildCommandPreview("claude", config, "bedrock", {
+			bedrock: {
+				geo: "eu",
+				modelOverrides: { "claude-opus-4-8[1m]": "arn:aws:bedrock:custom" },
+			},
+		});
+		expect(envLine).toContain("ANTHROPIC_MODEL=arn:aws:bedrock:custom");
+	});
+
+	it("config envVars win over provider env in the preview", () => {
+		const config: AgentConfiguration = {
+			id: "c",
+			name: "Default",
+			model: "claude-opus-4-8[1m]",
+			envVars: { ANTHROPIC_MODEL: "my-manual-model" },
+		};
+		const { envLine } = buildCommandPreview("claude", config, "bedrock");
+		expect(envLine).toContain("ANTHROPIC_MODEL=my-manual-model");
+		expect(envLine).toContain("CLAUDE_CODE_USE_BEDROCK=1");
+	});
+
+	it("keeps the env line free of provider vars on the anthropic default", () => {
+		const config: AgentConfiguration = {
+			id: "c",
+			name: "Default",
+			model: "claude-opus-4-8[1m]",
+		};
+		expect(buildCommandPreview("claude", config, "anthropic").envLine).toBeNull();
+	});
 });

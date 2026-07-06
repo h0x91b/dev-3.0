@@ -212,6 +212,8 @@ const tips = {
 	"tip.makefileTargets.body": "The ƒ Scripts button also lists your Makefile targets — pick one to run make <target> in a live pane.",
 	"tip.cliDoctor.title": "Diagnose your install",
 	"tip.cliDoctor.body": "Something off after an update? Run `dev3 doctor` in any terminal — it checks the app, tmux and Homebrew and prints exact fix commands.",
+	"tip.llmProvider.title": "Run Claude on Amazon Bedrock",
+	"tip.llmProvider.body": "Settings → Coding Agents → LLM Provider points the Claude agent at Amazon Bedrock — dev3 pins the mapped model; credentials and region stay in your own config.",
 } as const;
 
 export default tips;

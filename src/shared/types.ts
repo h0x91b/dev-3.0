@@ -203,6 +203,17 @@ export interface CodingAgent {
 	defaultConfigId?: string;
 	installCommand?: string;
 	installUrl?: string;
+	/**
+	 * LLM backend for this agent: the agent's native API (default, undefined) or a
+	 * registered third-party backend (e.g. Amazon Bedrock for Claude). When set to
+	 * a third-party provider, dev3 injects the provider env vars
+	 * (CLAUDE_CODE_USE_BEDROCK, mapped model id) into this agent's launches and
+	 * omits the native --model alias, which the provider would reject. Only agents
+	 * with a registered backend (see PROVIDER_REGISTRY) expose this.
+	 */
+	llmProvider?: LlmProvider;
+	/** Per-provider connection settings for this agent (model override, inference-profile region). */
+	providerConfig?: ProviderConfig;
 }
 
 export const DEFAULT_AGENTS: CodingAgent[] = [
@@ -509,6 +520,56 @@ export interface GlobalSettings {
 	 */
 	agentsLayoutRevision?: number;
 }
+
+/**
+ * Canonical LLM backend ids. Use these consts instead of raw string literals so
+ * the set of providers lives in one place. `anthropic` is the default (direct
+ * API); every other value is a third-party backend described in the provider
+ * registry (`src/shared/llm-provider.ts`). Adding a provider = adding an id here
+ * + a registry entry + its i18n labels.
+ */
+export const LLM_PROVIDER = {
+	Anthropic: "anthropic",
+	Bedrock: "bedrock",
+} as const;
+
+export type LlmProvider = (typeof LLM_PROVIDER)[keyof typeof LLM_PROVIDER];
+
+/** Bedrock cross-region inference-profile prefix (the `<geo>.` part of the model id). */
+export type BedrockGeo = "global" | "us" | "eu" | "apac";
+
+/**
+ * Per-provider connection settings. Generic across providers so a new backend
+ * reuses the same shape — not every field applies to every provider (e.g. `geo`
+ * is Bedrock-only). dev3 only owns the provider selection and the model-id
+ * mapping. Credentials, region, and AWS profile are NOT configured here — the
+ * customer sets those in their own global Claude Code setup (shell env or
+ * ~/.claude/settings.json).
+ */
+export interface ProviderSettings {
+	/**
+	 * Cross-region inference-profile prefix baked into the mapped model ids
+	 * (`global.` | `us.` | `eu.` | `apac.`). Bedrock-only. Changing it
+	 * re-populates every non-overridden row of the model table. Defaults to
+	 * "global". This is the id prefix only — NOT the AWS_REGION env (the
+	 * customer's global Claude config owns credentials/region).
+	 */
+	geo?: BedrockGeo;
+	/**
+	 * Per-model id overrides, keyed by the dev3 config model alias (e.g.
+	 * "claude-opus-4-8[1m]"). The value is the exact provider-native model id /
+	 * inference-profile id / ARN to inject as ANTHROPIC_MODEL, replacing the
+	 * built-in alias→provider-id mapping for that model. A key present here is a
+	 * "manual" override; deleting it reverts the row to the mapped default.
+	 */
+	modelOverrides?: Record<string, string>;
+}
+
+/**
+ * Per-provider settings keyed by provider id (e.g. `{ bedrock: { geo, … } }`).
+ * Keyed by id so adding a provider needs no shape change here.
+ */
+export type ProviderConfig = Partial<Record<LlmProvider, ProviderSettings>>;
 
 export interface TipState {
 	snoozedUntil: number; // timestamp â all tips hidden until this time
