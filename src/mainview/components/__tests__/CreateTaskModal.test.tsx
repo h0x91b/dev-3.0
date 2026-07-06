@@ -895,13 +895,30 @@ describe("CreateTaskModal labels", () => {
 		expect(screen.getByTitle("+ Add Label")).toBeInTheDocument();
 	});
 
+	it("shows only the selected labels as chips, not the full project list", async () => {
+		renderModal({ project: labeledProject });
+		// Nothing is selected yet, so neither project label renders as a chip.
+		expect(screen.queryByTitle("Bug")).toBeNull();
+		expect(screen.queryByTitle("Feature")).toBeNull();
+
+		// Select "Bug" through the picker popover.
+		await userEvent.click(screen.getByTitle("+ Add Label"));
+		await userEvent.type(screen.getByPlaceholderText("Search or create..."), "bug{Enter}");
+
+		// Only the selected label appears as a chip; the unselected one still does not.
+		await waitFor(() => {
+			expect(screen.getByTitle("Bug")).toBeInTheDocument();
+		});
+		expect(screen.queryByTitle("Feature")).toBeNull();
+	});
+
 	it("creates a new label inline and selects it on the task", async () => {
 		const dispatch = vi.fn();
 		mockedApi.request.createLabel.mockResolvedValue({ id: "lbl-new", name: "Urgent", color: "#3b82f6" });
 		renderModal({ dispatch, project: labeledProject });
 
 		await userEvent.click(screen.getByTitle("+ Add Label"));
-		const input = screen.getByPlaceholderText("Label name");
+		const input = screen.getByPlaceholderText("Search or create...");
 		await userEvent.type(input, "Urgent{Enter}");
 
 		await waitFor(() => {
@@ -932,7 +949,7 @@ describe("CreateTaskModal labels", () => {
 		renderModal({ project: labeledProject });
 
 		await userEvent.click(screen.getByTitle("+ Add Label"));
-		const input = screen.getByPlaceholderText("Label name");
+		const input = screen.getByPlaceholderText("Search or create...");
 		await userEvent.type(input, "bug{Enter}");
 
 		expect(mockedApi.request.createLabel).not.toHaveBeenCalled();
@@ -987,7 +1004,7 @@ describe("CreateTaskModal — partial create failure", () => {
 
 		// Select an existing label so the failing setTaskLabels call is reached.
 		await userEvent.click(screen.getByTitle("+ Add Label"));
-		await userEvent.type(screen.getByPlaceholderText("Label name"), "bug{Enter}");
+		await userEvent.type(screen.getByPlaceholderText("Search or create..."), "bug{Enter}");
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "Do the thing");
@@ -1043,7 +1060,7 @@ describe("CreateTaskModal — partial create failure", () => {
 		renderModal({ dispatch, onClose, project: labeledProject });
 
 		await userEvent.click(screen.getByTitle("+ Add Label"));
-		await userEvent.type(screen.getByPlaceholderText("Label name"), "bug{Enter}");
+		await userEvent.type(screen.getByPlaceholderText("Search or create..."), "bug{Enter}");
 
 		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
 		await userEvent.type(textarea, "Do the thing");
