@@ -9,9 +9,30 @@ export type GoToEntry =
 	| { kind: "project"; project: Project }
 	| { kind: "task"; task: Task; project?: Project };
 
-// Tasks first: the palette's primary job is fast task switching, so the most-
-// recently-visited task is the default landing row; projects follow below.
-const GROUP_ORDER = ["task", "project"];
+export type TaskBucket = "today" | "yesterday" | "week" | "older";
+
+/**
+ * Which recency bucket a task's `updatedAt` falls into, relative to `now`.
+ * Anchored on local midnight so "today"/"yesterday" match the calendar;
+ * "week" is the preceding 7-day window; everything else (incl. blank/unparsable
+ * timestamps) is "older".
+ */
+export function taskRecencyBucket(updatedAt: string, now: number): TaskBucket {
+	const ts = Date.parse(updatedAt);
+	if (Number.isNaN(ts)) return "older";
+	const start = new Date(now);
+	start.setHours(0, 0, 0, 0);
+	const t0 = start.getTime();
+	const DAY = 86_400_000;
+	if (ts >= t0) return "today";
+	if (ts >= t0 - DAY) return "yesterday";
+	if (ts >= t0 - 7 * DAY) return "week";
+	return "older";
+}
+
+// Tasks first (bucketed by recency), then projects. Empty buckets render no
+// header (PaletteShell only draws a header before a group that has rows).
+const GROUP_ORDER = ["today", "yesterday", "week", "older", "project"];
 
 interface GoToPaletteModalProps {
 	/**
@@ -35,14 +56,13 @@ interface GoToPaletteModalProps {
 }
 
 /**
- * Cmd/Ctrl+K quick-switch palette (navigation). One shared shell lists two
- * sections, **Tasks first** (all active tasks across projects, ordered by
- * recency — session visits first, then most-recently-updated; the palette's
- * primary job is fast task switching) then
- * **Projects** (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9). Type to
- * fuzzy-filter both; Enter opens the highlighted match. This realizes the
- * manifest's "Cmd+K absorbs task search" direction — the type-search
- * counterpart to the Option/Ctrl+Tab hold-cycle task switcher.
+ * Cmd/Ctrl+K quick-switch palette (navigation). One shared shell lists tasks
+ * first — every active task across all projects, bucketed by `updatedAt` into
+ * **Today / Yesterday / This week / Older** (most-recent first within each) —
+ * then a **Projects** section (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9).
+ * Type to fuzzy-filter everything; Enter opens the highlighted match. This
+ * realizes the manifest's "Cmd+K absorbs task search" direction — the
+ * type-search counterpart to the Option/Ctrl+Tab hold-cycle task switcher.
  */
 function GoToPaletteModal({
 	projects,
@@ -55,6 +75,15 @@ function GoToPaletteModal({
 }: GoToPaletteModalProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+	const now = Date.now();
+
+	const bucketLabel: Record<string, string> = {
+		today: t("goTo.sectionToday"),
+		yesterday: t("goTo.sectionYesterday"),
+		week: t("goTo.sectionWeek"),
+		older: t("goTo.sectionOlder"),
+		project: t("goTo.sectionProjects"),
+	};
 
 	const entries: GoToEntry[] = [
 		...projects.map((project) => ({ kind: "project" as const, project })),
@@ -79,9 +108,9 @@ function GoToPaletteModal({
 			hint={t("goTo.hint")}
 			noResults={t("goTo.noResults")}
 			testId="go-to-palette"
-			getGroup={(e) => e.kind}
+			getGroup={(e) => (e.kind === "task" ? taskRecencyBucket(e.task.updatedAt, now) : "project")}
 			groupOrder={GROUP_ORDER}
-			groupLabel={(g) => (g === "project" ? t("goTo.sectionProjects") : t("goTo.sectionTasks"))}
+			groupLabel={(g) => bucketLabel[g] ?? g}
 			renderItemLeft={(e) =>
 				e.kind === "task" ? (
 					<span

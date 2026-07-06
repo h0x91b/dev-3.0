@@ -86,7 +86,10 @@ const common = {
 	"goTo.noResults": "Нет подходящих проектов или задач",
 	"goTo.hint": "↑↓ выбор · ⏎ открыть · esc отмена",
 	"goTo.sectionProjects": "Проекты",
-	"goTo.sectionTasks": "Задачи · недавние",
+	"goTo.sectionToday": "Сегодня",
+	"goTo.sectionYesterday": "Вчера",
+	"goTo.sectionWeek": "На этой неделе",
+	"goTo.sectionOlder": "Ранее",
 
 	// Command (action) palette — Cmd/Ctrl+Shift+P
 	"commandPalette.title": "Выполнить команду",

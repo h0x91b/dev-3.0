@@ -86,7 +86,10 @@ const common = {
 	"goTo.noResults": "No hay proyectos ni tareas coincidentes",
 	"goTo.hint": "↑↓ mover · ⏎ abrir · esc cancelar",
 	"goTo.sectionProjects": "Proyectos",
-	"goTo.sectionTasks": "Tareas · recientes",
+	"goTo.sectionToday": "Hoy",
+	"goTo.sectionYesterday": "Ayer",
+	"goTo.sectionWeek": "Esta semana",
+	"goTo.sectionOlder": "Anteriores",
 
 	// Command (action) palette — Cmd/Ctrl+Shift+P
 	"commandPalette.title": "Ejecutar un comando",

@@ -2,8 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
-import GoToPaletteModal from "../GoToPaletteModal";
+import GoToPaletteModal, { taskRecencyBucket } from "../GoToPaletteModal";
 import type { Project, Task } from "../../../shared/types";
+
+// Timestamps anchored on the real local midnight (the same anchor the component
+// uses via Date.now()), so bucketing is deterministic regardless of timezone or
+// when the suite runs.
+const DAY = 86_400_000;
+const startOfToday = (() => {
+	const d = new Date();
+	d.setHours(0, 0, 0, 0);
+	return d.getTime();
+})();
+const iso = (ms: number) => new Date(ms).toISOString();
+const TODAY = iso(Date.now());
+const YESTERDAY = iso(startOfToday - 12 * 3_600_000);
+const THIS_WEEK = iso(startOfToday - 3 * DAY);
+const OLDER = iso(startOfToday - 30 * DAY);
 
 function project(id: string, name: string): Project {
 	return {
@@ -18,7 +33,7 @@ function project(id: string, name: string): Project {
 	};
 }
 
-function task(id: string, projectId: string, title: string): Task {
+function task(id: string, projectId: string, title: string, updatedAt = TODAY): Task {
 	return {
 		id,
 		seq: 1,
@@ -27,7 +42,7 @@ function task(id: string, projectId: string, title: string): Task {
 		description: "",
 		status: "in-progress",
 		createdAt: "",
-		updatedAt: "",
+		updatedAt,
 	} as Task;
 }
 
@@ -38,8 +53,8 @@ const PROJECTS: Project[] = [
 ];
 
 const TASKS: Task[] = [
-	task("t1", "p1", "Fix login redirect"),
-	task("t2", "p2", "Add rate limiter"),
+	task("t1", "p1", "Fix login redirect", TODAY),
+	task("t2", "p2", "Add rate limiter", YESTERDAY),
 ];
 
 const PROJECT_BY_ID = new Map(PROJECTS.map((p) => [p.id, p]));
@@ -91,10 +106,35 @@ describe("GoToPaletteModal", () => {
 		expect(screen.getByText("Add rate limiter")).toBeTruthy();
 	});
 
-	it("renders both section headers", () => {
+	it("renders date-bucket task headers and the Projects header", () => {
 		renderModal();
+		expect(screen.getByText("Today")).toBeTruthy();
+		expect(screen.getByText("Yesterday")).toBeTruthy();
 		expect(screen.getByText("Projects")).toBeTruthy();
-		expect(screen.getByText("Tasks · recent")).toBeTruthy();
+	});
+
+	it("buckets tasks into date sections in Today → Yesterday → This week → Older → Projects order", () => {
+		render(
+			<I18nProvider>
+				<GoToPaletteModal
+					projects={PROJECTS}
+					tasks={[
+						task("older", "p1", "Older task", OLDER),
+						task("today", "p1", "Today task", TODAY),
+						task("week", "p1", "Week task", THIS_WEEK),
+						task("yst", "p1", "Yesterday task", YESTERDAY),
+					]}
+					projectById={PROJECT_BY_ID}
+					onSelectProject={vi.fn()}
+					onSelectTask={vi.fn()}
+					onClose={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		const headers = [...document.querySelectorAll('[data-testid="go-to-palette"] [role=presentation]')].map(
+			(h) => h.textContent,
+		);
+		expect(headers).toEqual(["Today", "Yesterday", "This week", "Older", "Projects"]);
 	});
 
 	it("shows the project badge on task rows", () => {
@@ -195,5 +235,31 @@ describe("GoToPaletteModal", () => {
 		expect(options[0].textContent).toContain("[ Operations ]");
 		expect(options[0].textContent).toContain("⌘0");
 		expect(options[1].textContent).toContain("⌘1");
+	});
+});
+
+describe("taskRecencyBucket", () => {
+	// Local-time (no-Z) strings so the local-midnight anchor is timezone-stable.
+	const now = new Date("2026-07-06T12:00:00").getTime();
+
+	it("classifies same-day timestamps as today", () => {
+		expect(taskRecencyBucket("2026-07-06T00:05:00", now)).toBe("today");
+		expect(taskRecencyBucket("2026-07-06T11:59:00", now)).toBe("today");
+	});
+
+	it("classifies the previous calendar day as yesterday", () => {
+		expect(taskRecencyBucket("2026-07-05T23:59:00", now)).toBe("yesterday");
+		expect(taskRecencyBucket("2026-07-05T00:01:00", now)).toBe("yesterday");
+	});
+
+	it("classifies the preceding 7-day window as this week", () => {
+		expect(taskRecencyBucket("2026-07-02T10:00:00", now)).toBe("week");
+		expect(taskRecencyBucket("2026-06-30T10:00:00", now)).toBe("week");
+	});
+
+	it("classifies anything older, blank, or unparsable as older", () => {
+		expect(taskRecencyBucket("2026-06-01T10:00:00", now)).toBe("older");
+		expect(taskRecencyBucket("", now)).toBe("older");
+		expect(taskRecencyBucket("not-a-date", now)).toBe("older");
 	});
 });

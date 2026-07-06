@@ -40,7 +40,7 @@ import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEna
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
-import { orderByMru, useTaskSwitcher } from "./hooks/useTaskSwitcher";
+import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import GoToPaletteModal from "./components/GoToPaletteModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
@@ -483,13 +483,16 @@ function App() {
 		return { projects: ordered, shortcutIndexById };
 	}, [state.projects, showProjectSwitch]);
 
-	// Cmd+K task rows: every active task across all projects, ordered by recency —
-	// session-visited first (MRU), then the rest by most-recently-updated (see
-	// orderByMru). `switcher.globalTasks` is already kept live (it powers the
-	// Option+Tab switcher); we just filter to active statuses and re-order.
+	// Cmd+K task rows: every active task across all projects, sorted most-recently-
+	// updated first (seq breaks ties). GoToPaletteModal buckets them by date
+	// (Today / Yesterday / This week / Older). `switcher.globalTasks` is kept live
+	// (it powers the Option+Tab switcher); we filter to active statuses and sort a copy.
 	const goToTasks = useMemo(
-		() => orderByMru(switcher.globalTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)), state.taskMru),
-		[switcher.globalTasks, state.taskMru],
+		() =>
+			switcher.globalTasks
+				.filter((t) => ACTIVE_STATUSES.includes(t.status))
+				.sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0) || b.seq - a.seq),
+		[switcher.globalTasks],
 	);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
