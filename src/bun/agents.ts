@@ -11,6 +11,8 @@ import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
+import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv } from "./agent-accounts";
+import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 
 const log = createLogger("agents");
@@ -671,6 +673,59 @@ function applyStatusLineOption(
 	return { ...options, statuslineSettingsFile: settingsFile };
 }
 
+/** Inject the active managed account's env into Claude-based commands (agent
+ *  account switcher): CLAUDE_CONFIG_DIR for OAuth accounts, plus ANTHROPIC_*
+ *  and extra vars for API profiles. An explicit CLAUDE_CONFIG_DIR in the
+ *  config's envVars disables the injection entirely, and per-key values set by
+ *  the config always win. Affects new sessions only; running agents keep their
+ *  in-memory credentials. */
+async function applyClaudeAccountEnv(baseCmd: string, extraEnv: Record<string, string>): Promise<void> {
+	if (!isClaudeCommand(baseCmd) || extraEnv.CLAUDE_CONFIG_DIR) return;
+	try {
+		const accountEnv = await getActiveClaudeSessionEnv();
+		for (const [key, value] of Object.entries(accountEnv)) {
+			if (!(key in extraEnv)) extraEnv[key] = value;
+		}
+	} catch (err) {
+		log.warn("Failed to resolve active Claude account env", { error: String(err) });
+	}
+}
+
+/** Classify a concrete Claude model id into its alias family. dev3 presets pass
+ *  concrete ids (`claude-opus-4-8[1m]`, `claude-sonnet-5`, `claude-fable-5`), not
+ *  the `opus`/`sonnet`/… aliases, so alias-default env vars alone never bind —
+ *  we map the id to a family and rewrite the `--model` flag (applyModelOverride). */
+export function claudeModelFamily(modelId: string): "opus" | "sonnet" | "haiku" | "fable" | null {
+	const m = modelId.toLowerCase();
+	if (m.includes("opus")) return "opus";
+	if (m.includes("sonnet")) return "sonnet";
+	if (m.includes("haiku")) return "haiku";
+	if (m.includes("fable")) return "fable";
+	return null;
+}
+
+/** Rewrite a Claude preset's `--model` flag to the active API profile's override.
+ *  Claude Code gives the CLI flag precedence over env, and dev3 presets pass
+ *  concrete model ids — so without rewriting the flag, an API profile's per-slot
+ *  (`ANTHROPIC_DEFAULT_<FAMILY>_MODEL`) or master model would silently never
+ *  apply. Preference order: the preset id's family slot, then a bare
+ *  ANTHROPIC_MODEL escape hatch (e.g. a manual config env var). Claude only. */
+export function applyModelOverride(
+	config: AgentConfiguration | undefined,
+	baseCmd: string,
+	extraEnv: Record<string, string>,
+): AgentConfiguration | undefined {
+	// No config → no --model flag is emitted, so any env var wins on its own.
+	if (!config?.model || !isClaudeCommand(baseCmd)) return config;
+	// ENV_UNSET sentinels (cleared vars after an account switch) are "not set".
+	const pick = (v: string | undefined) => (v && v !== ENV_UNSET ? v : undefined);
+	const family = claudeModelFamily(config.model);
+	const familyOverride = family ? pick(extraEnv[`ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`]) : undefined;
+	const override = familyOverride ?? pick(extraEnv.ANTHROPIC_MODEL);
+	if (!override) return config;
+	return { ...config, model: override };
+}
+
 /** Apply saved binary path override if the cached file still exists on disk. */
 function applyBinaryPathOverride(agent: CodingAgent, savedPaths: Record<string, string> | undefined): CodingAgent {
 	const savedPath = savedPaths?.[agent.id];
@@ -695,10 +750,13 @@ export async function resolveCommandForAgent(
 	const settings = await loadSettings();
 	const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 
+	// Resolve the session env BEFORE building the command: an active API
+	// profile's model override must rewrite the preset's --model flag.
+	const baseCmd = config?.baseCommandOverride || agentWithPath.baseCommand;
 	const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
-	const command = resolveAgentCommand(agentWithPath, config, ctx, providerOpts);
 	// Order: agent-type defaults → provider env (Bedrock) → config envVars
-	// wins last, so an explicit envVars override still applies.
+	// (wins last, so an explicit envVars override still applies) → managed
+	// account env (fills only keys not already set, so all of the above win).
 	const extraEnv: Record<string, string> = {
 		...getDefaultEnvForAgent(agent, config),
 		...providerEnvForAgent(agentWithPath, config),
@@ -706,6 +764,13 @@ export async function resolveCommandForAgent(
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
+	await applyClaudeAccountEnv(baseCmd, extraEnv);
+	const command = resolveAgentCommand(
+		agentWithPath,
+		applyModelOverride(config, baseCmd, extraEnv),
+		ctx,
+		providerOpts,
+	);
 	return { command, agent, config, extraEnv };
 }
 
@@ -763,17 +828,25 @@ export async function resolveCommandForProject(
 		const agentWithPath = applyBinaryPathOverride(agent, settings.agentBinaryPaths);
 		const resolvedConfigId = configId ?? settings.defaultConfigId;
 		const config = findConfig(agent, resolvedConfigId);
+		// Env before command — see resolveCommandForAgent (API profile model override).
+		const baseCmd = config?.baseCommandOverride || agentWithPath.baseCommand;
 		const providerOpts = withProviderOptions(applyStatusLineOption(options, settings), agentWithPath, config);
-		const command = resolveAgentCommand(agentWithPath, config, ctx, providerOpts);
 		// Order: agent-type defaults → provider env (Bedrock) → config envVars
-		// (via buildTaskEnv) wins last, so an explicit envVars override still applies.
+		// (via buildTaskEnv, wins last) → managed account env (fills only keys
+		// not already set, so all of the above win).
 		const agentDefaults = getDefaultEnvForAgent(agent, config);
-		const providerEnv = providerEnvForAgent(agentWithPath, config);
 		const extraEnv = {
 			...agentDefaults,
-			...providerEnv,
+			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
+		await applyClaudeAccountEnv(baseCmd, extraEnv);
+		const command = resolveAgentCommand(
+			agentWithPath,
+			applyModelOverride(config, baseCmd, extraEnv),
+			ctx,
+			providerOpts,
+		);
 		return { command, agent, config, extraEnv };
 	}
 
@@ -916,25 +989,18 @@ export async function ensureClaudeTrust(dirPath: string, projectPath?: string): 
 		// Resolve symlinks so the path matches what claude sees
 		const resolved = await realpath(dirPath);
 
-		const file = Bun.file(CLAUDE_JSON);
-		let data: any = {};
-		if (await file.exists()) {
-			data = await file.json();
-		}
+		await writeClaudeTrustEntry(CLAUDE_JSON, resolved);
 
-		if (!data.projects) {
-			data.projects = {};
-		}
-
-		if (!data.projects[resolved]?.hasTrustDialogAccepted) {
-			data.projects[resolved] = {
-				...TRUST_ENTRY,
-				...(data.projects[resolved] || {}),
-				hasTrustDialogAccepted: true,
-			};
-
-			await Bun.write(CLAUDE_JSON, JSON.stringify(data, null, 2));
-			log.info("Registered worktree as trusted in ~/.claude.json", { path: resolved });
+		// A managed account (agent account switcher) reads trust from ITS OWN
+		// .claude.json inside the CLAUDE_CONFIG_DIR we inject — register there too,
+		// or every launch under a switched account re-asks the trust dialog.
+		try {
+			const accountDir = await getActiveClaudeConfigDir();
+			if (accountDir) {
+				await writeClaudeTrustEntry(join(accountDir, ".claude.json"), resolved);
+			}
+		} catch (err) {
+			log.warn("Failed to register trust in active account dir", { error: String(err) });
 		}
 	} catch (err) {
 		// Non-fatal — worst case the user sees the trust dialog
@@ -945,6 +1011,30 @@ export async function ensureClaudeTrust(dirPath: string, projectPath?: string): 
 		ensureClaudeMcpApproved(dirPath, projectPath);
 	} catch (err) {
 		log.warn("Failed to pre-approve Claude MCP servers", { error: String(err) });
+	}
+}
+
+/** Mark `resolvedPath` as trusted inside one `.claude.json` file (idempotent). */
+async function writeClaudeTrustEntry(claudeJsonPath: string, resolvedPath: string): Promise<void> {
+	const file = Bun.file(claudeJsonPath);
+	let data: any = {};
+	if (await file.exists()) {
+		data = await file.json();
+	}
+
+	if (!data.projects) {
+		data.projects = {};
+	}
+
+	if (!data.projects[resolvedPath]?.hasTrustDialogAccepted) {
+		data.projects[resolvedPath] = {
+			...TRUST_ENTRY,
+			...(data.projects[resolvedPath] || {}),
+			hasTrustDialogAccepted: true,
+		};
+
+		await Bun.write(claudeJsonPath, JSON.stringify(data, null, 2));
+		log.info("Registered worktree as trusted", { file: claudeJsonPath, path: resolvedPath });
 	}
 }
 

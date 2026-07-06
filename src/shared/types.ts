@@ -1,6 +1,7 @@
 import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
 import type { AgentRateLimitsReport } from "./rate-limits";
+import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 
 // ---- Changelog ----
 
@@ -1882,6 +1883,48 @@ export type AppRPCSchema = {
 			getAgentRateLimits: {
 				params: void;
 				response: AgentRateLimitsReport;
+			};
+			/** Agent account switcher (multi-account per agent CLI, hot-swap without re-login). */
+			listAgentAccounts: {
+				params: void;
+				response: AgentAccountsState;
+			};
+			importAgentAccount: {
+				params: { kind: AgentAccountKind };
+				response: AgentAccount;
+			};
+			addAgentApiProfile: {
+				params: { kind: AgentAccountKind; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
+				response: AgentAccount;
+			};
+			/** Editable snapshot of an API profile, including the (user's own) API key value for the masked form field. */
+			getAgentApiProfileDraft: {
+				params: { kind: AgentAccountKind; accountId: string };
+				response: { label: string; baseUrl: string; apiKey: string; model: string; slotModels: ClaudeSlotModels; envText: string; hasApiKey: boolean };
+			};
+			updateAgentApiProfile: {
+				params: { kind: AgentAccountKind; accountId: string; label?: string; baseUrl?: string; apiKey?: string; model?: string; slotModels?: ClaudeSlotModels; envText?: string };
+				response: AgentAccount;
+			};
+			prepareAgentAccountLogin: {
+				params: { kind: AgentAccountKind };
+				response: { accountId: string | null; loginCommand: string };
+			};
+			completeAgentAccountLogin: {
+				params: { kind: AgentAccountKind; accountId?: string | null };
+				response: AgentAccount;
+			};
+			setActiveAgentAccount: {
+				params: { kind: AgentAccountKind; accountId: string | null };
+				response: void;
+			};
+			removeAgentAccount: {
+				params: { kind: AgentAccountKind; accountId: string };
+				response: void;
+			};
+			renameAgentAccount: {
+				params: { kind: AgentAccountKind; accountId: string; label: string };
+				response: void;
 			};
 			searchConversations: {
 				params: { projectId: string; query: string; currentTaskId?: string | null; limit?: number; allStatuses?: boolean };

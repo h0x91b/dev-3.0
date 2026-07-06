@@ -115,6 +115,8 @@ const kanban = {
 	"launch.provider": "Провайдер",
 	"launch.model": "Модель",
 	"launch.mode": "Режим",
+	"launch.accountTitle": "Аккаунт",
+	"launch.accountVia": "через {name}",
 	"launch.addVariant": "+ Добавить вариант",
 	"launch.removeVariant": "Удалить",
 	"launch.launch": "Запустить",

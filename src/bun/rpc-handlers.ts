@@ -62,6 +62,7 @@ import { productivityStatsHandlers } from "./rpc-handlers/productivity-stats";
 import { agentUsageHandlers } from "./rpc-handlers/agent-usage";
 import { automationsHandlers } from "./rpc-handlers/automations";
 import { pxpipeProxyHandlers } from "./rpc-handlers/pxpipe-proxy";
+import { agentAccountHandlers } from "./rpc-handlers/agent-accounts";
 
 export const handlers = {
 	...appHandlers,
@@ -78,4 +79,5 @@ export const handlers = {
 	...agentUsageHandlers,
 	...automationsHandlers,
 	...pxpipeProxyHandlers,
+	...agentAccountHandlers,
 };

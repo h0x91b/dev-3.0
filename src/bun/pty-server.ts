@@ -1,6 +1,7 @@
 import { writeFileSync, mkdirSync, existsSync, lstatSync, readlinkSync, realpathSync, unlinkSync, symlinkSync } from "node:fs";
 import { access } from "node:fs/promises";
 import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
+import { ENV_UNSET } from "../shared/agent-accounts";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn } from "./spawn";
@@ -1193,6 +1194,9 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 		// as a fallback for the `-A` (attach to existing) path.
 		const envFlags: string[] = [];
 		for (const [key, value] of Object.entries(session.env)) {
+			// ENV_UNSET entries can't ride on `-e` (it only sets); they are removed
+			// via `set-environment -r` below plus `unset` lines in the cmd script.
+			if (value === ENV_UNSET) continue;
 			envFlags.push("-e", `${key}=${value}`);
 		}
 		envFlags.push("-e", `DEV3_WORKTREE_ROOT=${session.cwd}`);
@@ -1248,7 +1252,8 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 					// without it tmux replaces non-ASCII chars with underscores.
 					LANG: process.env.LANG || "en_US.UTF-8",
 					HOME: process.env.HOME || "/",
-					...session.env,
+					// ENV_UNSET sentinels must never reach a real process env.
+					...Object.fromEntries(Object.entries(session.env).filter(([, v]) => v !== ENV_UNSET)),
 				},
 				cwd: tmuxClientCwd(),
 			},
@@ -1305,7 +1310,13 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, "DEV3_WORKTREE_ROOT", session.cwd));
 				const envKeys = Object.keys(session.env);
 				for (const [key, value] of Object.entries(session.env)) {
-					spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));
+					if (value === ENV_UNSET) {
+						// `-r` marks the var as removed in the session env, hiding a
+						// stale server-global value from new panes/windows.
+						spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-r", "-t", tmuxSessionName, key));
+					} else {
+						spawn(tmuxArgs(session.tmuxSocket, "set-environment", "-t", tmuxSessionName, key, value));
+					}
 				}
 				if (envKeys.length > 0) {
 					log.info("tmux session env vars set (post-spawn safety net)", { tmuxSession: tmuxSessionName, keys: envKeys });

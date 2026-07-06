@@ -4,11 +4,20 @@ import AgentSettingsSection from "../AgentSettingsSection";
 import { I18nProvider } from "../../../i18n";
 import { DEFAULT_AGENTS, type CodingAgent, type GlobalSettings } from "../../../../shared/types";
 
+// The section renders AgentConfigPicker → AgentAccountIndicator, which lists
+// managed agent accounts. Empty registries keep the indicator hidden here.
 vi.mock("../../../rpc", () => ({
 	api: {
 		request: {
 			checkAgentAvailability: vi.fn(() => Promise.resolve([])),
 			setAgentBinaryPath: vi.fn(() => Promise.resolve()),
+			listAgentAccounts: vi.fn(() =>
+				Promise.resolve({
+					claude: { accounts: [], activeId: null, systemIdentity: null },
+					codex: { accounts: [], activeId: null, currentIdentity: null },
+				}),
+			),
+			setActiveAgentAccount: vi.fn(),
 		},
 	},
 }));

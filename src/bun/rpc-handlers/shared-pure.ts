@@ -6,6 +6,7 @@
 import { existsSync } from "node:fs";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS } from "../../shared/types";
+import { ENV_UNSET } from "../../shared/agent-accounts";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { broadcastToOtherInstances } from "../instance-broadcast";
@@ -38,7 +39,10 @@ export function buildScriptRunnerCommand(
 }
 
 export function buildEnvExports(env: Record<string, string>): string[] {
-	return Object.entries(env).map(([key, value]) => `export ${key}=${shellQuote(value)}`);
+	// ENV_UNSET marks a variable for active removal (agent account switcher):
+	// the launched shell inherits the long-lived tmux server env, so a stale
+	// value must be `unset`, not merely left out of the exports.
+	return Object.entries(env).map(([key, value]) => (value === ENV_UNSET ? `unset ${key}` : `export ${key}=${shellQuote(value)}`));
 }
 
 /**

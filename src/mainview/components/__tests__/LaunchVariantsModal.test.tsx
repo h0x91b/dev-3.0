@@ -11,6 +11,10 @@ vi.mock("../../rpc", () => ({
 			spawnVariants: vi.fn(),
 			addAttempts: vi.fn(),
 			toggleTaskWatch: vi.fn(),
+			listAgentAccounts: vi.fn().mockResolvedValue({
+				claude: { accounts: [], activeId: null, systemIdentity: null },
+				codex: { accounts: [], activeId: null, currentIdentity: null },
+			}),
 			saveGlobalSettings: vi.fn().mockResolvedValue(undefined),
 			checkAgentAvailability: vi.fn().mockResolvedValue([]),
 			getGlobalSettings: vi.fn().mockResolvedValue({
