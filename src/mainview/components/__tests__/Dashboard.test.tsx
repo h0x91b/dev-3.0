@@ -11,6 +11,7 @@ vi.mock("../../rpc", () => ({
 			removeProject: vi.fn(),
 			reorderProjects: vi.fn(),
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
+			getAgents: vi.fn(() => Promise.resolve([])),
 		},
 	},
 }));
@@ -58,7 +59,9 @@ const mockProject: Project = {
 describe("Dashboard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		localStorage.clear();
 		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
+		mockedApi.request.getAgents.mockResolvedValue([]);
 	});
 
 	describe("empty state", () => {
@@ -192,6 +195,29 @@ describe("Dashboard", () => {
 
 			expect(mockedApi.request.removeProject).not.toHaveBeenCalled();
 			expect(dispatch).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("view toggle (By Project ↔ Board)", () => {
+		it("defaults to the project list and switches to the unified board", async () => {
+			const user = userEvent.setup();
+			renderDashboard([mockProject], vi.fn(), vi.fn(), vi.fn());
+
+			// Default view = project list.
+			expect(await screen.findByText("/home/user/my-project")).toBeInTheDocument();
+
+			await user.click(screen.getByTestId("dashboard-view-board"));
+
+			// Board view: unified board header appears, project path row is gone.
+			expect(await screen.findByText("All Tasks")).toBeInTheDocument();
+			expect(screen.queryByText("/home/user/my-project")).not.toBeInTheDocument();
+			expect(localStorage.getItem("dev3-dashboard-view")).toBe("board");
+		});
+
+		it("restores the persisted board view on mount", async () => {
+			localStorage.setItem("dev3-dashboard-view", "board");
+			renderDashboard([mockProject], vi.fn(), vi.fn(), vi.fn());
+			expect(await screen.findByText("All Tasks")).toBeInTheDocument();
 		});
 	});
 

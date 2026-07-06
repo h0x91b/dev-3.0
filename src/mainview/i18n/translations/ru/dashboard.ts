@@ -17,6 +17,22 @@ const dashboard = {
 	"dashboard.projectCount_many": "{count} проектов",
 	"dashboard.projectCount_other": "{count} проектов",
 
+	// Dashboard view toggle (список по проектам ↔ единая доска всех проектов)
+	"dashboard.viewToggleLabel": "Вид панели",
+	"dashboard.viewByProject": "По проектам",
+	"dashboard.viewBoard": "Доска",
+
+	// Unified cross-project board
+	"board.title": "Все задачи",
+	"board.taskCount_one": "{count} задача",
+	"board.taskCount_few": "{count} задачи",
+	"board.taskCount_many": "{count} задач",
+	"board.taskCount_other": "{count} задач",
+	"board.columnEmpty": "Нет задач",
+	"board.searchPlaceholder": "Поиск по всем задачам…",
+	"board.clearSearch": "Очистить поиск",
+	"board.unknownProject": "Неизвестный проект",
+
 	// Activity overview
 	"activity.noActiveTasks": "Нет активных задач ни в одном проекте",
 	"activity.taskCount_one": "{count} активная",

@@ -1,4 +1,4 @@
-import type { Dispatch } from "react";
+import { useState, type Dispatch } from "react";
 import { toast } from "../toast";
 import type { Project } from "../../shared/types";
 import { orderProjectsForDisplay } from "../../shared/types";
@@ -8,6 +8,12 @@ import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import ActivityOverview from "./ActivityOverview";
+import AllTasksBoard from "./AllTasksBoard";
+import DashboardViewToggle, {
+	readDashboardView,
+	writeDashboardView,
+	type DashboardView,
+} from "./DashboardViewToggle";
 
 interface DashboardProps {
 	projects: Project[];
@@ -19,6 +25,15 @@ interface DashboardProps {
 
 function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject }: DashboardProps) {
 	const t = useT();
+	const [view, setView] = useState<DashboardView>(readDashboardView);
+
+	function changeView(next: DashboardView) {
+		setView(next);
+		writeDashboardView(next);
+		trackEvent("dashboard_view_changed", { view: next });
+	}
+
+	const viewToggle = <DashboardViewToggle view={view} onViewChange={changeView} />;
 
 	async function handleRemoveProject(projectId: string) {
 		const confirmed = await confirm({
@@ -56,14 +71,24 @@ function Dashboard({ projects, dispatch, navigate, bellCounts, onOpenAddProject 
 		<div className="h-full w-full flex flex-col">
 			<div className="flex-1 overflow-hidden">
 				{projects.length > 0 ? (
-					<ActivityOverview
-						projects={projects}
-						navigate={navigate}
-						bellCounts={bellCounts}
-						onRemoveProject={handleRemoveProject}
-						onOpenAddProject={onOpenAddProject}
-						onReorderProjects={handleReorderProjects}
-					/>
+					view === "board" ? (
+						<AllTasksBoard
+							projects={projects}
+							navigate={navigate}
+							bellCounts={bellCounts}
+							viewToggle={viewToggle}
+						/>
+					) : (
+						<ActivityOverview
+							projects={projects}
+							navigate={navigate}
+							bellCounts={bellCounts}
+							onRemoveProject={handleRemoveProject}
+							onOpenAddProject={onOpenAddProject}
+							onReorderProjects={handleReorderProjects}
+							viewToggle={viewToggle}
+						/>
+					)
 				) : (
 					<div className="h-full overflow-y-auto p-7">
 						<div className="flex flex-col items-center justify-center h-full">

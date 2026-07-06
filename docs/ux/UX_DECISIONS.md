@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-06 — Unified cross-project board is a Dashboard view mode, not a destination
+
+- **Rule:** "See all my active tasks at a glance" ships as a Dashboard header toggle (By Project ↔ Board; `DashboardViewToggle`, persisted) rendering the same cross-project data two ways; the unified `AllTasksBoard` (todo + all active statuses as columns, project-badged cards) is **read-only/glance** — click opens the task in its own project; drag/status-moves stay on the per-project board.
+- **Why:** the Dashboard already owns "all projects at a glance", so this is a view mode (§10) — a new top-level destination would violate the nav budget (≤7) for zero new place. Rejected: a dedicated `all-tasks` screen (nav creep); reusing per-project `KanbanBoard` (project-coupled: custom columns, PR poll, drag).
+- **Status:** Observed. Evidence: bible §8 (Dashboard view modes), `Dashboard.tsx`, `AllTasksBoard.tsx`, `getAllProjectTasks({includeTodo})`.
+
 ## 2026-07-05 — Automations: project-settings tab; runs are ordinary tasks
 
 - **Rule:** The `Automation` object (RRULE+tz schedule + prompt + agent, per project) is durable configuration → CRUD lives in a 4th `ProjectSettings` tab (tabs 3→4, budget ≤6); each fire creates a **normal task** on the board (clock-glyph provenance on the card); run history + missed-run status render only inside the tab; failures/missed runs surface via toast + status, never silently.

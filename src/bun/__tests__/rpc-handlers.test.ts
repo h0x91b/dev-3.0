@@ -1581,6 +1581,25 @@ describe("handlers.getAllProjectTasks", () => {
 		expect(opsEntry).toBeDefined();
 		expect(opsEntry!.tasks.map((t) => t.id)).toEqual(["op1"]);
 	});
+
+	it("excludes todo by default but includes it when includeTodo is set", async () => {
+		const git = makeProject({ id: "g1" });
+		vi.mocked(data.loadProjects).mockResolvedValue([git]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			makeTask({ id: "t-todo", projectId: "g1", status: "todo" }),
+			makeTask({ id: "t-active", projectId: "g1", status: "in-progress" }),
+			makeTask({ id: "t-done", projectId: "g1", status: "completed" }),
+		]);
+
+		// Default: active only — no todo, no completed.
+		const active = await handlers.getAllProjectTasks();
+		expect(active[0].tasks.map((t) => t.id)).toEqual(["t-active"]);
+
+		// includeTodo: todo + active, still no completed.
+		const withTodo = await handlers.getAllProjectTasks({ includeTodo: true });
+		expect(withTodo[0].tasks.map((t) => t.id).sort()).toEqual(["t-active", "t-todo"]);
+	});
 });
 
 // ================================================================

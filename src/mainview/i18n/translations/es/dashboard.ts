@@ -15,6 +15,20 @@ const dashboard = {
 	"dashboard.projectCount_one": "{count} proyecto",
 	"dashboard.projectCount_other": "{count} proyectos",
 
+	// Dashboard view toggle (lista por proyecto ↔ tablero unificado de todos los proyectos)
+	"dashboard.viewToggleLabel": "Vista del panel",
+	"dashboard.viewByProject": "Por proyecto",
+	"dashboard.viewBoard": "Tablero",
+
+	// Unified cross-project board
+	"board.title": "Todas las tareas",
+	"board.taskCount_one": "{count} tarea",
+	"board.taskCount_other": "{count} tareas",
+	"board.columnEmpty": "Sin tareas",
+	"board.searchPlaceholder": "Buscar en todas las tareas…",
+	"board.clearSearch": "Limpiar búsqueda",
+	"board.unknownProject": "Proyecto desconocido",
+
 	// Activity overview
 	"activity.noActiveTasks": "Sin tareas activas en ningún proyecto",
 	"activity.taskCount_one": "{count} activa",

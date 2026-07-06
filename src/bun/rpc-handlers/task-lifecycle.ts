@@ -691,8 +691,13 @@ async function getTasks(params: { projectId: string }): Promise<Task[]> {
 	return tasks;
 }
 
-async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] }[]> {
-	log.info("→ getAllProjectTasks");
+async function getAllProjectTasks(params?: { includeTodo?: boolean }): Promise<{ projectId: string; tasks: Task[] }[]> {
+	log.info("→ getAllProjectTasks", params);
+	// `includeTodo` adds the `todo` column to the returned set. The default
+	// (undefined/false) preserves the historical "active tasks only" contract
+	// that the dashboard/sidebar/task-switcher rely on for their active counts;
+	// only the unified cross-project board opts in to also see `todo`.
+	const statuses: TaskStatus[] = params?.includeTodo ? ["todo", ...ACTIVE_STATUSES] : ACTIVE_STATUSES;
 	// Include virtual ("Operations") boards — otherwise the dashboard shows no
 	// active operations and the working-folder conflict check (which compares
 	// against active operations) never fires.
@@ -700,12 +705,12 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 	const results = await Promise.all(
 		projects.map(async (project) => {
 			const tasks = await data.loadTasks(project);
-			const active = tasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
-			return { projectId: project.id, tasks: active };
+			const filtered = tasks.filter((task) => statuses.includes(task.status));
+			return { projectId: project.id, tasks: filtered };
 		}),
 	);
-	const totalActive = results.reduce((sum, result) => sum + result.tasks.length, 0);
-	log.info(`← getAllProjectTasks: ${totalActive} active task(s) across ${projects.length} project(s)`);
+	const total = results.reduce((sum, result) => sum + result.tasks.length, 0);
+	log.info(`← getAllProjectTasks: ${total} task(s) across ${projects.length} project(s)`);
 	return results;
 }
 
