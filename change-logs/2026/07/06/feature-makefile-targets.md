@@ -1,0 +1,1 @@
+The Scripts (ƒ) dropdown now also parses the worktree's Makefile and lists its targets alongside package.json scripts. Pick a target and it runs `make <target>` in a tmux pane, just like npm scripts. Variable assignments, pattern rules and .PHONY declarations are ignored.

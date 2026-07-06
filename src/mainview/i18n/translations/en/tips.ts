@@ -208,6 +208,8 @@ const tips = {
 	"tip.helpMode.body": "Click the ? in the header or press ⇧⌘/ — every zone gets an (i) badge; click one to learn what it does.",
 	"tip.automations.title": "Schedule agent runs",
 	"tip.automations.body": "Project Settings → Automations: recurring prompts (RRULE) that create real tasks — try the weekly “What I shipped” report.",
+	"tip.makefileTargets.title": "Run Makefile targets",
+	"tip.makefileTargets.body": "The ƒ Scripts button also lists your Makefile targets — pick one to run make <target> in a live pane.",
 } as const;
 
 export default tips;
