@@ -35,6 +35,7 @@ import {
 	FullscreenEnterIcon,
 	FullscreenExitIcon,
 	PanelChevronIcon,
+	ImagesIcon,
 } from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
@@ -70,6 +71,22 @@ const MAX_RATIO = 0.33;
 // Extra labels collapse into a "+k" chip; the full list still shows in the
 // expanded metadata grid below.
 const MAX_INLINE_LABELS = 4;
+
+// Uniform full-width row used by the narrow-viewport (mobile) actions sheet.
+// The mobile sheet is a curated read/trigger surface — a clean list of rows, not
+// the dense desktop toolbar (UX bible §12.3/§12.6). The touch-target floor comes
+// from the `.touch-actions` group wrapper around the list.
+const SHEET_ROW_CLASS =
+	"flex w-full items-center gap-3 rounded-xl border border-edge bg-raised px-4 py-2.5 text-left text-fg transition-colors hover:bg-raised-hover active:bg-elevated";
+
+/** Trailing "opens something" affordance for a mobile action row. */
+function ChevronRightIcon() {
+	return (
+		<svg className="h-4 w-4 shrink-0 text-fg-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+			<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+		</svg>
+	);
+}
 
 const LS_COLLAPSED = "dev3-panel-collapsed";
 const LS_HEIGHT = "dev3-panel-height";
@@ -435,7 +452,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			aria-label={t("infoPanel.diffIncludeTestsAria")}
 			aria-pressed={includeTests}
 		>
-			{(!compact || narrow) && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
+			{!compact && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
 			<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" />
 		</button>
 		</Tooltip>
@@ -523,7 +540,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			{task.watched
 				? <WatchingIcon className="w-[0.95rem] h-[0.95rem]" />
 				: <WatchIcon className="w-[0.95rem] h-[0.95rem]" />}
-			{(!compact || narrow) && (
+			{!compact && (
 				<span className="text-[0.6875rem] font-medium">
 					{task.watched ? t("task.watching") : t("task.watch")}
 				</span>
@@ -583,7 +600,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 				aria-label={t("tmux.spawnExtraAgentDesc")}
 			>
 				<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
-				{(!compact || narrow) && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
+				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
 			</button>
 	</Tooltip>
 	) : null;
@@ -596,7 +613,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			aria-label={t("bugHunters.buttonTooltip")}
 		>
 			<FindBugsIcon className="w-[1.05rem] h-[1.05rem]" />
-			{(!compact || narrow) && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
+			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
 		</button>
 		</Tooltip>
 	) : null;
@@ -605,11 +622,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		<Tooltip content={t("projectSettings.tabWorktree")} detail={t("ttip.infoPanel.worktreeConfig")}>
 			<button
 				onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
-				className={`task-anim flex-shrink-0 flex items-center gap-1.5 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg ${narrow ? "px-2 py-1" : "p-1"}`}
+				className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
 				aria-label={t("projectSettings.tabWorktree")}
 			>
 				<WorktreeSettingsIcon className="w-4 h-4" />
-				{narrow && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.worktreeSettings")}</span>}
 			</button>
 	</Tooltip>
 	) : null;
@@ -827,59 +843,61 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					title={t("infoPanel.actionsTitle")}
 					testId="task-actions-sheet"
 				>
-					<div className="flex flex-col gap-5">
-						{/* Sheet sections mirror the desktop 2×2 bar domains (§5.1): each bar's
-						    actions become a labeled, touch-sized section (UX bible §12.3/§12.6). */}
-						<section className="flex flex-col gap-2">
-							<h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetSession")}</h3>
-							<div className="touch-actions flex flex-wrap items-center gap-2">
-								{watchToggleButton}
-								{spawnAgentButton}
-								{bugHuntersButton}
-								<TaskTmuxControls taskId={task.id} />
-							</div>
-						</section>
+					<div className="flex flex-col gap-4">
+						{/* Mobile is a monitor / trigger / read surface, not the dense desktop
+						    toolbar. Editor "open in", scripts, tmux layout, dev server, git
+						    mutations and durable worktree config are intentionally omitted —
+						    they act on the machine you are not sitting at, or need the
+						    terminal. The diff stays one tap away via the summary-bar badge
+						    above. Kept: watch, agent triggers, tunnels (open the app on this
+						    phone), shared images, and the read-only details. */}
+						<div className="touch-actions flex flex-col gap-2">
+							<button
+								type="button"
+								onClick={handleToggleWatch}
+								aria-pressed={task.watched}
+								className={`${SHEET_ROW_CLASS} ${task.watched ? "border-accent/30 bg-accent/10" : ""}`}
+							>
+								{task.watched
+									? <WatchingIcon className="h-5 w-5 shrink-0 text-accent" />
+									: <WatchIcon className="h-5 w-5 shrink-0 text-fg-3" />}
+								<span className="flex-1 text-sm font-medium">{task.watched ? t("task.watching") : t("task.watch")}</span>
+							</button>
 
-						<section className="flex flex-col gap-2">
-							<h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetGit")}</h3>
-							<div className="touch-actions flex flex-wrap items-center gap-2">
-								{project.kind === "virtual" ? (
-									<span className="text-fg-muted text-[0.6875rem] italic">{t("ops.gitUnavailable")}</span>
-								) : (
-									<TaskGitActions
-										task={task}
-										project={project}
-										dispatch={dispatch}
-										navigate={navigate}
-										isTaskActive={isTaskActive}
-										showWorktreeCopy
-										showLoading
-										compact={false}
-										onBranchStatusChange={setMetadataBranchState}
-										onOpenInlineDiff={onOpenInlineDiff}
-									/>
-								)}
-								{diffIncludeTestsToggle}
-							</div>
-						</section>
+							{isTaskActive && task.worktreePath && (
+								<button type="button" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>
+									<AddAgentIcon className="h-5 w-5 shrink-0 text-success" />
+									<span className="flex-1 text-sm font-medium">{t("tmux.spawnExtraAgent")}</span>
+									<ChevronRightIcon />
+								</button>
+							)}
 
-						<section className="flex flex-col gap-2">
-							<h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetRuntime")}</h3>
-							<div className="touch-actions flex flex-wrap items-center gap-2">
-								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
-								{project.kind !== "virtual" && (
-									<>
-										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
-									</>
-								)}
-								<TaskExposedPorts task={task} />
-								<TaskSharedImages task={task} />
-								{worktreeSettingsButton}
-							</div>
-						</section>
+							{project.kind !== "virtual" && isTaskActive && task.worktreePath && (
+								<button type="button" onClick={() => setBugHuntersOpen(true)} className={SHEET_ROW_CLASS}>
+									<FindBugsIcon className="h-5 w-5 shrink-0 text-danger" />
+									<span className="flex-1 text-sm font-medium">{t("bugHunters.buttonLabel")}</span>
+									<ChevronRightIcon />
+								</button>
+							)}
 
-						<section className="border-t border-edge pt-3">
+							<TaskExposedPorts task={task} rowClassName={SHEET_ROW_CLASS} />
+
+							{(task.sharedImages?.length ?? 0) > 0 && (
+								<button
+									type="button"
+									onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+										detail: { taskId: task.id, images: task.sharedImages, index: (task.sharedImages?.length ?? 1) - 1 },
+									}))}
+									className={SHEET_ROW_CLASS}
+								>
+									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
+									<span className="flex-1 text-sm font-medium">{t("infoPanel.imagesLabel")}</span>
+									<span className="text-[0.75rem] font-semibold text-accent tabular-nums">{task.sharedImages?.length}</span>
+								</button>
+							)}
+						</div>
+
+						<section className="border-t border-edge pt-4">
 							<h3 className="mb-2 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
 							{taskDetailsBody}
 						</section>

@@ -10,6 +10,12 @@ import { PortsIcon } from "../TaskIcons";
 
 interface TaskExposedPortsProps {
 	task: Task;
+	/**
+	 * When set, render the trigger as a full-width mobile action-sheet row
+	 * (icon · label · count) using this class instead of the compact toolbar
+	 * pill. Used by the narrow-viewport Task actions sheet.
+	 */
+	rowClassName?: string;
 }
 
 /** Tiny inline spinner matching the design-token palette — use inside small
@@ -75,7 +81,7 @@ function CopyUrlRow({ url }: { url: string }) {
  * Lives in the Runtime & access bar (row 2 right) per UX bible §5.1.
  * Hidden when the project doesn't allocate any ports.
  */
-export default function TaskExposedPorts({ task }: TaskExposedPortsProps) {
+export default function TaskExposedPorts({ task, rowClassName }: TaskExposedPortsProps) {
 	const t = useT();
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const btnRef = useRef<HTMLButtonElement>(null);
@@ -112,6 +118,30 @@ export default function TaskExposedPorts({ task }: TaskExposedPortsProps) {
 	}
 
 	const activeCount = exposed.length;
+
+	// Full-width row for the narrow-viewport actions sheet: icon · label · count.
+	if (rowClassName) {
+		return (
+			<>
+				<button ref={btnRef} type="button" onClick={openMenu} className={rowClassName} aria-label={t("tunnel.exposedPortsSection")}>
+					<PortsIcon className="h-5 w-5 shrink-0 text-fg-3" />
+					<span className="flex-1 text-sm font-medium">{t("tunnel.portsLabel")}</span>
+					{activeCount > 0 && <span className="text-[0.75rem] font-semibold text-accent tabular-nums">{activeCount}</span>}
+				</button>
+				{menuOpen && createPortal(
+					<ExposedPortsMenu
+						taskId={task.id}
+						allocatedPorts={allocatedPorts}
+						exposed={exposed}
+						position={menuPos}
+						onClose={() => setMenuOpen(false)}
+						elevated
+					/>,
+					document.body,
+				)}
+			</>
+		);
+	}
 
 	return (
 		<>
@@ -152,9 +182,11 @@ interface MenuProps {
 	exposed: ExposedPort[];
 	position: { top: number; left: number };
 	onClose: () => void;
+	/** Raise above the narrow-viewport bottom sheet (z-[70]) when launched from it. */
+	elevated?: boolean;
 }
 
-function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }: MenuProps) {
+function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose, elevated }: MenuProps) {
 	const t = useT();
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [menuPos, setMenuPos] = useState(position);
@@ -237,10 +269,10 @@ function ExposedPortsMenu({ taskId, allocatedPorts, exposed, position, onClose }
 			{/* Transparent backdrop — any click outside the menu closes it.
 			    More reliable than document-mousedown listeners across portal
 			    boundaries, and matches how OS popovers behave. */}
-			<div className="fixed inset-0 z-40" onClick={onClose} />
+			<div className={`fixed inset-0 ${elevated ? "z-[75]" : "z-40"}`} onClick={onClose} />
 			<div
 				ref={menuRef}
-				className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1 w-[22rem] max-h-[28rem] overflow-y-auto"
+				className={`fixed ${elevated ? "z-[80]" : "z-50"} bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1 w-[22rem] max-h-[28rem] overflow-y-auto`}
 				style={{ top: menuPos.top, left: menuPos.left, visibility: visible ? "visible" : "hidden" }}
 				onClick={(event) => event.stopPropagation()}
 			>
