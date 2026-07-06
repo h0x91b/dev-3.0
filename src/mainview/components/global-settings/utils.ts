@@ -3,8 +3,9 @@ import type {
 	ExternalApp,
 	GlobalSettings,
 	LlmProvider,
+	ProviderConfig,
 } from "../../../shared/types";
-import { isThirdPartyProvider } from "../../../shared/llm-provider";
+import { buildProviderEnv, isThirdPartyProvider } from "../../../shared/llm-provider";
 
 export type Theme = "dark" | "light" | "system";
 
@@ -120,6 +121,7 @@ export function buildCommandPreview(
 	agentBaseCommand: string,
 	config: AgentConfiguration,
 	llmProvider?: LlmProvider,
+	providerConfig?: ProviderConfig,
 ): { command: string; envLine: string | null } {
 	const baseCmd = config.baseCommandOverride || agentBaseCommand || "???";
 	const parts: string[] = [baseCmd];
@@ -179,7 +181,14 @@ export function buildCommandPreview(
 	}
 	parts.push(`'${prompt}'`);
 
-	const envPairs = Object.entries(config.envVars || {}).filter(([key]) => key);
+	// Mirror the launcher's env: provider env (Bedrock flag + pinned model)
+	// first, then config envVars (which win on conflict, as at launch time).
+	const providerEnv = claudeOnProvider
+		? buildProviderEnv(llmProvider, providerConfig, config.model)
+		: {};
+	const envPairs = Object.entries({ ...providerEnv, ...config.envVars }).filter(
+		([key]) => key,
+	);
 	const envLine =
 		envPairs.length > 0
 			? envPairs.map(([key, value]) => `${key}=${value}`).join(" ")

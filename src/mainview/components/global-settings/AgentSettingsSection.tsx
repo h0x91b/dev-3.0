@@ -404,6 +404,7 @@ export default function AgentSettingsSection({
 							agentBaseCommand={selectedDefaultAgent?.baseCommand ?? ""}
 							t={t}
 							llmProvider={selectedDefaultAgent?.llmProvider}
+							providerConfig={selectedDefaultAgent?.providerConfig}
 						/>
 					</div>
 				);
@@ -756,6 +757,8 @@ export default function AgentSettingsSection({
 															key={config.id}
 															config={config}
 															agentBaseCommand={agent.baseCommand}
+															llmProvider={agent.llmProvider}
+															providerConfig={agent.providerConfig}
 															isExpanded={isConfigExpanded}
 															canDelete={agent.configurations.length > 1}
 															canMoveUp={configIndex > 0}
@@ -884,11 +887,13 @@ function ConfigPreviewCard({
 	agentBaseCommand,
 	t,
 	llmProvider,
+	providerConfig,
 }: {
 	config: AgentConfiguration;
 	agentBaseCommand: string;
 	t: TFunction;
 	llmProvider?: LlmProvider;
+	providerConfig?: ProviderConfig;
 }) {
 	const tags: { label: string; value: string }[] = [];
 	const cmdName = (
@@ -932,7 +937,7 @@ function ConfigPreviewCard({
 		});
 	}
 
-	const { command, envLine } = buildCommandPreview(agentBaseCommand, config, llmProvider);
+	const { command, envLine } = buildCommandPreview(agentBaseCommand, config, llmProvider, providerConfig);
 
 	return (
 		<div className="mt-3 bg-base border border-edge rounded-xl p-3 space-y-2">
@@ -990,6 +995,8 @@ function CommandPreview({
 function ConfigEditor({
 	config,
 	agentBaseCommand,
+	llmProvider,
+	providerConfig,
 	isExpanded,
 	canDelete,
 	canMoveUp,
@@ -1011,6 +1018,8 @@ function ConfigEditor({
 }: {
 	config: AgentConfiguration;
 	agentBaseCommand: string;
+	llmProvider?: LlmProvider;
+	providerConfig?: ProviderConfig;
 	isExpanded: boolean;
 	canDelete: boolean;
 	canMoveUp: boolean;
@@ -1030,7 +1039,7 @@ function ConfigEditor({
 	onMoveDown: () => void;
 	t: TFunction;
 }) {
-	const preview = buildCommandPreview(agentBaseCommand, config);
+	const preview = buildCommandPreview(agentBaseCommand, config, llmProvider, providerConfig);
 	const baseCommandName = agentBaseCommand.split("/").pop() ?? agentBaseCommand;
 
 	return (
