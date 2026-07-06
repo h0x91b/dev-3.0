@@ -1,0 +1,1 @@
+Made the cloudflared install command in the Remote Access (Cloudflare Tunnel) section readable and copyable — it was rendered in the lowest-contrast tiny text. It now shows as a warning-colored monospace code block with a one-click copy button, matching the yazi "not installed" install-command pattern.
