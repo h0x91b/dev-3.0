@@ -128,7 +128,7 @@ function loadRegistry(paths: AccountPaths): Registry {
 		const norm = (v: any): { activeId: string | null; accounts: RegistryEntry[] } => ({
 			activeId: typeof v?.activeId === "string" ? v.activeId : null,
 			accounts: Array.isArray(v?.accounts)
-				? v.accounts.filter((a: any) => typeof a?.id === "string").map((a: any) => ({
+				? v.accounts.filter((a: any) => typeof a?.id === "string" && isSafeAccountId(a.id)).map((a: any) => ({
 						id: a.id,
 						label: typeof a.label === "string" ? a.label : a.id,
 						auth: a.auth === "api" ? ("api" as const) : undefined,
@@ -150,12 +150,32 @@ function saveRegistry(registry: Registry, paths: AccountPaths): void {
 	renameSync(tmp, target);
 }
 
+/** Account ids are crypto.randomUUID()s minted by this module. Reject anything
+ *  else before an id is used as a path segment — RPC-supplied ids would
+ *  otherwise allow traversal out of the accounts dir (removeAgentAccount does a
+ *  recursive rmSync on the derived path, so this must never be reachable). */
+function isSafeAccountId(id: string): boolean {
+	return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id);
+}
+
+function assertSafeAccountId(id: string): void {
+	if (!isSafeAccountId(id)) {
+		throw new Error(`Invalid account id: ${id}`);
+	}
+}
+
 export function claudeAccountDir(id: string, paths: AccountPaths = defaultAccountPaths()): string {
+	assertSafeAccountId(id);
 	return join(paths.accountsDir, "claude", id);
 }
 
+function codexAccountDir(id: string, paths: AccountPaths): string {
+	assertSafeAccountId(id);
+	return join(paths.accountsDir, "codex", id);
+}
+
 function codexAccountAuthFile(id: string, paths: AccountPaths): string {
-	return join(paths.accountsDir, "codex", id, "auth.json");
+	return join(codexAccountDir(id, paths), "auth.json");
 }
 
 function safeReadJson(path: string): unknown {
@@ -436,7 +456,7 @@ async function ensureClaudeCredentialsFile(dir: string, paths: AccountPaths): Pr
 	}
 	const fromKeychain = await readClaudeKeychainCredentials();
 	if (fromKeychain) {
-		writeFileSync(target, fromKeychain);
+		writeFileSync(target, fromKeychain, { mode: 0o600 });
 		chmodSync(target, 0o600);
 		return true;
 	}
@@ -583,7 +603,7 @@ export async function addClaudeApiProfile(
 	writeFileSync(join(dir, ".claude.json"), JSON.stringify(seeded, null, 2));
 
 	const profile: ApiProfileFile = { baseUrl, apiKey, model, slotModels, env };
-	writeFileSync(apiProfileFile(id, paths), JSON.stringify(profile, null, 2));
+	writeFileSync(apiProfileFile(id, paths), JSON.stringify(profile, null, 2), { mode: 0o600 });
 	chmodSync(apiProfileFile(id, paths), 0o600);
 
 	const apiOrdinal = registry.claude.accounts.filter((e) => e.auth === "api").length + 1;
@@ -668,7 +688,7 @@ export async function updateClaudeApiProfile(
 	writeFileSync(join(dir, ".claude.json"), JSON.stringify(seeded, null, 2));
 
 	const profile: ApiProfileFile = { baseUrl, apiKey, model, slotModels, env };
-	writeFileSync(apiProfileFile(accountId, paths), JSON.stringify(profile, null, 2));
+	writeFileSync(apiProfileFile(accountId, paths), JSON.stringify(profile, null, 2), { mode: 0o600 });
 	chmodSync(apiProfileFile(accountId, paths), 0o600);
 
 	entry.label = input.label?.trim() || entry.label;
@@ -719,7 +739,7 @@ export async function importCurrentCodexAccount(paths: AccountPaths = defaultAcc
 
 	const id = crypto.randomUUID();
 	const target = codexAccountAuthFile(id, paths);
-	mkdirSync(join(paths.accountsDir, "codex", id), { recursive: true });
+	mkdirSync(codexAccountDir(id, paths), { recursive: true });
 	copyFileSync(authFile, target);
 	chmodSync(target, 0o600);
 	const account = registerAccount(registry, "codex", id, identity, paths);
@@ -816,7 +836,7 @@ export async function removeAgentAccount(kind: AgentAccountKind, accountId: stri
 	registry[kind].accounts = registry[kind].accounts.filter((e) => e.id !== accountId);
 	if (registry[kind].activeId === accountId) registry[kind].activeId = null;
 	saveRegistry(registry, paths);
-	const dir = kind === "claude" ? claudeAccountDir(accountId, paths) : join(paths.accountsDir, "codex", accountId);
+	const dir = kind === "claude" ? claudeAccountDir(accountId, paths) : codexAccountDir(accountId, paths);
 	rmSync(dir, { recursive: true, force: true });
 }
 

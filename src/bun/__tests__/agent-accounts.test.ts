@@ -525,6 +525,21 @@ describe("remove / rename", () => {
 		expect(existsSync(claudeAccountDir(accountId, paths))).toBe(false);
 	});
 
+	it("remove rejects path-traversal account ids without touching disk", async () => {
+		mkdirSync(join(root, "victim"), { recursive: true });
+		writeFileSync(join(root, "victim", "file.txt"), "keep me");
+		// claudeAccountDir(accountsDir, "claude", "../../victim") would resolve to
+		// the victim dir — the id must be rejected before any rmSync.
+		await expect(removeAgentAccount("claude", "../../victim", paths)).rejects.toThrow(/Invalid account id/);
+		await expect(removeAgentAccount("codex", "../../victim", paths)).rejects.toThrow(/Invalid account id/);
+		expect(existsSync(join(root, "victim", "file.txt"))).toBe(true);
+	});
+
+	it("completeClaudeLogin rejects path-traversal account ids", async () => {
+		seedClaudeLogin();
+		await expect(completeClaudeLogin("../../.claude", paths)).rejects.toThrow(/Invalid account id/);
+	});
+
 	it("rename updates the label", async () => {
 		seedClaudeLogin();
 		const account = await importCurrentClaudeAccount(paths);
