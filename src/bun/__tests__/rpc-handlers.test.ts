@@ -8539,6 +8539,90 @@ describe("handlers.createPullRequest", () => {
 		expect(sendKeysCalls()).toHaveLength(0);
 	});
 
+	// Issue #609: with a single agent pane the prompt must land in that pane even
+	// when a different (non-agent) pane is focused — the active pane must NOT win.
+	it("routes to the sole agent pane, ignoring a different active pane", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: { panes: [{ paneId: "%5", agentCmd: "claude", sessionId: null, agentId: null, configId: null }] },
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			// Active pane is a non-agent split (%3); the agent lives in %5.
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n%5\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%5"]));
+
+		vi.advanceTimersByTime(800);
+		const all = sendKeysCalls();
+		expect(all[1]).toEqual(["tmux", "-L", "dev3", "send-keys", "-t", "%5", "Enter"]);
+		vi.useRealTimers();
+	});
+
+	// With two or more agent panes the target is ambiguous, so respect focus.
+	it("routes to the active pane when there are two agent panes", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: {
+				panes: [
+					{ paneId: "%5", agentCmd: "claude", sessionId: null, agentId: null, configId: null },
+					{ paneId: "%7", agentCmd: "codex", sessionId: null, agentId: null, configId: null },
+				],
+			},
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n%5\n%7\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+	});
+
+	// A registered agent pane that no longer exists must not hijack the routing —
+	// fall back to the active pane (preserves the legacy behavior).
+	it("falls back to the active pane when the recorded agent pane is dead", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: { panes: [{ paneId: "%5", agentCmd: "claude", sessionId: null, agentId: null, configId: null }] },
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			// %5 is gone; only the active pane %3 is live.
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+	});
+
 	it("throws when the task has no worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: null });
