@@ -324,7 +324,7 @@ ux_architecture:
       modes:
         navigation:
           hotkey: "Cmd/Ctrl+K"
-          purpose: "Type-to-find navigation. Unified 'go to project or task': a Projects section (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9) and a Tasks section (every active task across all projects, most-recently-visited first via state.taskMru). Enter navigates to the best match."
+          purpose: "Type-to-find navigation. Unified 'go to project or task', Tasks section FIRST (every active task across all projects, most-recently-visited first via state.taskMru — task switching is the primary use, so Cmd+K→Enter lands on the most-recent task) then a Projects section (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9). Enter navigates to the best match."
           allowed: ["destination", "fuzzy_search", "object_jump"]
           forbidden: ["command_runner", "object_action", "durable_configuration", "dense_filters"]
           component: "GoToPaletteModal"

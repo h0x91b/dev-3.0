@@ -9,7 +9,9 @@ export type GoToEntry =
 	| { kind: "project"; project: Project }
 	| { kind: "task"; task: Task; project?: Project };
 
-const GROUP_ORDER = ["project", "task"];
+// Tasks first: the palette's primary job is fast task switching, so the most-
+// recently-visited task is the default landing row; projects follow below.
+const GROUP_ORDER = ["task", "project"];
 
 interface GoToPaletteModalProps {
 	/**
@@ -34,10 +36,11 @@ interface GoToPaletteModalProps {
 
 /**
  * Cmd/Ctrl+K quick-switch palette (navigation). One shared shell lists two
- * sections: **Projects** (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9) and
- * **Tasks** (all active tasks across projects, most-recently-visited first).
- * Type to fuzzy-filter both; Enter opens the highlighted match. This realizes
- * the manifest's "Cmd+K absorbs task search" direction — the type-search
+ * sections, **Tasks first** (all active tasks across projects, most-recently-
+ * visited first — the palette's primary job is fast task switching) then
+ * **Projects** (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9). Type to
+ * fuzzy-filter both; Enter opens the highlighted match. This realizes the
+ * manifest's "Cmd+K absorbs task search" direction — the type-search
  * counterpart to the Option/Ctrl+Tab hold-cycle task switcher.
  */
 function GoToPaletteModal({

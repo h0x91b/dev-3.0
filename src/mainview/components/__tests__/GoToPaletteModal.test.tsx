@@ -80,13 +80,14 @@ describe("GoToPaletteModal", () => {
 		expect(dialog.contains(document.activeElement)).toBe(true);
 	});
 
-	it("lists all projects and tasks initially, projects first", () => {
+	it("lists all tasks and projects initially, tasks first", () => {
 		renderModal();
 		const options = screen.getAllByRole("option");
-		// Projects come before tasks (fixed section order).
-		expect(options[0].textContent).toContain("users-service");
+		// Tasks come before projects (fixed section order — task switching is primary).
+		expect(options[0].textContent).toContain("Fix login redirect");
 		expect(options).toHaveLength(PROJECTS.length + TASKS.length);
-		expect(screen.getByText("Fix login redirect")).toBeTruthy();
+		// The last rows are the projects section ("users-service" also appears as t1's badge).
+		expect(options[TASKS.length].textContent).toContain("users-service");
 		expect(screen.getByText("Add rate limiter")).toBeTruthy();
 	});
 
@@ -126,13 +127,13 @@ describe("GoToPaletteModal", () => {
 		expect(onSelectTask).toHaveBeenCalledWith(TASKS[1]);
 	});
 
-	it("navigates across the flat row list with arrow keys, skipping headers", async () => {
+	it("navigates across the flat row list with arrow keys, crossing the section header", async () => {
 		const user = userEvent.setup();
 		const { onSelectProject } = renderModal();
-		// Rows: p1, p2, p3, t1, t2. ArrowDown once → p2.
-		await user.keyboard("{ArrowDown}");
+		// Rows: t1, t2, p1, p2, p3. Two ArrowDowns cross the Tasks→Projects header to p1.
+		await user.keyboard("{ArrowDown}{ArrowDown}");
 		await user.keyboard("{Enter}");
-		expect(onSelectProject).toHaveBeenCalledWith("p2");
+		expect(onSelectProject).toHaveBeenCalledWith("p1");
 	});
 
 	it("shows an empty state when nothing matches", async () => {

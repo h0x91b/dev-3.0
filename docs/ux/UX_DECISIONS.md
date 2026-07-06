@@ -6,8 +6,8 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
 ## 2026-07-06 — Cmd+K unified into "go to project or task" (absorbs task search)
 
-- **Rule:** The Cmd/Ctrl+K navigation palette (`GoToPaletteModal`, was `ProjectQuickSwitchModal`) now lists two fuzzy-searchable sections on the shared `PaletteShell`: **Projects** (unchanged, ⌘N badges) and **Tasks** — every active task across all projects, most-recently-visited first (`state.taskMru`), each with a status dot + project badge. No new shortcut.
-- **Why:** Realizes the manifest's documented "Cmd+K absorbs task search" future; a dedicated Cmd+Shift+K task palette was rejected as shortcut-creep (the #1 anti-pattern) and a second surface to learn. Complements — not duplicates — the Option+Tab switcher: that hold-cycles (alt-tab), Cmd+K type-searches. Reuses the live global task list already powering the switcher.
+- **Rule:** The Cmd/Ctrl+K navigation palette (`GoToPaletteModal`, was `ProjectQuickSwitchModal`) lists two fuzzy-searchable sections on the shared `PaletteShell`: **Tasks first** — every active task across all projects, most-recently-visited first (`state.taskMru`), each with a status dot + project badge — then **Projects** (⌘N badges). Tasks-first means Cmd+K → Enter lands on the most-recent task. No new shortcut.
+- **Why:** Realizes the manifest's documented "Cmd+K absorbs task search" future; a dedicated Cmd+Shift+K task palette was rejected as shortcut-creep (the #1 anti-pattern) and a second surface to learn. Tasks lead because the owner's dominant pattern is task switching, not project switching — which was also the original argument for a task-only command; ordering resolves it without the extra surface. Complements — not duplicates — the Option+Tab switcher: that hold-cycles (alt-tab), Cmd+K type-searches. Reuses the live global task list already powering the switcher.
 - **Status:** Implemented. Evidence: `GoToPaletteModal.tsx`, `PaletteShell.tsx` (grouping), `App.tsx` (goToTasks), `useTaskSwitcher.ts` (globalTasks), bible §4.
 
 ## 2026-07-05 — Agent rate-limit indicator is ambient header status, not a cockpit metric
