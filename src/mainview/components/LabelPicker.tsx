@@ -8,17 +8,21 @@ import {
 import { createPortal } from "react-dom";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import type { Label, Project, Task } from "../../shared/types";
+import type { Label, Project } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 
 interface LabelPickerProps {
 	project: Project;
-	task: Task;
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
 	anchorEl: HTMLElement;
+	/** Currently-selected label ids (controlled by the parent). */
+	selectedIds: string[];
+	/** Toggle a label on/off. The parent owns persistence (local state for a
+	 *  not-yet-created task, or an RPC for an existing one). */
+	onToggle: (labelId: string) => void;
 }
 
 function fuzzyMatch(text: string, query: string): boolean {
@@ -32,7 +36,7 @@ function fuzzyMatch(text: string, query: string): boolean {
 	return qi === q.length;
 }
 
-function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPickerProps) {
+function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onToggle }: LabelPickerProps) {
 	const t = useT();
 	const [query, setQuery] = useState("");
 	const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -42,7 +46,6 @@ function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPicker
 	const inputRef = useRef<HTMLInputElement>(null);
 
 	const labels = project.labels ?? [];
-	const taskLabelIds = task.labelIds ?? [];
 
 	const filtered = query
 		? labels.filter((l) => fuzzyMatch(l.name, query))
@@ -96,47 +99,27 @@ function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPicker
 		};
 	}, [anchorEl, onClose]);
 
-	async function toggleLabel(label: Label) {
-		setSaving(true);
-		try {
-			const isOn = taskLabelIds.includes(label.id);
-			const newIds = isOn
-				? taskLabelIds.filter((id) => id !== label.id)
-				: [...taskLabelIds, label.id];
-			const updated = await api.request.setTaskLabels({
-				taskId: task.id,
-				projectId: project.id,
-				labelIds: newIds,
-			});
-			dispatch({ type: "updateTask", task: updated });
-		} catch (err) {
-			toast.error(t("labels.failedSetLabels", { error: String(err) }));
-		}
-		setSaving(false);
+	function toggleLabel(label: Label) {
+		onToggle(label.id);
 	}
 
 	async function createAndAssign() {
 		const name = query.trim();
-		if (!name) return;
+		if (!name || saving) return;
 		setSaving(true);
 		try {
 			const label = await api.request.createLabel({
 				projectId: project.id,
 				name,
 			});
-			// Update project in state with new label
+			// Make the new label available project-wide immediately.
 			const updatedProject: Project = {
 				...project,
 				labels: [...labels, label],
 			};
 			dispatch({ type: "updateProject", project: updatedProject });
-			// Assign to task
-			const updated = await api.request.setTaskLabels({
-				taskId: task.id,
-				projectId: project.id,
-				labelIds: [...taskLabelIds, label.id],
-			});
-			dispatch({ type: "updateTask", task: updated });
+			// Select it via the controlled toggle — the parent owns persistence.
+			onToggle(label.id);
 			setQuery("");
 		} catch (err) {
 			toast.error(t("labels.failedCreate", { error: String(err) }));
@@ -189,7 +172,7 @@ function LabelPicker({ project, task, dispatch, onClose, anchorEl }: LabelPicker
 					</div>
 				)}
 				{filtered.map((label) => {
-					const isOn = taskLabelIds.includes(label.id);
+					const isOn = selectedIds.includes(label.id);
 					return (
 						<button
 							key={label.id}
