@@ -944,6 +944,31 @@ describe("App keyboard shortcuts", () => {
 			expect(api.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: false, host: "127.0.0.1" });
 		});
 
+		it("shows a copyable install command when cloudflared is missing", async () => {
+			const writeText = vi.fn().mockResolvedValue(undefined);
+			Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+			await renderApp();
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,test",
+					accessUrl: "http://192.168.0.1:1234/?token=test",
+					tunnelState: "idle",
+					cloudflaredInstalled: false,
+				},
+			}));
+			const toggle = await screen.findByLabelText("Accessible from anywhere (Cloudflare Tunnel)");
+
+			// Enabling the Cloudflare Tunnel toggle reveals the "not installed" block.
+			await userEvent.click(toggle);
+
+			expect(screen.getByText("cloudflared is not installed")).toBeInTheDocument();
+			expect(screen.getByText("brew install cloudflared")).toBeInTheDocument();
+
+			await userEvent.click(screen.getByRole("button", { name: "Copy command" }));
+			expect(writeText).toHaveBeenCalledWith("brew install cloudflared");
+			expect(await screen.findByText("Copied!")).toBeInTheDocument();
+		});
+
 		it("hides the interface picker when the tunnel is connected", async () => {
 			await renderApp();
 			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {

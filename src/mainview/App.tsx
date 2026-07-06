@@ -49,6 +49,9 @@ import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
 import { HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
 
+/** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
+const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
+
 /**
  * True when keystrokes should go to a focused field or the terminal rather than
  * trigger a bare-key shortcut (used to gate the Vimium-style hint hotkey).
@@ -188,6 +191,7 @@ function App() {
 	const [remoteQR, setRemoteQR] = useState<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean; interfaces?: RemoteNetInterface[]; selectedHost?: string } | null>(null);
 	const [tunnelWanted, setTunnelWanted] = useState(false);
 	const [tunnelStarting, setTunnelStarting] = useState(false);
+	const [cloudflaredCopied, setCloudflaredCopied] = useState(false);
 
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
@@ -1883,9 +1887,36 @@ function App() {
 							</label>
 
 							{tunnelWanted && !remoteQR.cloudflaredInstalled && (
-								<div className="text-left space-y-1.5">
-									<p className="text-danger text-xs">{t("remote.cloudflaredNotFound")}</p>
-									<p className="text-fg-muted text-xs">{t("remote.cloudflaredInstall")}</p>
+								<div className="text-left space-y-2">
+									<p className="text-danger text-xs font-medium">{t("remote.cloudflaredNotFound")}</p>
+									<p className="text-fg-2 text-xs">{t("remote.cloudflaredInstallHint")}</p>
+									<div className="flex items-center gap-2">
+										<code className="flex-1 text-warning bg-warning/10 px-3 py-2 rounded text-xs font-mono break-all select-all">
+											{CLOUDFLARED_INSTALL_CMD}
+										</code>
+										<button
+											onClick={() => {
+												navigator.clipboard.writeText(CLOUDFLARED_INSTALL_CMD).catch(() => {});
+												setCloudflaredCopied(true);
+												setTimeout(() => setCloudflaredCopied(false), 2000);
+											}}
+											className="p-2 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
+											aria-label={t("remote.copyCommand")}
+											title={t("remote.copyCommand")}
+										>
+											{cloudflaredCopied ? (
+												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+													<polyline points="20 6 9 17 4 12" />
+												</svg>
+											) : (
+												<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+													<rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+													<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+												</svg>
+											)}
+										</button>
+									</div>
+									{cloudflaredCopied && <p className="text-success text-xs">{t("requirements.copied")}</p>}
 									<button
 										onClick={() => {
 											api.request.getRemoteAccessQR({ tunnel: tunnelWanted }).then((res) => {
