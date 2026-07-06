@@ -113,7 +113,7 @@ describe("useTaskSwitcher", () => {
 		expect(result.current.session!.items.map((t) => t.id)).toContain("x");
 	});
 
-	it("toggles scope live when Shift is pressed and released mid-session", async () => {
+	it("toggles scope with each Shift tap and stays put on release (sticky)", async () => {
 		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([
 			{ projectId: "p1", tasks: [task("a", 1)] },
 			{ projectId: "p2", tasks: [{ ...task("x", 5), projectId: "p2" }] },
@@ -126,13 +126,31 @@ describe("useTaskSwitcher", () => {
 		expect(result.current.session!.scope).toBe("project");
 		expect(result.current.session!.items.map((t) => t.id)).not.toContain("x");
 
-		keydown({ key: "Shift", ...MOD, shiftKey: true }); // → global
+		keydown({ key: "Shift", ...MOD, shiftKey: true }); // tap → global
 		expect(result.current.session!.scope).toBe("global");
 		expect(result.current.session!.items.map((t) => t.id)).toContain("x");
 
-		keyup({ key: "Shift" }); // release Shift (modifier still down) → back to project
+		keyup({ key: "Shift" }); // releasing Shift keeps the toggled scope
+		expect(result.current.session!.scope).toBe("global");
+
+		keydown({ key: "Shift", ...MOD, shiftKey: true }); // tap again → back to project
 		expect(result.current.session!.scope).toBe("project");
 		expect(result.current.session!.items.map((t) => t.id)).not.toContain("x");
+	});
+
+	it("ignores Shift auto-repeat so a held Shift toggles only once", async () => {
+		vi.mocked(api.request.getAllProjectTasks).mockResolvedValue([
+			{ projectId: "p1", tasks: [task("a", 1)] },
+			{ projectId: "p2", tasks: [{ ...task("x", 5), projectId: "p2" }] },
+		]);
+		const { result } = mount();
+		await act(async () => {
+			await Promise.resolve();
+		});
+		keydown({ key: "Tab", ...MOD });
+		keydown({ key: "Shift", ...MOD, shiftKey: true }); // → global
+		keydown({ key: "Shift", ...MOD, shiftKey: true, repeat: true }); // repeat ignored
+		expect(result.current.session!.scope).toBe("global");
 	});
 
 	it("advances forward with Tab and wraps around", () => {

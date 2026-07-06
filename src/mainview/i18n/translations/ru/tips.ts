@@ -167,7 +167,7 @@ const tips = {
 	"tip.agentCompletionRequest.title": "Агент может запросить завершение",
 	"tip.agentCompletionRequest.body": "Когда агент выполняет `dev3 task move --status completed`, вы получаете диалог подтверждения — одобрите завершение или оставьте сессию.",
 	"tip.taskSwitcher.title": "Option+Tab между задачами",
-	"tip.taskSwitcher.body": "Держите Option и жмите Tab, чтобы листать активные задачи; отпустите — перейдёте. Стрелки ↑↓ листают в обе стороны. (На Linux — Ctrl+Tab.) С Shift (Option+Shift+Tab) переключение по всем проектам.",
+	"tip.taskSwitcher.body": "Держите Option и жмите Tab, чтобы листать активные задачи; отпустите — перейдёте. Стрелки ↑↓ листают в обе стороны. (На Linux — Ctrl+Tab.) Нажмите Shift, чтобы переключиться на все проекты.",
 	"tip.pasteLargeText.title": "Вставляйте большие логи файлами",
 	"tip.pasteLargeText.body": "Вставьте большой блок текста — он сохранится как .txt-вложение, и задача останется лёгкой, а не раздутой.",
 	"tip.taskHintNav.title": "Переход по F",
