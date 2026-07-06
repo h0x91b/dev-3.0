@@ -363,6 +363,29 @@ brew upgrade --cask dev3    # pulls in h0x91b/dev3/tmux@3.6 as a new dependency
 
 The app switches to the 3.6a keg on its own. One caveat: a tmux server keeps its version until it dies, so if a 3.7 dev3 server is still running, the app keeps using 3.7 for that server's lifetime (mixed-version tmux clients can't talk to it at all). After your sessions wind down — or immediately via `tmux -L dev3 kill-server` (kills all dev-3.0 terminals!) or a reboot — everything runs on 3.6a. Your system-wide `tmux` stays untouched.
 
+### Homebrew and updates — recovering from a broken upgrade
+
+dev-3.0 updates through two channels: the **in-app updater** (swaps only the `.app` bundle) and **Homebrew** (`brew upgrade --cask dev3`). After an in-app update, brew's records lag behind the actually-installed version, and an unlucky `brew upgrade` on top of that could remove the app mid-upgrade or replace the bundle under a running instance. The cask is now marked `auto_updates`, so a bulk `brew upgrade` skips dev3 entirely — to update via brew, quit the app and run `brew upgrade --cask dev3` explicitly.
+
+If you were caught by one of these collisions, find your symptom:
+
+| Symptom | Fix |
+|---|---|
+| Terminals stop opening with "ENOENT" error toasts right after a `brew upgrade`, while git keeps working | The upgrade replaced the `.app` bundle under the running instance. Quit and relaunch dev-3.0. |
+| The app vanished from `/Applications` after a `brew upgrade` that failed ("It seems there is already an App at…", "Directory not empty") | The upgrade died mid-move. Run the full reset below. |
+| You installed the DMG manually and want brew to manage updates again | `brew install --cask h0x91b/dev3/dev3 --adopt` — adopts the app in place, nothing is reinstalled. |
+| You ran `brew install h0x91b/dev3/dev3` **without `--cask`** and no app appeared | That installs the headless CLI formula, not the desktop app. `brew uninstall --formula dev3`, then `brew install --cask h0x91b/dev3/dev3`. |
+| The app won't open after an update (dock icon bounces and gives up), or tmux errors mention "too many levels of symbolic links" | A broken tmux shim. `rm ~/.dev3.0/bin/tmux`, then relaunch — the app recreates it. |
+
+Full reset — safe to run even when brew's state is inconsistent; your projects, tasks, and settings live in `~/.dev3.0` and are not touched:
+
+```sh
+brew uninstall --cask dev3 2>/dev/null || true
+rm -rf "$(brew --prefix)/Caskroom/dev3"
+brew trust h0x91b/dev3 2>/dev/null || true   # newer Homebrew refuses untrusted taps
+brew install --cask h0x91b/dev3/dev3
+```
+
 ### Terminal colors — and the "ANSI colors only" agent theme
 
 dev-3.0 ships a hand-tuned 16-color ANSI palette for both the **dark** and **light** UI themes, plus a readability filter that remaps unreadable foreground/background colors emitted by agents on the fly. Because of that filter, agents look fine out of the box with their default themes — Claude Code's regular **Dark mode** (Monokai) works great as-is.
