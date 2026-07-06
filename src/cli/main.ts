@@ -20,6 +20,7 @@ import { handleConversations } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleShowImage } from "./commands/show-image";
 import { handleStatusLine } from "./commands/statusline";
+import { handleDoctor } from "./commands/doctor";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 import { resolveHelp } from "./help";
@@ -67,6 +68,7 @@ Commands:
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
+  dev3 doctor [--json]                   Check install health (app bundle, tmux shim, brew state); works without the app running
   dev3 install-hooks                     Install agent hooks in current worktree
   dev3 install-skills                    Install agent skills globally
   dev3 projects list                    List all projects
@@ -136,6 +138,11 @@ async function main(): Promise<void> {
 	}
 	if (command === "install-skills") {
 		return await handleInstallSkills();
+	}
+	if (command === "doctor") {
+		// Install health check — must work precisely when the app is broken
+		// or not running, so it never touches the socket.
+		return await handleDoctor(args);
 	}
 	if (command === "conversations") {
 		// Read-only search over local transcript files — no app/socket needed.

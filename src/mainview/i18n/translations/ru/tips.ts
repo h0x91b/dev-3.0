@@ -210,6 +210,8 @@ const tips = {
 	"tip.automations.body": "Настройки проекта → Автоматизации: повторяющиеся промпты (RRULE) создают настоящие задачи — попробуйте еженедельный отчёт «Что я сделал».",
 	"tip.makefileTargets.title": "Запуск таргетов Makefile",
 	"tip.makefileTargets.body": "Кнопка ƒ Scripts показывает и таргеты Makefile — выберите один, чтобы запустить make <target> в живой панели.",
+	"tip.cliDoctor.title": "Диагностика установки",
+	"tip.cliDoctor.body": "Что-то сломалось после обновления? Запустите `dev3 doctor` в любом терминале — проверит приложение, tmux и Homebrew и подскажет команды для починки.",
 };
 
 export default tips;

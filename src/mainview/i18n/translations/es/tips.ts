@@ -210,6 +210,8 @@ const tips = {
 	"tip.automations.body": "Ajustes del proyecto → Automatizaciones: prompts recurrentes (RRULE) crean tareas reales — prueba el informe semanal «Qué he entregado».",
 	"tip.makefileTargets.title": "Ejecuta targets de Makefile",
 	"tip.makefileTargets.body": "El botón ƒ Scripts también lista los targets de tu Makefile — elige uno para ejecutar make <target> en un panel en vivo.",
+	"tip.cliDoctor.title": "Diagnostica tu instalación",
+	"tip.cliDoctor.body": "¿Algo raro tras una actualización? Ejecuta `dev3 doctor` en cualquier terminal: revisa la app, tmux y Homebrew e imprime los comandos para arreglarlo.",
 };
 
 export default tips;

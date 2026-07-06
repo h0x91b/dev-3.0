@@ -367,7 +367,7 @@ The app switches to the 3.6a keg on its own. One caveat: a tmux server keeps its
 
 dev-3.0 updates through two channels: the **in-app updater** (swaps only the `.app` bundle) and **Homebrew** (`brew upgrade --cask dev3`). After an in-app update, brew's records lag behind the actually-installed version, and an unlucky `brew upgrade` on top of that could remove the app mid-upgrade or replace the bundle under a running instance. The cask is now marked `auto_updates`, so a bulk `brew upgrade` skips dev3 entirely — to update via brew, quit the app and run `brew upgrade --cask dev3` explicitly.
 
-If you were caught by one of these collisions, find your symptom:
+**Start with `dev3 doctor`** — it runs all of these checks automatically (app bundle, tmux shim, pinned tmux keg, Homebrew cask/formula state) and prints the exact fix command for anything broken. It works even when the app can't start. If you'd rather diagnose by hand, find your symptom:
 
 | Symptom | Fix |
 |---|---|
