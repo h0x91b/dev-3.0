@@ -16,6 +16,7 @@ import keymap from "./es/keymap";
 import stats from "./es/stats";
 import help from "./es/help";
 import { tooltips } from "./es/tooltips";
+import automations from "./es/automations";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -35,6 +36,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...stats,
 	...help,
 	...tooltips,
+	...automations,
 };
 
 export default es;

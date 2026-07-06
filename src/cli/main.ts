@@ -9,6 +9,7 @@ import { handleNote } from "./commands/note";
 import { handleVents } from "./commands/vents";
 import { handleOverview } from "./commands/overview";
 import { handleLabel } from "./commands/label";
+import { handleAutomations } from "./commands/automations";
 import { handleInstallHooks } from "./commands/install-hooks";
 import { handleInstallSkills } from "./commands/install-skills";
 import { handleConfig } from "./commands/config";
@@ -48,6 +49,13 @@ Commands:
   dev3 label set <id> [<id>...] [--task <task>]  Assign labels to a task
   dev3 label set --clear [--task <id>]  Remove all labels from a task
   dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]  List tasks (newest first, default 50)
+  dev3 automations list                 List project automations (scheduled agent runs)
+  dev3 automations show <id>            Automation details + run history
+  dev3 automations create --name "..." --prompt "..." --rrule "FREQ=DAILY;BYHOUR=9" [--template shipped-report]
+  dev3 automations update <id> [--enable|--disable] [--rrule ...] [--prompt ...]
+  dev3 automations delete <id>          Delete an automation
+  dev3 automations run <id>             Fire an automation now (creates its task)
+  dev3 automations templates            List built-in templates
   dev3 conversations search "<query>" [--limit N] [--all-statuses] [--json]  Search past task conversations (completed/cancelled)
   dev3 dev-server start [task-id]       Start a task dev server
   dev3 dev-server stop [task-id]        Stop a task dev server
@@ -173,6 +181,8 @@ async function main(): Promise<void> {
 				return await handleOverview(subcommand, args, socketPath, context);
 			case "label":
 				return await handleLabel(subcommand, args, socketPath, context);
+			case "automations":
+				return await handleAutomations(subcommand, args, socketPath, context);
 			case "config":
 				return await handleConfig(subcommand, args, socketPath, context);
 			case "dev-server":

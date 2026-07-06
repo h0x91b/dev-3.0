@@ -30,9 +30,10 @@ interface CreateTaskModalProps {
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
 	onCreateAndRun?: (task: Task) => void;
+	onOpenAutomations?: () => void;
 }
 
-function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateTaskModalProps) {
+function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations }: CreateTaskModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [description, setDescription] = useState("");
@@ -679,10 +680,29 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun }: CreateT
 									{creating ? t("createTask.creating") : t("createTask.create")}
 								</button>
 							</div>
-							<div className="text-fg-muted text-[0.6875rem] text-right">
-								{onCreateAndRun
-									? t("createTask.submitHintRun")
-									: t("createTask.submitHint")}
+							<div className="flex items-center justify-between gap-2 text-[0.6875rem]">
+								{onOpenAutomations ? (
+									<button
+										type="button"
+										onClick={onOpenAutomations}
+										className="text-accent hover:text-accent-hover hover:underline transition-colors flex items-center gap-1"
+									>
+										<span
+											className="text-[0.8125rem] leading-none"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\u{F0150}"}
+										</span>
+										{t("automations.newTaskLink")}
+									</button>
+								) : (
+									<span />
+								)}
+								<div className="text-fg-muted text-right">
+									{onCreateAndRun
+										? t("createTask.submitHintRun")
+										: t("createTask.submitHint")}
+								</div>
 							</div>
 						</>
 					)}

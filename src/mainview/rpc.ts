@@ -28,6 +28,8 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	cliShowImage: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowImage", { detail: payload })),
 	webNotification: (payload) => window.dispatchEvent(new CustomEvent("rpc:webNotification", { detail: payload })),
 	taskPrStatus: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", { detail: payload })),
+	automationsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:automationsUpdated", { detail: payload })),
+	automationRunsMissed: (payload) => window.dispatchEvent(new CustomEvent("rpc:automationRunsMissed", { detail: payload })),
 	openCreateTaskModal: () => window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal")),
 	navigateToSettings: () => window.dispatchEvent(new CustomEvent("rpc:navigateToSettings")),
 	navigateToGaugeDemo: () => window.dispatchEvent(new CustomEvent("rpc:navigateToGaugeDemo")),

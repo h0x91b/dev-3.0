@@ -840,6 +840,12 @@ export interface Task {
 	 * worktree `shared-images/` dir. See {@link SharedImage}.
 	 */
 	sharedImages?: SharedImage[];
+	/**
+	 * Set when the task was created by a scheduled Automation fire (or its
+	 * "Run now" action). Drives the clock provenance glyph on the task card and
+	 * links the task back to its automation's run history.
+	 */
+	automationId?: string | null;
 }
 
 /** Per-task cap on retained shared images; oldest are pruned (files deleted) past this. */
@@ -987,6 +993,77 @@ export function formatStatus(status: string): string {
 		.split("-")
 		.map((w) => w.charAt(0).toUpperCase() + w.slice(1))
 		.join(" ");
+}
+
+// ---- Automations (scheduled agent runs) ----
+
+export type AutomationRunStatus = "created" | "failed" | "missed";
+
+/** One record in an automation's bounded run history (newest first). */
+export interface AutomationRun {
+	id: string;
+	/** ISO time of the RRULE occurrence this run satisfies (or the manual-run click time). */
+	scheduledFor: string;
+	/** ISO time the run actually fired; null for `missed` entries. */
+	firedAt: string | null;
+	status: AutomationRunStatus;
+	/** The created task, when status is `created`. */
+	taskId?: string | null;
+	/** Failure detail, when status is `failed`. */
+	error?: string | null;
+	/** True when the run was triggered manually ("Run now" / `dev3 automations run`). */
+	manual?: boolean;
+}
+
+/** What to do with occurrences that were missed while the app was offline. */
+export type AutomationCatchUpPolicy = "skip" | "runOnce";
+
+/**
+ * A per-project scheduled agent run: an RFC 5545 RRULE subset + IANA timezone +
+ * a stored prompt + an agent choice. Each fire creates an ORDINARY task
+ * (worktree + tmux + agent, prompt = task description) on the board. Persisted
+ * in `~/.dev3.0/data/<slug>/automations.json` (additive parallel file — older
+ * app versions never read it).
+ */
+export interface Automation {
+	id: string;
+	projectId: string;
+	name: string;
+	/** The task description the created task gets — i.e. the agent's initial prompt. */
+	prompt: string;
+	/** RRULE subset string, e.g. `FREQ=WEEKLY;BYDAY=FR;BYHOUR=17;BYMINUTE=0`. See shared/rrule.ts. */
+	rrule: string;
+	/** IANA timezone the RRULE wall-clock times are evaluated in. */
+	timezone: string;
+	agentId: string | null;
+	configId: string | null;
+	enabled: boolean;
+	catchUp: AutomationCatchUpPolicy;
+	createdAt: string;
+	updatedAt: string;
+	/**
+	 * Next occurrence (ISO, UTC) this automation should fire at — computed from
+	 * the RRULE and persisted so an app restart can tell scheduled-from-missed
+	 * apart. Null when disabled or the rule yields nothing.
+	 */
+	nextRunAt: string | null;
+	/** Bounded run history, newest first. Capped at {@link MAX_AUTOMATION_RUNS_KEPT}. */
+	runs: AutomationRun[];
+}
+
+/** Run-history retention per automation (newest kept). */
+export const MAX_AUTOMATION_RUNS_KEPT = 20;
+
+/** Fields accepted by the createAutomation / updateAutomation RPCs. */
+export interface AutomationDraft {
+	name: string;
+	prompt: string;
+	rrule: string;
+	timezone: string;
+	agentId?: string | null;
+	configId?: string | null;
+	enabled?: boolean;
+	catchUp?: AutomationCatchUpPolicy;
 }
 
 export type NoteSource = "user" | "ai";
@@ -2177,6 +2254,27 @@ export type AppRPCSchema = {
 				params: void;
 				response: { ok: true; t: number };
 			};
+			listAutomations: {
+				params: { projectId: string };
+				response: Automation[];
+			};
+			createAutomation: {
+				params: { projectId: string } & AutomationDraft;
+				response: Automation;
+			};
+			updateAutomation: {
+				params: { projectId: string; automationId: string } & Partial<AutomationDraft>;
+				response: Automation;
+			};
+			deleteAutomation: {
+				params: { projectId: string; automationId: string };
+				response: void;
+			};
+			/** Fire an automation immediately (does not consume/advance the schedule). */
+			runAutomationNow: {
+				params: { projectId: string; automationId: string };
+				response: { taskId: string };
+			};
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
@@ -2273,6 +2371,13 @@ export type AppRPCSchema = {
 				ciStatus: PRCIStatus | null;
 				reviewState: PRReviewState | null;
 			};
+			/** An automation changed (CRUD, a run fired, nextRunAt advanced) — refresh the Automations panel. */
+			automationsUpdated: { projectId: string };
+			/**
+			 * Occurrences were missed while the app was offline (detected at scheduler
+			 * startup). Surfaced as a toast — missed runs are never silently skipped.
+			 */
+			automationRunsMissed: { projectId: string; automationId: string; automationName: string; missedCount: number; caughtUp: boolean };
 		};
 	}>;
 	webview: RPCSchema<{

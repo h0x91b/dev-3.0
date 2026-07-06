@@ -8,7 +8,7 @@ export type Route =
 	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean }
 	| { screen: "project-terminal"; projectId: string }
 	| { screen: "task"; projectId: string; taskId: string }
-	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree"; worktreeTaskId?: string }
+	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
 	| { screen: "settings" }
 	| { screen: "changelog" }
 	| { screen: "stats" }

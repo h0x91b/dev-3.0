@@ -850,6 +850,29 @@ describe("CreateTaskModal", () => {
 // Inline label creation in the Create-Task modal
 // ================================================================
 
+describe("CreateTaskModal automations link", () => {
+	it("calls onOpenAutomations when the footer link is clicked", async () => {
+		const onOpenAutomations = vi.fn();
+		render(
+			<I18nProvider>
+				<CreateTaskModal
+					project={mockProject}
+					dispatch={vi.fn()}
+					onClose={vi.fn()}
+					onOpenAutomations={onOpenAutomations}
+				/>
+			</I18nProvider>,
+		);
+		await userEvent.click(screen.getByText("Runs on a schedule? Set up an Automation"));
+		expect(onOpenAutomations).toHaveBeenCalledTimes(1);
+	});
+
+	it("hides the automations link when the callback is not provided", () => {
+		renderModal();
+		expect(screen.queryByText("Runs on a schedule? Set up an Automation")).toBeNull();
+	});
+});
+
 describe("CreateTaskModal labels", () => {
 	const labeledProject: Project = {
 		...mockProject,

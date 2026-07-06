@@ -67,8 +67,10 @@ async function ensureDir(filePath: string): Promise<void> {
  * leftover is harmless; we still clean it up on failure. The final path and
  * byte content are identical to the old in-place writeFile, so older app
  * versions read/write these files unchanged.
+ *
+ * Exported for sibling data modules (automations-data.ts) — same guarantees.
  */
-async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+export async function atomicWriteFile(filePath: string, content: string): Promise<void> {
 	const tmpPath = `${filePath}.tmp-${process.pid}`;
 	try {
 		await writeFile(tmpPath, content);
@@ -786,6 +788,7 @@ export async function addTask(
 		notes?: Task["notes"];
 		overview?: string | null;
 		userOverview?: string | null;
+		automationId?: string | null;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -838,6 +841,7 @@ export async function addTask(
 			...(extras?.notes && extras.notes.length > 0 ? { notes: extras.notes } : {}),
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
+			...(extras?.automationId ? { automationId: extras.automationId } : {}),
 		};
 		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
 		tasks.push(task);
