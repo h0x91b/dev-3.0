@@ -1,0 +1,1 @@
+Fixed the version bump script pushing all local tags (`git push --tags`) instead of just the new release tag. GitHub silently drops the push event when more than 3 tags are pushed at once, so a bulk push containing stale local tags could swallow the Release workflow trigger entirely (this bit the v1.30.0 release).
