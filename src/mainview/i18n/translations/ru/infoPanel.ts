@@ -13,6 +13,7 @@ const infoPanel = {
 	"infoPanel.fullScreen": "На весь экран",
 	"infoPanel.exitFullScreen": "Выйти из полного экрана",
 	"infoPanel.actionsTitle": "Действия задачи",
+	"infoPanel.sheetDetails": "Детали",
 	"infoPanel.commitsBehind": "{count} коммитов позади",
 	"infoPanel.commitsAhead": "{count} коммитов впереди",
 	"infoPanel.commitsAheadBehind": "{ahead} впереди · {behind} позади",
