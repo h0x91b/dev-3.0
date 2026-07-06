@@ -1,0 +1,1 @@
+Replace GitHub's auto legacy "Deploy from a branch" Pages workflow with a custom Actions workflow that only runs when docs/ changes and serializes deploys via a concurrency group, eliminating the false "Run failed" deployment emails that fired on parallel PR merges.
