@@ -324,7 +324,7 @@ ux_architecture:
       modes:
         navigation:
           hotkey: "Cmd/Ctrl+K"
-          purpose: "Type-to-find navigation. Unified 'go to project or task', tasks FIRST — every active task across all projects sorted by updatedAt desc and bucketed by date into Today / Yesterday / This week / Older (empty buckets show no header), so today's work leads and Cmd+K→Enter lands on the most-recent task — then a Projects section (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9). Enter navigates to the best match."
+          purpose: "Type-to-find navigation, 'go to project or task', with ONE active mode cycled by a lone Shift tap or the footer mode switcher: Projects (fuzzy-jump, ⌘1..9 badges) → This project (current project's active tasks) → All tasks (active tasks across all projects, with project badge). Task modes bucket rows by updatedAt into Today / Yesterday / This week / Older (empty buckets show no header). Opens in the last-used mode (default Projects; This project hidden when no project is in view). Enter navigates to the best match."
           allowed: ["destination", "fuzzy_search", "object_jump"]
           forbidden: ["command_runner", "object_action", "durable_configuration", "dense_filters"]
           component: "GoToPaletteModal"

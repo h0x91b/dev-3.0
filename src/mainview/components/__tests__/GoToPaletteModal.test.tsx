@@ -1,13 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
 import GoToPaletteModal, { taskRecencyBucket } from "../GoToPaletteModal";
 import type { Project, Task } from "../../../shared/types";
 
 // Timestamps anchored on the real local midnight (the same anchor the component
-// uses via Date.now()), so bucketing is deterministic regardless of timezone or
-// when the suite runs.
+// uses via Date.now()), so date bucketing is deterministic across timezones/runs.
 const DAY = 86_400_000;
 const startOfToday = (() => {
 	const d = new Date();
@@ -51,78 +50,145 @@ const PROJECTS: Project[] = [
 	project("p2", "auth-gateway"),
 	project("p3", "billing"),
 ];
-
-const TASKS: Task[] = [
+// All-projects tasks ("All tasks" mode).
+const ALL_TASKS: Task[] = [
 	task("t1", "p1", "Fix login redirect", TODAY),
 	task("t2", "p2", "Add rate limiter", YESTERDAY),
 ];
-
+// Current-project tasks ("This project" mode) — both in the p1 project.
+const PROJECT_TASKS: Task[] = [
+	task("pt1", "p1", "Project alpha task", TODAY),
+	task("pt2", "p1", "Project beta task", TODAY),
+];
 const PROJECT_BY_ID = new Map(PROJECTS.map((p) => [p.id, p]));
 
-function renderModal(
-	handlers: {
-		onSelectProject?: (id: string) => void;
-		onSelectTask?: (t: Task) => void;
-		onClose?: () => void;
-	} = {},
-) {
-	const onSelectProject = handlers.onSelectProject ?? vi.fn();
-	const onSelectTask = handlers.onSelectTask ?? vi.fn();
-	const onClose = handlers.onClose ?? vi.fn();
+function renderModal(overrides: Partial<React.ComponentProps<typeof GoToPaletteModal>> = {}) {
+	const onSelectProject = vi.fn();
+	const onSelectTask = vi.fn();
+	const onClose = vi.fn();
 	render(
 		<I18nProvider>
 			<GoToPaletteModal
 				projects={PROJECTS}
-				tasks={TASKS}
+				tasks={ALL_TASKS}
+				projectTasks={PROJECT_TASKS}
+				hasCurrentProject
 				projectById={PROJECT_BY_ID}
 				onSelectProject={onSelectProject}
 				onSelectTask={onSelectTask}
 				onClose={onClose}
+				{...overrides}
 			/>
 		</I18nProvider>,
 	);
 	return { onSelectProject, onSelectTask, onClose };
 }
 
-beforeEach(() => {
-	document.body.innerHTML = "";
-});
+const seg = (name: string) => screen.getByRole("button", { name });
 
-describe("GoToPaletteModal", () => {
-	it("traps focus inside the dialog on open", () => {
+beforeEach(() => {
+	localStorage.clear();
+});
+afterEach(() => cleanup());
+
+describe("GoToPaletteModal — modes", () => {
+	it("opens in Projects mode by default and lists projects, not tasks", () => {
 		renderModal();
-		const dialog = screen.getByRole("dialog");
-		expect(dialog.contains(document.activeElement)).toBe(true);
+		expect(seg("Projects").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByText("users-service")).toBeTruthy();
+		expect(screen.queryByText("Fix login redirect")).toBeNull();
 	});
 
-	it("lists all tasks and projects initially, tasks first", () => {
+	it("shows all three mode segments when a project is in view", () => {
 		renderModal();
-		const options = screen.getAllByRole("option");
-		// Tasks come before projects (fixed section order — task switching is primary).
-		expect(options[0].textContent).toContain("Fix login redirect");
-		expect(options).toHaveLength(PROJECTS.length + TASKS.length);
-		// The last rows are the projects section ("users-service" also appears as t1's badge).
-		expect(options[TASKS.length].textContent).toContain("users-service");
+		expect(seg("Projects")).toBeTruthy();
+		expect(seg("This project")).toBeTruthy();
+		expect(seg("All tasks")).toBeTruthy();
+	});
+
+	it("hides the This-project mode when no project is in view", () => {
+		renderModal({ hasCurrentProject: false });
+		expect(seg("Projects")).toBeTruthy();
+		expect(seg("All tasks")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "This project" })).toBeNull();
+	});
+
+	it("cycles modes on a lone Shift tap: Projects → This project → All tasks", async () => {
+		const user = userEvent.setup();
+		renderModal();
+		await user.keyboard("{Shift>}{/Shift}");
+		expect(seg("This project").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByText("Project alpha task")).toBeTruthy();
+		await user.keyboard("{Shift>}{/Shift}");
+		expect(seg("All tasks").getAttribute("aria-pressed")).toBe("true");
 		expect(screen.getByText("Add rate limiter")).toBeTruthy();
 	});
 
-	it("renders date-bucket task headers and the Projects header", () => {
+	it("does NOT cycle when Shift is used to type a capital", async () => {
+		const user = userEvent.setup();
+		renderModal();
+		await user.keyboard("{Shift>}A{/Shift}");
+		expect(seg("Projects").getAttribute("aria-pressed")).toBe("true"); // still Projects
+		expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("A");
+	});
+
+	it("switches mode when a segment is clicked", async () => {
+		const user = userEvent.setup();
+		renderModal();
+		await user.click(seg("This project"));
+		expect(seg("This project").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByText("Project alpha task")).toBeTruthy();
+	});
+
+	it("remembers the last-used mode via localStorage", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
+		renderModal();
+		expect(seg("All tasks").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByText("Fix login redirect")).toBeTruthy();
+	});
+
+	it("falls back to All tasks when the remembered This-project mode is unavailable", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "project-tasks");
+		renderModal({ hasCurrentProject: false });
+		expect(seg("All tasks").getAttribute("aria-pressed")).toBe("true");
+	});
+});
+
+describe("GoToPaletteModal — rows", () => {
+	it("shows a project badge on task rows in All-tasks mode", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
+		renderModal();
+		const allRow = screen.getByText("Fix login redirect").closest("[role=option]");
+		expect(allRow?.textContent).toContain("users-service"); // badge present
+	});
+
+	it("omits the project badge in This-project mode", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "project-tasks");
+		renderModal();
+		const projRow = screen.getByText("Project alpha task").closest("[role=option]");
+		expect(projRow?.textContent).not.toContain("users-service"); // badge omitted
+	});
+
+	it("buckets task modes by date (Today / Yesterday headers)", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
 		renderModal();
 		expect(screen.getByText("Today")).toBeTruthy();
 		expect(screen.getByText("Yesterday")).toBeTruthy();
-		expect(screen.getByText("Projects")).toBeTruthy();
 	});
 
-	it("buckets tasks into date sections in Today → Yesterday → This week → Older → Projects order", () => {
+	it("orders date buckets Today → Yesterday → This week → Older", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
 		render(
 			<I18nProvider>
 				<GoToPaletteModal
 					projects={PROJECTS}
+					projectTasks={[]}
+					hasCurrentProject={false}
 					tasks={[
-						task("older", "p1", "Older task", OLDER),
-						task("today", "p1", "Today task", TODAY),
-						task("week", "p1", "Week task", THIS_WEEK),
-						task("yst", "p1", "Yesterday task", YESTERDAY),
+						task("o", "p1", "Older task", OLDER),
+						task("t", "p1", "Today task", TODAY),
+						task("w", "p1", "Week task", THIS_WEEK),
+						task("y", "p1", "Yesterday task", YESTERDAY),
 					]}
 					projectById={PROJECT_BY_ID}
 					onSelectProject={vi.fn()}
@@ -134,45 +200,20 @@ describe("GoToPaletteModal", () => {
 		const headers = [...document.querySelectorAll('[data-testid="go-to-palette"] [role=presentation]')].map(
 			(h) => h.textContent,
 		);
-		expect(headers).toEqual(["Today", "Yesterday", "This week", "Older", "Projects"]);
+		expect(headers).toEqual(["Today", "Yesterday", "This week", "Older"]);
 	});
 
 	it("reserves top scroll-margin only on rows that sit under a section header", () => {
-		// Two tasks in the SAME (Today) bucket: the first carries the header, the
-		// second does not — so scrollIntoView keeps a header visible at the top edge.
-		render(
-			<I18nProvider>
-				<GoToPaletteModal
-					projects={[]}
-					tasks={[task("a", "p1", "Alpha task", TODAY), task("b", "p1", "Beta task", TODAY)]}
-					projectById={PROJECT_BY_ID}
-					onSelectProject={vi.fn()}
-					onSelectTask={vi.fn()}
-					onClose={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
+		localStorage.setItem("dev3-gotopalette-mode", "project-tasks");
+		renderModal(); // PROJECT_TASKS are both Today → first has the header, second does not
 		const options = screen.getAllByRole("option");
-		expect(options[0].className).toContain("scroll-mt-9"); // first-in-bucket → header above
-		expect(options[1].className).not.toContain("scroll-mt-9"); // same bucket, no header
+		expect(options[0].className).toContain("scroll-mt-9");
+		expect(options[1].className).not.toContain("scroll-mt-9");
 	});
+});
 
-	it("shows the project badge on task rows", () => {
-		renderModal();
-		const taskRow = screen.getByText("Fix login redirect").closest("[role=option]");
-		expect(taskRow?.textContent).toContain("users-service");
-	});
-
-	it("filters both projects and tasks as the user types", async () => {
-		const user = userEvent.setup();
-		renderModal();
-		await user.type(screen.getByRole("textbox"), "login");
-		const options = screen.getAllByRole("option");
-		expect(options).toHaveLength(1);
-		expect(options[0].textContent).toContain("Fix login redirect");
-	});
-
-	it("opens a project on Enter over a project match", async () => {
+describe("GoToPaletteModal — selection", () => {
+	it("opens a project on Enter over a project match (Projects mode)", async () => {
 		const user = userEvent.setup();
 		const { onSelectProject } = renderModal();
 		await user.type(screen.getByRole("textbox"), "users");
@@ -180,28 +221,12 @@ describe("GoToPaletteModal", () => {
 		expect(onSelectProject).toHaveBeenCalledWith("p1");
 	});
 
-	it("opens a task on click", async () => {
+	it("opens a task on click (All-tasks mode)", async () => {
+		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
 		const user = userEvent.setup();
 		const { onSelectTask } = renderModal();
-		await user.click(screen.getByText("Add rate limiter"));
-		expect(onSelectTask).toHaveBeenCalledWith(TASKS[1]);
-	});
-
-	it("navigates across the flat row list with arrow keys, crossing the section header", async () => {
-		const user = userEvent.setup();
-		const { onSelectProject } = renderModal();
-		// Rows: t1, t2, p1, p2, p3. Two ArrowDowns cross the Tasks→Projects header to p1.
-		await user.keyboard("{ArrowDown}{ArrowDown}");
-		await user.keyboard("{Enter}");
-		expect(onSelectProject).toHaveBeenCalledWith("p1");
-	});
-
-	it("shows an empty state when nothing matches", async () => {
-		const user = userEvent.setup();
-		renderModal();
-		await user.type(screen.getByRole("textbox"), "zzzzz");
-		expect(screen.queryAllByRole("option")).toHaveLength(0);
-		expect(screen.getByText("No matching projects or tasks")).toBeTruthy();
+		await user.click(screen.getByText("Fix login redirect"));
+		expect(onSelectTask).toHaveBeenCalledWith(ALL_TASKS[0]);
 	});
 
 	it("closes on Escape", async () => {
@@ -211,12 +236,21 @@ describe("GoToPaletteModal", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
+	it("traps focus inside the dialog on open", () => {
+		renderModal();
+		expect(screen.getByRole("dialog").contains(document.activeElement)).toBe(true);
+	});
+});
+
+describe("GoToPaletteModal — project ⌘N badges", () => {
 	it("renders the ⌘N badge from the board index, not the display row", () => {
 		render(
 			<I18nProvider>
 				<GoToPaletteModal
 					projects={[PROJECTS[2], PROJECTS[0], PROJECTS[1]]}
 					tasks={[]}
+					projectTasks={[]}
+					hasCurrentProject={false}
 					projectById={PROJECT_BY_ID}
 					shortcutIndexById={{ p1: 0, p2: 1, p3: 2 }}
 					onSelectProject={vi.fn()}
@@ -238,6 +272,8 @@ describe("GoToPaletteModal", () => {
 				<GoToPaletteModal
 					projects={[ops, PROJECTS[0]]}
 					tasks={[]}
+					projectTasks={[]}
+					hasCurrentProject={false}
 					projectById={
 						new Map([
 							[ops.id, ops],

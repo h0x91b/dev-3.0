@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { fuzzyRank } from "../utils/fuzzyMatch";
 import { useFocusTrap } from "../utils/useFocusTrap";
@@ -40,6 +40,15 @@ interface PaletteShellProps<T> {
 	renderItemLeft?: (item: T, index: number, query: string) => React.ReactNode;
 	/** Optional trailing content per row (shortcut badge, category, …). */
 	renderItemRight?: (item: T, index: number, query: string) => React.ReactNode;
+	/** Optional content in the footer bar, left of the hint (e.g. a mode switcher). */
+	footerLeft?: React.ReactNode;
+	/**
+	 * Called on a *lone* Shift tap (Shift pressed and released with no other key in
+	 * between) — used to cycle palette modes. Shift+key (capitals) is unaffected.
+	 */
+	onShiftTap?: () => void;
+	/** When this value changes, the selection resets to the first row (e.g. on mode switch). */
+	resetKey?: string;
 	/**
 	 * Optional section grouping. When set, matched rows are reordered so each
 	 * group is contiguous (fuzzy order preserved *within* a group) and rendered
@@ -74,10 +83,20 @@ export function PaletteShell<T>({
 	getGroup,
 	groupOrder,
 	groupLabel,
+	footerLeft,
+	onShiftTap,
+	resetKey,
 }: PaletteShellProps<T>) {
 	const [query, setQuery] = useState("");
 	const [index, setIndex] = useState(0);
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	// Tracks whether Shift is being held alone (no other key pressed since it went
+	// down) so keyup can distinguish a mode-cycling tap from Shift+key typing.
+	const shiftAlone = useRef(false);
+
+	// Snap back to the first row whenever the caller signals a reset (mode switch).
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	useEffect(() => setIndex(0), [resetKey]);
 
 	const ranked = useMemo(() => fuzzyRank(query, items, getText), [query, items, getText]);
 
@@ -101,6 +120,13 @@ export function PaletteShell<T>({
 	}
 
 	function handleKeyDown(e: React.KeyboardEvent) {
+		// Shift-tap bookkeeping: a bare Shift down arms the tap; any other key
+		// (including Shift+letter for capitals) disarms it so only a lone tap cycles.
+		if (e.key === "Shift") {
+			if (!e.repeat) shiftAlone.current = true;
+			return;
+		}
+		shiftAlone.current = false;
 		if (e.key === "Escape") {
 			e.preventDefault();
 			e.stopPropagation();
@@ -114,6 +140,13 @@ export function PaletteShell<T>({
 		} else if (e.key === "Enter") {
 			e.preventDefault();
 			commit(selected);
+		}
+	}
+
+	function handleKeyUp(e: React.KeyboardEvent) {
+		if (e.key === "Shift" && shiftAlone.current) {
+			shiftAlone.current = false;
+			onShiftTap?.();
 		}
 	}
 
@@ -144,6 +177,7 @@ export function PaletteShell<T>({
 							setIndex(0);
 						}}
 						onKeyDown={handleKeyDown}
+						onKeyUp={handleKeyUp}
 						placeholder={placeholder}
 						className="w-full bg-base border border-edge rounded-lg px-3 py-2 text-fg text-sm placeholder:text-fg-muted focus:outline-none focus:border-edge-active"
 						aria-label={placeholder}
@@ -200,7 +234,10 @@ export function PaletteShell<T>({
 					)}
 				</div>
 
-				<div className="px-4 py-2 border-t border-edge text-fg-muted text-xs">{hint}</div>
+				<div className="px-4 py-2 border-t border-edge text-fg-muted text-xs flex items-center justify-between gap-3">
+					{footerLeft ?? <span />}
+					<span className="flex-shrink-0">{hint}</span>
+				</div>
 			</div>
 		</div>,
 		document.body,

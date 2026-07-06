@@ -487,12 +487,21 @@ function App() {
 	// updated first (seq breaks ties). GoToPaletteModal buckets them by date
 	// (Today / Yesterday / This week / Older). `switcher.globalTasks` is kept live
 	// (it powers the Option+Tab switcher); we filter to active statuses and sort a copy.
+	const byUpdatedAtDesc = (a: Task, b: Task) =>
+		(Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0) || b.seq - a.seq;
+	// All active tasks across every project (the palette's "All tasks" mode).
 	const goToTasks = useMemo(
-		() =>
-			switcher.globalTasks
-				.filter((t) => ACTIVE_STATUSES.includes(t.status))
-				.sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0) || b.seq - a.seq),
+		() => switcher.globalTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).sort(byUpdatedAtDesc),
 		[switcher.globalTasks],
+	);
+	// Active tasks of the project currently in view (the palette's "This project" mode).
+	const goToProjectId = "projectId" in state.route ? state.route.projectId : null;
+	const goToProjectTasks = useMemo(
+		() =>
+			goToProjectId
+				? state.currentProjectTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)).slice().sort(byUpdatedAtDesc)
+				: [],
+		[state.currentProjectTasks, goToProjectId],
 	);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
@@ -1660,6 +1669,8 @@ function App() {
 					projects={quickSwitch.projects}
 					shortcutIndexById={quickSwitch.shortcutIndexById}
 					tasks={goToTasks}
+					projectTasks={goToProjectTasks}
+					hasCurrentProject={goToProjectId !== null}
 					projectById={switcherProjectById}
 					onSelectProject={(projectId) => {
 						setShowProjectSwitch(false);
