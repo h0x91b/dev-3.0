@@ -28,6 +28,11 @@ const dashboard = {
 	"board.searchPlaceholder": "Buscar en todas las tareas…",
 	"board.clearSearch": "Limpiar búsqueda",
 	"board.unknownProject": "Proyecto desconocido",
+	"board.newTask": "Nueva tarea",
+	"board.pickProjectPlaceholder": "Buscar proyectos…",
+	"board.pickProjectAria": "Elige un proyecto para la nueva tarea",
+	"board.pickProjectHint": "Elige el proyecto en el que crear la tarea",
+	"board.pickProjectNoResults": "No hay proyectos coincidentes",
 
 	// Activity overview
 	"activity.noActiveTasks": "Sin tareas activas en ningún proyecto",

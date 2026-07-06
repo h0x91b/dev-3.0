@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type CSSProperties, type ReactNode } from "react";
 import type { CodingAgent, Project, Task, TaskStatus } from "../../shared/types";
-import { getTaskTitle, hexToRgb } from "../../shared/types";
+import { getTaskTitle, hexToRgb, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import { api } from "../rpc";
 import type { Route } from "../state";
 import { useT, useLocale, statusKey } from "../i18n";
@@ -13,6 +13,12 @@ import LabelChip from "./LabelChip";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
 import MobileBoardCarousel, { CAROUSEL_MAX_WIDTH, type CarouselColumn } from "./MobileBoardCarousel";
+import { PaletteShell } from "./PaletteShell";
+
+/** Open the shared CreateTaskModal (mounted in App) bound to a chosen project. */
+function openCreateTaskFor(projectId: string) {
+	window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal", { detail: { projectId } }));
+}
 
 /**
  * Columns of the unified cross-project board — `todo` plus every active status,
@@ -235,6 +241,9 @@ function AllTasksBoard({ projects, navigate, bellCounts, viewToggle }: AllTasksB
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [searchQuery, setSearchQuery] = useState("");
+	// When true, the project typeahead is open (step 1 of creating a task from the
+	// cross-project board — the user must pick which project it belongs to).
+	const [pickingProject, setPickingProject] = useState(false);
 	// Re-render once per second so the status-age badges stay live.
 	const [now, setNow] = useState(() => Date.now());
 
@@ -343,6 +352,22 @@ function AllTasksBoard({ projects, navigate, bellCounts, viewToggle }: AllTasksB
 
 	const total = tasks.length;
 
+	// Projects the user can create a task in — non-deleted, in display order.
+	const selectableProjects = useMemo(
+		() => orderProjectsForDisplay(projects.filter((p) => !p.deleted)),
+		[projects],
+	);
+
+	// "New task" on the cross-project board: pick a project first (skip the picker
+	// when there is only one), then the shared CreateTaskModal opens for it.
+	function startCreate() {
+		if (selectableProjects.length === 1) {
+			openCreateTaskFor(selectableProjects[0].id);
+			return;
+		}
+		if (selectableProjects.length > 0) setPickingProject(true);
+	}
+
 	const carouselColumns: CarouselColumn[] = isCarousel
 		? BOARD_STATUSES.map((status) => ({
 				id: status,
@@ -413,7 +438,40 @@ function AllTasksBoard({ projects, navigate, bellCounts, viewToggle }: AllTasksB
 					)}
 				</div>
 				{viewToggle}
+				<button
+					type="button"
+					onClick={startCreate}
+					disabled={selectableProjects.length === 0}
+					className="inline-flex items-center gap-1.5 px-3 py-2 md:py-1.5 min-h-[40px] md:min-h-0 bg-accent text-white text-xs font-semibold rounded-lg hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+					title={t("board.newTask")}
+					data-testid="board-new-task"
+				>
+					{/* Nerd Font: fa-plus (U+F067) */}
+					<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }} aria-hidden>
+						{""}
+					</span>
+					<span>{t("board.newTask")}</span>
+				</button>
 			</div>
+
+			{/* Step 1 of create-from-board: choose the target project (typeahead) */}
+			{pickingProject && (
+				<PaletteShell
+					items={selectableProjects}
+					getKey={(p) => p.id}
+					getText={(p) => (isBuiltinOpsProject(p) ? t("ops.boardName") : p.name)}
+					onSelect={(p) => {
+						setPickingProject(false);
+						openCreateTaskFor(p.id);
+					}}
+					onClose={() => setPickingProject(false)}
+					placeholder={t("board.pickProjectPlaceholder")}
+					ariaLabel={t("board.pickProjectAria")}
+					hint={t("board.pickProjectHint")}
+					noResults={t("board.pickProjectNoResults")}
+					testId="board-project-picker"
+				/>
+			)}
 
 			{/* Body */}
 			{loading ? (

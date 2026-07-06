@@ -1436,7 +1436,15 @@ function App() {
 	}, [navigate]);
 
 	useEffect(() => {
-		function onOpenCreateTaskModal() {
+		function onOpenCreateTaskModal(e: Event) {
+			// The unified cross-project board passes an explicit projectId (the user
+			// picked it), since there is no project in the route to infer from.
+			const projectId = (e as CustomEvent).detail?.projectId as string | undefined;
+			if (projectId) {
+				if (document.querySelector('[data-create-task-modal="true"]')) return;
+				setCreateTaskProjectId((current) => current ?? projectId);
+				return;
+			}
 			openCreateTaskModal();
 		}
 		window.addEventListener("rpc:openCreateTaskModal", onOpenCreateTaskModal);

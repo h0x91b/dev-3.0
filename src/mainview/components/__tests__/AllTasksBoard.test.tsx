@@ -56,10 +56,10 @@ function makeTask(over: Partial<Task> = {}): Task {
 
 const projects = [makeProject(), makeProject({ id: "p2", name: "Second Project", path: "/home/user/second" })];
 
-function renderBoard(navigate: (route: Route) => void = vi.fn()) {
+function renderBoard(navigate: (route: Route) => void = vi.fn(), projectsList: Project[] = projects) {
 	return render(
 		<I18nProvider>
-			<AllTasksBoard projects={projects} navigate={navigate} bellCounts={new Map()} />
+			<AllTasksBoard projects={projectsList} navigate={navigate} bellCounts={new Map()} />
 		</I18nProvider>,
 	);
 }
@@ -121,5 +121,41 @@ describe("AllTasksBoard", () => {
 		mockedApi.request.getAllProjectTasks.mockResolvedValue([]);
 		renderBoard();
 		expect(await screen.findByText("No active tasks across any project")).toBeInTheDocument();
+	});
+
+	it("opens a project picker on New task and creates in the chosen project", async () => {
+		const events: (string | undefined)[] = [];
+		const handler = (e: Event) => events.push((e as CustomEvent).detail?.projectId);
+		window.addEventListener("rpc:openCreateTaskModal", handler);
+		try {
+			renderBoard();
+			await screen.findByTestId("board-new-task");
+			await userEvent.click(screen.getByTestId("board-new-task"));
+
+			// Project typeahead opens (multiple projects → must choose one).
+			const input = await screen.findByPlaceholderText("Search projects…");
+			await userEvent.type(input, "Second");
+			await userEvent.keyboard("{Enter}");
+
+			expect(events).toEqual(["p2"]);
+		} finally {
+			window.removeEventListener("rpc:openCreateTaskModal", handler);
+		}
+	});
+
+	it("skips the picker and creates directly when there is only one project", async () => {
+		const events: (string | undefined)[] = [];
+		const handler = (e: Event) => events.push((e as CustomEvent).detail?.projectId);
+		window.addEventListener("rpc:openCreateTaskModal", handler);
+		try {
+			renderBoard(vi.fn(), [projects[0]]);
+			await screen.findByTestId("board-new-task");
+			await userEvent.click(screen.getByTestId("board-new-task"));
+
+			expect(screen.queryByPlaceholderText("Search projects…")).not.toBeInTheDocument();
+			expect(events).toEqual(["p1"]);
+		} finally {
+			window.removeEventListener("rpc:openCreateTaskModal", handler);
+		}
 	});
 });

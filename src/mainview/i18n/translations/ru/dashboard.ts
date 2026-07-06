@@ -32,6 +32,11 @@ const dashboard = {
 	"board.searchPlaceholder": "Поиск по всем задачам…",
 	"board.clearSearch": "Очистить поиск",
 	"board.unknownProject": "Неизвестный проект",
+	"board.newTask": "Новая задача",
+	"board.pickProjectPlaceholder": "Поиск проектов…",
+	"board.pickProjectAria": "Выберите проект для новой задачи",
+	"board.pickProjectHint": "Выберите проект, в котором создать задачу",
+	"board.pickProjectNoResults": "Нет подходящих проектов",
 
 	// Activity overview
 	"activity.noActiveTasks": "Нет активных задач ни в одном проекте",
