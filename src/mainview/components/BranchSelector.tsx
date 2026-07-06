@@ -35,16 +35,15 @@ export function matchesBranchQuery(branchName: string, query: string): boolean {
 	if (!query) return true;
 	// Normalize fork ref format: "user:branch" → "user/branch" for matching
 	const normalizedQuery = normalizeBranchQuery(query);
-	const nameLower = branchName.toLowerCase();
 	const words = splitBranchWords(branchName);
-	const tokens = normalizedQuery.toLowerCase().split(/\s+/).filter(Boolean);
-	return tokens.every((token) => {
-		// Word-level prefix match (default behavior)
-		if (words.some((w) => w.startsWith(token))) return true;
-		// Substring fallback for tokens containing "/" (e.g., "origin/dev", "user:branch")
-		if (token.includes("/") && nameLower.includes(token)) return true;
-		return false;
-	});
+	// Tokenize the query on the same separators as branch names (/, -, _, ., space)
+	// so a dashed query like "login-page" splits into ["login", "page"] instead of
+	// staying one token that prefix-matches nothing and finds no branch. (camelCase
+	// is intentionally NOT split here — the user's raw query casing must not fragment
+	// their input the way it does for the branch names being searched.)
+	const tokens = normalizedQuery.toLowerCase().split(/[/\-_.]+|\s+/).filter(Boolean);
+	// Every query token must prefix-match some word in the branch name.
+	return tokens.every((token) => words.some((w) => w.startsWith(token)));
 }
 
 function isForkRemoteBranch(branch: BranchInfo): boolean {
