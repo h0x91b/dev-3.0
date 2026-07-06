@@ -5214,6 +5214,75 @@ describe("handlers.rebaseTask", () => {
 });
 
 // ================================================================
+// handlers.rebaseTaskViaAgent — conflict handoff to the terminal agent
+// ================================================================
+
+describe("handlers.rebaseTaskViaAgent", () => {
+	function sendKeysCalls() {
+		return mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((args) => args.includes("send-keys"));
+	}
+
+	beforeEach(() => vi.clearAllMocks());
+
+	it("sends a rebase prompt to the active pane and reports handedOff", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: args.includes("display-message") ? "%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		const result = await handlers.rebaseTaskViaAgent({ taskId: "task-1", projectId: project.id });
+		expect(result).toEqual({ handedOff: true });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+		expect(paste[0]?.some((a) => a.includes("git rebase"))).toBe(true);
+
+		// Enter is sent as a discrete keypress after the shared delay.
+		vi.advanceTimersByTime(800);
+		const all = sendKeysCalls();
+		expect(all).toHaveLength(2);
+		expect(all[1]).toEqual(["tmux", "-L", "dev3", "send-keys", "-t", "%3", "Enter"]);
+		vi.useRealTimers();
+	});
+
+	it("reports handedOff:false when there is no active pane", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation(() => ({
+			stdout: "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		const result = await handlers.rebaseTaskViaAgent({ taskId: "task-1", projectId: project.id });
+		expect(result).toEqual({ handedOff: false });
+		expect(sendKeysCalls()).toHaveLength(0);
+	});
+
+	it("throws when the task has no worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.rebaseTaskViaAgent({ taskId: "task-1", projectId: project.id }),
+		).rejects.toThrow("Task has no worktree");
+	});
+});
+
+// ================================================================
 // handlers.pushTask
 // ================================================================
 

@@ -312,16 +312,32 @@ export function useTaskBranchStatus({
 
 		setRebasing(true);
 		try {
-			await api.request.rebaseTask({
-				taskId: task.id,
-				projectId: project.id,
-				compareRef: compareRef || undefined,
-			});
+			// Clean rebase → run it directly in a visible terminal pane (unchanged).
+			// Conflicting rebase (behind but can't apply cleanly) → hand it off to the
+			// agent in the task terminal, mirroring the Create-PR handoff.
+			if (branchStatus && branchStatus.behind > 0 && !branchStatus.canRebase) {
+				const { handedOff } = await api.request.rebaseTaskViaAgent({
+					taskId: task.id,
+					projectId: project.id,
+					compareRef: compareRef || undefined,
+				});
+				if (handedOff) {
+					toast.info(t("infoPanel.rebaseAgentStarted"));
+				} else {
+					toast.error(t("infoPanel.rebaseAgentNoPane"));
+				}
+			} else {
+				await api.request.rebaseTask({
+					taskId: task.id,
+					projectId: project.id,
+					compareRef: compareRef || undefined,
+				});
+			}
 		} catch (err) {
 			toast.error(t("infoPanel.rebaseFailed", { error: String(err) }));
 		}
 		setRebasing(false);
-	}, [compareRef, project.id, rebasing, task.id, t]);
+	}, [branchStatus, compareRef, project.id, rebasing, task.id, t]);
 
 	const handleMerge = useCallback(async () => {
 		if (merging) {

@@ -207,13 +207,17 @@ export default function TaskGitActions({
 		</span>
 	) : null;
 
-	const rebaseDisabled = !branchStatus || branchStatus.behind === 0 || !branchStatus.canRebase || rebasing;
+	// A conflicting rebase (behind but can't apply cleanly) no longer disables the
+	// button — it hands the rebase off to the agent instead. Only "nothing to
+	// rebase" / no-status / in-flight disable it.
+	const rebaseNeedsAgent = !!branchStatus && branchStatus.behind > 0 && !branchStatus.canRebase;
+	const rebaseDisabled = !branchStatus || branchStatus.behind === 0 || rebasing;
 	const rebaseTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: branchStatus.behind === 0
 			? t("infoPanel.rebaseDisabled")
-			: !branchStatus.canRebase
-				? t("infoPanel.rebaseConflicts")
+			: rebaseNeedsAgent
+				? t("infoPanel.rebaseViaAgent")
 				: t("infoPanel.rebase");
 
 	const pushDisabled = !branchStatus || branchStatus.ahead === 0 || pushing;
@@ -316,9 +320,17 @@ export default function TaskGitActions({
 					className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
 						rebaseDisabled ? disabledBtnClass : enabledBtnClass
 					}`}
-					aria-label={t("infoPanel.rebase")}
+					aria-label={rebaseNeedsAgent ? t("infoPanel.rebaseViaAgent") : t("infoPanel.rebase")}
 				>
-					{btnContent(<RebaseIcon className={iconClass} />, rebasing ? t("infoPanel.rebasing") : t("infoPanel.rebase"), rebasing)}
+					{btnContent(
+						<RebaseIcon className={iconClass} />,
+						rebasing
+							? t("infoPanel.rebasing")
+							: rebaseNeedsAgent
+								? t("infoPanel.rebaseViaAgentShort")
+								: t("infoPanel.rebase"),
+						rebasing,
+					)}
 				</button>
 			</Tooltip>
 			<Tooltip content={pushTooltip} detail={t("ttip.git.push")}>

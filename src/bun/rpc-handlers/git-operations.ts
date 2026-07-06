@@ -963,13 +963,58 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 
 /** Delay between typing the prompt and sending Enter — gives the agent's input
  * layer time to process the paste buffer so Enter lands as a discrete submit. */
-const CREATE_PR_ENTER_DELAY_MS = 800;
+const AGENT_PROMPT_ENTER_DELAY_MS = 800;
+
+/**
+ * Hand a task off to the AI agent running in its tmux session: find the session's
+ * currently-focused pane (that's where the agent's prompt lives) and type `prompt`
+ * into it, then send Enter as a discrete keypress after a short delay. Returns
+ * false when no active pane could be resolved (nothing was sent). This is the
+ * shared mechanism behind the Create-PR / auto-merge buttons and the
+ * rebase-conflict handoff — the agent is a continuation of the user's
+ * conversation, so a plain-language instruction is enough.
+ */
+async function sendPromptToActiveAgentPane(tmuxSession: string, socket: string, prompt: string): Promise<boolean> {
+	let activePane: string | null = null;
+	try {
+		const proc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+		const stdout = await new Response(proc.stdout).text();
+		if ((await proc.exited) === 0) activePane = stdout.trim() || null;
+	} catch { /* best effort */ }
+
+	if (!activePane) {
+		return false;
+	}
+
+	const pane = activePane;
+	try {
+		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, prompt), { stdout: "pipe", stderr: "pipe" });
+		pasteProc.exited.catch(() => {});
+	} catch (err) {
+		log.warn("sendPromptToActiveAgentPane send-keys paste failed", { paneId: pane, error: String(err) });
+		return false;
+	}
+	setTimeout(() => {
+		try {
+			const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, "Enter"), { stdout: "pipe", stderr: "pipe" });
+			enterProc.exited.catch(() => {});
+		} catch (err) {
+			log.warn("sendPromptToActiveAgentPane send-keys Enter failed", { paneId: pane, error: String(err) });
+		}
+	}, AGENT_PROMPT_ENTER_DELAY_MS);
+
+	return true;
+}
 
 const CREATE_PR_AGENT_PROMPT =
 	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
 
 const CREATE_PR_AUTO_MERGE_AGENT_PROMPT =
 	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation. Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass.";
+
+function rebaseConflictAgentPrompt(rebaseTarget: string): string {
+	return `This branch cannot be rebased automatically onto ${rebaseTarget} because of merge conflicts. Please rebase it and resolve the conflicts: run \`git fetch origin\`, then \`git rebase ${rebaseTarget}\`, resolve each conflict carefully preserving the intent of both sides, \`git add\` the resolved files, and \`git rebase --continue\` until the rebase finishes. If it becomes unsafe, abort with \`git rebase --abort\` and explain what happened.`;
+}
 
 async function createPullRequest(params: { taskId: string; projectId: string; autoMerge?: boolean }): Promise<void> {
 	log.info("→ createPullRequest", params);
@@ -981,40 +1026,38 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
-	// Find the currently focused pane in the task session and ask the agent
-	// running there to create the PR. The agent is a continuation of the user's
-	// conversation, so a generic instruction is enough.
-	let activePane: string | null = null;
-	try {
-		const proc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-		const stdout = await new Response(proc.stdout).text();
-		if ((await proc.exited) === 0) activePane = stdout.trim() || null;
-	} catch { /* best effort */ }
-
-	if (!activePane) {
+	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
+	const handedOff = await sendPromptToActiveAgentPane(tmuxSession, socket, prompt);
+	if (!handedOff) {
 		log.info("← createPullRequest skipped — no active pane", { taskId: task.id.slice(0, 8) });
 		return;
 	}
 
-	const pane = activePane;
-	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
-	try {
-		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, prompt), { stdout: "pipe", stderr: "pipe" });
-		pasteProc.exited.catch(() => {});
-	} catch (err) {
-		log.warn("createPullRequest send-keys paste failed", { paneId: pane, error: String(err) });
-		return;
-	}
-	setTimeout(() => {
-		try {
-			const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, "Enter"), { stdout: "pipe", stderr: "pipe" });
-			enterProc.exited.catch(() => {});
-		} catch (err) {
-			log.warn("createPullRequest send-keys Enter failed", { paneId: pane, error: String(err) });
-		}
-	}, CREATE_PR_ENTER_DELAY_MS);
+	log.info("← createPullRequest (prompt sent to agent)", { taskId: task.id.slice(0, 8) });
+}
 
-	log.info("← createPullRequest (prompt sent to agent)", { paneId: pane });
+/**
+ * Rebase-conflict handoff: when `git rebase` cannot apply cleanly (canRebase is
+ * false), the UI routes the Rebase button here instead of opening a doomed
+ * auto-rebase pane. We ask the agent in the task terminal to perform the rebase
+ * and resolve the conflicts. Returns whether the prompt actually reached an
+ * agent pane so the UI can confirm the handoff (or warn that no terminal exists).
+ */
+async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; compareRef?: string }): Promise<{ handedOff: boolean }> {
+	log.info("→ rebaseTaskViaAgent", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+
+	assertGitTask(project, task);
+
+	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
+	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+
+	const handedOff = await sendPromptToActiveAgentPane(tmuxSession, socket, rebaseConflictAgentPrompt(rebaseTarget));
+	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
+	return { handedOff };
 }
 
 async function openPullRequest(params: { taskId: string; projectId: string }): Promise<void> {
@@ -1182,6 +1225,7 @@ export const gitOperationHandlers = {
 	prepareMergeCompletionPrompt,
 	dismissMergeCompletionPrompt,
 	rebaseTask,
+	rebaseTaskViaAgent,
 	mergeTask,
 	pushTask,
 	createPullRequest,
