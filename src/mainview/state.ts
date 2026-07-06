@@ -3,13 +3,29 @@ import type { PortInfo, Project, Task, ResourceUsage } from "../shared/types";
 
 // ---- Routes ----
 
+/** Anchors for deep-linking into a specific Global Settings section (the
+ *  renderer scrolls to the matching section on mount). */
+export type SettingsSectionId =
+	| "appearance"
+	| "behavior"
+	| "workspace"
+	| "agents"
+	| "proxy"
+	| "developer";
+
+/** Fired by any surface that wants to jump the user to a Global Settings
+ *  section (e.g. clicking a proxy-gated preset in the launch picker). App
+ *  listens and navigates to `{ screen: "settings", section }`. The detail is a
+ *  {@link SettingsSectionId}. */
+export const OPEN_SETTINGS_SECTION_EVENT = "dev3:openSettingsSection";
+
 export type Route =
 	| { screen: "dashboard" }
 	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean }
 	| { screen: "project-terminal"; projectId: string }
 	| { screen: "task"; projectId: string; taskId: string }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
-	| { screen: "settings" }
+	| { screen: "settings"; section?: SettingsSectionId }
 	| { screen: "changelog" }
 	| { screen: "stats" }
 	| { screen: "gauge-demo" }

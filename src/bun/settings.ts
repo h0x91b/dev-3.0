@@ -92,6 +92,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
+			// Default-off experimental toggle — only an explicit true is a stored opt-in.
+			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -158,6 +160,8 @@ export function loadSettingsSync(): GlobalSettings {
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
+			// Default-off experimental toggle — only an explicit true is a stored opt-in.
+			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

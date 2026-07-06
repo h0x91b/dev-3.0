@@ -1,10 +1,13 @@
 import type { AgentCheckResult, CodingAgent } from "../../shared/types";
 import { useT } from "../i18n";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
+import { toast } from "../toast";
 import Select, { useAgentRenderOption } from "./Select";
 import {
 	buildPickerGroups,
 	getModeLeafLabel,
 	groupLabelForConfig,
+	groupRequiresPxpipeProxy,
 	pickConfigForModelChange,
 } from "../utils/agentPicker";
 
@@ -27,6 +30,12 @@ interface AgentConfigPickerProps {
 	idPrefix: string;
 	/** Layout container className. Defaults to a responsive row (stacks on narrow). */
 	className?: string;
+	/** Whether the experimental pxpipe token-saving proxy is enabled. When false
+	 *  (the default), the gated Model group ("Fable 5 (cost trick)") is shown in
+	 *  the Model dropdown but rendered disabled; clicking it nudges the user to
+	 *  Settings. Every launch surface passes the live
+	 *  `globalSettings.pxpipeProxyEnabled`. */
+	pxpipeProxyEnabled?: boolean;
 }
 
 /**
@@ -46,9 +55,21 @@ function AgentConfigPicker({
 	agentAvailability = [],
 	idPrefix,
 	className = "flex flex-col sm:flex-row gap-3",
+	pxpipeProxyEnabled = false,
 }: AgentConfigPickerProps) {
 	const t = useT();
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
+
+	function handleGatedConfigClick() {
+		// The preset is visible but off. Tell the user and offer a one-click jump
+		// into the Settings section that enables it (the whole toast is the link).
+		toast.info(t("pxpipe.disabledPresetToast"), {
+			onClick: () =>
+				window.dispatchEvent(
+					new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "proxy" }),
+				),
+		});
+	}
 
 	const selectedAgent = agents.find((a) => a.id === agentId);
 	// Provider → Model → Mode cascade: group the flat presets by model (UI-only;
@@ -104,8 +125,13 @@ function AgentConfigPicker({
 				<Select
 					id={`${idPrefix}-model`}
 					value={currentGroupLabel}
-					options={groups.map((g) => ({ value: g.label, label: g.label }))}
+					options={groups.map((g) => ({
+						value: g.label,
+						label: g.label,
+						disabled: groupRequiresPxpipeProxy(g) && !pxpipeProxyEnabled,
+					}))}
 					onChange={handleModelChange}
+					onOptionDisabledClick={handleGatedConfigClick}
 				/>
 			</div>
 
@@ -117,7 +143,10 @@ function AgentConfigPicker({
 				<Select
 					id={`${idPrefix}-mode`}
 					value={configId ?? ""}
-					options={modeConfigs.map((c) => ({ value: c.id, label: getModeLeafLabel(c) }))}
+					options={modeConfigs.map((c) => ({
+						value: c.id,
+						label: getModeLeafLabel(c),
+					}))}
 					onChange={handleModeChange}
 				/>
 			</div>

@@ -257,6 +257,7 @@ function LaunchVariantsModal({
 									agentAvailability={agentAvailability}
 									onChange={(next) => updateVariant(index, next)}
 									className="flex-1 min-w-0 flex flex-col sm:flex-row gap-3"
+									pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 								/>
 
 								{/* Remove button */}

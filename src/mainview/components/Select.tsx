@@ -5,6 +5,9 @@ import type { AgentCheckResult } from "../../shared/types";
 export interface SelectOption {
 	value: string;
 	label: string;
+	/** When true the option is shown but not selectable; clicking it runs
+	 *  `onOptionDisabledClick` instead of selecting (used for gated presets). */
+	disabled?: boolean;
 }
 
 function Select({
@@ -13,12 +16,15 @@ function Select({
 	options,
 	onChange,
 	renderOption,
+	onOptionDisabledClick,
 }: {
 	id?: string;
 	value: string;
 	options: SelectOption[];
 	onChange: (value: string) => void;
 	renderOption?: (option: SelectOption) => ReactNode;
+	/** Called when a `disabled` option is clicked (instead of `onChange`). */
+	onOptionDisabledClick?: (value: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
@@ -97,18 +103,40 @@ function Select({
 						<button
 							key={opt.value}
 							type="button"
+							aria-disabled={opt.disabled || undefined}
 							onMouseDown={(e) => e.preventDefault()}
 							onClick={() => {
-								onChange(opt.value);
 								setOpen(false);
+								if (opt.disabled) {
+									onOptionDisabledClick?.(opt.value);
+									return;
+								}
+								onChange(opt.value);
 							}}
 							className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-								opt.value === value
-									? "bg-accent/15 text-fg font-medium"
-									: "text-fg-2 hover:bg-raised-hover hover:text-fg"
+								opt.disabled
+									? "text-fg-muted hover:bg-raised-hover"
+									: opt.value === value
+										? "bg-accent/15 text-fg font-medium"
+										: "text-fg-2 hover:bg-raised-hover hover:text-fg"
 							}`}
 						>
-							{renderOption ? renderOption(opt) : opt.label}
+							{renderOption ? (
+								renderOption(opt)
+							) : opt.disabled ? (
+								<span className="flex items-center gap-1.5 opacity-70">
+									{opt.label}
+									<span
+										aria-hidden
+										className="text-[0.8em] leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\uf023"}
+									</span>
+								</span>
+							) : (
+								opt.label
+							)}
 						</button>
 					))}
 				</div>,

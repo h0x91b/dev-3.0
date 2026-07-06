@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-06 — Feature-gated preset: shown-but-disabled + deep-link to enable
+
+- **Rule:** a preset that depends on an off-by-default capability (e.g. `requiresPxpipeProxy`) stays **visible** in the Provider→Model→Mode picker but renders **disabled** (`Select` disabled option, muted + lock glyph) until enabled; clicking it does not select — it fires a clickable `info` toast that deep-links (window `OPEN_SETTINGS_SECTION_EVENT` → `Route.section`) to the Global Settings section that turns it on. Its manager is a normal settings section (configuration lives in settings).
+- **Why:** the user must be able to *discover* the capability without it silently launching a heavy/experimental dependency. Rejected: hiding the preset until enabled (undiscoverable) and auto-starting the dependency on selection (hidden side effect).
+- **Status:** Implemented. Evidence: bible §10 (feature-gated preset row), `AgentConfigPicker.tsx`, `Select.tsx`, `PxpipeProxySettingsSection.tsx`, `decisions/112-pxpipe-cost-trick-preset.md`.
+
 ## 2026-07-05 — Automations: project-settings tab; runs are ordinary tasks
 
 - **Rule:** The `Automation` object (RRULE+tz schedule + prompt + agent, per project) is durable configuration → CRUD lives in a 4th `ProjectSettings` tab (tabs 3→4, budget ≤6); each fire creates a **normal task** on the board (clock-glyph provenance on the card); run history + missed-run status render only inside the tab; failures/missed runs surface via toast + status, never silently.

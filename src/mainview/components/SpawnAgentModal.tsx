@@ -127,6 +127,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 								setAgentId(next.agentId);
 								setConfigId(next.configId);
 							}}
+							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 						/>
 
 						{/* Warning for uninstalled agents */}

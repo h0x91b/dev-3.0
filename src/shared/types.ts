@@ -192,6 +192,12 @@ export interface AgentConfiguration {
 	/** Preset version. When the default version is bumped, stored additionalArgs
 	 *  and model are reset to the new defaults. */
 	version?: number;
+	/** When true, this preset only works while the pxpipe token-saving proxy is
+	 *  enabled in Global Settings — it routes `ANTHROPIC_BASE_URL` through the
+	 *  local proxy (`127.0.0.1:${PXPIPE_PROXY_PORT}`). The picker still SHOWS it,
+	 *  but renders it disabled until the user opts in (clicking it deep-links to
+	 *  the Settings section). See PxpipeProxyStatus + decisions/112. */
+	requiresPxpipeProxy?: boolean;
 }
 
 export interface CodingAgent {
@@ -215,6 +221,12 @@ export interface CodingAgent {
 	/** Per-provider connection settings for this agent (model override, inference-profile region). */
 	providerConfig?: ProviderConfig;
 }
+
+/** Fixed port of the optional local `pxpipe-proxy` (token-saving image proxy).
+ *  Matches the upstream package's default; the "Fable 5 (cost trick)" preset
+ *  and the Global Settings panel both key off this. Opt-in / experimental. */
+export const PXPIPE_PROXY_PORT = 47821;
+export const PXPIPE_PROXY_BASE_URL = `http://127.0.0.1:${PXPIPE_PROXY_PORT}`;
 
 export const DEFAULT_AGENTS: CodingAgent[] = [
 	{
@@ -253,6 +265,10 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-approvals", name: "Accept Edits (Fable 5)", model: "claude-fable-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
 			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals-sonnet5", name: "Accept Edits (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			// --- Experimental: token-saving image proxy (opt-in, disabled until enabled in Settings) ---
+			// Its own Model group ("Fable 5 (cost trick)") so it reads as a distinct model
+			// choice; the Mode derives normally from permissionMode+effort ("Auto · Medium").
+			{ id: "claude-fable5-cost-trick", name: "Fable 5 (cost trick)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", permissionMode: "auto", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
 		],
 		defaultConfigId: "claude-auto-opus48-xhigh",
 	},
@@ -519,6 +535,43 @@ export interface GlobalSettings {
 	 * this is bumped so the user's own future drag-reordering sticks again.
 	 */
 	agentsLayoutRevision?: number;
+	/**
+	 * Opt-in switch for the experimental local `pxpipe-proxy` token-saving proxy.
+	 * Default off (undefined ⇒ disabled). While off, the "Fable 5 (cost trick)"
+	 * preset is shown but disabled in the picker. Managed from the Global
+	 * Settings "Token-saving proxy" section. See PxpipeProxyStatus.
+	 */
+	pxpipeProxyEnabled?: boolean;
+}
+
+/**
+ * Live state of the optional local `pxpipe-proxy` (token-saving image proxy),
+ * reported by the `pxpipeProxyStatus/Start/Stop` RPCs. The proxy renders bulky
+ * LLM context into PNGs to cut input tokens; it is lossy and opt-in. All fields
+ * are computed on demand — nothing is cached across calls.
+ */
+export interface PxpipeProxyStatus {
+	/** The feature toggle in Global Settings. */
+	enabled: boolean;
+	/** `npx` resolvable on PATH (required to launch the proxy). */
+	npxAvailable: boolean;
+	npxPath?: string;
+	/** The fixed proxy port (`PXPIPE_PROXY_PORT`). */
+	port: number;
+	/** Some process is LISTENing on the port. */
+	portInUse: boolean;
+	/** The listener is our managed proxy (our pidfile pid or a descendant). */
+	running: boolean;
+	/** We spawned it and its pid is alive, but it is not listening yet
+	 *  (e.g. `npx` is still downloading the package on first run). */
+	starting: boolean;
+	/** The port is held by a process that is NOT our proxy — a real conflict. */
+	foreignConflict: boolean;
+	/** Pid + command name of whatever currently holds the port, if any. */
+	holderPid?: number;
+	holderName?: string;
+	/** The proxy dashboard URL (served by the proxy on the same port). */
+	dashboardUrl: string;
 }
 
 /**
@@ -1778,6 +1831,24 @@ export type AppRPCSchema = {
 			saveGlobalSettings: {
 				params: GlobalSettings;
 				response: void;
+			};
+			/** Report live state of the local pxpipe token-saving proxy (npx
+			 *  availability, port 47821 owner, whether our managed instance runs). */
+			pxpipeProxyStatus: {
+				params: void;
+				response: PxpipeProxyStatus;
+			};
+			/** Spawn the local pxpipe proxy (`npx -y pxpipe-proxy`) if not already
+			 *  running. Returns the fresh status. Throws on npx-missing / port
+			 *  held by a foreign process. */
+			pxpipeProxyStart: {
+				params: void;
+				response: PxpipeProxyStatus;
+			};
+			/** Stop our managed pxpipe proxy (kills the pid tree, frees the port). */
+			pxpipeProxyStop: {
+				params: void;
+				response: PxpipeProxyStatus;
 			};
 			/** Symlink the bundled dev3 CLI to ~/.dev3.0/bin/dev3 (for dev/debug). */
 			installDev3Cli: {

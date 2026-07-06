@@ -263,6 +263,28 @@ const settings = {
 	// ProjectView
 	"project.notFound": "Проект не найден",
 	"project.selectTaskForTerminal": "Выберите задачу, чтобы увидеть её терминал",
+
+	// Token-saving proxy (pxpipe) — experimental, opt-in
+	"settings.pxpipeSection": "Прокси для экономии токенов (эксперимент)",
+	"settings.pxpipeSectionDesc": "Направляет Claude через локальный прокси (pxpipe), который рендерит громоздкий контекст в изображения, чтобы снизить число входных токенов. По умолчанию выключено.",
+	"pxpipe.enableLabel": "Включить прокси для экономии токенов",
+	"pxpipe.warningTitle": "Эксперимент — медленнее, зато часто в 2× дешевле (и больше)",
+	"pxpipe.warningBody": "Прокси pxpipe рендерит громоздкий контекст в изображения, чтобы снизить число входных токенов, — это обычно вдвое сокращает стоимость запроса, а нередко и сильнее. Плата за это — скорость: ответы приходят чуть дольше. Точность остаётся практически прежней (падение пренебрежимо мало). Лучше всего работает с Fable 5. Включение активирует пресет «Fable 5 (cost trick)».",
+	"pxpipe.npxAvailable": "npx доступен",
+	"pxpipe.npxMissing": "npx не найден",
+	"pxpipe.npxMissingHint": "Установите Node.js (в комплекте идёт npx), чтобы запустить прокси.",
+	"pxpipe.statusRunning": "Прокси работает (pid {pid})",
+	"pxpipe.statusStarting": "Запуск… (npx может скачивать прокси)",
+	"pxpipe.statusStopped": "Прокси остановлен — порт {port} свободен",
+	"pxpipe.statusForeign": "Порт {port} занят другим процессом: {name} (pid {pid})",
+	"pxpipe.start": "Запустить прокси",
+	"pxpipe.stop": "Остановить прокси",
+	"pxpipe.openDashboard": "Открыть панель прокси ↗",
+	"pxpipe.viewRepo": "pxpipe на GitHub ↗",
+	"pxpipe.startError": "Не удалось запустить прокси: {error}",
+	"pxpipe.stopError": "Не удалось остановить прокси: {error}",
+	"pxpipe.disabledPresetToast": "Этому пресету нужен прокси для экономии токенов — нажмите, чтобы включить его в настройках.",
+	"pxpipe.credit": "Приём экономии токенов и прокси — работа команды pxpipe.",
 };
 
 export default settings;

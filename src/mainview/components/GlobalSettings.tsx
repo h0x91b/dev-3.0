@@ -23,7 +23,9 @@ import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
+import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
 import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
+import type { SettingsSectionId } from "../state";
 import {
 	DEFAULT_GLOBAL_SETTINGS,
 	normalizeExternalApps,
@@ -48,7 +50,7 @@ interface SettingChangeOptions extends PersistOptions {
 	};
 }
 
-function GlobalSettings() {
+function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	const t = useT();
 	const [locale, setLocale] = useLocale();
 	const injectedThemeState = getWindowInjectedThemeState();
@@ -303,6 +305,23 @@ function GlobalSettings() {
 		[persistSettingChange],
 	);
 
+	const handlePxpipeProxyToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ pxpipeProxyEnabled: enabled ? true : undefined },
+				{ tracking: { setting: "pxpipe_proxy_enabled", value: String(enabled) } },
+			);
+		},
+		[persistSettingChange],
+	);
+
+	// Deep-link: when navigated to a specific section, scroll it into view.
+	useEffect(() => {
+		if (!section) return;
+		const el = document.querySelector(`[data-settings-section="${section}"]`);
+		if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+	}, [section]);
+
 	const saveExternalApps = useCallback(
 		(apps: ExternalApp[]) => {
 			api.request.saveGlobalSettings({
@@ -479,6 +498,11 @@ function GlobalSettings() {
 						onAgentsChange={persistAgents}
 						onDefaultAgentChange={handleDefaultAgentChange}
 						onDefaultConfigChange={handleDefaultConfigChange}
+					/>
+					<PxpipeProxySettingsSection
+						t={t}
+						globalSettings={globalSettings}
+						onToggle={handlePxpipeProxyToggle}
 					/>
 					<DeveloperToolsSection
 						t={t}
