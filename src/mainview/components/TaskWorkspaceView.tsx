@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import type { Project, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
+import { api } from "../rpc";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
@@ -28,6 +30,25 @@ function TaskWorkspaceView({
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
 	const inlineDiff = useTaskInlineDiffState(taskId);
+
+	// The fullscreen task view can be entered for a task whose project's tasks
+	// were never loaded into `currentProjectTasks` — e.g. quick-shell jumps
+	// straight to a fresh scratch op in the built-in Operations board, or a
+	// toast / notification click opens a task in a different project. Without the
+	// matching task object the header chrome (TaskInfoPanel: task id, Watch,
+	// status, tmux controls) silently vanishes and only the bare terminal shows.
+	// Load the project's tasks on mount, mirroring ProjectView, so the chrome
+	// always renders regardless of the entry point.
+	useEffect(() => {
+		(async () => {
+			try {
+				const loaded = await api.request.getTasks({ projectId });
+				dispatch({ type: "setTasks", tasks: loaded });
+			} catch (err) {
+				console.error("Failed to load tasks:", err);
+			}
+		})();
+	}, [projectId, dispatch]);
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">

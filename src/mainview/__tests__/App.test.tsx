@@ -32,6 +32,7 @@ vi.mock("../rpc", () => ({
 				updateChannel: "stable",
 			}),
 			moveTask: vi.fn().mockResolvedValue({}),
+			openQuickShell: vi.fn().mockResolvedValue({ id: "op-task-1", projectId: "ops-proj" }),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
@@ -371,6 +372,44 @@ describe("App keyboard shortcuts", () => {
 			const after = screen.getByTestId("project-screen");
 			expect(after).toHaveAttribute("data-project-id", "p2");
 			expect(after).toHaveAttribute("data-task-view", "false");
+		});
+	});
+
+	// Quick shell (⇧⌘`) spawns a scratch op in the built-in Operations board and
+	// jumps to it. Regression: it used to hardcode the full-page task route, which
+	// (a) ignored the user's open-mode preference and (b) dropped them onto a
+	// chrome-less terminal (the target project's tasks were never loaded). It must
+	// honor `dev3-task-open-mode` like every other task-open path.
+	describe("quick shell (⇧⌘`) navigation", () => {
+		afterEach(() => {
+			localStorage.removeItem("dev3-task-open-mode");
+		});
+
+		function triggerQuickShell() {
+			act(() => {
+				window.dispatchEvent(new CustomEvent("menu:open-quick-shell"));
+			});
+		}
+
+		it("split open-mode: opens the scratch op beside its board (activeTaskId), not a bare fullscreen terminal", async () => {
+			vi.mocked(api.request.openQuickShell).mockResolvedValue({ id: "op-task-1", projectId: "ops-proj" } as never);
+			await renderApp();
+
+			triggerQuickShell();
+
+			const view = await screen.findByTestId("project-screen");
+			expect(view).toHaveAttribute("data-project-id", "ops-proj");
+			expect(view).toHaveAttribute("data-active-task-id", "op-task-1");
+		});
+
+		it("fullscreen open-mode: opens the scratch op in the full-page task view", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			vi.mocked(api.request.openQuickShell).mockResolvedValue({ id: "op-task-1", projectId: "ops-proj" } as never);
+			await renderApp();
+
+			triggerQuickShell();
+
+			expect(await screen.findByTestId("task-screen")).toBeInTheDocument();
 		});
 	});
 
