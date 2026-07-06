@@ -1,0 +1,50 @@
+name: Deploy landing page
+
+# Replaces GitHub's auto-generated "pages build and deployment" (legacy
+# "Deploy from a branch") workflow, which fired on EVERY push to main and,
+# on parallel PR merges, raced the Pages API — the superseded run died with
+# "Deployment failed, try again later." and emailed a false "Run failed".
+#
+# Two changes kill that spam:
+#   1. path filter — only run when the landing page (docs/**) actually changes,
+#      so ordinary code merges no longer trigger a Pages deploy at all.
+#   2. concurrency group — serialize deploys so two runs never hit the Pages
+#      API at once; a superseded run ends as "cancelled" (no failure email),
+#      never as "failure".
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Only one Pages deployment at a time. Queue (don't cancel) so an in-flight
+# production deploy always completes; the queued run then deploys the latest.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload docs/ as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
