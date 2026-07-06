@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { fuzzyRank } from "../utils/fuzzyMatch";
 import { useFocusTrap } from "../utils/useFocusTrap";
@@ -36,15 +36,27 @@ interface PaletteShellProps<T> {
 	hint: string;
 	noResults: string;
 	testId?: string;
+	/** Optional leading content per row (status dot, type icon, …). */
+	renderItemLeft?: (item: T, index: number, query: string) => React.ReactNode;
 	/** Optional trailing content per row (shortcut badge, category, …). */
 	renderItemRight?: (item: T, index: number, query: string) => React.ReactNode;
+	/**
+	 * Optional section grouping. When set, matched rows are reordered so each
+	 * group is contiguous (fuzzy order preserved *within* a group) and rendered
+	 * under a non-interactive header. `groupOrder` fixes the section order; a
+	 * group not listed there sorts last. Keyboard nav still walks the flat row
+	 * list, skipping headers.
+	 */
+	getGroup?: (item: T) => string;
+	groupOrder?: string[];
+	groupLabel?: (group: string) => string;
 }
 
 /**
  * Shared command-palette overlay: portal, click-outside, fuzzy-filtered list,
  * keyboard navigation (↑/↓ wrap, Enter commits, Esc closes), and matched-char
- * highlighting. Both the Cmd+K navigation palette (ProjectQuickSwitchModal) and
- * the Cmd+Shift+P action palette (CommandPaletteModal) render on top of it.
+ * highlighting. The Cmd+K navigation palette (GoToPaletteModal, projects+tasks)
+ * and the Cmd+Shift+P action palette (CommandPaletteModal) render on top of it.
  */
 export function PaletteShell<T>({
 	items,
@@ -57,19 +69,34 @@ export function PaletteShell<T>({
 	hint,
 	noResults,
 	testId,
+	renderItemLeft,
 	renderItemRight,
+	getGroup,
+	groupOrder,
+	groupLabel,
 }: PaletteShellProps<T>) {
 	const [query, setQuery] = useState("");
 	const [index, setIndex] = useState(0);
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
-	const results = useMemo(() => fuzzyRank(query, items, getText), [query, items, getText]);
+	const ranked = useMemo(() => fuzzyRank(query, items, getText), [query, items, getText]);
+
+	// Reorder into contiguous sections (fuzzy order kept within each) so headers
+	// render cleanly. Stable sort by group rank preserves the ranking inside a group.
+	const rows = useMemo(() => {
+		if (!getGroup || !groupOrder) return ranked;
+		const rank = new Map(groupOrder.map((g, i) => [g, i]));
+		return ranked
+			.map((r, i) => ({ r, i, g: rank.get(getGroup(r.item)) ?? groupOrder.length }))
+			.sort((a, b) => a.g - b.g || a.i - b.i)
+			.map((x) => x.r);
+	}, [ranked, getGroup, groupOrder]);
 
 	// Keep the selection within bounds whenever the result set shrinks/grows.
-	const selected = results.length === 0 ? -1 : Math.min(index, results.length - 1);
+	const selected = rows.length === 0 ? -1 : Math.min(index, rows.length - 1);
 
 	function commit(i: number) {
-		const target = results[i];
+		const target = rows[i];
 		if (target) onSelect(target.item);
 	}
 
@@ -80,10 +107,10 @@ export function PaletteShell<T>({
 			onClose();
 		} else if (e.key === "ArrowDown") {
 			e.preventDefault();
-			if (results.length > 0) setIndex((selected + 1) % results.length);
+			if (rows.length > 0) setIndex((selected + 1) % rows.length);
 		} else if (e.key === "ArrowUp") {
 			e.preventDefault();
-			if (results.length > 0) setIndex((selected - 1 + results.length) % results.length);
+			if (rows.length > 0) setIndex((selected - 1 + rows.length) % rows.length);
 		} else if (e.key === "Enter") {
 			e.preventDefault();
 			commit(selected);
@@ -124,31 +151,46 @@ export function PaletteShell<T>({
 				</div>
 
 				<div className="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-1" role="listbox">
-					{results.length === 0 ? (
+					{rows.length === 0 ? (
 						<p className="text-fg-muted text-sm px-2 py-3 text-center">{noResults}</p>
 					) : (
-						results.map((r, i) => {
+						rows.map((r, i) => {
 							const isSelected = i === selected;
+							const group = getGroup?.(r.item);
+							const prevGroup = i > 0 ? getGroup?.(rows[i - 1].item) : undefined;
+							const showHeader = getGroup && groupLabel && group !== prevGroup;
 							return (
-								<button
-									key={getKey(r.item)}
-									type="button"
-									role="option"
-									aria-selected={isSelected}
-									ref={(el) => {
-										if (el && isSelected) el.scrollIntoView({ block: "nearest" });
-									}}
-									onMouseEnter={() => setIndex(i)}
-									onClick={() => commit(i)}
-									className={`flex items-center justify-between gap-3 w-full text-left px-2.5 py-2 rounded-lg transition-colors ${
-										isSelected ? "bg-accent/15" : "hover:bg-elevated-hover"
-									}`}
-								>
-									<span className="text-fg text-sm truncate min-w-0">
-										<HighlightedText text={getText(r.item)} indices={r.indices} />
-									</span>
-									{renderItemRight?.(r.item, i, query.trim())}
-								</button>
+								<Fragment key={getKey(r.item)}>
+									{showHeader && (
+										<div
+											role="presentation"
+											className="px-2.5 pt-2 pb-1 text-fg-3 text-[0.6875rem] font-semibold uppercase tracking-wide"
+										>
+											{groupLabel(group as string)}
+										</div>
+									)}
+									<button
+										type="button"
+										role="option"
+										aria-selected={isSelected}
+										ref={(el) => {
+											if (el && isSelected) el.scrollIntoView({ block: "nearest" });
+										}}
+										onMouseEnter={() => setIndex(i)}
+										onClick={() => commit(i)}
+										className={`flex items-center justify-between gap-3 w-full text-left px-2.5 py-2 rounded-lg transition-colors ${
+											isSelected ? "bg-accent/15" : "hover:bg-elevated-hover"
+										}`}
+									>
+										<span className="flex items-center gap-2 min-w-0 flex-1">
+											{renderItemLeft?.(r.item, i, query.trim())}
+											<span className="text-fg text-sm truncate min-w-0">
+												<HighlightedText text={getText(r.item)} indices={r.indices} />
+											</span>
+										</span>
+										{renderItemRight?.(r.item, i, query.trim())}
+									</button>
+								</Fragment>
 							);
 						})
 					)}

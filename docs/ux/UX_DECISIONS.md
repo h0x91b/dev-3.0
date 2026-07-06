@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-06 — Cmd+K unified into "go to project or task" (absorbs task search)
+
+- **Rule:** The Cmd/Ctrl+K navigation palette (`GoToPaletteModal`, was `ProjectQuickSwitchModal`) now lists two fuzzy-searchable sections on the shared `PaletteShell`: **Projects** (unchanged, ⌘N badges) and **Tasks** — every active task across all projects, most-recently-visited first (`state.taskMru`), each with a status dot + project badge. No new shortcut.
+- **Why:** Realizes the manifest's documented "Cmd+K absorbs task search" future; a dedicated Cmd+Shift+K task palette was rejected as shortcut-creep (the #1 anti-pattern) and a second surface to learn. Complements — not duplicates — the Option+Tab switcher: that hold-cycles (alt-tab), Cmd+K type-searches. Reuses the live global task list already powering the switcher.
+- **Status:** Implemented. Evidence: `GoToPaletteModal.tsx`, `PaletteShell.tsx` (grouping), `App.tsx` (goToTasks), `useTaskSwitcher.ts` (globalTasks), bible §4.
+
 ## 2026-07-05 — Agent rate-limit indicator is ambient header status, not a cockpit metric
 
 - **Rule:** account-wide agent rate-limit usage renders as a passive icon+percent indicator in the global header's stateful-indicators zone (next to prevent-sleep); hidden until data exists, `warning` token ≥80%, `danger` ≥95%; its enable toggle lives in Global Settings → Behavior.
@@ -188,7 +194,7 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
 - **Rule:** ⌘K is the type-to-find navigation surface (keyboard-only, zero visible chrome — no toolbar-creep); short UI entities must reuse `utils/fuzzyMatch.ts` as the single matcher (BM25 stays for long transcripts only); ⌘K = navigation, ⇧⌘P = actions, kept separate.
 - **Why:** `Cmd+T` rejected — universal "new tab" and intercepted by the live terminal; ⌘K is the Slack/Linear/Notion convention. Distinct from the Option+Tab switcher (MRU over *active* tasks vs type-search over all entities).
-- **Status:** Observed. Evidence: `ProjectQuickSwitchModal.tsx`, `utils/fuzzyMatch.ts`.
+- **Status:** Observed. Evidence: `GoToPaletteModal.tsx`, `utils/fuzzyMatch.ts`.
 
 ## 2026-06-15 — Option+Tab task switcher is a transient HUD overlay, NOT a command palette
 

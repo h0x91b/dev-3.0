@@ -16,7 +16,7 @@ const keymap = {
 	"keymap.category.app": "Application",
 
 	// Shortcut descriptions (App tab)
-	"keymap.shortcut.goToProject": "Go to project (quick switch)",
+	"keymap.shortcut.goToProject": "Go to project or task (quick switch)",
 	"keymap.shortcut.commandPalette": "Command palette",
 	"keymap.shortcut.back": "Back",
 	"keymap.shortcut.forward": "Forward",

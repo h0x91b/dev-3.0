@@ -66,7 +66,7 @@ describe("buildApplicationMenu", () => {
 		// First two actionable items are the palettes, ahead of Show Dashboard.
 		const actionable = submenu.filter((item) => item.action);
 		expect(actionable[0]).toMatchObject({
-			label: "Go to Project… (⌘K)",
+			label: "Go to Project or Task… (⌘K)",
 			action: MENU_ACTIONS.openProjectSwitch,
 			enabled: true,
 		});

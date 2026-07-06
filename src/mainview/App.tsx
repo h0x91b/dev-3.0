@@ -6,7 +6,7 @@ import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, SharedImage, Task, TaskStatus } from "../shared/types";
-import { orderProjectsForDisplay } from "../shared/types";
+import { ACTIVE_STATUSES, orderProjectsForDisplay } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
@@ -40,9 +40,9 @@ import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEna
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
-import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
+import { orderByMru, useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
-import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
+import GoToPaletteModal from "./components/GoToPaletteModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
 import TaskImageViewer from "./components/TaskImageViewer";
 import HintOverlay from "./components/HintOverlay";
@@ -360,6 +360,20 @@ function App() {
 		[navigate, state.route],
 	);
 
+	// Open a task from the Cmd+K palette. Mirrors the Option+Tab switcher's commit:
+	// fullscreen open-mode → the standalone task screen; split → the project board
+	// with the task selected in the side panel.
+	const navigateToTask = useCallback(
+		(task: Task) => {
+			navigate(
+				getTaskOpenMode() === "fullscreen"
+					? { screen: "task", projectId: task.projectId, taskId: task.id }
+					: { screen: "project", projectId: task.projectId, activeTaskId: task.id },
+			);
+		},
+		[navigate],
+	);
+
 	// Quick shell (⇧⌘`): spawn a fresh scratch op in the built-in Operations board
 	// and jump to it. The backend launches it with the default agent + config.
 	const openQuickShell = useCallback(async () => {
@@ -468,6 +482,14 @@ function App() {
 		);
 		return { projects: ordered, shortcutIndexById };
 	}, [state.projects, showProjectSwitch]);
+
+	// Cmd+K task rows: every active task across all projects, most-recently-visited
+	// first. `switcher.globalTasks` is already kept live (it powers the Option+Tab
+	// switcher); we just filter to active statuses and re-order by the MRU list.
+	const goToTasks = useMemo(
+		() => orderByMru(switcher.globalTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)), state.taskMru),
+		[switcher.globalTasks, state.taskMru],
+	);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
 
@@ -1630,12 +1652,18 @@ function App() {
 			{hintMode && <HintOverlay onExit={() => setHintMode(false)} />}
 			{helpMode && <HelpOverlay onExit={() => setHelpMode(false)} />}
 			{showProjectSwitch && (
-				<ProjectQuickSwitchModal
+				<GoToPaletteModal
 					projects={quickSwitch.projects}
 					shortcutIndexById={quickSwitch.shortcutIndexById}
-					onSelect={(projectId) => {
+					tasks={goToTasks}
+					projectById={switcherProjectById}
+					onSelectProject={(projectId) => {
 						setShowProjectSwitch(false);
 						navigateToProject(projectId);
+					}}
+					onSelectTask={(task) => {
+						setShowProjectSwitch(false);
+						navigateToTask(task);
 					}}
 					onClose={() => setShowProjectSwitch(false)}
 				/>

@@ -1,0 +1,1 @@
+Cmd/Ctrl+K is now a unified "Go to project or task" palette: alongside projects it lists every active task across all projects, ordered most-recently-visited first, with fuzzy search and a status dot + project badge per task — fast keyboard switching between tasks without leaving the keyboard. Also reachable from Cmd+Shift+P and the View menu.

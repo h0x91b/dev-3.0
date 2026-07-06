@@ -304,5 +304,5 @@ export function useTaskSwitcher({
 		};
 	}, [advance, commit, cancel, open, applyScope]);
 
-	return { session, setIndex, commit, cancel };
+	return { session, setIndex, commit, cancel, globalTasks };
 }

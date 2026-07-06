@@ -46,6 +46,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	{ id: "help-explain-screen", labelKey: "keymap.shortcut.helpMode", category: "app", scope: "always" },
 
 	// ── Navigation ──
+	{ id: "open-project-switch", labelKey: "command.goTo", category: "nav", scope: "always" },
 	{ id: "view-dashboard", labelKey: "command.viewDashboard", category: "nav", scope: "always" },
 	{ id: "view-kanban", labelKey: "command.viewKanban", category: "nav", scope: "project" },
 	{ id: "view-changelog", labelKey: "command.viewChangelog", category: "nav", scope: "always" },
