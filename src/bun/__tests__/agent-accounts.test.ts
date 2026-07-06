@@ -22,6 +22,7 @@ import {
 	updateClaudeApiProfile,
 	type AccountPaths,
 } from "../agent-accounts";
+import { claudeApiProfileEnvKeys, ENV_UNSET } from "../../shared/agent-accounts";
 
 let root: string;
 let paths: AccountPaths;
@@ -340,12 +341,12 @@ describe("claude API profiles", () => {
 		expect(env.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
 		expect(env.ANTHROPIC_API_KEY).toBe("sk-or-key");
 		expect(env.CLAUDE_CODE_USE_BEDROCK).toBe("1");
-		// Master model → every alias slot, and ANTHROPIC_MODEL is deliberately not set.
+		// Master model → every alias slot; ANTHROPIC_MODEL is actively unset.
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("claude-sonnet-4-6");
 		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("claude-sonnet-4-6");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("claude-sonnet-4-6");
 		expect(env.ANTHROPIC_DEFAULT_FABLE_MODEL).toBe("claude-sonnet-4-6");
-		expect(env.ANTHROPIC_MODEL).toBeUndefined();
+		expect(env.ANTHROPIC_MODEL).toBe(ENV_UNSET);
 	});
 
 	it("per-slot overrides emit ANTHROPIC_DEFAULT_<slot>_MODEL with name/description", async () => {
@@ -367,19 +368,42 @@ describe("claude API profiles", () => {
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Fast");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION).toBe("Cheap background model");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("provider/smart");
-		// Untouched slots emit nothing.
-		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBeUndefined();
+		// Untouched slots are actively unset.
+		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe(ENV_UNSET);
 	});
 
-	it("active OAuth account injects only CLAUDE_CONFIG_DIR; system login injects nothing", async () => {
+	it("active OAuth account injects CLAUDE_CONFIG_DIR and unsets every API-profile var; empty registry injects nothing", async () => {
 		seedClaudeLogin();
 		expect(await getActiveClaudeSessionEnv(paths)).toEqual({});
 
 		const account = await importCurrentClaudeAccount(paths);
 		await setActiveClaudeAccount(account.id, paths);
-		expect(await getActiveClaudeSessionEnv(paths)).toEqual({
-			CLAUDE_CONFIG_DIR: claudeAccountDir(account.id, paths),
-		});
+		const env = await getActiveClaudeSessionEnv(paths);
+		expect(env.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(account.id, paths));
+		for (const key of claudeApiProfileEnvKeys()) {
+			if (key === "CLAUDE_CONFIG_DIR") continue;
+			expect(env[key]).toBe(ENV_UNSET);
+		}
+	});
+
+	it("system login (no active account) unsets API-profile vars incl. CLAUDE_CONFIG_DIR when accounts exist", async () => {
+		seedClaudeLogin();
+		await importCurrentClaudeAccount(paths);
+		// activeId stays null → system login, but a stale profile env must still be cleared.
+		const env = await getActiveClaudeSessionEnv(paths);
+		for (const key of claudeApiProfileEnvKeys()) {
+			expect(env[key]).toBe(ENV_UNSET);
+		}
+	});
+
+	it("switching to OAuth unsets extra env vars carried by an inactive API profile", async () => {
+		seedClaudeLogin();
+		await addClaudeApiProfile({ apiKey: "sk-x", env: { CLAUDE_CODE_USE_BEDROCK: "1" } }, paths);
+		const oauth = await importCurrentClaudeAccount(paths);
+		await setActiveClaudeAccount(oauth.id, paths);
+		const env = await getActiveClaudeSessionEnv(paths);
+		expect(env.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
+		expect(env.ANTHROPIC_API_KEY).toBe(ENV_UNSET);
 	});
 
 	it("remove deletes the profile dir together with its key", async () => {
@@ -439,7 +463,7 @@ describe("claude API profiles", () => {
 		const env = await getActiveClaudeSessionEnv(paths);
 		expect(env.ANTHROPIC_API_KEY).toBe("sk-original");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("new-model");
-		expect(env.ANTHROPIC_MODEL).toBeUndefined();
+		expect(env.ANTHROPIC_MODEL).toBe(ENV_UNSET);
 		expect(env.A).toBeUndefined();
 		expect(env.B).toBe("2");
 	});
@@ -451,7 +475,7 @@ describe("claude API profiles", () => {
 		await setActiveClaudeAccount(account.id, paths);
 		const env = await getActiveClaudeSessionEnv(paths);
 		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("provider/sonnet");
-		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBeUndefined();
+		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(ENV_UNSET);
 	});
 
 	it("update replaces the key and re-approves its tail when a new key is given", async () => {

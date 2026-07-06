@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
+import { ENV_UNSET } from "../../shared/agent-accounts";
 import { setCurrentUiTheme } from "../theme-state";
 
 const makeAgent = (overrides?: Partial<CodingAgent>): CodingAgent => ({
@@ -1012,6 +1013,12 @@ describe("applyModelOverride — API profile model beats the preset --model flag
 		const config = makeConfig({ model: "claude-fable-5" });
 		// Only an opus override is present — fable is untouched, no ANTHROPIC_MODEL fallback.
 		expect(applyModelOverride(config, "claude", { ANTHROPIC_DEFAULT_OPUS_MODEL: "x" })).toBe(config);
+	});
+
+	it("ignores ENV_UNSET sentinels — they mean 'unset', not a model id", () => {
+		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
+		const env = { ANTHROPIC_DEFAULT_OPUS_MODEL: ENV_UNSET, ANTHROPIC_MODEL: ENV_UNSET };
+		expect(applyModelOverride(config, "claude", env)).toBe(config);
 	});
 });
 

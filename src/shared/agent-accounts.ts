@@ -33,6 +33,26 @@ export interface ClaudeSlotModel {
 
 export type ClaudeSlotModels = Partial<Record<ClaudeModelSlot, ClaudeSlotModel>>;
 
+/** Sentinel value in a session-env record meaning "actively unset this variable
+ *  in the launched shell" (emitted as `unset KEY` instead of `export KEY=…`).
+ *  Needed because a previously active API profile leaks its ANTHROPIC_* vars
+ *  into the long-lived tmux server env — merely omitting them from the next
+ *  launch is not enough, they must be explicitly removed. */
+export const ENV_UNSET = "\u0000dev3:unset\u0000";
+
+/** Every fixed env var the Claude API-profile mechanism can set. When the
+ *  active selection does not set one of these, it is actively unset so a value
+ *  leaked from a previously active profile (or the ambient shell) cannot hijack
+ *  the session's auth or model routing. */
+export function claudeApiProfileEnvKeys(): string[] {
+	const keys = ["CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"];
+	for (const slot of CLAUDE_MODEL_SLOTS) {
+		const prefix = `ANTHROPIC_DEFAULT_${slot.toUpperCase()}_MODEL`;
+		keys.push(prefix, `${prefix}_NAME`, `${prefix}_DESCRIPTION`);
+	}
+	return keys;
+}
+
 /** Display-safe description of a Claude API profile. `hasApiKey` tells the UI a
  *  key is stored; the key value travels only in the on-demand edit draft, never
  *  in the bulk accounts list. */

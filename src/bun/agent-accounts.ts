@@ -45,6 +45,8 @@ import type {
 } from "../shared/agent-accounts";
 import {
 	CLAUDE_MODEL_SLOTS,
+	ENV_UNSET,
+	claudeApiProfileEnvKeys,
 	defaultAccountLabel,
 	defaultApiProfileLabel,
 	parseClaudeIdentity,
@@ -321,30 +323,61 @@ function applyApiProfileModelEnv(env: Record<string, string>, profile: ApiProfil
 	}
 }
 
+/** Every env key any registered API profile could have set: the fixed
+ *  ANTHROPIC_* + CLAUDE_CONFIG_DIR set plus the union of all profiles' extra
+ *  env keys. Used to actively unset stale values after an account switch. */
+function collectClearableEnvKeys(registry: Registry, paths: AccountPaths): Set<string> {
+	const keys = new Set(claudeApiProfileEnvKeys());
+	for (const entry of registry.claude.accounts) {
+		if (entry.auth !== "api") continue;
+		const profile = readApiProfile(entry.id, paths);
+		for (const key of Object.keys(profile?.env ?? {})) keys.add(key);
+	}
+	return keys;
+}
+
 /** Full env to inject into new Claude sessions for the active account:
  *  CLAUDE_CONFIG_DIR always; for API profiles additionally ANTHROPIC_BASE_URL /
  *  ANTHROPIC_API_KEY / the ANTHROPIC_DEFAULT_*_MODEL alias slots plus the
- *  profile's extra env vars. Empty record when the system login (~/.claude) is active. */
+ *  profile's extra env vars.
+ *
+ *  Every clearable key (see collectClearableEnvKeys) the active selection does
+ *  NOT set is returned as ENV_UNSET: a previously active API profile leaks its
+ *  vars into the long-lived tmux server env, and a leaked ANTHROPIC_API_KEY /
+ *  ANTHROPIC_BASE_URL silently hijacks an OAuth (subscription) login. Callers
+ *  that fill env on top (config envVars, provider env) still win — the
+ *  sentinels only apply to keys nothing else claimed.
+ *
+ *  Empty record when no accounts are registered at all (feature unused —
+ *  never touch the ambient env of users who don't use the switcher). */
 export async function getActiveClaudeSessionEnv(paths: AccountPaths = defaultAccountPaths()): Promise<Record<string, string>> {
 	const registry = loadRegistry(paths);
+	if (registry.claude.accounts.length === 0) return {};
+
+	const env: Record<string, string> = {};
 	const id = registry.claude.activeId;
 	const entry = id ? registry.claude.accounts.find((e) => e.id === id) : undefined;
-	if (!entry) return {};
-	const dir = claudeAccountDir(entry.id, paths);
-	if (!existsSync(join(dir, ".claude.json"))) return {};
-	const env: Record<string, string> = { CLAUDE_CONFIG_DIR: dir };
-	if (entry.auth === "api") {
-		const profile = readApiProfile(entry.id, paths);
-		if (!profile) {
-			log.warn("Active Claude API profile has no api-profile.json", { id: entry.id });
-			return env;
+	if (entry) {
+		const dir = claudeAccountDir(entry.id, paths);
+		if (existsSync(join(dir, ".claude.json"))) {
+			env.CLAUDE_CONFIG_DIR = dir;
+			if (entry.auth === "api") {
+				const profile = readApiProfile(entry.id, paths);
+				if (profile) {
+					// Profile-level vars first, specific fields last so the structured fields win.
+					Object.assign(env, profile.env);
+					if (profile.baseUrl) env.ANTHROPIC_BASE_URL = profile.baseUrl;
+					if (profile.apiKey) env.ANTHROPIC_API_KEY = profile.apiKey;
+					applyApiProfileModelEnv(env, profile);
+					env.CLAUDE_CONFIG_DIR = dir;
+				} else {
+					log.warn("Active Claude API profile has no api-profile.json", { id: entry.id });
+				}
+			}
 		}
-		// Profile-level vars first, specific fields last so the structured fields win.
-		Object.assign(env, profile.env);
-		if (profile.baseUrl) env.ANTHROPIC_BASE_URL = profile.baseUrl;
-		if (profile.apiKey) env.ANTHROPIC_API_KEY = profile.apiKey;
-		applyApiProfileModelEnv(env, profile);
-		env.CLAUDE_CONFIG_DIR = dir;
+	}
+	for (const key of collectClearableEnvKeys(registry, paths)) {
+		if (!(key in env)) env[key] = ENV_UNSET;
 	}
 	return env;
 }

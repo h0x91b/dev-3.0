@@ -12,6 +12,7 @@ import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv } from "./agent-accounts";
+import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 
 const log = createLogger("agents");
@@ -716,9 +717,11 @@ export function applyModelOverride(
 ): AgentConfiguration | undefined {
 	// No config → no --model flag is emitted, so any env var wins on its own.
 	if (!config?.model || !isClaudeCommand(baseCmd)) return config;
+	// ENV_UNSET sentinels (cleared vars after an account switch) are "not set".
+	const pick = (v: string | undefined) => (v && v !== ENV_UNSET ? v : undefined);
 	const family = claudeModelFamily(config.model);
-	const familyOverride = family ? extraEnv[`ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`] : undefined;
-	const override = familyOverride ?? extraEnv.ANTHROPIC_MODEL;
+	const familyOverride = family ? pick(extraEnv[`ANTHROPIC_DEFAULT_${family.toUpperCase()}_MODEL`]) : undefined;
+	const override = familyOverride ?? pick(extraEnv.ANTHROPIC_MODEL);
 	if (!override) return config;
 	return { ...config, model: override };
 }

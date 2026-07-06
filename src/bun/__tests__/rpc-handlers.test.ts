@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task } from "../../shared/types";
 import { getPreparingStageProgress } from "../../shared/types";
+import { ENV_UNSET } from "../../shared/agent-accounts";
 
 // ---- Mocks ----
 
@@ -917,6 +918,11 @@ describe("buildEnvExports", () => {
 		const lines = buildEnvExports({ MSG: "hello world", QUOTED: "it's \"fine\"" });
 		expect(lines[0]).toBe("export MSG='hello world'");
 		expect(lines[1]).toBe("export QUOTED='it'\\''s \"fine\"'");
+	});
+
+	it("emits `unset KEY` for ENV_UNSET sentinel values", () => {
+		const lines = buildEnvExports({ ANTHROPIC_API_KEY: ENV_UNSET, CLAUDE_CONFIG_DIR: "/tmp/acc" });
+		expect(lines).toEqual(["unset ANTHROPIC_API_KEY", "export CLAUDE_CONFIG_DIR='/tmp/acc'"]);
 	});
 });
 

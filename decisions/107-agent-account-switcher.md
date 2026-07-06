@@ -57,6 +57,17 @@ copy-paste login command verified by the UI (`AgentAccountsSection.tsx`).
 - **Every switch is confirmed** (`accountsSwitchConfirm*` dialog in both the settings
   section and the launch-picker popover): switching is billing-sensitive — all NEW
   sessions bill to the target account — so it never happens on a bare row click.
+- **Stale profile env is actively unset on switch** (`ENV_UNSET` sentinel in
+  `src/shared/agent-accounts.ts`): the first agent spawn seeds the long-lived tmux
+  *server* env (`-e` flags + client spawn env + `set-environment` loop in
+  `pty-server.ts`), so an API profile's `ANTHROPIC_BASE_URL`/`ANTHROPIC_API_KEY`/model
+  vars survive an account switch and hijack the next OAuth session (Claude prefers
+  `ANTHROPIC_API_KEY` over OAuth). `getActiveClaudeSessionEnv` therefore marks every
+  clearable key (fixed ANTHROPIC_*/CLAUDE_CONFIG_DIR set ∪ all profiles' extra env keys)
+  the active selection does not set with the sentinel; consumers translate it —
+  `unset KEY` in wrapper scripts (`buildEnvExports`), skipped in real process envs,
+  `set-environment -r` in tmux, ignored by `applyModelOverride`. An empty registry
+  (feature unused) still returns `{}` and never touches the ambient env.
 - **API profiles are editable in place** (`updateClaudeApiProfile`), reusing the add
   form. The edit draft (`getClaudeApiProfileDraft`) returns every field — base URL, model,
   slot overrides, env values, **and the API key** — so the form can prefill and show the
