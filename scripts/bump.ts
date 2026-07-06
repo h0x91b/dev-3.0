@@ -54,6 +54,9 @@ await $`git commit -m ${"v" + newVersion}`;
 await $`git tag ${"v" + newVersion}`;
 
 await $`git push`;
-await $`git push --tags`;
+// Push ONLY the new tag — never `git push --tags`. A bulk tag push can sweep
+// up stale/foreign local tags, and GitHub silently drops the push event (and
+// thus the Release workflow) when more than 3 tags arrive at once.
+await $`git push origin ${"refs/tags/v" + newVersion}`;
 
 console.log(`Tag v${newVersion} pushed.`);
