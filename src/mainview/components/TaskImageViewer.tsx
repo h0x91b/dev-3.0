@@ -18,9 +18,10 @@ const TALL_RATIO = 2.2;
 
 /**
  * Windowed lightbox for images an agent surfaced via `dev3 show-image`. It is a
- * centred modal card (~3/4 of the viewport) — deliberately NOT a full-bleed
- * takeover — so it reads as part of the current task; a fullscreen toggle
- * expands it for detailed viewing. Shows one large image with a thumbnail
+ * centred modal card that fills ~90% of the viewport (≈5% margin each side) —
+ * deliberately NOT a full-bleed takeover — so it reads as part of the current
+ * task; a fullscreen toggle expands it edge-to-edge for detailed viewing. Shows
+ * one large image with a thumbnail
  * history rail (newest activated first via initialIndex). Bytes are fetched
  * lazily through the existing `readImageBase64` RPC, so it works identically in
  * the desktop shell and the remote browser. Pure React overlay — no native
@@ -45,6 +46,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose }: TaskI
 	const containerRef = useRef<HTMLDivElement>(null);
 	const thumbStripRef = useRef<HTMLDivElement>(null);
 	const stageRef = useRef<HTMLDivElement>(null);
+	// Ids whose fetch has already been kicked off — dedupes the priority effect
+	// against the background loader so each image is read at most once.
+	const startedRef = useRef<Set<string>>(new Set());
+	const mountedRef = useRef(true);
+	useEffect(() => () => { mountedRef.current = false; }, []);
 
 	// Keep the active index valid when the image list changes (new arrivals).
 	useEffect(() => {
@@ -53,28 +59,47 @@ export default function TaskImageViewer({ images, initialIndex, onClose }: TaskI
 
 	const current = images[index];
 
-	// Lazily fetch the active image (and its immediate neighbours) as data URLs.
-	useEffect(() => {
-		const wanted = [index - 1, index, index + 1]
-			.filter((i) => i >= 0 && i < images.length)
-			.map((i) => images[i]);
-		let cancelled = false;
-		for (const img of wanted) {
-			if (urls[img.id]) continue;
-			api.request
-				.readImageBase64({ path: img.storedPath })
-				.then((res) => {
-					if (cancelled) return;
-					setUrls((prev) => ({ ...prev, [img.id]: res?.dataUrl ?? "__error__" }));
-				})
-				.catch(() => {
-					if (!cancelled) setUrls((prev) => ({ ...prev, [img.id]: "__error__" }));
-				});
+	// Fetch one image's bytes as a data URL, once. Marks "__error__" on failure so
+	// the thumbnail/stage renders a placeholder instead of a perpetual spinner.
+	const loadImage = useCallback(async (img: SharedImage) => {
+		if (startedRef.current.has(img.id)) return;
+		startedRef.current.add(img.id);
+		let dataUrl = "__error__";
+		try {
+			const res = await api.request.readImageBase64({ path: img.storedPath });
+			dataUrl = res?.dataUrl ?? "__error__";
+		} catch {
+			dataUrl = "__error__";
 		}
-		return () => {
-			cancelled = true;
-		};
-	}, [index, images, urls]);
+		if (mountedRef.current) setUrls((prev) => ({ ...prev, [img.id]: dataUrl }));
+	}, []);
+
+	// Priority: the active image and its immediate neighbours load first so
+	// stepping through the rail feels instant.
+	useEffect(() => {
+		for (const j of [index, index + 1, index - 1]) {
+			if (j >= 0 && j < images.length) void loadImage(images[j]);
+		}
+	}, [index, images, loadImage]);
+
+	// Background: eagerly load EVERY image (concurrency-capped) so the thumbnail
+	// rail always shows a real picture — never a lazy placeholder that only fills
+	// in as you scrub. The dedupe set skips anything the priority effect grabbed.
+	useEffect(() => {
+		let cancelled = false;
+		const pending = images.filter((im) => !startedRef.current.has(im.id));
+		let cursor = 0;
+		const CONCURRENCY = 4;
+		async function worker() {
+			while (!cancelled) {
+				const img = pending[cursor++];
+				if (!img) return;
+				await loadImage(img);
+			}
+		}
+		for (let i = 0; i < Math.min(CONCURRENCY, pending.length); i++) void worker();
+		return () => { cancelled = true; };
+	}, [images, loadImage]);
 
 	const go = useCallback((delta: number) => {
 		setIndex((i) => Math.max(0, Math.min(images.length - 1, i + delta)));
@@ -133,7 +158,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose }: TaskI
 
 	return (
 		<div
-			className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/60 outline-none ${fullscreen ? "p-0" : "p-4 sm:p-10"}`}
+			className={`fixed inset-0 z-[70] flex items-center justify-center bg-black/60 outline-none ${fullscreen ? "p-0" : "px-[5vw] py-[5vh]"}`}
 			onClick={onClose}
 		>
 			<div
@@ -145,7 +170,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose }: TaskI
 				className={`relative flex flex-col overflow-hidden bg-elevated outline-none ${
 					fullscreen
 						? "w-full h-full rounded-none"
-						: "w-full h-full max-w-[1100px] max-h-[860px] rounded-2xl border border-edge shadow-2xl"
+						: "w-full h-full max-w-[2400px] max-h-[1600px] rounded-2xl border border-edge shadow-2xl"
 				}`}
 				onClick={(e) => e.stopPropagation()}
 			>
@@ -228,7 +253,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose }: TaskI
 								onClick={() => setFitOverride(fit === "width" ? "fit" : "width")}
 								className={`select-none cursor-zoom-in ${
 									fit === "width"
-										? "block mx-auto w-full max-w-[960px] h-auto"
+										? "block mx-auto w-full max-w-[1400px] h-auto"
 										: "w-full h-full object-contain"
 								}`}
 								draggable={false}

@@ -1,0 +1,1 @@
+Enlarged the shared-image viewer to fill ~90% of the viewport (≈5% margin each side) instead of a small capped card, and made it eager-load every image so the thumbnail rail always shows a real picture instead of a placeholder icon that only filled in as you scrubbed between shots.
