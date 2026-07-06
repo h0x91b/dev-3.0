@@ -254,6 +254,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 ## 8. Screen patterns — `Observed`
 
 - **List screen** (dashboard, board): header with create entry; label filter (board) / search (sidebar); per-item context menu; open navigates; compact empty states (decision 047).
+  - **Dashboard view modes (`Observed`, 2026-07-06):** the Dashboard has two renderings of the *same* cross-project data, flipped by a header segmented toggle (`DashboardViewToggle`, persisted `dev3-dashboard-view`): **By Project** (the `ActivityOverview` project-grouped list) and **Board** (`AllTasksBoard` — a unified Kanban aggregating every project's todo + active tasks into status columns, each card project-badged). This is a **view mode, not a destination** — both stay on the `dashboard` screen (no new `Route`). The unified Board is **read-only/glance**: click opens the task in its own project; status changes (drag, launch-variants) stay on the per-project board. Custom columns are per-project and not aggregated — a custom-column task shows under its built-in `status`. Backed by `getAllProjectTasks({ includeTodo })`.
 - **Detail screen** (task): two-row task header; `TaskInfoPanel` inspector; task-scoped object/git/dev-server actions; full-screen or split terminal.
 - **Settings screen** (Global / Project): grouped sections (Agent, Appearance, Behavior, Workspace, DeveloperTools); RPC save; destructive removal behind confirmation.
 

@@ -1736,7 +1736,9 @@ export type AppRPCSchema = {
 				response: Task[];
 			};
 			getAllProjectTasks: {
-				params: void;
+				// `includeTodo` opts into also returning `todo` tasks (the unified
+				// cross-project board); omitted/`{}` keeps the active-only default.
+				params: { includeTodo?: boolean };
 				response: { projectId: string; tasks: Task[] }[];
 			};
 			getProductivityStats: {

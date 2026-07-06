@@ -157,7 +157,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 		setOpsFolder(folder);
 		// Non-blocking warning: another ACTIVE op already using this folder.
 		try {
-			const all = await api.request.getAllProjectTasks();
+			const all = await api.request.getAllProjectTasks({});
 			const mine = all.find((p) => p.projectId === project.id);
 			const conflict = (mine?.tasks ?? []).some(
 				(tk) => tk.worktreePath === folder && tk.status !== "completed" && tk.status !== "cancelled",

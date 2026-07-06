@@ -94,7 +94,7 @@ export function useTaskSwitcher({
 	// opens instantly. Mirrors ActiveTasksSidebar's global-scope plumbing.
 	const refreshGlobal = useCallback(async () => {
 		try {
-			const results = await api.request.getAllProjectTasks();
+			const results = await api.request.getAllProjectTasks({});
 			const flat: Task[] = [];
 			for (const { tasks } of results) {
 				for (const task of tasks) flat.push(task);

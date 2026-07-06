@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import type { DragEvent } from "react";
+import type { DragEvent, ReactNode } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
@@ -20,6 +20,8 @@ interface ActivityOverviewProps {
 	onRemoveProject?: (projectId: string) => void | Promise<void>;
 	onOpenAddProject?: () => void;
 	onReorderProjects?: (projectIds: string[]) => void | Promise<void>;
+	/** Dashboard view-mode toggle (By Project ↔ Board), rendered in the header. */
+	viewToggle?: ReactNode;
 }
 
 /** Statuses worth their own row — they're waiting on a human (questions, your
@@ -92,7 +94,7 @@ function ActionSheetButton({
 	);
 }
 
-function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects }: ActivityOverviewProps) {
+function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onOpenAddProject, onReorderProjects, viewToggle }: ActivityOverviewProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -123,7 +125,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 
 	const fetchAllTasks = useCallback(async () => {
 		try {
-			const results = await api.request.getAllProjectTasks();
+			const results = await api.request.getAllProjectTasks({});
 			const map = new Map<string, Task[]>();
 			for (const { projectId, tasks } of results) {
 				map.set(projectId, tasks);
@@ -258,15 +260,18 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 							<div className="text-fg-3 text-xs mt-1">{t("activity.noActiveTasks")}</div>
 						)}
 					</div>
-					{onOpenAddProject && (
-						<button
-							type="button"
-							onClick={onOpenAddProject}
-							className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95 flex-shrink-0"
-						>
-							{t("dashboard.addProject")}
-						</button>
-					)}
+					<div className="flex items-center gap-2 flex-shrink-0">
+						{viewToggle}
+						{onOpenAddProject && (
+							<button
+								type="button"
+								onClick={onOpenAddProject}
+								className="px-4 py-1.5 min-h-[44px] md:min-h-0 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover shadow-lg shadow-accent/20 transition-all active:scale-95 flex-shrink-0"
+							>
+								{t("dashboard.addProject")}
+							</button>
+						)}
+					</div>
 				</div>
 				{visibleProjects.map((project, index) => {
 					const tasks = tasksByProject.get(project.id) ?? [];

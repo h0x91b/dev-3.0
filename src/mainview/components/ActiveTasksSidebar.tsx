@@ -154,7 +154,7 @@ function ActiveTasksSidebar({
 		if (isScoped) setGlobalLoading(true);
 		(async () => {
 			try {
-				const results = await api.request.getAllProjectTasks();
+				const results = await api.request.getAllProjectTasks({});
 				if (cancelled) return;
 				const flat: Task[] = [];
 				for (const { tasks: projectTasks } of results) {
