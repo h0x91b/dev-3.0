@@ -435,7 +435,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			aria-label={t("infoPanel.diffIncludeTestsAria")}
 			aria-pressed={includeTests}
 		>
-			{!compact && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
+			{(!compact || narrow) && <span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>}
 			<IncludeTestsIcon className="w-[0.95rem] h-[0.95rem]" />
 		</button>
 		</Tooltip>
@@ -523,7 +523,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			{task.watched
 				? <WatchingIcon className="w-[0.95rem] h-[0.95rem]" />
 				: <WatchIcon className="w-[0.95rem] h-[0.95rem]" />}
-			{!compact && (
+			{(!compact || narrow) && (
 				<span className="text-[0.6875rem] font-medium">
 					{task.watched ? t("task.watching") : t("task.watch")}
 				</span>
@@ -583,7 +583,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 				aria-label={t("tmux.spawnExtraAgentDesc")}
 			>
 				<AddAgentIcon className="w-[1.05rem] h-[1.05rem]" />
-				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
+				{(!compact || narrow) && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("tmux.spawnExtraAgent")}</span>}
 			</button>
 	</Tooltip>
 	) : null;
@@ -596,7 +596,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			aria-label={t("bugHunters.buttonTooltip")}
 		>
 			<FindBugsIcon className="w-[1.05rem] h-[1.05rem]" />
-			{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
+			{(!compact || narrow) && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("bugHunters.buttonLabel")}</span>}
 		</button>
 		</Tooltip>
 	) : null;
@@ -605,10 +605,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		<Tooltip content={t("projectSettings.tabWorktree")} detail={t("ttip.infoPanel.worktreeConfig")}>
 			<button
 				onClick={() => navigate({ screen: "project-settings", projectId: project.id, tab: "worktree", worktreeTaskId: task.id })}
-				className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+				className={`task-anim flex-shrink-0 flex items-center gap-1.5 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg ${narrow ? "px-2 py-1" : "p-1"}`}
 				aria-label={t("projectSettings.tabWorktree")}
 			>
 				<WorktreeSettingsIcon className="w-4 h-4" />
+				{narrow && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.worktreeSettings")}</span>}
 			</button>
 	</Tooltip>
 	) : null;
@@ -826,46 +827,62 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					title={t("infoPanel.actionsTitle")}
 					testId="task-actions-sheet"
 				>
-					<div className="flex flex-col gap-4">
-						<div className="flex flex-wrap items-center gap-2">
-							{watchToggleButton}
-							{spawnAgentButton}
-							{bugHuntersButton}
-							{diffIncludeTestsToggle}
-							{labelStrip}
-							<TaskTmuxControls taskId={task.id} />
-							{worktreeSettingsButton}
-						</div>
-						<div className="flex flex-wrap items-center gap-2">
-							{project.kind === "virtual" ? (
-								<span className="text-fg-muted text-[0.6875rem] italic">{t("ops.gitUnavailable")}</span>
-							) : (
-								<TaskGitActions
-									task={task}
-									project={project}
-									dispatch={dispatch}
-									navigate={navigate}
-									isTaskActive={isTaskActive}
-									showWorktreeCopy
-									showLoading
-									compact={compact}
-									onBranchStatusChange={setMetadataBranchState}
-									onOpenInlineDiff={onOpenInlineDiff}
-								/>
-							)}
-							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
-							{project.kind !== "virtual" && (
-								<>
-									<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
-								</>
-							)}
-							<TaskExposedPorts task={task} />
-							<TaskSharedImages task={task} />
-						</div>
-						<div className="border-t border-edge pt-3">
+					<div className="flex flex-col gap-5">
+						{/* Sheet sections mirror the desktop 2×2 bar domains (§5.1): each bar's
+						    actions become a labeled, touch-sized section (UX bible §12.3/§12.6). */}
+						<section className="flex flex-col gap-2">
+							<h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetSession")}</h3>
+							<div className="touch-actions flex flex-wrap items-center gap-2">
+								{watchToggleButton}
+								{spawnAgentButton}
+								{bugHuntersButton}
+								<TaskTmuxControls taskId={task.id} />
+							</div>
+						</section>
+
+						<section className="flex flex-col gap-2">
+							<h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetGit")}</h3>
+							<div className="touch-actions flex flex-wrap items-center gap-2">
+								{project.kind === "virtual" ? (
+									<span className="text-fg-muted text-[0.6875rem] italic">{t("ops.gitUnavailable")}</span>
+								) : (
+									<TaskGitActions
+										task={task}
+										project={project}
+										dispatch={dispatch}
+										navigate={navigate}
+										isTaskActive={isTaskActive}
+										showWorktreeCopy
+										showLoading
+										compact={false}
+										onBranchStatusChange={setMetadataBranchState}
+										onOpenInlineDiff={onOpenInlineDiff}
+									/>
+								)}
+								{diffIncludeTestsToggle}
+							</div>
+						</section>
+
+						<section className="flex flex-col gap-2">
+							<h3 className="text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetRuntime")}</h3>
+							<div className="touch-actions flex flex-wrap items-center gap-2">
+								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
+								{project.kind !== "virtual" && (
+									<>
+										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
+										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+									</>
+								)}
+								<TaskExposedPorts task={task} />
+								<TaskSharedImages task={task} />
+								{worktreeSettingsButton}
+							</div>
+						</section>
+
+						<section className="border-t border-edge pt-3">
+							<h3 className="mb-2 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>
 							{taskDetailsBody}
-						</div>
+						</section>
 					</div>
 				</BottomSheet>
 

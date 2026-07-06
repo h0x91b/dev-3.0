@@ -394,6 +394,23 @@ button {
 	}
 }
 
+/* ---- Touch action group (narrow-viewport action sheets) ----
+   Dense desktop toolbars pack controls at ~28-32px (p-0.5/py-1). Inside a
+   narrow-viewport action sheet those are below the 44px touch target the mobile
+   doctrine mandates (UX bible §12.6). This bumps every button/trigger in the
+   group to a 44px min target without editing each toolbar sub-component; the
+   labels are turned on separately. Portaled dropdowns render outside the group,
+   so their menu items keep their own (already touch-sized) rows.
+
+   Sizing is absolute px, NOT rem: the mobile task screen scales the root
+   font-size to 0.67× via the dense-zoom factor (see zoom.ts MOBILE_DENSE_FACTOR),
+   which is meant to pack content-heavy terminal/diff surfaces — a touch action
+   sheet must keep true 44px targets and not shrink with it. */
+.touch-actions :is(button, a[role="button"], [role="menuitem"]) {
+	min-height: 44px;
+	min-width: 44px;
+}
+
 /* ---- Close-pane picker: marching-ants selection marquee -------------------
    A moving dashed border that draws the eye to the pickable panes. Color comes
    from `currentColor`, so the same class is neutral (accent/blue) while idle and

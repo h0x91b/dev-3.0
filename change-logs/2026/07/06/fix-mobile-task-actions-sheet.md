@@ -1,0 +1,1 @@
+Redesigned the Task actions bottom sheet on narrow (mobile) viewports. The old flat icon-only flex-wrap is now grouped into labeled sections mirroring the desktop inspector domains (Session & agent, Git & branch, Runtime & access, Details), every action carries a text label, and all controls meet the 44px touch-target minimum.
