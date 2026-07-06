@@ -71,6 +71,32 @@ describe("TaskImageViewer", () => {
 		expect(screen.getByText("1 / 3")).toBeInTheDocument();
 	});
 
+	it("eagerly loads every image, not just the active neighbour window", async () => {
+		// Open on the last image → the first image ("a") sits outside [i-1, i, i+1].
+		// It must still be fetched so its thumbnail renders a picture, not a placeholder.
+		(mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mockClear();
+		renderViewer(vi.fn(), 2);
+		await waitFor(() => {
+			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/a.png" });
+			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/b.png" });
+			expect(mockedApi.request.readImageBase64).toHaveBeenCalledWith({ path: "/wt/shared-images/c.png" });
+		});
+		// Each image is read at most once (priority + background loaders dedupe).
+		const calls = (mockedApi.request.readImageBase64 as ReturnType<typeof vi.fn>).mock.calls.map(
+			(c) => (c[0] as { path: string }).path,
+		);
+		expect(new Set(calls).size).toBe(calls.length);
+	});
+
+	it("renders a picture in every thumbnail once loaded", async () => {
+		renderViewer(vi.fn(), 2);
+		await waitFor(() => {
+			for (const name of ["one.png", "two.png", "three.png"]) {
+				expect(screen.getByRole("button", { name }).querySelector("img")).not.toBeNull();
+			}
+		});
+	});
+
 	it("closes on Escape", async () => {
 		const onClose = renderViewer();
 		fireEvent.keyDown(window, { key: "Escape" });

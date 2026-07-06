@@ -25,7 +25,9 @@ function GitPullErrorModal({ branch, error, retrying, onRetry, onClose }: GitPul
 	return createPortal(
 		<div
 			data-git-pull-error-modal="true"
-			className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+			// z-[80] so the error modal layers above the narrow header bottom sheet
+			// (z-[70]) when Git Pull is folded into it on mobile.
+			className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50"
 			onClick={onClose}
 		>
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}

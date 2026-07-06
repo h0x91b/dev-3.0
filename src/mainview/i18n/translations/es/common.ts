@@ -63,8 +63,6 @@ const common = {
 	"sidebar.noActiveTasks": "Sin tareas activas",
 	"sidebar.noSearchResults": "No se encontraron tareas",
 	"sidebar.searchPlaceholder": "Buscar tareas...",
-	"sidebar.switchToBoard": "Mostrar tablero",
-	"sidebar.switchToSidebar": "Mostrar panel",
 	"sidebar.hide": "Zoom del terminal (ocultar Tareas activas)",
 	"sidebar.scopeProject": "Solo este proyecto",
 	"sidebar.scopeGlobal": "Todos los proyectos",

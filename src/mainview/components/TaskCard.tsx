@@ -646,6 +646,22 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					}
 				}
 
+				async function toggleLabel(labelId: string) {
+					const newIds = taskLabelIds.includes(labelId)
+						? taskLabelIds.filter((id) => id !== labelId)
+						: [...taskLabelIds, labelId];
+					try {
+						const updated = await api.request.setTaskLabels({
+							taskId: task.id,
+							projectId: project.id,
+							labelIds: newIds,
+						});
+						dispatch({ type: "updateTask", task: updated });
+					} catch {
+						// ignore
+					}
+				}
+
 				return (
 					<div className="flex items-start mt-2 min-h-[1.125rem] gap-2">
 					<div className="flex items-center flex-wrap gap-1 min-w-0 flex-1">
@@ -681,10 +697,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						{pickerOpen && pickerAnchorRef.current && (
 							<LabelPicker
 								project={project}
-								task={task}
 								dispatch={dispatch}
 								onClose={() => setPickerOpen(false)}
 								anchorEl={pickerAnchorRef.current}
+								selectedIds={taskLabelIds}
+								onToggle={toggleLabel}
 							/>
 						)}
 					</div>

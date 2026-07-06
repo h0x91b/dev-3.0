@@ -701,6 +701,10 @@ PANE=$(tmux -L dev3 display-message -p -t "$SESSION:dev-server" '#{pane_id}')
 tmux -L dev3 send-keys -t "$PANE" 'bun run dev' Enter
 \`\`\`
 
+**Always name a window you open** with a short human purpose — pass \`-n <name>\` (\`dev-server\`, \`logs\`, \`tests\`), or \`rename-window\` it right after. Never leave it on the auto command-name (\`node\`, \`zsh\`): a manual name **sticks** (it turns off automatic-rename for that window), so the user reads clean tabs instead of \`[1: node] [2: zsh]\`.
+
+**Also tidy windows you did not open.** Any time you \`list-windows\` — before a split, on discovery, whenever you look at the session — glance at the names. If a window is still stuck on a generic auto-name (\`node\`, \`zsh\`, \`bash\`, \`claude\`) and you can tell what it is running, \`rename-window\` it to that purpose too. Do it proactively, not only for windows you created. Leave windows the user already gave a real name alone.
+
 ### Sending input
 
 - \`send-keys ... Enter\` — typed text + execute. Without \`Enter\` you just type without pressing return.

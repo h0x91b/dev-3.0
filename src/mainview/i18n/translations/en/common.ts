@@ -63,8 +63,6 @@ const common = {
 	"sidebar.noActiveTasks": "No active tasks",
 	"sidebar.noSearchResults": "No tasks match your search",
 	"sidebar.searchPlaceholder": "Search tasks...",
-	"sidebar.switchToBoard": "Show board",
-	"sidebar.switchToSidebar": "Show sidebar",
 	"sidebar.hide": "Zoom terminal (hide Active Tasks)",
 	"sidebar.scopeProject": "Only this project",
 	"sidebar.scopeGlobal": "All projects",

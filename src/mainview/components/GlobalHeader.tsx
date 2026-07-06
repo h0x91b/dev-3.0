@@ -147,6 +147,10 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 	useEffect(() => {
 		setShowOverflowMenu(false);
+		// Navigating from inside the narrow action sheet (e.g. tapping a tmux
+		// session) dismisses the sheet too — the row handlers close it directly,
+		// but tmux navigates on its own, so close it here for that path.
+		setShowActionSheet(false);
 	}, [route]);
 
 	// Fetch active task counts when project dropdown opens (with cache)
@@ -539,11 +543,13 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					</div>
 				)}
 
-				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs */}
-				<PreventSleepToggle compact={compact} />
+				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs.
+				    Folded into the kebab bottom sheet on narrow. */}
+				{!isNarrow && <PreventSleepToggle compact={compact} />}
 
-				{/* Ambient agent rate-limit indicator — hidden until any limit data exists */}
-				<RateLimitIndicator compact={compact} />
+				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
+				    (folded into the kebab bottom sheet on narrow). */}
+				{!isNarrow && <RateLimitIndicator compact={compact} />}
 
 				{/* Quick Shell — opens the built-in Operations shell in $HOME (folded into the kebab on narrow) */}
 				{!isNarrow && (
@@ -587,8 +593,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				)}
 
 				{/* Git Pull — quick pull of origin/{main|master} into project main worktree.
-				    Hidden for virtual ("Operations") boards, which have no git repo. */}
-				{"projectId" in route && !isVirtualProject && (
+				    Hidden for virtual ("Operations") boards, which have no git repo.
+				    Folded into the kebab bottom sheet on narrow. */}
+				{"projectId" in route && !isVirtualProject && !isNarrow && (
 					<GitPullButton projectId={route.projectId} compact={compact} />
 				)}
 
@@ -613,8 +620,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				</Tooltip>
 				)}
 
-				{/* Tmux Session Manager */}
-				<TmuxSessionManager navigate={navigate} />
+				{/* Tmux Session Manager — folded into the kebab bottom sheet on narrow. */}
+				{!isNarrow && <TmuxSessionManager navigate={navigate} />}
 
 				{/* External / low-frequency actions: inline when roomy, folded into an overflow menu when compact */}
 				{!compact && (
@@ -816,6 +823,18 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				testId="header-action-sheet"
 			>
 				<div className="flex flex-col">
+					{/* Stateful widgets folded off the header on narrow: prevent-sleep,
+					    rate-limit, git-pull, tmux sessions. Reused verbatim so their live
+					    state / popovers / modals keep working (those overlays layer above
+					    the sheet — see the z-index in TmuxSessionManager / GitPullErrorModal). */}
+					<div className="flex flex-wrap items-center gap-1.5 pb-3 mb-1 border-b border-edge/60">
+						<PreventSleepToggle compact={false} />
+						<RateLimitIndicator compact={false} />
+						{currentProjectId && !isVirtualProject && (
+							<GitPullButton projectId={currentProjectId} compact={false} />
+						)}
+						<TmuxSessionManager navigate={navigate} />
+					</div>
 					{headerSheetRows.map((row) => (
 						<button
 							key={row.key}

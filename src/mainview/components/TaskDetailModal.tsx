@@ -226,6 +226,23 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 		}
 	}
 
+	async function handleToggleLabel(labelId: string) {
+		const ids = task.labelIds ?? [];
+		const newIds = ids.includes(labelId)
+			? ids.filter((id) => id !== labelId)
+			: [...ids, labelId];
+		try {
+			const updated = await api.request.setTaskLabels({
+				taskId: task.id,
+				projectId: project.id,
+				labelIds: newIds,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			toast.error(t("labels.failedSetLabels", { error: String(err) }));
+		}
+	}
+
 	// ---- Notes handlers ----
 
 	async function handleAddNote() {
@@ -485,10 +502,11 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 							{pickerOpen && pickerAnchorRef.current && (
 								<LabelPicker
 									project={project}
-									task={task}
 									dispatch={dispatch}
 									onClose={() => setPickerOpen(false)}
 									anchorEl={pickerAnchorRef.current}
+									selectedIds={task.labelIds ?? []}
+									onToggle={handleToggleLabel}
 								/>
 							)}
 						</div>

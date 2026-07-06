@@ -1,5 +1,6 @@
 import {
 	type BranchStatus,
+	type PaneSessionEntry,
 	type PRInfo,
 	type Project,
 	type Task,
@@ -648,7 +649,12 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 
 	if (liveBranch && liveBranch !== task.branchName) {
 		log.info("getBranchStatus: branch renamed, syncing stored name", { old: task.branchName, new: liveBranch });
-		await data.updateTask(project, task.id, { branchName: liveBranch });
+		const updated = await data.updateTask(project, task.id, { branchName: liveBranch });
+		// Persisting alone leaves the renderer's in-memory task with the stale
+		// branch name (it only refreshes on a taskUpdated push), so the header,
+		// task cards, and detail modal keep showing the old branch until reload.
+		// Broadcast the update so every open surface re-renders with the new name.
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	}
 
 	log.debug("getBranchStatus: fetching origin", { worktreePath: task.worktreePath, baseBranch, branchName: branchForPush });
@@ -966,15 +972,28 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 const AGENT_PROMPT_ENTER_DELAY_MS = 800;
 
 /**
- * Hand a task off to the AI agent running in its tmux session: find the session's
- * currently-focused pane (that's where the agent's prompt lives) and type `prompt`
- * into it, then send Enter as a discrete keypress after a short delay. Returns
- * false when no active pane could be resolved (nothing was sent). This is the
- * shared mechanism behind the Create-PR / auto-merge buttons and the
- * rebase-conflict handoff — the agent is a continuation of the user's
- * conversation, so a plain-language instruction is enough.
+ * Resolve the pane a hand-off prompt should be typed into.
+ *
+ * `agentPanes` is the task's recorded agent-pane registry (`sessionState.panes`),
+ * the only reliable source of "which panes run an agent" — `pane_current_command`
+ * is useless here because an agent constantly spawns child processes (a live
+ * Claude pane reports `zsh`/`node` at random moments). Routing rules (issue #609):
+ *
+ *  - Exactly ONE live agent pane → target it unconditionally, even if a
+ *    non-agent pane (a shell, a dev server) is currently focused. There is no
+ *    ambiguity about where the agent lives, so focus must not misroute the prompt.
+ *  - TWO OR MORE live agent panes → ambiguous; respect the user's focus and use
+ *    the session's active pane.
+ *  - ZERO known agent panes (legacy tasks with no sessionState) → fall back to
+ *    the active pane, preserving the historical behavior.
+ *
+ * Returns the pane id, or null when nothing usable could be resolved.
  */
-async function sendPromptToActiveAgentPane(tmuxSession: string, socket: string, prompt: string): Promise<boolean> {
+async function resolveAgentPromptTargetPane(
+	tmuxSession: string,
+	socket: string,
+	agentPanes: PaneSessionEntry[] | undefined,
+): Promise<string | null> {
 	let activePane: string | null = null;
 	try {
 		const proc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
@@ -982,16 +1001,55 @@ async function sendPromptToActiveAgentPane(tmuxSession: string, socket: string, 
 		if ((await proc.exited) === 0) activePane = stdout.trim() || null;
 	} catch { /* best effort */ }
 
-	if (!activePane) {
+	const registeredIds = (agentPanes ?? [])
+		.map((p) => p.paneId)
+		.filter((id): id is string => Boolean(id));
+
+	if (registeredIds.length > 0) {
+		let livePaneIds = new Set<string>();
+		try {
+			const proc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
+			const stdout = await new Response(proc.stdout).text();
+			if ((await proc.exited) === 0) {
+				livePaneIds = new Set(stdout.split("\n").map((l) => l.trim()).filter(Boolean));
+			}
+		} catch { /* best effort */ }
+
+		const liveAgentPanes = [...new Set(registeredIds.filter((id) => livePaneIds.has(id)))];
+		if (liveAgentPanes.length === 1) return liveAgentPanes[0] ?? null;
+		// ≥2 or 0 live agent panes → fall through to the active pane below.
+	}
+
+	return activePane;
+}
+
+/**
+ * Hand a task off to the AI agent running in its tmux session: pick the pane the
+ * agent lives in (see {@link resolveAgentPromptTargetPane}), type `prompt` into
+ * it, then send Enter as a discrete keypress after a short delay. Returns false
+ * when no target pane could be resolved (nothing was sent). This is the shared
+ * mechanism behind the Create-PR / auto-merge buttons and the rebase-conflict
+ * handoff — the agent is a continuation of the user's conversation, so a
+ * plain-language instruction is enough.
+ */
+async function sendPromptToAgentPane(
+	tmuxSession: string,
+	socket: string,
+	prompt: string,
+	agentPanes: PaneSessionEntry[] | undefined,
+): Promise<boolean> {
+	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
+
+	if (!targetPane) {
 		return false;
 	}
 
-	const pane = activePane;
+	const pane = targetPane;
 	try {
 		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, prompt), { stdout: "pipe", stderr: "pipe" });
 		pasteProc.exited.catch(() => {});
 	} catch (err) {
-		log.warn("sendPromptToActiveAgentPane send-keys paste failed", { paneId: pane, error: String(err) });
+		log.warn("sendPromptToAgentPane send-keys paste failed", { paneId: pane, error: String(err) });
 		return false;
 	}
 	setTimeout(() => {
@@ -999,7 +1057,7 @@ async function sendPromptToActiveAgentPane(tmuxSession: string, socket: string, 
 			const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, "Enter"), { stdout: "pipe", stderr: "pipe" });
 			enterProc.exited.catch(() => {});
 		} catch (err) {
-			log.warn("sendPromptToActiveAgentPane send-keys Enter failed", { paneId: pane, error: String(err) });
+			log.warn("sendPromptToAgentPane send-keys Enter failed", { paneId: pane, error: String(err) });
 		}
 	}, AGENT_PROMPT_ENTER_DELAY_MS);
 
@@ -1027,7 +1085,7 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
-	const handedOff = await sendPromptToActiveAgentPane(tmuxSession, socket, prompt);
+	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, prompt, task.sessionState?.panes);
 	if (!handedOff) {
 		log.info("← createPullRequest skipped — no active pane", { taskId: task.id.slice(0, 8) });
 		return;
@@ -1055,7 +1113,7 @@ async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; c
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
-	const handedOff = await sendPromptToActiveAgentPane(tmuxSession, socket, rebaseConflictAgentPrompt(rebaseTarget));
+	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, rebaseConflictAgentPrompt(rebaseTarget), task.sessionState?.panes);
 	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
 	return { handedOff };
 }

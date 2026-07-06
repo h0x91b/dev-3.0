@@ -299,6 +299,19 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "doctor",
+		summary: "Check install health; works without the app running.",
+		subcommands: [],
+		usage: "dev3 doctor [--json]",
+		details: [
+			"Read-only checks: data dir, app bundle + version, tmux shim, pinned",
+			"tmux@3.6 keg, Homebrew cask/formula state. Prints the exact fix",
+			"command for anything broken (e.g. after a failed `brew upgrade`).",
+			"--json     Machine-readable output.",
+			"Exit codes: 0 healthy or warnings only, 7 when problems were found.",
+		],
+	},
+	{
 		name: "projects",
 		summary: "Inspect configured projects.",
 		subcommands: [

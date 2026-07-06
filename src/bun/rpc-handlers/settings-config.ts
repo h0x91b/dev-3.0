@@ -10,6 +10,7 @@ import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
 import { DEV3_HOME } from "../paths";
+import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
@@ -182,11 +183,16 @@ async function applyUpdate(): Promise<void> {
 
 async function saveLastRoute({ route }: { route: string }): Promise<void> {
 	log.info("-> saveLastRoute");
+	// Fresh-start (dev) mode must not persist the route — it would clobber the
+	// shared ~/.dev3.0/last-route.json that the real install restores from.
+	if (isFreshStartMode()) return;
 	await data.saveLastRoute(route);
 }
 
 async function getLastRoute(): Promise<{ route: string | null }> {
 	log.info("-> getLastRoute");
+	// In fresh-start (dev) mode always land on the dashboard — ignore any saved route.
+	if (isFreshStartMode()) return { route: null };
 	const route = await data.loadLastRoute();
 	return { route };
 }

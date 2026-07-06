@@ -56,7 +56,6 @@ interface ActiveTasksSidebarProps {
 	bellCounts: Map<string, number>;
 	bellReasons?: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
-	onSwitchToBoard: () => void;
 	disableGlobalFindShortcut?: boolean;
 }
 
@@ -103,7 +102,6 @@ function ActiveTasksSidebar({
 	bellCounts,
 	bellReasons,
 	taskPorts,
-	onSwitchToBoard,
 	disableGlobalFindShortcut = false,
 }: ActiveTasksSidebarProps) {
 	const t = useT();
@@ -426,19 +424,6 @@ function ActiveTasksSidebar({
 							)}
 						</button>
 					</div>
-					<button
-						onClick={onSwitchToBoard}
-						className="inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5"
-						title={t("sidebar.switchToBoard")}
-					>
-						{/* Nerd Font: fa-columns (U+F0DB) */}
-						<span
-							className="text-sm leading-none"
-							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-						>
-							{"\uF0DB"}
-						</span>
-					</button>
 					{activeTaskId && (
 						<button
 							type="button"

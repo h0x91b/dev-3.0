@@ -107,6 +107,22 @@ describe("matchesBranchQuery", () => {
 	it("matches partial fork ref with colon", () => {
 		expect(matchesBranchQuery("roiros/feat/collapsible-kanban-columns", "roiros:feat")).toBe(true);
 	});
+
+	it("matches a query that contains a dash spanning word boundaries", () => {
+		expect(matchesBranchQuery("feat/login-page", "login-page")).toBe(true);
+	});
+
+	it("matches a multi-word dashed query against a dashed branch", () => {
+		expect(matchesBranchQuery("sworgkh/fix/dev3-tmux-switch-glitch", "dev3-tmux")).toBe(true);
+	});
+
+	it("matches a dashed query with underscore/dot separators in the branch", () => {
+		expect(matchesBranchQuery("feat/login_page", "login-page")).toBe(true);
+	});
+
+	it("keeps matching while the user is mid-typing a trailing dash", () => {
+		expect(matchesBranchQuery("feat/dev3-auth", "dev3-")).toBe(true);
+	});
 });
 
 describe("sortBranchesForDisplay", () => {

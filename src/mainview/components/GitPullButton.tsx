@@ -215,17 +215,22 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 			>
 				<span className="relative inline-flex items-center justify-center w-[1.125rem] h-[1.125rem]" aria-hidden="true">
 					{iconSpin ? (
-						// Pull in progress: a circular ring spinner. A ring is radially symmetric, so
-						// animate-spin rotates it perfectly around its own center — zero wobble. (A
-						// spinning Nerd Font glyph wobbles instead, because its ink center never lines
-						// up with its advance-width × line-height layout box.) The fixed-size icon slot
-						// above is shared by the idle glyph and this ring, so the icon does not shift
-						// sideways when the spin starts; the ring is sized below the slot so it reads no
-						// larger than the neighboring toolbar icons.
-						<span
+						// Pull in progress: reuse the exact SVG spinner from the "checking for updates"
+						// header indicator (see GlobalHeader) so both loading states look identical.
+						// An <svg> centered on its own viewBox spins cleanly around its center with
+						// animate-spin — smooth, no wobble. (A spinning Nerd Font glyph wobbles instead,
+						// because its ink center never lines up with its advance-width × line-height
+						// layout box.) The fixed-size icon slot above is shared by the idle glyph and
+						// this spinner, so the icon does not shift sideways when the spin starts.
+						<svg
 							data-testid="git-pull-spinner"
-							className={`w-3.5 h-3.5 rounded-full border-2 border-current/30 border-t-current${reducedMotion ? "" : " animate-spin"}`}
-						/>
+							className={`w-3.5 h-3.5${reducedMotion ? "" : " animate-spin"}`}
+							viewBox="0 0 24 24"
+							fill="none"
+						>
+							<circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+							<path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+						</svg>
 					) : (
 						<IconComp className="w-[1.125rem] h-[1.125rem]" />
 					)}

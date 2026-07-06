@@ -1,0 +1,1 @@
+Fixed spawning an extra Codex agent (Spawn Agent modal) or a Codex bug-hunter crashing with "--profile dev3-dark cannot be used while config.toml contains legacy profile". The spawn paths now run the same worktree-trust / Codex config re-patch step the primary task launch does, so the stale legacy profile table is stripped before Codex launches.

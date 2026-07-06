@@ -52,6 +52,8 @@ vi.mock("../data", () => ({
 	getLastPickedFolder: vi.fn(),
 	setLastPickedFolder: vi.fn(),
 	updateTaskWith: vi.fn(),
+	loadLastRoute: vi.fn(),
+	saveLastRoute: vi.fn(),
 }));
 
 vi.mock("../git", () => ({
@@ -3836,12 +3838,21 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 
+		const push = vi.fn();
+		setPushMessage(push);
+
 		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 		// Should have synced the stored branchName
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { branchName: "dev3/fix-login" });
 		// Should pass live branch name to getUnpushedCount
 		expect(git.getUnpushedCount).toHaveBeenCalledWith("/tmp/wt", "dev3/fix-login");
+		// Must notify the renderer so the header/cards re-render with the new
+		// branch instead of showing the stale name until a reload.
+		expect(push).toHaveBeenCalledWith("taskUpdated", {
+			projectId: "proj-1",
+			task: expect.objectContaining({ branchName: "dev3/fix-login" }),
+		});
 	});
 
 	it("does not update branchName when live matches stored", async () => {
@@ -3856,9 +3867,13 @@ describe("handlers.getBranchStatus", () => {
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
 		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
 
+		const push = vi.fn();
+		setPushMessage(push);
+
 		await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 
 		expect(data.updateTask).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalledWith("taskUpdated", expect.anything());
 	});
 
 	it("returns prNumber when gh pr list finds an open non-draft PR", async () => {
@@ -6469,6 +6484,41 @@ describe("handlers.spawnAgentInTask", () => {
 			handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: null }),
 		).rejects.toThrow("Failed to spawn agent");
 	});
+
+	// Regression: the primary launch path re-patches ~/.codex/config.toml via
+	// ensureCodexTrust before every codex launch (strips the legacy
+	// [profiles.dev3-*] tables codex ≥0.131 rejects). Spawning an extra Codex
+	// agent used to skip that step, so the pane crashed with
+	// "--profile dev3-dark cannot be used while config.toml contains legacy profile".
+	it("ensures Codex trust before spawning a Codex agent", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/codex-wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({
+			command: "codex -p dev3-dark",
+			extraEnv: {},
+			config: { baseCommandOverride: "codex" },
+		});
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-codex", configId: null });
+
+		expect(agents.ensureCodexTrust).toHaveBeenCalledWith("/tmp/codex-wt");
+	});
+
+	it("ensures Claude trust before spawning any agent", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude --resume", extraEnv: {} });
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+
+		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
+
+		expect(agents.ensureClaudeTrust).toHaveBeenCalledWith("/tmp/wt", project.path);
+	});
 });
 
 // ================================================================
@@ -8558,6 +8608,90 @@ describe("handlers.createPullRequest", () => {
 		expect(sendKeysCalls()).toHaveLength(0);
 	});
 
+	// Issue #609: with a single agent pane the prompt must land in that pane even
+	// when a different (non-agent) pane is focused — the active pane must NOT win.
+	it("routes to the sole agent pane, ignoring a different active pane", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: { panes: [{ paneId: "%5", agentCmd: "claude", sessionId: null, agentId: null, configId: null }] },
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			// Active pane is a non-agent split (%3); the agent lives in %5.
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n%5\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%5"]));
+
+		vi.advanceTimersByTime(800);
+		const all = sendKeysCalls();
+		expect(all[1]).toEqual(["tmux", "-L", "dev3", "send-keys", "-t", "%5", "Enter"]);
+		vi.useRealTimers();
+	});
+
+	// With two or more agent panes the target is ambiguous, so respect focus.
+	it("routes to the active pane when there are two agent panes", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: {
+				panes: [
+					{ paneId: "%5", agentCmd: "claude", sessionId: null, agentId: null, configId: null },
+					{ paneId: "%7", agentCmd: "codex", sessionId: null, agentId: null, configId: null },
+				],
+			},
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n%5\n%7\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+	});
+
+	// A registered agent pane that no longer exists must not hijack the routing —
+	// fall back to the active pane (preserves the legacy behavior).
+	it("falls back to the active pane when the recorded agent pane is dead", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: { panes: [{ paneId: "%5", agentCmd: "claude", sessionId: null, agentId: null, configId: null }] },
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			// %5 is gone; only the active pane %3 is live.
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+	});
+
 	it("throws when the task has no worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "task-1", worktreePath: null });
@@ -8848,5 +8982,48 @@ describe("handlers.tmuxWindowNavigate", () => {
 		const res = await handlers.tmuxWindowNavigate({ taskId: TASK_ID, step: "next" });
 		expect(res).toEqual({ count: 0, activeIndex: 0, labels: [] });
 		expect(called("select-window")).toBe(false);
+	});
+});
+
+describe("handlers.getLastRoute / saveLastRoute — fresh-start (dev) mode", () => {
+	const ORIGINAL_FRESH = process.env.DEV3_FRESH_START;
+
+	beforeEach(() => {
+		vi.mocked(data.loadLastRoute).mockReset();
+		vi.mocked(data.saveLastRoute).mockReset();
+	});
+
+	afterEach(() => {
+		if (ORIGINAL_FRESH === undefined) delete process.env.DEV3_FRESH_START;
+		else process.env.DEV3_FRESH_START = ORIGINAL_FRESH;
+	});
+
+	it("normally restores the persisted route", async () => {
+		delete process.env.DEV3_FRESH_START;
+		vi.mocked(data.loadLastRoute).mockResolvedValue(JSON.stringify({ screen: "project", projectId: "p1" }));
+		const res = await handlers.getLastRoute();
+		expect(res).toEqual({ route: JSON.stringify({ screen: "project", projectId: "p1" }) });
+		expect(data.loadLastRoute).toHaveBeenCalledTimes(1);
+	});
+
+	it("returns no route in fresh-start mode (always land on dashboard)", async () => {
+		process.env.DEV3_FRESH_START = "1";
+		vi.mocked(data.loadLastRoute).mockResolvedValue(JSON.stringify({ screen: "project", projectId: "p1" }));
+		const res = await handlers.getLastRoute();
+		expect(res).toEqual({ route: null });
+		// Must not even read the persisted route.
+		expect(data.loadLastRoute).not.toHaveBeenCalled();
+	});
+
+	it("normally persists the route", async () => {
+		delete process.env.DEV3_FRESH_START;
+		await handlers.saveLastRoute({ route: JSON.stringify({ screen: "dashboard" }) });
+		expect(data.saveLastRoute).toHaveBeenCalledWith(JSON.stringify({ screen: "dashboard" }));
+	});
+
+	it("does not persist the route in fresh-start mode (never clobbers shared state)", async () => {
+		process.env.DEV3_FRESH_START = "1";
+		await handlers.saveLastRoute({ route: JSON.stringify({ screen: "project", projectId: "p1" }) });
+		expect(data.saveLastRoute).not.toHaveBeenCalled();
 	});
 });

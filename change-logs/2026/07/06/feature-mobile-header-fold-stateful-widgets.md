@@ -1,0 +1,1 @@
+On narrow (mobile) viewports the global header no longer shows the prevent-sleep, rate-limit, git-pull, and tmux-sessions widgets inline; they now fold into the kebab (⋮) bottom sheet as a controls strip, decluttering the mobile header. Their popovers/modals layer above the sheet.

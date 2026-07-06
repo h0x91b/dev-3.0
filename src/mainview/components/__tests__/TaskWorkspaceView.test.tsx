@@ -1,8 +1,21 @@
 import { useEffect } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, Task } from "../../../shared/types";
 import TaskWorkspaceView from "../TaskWorkspaceView";
+
+const getTasksMock = vi.fn();
+const exitCopyModeAllPanesMock = vi.fn((_params: { taskId: string }) => Promise.resolve());
+
+vi.mock("../../rpc", () => ({
+	api: {
+		request: {
+			getTasks: (params: { projectId: string }) => getTasksMock(params),
+			exitCopyModeAllPanes: (params: { taskId: string }) => exitCopyModeAllPanesMock(params),
+		},
+	},
+	isElectrobun: false,
+}));
 
 // Tracks TaskTerminal mount lifecycle so the `key={taskId}` regression
 // test below can assert that a fresh instance is mounted per task.
@@ -71,6 +84,36 @@ describe("TaskWorkspaceView", () => {
 	beforeEach(() => {
 		mountLog.length = 0;
 		unmountLog.length = 0;
+		getTasksMock.mockReset();
+		getTasksMock.mockResolvedValue([]);
+		exitCopyModeAllPanesMock.mockClear();
+	});
+
+	// Regression: the fullscreen task view can be entered for a task whose
+	// project's tasks were never loaded into currentProjectTasks (quick-shell
+	// scratch op, toast / notification click into another project). Before the
+	// fix the view never fetched them, so `task` stayed undefined and the header
+	// chrome (TaskInfoPanel) silently disappeared. It must load its project's
+	// tasks on mount and hydrate the store so the chrome renders.
+	it("loads its project's tasks on mount and hydrates the store", async () => {
+		const dispatch = vi.fn();
+		getTasksMock.mockResolvedValue([task]);
+
+		render(
+			<TaskWorkspaceView
+				projectId="p1"
+				taskId="t1"
+				tasks={[]}
+				projects={[project]}
+				navigate={vi.fn()}
+				dispatch={dispatch}
+			/>,
+		);
+
+		await waitFor(() => expect(getTasksMock).toHaveBeenCalledWith({ projectId: "p1" }));
+		await waitFor(() =>
+			expect(dispatch).toHaveBeenCalledWith({ type: "setTasks", tasks: [task] }),
+		);
 	});
 
 	it("toggles between terminal and inline diff", async () => {

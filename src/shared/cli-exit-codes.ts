@@ -5,6 +5,7 @@ export const CLI_EXIT_CODE_USAGE_ERROR = 3;
 export const CLI_EXIT_CODE_INTERNAL_ERROR = 4;
 export const CLI_EXIT_CODE_GUI_DEPS_MISSING = 5;
 export const CLI_EXIT_CODE_COMPLETION_DECLINED = 6;
+export const CLI_EXIT_CODE_DOCTOR_PROBLEMS = 7;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -43,5 +44,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_COMPLETION_DECLINED,
 		description:
 			"`dev3 task move --status completed` asked the user for approval and the user declined. The task keeps its current status and the session stays alive.",
+	},
+	{
+		constant: "CLI_EXIT_CODE_DOCTOR_PROBLEMS",
+		code: CLI_EXIT_CODE_DOCTOR_PROBLEMS,
+		description:
+			'`dev3 doctor` found at least one problem (a check with status "fail"). Warnings alone still exit 0.',
 	},
 ] as const;

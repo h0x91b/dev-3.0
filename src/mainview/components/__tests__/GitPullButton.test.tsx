@@ -128,7 +128,7 @@ describe("GitPullButton", () => {
 		expect(alertMock).not.toHaveBeenCalled();
 	});
 
-	it("shows a centered circular ring spinner while a pull is in progress", async () => {
+	it("shows the shared SVG spinner while a pull is in progress", async () => {
 		(api.request.getProjectCurrentBranch as any).mockResolvedValue({
 			branch: "main",
 			isBaseBranch: true,
@@ -144,15 +144,18 @@ describe("GitPullButton", () => {
 		const btn = await screen.findByTestId("git-pull-button");
 		await waitFor(() => expect(btn).not.toBeDisabled());
 		await userEvent.click(btn);
-		// While pulling we show a circular ring spinner instead of a spinning Nerd Font glyph.
-		// A ring is radially symmetric, so it rotates perfectly around its own center (no wobble),
-		// and it carries no text content.
+		// While pulling we show the same SVG spinner as the "checking for updates" header
+		// indicator instead of a spinning Nerd Font glyph — it spins cleanly around its own
+		// center (no wobble) and carries no text content.
 		const spinner = await screen.findByTestId("git-pull-spinner");
+		expect(spinner.tagName.toLowerCase()).toBe("svg");
 		expect(spinner.textContent).toBe("");
-		expect(spinner.className).toMatch(/rounded-full/);
-		expect(spinner.className).toMatch(/border-t-current/);
-		expect(spinner.className).toMatch(/w-3\.5/);
-		expect(spinner.className).toMatch(/h-3\.5/);
+		// Same markup as the "checking for updates" header spinner: a circle track + arc.
+		expect(spinner.querySelector("circle")).not.toBeNull();
+		expect(spinner.querySelector("path")).not.toBeNull();
+		const spinnerClass = spinner.getAttribute("class") ?? "";
+		expect(spinnerClass).toMatch(/w-3\.5/);
+		expect(spinnerClass).toMatch(/h-3\.5/);
 		// Settle the pending promise to avoid act() warnings.
 		await act(async () => {
 			resolvePull({ ok: true, branch: "main", output: "Already up to date.", error: "" });

@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { DEV3_HOME } from "./paths";
 
 type LogLevel = "debug" | "info" | "warn" | "error";
@@ -47,6 +48,32 @@ export function resolveLogLevel(env: Record<string, string | undefined>): LogLev
 	return env.DEV3_CHANNEL === "dev" ? "debug" : "info";
 }
 
+/**
+ * Resolve the directory the daily log files live in.
+ *
+ * History: this used to be hard-coded to `${DEV3_HOME}/logs`. Every vitest
+ * worker that imported a module calling `createLogger` (updater.ts, data.ts,
+ * git.ts, …) without a per-file `vi.mock("../logger")` therefore appended its
+ * synthetic INFO/WARN/ERROR lines to the *real* user log — polluting it with
+ * fake `[NNNN:updater] applyUpdate` errors and `bbbb2222` update hashes that
+ * cost real time to misdiagnose during a live incident. See decision 108.
+ *
+ * Rules (first match wins):
+ *   1. `DEV3_LOG_DIR` — explicit override, always honored (tests, sandboxes).
+ *   2. under a test runner (`VITEST` / `NODE_ENV=test`) — an isolated tmp dir,
+ *      so unit tests never touch `${DEV3_HOME}/logs`. This fixes every current
+ *      and future bun/cli test at once, with no per-file logger mock needed.
+ *   3. everything else (the real app / CLI) — `${DEV3_HOME}/logs`.
+ */
+export function resolveLogDir(env: Record<string, string | undefined>): string {
+	const override = env.DEV3_LOG_DIR?.trim();
+	if (override) return override;
+	if (env.VITEST || env.NODE_ENV === "test") {
+		return `${tmpdir()}/dev3-test-logs`;
+	}
+	return `${DEV3_HOME}/logs`;
+}
+
 let minLevel: LogLevel = resolveLogLevel(process.env);
 let logDir: string | null = null;
 let currentLogFile: string | null = null;
@@ -57,7 +84,7 @@ const ensuredDirs = new Set<string>();
 
 function getLogDir(): string {
 	if (!logDir) {
-		logDir = `${DEV3_HOME}/logs`;
+		logDir = resolveLogDir(process.env);
 	}
 	return logDir;
 }

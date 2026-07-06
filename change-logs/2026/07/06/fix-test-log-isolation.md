@@ -1,0 +1,1 @@
+Unit tests no longer pollute the real ~/.dev3.0/logs with fake ERROR/WARN lines: logger.ts now redirects to an isolated tmp dir under vitest (or a DEV3_LOG_DIR override), so no test worker touches the production daily log.

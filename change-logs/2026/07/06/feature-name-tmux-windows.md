@@ -1,0 +1,1 @@
+Agents are now told to give any tmux window they open a short human name (dev-server, logs, tests) via -n or rename-window, and to proactively rename windows still stuck on a generic auto-name (node/zsh/bash/claude) whenever they list the session — so the terminal tabs read clearly instead of "node"/"zsh".

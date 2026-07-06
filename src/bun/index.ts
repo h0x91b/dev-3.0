@@ -59,6 +59,14 @@ log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
+// NOTE: We deliberately do NOT process.chdir() away from the .app bundle.
+// electrobun resolves native resources and the `views://` protocol relative to
+// process.cwd(), so moving cwd blanks the desktop window ("Resource not found").
+// The brew-upgrade/in-app-update ENOENT hazard it was meant to fix — a child
+// inheriting a since-deleted bundle cwd — is instead handled in spawn.ts, which
+// pins cwd-less children to DEV3_HOME without ever moving the process. See
+// decision 109.
+
 // ── CLI binary + agent skills + shell PATH (FIRST — before any async work) ──
 // These must run before resolveShellEnv() because existing tmux sessions
 // (from a previous app instance) may already have agents trying to use the CLI.

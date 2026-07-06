@@ -7,24 +7,13 @@ import KanbanBoard from "./KanbanBoard";
 import TaskInfoPanel from "./TaskInfoPanel";
 import SplitLayout from "./SplitLayout";
 import ActiveTasksSidebar from "./ActiveTasksSidebar";
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useT } from "../i18n";
 import ActiveTasksStrip from "./ActiveTasksStrip";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
-
-type SidebarMode = "sidebar" | "board";
-const LS_SIDEBAR_MODE = "dev3-split-sidebar-mode";
-
-function readSidebarMode(): SidebarMode {
-	try {
-		const v = localStorage.getItem(LS_SIDEBAR_MODE);
-		if (v === "board" || v === "sidebar") return v;
-	} catch { /* ignore */ }
-	return "sidebar";
-}
 
 interface ProjectViewProps {
 	projectId: string;
@@ -57,17 +46,9 @@ function ProjectView({
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
-	const [sidebarMode, setSidebarMode] = useState<SidebarMode>(readSidebarMode);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const inlineDiff = useTaskInlineDiffState(activeTaskId);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-
-	const toggleSidebarMode = useCallback((mode: SidebarMode) => {
-		setSidebarMode(mode);
-		try {
-			localStorage.setItem(LS_SIDEBAR_MODE, mode);
-		} catch { /* ignore */ }
-	}, []);
 
 	useEffect(() => {
 		(async () => {
@@ -169,37 +150,6 @@ function ProjectView({
 			);
 		}
 
-		const leftContent = sidebarMode === "sidebar" ? (
-			<ActiveTasksSidebar
-				project={project}
-				tasks={tasks}
-				allProjects={projects}
-				activeTaskId={activeTaskId}
-				dispatch={dispatch}
-				navigate={navigate}
-				agents={agents}
-				bellCounts={bellCounts}
-				bellReasons={bellReasons}
-				taskPorts={taskPorts}
-				onSwitchToBoard={() => toggleSidebarMode("board")}
-				disableGlobalFindShortcut={inlineDiff.isOpen}
-			/>
-		) : (
-			<KanbanBoard
-				project={project}
-				tasks={tasks}
-				dispatch={dispatch}
-				navigate={navigate}
-				bellCounts={bellCounts}
-				bellReasons={bellReasons}
-				taskPorts={taskPorts}
-				taskResourceUsage={taskResourceUsage}
-				activeTaskId={activeTaskId}
-				onSwitchToSidebar={() => toggleSidebarMode("sidebar")}
-				disableGlobalFindShortcut={inlineDiff.isOpen}
-			/>
-		);
-
 		return (
 			<div className="flex-1 min-h-0 flex flex-col">
 				{activeTask && (
@@ -214,9 +164,22 @@ function ProjectView({
 					/>
 				)}
 				<SplitLayout
-					kanbanContent={leftContent}
+					kanbanContent={
+						<ActiveTasksSidebar
+							project={project}
+							tasks={tasks}
+							allProjects={projects}
+							activeTaskId={activeTaskId}
+							dispatch={dispatch}
+							navigate={navigate}
+							agents={agents}
+							bellCounts={bellCounts}
+							bellReasons={bellReasons}
+							taskPorts={taskPorts}
+							disableGlobalFindShortcut={inlineDiff.isOpen}
+						/>
+					}
 					terminalContent={terminalPane}
-					mode={sidebarMode}
 				/>
 			</div>
 		);
