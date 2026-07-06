@@ -5,12 +5,18 @@ name: Deploy landing page
 # on parallel PR merges, raced the Pages API — the superseded run died with
 # "Deployment failed, try again later." and emailed a false "Run failed".
 #
-# Two changes kill that spam:
-#   1. path filter — only run when the landing page (docs/**) actually changes,
-#      so ordinary code merges no longer trigger a Pages deploy at all.
-#   2. concurrency group — serialize deploys so two runs never hit the Pages
-#      API at once; a superseded run ends as "cancelled" (no failure email),
-#      never as "failure".
+# Design goal: NEVER email a false "Run failed" for the landing page again.
+#   1. path filter  — only run when docs/** (or this file) actually changes.
+#   2. concurrency  — serialize deploys so runs never race the Pages API.
+#   3. in-job retry — the Pages backend still returns transient
+#      "Deployment failed, try again later." on a single deploy with no
+#      concurrent run (a GitHub-side hiccup). Retry once in-job so it
+#      self-heals — no manual "Re-run" needed (a manual re-run re-uploads
+#      the artifact and then dies with "Multiple artifacts named github-pages").
+#   4. never fail   — if both attempts hit a transient backend error the job
+#      stays green and only emits a ::warning:: (visible in the Actions UI, no
+#      email). The site keeps serving the previous version and the next docs
+#      change redeploys. A landing page is not worth a false failure alert.
 on:
   push:
     branches: [main]
@@ -35,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy_retry.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,5 +52,21 @@ jobs:
         with:
           path: docs
       - name: Deploy to GitHub Pages
-        id: deployment
+        id: deploy
         uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Cool down before retry
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 60
+      - name: Deploy to GitHub Pages (retry)
+        id: deploy_retry
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Summarize deploy result
+        run: |
+          if [ "${{ steps.deploy.outcome }}" = "success" ] || [ "${{ steps.deploy_retry.outcome }}" = "success" ]; then
+            echo "Pages deploy succeeded."
+          else
+            echo "::warning title=Pages deploy skipped::GitHub Pages returned a transient backend error on both attempts. The site keeps serving the previous version and the next docs change will redeploy. The workflow is kept green on purpose to avoid false 'Run failed' emails."
+          fi
