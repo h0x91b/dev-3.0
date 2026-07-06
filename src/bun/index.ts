@@ -25,7 +25,7 @@ import { startLoopMonitor } from "./loop-monitor";
 import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedWindow, getWindowCount, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 
 const log = createLogger("main");
 
@@ -59,20 +59,13 @@ log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
 
-// ── Detach cwd from the .app bundle ──
-// The process starts with cwd inside the bundle (Contents/MacOS). A brew
-// upgrade or in-app update can remove that directory from under a running
-// instance, after which EVERY spawn without an explicit `cwd` fails with
-// ENOENT (posix_spawn resolves the child's cwd from ours) — tmux dies while
-// git keeps working. Move to DEV3_HOME, which lives as long as our data does.
-// Safe at this point: electrobun's dlopen(join(process.cwd(), "libNativeWrapper..."))
-// runs at module import, i.e. before this line.
-try {
-	mkdirSync(DEV3_HOME, { recursive: true });
-	process.chdir(DEV3_HOME);
-} catch (err) {
-	log.warn("chdir to DEV3_HOME failed (non-fatal)", { error: String(err) });
-}
+// NOTE: We deliberately do NOT process.chdir() away from the .app bundle.
+// electrobun resolves native resources and the `views://` protocol relative to
+// process.cwd(), so moving cwd blanks the desktop window ("Resource not found").
+// The brew-upgrade/in-app-update ENOENT hazard it was meant to fix — a child
+// inheriting a since-deleted bundle cwd — is instead handled in spawn.ts, which
+// pins cwd-less children to DEV3_HOME without ever moving the process. See
+// decision 109.
 
 // ── CLI binary + agent skills + shell PATH (FIRST — before any async work) ──
 // These must run before resolveShellEnv() because existing tmux sessions
