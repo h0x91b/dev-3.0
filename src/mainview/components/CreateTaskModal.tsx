@@ -377,7 +377,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 			onClick={handleRequestClose}
 		>
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-			<div ref={trapRef} role="dialog" aria-modal="true" tabIndex={-1} className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
+			<div ref={trapRef} role="dialog" aria-modal="true" tabIndex={-1} className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-1.5">
 						<h2 className="text-fg text-lg font-semibold">
@@ -638,7 +638,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 						</div>
 					) : (
 						<>
-							<div className="flex items-center justify-end gap-2">
+							<div className="flex flex-wrap items-center justify-end gap-2">
 								{onCreateAndRun && (
 									<div className="mr-auto flex flex-col items-start gap-0.5">
 										<button
@@ -680,7 +680,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 									{creating ? t("createTask.creating") : t("createTask.create")}
 								</button>
 							</div>
-							<div className="flex items-center justify-between gap-2 text-[0.6875rem]">
+							<div className="flex flex-wrap items-center justify-between gap-2 text-[0.6875rem]">
 								{onOpenAutomations ? (
 									<button
 										type="button"
@@ -708,7 +708,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 					)}
 				</div>
 				{pendingBranchChoice && (
-					<div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-black/70 p-4">
+					<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4">
 						<div className="w-full max-w-md rounded-2xl border border-edge bg-overlay p-5 shadow-2xl space-y-4">
 							<div className="space-y-2">
 								<h3 className="text-fg text-base font-semibold">

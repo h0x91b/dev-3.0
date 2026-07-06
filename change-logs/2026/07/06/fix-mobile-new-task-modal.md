@@ -1,0 +1,1 @@
+Made the New Task creation modal usable on narrow/mobile viewports: the fixed 520px width now clamps to the viewport, the modal scrolls instead of clipping the Save actions on short screens, and the footer action buttons wrap gracefully instead of cramming into one overflowing row.
