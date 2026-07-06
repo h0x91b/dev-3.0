@@ -217,7 +217,9 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 				createPortal(
 					<div
 						ref={popoverRef}
-						className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[22.5rem] max-w-[30rem] max-h-[25rem] flex flex-col"
+						// z-[80] so the popover layers above the narrow header bottom sheet
+						// (z-[70]) when the tmux manager is folded into it on mobile.
+						className="fixed z-[80] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-2 min-w-[22.5rem] max-w-[30rem] max-h-[25rem] flex flex-col"
 						style={{
 							top: popoverPos.top,
 							left: popoverPos.left,
