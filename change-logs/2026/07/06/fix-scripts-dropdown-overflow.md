@@ -1,0 +1,1 @@
+Fixed the Scripts runner dropdown overflowing past the right screen edge on narrow windows (mobile/remote browser). The popover now shrinks its width to fit the viewport and keeps a 16px gutter on both sides instead of using a fixed 24rem width.
