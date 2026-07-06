@@ -1,11 +1,9 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from "react";
 
-const DEFAULT_BOARD_WIDTH = 320;
 const DEFAULT_SIDEBAR_WIDTH = 240;
 const MIN_KANBAN_WIDTH = 200;
 const MAX_KANBAN_RATIO = 0.6;
 const DRAG_THRESHOLD_PX = 3;
-const LS_KEY_BOARD = "dev3-split-kanban-width";
 const LS_KEY_SIDEBAR = "dev3-split-sidebar-width";
 
 function readStoredWidth(key: string, fallback: number): number {
@@ -22,28 +20,19 @@ function readStoredWidth(key: string, fallback: number): number {
 interface SplitLayoutProps {
 	kanbanContent: ReactNode;
 	terminalContent: ReactNode;
-	mode?: "sidebar" | "board";
 }
 
-function SplitLayout({ kanbanContent, terminalContent, mode = "board" }: SplitLayoutProps) {
-	const lsKey = mode === "sidebar" ? LS_KEY_SIDEBAR : LS_KEY_BOARD;
-	const defaultWidth = mode === "sidebar" ? DEFAULT_SIDEBAR_WIDTH : DEFAULT_BOARD_WIDTH;
-
-	const [kanbanWidth, setKanbanWidth] = useState(() => readStoredWidth(lsKey, defaultWidth));
+function SplitLayout({ kanbanContent, terminalContent }: SplitLayoutProps) {
+	const [kanbanWidth, setKanbanWidth] = useState(() => readStoredWidth(LS_KEY_SIDEBAR, DEFAULT_SIDEBAR_WIDTH));
 	const panelRef = useRef<HTMLDivElement>(null);
 	const dragging = useRef(false);
-
-	// Reset width when mode changes
-	useEffect(() => {
-		setKanbanWidth(readStoredWidth(lsKey, defaultWidth));
-	}, [lsKey, defaultWidth]);
 
 	// Persist width to localStorage
 	useEffect(() => {
 		try {
-			localStorage.setItem(lsKey, String(Math.round(kanbanWidth)));
+			localStorage.setItem(LS_KEY_SIDEBAR, String(Math.round(kanbanWidth)));
 		} catch { /* ignore */ }
-	}, [kanbanWidth, lsKey]);
+	}, [kanbanWidth]);
 
 	// Clamp width on window resize
 	useEffect(() => {
@@ -93,9 +82,9 @@ function SplitLayout({ kanbanContent, terminalContent, mode = "board" }: SplitLa
 	}, [kanbanWidth]);
 
 	function handleDoubleClick() {
-		setKanbanWidth(defaultWidth);
+		setKanbanWidth(DEFAULT_SIDEBAR_WIDTH);
 		if (panelRef.current) {
-			panelRef.current.style.width = `${defaultWidth}px`;
+			panelRef.current.style.width = `${DEFAULT_SIDEBAR_WIDTH}px`;
 		}
 	}
 

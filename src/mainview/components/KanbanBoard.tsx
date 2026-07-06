@@ -37,7 +37,6 @@ interface KanbanBoardProps {
 	taskPorts: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
-	onSwitchToSidebar?: () => void;
 	disableGlobalFindShortcut?: boolean;
 }
 
@@ -51,7 +50,6 @@ function KanbanBoard({
 	taskPorts,
 	taskResourceUsage,
 	activeTaskId,
-	onSwitchToSidebar,
 	disableGlobalFindShortcut = false,
 }: KanbanBoardProps) {
 	const t = useT();
@@ -569,19 +567,6 @@ function KanbanBoard({
 
 	return (
 		<>
-			{onSwitchToSidebar && (
-				<div className="flex items-center px-3 pt-2">
-					<button
-						onClick={onSwitchToSidebar}
-						className="text-[0.625rem] text-fg-muted hover:text-accent transition-colors px-1.5 py-0.5 rounded hover:bg-fg/5 flex items-center gap-1"
-						title={t("sidebar.switchToSidebar")}
-					>
-						{/* Nerd Font: fa-list (U+F03A) */}
-						<span className="text-sm font-mono leading-none">{"\uF03A"}</span>
-						<span>{t("sidebar.switchToSidebar")}</span>
-					</button>
-				</div>
-			)}
 			<LabelFilterBar
 				labels={projectLabels}
 				activeFilters={activeFilters}

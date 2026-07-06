@@ -63,8 +63,6 @@ const common = {
 	"sidebar.noActiveTasks": "Нет активных задач",
 	"sidebar.noSearchResults": "Ничего не найдено",
 	"sidebar.searchPlaceholder": "Поиск задач...",
-	"sidebar.switchToBoard": "Показать доску",
-	"sidebar.switchToSidebar": "Показать панель",
 	"sidebar.hide": "Zoom терминала (скрыть Active Tasks)",
 	"sidebar.scopeProject": "Только этот проект",
 	"sidebar.scopeGlobal": "Все проекты",
