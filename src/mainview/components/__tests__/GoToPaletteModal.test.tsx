@@ -94,7 +94,7 @@ describe("GoToPaletteModal", () => {
 	it("renders both section headers", () => {
 		renderModal();
 		expect(screen.getByText("Projects")).toBeTruthy();
-		expect(screen.getByText("Tasks · recently visited")).toBeTruthy();
+		expect(screen.getByText("Tasks · recent")).toBeTruthy();
 	});
 
 	it("shows the project badge on task rows", () => {

@@ -71,7 +71,7 @@ afterEach(() => {
 });
 
 describe("orderByMru", () => {
-	it("orders by MRU first, then never-visited by descending seq", () => {
+	it("orders by MRU first, then the rest by most-recently-updated", () => {
 		const candidates = [task("a", 1), task("b", 2), task("c", 3)];
 		expect(orderByMru(candidates, ["c", "a"]).map((t) => t.id)).toEqual(["c", "a", "b"]);
 	});
@@ -79,6 +79,20 @@ describe("orderByMru", () => {
 	it("ignores MRU ids that are not candidates", () => {
 		const candidates = [task("a", 1), task("b", 2)];
 		expect(orderByMru(candidates, ["zzz", "b"]).map((t) => t.id)).toEqual(["b", "a"]);
+	});
+
+	it("orders never-visited tasks by updatedAt desc (worked-on today beats newly-created)", () => {
+		// `old` has the highest seq (newest-created) but a stale updatedAt; `worked`
+		// was created earlier yet updated today → it must rank first.
+		const worked = { ...task("worked", 1), updatedAt: "2026-07-06T10:00:00.000Z" };
+		const old = { ...task("old", 9), updatedAt: "2026-06-01T10:00:00.000Z" };
+		expect(orderByMru([old, worked], []).map((t) => t.id)).toEqual(["worked", "old"]);
+	});
+
+	it("falls back to seq when updatedAt is blank/equal", () => {
+		// Both blank updatedAt → seq desc decides.
+		const candidates = [task("a", 1), task("b", 2), task("c", 3)];
+		expect(orderByMru(candidates, []).map((t) => t.id)).toEqual(["c", "b", "a"]);
 	});
 });
 

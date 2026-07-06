@@ -483,9 +483,10 @@ function App() {
 		return { projects: ordered, shortcutIndexById };
 	}, [state.projects, showProjectSwitch]);
 
-	// Cmd+K task rows: every active task across all projects, most-recently-visited
-	// first. `switcher.globalTasks` is already kept live (it powers the Option+Tab
-	// switcher); we just filter to active statuses and re-order by the MRU list.
+	// Cmd+K task rows: every active task across all projects, ordered by recency —
+	// session-visited first (MRU), then the rest by most-recently-updated (see
+	// orderByMru). `switcher.globalTasks` is already kept live (it powers the
+	// Option+Tab switcher); we just filter to active statuses and re-order.
 	const goToTasks = useMemo(
 		() => orderByMru(switcher.globalTasks.filter((t) => ACTIVE_STATUSES.includes(t.status)), state.taskMru),
 		[switcher.globalTasks, state.taskMru],

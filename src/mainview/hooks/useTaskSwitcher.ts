@@ -28,8 +28,13 @@ interface UseTaskSwitcherArgs {
 }
 
 /**
- * Order candidates by MRU (newest first), then append never-visited tasks by
- * descending seq so every active task is still reachable.
+ * Order candidates by session MRU (newest-visited first), then append the tasks
+ * not visited this session by **most-recently-updated** first — `updatedAt` is
+ * bumped by status moves, notes, overview edits and agent activity, so a task
+ * worked on today ranks above one merely created recently. `seq` breaks ties and
+ * covers rows with no/blank `updatedAt`. This keeps ordering meaningful even when
+ * the MRU is empty (fresh browser tab / after an app restart), where every task
+ * falls through to this branch.
  */
 export function orderByMru(candidates: Task[], mru: string[]): Task[] {
 	const byId = new Map(candidates.map((t) => [t.id, t]));
@@ -44,7 +49,12 @@ export function orderByMru(candidates: Task[], mru: string[]): Task[] {
 	}
 	const rest = candidates
 		.filter((t) => !used.has(t.id))
-		.sort((a, b) => b.seq - a.seq);
+		.sort((a, b) => {
+			const ta = Date.parse(a.updatedAt) || 0;
+			const tb = Date.parse(b.updatedAt) || 0;
+			if (tb !== ta) return tb - ta;
+			return b.seq - a.seq;
+		});
 	return [...ordered, ...rest];
 }
 

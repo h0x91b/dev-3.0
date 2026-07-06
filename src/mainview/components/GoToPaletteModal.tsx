@@ -36,8 +36,9 @@ interface GoToPaletteModalProps {
 
 /**
  * Cmd/Ctrl+K quick-switch palette (navigation). One shared shell lists two
- * sections, **Tasks first** (all active tasks across projects, most-recently-
- * visited first — the palette's primary job is fast task switching) then
+ * sections, **Tasks first** (all active tasks across projects, ordered by
+ * recency — session visits first, then most-recently-updated; the palette's
+ * primary job is fast task switching) then
  * **Projects** (fuzzy-jump by name, ⌘N badge mirrors Cmd+1..9). Type to
  * fuzzy-filter both; Enter opens the highlighted match. This realizes the
  * manifest's "Cmd+K absorbs task search" direction — the type-search

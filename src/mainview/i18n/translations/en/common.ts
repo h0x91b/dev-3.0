@@ -86,7 +86,7 @@ const common = {
 	"goTo.noResults": "No matching projects or tasks",
 	"goTo.hint": "↑↓ move · ⏎ open · esc cancel",
 	"goTo.sectionProjects": "Projects",
-	"goTo.sectionTasks": "Tasks · recently visited",
+	"goTo.sectionTasks": "Tasks · recent",
 
 	// Command (action) palette — Cmd/Ctrl+Shift+P
 	"commandPalette.title": "Run a command",
