@@ -210,6 +210,8 @@ const tips = {
 	"tip.automations.body": "Project Settings → Automations: recurring prompts (RRULE) that create real tasks — try the weekly “What I shipped” report.",
 	"tip.makefileTargets.title": "Run Makefile targets",
 	"tip.makefileTargets.body": "The ƒ Scripts button also lists your Makefile targets — pick one to run make <target> in a live pane.",
+	"tip.cliDoctor.title": "Diagnose your install",
+	"tip.cliDoctor.body": "Something off after an update? Run `dev3 doctor` in any terminal — it checks the app, tmux and Homebrew and prints exact fix commands.",
 } as const;
 
 export default tips;
