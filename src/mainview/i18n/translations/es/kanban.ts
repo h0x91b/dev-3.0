@@ -124,7 +124,15 @@ const kanban = {
 	"launch.startIn": "Iniciar en…",
 	"launch.startInHint": "Programar este lanzamiento para más tarde",
 	"launch.schedule": "Programar",
-	"launch.delayPlaceholder": "ej. 1h30m",
+	"launch.modeIn": "En…",
+	"launch.modeAt": "A la hora",
+	"launch.hours": "Horas",
+	"launch.minutes": "Minutos",
+	"launch.atTimeLabel": "Hora local",
+	"launch.today": "hoy",
+	"launch.tomorrow": "mañana",
+	"launch.scheduleHint": "Se lanzará {day} a las {time} — en {rel}",
+	"launch.scheduleInvalid": "Elige primero un retraso o una hora",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Lanzar agente",

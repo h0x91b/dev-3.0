@@ -1,7 +1,7 @@
 import { useState, useEffect, type Dispatch } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
-import { parseDelay } from "../../shared/duration";
+import { formatCountdown } from "../../shared/duration";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -33,6 +33,82 @@ interface LaunchVariantsModalProps {
 	 * (the next modal open then reflects the new default).
 	 */
 	onGlobalSettingsChange?: (settings: GlobalSettings) => void;
+}
+
+/** Format a Date as the `HH:MM` value expected by `<input type="time">`. */
+function toTimeInputValue(d: Date): string {
+	return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * `− [ n ] +` stepper for the "in X" schedule mode. Buttons step by `step`
+ * (minutes wrap around, hours clamp); typing accepts any value in range and
+ * ArrowUp/ArrowDown mirror the buttons.
+ */
+function NumberStepper({
+	label,
+	value,
+	max,
+	step,
+	wrap = false,
+	disabled = false,
+	onChange,
+}: {
+	label: string;
+	value: number;
+	max: number;
+	step: number;
+	wrap?: boolean;
+	disabled?: boolean;
+	onChange: (v: number) => void;
+}) {
+	const bump = (dir: 1 | -1) => {
+		const next = value + dir * step;
+		if (wrap) {
+			const range = max + 1;
+			onChange(((next % range) + range) % range);
+		} else {
+			onChange(Math.min(max, Math.max(0, next)));
+		}
+	};
+	return (
+		<div className="flex items-center gap-2">
+			<span className="text-fg-3 text-xs">{label}</span>
+			<div className="flex items-center gap-1">
+				<button
+					onClick={() => bump(-1)}
+					disabled={disabled}
+					aria-label={`${label} −`}
+					className="w-8 h-8 rounded-lg border border-edge text-fg-3 hover:text-fg hover:border-edge-active transition-colors text-base leading-none disabled:opacity-50"
+				>
+					−
+				</button>
+				<input
+					value={String(value)}
+					disabled={disabled}
+					inputMode="numeric"
+					aria-label={label}
+					onChange={(e) => {
+						const digits = e.target.value.replace(/\D/g, "");
+						onChange(Math.min(max, digits ? Number.parseInt(digits, 10) : 0));
+					}}
+					onKeyDown={(e) => {
+						if (e.key === "ArrowUp") { e.preventDefault(); bump(1); }
+						if (e.key === "ArrowDown") { e.preventDefault(); bump(-1); }
+					}}
+					className="w-12 h-8 bg-transparent border border-edge rounded-lg text-center text-fg text-base outline-none focus:border-accent"
+				/>
+				<button
+					onClick={() => bump(1)}
+					disabled={disabled}
+					aria-label={`${label} +`}
+					className="w-8 h-8 rounded-lg border border-edge text-fg-3 hover:text-fg hover:border-edge-active transition-colors text-base leading-none disabled:opacity-50"
+				>
+					+
+				</button>
+			</div>
+		</div>
+	);
 }
 
 function LaunchVariantsModal({
@@ -183,13 +259,43 @@ function LaunchVariantsModal({
 
 	// "Start in…" — persist a deferred launch instead of spawning now. The task
 	// stays in To Do with a countdown badge; the bun scheduler fires the exact
-	// variants captured here when the delay elapses.
+	// variants captured here when the moment arrives. Two modes:
+	//   "in" — relative delay via hour/minute steppers (e.g. 3h 45m);
+	//   "at" — absolute local wall-clock time; next occurrence (today if still
+	//          ahead, otherwise tomorrow).
 	const [scheduleOpen, setScheduleOpen] = useState(false);
-	const [delayText, setDelayText] = useState("1h");
-	const delayMs = parseDelay(delayText);
+	const [scheduleMode, setScheduleMode] = useState<"in" | "at">("in");
+	const [delayHours, setDelayHours] = useState(1);
+	const [delayMinutes, setDelayMinutes] = useState(0);
+	const [atTime, setAtTime] = useState(() => toTimeInputValue(new Date(Date.now() + 3_600_000)));
+	// Re-render every 30s while the picker is open so the today/tomorrow hint
+	// and countdown stay honest (the actual target is resolved at submit time).
+	const [nowTick, setNowTick] = useState(() => Date.now());
+	useEffect(() => {
+		if (!scheduleOpen) return;
+		setNowTick(Date.now());
+		const timer = setInterval(() => setNowTick(Date.now()), 30_000);
+		return () => clearInterval(timer);
+	}, [scheduleOpen]);
+
+	/** Resolve the picker state to a concrete launch Date (null = invalid/zero). */
+	function resolveScheduleTarget(nowMs: number): Date | null {
+		if (scheduleMode === "in") {
+			const ms = delayHours * 3_600_000 + delayMinutes * 60_000;
+			return ms > 0 ? new Date(nowMs + ms) : null;
+		}
+		const m = /^(\d{1,2}):(\d{2})$/.exec(atTime);
+		if (!m) return null;
+		const d = new Date(nowMs);
+		d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+		if (d.getTime() <= nowMs) d.setDate(d.getDate() + 1); // already passed → tomorrow
+		return d;
+	}
 
 	async function handleSchedule() {
-		if (!delayMs) return;
+		const target = resolveScheduleTarget(Date.now());
+		if (!target) return;
+		const delayMs = target.getTime() - Date.now();
 		setLaunching(true);
 		setError(null);
 		try {
@@ -197,18 +303,35 @@ function LaunchVariantsModal({
 			const updated = await api.request.scheduleTaskLaunch({
 				taskId: task.id,
 				projectId: project.id,
-				at: new Date(Date.now() + delayMs).toISOString(),
+				at: target.toISOString(),
 				targetStatus,
 				variants,
 			});
 			dispatch({ type: "updateTask", task: updated });
-			trackEvent("task_launch_scheduled", { project_id: project.id, variant_count: variants.length, delay_ms: delayMs });
+			trackEvent("task_launch_scheduled", {
+				project_id: project.id,
+				variant_count: variants.length,
+				delay_ms: delayMs,
+				schedule_mode: scheduleMode,
+			});
 			onClose();
 		} catch (err) {
 			setError(String(err));
 		}
 		setLaunching(false);
 	}
+
+	const scheduleTarget = scheduleOpen ? resolveScheduleTarget(nowTick) : null;
+	const scheduleHint = (() => {
+		if (!scheduleOpen) return null;
+		if (!scheduleTarget) return t("launch.scheduleInvalid");
+		const now = new Date(nowTick);
+		const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+		const dayDiff = Math.round((startOfDay(scheduleTarget) - startOfDay(now)) / 86_400_000);
+		const day = dayDiff === 0 ? t("launch.today") : dayDiff === 1 ? t("launch.tomorrow") : scheduleTarget.toLocaleDateString();
+		const time = scheduleTarget.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+		return t("launch.scheduleHint", { day, time, rel: formatCountdown(scheduleTarget.getTime() - nowTick) });
+	})();
 
 	const isAddVariant = mode === "addAttempts";
 	const title = isAddVariant ? t("launch.retryTitle") : t("launch.title");
@@ -327,6 +450,71 @@ function LaunchVariantsModal({
 					</div>
 				)}
 
+				{/* Schedule picker — roomy panel instead of a cramped footer row */}
+				{!isAddVariant && scheduleOpen && (
+					<div className="px-6 py-3 border-t border-edge bg-raised/40">
+						{/* Single compact row: mode switch + inputs, no labels above */}
+						<div className="flex items-center gap-4">
+							<div className="inline-flex h-8 items-center rounded-lg border border-edge p-0.5">
+								{(["in", "at"] as const).map((m) => (
+									<button
+										key={m}
+										onClick={() => setScheduleMode(m)}
+										className={`text-sm px-2.5 py-1 rounded-md transition-colors ${
+											scheduleMode === m
+												? "bg-elevated text-fg font-medium"
+												: "text-fg-3 hover:text-fg"
+										}`}
+									>
+										{m === "in" ? t("launch.modeIn") : t("launch.modeAt")}
+									</button>
+								))}
+							</div>
+
+							{scheduleMode === "in" ? (
+								<div className="flex items-center gap-4">
+									<NumberStepper
+										label={t("launch.hours")}
+										value={delayHours}
+										max={99}
+										step={1}
+										disabled={launching}
+										onChange={setDelayHours}
+									/>
+									<NumberStepper
+										label={t("launch.minutes")}
+										value={delayMinutes}
+										max={59}
+										step={5}
+										wrap
+										disabled={launching}
+										onChange={setDelayMinutes}
+									/>
+								</div>
+							) : (
+								<input
+									type="time"
+									value={atTime}
+									disabled={launching}
+									aria-label={t("launch.atTimeLabel")}
+									onChange={(e) => setAtTime(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter" && scheduleTarget && !launching) handleSchedule();
+									}}
+									className="bg-transparent border border-edge rounded-lg px-2.5 h-8 text-fg text-base outline-none focus:border-accent"
+								/>
+							)}
+						</div>
+
+						<p className={`text-sm mt-2 ${scheduleTarget ? "text-fg-3" : "text-danger"}`}>
+							{scheduleHint}
+							{scheduleMode === "at" && scheduleTarget && (
+								<span className="text-fg-3"> · {t("launch.atTimeLabel").toLowerCase()}</span>
+							)}
+						</p>
+					</div>
+				)}
+
 				{/* Footer */}
 				<div className="px-6 py-4 border-t border-edge flex items-center justify-between">
 					{isVirtual ? (
@@ -349,56 +537,32 @@ function LaunchVariantsModal({
 							{t("kanban.cancel")}
 						</button>
 						{!isAddVariant && (
-							scheduleOpen ? (
-								<div className="flex items-center gap-2">
-									{["15m", "1h", "3h"].map((preset) => (
-										<button
-											key={preset}
-											onClick={() => setDelayText(preset)}
-											className={`text-xs px-2 py-1 rounded-md border transition-colors ${
-												delayText === preset
-													? "border-accent text-accent"
-													: "border-edge text-fg-3 hover:text-fg"
-											}`}
-										>
-											{preset}
-										</button>
-									))}
-									<input
-										value={delayText}
-										onChange={(e) => setDelayText(e.target.value)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" && delayMs && !launching) handleSchedule();
-										}}
-										placeholder={t("launch.delayPlaceholder")}
-										className={`w-20 bg-transparent border rounded-md px-2 py-1 text-sm text-fg outline-none focus:border-accent ${
-											delayMs ? "border-edge" : "border-danger"
-										}`}
-									/>
-									<button
-										onClick={handleSchedule}
-										disabled={launching || !delayMs || variants.length === 0}
-										className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50"
-									>
-										{t("launch.schedule")}
-									</button>
-								</div>
-							) : (
-								<button
-									onClick={() => setScheduleOpen(true)}
-									disabled={launching}
-									className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5 flex items-center gap-1.5"
-									title={t("launch.startInHint")}
-								>
-									<svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-										<circle cx="12" cy="12" r="9" />
-										<path d="M12 7v5l3 2" />
-									</svg>
-									{t("launch.startIn")}
-								</button>
-							)
+							<button
+								onClick={() => setScheduleOpen((v) => !v)}
+								disabled={launching}
+								className={`text-sm transition-colors px-3 py-1.5 rounded-lg flex items-center gap-1.5 border ${
+									scheduleOpen
+										? "text-accent border-accent/40 bg-accent/10"
+										: "text-fg-3 hover:text-fg border-transparent"
+								}`}
+								title={t("launch.startInHint")}
+							>
+								<svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+									<circle cx="12" cy="12" r="9" />
+									<path d="M12 7v5l3 2" />
+								</svg>
+								{t("launch.startIn")}
+							</button>
 						)}
-						{!scheduleOpen && (
+						{scheduleOpen ? (
+							<button
+								onClick={handleSchedule}
+								disabled={launching || !scheduleTarget || variants.length === 0}
+								className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+							>
+								{t("launch.schedule")}
+							</button>
+						) : (
 							<button
 								onClick={handleLaunch}
 								disabled={launching || variants.length === 0}

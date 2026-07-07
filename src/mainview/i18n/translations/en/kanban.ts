@@ -124,7 +124,15 @@ const kanban = {
 	"launch.startIn": "Start in…",
 	"launch.startInHint": "Schedule this launch for later",
 	"launch.schedule": "Schedule",
-	"launch.delayPlaceholder": "e.g. 1h30m",
+	"launch.modeIn": "In…",
+	"launch.modeAt": "At time",
+	"launch.hours": "Hours",
+	"launch.minutes": "Minutes",
+	"launch.atTimeLabel": "Local time",
+	"launch.today": "today",
+	"launch.tomorrow": "tomorrow",
+	"launch.scheduleHint": "Will launch {day} at {time} — in {rel}",
+	"launch.scheduleInvalid": "Pick a delay or time first",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Spawn Agent",

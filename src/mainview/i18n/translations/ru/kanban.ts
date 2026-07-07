@@ -126,7 +126,15 @@ const kanban = {
 	"launch.startIn": "Запустить через…",
 	"launch.startInHint": "Отложить запуск на потом",
 	"launch.schedule": "Запланировать",
-	"launch.delayPlaceholder": "напр. 1h30m",
+	"launch.modeIn": "Через…",
+	"launch.modeAt": "Ко времени",
+	"launch.hours": "Часы",
+	"launch.minutes": "Минуты",
+	"launch.atTimeLabel": "Локальное время",
+	"launch.today": "сегодня",
+	"launch.tomorrow": "завтра",
+	"launch.scheduleHint": "Запустится {day} в {time} — через {rel}",
+	"launch.scheduleInvalid": "Укажите задержку или время",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Запустить агента",
