@@ -38,7 +38,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
-import { getProjectAccessTimes, getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
+import { getProjectAccessTimes, getRecentProjectIds, orderByRecency, recordProjectBoardView, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
@@ -325,6 +325,9 @@ function App() {
 		(route: Route) => {
 			const projectId = projectIdForRoute(route);
 			if (projectId) recordProjectJump(projectId);
+			// Stamp a project board-view access (Cmd+K "Both" interleave) ONLY when
+			// landing on the project's board itself — not when opening a task in it.
+			if (route.screen === "project" && !route.activeTaskId) recordProjectBoardView(route.projectId);
 			dispatch({ type: "navigate", route });
 		},
 		[dispatch],

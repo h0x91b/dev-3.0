@@ -7,10 +7,11 @@
 // localStorage and capped so it never grows unbounded.
 
 const LS_KEY = "dev3-recent-projects-v1";
-// Parallel map of projectId → last-access epoch ms, so the Cmd+K "Both" mode can
-// interleave projects into the task date-buckets by *when they were last opened*
-// (visiting a project kanban / a task within it counts as an access). Kept
-// separate from the ordered id list above for back-compat.
+// Parallel map of projectId → last-BOARD-VIEW epoch ms, so the Cmd+K "Both" mode
+// can interleave a project into the task date-buckets by *when its board was last
+// displayed*. Only viewing the whole project's board counts — opening a task
+// inside a project does NOT (the task is already its own row in the list). Kept
+// separate from the ordered id list above.
 const LS_TIMES_KEY = "dev3-recent-projects-at-v1";
 const MAX_ENTRIES = 16;
 
@@ -44,17 +45,39 @@ export function getProjectAccessTimes(): Record<string, number> {
 	}
 }
 
-/** Record a jump to `projectId`, moving it to the front of the MRU list and stamping its access time. */
+/**
+ * Record a jump to `projectId`, moving it to the front of the MRU list. Fired on
+ * ANY navigation that lands on a project (incl. opening a task in it) — this
+ * backs the Projects-mode ordering. It does NOT stamp the board-view access time
+ * (see `recordProjectBoardView`).
+ */
 export function recordProjectJump(projectId: string): void {
 	if (!projectId) return;
 	const next = [projectId, ...getRecentProjectIds().filter((id) => id !== projectId)].slice(0, MAX_ENTRIES);
 	try {
 		localStorage.setItem(LS_KEY, JSON.stringify(next));
-		// Stamp the access time, pruned to the ids we still retain.
+	} catch {
+		/* ignore — recency is best-effort */
+	}
+}
+
+/**
+ * Stamp `projectId`'s last-board-view time (for the Cmd+K "Both" interleave).
+ * Call this ONLY when the user displays the project's board itself — not when
+ * they open a task within the project. Caps the map to the 16 most-recent.
+ */
+export function recordProjectBoardView(projectId: string): void {
+	if (!projectId) return;
+	try {
 		const times = getProjectAccessTimes();
 		times[projectId] = Date.now();
-		const kept: Record<string, number> = {};
-		for (const id of next) if (times[id] !== undefined) kept[id] = times[id];
+		// Keep the just-viewed project (forced first, so it survives even when many
+		// views share a millisecond) plus the most-recent others, capped.
+		const kept = Object.fromEntries(
+			Object.entries(times)
+				.sort((a, b) => (a[0] === projectId ? -1 : b[0] === projectId ? 1 : b[1] - a[1]))
+				.slice(0, MAX_ENTRIES),
+		);
 		localStorage.setItem(LS_TIMES_KEY, JSON.stringify(kept));
 	} catch {
 		/* ignore — recency is best-effort */

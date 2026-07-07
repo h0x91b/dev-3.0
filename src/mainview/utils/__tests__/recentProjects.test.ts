@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { getProjectAccessTimes, getRecentProjectIds, orderByRecency, recordProjectJump } from "../recentProjects";
+import {
+	getProjectAccessTimes,
+	getRecentProjectIds,
+	orderByRecency,
+	recordProjectBoardView,
+	recordProjectJump,
+} from "../recentProjects";
 
 beforeEach(() => {
 	localStorage.clear();
@@ -47,25 +53,29 @@ describe("recentProjects storage", () => {
 	});
 });
 
-describe("project access times", () => {
+describe("project access times (board views)", () => {
 	it("returns an empty map when nothing is stored", () => {
 		expect(getProjectAccessTimes()).toEqual({});
 	});
 
-	it("stamps an access time on jump", () => {
+	it("stamps an access time on a board view", () => {
 		const before = Date.now();
-		recordProjectJump("a");
+		recordProjectBoardView("a");
 		const times = getProjectAccessTimes();
 		expect(times.a).toBeGreaterThanOrEqual(before);
 		expect(times.a).toBeLessThanOrEqual(Date.now());
 	});
 
-	it("prunes access times for ids dropped past the cap", () => {
-		for (let i = 0; i < 20; i++) recordProjectJump(`p${i}`);
+	it("does NOT stamp an access time on a plain jump (e.g. opening a task)", () => {
+		recordProjectJump("a");
+		expect(getProjectAccessTimes().a).toBeUndefined();
+	});
+
+	it("caps the access map at 16 and always keeps the most-recent board view", () => {
+		for (let i = 0; i < 20; i++) recordProjectBoardView(`p${i}`);
 		const times = getProjectAccessTimes();
 		expect(Object.keys(times)).toHaveLength(16);
-		expect(times.p19).toBeGreaterThan(0);
-		expect(times.p0).toBeUndefined(); // dropped with the oldest ids
+		expect(times.p19).toBeGreaterThan(0); // the just-viewed one survives the cap
 	});
 
 	it("tolerates corrupt / non-numeric storage", () => {
