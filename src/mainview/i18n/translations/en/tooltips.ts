@@ -18,6 +18,7 @@ export const tooltips = {
 	"ttip.header.reportBug": "Something in dev-3.0 misbehaves? File a GitHub issue right from here.",
 	"ttip.header.changelog": "What's new in dev-3.0 — features and fixes grouped by release day.",
 	"ttip.header.moreActions": "Actions that don't fit the toolbar at this window width live here.",
+	"ttip.header.tmuxSessions": "Long-running dev3 tmux sessions on this machine. Click to view, attach or kill them.",
 	"ttip.header.projectSettings":
 		"Everything project-level: lifecycle scripts, base branch, port allocation, custom columns, AI review.",
 	"ttip.header.globalSettings": "App-wide preferences: agents, appearance, behavior, language and integrations.",

@@ -54,7 +54,7 @@ describe("PreventSleepToggle", () => {
 		renderToggle();
 
 		const button = await screen.findByRole("button");
-		expect(button).toBeDisabled();
+		expect(button).toHaveAttribute("aria-disabled", "true");
 		expect(button).toHaveAttribute("aria-pressed", "true");
 
 		await userEvent.click(button);

@@ -701,17 +701,19 @@ describe("GlobalHeader — compact layout", () => {
 		expect(navigate).toHaveBeenCalledWith({ screen: "changelog" });
 	});
 
-	it("keeps labels and shows no overflow menu when roomy", () => {
+	it("keeps labels and folds changelog into the kebab when roomy", async () => {
 		mockMatchMedia(false);
+		const user = userEvent.setup();
 		renderHeader({ screen: "project", projectId: "p1" });
 		// Roomy layout keeps text labels (e.g. the project terminal's short
-		// "Terminal" label) and does not collapse actions into the overflow menu.
-		// Changelog/Report are icon-only by design now, and migrated to Tooltip,
-		// so assert Changelog by its accessible label (aria-label, no native title)
-		// rather than visible text.
+		// "Terminal" label). GitHub / Report / Changelog now always live in the
+		// kebab ("More") menu — there is no standalone changelog button anymore,
+		// so assert it via the opened menu instead.
 		expect(screen.getByText("Terminal")).toBeInTheDocument();
-		expect(screen.getByLabelText("View changelog")).toBeInTheDocument();
-		expect(screen.queryByLabelText("More")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("View changelog")).not.toBeInTheDocument();
+		const more = screen.getByLabelText("More");
+		await user.click(more);
+		expect(screen.getByText("Change Log")).toBeInTheDocument();
 	});
 });
 
@@ -900,6 +902,6 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		await user.click(screen.getByLabelText("More"));
 		// Git pull + tmux manager now live in the sheet's controls strip.
 		expect(screen.getByTestId("git-pull-button")).toBeInTheDocument();
-		expect(screen.getByTitle("tmux Sessions")).toBeInTheDocument();
+		expect(screen.getByLabelText("tmux Sessions")).toBeInTheDocument();
 	});
 });

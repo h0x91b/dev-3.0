@@ -71,7 +71,7 @@ describe("TmuxSessionManager", () => {
 		});
 
 		// Click the tmux sessions button to open popover
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		// Popover should show the project terminal entry
 		expect(screen.getByText("dev-3.0")).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe("TmuxSessionManager", () => {
 		});
 		expect(mockedApi.request.listTmuxSessions).toHaveBeenCalledTimes(1);
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		await waitFor(() => {
 			expect(screen.getByText("Project Terminal")).toBeInTheDocument();
@@ -108,7 +108,7 @@ describe("TmuxSessionManager", () => {
 		});
 
 		// Open popover
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		// Click on the project name to navigate
 		await user.click(screen.getByText("dev-3.0"));
@@ -129,7 +129,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 		await user.click(screen.getByText("Fix some bug"));
 
 		expect(navigate).toHaveBeenCalledWith({
@@ -149,7 +149,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		const row = screen.getByRole("button", { name: /dev-3\.0/i });
 		row.focus();
@@ -171,7 +171,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		const row = screen.getByRole("button", { name: /dev-3\.0/i });
 		row.focus();
@@ -193,7 +193,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 		await user.click(screen.getByText("Kill"));
 
 		expect(navigate).not.toHaveBeenCalled();
@@ -217,7 +217,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		// Click the copy button (shows tmux command text)
 		const copyBtn = screen.getByText(/tmux -L dev3 attach/);
@@ -235,7 +235,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		// The session name should be in accent color (indicating clickable)
 		const nameSpan = screen.getByText("dev-3.0");
@@ -256,7 +256,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		const copyBtn = screen.getByText(/tmux -L dev3 attach/).closest("button");
 		expect(copyBtn).not.toBeNull();
@@ -279,7 +279,7 @@ describe("TmuxSessionManager", () => {
 			expect(screen.getByText("1")).toBeInTheDocument();
 		});
 
-		await user.click(screen.getByTitle("tmux Sessions"));
+		await user.click(screen.getByLabelText("tmux Sessions"));
 
 		// Should show session name (not project name since it's undefined)
 		const nameEl = screen.getByText("dev3-pt-a1c9fe4e");

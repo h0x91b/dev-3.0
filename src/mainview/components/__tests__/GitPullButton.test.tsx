@@ -44,8 +44,8 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
-		expect(btn.getAttribute("title") || "").toMatch(/main/);
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
+		expect(btn.getAttribute("aria-label") || "").toMatch(/main/);
 	});
 
 	it("is enabled when the project is on master", async () => {
@@ -56,7 +56,7 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 	});
 
 	it("is disabled on feature branches", async () => {
@@ -68,9 +68,9 @@ describe("GitPullButton", () => {
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
 		await waitFor(() =>
-			expect(btn.getAttribute("title") || "").toMatch(/feat\/dev3-something/),
+			expect(btn.getAttribute("aria-label") || "").toMatch(/feat\/dev3-something/),
 		);
-		expect(btn).toBeDisabled();
+		expect(btn).toHaveAttribute("aria-disabled", "true");
 	});
 
 	it("is disabled on detached HEAD", async () => {
@@ -81,8 +81,8 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toBeDisabled());
-		expect(btn.getAttribute("title") || "").toMatch(/detached|Detached/);
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "true"));
+		expect(btn.getAttribute("aria-label") || "").toMatch(/detached|Detached/);
 	});
 
 	it("flashes 'Up to date' on the button and does NOT alert when already up to date", async () => {
@@ -99,7 +99,7 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(api.request.pullProjectMain).toHaveBeenCalledWith({ projectId: "p1" }));
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("up-to-date"));
@@ -121,7 +121,7 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
 		expect(btn.textContent || "").toMatch(/Pulled/);
@@ -142,7 +142,7 @@ describe("GitPullButton", () => {
 		);
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		// While pulling we show the same SVG spinner as the "checking for updates" header
 		// indicator instead of a spinning Nerd Font glyph — it spins cleanly around its own
@@ -177,7 +177,7 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("failed"));
 		expect(btn.textContent || "").toMatch(/Failed/);
@@ -208,7 +208,7 @@ describe("GitPullButton", () => {
 			});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		const retry = await screen.findByTestId("git-pull-error-retry");
 		await userEvent.click(retry);
@@ -240,7 +240,7 @@ describe("GitPullButton", () => {
 			rerender = r.rerender;
 		});
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await waitFor(() => expect(btn.getAttribute("data-pull-flash")).toBe("pulled"));
 		// Switch project — flash must reset immediately, not stick around for 3 seconds
@@ -278,7 +278,7 @@ describe("GitPullButton", () => {
 			rerender = r.rerender;
 		});
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		await screen.findByTestId("git-pull-error-text");
 		await act(async () => {
@@ -305,7 +305,7 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		await userEvent.click(btn);
 		const errorText = await screen.findByTestId("git-pull-error-text");
 		expect(errorText).toBeTruthy();
@@ -327,7 +327,7 @@ describe("GitPullButton", () => {
 		await waitFor(() => expect(btn.getAttribute("data-behind-origin")).toBe("3"));
 		expect(screen.getByTestId("git-pull-behind-dot")).toBeTruthy();
 		expect(btn.className).toMatch(/text-accent/);
-		expect(btn.getAttribute("title") || "").toMatch(/3 new commits on origin\/main/);
+		expect(btn.getAttribute("aria-label") || "").toMatch(/3 new commits on origin\/main/);
 	});
 
 	it("does not show the behind-origin dot when local main is up to date", async () => {
@@ -339,7 +339,7 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).not.toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "false"));
 		expect(btn.getAttribute("data-behind-origin")).toBeNull();
 		expect(screen.queryByTestId("git-pull-behind-dot")).toBeNull();
 		expect(btn.className).not.toMatch(/text-accent/);
@@ -382,7 +382,7 @@ describe("GitPullButton", () => {
 		});
 		await renderButton();
 		const btn = await screen.findByTestId("git-pull-button");
-		await waitFor(() => expect(btn).toBeDisabled());
+		await waitFor(() => expect(btn).toHaveAttribute("aria-disabled", "true"));
 		await userEvent.click(btn);
 		expect(api.request.pullProjectMain).not.toHaveBeenCalled();
 	});
