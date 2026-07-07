@@ -397,6 +397,24 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			console.log("[TerminalView] Terminal opened in DOM successfully");
 			termRef.current = term;
 
+			// ghostty marks the container contenteditable="true", so ANY focus on
+			// it (term.focus() after fit, ghostty's own canvas mousedown →
+			// parentElement.focus()) summons the on-screen keyboard on iOS/Android
+			// the moment a task opens. inputmode="none" keeps the element focusable
+			// (hardware keyboards unaffected) but suppresses the virtual keyboard;
+			// browser-mode typing goes through the hidden textarea instead.
+			if (!isElectrobun) {
+				containerRef.current.setAttribute("inputmode", "none");
+				// Our touch listeners are passive, so nothing preventDefaults a
+				// vertical drag: with the global `touch-action: manipulation` iOS
+				// still owns vertical panning — it rubber-bands the (unscrollable)
+				// page and aborts the gesture with touchcancel, killing the
+				// wheel-synthesis scroll. Opt the terminal out of native touch
+				// handling entirely; the pane carousel and our axis arbitration
+				// handle every gesture themselves.
+				containerRef.current.style.touchAction = "none";
+			}
+
 			// Stretch ghostty-web's hidden textarea over the canvas.
 			// Without this it's 1x1px in the corner, causing scroll jumps on focus.
 			const hiddenTextarea = containerRef.current.querySelector("textarea");
@@ -490,49 +508,142 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				}
 			}
 
-			// Translate touch events to mouse events for mobile terminal interaction.
-			// ghostty-web only listens for mousedown/mousemove/mouseup on the canvas,
-			// so touch events (taps) don't trigger mouse reporting to tmux/vim/etc.
+			// ghostty-web registers its OWN canvas listeners that grab focus on any
+			// interaction (mousedown → textarea.focus(), touchend → preventDefault +
+			// textarea.focus()), bypassing our compose-mode gating and summoning the
+			// OSK on every tap / pane-swipe. Capture-phase listeners on the container
+			// run BEFORE the canvas target listeners, so in compose mode we stop
+			// these events (real, browser-emulated after a tap, or synthesized by
+			// MobilePaneCarousel's selection-collapse) before ghostty sees them.
+			if (!isElectrobun) {
+				const containerEl = containerRef.current;
+				const blockInComposeMode = (e: Event) => {
+					if (touchComposeModeRef.current) e.stopPropagation();
+				};
+				for (const type of ["mousedown", "mouseup", "click", "touchend"]) {
+					containerEl.addEventListener(type, blockInComposeMode, { capture: true });
+				}
+			}
+
+			// Touch interaction on the terminal canvas. ghostty-web only understands
+			// mouse + wheel events, so we arbitrate one-finger gestures by axis:
+			//   • vertical drag → synthesized wheel events, so scrollback (and SGR
+			//     mouse scroll in vim/htop/Claude Code) scrolls in BOTH compose and
+			//     raw mode — previously nothing scrolled the terminal on a phone.
+			//   • tap (raw mode) → mousedown+mouseup at the point, then focus the
+			//     hidden textarea (the user gesture that opens the mobile keyboard).
+			//   • horizontal drag (raw mode) → drag-selection via mouse translation.
+			//     Clearly-horizontal swipes are claimed earlier by MobilePaneCarousel
+			//     (ancestor, capture) to switch panes.
+			// Compose mode dispatches NO mouse events and never focuses: taps must
+			// neither summon the OSK nor start a tmux/SGR drag-selection —
+			// TerminalComposer owns text entry; the ⌨ raw toggle restores direct
+			// interaction.
 			const canvas = containerRef.current.querySelector("canvas");
 			if (canvas) {
-				function touchToMouse(type: string, touch: Touch) {
-					const mouseEvent = new MouseEvent(type, {
-						clientX: touch.clientX,
-						clientY: touch.clientY,
+				const SCROLL_DECIDE_PX = 8; // movement before a drag locks scroll/select
+				let touchStartX = 0;
+				let touchStartY = 0;
+				let touchLastY = 0;
+				let touchGesture: "scroll" | "select" | "ignore" | null = null;
+
+				function dispatchMouse(type: string, clientX: number, clientY: number, buttons: number) {
+					canvas!.dispatchEvent(new MouseEvent(type, {
+						clientX,
+						clientY,
 						button: 0,
-						buttons: 1,
+						buttons,
 						bubbles: true,
 						cancelable: true,
-					});
-					canvas!.dispatchEvent(mouseEvent);
+					}));
 				}
 
 				canvas.addEventListener("touchstart", (e) => {
-					// Compose mode: taps must not summon the OSK or start a
-					// tmux/SGR drag-selection — the composer owns text entry and
-					// the ⌨ raw toggle restores direct interaction.
-					if (touchComposeModeRef.current) return;
-					if (e.touches.length === 1) {
-						touchToMouse("mousedown", e.touches[0]);
-						// Focus textarea on tap — user gesture opens mobile keyboard
+					if (e.touches.length !== 1) {
+						touchGesture = "ignore"; // pinch / multi-touch is never ours
+						return;
+					}
+					touchStartX = e.touches[0].clientX;
+					touchStartY = e.touches[0].clientY;
+					touchLastY = touchStartY;
+					touchGesture = null;
+				}, { passive: true });
+
+				canvas.addEventListener("touchmove", (e) => {
+					if (touchGesture === "ignore" || e.touches.length !== 1) return;
+					const touch = e.touches[0];
+					if (touchGesture === null) {
+						const dx = touch.clientX - touchStartX;
+						const dy = touch.clientY - touchStartY;
+						if (Math.abs(dy) > SCROLL_DECIDE_PX && Math.abs(dy) >= Math.abs(dx)) {
+							touchGesture = "scroll";
+						} else if (Math.abs(dx) > SCROLL_DECIDE_PX) {
+							if (touchComposeModeRef.current) {
+								// Horizontal in compose mode belongs to the pane swipe.
+								touchGesture = "ignore";
+								return;
+							}
+							touchGesture = "select";
+							// Anchor the selection where the finger first went down.
+							dispatchMouse("mousedown", touchStartX, touchStartY, 1);
+						} else {
+							return;
+						}
+					}
+					if (touchGesture === "scroll") {
+						// Natural scrolling: finger up (step<0) reveals newer content,
+						// which is wheel-down for ghostty — hence the sign flip.
+						const step = touch.clientY - touchLastY;
+						touchLastY = touch.clientY;
+						if (step !== 0) {
+							// Coordinates matter: for mouse-tracking apps (tmux/vim)
+							// the custom wheel handler maps clientX/Y to the cell that
+							// receives the SGR scroll — a default (0,0) would target
+							// the top-left cell, i.e. potentially the wrong tmux pane.
+							canvas!.dispatchEvent(new WheelEvent("wheel", {
+								deltaY: -step,
+								deltaMode: 0,
+								clientX: touch.clientX,
+								clientY: touch.clientY,
+								bubbles: true,
+								cancelable: true,
+							}));
+						}
+					} else if (touchGesture === "select") {
+						dispatchMouse("mousemove", touch.clientX, touch.clientY, 1);
+					}
+				}, { passive: true });
+
+				canvas.addEventListener("touchend", (e) => {
+					const gesture = touchGesture;
+					touchGesture = null;
+					if (e.changedTouches.length !== 1) return;
+					const touch = e.changedTouches[0];
+					if (gesture === "select") {
+						dispatchMouse("mouseup", touch.clientX, touch.clientY, 0);
+						return;
+					}
+					if (gesture === null && !touchComposeModeRef.current) {
+						// MobilePaneCarousel claims clearly-horizontal pane swipes in
+						// the capture phase and stops touchmove propagation, so a
+						// claimed swipe reaches us with the gesture still undecided.
+						// Total displacement tells it apart from a real tap — a swipe
+						// must not click, and must not summon the keyboard.
+						const dx = touch.clientX - touchStartX;
+						const dy = touch.clientY - touchStartY;
+						if (Math.hypot(dx, dy) > SCROLL_DECIDE_PX) return;
+						// Tap: a click for mouse-reporting apps (tmux/vim/htop)…
+						dispatchMouse("mousedown", touch.clientX, touch.clientY, 1);
+						dispatchMouse("mouseup", touch.clientX, touch.clientY, 0);
+						// …and the user gesture that opens the mobile keyboard (raw mode).
 						if (!isElectrobun && hiddenTextarea) {
 							hiddenTextarea.focus();
 						}
 					}
 				}, { passive: true });
 
-				canvas.addEventListener("touchend", (e) => {
-					if (touchComposeModeRef.current) return;
-					if (e.changedTouches.length === 1) {
-						touchToMouse("mouseup", e.changedTouches[0]);
-					}
-				}, { passive: true });
-
-				canvas.addEventListener("touchmove", (e) => {
-					if (touchComposeModeRef.current) return;
-					if (e.touches.length === 1) {
-						touchToMouse("mousemove", e.touches[0]);
-					}
+				canvas.addEventListener("touchcancel", () => {
+					touchGesture = null;
 				}, { passive: true });
 			}
 
@@ -555,7 +666,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 						try {
 							fitAddon!.fit();
 							fitAddon!.observeResize();
-							term.focus();
+							// Touch compose mode: never grab focus on entry — opening a
+							// task must not summon the on-screen keyboard. The composer
+							// (or the ⌨ raw toggle) asks for the keyboard explicitly.
+							if (!touchComposeModeRef.current) term.focus();
 							mouseCleanup = setupMouseTracking(term);
 							nativeSelectionClipboardCleanup = setupNativeSelectionClipboardBridge(term);
 
