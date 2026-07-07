@@ -123,6 +123,18 @@ const kanban = {
 	"launch.launchVariant": "Запустить",
 	"launch.launching": "Запускается...",
 	"launch.failedLaunch": "Не удалось запустить: {error}",
+	"launch.startIn": "Запустить через…",
+	"launch.startInHint": "Отложить запуск на потом",
+	"launch.schedule": "Запланировать",
+	"launch.modeIn": "Через…",
+	"launch.modeAt": "Ко времени",
+	"launch.hours": "Часы",
+	"launch.minutes": "Минуты",
+	"launch.atTimeLabel": "Локальное время",
+	"launch.today": "сегодня",
+	"launch.tomorrow": "завтра",
+	"launch.scheduleHint": "Запустится {day} в {time} — через {rel}",
+	"launch.scheduleInvalid": "Укажите задержку или время",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Запустить агента",
@@ -135,6 +147,10 @@ const kanban = {
 	"task.watch": "Следить",
 	"task.watching": "Слежу",
 	"task.watchTooltip": "Следить — уведомлять при смене статуса",
+	"task.scheduledTooltip": "Отложенный запуск — нажмите для опций",
+	"task.startNow": "Запустить сейчас",
+	"task.cancelSchedule": "Отменить запуск",
+	"task.scheduleCancelFailed": "Не удалось отменить запуск: {error}",
 	"task.unwatchTooltip": "Не следить — отключить уведомления",
 
 	// Pipeline

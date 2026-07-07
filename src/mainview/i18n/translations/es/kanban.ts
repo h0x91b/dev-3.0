@@ -121,6 +121,18 @@ const kanban = {
 	"launch.launchVariant": "Lanzar",
 	"launch.launching": "Lanzando...",
 	"launch.failedLaunch": "Error al lanzar: {error}",
+	"launch.startIn": "Iniciar en…",
+	"launch.startInHint": "Programar este lanzamiento para más tarde",
+	"launch.schedule": "Programar",
+	"launch.modeIn": "En…",
+	"launch.modeAt": "A la hora",
+	"launch.hours": "Horas",
+	"launch.minutes": "Minutos",
+	"launch.atTimeLabel": "Hora local",
+	"launch.today": "hoy",
+	"launch.tomorrow": "mañana",
+	"launch.scheduleHint": "Se lanzará {day} a las {time} — en {rel}",
+	"launch.scheduleInvalid": "Elige primero un retraso o una hora",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Lanzar agente",
@@ -133,6 +145,10 @@ const kanban = {
 	"task.watch": "Vigilar",
 	"task.watching": "Vigilando",
 	"task.watchTooltip": "Vigilar — notificar al cambiar estado",
+	"task.scheduledTooltip": "Lanzamiento programado — clic para opciones",
+	"task.startNow": "Iniciar ahora",
+	"task.cancelSchedule": "Cancelar programación",
+	"task.scheduleCancelFailed": "Error al cancelar la programación: {error}",
 	"task.unwatchTooltip": "Dejar de vigilar — detener notificaciones",
 
 	// Pipeline

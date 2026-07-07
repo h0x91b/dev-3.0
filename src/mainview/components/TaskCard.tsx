@@ -9,6 +9,7 @@ import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import type { TranslationKey } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
+import { formatCountdown } from "../../shared/duration";
 import { getStatusLabel } from "../utils/statusLabel";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useStatusColors } from "../hooks/useStatusColors";
@@ -92,6 +93,41 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const isActive = ACTIVE_STATUSES.includes(task.status);
 	const isCompleting = (moving || isMovingProp) && (task.status === "completed" || task.status === "cancelled");
 	const color = statusColors[task.status];
+
+	// Deferred launch ("Start in…") — countdown badge with Start now / Cancel.
+	// Only meaningful on todo cards; the field vanishes when the launch fires.
+	const sched = isTodo ? task.scheduledLaunch : null;
+	const [schedPopoverOpen, setSchedPopoverOpen] = useState(false);
+	const [, setSchedTick] = useState(0);
+	useEffect(() => {
+		if (!sched) return;
+		// Re-render every 30s so the countdown stays fresh without a per-second tick.
+		const id = setInterval(() => setSchedTick((n) => n + 1), 30_000);
+		return () => clearInterval(id);
+	}, [sched?.at]);
+
+	async function handleCancelSchedule(e: React.MouseEvent) {
+		e.stopPropagation();
+		setSchedPopoverOpen(false);
+		try {
+			const updated = await api.request.cancelScheduledLaunch({ taskId: task.id, projectId: project.id });
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			toast.error(t("task.scheduleCancelFailed", { error: String(err) }));
+		}
+	}
+
+	async function handleStartScheduledNow(e: React.MouseEvent) {
+		e.stopPropagation();
+		setSchedPopoverOpen(false);
+		try {
+			// Spawned/updated tasks arrive via the taskUpdated push broadcast;
+			// no local dispatch needed beyond kicking off the RPC.
+			await api.request.startScheduledLaunchNow({ taskId: task.id, projectId: project.id });
+		} catch (err) {
+			toast.error(t("launch.failedLaunch", { error: String(err) }));
+		}
+	}
 
 	// Close menu on click outside
 	useEffect(() => {
@@ -768,6 +804,44 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						</button>
 					);
 				})()}
+
+				{/* Deferred-launch countdown badge (todo cards with a pending "Start in…") */}
+				{sched && (
+					<div className="relative flex-shrink-0">
+						<Tooltip content={t("task.scheduledTooltip")}>
+							<button
+								data-testid="task-card-scheduled-badge"
+								onClick={(e) => { e.stopPropagation(); setSchedPopoverOpen(!schedPopoverOpen); }}
+								className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-accent transition-colors hover:bg-fg/5"
+							>
+								<svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+									<circle cx="12" cy="12" r="9" />
+									<path d="M12 7v5l3 2" />
+								</svg>
+								{formatCountdown(new Date(sched.at).getTime() - Date.now())}
+							</button>
+						</Tooltip>
+						{schedPopoverOpen && (
+							<div
+								className="absolute bottom-full left-0 mb-1 z-30 min-w-[10rem] rounded-lg border border-edge bg-elevated shadow-lg py-1"
+								onClick={(e) => e.stopPropagation()}
+							>
+								<button
+									onClick={handleStartScheduledNow}
+									className="w-full text-left px-3 py-1.5 text-xs text-fg hover:bg-fg/5 transition-colors"
+								>
+									{t("task.startNow")}
+								</button>
+								<button
+									onClick={handleCancelSchedule}
+									className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-fg/5 transition-colors"
+								>
+									{t("task.cancelSchedule")}
+								</button>
+							</div>
+						)}
+					</div>
+				)}
 
 				{/* PR + CI/review badges for non-active cards */}
 				{!isActive && prBadge}

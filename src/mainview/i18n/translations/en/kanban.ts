@@ -121,6 +121,18 @@ const kanban = {
 	"launch.launchVariant": "Launch",
 	"launch.launching": "Launching...",
 	"launch.failedLaunch": "Failed to launch: {error}",
+	"launch.startIn": "Start in…",
+	"launch.startInHint": "Schedule this launch for later",
+	"launch.schedule": "Schedule",
+	"launch.modeIn": "In…",
+	"launch.modeAt": "At time",
+	"launch.hours": "Hours",
+	"launch.minutes": "Minutes",
+	"launch.atTimeLabel": "Local time",
+	"launch.today": "today",
+	"launch.tomorrow": "tomorrow",
+	"launch.scheduleHint": "Will launch {day} at {time} — in {rel}",
+	"launch.scheduleInvalid": "Pick a delay or time first",
 
 	// SpawnAgentModal
 	"spawnAgent.title": "Spawn Agent",
@@ -133,6 +145,10 @@ const kanban = {
 	"task.watch": "Watch",
 	"task.watching": "Watching",
 	"task.watchTooltip": "Watch — notify on status changes",
+	"task.scheduledTooltip": "Scheduled launch — click for options",
+	"task.startNow": "Start now",
+	"task.cancelSchedule": "Cancel schedule",
+	"task.scheduleCancelFailed": "Failed to cancel schedule: {error}",
 	"task.unwatchTooltip": "Unwatch — stop notifications",
 
 	// Pipeline

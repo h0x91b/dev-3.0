@@ -421,6 +421,11 @@ startRateLimitMonitor((name, payload) => {
 const { startAutomationsScheduler } = await import("./automations-scheduler");
 startAutomationsScheduler();
 
+// Start the scheduled-launch scheduler ("Start in…" deferred task launches).
+// One-shot fires; the first tick catches up launches that came due offline.
+const { startScheduledLaunchScheduler } = await import("./scheduled-launch-scheduler");
+startScheduledLaunchScheduler();
+
 // Wire PTY death notifications
 setOnPtyDied((sessionKey) => {
 	try {
