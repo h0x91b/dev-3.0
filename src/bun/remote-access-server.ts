@@ -12,7 +12,7 @@
  *   - QR code generation for easy mobile access
  */
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, readFileSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
@@ -99,9 +99,12 @@ function getStaticRoot(): string {
 	return root;
 }
 
-/** Exported for testing. */
-export async function serveStatic(pathname: string): Promise<Response | null> {
-	const staticRoot = getStaticRoot();
+/**
+ * Exported for testing. `staticRootOverride` lets tests point at a temp dir
+ * without going through the lazily-resolved bundle path.
+ */
+export async function serveStatic(pathname: string, staticRootOverride?: string): Promise<Response | null> {
+	const staticRoot = staticRootOverride ?? getStaticRoot();
 	let filePath = resolve(staticRoot, "." + pathname);
 
 	// Reject any path that escapes the static root (path traversal)
@@ -141,7 +144,20 @@ export async function serveStatic(pathname: string): Promise<Response | null> {
 		});
 	}
 
-	return new Response(file, {
+	// Materialize the file into memory instead of handing Bun.serve a raw
+	// `Bun.file` blob. When the body is a Bun.file, Bun serves large files via
+	// the zero-copy sendfile(2) fast-path — and on macOS that path drops the
+	// HTTP response status line + headers when the socket is a real network
+	// interface (LAN), so the client receives a header-less body and rejects it
+	// with ERR_INVALID_HTTP_RESPONSE. Loopback (127.0.0.1 / localhost — the path
+	// the Cloudflare tunnel origin uses) is unaffected, which is exactly why the
+	// blank-page bug only reproduced over direct LAN access and vanished behind
+	// Cloudflare. Reading the bytes up front bypasses sendfile entirely.
+	// See decisions/113-remote-static-sendfile-lan-headerless.md. readFileSync
+	// returns an in-memory Buffer — a body Bun.serve never routes through
+	// sendfile, unlike a Bun.file blob backed by an fd.
+	const body = readFileSync(filePath);
+	return new Response(body, {
 		headers: {
 			"Content-Type": contentType,
 			"Cache-Control": "no-cache, no-store, must-revalidate",
