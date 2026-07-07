@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { CLI_EXIT_CODE_INTERNAL_ERROR } from "../../shared/cli-exit-codes";
 import { isEpipeError } from "../epipe";
 
 const FIXTURE = resolve(import.meta.dirname, "fixtures/epipe-writer.ts");
@@ -59,5 +60,15 @@ describe("broken-pipe guard (subprocess)", () => {
 		const { code, stderr } = runBrokenPipe(true);
 		expect(code).toBe(0);
 		expect(stderr).toBe("");
+	}, 20_000);
+
+	// A guarded process must NOT swallow non-EPIPE crashes as success, and must
+	// exit with the documented internal-error code (4) — rethrowing from the
+	// uncaughtException listener would make Bun exit 7, colliding with
+	// CLI_EXIT_CODE_DOCTOR_PROBLEMS.
+	it("prints non-EPIPE uncaught exceptions and exits with the internal-error code", () => {
+		const res = spawnSync(BUN, [FIXTURE, "--guard", "--boom"], { encoding: "utf8" });
+		expect(res.stderr).toContain("boom-not-epipe");
+		expect(res.status).toBe(CLI_EXIT_CODE_INTERNAL_ERROR);
 	}, 20_000);
 });

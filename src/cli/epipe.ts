@@ -1,4 +1,4 @@
-import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
+import { CLI_EXIT_CODE_INTERNAL_ERROR, CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 
 /**
  * True when `err` is a broken-pipe (EPIPE) error, however it surfaced — a thrown
@@ -19,12 +19,14 @@ export function isEpipeError(err: unknown): boolean {
  * otherwise-clean tool output (reported twice: 2026-07-04 and 2026-07-05).
  *
  * We swallow EPIPE wherever it can appear and exit 0 silently — the consumer
- * asked us to stop, so a clean exit is correct. Every other error keeps its
- * existing behavior (rethrown → the normal crash / fatal handling path).
+ * asked us to stop, so a clean exit is correct. Every other error is printed
+ * and exits with the documented internal-error code. (Rethrowing from an
+ * uncaughtException listener is NOT an option: Bun then exits with code 7,
+ * which collides with CLI_EXIT_CODE_DOCTOR_PROBLEMS in the exit-code contract.)
  *
  * NOT installed for `dev3 remote` / `dev3 gui`: those are long-running and
  * register their own crash handlers that log-and-continue, so an extra
- * rethrowing uncaughtException listener would defeat that (see main.ts).
+ * exiting uncaughtException listener would defeat that (see main.ts).
  */
 export function installEpipeGuard(): void {
 	const swallowEpipe = (err: unknown): void => {
@@ -32,8 +34,10 @@ export function installEpipeGuard(): void {
 			// The reader is gone; abandon the rest of the output and exit cleanly.
 			process.exit(CLI_EXIT_CODE_SUCCESS);
 		}
-		// Preserve default behavior for anything that is not a broken pipe.
-		throw err;
+		// Anything that is not a broken pipe is a genuine crash: surface it and
+		// exit with the documented internal-error code.
+		console.error(err);
+		process.exit(CLI_EXIT_CODE_INTERNAL_ERROR);
 	};
 	// Async 'error' events (a buffered flush fails after the reader closed).
 	process.stdout.on("error", swallowEpipe);

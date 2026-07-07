@@ -22,10 +22,13 @@ production signal.
 
 Added `src/cli/epipe.ts`: `isEpipeError()` + `installEpipeGuard()`. The guard registers
 `process.stdout`/`process.stderr` `'error'` listeners and an `uncaughtException` handler that
-`process.exit(0)` on EPIPE and rethrow everything else (preserving normal fatal handling).
+`process.exit(0)` on EPIPE; any other error is printed and exits with
+`CLI_EXIT_CODE_INTERNAL_ERROR` (4). Rethrowing from the `uncaughtException` listener was
+rejected: Bun then terminates with exit code 7, which collides with
+`CLI_EXIT_CODE_DOCTOR_PROBLEMS` in the documented exit-code contract.
 `src/cli/main.ts` installs it at the top of `main()` for every command **except** `remote`
-and `gui` (long-running; they register their own log-and-continue crash handlers, which a
-rethrowing listener would defeat), and `main().catch` also exits 0 on an EPIPE rejection.
+and `gui` (long-running; they register their own log-and-continue crash handlers, which an
+exiting listener would defeat), and `main().catch` also exits 0 on an EPIPE rejection.
 
 The guard matches **only** `code === "EPIPE"`, deliberately not `ECONNRESET`/`ENOTCONN`:
 those can also come from the app Unix-socket client, and swallowing them globally would mask
