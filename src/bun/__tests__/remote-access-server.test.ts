@@ -133,6 +133,53 @@ describe("serveStatic path traversal protection", () => {
 });
 
 // ================================================================
+// serveStatic — real function (materialized body, decision 113)
+// ================================================================
+
+import { serveStatic } from "../remote-access-server";
+
+describe("serveStatic (real function)", () => {
+	// Regression guard for decision 113: static assets are served from an
+	// in-memory buffer (await file.bytes()), never a raw Bun.file blob. A raw
+	// Bun.file lets Bun.serve take the zero-copy sendfile(2) path, which on macOS
+	// drops the HTTP response head over a real LAN socket (ERR_INVALID_HTTP_RESPONSE
+	// → blank page; Cloudflare's loopback origin masked it). The socket-level
+	// framing can't be reproduced in a unit test, so we lock in that serveStatic
+	// yields a complete, correct response for the JS bundle path.
+	it("serves a JS asset with the right content-type and the full body intact", async () => {
+		const js = "const x = 1;\n".repeat(2000); // large enough to be a realistic bundle
+		writeFileSync(join(testStaticRoot, "assets", "big.js"), js);
+		const resp = await serveStatic("/assets/big.js", testStaticRoot);
+		expect(resp).not.toBeNull();
+		expect(resp!.headers.get("content-type")).toBe("application/javascript; charset=utf-8");
+		expect(await resp!.text()).toBe(js);
+	});
+
+	it("injects the theme bootstrap into an HTML file", async () => {
+		const resp = await serveStatic("/index.html", testStaticRoot);
+		expect(resp).not.toBeNull();
+		expect(resp!.headers.get("content-type")).toBe("text/html; charset=utf-8");
+		expect(await resp!.text()).toContain("window.__DEV3_INITIAL_THEME__");
+	});
+
+	it("serves index.html when the path resolves to a directory", async () => {
+		const resp = await serveStatic("/subdir", testStaticRoot);
+		expect(resp).not.toBeNull();
+		expect(await resp!.text()).toContain("sub");
+	});
+
+	it("returns null for a missing file", async () => {
+		const resp = await serveStatic("/assets/nope.js", testStaticRoot);
+		expect(resp).toBeNull();
+	});
+
+	it("returns null for a path escaping the static root", async () => {
+		const resp = await serveStatic("/../../../etc/passwd", testStaticRoot);
+		expect(resp).toBeNull();
+	});
+});
+
+// ================================================================
 // Auth endpoints
 // ================================================================
 
