@@ -623,62 +623,10 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{/* Tmux Session Manager — folded into the kebab bottom sheet on narrow. */}
 				{!isNarrow && <TmuxSessionManager navigate={navigate} />}
 
-				{/* External / low-frequency actions: inline when roomy, folded into an overflow menu when compact */}
-				{!compact && (
-					<>
-						{/* Productivity stats — icon-only, sits to the left of the website link */}
-						{route.screen !== "stats" && (
-							<Tooltip content={t("header.statsTooltip")} detail={t("ttip.header.stats")}>
-								<button
-									onClick={() => navigate({ screen: "stats" })}
-									className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-									aria-label={t("header.statsTooltip")}
-								>
-									<StatsIcon className="w-[1.125rem] h-[1.125rem]" />
-								</button>
-						</Tooltip>
-						)}
-
-						{/* GitHub website */}
-						<Tooltip content={t("header.githubTooltip")} detail={t("ttip.header.github")}>
-						<button
-							onClick={() => window.open("https://h0x91b.github.io/dev-3.0/", "_blank")}
-							className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-							aria-label={t("header.githubTooltip")}
-						>
-							<GitHubIcon className="w-[1.125rem] h-[1.125rem]" />
-						</button>
-						</Tooltip>
-
-						{/* Report a bug */}
-						<Tooltip content={t("header.reportBugTooltip")} detail={t("ttip.header.reportBug")}>
-							<button
-								onClick={() => window.open("https://github.com/h0x91b/dev-3.0/issues", "_blank")}
-								className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-								aria-label={t("header.reportBugTooltip")}
-							>
-								<ReportBugIcon className="w-[1.125rem] h-[1.125rem]" />
-							</button>
-					</Tooltip>
-
-						{/* Changelog */}
-						{route.screen !== "changelog" && (
-							<Tooltip content={t("header.changelogTooltip")} detail={t("ttip.header.changelog")}>
-							<button
-								onClick={() => navigate({ screen: "changelog" })}
-								className="header-anim flex items-center text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
-								aria-label={t("header.changelogTooltip")}
-							>
-								<ChangelogIcon className="w-[1.125rem] h-[1.125rem]" />
-							</button>
-							</Tooltip>
-						)}
-					</>
-				)}
-
-				{/* Compact overflow menu \u2014 folds GitHub / Report / Changelog into a single kebab.
+				{/* Overflow menu — low-frequency actions (Stats / GitHub / Report / Changelog)
+				    always live under a single kebab to keep the header lean.
 				    On narrow the whole cluster folds into the action sheet below instead. */}
-				{compact && !isNarrow && (
+				{!isNarrow && (
 					<div className="relative" ref={overflowMenuRef}>
 						<Tooltip content={t("header.moreActions")} detail={t("ttip.header.moreActions")}>
 							<button
