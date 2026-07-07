@@ -1262,13 +1262,33 @@ export async function fetchOrigin(
 	}
 }
 
+// `git pull --ff-only` intermittently dies with "fatal: Cannot fast-forward to
+// multiple branches." — a transient race where a concurrent background fetch
+// (see the fetchOrigin dedup machinery above) rewrites FETCH_HEAD between the
+// pull's own fetch and merge steps, leaving several branches flagged for-merge.
+// Re-running the pull re-fetches a clean FETCH_HEAD, so a single retry clears it.
+const MULTIPLE_BRANCHES_FF_ERROR = /Cannot fast-forward to multiple branches/i;
+const PULL_RETRY_DELAY_MS = 400;
+
 export async function pullOrigin(
 	projectPath: string,
 	branch: string,
+	opts?: { retryDelayMs?: number },
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
 	const startedAt = performance.now();
 	log.info("pullOrigin", { projectPath, branch });
-	const result = await run(["git", "pull", "--ff-only", "origin", branch], projectPath);
+	let result = await run(["git", "pull", "--ff-only", "origin", branch], projectPath);
+	// One (and only one) retry, scoped to the multiple-branches fast-forward race.
+	if (!result.ok && MULTIPLE_BRANCHES_FF_ERROR.test(result.stderr)) {
+		const delayMs = opts?.retryDelayMs ?? PULL_RETRY_DELAY_MS;
+		log.warn("pullOrigin: 'cannot fast-forward to multiple branches' — retrying once", {
+			projectPath,
+			branch,
+			delayMs,
+		});
+		if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+		result = await run(["git", "pull", "--ff-only", "origin", branch], projectPath);
+	}
 	log.info("pullOrigin finished", {
 		projectPath,
 		branch,

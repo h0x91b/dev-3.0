@@ -145,6 +145,32 @@ describe("pullOrigin", () => {
 		expect(result.ok).toBe(true);
 		expect(result.stdout).toMatch(/Fast-forward/);
 	});
+
+	it("retries once when pull fails with 'Cannot fast-forward to multiple branches'", async () => {
+		queueResponse(128, "", "fatal: Cannot fast-forward to multiple branches.\n");
+		queueResponse(0, "Updating abc..def\nFast-forward\n");
+		const result = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
+		expect(result.ok).toBe(true);
+		expect(result.stdout).toMatch(/Fast-forward/);
+		expect(spawnMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("retries at most once — a second multiple-branches failure is returned", async () => {
+		queueResponse(128, "", "fatal: Cannot fast-forward to multiple branches.\n");
+		queueResponse(128, "", "fatal: Cannot fast-forward to multiple branches.\n");
+		const result = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
+		expect(result.ok).toBe(false);
+		expect(result.stderr).toMatch(/Cannot fast-forward to multiple branches/);
+		expect(spawnMock).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not retry on unrelated pull failures", async () => {
+		queueResponse(1, "", "fatal: unable to access 'https://...': Could not resolve host\n");
+		const result = await pullOrigin("/repo", "main", { retryDelayMs: 0 });
+		expect(result.ok).toBe(false);
+		expect(result.stderr).toMatch(/unable to access/);
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+	});
 });
 
 // ─── isWorktreeDirty ────────────────────────────────────────────────────────
