@@ -41,7 +41,7 @@ describe("AgentConfigPicker — pxpipe-gated model", () => {
 		await user.click(option);
 		// Gated click must not commit a selection.
 		expect(onChange).not.toHaveBeenCalledWith(
-			expect.objectContaining({ configId: "claude-fable5-cost-trick" }),
+			expect.objectContaining({ configId: "claude-fable5-cost-trick-bypass-medium" }),
 		);
 	});
 
@@ -55,7 +55,7 @@ describe("AgentConfigPicker — pxpipe-gated model", () => {
 
 		await user.click(option);
 		expect(onChange).toHaveBeenCalledWith(
-			expect.objectContaining({ configId: "claude-fable5-cost-trick" }),
+			expect.objectContaining({ configId: "claude-fable5-cost-trick-bypass-medium" }),
 		);
 	});
 });

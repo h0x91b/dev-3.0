@@ -240,6 +240,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		configurations: [
 			// --- Auto (Fable 5 first — flagship — then Opus 4.8/Sonnet 5 effort tiers, then Opus 4.7) ---
 			{ id: "claude-auto-fable5-medium", name: "Auto (Fable 5, Medium)", model: "claude-fable-5", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-fable5-high", name: "Auto (Fable 5, High)", model: "claude-fable-5", permissionMode: "auto", effort: "high", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-fable5-xhigh", name: "Auto (Fable 5, X-High)", model: "claude-fable-5", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-opus48-medium", name: "Auto (Opus 4.8, Medium)", model: "claude-opus-4-8[1m]", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-opus48-xhigh", name: "Auto (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -248,6 +249,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-auto-opus47", name: "Auto (Opus 4.7)", model: "claude-opus-4-7[1m]", permissionMode: "auto", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
 			// --- Bypass (same model order as Auto) ---
 			{ id: "claude-bypass-fable5-medium", name: "Bypass (Fable 5, Medium)", model: "claude-fable-5", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-fable5-high", name: "Bypass (Fable 5, High)", model: "claude-fable-5", permissionMode: "bypassPermissions", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-fable5-xhigh", name: "Bypass (Fable 5, X-High)", model: "claude-fable-5", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-opus48-medium", name: "Bypass (Opus 4.8, Medium)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-opus48-xhigh", name: "Bypass (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -267,9 +269,18 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals-sonnet5", name: "Accept Edits (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			// --- Experimental: token-saving image proxy (opt-in, disabled until enabled in Settings) ---
-			// Its own Model group ("Fable 5 (cost trick)") so it reads as a distinct model
-			// choice; the Mode derives normally from permissionMode+effort ("Auto · Medium").
-			{ id: "claude-fable5-cost-trick", name: "Fable 5 (cost trick)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", permissionMode: "auto", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
+			// Its own Model group ("Fable 5 (cost trick)"). Fable 5 does not behave under
+			// --permission-mode auto, so the cost-saving experiment offers Bypass and Default
+			// (both run unattended with --dangerously-skip-permissions, like the plain Fable 5
+			// presets), each across the Medium/High/X-High effort tiers. Bypass first, then
+			// Default. The Mode leaf derives from permissionMode+effort ("Bypass · Medium",
+			// "Default · High", …).
+			{ id: "claude-fable5-cost-trick-bypass-medium", name: "Fable 5 (cost trick, Bypass, Medium)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
+			{ id: "claude-fable5-cost-trick-bypass-high", name: "Fable 5 (cost trick, Bypass, High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", permissionMode: "bypassPermissions", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
+			{ id: "claude-fable5-cost-trick-bypass-xhigh", name: "Fable 5 (cost trick, Bypass, X-High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
+			{ id: "claude-fable5-cost-trick-default-medium", name: "Fable 5 (cost trick, Default, Medium)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
+			{ id: "claude-fable5-cost-trick-default-high", name: "Fable 5 (cost trick, Default, High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
+			{ id: "claude-fable5-cost-trick-default-xhigh", name: "Fable 5 (cost trick, Default, X-High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
 		],
 		defaultConfigId: "claude-auto-opus48-xhigh",
 	},
@@ -462,6 +473,10 @@ export const DEPRECATED_DEFAULT_CONFIG_REMAP: Record<string, string> = {
 	"claude-auto-sonnet5": "claude-auto-sonnet5-xhigh",
 	"claude-bypass-sonnet5": "claude-bypass-sonnet5-xhigh",
 	"claude-dontask-sonnet5": "claude-default-sonnet5",
+	// Single cost-trick preset (auto + --dangerously-skip-permissions) split into
+	// Bypass/Default effort tiers — the old preset skipped permissions, so map it to
+	// the Bypass Medium tier (its closest surviving behavioral + effort equivalent).
+	"claude-fable5-cost-trick": "claude-fable5-cost-trick-bypass-medium",
 };
 
 export type TerminalKeymapPreset = "default" | "iterm2";
