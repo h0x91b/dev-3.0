@@ -53,6 +53,16 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	// Medium/X-High effort tiers, mirroring Opus 4.8.
 	"claude-auto",
 	"claude-bypass",
+	// Removed when the single "Fable 5 (cost trick)" preset was split into
+	// Bypass/Default effort tiers (Fable 5 does not behave under --permission-mode
+	// auto, so the experiment offers Bypass + Default, each Medium/High/X-High).
+	"claude-fable5-cost-trick",
+	// Interim auto-mode cost-trick ids that never shipped (replaced by the explicit
+	// bypass/default variants above) — filtered so any in-development build's stored
+	// copy doesn't linger as a phantom user config.
+	"claude-fable5-cost-trick-medium",
+	"claude-fable5-cost-trick-high",
+	"claude-fable5-cost-trick-xhigh",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
@@ -142,7 +152,7 @@ function mergeAgentWithDefault(
  *  to warrant a one-time resync of already-onboarded users' stored order
  *  (mergeWithDefaults otherwise preserves stored order forever). See
  *  decisions/ for the write-up. */
-export const AGENTS_LAYOUT_REVISION = 3;
+export const AGENTS_LAYOUT_REVISION = 5;
 
 /** One-time reorder of each built-in agent's configurations to match the
  *  current DEFAULT_AGENTS declared order. Custom (non-default) configs are
