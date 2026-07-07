@@ -80,3 +80,9 @@ above (see [decision 093](../../../decisions/093-dev-remote-port-from-pool.md)).
   `dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823` → `:47823/?token=$CODE`.
 - **No native dialogs** in browser mode. If a confirm/file-picker flow silently no-ops, that's
   an app bug, not a tooling problem — report it.
+- **Show images to the user AFTER you stop this dev-server, not while it runs.**
+  `dev3 show-image` (and `dev3 attention` / `dev3 notify`) route to the app instance that owns
+  the task — and this QA dev-server is itself a full dev3 instance. While it's up, those
+  UI-attention calls can land in *it* (the browser only you see) instead of the user's main
+  app, so the user never sees the image. Screenshots persist on disk, so the correct order is
+  **capture → `dev3 dev-server stop` (confirm `State: stopped`) → `dev3 show-image`**.
