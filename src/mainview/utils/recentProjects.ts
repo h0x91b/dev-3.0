@@ -7,6 +7,11 @@
 // localStorage and capped so it never grows unbounded.
 
 const LS_KEY = "dev3-recent-projects-v1";
+// Parallel map of projectId → last-access epoch ms, so the Cmd+K "Both" mode can
+// interleave projects into the task date-buckets by *when they were last opened*
+// (visiting a project kanban / a task within it counts as an access). Kept
+// separate from the ordered id list above for back-compat.
+const LS_TIMES_KEY = "dev3-recent-projects-at-v1";
 const MAX_ENTRIES = 16;
 
 /** Read the MRU project-id list, most-recent first. Tolerates corrupt storage. */
@@ -22,12 +27,35 @@ export function getRecentProjectIds(): string[] {
 	}
 }
 
-/** Record a jump to `projectId`, moving it to the front of the MRU list. */
+/** projectId → last-access epoch ms. Tolerates corrupt storage. */
+export function getProjectAccessTimes(): Record<string, number> {
+	try {
+		const raw = localStorage.getItem(LS_TIMES_KEY);
+		if (!raw) return {};
+		const parsed = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		const out: Record<string, number> = {};
+		for (const [id, ts] of Object.entries(parsed)) {
+			if (typeof ts === "number" && Number.isFinite(ts)) out[id] = ts;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+/** Record a jump to `projectId`, moving it to the front of the MRU list and stamping its access time. */
 export function recordProjectJump(projectId: string): void {
 	if (!projectId) return;
 	const next = [projectId, ...getRecentProjectIds().filter((id) => id !== projectId)].slice(0, MAX_ENTRIES);
 	try {
 		localStorage.setItem(LS_KEY, JSON.stringify(next));
+		// Stamp the access time, pruned to the ids we still retain.
+		const times = getProjectAccessTimes();
+		times[projectId] = Date.now();
+		const kept: Record<string, number> = {};
+		for (const id of next) if (times[id] !== undefined) kept[id] = times[id];
+		localStorage.setItem(LS_TIMES_KEY, JSON.stringify(kept));
 	} catch {
 		/* ignore — recency is best-effort */
 	}

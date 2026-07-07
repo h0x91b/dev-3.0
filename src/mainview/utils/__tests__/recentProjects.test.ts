@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { getRecentProjectIds, orderByRecency, recordProjectJump } from "../recentProjects";
+import { getProjectAccessTimes, getRecentProjectIds, orderByRecency, recordProjectJump } from "../recentProjects";
 
 beforeEach(() => {
 	localStorage.clear();
@@ -44,6 +44,35 @@ describe("recentProjects storage", () => {
 	it("filters out non-string entries", () => {
 		localStorage.setItem("dev3-recent-projects-v1", JSON.stringify(["a", 5, null, "b"]));
 		expect(getRecentProjectIds()).toEqual(["a", "b"]);
+	});
+});
+
+describe("project access times", () => {
+	it("returns an empty map when nothing is stored", () => {
+		expect(getProjectAccessTimes()).toEqual({});
+	});
+
+	it("stamps an access time on jump", () => {
+		const before = Date.now();
+		recordProjectJump("a");
+		const times = getProjectAccessTimes();
+		expect(times.a).toBeGreaterThanOrEqual(before);
+		expect(times.a).toBeLessThanOrEqual(Date.now());
+	});
+
+	it("prunes access times for ids dropped past the cap", () => {
+		for (let i = 0; i < 20; i++) recordProjectJump(`p${i}`);
+		const times = getProjectAccessTimes();
+		expect(Object.keys(times)).toHaveLength(16);
+		expect(times.p19).toBeGreaterThan(0);
+		expect(times.p0).toBeUndefined(); // dropped with the oldest ids
+	});
+
+	it("tolerates corrupt / non-numeric storage", () => {
+		localStorage.setItem("dev3-recent-projects-at-v1", "{not json");
+		expect(getProjectAccessTimes()).toEqual({});
+		localStorage.setItem("dev3-recent-projects-at-v1", JSON.stringify({ a: 5, b: "x", c: null }));
+		expect(getProjectAccessTimes()).toEqual({ a: 5 });
 	});
 });
 

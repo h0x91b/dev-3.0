@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
-import GoToPaletteModal, { taskRecencyBucket } from "../GoToPaletteModal";
+import GoToPaletteModal, { recencyBucket, taskRecencyBucket } from "../GoToPaletteModal";
 import type { Project, Task } from "../../../shared/types";
 
 // Timestamps anchored on the real local midnight (the same anchor the component
@@ -139,14 +139,38 @@ describe("GoToPaletteModal — modes", () => {
 });
 
 describe("GoToPaletteModal — rows & sections", () => {
-	it("Both mode shows a Projects section header plus task date headers", () => {
+	it("Both mode interleaves a recently-accessed project into the task date buckets (no separate Projects section)", () => {
 		localStorage.setItem("dev3-gotopalette-mode", "mixed");
-		renderModal();
+		renderModal({ projectAccessTimes: { p3: Date.now() } }); // "billing" opened just now → Today
 		const headers = [...document.querySelectorAll('[data-testid="go-to-palette"] [role=presentation]')].map(
 			(h) => h.textContent,
 		);
-		// tasks (Today, Yesterday) first, then the Projects section.
-		expect(headers).toEqual(["Today", "Yesterday", "Projects"]);
+		expect(headers).not.toContain("Projects"); // projects fold into date buckets, not a trailing section
+		expect(headers[0]).toBe("Today");
+		// "billing" (a project) sits in the Today bucket — above the Yesterday header.
+		const nodes = [
+			...document.querySelectorAll(
+				'[data-testid="go-to-palette"] [role=presentation], [data-testid="go-to-palette"] [role=option]',
+			),
+		];
+		const billingIdx = nodes.findIndex((n) => n.textContent?.includes("billing"));
+		const yesterdayIdx = nodes.findIndex((n) => n.getAttribute("role") === "presentation" && n.textContent === "Yesterday");
+		expect(billingIdx).toBeGreaterThanOrEqual(0);
+		expect(yesterdayIdx).toBeGreaterThan(billingIdx);
+	});
+
+	it("Both mode drops never-accessed projects into Older", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "mixed");
+		renderModal(); // no projectAccessTimes → every project recency 0 → Older
+		const nodes = [
+			...document.querySelectorAll(
+				'[data-testid="go-to-palette"] [role=presentation], [data-testid="go-to-palette"] [role=option]',
+			),
+		];
+		const olderIdx = nodes.findIndex((n) => n.getAttribute("role") === "presentation" && n.textContent === "Older");
+		const billingIdx = nodes.findIndex((n) => n.textContent?.includes("billing"));
+		expect(olderIdx).toBeGreaterThanOrEqual(0);
+		expect(billingIdx).toBeGreaterThan(olderIdx); // billing appears after the Older header
 	});
 
 	it("Tasks mode buckets by date and shows a project badge per row", () => {
@@ -304,5 +328,22 @@ describe("taskRecencyBucket", () => {
 		expect(taskRecencyBucket("2026-06-01T10:00:00", now)).toBe("older");
 		expect(taskRecencyBucket("", now)).toBe("older");
 		expect(taskRecencyBucket("not-a-date", now)).toBe("older");
+	});
+});
+
+describe("recencyBucket", () => {
+	const now = new Date("2026-07-06T12:00:00").getTime();
+	const DAY = 86_400_000;
+
+	it("buckets an epoch-ms timestamp by local-day distance", () => {
+		expect(recencyBucket(now, now)).toBe("today");
+		expect(recencyBucket(now - DAY, now)).toBe("yesterday");
+		expect(recencyBucket(now - 3 * DAY, now)).toBe("week");
+		expect(recencyBucket(now - 30 * DAY, now)).toBe("older");
+	});
+
+	it("treats 0 / NaN (never accessed) as older", () => {
+		expect(recencyBucket(0, now)).toBe("older");
+		expect(recencyBucket(Number.NaN, now)).toBe("older");
 	});
 });

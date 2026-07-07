@@ -38,7 +38,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
-import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
+import { getProjectAccessTimes, getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
@@ -496,6 +496,9 @@ function App() {
 				.sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0) || b.seq - a.seq),
 		[switcher.globalTasks],
 	);
+	// Project last-access times (localStorage) for the palette's "Both" mode, so a
+	// recently-opened project interleaves among recent tasks. Re-read on each open.
+	const goToProjectAccess = useMemo(() => getProjectAccessTimes(), [showProjectSwitch]);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
 
@@ -1663,6 +1666,7 @@ function App() {
 					shortcutIndexById={quickSwitch.shortcutIndexById}
 					tasks={goToTasks}
 					projectById={switcherProjectById}
+					projectAccessTimes={goToProjectAccess}
 					onSelectProject={(projectId) => {
 						setShowProjectSwitch(false);
 						navigateToProject(projectId);

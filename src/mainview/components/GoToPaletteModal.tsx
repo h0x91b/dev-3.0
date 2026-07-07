@@ -13,14 +13,12 @@ export type GoToEntry =
 export type TaskBucket = "today" | "yesterday" | "week" | "older";
 
 /**
- * Which recency bucket a task's `updatedAt` falls into, relative to `now`.
- * Anchored on local midnight so "today"/"yesterday" match the calendar;
- * "week" is the preceding 7-day window; everything else (incl. blank/unparsable
- * timestamps) is "older".
+ * Which recency bucket an epoch-ms timestamp falls into, relative to `now`.
+ * Anchored on local midnight so "today"/"yesterday" match the calendar; "week"
+ * is the preceding 7-day window; 0 / NaN / anything older is "older".
  */
-export function taskRecencyBucket(updatedAt: string, now: number): TaskBucket {
-	const ts = Date.parse(updatedAt);
-	if (Number.isNaN(ts)) return "older";
+export function recencyBucket(ts: number, now: number): TaskBucket {
+	if (!ts || Number.isNaN(ts)) return "older";
 	const start = new Date(now);
 	start.setHours(0, 0, 0, 0);
 	const t0 = start.getTime();
@@ -31,9 +29,12 @@ export function taskRecencyBucket(updatedAt: string, now: number): TaskBucket {
 	return "older";
 }
 
+/** A task's bucket, keyed on its `updatedAt`. */
+export function taskRecencyBucket(updatedAt: string, now: number): TaskBucket {
+	return recencyBucket(Date.parse(updatedAt) || 0, now);
+}
+
 const DATE_ORDER = ["today", "yesterday", "week", "older"];
-// "Both" mode: tasks (date-bucketed) first, then a Projects section.
-const MIXED_ORDER = [...DATE_ORDER, "projects"];
 
 /** The palette's active search scope. */
 export type GoToMode = "projects" | "mixed" | "tasks";
@@ -62,6 +63,13 @@ interface GoToPaletteModalProps {
 	/** Project lookup for the per-task project badge. */
 	projectById: Map<string, Project>;
 	/**
+	 * Project id → last-access epoch ms (from `recordProjectJump`). In "Both" mode
+	 * projects are interleaved into the task date-buckets by this timestamp, so a
+	 * recently-opened project appears among the recent tasks. Missing = never
+	 * visited → falls into "Older".
+	 */
+	projectAccessTimes?: Record<string, number>;
+	/**
 	 * Project id → its 0-based BOARD index, for the ⌘N badge. Kept separate from
 	 * display order so the badge keeps matching the Cmd+1..9 shortcut (which is
 	 * board-order based) even after recency reorders the rows.
@@ -77,18 +85,21 @@ interface GoToPaletteModalProps {
  * MODE at a time, cycled by tapping Shift or clicking the footer mode switcher:
  *
  *   • projects — fuzzy-jump to a project (⌘1..9 badges).
- *   • mixed    — projects AND tasks together (tasks date-bucketed, then a Projects section).
- *   • tasks    — active tasks across all projects (date-bucketed).
+ *   • mixed    — projects AND tasks interleaved in one recency timeline: each row
+ *                is bucketed (Today/Yesterday/This week/Older) by its own recency —
+ *                a task's `updatedAt`, a project's last-access time — so a
+ *                just-opened project sits among the recent tasks.
+ *   • tasks    — active tasks across all projects (date-bucketed by `updatedAt`).
  *
- * Opens in the last-used mode (default "projects"). Task rows carry a status dot
- * and (outside a single project) a project badge; task groups bucket by
- * `updatedAt` into Today / Yesterday / This week / Older. Complements the
- * Option/Ctrl+Tab hold-cycle switcher (that cycles; this type-searches).
+ * Opens in the last-used mode (default "projects"). Task rows carry a round
+ * status dot + project badge; project rows (in mixed) a square marker + ⌘ badge.
+ * Complements the Option/Ctrl+Tab hold-cycle switcher (that cycles; this type-searches).
  */
 function GoToPaletteModal({
 	projects,
 	tasks,
 	projectById,
+	projectAccessTimes,
 	shortcutIndexById,
 	onSelectProject,
 	onSelectTask,
@@ -97,6 +108,11 @@ function GoToPaletteModal({
 	const t = useT();
 	const statusColors = useStatusColors();
 	const now = Date.now();
+
+	// A row's recency for bucketing/interleaving: tasks by when they were last
+	// updated, projects by when they were last opened.
+	const recencyOf = (e: GoToEntry): number =>
+		e.kind === "task" ? Date.parse(e.task.updatedAt) || 0 : (projectAccessTimes?.[e.project.id] ?? 0);
 
 	const [mode, setMode] = useState<GoToMode>(resolveInitialMode);
 
@@ -117,20 +133,22 @@ function GoToPaletteModal({
 
 	const showProjects = mode !== "tasks";
 	const showTasks = mode !== "projects";
-	const grouped = showTasks; // both "mixed" and "tasks" bucket tasks by date
+	const grouped = showTasks; // "mixed" and "tasks" both bucket rows by recency date
 
-	// Entries: tasks first (so they lead the date buckets), then projects.
 	const entries: GoToEntry[] = [
 		...(showTasks ? tasks.map((task) => ({ kind: "task" as const, task, project: projectById.get(task.projectId) })) : []),
 		...(showProjects ? projects.map((project) => ({ kind: "project" as const, project })) : []),
 	];
+	// In "Both" mode, interleave projects and tasks into one recency-sorted list
+	// (within-group order is preserved by PaletteShell's stable group sort, so this
+	// makes each date bucket ordered most-recent-first regardless of row kind).
+	if (mode === "mixed") entries.sort((a, b) => recencyOf(b) - recencyOf(a));
 
 	const bucketLabel: Record<string, string> = {
 		today: t("goTo.sectionToday"),
 		yesterday: t("goTo.sectionYesterday"),
 		week: t("goTo.sectionWeek"),
 		older: t("goTo.sectionOlder"),
-		projects: t("goTo.sectionProjects"),
 	};
 
 	// Footer mode switcher — clicking a segment jumps to that mode; onMouseDown
@@ -175,8 +193,8 @@ function GoToPaletteModal({
 			footerLeft={modeSwitcher}
 			onShiftTap={cycleMode}
 			resetKey={mode}
-			getGroup={grouped ? (e) => (e.kind === "task" ? taskRecencyBucket(e.task.updatedAt, now) : "projects") : undefined}
-			groupOrder={grouped ? (mode === "mixed" ? MIXED_ORDER : DATE_ORDER) : undefined}
+			getGroup={grouped ? (e) => recencyBucket(recencyOf(e), now) : undefined}
+			groupOrder={grouped ? DATE_ORDER : undefined}
 			groupLabel={grouped ? (g) => bucketLabel[g] ?? g : undefined}
 			renderItemLeft={
 				grouped
@@ -187,7 +205,10 @@ function GoToPaletteModal({
 									style={{ background: statusColors[e.task.status] }}
 									aria-hidden
 								/>
-							) : null
+							) : (
+								// Square marker distinguishes an interleaved project row from a task's round dot.
+								<span className="w-2 h-2 rounded-[2px] flex-shrink-0 bg-fg-muted" aria-hidden />
+							)
 					: undefined
 			}
 			renderItemRight={(e, _i, query) => {
