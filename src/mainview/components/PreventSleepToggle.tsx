@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { CoffeeIcon, LockIcon } from "./HeaderIcons";
+import Tooltip from "./Tooltip";
 
 interface SleepState {
 	enabled: boolean;
@@ -62,16 +63,16 @@ function PreventSleepToggle({ compact = false }: { compact?: boolean }) {
 			: t("caffeine.tooltipOff");
 
 	return (
+		<Tooltip content={t("caffeine.label")} detail={title}>
 		<button
 			onClick={toggle}
-			disabled={locked}
+			aria-disabled={locked}
 			aria-pressed={active}
 			className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
 				active
 					? "text-awake bg-awake/15 border border-awake/30 hover:bg-awake/25"
 					: "text-fg-3 hover:text-fg hover:bg-elevated border border-transparent"
 			} ${locked ? "cursor-default" : ""}`}
-			title={title}
 		>
 			{locked ? (
 				<LockIcon className="w-[1.125rem] h-[1.125rem]" />
@@ -80,6 +81,7 @@ function PreventSleepToggle({ compact = false }: { compact?: boolean }) {
 			)}
 			{!compact && <span className="text-[0.6875rem] font-medium">{t("caffeine.label")}</span>}
 		</button>
+		</Tooltip>
 	);
 }
 
