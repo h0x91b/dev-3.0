@@ -1399,6 +1399,89 @@ export async function createAutomationTask(
 	return task;
 }
 
+/**
+ * "Start in…" — persist a deferred launch on a todo task. Nothing spawns yet:
+ * the scheduled-launch scheduler (or "Start now") fires the stored variants
+ * later via {@link fireScheduledLaunch}, which reuses the exact spawnVariants
+ * pipeline of an immediate launch.
+ */
+async function scheduleTaskLaunch(params: {
+	taskId: string;
+	projectId: string;
+	at: string;
+	targetStatus: TaskStatus;
+	variants: Array<{ agentId: string | null; configId: string | null }>;
+}): Promise<Task> {
+	log.info("→ scheduleTaskLaunch", { taskId: params.taskId, at: params.at, count: params.variants.length });
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	if (task.status !== "todo") {
+		throw new Error(`Task must be in todo status to schedule a launch (got ${task.status})`);
+	}
+	if (params.variants.length === 0) {
+		throw new Error("Scheduled launch needs at least one variant");
+	}
+	const at = new Date(params.at);
+	if (!Number.isFinite(at.getTime()) || at.getTime() <= Date.now()) {
+		throw new Error("Scheduled launch time must be in the future");
+	}
+	const updated = await data.updateTask(project, task.id, {
+		scheduledLaunch: {
+			at: at.toISOString(),
+			targetStatus: params.targetStatus,
+			variants: params.variants,
+		},
+	});
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← scheduleTaskLaunch done", { taskId: task.id.slice(0, 8), at: at.toISOString() });
+	return updated;
+}
+
+/** Clear a pending deferred launch without firing it (badge → "Cancel"). */
+async function cancelScheduledLaunch(params: { taskId: string; projectId: string }): Promise<Task> {
+	log.info("→ cancelScheduledLaunch", { taskId: params.taskId });
+	const project = await data.getProject(params.projectId);
+	const updated = await data.updateTask(project, params.taskId, { scheduledLaunch: null });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← cancelScheduledLaunch done", { taskId: params.taskId.slice(0, 8) });
+	return updated;
+}
+
+/**
+ * Fire a pending deferred launch NOW. Shared by the scheduler tick and the
+ * `startScheduledLaunchNow` RPC. Delegates to spawnVariants (same validation,
+ * same variant pipeline, deletes the source task), then broadcasts the
+ * server-initiated changes: clients did not call an RPC, so they learn about
+ * the consumed source via `taskRemoved` and about each variant via `taskUpdated`.
+ */
+export async function fireScheduledLaunch(project: Project, task: Task): Promise<Task[]> {
+	const sched = task.scheduledLaunch;
+	if (!sched) throw new Error("Task has no scheduled launch");
+	const spawned = await spawnVariants({
+		taskId: task.id,
+		projectId: project.id,
+		targetStatus: sched.targetStatus,
+		variants: sched.variants,
+	});
+	getPushMessage()?.("taskRemoved", { projectId: project.id, taskId: task.id });
+	for (const t of spawned) {
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
+	}
+	log.info("Scheduled launch fired", {
+		taskId: task.id.slice(0, 8),
+		scheduledFor: sched.at,
+		count: spawned.length,
+	});
+	return spawned;
+}
+
+async function startScheduledLaunchNow(params: { taskId: string; projectId: string }): Promise<Task[]> {
+	log.info("→ startScheduledLaunchNow", { taskId: params.taskId });
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	return fireScheduledLaunch(project, task);
+}
+
 export const taskLifecycleHandlers = {
 	getTasks,
 	getAllProjectTasks,
@@ -1415,5 +1498,8 @@ export const taskLifecycleHandlers = {
 	setUserOverview,
 	clearUserOverview,
 	toggleTaskWatch,
+	scheduleTaskLaunch,
+	cancelScheduledLaunch,
+	startScheduledLaunchNow,
 	respondToAgentCompletionRequest,
 };

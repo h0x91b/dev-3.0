@@ -961,6 +961,25 @@ export interface Task {
 	 * links the task back to its automation's run history.
 	 */
 	automationId?: string | null;
+	/**
+	 * Deferred launch ("Start in…"). Set from the Launch modal when the user
+	 * schedules the spawn instead of firing it immediately. Only meaningful on
+	 * a `todo` task; the bun scheduled-launch scheduler fires the stored
+	 * variants when `at` passes (late fires catch up after app restart) and
+	 * the field disappears together with the consumed source task. Cancelled
+	 * by setting it back to null.
+	 */
+	scheduledLaunch?: ScheduledLaunch | null;
+}
+
+/** A one-shot deferred launch persisted on a `todo` task. See {@link Task.scheduledLaunch}. */
+export interface ScheduledLaunch {
+	/** ISO timestamp when the launch should fire. */
+	at: string;
+	/** Column the spawned variants land in (same as an immediate launch). */
+	targetStatus: TaskStatus;
+	/** Agent/config variants captured from the Launch modal at schedule time. */
+	variants: Array<{ agentId: string | null; configId: string | null }>;
 }
 
 /** Per-task cap on retained shared images; oldest are pruned (files deleted) past this. */
@@ -2209,6 +2228,28 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; watched: boolean };
 				response: Task;
 			};
+			/** Persist a deferred launch on a todo task ("Start in…"). */
+			scheduleTaskLaunch: {
+				params: {
+					taskId: string;
+					projectId: string;
+					/** ISO timestamp; must be in the future. */
+					at: string;
+					targetStatus: TaskStatus;
+					variants: Array<{ agentId: string | null; configId: string | null }>;
+				};
+				response: Task;
+			};
+			/** Clear a pending deferred launch without firing it. */
+			cancelScheduledLaunch: {
+				params: { taskId: string; projectId: string };
+				response: Task;
+			};
+			/** Fire a pending deferred launch immediately (badge → "Start now"). */
+			startScheduledLaunchNow: {
+				params: { taskId: string; projectId: string };
+				response: Task[];
+			};
 			addTaskNote: {
 				params: { taskId: string; projectId: string; content: string; source?: NoteSource };
 				response: Task;
@@ -2487,6 +2528,13 @@ export type AppRPCSchema = {
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
+			/**
+			 * Server-initiated task deletion (currently: a scheduled launch firing
+			 * consumes its source todo task, exactly like spawnVariants does for an
+			 * immediate launch). Client-initiated deletes don't need this — the
+			 * caller updates its own state from the RPC response.
+			 */
+			taskRemoved: { projectId: string; taskId: string };
 			projectUpdated: { project: Project };
 			taskSound: { status: "completed" | "cancelled"; taskId: string };
 			ptyDied: { taskId: string };

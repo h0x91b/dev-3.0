@@ -1,6 +1,7 @@
 import { useState, useEffect, type Dispatch } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
+import { parseDelay } from "../../shared/duration";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
@@ -124,26 +125,29 @@ function LaunchVariantsModal({
 		);
 	}
 
+	// Apply the (possibly preference-derived) Watch choice to the source task
+	// before spawning/scheduling, so the toggle actually watches/unwatches it —
+	// even when the user never clicked it. Variants inherit `watched` from the
+	// source, so this must run first. Best-effort; never blocks the launch.
+	async function applyWatchPreference() {
+		if (watched === !!task.watched) return;
+		try {
+			const updated = await api.request.toggleTaskWatch({
+				taskId: task.id,
+				projectId: project.id,
+				watched,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch {
+			// Watch is best-effort; never block the launch on it.
+		}
+	}
+
 	async function handleLaunch() {
 		setLaunching(true);
 		setError(null);
 		try {
-			// Apply the (possibly preference-derived) Watch choice to the source
-			// task before spawning, so launching with the toggle on/off actually
-			// watches/unwatches it — even when the user never clicked the toggle.
-			// Variants inherit `watched` from the source, so this must run first.
-			if (watched !== !!task.watched) {
-				try {
-					const updated = await api.request.toggleTaskWatch({
-						taskId: task.id,
-						projectId: project.id,
-						watched,
-					});
-					dispatch({ type: "updateTask", task: updated });
-				} catch {
-					// Watch is best-effort; never block the launch on it.
-				}
-			}
+			await applyWatchPreference();
 			if (mode === "addAttempts") {
 				const result = await api.request.addAttempts({
 					taskId: task.id,
@@ -170,6 +174,35 @@ function LaunchVariantsModal({
 					trackAgentLaunched(agents, variant.agentId, variant.configId);
 				}
 			}
+			onClose();
+		} catch (err) {
+			setError(String(err));
+		}
+		setLaunching(false);
+	}
+
+	// "Start in…" — persist a deferred launch instead of spawning now. The task
+	// stays in To Do with a countdown badge; the bun scheduler fires the exact
+	// variants captured here when the delay elapses.
+	const [scheduleOpen, setScheduleOpen] = useState(false);
+	const [delayText, setDelayText] = useState("1h");
+	const delayMs = parseDelay(delayText);
+
+	async function handleSchedule() {
+		if (!delayMs) return;
+		setLaunching(true);
+		setError(null);
+		try {
+			await applyWatchPreference();
+			const updated = await api.request.scheduleTaskLaunch({
+				taskId: task.id,
+				projectId: project.id,
+				at: new Date(Date.now() + delayMs).toISOString(),
+				targetStatus,
+				variants,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_launch_scheduled", { project_id: project.id, variant_count: variants.length, delay_ms: delayMs });
 			onClose();
 		} catch (err) {
 			setError(String(err));
@@ -315,13 +348,65 @@ function LaunchVariantsModal({
 						>
 							{t("kanban.cancel")}
 						</button>
-						<button
-							onClick={handleLaunch}
-							disabled={launching || variants.length === 0}
-							className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
-						>
-							{launchLabel}
-						</button>
+						{!isAddVariant && (
+							scheduleOpen ? (
+								<div className="flex items-center gap-2">
+									{["15m", "1h", "3h"].map((preset) => (
+										<button
+											key={preset}
+											onClick={() => setDelayText(preset)}
+											className={`text-xs px-2 py-1 rounded-md border transition-colors ${
+												delayText === preset
+													? "border-accent text-accent"
+													: "border-edge text-fg-3 hover:text-fg"
+											}`}
+										>
+											{preset}
+										</button>
+									))}
+									<input
+										value={delayText}
+										onChange={(e) => setDelayText(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter" && delayMs && !launching) handleSchedule();
+										}}
+										placeholder={t("launch.delayPlaceholder")}
+										className={`w-20 bg-transparent border rounded-md px-2 py-1 text-sm text-fg outline-none focus:border-accent ${
+											delayMs ? "border-edge" : "border-danger"
+										}`}
+									/>
+									<button
+										onClick={handleSchedule}
+										disabled={launching || !delayMs || variants.length === 0}
+										className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors disabled:opacity-50"
+									>
+										{t("launch.schedule")}
+									</button>
+								</div>
+							) : (
+								<button
+									onClick={() => setScheduleOpen(true)}
+									disabled={launching}
+									className="text-fg-3 hover:text-fg text-sm transition-colors px-3 py-1.5 flex items-center gap-1.5"
+									title={t("launch.startInHint")}
+								>
+									<svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+										<circle cx="12" cy="12" r="9" />
+										<path d="M12 7v5l3 2" />
+									</svg>
+									{t("launch.startIn")}
+								</button>
+							)
+						)}
+						{!scheduleOpen && (
+							<button
+								onClick={handleLaunch}
+								disabled={launching || variants.length === 0}
+								className="bg-accent hover:bg-accent-hover text-white text-sm font-medium px-5 py-2 rounded-xl transition-colors disabled:opacity-50"
+							>
+								{launchLabel}
+							</button>
+						)}
 					</div>
 				</div>
 			</div>
