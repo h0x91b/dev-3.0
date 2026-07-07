@@ -1,0 +1,1 @@
+Fixed the dev3 CLI dumping a raw "EPIPE: broken pipe" stack trace when its output was piped into a consumer that closes early (`dev3 ui state | head`, `| grep -m1`, quitting a pager). The CLI now tolerates a broken stdout/stderr pipe and exits cleanly, so piping through head/grep no longer pollutes otherwise-clean tool output.

@@ -23,6 +23,7 @@ import { handleStatusLine } from "./commands/statusline";
 import { handleDoctor } from "./commands/doctor";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
+import { installEpipeGuard, isEpipeError } from "./epipe";
 import { resolveHelp } from "./help";
 
 const HELP = `dev3 — AI-facing CLI for the dev-3.0 Kanban board.
@@ -95,6 +96,15 @@ or "dev3 <command> <subcommand> --help" (e.g. "dev3 task create --help") for a s
 
 async function main(): Promise<void> {
 	const rawArgs = process.argv.slice(2);
+
+	// Every short print-and-exit command may have its stdout closed early by a
+	// downstream consumer (`dev3 … | head`, `| grep -m1`, quitting a pager).
+	// Install the broken-pipe guard so that turns into a clean exit instead of a
+	// raw Bun EPIPE stack trace. `remote`/`gui` are long-running and install
+	// their own crash handlers, so we leave them untouched.
+	if (rawArgs[0] !== "remote" && rawArgs[0] !== "gui") {
+		installEpipeGuard();
+	}
 
 	// `--help` routing (pure decision in help.ts so it stays unit-testable):
 	// a known command/subcommand gets focused help from the declarative registry,
@@ -239,5 +249,8 @@ function debugAppNotRunning(
 }
 
 main().catch((err) => {
+	// A broken pipe that surfaced as a promise rejection (rather than the
+	// uncaughtException the guard already handles) is still a clean stop.
+	if (isEpipeError(err)) process.exit(CLI_EXIT_CODE_SUCCESS);
 	exitInternalError(err instanceof Error ? err.message : String(err));
 });
