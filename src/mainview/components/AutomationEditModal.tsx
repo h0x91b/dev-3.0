@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Automation, AutomationCatchUpPolicy, CodingAgent, Project } from "../../shared/types";
 import { AUTOMATION_TEMPLATES } from "../../shared/automation-templates";
 import { formatRRule, parseRRule, type RRuleSpec } from "../../shared/rrule";
@@ -165,14 +166,19 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 			mode === m ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
 		}`;
 
-	return (
-		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+	// Portal to <body>: this modal is rendered inside ProjectSettings' `backdrop-blur`
+	// card, and `backdrop-filter` establishes a containing block for `position: fixed`
+	// descendants — an inline `fixed inset-0` would anchor to that ~672px card and land
+	// partially off-screen (#845). Portaling detaches it from that subtree so it re-anchors
+	// to the viewport.
+	return createPortal(
+		<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4" onClick={onClose}>
 			<div
 				ref={trapRef}
 				role="dialog"
 				aria-modal="true"
 				tabIndex={-1}
-				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-2xl max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] mx-4 overflow-y-auto outline-none"
+				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
 				<div className="px-6 py-4 border-b border-edge">
@@ -366,7 +372,8 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 					</button>
 				</div>
 			</div>
-		</div>
+		</div>,
+		document.body,
 	);
 }
 

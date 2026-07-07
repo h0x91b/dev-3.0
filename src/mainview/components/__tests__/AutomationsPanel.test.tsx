@@ -92,6 +92,21 @@ describe("AutomationsPanel", () => {
 		expect(screen.getByText("New automation", { selector: "h2" })).toBeTruthy();
 	});
 
+	it("portals the modal to <body> so it escapes ancestor containing blocks (#845)", async () => {
+		// The modal is rendered deep inside ProjectSettings' `backdrop-blur` card.
+		// `backdrop-filter` establishes a containing block for `position: fixed`
+		// descendants, so an inline `fixed inset-0` modal anchors to that ~672px
+		// card instead of the viewport and lands partially off-screen. Portaling to
+		// document.body detaches it from the panel subtree and re-anchors to the viewport.
+		vi.mocked(api.request.listAutomations).mockResolvedValue([]);
+		const { container } = renderPanel();
+		await screen.findByText("No automations yet.");
+		await userEvent.click(screen.getByText("New automation"));
+		const dialog = await screen.findByRole("dialog");
+		expect(container.contains(dialog)).toBe(false);
+		expect(document.body.contains(dialog)).toBe(true);
+	});
+
 	it("fires runAutomationNow from the Run now button", async () => {
 		vi.mocked(api.request.listAutomations).mockResolvedValue([automation]);
 		vi.mocked(api.request.runAutomationNow).mockResolvedValue({ taskId: "task-1" });
