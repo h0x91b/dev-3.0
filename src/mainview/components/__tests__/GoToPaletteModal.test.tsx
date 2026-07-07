@@ -48,17 +48,11 @@ function task(id: string, projectId: string, title: string, updatedAt = TODAY): 
 const PROJECTS: Project[] = [
 	project("p1", "users-service"),
 	project("p2", "auth-gateway"),
-	project("p3", "billing"),
+	project("p3", "billing"), // "billing" is referenced by no task → a projects-only marker
 ];
-// All-projects tasks ("All tasks" mode).
 const ALL_TASKS: Task[] = [
 	task("t1", "p1", "Fix login redirect", TODAY),
 	task("t2", "p2", "Add rate limiter", YESTERDAY),
-];
-// Current-project tasks ("This project" mode) — both in the p1 project.
-const PROJECT_TASKS: Task[] = [
-	task("pt1", "p1", "Project alpha task", TODAY),
-	task("pt2", "p1", "Project beta task", TODAY),
 ];
 const PROJECT_BY_ID = new Map(PROJECTS.map((p) => [p.id, p]));
 
@@ -71,8 +65,6 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof GoToPaletteM
 			<GoToPaletteModal
 				projects={PROJECTS}
 				tasks={ALL_TASKS}
-				projectTasks={PROJECT_TASKS}
-				hasCurrentProject
 				projectById={PROJECT_BY_ID}
 				onSelectProject={onSelectProject}
 				onSelectTask={onSelectTask}
@@ -92,98 +84,86 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("GoToPaletteModal — modes", () => {
-	it("opens in Projects mode by default and lists projects, not tasks", () => {
+	it("opens in Projects mode by default: projects only, no tasks", () => {
 		renderModal();
 		expect(seg("Projects").getAttribute("aria-pressed")).toBe("true");
-		expect(screen.getByText("users-service")).toBeTruthy();
-		expect(screen.queryByText("Fix login redirect")).toBeNull();
+		expect(screen.getByText("billing")).toBeTruthy(); // a project row
+		expect(screen.queryByText("Fix login redirect")).toBeNull(); // no tasks
 	});
 
-	it("shows all three mode segments when a project is in view", () => {
+	it("always shows all three mode segments", () => {
 		renderModal();
 		expect(seg("Projects")).toBeTruthy();
-		expect(seg("This project")).toBeTruthy();
-		expect(seg("All tasks")).toBeTruthy();
+		expect(seg("Both")).toBeTruthy();
+		expect(seg("Tasks")).toBeTruthy();
 	});
 
-	it("hides the This-project mode when no project is in view", () => {
-		renderModal({ hasCurrentProject: false });
-		expect(seg("Projects")).toBeTruthy();
-		expect(seg("All tasks")).toBeTruthy();
-		expect(screen.queryByRole("button", { name: "This project" })).toBeNull();
-	});
-
-	it("cycles modes on a lone Shift tap: Projects → This project → All tasks", async () => {
+	it("cycles Projects → Both → Tasks on a lone Shift tap", async () => {
 		const user = userEvent.setup();
 		renderModal();
 		await user.keyboard("{Shift>}{/Shift}");
-		expect(seg("This project").getAttribute("aria-pressed")).toBe("true");
-		expect(screen.getByText("Project alpha task")).toBeTruthy();
+		expect(seg("Both").getAttribute("aria-pressed")).toBe("true");
+		// Both = projects AND tasks together.
+		expect(screen.getByText("Fix login redirect")).toBeTruthy();
+		expect(screen.getByText("billing")).toBeTruthy();
 		await user.keyboard("{Shift>}{/Shift}");
-		expect(seg("All tasks").getAttribute("aria-pressed")).toBe("true");
-		expect(screen.getByText("Add rate limiter")).toBeTruthy();
+		expect(seg("Tasks").getAttribute("aria-pressed")).toBe("true");
+		// Tasks = tasks only.
+		expect(screen.getByText("Fix login redirect")).toBeTruthy();
+		expect(screen.queryByText("billing")).toBeNull();
 	});
 
-	it("does NOT cycle when Shift is used to type a capital", async () => {
+	it("does NOT cycle when Shift types a capital", async () => {
 		const user = userEvent.setup();
 		renderModal();
 		await user.keyboard("{Shift>}A{/Shift}");
-		expect(seg("Projects").getAttribute("aria-pressed")).toBe("true"); // still Projects
+		expect(seg("Projects").getAttribute("aria-pressed")).toBe("true");
 		expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("A");
 	});
 
 	it("switches mode when a segment is clicked", async () => {
 		const user = userEvent.setup();
 		renderModal();
-		await user.click(seg("This project"));
-		expect(seg("This project").getAttribute("aria-pressed")).toBe("true");
-		expect(screen.getByText("Project alpha task")).toBeTruthy();
+		await user.click(seg("Both"));
+		expect(seg("Both").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.getByText("Fix login redirect")).toBeTruthy();
+		expect(screen.getByText("billing")).toBeTruthy();
 	});
 
 	it("remembers the last-used mode via localStorage", () => {
-		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
+		localStorage.setItem("dev3-gotopalette-mode", "tasks");
 		renderModal();
-		expect(seg("All tasks").getAttribute("aria-pressed")).toBe("true");
-		expect(screen.getByText("Fix login redirect")).toBeTruthy();
-	});
-
-	it("falls back to All tasks when the remembered This-project mode is unavailable", () => {
-		localStorage.setItem("dev3-gotopalette-mode", "project-tasks");
-		renderModal({ hasCurrentProject: false });
-		expect(seg("All tasks").getAttribute("aria-pressed")).toBe("true");
+		expect(seg("Tasks").getAttribute("aria-pressed")).toBe("true");
+		expect(screen.queryByText("billing")).toBeNull();
 	});
 });
 
-describe("GoToPaletteModal — rows", () => {
-	it("shows a project badge on task rows in All-tasks mode", () => {
-		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
+describe("GoToPaletteModal — rows & sections", () => {
+	it("Both mode shows a Projects section header plus task date headers", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "mixed");
 		renderModal();
-		const allRow = screen.getByText("Fix login redirect").closest("[role=option]");
-		expect(allRow?.textContent).toContain("users-service"); // badge present
+		const headers = [...document.querySelectorAll('[data-testid="go-to-palette"] [role=presentation]')].map(
+			(h) => h.textContent,
+		);
+		// tasks (Today, Yesterday) first, then the Projects section.
+		expect(headers).toEqual(["Today", "Yesterday", "Projects"]);
 	});
 
-	it("omits the project badge in This-project mode", () => {
-		localStorage.setItem("dev3-gotopalette-mode", "project-tasks");
-		renderModal();
-		const projRow = screen.getByText("Project alpha task").closest("[role=option]");
-		expect(projRow?.textContent).not.toContain("users-service"); // badge omitted
-	});
-
-	it("buckets task modes by date (Today / Yesterday headers)", () => {
-		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
+	it("Tasks mode buckets by date and shows a project badge per row", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "tasks");
 		renderModal();
 		expect(screen.getByText("Today")).toBeTruthy();
 		expect(screen.getByText("Yesterday")).toBeTruthy();
+		const row = screen.getByText("Fix login redirect").closest("[role=option]");
+		expect(row?.textContent).toContain("users-service"); // project badge
 	});
 
-	it("orders date buckets Today → Yesterday → This week → Older", () => {
-		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
+	it("orders task date buckets Today → Yesterday → This week → Older", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "tasks");
 		render(
 			<I18nProvider>
 				<GoToPaletteModal
-					projects={PROJECTS}
-					projectTasks={[]}
-					hasCurrentProject={false}
+					projects={[]}
 					tasks={[
 						task("o", "p1", "Older task", OLDER),
 						task("t", "p1", "Today task", TODAY),
@@ -204,11 +184,22 @@ describe("GoToPaletteModal — rows", () => {
 	});
 
 	it("reserves top scroll-margin only on rows that sit under a section header", () => {
-		localStorage.setItem("dev3-gotopalette-mode", "project-tasks");
-		renderModal(); // PROJECT_TASKS are both Today → first has the header, second does not
+		localStorage.setItem("dev3-gotopalette-mode", "tasks");
+		render(
+			<I18nProvider>
+				<GoToPaletteModal
+					projects={[]}
+					tasks={[task("a", "p1", "Alpha", TODAY), task("b", "p1", "Beta", TODAY)]}
+					projectById={PROJECT_BY_ID}
+					onSelectProject={vi.fn()}
+					onSelectTask={vi.fn()}
+					onClose={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
 		const options = screen.getAllByRole("option");
-		expect(options[0].className).toContain("scroll-mt-9");
-		expect(options[1].className).not.toContain("scroll-mt-9");
+		expect(options[0].className).toContain("scroll-mt-9"); // first-in-bucket → header above
+		expect(options[1].className).not.toContain("scroll-mt-9"); // same bucket, no header
 	});
 });
 
@@ -221,8 +212,8 @@ describe("GoToPaletteModal — selection", () => {
 		expect(onSelectProject).toHaveBeenCalledWith("p1");
 	});
 
-	it("opens a task on click (All-tasks mode)", async () => {
-		localStorage.setItem("dev3-gotopalette-mode", "all-tasks");
+	it("opens a task on click (Tasks mode)", async () => {
+		localStorage.setItem("dev3-gotopalette-mode", "tasks");
 		const user = userEvent.setup();
 		const { onSelectTask } = renderModal();
 		await user.click(screen.getByText("Fix login redirect"));
@@ -249,8 +240,6 @@ describe("GoToPaletteModal — project ⌘N badges", () => {
 				<GoToPaletteModal
 					projects={[PROJECTS[2], PROJECTS[0], PROJECTS[1]]}
 					tasks={[]}
-					projectTasks={[]}
-					hasCurrentProject={false}
 					projectById={PROJECT_BY_ID}
 					shortcutIndexById={{ p1: 0, p2: 1, p3: 2 }}
 					onSelectProject={vi.fn()}
@@ -272,8 +261,6 @@ describe("GoToPaletteModal — project ⌘N badges", () => {
 				<GoToPaletteModal
 					projects={[ops, PROJECTS[0]]}
 					tasks={[]}
-					projectTasks={[]}
-					hasCurrentProject={false}
 					projectById={
 						new Map([
 							[ops.id, ops],

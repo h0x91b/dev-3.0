@@ -31,24 +31,22 @@ export function taskRecencyBucket(updatedAt: string, now: number): TaskBucket {
 	return "older";
 }
 
-const DATE_GROUP_ORDER = ["today", "yesterday", "week", "older"];
+const DATE_ORDER = ["today", "yesterday", "week", "older"];
+// "Both" mode: tasks (date-bucketed) first, then a Projects section.
+const MIXED_ORDER = [...DATE_ORDER, "projects"];
 
 /** The palette's active search scope. */
-export type GoToMode = "projects" | "project-tasks" | "all-tasks";
+export type GoToMode = "projects" | "mixed" | "tasks";
+const MODES: GoToMode[] = ["projects", "mixed", "tasks"];
 const MODE_STORAGE_KEY = "dev3-gotopalette-mode";
 
-/** Resolve the mode to open in: the last-used one if still available, else a sensible fallback. */
-function resolveInitialMode(available: GoToMode[]): GoToMode {
-	let stored: string | null = null;
+/** Resolve the mode to open in: the last-used one, else the default (projects). */
+function resolveInitialMode(): GoToMode {
 	try {
-		stored = localStorage.getItem(MODE_STORAGE_KEY);
+		const stored = localStorage.getItem(MODE_STORAGE_KEY);
+		if (stored && (MODES as string[]).includes(stored)) return stored as GoToMode;
 	} catch {
 		/* private mode / no storage — fall through to default */
-	}
-	if (stored && available.includes(stored as GoToMode)) return stored as GoToMode;
-	// Remembered a task mode but there's no current project → keep the task intent.
-	if ((stored === "project-tasks" || stored === "all-tasks") && available.includes("all-tasks")) {
-		return "all-tasks";
 	}
 	return "projects";
 }
@@ -59,13 +57,9 @@ interface GoToPaletteModalProps {
 	 * then the rest in board order (see `orderByRecency`).
 	 */
 	projects: Project[];
-	/** All active tasks across every project, most-recently-updated first ("All tasks" mode). */
+	/** All active tasks across every project, most-recently-updated first. */
 	tasks: Task[];
-	/** Active tasks of the project currently in view, most-recently-updated first ("This project" mode). */
-	projectTasks: Task[];
-	/** Whether a project is currently in view — gates the "This project" mode. */
-	hasCurrentProject: boolean;
-	/** Project lookup for the per-task project badge (All tasks mode). */
+	/** Project lookup for the per-task project badge. */
 	projectById: Map<string, Project>;
 	/**
 	 * Project id → its 0-based BOARD index, for the ⌘N badge. Kept separate from
@@ -82,20 +76,18 @@ interface GoToPaletteModalProps {
  * Cmd/Ctrl+K quick-switch palette (navigation). One shared shell, one active
  * MODE at a time, cycled by tapping Shift or clicking the footer mode switcher:
  *
- *   • projects       — fuzzy-jump to a project (⌘1..9 badges).
- *   • project-tasks  — active tasks of the current project (date-bucketed).
- *   • all-tasks      — active tasks across all projects (date-bucketed + project badge).
+ *   • projects — fuzzy-jump to a project (⌘1..9 badges).
+ *   • mixed    — projects AND tasks together (tasks date-bucketed, then a Projects section).
+ *   • tasks    — active tasks across all projects (date-bucketed).
  *
- * Opens in the last-used mode (default "projects"; the "This project" mode is
- * hidden when no project is in view). The task modes bucket rows by `updatedAt`
- * into Today / Yesterday / This week / Older. Complements the Option/Ctrl+Tab
- * hold-cycle switcher (that cycles; this type-searches).
+ * Opens in the last-used mode (default "projects"). Task rows carry a status dot
+ * and (outside a single project) a project badge; task groups bucket by
+ * `updatedAt` into Today / Yesterday / This week / Older. Complements the
+ * Option/Ctrl+Tab hold-cycle switcher (that cycles; this type-searches).
  */
 function GoToPaletteModal({
 	projects,
 	tasks,
-	projectTasks,
-	hasCurrentProject,
 	projectById,
 	shortcutIndexById,
 	onSelectProject,
@@ -106,11 +98,7 @@ function GoToPaletteModal({
 	const statusColors = useStatusColors();
 	const now = Date.now();
 
-	const availableModes: GoToMode[] = hasCurrentProject
-		? ["projects", "project-tasks", "all-tasks"]
-		: ["projects", "all-tasks"];
-
-	const [mode, setMode] = useState<GoToMode>(() => resolveInitialMode(availableModes));
+	const [mode, setMode] = useState<GoToMode>(resolveInitialMode);
 
 	function selectMode(next: GoToMode) {
 		setMode(next);
@@ -121,35 +109,35 @@ function GoToPaletteModal({
 		}
 	}
 	function cycleMode() {
-		const i = availableModes.indexOf(mode);
-		selectMode(availableModes[(i + 1) % availableModes.length]);
+		selectMode(MODES[(MODES.indexOf(mode) + 1) % MODES.length]);
 	}
 
 	const modeLabel = (m: GoToMode) =>
-		m === "projects"
-			? t("goTo.modeProjects")
-			: m === "project-tasks"
-				? t("goTo.modeProjectTasks")
-				: t("goTo.modeAllTasks");
+		m === "projects" ? t("goTo.modeProjects") : m === "mixed" ? t("goTo.modeMixed") : t("goTo.modeTasks");
 
-	const isTaskMode = mode !== "projects";
-	const sourceTasks = mode === "project-tasks" ? projectTasks : tasks;
-	const entries: GoToEntry[] = isTaskMode
-		? sourceTasks.map((task) => ({ kind: "task", task, project: projectById.get(task.projectId) }))
-		: projects.map((project) => ({ kind: "project", project }));
+	const showProjects = mode !== "tasks";
+	const showTasks = mode !== "projects";
+	const grouped = showTasks; // both "mixed" and "tasks" bucket tasks by date
+
+	// Entries: tasks first (so they lead the date buckets), then projects.
+	const entries: GoToEntry[] = [
+		...(showTasks ? tasks.map((task) => ({ kind: "task" as const, task, project: projectById.get(task.projectId) })) : []),
+		...(showProjects ? projects.map((project) => ({ kind: "project" as const, project })) : []),
+	];
 
 	const bucketLabel: Record<string, string> = {
 		today: t("goTo.sectionToday"),
 		yesterday: t("goTo.sectionYesterday"),
 		week: t("goTo.sectionWeek"),
 		older: t("goTo.sectionOlder"),
+		projects: t("goTo.sectionProjects"),
 	};
 
 	// Footer mode switcher — clicking a segment jumps to that mode; onMouseDown
 	// preventDefault keeps focus on the input so typing + Shift-tap keep working.
 	const modeSwitcher = (
 		<div className="flex items-center gap-1" role="group" aria-label={t("goTo.modeGroupLabel")}>
-			{availableModes.map((m) => (
+			{MODES.map((m) => (
 				<button
 					key={m}
 					type="button"
@@ -179,19 +167,19 @@ function GoToPaletteModal({
 			}
 			onSelect={(e) => (e.kind === "project" ? onSelectProject(e.project.id) : onSelectTask(e.task))}
 			onClose={onClose}
-			placeholder={isTaskMode ? t("goTo.placeholderTasks") : t("goTo.placeholderProjects")}
+			placeholder={mode === "projects" ? t("goTo.placeholderProjects") : mode === "tasks" ? t("goTo.placeholderTasks") : t("goTo.placeholderMixed")}
 			ariaLabel={t("goTo.title")}
 			hint={t("goTo.hint")}
-			noResults={isTaskMode ? t("goTo.noTasks") : t("goTo.noProjects")}
+			noResults={mode === "projects" ? t("goTo.noProjects") : mode === "tasks" ? t("goTo.noTasks") : t("goTo.noMixed")}
 			testId="go-to-palette"
 			footerLeft={modeSwitcher}
 			onShiftTap={cycleMode}
 			resetKey={mode}
-			getGroup={isTaskMode ? (e) => (e.kind === "task" ? taskRecencyBucket(e.task.updatedAt, now) : "older") : undefined}
-			groupOrder={isTaskMode ? DATE_GROUP_ORDER : undefined}
-			groupLabel={isTaskMode ? (g) => bucketLabel[g] ?? g : undefined}
+			getGroup={grouped ? (e) => (e.kind === "task" ? taskRecencyBucket(e.task.updatedAt, now) : "projects") : undefined}
+			groupOrder={grouped ? (mode === "mixed" ? MIXED_ORDER : DATE_ORDER) : undefined}
+			groupLabel={grouped ? (g) => bucketLabel[g] ?? g : undefined}
 			renderItemLeft={
-				isTaskMode
+				grouped
 					? (e) =>
 							e.kind === "task" ? (
 								<span
@@ -204,10 +192,7 @@ function GoToPaletteModal({
 			}
 			renderItemRight={(e, _i, query) => {
 				if (e.kind === "task") {
-					// Project badge only in All-tasks mode (redundant when scoped to one project).
-					return mode === "all-tasks" && e.project ? (
-						<span className="text-fg-3 text-xs flex-shrink-0">{e.project.name}</span>
-					) : null;
+					return e.project ? <span className="text-fg-3 text-xs flex-shrink-0">{e.project.name}</span> : null;
 				}
 				if (query.length === 0 && isBuiltinOpsProject(e.project)) {
 					return <span className="text-fg-3 text-xs flex-shrink-0">⌘0</span>;
