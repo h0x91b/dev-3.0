@@ -91,9 +91,10 @@ describe("agentAccountKindForCommand", () => {
 });
 
 describe("AgentAccountIndicator", () => {
-	it("shows 'via <label>' for the active managed account", async () => {
+	it("shows the active managed account label on the trigger", async () => {
 		renderIndicator();
-		expect(await screen.findByText("via work@example.com")).toBeTruthy();
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		expect(trigger.textContent).toContain("work@example.com");
 	});
 
 	it("renders nothing when the provider has no managed accounts", async () => {
@@ -117,7 +118,8 @@ describe("AgentAccountIndicator", () => {
 			makeState({ claude: { ...base.claude, activeId: null } }),
 		);
 		renderIndicator();
-		expect(await screen.findByText("via main@example.com")).toBeTruthy();
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		expect(trigger.textContent).toContain("main@example.com");
 	});
 
 	it("opens the popover and switches the active account", async () => {
@@ -128,7 +130,7 @@ describe("AgentAccountIndicator", () => {
 		const user = userEvent.setup();
 		renderIndicator();
 
-		await user.click(await screen.findByText("via main@example.com"));
+		await user.click(await screen.findByTestId("agent-account-trigger"));
 		await user.click(screen.getByText("work@example.com"));
 
 		await waitFor(() => {
@@ -150,7 +152,7 @@ describe("AgentAccountIndicator", () => {
 		const user = userEvent.setup();
 		renderIndicator();
 
-		await user.click(await screen.findByText("via main@example.com"));
+		await user.click(await screen.findByTestId("agent-account-trigger"));
 		await user.click(screen.getByText("work@example.com"));
 
 		await waitFor(() => expect(mockedConfirm).toHaveBeenCalled());
@@ -161,7 +163,7 @@ describe("AgentAccountIndicator", () => {
 		const user = userEvent.setup();
 		renderIndicator();
 
-		await user.click(await screen.findByText("via work@example.com"));
+		await user.click(await screen.findByTestId("agent-account-trigger"));
 		await user.click(screen.getByText("System login (~/.claude)"));
 
 		await waitFor(() => {
@@ -196,8 +198,9 @@ describe("AgentAccountIndicator", () => {
 		const user = userEvent.setup();
 		renderIndicator();
 
-		expect(await screen.findByText("via OpenRouter")).toBeTruthy();
-		await user.click(screen.getByText("via OpenRouter"));
+		const trigger = await screen.findByTestId("agent-account-trigger");
+		expect(trigger.textContent).toContain("OpenRouter");
+		await user.click(trigger);
 		expect(screen.getByText("openrouter.ai")).toBeTruthy();
 		expect(screen.getAllByText("API").length).toBeGreaterThan(0);
 	});

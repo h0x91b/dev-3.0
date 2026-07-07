@@ -82,6 +82,7 @@ function SwitcherPopover({
 	busy,
 	hint,
 	title,
+	subtitle,
 	onClose,
 }: {
 	anchor: DOMRect;
@@ -89,10 +90,11 @@ function SwitcherPopover({
 	busy: boolean;
 	hint: string;
 	title: string;
+	subtitle: string;
 	onClose: () => void;
 }) {
 	const menuRef = useRef<HTMLDivElement>(null);
-	const [pos, setPos] = useState({ top: anchor.bottom + 4, left: anchor.left });
+	const [pos, setPos] = useState({ top: anchor.top, left: anchor.left });
 	const [visible, setVisible] = useState(false);
 
 	useEscapeKey(onClose);
@@ -108,9 +110,19 @@ function SwitcherPopover({
 		if (!menuRef.current) return;
 		const menu = menuRef.current.getBoundingClientRect();
 		const pad = 8;
-		let top = anchor.bottom + 4;
+		const gap = 6;
+		// Open ABOVE the trigger by default: the indicator sits low in the launch
+		// modal, so opening downward spilled past the modal over the Launch/Cancel
+		// buttons. Flip DOWN only when there isn't enough room above.
+		let top = anchor.top - menu.height - gap;
+		if (top < pad) {
+			const below = anchor.bottom + gap;
+			top =
+				below + menu.height <= window.innerHeight - pad
+					? below
+					: Math.max(pad, window.innerHeight - menu.height - pad);
+		}
 		let left = anchor.left;
-		if (top + menu.height > window.innerHeight - pad) top = Math.max(pad, anchor.top - menu.height - 4);
 		if (left + menu.width > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - menu.width - pad);
 		setPos({ top, left });
 		setVisible(true);
@@ -123,7 +135,10 @@ function SwitcherPopover({
 			style={{ top: pos.top, left: pos.left, visibility: visible ? "visible" : "hidden" }}
 			onClick={(e) => e.stopPropagation()}
 		>
-			<div className="px-3 py-1.5 text-xs text-fg-3 uppercase tracking-wider font-semibold">{title}</div>
+			<div className="px-3 pt-2 pb-2 mb-1 border-b border-edge">
+				<div className="text-fg-2 text-xs font-semibold uppercase tracking-wider">{title}</div>
+				<p className="text-fg-muted text-[0.6875rem] leading-snug mt-1">{subtitle}</p>
+			</div>
 			{rows.map((row) => (
 				<button
 					key={row.key}
@@ -180,6 +195,9 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 	const handleSelect = useCallback(
 		async (accountKind: AgentAccountKind, accountId: string | null, name: string) => {
 			setBusy(true);
+			// Close the popover before the confirm dialog opens — otherwise the list
+			// sits behind the dialog (both visible at once).
+			setAnchor(null);
 			try {
 				// Billing-sensitive: same acknowledgement as the settings section —
 				// every NEW session (and its cost) moves to the target account.
@@ -191,7 +209,6 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 				if (!ok) return;
 				await api.request.setActiveAgentAccount({ kind: accountKind, accountId });
 				notifyAgentAccountsChanged();
-				setAnchor(null);
 			} catch (err) {
 				toast.error(err instanceof Error ? err.message : String(err));
 			} finally {
@@ -250,9 +267,10 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 			<button
 				ref={buttonRef}
 				type="button"
+				data-testid="agent-account-trigger"
 				onClick={() => setAnchor(buttonRef.current?.getBoundingClientRect() ?? null)}
-				className="mt-1 flex items-center gap-1 max-w-full text-[0.6875rem] text-fg-muted hover:text-fg-2 transition-colors"
-				title={t("launch.accountTitle")}
+				className="mt-1 flex items-center gap-1 max-w-full text-[0.6875rem] text-fg-3 hover:text-fg transition-colors"
+				title={t("launch.accountSwitcherTooltip")}
 			>
 				<span
 					aria-hidden
@@ -261,10 +279,17 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 				>
 					{"\u{F0004}"}
 				</span>
-				<span className="truncate">{t("launch.accountVia", { name: activeLabel })}</span>
+				<span className="truncate">{activeLabel}</span>
 				{active?.auth === "api" ? (
 					<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
 				) : null}
+				<span
+					aria-hidden
+					className="text-[0.625rem] leading-none shrink-0 text-fg-muted"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{"\u{F0140}"}
+				</span>
 			</button>
 			{anchor ? (
 				<SwitcherPopover
@@ -272,7 +297,8 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 					rows={rows}
 					busy={busy}
 					hint={t("settings.accountsNewSessionsHint")}
-					title={t("launch.accountTitle")}
+					title={t("launch.accountActiveTitle")}
+					subtitle={t("launch.accountGlobalSubtitle")}
 					onClose={() => setAnchor(null)}
 				/>
 			) : null}
