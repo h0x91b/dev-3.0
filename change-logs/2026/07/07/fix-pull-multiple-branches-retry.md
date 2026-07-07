@@ -1,0 +1,1 @@
+Pulling origin now retries once when git fails with "Cannot fast-forward to multiple branches" — a transient race with a concurrent background fetch rewriting FETCH_HEAD. The single retry re-fetches a clean state and clears the error; unrelated pull failures are returned immediately without retrying.
