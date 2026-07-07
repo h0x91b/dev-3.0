@@ -87,6 +87,7 @@ vi.mock("ghostty-web", () => ({
 }));
 
 vi.mock("../rpc", () => ({
+	isElectrobun: false,
 	api: {
 		request: {
 			uploadFileBase64: vi.fn(),

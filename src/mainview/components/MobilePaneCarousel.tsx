@@ -164,9 +164,11 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 			if (axis === null) {
 				if (Math.abs(dx) > SWIPE_DECIDE_PX && Math.abs(dx) > Math.abs(dy) * 1.4) {
 					axis = "h";
-					// The initial touch already fired touchstart→mousedown on the canvas.
-					// Collapse any nascent selection by ending the drag AT THE START point
-					// (a mouseup elsewhere — e.g. 0,0 — would select to there) plus a click.
+					// In raw mode TerminalView anchors a drag-selection (mousedown at the
+					// start point) once a drag passes its 8px axis check, which can fire
+					// before our 10px decide — so a nascent selection may already exist.
+					// Collapse it by ending the drag AT THE START point (a mouseup
+					// elsewhere — e.g. 0,0 — would select to there) plus a click.
 					const canvas = el!.querySelector("canvas");
 					if (canvas) {
 						const at = { bubbles: true, clientX: startX, clientY: startY } as MouseEventInit;
