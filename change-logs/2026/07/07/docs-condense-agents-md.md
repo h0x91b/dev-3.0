@@ -1,0 +1,1 @@
+Condensed AGENTS.md from ~43.7k to ~34k characters (below the 40k agent-context warning threshold) by removing redundancy and verbose phrasing while preserving every rule, file path, command, and decision-record reference; merged small i18n/testing sub-sections into compact paragraphs.
