@@ -8,6 +8,7 @@ import { confirm } from "../confirm";
 import { useT } from "../i18n";
 import { formatBytes } from "../utils/formatBytes";
 import { startVisibilityAwarePoll } from "../utils/poll";
+import Tooltip from "./Tooltip";
 
 interface TmuxSessionManagerProps {
 	navigate: (route: Route) => void;
@@ -194,11 +195,12 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 
 	return (
 		<>
+			<Tooltip content={t("tmuxSessions.title")} detail={t("ttip.header.tmuxSessions")}>
 			<button
 				ref={buttonRef}
 				onClick={togglePopover}
 				className={`flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated ${popoverOpen ? "bg-elevated text-fg" : ""}`}
-				title={t("tmuxSessions.title")}
+				aria-label={t("tmuxSessions.title")}
 			>
 				<span
 					className="text-[1.125rem] leading-none"
@@ -212,6 +214,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 					</span>
 				)}
 			</button>
+			</Tooltip>
 
 			{popoverOpen &&
 				createPortal(
@@ -238,11 +241,12 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 								</span>
 							</span>
 							<div className="flex items-center gap-1">
+								<Tooltip content={t("tmuxSessions.refresh")}>
 								<button
 									onClick={handleRefresh}
 									disabled={refreshing}
 									className="text-fg-3 hover:text-fg hover:bg-elevated p-1 rounded transition-colors disabled:opacity-40"
-									title={t("tmuxSessions.refresh")}
+									aria-label={t("tmuxSessions.refresh")}
 								>
 									<svg
 										className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`}
@@ -258,6 +262,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 										/>
 									</svg>
 								</button>
+								</Tooltip>
 								{count > 0 && (
 									<button
 										onClick={handleKillAll}

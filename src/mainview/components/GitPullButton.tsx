@@ -4,6 +4,7 @@ import { useT } from "../i18n";
 import { startVisibilityAwarePoll } from "../utils/poll";
 import { useReducedMotion } from "../utils/useReducedMotion";
 import GitPullErrorModal from "./GitPullErrorModal";
+import Tooltip from "./Tooltip";
 import { PullIcon, PullSuccessIcon, PullAlertIcon } from "./HeaderIcons";
 
 type PullIconComponent = typeof PullIcon;
@@ -202,14 +203,14 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 
 	return (
 		<>
+			<Tooltip content={t("header.gitPullLabel")} detail={title}>
 			<button
 				type="button"
 				onClick={handleClick}
-				disabled={disabled}
+				aria-disabled={disabled}
 				data-testid="git-pull-button"
 				data-pull-flash={lastResult?.kind ?? undefined}
 				className={`${baseClass} ${stateClass}`}
-				title={title}
 				aria-label={title}
 				data-behind-origin={behindOrigin > 0 ? behindOrigin : undefined}
 			>
@@ -243,6 +244,7 @@ function GitPullButton({ projectId, compact = false }: GitPullButtonProps) {
 				</span>
 				{!compact && <span className="text-[0.6875rem] font-medium">{label}</span>}
 			</button>
+			</Tooltip>
 			{pullError && (
 				<GitPullErrorModal
 					branch={pullError.branch}

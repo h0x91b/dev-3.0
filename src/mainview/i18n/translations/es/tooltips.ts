@@ -16,6 +16,7 @@ export const tooltips = {
 	"ttip.header.reportBug": "¿Algo en dev-3.0 no funciona? Crea un issue de GitHub desde aquí mismo.",
 	"ttip.header.changelog": "Novedades de dev-3.0 — funciones y arreglos agrupados por día de lanzamiento.",
 	"ttip.header.moreActions": "Las acciones que no caben en la barra con este ancho de ventana viven aquí.",
+	"ttip.header.tmuxSessions": "Sesiones tmux de dev3 de larga duración en esta máquina. Clic para verlas, conectarte o terminarlas.",
 	"ttip.header.projectSettings":
 		"Todo a nivel de proyecto: scripts de ciclo de vida, rama base, asignación de puertos, columnas personalizadas, revisión por IA.",
 	"ttip.header.globalSettings": "Preferencias de toda la app: agentes, apariencia, comportamiento, idioma e integraciones.",
