@@ -1221,6 +1221,23 @@ describe("TaskInfoPanel", () => {
 			expect(screen.getAllByText("Merge").length).toBeGreaterThanOrEqual(1);
 		});
 
+		it("shows agent-assisted git actions for an active Codex task", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 3,
+				behind: 2,
+				canRebase: false,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask({ agentId: "builtin-codex" }));
+			});
+
+			expect(screen.getAllByText("Rebase (AI)").length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByText("PR").length).toBeGreaterThanOrEqual(1);
+			expect(screen.getAllByText("Auto PR").length).toBeGreaterThanOrEqual(1);
+		});
+
 		it("does not show git buttons for inactive task", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ status: "todo", worktreePath: null, branchName: null }));
