@@ -290,6 +290,31 @@ describe("createAnsiThemeFilter — white backgrounds (dark)", () => {
 	});
 });
 
+describe("createAnsiThemeFilter — Codex diff backgrounds (dark)", () => {
+	it("replaces GitHub-light removal and addition backgrounds with dark diff colors", () => {
+		expect(filterAll([`${ESC}[48;2;255;221;221mremoved`], "dark")).toBe(
+			`${ESC}[48;2;63;37;42mremoved`,
+		);
+		expect(filterAll([`${ESC}[48;2;221;255;221madded`], "dark")).toBe(
+			`${ESC}[48;2;36;61;46madded`,
+		);
+	});
+
+	it("brightens GitHub-light code foregrounds on remapped diff backgrounds", () => {
+		expect(
+			filterAll([`${ESC}[48;2;255;221;221;38;2;51;51;51mremoved`], "dark"),
+		).toBe(`${ESC}[48;2;63;37;42;38;2;108;108;108mremoved`);
+		expect(
+			filterAll([`${ESC}[48;2;221;255;221m${ESC}[38;2;24;54;145madded`], "dark"),
+		).toMatch(/^\x1b\[48;2;36;61;46m\x1b\[38;2;\d+;\d+;\d+madded$/);
+	});
+
+	it("keeps Codex GitHub-light diff backgrounds unchanged in light mode", () => {
+		const input = `${ESC}[48;2;255;221;221mremoved${ESC}[48;2;221;255;221madded`;
+		expect(filterAll([input], "light")).toBe(input);
+	});
+});
+
 describe("createAnsiThemeFilter — bg/reverse gating", () => {
 	it("does not adjust fg while an explicit background is active (dark)", () => {
 		const input = `${ESC}[44m${ESC}[38;2;51;51;51mfoo`;
