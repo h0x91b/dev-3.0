@@ -133,6 +133,20 @@ describe("Claude SKILL.md (short variant — protocol lives in the system prompt
 		expect(getCodexSkillContent()).toContain("## Session-start checklist");
 		expect(getGenericSkillContent()).toContain("## Session-start checklist");
 	});
+
+	it("keeps normal Codex lifecycle transitions exclusively hook-owned", () => {
+		const codexSkill = getCodexSkillContent();
+
+		expect(codexSkill).toContain("Never call `dev3 task move` for normal lifecycle transitions");
+		expect(codexSkill).toContain("semantic question that no native event can detect");
+		expect(codexSkill).not.toContain("task move --status in-progress");
+		expect(codexSkill).not.toContain("fall back to manual status management");
+		expect(codexSkill).not.toContain("set `in-progress` manually");
+		expect(codexSkill).not.toContain("move to `review-by-user` when finished");
+
+		// Agents without native hooks still need the manual protocol.
+		expect(getGenericSkillContent()).toContain("task move --status in-progress");
+	});
 });
 
 describe("dev3-tmux skill content", () => {

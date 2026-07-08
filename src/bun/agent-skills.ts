@@ -194,12 +194,16 @@ Hooks automatically manage task status transitions (\`in-progress\`, \`user-ques
 Do NOT call \`dev3 task move\` for status changes — hooks handle it. On projects with Automatic AI Review enabled, completed work passes through \`review-by-ai\` before \`review-by-user\`. You can still use \`dev3 task move\` for custom columns.
 ${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 
-// Codex also uses hooks, but the session must be restarted after config changes.
+// Codex lifecycle is hook-owned. Keep manual moves limited to decisions that
+// cannot be inferred from native events (semantic questions/custom columns).
 const SKILL_STATUS_CODEX_HOOKS = `
 ## Task status management
 
-Hooks automatically manage task status transitions (\`in-progress\`, \`review-by-ai\`, \`review-by-user\`) for Codex sessions started after the dev3 config was installed.
-Do NOT call \`dev3 task move\` for normal active/review transitions when hooks are active. If you need user input or clarification, move the task to \`user-questions\` before your final response. If you are in an older Codex session where hooks clearly are not firing yet, fall back to manual status management: move to \`in-progress\` when you start, \`user-questions\` when blocked, and \`review-by-user\` when finished.
+dev3 injects trusted native hooks into every Codex pane. They own normal lifecycle transitions: session/prompt/tool activity → \`in-progress\`, tool approval waits → \`user-questions\`, tool completion → active again, and agent stop → \`review-by-ai\` or \`review-by-user\`.
+
+**Never call \`dev3 task move\` for normal lifecycle transitions.** In particular, do not move to \`in-progress\` at turn start and do not move to \`review-by-ai\` or \`review-by-user\` when finishing. Do not fall back to manual lifecycle management if a status looks stale; report the hook failure with \`dev3 notify "Codex status hooks did not update the task" --level error\` and leave the evidence intact.
+
+The only lifecycle exception is a semantic question that no native event can detect: if you need user input or clarification (not a tool approval), move the task to \`user-questions\` before your final response. Explicit moves to custom columns and the user-approved \`completed\` flow below also remain allowed.
 ${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 
 const SKILL_CODEX_SHELL = `
@@ -288,7 +292,7 @@ Run these two commands to learn about available CLI commands and your current ta
 - \`~/.dev3.0/bin/dev3 --help\` — learn all available CLI commands
 - \`~/.dev3.0/bin/dev3 current\` — see your current project, task, and status
 
-Then begin working. If hooks are not active in this Codex session yet, set \`in-progress\` manually and continue.
+Then begin working. Do not move the task status on session start; the injected \`SessionStart\` hook already owns that transition.
 `;
 
 const GENERIC_SKILL_CONTENT = `---
@@ -978,8 +982,7 @@ If your working directory (PWD) is inside \`~/.dev3.0/worktrees/\` (i.e. \`$HOME
 **MANDATORY — do this BEFORE any other work:**
 
 1. Invoke the \`/dev3\` skill (or load \`~/.agents/skills/dev3/SKILL.md\` if skills are not supported).
-2. Run \`~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai\` at the START of every turn.
-3. At the END of every turn, move the task to \`user-questions\` (need input) or \`review-by-user\` (fully complete). Never leave it in \`in-progress\`.
+2. Follow the agent-specific status section in the loaded dev3 skill. Hook-aware agents must never duplicate normal lifecycle transitions manually; agents without hooks must follow the skill's manual start/end protocol.
 
 Do NOT skip these steps, even if the user gives a direct command.
 

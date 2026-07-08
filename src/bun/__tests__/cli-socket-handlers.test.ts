@@ -121,7 +121,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext } from "../rpc-handlers";
+import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, triggerColumnAgentIfNeeded, notifyFromCliDesktop, isAppForeground, getActiveContext } from "../rpc-handlers";
 import { loadSettings } from "../settings";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
@@ -233,6 +233,172 @@ describe("handleRequest dispatch", () => {
 		const resp = await handleRequest(makeRequest("projects.list"));
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toBe("string error");
+	});
+});
+
+describe("task.agentHook", () => {
+	function mockAtomicHookUpdate(project: Project, initialTask: Task): void {
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([initialTask]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator: any) => {
+			const { updates, result } = await mutator(initialTask);
+			return { task: { ...initialTask, ...updates }, result };
+		});
+	}
+
+	it("moves a resumed turn to in-progress", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-user" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "UserPromptSubmit",
+		}));
+
+		expect((response.data as Task).status).toBe("in-progress");
+	});
+
+	it("moves an approval request to user-questions", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "PermissionRequest",
+		}));
+
+		expect((response.data as Task).status).toBe("user-questions");
+	});
+
+	it("returns to in-progress after an approved tool finishes", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "user-questions" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "PostToolUse",
+		}));
+
+		expect((response.data as Task).status).toBe("in-progress");
+	});
+
+	it("restores review-by-ai after a review agent approval finishes", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		let storedTask = makeTask({ status: "review-by-ai" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockImplementation(async () => [storedTask]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator: any) => {
+			const { updates, result } = await mutator(storedTask);
+			storedTask = { ...storedTask, ...updates };
+			return { task: storedTask, result };
+		});
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: storedTask.id,
+			projectId: project.id,
+			event: "PermissionRequest",
+			sessionId: "review-session",
+		}));
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: storedTask.id,
+			projectId: project.id,
+			event: "PostToolUse",
+			sessionId: "review-session",
+		}));
+
+		expect((response.data as Task).status).toBe("review-by-ai");
+	});
+
+	it("moves a normal Stop directly to review-by-user", async () => {
+		const project = makeProject({ autoReviewEnabled: false });
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "Stop",
+		}));
+
+		expect((response.data as Task).status).toBe("review-by-user");
+		expect(data.updateTaskWith).toHaveBeenCalledOnce();
+	});
+
+	it("moves a primary-agent Stop to review-by-ai when auto-review is enabled", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "Stop",
+		}));
+
+		expect((response.data as Task).status).toBe("review-by-ai");
+	});
+
+	it("moves a review-agent Stop to review-by-user in one atomic mutation", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "review-by-ai" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "Stop",
+		}));
+
+		expect((response.data as Task).status).toBe("review-by-user");
+	});
+
+	it("does not overwrite an explicit user-questions status on Stop", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "user-questions" });
+		mockAtomicHookUpdate(project, task);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "Stop",
+		}));
+
+		expect((response.data as Task).status).toBe("user-questions");
+	});
+
+	it("starts the automatic review agent after the atomic Stop transition", async () => {
+		const project = makeProject({ autoReviewEnabled: true });
+		const task = makeTask({ status: "in-progress" });
+		mockAtomicHookUpdate(project, task);
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "Stop",
+		}));
+
+		expect(triggerColumnAgentIfNeeded).toHaveBeenCalledOnce();
+	});
+
+	it("rejects unknown lifecycle events", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const response = await handleRequest(makeRequest("task.agentHook", {
+			taskId: task.id,
+			projectId: project.id,
+			event: "FutureEvent",
+		}));
+
+		expect(response.error).toContain("Unsupported Codex hook event");
 	});
 });
 

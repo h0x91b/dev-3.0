@@ -6767,6 +6767,60 @@ describe("launchTaskPty", () => {
 		expect((agents as any).ensureCodexTrust).toHaveBeenCalledWith("/tmp/codex-wt");
 	});
 
+	it("adds the generated Codex hook override only to the launched session", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		mockSpawnSync.mockReturnValue({
+			exitCode: 0,
+			stdout: new TextEncoder().encode("/usr/local/bin/codex\n"),
+			stderr: new Uint8Array(),
+		});
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		(agents.resolveCommandForAgent as any).mockResolvedValueOnce({
+			command: "codex --model gpt-test -- 'Run the task'",
+			extraEnv: {},
+			agent: { baseCommand: "codex" },
+			config: {},
+		});
+		vi.mocked(setupAgentHooks).mockResolvedValueOnce("hooks={Stop=[]}");
+
+		try {
+			await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default");
+
+			const runCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-run.sh"));
+			expect(String(runCall?.[1] ?? "")).toContain("codex -c 'hooks={Stop=[]}' --model gpt-test -- 'Run the task'");
+		} finally {
+			writeSpy.mockRestore();
+		}
+	});
+
+	it("places the Codex hook override before the resume subcommand", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		mockSpawnSync.mockReturnValue({
+			exitCode: 0,
+			stdout: new TextEncoder().encode("/usr/local/bin/codex\n"),
+			stderr: new Uint8Array(),
+		});
+		(agents.resolveCommandForAgent as any).mockResolvedValueOnce({
+			command: "codex resume --last --model gpt-test",
+			extraEnv: {},
+			agent: { baseCommand: "codex" },
+			config: {},
+		});
+		vi.mocked(setupAgentHooks).mockResolvedValueOnce("hooks={Stop=[]}");
+
+		try {
+			await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default", false, true);
+
+			const runCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-run.sh"));
+			expect(String(runCall?.[1] ?? "")).toContain("codex -c 'hooks={Stop=[]}' resume --last --model gpt-test");
+		} finally {
+			writeSpy.mockRestore();
+		}
+	});
+
 	it("throws without creating a PTY session when command resolution fails", async () => {
 		const project = makeProject();
 		const task = makeTask();
@@ -8172,6 +8226,34 @@ describe("triggerColumnAgentIfNeeded", () => {
 			}),
 			expect.anything(),
 		);
+	});
+
+	it("adds the session-scoped hook override to a Codex review agent", async () => {
+		const project = makeProject({
+			autoReviewEnabled: true,
+			builtinColumnAgents: {
+				"review-by-ai": { agentId: "builtin-codex", configId: "codex-default", prompt: "Review" },
+			},
+		});
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+		const writeSpy = vi.spyOn(Bun, "write").mockResolvedValue(undefined as never);
+		vi.mocked(repoConfig.resolveProjectConfig).mockResolvedValue(project);
+		vi.mocked(agents.resolveCommandForAgent).mockResolvedValueOnce({
+			command: "codex 'Review'",
+			agent: { id: "builtin-codex", name: "Codex", baseCommand: "codex", configurations: [], defaultConfigId: "" } as any,
+			config: undefined,
+			extraEnv: {},
+		});
+		vi.mocked(setupAgentHooks).mockResolvedValueOnce("hooks={Stop=[]}");
+
+		try {
+			await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+			const scriptCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-col-agent.sh"));
+			expect(String(scriptCall?.[1] ?? "")).toContain("codex -c 'hooks={Stop=[]}' 'Review'");
+		} finally {
+			writeSpy.mockRestore();
+		}
 	});
 
 	it("defaults agentId and configId when config has empty values", async () => {

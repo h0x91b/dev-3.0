@@ -10,6 +10,42 @@ import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
+export const CODEX_DEV3_HOOK_COMMAND = `${DEV3_CLI} hook codex`;
+export const CODEX_STATUS_HOOK_EVENTS = [
+	"SessionStart",
+	"UserPromptSubmit",
+	"PreToolUse",
+	"PermissionRequest",
+	"PostToolUse",
+	"Stop",
+] as const;
+export type CodexStatusHookEvent = typeof CODEX_STATUS_HOOK_EVENTS[number];
+
+export function getCodexHookTargetStatus(
+	event: CodexStatusHookEvent,
+	currentStatus: TaskStatus,
+	autoReviewEnabled: boolean,
+	resumeStatus?: "in-progress" | "review-by-ai",
+): TaskStatus | null {
+	if (currentStatus === "completed" || currentStatus === "cancelled") return null;
+
+	switch (event) {
+		case "SessionStart":
+		case "UserPromptSubmit":
+		case "PreToolUse":
+		case "PostToolUse":
+			if (currentStatus === "user-questions" && resumeStatus) return resumeStatus;
+			return currentStatus === "review-by-ai" ? null : "in-progress";
+		case "PermissionRequest":
+			return "user-questions";
+		case "Stop":
+			if (currentStatus === "in-progress") {
+				return autoReviewEnabled ? "review-by-ai" : "review-by-user";
+			}
+			if (currentStatus === "review-by-ai") return "review-by-user";
+			return null;
+	}
+}
 
 export interface HookEntry {
 	type: string;
@@ -61,19 +97,12 @@ function wrapAppOfflineFallback(command: string): string {
 	return `${command} || [ $? -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]`;
 }
 
-function wrapCodexStopHookCommand(command: string): string {
-	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else hook_exit_code=$?; if [ "$hook_exit_code" -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$hook_exit_code"; fi; fi`;
-}
-
 function buildStopGroups(
 	stopTarget: TaskStatus,
-	options?: { codexStopHook?: boolean },
 ): MatcherGroup[] {
 	const move = (status: string, extra?: string) => {
-		const command = buildMoveCommand(status, extra, options);
-		return options?.codexStopHook
-			? wrapCodexStopHookCommand(command)
-			: wrapAppOfflineFallback(command);
+		const command = buildMoveCommand(status, extra);
+		return wrapAppOfflineFallback(command);
 	};
 
 	const stopGroups: MatcherGroup[] = [
@@ -137,38 +166,74 @@ export function buildClaudeHooks(
 /**
  * Build the Codex hooks object for a given task.
  *
- * Codex currently lacks a PermissionRequest event, so we mirror the Claude
- * behavior as closely as possible with:
- *
- * - SessionStart/UserPromptSubmit/PreToolUse(Bash): → in-progress
- * - Stop: primary agent → stopTarget; review agent → review-by-user
+ * All entries call one stable handler from a worktree-local hooks file. The
+ * handler receives the event JSON on stdin and asks dev3 to perform the status
+ * transition atomically.
  */
-export function buildCodexHooks(
-	options?: { stopTarget?: TaskStatus },
-): HookMap {
-	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
-	const workingCmd = wrapAppOfflineFallback(
-		buildMoveCommand("in-progress", "--if-status-not review-by-ai"),
-	);
+export function buildCodexHooks(): HookMap {
+	const handler: HookEntry = {
+		type: "command",
+		command: CODEX_DEV3_HOOK_COMMAND,
+		timeout: 5,
+	};
+	const toolMatcher = "Bash|Edit|Write|^apply_patch$|^mcp__.*";
 
 	return {
 		SessionStart: [
 			{
 				matcher: "startup|resume",
-				hooks: [{ type: "command", command: workingCmd }],
+				hooks: [handler],
 			},
 		],
 		UserPromptSubmit: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [handler] },
 		],
 		PreToolUse: [
 			{
-				matcher: "Bash",
-				hooks: [{ type: "command", command: workingCmd }],
+				matcher: toolMatcher,
+				hooks: [handler],
 			},
 		],
-		Stop: buildStopGroups(stopTarget, { codexStopHook: true }),
+		PermissionRequest: [
+			{
+				matcher: toolMatcher,
+				hooks: [handler],
+			},
+		],
+		PostToolUse: [
+			{
+				matcher: toolMatcher,
+				hooks: [handler],
+			},
+		],
+		Stop: [{ hooks: [handler] }],
 	};
+}
+
+function tomlInline(value: unknown): string {
+	if (typeof value === "string") return JSON.stringify(value);
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (Array.isArray(value)) return `[${value.map(tomlInline).join(",")}]`;
+	if (value && typeof value === "object") {
+		return `{${Object.entries(value).map(([key, entry]) => {
+			const tomlKey = /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
+			return `${tomlKey}=${tomlInline(entry)}`;
+		}).join(",")}}`;
+	}
+	throw new Error(`Unsupported Codex hook config value: ${String(value)}`);
+}
+
+/**
+ * Serialize dev3 hooks as one Codex `-c` override. Current Codex deliberately
+ * resolves project hooks from a linked worktree's root checkout, so dev3 must
+ * carry its generated worktree definitions as session flags instead.
+ */
+export function buildCodexHooksConfigOverride(
+	state: Record<string, { trusted_hash: string }> = {},
+): string {
+	const hooks: Record<string, unknown> = { ...buildCodexHooks() };
+	if (Object.keys(state).length > 0) hooks.state = state;
+	return `hooks=${tomlInline(hooks)}`;
 }
 
 /**
@@ -222,9 +287,8 @@ export function mergeClaudeHooks(
 
 export function mergeCodexHooks(
 	existing: Record<string, unknown>,
-	options?: { stopTarget?: TaskStatus },
 ): Record<string, unknown> {
-	return mergeHookMaps(existing, buildCodexHooks(options));
+	return mergeHookMaps(existing, buildCodexHooks());
 }
 
 /**
@@ -313,10 +377,10 @@ export function writeClaudeHooks(
 }
 
 /**
- * Read .codex/hooks.json, merge dev3 hooks, and write it back.
- * Creates the .codex/ directory if it doesn't exist.
+ * Read the generated worktree-local .codex/hooks.json, merge dev3 hooks, and
+ * write it back. The file is gitignored and disappears with the worktree.
  */
-export function writeCodexHooks(worktreePath: string, options?: { stopTarget?: TaskStatus }): void {
+export function writeCodexHooks(worktreePath: string): void {
 	const codexDir = join(worktreePath, ".codex");
 	mkdirSync(codexDir, { recursive: true });
 
@@ -328,9 +392,12 @@ export function writeCodexHooks(worktreePath: string, options?: { stopTarget?: T
 			settings = JSON.parse(readFileSync(hooksPath, "utf-8"));
 		}
 	} catch {
-		// Corrupted file — overwrite
+		// This is generated, gitignored worktree state. Replace corruption rather
+		// than blocking every future Codex launch in this task.
+		settings = {};
 	}
 
-	const updated = mergeCodexHooks(settings, options);
+	const updated = mergeCodexHooks(settings);
+	if (JSON.stringify(updated) === JSON.stringify(settings)) return;
 	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
 }

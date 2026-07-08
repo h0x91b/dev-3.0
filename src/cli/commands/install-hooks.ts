@@ -45,6 +45,8 @@ export async function handleInstallHooks(): Promise<void> {
 	process.stdout.write(`Installed Codex hooks → ${codexHooksPath}\n`);
 	process.stdout.write(`  SessionStart → in-progress\n`);
 	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
-	process.stdout.write(`  PreToolUse(Bash) → in-progress\n`);
-	process.stdout.write(`  Stop → review-by-user\n`);
+	process.stdout.write(`  PreToolUse/PostToolUse → in-progress\n`);
+	process.stdout.write(`  PermissionRequest → user-questions\n`);
+	process.stdout.write(`  Stop → review-by-ai or review-by-user\n`);
+	process.stdout.write(`  Trust: registered automatically when dev3 launches Codex\n`);
 }

@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedImage } from "../shared/types";
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createCompletionRequest } from "./completion-requests";
@@ -111,6 +112,28 @@ async function resolveTaskFromParams(params: Record<string, unknown>): Promise<{
 }
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
+
+// An approval temporarily moves a task to user-questions. Remember which
+// active lane that Codex session came from so PostToolUse can restore a review
+// agent to review-by-ai instead of misclassifying it as the primary agent.
+const CODEX_APPROVAL_RESUME_TTL_MS = 24 * 60 * 60 * 1000;
+const codexApprovalResumeStatuses = new Map<
+	string,
+	{ status: "in-progress" | "review-by-ai"; expiresAt: number }
+>();
+
+function getCodexApprovalResumeStatus(
+	key: string | null,
+): "in-progress" | "review-by-ai" | undefined {
+	if (!key) return undefined;
+	const entry = codexApprovalResumeStatuses.get(key);
+	if (!entry) return undefined;
+	if (entry.expiresAt <= Date.now()) {
+		codexApprovalResumeStatuses.delete(key);
+		return undefined;
+	}
+	return entry.status;
+}
 
 const handlers: Record<string, Handler> = {
 	// Cross-instance notification: another dev-3.0 instance changed data.
@@ -577,6 +600,66 @@ const handlers: Record<string, Handler> = {
 		const task = await data.updateTask(project, taskId, { labelIds });
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 		return task;
+	},
+
+	"task.agentHook": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const event = params.event as CodexStatusHookEvent;
+		if (!CODEX_STATUS_HOOK_EVENTS.includes(event)) {
+			throw new Error(`Unsupported Codex hook event: ${String(params.event)}`);
+		}
+		const sessionId = typeof params.sessionId === "string" ? params.sessionId : null;
+		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
+		const rememberedResumeStatus = getCodexApprovalResumeStatus(resumeKey);
+
+		const settings = await loadSettings();
+		const { task: updated, result } = await data.updateTaskWith(
+			project,
+			task.id,
+			(current) => {
+				const target = getCodexHookTargetStatus(
+					event,
+					current.status,
+					project.autoReviewEnabled === true,
+					rememberedResumeStatus,
+				);
+				const changed = target !== null && (
+					current.status !== target || current.customColumnId != null
+				);
+				return {
+					updates: changed ? { status: target, customColumnId: null } : {},
+					result: {
+						changed,
+						oldStatus: current.status,
+						target,
+						resumeStatus: event === "PermissionRequest"
+							&& (current.status === "in-progress" || current.status === "review-by-ai")
+							? current.status
+							: null,
+						clearResumeStatus: rememberedResumeStatus !== undefined
+							&& current.status === "user-questions"
+							&& target === rememberedResumeStatus,
+					},
+				};
+			},
+			{ dropPosition: settings.taskDropPosition },
+		);
+		if (resumeKey && result.resumeStatus) {
+			codexApprovalResumeStatuses.set(resumeKey, {
+				status: result.resumeStatus,
+				expiresAt: Date.now() + CODEX_APPROVAL_RESUME_TTL_MS,
+			});
+		} else if (resumeKey && result.clearResumeStatus) {
+			codexApprovalResumeStatuses.delete(resumeKey);
+		}
+
+		if (result.changed && result.target) {
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			notifyWatchedTaskStatusChange(updated, result.oldStatus, result.target, project.name);
+			await triggerColumnAgentIfNeeded(result.target, project, updated);
+		}
+
+		return updated;
 	},
 
 	"task.move": async (params) => {

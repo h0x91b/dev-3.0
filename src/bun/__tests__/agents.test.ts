@@ -206,7 +206,8 @@ describe("resolveAgentCommand — resume", () => {
 		// quotes appear escaped (shell="/bin/bash" → shell=\"/bin/bash\").
 		expect(cmd).toContain("-c 'developer_instructions=");
 		expect(cmd).toContain("Task Lifecycle Protocol");
-		expect(cmd).toContain("Codex sessions started after the dev3 config was installed");
+		expect(cmd).toContain("Never call `dev3 task move` for normal lifecycle transitions");
+		expect(cmd).not.toContain("task move --status in-progress");
 		expect(cmd).toContain('shell=\\"/bin/bash\\"');
 		expect(cmd).toContain("user-questions");
 		// The user prompt stays clean — no skill body appended to it.

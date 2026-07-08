@@ -5,13 +5,14 @@
  * so that task status transitions happen automatically via the agent's built-in
  * event system, rather than relying solely on SKILL.md instructions.
  *
- * Currently supports Claude Code.  Extensible for Gemini, Cursor, etc.
+ * Currently supports Claude Code and Codex. Extensible for Gemini, Cursor, etc.
  */
 
 import type { PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
 import { isClaudeCommand, isCodexCommand } from "./agents";
 import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
+import { prepareCodexWorktreeHookOverride } from "./codex-hook-trust";
 
 export {
 	buildClaudeHooks,
@@ -32,21 +33,22 @@ export function setupAgentHooks(
 	worktreePath: string,
 	baseCommand: string,
 	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode },
-): void {
+): Promise<string | null> {
 	if (isClaudeCommand(baseCommand)) {
 		writeClaudeHooks(worktreePath, options);
 		log.info("Claude hooks installed", {
 			worktreePath,
 			permissionMode: options?.permissionMode,
 		});
-		return;
+		return Promise.resolve(null);
 	}
 	if (isCodexCommand(baseCommand)) {
-		writeCodexHooks(worktreePath, options);
-		log.info("Codex hooks installed", {
-			worktreePath,
+		writeCodexHooks(worktreePath);
+		return prepareCodexWorktreeHookOverride(worktreePath).then((configOverride) => {
+			log.info("Codex worktree hooks installed with session-scoped trust", { worktreePath });
+			return configOverride;
 		});
-		return;
 	}
 	// Future: isGeminiCommand, isCursorCommand, etc.
+	return Promise.resolve(null);
 }

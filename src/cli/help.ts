@@ -374,10 +374,13 @@ const COMMANDS: CommandHelp[] = [
 	},
 	{
 		name: "install-hooks",
-		summary: "Install agent status-sync hooks in the current worktree.",
+		summary: "Install status-sync hooks for Claude Code and Codex.",
 		subcommands: [],
 		usage: "dev3 install-hooks",
-		details: ["Writes Claude Code and Codex hook configs into the worktree."],
+		details: [
+			"Writes Claude Code and Codex status hooks into the current worktree.",
+			"Codex hook hashes are calculated automatically and scoped to each launched session.",
+		],
 	},
 	{
 		name: "install-skills",

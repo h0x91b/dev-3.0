@@ -2,7 +2,7 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-07-06
+Last updated: 2026-07-08
 
 ## Agents
 
@@ -28,7 +28,7 @@ Last updated: 2026-07-06
 | **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — |
 | **Agent selection** | — | — | — | — | `--agent` |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
-| **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (4 hooks) | — | — |
+| **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — |
 
@@ -49,14 +49,16 @@ Injected into `.claude/settings.local.json`.
 
 ### Codex
 
-Injected into `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that).
+Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that). Current Codex deliberately reads project hooks from the root checkout instead of a linked worktree, so dev3 also injects the same definitions as session flags into every Codex pane. On Codex 0.129+, dev3 asks `hooks/list` for authoritative hashes and adds trust state to that session override only; it never changes `~/.codex/hooks.json`, persists hook trust, or trusts unrelated user/project/plugin hooks. The Codex skill forbids duplicate manual normal-lifecycle moves; semantic questions, custom columns, and explicit completion remain manual. `PermissionRequest` runs on Codex 0.122+; older hook parsers ignore that unknown event while retaining the others.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
 | `SessionStart` | → `in-progress` | Marks startup/resume turns as active |
 | `UserPromptSubmit` | → `in-progress` | User sent a message, agent starts working |
-| `PreToolUse` (`Bash`) | → `in-progress` | Agent is about to run a shell command |
-| `Stop` | → `review-by-user` | Agent finished its turn; dev3 suppresses normal CLI stdout and returns minimal JSON for Codex |
+| `PreToolUse` | → `in-progress` | Agent is about to use Bash, apply a patch, or call an MCP tool |
+| `PermissionRequest` | → `user-questions` | Codex is waiting for a tool or network approval |
+| `PostToolUse` | → `in-progress` | Clears the waiting state after an approved tool finishes |
+| `Stop` | → `review-by-ai` / `review-by-user` | One atomic server-side transition selects the correct review target and returns valid JSON to Codex |
 
 ## Skill Differences
 
@@ -122,4 +124,4 @@ toggle re-prefixes all non-overridden rows. See [decision 089](decisions/089-llm
 | `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` |
 | `~/.claude/settings.json` | Claude Code | Auto-adds `Bash(~/.dev3.0/bin/dev3 *)` permission |
 | `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names |
-| `<worktree>/.codex/hooks.json` | Codex | Auto-installs SessionStart/UserPromptSubmit/PreToolUse(Bash)/Stop lifecycle hooks |
+| `<worktree>/.codex/hooks.json` | Codex | Generated, gitignored lifecycle definitions mirrored into each dev3-launched Codex pane as session flags |
