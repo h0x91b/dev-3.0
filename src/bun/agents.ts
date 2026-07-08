@@ -63,6 +63,14 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"claude-fable5-cost-trick-medium",
 	"claude-fable5-cost-trick-high",
 	"claude-fable5-cost-trick-xhigh",
+	// Removed when the gpt-5.3-codex Codex presets were dropped: the model returns
+	// HTTP 400 on ChatGPT-account auth ("not supported"), and OpenAI's new lineup
+	// has no codex-specialized model to replace it. Codex now leads with the
+	// gpt-5.6-sol frontier tier, keeping gpt-5.5 as a legacy tier below.
+	"codex-5.3-heavy-bypass",
+	"codex-5.3-heavy",
+	"codex-5.3-medium-bypass",
+	"codex-5.3-medium",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.

@@ -29,6 +29,7 @@ describe("getModelGroupLabel", () => {
 	it("maps known model strings to clean labels", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-fable-5" })).toBe("Fable 5");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.3-codex" })).toBe("GPT-5.3 Codex");
 	});
 
@@ -67,6 +68,9 @@ describe("getModeLeafLabel", () => {
 		expect(getModeLeafLabel({ id: "a", name: "GPT-5.5 Heavy Bypass", model: "gpt-5.5" })).toBe("Heavy Bypass");
 		expect(getModeLeafLabel({ id: "a", name: "Default (GPT-5.5 Heavy Bypass)", model: "gpt-5.5" })).toBe("Default (Heavy Bypass)");
 		expect(getModeLeafLabel({ id: "a", name: "Plan (GPT-5.5)", model: "gpt-5.5" })).toBe("Plan");
+		// Multi-word group label ("GPT-5.6 Sol") strips cleanly too
+		expect(getModeLeafLabel({ id: "a", name: "GPT-5.6 Sol Medium Bypass", model: "gpt-5.6-sol" })).toBe("Medium Bypass");
+		expect(getModeLeafLabel({ id: "a", name: "Default (GPT-5.6 Sol Heavy Bypass)", model: "gpt-5.6-sol" })).toBe("Default (Heavy Bypass)");
 		// Claude "Default" (no fields) collapses to just the mode word
 		expect(getModeLeafLabel({ id: "a", name: "Default (Fable 5)", model: "claude-fable-5" })).toBe("Default");
 		// OpenCode persona-style

@@ -1,0 +1,1 @@
+Refreshed the Codex launch presets for OpenAI's new model lineup: gpt-5.6-sol is now the frontier default (Default/Plan/Plan-then-Bypass plus Heavy/Medium × Bypass), the existing gpt-5.5 presets move below it as a legacy tier, and the gpt-5.3-codex presets were removed since that model returns HTTP 400 on ChatGPT-account auth and OpenAI shipped no codex-specialized successor.
