@@ -12,6 +12,7 @@ import { useT } from "../i18n";
 import ActiveTasksStrip from "./ActiveTasksStrip";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
+import { trackDiffView } from "../analytics";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
@@ -64,6 +65,12 @@ function ProjectView({
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
 	}, []);
+
+	// Opening the inline diff is a distinct surface but not a route — fire its
+	// page view explicitly (once per open) so it shows up alongside navigation.
+	useEffect(() => {
+		if (inlineDiff.isOpen && activeTaskId) trackDiffView(projectId, activeTaskId);
+	}, [inlineDiff.isOpen, projectId, activeTaskId]);
 
 	if (!project) {
 		return (

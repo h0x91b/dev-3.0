@@ -1559,8 +1559,7 @@ function App() {
 
 	// Track page views on route changes
 	useEffect(() => {
-		const { screen } = state.route;
-		trackPageView(screen);
+		trackPageView(state.route);
 	}, [state.route]);
 
 	// Escape: close quit dialog or navigate back from settings screens

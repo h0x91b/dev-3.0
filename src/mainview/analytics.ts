@@ -3,6 +3,7 @@
 // script loading from the views:// custom protocol.
 
 import type { CodingAgent } from "../shared/types";
+import type { Route } from "./state";
 import { api } from "./rpc";
 import { randomUUID } from "./uuid";
 
@@ -19,6 +20,20 @@ let currentScreen = "dashboard";
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let errorTrackingSetup = false;
 let sessionStartTime = 0;
+
+// ── Engagement time (feeds GA4 `engagement_time_msec`) ──
+// We report the real *foreground* time elapsed between hits, not a fixed
+// constant, so GA4's "average engagement time" / "engaged sessions" mean
+// something. `engagedMs` banks accumulated visible time; `engagementResumeTs`
+// is the timestamp we've been counting from (0 = paused because the tab/window
+// is hidden). Both flushed on every hit (see flushEngagementMs).
+let engagedMs = 0;
+let engagementResumeTs = 0;
+let engagementTrackingSetup = false;
+
+// Cap a single engagement report so a suspended laptop / clock jump can't spike
+// the metric with a multi-hour "engaged" interval.
+const MAX_ENGAGEMENT_MS = 30 * 60 * 1000;
 // Public IP used for `ip_override`. GA4 Measurement Protocol does NOT geolocate
 // web-stream hits from the request's source IP — without ip_override the
 // Country/City dimensions stay "(not set)". Resolved best-effort (see
@@ -114,7 +129,10 @@ function getLanguage(): string {
 	return navigator.language || "unknown";
 }
 
-function isFirstOpen(): boolean {
+function isFirstVisit(): boolean {
+	// Key string kept as-is (was the old first_open sentinel) so existing
+	// installs are already marked "seen" — renaming it would re-fire first_visit
+	// once for everyone and spike "New users".
 	const key = "dev3-ga-first-open-sent";
 	if (!localStorage.getItem(key)) {
 		localStorage.setItem(key, "1");
@@ -128,18 +146,67 @@ function getSessionDurationSec(): number {
 	return Math.floor((Date.now() - sessionStartTime) / 1000);
 }
 
+/** Pause the engagement clock (tab/window hidden): bank the visible span so far. */
+function pauseEngagement(now: number): void {
+	if (engagementResumeTs) {
+		engagedMs += now - engagementResumeTs;
+		engagementResumeTs = 0;
+	}
+}
+
+/** Resume the engagement clock (tab/window visible) if it was paused. */
+function resumeEngagement(now: number): void {
+	if (!engagementResumeTs) engagementResumeTs = now;
+}
+
+function onVisibilityChange(): void {
+	const now = Date.now();
+	if (document.visibilityState === "hidden") pauseEngagement(now);
+	else resumeEngagement(now);
+}
+
+/** Wire visibility tracking once so we only count foreground time as engaged. */
+function setupEngagementTracking(): void {
+	if (engagementTrackingSetup) return;
+	engagementTrackingSetup = true;
+	if (typeof document !== "undefined") {
+		document.addEventListener("visibilitychange", onVisibilityChange);
+	}
+}
+
+/**
+ * Foreground time (ms) accumulated since the last hit, then resets the
+ * accumulator. Reported as GA4 `engagement_time_msec` so engagement metrics
+ * reflect real usage instead of the old fixed "100". Capped at
+ * MAX_ENGAGEMENT_MS to survive suspended timers / clock jumps.
+ */
+function flushEngagementMs(): number {
+	const now = Date.now();
+	if (engagementResumeTs) {
+		engagedMs += now - engagementResumeTs;
+		engagementResumeTs = now; // keep counting from now
+	}
+	const ms = Math.min(engagedMs, MAX_ENGAGEMENT_MS);
+	engagedMs = 0;
+	return ms;
+}
+
 function sendToGA(events: Array<{ name: string; params?: Record<string, unknown> }>): void {
+	// Flush once per hit and attach only to the first event — GA4 sums
+	// engagement_time_msec across events, so repeating it would multi-count the
+	// same interval. Floor at 1 so every hit carries a positive engagement.
+	const engagementMs = String(Math.max(1, flushEngagementMs()));
 	const body = {
 		client_id: clientId,
 		user_agent: navigator.userAgent,
 		// Lets GA4 derive Country/City — MP web hits are NOT geolocated otherwise.
 		...(ipOverride ? { ip_override: ipOverride } : {}),
 		user_properties: userProperties,
-		events: events.map((e) => ({
+		events: events.map((e, index) => ({
 			name: e.name,
 			params: {
 				session_id: sessionId,
-				engagement_time_msec: "100",
+				...(index === 0 ? { engagement_time_msec: engagementMs } : {}),
 				...e.params,
 			},
 		})),
@@ -159,6 +226,13 @@ export function initAnalytics(appVersion: string): void {
 	sessionId = getOrCreateSessionId();
 	sessionStartTime = Date.now();
 
+	// Reset the engagement clock for this launch and start counting immediately
+	// unless we boot while hidden. setupEngagementTracking wires visibility once.
+	engagedMs = 0;
+	engagementResumeTs =
+		typeof document === "undefined" || document.visibilityState !== "hidden" ? Date.now() : 0;
+	setupEngagementTracking();
+
 	// Load cached IP synchronously (so session_start can carry it) and kick off
 	// a best-effort refresh for the geo dimensions.
 	resolvePublicIp();
@@ -172,9 +246,12 @@ export function initAnalytics(appVersion: string): void {
 
 	const initEvents: Array<{ name: string; params?: Record<string, unknown> }> = [];
 
-	// first_open — only on the very first app launch (drives "New users" metric in GA4)
-	if (isFirstOpen()) {
-		initEvents.push({ name: "first_open" });
+	// first_visit — only on the very first launch on this device. This is the
+	// WEB-stream new-user event and is what drives GA4's "New users" metric; the
+	// old `first_open` is the app/Firebase-stream equivalent and does NOT count
+	// on a web data stream (which is what we are — measurement_id "G-…").
+	if (isFirstVisit()) {
+		initEvents.push({ name: "first_visit" });
 	}
 
 	// app_update — fires when the app version changes (not on first open)
@@ -217,16 +294,98 @@ export function destroyAnalytics(): void {
 	}
 	// Drop the in-memory geo IP; the next init re-reads it from the localStorage cache.
 	ipOverride = "";
+	// Tear down engagement tracking so a fresh init re-wires it cleanly.
+	if (engagementTrackingSetup && typeof document !== "undefined") {
+		document.removeEventListener("visibilitychange", onVisibilityChange);
+	}
+	engagementTrackingSetup = false;
+	engagedMs = 0;
+	engagementResumeTs = 0;
 }
 
-/** Track a virtual page view (for SPA navigation). */
-export function trackPageView(screenName: string): void {
-	currentScreen = screenName;
+/** Human-facing GA4 location derived from a {@link Route}. */
+export interface AnalyticsLocation {
+	/** Short screen label (also used as heartbeat `screen_name`). */
+	screen: string;
+	/** GA4 `page_title`. */
+	title: string;
+	/**
+	 * Path portion of `page_location`, always under the `/app` prefix so the app
+	 * is trivially separable from the marketing landing page — both report into
+	 * the SAME GA4 property (measurement_id "G-…"), so without the prefix their
+	 * Page-path rows would be indistinguishable.
+	 *
+	 * Project/task identifiers are the app's internal random ids, never the
+	 * project *name*: a repo/folder name can be confidential (client under NDA,
+	 * unreleased codename) and must not leave the machine.
+	 */
+	path: string;
+}
+
+/** Map a route to a GA4 location. Pure — safe to unit-test in isolation. */
+export function analyticsLocationForRoute(route: Route): AnalyticsLocation {
+	switch (route.screen) {
+		case "dashboard":
+			return { screen: "dashboard", title: "Dashboard", path: "/app/dashboard" };
+		case "project":
+			// Split view with a task selected is really the task surface; the bare
+			// board (with or without an empty split list) is "kanban".
+			return route.activeTaskId
+				? { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${route.activeTaskId}` }
+				: { screen: "kanban", title: "Kanban", path: `/app/project/${route.projectId}/kanban` };
+		case "project-terminal":
+			return { screen: "project-terminal", title: "Project Terminal", path: `/app/project/${route.projectId}/terminal` };
+		case "task":
+			return { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${route.taskId}` };
+		case "project-settings":
+			return { screen: "project-settings", title: "Project Settings", path: `/app/project/${route.projectId}/settings` };
+		case "settings":
+			return { screen: "settings", title: "Settings", path: "/app/settings" };
+		case "changelog":
+			return { screen: "changelog", title: "Changelog", path: "/app/changelog" };
+		case "stats":
+			return { screen: "stats", title: "Stats", path: "/app/stats" };
+		case "gauge-demo":
+			return { screen: "gauge-demo", title: "Gauge Demo", path: "/app/gauge-demo" };
+		case "viewport-lab":
+			return { screen: "viewport-lab", title: "Viewport Lab", path: "/app/viewport-lab" };
+		default:
+			// Resilient fallback for any future route: never break telemetry over a
+			// missing case — just log a generic /app hit.
+			return { screen: "unknown", title: "dev-3.0", path: "/app" };
+	}
+}
+
+/** Build a full GA4 `page_location` from an /app path (host stays `dev3`). */
+function pageLocation(path: string): string {
+	return `app://dev3${path}`;
+}
+
+/** Track a virtual page view for SPA navigation, derived from the route. */
+export function trackPageView(route: Route): void {
+	const loc = analyticsLocationForRoute(route);
+	currentScreen = loc.screen;
 	sendToGA([{
 		name: "page_view",
 		params: {
-			page_title: screenName,
-			page_location: `app://dev3/${screenName}`,
+			page_title: loc.title,
+			page_location: pageLocation(loc.path),
+		},
+	}]);
+}
+
+/**
+ * Track opening the inline diff viewer as its own virtual page view. The diff is
+ * not a routable screen (it opens in-place over a task), so callers fire this
+ * explicitly on open. Uses the internal project/task ids, never the name.
+ */
+export function trackDiffView(projectId: string, taskId: string): void {
+	currentScreen = "diff";
+	sendToGA([{
+		name: "page_view",
+		params: {
+			page_title: "Diff",
+			page_location: pageLocation(`/app/project/${projectId}/diff/${taskId}`),
 		},
 	}]);
 }

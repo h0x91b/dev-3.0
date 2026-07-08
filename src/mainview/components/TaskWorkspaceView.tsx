@@ -7,6 +7,7 @@ import { api } from "../rpc";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
+import { trackDiffView } from "../analytics";
 
 interface TaskWorkspaceViewProps {
 	projectId: string;
@@ -49,6 +50,12 @@ function TaskWorkspaceView({
 			}
 		})();
 	}, [projectId, dispatch]);
+
+	// The inline diff opens in-place (not a route) — fire its page view once per
+	// open so the diff surface is visible in analytics like any other screen.
+	useEffect(() => {
+		if (inlineDiff.isOpen) trackDiffView(projectId, taskId);
+	}, [inlineDiff.isOpen, projectId, taskId]);
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">
