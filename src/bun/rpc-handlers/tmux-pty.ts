@@ -14,7 +14,7 @@ import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
 import { ALT_CLICK_PANE_FORMAT, altClickIneligibleReason, computeAltClickKeys, findAltClickPane, parseAltClickPanes } from "../tmux-alt-click";
-import { isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
+import { getPushMessage, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
@@ -2099,6 +2099,8 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
+	let launchedAgentId = params.agentId;
+	let launchedConfigId = params.configId;
 
 	// Pre-assign a session ID for Claude so we can recover this pane later
 	const freshSessionId = crypto.randomUUID();
@@ -2109,6 +2111,8 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		launchedAgentId = resolved.agent?.id ?? params.agentId;
+		launchedConfigId = resolved.config?.id ?? params.configId;
 	} else {
 		const resolved = await agents.resolveCommandForProject(
 			project,
@@ -2121,6 +2125,8 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		launchedAgentId = resolved.agent?.id ?? null;
+		launchedConfigId = resolved.config?.id ?? null;
 	}
 
 	// Register trust / re-patch the agent's config before spawning. The primary
@@ -2163,14 +2169,17 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		paneId: newPaneId,
 		agentCmd: resolvedBaseCmd,
 		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
-		agentId: params.agentId,
-		configId: params.configId,
+		agentId: launchedAgentId,
+		configId: launchedConfigId,
 	};
 	const existingPanes = task.sessionState?.panes ?? [];
 	try {
-		await data.updateTask(project, task.id, {
+		const updated = await data.updateTask(project, task.id, {
+			agentId: launchedAgentId,
+			configId: launchedConfigId,
 			sessionState: { panes: [...existingPanes, paneEntry] },
 		});
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		log.info("Appended pane to sessionState", { taskId: params.taskId.slice(0, 8), paneCount: existingPanes.length + 1 });
 	} catch (err) {
 		log.error("Failed to append pane to sessionState (non-fatal)", { error: String(err) });
@@ -2244,11 +2253,15 @@ async function spawnSingleBugHunterPane(opts: {
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
+	let launchedAgentId = opts.agentId;
+	let launchedConfigId = opts.configId;
 	if (opts.agentId) {
 		const resolved = await agents.resolveCommandForAgent(opts.agentId, opts.configId, ctx, cmdOptions);
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		launchedAgentId = resolved.agent?.id ?? opts.agentId;
+		launchedConfigId = resolved.config?.id ?? opts.configId;
 	} else {
 		const resolved = await agents.resolveCommandForProject(
 			opts.project,
@@ -2261,6 +2274,8 @@ async function spawnSingleBugHunterPane(opts: {
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
 		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		launchedAgentId = resolved.agent?.id ?? null;
+		launchedConfigId = resolved.config?.id ?? null;
 	}
 
 	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
@@ -2298,15 +2313,18 @@ async function spawnSingleBugHunterPane(opts: {
 		paneId: newPaneId,
 		agentCmd: resolvedBaseCmd,
 		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
-		agentId: opts.agentId,
-		configId: opts.configId,
+		agentId: launchedAgentId,
+		configId: launchedConfigId,
 	};
 	try {
 		const freshTask = await data.getTask(opts.project, opts.task.id);
 		const existingPanes = freshTask.sessionState?.panes ?? [];
-		await data.updateTask(opts.project, opts.task.id, {
+		const updated = await data.updateTask(opts.project, opts.task.id, {
+			agentId: launchedAgentId,
+			configId: launchedConfigId,
 			sessionState: { panes: [...existingPanes, paneEntry] },
 		});
+		getPushMessage()?.("taskUpdated", { projectId: opts.project.id, task: updated });
 	} catch (err) {
 		log.error("Failed to append bug hunter pane to sessionState (non-fatal)", { error: String(err) });
 	}
