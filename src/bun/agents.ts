@@ -260,9 +260,14 @@ async function saveAgents(agents: CodingAgent[]): Promise<void> {
 export async function getAllAgents(): Promise<CodingAgent[]> {
 	const stored = await loadStoredAgents();
 	const merged = mergeWithDefaults(stored);
+	const mergedChanged = JSON.stringify(merged) !== JSON.stringify(stored);
 
 	const settings = await loadSettings();
 	if ((settings.agentsLayoutRevision ?? 0) >= AGENTS_LAYOUT_REVISION) {
+		// Merge is also the migration path for removed presets and versioned
+		// built-in updates. Persist it even when no layout resync is due so an
+		// older parallel app instance reads the canonical current data from disk.
+		if (mergedChanged) await saveAgents(merged);
 		return merged;
 	}
 

@@ -863,6 +863,20 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		expect(mergedCodex.configurations.some((config) => interimIds.includes(config.id))).toBe(false);
 	});
 
+	it("ships canonical model labels on every Codex preset", () => {
+		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
+		const expectedLabels: Record<string, string> = {
+			"gpt-5.6-sol": "GPT-5.6 Sol",
+			"gpt-5.6-terra": "GPT-5.6 Terra",
+			"gpt-5.6-luna": "GPT-5.6 Luna",
+			"gpt-5.5": "GPT-5.5",
+		};
+
+		for (const config of codex.configurations) {
+			expect(config.groupLabel).toBe(expectedLabels[config.model!]);
+		}
+	});
+
 	it("refreshes presentation labels when a built-in preset version increases", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
 		const currentDefault = codex.configurations.find((config) => config.id === "codex-default")!;

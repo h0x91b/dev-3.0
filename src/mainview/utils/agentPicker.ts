@@ -65,9 +65,18 @@ const EFFORT_LABELS: Record<string, string> = {
 export function prettifyModel(model: string): string {
 	const noDuration = model.replace(/\[[^\]]+\]/g, "");
 	const scoped = noDuration.split("/").pop() ?? noDuration;
-	const cleaned = scoped
+	const withoutQualifiers = scoped
 		.replace(/-preview/gi, "")
-		.replace(/-thinking/gi, "")
+		.replace(/-thinking/gi, "");
+	const gptMatch = withoutQualifiers.match(/^gpt[-_]([0-9]+(?:\.[0-9]+)*)(?:[-_](.+))?$/i);
+	if (gptMatch) {
+		const variant = (gptMatch[2] ?? "")
+			.replace(/[-_]+/g, " ")
+			.trim()
+			.replace(/\b\w/g, (ch) => ch.toUpperCase());
+		return `GPT-${gptMatch[1]}${variant ? ` ${variant}` : ""}`;
+	}
+	const cleaned = withoutQualifiers
 		.replace(/[-_]+/g, " ")
 		.trim();
 	if (!cleaned) return model;

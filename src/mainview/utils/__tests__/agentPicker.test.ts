@@ -52,6 +52,11 @@ describe("prettifyModel", () => {
 		expect(prettifyModel("anthropic/claude-sonnet-4-6")).toBe("Claude Sonnet 4 6");
 		expect(prettifyModel("opus-4.6-thinking")).toBe("Opus 4.6");
 	});
+
+	it("preserves canonical GPT casing and version punctuation for unknown GPT models", () => {
+		expect(prettifyModel("gpt-5.7-nova-preview")).toBe("GPT-5.7 Nova");
+		expect(prettifyModel("openai/gpt-6-codex")).toBe("GPT-6 Codex");
+	});
 });
 
 describe("getModeLeafLabel", () => {
