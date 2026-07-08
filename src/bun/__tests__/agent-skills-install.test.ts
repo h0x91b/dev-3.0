@@ -77,4 +77,12 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3-tmux"))).toBe(false);
 		expect(ensureCodexConfigFile).toHaveBeenCalledWith(tempHome);
 	});
+
+	it("writes the full-protocol PROTOCOL.md fallback next to the short Claude SKILL.md", async () => {
+		const { installAgentSkills } = await loadModule();
+		installAgentSkills();
+
+		expect(existsSync(join(tempHome, ".claude/skills/dev3/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".claude/skills/dev3/PROTOCOL.md"))).toBe(true);
+	});
 });
