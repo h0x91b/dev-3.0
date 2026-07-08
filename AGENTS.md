@@ -162,6 +162,22 @@ Non-obvious architectural decisions, hacks, and workarounds go in `decisions/NNN
 
 **Required sections:** 1. Context 2. Investigation (if applicable) 3. Decision (what + where in the code) 4. Risks 5. Alternatives considered. **Keep it short** — 2-4 sentences per section, fits on one screen; link relevant code paths (file + function names). Commit the record together with the code change.
 
+## Agent skills
+
+Configuration the engineering skills (`to-tickets`, `triage`, `to-spec`, `qa`, `improve-codebase-architecture`, `diagnosing-bugs`, `tdd`, …) read to fit this repo.
+
+### Issue tracker
+
+Issues/PRDs live as **tasks on the dev-3.0 Kanban board** (managed via the `dev3` CLI — a task *is* an issue); external GitHub PRs are pulled in as a secondary triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical triage roles map to **dev3 labels** with their canonical names (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`); dev3 statuses/columns stay hook-managed. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `AGENTS.md` is the primary domain/architecture doc (no separate `CONTEXT.md`), ADRs live in `decisions/NNN-slug.md` (not `docs/adr/`). See `docs/agents/domain.md`.
+
 ## Test instructions (mandatory for every task)
 
 **Every task must end with a "Test instructions" section in the final message** — a TL;DR the user can follow without reading the conversation above:
