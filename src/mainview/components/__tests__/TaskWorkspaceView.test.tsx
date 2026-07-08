@@ -17,6 +17,14 @@ vi.mock("../../rpc", () => ({
 	isElectrobun: false,
 }));
 
+// Stub analytics so opening the inline diff doesn't fire a real GA network hit.
+vi.mock("../../analytics", () => ({
+	trackDiffView: vi.fn(),
+	trackEvent: vi.fn(),
+	trackPageView: vi.fn(),
+	agentNameFromId: vi.fn(() => "unknown"),
+}));
+
 // Tracks TaskTerminal mount lifecycle so the `key={taskId}` regression
 // test below can assert that a fresh instance is mounted per task.
 const mountLog: string[] = [];

@@ -53,10 +53,29 @@ Object.defineProperty(globalThis, "crypto", {
 // Stub fetch
 globalThis.fetch = vi.fn().mockResolvedValue(undefined) as unknown as typeof fetch;
 
-import { initAnalytics, destroyAnalytics, trackAgentLaunched, registerAgents, agentNameFromId, trackEvent } from "../analytics";
+import {
+	initAnalytics,
+	destroyAnalytics,
+	trackAgentLaunched,
+	registerAgents,
+	agentNameFromId,
+	trackEvent,
+	trackPageView,
+	trackDiffView,
+	analyticsLocationForRoute,
+} from "../analytics";
 import type { CodingAgent } from "../../shared/types";
+import { taskSeqLabel } from "../../shared/types";
+import type { Route } from "../state";
 
 const flushMicrotasks = () => new Promise((r) => setTimeout(r, 0));
+
+/** Parsed bodies of every GA4 hit (the mp/collect POSTs), oldest first. */
+function gaHits(fetchMock: ReturnType<typeof vi.fn>) {
+	return fetchMock.mock.calls
+		.filter((c) => typeof c[0] === "string" && c[0].includes("mp/collect"))
+		.map((c) => JSON.parse((c[1] as { body: string }).body));
+}
 
 describe("initAnalytics", () => {
 	beforeEach(() => {
@@ -332,5 +351,154 @@ describe("unhandledrejection handler", () => {
 		const body = JSON.parse((fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body);
 		expect(body.events[0].params.error_message).toContain("some string error");
 		expect(body.events[0].params.stack_line).toContain("no stack");
+	});
+});
+
+describe("taskSeqLabel", () => {
+	it("returns bare seq when the task has no variant", () => {
+		expect(taskSeqLabel({ seq: 981, variantIndex: null })).toBe("981");
+	});
+
+	it("appends the variant index when present (including 0)", () => {
+		expect(taskSeqLabel({ seq: 981, variantIndex: 1 })).toBe("981-1");
+		expect(taskSeqLabel({ seq: 42, variantIndex: 0 })).toBe("42-0");
+	});
+});
+
+describe("analyticsLocationForRoute", () => {
+	it("maps project-less screens to prefixed /app paths", () => {
+		expect(analyticsLocationForRoute({ screen: "dashboard" }).path).toBe("/app/dashboard");
+		expect(analyticsLocationForRoute({ screen: "settings" }).path).toBe("/app/settings");
+		expect(analyticsLocationForRoute({ screen: "stats" }).path).toBe("/app/stats");
+	});
+
+	it("uses the internal project/task id (never the project name)", () => {
+		expect(analyticsLocationForRoute({ screen: "project", projectId: "p1" }).path).toBe("/app/project/p1/kanban");
+		expect(analyticsLocationForRoute({ screen: "task", projectId: "p1", taskId: "t9" }).path).toBe("/app/project/p1/task/t9");
+		expect(analyticsLocationForRoute({ screen: "project-settings", projectId: "p1" }).path).toBe("/app/project/p1/settings");
+	});
+
+	it("treats a split project view with an active task as the task surface", () => {
+		const loc = analyticsLocationForRoute({ screen: "project", projectId: "p1", activeTaskId: "t3" });
+		expect(loc.screen).toBe("task");
+		expect(loc.path).toBe("/app/project/p1/task/t3");
+	});
+
+	it("uses the human-readable seq label in the task path when provided", () => {
+		expect(analyticsLocationForRoute({ screen: "task", projectId: "p1", taskId: "hash-xyz" }, "981-1").path)
+			.toBe("/app/project/p1/task/981-1");
+		expect(analyticsLocationForRoute({ screen: "project", projectId: "p1", activeTaskId: "hash-xyz" }, "981-2").path)
+			.toBe("/app/project/p1/task/981-2");
+	});
+
+	it("falls back to a generic /app hit for an unknown route", () => {
+		const loc = analyticsLocationForRoute({ screen: "totally-new" } as unknown as Route);
+		expect(loc.path).toBe("/app");
+	});
+});
+
+describe("trackPageView / trackDiffView", () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.useRealTimers();
+		for (const key of Object.keys(store)) delete store[key];
+		destroyAnalytics();
+		initAnalytics("1.0.0");
+		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+		fetchMock.mockClear();
+	});
+
+	afterEach(() => {
+		destroyAnalytics();
+	});
+
+	it("emits a page_view carrying the task seq label (not the hash)", () => {
+		trackPageView({ screen: "task", projectId: "p1", taskId: "hash-xyz" }, "981-1");
+		const hit = gaHits(fetchMock)[0];
+		expect(hit.events[0].name).toBe("page_view");
+		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/task/981-1");
+		expect(hit.events[0].params.page_title).toBe("Task");
+	});
+
+	it("falls back to the raw task id when no seq label is available", () => {
+		trackPageView({ screen: "task", projectId: "p1", taskId: "hash-xyz" });
+		const hit = gaHits(fetchMock)[0];
+		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/task/hash-xyz");
+	});
+
+	it("emits a diff page_view under /app/project/<id>/diff/<seqLabel>", () => {
+		trackDiffView("p1", "981-1");
+		const hit = gaHits(fetchMock)[0];
+		expect(hit.events[0].name).toBe("page_view");
+		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/diff/981-1");
+	});
+});
+
+describe("first_visit (web new-user event)", () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.useRealTimers();
+		for (const key of Object.keys(store)) delete store[key];
+		destroyAnalytics();
+		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+		fetchMock.mockClear();
+	});
+
+	afterEach(() => {
+		destroyAnalytics();
+	});
+
+	it("fires first_visit (not first_open) on the very first launch", () => {
+		initAnalytics("1.0.0");
+		const names = gaHits(fetchMock)[0].events.map((e: { name: string }) => e.name);
+		expect(names).toContain("first_visit");
+		expect(names).not.toContain("first_open");
+	});
+
+	it("does not re-fire first_visit on the next launch", () => {
+		initAnalytics("1.0.0"); // marks the device as seen
+		destroyAnalytics();
+		fetchMock.mockClear();
+		initAnalytics("1.0.0");
+		const names = gaHits(fetchMock)[0].events.map((e: { name: string }) => e.name);
+		expect(names).not.toContain("first_visit");
+	});
+});
+
+describe("engagement_time_msec (real foreground time)", () => {
+	let fetchMock: ReturnType<typeof vi.fn>;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+		for (const key of Object.keys(store)) delete store[key];
+		destroyAnalytics();
+		fetchMock = fetch as unknown as ReturnType<typeof vi.fn>;
+		fetchMock.mockClear();
+		initAnalytics("1.0.0");
+	});
+
+	afterEach(() => {
+		destroyAnalytics();
+		vi.useRealTimers();
+	});
+
+	it("reports the elapsed foreground time since the last hit, not a fixed constant", () => {
+		fetchMock.mockClear();
+		vi.advanceTimersByTime(5000);
+		trackEvent("ping");
+		const hit = gaHits(fetchMock)[0];
+		expect(hit.events[0].name).toBe("ping");
+		expect(hit.events[0].params.engagement_time_msec).toBe("5000");
+	});
+
+	it("attaches engagement to the first event only in a multi-event batch", () => {
+		// The init hit (from beforeEach) batches first_visit + session_start on a
+		// fresh store — so GA4 doesn't multi-count the same interval.
+		const initHit = gaHits(fetchMock)[0];
+		expect(initHit.events.length).toBeGreaterThanOrEqual(2);
+		expect(initHit.events[0].params.engagement_time_msec).toBeDefined();
+		expect(initHit.events[1].params.engagement_time_msec).toBeUndefined();
 	});
 });

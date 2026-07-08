@@ -1143,6 +1143,17 @@ export function getTaskTitle(task: Task): string {
 }
 
 /**
+ * Human-readable task identifier: the per-project sequential number, plus the
+ * variant suffix when the task is one of several attempts in a group
+ * (e.g. `"981"` or `"981-1"`). No leading `#` — callers add it for display
+ * (GlobalHeader) while analytics uses the bare form in page paths. Single source
+ * of truth for the seq/variant format shown across the app.
+ */
+export function taskSeqLabel(task: Pick<Task, "seq" | "variantIndex">): string {
+	return task.variantIndex != null ? `${task.seq}-${task.variantIndex}` : `${task.seq}`;
+}
+
+/**
  * Returns the effective displayed overview: the user override if set, otherwise
  * the agent-written overview. Mirrors the precedence used in the task cards and
  * CLI. Returns null when neither is present.
