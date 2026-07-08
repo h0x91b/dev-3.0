@@ -30,7 +30,7 @@ Last updated: 2026-07-06
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
 | **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (4 hooks) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
-| **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (parsed from `~/.codex/sessions` rollout files) | — | — |
+| **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — |
 
 ## Status Hooks
 

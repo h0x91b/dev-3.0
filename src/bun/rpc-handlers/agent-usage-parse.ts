@@ -2,8 +2,9 @@ import { computeTokenCostUsd, type TokenCounts } from "../../shared/agent-pricin
 import type { AgentUsageDay, AgentUsageSource } from "../../shared/types";
 
 /**
- * Pure aggregation of Claude Code transcript usage — no fs, no logging, no
- * electrobun. Kept separate from the handler so it is trivially unit-testable.
+ * Pure aggregation of Claude Code transcripts and Codex rollouts — no fs, no
+ * logging, no electrobun. Kept separate from the handler so it is trivially
+ * unit-testable.
  *
  * Each `type:"assistant"` transcript line carries `message.usage` (input/output/
  * cache tokens), `message.model`, `message.id`, `requestId`, and a `timestamp`.
@@ -18,10 +19,12 @@ export interface UsageState {
 	startMsByDate: Map<string, number>;
 	/** dedup: `${message.id}:${requestId}` already counted */
 	seen: Set<string>;
+	/** Model selected by the latest Codex turn_context in the current rollout. */
+	codexModel: string;
 }
 
 export function newUsageState(): UsageState {
-	return { byDateModel: new Map(), startMsByDate: new Map(), seen: new Set() };
+	return { byDateModel: new Map(), startMsByDate: new Map(), seen: new Set(), codexModel: "gpt-5" };
 }
 
 function pad2(n: number): string {
@@ -49,6 +52,25 @@ function emptyCounts(): TokenCounts {
 	};
 }
 
+function finiteNumber(value: unknown): number {
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function countsFor(state: UsageState, date: string, startMs: number, model: string): TokenCounts {
+	let models = state.byDateModel.get(date);
+	if (!models) {
+		models = new Map();
+		state.byDateModel.set(date, models);
+		state.startMsByDate.set(date, startMs);
+	}
+	let acc = models.get(model);
+	if (!acc) {
+		acc = emptyCounts();
+		models.set(model, acc);
+	}
+	return acc;
+}
+
 /** Fold one parsed transcript line into the accumulator. Ignores non-assistant / malformed lines. */
 export function foldClaudeEntry(state: UsageState, entry: unknown): void {
 	if (!entry || typeof entry !== "object") return;
@@ -67,26 +89,61 @@ export function foldClaudeEntry(state: UsageState, entry: unknown): void {
 	if (!day) return;
 	const model = typeof msg.model === "string" ? msg.model : "unknown";
 
-	let models = state.byDateModel.get(day.date);
-	if (!models) {
-		models = new Map();
-		state.byDateModel.set(day.date, models);
-		state.startMsByDate.set(day.date, day.startMs);
-	}
-	let acc = models.get(model);
-	if (!acc) {
-		acc = emptyCounts();
-		models.set(model, acc);
+	const acc = countsFor(state, day.date, day.startMs, model);
+	const cacheCreation = usage.cache_creation as Record<string, unknown> | undefined;
+	acc.inputTokens += finiteNumber(usage.input_tokens);
+	acc.outputTokens += finiteNumber(usage.output_tokens);
+	acc.cacheCreationInputTokens += finiteNumber(usage.cache_creation_input_tokens);
+	acc.cacheReadInputTokens += finiteNumber(usage.cache_read_input_tokens);
+	acc.cacheCreation5mInputTokens! += finiteNumber(cacheCreation?.ephemeral_5m_input_tokens);
+	acc.cacheCreation1hInputTokens! += finiteNumber(cacheCreation?.ephemeral_1h_input_tokens);
+}
+
+/** Reset per-file Codex context while preserving accumulated usage and dedup state. */
+export function beginCodexRollout(state: UsageState): void {
+	// Very old rollouts predate turn_context; ccusage also falls back to gpt-5 for them.
+	state.codexModel = "gpt-5";
+}
+
+/**
+ * Fold one Codex rollout entry. `last_token_usage` is the per-turn delta;
+ * `total_token_usage` is cumulative for the session and must never be summed.
+ */
+export function foldCodexEntry(state: UsageState, entry: unknown): void {
+	if (!entry || typeof entry !== "object") return;
+	const e = entry as Record<string, unknown>;
+	const payload = e.payload as Record<string, unknown> | undefined;
+	if (!payload) return;
+
+	if (e.type === "turn_context") {
+		if (typeof payload.model === "string" && payload.model.trim()) state.codexModel = payload.model;
+		return;
 	}
 
-	const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-	const cacheCreation = usage.cache_creation as Record<string, unknown> | undefined;
-	acc.inputTokens += num(usage.input_tokens);
-	acc.outputTokens += num(usage.output_tokens);
-	acc.cacheCreationInputTokens += num(usage.cache_creation_input_tokens);
-	acc.cacheReadInputTokens += num(usage.cache_read_input_tokens);
-	acc.cacheCreation5mInputTokens! += num(cacheCreation?.ephemeral_5m_input_tokens);
-	acc.cacheCreation1hInputTokens! += num(cacheCreation?.ephemeral_1h_input_tokens);
+	if (e.type !== "event_msg" || payload.type !== "token_count" || typeof e.timestamp !== "string") return;
+	const info = payload.info as Record<string, unknown> | undefined;
+	const usage = info?.last_token_usage as Record<string, unknown> | undefined;
+	if (!usage) return;
+	const day = localDayOf(e.timestamp);
+	if (!day) return;
+
+	const input = Math.max(0, finiteNumber(usage.input_tokens));
+	const cachedInput = Math.min(input, Math.max(0, finiteNumber(usage.cached_input_tokens)));
+	const output = Math.max(0, finiteNumber(usage.output_tokens));
+	if (input === 0 && cachedInput === 0 && output === 0) return;
+
+	// Rollouts have no message id. Timestamp + delta + active model is stable across
+	// copied/resumed rollout files while still distinguishing ordinary turns.
+	const dedupKey = `codex:${e.timestamp}:${state.codexModel}:${input}:${cachedInput}:${output}`;
+	if (state.seen.has(dedupKey)) return;
+	state.seen.add(dedupKey);
+
+	const acc = countsFor(state, day.date, day.startMs, state.codexModel);
+	// Codex input_tokens includes cached input. Split it so dashboard totals and
+	// pricing count every token exactly once.
+	acc.inputTokens += Math.max(0, input - cachedInput);
+	acc.outputTokens += output;
+	acc.cacheReadInputTokens += cachedInput;
 }
 
 /** Collapse the per-(date,model) accumulator into per-day rows with priced cost. */
@@ -133,4 +190,12 @@ export function buildClaudeUsageDays(entries: unknown[]): { days: AgentUsageDay[
 	const state = newUsageState();
 	for (const entry of entries) foldClaudeEntry(state, entry);
 	return finalizeUsage(state, "claude");
+}
+
+/** Pure convenience for tests: fold one rollout's entries into Codex day rows. */
+export function buildCodexUsageDays(entries: unknown[]): { days: AgentUsageDay[]; hasUnpriced: boolean } {
+	const state = newUsageState();
+	beginCodexRollout(state);
+	for (const entry of entries) foldCodexEntry(state, entry);
+	return finalizeUsage(state, "codex");
 }

@@ -114,6 +114,8 @@ const dashboard = {
 	"rateLimits.tooltipTitle": "Лимиты агентов",
 	"rateLimits.resetsIn": "сброс через {time}",
 	"rateLimits.credits": "кредиты: {balance}",
+	"rateLimits.monthlyLabel": "месячные кредиты",
+	"rateLimits.monthlyUsage": "использовано {used} / {limit} · осталось {remaining}%",
 	"rateLimits.stale": "Данные {time} назад — обновляются, пока активна сессия агента",
 
 	// Remote Access QR Modal

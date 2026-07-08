@@ -3,7 +3,9 @@ import {
 	extractCodexSnapshotFromRolloutLines,
 	formatResetDelta,
 	formatStatusLineSegment,
+	mergeCodexRateLimitSnapshots,
 	parseClaudeStatusLinePayload,
+	parseCodexAppServerRateLimits,
 	parseCodexRateLimits,
 	windowLabel,
 	worstWindow,
@@ -83,6 +85,45 @@ describe("parseCodexRateLimits", () => {
 	});
 });
 
+describe("parseCodexAppServerRateLimits", () => {
+	it("parses the live monthly individual credit limit and makes it a constraint", () => {
+		const snap = parseCodexAppServerRateLimits(
+			{
+				limitId: "codex",
+				primary: null,
+				secondary: null,
+				credits: { hasCredits: true, unlimited: false, balance: null },
+				individualLimit: { limit: "8824", used: "329.5322287082672", remainingPercent: 96, resetsAt: 1_785_542_400 },
+				planType: "enterprise_cbp_usage_based",
+			},
+			NOW,
+		);
+
+		expect(snap?.monthlyCredits).toEqual({ limit: 8824, used: 329.5322287082672, remainingPercent: 96, resetsAt: 1_785_542_400_000 });
+		expect(snap?.windows).toContainEqual({ id: "monthly_credits", usedPercent: 4, resetsAt: 1_785_542_400_000, windowMinutes: null });
+	});
+
+	it("returns null when the live response carries no usable limit data", () => {
+		expect(parseCodexAppServerRateLimits({ individualLimit: null, primary: null, secondary: null }, NOW)).toBeNull();
+		expect(parseCodexAppServerRateLimits(null, NOW)).toBeNull();
+	});
+});
+
+describe("mergeCodexRateLimitSnapshots", () => {
+	it("adds live monthly credits while retaining rollout windows as fallback", () => {
+		const rollout = parseCodexRateLimits({ primary: { used_percent: 55, window_minutes: 300 } }, NOW)!;
+		const live = parseCodexAppServerRateLimits(
+			{ individualLimit: { limit: "1000", used: "250", remainingPercent: 75, resetsAt: 1_785_542_400 } },
+			NOW + 1000,
+		)!;
+
+		const merged = mergeCodexRateLimitSnapshots(rollout, live);
+		expect(merged?.windows.map((window) => window.id)).toEqual(["primary", "monthly_credits"]);
+		expect(merged?.monthlyCredits?.used).toBe(250);
+		expect(merged?.capturedAt).toBe(NOW + 1000);
+	});
+});
+
 describe("extractCodexSnapshotFromRolloutLines", () => {
 	const event = (ts: string, percent: number) =>
 		JSON.stringify({
@@ -147,6 +188,16 @@ describe("worstWindow", () => {
 
 	it("returns null when no snapshot has windows", () => {
 		expect(worstWindow({ generatedAt: NOW, snapshots: [] })).toBeNull();
+	});
+
+	it("lets a nearly exhausted monthly credit limit drive the indicator", () => {
+		const monthly = parseCodexAppServerRateLimits(
+			{ individualLimit: { limit: "1000", used: "970", remainingPercent: 3, resetsAt: 1_785_542_400 } },
+			NOW,
+		)!;
+		const worst = worstWindow({ generatedAt: NOW, snapshots: [monthly] });
+		expect(worst?.window.id).toBe("monthly_credits");
+		expect(worst?.window.usedPercent).toBe(97);
 	});
 });
 
