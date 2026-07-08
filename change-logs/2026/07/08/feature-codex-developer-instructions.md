@@ -1,0 +1,1 @@
+Codex now receives the dev3 task-lifecycle protocol as a developer-role message via the `-c developer_instructions=...` config override instead of having it appended to the first user prompt. This keeps the opening message clean and, more importantly, delivers the protocol on scratch tasks (empty prompt) and resumed sessions, which previously got no injection at all.

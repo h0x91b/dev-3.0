@@ -194,19 +194,47 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).toContain("--model 'claude-opus-4-8[1m]'");
 	});
 
-	it("Codex: injects the dev3 reminder into new-session prompts", () => {
+	it("Codex: injects the dev3 protocol via -c developer_instructions, not the prompt", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "Some task" }),
 		);
 
-		// Codex skill body includes the hook-aware status section and the
-		// codex shell note (`shell="/bin/bash"`).
+		// Protocol is delivered as a developer-role message via config override.
+		// The value is a JSON-stringified TOML basic string, so inner double
+		// quotes appear escaped (shell="/bin/bash" → shell=\"/bin/bash\").
+		expect(cmd).toContain("-c 'developer_instructions=");
 		expect(cmd).toContain("Task Lifecycle Protocol");
 		expect(cmd).toContain("Codex sessions started after the dev3 config was installed");
-		expect(cmd).toContain("shell=\"/bin/bash\"");
+		expect(cmd).toContain('shell=\\"/bin/bash\\"');
 		expect(cmd).toContain("user-questions");
+		// The user prompt stays clean — no skill body appended to it.
+		expect(cmd).toContain("-- 'Some task'");
+	});
+
+	it("Codex: resume also carries -c developer_instructions", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Some task" }),
+			{ resume: true },
+		);
+
+		expect(cmd).toMatch(/^codex resume --last/);
+		expect(cmd).toContain("-c 'developer_instructions=");
+	});
+
+	it("Codex: skipSystemPrompt suppresses -c developer_instructions", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: undefined }),
+			makeCtx({ taskDescription: "Some task" }),
+			{ skipSystemPrompt: true },
+		);
+
+		expect(cmd).not.toContain("developer_instructions");
+		expect(cmd).not.toContain("Task Lifecycle Protocol");
 	});
 
 	it("Codex: uses dracula theme when dev3 UI theme is dark", () => {
@@ -493,17 +521,19 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 	// auto-ran as turn 1. With an empty prompt it must NOT be injected, so the
 	// agent opens an empty interactive window (matching Claude).
 
-	it("Codex: empty description → no positional prompt, no system prompt injected", () => {
+	it("Codex: empty description → no positional prompt; protocol still arrives via -c", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "codex" }),
 			makeConfig({ model: undefined }),
 			makeCtx({ taskDescription: "" }),
 		);
 
-		expect(cmd).not.toContain("Task Lifecycle Protocol");
-		expect(cmd).not.toContain("shell=\"/bin/bash\"");
+		// No positional prompt — codex opens an empty interactive window …
 		expect(cmd).not.toMatch(/ -- /);
-		expect(cmd).toBe("codex");
+		// … but the protocol is still delivered out-of-band (developer message),
+		// which is exactly what scratch tasks were missing with prompt-append.
+		expect(cmd).toContain("-c 'developer_instructions=");
+		expect(cmd).toContain("Task Lifecycle Protocol");
 	});
 
 	it("Cursor Agent: empty description → no positional prompt, no system prompt injected", () => {

@@ -324,7 +324,10 @@ export const DEV3_SYSTEM_PROMPT_GENERIC = GENERIC_SKILL_BODY;
 
 /**
  * Codex skill body. Uses hook-aware status section and includes the Codex
- * shell note (`shell="/bin/bash"`, `login=false`).
+ * shell note (`shell="/bin/bash"`, `login=false`). Delivered out-of-band as a
+ * developer-role message via `-c developer_instructions=...` (additive — it
+ * supplements Codex's base instructions, unlike `model_instructions_file`
+ * which would REPLACE them).
  */
 export const DEV3_SYSTEM_PROMPT_CODEX = CODEX_SKILL_BODY;
 
@@ -441,7 +444,8 @@ export interface CommandOptions {
 	 *  support targeted resume (e.g. Claude --resume <id>) use this instead of
 	 *  --continue. For fresh launches, Claude uses --session-id <id>. */
 	sessionId?: string;
-	/** When true, skip injecting the DEV3_SYSTEM_PROMPT via --append-system-prompt.
+	/** When true, skip injecting the dev3 protocol out-of-band (Claude:
+	 *  --append-system-prompt; Codex: `-c developer_instructions=...`).
 	 *  Used for review agents that rely on hooks instead of system-prompt instructions. */
 	skipSystemPrompt?: boolean;
 	/** Path to the generated settings file that routes the Claude statusLine
@@ -616,6 +620,15 @@ export function resolveAgentCommand(
 
 	if (codexAgent) {
 		applyCodexThemeProfile(args);
+		// Codex has no --append-system-prompt; deliver the dev3 protocol as a
+		// developer-role message via the `-c developer_instructions=...` config
+		// override instead. Unlike the old prompt-append this also covers scratch
+		// launches (empty prompt) and resumed sessions, and keeps the turn-1 user
+		// message clean. JSON.stringify emits a valid TOML basic string, which is
+		// what `-c` expects for the value portion.
+		if (!options?.skipSystemPrompt) {
+			args.push("-c", shellEscape(`developer_instructions=${JSON.stringify(DEV3_SYSTEM_PROMPT_CODEX)}`));
+		}
 	}
 
 	// When resuming, skip the prompt — we don't want to inject a new
@@ -632,19 +645,16 @@ export function resolveAgentCommand(
 
 		// Cursor Agent / OpenCode have no --append-system-prompt and no automatic
 		// hooks, so inject the generic system prompt via the prompt argument.
-		// Codex also gets a prompt reminder because skill loading is not guaranteed.
+		// (Codex gets the protocol out-of-band via `-c developer_instructions=...`
+		// above, so its prompt stays clean.)
 		//
 		// Only append it when there is an actual task prompt. On scratch / empty
 		// description launches we keep the prompt empty so the agent opens an
 		// interactive window instead of auto-running the system prompt as turn 1
 		// (matching Claude, which delivers it out-of-band). Protocol adherence
 		// then relies on the auto-installed dev3 skill + hooks.
-		if (prompt) {
-			if (codexAgent) {
-				prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_CODEX}`;
-			} else if (cursorAgent || openCodeAgent) {
-				prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}`;
-			}
+		if (prompt && (cursorAgent || openCodeAgent)) {
+			prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}`;
 		}
 
 		if (prompt) {
