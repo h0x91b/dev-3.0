@@ -323,7 +323,7 @@ describe("DEFAULT_AGENTS", () => {
 
 		const cfg = codex!.configurations.find((c) => c.id === "codex-default");
 		expect(cfg).toBeDefined();
-		expect(cfg!.name).toBe("Default (GPT-5.6 Sol, High Bypass)");
+		expect(cfg!.name).toBe("GPT-5.6 Sol Bypass [High] — Default");
 		expect(cfg!.model).toBe("gpt-5.6-sol");
 		expect(cfg!.additionalArgs).toContain("--sandbox");
 		expect(cfg!.additionalArgs).toContain("danger-full-access");
@@ -344,17 +344,22 @@ describe("DEFAULT_AGENTS", () => {
 			.filter((config) => config.model === model)
 			.map((config) => config.modeLabel);
 		expect(modesFor("gpt-5.6-sol")).toEqual([
-			"Medium", "High", "X-High", "Max", "Ultra",
-			"Medium Bypass", "High Bypass", "X-High Bypass", "Max Bypass", "Ultra Bypass",
-			"Default (High Bypass)", "Plan (High)", "Plan then Bypass (High)",
+			"Bypass [High] — Default",
+			"Bypass [Medium]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
+			"Standard [Medium]", "Standard [High]",
+			"Plan [High]", "Plan → Bypass [High]",
 		]);
 		expect(modesFor("gpt-5.6-terra")).toEqual([
-			"Medium", "High", "X-High",
-			"Medium Bypass", "High Bypass", "X-High Bypass",
+			"Bypass [Medium]", "Bypass [High]", "Bypass [X-High]",
+			"Standard [Medium]", "Standard [High]",
 		]);
 		expect(modesFor("gpt-5.6-luna")).toEqual([
-			"Low", "Medium", "High",
-			"Low Bypass", "Medium Bypass", "High Bypass",
+			"Bypass [Low]", "Bypass [Medium]", "Bypass [High]",
+			"Standard [Low]", "Standard [Medium]",
+		]);
+		expect(modesFor("gpt-5.5")).toEqual([
+			"Bypass [Medium]", "Bypass [High]",
+			"Standard [Medium]", "Standard [High]",
 		]);
 	});
 
@@ -362,9 +367,9 @@ describe("DEFAULT_AGENTS", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
 		const generated = codex.configurations.filter((config) => config.id.startsWith("codex-5.6-"));
 		for (const config of generated) {
-			const effort = config.modeLabel!.split(" ")[0].toLowerCase().replace("x-high", "xhigh");
+			const effort = config.modeLabel!.match(/\[([^\]]+)\]/)![1].toLowerCase().replace("x-high", "xhigh");
 			expect(config.additionalArgs).toContain(`model_reasoning_effort="${effort}"`);
-			if (config.modeLabel!.endsWith("Bypass")) {
+			if (config.modeLabel!.startsWith("Bypass")) {
 				expect(config.additionalArgs).toContain("danger-full-access");
 				expect(config.additionalArgs).not.toContain('default_permissions="dev3"');
 			} else {

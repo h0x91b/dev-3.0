@@ -162,6 +162,10 @@ function modeSignature(config: AgentConfiguration): string {
 	return `${config.permissionMode ?? "default"}|${config.effort ?? ""}`;
 }
 
+function comparableModeLabel(config: AgentConfiguration): string {
+	return getModeLeafLabel(config).replace(/\s+[—-]\s+Default$/, "");
+}
+
 /**
  * When the user changes the Model field, choose which preset in the new group
  * to select. Preserves the current mode *kind* (lazy-human, bible §1.0):
@@ -189,8 +193,8 @@ export function pickConfigForModelChange(
 		if (sameMode) return sameMode;
 	}
 
-	const prevLeaf = getModeLeafLabel(previous);
-	const sameLeaf = group.configs.find((c) => getModeLeafLabel(c) === prevLeaf);
+	const prevLeaf = comparableModeLabel(previous);
+	const sameLeaf = group.configs.find((c) => comparableModeLabel(c) === prevLeaf);
 	if (sameLeaf) return sameLeaf;
 
 	return group.configs[0];

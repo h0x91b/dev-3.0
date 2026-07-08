@@ -168,6 +168,24 @@ describe("pickConfigForModelChange", () => {
 		expect(pickConfigForModelChange(terra, previous)?.id).toBe("terra-high-bypass");
 	});
 
+	it("matches a default-marked Codex mode to the same mode on another model", () => {
+		const terra: PickerGroup = {
+			label: "GPT-5.6 Terra",
+			configs: [
+				{ id: "terra-medium-bypass", name: "x", modeLabel: "Bypass [Medium]", model: "gpt-5.6-terra" },
+				{ id: "terra-high-bypass", name: "x", modeLabel: "Bypass [High]", model: "gpt-5.6-terra" },
+			],
+		};
+		const previous: AgentConfiguration = {
+			id: "codex-default",
+			name: "x",
+			modeLabel: "Bypass [High] — Default",
+			model: "gpt-5.6-sol",
+		};
+
+		expect(pickConfigForModelChange(terra, previous)?.id).toBe("terra-high-bypass");
+	});
+
 	it("returns the first preset when there is no previous", () => {
 		expect(pickConfigForModelChange(opus, null)?.id).toBe("auto-opus-xhigh");
 	});

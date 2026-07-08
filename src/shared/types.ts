@@ -240,31 +240,32 @@ const CODEX_REASONING_LABELS: Record<CodexReasoningEffort, string> = {
 	ultra: "Ultra",
 };
 
-/** Build a curated Codex model tier: permission-aware modes first, then the
- *  matching bypass modes, mirroring Claude's Auto-then-Bypass organization. */
+/** Build a curated Codex model tier: popular Bypass modes first, followed by
+ *  a smaller Standard set for everyday permission-aware launches. */
 function createCodexReasoningPresets(
 	model: string,
 	modelLabel: string,
 	idPrefix: string,
-	efforts: readonly CodexReasoningEffort[],
+	bypassEfforts: readonly CodexReasoningEffort[],
+	standardEfforts: readonly CodexReasoningEffort[],
 ): AgentConfiguration[] {
-	const permissionAware = efforts.map((effort): AgentConfiguration => ({
-		id: `${idPrefix}-${effort}`,
-		name: `${modelLabel} ${CODEX_REASONING_LABELS[effort]}`,
-		model,
-		modeLabel: CODEX_REASONING_LABELS[effort],
-		version: 1,
-		additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", `model_reasoning_effort="${effort}"`],
-	}));
-	const bypass = efforts.map((effort): AgentConfiguration => ({
+	const bypass = bypassEfforts.map((effort): AgentConfiguration => ({
 		id: `${idPrefix}-${effort}-bypass`,
-		name: `${modelLabel} ${CODEX_REASONING_LABELS[effort]} Bypass`,
+		name: `${modelLabel} Bypass [${CODEX_REASONING_LABELS[effort]}]`,
 		model,
-		modeLabel: `${CODEX_REASONING_LABELS[effort]} Bypass`,
-		version: 1,
+		modeLabel: `Bypass [${CODEX_REASONING_LABELS[effort]}]`,
+		version: 2,
 		additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", `model_reasoning_effort="${effort}"`],
 	}));
-	return [...permissionAware, ...bypass];
+	const standard = standardEfforts.map((effort): AgentConfiguration => ({
+		id: `${idPrefix}-${effort}`,
+		name: `${modelLabel} Standard [${CODEX_REASONING_LABELS[effort]}]`,
+		model,
+		modeLabel: `Standard [${CODEX_REASONING_LABELS[effort]}]`,
+		version: 2,
+		additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", `model_reasoning_effort="${effort}"`],
+	}));
+	return [...bypass, ...standard];
 }
 
 export const DEFAULT_AGENTS: CodingAgent[] = [
@@ -331,37 +332,37 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
 			// --- GPT-5.6 Sol (frontier: everyday through maximum/delegated reasoning) ---
+			{
+				id: "codex-default",
+				name: "GPT-5.6 Sol Bypass [High] — Default",
+				model: "gpt-5.6-sol",
+				modeLabel: "Bypass [High] — Default",
+				version: 7,
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+			},
 			...createCodexReasoningPresets(
 				"gpt-5.6-sol",
 				"GPT-5.6 Sol",
 				"codex-5.6-sol",
-				["medium", "high", "xhigh", "max", "ultra"],
+				["medium", "xhigh", "max", "ultra"],
+				["medium", "high"],
 			),
-			// Sol-only workflow aliases follow the regular and bypass effort ladders,
-			// matching Claude's Auto -> Bypass -> Default -> Plan organization.
-			{
-				id: "codex-default",
-				name: "Default (GPT-5.6 Sol, High Bypass)",
-				model: "gpt-5.6-sol",
-				modeLabel: "Default (High Bypass)",
-				version: 6,
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
-			},
+			// Sol-only workflows follow the popular Bypass and Standard modes.
 			{
 				id: "codex-plan",
-				name: "Plan (GPT-5.6 Sol, High)",
+				name: "GPT-5.6 Sol Plan [High]",
 				model: "gpt-5.6-sol",
-				modeLabel: "Plan (High)",
-				version: 5,
+				modeLabel: "Plan [High]",
+				version: 6,
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
 			},
 			{
 				id: "codex-plan-then-bypass",
-				name: "Plan then Bypass (GPT-5.6 Sol, High)",
+				name: "GPT-5.6 Sol Plan → Bypass [High]",
 				model: "gpt-5.6-sol",
-				modeLabel: "Plan then Bypass (High)",
-				version: 5,
+				modeLabel: "Plan → Bypass [High]",
+				version: 6,
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
@@ -371,6 +372,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				"GPT-5.6 Terra",
 				"codex-5.6-terra",
 				["medium", "high", "xhigh"],
+				["medium", "high"],
 			),
 			// --- GPT-5.6 Luna (fast/affordable: light through deeper reasoning) ---
 			...createCodexReasoningPresets(
@@ -378,39 +380,40 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				"GPT-5.6 Luna",
 				"codex-5.6-luna",
 				["low", "medium", "high"],
+				["low", "medium"],
 			),
 			// --- GPT-5.5 (legacy) ---
 			{
-				id: "codex-5.4-medium",
-				name: "GPT-5.5 Medium",
-				model: "gpt-5.5",
-				modeLabel: "Medium",
-				version: 4,
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="medium"'],
-			},
-			{
-				id: "codex-5.4-heavy",
-				name: "GPT-5.5 High",
-				model: "gpt-5.5",
-				modeLabel: "High",
-				version: 4,
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
-			},
-			{
 				id: "codex-5.4-medium-bypass",
-				name: "GPT-5.5 Medium Bypass",
+				name: "GPT-5.5 Bypass [Medium]",
 				model: "gpt-5.5",
-				modeLabel: "Medium Bypass",
-				version: 4,
+				modeLabel: "Bypass [Medium]",
+				version: 5,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="medium"'],
 			},
 			{
 				id: "codex-5.4-heavy-bypass",
-				name: "GPT-5.5 High Bypass",
+				name: "GPT-5.5 Bypass [High]",
 				model: "gpt-5.5",
-				modeLabel: "High Bypass",
-				version: 4,
+				modeLabel: "Bypass [High]",
+				version: 5,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+			},
+			{
+				id: "codex-5.4-medium",
+				name: "GPT-5.5 Standard [Medium]",
+				model: "gpt-5.5",
+				modeLabel: "Standard [Medium]",
+				version: 5,
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="medium"'],
+			},
+			{
+				id: "codex-5.4-heavy",
+				name: "GPT-5.5 Standard [High]",
+				model: "gpt-5.5",
+				modeLabel: "Standard [High]",
+				version: 5,
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
 			},
 		],
 		defaultConfigId: "codex-default",
