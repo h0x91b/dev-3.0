@@ -182,6 +182,27 @@ describe("GoToPaletteModal — rows & sections", () => {
 		expect(row?.textContent).toContain("users-service"); // project badge
 	});
 
+	it("ranks a task by last-opened when it beats updatedAt (worked-in-today → Today)", () => {
+		localStorage.setItem("dev3-gotopalette-mode", "tasks");
+		// t2 ("Add rate limiter") was last UPDATED yesterday but OPENED just now.
+		renderModal({ taskAccessTimes: { t2: Date.now() } });
+		const nodes = [
+			...document.querySelectorAll(
+				'[data-testid="go-to-palette"] [role=presentation], [data-testid="go-to-palette"] [role=option]',
+			),
+		];
+		let cur: string | null = null;
+		let bucket: string | null = null;
+		for (const n of nodes) {
+			if (n.getAttribute("role") === "presentation") {
+				cur = n.textContent;
+				continue;
+			}
+			if (n.textContent?.includes("Add rate limiter")) bucket = cur;
+		}
+		expect(bucket).toBe("Today"); // promoted by last-opened, despite updatedAt = yesterday
+	});
+
 	it("orders task date buckets Today → Yesterday → This week → Older", () => {
 		localStorage.setItem("dev3-gotopalette-mode", "tasks");
 		render(

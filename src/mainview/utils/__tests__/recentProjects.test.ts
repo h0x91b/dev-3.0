@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
 	getProjectAccessTimes,
 	getRecentProjectIds,
+	getTaskAccessTimes,
 	orderByRecency,
 	recordProjectBoardView,
 	recordProjectJump,
+	recordTaskVisit,
 } from "../recentProjects";
 
 beforeEach(() => {
@@ -83,6 +85,28 @@ describe("project access times (board views)", () => {
 		expect(getProjectAccessTimes()).toEqual({});
 		localStorage.setItem("dev3-recent-projects-at-v1", JSON.stringify({ a: 5, b: "x", c: null }));
 		expect(getProjectAccessTimes()).toEqual({ a: 5 });
+	});
+});
+
+describe("task access times (opens)", () => {
+	it("returns an empty map when nothing is stored", () => {
+		expect(getTaskAccessTimes()).toEqual({});
+	});
+
+	it("stamps a time when a task is opened, separate from project access times", () => {
+		const before = Date.now();
+		recordTaskVisit("t1");
+		const times = getTaskAccessTimes();
+		expect(times.t1).toBeGreaterThanOrEqual(before);
+		expect(times.t1).toBeLessThanOrEqual(Date.now());
+		expect(getProjectAccessTimes()).toEqual({}); // does not leak into project map
+	});
+
+	it("caps the task map at 40, always keeping the most-recent open", () => {
+		for (let i = 0; i < 45; i++) recordTaskVisit(`t${i}`);
+		const times = getTaskAccessTimes();
+		expect(Object.keys(times)).toHaveLength(40);
+		expect(times.t44).toBeGreaterThan(0);
 	});
 });
 

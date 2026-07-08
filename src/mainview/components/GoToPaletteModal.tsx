@@ -70,6 +70,12 @@ interface GoToPaletteModalProps {
 	 */
 	projectAccessTimes?: Record<string, number>;
 	/**
+	 * Task id → last-opened epoch ms. A task's recency is max(`updatedAt`,
+	 * last-opened), so a task engaged with today ranks as "Today" even if its
+	 * record wasn't modified (e.g. terminal work that doesn't touch `updatedAt`).
+	 */
+	taskAccessTimes?: Record<string, number>;
+	/**
 	 * Project id → its 0-based BOARD index, for the ⌘N badge. Kept separate from
 	 * display order so the badge keeps matching the Cmd+1..9 shortcut (which is
 	 * board-order based) even after recency reorders the rows.
@@ -100,6 +106,7 @@ function GoToPaletteModal({
 	tasks,
 	projectById,
 	projectAccessTimes,
+	taskAccessTimes,
 	shortcutIndexById,
 	onSelectProject,
 	onSelectTask,
@@ -109,10 +116,12 @@ function GoToPaletteModal({
 	const statusColors = useStatusColors();
 	const now = Date.now();
 
-	// A row's recency for bucketing/interleaving: tasks by when they were last
-	// updated, projects by when they were last opened.
+	// A row's recency for bucketing/interleaving: a task by the later of its last
+	// update and last open; a project by when its board was last viewed.
 	const recencyOf = (e: GoToEntry): number =>
-		e.kind === "task" ? Date.parse(e.task.updatedAt) || 0 : (projectAccessTimes?.[e.project.id] ?? 0);
+		e.kind === "task"
+			? Math.max(Date.parse(e.task.updatedAt) || 0, taskAccessTimes?.[e.task.id] ?? 0)
+			: (projectAccessTimes?.[e.project.id] ?? 0);
 
 	const [mode, setMode] = useState<GoToMode>(resolveInitialMode);
 
@@ -139,10 +148,10 @@ function GoToPaletteModal({
 		...(showTasks ? tasks.map((task) => ({ kind: "task" as const, task, project: projectById.get(task.projectId) })) : []),
 		...(showProjects ? projects.map((project) => ({ kind: "project" as const, project })) : []),
 	];
-	// In "Both" mode, interleave projects and tasks into one recency-sorted list
-	// (within-group order is preserved by PaletteShell's stable group sort, so this
-	// makes each date bucket ordered most-recent-first regardless of row kind).
-	if (mode === "mixed") entries.sort((a, b) => recencyOf(b) - recencyOf(a));
+	// Sort grouped modes by true recency so each date bucket is most-recent-first
+	// (PaletteShell's stable group sort then preserves this within each bucket).
+	// This also interleaves projects and tasks correctly in "Both".
+	if (grouped) entries.sort((a, b) => recencyOf(b) - recencyOf(a));
 
 	const bucketLabel: Record<string, string> = {
 		today: t("goTo.sectionToday"),

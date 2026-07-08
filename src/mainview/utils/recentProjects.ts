@@ -13,7 +13,46 @@ const LS_KEY = "dev3-recent-projects-v1";
 // inside a project does NOT (the task is already its own row in the list). Kept
 // separate from the ordered id list above.
 const LS_TIMES_KEY = "dev3-recent-projects-at-v1";
+// taskId → last-OPENED epoch ms. A task's palette recency is max(updatedAt,
+// last-opened), so a task you opened/worked in today lands in "Today" even if
+// its record (status/notes) wasn't modified — updatedAt alone misses terminal work.
+const LS_TASK_TIMES_KEY = "dev3-recent-tasks-at-v1";
 const MAX_ENTRIES = 16;
+const TASK_MAX_ENTRIES = 40;
+
+/** Read an `id → epoch ms` access map from localStorage. Tolerates corrupt storage. */
+function readAccessMap(lsKey: string): Record<string, number> {
+	try {
+		const raw = localStorage.getItem(lsKey);
+		if (!raw) return {};
+		const parsed = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		const out: Record<string, number> = {};
+		for (const [id, ts] of Object.entries(parsed)) {
+			if (typeof ts === "number" && Number.isFinite(ts)) out[id] = ts;
+		}
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+/** Stamp `id`'s access time now, forcing it to survive the `cap` prune, then persist. */
+function stampAccess(lsKey: string, id: string, cap: number): void {
+	if (!id) return;
+	try {
+		const times = readAccessMap(lsKey);
+		times[id] = Date.now();
+		const kept = Object.fromEntries(
+			Object.entries(times)
+				.sort((a, b) => (a[0] === id ? -1 : b[0] === id ? 1 : b[1] - a[1]))
+				.slice(0, cap),
+		);
+		localStorage.setItem(lsKey, JSON.stringify(kept));
+	} catch {
+		/* ignore — recency is best-effort */
+	}
+}
 
 /** Read the MRU project-id list, most-recent first. Tolerates corrupt storage. */
 export function getRecentProjectIds(): string[] {
@@ -28,21 +67,14 @@ export function getRecentProjectIds(): string[] {
 	}
 }
 
-/** projectId → last-access epoch ms. Tolerates corrupt storage. */
+/** projectId → last-board-view epoch ms. Tolerates corrupt storage. */
 export function getProjectAccessTimes(): Record<string, number> {
-	try {
-		const raw = localStorage.getItem(LS_TIMES_KEY);
-		if (!raw) return {};
-		const parsed = JSON.parse(raw);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-		const out: Record<string, number> = {};
-		for (const [id, ts] of Object.entries(parsed)) {
-			if (typeof ts === "number" && Number.isFinite(ts)) out[id] = ts;
-		}
-		return out;
-	} catch {
-		return {};
-	}
+	return readAccessMap(LS_TIMES_KEY);
+}
+
+/** taskId → last-opened epoch ms. Tolerates corrupt storage. */
+export function getTaskAccessTimes(): Record<string, number> {
+	return readAccessMap(LS_TASK_TIMES_KEY);
 }
 
 /**
@@ -67,21 +99,17 @@ export function recordProjectJump(projectId: string): void {
  * they open a task within the project. Caps the map to the 16 most-recent.
  */
 export function recordProjectBoardView(projectId: string): void {
-	if (!projectId) return;
-	try {
-		const times = getProjectAccessTimes();
-		times[projectId] = Date.now();
-		// Keep the just-viewed project (forced first, so it survives even when many
-		// views share a millisecond) plus the most-recent others, capped.
-		const kept = Object.fromEntries(
-			Object.entries(times)
-				.sort((a, b) => (a[0] === projectId ? -1 : b[0] === projectId ? 1 : b[1] - a[1]))
-				.slice(0, MAX_ENTRIES),
-		);
-		localStorage.setItem(LS_TIMES_KEY, JSON.stringify(kept));
-	} catch {
-		/* ignore — recency is best-effort */
-	}
+	stampAccess(LS_TIMES_KEY, projectId, MAX_ENTRIES);
+}
+
+/**
+ * Stamp `taskId`'s last-opened time (for the Cmd+K task recency). Call this when
+ * the user navigates to a task (fullscreen or the split task view) — its palette
+ * recency becomes max(updatedAt, last-opened), so a task you worked in today
+ * lands in "Today" even without a record change.
+ */
+export function recordTaskVisit(taskId: string): void {
+	stampAccess(LS_TASK_TIMES_KEY, taskId, TASK_MAX_ENTRIES);
 }
 
 /**

@@ -38,7 +38,15 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
-import { getProjectAccessTimes, getRecentProjectIds, orderByRecency, recordProjectBoardView, recordProjectJump } from "./utils/recentProjects";
+import {
+	getProjectAccessTimes,
+	getRecentProjectIds,
+	getTaskAccessTimes,
+	orderByRecency,
+	recordProjectBoardView,
+	recordProjectJump,
+	recordTaskVisit,
+} from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
@@ -328,6 +336,10 @@ function App() {
 			// Stamp a project board-view access (Cmd+K "Both" interleave) ONLY when
 			// landing on the project's board itself — not when opening a task in it.
 			if (route.screen === "project" && !route.activeTaskId) recordProjectBoardView(route.projectId);
+			// Stamp a task-open time so a task you engage with today ranks as "Today"
+			// even if its record (updatedAt) didn't change (terminal work, etc.).
+			if (route.screen === "task") recordTaskVisit(route.taskId);
+			else if (route.screen === "project" && route.activeTaskId) recordTaskVisit(route.activeTaskId);
 			dispatch({ type: "navigate", route });
 		},
 		[dispatch],
@@ -502,6 +514,9 @@ function App() {
 	// Project last-access times (localStorage) for the palette's "Both" mode, so a
 	// recently-opened project interleaves among recent tasks. Re-read on each open.
 	const goToProjectAccess = useMemo(() => getProjectAccessTimes(), [showProjectSwitch]);
+	// Task last-opened times, so a task engaged with today ranks as "Today" even
+	// without a record change. Re-read on each open.
+	const goToTaskAccess = useMemo(() => getTaskAccessTimes(), [showProjectSwitch]);
 
 	const getProjectIdForRoute = useCallback((route: Route): string | null => projectIdForRoute(route), []);
 
@@ -1670,6 +1685,7 @@ function App() {
 					tasks={goToTasks}
 					projectById={switcherProjectById}
 					projectAccessTimes={goToProjectAccess}
+					taskAccessTimes={goToTaskAccess}
 					onSelectProject={(projectId) => {
 						setShowProjectSwitch(false);
 						navigateToProject(projectId);
