@@ -166,11 +166,9 @@ export function buildClaudeHooks(
 /**
  * Build the Codex hooks object for a given task.
  *
- * All entries call one stable user-level handler. Keeping the hook definition
- * independent of the worktree and task lets the user trust it once through
- * Codex's hash-based hook review instead of once per generated worktree path.
- * The handler receives the event JSON on stdin and asks dev3 to perform the
- * status transition atomically.
+ * All entries call one stable handler from a worktree-local hooks file. The
+ * handler receives the event JSON on stdin and asks dev3 to perform the status
+ * transition atomically.
  */
 export function buildCodexHooks(): HookMap {
 	const handler: HookEntry = {
@@ -210,6 +208,32 @@ export function buildCodexHooks(): HookMap {
 		],
 		Stop: [{ hooks: [handler] }],
 	};
+}
+
+function tomlInline(value: unknown): string {
+	if (typeof value === "string") return JSON.stringify(value);
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	if (Array.isArray(value)) return `[${value.map(tomlInline).join(",")}]`;
+	if (value && typeof value === "object") {
+		return `{${Object.entries(value).map(([key, entry]) => {
+			const tomlKey = /^[A-Za-z0-9_-]+$/.test(key) ? key : JSON.stringify(key);
+			return `${tomlKey}=${tomlInline(entry)}`;
+		}).join(",")}}`;
+	}
+	throw new Error(`Unsupported Codex hook config value: ${String(value)}`);
+}
+
+/**
+ * Serialize dev3 hooks as one Codex `-c` override. Current Codex deliberately
+ * resolves project hooks from a linked worktree's root checkout, so dev3 must
+ * carry its generated worktree definitions as session flags instead.
+ */
+export function buildCodexHooksConfigOverride(
+	state: Record<string, { trusted_hash: string }> = {},
+): string {
+	const hooks: Record<string, unknown> = { ...buildCodexHooks() };
+	if (Object.keys(state).length > 0) hooks.state = state;
+	return `hooks=${tomlInline(hooks)}`;
 }
 
 /**
@@ -353,10 +377,11 @@ export function writeClaudeHooks(
 }
 
 /**
- * Read the user-level ~/.codex/hooks.json, merge dev3 hooks, and write it back.
- * The caller supplies the Codex config directory so tests never touch HOME.
+ * Read the generated worktree-local .codex/hooks.json, merge dev3 hooks, and
+ * write it back. The file is gitignored and disappears with the worktree.
  */
-export function writeCodexHooks(codexDir: string): void {
+export function writeCodexHooks(worktreePath: string): void {
+	const codexDir = join(worktreePath, ".codex");
 	mkdirSync(codexDir, { recursive: true });
 
 	const hooksPath = join(codexDir, "hooks.json");
@@ -366,42 +391,13 @@ export function writeCodexHooks(codexDir: string): void {
 		if (existsSync(hooksPath)) {
 			settings = JSON.parse(readFileSync(hooksPath, "utf-8"));
 		}
-	} catch (error) {
-		throw new Error(
-			`Cannot install Codex hooks because ${hooksPath} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
-		);
+	} catch {
+		// This is generated, gitignored worktree state. Replace corruption rather
+		// than blocking every future Codex launch in this task.
+		settings = {};
 	}
 
 	const updated = mergeCodexHooks(settings);
-	if (JSON.stringify(updated) === JSON.stringify(settings)) return;
-	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
-}
-
-/**
- * Remove legacy dev3 entries from a worktree-local hooks file while preserving
- * every project-owned hook and top-level setting. We intentionally keep the
- * file even when the resulting hooks map is empty: files inside managed
- * worktrees are user-visible state, and migration must not delete them.
- */
-export function removeCodexWorktreeHooks(worktreePath: string): void {
-	const hooksPath = join(worktreePath, ".codex", "hooks.json");
-	if (!existsSync(hooksPath)) return;
-
-	let settings: Record<string, unknown>;
-	try {
-		settings = JSON.parse(readFileSync(hooksPath, "utf-8"));
-	} catch {
-		return;
-	}
-
-	const existingHooks = (settings.hooks ?? {}) as HookMap;
-	const hooks: HookMap = {};
-	for (const [event, groups] of Object.entries(existingHooks)) {
-		const preserved = groups.filter((group) => !isDev3Entry(group));
-		if (preserved.length > 0) hooks[event] = preserved;
-	}
-
-	const updated = { ...settings, hooks };
 	if (JSON.stringify(updated) === JSON.stringify(settings)) return;
 	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
 }

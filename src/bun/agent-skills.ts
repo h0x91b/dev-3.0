@@ -198,7 +198,7 @@ ${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 const SKILL_STATUS_CODEX_HOOKS = `
 ## Task status management
 
-Hooks automatically manage task status transitions (\`in-progress\`, approval waits in \`user-questions\`, \`review-by-ai\`, and \`review-by-user\`) for Codex sessions started after the dev3 config was installed and trusted through \`/hooks\`.
+Hooks automatically manage task status transitions (\`in-progress\`, approval waits in \`user-questions\`, \`review-by-ai\`, and \`review-by-user\`) for Codex sessions started after the dev3 config was installed. dev3 generates and trusts its worktree-local hook definitions automatically.
 Do NOT call \`dev3 task move\` for normal active/review transitions when hooks are active. If you need semantic user input or clarification rather than a tool approval, move the task to \`user-questions\` before your final response. If you are in an older Codex session where hooks clearly are not firing yet, fall back to manual status management: move to \`in-progress\` when you start, \`user-questions\` when blocked, and \`review-by-user\` when finished.
 ${SKILL_CUSTOM_COLUMNS}${SKILL_COMPLETION_REQUEST}`;
 

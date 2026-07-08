@@ -7,7 +7,6 @@ import {
 	buildCodexHooks,
 	mergeClaudeHooks,
 	mergeCodexHooks,
-	removeCodexWorktreeHooks,
 	writeClaudeHooks,
 	writeCodexHooks,
 } from "../agent-hooks";
@@ -306,7 +305,7 @@ describe("buildCodexHooks", () => {
 		expect(hooks.PostToolUse[0].matcher).toBe(matcher);
 	});
 
-	it("every event calls one stable user-level handler", () => {
+	it("every event calls one stable worktree-local handler", () => {
 		const hooks = buildCodexHooks();
 
 		for (const groups of Object.values(hooks)) {
@@ -675,10 +674,10 @@ describe("writeCodexHooks", () => {
 		rmSync(tmp, { recursive: true, force: true });
 	});
 
-	it("creates a stable user-level hooks file from scratch", () => {
+	it("creates a worktree-local hooks file from scratch", () => {
 		writeCodexHooks(tmp);
 
-		const hooksPath = join(tmp, "hooks.json");
+		const hooksPath = join(tmp, ".codex", "hooks.json");
 		const content = JSON.parse(readFileSync(hooksPath, "utf-8"));
 		const hooks = content.hooks as Record<string, MatcherGroup[]>;
 
@@ -691,65 +690,33 @@ describe("writeCodexHooks", () => {
 	});
 
 	it("preserves existing non-hook settings when merging", () => {
-		writeFileSync(join(tmp, "hooks.json"), JSON.stringify({ version: 1 }));
+		mkdirSync(join(tmp, ".codex"), { recursive: true });
+		writeFileSync(join(tmp, ".codex", "hooks.json"), JSON.stringify({ version: 1 }));
 
 		writeCodexHooks(tmp);
 
-		const content = JSON.parse(readFileSync(join(tmp, "hooks.json"), "utf-8"));
+		const content = JSON.parse(readFileSync(join(tmp, ".codex", "hooks.json"), "utf-8"));
 		expect(content.version).toBe(1);
 		expect(content.hooks).toBeDefined();
 	});
 
-	it("does not overwrite a corrupted user hooks file", () => {
-		writeFileSync(join(tmp, "hooks.json"), "NOT VALID JSON{{{");
+	it("replaces a corrupted generated worktree hooks file", () => {
+		mkdirSync(join(tmp, ".codex"), { recursive: true });
+		writeFileSync(join(tmp, ".codex", "hooks.json"), "NOT VALID JSON{{{");
 
-		expect(() => writeCodexHooks(tmp)).toThrow("is not valid JSON");
+		writeCodexHooks(tmp);
 
-		expect(readFileSync(join(tmp, "hooks.json"), "utf-8")).toBe("NOT VALID JSON{{{");
+		expect(JSON.parse(readFileSync(join(tmp, ".codex", "hooks.json"), "utf-8"))).toHaveProperty("hooks.Stop");
 	});
 
 	it("produces identical output on repeated writes", () => {
 		writeCodexHooks(tmp);
-		const hooksPath = join(tmp, "hooks.json");
+		const hooksPath = join(tmp, ".codex", "hooks.json");
 		const first = readFileSync(hooksPath, "utf-8");
 
 		writeCodexHooks(tmp);
 		const second = readFileSync(hooksPath, "utf-8");
 
 		expect(first).toBe(second);
-	});
-});
-
-describe("removeCodexWorktreeHooks", () => {
-	let tmp: string;
-
-	beforeEach(() => {
-		tmp = mkdtempSync(join(tmpdir(), "agent-hooks-codex-migration-test-"));
-	});
-
-	afterEach(() => {
-		rmSync(tmp, { recursive: true, force: true });
-	});
-
-	it("removes only legacy dev3 entries and preserves project hooks", () => {
-		const codexDir = join(tmp, ".codex");
-		mkdirSync(codexDir, { recursive: true });
-		writeFileSync(join(codexDir, "hooks.json"), JSON.stringify({
-			version: 1,
-			hooks: {
-				Stop: [
-					{ hooks: [{ type: "command", command: `${DEV3_CLI} task move --status review-by-user` }] },
-					{ hooks: [{ type: "command", command: "echo project-stop" }] },
-				],
-			},
-		}));
-
-		removeCodexWorktreeHooks(tmp);
-
-		const content = JSON.parse(readFileSync(join(codexDir, "hooks.json"), "utf-8"));
-		expect(content.version).toBe(1);
-		expect(content.hooks.Stop).toEqual([
-			{ hooks: [{ type: "command", command: "echo project-stop" }] },
-		]);
 	});
 });

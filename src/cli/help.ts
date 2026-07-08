@@ -378,8 +378,8 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [],
 		usage: "dev3 install-hooks",
 		details: [
-			"Writes Claude Code hooks into the worktree and stable Codex hooks into ~/.codex/hooks.json.",
-			"Codex may require one-time approval through /hooks for each active profile.",
+			"Writes Claude Code and Codex status hooks into the current worktree.",
+			"Codex hook hashes are calculated automatically and scoped to each launched session.",
 		],
 	},
 	{

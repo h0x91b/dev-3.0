@@ -1,21 +1,21 @@
-# 117 — Codex Status Hooks Use a Stable User-Level Bridge
+# 117 — Codex Worktree Hooks Use Scoped Automatic Trust
 
 ## Context
 
-The original Codex integration generated status commands in every worktree. Current Codex requires hash-based trust for each non-managed command hook, so the worktree-specific source path forced repeated review and could leave hooks silently skipped; the old dual `Stop` groups also raced because matching handlers run concurrently.
+The original Codex integration generated status commands in every worktree. Current Codex requires hash-based trust for each non-managed command hook, so every generated source path needs a matching trusted hash; the old dual `Stop` groups also raced because matching handlers run concurrently. A global `~/.codex/hooks.json` would avoid per-path hashes but would make dev3 modify user-owned global hook definitions.
 
 ## Investigation
 
-Codex exposes `PermissionRequest` from rust-v0.122.0 alongside `SessionStart`, `UserPromptSubmit`, tool hooks, and `Stop`; rust-v0.121 ignores the unknown event key without dropping the remaining hooks. Hook hash enforcement arrived in rust-v0.129.0, and the persisted trust key includes the source path, event, group index, and handler index. A `Stop` hook accepts `{}` as a successful no-op, while a user-level hook can safely run outside dev3 if its adapter treats missing task context the same way.
+Codex exposes `PermissionRequest` from rust-v0.122.0 alongside `SessionStart`, `UserPromptSubmit`, tool hooks, and `Stop`; rust-v0.121 ignores the unknown event key without dropping the remaining hooks. Hook hash enforcement arrived in rust-v0.129.0, and `hooks/list` exposes the authoritative key, source, command, current hash, and trust status. Codex 0.143 deliberately redirects hook discovery for linked worktrees to the root checkout, but session-flag hook declarations and hook state remain process-local and take precedence.
 
 ## Decision
 
-Install one stable hook set in `~/.codex/hooks.json`, with every lifecycle event calling `dev3 hook codex`. The CLI adapter always returns `{}` and forwards supported events to one atomic `task.agentHook` socket operation, which selects `in-progress`, `user-questions`, `review-by-ai`, or `review-by-user` from the locked current task state. A short-lived per-session resume marker restores an approving review agent to `review-by-ai` after `PostToolUse` instead of restarting the primary-agent flow.
+Generate `.codex/hooks.json` inside each managed worktree, with every lifecycle event calling `dev3 hook codex`, then mirror those dev3 definitions into every launched Codex pane through a `-c hooks=...` session override. Before launch, query `hooks/list` with the same override, accept hashes only for `sessionFlags` entries whose command exactly equals the dev3 adapter, and include their trust state in the final override; nothing is persisted globally. The CLI adapter always returns `{}` and forwards events to one atomic `task.agentHook` socket operation, while a short-lived per-session marker restores an approving review agent to `review-by-ai` after `PostToolUse`.
 
 ## Risks
 
-Users must approve the stable definitions once through `/hooks` for each Codex profile. The adapter intentionally logs and ignores board-sync failures so an offline or broken dev3 instance can never block the coding agent. Restarting dev3 during an outstanding review-agent approval loses the in-memory resume marker; the completed tool then safely falls back to `in-progress` rather than guessing that the review is still active.
+Automatic trust depends on Codex's local app-server protocol; older versions without `hooks/list` receive the hook definitions without state because they also predate hash enforcement. A future protocol change degrades to Codex's normal review UI rather than broad trust. Each Codex pane performs a short hash-discovery launch before the real session, and the adapter intentionally ignores board-sync failures so an offline dev3 instance cannot block the coding agent.
 
 ## Alternatives considered
 
-Automatically writing Codex's internal trusted hashes was rejected as an undocumented security bypass. `--dangerously-bypass-hook-trust` was rejected because it would trust unrelated repository and plugin hooks, and retaining two `Stop` commands was rejected because concurrent execution cannot provide ordered review transitions.
+Writing `~/.codex/hooks.json` was rejected because it mutates a user-owned global definition file. Persisting per-worktree hashes in `~/.codex/config.toml` was rejected because stale trust metadata would accumulate after worktree deletion. A separate `CODEX_HOME` was rejected because it also isolates authentication, profiles, skills, and session history; `--dangerously-bypass-hook-trust` trusts unrelated hooks, while reproducing Codex's hash algorithm is brittle.

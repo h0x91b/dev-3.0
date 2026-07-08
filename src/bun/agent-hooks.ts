@@ -9,18 +9,16 @@
  */
 
 import type { PermissionMode, TaskStatus } from "../shared/types";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { createLogger } from "./logger";
 import { isClaudeCommand, isCodexCommand } from "./agents";
-import { removeCodexWorktreeHooks, writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
+import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
+import { prepareCodexWorktreeHookOverride } from "./codex-hook-trust";
 
 export {
 	buildClaudeHooks,
 	buildCodexHooks,
 	mergeClaudeHooks,
 	mergeCodexHooks,
-	removeCodexWorktreeHooks,
 	writeClaudeHooks,
 	writeCodexHooks,
 } from "../shared/agent-hooks";
@@ -35,22 +33,22 @@ export function setupAgentHooks(
 	worktreePath: string,
 	baseCommand: string,
 	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode },
-): void {
+): Promise<string | null> {
 	if (isClaudeCommand(baseCommand)) {
 		writeClaudeHooks(worktreePath, options);
 		log.info("Claude hooks installed", {
 			worktreePath,
 			permissionMode: options?.permissionMode,
 		});
-		return;
+		return Promise.resolve(null);
 	}
 	if (isCodexCommand(baseCommand)) {
-		writeCodexHooks(join(homedir(), ".codex"));
-		removeCodexWorktreeHooks(worktreePath);
-		log.info("Codex hooks installed", {
-			path: join(homedir(), ".codex", "hooks.json"),
+		writeCodexHooks(worktreePath);
+		return prepareCodexWorktreeHookOverride(worktreePath).then((configOverride) => {
+			log.info("Codex worktree hooks installed with session-scoped trust", { worktreePath });
+			return configOverride;
 		});
-		return;
 	}
 	// Future: isGeminiCommand, isCursorCommand, etc.
+	return Promise.resolve(null);
 }

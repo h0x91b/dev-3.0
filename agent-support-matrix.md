@@ -28,7 +28,7 @@ Last updated: 2026-07-08
 | **LLM provider (backend)** | Anthropic / Amazon Bedrock (per-agent toggle) | — | — | — | — |
 | **Agent selection** | — | — | — | — | `--agent` |
 | **Auto-trust worktree** | Yes (`ensureClaudeTrust`) | — | Yes (`ensureCodexTrust`) | Yes (`ensureGeminiTrust`) | — |
-| **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (6 hooks, one-time `/hooks` trust per profile) | — | — |
+| **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — |
 
@@ -49,7 +49,7 @@ Injected into `.claude/settings.local.json`.
 
 ### Codex
 
-Installed once into `~/.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that). Every event calls the same stable `dev3 hook codex` adapter, so Codex's hash-based trust (0.129+) is approved once per profile instead of once per worktree. `PermissionRequest` runs on Codex 0.122+; older hook parsers ignore that unknown event while retaining the other lifecycle hooks. Codex shows untrusted definitions in `/hooks`; dev3 never uses the broad `--dangerously-bypass-hook-trust` flag.
+Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that). Current Codex deliberately reads project hooks from the root checkout instead of a linked worktree, so dev3 also injects the same definitions as session flags into every Codex pane. On Codex 0.129+, dev3 asks `hooks/list` for authoritative hashes and adds trust state to that session override only; it never changes `~/.codex/hooks.json`, persists hook trust, or trusts unrelated user/project/plugin hooks. `PermissionRequest` runs on Codex 0.122+; older hook parsers ignore that unknown event while retaining the others.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|
@@ -124,4 +124,4 @@ toggle re-prefixes all non-overridden rows. See [decision 089](decisions/089-llm
 | `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` |
 | `~/.claude/settings.json` | Claude Code | Auto-adds `Bash(~/.dev3.0/bin/dev3 *)` permission |
 | `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names |
-| `~/.codex/hooks.json` | Codex | Stable user-level SessionStart/UserPromptSubmit/PreToolUse/PermissionRequest/PostToolUse/Stop lifecycle hooks; no-op outside dev3 tasks |
+| `<worktree>/.codex/hooks.json` | Codex | Generated, gitignored lifecycle definitions mirrored into each dev3-launched Codex pane as session flags |

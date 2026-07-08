@@ -331,6 +331,24 @@ async function ensureAgentTrust(
 	}
 }
 
+async function applyAgentHooksToCommand(
+	worktreePath: string,
+	baseCommand: string,
+	command: string,
+	options?: { stopTarget?: Task["status"]; permissionMode?: PermissionMode },
+): Promise<string> {
+	try {
+		const codexHookOverride = await setupAgentHooks(worktreePath, baseCommand, options);
+		return codexHookOverride ? `${command} -c ${shellQuote(codexHookOverride)}` : command;
+	} catch (err) {
+		log.warn("setupAgentHooks failed (non-fatal)", {
+			worktreePath,
+			error: String(err),
+		});
+		return command;
+	}
+}
+
 export async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -509,14 +527,10 @@ export async function launchTaskPty(
 	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
-	try {
-		setupAgentHooks(worktreePath, resolvedBaseCmd, { stopTarget, permissionMode: resolvedPermissionMode });
-	} catch (err) {
-		log.warn("setupAgentHooks failed (non-fatal)", {
-			worktreePath,
-			error: String(err),
-		});
-	}
+	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
+		stopTarget,
+		permissionMode: resolvedPermissionMode,
+	});
 
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
@@ -679,15 +693,24 @@ export async function launchColumnAgent(
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
+	let resolvedBaseCmd = "";
+	let resolvedPermissionMode: PermissionMode | undefined;
 
 	try {
 		const resolved = await agents.resolveCommandForAgent(agentId, configId, ctx, { skipSystemPrompt: true });
 		tmuxCmd = resolved.command;
 		extraEnv = resolved.extraEnv;
+		resolvedBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || "";
+		resolvedPermissionMode = resolved.config?.permissionMode;
 	} catch (err) {
 		log.error("launchColumnAgent: failed to resolve command", { error: String(err) });
 		throw err;
 	}
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd);
+	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
+		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+		permissionMode: resolvedPermissionMode,
+	});
 
 	const env = buildAgentEnv(extraEnv, task.id);
 	const scriptPath = `/tmp/dev3-${task.id}-col-agent.sh`;
@@ -1211,14 +1234,20 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					const cmdOpts: agents.CommandOptions = { resume: true };
 					if (pane.sessionId) cmdOpts.sessionId = pane.sessionId;
 					let resumeCmd: string;
+					let resumeBaseCmd = pane.agentCmd;
 					let extraEnv: Record<string, string> = {};
 					if (pane.agentId) {
 						const resolved = await agents.resolveCommandForAgent(pane.agentId, pane.configId, ctx, cmdOpts);
 						resumeCmd = resolved.command;
 						extraEnv = resolved.extraEnv;
+						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 					} else {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, pane.sessionId ?? undefined) ?? pane.agentCmd;
 					}
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd);
+					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
+						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+					});
 					const scriptPath = `/tmp/dev3-${params.taskId}-resume-pane-${i}.sh`;
 					await Bun.write(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
@@ -2095,6 +2124,9 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	// task launch does this; without it a spawned Codex pane runs against a stale
 	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
 	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd);
+	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
+		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+	});
 
 	const env: Record<string, string> = buildAgentEnv(extraEnv, task.id);
 
@@ -2231,6 +2263,9 @@ async function spawnSingleBugHunterPane(opts: {
 	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
 	// otherwise launches against a stale config.toml and crashes.
 	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd);
+	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
+		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
+	});
 
 	const env: Record<string, string> = buildAgentEnv(extraEnv, opts.task.id);
 	const existingPorts = portPool.getPortAssignments(opts.task.id);

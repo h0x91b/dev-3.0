@@ -1,6 +1,6 @@
 # 023 — Codex Uses Worktree-Local Hooks for dev3 Task Lifecycle
 
-> Superseded by [decision 117](117-stable-codex-status-hook-bridge.md): Codex now supports `PermissionRequest`, and hash-based hook trust requires a stable user-level bridge.
+> Superseded by [decision 117](117-stable-codex-status-hook-bridge.md): Codex now supports `PermissionRequest`, and dev3 registers hash trust for generated worktree hooks automatically.
 
 ## Context
 
