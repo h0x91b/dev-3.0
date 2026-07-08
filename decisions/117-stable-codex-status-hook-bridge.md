@@ -10,7 +10,7 @@ Codex exposes `PermissionRequest` from rust-v0.122.0 alongside `SessionStart`, `
 
 ## Decision
 
-Generate `.codex/hooks.json` inside each managed worktree, with every lifecycle event calling `dev3 hook codex`, then mirror those dev3 definitions into every launched Codex pane through a `-c hooks=...` session override. Before launch, query `hooks/list` with the same override, accept hashes only for `sessionFlags` entries whose command exactly equals the dev3 adapter, and include their trust state in the final override; nothing is persisted globally. The CLI adapter always returns `{}` and forwards events to one atomic `task.agentHook` socket operation, while a short-lived per-session marker restores an approving review agent to `review-by-ai` after `PostToolUse`.
+Generate `.codex/hooks.json` inside each managed worktree, with every lifecycle event calling `dev3 hook codex`, then mirror those dev3 definitions into every launched Codex pane through a `-c hooks=...` session override inserted immediately after the Codex binary, before any prompt terminator or resume subcommand. Before launch, query `hooks/list` with the same override, accept hashes only for `sessionFlags` entries whose command exactly equals the dev3 adapter, and include their trust state in the final override; nothing is persisted globally. The CLI adapter always returns `{}` and forwards events to one atomic `task.agentHook` socket operation, while a short-lived per-session marker restores an approving review agent to `review-by-ai` after `PostToolUse`.
 
 ## Risks
 

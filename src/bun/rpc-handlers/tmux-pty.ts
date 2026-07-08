@@ -339,7 +339,10 @@ async function applyAgentHooksToCommand(
 ): Promise<string> {
 	try {
 		const codexHookOverride = await setupAgentHooks(worktreePath, baseCommand, options);
-		return codexHookOverride ? `${command} -c ${shellQuote(codexHookOverride)}` : command;
+		if (!codexHookOverride) return command;
+		const firstSeparator = command.search(/\s/);
+		if (firstSeparator < 0) return `${command} -c ${shellQuote(codexHookOverride)}`;
+		return `${command.slice(0, firstSeparator)} -c ${shellQuote(codexHookOverride)}${command.slice(firstSeparator)}`;
 	} catch (err) {
 		log.warn("setupAgentHooks failed (non-fatal)", {
 			worktreePath,
