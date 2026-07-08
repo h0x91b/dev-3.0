@@ -49,7 +49,7 @@ Injected into `.claude/settings.local.json`.
 
 ### Codex
 
-Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that). Current Codex deliberately reads project hooks from the root checkout instead of a linked worktree, so dev3 also injects the same definitions as session flags into every Codex pane. On Codex 0.129+, dev3 asks `hooks/list` for authoritative hashes and adds trust state to that session override only; it never changes `~/.codex/hooks.json`, persists hook trust, or trusts unrelated user/project/plugin hooks. `PermissionRequest` runs on Codex 0.122+; older hook parsers ignore that unknown event while retaining the others.
+Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[features] hooks = true` on Codex 0.129+, `codex_hooks = true` before that). Current Codex deliberately reads project hooks from the root checkout instead of a linked worktree, so dev3 also injects the same definitions as session flags into every Codex pane. On Codex 0.129+, dev3 asks `hooks/list` for authoritative hashes and adds trust state to that session override only; it never changes `~/.codex/hooks.json`, persists hook trust, or trusts unrelated user/project/plugin hooks. The Codex skill forbids duplicate manual normal-lifecycle moves; semantic questions, custom columns, and explicit completion remain manual. `PermissionRequest` runs on Codex 0.122+; older hook parsers ignore that unknown event while retaining the others.
 
 | Hook event | Status transition | Purpose |
 |------------|------------------|---------|

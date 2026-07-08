@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -84,5 +84,15 @@ describe("installAgentSkills", () => {
 
 		expect(existsSync(join(tempHome, ".claude/skills/dev3/SKILL.md"))).toBe(true);
 		expect(existsSync(join(tempHome, ".claude/skills/dev3/PROTOCOL.md"))).toBe(true);
+	});
+
+	it("keeps shared AGENTS.md neutral about hook-owned versus manual lifecycle", async () => {
+		const { installAgentSkills } = await loadModule();
+		installAgentSkills();
+
+		const agentsMd = readFileSync(join(tempHome, ".agents/AGENTS.md"), "utf-8");
+		expect(agentsMd).toContain("Follow the agent-specific status section in the loaded dev3 skill");
+		expect(agentsMd).not.toContain("task move --status in-progress");
+		expect(agentsMd).not.toContain("At the END of every turn, move the task");
 	});
 });
