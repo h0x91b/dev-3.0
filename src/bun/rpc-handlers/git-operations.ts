@@ -982,8 +982,9 @@ const AGENT_PROMPT_ENTER_DELAY_MS = 800;
  *  - Exactly ONE live agent pane → target it unconditionally, even if a
  *    non-agent pane (a shell, a dev server) is currently focused. There is no
  *    ambiguity about where the agent lives, so focus must not misroute the prompt.
- *  - TWO OR MORE live agent panes → ambiguous; respect the user's focus and use
- *    the session's active pane.
+ *  - TWO OR MORE live agent panes, including a main pane whose id was not
+ *    persisted → ambiguous; respect the user's focus and use the session's
+ *    active pane.
  *  - ZERO known agent panes (legacy tasks with no sessionState) → fall back to
  *    the active pane, preserving the historical behavior.
  *
@@ -1004,6 +1005,7 @@ async function resolveAgentPromptTargetPane(
 	const registeredIds = (agentPanes ?? [])
 		.map((p) => p.paneId)
 		.filter((id): id is string => Boolean(id));
+	const hasUnresolvedAgentPane = (agentPanes ?? []).some((pane) => !pane.paneId);
 
 	if (registeredIds.length > 0) {
 		let livePaneIds = new Set<string>();
@@ -1016,7 +1018,7 @@ async function resolveAgentPromptTargetPane(
 		} catch { /* best effort */ }
 
 		const liveAgentPanes = [...new Set(registeredIds.filter((id) => livePaneIds.has(id)))];
-		if (liveAgentPanes.length === 1) return liveAgentPanes[0] ?? null;
+		if (liveAgentPanes.length === 1 && !hasUnresolvedAgentPane) return liveAgentPanes[0] ?? null;
 		// ≥2 or 0 live agent panes → fall through to the active pane below.
 	}
 
