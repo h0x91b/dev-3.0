@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { exitError } from "../output";
-import { writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
+import { removeCodexWorktreeHooks, writeClaudeHooks, writeCodexHooks } from "../../shared/agent-hooks";
 
 const WORKTREES_DIR = `${process.env.HOME || "/tmp"}/.dev3.0/worktrees`;
 
@@ -32,10 +33,11 @@ export async function handleInstallHooks(): Promise<void> {
 	}
 
 	const claudeSettingsPath = join(worktreePath, ".claude", "settings.local.json");
-	const codexHooksPath = join(worktreePath, ".codex", "hooks.json");
+	const codexHooksPath = join(homedir(), ".codex", "hooks.json");
 
 	writeClaudeHooks(worktreePath);
-	writeCodexHooks(worktreePath);
+	writeCodexHooks(join(homedir(), ".codex"));
+	removeCodexWorktreeHooks(worktreePath);
 
 	process.stdout.write(`Installed Claude Code hooks → ${claudeSettingsPath}\n`);
 	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
@@ -45,6 +47,8 @@ export async function handleInstallHooks(): Promise<void> {
 	process.stdout.write(`Installed Codex hooks → ${codexHooksPath}\n`);
 	process.stdout.write(`  SessionStart → in-progress\n`);
 	process.stdout.write(`  UserPromptSubmit → in-progress\n`);
-	process.stdout.write(`  PreToolUse(Bash) → in-progress\n`);
-	process.stdout.write(`  Stop → review-by-user\n`);
+	process.stdout.write(`  PreToolUse/PostToolUse → in-progress\n`);
+	process.stdout.write(`  PermissionRequest → user-questions\n`);
+	process.stdout.write(`  Stop → review-by-ai or review-by-user\n`);
+	process.stdout.write(`  Review once with /hooks in Codex if marked untrusted\n`);
 }

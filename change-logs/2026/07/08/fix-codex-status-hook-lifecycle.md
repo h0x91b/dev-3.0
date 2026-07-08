@@ -1,0 +1,1 @@
+Codex tasks now leave Agent is Working reliably, move approval waits to User Questions on Codex 0.122+, and select the correct review column through one atomic lifecycle handler. Codex status hooks use a stable user-level definition, so current releases need approval only once per profile instead of once per worktree.

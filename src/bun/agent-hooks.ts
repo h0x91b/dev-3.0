@@ -5,19 +5,22 @@
  * so that task status transitions happen automatically via the agent's built-in
  * event system, rather than relying solely on SKILL.md instructions.
  *
- * Currently supports Claude Code.  Extensible for Gemini, Cursor, etc.
+ * Currently supports Claude Code and Codex. Extensible for Gemini, Cursor, etc.
  */
 
 import type { PermissionMode, TaskStatus } from "../shared/types";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { createLogger } from "./logger";
 import { isClaudeCommand, isCodexCommand } from "./agents";
-import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
+import { removeCodexWorktreeHooks, writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
 
 export {
 	buildClaudeHooks,
 	buildCodexHooks,
 	mergeClaudeHooks,
 	mergeCodexHooks,
+	removeCodexWorktreeHooks,
 	writeClaudeHooks,
 	writeCodexHooks,
 } from "../shared/agent-hooks";
@@ -42,9 +45,10 @@ export function setupAgentHooks(
 		return;
 	}
 	if (isCodexCommand(baseCommand)) {
-		writeCodexHooks(worktreePath, options);
+		writeCodexHooks(join(homedir(), ".codex"));
+		removeCodexWorktreeHooks(worktreePath);
 		log.info("Codex hooks installed", {
-			worktreePath,
+			path: join(homedir(), ".codex", "hooks.json"),
 		});
 		return;
 	}

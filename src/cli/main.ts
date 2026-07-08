@@ -20,6 +20,7 @@ import { handleConversations } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleShowImage } from "./commands/show-image";
 import { handleStatusLine } from "./commands/statusline";
+import { handleCodexHook } from "./commands/codex-hook";
 import { handleDoctor } from "./commands/doctor";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
@@ -70,7 +71,7 @@ Commands:
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
   dev3 doctor [--json]                   Check install health (app bundle, tmux shim, brew state); works without the app running
-  dev3 install-hooks                     Install agent hooks in current worktree
+  dev3 install-hooks                     Install Claude worktree hooks and stable Codex user hooks
   dev3 install-skills                    Install agent skills globally
   dev3 projects list                    List all projects
   dev3 remote [start|status|url|stop]    Run headless — serve the UI to a browser
@@ -145,6 +146,15 @@ async function main(): Promise<void> {
 		// Reads stdin, dumps rate limits, delegates to the user's original
 		// statusLine. Must work without the app running.
 		return await handleStatusLine();
+	}
+	if (command === "hook" && subcommand === "codex") {
+		// Internal lifecycle adapter. It intentionally remains successful when
+		// the app is offline so a status-sync failure can never block Codex.
+		return await handleCodexHook(
+			await Bun.stdin.text(),
+			socketPath || context?.socketPath || null,
+			context,
+		);
 	}
 	if (command === "install-skills") {
 		return await handleInstallSkills();

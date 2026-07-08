@@ -1,5 +1,7 @@
 # 023 — Codex Uses Worktree-Local Hooks for dev3 Task Lifecycle
 
+> Superseded by [decision 117](117-stable-codex-status-hook-bridge.md): Codex now supports `PermissionRequest`, and hash-based hook trust requires a stable user-level bridge.
+
 ## Context
 
 Codex already had dev3-specific sandbox and permission profile setup, but task status transitions still depended on the generic SKILL instructions. That was weaker than the Claude path and made automatic AI review unreliable for Codex tasks.

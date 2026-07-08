@@ -10,6 +10,42 @@ import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
 export const DEV3_CLI = "~/.dev3.0/bin/dev3";
 export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
+export const CODEX_DEV3_HOOK_COMMAND = `${DEV3_CLI} hook codex`;
+export const CODEX_STATUS_HOOK_EVENTS = [
+	"SessionStart",
+	"UserPromptSubmit",
+	"PreToolUse",
+	"PermissionRequest",
+	"PostToolUse",
+	"Stop",
+] as const;
+export type CodexStatusHookEvent = typeof CODEX_STATUS_HOOK_EVENTS[number];
+
+export function getCodexHookTargetStatus(
+	event: CodexStatusHookEvent,
+	currentStatus: TaskStatus,
+	autoReviewEnabled: boolean,
+	resumeStatus?: "in-progress" | "review-by-ai",
+): TaskStatus | null {
+	if (currentStatus === "completed" || currentStatus === "cancelled") return null;
+
+	switch (event) {
+		case "SessionStart":
+		case "UserPromptSubmit":
+		case "PreToolUse":
+		case "PostToolUse":
+			if (currentStatus === "user-questions" && resumeStatus) return resumeStatus;
+			return currentStatus === "review-by-ai" ? null : "in-progress";
+		case "PermissionRequest":
+			return "user-questions";
+		case "Stop":
+			if (currentStatus === "in-progress") {
+				return autoReviewEnabled ? "review-by-ai" : "review-by-user";
+			}
+			if (currentStatus === "review-by-ai") return "review-by-user";
+			return null;
+	}
+}
 
 export interface HookEntry {
 	type: string;
@@ -61,19 +97,12 @@ function wrapAppOfflineFallback(command: string): string {
 	return `${command} || [ $? -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]`;
 }
 
-function wrapCodexStopHookCommand(command: string): string {
-	return `if ${command} >/dev/null; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else hook_exit_code=$?; if [ "$hook_exit_code" -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]; then printf '${CODEX_STOP_HOOK_SUCCESS_JSON}'; else exit "$hook_exit_code"; fi; fi`;
-}
-
 function buildStopGroups(
 	stopTarget: TaskStatus,
-	options?: { codexStopHook?: boolean },
 ): MatcherGroup[] {
 	const move = (status: string, extra?: string) => {
-		const command = buildMoveCommand(status, extra, options);
-		return options?.codexStopHook
-			? wrapCodexStopHookCommand(command)
-			: wrapAppOfflineFallback(command);
+		const command = buildMoveCommand(status, extra);
+		return wrapAppOfflineFallback(command);
 	};
 
 	const stopGroups: MatcherGroup[] = [
@@ -137,37 +166,49 @@ export function buildClaudeHooks(
 /**
  * Build the Codex hooks object for a given task.
  *
- * Codex currently lacks a PermissionRequest event, so we mirror the Claude
- * behavior as closely as possible with:
- *
- * - SessionStart/UserPromptSubmit/PreToolUse(Bash): → in-progress
- * - Stop: primary agent → stopTarget; review agent → review-by-user
+ * All entries call one stable user-level handler. Keeping the hook definition
+ * independent of the worktree and task lets the user trust it once through
+ * Codex's hash-based hook review instead of once per generated worktree path.
+ * The handler receives the event JSON on stdin and asks dev3 to perform the
+ * status transition atomically.
  */
-export function buildCodexHooks(
-	options?: { stopTarget?: TaskStatus },
-): HookMap {
-	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
-	const workingCmd = wrapAppOfflineFallback(
-		buildMoveCommand("in-progress", "--if-status-not review-by-ai"),
-	);
+export function buildCodexHooks(): HookMap {
+	const handler: HookEntry = {
+		type: "command",
+		command: CODEX_DEV3_HOOK_COMMAND,
+		timeout: 5,
+	};
+	const toolMatcher = "Bash|Edit|Write|^apply_patch$|^mcp__.*";
 
 	return {
 		SessionStart: [
 			{
 				matcher: "startup|resume",
-				hooks: [{ type: "command", command: workingCmd }],
+				hooks: [handler],
 			},
 		],
 		UserPromptSubmit: [
-			{ hooks: [{ type: "command", command: workingCmd }] },
+			{ hooks: [handler] },
 		],
 		PreToolUse: [
 			{
-				matcher: "Bash",
-				hooks: [{ type: "command", command: workingCmd }],
+				matcher: toolMatcher,
+				hooks: [handler],
 			},
 		],
-		Stop: buildStopGroups(stopTarget, { codexStopHook: true }),
+		PermissionRequest: [
+			{
+				matcher: toolMatcher,
+				hooks: [handler],
+			},
+		],
+		PostToolUse: [
+			{
+				matcher: toolMatcher,
+				hooks: [handler],
+			},
+		],
+		Stop: [{ hooks: [handler] }],
 	};
 }
 
@@ -222,9 +263,8 @@ export function mergeClaudeHooks(
 
 export function mergeCodexHooks(
 	existing: Record<string, unknown>,
-	options?: { stopTarget?: TaskStatus },
 ): Record<string, unknown> {
-	return mergeHookMaps(existing, buildCodexHooks(options));
+	return mergeHookMaps(existing, buildCodexHooks());
 }
 
 /**
@@ -313,11 +353,10 @@ export function writeClaudeHooks(
 }
 
 /**
- * Read .codex/hooks.json, merge dev3 hooks, and write it back.
- * Creates the .codex/ directory if it doesn't exist.
+ * Read the user-level ~/.codex/hooks.json, merge dev3 hooks, and write it back.
+ * The caller supplies the Codex config directory so tests never touch HOME.
  */
-export function writeCodexHooks(worktreePath: string, options?: { stopTarget?: TaskStatus }): void {
-	const codexDir = join(worktreePath, ".codex");
+export function writeCodexHooks(codexDir: string): void {
 	mkdirSync(codexDir, { recursive: true });
 
 	const hooksPath = join(codexDir, "hooks.json");
@@ -327,10 +366,42 @@ export function writeCodexHooks(worktreePath: string, options?: { stopTarget?: T
 		if (existsSync(hooksPath)) {
 			settings = JSON.parse(readFileSync(hooksPath, "utf-8"));
 		}
-	} catch {
-		// Corrupted file — overwrite
+	} catch (error) {
+		throw new Error(
+			`Cannot install Codex hooks because ${hooksPath} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
 
-	const updated = mergeCodexHooks(settings, options);
+	const updated = mergeCodexHooks(settings);
+	if (JSON.stringify(updated) === JSON.stringify(settings)) return;
+	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
+}
+
+/**
+ * Remove legacy dev3 entries from a worktree-local hooks file while preserving
+ * every project-owned hook and top-level setting. We intentionally keep the
+ * file even when the resulting hooks map is empty: files inside managed
+ * worktrees are user-visible state, and migration must not delete them.
+ */
+export function removeCodexWorktreeHooks(worktreePath: string): void {
+	const hooksPath = join(worktreePath, ".codex", "hooks.json");
+	if (!existsSync(hooksPath)) return;
+
+	let settings: Record<string, unknown>;
+	try {
+		settings = JSON.parse(readFileSync(hooksPath, "utf-8"));
+	} catch {
+		return;
+	}
+
+	const existingHooks = (settings.hooks ?? {}) as HookMap;
+	const hooks: HookMap = {};
+	for (const [event, groups] of Object.entries(existingHooks)) {
+		const preserved = groups.filter((group) => !isDev3Entry(group));
+		if (preserved.length > 0) hooks[event] = preserved;
+	}
+
+	const updated = { ...settings, hooks };
+	if (JSON.stringify(updated) === JSON.stringify(settings)) return;
 	writeFileSync(hooksPath, JSON.stringify(updated, null, 2) + "\n", "utf-8");
 }
