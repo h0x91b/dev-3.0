@@ -1,6 +1,6 @@
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import type { Project, Task } from "../../shared/types";
-import { getTaskTitle, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
+import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { useCompact } from "../utils/useCompact";
@@ -255,8 +255,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	if (route.screen === "project" && route.activeTaskId) {
 		const task = tasks.find((t) => t.id === route.activeTaskId);
 		if (task) {
-			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
-			segments.push({ badge, label: getTaskTitle(task), task });
+			segments.push({ badge: `#${taskSeqLabel(task)}`, label: getTaskTitle(task), task });
 		}
 	}
 
@@ -264,8 +263,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	if (route.screen === "task") {
 		const task = tasks.find((t) => t.id === route.taskId);
 		if (task) {
-			const badge = task.variantIndex != null ? `#${task.seq}-${task.variantIndex}` : `#${task.seq}`;
-			segments.push({ badge, label: getTaskTitle(task), task });
+			segments.push({ badge: `#${taskSeqLabel(task)}`, label: getTaskTitle(task), task });
 		} else {
 			segments.push({ label: t("header.task") });
 		}

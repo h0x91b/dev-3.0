@@ -65,6 +65,7 @@ import {
 	analyticsLocationForRoute,
 } from "../analytics";
 import type { CodingAgent } from "../../shared/types";
+import { taskSeqLabel } from "../../shared/types";
 import type { Route } from "../state";
 
 const flushMicrotasks = () => new Promise((r) => setTimeout(r, 0));
@@ -353,6 +354,17 @@ describe("unhandledrejection handler", () => {
 	});
 });
 
+describe("taskSeqLabel", () => {
+	it("returns bare seq when the task has no variant", () => {
+		expect(taskSeqLabel({ seq: 981, variantIndex: null })).toBe("981");
+	});
+
+	it("appends the variant index when present (including 0)", () => {
+		expect(taskSeqLabel({ seq: 981, variantIndex: 1 })).toBe("981-1");
+		expect(taskSeqLabel({ seq: 42, variantIndex: 0 })).toBe("42-0");
+	});
+});
+
 describe("analyticsLocationForRoute", () => {
 	it("maps project-less screens to prefixed /app paths", () => {
 		expect(analyticsLocationForRoute({ screen: "dashboard" }).path).toBe("/app/dashboard");
@@ -370,6 +382,13 @@ describe("analyticsLocationForRoute", () => {
 		const loc = analyticsLocationForRoute({ screen: "project", projectId: "p1", activeTaskId: "t3" });
 		expect(loc.screen).toBe("task");
 		expect(loc.path).toBe("/app/project/p1/task/t3");
+	});
+
+	it("uses the human-readable seq label in the task path when provided", () => {
+		expect(analyticsLocationForRoute({ screen: "task", projectId: "p1", taskId: "hash-xyz" }, "981-1").path)
+			.toBe("/app/project/p1/task/981-1");
+		expect(analyticsLocationForRoute({ screen: "project", projectId: "p1", activeTaskId: "hash-xyz" }, "981-2").path)
+			.toBe("/app/project/p1/task/981-2");
 	});
 
 	it("falls back to a generic /app hit for an unknown route", () => {
@@ -394,19 +413,25 @@ describe("trackPageView / trackDiffView", () => {
 		destroyAnalytics();
 	});
 
-	it("emits a page_view with the /app-prefixed location and title", () => {
-		trackPageView({ screen: "task", projectId: "p1", taskId: "t9" });
+	it("emits a page_view carrying the task seq label (not the hash)", () => {
+		trackPageView({ screen: "task", projectId: "p1", taskId: "hash-xyz" }, "981-1");
 		const hit = gaHits(fetchMock)[0];
 		expect(hit.events[0].name).toBe("page_view");
-		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/task/t9");
+		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/task/981-1");
 		expect(hit.events[0].params.page_title).toBe("Task");
 	});
 
-	it("emits a diff page_view under /app/project/<id>/diff/<taskId>", () => {
-		trackDiffView("p1", "t9");
+	it("falls back to the raw task id when no seq label is available", () => {
+		trackPageView({ screen: "task", projectId: "p1", taskId: "hash-xyz" });
+		const hit = gaHits(fetchMock)[0];
+		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/task/hash-xyz");
+	});
+
+	it("emits a diff page_view under /app/project/<id>/diff/<seqLabel>", () => {
+		trackDiffView("p1", "981-1");
 		const hit = gaHits(fetchMock)[0];
 		expect(hit.events[0].name).toBe("page_view");
-		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/diff/t9");
+		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/diff/981-1");
 	});
 });
 

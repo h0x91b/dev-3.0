@@ -10,11 +10,17 @@ paths (`/project/<x>/kanban`, `/task/<id>`, `/diff/<id>`) instead of the old fla
 
 ## Decision
 
-`analyticsLocationForRoute(route)` maps every `Route` to an `/app`-prefixed path
-built from the **internal project/task ids** (`/app/project/<projectId>/kanban`,
-`/app/project/<projectId>/task/<taskId>`, `/app/project/<projectId>/diff/<taskId>`,
+`analyticsLocationForRoute(route, taskLabel?)` maps every `Route` to an
+`/app`-prefixed path (`/app/project/<projectId>/kanban`,
+`/app/project/<projectId>/task/<seq>`, `/app/project/<projectId>/diff/<seq>`,
 `/app/dashboard`, `/app/settings`, …). The `/app` prefix separates the app from the
-landing page in the shared property; the ids are dev3's own random identifiers.
+landing page in the shared property. The **project** segment is dev3's internal
+random id (see below). The **task** segment is the human-readable per-project
+sequence label from `taskSeqLabel(task)` (e.g. `981-1` = seq 981, variant 1) —
+resolved by the caller from the loaded task list, falling back to the raw task id
+only when the task isn't loaded yet. This lets us see how deep into a project's task
+list users get. `taskSeqLabel` is the single source of truth for that format and is
+also what `GlobalHeader` renders (with a leading `#`).
 
 We deliberately do **not** send the project *name*. A repo/folder name is user
 content that can be confidential (a client under NDA, an unreleased codename), and

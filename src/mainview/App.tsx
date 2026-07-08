@@ -6,7 +6,7 @@ import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, SharedImage, Task, TaskStatus } from "../shared/types";
-import { orderProjectsForDisplay } from "../shared/types";
+import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
@@ -1557,9 +1557,14 @@ function App() {
 		return () => clearInterval(tick);
 	}, [qrModalOpen, qrConsumed]);
 
-	// Track page views on route changes
+	// Track page views on route changes. Resolve the task's human-readable seq id
+	// (e.g. "981-1") from the loaded task list so analytics paths carry the task
+	// number, not the opaque hash; falls back to the raw id if not yet loaded.
 	useEffect(() => {
-		trackPageView(state.route);
+		const taskId = routeTaskId(state.route);
+		const task = taskId ? state.currentProjectTasks.find((t) => t.id === taskId) : undefined;
+		trackPageView(state.route, task ? taskSeqLabel(task) : undefined);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per navigation; task list read at that moment
 	}, [state.route]);
 
 	// Escape: close quit dialog or navigate back from settings screens

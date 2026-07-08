@@ -315,15 +315,23 @@ export interface AnalyticsLocation {
 	 * the SAME GA4 property (measurement_id "G-…"), so without the prefix their
 	 * Page-path rows would be indistinguishable.
 	 *
-	 * Project/task identifiers are the app's internal random ids, never the
-	 * project *name*: a repo/folder name can be confidential (client under NDA,
-	 * unreleased codename) and must not leave the machine.
+	 * The project identifier is the app's internal id, never the project *name*:
+	 * a repo/folder name can be confidential (client under NDA, unreleased
+	 * codename) and must not leave the machine. The task identifier is the
+	 * human-readable per-project seq label (e.g. "981-1", see
+	 * {@link taskSeqLabel}) when resolvable, falling back to the raw task id.
 	 */
 	path: string;
 }
 
-/** Map a route to a GA4 location. Pure — safe to unit-test in isolation. */
-export function analyticsLocationForRoute(route: Route): AnalyticsLocation {
+/**
+ * Map a route to a GA4 location. Pure — safe to unit-test in isolation.
+ *
+ * `taskLabel` is the human-readable seq id (e.g. "981-1") for the route's task,
+ * resolved by the caller from the loaded task list; when omitted (task not
+ * loaded) the raw task id is used so the hit is never dropped.
+ */
+export function analyticsLocationForRoute(route: Route, taskLabel?: string): AnalyticsLocation {
 	switch (route.screen) {
 		case "dashboard":
 			return { screen: "dashboard", title: "Dashboard", path: "/app/dashboard" };
@@ -331,12 +339,12 @@ export function analyticsLocationForRoute(route: Route): AnalyticsLocation {
 			// Split view with a task selected is really the task surface; the bare
 			// board (with or without an empty split list) is "kanban".
 			return route.activeTaskId
-				? { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${route.activeTaskId}` }
+				? { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${taskLabel ?? route.activeTaskId}` }
 				: { screen: "kanban", title: "Kanban", path: `/app/project/${route.projectId}/kanban` };
 		case "project-terminal":
 			return { screen: "project-terminal", title: "Project Terminal", path: `/app/project/${route.projectId}/terminal` };
 		case "task":
-			return { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${route.taskId}` };
+			return { screen: "task", title: "Task", path: `/app/project/${route.projectId}/task/${taskLabel ?? route.taskId}` };
 		case "project-settings":
 			return { screen: "project-settings", title: "Project Settings", path: `/app/project/${route.projectId}/settings` };
 		case "settings":
@@ -361,9 +369,13 @@ function pageLocation(path: string): string {
 	return `app://dev3${path}`;
 }
 
-/** Track a virtual page view for SPA navigation, derived from the route. */
-export function trackPageView(route: Route): void {
-	const loc = analyticsLocationForRoute(route);
+/**
+ * Track a virtual page view for SPA navigation, derived from the route.
+ * `taskLabel` (e.g. "981-1") is resolved by the caller from the loaded task
+ * list; it lands in the path in place of the raw task id.
+ */
+export function trackPageView(route: Route, taskLabel?: string): void {
+	const loc = analyticsLocationForRoute(route, taskLabel);
 	currentScreen = loc.screen;
 	sendToGA([{
 		name: "page_view",
@@ -377,15 +389,16 @@ export function trackPageView(route: Route): void {
 /**
  * Track opening the inline diff viewer as its own virtual page view. The diff is
  * not a routable screen (it opens in-place over a task), so callers fire this
- * explicitly on open. Uses the internal project/task ids, never the name.
+ * explicitly on open. `taskLabel` is the human-readable seq id (e.g. "981-1");
+ * project id is the internal id, never the project name.
  */
-export function trackDiffView(projectId: string, taskId: string): void {
+export function trackDiffView(projectId: string, taskLabel: string): void {
 	currentScreen = "diff";
 	sendToGA([{
 		name: "page_view",
 		params: {
 			page_title: "Diff",
-			page_location: pageLocation(`/app/project/${projectId}/diff/${taskId}`),
+			page_location: pageLocation(`/app/project/${projectId}/diff/${taskLabel}`),
 		},
 	}]);
 }

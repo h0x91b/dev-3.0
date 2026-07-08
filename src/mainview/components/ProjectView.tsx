@@ -13,6 +13,7 @@ import ActiveTasksStrip from "./ActiveTasksStrip";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
 import { trackDiffView } from "../analytics";
+import { taskSeqLabel } from "../../shared/types";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
@@ -68,8 +69,12 @@ function ProjectView({
 
 	// Opening the inline diff is a distinct surface but not a route — fire its
 	// page view explicitly (once per open) so it shows up alongside navigation.
+	// Use the human-readable seq id (e.g. "981-1"), falling back to the raw id.
 	useEffect(() => {
-		if (inlineDiff.isOpen && activeTaskId) trackDiffView(projectId, activeTaskId);
+		if (!inlineDiff.isOpen || !activeTaskId) return;
+		const task = tasks.find((t) => t.id === activeTaskId);
+		trackDiffView(projectId, task ? taskSeqLabel(task) : activeTaskId);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per open
 	}, [inlineDiff.isOpen, projectId, activeTaskId]);
 
 	if (!project) {
