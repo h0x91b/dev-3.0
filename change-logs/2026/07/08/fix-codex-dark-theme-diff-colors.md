@@ -1,0 +1,1 @@
+Fixed Codex terminal colors by launching it with GitHub in the light theme and Dracula in the dark theme, while preserving user configuration outside dev3. A renderer fallback also replaces legacy glaring GitHub-light diff backgrounds with muted dark variants and readable syntax colors.

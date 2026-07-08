@@ -34,7 +34,10 @@
  *   pale lavender — default-fg text on it is unreadable. The remap targets
  *   Claude Code's own dark theme bar colors (55/70), and explicit dark ANSI
  *   foregrounds (30/90) on those bars are flipped to light grays so
- *   dark-text-on-white bars stay legible as light-text-on-dark bars.
+ *   dark-text-on-white bars stay legible as light-text-on-dark bars. Codex's
+ *   GitHub-light diff backgrounds are remapped to muted dark red/green and
+ *   then treated as dark backgrounds so its light-theme code foregrounds are
+ *   brightened by the same contrast path.
  * Foreground adjustment is gated by the *luminance* of the active explicit
  * background: a fg chosen for an opposite-polarity bg (vim themes, highlight
  * bars) passes through untouched, but a bad-contrast fg on a same-polarity
@@ -129,6 +132,33 @@ const DARK_BRIGHT_WHITE_BG = ["48", "2", "70", "70", "70"];
 // Light replacements for dark ANSI fg (30/90) on a dark-remapped white bar
 const DARK_BAR_FG_30 = ["38", "2", "220", "220", "220"];
 const DARK_BAR_FG_90 = ["38", "2", "160", "160", "160"];
+
+// Codex renders tool-call diffs with GitHub-light backgrounds even after it
+// correctly learns that the terminal background is dark. Match only the two
+// observed source colors so unrelated app-owned highlight backgrounds retain
+// their intended polarity.
+const CODEX_LIGHT_DIFF_REMOVAL_BG = [255, 221, 221] as const;
+const CODEX_LIGHT_DIFF_ADDITION_BG = [221, 255, 221] as const;
+const CODEX_DARK_DIFF_REMOVAL_BG = ["48", "2", "63", "37", "42"];
+const CODEX_DARK_DIFF_ADDITION_BG = ["48", "2", "36", "61", "46"];
+
+function codexDarkDiffBgReplacement(r: number, g: number, b: number): string[] | null {
+	if (
+		r === CODEX_LIGHT_DIFF_REMOVAL_BG[0] &&
+		g === CODEX_LIGHT_DIFF_REMOVAL_BG[1] &&
+		b === CODEX_LIGHT_DIFF_REMOVAL_BG[2]
+	) {
+		return CODEX_DARK_DIFF_REMOVAL_BG;
+	}
+	if (
+		r === CODEX_LIGHT_DIFF_ADDITION_BG[0] &&
+		g === CODEX_LIGHT_DIFF_ADDITION_BG[1] &&
+		b === CODEX_LIGHT_DIFF_ADDITION_BG[2]
+	) {
+		return CODEX_DARK_DIFF_ADDITION_BG;
+	}
+	return null;
+}
 
 // Emulated dim foreground. ghostty renders SGR dim as 50% alpha, which is too
 // faint to read on dark and washes out on white; full intensity (dropping dim)
@@ -368,12 +398,17 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			}
 			if (introducer === "2" && tokens[i + 4] !== undefined) {
 				if (token === "48") {
-					gate.bg = classifyBgRgb(
-						Number(tokens[i + 2]),
-						Number(tokens[i + 3]),
-						Number(tokens[i + 4]),
-					);
-					out.push(token, tokens[i + 1], tokens[i + 2], tokens[i + 3], tokens[i + 4]);
+					const r = Number(tokens[i + 2]);
+					const g = Number(tokens[i + 3]);
+					const b = Number(tokens[i + 4]);
+					const codexDiffBg = mode === "dark" ? codexDarkDiffBgReplacement(r, g, b) : null;
+					if (codexDiffBg !== null) {
+						gate.bg = "dark";
+						out.push(...codexDiffBg);
+					} else {
+						gate.bg = classifyBgRgb(r, g, b);
+						out.push(token, tokens[i + 1], tokens[i + 2], tokens[i + 3], tokens[i + 4]);
+					}
 					restorePendingFg();
 					i += 5;
 					continue;
