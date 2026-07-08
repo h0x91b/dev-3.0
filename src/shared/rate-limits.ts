@@ -2,7 +2,7 @@
  * Agent rate-limit parsing — pure functions shared by the bun process, the CLI
  * (`dev3 statusline`) and the renderer.
  *
- * Data sources (all local, no API calls):
+ * Data sources:
  * - Claude Code: the statusLine stdin JSON carries `rate_limits.{five_hour,seven_day}`
  *   with `used_percentage` + `resets_at` (unix seconds). dev3 injects a statusLine
  *   wrapper (`dev3 statusline`) via `--settings` that dumps that JSON to
@@ -11,6 +11,8 @@
  *   contain `event_msg`/`token_count` events with a `rate_limits` object
  *   (`primary`/`secondary` windows + `credits`). Windows may be null on
  *   usage-based/enterprise plans.
+ * - Codex monthly credits: a read-only `account/rateLimits/read` request to the
+ *   locally authenticated `codex app-server`; this is cached and optional.
  */
 
 export type RateLimitSource = "claude" | "codex";
@@ -26,6 +28,15 @@ export interface RateLimitWindow {
 	windowMinutes: number | null;
 }
 
+export interface MonthlyCreditLimit {
+	limit: number;
+	used: number;
+	/** Percentage remaining, as reported by Codex. */
+	remainingPercent: number;
+	/** Absolute reset time in epoch ms, when known. */
+	resetsAt: number | null;
+}
+
 export interface AgentRateLimitSnapshot {
 	source: RateLimitSource;
 	/** When this data was captured locally (epoch ms). */
@@ -33,6 +44,8 @@ export interface AgentRateLimitSnapshot {
 	windows: RateLimitWindow[];
 	/** Codex credits balance display string, when the plan exposes credits. */
 	creditsBalance: string | null;
+	/** Effective per-user monthly Codex credit limit, available from app-server. */
+	monthlyCredits: MonthlyCreditLimit | null;
 	/** Codex plan type, e.g. "enterprise_cbp_usage_based". */
 	planType: string | null;
 }
@@ -55,6 +68,15 @@ function asFiniteNumber(v: unknown): number | null {
 	return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+function asNumeric(v: unknown): number | null {
+	if (typeof v === "number" && Number.isFinite(v)) return v;
+	if (typeof v === "string" && v.trim()) {
+		const parsed = Number(v);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	return null;
+}
+
 /** Human label for a window id ("five_hour" → "5h", codex "primary" → by minutes). */
 export function windowLabel(w: RateLimitWindow): string {
 	switch (w.id) {
@@ -62,6 +84,8 @@ export function windowLabel(w: RateLimitWindow): string {
 			return "5h";
 		case "seven_day":
 			return "7d";
+		case "monthly_credits":
+			return "monthly credits";
 	}
 	if (w.windowMinutes != null) {
 		const mins = w.windowMinutes;
@@ -113,7 +137,7 @@ export function parseClaudeStatusLinePayload(payload: unknown, capturedAt: numbe
 		}
 	}
 	if (windows.length === 0) return null;
-	return { source: "claude", capturedAt, windows, creditsBalance: null, planType: null };
+	return { source: "claude", capturedAt, windows, creditsBalance: null, monthlyCredits: null, planType: null };
 }
 
 /**
@@ -150,7 +174,80 @@ export function parseCodexRateLimits(rateLimits: unknown, eventAtMs: number): Ag
 
 	const planType = typeof root.plan_type === "string" ? root.plan_type : null;
 	if (windows.length === 0 && creditsBalance == null) return null;
-	return { source: "codex", capturedAt: eventAtMs, windows, creditsBalance, planType };
+	return { source: "codex", capturedAt: eventAtMs, windows, creditsBalance, monthlyCredits: null, planType };
+}
+
+/** Parse the camelCase rateLimits object returned by Codex app-server. */
+export function parseCodexAppServerRateLimits(rateLimits: unknown, capturedAt: number): AgentRateLimitSnapshot | null {
+	const root = asRecord(rateLimits);
+	if (!root) return null;
+
+	const windows: RateLimitWindow[] = [];
+	for (const id of ["primary", "secondary"]) {
+		const win = asRecord(root[id]);
+		const usedPercent = asFiniteNumber(win?.usedPercent);
+		if (win && usedPercent != null) {
+			const resetsAtSec = asFiniteNumber(win.resetsAt);
+			windows.push({
+				id,
+				usedPercent,
+				resetsAt: resetsAtSec != null ? resetsAtSec * 1000 : null,
+				windowMinutes: asFiniteNumber(win.windowDurationMins),
+			});
+		}
+	}
+
+	const credits = asRecord(root.credits);
+	let creditsBalance: string | null = null;
+	if (credits?.hasCredits === true) {
+		creditsBalance = credits.unlimited === true ? "unlimited" : credits.balance != null ? String(credits.balance) : null;
+	}
+
+	const individual = asRecord(root.individualLimit);
+	const limit = asNumeric(individual?.limit);
+	const used = asNumeric(individual?.used);
+	const reportedRemaining = asFiniteNumber(individual?.remainingPercent);
+	let monthlyCredits: MonthlyCreditLimit | null = null;
+	if (limit != null && limit > 0 && used != null && used >= 0) {
+		const remainingPercent = reportedRemaining ?? Math.max(0, 100 - (used / limit) * 100);
+		const resetsAtSec = asFiniteNumber(individual?.resetsAt);
+		monthlyCredits = {
+			limit,
+			used,
+			remainingPercent,
+			resetsAt: resetsAtSec != null ? resetsAtSec * 1000 : null,
+		};
+		windows.push({
+			id: "monthly_credits",
+			usedPercent: Math.max(0, 100 - remainingPercent),
+			resetsAt: monthlyCredits.resetsAt,
+			windowMinutes: null,
+		});
+	}
+
+	const planType = typeof root.planType === "string" ? root.planType : null;
+	if (windows.length === 0 && creditsBalance == null) return null;
+	return { source: "codex", capturedAt, windows, creditsBalance, monthlyCredits, planType };
+}
+
+/** Merge a fresh app-server snapshot over the rollout fallback without losing rollout-only windows. */
+export function mergeCodexRateLimitSnapshots(
+	rollout: AgentRateLimitSnapshot | null,
+	live: AgentRateLimitSnapshot | null,
+): AgentRateLimitSnapshot | null {
+	if (!live) return rollout;
+	if (!rollout) return live;
+	const windows = new Map<string, RateLimitWindow>();
+	for (const window of rollout.windows) windows.set(window.id, window);
+	for (const window of live.windows) windows.set(window.id, window);
+	return {
+		source: "codex",
+		capturedAt: live.capturedAt,
+		windows: [...windows.values()],
+		creditsBalance: live.creditsBalance ?? rollout.creditsBalance,
+		monthlyCredits: live.monthlyCredits,
+		planType: live.planType ?? rollout.planType,
+	};
 }
 
 /**

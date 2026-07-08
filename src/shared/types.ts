@@ -2579,7 +2579,7 @@ export type AppRPCSchema = {
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };
 			/**
-			 * Fresh agent rate-limit data (Claude statusLine dump / Codex rollouts).
+			 * Fresh agent rate-limit data (Claude dump / Codex rollouts + monthly credits).
 			 * Pushed by the rate-limit monitor whenever the parsed windows change.
 			 */
 			agentRateLimitsUpdated: AgentRateLimitsReport;

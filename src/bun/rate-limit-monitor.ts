@@ -1,12 +1,14 @@
 /**
- * Agent rate-limit monitor — periodically reads the two LOCAL rate-limit
- * sources (no API calls) and pushes changes to the renderer:
+ * Agent rate-limit monitor — periodically reads local rate-limit sources and
+ * pushes changes to the renderer:
  *
  * - Claude: ~/.dev3.0/data/rate-limits/claude.json, written by the injected
  *   `dev3 statusline` wrapper on every statusLine refresh of any dev3-launched
  *   Claude session (see src/cli/commands/statusline.ts).
  * - Codex: the newest rollout file under ~/.codex/sessions/YYYY/MM/DD/ — the
  *   tail contains `token_count` events with a `rate_limits` object.
+ * - Codex monthly credits: a cached read-only request through the locally
+ *   authenticated `codex app-server`, with rollout-only fallback.
  *
  * Also owns the static `--settings` file injected into Claude launches, which
  * routes the session's statusLine through `dev3 statusline`.
@@ -16,13 +18,16 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, openSync, r
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../shared/rate-limits";
-import { extractCodexSnapshotFromRolloutLines, parseClaudeStatusLinePayload } from "../shared/rate-limits";
+import { extractCodexSnapshotFromRolloutLines, mergeCodexRateLimitSnapshots, parseClaudeStatusLinePayload } from "../shared/rate-limits";
+import { fetchCodexRateLimitSnapshot } from "./codex-rate-limits";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
 import { loadSettings } from "./settings";
 
 const log = createLogger("rate-limit-monitor");
 const POLL_INTERVAL_MS = 30_000;
+/** Avoid spawning app-server and hitting the account endpoint every poll. */
+const CODEX_LIVE_REFRESH_MS = 5 * 60_000;
 /** How much of a rollout file tail to scan for the last rate_limits event. */
 const CODEX_TAIL_BYTES = 256 * 1024;
 /** How many most-recent day directories to consider when locating the live rollout. */
@@ -39,6 +44,9 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let pushMessageFn: PushMessageFn | null = null;
 let lastPushedKey = "";
 let cachedReport: AgentRateLimitsReport | null = null;
+let cachedCodexLiveSnapshot: AgentRateLimitSnapshot | null = null;
+let codexLiveAttemptedAt = 0;
+let codexLiveRequest: Promise<AgentRateLimitSnapshot | null> | null = null;
 
 /**
  * Write (once) the settings file whose statusLine routes through
@@ -159,6 +167,21 @@ export function readCodexSnapshot(root: string = codexSessionsRoot()): AgentRate
 	}
 }
 
+async function readCodexLiveSnapshot(now: number = Date.now()): Promise<AgentRateLimitSnapshot | null> {
+	if (now - codexLiveAttemptedAt < CODEX_LIVE_REFRESH_MS) return cachedCodexLiveSnapshot;
+	if (codexLiveRequest) return codexLiveRequest;
+	codexLiveAttemptedAt = now;
+	codexLiveRequest = fetchCodexRateLimitSnapshot()
+		.then((snapshot) => {
+			if (snapshot) cachedCodexLiveSnapshot = snapshot;
+			return cachedCodexLiveSnapshot;
+		})
+		.finally(() => {
+			codexLiveRequest = null;
+		});
+	return codexLiveRequest;
+}
+
 async function trackingEnabled(): Promise<boolean> {
 	try {
 		const settings = await loadSettings();
@@ -175,7 +198,7 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 	const snapshots: AgentRateLimitSnapshot[] = [];
 	const claude = readClaudeSnapshot();
 	if (claude) snapshots.push(claude);
-	const codex = readCodexSnapshot();
+	const codex = mergeCodexRateLimitSnapshots(readCodexSnapshot(), await readCodexLiveSnapshot());
 	if (codex) snapshots.push(codex);
 	const report: AgentRateLimitsReport = { snapshots, generatedAt: Date.now() };
 	cachedReport = report;
@@ -185,7 +208,10 @@ export async function getAgentRateLimitsReport(): Promise<AgentRateLimitsReport>
 /** Change-detection key: pushes happen only when the meaningful bits move. */
 function reportKey(report: AgentRateLimitsReport): string {
 	return report.snapshots
-		.map((s) => `${s.source}:${s.capturedAt}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}`)
+		.map(
+			(s) =>
+				`${s.source}:${s.capturedAt}:${s.windows.map((w) => `${w.id}=${w.usedPercent}@${w.resetsAt}`).join(",")}:${s.creditsBalance}:${s.monthlyCredits ? `${s.monthlyCredits.used}/${s.monthlyCredits.limit}@${s.monthlyCredits.resetsAt}` : ""}`,
+		)
 		.join("|");
 }
 
@@ -219,6 +245,9 @@ export function stopRateLimitMonitor(): void {
 	pushMessageFn = null;
 	lastPushedKey = "";
 	cachedReport = null;
+	cachedCodexLiveSnapshot = null;
+	codexLiveAttemptedAt = 0;
+	codexLiveRequest = null;
 }
 
 /** Last computed report (may be null before the first poll/RPC). */

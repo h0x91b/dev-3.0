@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import RateLimitIndicator from "../RateLimitIndicator";
@@ -28,6 +29,7 @@ function report(percent: number): AgentRateLimitsReport {
 					{ id: "seven_day", usedPercent: percent, resetsAt: Date.now() + 86_400_000, windowMinutes: 10080 },
 				],
 				creditsBalance: null,
+				monthlyCredits: null,
 				planType: null,
 			},
 		],
@@ -91,5 +93,28 @@ describe("RateLimitIndicator", () => {
 		const { container } = renderIndicator();
 		await act(async () => {});
 		expect(container.querySelector("[role='status']")).toBeNull();
+	});
+
+	it("shows a monthly-only Codex limit and its detailed credit usage", async () => {
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [
+				{
+					source: "codex",
+					capturedAt: Date.now(),
+					windows: [{ id: "monthly_credits", usedPercent: 97, resetsAt: Date.now() + 86_400_000, windowMinutes: null }],
+					creditsBalance: null,
+					monthlyCredits: { limit: 8824, used: 329.532, remainingPercent: 3, resetsAt: Date.now() + 86_400_000 },
+					planType: "enterprise_cbp_usage_based",
+				},
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+
+		expect(screen.getByText("97%")).toBeTruthy();
+		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("monthly credits");
+		await userEvent.tab();
+		expect(await screen.findByText(/329.53 \/ 8,824/)).toBeTruthy();
 	});
 });

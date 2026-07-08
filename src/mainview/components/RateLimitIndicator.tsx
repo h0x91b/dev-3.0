@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../rpc";
-import { useT } from "../i18n";
+import { useLocale, useT } from "../i18n";
 import Tooltip from "./Tooltip";
 import { RateLimitIcon } from "./HeaderIcons";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
@@ -23,10 +23,12 @@ const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex" 
  * dev running many parallel agents is never blindsided by hitting a limit.
  * Hidden until any data exists; escalates color at ≥80% / ≥95% of the most
  * constrained window. Details (per-window % + time-to-reset) live in the
- * tooltip. Data comes from local files only — see rate-limit-monitor.ts.
+ * tooltip. Codex monthly credits come from a cached app-server account read;
+ * all other data comes from local files — see rate-limit-monitor.ts.
  */
 function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const t = useT();
+	const [locale] = useLocale();
 	const [report, setReport] = useState<AgentRateLimitsReport | null>(null);
 
 	useEffect(() => {
@@ -53,6 +55,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	for (const snap of report.snapshots) {
 		const sourceName = SOURCE_NAMES[snap.source] ?? snap.source;
 		for (const win of snap.windows) {
+			if (win.id === "monthly_credits") continue;
 			const reset = formatResetDelta(win.resetsAt, now);
 			rows.push(
 				`${sourceName} ${windowLabel(win)} — ${Math.round(win.usedPercent)}%${reset ? ` · ${t("rateLimits.resetsIn", { time: reset })}` : ""}`,
@@ -61,13 +64,26 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		if (snap.creditsBalance != null) {
 			rows.push(`${sourceName} — ${t("rateLimits.credits", { balance: snap.creditsBalance })}`);
 		}
+		if (snap.monthlyCredits) {
+			const monthly = snap.monthlyCredits;
+			const reset = formatResetDelta(monthly.resetsAt, now);
+			const numberFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 2 });
+			rows.push(
+				`${sourceName} ${t("rateLimits.monthlyLabel")} — ${t("rateLimits.monthlyUsage", {
+					used: numberFormat.format(monthly.used),
+					limit: numberFormat.format(monthly.limit),
+					remaining: Math.round(monthly.remainingPercent),
+				})}${reset ? ` · ${t("rateLimits.resetsIn", { time: reset })}` : ""}`,
+			);
+		}
 		if (now - snap.capturedAt > STALE_AFTER_MS && (staleCapturedAt == null || snap.capturedAt < staleCapturedAt)) {
 			staleCapturedAt = snap.capturedAt;
 		}
 	}
 
 	const worstReset = formatResetDelta(worst.window.resetsAt, now);
-	const ariaLabel = `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[worst.source] ?? worst.source} ${windowLabel(worst.window)} ${percent}%${worstReset ? `, ${t("rateLimits.resetsIn", { time: worstReset })}` : ""}`;
+	const worstLabel = worst.window.id === "monthly_credits" ? t("rateLimits.monthlyLabel") : windowLabel(worst.window);
+	const ariaLabel = `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[worst.source] ?? worst.source} ${worstLabel} ${percent}%${worstReset ? `, ${t("rateLimits.resetsIn", { time: worstReset })}` : ""}`;
 
 	const colorClasses = danger
 		? "text-danger bg-danger/15 border-danger/30"
@@ -93,6 +109,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		>
 			<div
 				role="status"
+				tabIndex={0}
 				aria-label={ariaLabel}
 				data-help-id="header.rateLimits"
 				className={`header-anim flex cursor-pointer select-none items-center gap-1 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}

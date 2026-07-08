@@ -94,7 +94,7 @@ export async function getAgentUsage(): Promise<AgentUsageReport> {
 	return { days, generatedAt: new Date().toISOString(), hasUnpricedModels: hasUnpriced };
 }
 
-/** Current agent rate-limit windows (Claude statusLine dump / Codex rollouts). */
+/** Current agent rate limits (local dumps/rollouts plus cached Codex monthly credits). */
 async function getAgentRateLimits(): Promise<AgentRateLimitsReport> {
 	return getAgentRateLimitsReport();
 }

@@ -106,6 +106,8 @@ const dashboard = {
 	"rateLimits.tooltipTitle": "Límites de agentes",
 	"rateLimits.resetsIn": "se restablece en {time}",
 	"rateLimits.credits": "créditos: {balance}",
+	"rateLimits.monthlyLabel": "créditos mensuales",
+	"rateLimits.monthlyUsage": "{used} / {limit} usados · {remaining}% restantes",
 	"rateLimits.stale": "Datos de hace {time} — se actualizan mientras hay una sesión de agente activa",
 
 	// Remote Access QR Modal

@@ -331,7 +331,7 @@ startResourceMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
-// ── Agent rate-limit monitor (Claude statusLine dump / Codex rollouts) ──
+// ── Agent rate-limit monitor (Claude dump / Codex rollouts + monthly credits) ──
 startRateLimitMonitor((name, payload) => {
 	pushToBrowserClients(name, payload);
 });

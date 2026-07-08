@@ -406,7 +406,7 @@ startResourceMonitor((name, payload) => {
 	}
 });
 
-// Start background agent rate-limit monitor (Claude statusLine dump / Codex rollouts)
+// Start background agent rate-limit monitor (Claude dump / Codex rollouts + monthly credits)
 startRateLimitMonitor((name, payload) => {
 	try {
 		broadcastToAllWindows(name, payload);
