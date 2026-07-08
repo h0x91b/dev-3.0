@@ -23,6 +23,21 @@ describe("resolveModelRate", () => {
 		expect(resolveModelRate("claude-fable-5")).toMatchObject({ input: 10, output: 50 });
 	});
 
+	it("prices Codex models with OpenAI cached-input rates", () => {
+		expect(resolveModelRate("gpt-5.5")).toMatchObject({ input: 5, output: 30, cacheRead: 0.5 });
+		expect(resolveModelRate("gpt-5.4-mini")).toMatchObject({ input: 0.75, output: 4.5, cacheRead: 0.075 });
+		expect(resolveModelRate("gpt-5.3-codex")).toMatchObject({ input: 1.75, output: 14, cacheRead: 0.175 });
+		expect(resolveModelRate("openai/gpt-5.2-codex")).toMatchObject({ input: 1.75, output: 14, cacheRead: 0.175 });
+		expect(resolveModelRate("gpt-5.1-codex-max")).toMatchObject({ input: 1.25, output: 10, cacheRead: 0.125 });
+		expect(resolveModelRate("gpt-5-codex")).toMatchObject({ input: 1.25, output: 10, cacheRead: 0.125 });
+	});
+
+	it("leaves unpriced Codex preview models unresolved", () => {
+		expect(resolveModelRate("gpt-5.5-cyber")).toBeNull();
+		expect(resolveModelRate("gpt-5.3-codex-spark-preview")).toBeNull();
+		expect(resolveModelRate("gpt-5.6-sol")).toBeNull();
+	});
+
 	it("returns null for an unknown model", () => {
 		expect(resolveModelRate("some-other-llm")).toBeNull();
 		expect(resolveModelRate("")).toBeNull();

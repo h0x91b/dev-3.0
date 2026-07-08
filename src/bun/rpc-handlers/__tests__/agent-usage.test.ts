@@ -1,4 +1,4 @@
-import { buildClaudeUsageDays } from "../agent-usage-parse";
+import { buildClaudeUsageDays, buildCodexUsageDays } from "../agent-usage-parse";
 
 // Midday-UTC timestamps so local-day bucketing is stable across test-runner timezones.
 function assistant(
@@ -53,5 +53,66 @@ describe("buildClaudeUsageDays", () => {
 		const { days, hasUnpriced } = buildClaudeUsageDays([{ type: "user" }, null, 42]);
 		expect(days).toEqual([]);
 		expect(hasUnpriced).toBe(false);
+	});
+});
+
+function codexModel(model: string, timestamp: string) {
+	return { type: "turn_context", timestamp, payload: { model } };
+}
+
+function codexUsage(timestamp: string, last: Record<string, unknown>, total: Record<string, unknown> = {}) {
+	return {
+		type: "event_msg",
+		timestamp,
+		payload: {
+			type: "token_count",
+			info: { last_token_usage: last, total_token_usage: total },
+		},
+	};
+}
+
+describe("buildCodexUsageDays", () => {
+	it("sums per-turn deltas, tracks model changes, and dedups repeated rollout events", () => {
+		const duplicate = codexUsage(
+			"2026-07-01T12:05:00Z",
+			{ input_tokens: 1_500_000, cached_input_tokens: 500_000, output_tokens: 1_000_000 },
+			{ input_tokens: 99_000_000, cached_input_tokens: 80_000_000, output_tokens: 40_000_000 },
+		);
+		const { days, hasUnpriced } = buildCodexUsageDays([
+			codexModel("gpt-5.1-codex", "2026-07-01T12:00:00Z"),
+			duplicate,
+			duplicate,
+			codexModel("gpt-5.4-mini", "2026-07-01T12:10:00Z"),
+			codexUsage("2026-07-01T12:15:00Z", { input_tokens: 1_000_000, output_tokens: 1_000_000 }),
+		]);
+
+		expect(days).toHaveLength(1);
+		expect(days[0]).toMatchObject({
+			date: "2026-07-01",
+			source: "codex",
+			inputTokens: 2_000_000,
+			outputTokens: 2_000_000,
+			cacheCreationInputTokens: 0,
+			cacheReadInputTokens: 500_000,
+			fullyPriced: true,
+		});
+		// gpt-5.1-codex: $1.25 input + $0.0625 cached + $10 output;
+		// gpt-5.4-mini: $0.75 input + $4.50 output.
+		expect(days[0].costUsd).toBeCloseTo(16.5625, 6);
+		expect(hasUnpriced).toBe(false);
+	});
+
+	it("counts unknown-model tokens without pricing and ignores malformed events", () => {
+		const { days, hasUnpriced } = buildCodexUsageDays([
+			codexModel("gpt-5.6-sol", "2026-07-02T12:00:00Z"),
+			codexUsage("2026-07-02T12:05:00Z", { input_tokens: 10, cached_input_tokens: 4, output_tokens: 3 }),
+			codexUsage("not-a-timestamp", { input_tokens: 100 }),
+			{ type: "event_msg", timestamp: "2026-07-02T12:10:00Z", payload: { type: "token_count" } },
+			null,
+		]);
+
+		expect(days).toHaveLength(1);
+		expect(days[0]).toMatchObject({ inputTokens: 6, outputTokens: 3, cacheReadInputTokens: 4, costUsd: 0, fullyPriced: false });
+		expect(hasUnpriced).toBe(true);
 	});
 });

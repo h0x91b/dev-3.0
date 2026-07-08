@@ -1,0 +1,1 @@
+Velocity Cockpit now includes local Codex rollout token usage and API-equivalent model costs alongside Claude usage, with cached input priced separately and unknown preview models reported without guessed rates.

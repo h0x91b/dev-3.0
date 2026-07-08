@@ -8,9 +8,9 @@
  * if you paid per-token at public API rates" — a proxy for how much value the
  * subscription is delivering, not a bill. Always label it that way.
  *
- * Prices are USD per 1,000,000 tokens. Cache multipliers follow Anthropic's
- * public model: 5-minute cache write = 1.25x base input, 1-hour cache write =
- * 2x base input, cache read = 0.1x base input.
+ * Prices are USD per 1,000,000 tokens. Anthropic cache writes use the public
+ * 5-minute/1-hour multipliers; cache reads use the model's explicit public
+ * rate when supplied (OpenAI) or default to 0.1x base input (Anthropic).
  *
  * Unknown models resolve to `null` (graceful absence) — the caller still counts
  * their tokens but contributes 0 cost and should surface an "unpriced" flag
@@ -21,6 +21,8 @@
 export interface ModelBaseRate {
 	input: number;
 	output: number;
+	/** Explicit prompt-cache read rate. Defaults to 10% of input when omitted. */
+	cacheRead?: number;
 }
 
 /** Fully-resolved per-model rates including derived cache rates. */
@@ -52,6 +54,20 @@ const PER_MILLION = 1_000_000;
  * resolver matches by prefix so `opus-4-8` wins before a generic `opus`.
  */
 const BASE_RATES: ReadonlyArray<{ match: (id: string) => boolean; rate: ModelBaseRate }> = [
+	// --- OpenAI / Codex ---
+	// Preview models without public API pricing are deliberately omitted.
+	{ match: (id) => id.includes("gpt-5.5") && !id.includes("cyber"), rate: { input: 5, output: 30, cacheRead: 0.5 } },
+	{ match: (id) => id.includes("gpt-5.4-mini"), rate: { input: 0.75, output: 4.5, cacheRead: 0.075 } },
+	{ match: (id) => id.includes("gpt-5.4"), rate: { input: 2.5, output: 15, cacheRead: 0.25 } },
+	{
+		match: (id) => id.includes("gpt-5.3-codex") && !id.includes("spark"),
+		rate: { input: 1.75, output: 14, cacheRead: 0.175 },
+	},
+	{ match: (id) => id.includes("gpt-5.2"), rate: { input: 1.75, output: 14, cacheRead: 0.175 } },
+	{ match: (id) => id.includes("gpt-5.1-codex-mini"), rate: { input: 0.25, output: 2, cacheRead: 0.025 } },
+	{ match: (id) => id.includes("gpt-5.1"), rate: { input: 1.25, output: 10, cacheRead: 0.125 } },
+	{ match: (id) => id.includes("gpt-5-codex-mini"), rate: { input: 0.25, output: 2, cacheRead: 0.025 } },
+	{ match: (id) => id.includes("gpt-5-codex") || id === "gpt-5", rate: { input: 1.25, output: 10, cacheRead: 0.125 } },
 	// --- Anthropic / Claude ---
 	{ match: (id) => id.includes("fable-5") || id.includes("mythos-5") || id.includes("mythos-preview"), rate: { input: 10, output: 50 } },
 	// Current Opus tier (4.5 – 4.8): $5 / $25
@@ -89,7 +105,7 @@ export function resolveModelRate(modelId: string): ModelRate | null {
 		output: base.output,
 		cacheWrite5m: base.input * 1.25,
 		cacheWrite1h: base.input * 2,
-		cacheRead: base.input * 0.1,
+		cacheRead: base.cacheRead ?? base.input * 0.1,
 	};
 }
 
