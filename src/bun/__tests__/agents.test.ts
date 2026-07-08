@@ -837,6 +837,26 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		}
 	});
 
+	it("drops superseded interim GPT-5.6 Sol preset ids", () => {
+		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const interimIds = [
+			"codex-5.6-heavy-bypass",
+			"codex-5.6-heavy",
+			"codex-5.6-medium-bypass",
+			"codex-5.6-medium",
+		];
+		const stored: CodingAgent[] = [{
+			...codex,
+			configurations: [
+				...codex.configurations,
+				...interimIds.map((id) => ({ id, name: id, model: "gpt-5.6-sol" })),
+			],
+		}];
+
+		const mergedCodex = mergeWithDefaults(stored).find((agent) => agent.id === "builtin-codex")!;
+		expect(mergedCodex.configurations.some((config) => interimIds.includes(config.id))).toBe(false);
+	});
+
 	it("keeps user-created configurations in their original position", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
 		const userCfg: AgentConfiguration = {

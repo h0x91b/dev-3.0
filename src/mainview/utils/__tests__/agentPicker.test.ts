@@ -8,6 +8,7 @@ import {
 	pickConfigForModelChange,
 	prettifyModel,
 	MODEL_GROUP_LABELS,
+	type PickerGroup,
 } from "../agentPicker";
 
 const claude: CodingAgent = {
@@ -30,6 +31,8 @@ describe("getModelGroupLabel", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-fable-5" })).toBe("Fable 5");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-terra" })).toBe("GPT-5.6 Terra");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-luna" })).toBe("GPT-5.6 Luna");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.3-codex" })).toBe("GPT-5.3 Codex");
 	});
 
@@ -146,6 +149,23 @@ describe("pickConfigForModelChange", () => {
 	it("falls back to the group's first preset when nothing matches", () => {
 		const prev: AgentConfiguration = { id: "x", name: "Accept Edits", model: "m", permissionMode: "acceptEdits" };
 		expect(pickConfigForModelChange(fable, prev)?.id).toBe("auto-fable");
+	});
+
+	it("preserves the derived mode label for arg-encoded Codex presets", () => {
+		const terra: PickerGroup = {
+			label: "GPT-5.6 Terra",
+			configs: [
+				{ id: "terra-medium", name: "GPT-5.6 Terra Medium", model: "gpt-5.6-terra" },
+				{ id: "terra-high-bypass", name: "GPT-5.6 Terra High Bypass", model: "gpt-5.6-terra" },
+			],
+		};
+		const previous: AgentConfiguration = {
+			id: "sol-high-bypass",
+			name: "GPT-5.6 Sol High Bypass",
+			model: "gpt-5.6-sol",
+		};
+
+		expect(pickConfigForModelChange(terra, previous)?.id).toBe("terra-high-bypass");
 	});
 
 	it("returns the first preset when there is no previous", () => {

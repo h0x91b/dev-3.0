@@ -317,18 +317,61 @@ describe("DEFAULT_AGENTS", () => {
 		}
 	});
 
-	it("uses a heavy bypass preset as the default Codex configuration", () => {
+	it("uses a high bypass preset as the default Codex configuration", () => {
 		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
 		expect(codex).toBeDefined();
 
 		const cfg = codex!.configurations.find((c) => c.id === "codex-default");
 		expect(cfg).toBeDefined();
-		expect(cfg!.name).toBe("Default (GPT-5.6 Sol Heavy Bypass)");
+		expect(cfg!.name).toBe("Default (GPT-5.6 Sol, High Bypass)");
 		expect(cfg!.model).toBe("gpt-5.6-sol");
 		expect(cfg!.additionalArgs).toContain("--sandbox");
 		expect(cfg!.additionalArgs).toContain("danger-full-access");
 		expect(cfg!.additionalArgs).toContain('model_reasoning_effort="high"');
 		expect(cfg!.additionalArgs).not.toContain('default_permissions="dev3"');
+	});
+
+	it("curates GPT-5.6 Codex models and modes in Anthropic-style order", () => {
+		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex");
+		expect(codex).toBeDefined();
+
+		const modelOrder = codex!.configurations
+			.map((config) => config.model)
+			.filter((model, index, models) => model != null && models.indexOf(model) === index);
+		expect(modelOrder).toEqual(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"]);
+
+		const modesFor = (model: string) => codex!.configurations
+			.filter((config) => config.model === model)
+			.map((config) => config.modeLabel);
+		expect(modesFor("gpt-5.6-sol")).toEqual([
+			"Medium", "High", "X-High", "Max", "Ultra",
+			"Medium Bypass", "High Bypass", "X-High Bypass", "Max Bypass", "Ultra Bypass",
+			"Default (High Bypass)", "Plan (High)", "Plan then Bypass (High)",
+		]);
+		expect(modesFor("gpt-5.6-terra")).toEqual([
+			"Medium", "High", "X-High",
+			"Medium Bypass", "High Bypass", "X-High Bypass",
+		]);
+		expect(modesFor("gpt-5.6-luna")).toEqual([
+			"Low", "Medium", "High",
+			"Low Bypass", "Medium Bypass", "High Bypass",
+		]);
+	});
+
+	it("configures every generated GPT-5.6 Codex mode with matching effort and permissions", () => {
+		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const generated = codex.configurations.filter((config) => config.id.startsWith("codex-5.6-"));
+		for (const config of generated) {
+			const effort = config.modeLabel!.split(" ")[0].toLowerCase().replace("x-high", "xhigh");
+			expect(config.additionalArgs).toContain(`model_reasoning_effort="${effort}"`);
+			if (config.modeLabel!.endsWith("Bypass")) {
+				expect(config.additionalArgs).toContain("danger-full-access");
+				expect(config.additionalArgs).not.toContain('default_permissions="dev3"');
+			} else {
+				expect(config.additionalArgs).toContain('default_permissions="dev3"');
+				expect(config.additionalArgs).not.toContain("danger-full-access");
+			}
+		}
 	});
 });
 

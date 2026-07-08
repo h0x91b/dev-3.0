@@ -71,6 +71,12 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"codex-5.3-heavy",
 	"codex-5.3-medium-bypass",
 	"codex-5.3-medium",
+	// Interim GPT-5.6 Sol ids from the pre-release QA build. The complete lineup
+	// uses model-qualified ids and real Codex effort names instead of "Heavy".
+	"codex-5.6-heavy-bypass",
+	"codex-5.6-heavy",
+	"codex-5.6-medium-bypass",
+	"codex-5.6-medium",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
@@ -160,7 +166,7 @@ function mergeAgentWithDefault(
  *  to warrant a one-time resync of already-onboarded users' stored order
  *  (mergeWithDefaults otherwise preserves stored order forever). See
  *  decisions/ for the write-up. */
-export const AGENTS_LAYOUT_REVISION = 5;
+export const AGENTS_LAYOUT_REVISION = 6;
 
 /** One-time reorder of each built-in agent's configurations to match the
  *  current DEFAULT_AGENTS declared order. Custom (non-default) configs are
