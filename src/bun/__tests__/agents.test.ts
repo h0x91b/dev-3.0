@@ -248,6 +248,7 @@ describe("resolveAgentCommand — resume", () => {
 
 		expect(cmd).toContain("-p dev3-dark");
 		expect(cmd).not.toContain("-p dev3 ");
+		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
 	});
 
 	it("Codex: uses github theme when dev3 UI theme is light", () => {
@@ -261,6 +262,33 @@ describe("resolveAgentCommand — resume", () => {
 
 		expect(cmd).toContain("-p dev3-light");
 		expect(cmd).not.toContain("-p dev3 ");
+		expect(cmd).toContain(`-c 'tui.theme="github"'`);
+	});
+
+	it("Codex: preserves unrelated config overrides when injecting the theme", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({
+				model: undefined,
+				additionalArgs: ["-p", "dev3", "-c", 'model_reasoning_effort="high"'],
+			}),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd).toContain(`-c model_reasoning_effort="high" -c 'tui.theme="dracula"'`);
+	});
+
+	it("Codex: appends the dev3 theme after a conflicting user override", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({
+				model: undefined,
+				additionalArgs: ["-p", "dev3", "-c", 'tui.theme="nord"'],
+			}),
+			makeCtx({ taskDescription: "Some task" }),
+		);
+
+		expect(cmd.indexOf('tui.theme="nord"')).toBeLessThan(cmd.indexOf('tui.theme="dracula"'));
 	});
 
 	it("Codex: leaves custom profile names untouched", () => {
@@ -534,6 +562,7 @@ describe("resolveAgentCommand — empty description (scratch task) opens interac
 		// which is exactly what scratch tasks were missing with prompt-append.
 		expect(cmd).toContain("-c 'developer_instructions=");
 		expect(cmd).toContain("Task Lifecycle Protocol");
+		expect(cmd).toContain(`-c 'tui.theme="dracula"'`);
 	});
 
 	it("Cursor Agent: empty description → no positional prompt, no system prompt injected", () => {

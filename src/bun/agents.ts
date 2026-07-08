@@ -9,7 +9,7 @@ import { createLogger } from "./logger";
 import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
-import { getCodexProfileForCurrentUiTheme } from "./theme-state";
+import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv } from "./agent-accounts";
 import { ENV_UNSET } from "../shared/agent-accounts";
@@ -430,9 +430,17 @@ function applyCodexThemeProfile(args: string[]): void {
 			// Passing `--profile-v2` to a newer codex aborts with exit 2.
 			// See decision 055 + issue #611.
 			if (launchFlag === "--profile-v2") args[i] = "--profile-v2";
-			return;
+			break;
 		}
 	}
+
+	// Codex 0.130 rejected `tui.theme` inside config profiles, so keep the
+	// managed profiles focused on permissions/web search and select the visual
+	// theme through the supported per-launch config override instead. Append it
+	// after additionalArgs so every dev3 Codex session follows the active app
+	// theme even when the user's global config or preset selects another theme.
+	const theme = getCodexThemeForCurrentUiTheme();
+	args.push("-c", shellEscape(`tui.theme="${theme}"`));
 }
 
 export interface CommandOptions {
