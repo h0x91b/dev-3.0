@@ -16,78 +16,47 @@ You are working inside a **dev-3.0 managed worktree** with a Kanban board task a
 const SKILL_SESSION_START_CHECKLIST = `
 ## Session-start checklist
 
-The moment you understand what the task actually is — usually right after the user's first real message, **not** some separate "setup phase" — run this checklist. A direct, concrete task does **not** cancel it: being handed real work immediately is exactly when these get silently dropped.
-
-**Hard gate: finish this checklist before you end your first turn** (before you report the result of your first piece of work). If you are about to end a turn and have not done it, do it first. The actual work may proceed in the same turn — but none of these may be skipped.
+Run this the moment you understand what the task actually is — usually right after the user's first real message, even when the task is direct and concrete. **Hard gate: finish this checklist before you end your first turn** — the actual work may proceed in the same turn, but none of these may be skipped.
 
 1. **Branch** — rename if it matches \`dev3/task-*\` (Branch naming, below).
 2. **Title** — replace a scratch placeholder (\`Scratch — HH:MM\`) or a truncated / auto-generated title with a concise imperative (Title generation, below). Skip only if the title is user-edited.
-3. **Overview** — set the initial overview (Overview — MANDATORY, below).
+3. **Overview** — set the initial overview (Overview, below).
 4. **Labels** — assign 1-2 meaningful labels (Title generation, below).
 
-Steps 2-4 run in one pass — share the same moment, do not spread them across turns.
+Do steps 2-4 in one pass, not spread across turns.
 `;
 
 const SKILL_BRANCH_NAMING = `
 ## Branch naming
 
-After learning your current task, check if the branch matches \`dev3/task-*\` (opaque auto-generated name).
-If it does, **rename it immediately** to something meaningful based on the task description:
+If the branch matches \`dev3/task-*\` (opaque auto-generated name), **rename it immediately** based on the task:
 
 \`\`\`bash
 git branch -m dev3/task-XXXXXXXX <type>/<slug>
 \`\`\`
 
-> **User preferences override these defaults.** If the user's CLAUDE.md, AGENTS.md, or auto-memory
-> specifies a different branch naming convention (e.g., JIRA ticket prefix, custom format),
-> follow the user's convention instead of the defaults below.
+A branch naming convention from the user's CLAUDE.md / AGENTS.md / auto-memory **overrides** these defaults: type prefixes \`feat/dev3-\`, \`fix/dev3-\`, \`chore/dev3-\`, \`refactor/dev3-\`, \`docs/dev3-\`; lowercase kebab-case slug (3-5 words) derived from the task, e.g. \`fix/dev3-auth-race-condition\`.
 
-**Default rules** (apply only when the user has no custom branch naming preference):
-- Type prefixes: \`feat/dev3-\`, \`fix/dev3-\`, \`chore/dev-3\`, \`refactor/dev3-\`, \`docs/dev3-\`.
-- Use lowercase kebab-case for the slug (3-5 words): \`fix/dev3-auth-race-condition\`, \`feat/dev3-drag-reorder\`, \`refactor/dev3-rpc-handlers\`.
-- Derive the slug from the task description/title — be concise but descriptive.
-
-**Always applies:**
-- If the branch already has a meaningful name (does NOT match \`dev3/task-*\`), skip renaming.
-- If the branch was already pushed, also update the remote: \`git push origin :<old> && git push -u origin <new>\`.
-
-Run this as step 1 of the Session-start checklist (above), right after setting \`in-progress\`.
+If the branch already has a meaningful name, skip renaming. If it was already pushed, also update the remote: \`git push origin :<old> && git push -u origin <new>\`.
 `;
 
 const SKILL_TITLE_GENERATION = `
 ## Title generation
 
-The task title is auto-generated from the first 80 characters of the description.
-After learning your current task, if the title looks truncated (ends with "…") or is
-longer than ~6 words, synthesize a concise title and update it:
+The task title is auto-generated from the first 80 characters of the description. If it looks truncated (ends with "…") or is longer than ~6 words, set a concise imperative title — never a copy of the description:
 
-  dev3 task update --title "Short imperative phrase"
+  dev3 task update --title "Fix auth race condition"
 
-Good titles: "Fix auth race condition", "Map missing keyboard bindings", "Add drag-to-reorder support"
-Bad titles: copies of the description, vague summaries, titles with ellipsis
+**Respect user-edited titles.** If \`dev3 current\` marks the title \`(user-edited — do NOT rename)\`, skip the rename entirely regardless of length or wording, and never pass \`--force\`.
 
-**Respect user-edited titles.** If \`dev3 current\` shows the title marked
-\`(user-edited — do NOT rename)\`, the user has explicitly set it via the UI.
-**Skip the rename step entirely** — do NOT call \`dev3 task update --title\`,
-regardless of length or wording. The user's title must be preserved for the
-entire task lifetime. As a backstop, the CLI also silently refuses to overwrite
-a user-edited title; \`--force\` exists for diagnostics only and you must never
-pass it.
-
-When targeting a task other than the auto-detected current worktree task, pass
-\`--task <id>\` or \`--task-id <id>\` explicitly. This works for \`task show\`,
-\`task update\`, \`task move\`, \`note\`, \`overview\`, and \`label set\`.
+To target a task other than the auto-detected current one, pass \`--task <id>\` (works for \`task show\`, \`task update\`, \`task move\`, \`note\`, \`overview\`, \`label set\`).
 
 In the same session-start pass, also assign task labels:
 
-- Run \`dev3 label list\` and reuse existing labels whenever possible.
-- Aim for **1-2 meaningful labels per task** in the normal case.
-- If the task still needs a label and there is no good fit, create **one short reusable label** with \`dev3 label create "name"\` and attach it to the current task immediately.
-- Apply the final label set with \`dev3 label set <id> [<id>...]\`. Creating a label without attaching it does **not** complete this step.
-- If the task already has sensible labels, leave them alone unless they are clearly wrong or incomplete.
-- Do not spam labels, create near-duplicates, or use labels for workflow state (\`in-progress\`, \`review\`, \`blocked\`, etc.).
-
-Title and labels are steps 2 and 4 of the Session-start checklist (above) — done in one pass, by the time you end your first turn.
+- Run \`dev3 label list\` and reuse existing labels whenever possible. Aim for **1-2 meaningful labels per task** in the normal case.
+- If there is no good fit, create **one short reusable label** with \`dev3 label create "name"\` and attach it to the current task immediately.
+- Apply with \`dev3 label set <id> [<id>...]\`. Creating a label without attaching it does **not** complete this step.
+- Leave existing sensible labels alone. No spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`, etc.).
 `;
 
 const SKILL_CUSTOM_COLUMNS = `
@@ -103,193 +72,101 @@ Each custom column has an 8-char ID prefix and a description of when to use it.
 const SKILL_COMPLETION_REQUEST = `
 ### Completing a task (user approval required)
 
-\`dev3 task move --status completed\` does NOT complete the task directly. It shows an approval dialog to the user in the app and **blocks for up to 10 minutes** waiting for their answer:
+\`dev3 task move --status completed\` does NOT complete the task directly — it shows an approval dialog in the app and **blocks for up to 10 minutes**:
 
-- **Approved** → the task moves to Completed and this worktree + terminal session are destroyed immediately.
-- **Declined** → exit code 6; the task keeps its status and the session stays alive. Continue working or ask the user what to change.
-- **Timeout** → the dialog may still be open; if the user approves later, the task completes and the session is destroyed.
+- **Approved** → task completes; this worktree + terminal session are destroyed immediately.
+- **Declined** → exit code 6; the session stays alive — continue working or ask what to change.
+- **Timeout** → the dialog may still be open; a later approval completes the task and destroys the session.
 
-Only request completion when the work is truly done (committed, tested, nothing pending). \`cancelled\` remains fully forbidden via CLI.
+Request completion only when the work is truly done (committed, tested, nothing pending). \`cancelled\` remains fully forbidden via CLI.
 `;
 
 const SKILL_NOTES = `
 ## Notes (per-task scratchpad) — your gift to future agents
 
-Use \`dev3 note add "..."\` to record durable findings, decisions, and hard-won context.
+Use \`dev3 note add "..."\` to record durable findings, decisions, and hard-won context. When a task is completed or cancelled the worktree is destroyed, but **notes survive** and are surfaced (weighted higher than raw transcript chatter) to future agents via \`dev3 conversations search\` — they are the project's long-term memory.
 
-**Why this matters more than it looks:** when a task is completed or cancelled, the worktree is destroyed and the conversation transcript fades into search noise — but **notes survive intact** and are surfaced (weighted higher than raw chatter) to every future agent via \`dev3 conversations search\`. A note you write today is often the single most useful thing the *next* agent finds when it hits the same wall. Treat notes as the long-term memory of the project, not a personal scratchpad.
+Write a note when you: **dug up something non-obvious** (root cause, how subsystems actually talk, why a thing is built the way it is); **learned an undocumented invariant or dependency gotcha**; **burned time on a wrong assumption** (spell out the correct path so the next agent skips the detour); or **made a real decision** (what you rejected and why). Lean toward writing when in doubt, but never log trivia derivable from the diff, commit messages, or git history. The bar: *"would this save a future agent real time?"* Keep each note self-contained — one insight per note, understandable months later without this conversation.
 
-**Write a note whenever you:**
-- **dug something up** that wasn't obvious from the code — a non-trivial root cause, how two subsystems actually talk, why a thing is built the way it is.
-- **learned something you didn't know** going in — an undocumented invariant, a surprising API behavior, a gotcha in a dependency.
-- **kept getting it wrong** — a mistake you made repeatedly, a wrong assumption that cost you time, a footgun. Spell out the correct path so the next agent skips the whole detour.
-- **made a real decision** — what you chose, what you rejected, and the reason (the *why*, not just the *what*).
-
-**Be generous but not noisy.** Lean toward writing the note when in doubt — a slightly-too-detailed note costs nothing, a missing one costs the next agent hours. But never log trivia ("ran the tests", "edited the file", "finished step 2"): if it's derivable from the diff, the commit message, or git history, it does **not** belong in a note. The bar is *"would this save a future agent real time?"* — if yes, write it; if no, skip it.
-
-Keep each note self-contained and concise — one insight per note, phrased so it makes sense months later without this conversation.
-
-\`dev3 note list\` truncates each body to one line. To read a note's complete content (e.g. when resuming a task after a context reset), use \`dev3 note show <id>\` with the 8-char prefix.
-
-\`dev3 task show\` always prints the task's **current overview** (the freshest summary — more useful than the original description). To understand a *neighbouring* task you're not working in (a dependency, rebase target, related experiment), add \`--notes\` to inline that task's note bodies and \`--history\` to see how its title/overview evolved over time — both in one call, without a worktree or its conversation.
+\`dev3 note list\` truncates bodies to one line; \`dev3 note show <id>\` (8-char prefix) prints the full body. \`dev3 task show\` always prints the task's **current overview**; add \`--notes\` and/or \`--history\` to understand a *neighbouring* task without its worktree or conversation.
 
 ## Saving context tokens
 
-If you already received the full task description as your initial prompt (most agents do), run \`dev3 current --brief\` instead of \`dev3 current\` to skip re-printing the description — you keep the project/task/status/overview lines without duplicating text you already hold.
+If the full task description was already your initial prompt (most agents), run \`dev3 current --brief\` instead of \`dev3 current\` to avoid re-printing it.
 `;
 
 const SKILL_CONVERSATION_SEARCH = `
 ## Searching past task conversations
 
-Completed and cancelled tasks delete their worktree, but their distilled record survives: the agent conversation transcripts (Claude, Codex, Gemini) plus the task's own notes, overview, and title/overview history. \`dev3 conversations search\` greps all of them and returns the top few past tasks most relevant to a query, with snippets. Tasks are matched even when only their notes/overview survive (no transcript) or by a since-renamed historical title, and that curated text is weighted higher than raw transcript chatter.
+\`dev3 conversations search "<keywords>" [--limit N] [--all-statuses]\` searches completed/cancelled tasks' transcripts, notes, overviews, and historical titles (local files only, no app needed) and returns the most relevant past tasks with snippets. Open the printed \`transcript:\` path to read a full conversation.
 
-**When (on-demand only — NOT on every start):**
-- The task references prior work ("like we did in X", "continue from the previous task", "same as before").
-- You are stuck and about to investigate something from scratch that a previous task likely already explored.
+Use it **on-demand only** — when the task references prior work ("like we did in X", "continue from the previous task") or you are stuck on something a past task likely already explored. Do NOT auto-search at the beginning of every task — it bloats context and is rarely needed.
 
-Do **not** auto-search at the beginning of every task — it bloats context and is rarely needed.
-
-**How:**
-\`\`\`
-dev3 conversations search "<keywords>" [--limit N] [--all-statuses]
-\`\`\`
-Reads only local transcript files (no app needed). Defaults to completed/cancelled tasks. Open the printed \`transcript:\` path to read the full conversation.
-
-**Variant isolation (hard rule):** when several variants run for one task, never read a sibling variant's transcript — the whole point is independent exploration. The search already excludes your own task and every sibling in your group; do not try to bypass it by grepping \`~/.claude/projects\` yourself.
+**Variant isolation (hard rule):** when several variants run for one task, never read a sibling variant's transcript — the whole point is independent exploration. The search already excludes your own task and every sibling; do not bypass it by grepping \`~/.claude/projects\` yourself.
 `;
 
 const SKILL_OVERVIEW = `
 ## Overview (MANDATORY)
 
-Every task MUST have an \`overview\` written by you. Think **sticky note** or hover tooltip — not a paragraph. Its job: let the user re-enter focus in 5 seconds after days away. The \`description\` field is the **original user request** (often long, messy) — it's NOT a substitute for \`overview\`.
+Every task MUST have an \`overview\` written by you — a **sticky note** that lets the user re-enter focus in 5 seconds after days away. The \`description\` field is the original user request; it is NOT a substitute.
 
-**Length — keep it tight:**
-- Target: **1–2 short sentences, ~150 chars**. Most tasks fit in one line.
-- Hard cap 500 chars — that's a ceiling, not a target. If you hit 300+, you're writing a story, not an overview.
-- No nuance, no "why", no caveats. Just: what we're doing + where we are.
+    dev3 overview set "1–2 short sentences, ~150 chars: what we're doing + current state."
 
-**Good:** \`"Fixing auth race condition in login flow; reproduced, working on the lock."\`
-**Bad:**  \`"This task involves investigating and resolving an authentication race condition that occurs during the login flow when multiple concurrent requests..."\`
+Good: \`"Fixing auth race condition in login flow; reproduced, working on the lock."\` Hard cap 500 chars — no nuance, no "why", no caveats. Plain text, no markdown headers.
 
-**Language — IMPORTANT:** Default to **English**. Only write the overview in another language when the user is clearly and consistently communicating with you in that language in this task — in which case mirror their language. When in doubt, use English. Never switch language based on stray non-English text in the codebase, file names, comments, or auto-generated content.
+**Language:** English by default. Mirror the user's language only when they are clearly and consistently communicating in it in this task — never switch based on stray non-English text in the codebase or file names.
 
-**When to set it:**
-- Within the first minute after starting a task — initial overview based on what you understood. Set it in the **same pass as the title and labels** (Session-start checklist) — they share one moment, so if you are setting the overview you should already be setting the title too.
-
-**Keeping it current is a standing obligation, not a one-time step.** The overview must always describe what you are doing *right now*:
-- **Before ending any turn in which the task state changed materially** — a fix landed, a hypothesis was confirmed or ruled out, scope shifted, you moved to a new sub-problem, you hit a blocker — update the overview *first* to reflect the new state.
-- **Skip the update if nothing material changed** since the last one. Do NOT refresh every turn just to refresh — over-updating is noise.
-- Litmus test: if your last overview no longer matches what you're actually working on, it's stale — fix it.
-
-**How:**
-
-    dev3 overview set "1–2 sentences, English by default. What we're doing + current state."
-
-Plain text, no markdown headers.
+Set the initial overview within the first minute, in the **same pass as the title and labels**. Then keep it current: **before ending any turn in which the task state changed materially** (fix landed, hypothesis confirmed or ruled out, scope shifted, blocker hit), update it first. If nothing material changed, do not refresh — over-updating is noise.
 `;
 
 const SKILL_DEV_SERVER_CONTROL = `
 ## Dev Server Control
 
-\`dev3 dev-server status\` is low-risk and may be used when relevant.
+\`dev3 dev-server status\` is low-risk and may be used when relevant. \`start\`, \`restart\`, and \`stop\` have visible side effects. Do not use them by default. Use them only when the user explicitly asked for dev-server control, the task is about \`devScript\`/ports/dev-server behavior, or you need the server running to verify the change. Before doing so, briefly tell the user what you are about to do. Prefer \`status\` before \`start\`. If you started the dev server only for verification, stop it afterwards unless the user asked to keep it running.
 
-\`dev3 dev-server start\`, \`restart\`, and \`stop\` have visible side effects.
-Do not use them by default.
-
-Use them only when:
-- the user explicitly asked for dev-server control
-- the task is about \`devScript\`, ports, or dev-server behavior
-- you need the dev server running to verify the change
-
-Before doing so, briefly tell the user what you are about to do.
-
-Prefer \`status\` before \`start\` to avoid unnecessary restarts.
-If you started the dev server only for verification, stop it afterwards unless the user asked to keep it running.
-
-When you need the server actually serving before testing (curl, browser QA), use
-\`dev3 dev-server start --wait\` / \`restart --wait\` — it blocks until the dev
-server's own process tree is listening on a port (\`--timeout <sec>\`, default 120).
-Do NOT probe the port yourself right after a plain restart. \`stop\`/\`restart\`
-verify teardown (processes dead, ports released) before returning, and \`status\`
-reports \`Dev Ports\` (owned by the dev server) plus WARNING lines when an assigned
-port is squatted by a foreign process.
+When you need the server actually serving before testing (curl, browser QA), use \`dev3 dev-server start --wait\` / \`restart --wait\` — it blocks until the dev server's process tree is listening on a port (\`--timeout <sec>\`, default 120). Do NOT probe the port yourself after a plain restart. \`stop\`/\`restart\` verify teardown before returning; \`status\` reports \`Dev Ports\` plus WARNING lines when an assigned port is squatted by a foreign process.
 `;
 
 const SKILL_GET_ATTENTION = `
 ## Getting the user's attention
 
-You can pull the user back to this task through the app UI. Use it deliberately — enough that the user never misses something that needs them, but never as per-step noise. These commands auto-target the current worktree's task.
+Pull the user back to this task deliberately — enough that they never miss something that needs them, never as per-step noise. These commands auto-target the current worktree's task:
 
-Commands:
-- \`dev3 attention "reason"\` — light the red attention badge on the task card; the reason shows in the card's hover preview (reasons accumulate, newest kept, up to 5). The badge persists until the user opens the task. This is the default for anything that needs the user.
-- \`dev3 notify "message" [--level info|success|error]\` — a clickable in-app toast; clicking opens this task. Ephemeral. Use \`--level error\` for failures, \`success\` for "done".
-- \`dev3 notify "message" --desktop\` — a native OS notification (shows even when the app is backgrounded/hidden); clicking focuses this task.
-- \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show the user actual images** (screenshots, \`agent-browser\` captures, rendered charts/diagrams) in an in-app viewer bound to this task, with a clickable history (newest shown first). A terminal can't render pixels — this is how you let the human *see* what you found. Paths may be relative or absolute (png/jpg/gif/webp/bmp); they're copied into the worktree so it survives the original (often /tmp) file being deleted. **Each \`--caption\` annotates the image path it immediately follows** — use it to say what to look at in that shot (e.g. \`dev3 show-image before.png --caption "current bug" after.png --caption "after my fix"\`). Captions are the agent's voice on the image — prefer them over describing the picture in text the user has to cross-reference.
-- \`dev3 ui state\` — reports focused task/project, app foreground, **how long the user has been idle** (\`userActivity\`), and this worktree's tmux layout (\`--json\` for raw data). Check this BEFORE pinging to choose the right channel and avoid redundant pings.
+- \`dev3 attention "reason"\` — red badge on the task card; persists until the user opens the task (reasons accumulate, up to 5). Default for anything that needs the user.
+- \`dev3 notify "message" [--level info|success|error]\` — clickable in-app toast (ephemeral); \`--desktop\` sends a native OS notification that shows even when the app is backgrounded.
+- \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show the user actual images** (screenshots, \`agent-browser\` captures, rendered charts) in an in-app viewer; files are copied into the worktree, and **each \`--caption\` annotates the image it immediately follows** (e.g. \`dev3 show-image before.png --caption "current bug" after.png --caption "after my fix"\`). If pixels exist and are relevant, put them in front of the user — never just describe a picture or leave a path they must open themselves.
+- \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`), tmux layout (\`--json\`). Check this BEFORE pinging to choose the channel.
 
-When to ping (MUST — always do one):
-- You are **blocked** / need a decision or input to proceed → \`dev3 attention "the question"\`.
-- You **asked a question** and are waiting → \`dev3 attention "..."\`.
-- You **finished** something important / it's ready for review → \`dev3 notify "..." --level success\`.
-- Something **broke** the user must know about → \`dev3 notify "..." --level error\`.
-- You **have an image the user should see** — the user asked to see something visual, or you took/produced a screenshot, \`agent-browser\` capture, chart, or diagram while working → **proactively** \`dev3 show-image ... --caption "..."\`. Do NOT just describe a picture in words or leave it as a file path the user has to open themselves; if pixels exist and they're relevant, put them in front of the user. This is the default whenever your work produced something worth looking at.
+MUST ping — one per logical event, not per step: **blocked** or waiting on a question → \`dev3 attention "the question"\`; **finished** something important → \`dev3 notify "..." --level success\`; something **broke** → \`dev3 notify "..." --level error\`; produced an **image worth seeing** → proactive \`dev3 show-image ... --caption "..."\`. SHOULD (only on long runs when the user likely stepped away): a major milestone; a go/no-go before a risky action. Never ping per-step progress, routine tool calls, or anything already visible in the terminal.
 
-When to ping (SHOULD — judgment, only if the run is long and the user likely stepped away):
-- A major milestone mid-task (a big phase/migration completed).
-- Right before a risky or irreversible action that needs a go/no-go.
+Choosing the channel (from \`ui state\`): user focused on this task → skip the ping or \`attention\` only; active but elsewhere → a toast is enough, \`attention\` for blockers; idle/away or app backgrounded → \`notify --desktop\` and/or an \`attention\` badge (a plain toast will go unseen).
 
-Do NOT ping for: per-step progress, routine tool calls, intermediate reasoning, or anything already visible in the terminal the user is watching.
-
-Choosing the channel (run \`dev3 ui state\` first):
-- User **focused on this task** (\`foreground: yes\`, \`activeTask\` = this task): they see the terminal live — skip the ping or use only \`attention\` (no toast/desktop).
-- User **active but elsewhere** (small \`userActivity\` idle, app foreground or another task): an in-app \`notify\` toast is enough; \`attention\` for blockers.
-- User **idle / away** (\`userActivity\` shows minutes/hours idle, or app backgrounded): use \`dev3 notify --desktop\` so it surfaces outside the app, and/or leave an \`attention\` badge they'll see when back. A plain toast will likely go unseen.
-
-Frequency: one ping per logical event (blocker / question / completion / failure), not per step. The badge accumulates reasons, so multiple questions stack without spamming toasts.
-
-Focus mode: the user can disable all of this in Settings → Behavior → Focus Mode. When it's on, \`dev3 notify\`/\`dev3 attention\` reply with "Focus mode is on — … suppressed" and show nothing. That's expected — keep using your normal status transitions (user-questions, review) so the work is still visible on the board; just don't expect a ping to land.
+Focus mode (Settings → Behavior) suppresses \`notify\`/\`attention\` with a "Focus mode is on" reply — that's expected; keep your normal status transitions so the work stays visible on the board.
 `;
 
 const SKILL_PROJECT_CONFIG_REDIRECT = `
 ## Project configuration (.dev3/config.json)
 
-For ANY question about project configuration — setting up scripts (setup, dev, cleanup), clone paths, base branch, sparse checkout, or anything related to \`.dev3/config.json\` / \`.dev3/config.local.json\` — you MUST invoke the \`/dev3-project-config\` skill. Do NOT attempt to configure the project without it. The dedicated skill knows the full schema, auto-detection logic, and correct workflow.
+For ANY question about project configuration — setup/dev/cleanup scripts, clone paths, base branch, sparse checkout, \`.dev3/config.json\` / \`.dev3/config.local.json\` — you MUST invoke the \`/dev3-project-config\` skill first; it owns the full schema and workflow. Do NOT attempt to configure the project without it.
 `;
 
 const SKILL_TMUX = `
 ## tmux — use it proactively
 
-You are running **inside a tmux session** managed by dev-3.0 (socket \`dev3\`, session name \`dev3-<first 8 chars of task ID>\`). The user sees this pane live in the app's terminal UI.
+You are running **inside a tmux session** managed by dev-3.0 (socket \`dev3\`, session name \`dev3-<first 8 chars of task ID>\`); the user sees this pane live in the app. Always use \`-L dev3\` (the default socket is a different tmux server).
 
-**Discover where you are:**
-
-- \`tmux -L dev3 display-message -p '#S #I #P'\` — your session, window, pane id
-- \`tmux -L dev3 list-windows -t <session>\` / \`list-panes -t <session>\` — see all tabs and panes
-- \`tmux -L dev3 list-sessions\` — see all dev3 sessions
-
-**Be proactive:**
-
-- For long-running or streaming commands (dev server, log tail, watcher, debug loop, celery worker, docker exec) — **split your current dev3 tmux pane** (\`split-window\`) and run the command in the new pane. The user watches it live next to your agent. Check the existing layout with \`list-panes\` first and pick a sensible spot (usually right of the agent; below if the right is taken). Quick one-shot commands stay inline. **Do NOT use \`new-window\` for background processes** — it hides them behind a tab the user has to click. Open a new window only when the user explicitly asks for a tab.
-- If the user asks to open/split/reorder/resize tabs or panes — just do it via \`tmux -L dev3 ...\`, do not ask which terminal.
-- Always use \`-L dev3\` (the default socket is a different tmux server and will not see dev3 sessions).
+- Where am I: \`tmux -L dev3 display-message -p '#S #I #P'\`; layout: \`list-windows\` / \`list-panes\`; all sessions: \`list-sessions\`.
+- For long-running or streaming commands (dev server, log tail, watcher, debug loop) — **split your current pane** (\`split-window\`) and run the command there so the user watches live; check \`list-panes\` first (usually right of the agent, below if taken). Quick one-shot commands stay inline. **Do NOT use \`new-window\` for background processes** — only when the user explicitly asks for a tab.
+- If the user asks to open/split/reorder/resize tabs or panes — just do it via \`tmux -L dev3 ...\`.
 - For \`send-keys\`, pass \`Enter\` as a separate argument — otherwise the command is typed but not executed.
 
-**For the full command reference** (open pane, send keys, rename / swap / move windows, resize, capture output, common pitfalls) — load the \`/dev3-tmux\` skill before doing anything beyond the basics above.
+For the full command reference (rename / swap / move windows, resize, capture output, common pitfalls) — load the \`/dev3-tmux\` skill before doing anything beyond these basics.
 `;
 
 const SKILL_SCRATCH_TASK = `
 ## Scratch tasks
 
-If your task title starts with \`Scratch — \` (e.g. \`Scratch — 14:32\`), the user clicked "Scratch Task" in the UI instead of writing a prompt. There is no initial instruction for you. The task \`description\` is just the placeholder title — it is NOT the real request.
-
-What to do:
-
-1. Greet the user briefly in one short line and ask what they want to do.
-2. As soon as they tell you, immediately:
-   - \`dev3 task update --title "<concise imperative>"\` — replace the placeholder with a real title.
-   - Set a proper overview (per the Overview rules above).
-   - \`dev3 label set <id> [<id>...]\` — pick 1-2 meaningful labels (see Title generation rules above).
-3. Treat the first real user message as the task description and proceed as normal.
+If your task title starts with \`Scratch — \` (e.g. \`Scratch — 14:32\`), the user clicked "Scratch Task" — there is no initial instruction and the \`description\` is just the placeholder title. Greet the user in one short line and ask what they want to do. As soon as they answer, treat that message as the task description: set a real title, overview, and labels (session-start checklist) and proceed as normal.
 `;
 
 // Full manual status management — for agents without hooks (Cursor, Gemini, etc.)
@@ -337,32 +214,20 @@ For \`exec_command\` calls, always set \`shell="/bin/bash"\` and \`login=false\`
 const SKILL_VENT_FEEDBACK = `
 ## Platform feedback — vents (about dev3 itself only)
 
-dev3 gives you a private, background feedback channel for the **dev3 platform itself**. Use it for two kinds of feedback about dev3:
-
-1. **Something went wrong / got in your way** — a CLI command that is missing or confusing, an unclear skill instruction, broken tmux integration, contradictory docs, or repeated failures caused by dev3 itself. (A bug report.)
-2. **Something is missing that would help** — a capability dev3 doesn't have yet that would have saved you work. e.g. "I spent ~6 turns doing X by hand; if dev3 had a \`dev3 <foo>\` command / hook / field for this, it would take one step next time." (A feature request / improvement idea.)
-
-**Don't sit on real friction — this channel is underused.** You don't need a dramatic blocker to vent: a command that took two tries to get right, a skill instruction you had to re-read, a flag you wished existed, or a doc that contradicted reality is each worth a quick vent. The maintainer can only fix what they hear about, and a vent costs almost nothing. So when something in dev3 genuinely slowed you down or was clearly missing, file it rather than letting it slide — but don't manufacture feedback when the session ran smoothly.
-
-File it with:
+dev3 gives you a private, anonymous feedback channel to the dev3 maintainer:
 
   dev3 vents "short name" "markdown body"
 
-For a bug report, the body should say what you were trying to do, what dev3 did instead, and what would have unblocked you. For a feature/improvement idea, say what you were trying to accomplish, what was tedious or impossible, and concretely what dev3 capability would have helped and how much it would save next time.
+Use it for two kinds of feedback about the dev3 platform itself:
 
-**Anonymity is mandatory — this is a hard rule.** A vent must be 100% anonymous and describe ONLY dev3 the tool. NEVER include:
-- any code from the project, file paths, file names, or diffs
-- the project/repo name, task content, branch names, or any user data
-- anything PII or anything specific to this one app or project
+1. **Something went wrong / got in your way** — a missing or confusing CLI command, an unclear skill instruction, broken tmux integration, docs contradicting reality. Say what you tried, what dev3 did instead, and what would have unblocked you.
+2. **Something is missing that would help** — a dev3 capability that would have saved you work. Say what was tedious, what dev3 feature would fix it, and how much it would save next time.
 
-If you cannot describe the friction or idea without referencing the project, do **not** vent.
+This channel is underused — a command that took two tries, a flag you wished existed, or a doc you had to re-read is each worth a quick vent. But don't manufacture feedback when the session ran smoothly, and don't vent about the user's app, your own code errors, or anything you can fix yourself. Litmus test: "would the dev3 maintainer have to change or extend dev3 to address this?" If no — don't vent.
 
-**In scope:** dev3 CLI / skill / tmux / docs / runtime friction, AND missing dev3 capabilities — anything the dev3 maintainer would have to change or add to *dev3* to fix or improve.
-**Out of scope:** bugs in the user's app, your own code/build/runtime errors, anything you can fix yourself, anything app-specific.
+**Anonymity is mandatory — this is a hard rule.** Never include project code, file paths or names, repo/branch names, task content, PII, or anything specific to this project. If you cannot describe it without referencing the project, do **not** vent.
 
-Litmus test: "would the dev3 maintainer have to change or extend dev3 to address this?" If no — don't vent.
-
-Call it **silently, at most once per user message**: do not announce it, do not mention it in your reply. It is a private signal to the maintainer; your answer to the user must read identically whether you vented or not.
+Call it **silently, at most once per user message**: never announce or mention it — your reply must read identically whether you vented or not.
 `;
 
 // Composed bodies for each agent type
@@ -379,6 +244,12 @@ export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST +
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
 // ---- Claude Code skill (uses !`command` injection for zero tool calls at startup) ----
+//
+// Deliberately short: dev3-launched Claude sessions already carry the full
+// protocol (CLAUDE_SKILL_BODY) in the system prompt via --append-system-prompt,
+// so repeating it here would double the token cost of every session. The full
+// body is written to PROTOCOL.md next to this SKILL.md as a fallback for
+// sessions started outside the dev3 launcher.
 
 const CLAUDE_SKILL_CONTENT = `---
 name: dev3
@@ -386,21 +257,18 @@ description: "${SKILL_DESCRIPTION}"
 user-invocable: true
 ---
 
-${CLAUDE_SKILL_BODY}
+# dev3 — Task Lifecycle Protocol
+
+The full protocol is already in your system prompt (the "dev3 — Task Lifecycle Protocol" section, injected by the dev3 launcher) — follow it; this skill only refreshes live state. If that section is NOT in your context (session started outside the dev3 app), read PROTOCOL.md in this skill's directory before continuing. Run \`~/.dev3.0/bin/dev3 --help\` when you need the full CLI reference.
+
 ## Status (auto-set on skill load)
 
 !\`~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai 2>&1\`
 
-## CLI reference
-
-\\\`\\\`\\\`
-!\`~/.dev3.0/bin/dev3 --help\`
-\\\`\\\`\\\`
-
 ## Your current task
 
 \\\`\\\`\\\`
-!\`~/.dev3.0/bin/dev3 current\`
+!\`~/.dev3.0/bin/dev3 current --brief\`
 \\\`\\\`\\\`
 `;
 
@@ -1288,12 +1156,15 @@ function installOpenAiMetadata(home: string): void {
 export function installAgentSkills(): void {
 	const home = homedir();
 
-	// Install Claude-specific skill (with command injection)
+	// Install Claude-specific skill (with command injection). SKILL.md is short
+	// (the protocol lives in the system prompt); PROTOCOL.md carries the full
+	// body as a fallback for sessions started outside the dev3 launcher.
 	const claudeSkillDir = `${home}/${CLAUDE_SKILL_DIR}`;
 	const claudeSkillFile = `${claudeSkillDir}/SKILL.md`;
 	try {
 		mkdirSync(claudeSkillDir, { recursive: true });
 		writeFileSync(claudeSkillFile, CLAUDE_SKILL_CONTENT, "utf-8");
+		writeFileSync(`${claudeSkillDir}/PROTOCOL.md`, CLAUDE_SKILL_BODY, "utf-8");
 		log.info("Claude skill installed", { path: claudeSkillFile });
 	} catch (err) {
 		log.warn("Failed to install Claude skill (non-fatal)", {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	applyClaudeSettings,
+	CLAUDE_SKILL_BODY,
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
 	getCodexSkillContent,
@@ -9,9 +10,13 @@ import {
 	getTmuxSkillContent,
 } from "../agent-skills";
 
+// The Claude SKILL.md is deliberately short (the protocol lives in the system
+// prompt via --append-system-prompt), so body-content assertions run against
+// CLAUDE_SKILL_BODY — the text Claude actually receives.
+
 describe("vent feedback skill section (always present)", () => {
 	it("teaches every agent the vent command, anonymity rules, and scope", () => {
-		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## Platform feedback — vents");
 			expect(skill).toContain('dev3 vents "short name" "markdown body"');
 			expect(skill).toContain("Anonymity is mandatory");
@@ -40,7 +45,7 @@ describe("dev3 skill content", () => {
 	});
 
 	it("front-loads a session-start checklist with an event-anchored hard gate", () => {
-		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## Session-start checklist");
 			// Event-anchored gate, not "session start" which agents race past
 			expect(skill).toContain("finish this checklist before you end your first turn");
@@ -53,17 +58,17 @@ describe("dev3 skill content", () => {
 	});
 
 	it("couples title-setting to the initial-overview moment", () => {
-		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("same pass as the title and labels");
 		}
 	});
 
 	it("keeps embedded label guidance consistent across agent variants", () => {
-		expect(getClaudeSkillContent()).toContain("In the same session-start pass, also assign task labels:");
+		expect(CLAUDE_SKILL_BODY).toContain("In the same session-start pass, also assign task labels:");
 		expect(getGenericSkillContent()).toContain("In the same session-start pass, also assign task labels:");
-		expect(getClaudeSkillContent()).toContain("reuse existing labels whenever possible.");
+		expect(CLAUDE_SKILL_BODY).toContain("reuse existing labels whenever possible.");
 		expect(getGenericSkillContent()).toContain("reuse existing labels whenever possible.");
-		expect(getClaudeSkillContent()).toContain("attach it to the current task immediately.");
+		expect(CLAUDE_SKILL_BODY).toContain("attach it to the current task immediately.");
 		expect(getGenericSkillContent()).toContain("attach it to the current task immediately.");
 	});
 
@@ -71,12 +76,12 @@ describe("dev3 skill content", () => {
 		expect(getCodexSkillContent()).toContain("## Dev Server Control");
 		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` is low-risk");
 		expect(getCodexSkillContent()).toContain("Do not use them by default.");
-		expect(getClaudeSkillContent()).toContain("Before doing so, briefly tell the user what you are about to do.");
+		expect(CLAUDE_SKILL_BODY).toContain("Before doing so, briefly tell the user what you are about to do.");
 		expect(getGenericSkillContent()).toContain("If you started the dev server only for verification, stop it afterwards");
 	});
 
 	it("teaches the agent to use the dev3 tmux session proactively (short summary)", () => {
-		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## tmux — use it proactively");
 			expect(skill).toContain("socket `dev3`");
 			expect(skill).toContain("dev3-<first 8 chars of task ID>");
@@ -93,11 +98,40 @@ describe("dev3 skill content", () => {
 	it("keeps the main /dev3 tmux summary short (does not duplicate the full reference)", () => {
 		// The detailed command reference must live in the separate /dev3-tmux skill,
 		// not be duplicated inline in the main skill body.
-		for (const skill of [getClaudeSkillContent(), getCodexSkillContent(), getGenericSkillContent()]) {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).not.toContain("Open a pane or window and run a command");
 			expect(skill).not.toContain("Resize a pane — absolute width / height");
 			expect(skill).not.toContain("Re-tile all panes in the window");
 		}
+	});
+});
+
+describe("Claude SKILL.md (short variant — protocol lives in the system prompt)", () => {
+	it("does not duplicate the protocol body that --append-system-prompt already injects", () => {
+		const skill = getClaudeSkillContent();
+		expect(skill).not.toContain("## Session-start checklist");
+		expect(skill).not.toContain("## Platform feedback — vents");
+		expect(skill).not.toContain("## Getting the user's attention");
+	});
+
+	it("points sessions started outside the launcher at the PROTOCOL.md fallback", () => {
+		expect(getClaudeSkillContent()).toContain("PROTOCOL.md");
+	});
+
+	it("keeps the zero-tool-call status auto-set and the brief task snapshot", () => {
+		const skill = getClaudeSkillContent();
+		expect(skill).toContain("task move --status in-progress --if-status-not review-by-ai");
+		expect(skill).toContain("dev3 current --brief");
+		// The full `dev3 current` would re-print the description Claude already
+		// holds as its initial prompt.
+		expect(skill).not.toContain("dev3 current`\n");
+	});
+
+	it("codex and generic skill files keep the full body (their only reliable channel)", () => {
+		// Codex scratch tasks and Gemini/Cursor/OpenCode sessions get no
+		// system-prompt injection — SKILL.md is load-bearing for them.
+		expect(getCodexSkillContent()).toContain("## Session-start checklist");
+		expect(getGenericSkillContent()).toContain("## Session-start checklist");
 	});
 });
 

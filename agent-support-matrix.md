@@ -62,11 +62,11 @@ Injected into `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[feat
 
 ### dev3 (task lifecycle)
 
-The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Two variants exist:
+The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Three variants exist:
 
-- **Claude variant** — simplified status section (hooks handle transitions automatically), uses `!` command injection for zero-tool-call startup
-- **Codex variant** — hook-aware status section with manual fallback for older sessions, keeps the `/bin/bash` shell note
-- **Generic variant** — full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
+- **Claude variant** — deliberately short: the full protocol body is already injected into the system prompt via `--append-system-prompt`, so `SKILL.md` only auto-sets the status and shows `dev3 current --brief` (via `!` command injection, zero tool calls). The full body is written to `PROTOCOL.md` next to it as a fallback for sessions started outside the dev3 launcher. See decision 114.
+- **Codex variant** — full body (load-bearing for scratch tasks, which get no prompt injection); hook-aware status section with manual fallback for older sessions, keeps the `/bin/bash` shell note
+- **Generic variant** — full body (for Gemini it is the only protocol channel); full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
 
 ### dev3-project-config (project configuration)
 
