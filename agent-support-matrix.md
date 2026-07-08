@@ -19,7 +19,7 @@ Last updated: 2026-07-06
 | Feature | Claude Code | Cursor Agent | Codex | Gemini CLI | OpenCode |
 |---------|:-----------:|:------------:|:-----:|:----------:|:--------:|
 | **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic) |
-| **System prompt injection** | `--append-system-prompt` | via prompt arg | via prompt arg | — | via `--prompt` |
+| **System prompt injection** | `--append-system-prompt` | via prompt arg | `-c developer_instructions=...` (developer-role message; covers scratch + resume — see decision 115) | — | via `--prompt` |
 | **Session resume** | `--continue` | `--continue` | `resume --last` | `--resume latest` | `--continue` |
 | **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` | — |
 | **Effort level** | `--effort` | — | `--effort` | — | — |
@@ -65,7 +65,7 @@ Injected into `.codex/hooks.json` and enabled via `~/.codex/config.toml` (`[feat
 The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Three variants exist:
 
 - **Claude variant** — deliberately short: the full protocol body is already injected into the system prompt via `--append-system-prompt`, so `SKILL.md` only auto-sets the status and shows `dev3 current --brief` (via `!` command injection, zero tool calls). The full body is written to `PROTOCOL.md` next to it as a fallback for sessions started outside the dev3 launcher. See decision 114.
-- **Codex variant** — full body (load-bearing for scratch tasks, which get no prompt injection); hook-aware status section with manual fallback for older sessions, keeps the `/bin/bash` shell note
+- **Codex variant** — full body; hook-aware status section with manual fallback for older sessions, keeps the `/bin/bash` shell note. The same body is also injected out-of-band as a developer message via `-c developer_instructions=...` on every dev3 launch, including scratch tasks and resume (decision 115); the skill file remains the fallback for sessions started outside the dev3 launcher
 - **Generic variant** — full body (for Gemini it is the only protocol channel); full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
 
 ### dev3-project-config (project configuration)
