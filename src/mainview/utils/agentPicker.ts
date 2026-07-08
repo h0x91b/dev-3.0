@@ -21,6 +21,9 @@ export const MODEL_GROUP_LABELS: Record<string, string> = {
 	"claude-sonnet-5": "Sonnet 5",
 	"claude-opus-4-7[1m]": "Opus 4.7",
 	// Codex
+	"gpt-5.6-sol": "GPT-5.6 Sol",
+	"gpt-5.6-terra": "GPT-5.6 Terra",
+	"gpt-5.6-luna": "GPT-5.6 Luna",
 	"gpt-5.5": "GPT-5.5",
 	"gpt-5.3-codex": "GPT-5.3 Codex",
 	// Gemini
@@ -62,9 +65,18 @@ const EFFORT_LABELS: Record<string, string> = {
 export function prettifyModel(model: string): string {
 	const noDuration = model.replace(/\[[^\]]+\]/g, "");
 	const scoped = noDuration.split("/").pop() ?? noDuration;
-	const cleaned = scoped
+	const withoutQualifiers = scoped
 		.replace(/-preview/gi, "")
-		.replace(/-thinking/gi, "")
+		.replace(/-thinking/gi, "");
+	const gptMatch = withoutQualifiers.match(/^gpt[-_]([0-9]+(?:\.[0-9]+)*)(?:[-_](.+))?$/i);
+	if (gptMatch) {
+		const variant = (gptMatch[2] ?? "")
+			.replace(/[-_]+/g, " ")
+			.trim()
+			.replace(/\b\w/g, (ch) => ch.toUpperCase());
+		return `GPT-${gptMatch[1]}${variant ? ` ${variant}` : ""}`;
+	}
+	const cleaned = withoutQualifiers
 		.replace(/[-_]+/g, " ")
 		.trim();
 	if (!cleaned) return model;
@@ -159,6 +171,10 @@ function modeSignature(config: AgentConfiguration): string {
 	return `${config.permissionMode ?? "default"}|${config.effort ?? ""}`;
 }
 
+function comparableModeLabel(config: AgentConfiguration): string {
+	return getModeLeafLabel(config).replace(/\s+[—-]\s+Default$/, "");
+}
+
 /**
  * When the user changes the Model field, choose which preset in the new group
  * to select. Preserves the current mode *kind* (lazy-human, bible §1.0):
@@ -175,16 +191,19 @@ export function pickConfigForModelChange(
 	if (group.configs.length === 0) return null;
 	if (!previous) return group.configs[0];
 
-	const prevSig = modeSignature(previous);
-	const exact = group.configs.find((c) => modeSignature(c) === prevSig);
-	if (exact) return exact;
+	const hasStructuredMode = previous.permissionMode != null || previous.effort != null;
+	if (hasStructuredMode) {
+		const prevSig = modeSignature(previous);
+		const exact = group.configs.find((c) => modeSignature(c) === prevSig);
+		if (exact) return exact;
 
-	const prevMode = previous.permissionMode ?? "default";
-	const sameMode = group.configs.find((c) => (c.permissionMode ?? "default") === prevMode);
-	if (sameMode) return sameMode;
+		const prevMode = previous.permissionMode ?? "default";
+		const sameMode = group.configs.find((c) => (c.permissionMode ?? "default") === prevMode);
+		if (sameMode) return sameMode;
+	}
 
-	const prevLeaf = getModeLeafLabel(previous);
-	const sameLeaf = group.configs.find((c) => getModeLeafLabel(c) === prevLeaf);
+	const prevLeaf = comparableModeLabel(previous);
+	const sameLeaf = group.configs.find((c) => comparableModeLabel(c) === prevLeaf);
 	if (sameLeaf) return sameLeaf;
 
 	return group.configs[0];

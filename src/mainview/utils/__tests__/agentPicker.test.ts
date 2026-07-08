@@ -8,6 +8,7 @@ import {
 	pickConfigForModelChange,
 	prettifyModel,
 	MODEL_GROUP_LABELS,
+	type PickerGroup,
 } from "../agentPicker";
 
 const claude: CodingAgent = {
@@ -29,6 +30,9 @@ describe("getModelGroupLabel", () => {
 	it("maps known model strings to clean labels", () => {
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-fable-5" })).toBe("Fable 5");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-terra" })).toBe("GPT-5.6 Terra");
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-luna" })).toBe("GPT-5.6 Luna");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.3-codex" })).toBe("GPT-5.3 Codex");
 	});
 
@@ -47,6 +51,11 @@ describe("prettifyModel", () => {
 		expect(prettifyModel("claude-opus-4-8[1m]")).toBe("Claude Opus 4 8");
 		expect(prettifyModel("anthropic/claude-sonnet-4-6")).toBe("Claude Sonnet 4 6");
 		expect(prettifyModel("opus-4.6-thinking")).toBe("Opus 4.6");
+	});
+
+	it("preserves canonical GPT casing and version punctuation for unknown GPT models", () => {
+		expect(prettifyModel("gpt-5.7-nova-preview")).toBe("GPT-5.7 Nova");
+		expect(prettifyModel("openai/gpt-6-codex")).toBe("GPT-6 Codex");
 	});
 });
 
@@ -67,6 +76,9 @@ describe("getModeLeafLabel", () => {
 		expect(getModeLeafLabel({ id: "a", name: "GPT-5.5 Heavy Bypass", model: "gpt-5.5" })).toBe("Heavy Bypass");
 		expect(getModeLeafLabel({ id: "a", name: "Default (GPT-5.5 Heavy Bypass)", model: "gpt-5.5" })).toBe("Default (Heavy Bypass)");
 		expect(getModeLeafLabel({ id: "a", name: "Plan (GPT-5.5)", model: "gpt-5.5" })).toBe("Plan");
+		// Multi-word group label ("GPT-5.6 Sol") strips cleanly too
+		expect(getModeLeafLabel({ id: "a", name: "GPT-5.6 Sol Medium Bypass", model: "gpt-5.6-sol" })).toBe("Medium Bypass");
+		expect(getModeLeafLabel({ id: "a", name: "Default (GPT-5.6 Sol Heavy Bypass)", model: "gpt-5.6-sol" })).toBe("Default (Heavy Bypass)");
 		// Claude "Default" (no fields) collapses to just the mode word
 		expect(getModeLeafLabel({ id: "a", name: "Default (Fable 5)", model: "claude-fable-5" })).toBe("Default");
 		// OpenCode persona-style
@@ -142,6 +154,41 @@ describe("pickConfigForModelChange", () => {
 	it("falls back to the group's first preset when nothing matches", () => {
 		const prev: AgentConfiguration = { id: "x", name: "Accept Edits", model: "m", permissionMode: "acceptEdits" };
 		expect(pickConfigForModelChange(fable, prev)?.id).toBe("auto-fable");
+	});
+
+	it("preserves the derived mode label for arg-encoded Codex presets", () => {
+		const terra: PickerGroup = {
+			label: "GPT-5.6 Terra",
+			configs: [
+				{ id: "terra-medium", name: "GPT-5.6 Terra Medium", model: "gpt-5.6-terra" },
+				{ id: "terra-high-bypass", name: "GPT-5.6 Terra High Bypass", model: "gpt-5.6-terra" },
+			],
+		};
+		const previous: AgentConfiguration = {
+			id: "sol-high-bypass",
+			name: "GPT-5.6 Sol High Bypass",
+			model: "gpt-5.6-sol",
+		};
+
+		expect(pickConfigForModelChange(terra, previous)?.id).toBe("terra-high-bypass");
+	});
+
+	it("matches a default-marked Codex mode to the same mode on another model", () => {
+		const terra: PickerGroup = {
+			label: "GPT-5.6 Terra",
+			configs: [
+				{ id: "terra-medium-bypass", name: "x", modeLabel: "Bypass [Medium]", model: "gpt-5.6-terra" },
+				{ id: "terra-high-bypass", name: "x", modeLabel: "Bypass [High]", model: "gpt-5.6-terra" },
+			],
+		};
+		const previous: AgentConfiguration = {
+			id: "codex-default",
+			name: "x",
+			modeLabel: "Bypass [High] — Default",
+			model: "gpt-5.6-sol",
+		};
+
+		expect(pickConfigForModelChange(terra, previous)?.id).toBe("terra-high-bypass");
 	});
 
 	it("returns the first preset when there is no previous", () => {

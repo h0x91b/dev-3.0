@@ -837,6 +837,74 @@ describe("mergeWithDefaults — preserves user-defined order", () => {
 		}
 	});
 
+	it("drops superseded prerelease GPT-5.6 preset ids", () => {
+		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const interimIds = [
+			"codex-5.6-heavy-bypass",
+			"codex-5.6-heavy",
+			"codex-5.6-medium-bypass",
+			"codex-5.6-medium",
+			"codex-5.6-sol-high-bypass",
+			"codex-5.6-sol-xhigh",
+			"codex-5.6-sol-max",
+			"codex-5.6-sol-ultra",
+			"codex-5.6-terra-xhigh",
+			"codex-5.6-luna-high",
+		];
+		const stored: CodingAgent[] = [{
+			...codex,
+			configurations: [
+				...codex.configurations,
+				...interimIds.map((id) => ({ id, name: id, model: "gpt-5.6-sol" })),
+			],
+		}];
+
+		const mergedCodex = mergeWithDefaults(stored).find((agent) => agent.id === "builtin-codex")!;
+		expect(mergedCodex.configurations.some((config) => interimIds.includes(config.id))).toBe(false);
+	});
+
+	it("ships canonical model labels on every Codex preset", () => {
+		const codex = DEFAULT_AGENTS.find((agent) => agent.id === "builtin-codex")!;
+		const expectedLabels: Record<string, string> = {
+			"gpt-5.6-sol": "GPT-5.6 Sol",
+			"gpt-5.6-terra": "GPT-5.6 Terra",
+			"gpt-5.6-luna": "GPT-5.6 Luna",
+			"gpt-5.5": "GPT-5.5",
+		};
+
+		for (const config of codex.configurations) {
+			expect(config.groupLabel).toBe(expectedLabels[config.model!]);
+		}
+	});
+
+	it("refreshes presentation labels when a built-in preset version increases", () => {
+		const codex = DEFAULT_AGENTS.find((a) => a.id === "builtin-codex")!;
+		const currentDefault = codex.configurations.find((config) => config.id === "codex-default")!;
+		const stored: CodingAgent[] = [{
+			...codex,
+			configurations: [{
+				...currentDefault,
+				name: "Old default name",
+				modeLabel: "Old mode label",
+				groupLabel: "Old model label",
+				version: (currentDefault.version ?? 1) - 1,
+			}],
+		}];
+
+		const mergedDefault = mergeWithDefaults(stored)
+			.find((agent) => agent.id === "builtin-codex")!
+			.configurations.find((config) => config.id === "codex-default")!;
+		expect({
+			name: mergedDefault.name,
+			modeLabel: mergedDefault.modeLabel,
+			groupLabel: mergedDefault.groupLabel,
+		}).toEqual({
+			name: currentDefault.name,
+			modeLabel: currentDefault.modeLabel,
+			groupLabel: currentDefault.groupLabel,
+		});
+	});
+
 	it("keeps user-created configurations in their original position", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude")!;
 		const userCfg: AgentConfiguration = {
