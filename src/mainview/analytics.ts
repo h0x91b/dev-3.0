@@ -364,9 +364,17 @@ export function analyticsLocationForRoute(route: Route, taskLabel?: string): Ana
 	}
 }
 
-/** Build a full GA4 `page_location` from an /app path (host stays `dev3`). */
+// Synthetic host for the desktop/browser app's page_location. GA4 derives the
+// "Page path" dimension by parsing page_location as a URL — but ONLY when it is a
+// real http(s) URL; a custom scheme (the old `app://dev3/…`) leaves Page path
+// "(not set)" even though page_title still arrives. Kept distinct from the
+// landing page host (dev3.h0x91b.com) so the two are separable in the shared
+// GA4 property (the `/app` path prefix separates them too).
+const APP_LOCATION_ORIGIN = "https://dev3.local";
+
+/** Build a full GA4 `page_location` (a parseable https URL) from an /app path. */
 function pageLocation(path: string): string {
-	return `app://dev3${path}`;
+	return `${APP_LOCATION_ORIGIN}${path}`;
 }
 
 /**
