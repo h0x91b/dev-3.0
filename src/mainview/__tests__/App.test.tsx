@@ -6,6 +6,8 @@ import { I18nProvider } from "../i18n";
 vi.mock("../rpc", () => ({
 	// These App tests assert the desktop layout; keep the browser menu bar unmounted.
 	isElectrobun: true,
+	getRpcConnectionState: vi.fn(() => "connected"),
+	reconnectRpc: vi.fn(),
 	api: {
 		request: {
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),

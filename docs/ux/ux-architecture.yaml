@@ -162,6 +162,15 @@ ux_architecture:
       evidence: ["src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P)"]
 
   surfaces:
+    diagnostics:
+      purpose: "Make renderer faults visible in remote/mobile where there is no devtools: crash fallback, bootstrap phase/timeout, and a captured-error viewer."
+      allowed: ["crash_fallback", "bootstrap_phase_state", "retry_reload", "captured_error_list", "copy_clear", "conditional_floating_entry"]
+      forbidden: ["nav_destination", "app_data_mutation", "permanent_happy_path_chrome", "native_dialog"]
+      entry_point: "Conditional floating pill — remote mode only, and only when errorCount > 0 (earned, not permanent). Absent in the Electrobun desktop shell (has devtools + Open logs)."
+      mount: "RootErrorBoundary wraps providers + App in main.tsx so a provider crash is still caught; fallback + pre-React loader use no providers (survive broken theme/i18n)."
+      i18n_exception: "RootErrorBoundary fallback + index.html loader are English-only (the i18n provider may be the thing that threw)."
+      status: "observed"
+      evidence: ["src/mainview/diagnostics.ts", "src/mainview/components/RootErrorBoundary.tsx", "src/mainview/components/BootstrapScreen.tsx", "src/mainview/components/DiagnosticsPanel.tsx", "src/mainview/components/DiagnosticsIndicator.tsx", "src/mainview/index.html (pre-React loader)"]
     global_header:
       purpose: "Breadcrumb location, project switcher, and app-level destinations/utilities."
       allowed: ["history_nav", "breadcrumb", "destination", "project_switcher", "changelog", "settings_entry", "tmux_session_manager", "prevent_sleep_toggle", "agent_rate_limit_indicator"]

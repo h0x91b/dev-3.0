@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-10 — Diagnostics: in-UI crash/error surface for remote/mobile
+
+- **Rule:** One framework-agnostic diagnostics store feeds three surfaces — a provider-wrapping `RootErrorBoundary` (self-contained English fallback), a phase+timeout `BootstrapScreen` (Retry/Reload replaces the bare spinner), and a `DiagnosticsPanel` opened from a floating pill that appears ONLY in remote mode when `errorCount > 0` (plus a pre-React loader in `index.html`).
+- **Why:** Mobile/remote users have no devtools; crashes blanked the page and stuck loads spun silently. Rejected a permanent header/menu diagnostics button (button-creep, and dead on a crashed tree) and an external error reporter (doesn't let the user see/copy it on the phone). The pill is earned, not permanent.
+- **Status:** Observed. Evidence: `diagnostics.ts`, `RootErrorBoundary.tsx`, `BootstrapScreen.tsx`, `DiagnosticsPanel.tsx`, `DiagnosticsIndicator.tsx`; bible §5.5.
+
 ## 2026-07-09 — HTML Artifacts: sandboxed task workspace + separate Runtime control
 
 - **Rule:** `SharedArtifact` is a task-owned HTML output opened in a resizable workspace beside the terminal (one-at-a-time on narrow), with opaque-origin iframe sandbox + network-blocking CSP, live dev3 theme tokens, and HTML/ZIP download; Runtime keeps `Images` and `Artifacts` as separate conditional controls, an explicit budget exception chosen by the user.

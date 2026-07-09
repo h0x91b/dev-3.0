@@ -4,9 +4,81 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1024, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content" />
     <title>dev-3.0</title>
+    <style>
+      /* Pre-React boot fallback. Inline + theme-neutral on purpose: it must be
+         legible even if the JS bundle or index.css never loads (flaky mobile
+         network, parse error) — the exact case where a blank white page today
+         leaves the user with nothing. React replaces #root's children on mount,
+         so this disappears automatically the moment the app renders. */
+      #boot-fallback {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 24px;
+        background: #0b0e14;
+        color: #c9d1d9;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        text-align: center;
+      }
+      #boot-fallback .boot-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 9999px;
+        background: #3b82f6;
+        animation: boot-pulse 1.2s ease-in-out infinite;
+      }
+      #boot-fallback .boot-msg { font-size: 14px; color: #8b949e; }
+      #boot-fallback .boot-reload {
+        display: none;
+        margin-top: 8px;
+        padding: 8px 16px;
+        font-size: 14px;
+        color: #fff;
+        background: #3b82f6;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      @keyframes boot-pulse {
+        0%, 100% { opacity: 0.35; }
+        50% { opacity: 1; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot-fallback">
+        <div class="boot-dot"></div>
+        <div class="boot-msg" data-boot-msg>Starting dev-3.0…</div>
+        <button class="boot-reload" data-boot-reload type="button" onclick="location.reload()">Reload</button>
+        <noscript>
+          <div class="boot-msg">dev-3.0 needs JavaScript enabled to run.</div>
+        </noscript>
+      </div>
+    </div>
+    <script>
+      // If React hasn't taken over #root within 20s, the bundle failed to boot
+      // (network/parse). Surface a hint + a reload button instead of a spinner
+      // that spins forever — critical on mobile where there is no devtools.
+      (function () {
+        try {
+          setTimeout(function () {
+            var el = document.getElementById("boot-fallback");
+            if (!el) return; // React already rendered — nothing to do
+            var msg = el.querySelector("[data-boot-msg]");
+            var btn = el.querySelector("[data-boot-reload]");
+            if (msg) msg.textContent = "dev-3.0 couldn't start. Check your connection, then reload.";
+            if (btn) btn.style.display = "inline-block";
+          }, 20000);
+        } catch (e) {
+          /* never let the guard itself break boot */
+        }
+      })();
+    </script>
     <script type="module" src="/main.tsx"></script>
   </body>
 </html>

@@ -2,6 +2,52 @@ import { Electroview } from "electrobun/view";
 import type { AppRPCSchema } from "../shared/types";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { createWatchdogState, decidePingOutcome, shouldAllowReload } from "./rpc-watchdog";
+import { recordDiagnostic, RPC_STATUS_EVENT, type RpcConnectionState } from "./diagnostics";
+
+// ── Transport connection state ──────────────────────────────────────
+// Surfaced to the bootstrap screen so a stuck "Loading…" can tell the user
+// WHERE it is stuck (connecting / authenticating / reconnecting) instead of
+// spinning silently. Desktop (Electrobun) uses a local socket, so it seeds as
+// "connected"; the browser remote transport drives the real transitions.
+let rpcConnectionState: RpcConnectionState = "connected";
+// Set by whichever transport initializes — lets `reconnectRpc()` do a soft
+// recovery (re-open socket) before the user has to hard-reload the page.
+let reconnectImpl: (() => void) | null = null;
+
+function setRpcState(state: RpcConnectionState): void {
+	rpcConnectionState = state;
+	try {
+		window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state } }));
+	} catch {
+		/* no window (tests) — the getter still returns the value */
+	}
+}
+
+/** Current RPC/WebSocket connection state (see {@link RpcConnectionState}). */
+export function getRpcConnectionState(): RpcConnectionState {
+	return rpcConnectionState;
+}
+
+/**
+ * Soft-recover the transport: re-open the socket without a full page reload
+ * (browser) or re-init the Electrobun bridge. Falls back to `location.reload()`
+ * if no transport reconnect is wired. Used by the bootstrap "Retry" button.
+ */
+export function reconnectRpc(): void {
+	if (reconnectImpl) {
+		try {
+			reconnectImpl();
+			return;
+		} catch (err) {
+			console.error("[rpc] reconnect failed, falling back to reload", err);
+		}
+	}
+	try {
+		window.location.reload();
+	} catch {
+		/* no window (tests) */
+	}
+}
 
 // Push message handlers — shared between Electrobun and browser transports
 const pushMessageHandlers: Record<string, (payload: any) => void> = {
@@ -177,6 +223,12 @@ function startBridgeWatchdog(electroview: Electroview<any>, rawRequest: RequestP
 				}
 			} else if (action === "reload") {
 				console.warn("[rpc-watchdog] bridge still dead after re-init — reloading webview");
+				recordDiagnostic({
+					kind: "rpc",
+					level: "error",
+					message: "Bridge unresponsive — reloading the app",
+					source: "rpc-watchdog",
+				});
 				if (allowWatchdogReload(Date.now())) window.location.reload();
 			}
 		} finally {
@@ -205,6 +257,17 @@ function initElectrobunApi(): ApiShape {
 	const electroview = new Electroview({ rpc });
 	const rawApi = electroview.rpc!;
 	startBridgeWatchdog(electroview, rawApi.request as any);
+	// Desktop socket is local — seed "connected" and wire a soft reconnect so the
+	// bootstrap "Retry" re-opens the bridge without a full reload.
+	setRpcState("connected");
+	reconnectImpl = () => {
+		try {
+			electroview.bunSocket?.close();
+		} catch {
+			/* already closed */
+		}
+		electroview.initSocketToBun();
+	};
 	return { ...rawApi, request: enrichRequest(rawApi.request as any) } as any;
 }
 
@@ -235,6 +298,14 @@ function initBrowserApi(): ApiShape {
 		} catch { /* storage blocked (private mode) — in-memory token still works for this tab */ }
 	}
 	function dispatchAuthFailed(detail: Record<string, unknown>): void {
+		setRpcState("auth-failed");
+		recordDiagnostic({
+			kind: "rpc",
+			level: "error",
+			message: "Remote authentication failed — scan a fresh QR code",
+			detail: JSON.stringify(detail),
+			source: "auth",
+		});
 		window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail }));
 	}
 
@@ -341,6 +412,7 @@ function initBrowserApi(): ApiShape {
 	}
 
 	// Start auth, then connect
+	setRpcState("authenticating");
 	authReady = authenticate().then(() => {
 		if (!isViteDevServer) startRefreshTimer();
 	});
@@ -364,14 +436,21 @@ function initBrowserApi(): ApiShape {
 		}
 	}
 
+	// Tracks whether the socket has ever opened, so we can distinguish the first
+	// "connecting" from a post-drop "reconnecting" (better wording for the user).
+	let hasConnected = false;
+
 	function connect() {
 		const wsUrl = buildWsUrl("/rpc");
 		console.log("[browser-rpc] Connecting WS to", wsUrl.replace(/token=[^&]+/, "token=***"));
+		setRpcState(hasConnected ? "reconnecting" : "connecting");
 		resetWsReady();
 		ws = new WebSocket(wsUrl);
 
 		ws.addEventListener("open", () => {
 			console.log("[browser-rpc] WS OPEN");
+			hasConnected = true;
+			setRpcState("connected");
 			wsReadyResolve?.();
 		});
 
@@ -406,16 +485,47 @@ function initBrowserApi(): ApiShape {
 			// Only reconnect if we have a valid session token (or are in Vite dev mode).
 			// Without a token the server returns 401 and we'd loop forever.
 			if (isViteDevServer || sessionToken) {
+				setRpcState("reconnecting");
+				recordDiagnostic({
+					kind: "rpc",
+					level: hasConnected ? "warn" : "error",
+					message: `Connection to the server dropped (code ${event.code})${event.reason ? `: ${event.reason}` : ""}`,
+					source: "websocket",
+				});
 				setTimeout(connect, 2000);
 			} else {
 				console.warn("[browser-rpc] No session token — skipping reconnect");
+				setRpcState("closed");
+				recordDiagnostic({
+					kind: "rpc",
+					level: "error",
+					message: "Disconnected and no valid session — reload and scan the QR code again",
+					source: "websocket",
+				});
 			}
 		});
 
 		ws.addEventListener("error", (event) => {
 			console.error("[browser-rpc] WS ERROR", event);
+			recordDiagnostic({
+				kind: "rpc",
+				level: "error",
+				message: "WebSocket connection error",
+				detail: String((event as ErrorEvent)?.message ?? ""),
+				source: "websocket",
+			});
 		});
 	}
+
+	// Soft reconnect for the bootstrap "Retry": drop the current socket (its close
+	// handler schedules a reconnect) and, if it was already closed, open a fresh one.
+	reconnectImpl = () => {
+		if (ws && ws.readyState === WebSocket.OPEN) {
+			ws.close();
+		} else {
+			connect();
+		}
+	};
 
 	// Gate WS connection behind auth
 	authReady.then(connect);
@@ -425,6 +535,12 @@ function initBrowserApi(): ApiShape {
 			const id = ++requestId;
 			const timeout = setTimeout(() => {
 				pending.delete(id);
+				recordDiagnostic({
+					kind: "rpc",
+					level: "error",
+					message: `Request "${method}" timed out (${Math.round(RPC_TIMEOUT_MS / 1000)}s) — the server may be unreachable`,
+					source: "rpc",
+				});
 				reject(new Error(`RPC request "${method}" timed out`));
 			}, RPC_TIMEOUT_MS);
 

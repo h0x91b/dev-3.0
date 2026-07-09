@@ -11,9 +11,13 @@ import { api } from "./rpc";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
+import RootErrorBoundary from "./components/RootErrorBoundary";
+import { recordError, recordRejection } from "./diagnostics";
 
 // ── Global crash handlers (renderer) ──
-// Catch unhandled errors that would otherwise silently kill the page.
+// Catch unhandled errors that would otherwise silently kill the page. Besides
+// the console (invisible on a phone with no devtools), feed them into the
+// in-UI diagnostics store so the user can actually SEE and report them.
 window.addEventListener("error", (event) => {
 	console.error("[RENDERER UNCAUGHT ERROR]", {
 		message: event.message,
@@ -23,6 +27,15 @@ window.addEventListener("error", (event) => {
 		error: event.error,
 		stack: event.error?.stack ?? "no stack",
 	});
+	// Ignore benign resource-load "error" events (img/script) that carry no message.
+	if (event.message) {
+		const file = (event.filename || "").split("/").pop() || event.filename || "";
+		recordError(
+			event.message,
+			event.error?.stack ?? undefined,
+			file ? `${file}:${event.lineno}:${event.colno}` : undefined,
+		);
+	}
 });
 
 window.addEventListener("unhandledrejection", (event) => {
@@ -30,6 +43,13 @@ window.addEventListener("unhandledrejection", (event) => {
 		reason: event.reason,
 		stack: event.reason?.stack ?? "no stack",
 	});
+	const reason = event.reason;
+	const isError = reason instanceof Error;
+	recordRejection(
+		isError ? reason.message : String(reason),
+		isError ? reason.stack ?? undefined : undefined,
+		"unhandledrejection",
+	);
 });
 
 // Apply saved theme before React mounts & keep in sync with OS
@@ -94,13 +114,18 @@ async function bootstrap() {
 	}
 
 	console.log("[main] Rendering React app...");
+	// RootErrorBoundary wraps the providers (not just <App/>) so a crash in
+	// I18nProvider/MobileProvider themselves still renders a visible fallback
+	// instead of a blank, unmounted tree.
 	createRoot(document.getElementById("root")!).render(
 		<StrictMode>
-			<MobileProvider>
-				<I18nProvider>
-					<App />
-				</I18nProvider>
-			</MobileProvider>
+			<RootErrorBoundary>
+				<MobileProvider>
+					<I18nProvider>
+						<App />
+					</I18nProvider>
+				</MobileProvider>
+			</RootErrorBoundary>
 		</StrictMode>,
 	);
 	console.log("[main] React app rendered");
