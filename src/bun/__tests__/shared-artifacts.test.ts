@@ -122,6 +122,16 @@ describe("saveSharedArtifact", () => {
 		expect(zip.includes(Buffer.from("a/same.png"))).toBe(true);
 		expect(zip.includes(Buffer.from("b/same.png"))).toBe(true);
 	});
+
+	it("rejects images outside the HTML directory instead of creating a broken bundle", () => {
+		const htmlDir = join(SRC_DIR, "contained");
+		mkdirSync(htmlDir, { recursive: true });
+		const html = join(htmlDir, "report.html");
+		const image = join(SRC_DIR, "outside.png");
+		writeFileSync(html, '<!doctype html><img src="../outside.png">');
+		writeFileSync(image, "PNGDATA");
+		expect(() => saveSharedArtifact("/my/project", html, [image])).toThrow(/inside the HTML directory/);
+	});
 });
 
 describe("pruneSharedArtifacts / deleteSharedArtifactFiles", () => {

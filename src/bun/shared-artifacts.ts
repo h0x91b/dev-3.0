@@ -59,7 +59,7 @@ function assetNameFor(htmlPath: string, imagePath: string): string {
 		const segments = fromHtml.split(sep).map((segment) => safeBasename(segment));
 		return segments.join("/");
 	}
-	return safeBasename(imagePath);
+	throw new SharedArtifactError(`Artifact image must be inside the HTML directory: ${imagePath}`);
 }
 
 function assertSourceFile(path: string): Stats {

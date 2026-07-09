@@ -10,11 +10,11 @@ A full TSX/backend mini-runtime adds dependency installation, port lifecycle, sh
 
 ## Decision
 
-`dev3 show-artifact` accepts one self-contained `.html` file plus optional `--images` assets, preserves safe image paths relative to the HTML inside an additive `shared-artifacts/<id>/` directory, and stores `Task.sharedArtifacts` alongside the untouched `sharedImages` field. The renderer uses an opaque-origin `iframe sandbox="allow-scripts"`, an injected restrictive CSP, and a stable namespaced dark/light token contract; assets are data-URL rewritten only for display. Artifacts open in a resizable right-side workspace with fullscreen, while downloads return HTML alone or a dependency-free STORE ZIP when images exist.
+`dev3 show-artifact` accepts one self-contained `.html` file plus optional `--images` assets from the HTML directory tree, preserves their safe relative paths inside an additive `shared-artifacts/<id>/` directory, and stores `Task.sharedArtifacts` alongside the untouched `sharedImages` field. The renderer uses an opaque-origin `iframe sandbox="allow-scripts"`, an injected restrictive CSP, and a stable namespaced dark/light token contract; assets are data-URL rewritten only for display. Artifacts open in a resizable right-side workspace with fullscreen, while downloads return HTML alone or a dependency-free STORE ZIP when images exist.
 
 ## Risks
 
-Inline scripts are intentionally allowed for interactivity, so isolation depends on the sandbox remaining without `allow-same-origin` and on the CSP continuing to block connections, navigation, frames, objects, and forms. STORE ZIPs do not compress HTML, but raster assets are already compressed and avoiding a new runtime dependency keeps every update channel reliable.
+Inline scripts are intentionally allowed for interactivity, so isolation depends on the sandbox remaining without `allow-same-origin`; CSP blocks connections and subresources, frames, objects, forms, and base URLs. Current browsers cannot forbid an allowed script from navigating its own iframe, so artifacts are trusted task output rather than an untrusted-code boundary. STORE ZIPs do not compress HTML, but raster assets are already compressed and avoiding a new runtime dependency keeps every update channel reliable.
 
 ## Alternatives considered
 

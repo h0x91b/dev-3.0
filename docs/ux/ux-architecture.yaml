@@ -389,8 +389,8 @@ ux_architecture:
       feature_class: ["object_action", "data_visualization", "notification"]
       reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts conditional count button"]
       allowed: ["sandboxed_html", "history_navigation", "theme_sync", "resize", "fullscreen", "download_html", "download_zip"]
-      forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "network_access", "parent_dom_or_rpc_access", "native_dialog"]
-      security: "iframe sandbox=allow-scripts without allow-same-origin; injected CSP blocks connections, navigation, frames, objects, forms and base URLs. Copied relative images are rewritten to data URLs only in the rendered srcdoc."
+      forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "subresource_network_access", "parent_dom_or_rpc_access", "native_dialog"]
+      security: "iframe sandbox=allow-scripts without allow-same-origin; injected CSP blocks connections/subresources, frames, objects, forms and base URLs. Allowed scripts can still self-navigate their iframe, so artifacts are trusted task output rather than an untrusted-code boundary. Copied relative images are rewritten to data URLs only in the rendered srcdoc."
       layout: "Desktop: right-side TaskWorkspacePane sibling with persisted width. Narrow: one-at-a-time artifact replaces terminal until closed."
       export: "No assets -> HTML download. Any --images assets -> STORE ZIP containing HTML plus safe asset paths relative to the HTML."
       evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/bun/shared-artifacts.ts", "decisions/120-task-html-artifacts.md"]

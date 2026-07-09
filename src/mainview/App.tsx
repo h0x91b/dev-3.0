@@ -1046,7 +1046,7 @@ function App() {
 				(state.route.screen === "task" && state.route.taskId === taskId) ||
 				(state.route.screen === "project" && state.route.activeTaskId === taskId);
 			const autoOpen = localStorage.getItem("dev3-auto-open-shared-images") !== "off";
-			const foreground = typeof document === "undefined" || document.visibilityState === "visible";
+			const foreground = typeof document === "undefined" || (document.visibilityState === "visible" && document.hasFocus());
 			const alreadyOpenForTask = imageViewerRef.current?.taskId === taskId;
 
 			if (alreadyOpenForTask || (viewingThisTask && autoOpen && foreground)) {

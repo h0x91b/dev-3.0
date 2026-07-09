@@ -10,7 +10,6 @@ describe("composeArtifactDocument", () => {
 		]);
 		expect(output).toContain("Content-Security-Policy");
 		expect(output).toContain("connect-src 'none'");
-		expect(output).toContain("navigate-to 'none'");
 		expect(output).toContain('src="data:image/png;base64,AAA"');
 		expect(output).toContain("url('data:image/webp;base64,BBB')");
 	});

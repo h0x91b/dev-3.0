@@ -4,7 +4,7 @@ interface ArtifactAssetPayload {
 	dataUrl: string;
 }
 
-const CSP = "default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; navigate-to 'none'";
+const CSP = "default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 function assetKey(url: string): string | null {
 	if (/^(?:data:|blob:|https?:|\/\/|#)/i.test(url)) return null;
