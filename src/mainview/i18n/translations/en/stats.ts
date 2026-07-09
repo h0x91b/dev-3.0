@@ -47,18 +47,24 @@ const stats = {
 	"stats.hero.velocity": "Velocity",
 	"stats.hero.completionRate": "Done",
 	"stats.hero.streak": "Streak",
+	"stats.hero.averageLifetime": "Lifetime",
 	// Hero captions (below the gauge)
 	"stats.heroCaption.tasksShipped": "Tasks shipped",
 	"stats.heroCaption.linesChanged": "Lines changed",
 	"stats.heroCaption.velocity": "Tasks per day",
 	"stats.heroCaption.completionRate": "Completion rate",
 	"stats.heroCaption.streak": "Active-day streak",
+	"stats.heroCaption.averageLifetime": "Avg. task lifetime",
 	// Units
 	"stats.unit.perDay": "/day",
 	"stats.unit.percent": "%",
 	"stats.unit.days": "days",
 	"stats.unit.tasks": "tasks",
 	"stats.unit.lines": "LOC",
+	"stats.unit.average": "avg.",
+	"stats.unit.minuteShort": "m",
+	"stats.unit.hourShort": "h",
+	"stats.unit.dayShort": "d",
 	// Charts
 	"stats.chart.completedTitle": "Tasks completed",
 	"stats.chart.linesTitle": "Lines changed",
@@ -81,6 +87,8 @@ const stats = {
 	"stats.perProject.title": "By project",
 	"stats.perProject.empty": "No completed tasks in this period",
 	"stats.perProject.busiest": "Busiest project",
+	"stats.perProject.lifetime": "Avg. lifetime",
+	"stats.perProject.lifetimeUnavailable": "Lifetime tracking starts now",
 	// Per-agent
 	"stats.perAgent.title": "By agent",
 	"stats.perAgent.empty": "No completed tasks in this period",
@@ -111,6 +119,9 @@ const stats = {
 	"stats.locEmpty.body": "Diff tracking just started — your next shipped task fills this in.",
 	"stats.locEmpty.badge": "Tracking starts now",
 	"stats.locEmpty.chart": "Your first shipped task will fill this in",
+	"stats.lifecycleEmpty.badge": "Tracking starts now",
+	"stats.lifecycleEmpty.body": "Task lifetime tracking starts now — your next completed task fills this in.",
+	"stats.lifecycleEmpty.period": "No tracked task completions in this period.",
 	// Empty / error states
 	"stats.empty.title": "Ship your first task to light up the cockpit",
 	"stats.empty.body": "Complete a task and your stats will appear here.",

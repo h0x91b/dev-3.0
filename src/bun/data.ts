@@ -826,6 +826,7 @@ export async function addTask(
 			configId: extras?.configId ?? null,
 			createdAt: now,
 			updatedAt: now,
+			...(status === "in-progress" ? { lifecycleStartedAt: now } : {}),
 			tmuxSocket: "dev3",
 			labelIds: extras?.labelIds ?? [],
 			...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
@@ -964,10 +965,18 @@ function applyTaskUpdate(
 	const prevTitle = getTaskTitle(currentTask);
 	const prevOverview = getTaskOverview(currentTask);
 
+	const lifecycleStartedAt =
+		statusChanged &&
+		updates.status === "in-progress" &&
+		(currentTask.status === "completed" || currentTask.status === "cancelled" || !currentTask.lifecycleStartedAt)
+			? now
+			: undefined;
+	const updatesWithLifecycle = lifecycleStartedAt ? { ...updates, lifecycleStartedAt } : updates;
+
 	if (renderedColumnChanged) {
 		const dropPosition = options?.dropPosition;
 
-		tasks[idx] = { ...tasks[idx], ...updates, movedAt: now, columnOrder: undefined, updatedAt: now };
+		tasks[idx] = { ...tasks[idx], ...updatesWithLifecycle, movedAt: now, columnOrder: undefined, updatedAt: now };
 
 		if (dropPosition) {
 			const newStatus = tasks[idx].status;
@@ -994,7 +1003,7 @@ function applyTaskUpdate(
 			}
 		}
 	} else {
-		tasks[idx] = { ...tasks[idx], ...updates, updatedAt: now };
+		tasks[idx] = { ...tasks[idx], ...updatesWithLifecycle, updatedAt: now };
 	}
 
 	recordTitleOverviewHistory(tasks, idx, prevTitle, prevOverview, now);

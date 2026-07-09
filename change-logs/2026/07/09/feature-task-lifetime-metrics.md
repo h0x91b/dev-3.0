@@ -1,0 +1,1 @@
+Add average task lifetime to Productivity Stats, measured from the first in-progress transition to completion. The dashboard shows the selected period's average and a per-project breakdown; reopening a completed task starts a new cycle.

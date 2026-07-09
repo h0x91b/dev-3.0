@@ -954,6 +954,12 @@ export interface Task {
 	createdAt: string;
 	updatedAt: string;
 	movedAt?: string;
+	/**
+	 * Start of the current delivery cycle: set on the first `in-progress` move
+	 * and reset when a completed/cancelled task is reopened. Used to measure the
+	 * time until the next completion without reconstructing history.
+	 */
+	lifecycleStartedAt?: string;
 	columnOrder?: number;
 	tmuxSocket?: string | null;
 	labelIds?: string[];
@@ -1757,6 +1763,11 @@ export interface ProductivityStatEvent {
 	 * dashboard uses to bucket "tasks completed over time". Null when unknown.
 	 */
 	movedAt: string | null;
+	/**
+	 * ISO timestamp of the current delivery cycle's first `in-progress` move.
+	 * Null for tasks that completed before lifetime tracking existed.
+	 */
+	lifecycleStartedAt: string | null;
 	insertions: number;
 	deletions: number;
 	files: number;

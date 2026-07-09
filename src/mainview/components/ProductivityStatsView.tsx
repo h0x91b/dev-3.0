@@ -35,6 +35,14 @@ function compact(n: number): string {
 const fmtInt = (n: number): string => String(Math.round(n));
 const fmtPct = (n: number): string => `${Math.round(n)}%`;
 const fmtOne = (n: number): string => n.toFixed(1);
+function formatDuration(hours: number, units: { minute: string; hour: string; day: string }): string {
+	const minutes = Math.round(hours * 60);
+	if (minutes < 60) return `${minutes}${units.minute}`;
+	const days = Math.floor(minutes / (24 * 60));
+	const remainingHours = Math.round((minutes % (24 * 60)) / 60);
+	if (days > 0) return remainingHours > 0 ? `${days}${units.day} ${remainingHours}${units.hour}` : `${days}${units.day}`;
+	return `${Math.round(minutes / 60)}${units.hour}`;
+}
 /** Compact-with-sub-unit currency: "$0.42", "$12.30", "$1.2K". */
 const fmtUsd = (n: number): string =>
 	n >= 1000
@@ -143,6 +151,11 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	})();
 	const periodRange = `${new Date(data.periodFrom).toLocaleDateString()} – ${new Date(data.periodTo).toLocaleDateString()}`;
 	const periodNavTitle = offset === 0 ? periodRange : `${t("stats.nav.current")} · ${periodRange}`;
+	const formatLifetime = (hours: number) => formatDuration(hours, {
+		minute: t("stats.unit.minuteShort"),
+		hour: t("stats.unit.hourShort"),
+		day: t("stats.unit.dayShort"),
+	});
 
 	const projMax = gaugeMax(Math.max(0, ...data.perProject.map((p) => p.completed)), 2);
 
@@ -290,9 +303,20 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 									caption={t("stats.heroCaption.streak")}
 									unit={t("stats.unit.days")}
 								/>
+								{data.hasLifecycleData ? (
+									<HeroStat
+										value={data.hero.averageLifetimeHours.value}
+										format={formatLifetime}
+										caption={t("stats.heroCaption.averageLifetime")}
+										trendPct={data.hero.averageLifetimeHours.trendPct}
+										trendSuffix={trendSuffix}
+									/>
+								) : (
+									<CompactLocPlaceholder label={t("stats.hero.averageLifetime")} body={data.lifecycleTrackingSince ? t("stats.lifecycleEmpty.period") : t("stats.lifecycleEmpty.badge")} />
+								)}
 							</div>
 						) : (
-						<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+						<div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
 							<StatGauge
 								value={data.hero.tasksShipped.value}
 								max={data.hero.tasksShipped.max}
@@ -349,6 +373,20 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 								caption={t("stats.heroCaption.streak")}
 								format={fmtInt}
 							/>
+							{data.hasLifecycleData ? (
+								<StatGauge
+									value={data.hero.averageLifetimeHours.value}
+									max={data.hero.averageLifetimeHours.max}
+									label={t("stats.hero.averageLifetime")}
+									unit={t("stats.unit.average")}
+									caption={t("stats.heroCaption.averageLifetime")}
+									format={formatLifetime}
+									trendPct={data.hero.averageLifetimeHours.trendPct}
+									trendSuffix={trendSuffix}
+								/>
+							) : (
+								<LocPlaceholder label={t("stats.hero.averageLifetime")} body={data.lifecycleTrackingSince ? t("stats.lifecycleEmpty.period") : t("stats.lifecycleEmpty.body")} />
+							)}
 						</div>
 						)}
 
@@ -467,9 +505,10 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 												<span className="text-fg text-sm font-bold tabular-nums flex-shrink-0">{p.completed}</span>
 											</div>
 											<SegmentedBar value={p.completed} max={projMax} ariaLabel={`${p.name}: ${p.completed} ${t("stats.unit.tasks")}`} />
-											{p.lines > 0 && (
-												<div className="text-fg-muted text-[0.625rem]">{compact(p.lines)} {t("stats.unit.lines")}</div>
-											)}
+										<div className="text-fg-muted text-[0.625rem] flex gap-2">
+											{p.lines > 0 && <span>{compact(p.lines)} {t("stats.unit.lines")}</span>}
+											<span>{p.averageLifetimeMs == null ? t("stats.perProject.lifetimeUnavailable") : `${t("stats.perProject.lifetime")}: ${formatLifetime(p.averageLifetimeMs / 3_600_000)}`}</span>
+										</div>
 										</button>
 									))}
 								</div>

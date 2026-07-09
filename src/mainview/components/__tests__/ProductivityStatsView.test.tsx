@@ -25,6 +25,7 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		status: "completed",
 		createdAt: new Date(Date.now() - 3 * DAY).toISOString(),
 		movedAt: new Date(Date.now() - 1 * DAY).toISOString(),
+		lifecycleStartedAt: new Date(Date.now() - 2 * DAY).toISOString(),
 		insertions: 10,
 		deletions: 2,
 		files: 1,
@@ -68,6 +69,7 @@ describe("ProductivityStatsView", () => {
 		// Title + a hero caption appear once data resolves.
 		expect(await screen.findByText("Productivity")).toBeInTheDocument();
 		expect(await screen.findByText("Tasks shipped")).toBeInTheDocument();
+		expect(screen.getByText("Avg. task lifetime")).toBeInTheDocument();
 		// Time range switch options.
 		expect(screen.getByRole("tab", { name: "Week" })).toBeInTheDocument();
 		expect(screen.getByRole("tab", { name: "All" })).toBeInTheDocument();
