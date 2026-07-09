@@ -14,7 +14,7 @@ import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { useSkillAutocomplete } from "../hooks/useSkillAutocomplete";
 import { removeImagePath } from "../utils/imageAttachments";
-import BranchSelector from "./BranchSelector";
+import BranchSelector, { parsePrUrl } from "./BranchSelector";
 import SkillAutocompleteDropdown from "./SkillAutocompleteDropdown";
 import { openFolderPicker } from "../folder-picker";
 import { useFocusTrap } from "../utils/useFocusTrap";
@@ -50,6 +50,8 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 	const [pendingBranchChoice, setPendingBranchChoice] = useState<string | null>(null);
 	const [pendingSubmitMode, setPendingSubmitMode] = useState<"save" | "run" | "scratch" | null>(null);
 	const [reviewMode, setReviewMode] = useState(false);
+	const [dismissedPrUrl, setDismissedPrUrl] = useState<string | null>(null);
+	const [prApplying, setPrApplying] = useState(false);
 	const isVirtual = project.kind === "virtual";
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
 	const [opsFolder, setOpsFolder] = useState<string | null>(null);
@@ -111,16 +113,18 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 	const reviewPrompt = t("createTask.reviewPrompt");
 	const REVIEW_SEPARATOR = "\n\n---\n\n";
 
+	// Prompt + (optional) user text. Pure so the PR-apply path can compute the
+	// final description synchronously without racing setState against a stale read.
+	function buildReviewDescription(baseText: string): string {
+		const userText = baseText.trim();
+		return userText ? reviewPrompt + REVIEW_SEPARATOR + userText : reviewPrompt;
+	}
+
 	function handleReviewModeChange(enabled: boolean) {
 		setReviewMode(enabled);
 		if (enabled) {
 			// Inject review prompt: if user has text, prepend prompt + separator + user text
-			const userText = description.trim();
-			if (userText) {
-				setDescription(reviewPrompt + REVIEW_SEPARATOR + userText);
-			} else {
-				setDescription(reviewPrompt);
-			}
+			setDescription(buildReviewDescription(description));
 		} else {
 			// Remove review prompt: restore user's original text (if any)
 			const current = description;
@@ -133,6 +137,36 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 				setDescription("");
 			}
 			// If user modified the prompt text manually, leave it as-is
+		}
+	}
+
+	// Opt-4 smart-paste: if a GitHub PR URL lands in the description, offer a
+	// non-blocking affordance to turn it into a review task (resolve → select
+	// branch → enable review mode). Hidden once a branch is chosen, review mode
+	// is already on, this project has no git, or the user dismissed this URL.
+	const detectedPr = parsePrUrl(description);
+	const showPrBanner = !!detectedPr && detectedPr.url !== dismissedPrUrl && !selectedBranch && !reviewMode && !isVirtual;
+
+	async function applyPrFromBanner() {
+		if (!detectedPr || prApplying) return;
+		setPrApplying(true);
+		try {
+			const result = await api.request.resolvePrUrl({ projectId: project.id, url: detectedPr.url });
+			if (result.ok && result.branch) {
+				// Strip the URL out of the description, then fold the remaining text
+				// into the review prompt — the URL was the paste, not the task text.
+				const cleaned = description.replace(detectedPr.url, "").replace(/\n{3,}/g, "\n\n").trim();
+				setDescription(buildReviewDescription(cleaned));
+				setReviewMode(true);
+				setSelectedBranch(result.branch);
+				setDismissedPrUrl(null);
+			} else {
+				toast.error(t("createTask.prResolveFailed", { error: result.error || "" }));
+			}
+		} catch (err) {
+			toast.error(t("createTask.prResolveFailed", { error: String(err) }));
+		} finally {
+			setPrApplying(false);
 		}
 	}
 
@@ -483,6 +517,39 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 						</div>
 					)}
 				</div>
+
+				{showPrBanner && detectedPr && (
+					<div className="flex items-start gap-2.5 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2.5">
+						<span
+							className="text-accent text-[1.0625rem] leading-none mt-0.5 shrink-0"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\uf407"}
+						</span>
+						<div className="flex-1 min-w-0">
+							<p className="text-sm text-fg-2">
+								{t("createTask.prBannerText", { number: String(detectedPr.number) })}
+							</p>
+							<div className="mt-1.5 flex items-center gap-2">
+								<button
+									type="button"
+									onClick={applyPrFromBanner}
+									disabled={prApplying}
+									className="px-2.5 py-1 rounded-lg border border-accent/40 bg-accent/15 text-accent text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									{prApplying ? t("createTask.prResolving") : t("createTask.prBannerSetup")}
+								</button>
+								<button
+									type="button"
+									onClick={() => setDismissedPrUrl(detectedPr.url)}
+									className="text-fg-muted text-xs hover:text-fg-3 transition-colors"
+								>
+									{t("createTask.prBannerKeep")}
+								</button>
+							</div>
+						</div>
+					</div>
+				)}
 
 				{/* Label selector — compact: only the selected labels show as chips;
 				    the picker popover (search / toggle / inline-create) owns the full list. */}

@@ -1279,6 +1279,71 @@ async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 	return [];
 }
 
+interface ResolvePrUrlResult {
+	ok: boolean;
+	branch: string | null;
+	number: number | null;
+	title: string | null;
+	isFork: boolean;
+	error: string | null;
+}
+
+// Resolve a GitHub pull-request URL to a locally-fetched branch ref, ready to be
+// used as a task's `existingBranch`. Same-repo PRs resolve to `origin/<head>`;
+// cross-repo (fork) PRs are fetched via the fork-remote machinery and resolve to
+// `<forkOwner>/<head>` — the exact ref shapes the branch selector already accepts.
+async function resolvePrUrl(params: { projectId: string; url: string }): Promise<ResolvePrUrlResult> {
+	const url = params.url.trim();
+	log.info("→ resolvePrUrl", { projectId: params.projectId, url });
+	const project = await data.getProject(params.projectId);
+
+	try {
+		const result = await github.runGitHub(
+			project,
+			project.path,
+			["pr", "view", url, "--json", "number,title,headRefName,headRepositoryOwner,isCrossRepository"],
+			{ timeoutMs: 20_000 },
+		);
+		if (!result.ok || !result.stdout) {
+			const error = result.stderr.trim() || "Failed to resolve pull request";
+			log.warn("resolvePrUrl: gh pr view failed", { url, error });
+			return { ok: false, branch: null, number: null, title: null, isFork: false, error };
+		}
+
+		const pr = JSON.parse(result.stdout) as {
+			number?: number;
+			title?: string;
+			headRefName?: string;
+			headRepositoryOwner?: { login?: string } | null;
+			isCrossRepository?: boolean;
+		};
+		const headRefName = typeof pr.headRefName === "string" ? pr.headRefName : "";
+		const number = typeof pr.number === "number" ? pr.number : null;
+		const title = typeof pr.title === "string" ? pr.title : null;
+		if (!headRefName) {
+			return { ok: false, branch: null, number, title, isFork: false, error: "Pull request has no head branch" };
+		}
+
+		const forkOwner = pr.isCrossRepository ? pr.headRepositoryOwner?.login : undefined;
+		if (forkOwner) {
+			const fetched = await git.fetchFork(project.path, forkOwner, headRefName);
+			if (!fetched) {
+				log.warn("resolvePrUrl: fork fetch failed", { url, forkOwner, headRefName });
+				return { ok: false, branch: null, number, title, isFork: true, error: `Could not fetch ${headRefName} from fork ${forkOwner}` };
+			}
+			log.info("← resolvePrUrl (fork)", { number, branch: `${forkOwner}/${headRefName}` });
+			return { ok: true, branch: `${forkOwner}/${headRefName}`, number, title, isFork: true, error: null };
+		}
+
+		await git.fetchOrigin(project.path, headRefName);
+		log.info("← resolvePrUrl (origin)", { number, branch: `origin/${headRefName}` });
+		return { ok: true, branch: `origin/${headRefName}`, number, title, isFork: false, error: null };
+	} catch (err) {
+		log.warn("resolvePrUrl failed", { url, error: String(err) });
+		return { ok: false, branch: null, number: null, title: null, isFork: false, error: String(err) };
+	}
+}
+
 export const gitOperationHandlers = {
 	getBranchStatus,
 	getTaskDiff,
@@ -1292,6 +1357,7 @@ export const gitOperationHandlers = {
 	openPullRequest,
 	listBranches,
 	fetchBranches,
+	resolvePrUrl,
 	getProjectCurrentBranch,
 	getProjectPRs,
 	pullProjectMain,

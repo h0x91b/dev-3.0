@@ -69,7 +69,7 @@ const tips = {
 	"tip.yaziFileBrowser.title": "Browse files with yazi",
 	"tip.yaziFileBrowser.body": "Click the Files button in the task header to open a yazi pane for quick worktree navigation.",
 	"tip.reviewModeBranch.title": "Create a PR review task",
-	"tip.reviewModeBranch.body": "In the Create Task modal, pick a branch and enable Review mode to pre-fill a structured code review prompt.",
+	"tip.reviewModeBranch.body": "Paste a GitHub PR URL into the Create Task modal (or the branch box) to auto-fetch the branch and start a code review.",
 	"tip.autoCompleteOnPrMerge.title": "Auto-complete on PR merge",
 	"tip.autoCompleteOnPrMerge.body": "Tasks in \"Review by You\" are checked every 60 s — when the branch is merged, a dialog offers to mark them complete.",
 	"tip.exposeTaskPorts.title": "Live port badges per task",

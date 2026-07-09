@@ -16,6 +16,17 @@ export function parseForkRef(query: string): { forkOwner: string; branchName: st
 	return { forkOwner: match[1], branchName: match[2] };
 }
 
+/** Detect a GitHub-style pull-request URL: https://<host>/<owner>/<repo>/pull/<number> (optional /files, ?query, #hash suffix). */
+const PR_URL_RE = /https?:\/\/[^\s/]+\/[^\s/]+\/[^\s/]+\/pull\/(\d+)(?:[/?#]\S*)?/i;
+
+export function parsePrUrl(input: string): { url: string; number: number } | null {
+	const match = input.match(PR_URL_RE);
+	if (!match) return null;
+	const number = Number(match[1]);
+	if (!Number.isFinite(number)) return null;
+	return { url: match[0], number };
+}
+
 export function normalizeBranchQuery(query: string): string {
 	return query.trim().replace(":", "/");
 }
@@ -94,8 +105,12 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 	const [branchesLoaded, setBranchesLoaded] = useState(false);
 	const [branchSectionOpen, setBranchSectionOpen] = useState(false);
 	const [prioritizedBranchNames, setPrioritizedBranchNames] = useState<string[]>([]);
+	const [resolvingPr, setResolvingPr] = useState(false);
+	const [prError, setPrError] = useState<string | null>(null);
 	const branchInputRef = useRef<HTMLInputElement>(null);
 	const branchDropdownRef = useRef<HTMLDivElement>(null);
+
+	const prMatch = parsePrUrl(branchQuery);
 
 	const loadBranches = useCallback(async () => {
 		if (branchesLoaded) return;
@@ -132,6 +147,28 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 			setFetchingBranches(false);
 		}
 	}, [projectId, branchQuery]);
+
+	const handleResolvePr = useCallback(async () => {
+		const pr = parsePrUrl(branchQuery);
+		if (!pr) return;
+		setResolvingPr(true);
+		setPrError(null);
+		try {
+			const result = await api.request.resolvePrUrl({ projectId, url: pr.url });
+			if (result.ok && result.branch) {
+				onSelectBranch(result.branch);
+				onReviewModeChange(true);
+				setBranchQuery("");
+				setBranchDropdownOpen(false);
+			} else {
+				setPrError(result.error || t("createTask.prResolveFailedShort"));
+			}
+		} catch {
+			setPrError(t("createTask.prResolveFailedShort"));
+		} finally {
+			setResolvingPr(false);
+		}
+	}, [branchQuery, projectId, onSelectBranch, onReviewModeChange, t]);
 
 	const preferRemoteBranches = reviewMode || prioritizedBranchNames.length > 0 || parseForkRef(branchQuery) !== null;
 	const filteredBranches = sortBranchesForDisplay(
@@ -222,7 +259,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 								ref={branchInputRef}
 								type="text"
 								value={branchQuery}
-								onChange={(e) => setBranchQuery(e.target.value)}
+								onChange={(e) => { setBranchQuery(e.target.value); setPrError(null); }}
 								onFocus={() => {
 									loadBranches();
 									setBranchDropdownOpen(true);
@@ -232,17 +269,31 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 							/>
 						)}
 					</div>
-					<button
-						type="button"
-						onClick={handleFetchBranches}
-						disabled={fetchingBranches}
-						className="px-3 py-2 bg-elevated border border-edge-active rounded-xl text-fg-2 text-xs font-medium hover:bg-elevated-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5"
-					>
-						<svg className={`w-3.5 h-3.5 ${fetchingBranches ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-							<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-						</svg>
-						{fetchingBranches ? t("createTask.branchFetching") : t("createTask.branchFetch")}
-					</button>
+					{prMatch ? (
+						<button
+							type="button"
+							onClick={handleResolvePr}
+							disabled={resolvingPr}
+							className="px-3 py-2 bg-accent/15 border border-accent/40 rounded-xl text-accent text-xs font-medium hover:bg-accent/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5"
+						>
+							<svg className={`w-3.5 h-3.5 ${resolvingPr ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+							</svg>
+							{resolvingPr ? t("createTask.prResolving") : t("createTask.branchResolvePr")}
+						</button>
+					) : (
+						<button
+							type="button"
+							onClick={handleFetchBranches}
+							disabled={fetchingBranches}
+							className="px-3 py-2 bg-elevated border border-edge-active rounded-xl text-fg-2 text-xs font-medium hover:bg-elevated-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0 flex items-center gap-1.5"
+						>
+							<svg className={`w-3.5 h-3.5 ${fetchingBranches ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+							</svg>
+							{fetchingBranches ? t("createTask.branchFetching") : t("createTask.branchFetch")}
+						</button>
+					)}
 				</div>
 
 				{branchDropdownOpen && !selectedBranch && (
@@ -302,6 +353,10 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 					</div>
 				)}
 			</div>
+
+			{prError && !selectedBranch && (
+				<p className="text-xs text-danger">{prError}</p>
+			)}
 
 			{/* Review mode toggle — shown when a branch is selected */}
 			{selectedBranch && (

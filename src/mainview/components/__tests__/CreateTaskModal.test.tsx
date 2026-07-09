@@ -16,6 +16,7 @@ vi.mock("../../rpc", () => ({
 			setTaskLabels: vi.fn(),
 			createLabel: vi.fn(),
 			getProjectCurrentBranch: vi.fn(),
+			resolvePrUrl: vi.fn(),
 			uploadFileBase64: vi.fn(),
 			uploadImageBase64: vi.fn(),
 			readImageBase64: vi.fn(),
@@ -475,7 +476,7 @@ describe("CreateTaskModal", () => {
 	it("branch section starts collapsed", () => {
 		renderModal();
 		expect(screen.getByText("Use existing branch")).toBeInTheDocument();
-		expect(screen.queryByPlaceholderText("Type to search branches...")).not.toBeInTheDocument();
+		expect(screen.queryByPlaceholderText("Search branches or paste a PR URL...")).not.toBeInTheDocument();
 	});
 
 	it("clicking 'Use existing branch' expands the selector", async () => {
@@ -484,7 +485,7 @@ describe("CreateTaskModal", () => {
 
 		await userEvent.click(screen.getByText("Use existing branch"));
 
-		expect(screen.getByPlaceholderText("Type to search branches...")).toBeInTheDocument();
+		expect(screen.getByPlaceholderText("Search branches or paste a PR URL...")).toBeInTheDocument();
 	});
 
 	it("selecting a branch shows it as a chip", async () => {
@@ -495,7 +496,7 @@ describe("CreateTaskModal", () => {
 		renderModal();
 
 		await userEvent.click(screen.getByText("Use existing branch"));
-		const input = screen.getByPlaceholderText("Type to search branches...");
+		const input = screen.getByPlaceholderText("Search branches or paste a PR URL...");
 		await userEvent.click(input);
 
 		await waitFor(() => {
@@ -505,7 +506,7 @@ describe("CreateTaskModal", () => {
 
 		// Now the chip should be visible and the input should be gone
 		expect(screen.getByText("feature/login")).toBeInTheDocument();
-		expect(screen.queryByPlaceholderText("Type to search branches...")).not.toBeInTheDocument();
+		expect(screen.queryByPlaceholderText("Search branches or paste a PR URL...")).not.toBeInTheDocument();
 	});
 
 	it("clearing selected branch returns to input", async () => {
@@ -515,7 +516,7 @@ describe("CreateTaskModal", () => {
 		renderModal();
 
 		await userEvent.click(screen.getByText("Use existing branch"));
-		const input = screen.getByPlaceholderText("Type to search branches...");
+		const input = screen.getByPlaceholderText("Search branches or paste a PR URL...");
 		await userEvent.click(input);
 
 		await waitFor(() => {
@@ -528,7 +529,7 @@ describe("CreateTaskModal", () => {
 		expect(clearButton).toBeTruthy();
 		await userEvent.click(clearButton!);
 
-		expect(screen.getByPlaceholderText("Type to search branches...")).toBeInTheDocument();
+		expect(screen.getByPlaceholderText("Search branches or paste a PR URL...")).toBeInTheDocument();
 	});
 
 	it("passes existingBranch to createTask when a branch is selected", async () => {
@@ -541,7 +542,7 @@ describe("CreateTaskModal", () => {
 
 		// Expand branch selector and pick a branch
 		await userEvent.click(screen.getByText("Use existing branch"));
-		const input = screen.getByPlaceholderText("Type to search branches...");
+		const input = screen.getByPlaceholderText("Search branches or paste a PR URL...");
 		await userEvent.click(input);
 		await waitFor(() => {
 			expect(screen.getByText("feature/login")).toBeInTheDocument();
@@ -826,7 +827,7 @@ describe("CreateTaskModal", () => {
 		renderModal();
 
 		await userEvent.click(screen.getByText("Use existing branch"));
-		const input = screen.getByPlaceholderText("Type to search branches...");
+		const input = screen.getByPlaceholderText("Search branches or paste a PR URL...");
 		await userEvent.type(input, "sworgkh:fix/dev3-tmux-switch-glitch");
 		await userEvent.click(screen.getByText("Fetch"));
 
@@ -837,11 +838,11 @@ describe("CreateTaskModal", () => {
 			});
 		});
 
-		expect(screen.getByPlaceholderText("Type to search branches...")).toHaveValue("sworgkh/fix/dev3-tmux-switch-glitch");
+		expect(screen.getByPlaceholderText("Search branches or paste a PR URL...")).toHaveValue("sworgkh/fix/dev3-tmux-switch-glitch");
 		expect(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch")).toBeInTheDocument();
 
 		await userEvent.click(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch"));
-		expect(screen.queryByPlaceholderText("Type to search branches...")).not.toBeInTheDocument();
+		expect(screen.queryByPlaceholderText("Search branches or paste a PR URL...")).not.toBeInTheDocument();
 		expect(screen.getByText("sworgkh/fix/dev3-tmux-switch-glitch")).toBeInTheDocument();
 	});
 });
@@ -1117,6 +1118,80 @@ describe("CreateTaskModal — partial create failure", () => {
 		// data layer parsing this task sees no unexpected shape.
 		const addCall = dispatch.mock.calls.find((c) => c[0]?.type === "addTask");
 		expect(addCall?.[0].task).toBe(mockTask);
+	});
+});
+
+// ================================================================
+// PR-link smart-paste banner (Opt 4)
+// ================================================================
+
+describe("CreateTaskModal — PR link banner", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.createTask.mockResolvedValue(mockTask);
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+		mockedApi.request.listAgentSkills.mockResolvedValue([]);
+	});
+
+	async function pasteIntoDescription(text: string) {
+		const textarea = screen.getByPlaceholderText("Describe what needs to be done...");
+		textarea.focus();
+		await userEvent.paste(text);
+		return textarea;
+	}
+
+	it("shows the review banner when a PR URL is pasted into the description", async () => {
+		renderModal();
+		await pasteIntoDescription("https://github.com/h0x91b/dev-3.0/pull/42");
+		expect(await screen.findByText(/PR #42/)).toBeInTheDocument();
+		expect(screen.getByText("Set up review")).toBeInTheDocument();
+	});
+
+	it("does not show the banner for non-PR text", async () => {
+		renderModal();
+		await pasteIntoDescription("just a normal task description");
+		expect(screen.queryByText("Set up review")).not.toBeInTheDocument();
+	});
+
+	it("resolves the PR, injects the review prompt, and selects the branch", async () => {
+		mockedApi.request.resolvePrUrl.mockResolvedValue({
+			ok: true,
+			branch: "origin/feature",
+			number: 42,
+			title: "My PR",
+			isFork: false,
+			error: null,
+		});
+		renderModal();
+		const textarea = await pasteIntoDescription("https://github.com/o/r/pull/42") as HTMLTextAreaElement;
+
+		await userEvent.click(await screen.findByText("Set up review"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.resolvePrUrl).toHaveBeenCalledWith({
+				projectId: "p1",
+				url: "https://github.com/o/r/pull/42",
+			});
+		});
+		// Review prompt injected; the pasted URL is stripped out of the text.
+		await waitFor(() => {
+			expect(textarea.value).toContain("Review the code changes on this branch.");
+		});
+		expect(textarea.value).not.toContain("https://github.com/o/r/pull/42");
+		// Branch selected → the selected branch chip renders and the banner is gone.
+		expect(screen.getByText("origin/feature")).toBeInTheDocument();
+		expect(screen.queryByText("Set up review")).not.toBeInTheDocument();
+	});
+
+	it("keeps the URL as plain text and hides the banner on 'Keep as text'", async () => {
+		renderModal();
+		const textarea = await pasteIntoDescription("https://github.com/o/r/pull/99") as HTMLTextAreaElement;
+
+		await userEvent.click(await screen.findByText("Keep as text"));
+
+		expect(screen.queryByText("Set up review")).not.toBeInTheDocument();
+		expect(textarea.value).toBe("https://github.com/o/r/pull/99");
+		expect(mockedApi.request.resolvePrUrl).not.toHaveBeenCalled();
 	});
 });
 

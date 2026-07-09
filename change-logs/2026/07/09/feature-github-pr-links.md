@@ -1,0 +1,1 @@
+Added GitHub pull-request link support to the Create Task modal. Paste a PR URL into the description and a non-blocking banner offers to set up a code review; you can also paste a PR URL directly into the "Use existing branch" box. Either path resolves the PR via gh (fork-aware) to its head branch and enables review mode automatically.
