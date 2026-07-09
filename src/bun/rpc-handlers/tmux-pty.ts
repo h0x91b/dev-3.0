@@ -13,6 +13,7 @@ import { loadSettings } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
+import { ensureArtifactTemplateEnv } from "../artifact-template";
 import { ALT_CLICK_PANE_FORMAT, altClickIneligibleReason, computeAltClickKeys, findAltClickPane, parseAltClickPanes } from "../tmux-alt-click";
 import { getPushMessage, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -364,6 +365,7 @@ export async function launchTaskPty(
 ): Promise<void> {
 	const sessionId = opts?.sessionId;
 	const skipSessionPersist = opts?.skipSessionPersist ?? false;
+	const artifactTemplateEnv = ensureArtifactTemplateEnv(project, task, worktreePath);
 	log.info("launchTaskPty START", {
 		taskId: task.id.slice(0, 8),
 		projectId: project.id.slice(0, 8),
@@ -465,6 +467,7 @@ export async function launchTaskPty(
 	const env = {
 		...buildTaskLifecycleEnv(project, task, worktreePath, opts?.branchName),
 		...buildAgentEnv(extraEnv, task.id),
+		...artifactTemplateEnv,
 	};
 	const userShell = getUserShell();
 
@@ -715,7 +718,10 @@ export async function launchColumnAgent(
 		permissionMode: resolvedPermissionMode,
 	});
 
-	const env = buildAgentEnv(extraEnv, task.id);
+	const env = {
+		...buildAgentEnv(extraEnv, task.id),
+		...ensureArtifactTemplateEnv(project, task, worktreePath),
+	};
 	const scriptPath = `/tmp/dev3-${task.id}-col-agent.sh`;
 	await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env, {
 		paneTitle: options.paneTitle,
@@ -2137,7 +2143,10 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 	});
 
-	const env: Record<string, string> = buildAgentEnv(extraEnv, task.id);
+	const env: Record<string, string> = {
+		...buildAgentEnv(extraEnv, task.id),
+		...ensureArtifactTemplateEnv(project, task, task.worktreePath),
+	};
 
 	const existingPorts = portPool.getPortAssignments(task.id);
 	if (existingPorts.length > 0) {
@@ -2286,7 +2295,10 @@ async function spawnSingleBugHunterPane(opts: {
 		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 	});
 
-	const env: Record<string, string> = buildAgentEnv(extraEnv, opts.task.id);
+	const env: Record<string, string> = {
+		...buildAgentEnv(extraEnv, opts.task.id),
+		...ensureArtifactTemplateEnv(opts.project, opts.task, opts.worktreePath),
+	};
 	const existingPorts = portPool.getPortAssignments(opts.task.id);
 	if (existingPorts.length > 0) {
 		Object.assign(env, portPool.buildPortEnv(existingPorts));

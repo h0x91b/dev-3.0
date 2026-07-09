@@ -127,6 +127,21 @@ const SKILL_DEV_SERVER_CONTROL = `
 When you need the server actually serving before testing (curl, browser QA), use \`dev3 dev-server start --wait\` / \`restart --wait\` — it blocks until the dev server's process tree is listening on a port (\`--timeout <sec>\`, default 120). Do NOT probe the port yourself after a plain restart. \`stop\`/\`restart\` verify teardown before returning; \`status\` reports \`Dev Ports\` plus WARNING lines when an assigned port is squatted by a foreign process.
 `;
 
+const SKILL_ARTIFACTS = `
+## dev3 HTML artifacts
+
+Inside a dev3 task, an unqualified request for an "artifact", interactive report, dashboard, or demo usually means a **dev3 HTML artifact** — not Claude Artifacts. Treat it that way when an interactive visual is a reasonable fit. Do not override explicit meanings such as Claude Artifacts, CI/build artifacts, package outputs, or files requested for another system.
+
+Every launched agent receives \`$DEV3_ARTIFACT_TEMPLATE_DIR\`, an absolute path to a pristine task-local starter. When creating a dev3 HTML artifact:
+
+1. Copy the entire template directory into the worktree; never edit the pristine source.
+2. Read \`AUTHORING.md\` in the copied directory before editing.
+3. Start from its \`index.html\`, dev3 branding, semantic CSS tokens, responsive layout, and Auto/Light/Dark theme switch.
+4. Keep the report self-contained except for relative raster images, then present it with \`dev3 show-artifact ... --images ...\`.
+
+If the environment variable is unexpectedly missing, report that dev3 could not provision the starter instead of inventing a different template.
+`;
+
 const SKILL_GET_ATTENTION = `
 ## Getting the user's attention
 
@@ -255,9 +270,9 @@ If \`gh\` is unavailable or unauthenticated, do not silently abandon the report:
 // OpenCode), so the skill rules are always in context regardless of whether
 // the agent decides to load the skill file. See `DEV3_SYSTEM_PROMPT*` in
 // `agents.ts`.
-export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
-export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
-export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const CLAUDE_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK;
+export const CODEX_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_CODEX_HOOKS + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
+export const GENERIC_SKILL_BODY = SKILL_HEADER + SKILL_SESSION_START_CHECKLIST + SKILL_BRANCH_NAMING + SKILL_TITLE_GENERATION + SKILL_STATUS_MANUAL + SKILL_OVERVIEW + SKILL_SCRATCH_TASK + SKILL_NOTES + SKILL_CONVERSATION_SEARCH + SKILL_DEV_SERVER_CONTROL + SKILL_ARTIFACTS + SKILL_GET_ATTENTION + SKILL_TMUX + SKILL_PROJECT_CONFIG_REDIRECT + SKILL_VENT_FEEDBACK + SKILL_CODEX_SHELL;
 
 const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trigger: your working directory (PWD) is inside ~/.dev3.0/worktrees/ (i.e. $HOME/.dev3.0/worktrees/). Regular git worktrees or other worktree paths do NOT qualify — only the dev-3.0 managed path. Step 1: invoke this skill (for Codex exec_command calls, always set shell=\\\"/bin/bash\\\" and login=false). Step 2: handle the user's request. NEVER skip step 1, even if the user gives a direct command.";
 
