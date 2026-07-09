@@ -56,6 +56,27 @@ function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 describe("ProjectView task-view layout", () => {
 	beforeEach(() => vi.clearAllMocks());
 
+	it("does not replace a pushed scheduled task with an older initial task snapshot", async () => {
+		let resolveTasks: (tasks: Task[]) => void;
+		const pendingTasks = new Promise<Task[]>((resolve) => {
+			resolveTasks = resolve;
+		});
+		const { api } = await import("../../rpc");
+		vi.mocked(api.request.getTasks).mockReturnValueOnce(pendingTasks);
+		const dispatch = vi.fn();
+
+		renderView({ dispatch });
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: "p1" }));
+
+		window.dispatchEvent(new CustomEvent("rpc:taskUpdated", {
+			detail: { task: { id: "scheduled-task", projectId: "p1" } },
+		}));
+		resolveTasks!([]);
+
+		await Promise.resolve();
+		expect(dispatch).not.toHaveBeenCalledWith({ type: "setTasks", tasks: [] });
+	});
+
 	it("shows the empty-terminal placeholder when taskView is set but no task is selected", async () => {
 		renderView({ taskView: true });
 		await waitFor(() => expect(screen.getByTestId("sidebar")).toBeInTheDocument());
