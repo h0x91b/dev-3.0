@@ -16,6 +16,7 @@ import stats from "./en/stats";
 import help from "./en/help";
 import { tooltips } from "./en/tooltips";
 import automations from "./en/automations";
+import diagnostics from "./en/diagnostics";
 
 const en = {
 	...common,
@@ -36,6 +37,7 @@ const en = {
 	...help,
 	...tooltips,
 	...automations,
+	...diagnostics,
 } as const;
 
 export type TranslationKey = keyof typeof en;

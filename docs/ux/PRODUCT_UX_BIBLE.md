@@ -123,6 +123,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Keyboard-shortcuts overlay | Read-only keymap reference (App + Terminal tabs) | grouped shortcut rows, tab switch | action runner, durable config, nav destination | `KeyboardShortcutsModal` (planned), `TmuxCheatSheetModal.tsx`, `keymap.ts` (planned) |
 | Hint navigation overlay | Keyboard-only jump-to-target (Vimium-style) | per-target letter badge over any `[data-hint-id]` (task card, project row, sidebar task), type-to-jump | mutation/destructive target, visible chrome, durable config | `HintOverlay.tsx`, `utils/hintLabels.ts` |
 | Toast | Transient feedback | status, error | persistent/primary action | `ErrorToast.tsx` |
+| Diagnostics (crash + error surface) | Make renderer faults visible in remote/mobile where there is no devtools | crash fallback (error boundary), bootstrap phase + timeout→retry, captured error list, copy/clear, conditional floating entry | navigation destination, mutation of app data, permanent chrome in the happy path | `RootErrorBoundary.tsx`, `BootstrapScreen.tsx`, `DiagnosticsPanel.tsx`, `DiagnosticsIndicator.tsx`, `diagnostics.ts` (see §5.5) |
 | Inline help (Tooltip / HelpSpot → HelpCard / help mode) | Explain what a section is, why it exists, what to do in it | fast control tooltip, section (i) in header-bearing surfaces, rich read-only HelpCard, screen-wide help-mode overlay | mutation, multi-step tour, permanent (i) in quickbars/cards/toolbars | `Tooltip.tsx`, `HelpSpot.tsx`, `HelpCard.tsx`, `HelpOverlay.tsx`, `help.ts` (see §5.4) |
 | Productivity Stats (Velocity Cockpit) | Read-only showcase of shipping output over time | hero speedometer gauges, SVG bar/area charts, per-project gauge wall, counters, time-range switch + prev/next period navigation, per-project→board jump | mutation, lifecycle/config action, header button, data filter (new dimension beyond time) | `ProductivityStatsView.tsx`, `components/stats/*` |
 
@@ -209,6 +210,19 @@ Rules specific to this surface:
 - HelpCard is **read-only**: navigation links allowed, mutations forbidden; no multi-step tours in v1.
 - HelpCard clamps to the viewport (`max-w-[calc(100vw-2rem)]`), honours `prefers-reduced-motion`, is keyboard-reachable (HelpSpot is a focusable button, `Enter` pins, `Esc` closes) and announced via `aria-describedby`/`role="dialog"` when pinned.
 
+### 5.5 Diagnostics — crash & error surface (remote/mobile) — `Observed`
+
+**Problem.** In browser remote mode — especially on a phone with no devtools — a renderer fault is invisible: a React crash unmounts the tree to a blank page, a stuck bootstrap spins a bare "Loading…" (up to the 120s RPC timeout), and `window.onerror`/`unhandledrejection`/WebSocket failures go only to console/GA4/a backend file the user can't see. The user can neither see nor report what broke.
+
+**One store, three surfaces (+ a pre-React loader):**
+
+1. **`diagnostics.ts`** — a framework-agnostic ring buffer (cap 50, deduped) fed by `window.onerror`, `unhandledrejection`, the React boundary, and RPC/WS transport failures/connection-state changes. No React import, so the crash fallback can read it even when the provider tree is unmounted.
+2. **`RootErrorBoundary`** — wraps the providers **and** `App` in `main.tsx` (so a provider crash is still caught). Self-contained English fallback (a **documented i18n exception** — the translation provider may be what threw) with the message, recent diagnostics, and Reload / Copy details.
+3. **`BootstrapScreen`** — replaces the two bare loading spinners: names the phase (connecting / authenticating / loading) and, after a ~12s stuck timeout, flips to an actionable panel (likely cause + last captured error + Retry/Reload).
+4. **`DiagnosticsPanel` + `DiagnosticsIndicator`** — the full viewer (copy/clear, viewport-clamped for phones) opened from a **conditional** floating pill that renders **only in remote mode and only when `errorCount > 0`** — zero chrome on the happy path (no button-creep), absent in the Electrobun desktop shell (which has devtools + "Open logs"). Plus a static pre-React loader in `index.html` (inside `#root`, replaced on mount) so a failed bundle shows a hint + Reload instead of a blank flash.
+
+**Hard rules:** the crash fallback and pre-React loader use inline/neutral styling and no providers (they must survive a broken theme/i18n). The diagnostics entry point is earned, not permanent — never a toolbar/header button, never a nav destination. All surfaces are pure React (no native dialog). See `UX_DECISIONS.md` (2026-07-10).
+
 ## 6. Action taxonomy — `Observed`
 
 | Action type | Definition | Placement | Token role |
@@ -281,6 +295,7 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 | configuration | global/project settings | board, inspector, toolbar | durable behavior lives in settings |
 | destructive | context menu, confirm, danger zone, overflow | primary button, header | needs friction + destructive styling |
 | debug surface | menu `Debug` | header, dashboard, sidebar | dev surfaces must not leak to users |
+| diagnostic surface (crash/error) | error boundary around providers, bootstrap phase+timeout state, conditional floating pill (remote + errorCount>0) → `DiagnosticsPanel` | permanent header/toolbar button, nav destination, desktop-shell chrome | faults must be visible where there is no devtools (mobile) without adding happy-path chrome (see §5.5) |
 | hint navigation (jump) | `HintOverlay` over any `[data-hint-id]` target; activate with bare `f` / `⌘G` | mutation or destructive targets, visible button | hints are destinations, not actions; keyboard-only avoids button-creep |
 | keyboard expert nav | bare-key + `g`-prefix sequences (`g d/p/t/s`), `/` focus search, `c` new task — declared in `keymap.ts`, matched on `e.code` | native menu accelerators (Electrobun can't bind chords/sequences) | layout-independent; reserve `g` for the go-to prefix |
 | countable/motivational metric (`data_visualization`) | emit into the stats engine first (`productivity-stats.ts` + `productivityStats.ts`), then a viz on the Velocity Cockpit (`stats`) | controls/config on the cockpit, a new top-level screen per metric, a header counter, diagnostic noise | the cockpit is the one home for shipping signal — keep it read-only and within the honesty/complexity budget (see §1.1) |

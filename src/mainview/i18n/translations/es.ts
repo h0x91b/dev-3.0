@@ -17,6 +17,7 @@ import stats from "./es/stats";
 import help from "./es/help";
 import { tooltips } from "./es/tooltips";
 import automations from "./es/automations";
+import diagnostics from "./es/diagnostics";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -37,6 +38,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...help,
 	...tooltips,
 	...automations,
+	...diagnostics,
 };
 
 export default es;

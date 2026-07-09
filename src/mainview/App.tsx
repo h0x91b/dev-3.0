@@ -48,6 +48,12 @@ import TaskImageViewer from "./components/TaskImageViewer";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
 import { HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
+import BootstrapScreen, { type BootPhase } from "./components/BootstrapScreen";
+import DiagnosticsPanel from "./components/DiagnosticsPanel";
+import DiagnosticsIndicator from "./components/DiagnosticsIndicator";
+import { useRpcStatus } from "./hooks/useDiagnostics";
+import { reconnectRpc } from "./rpc";
+import { DIAGNOSTICS_OPEN_EVENT } from "./diagnostics";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -87,6 +93,11 @@ function App() {
 	const [, setLocale] = useLocale();
 	useViewport(state.route);
 	useMobileDenseZoom(state.route);
+	// RPC/WebSocket connection state — drives the bootstrap screen's "Connecting…"
+	// phase so a stuck remote/mobile launch tells the user WHERE it's stuck.
+	const rpcState = useRpcStatus();
+	// In-UI diagnostics viewer (opened from the floating indicator / menu).
+	const [showDiagnostics, setShowDiagnostics] = useState(false);
 
 	// Listen for menu actions routed from the bun side. Any menu item that the
 	// renderer is responsible for arrives here as `rpc:menuAction` with
@@ -253,6 +264,13 @@ function App() {
 		function onAuthFailed() { setAuthFailed(true); }
 		window.addEventListener("rpc:authFailed", onAuthFailed);
 		return () => window.removeEventListener("rpc:authFailed", onAuthFailed);
+	}, []);
+
+	// Open the diagnostics viewer on request (floating indicator / menu action).
+	useEffect(() => {
+		function onOpenDiagnostics() { setShowDiagnostics(true); }
+		window.addEventListener(DIAGNOSTICS_OPEN_EVENT, onOpenDiagnostics);
+		return () => window.removeEventListener(DIAGNOSTICS_OPEN_EVENT, onOpenDiagnostics);
 	}, []);
 
 	useEffect(() => {
@@ -884,41 +902,46 @@ function App() {
 			});
 	}, [reqStatus]);
 
+	// Load projects + restore the last route. Extracted from the mount effect so
+	// the bootstrap "Retry" button can re-run it when a load hangs (remote/mobile).
+	const loadProjects = useCallback(async () => {
+		dispatch({ type: "setLoading", loading: true });
+		try {
+			const projects = await api.request.getProjects();
+			dispatch({ type: "setProjects", projects });
+
+			// Restore the last route the user was on (persisted across quit,
+			// reboot, and update restarts). Guard against a stale project route
+			// whose project no longer exists — fall back to the dashboard.
+			try {
+				const { route: savedRoute } = await api.request.getLastRoute();
+				if (savedRoute) {
+					const route = JSON.parse(savedRoute) as Route;
+					const projectId = projectIdForRoute(route);
+					const projectExists =
+						!projectId || projects.some((p) => p.id === projectId && !p.deleted);
+					if (projectExists && route.screen !== "dashboard") {
+						dispatch({ type: "navigate", route });
+					}
+				}
+			} catch {
+				// Ignore — file may not exist or be malformed.
+			}
+		} catch (err) {
+			console.error("Failed to load projects:", err);
+		} finally {
+			// Enable route persistence now that the restore attempt is done,
+			// so subsequent navigations (and the restored route) are saved.
+			routePersistEnabledRef.current = true;
+		}
+		dispatch({ type: "setLoading", loading: false });
+	}, [dispatch]);
+
 	// Load projects on mount — gated on requirements passing
 	useEffect(() => {
 		if (reqStatus !== "passed") return;
-		(async () => {
-			try {
-				const projects = await api.request.getProjects();
-				dispatch({ type: "setProjects", projects });
-
-				// Restore the last route the user was on (persisted across quit,
-				// reboot, and update restarts). Guard against a stale project route
-				// whose project no longer exists — fall back to the dashboard.
-				try {
-					const { route: savedRoute } = await api.request.getLastRoute();
-					if (savedRoute) {
-						const route = JSON.parse(savedRoute) as Route;
-						const projectId = projectIdForRoute(route);
-						const projectExists =
-							!projectId || projects.some((p) => p.id === projectId && !p.deleted);
-						if (projectExists && route.screen !== "dashboard") {
-							dispatch({ type: "navigate", route });
-						}
-					}
-				} catch {
-					// Ignore — file may not exist or be malformed.
-				}
-			} catch (err) {
-				console.error("Failed to load projects:", err);
-			} finally {
-				// Enable route persistence now that the restore attempt is done,
-				// so subsequent navigations (and the restored route) are saved.
-				routePersistEnabledRef.current = true;
-			}
-			dispatch({ type: "setLoading", loading: false });
-		})();
-	}, [dispatch, reqStatus]);
+		void loadProjects();
+	}, [reqStatus, loadProjects]);
 
 	// Refresh projects from disk whenever user returns to the dashboard project list
 	useEffect(() => {
@@ -1692,17 +1715,8 @@ function App() {
 		);
 	}
 
-	if (reqStatus === "checking") {
-		return (
-			<div className="h-full w-full flex items-center justify-center bg-base">
-				<div className="flex items-center gap-3">
-					<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-					<span className="text-fg-3 text-sm">{t("app.loading")}</span>
-				</div>
-			</div>
-		);
-	}
-
+	// Requirements check failed \u2014 a real, actionable screen; keep it ahead of the
+	// generic bootstrap loader.
 	if (reqStatus === "failed") {
 		return (
 			<RequirementsCheck
@@ -1714,15 +1728,34 @@ function App() {
 		);
 	}
 
-	if (state.loading) {
-		return (
-			<div className="h-full w-full flex items-center justify-center bg-base">
-				<div className="flex items-center gap-3">
-					<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-					<span className="text-fg-3 text-sm">{t("app.loading")}</span>
-				</div>
-			</div>
-		);
+	if (reqStatus === "checking" || state.loading) {
+		// In remote mode a not-yet-connected socket is the real reason the bootstrap
+		// hangs, so surface that phase first; otherwise name the local step.
+		const remote = isRemote();
+		const connectionStuck = remote && rpcState !== "connected" && rpcState !== "auth-failed";
+		const phase: BootPhase = connectionStuck
+			? rpcState === "authenticating"
+				? "authenticating"
+				: rpcState === "connecting"
+					? "connecting"
+					: "reconnecting" // "reconnecting" | "closed"
+			: reqStatus === "checking"
+				? "checking"
+				: "loading";
+
+		const onBootRetry = () => {
+			if (connectionStuck) {
+				reconnectRpc();
+				return;
+			}
+			if (reqStatus !== "passed") {
+				void checkRequirements();
+				return;
+			}
+			void loadProjects();
+		};
+
+		return <BootstrapScreen phase={phase} onRetry={onBootRetry} />;
 	}
 
 	const { route } = state;
@@ -2104,6 +2137,8 @@ function App() {
 				/>
 			)}
 			{aboutVersion && <AboutModal version={aboutVersion} onClose={() => setAboutVersion(null)} />}
+			<DiagnosticsIndicator />
+			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 		</div>
 	);
 
