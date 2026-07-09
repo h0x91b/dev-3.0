@@ -1,0 +1,161 @@
+import {
+	existsSync,
+	mkdtempSync,
+	mkdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import type { Project, Task } from "../../shared/types";
+import {
+	ARTIFACT_TEMPLATE_VERSION,
+	artifactTemplateDir,
+	ensureArtifactTemplate,
+	ensureArtifactTemplateEnv,
+} from "../artifact-template";
+
+const tempDirs: string[] = [];
+
+function tempDir(prefix: string): string {
+	const dir = mkdtempSync(join(tmpdir(), prefix));
+	tempDirs.push(dir);
+	return dir;
+}
+
+function project(path: string, kind?: "git" | "virtual"): Project {
+	return { id: "project-1", name: "Example", path, kind } as Project;
+}
+
+function task(): Task {
+	return { id: "12345678-1234-1234-1234-123456789abc", title: "Example" } as Task;
+}
+
+afterEach(() => {
+	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("artifact template provisioning", () => {
+	it("copies the bundled starter into a versioned task-local sibling of the worktree", () => {
+		const root = tempDir("dev3-artifact-template-");
+		const sourceDir = join(root, "bundle");
+		const taskContainerDir = join(root, "task-container");
+		mkdirSync(sourceDir, { recursive: true });
+		writeFileSync(join(sourceDir, "index.html"), "<html>starter</html>");
+		writeFileSync(join(sourceDir, "AUTHORING.md"), "Authoring guide");
+		writeFileSync(join(sourceDir, "dev3-icon.png"), "png");
+
+		const result = ensureArtifactTemplate(project("/repo"), task(), {
+			sourceDir,
+			taskContainerDir,
+		});
+
+		expect(result).toBe(join(taskContainerDir, `artifact-template-v${ARTIFACT_TEMPLATE_VERSION}`));
+		expect(readFileSync(join(result, "index.html"), "utf8")).toBe("<html>starter</html>");
+		expect(readFileSync(join(result, "AUTHORING.md"), "utf8")).toBe("Authoring guide");
+		expect(readFileSync(join(result, "dev3-icon.png"), "utf8")).toBe("png");
+	});
+
+	it("restores managed files without deleting unrelated task-local files", () => {
+		const root = tempDir("dev3-artifact-refresh-");
+		const sourceDir = join(root, "bundle");
+		const taskContainerDir = join(root, "task-container");
+		mkdirSync(sourceDir, { recursive: true });
+		for (const [name, body] of [["index.html", "fresh"], ["AUTHORING.md", "guide"], ["dev3-icon.png", "png"]]) {
+			writeFileSync(join(sourceDir, name), body);
+		}
+		const target = ensureArtifactTemplate(project("/repo"), task(), { sourceDir, taskContainerDir });
+		writeFileSync(join(target, "index.html"), "damaged");
+		writeFileSync(join(target, "keep-me.txt"), "user file");
+
+		ensureArtifactTemplate(project("/repo"), task(), { sourceDir, taskContainerDir });
+
+		expect(readFileSync(join(target, "index.html"), "utf8")).toBe("fresh");
+		expect(readFileSync(join(target, "keep-me.txt"), "utf8")).toBe("user file");
+	});
+
+	it("uses the dev3-owned operation task container for virtual projects", () => {
+		const virtualProject = project("/tmp/dev3/ops/release-ops", "virtual");
+		expect(artifactTemplateDir(virtualProject, task())).toBe(
+			"/tmp/dev3/ops/release-ops/12345678/artifact-template-v1",
+		);
+	});
+
+	it("exports the task-local starter path for launched agents", () => {
+		const root = tempDir("dev3-artifact-env-");
+		const worktreePath = join(root, "task-container", "worktree");
+
+		const env = ensureArtifactTemplateEnv(project("/repo"), task(), worktreePath);
+
+		expect(env).toEqual({
+			DEV3_ARTIFACT_TEMPLATE_DIR: join(root, "task-container", `artifact-template-v${ARTIFACT_TEMPLATE_VERSION}`),
+		});
+		expect(readFileSync(join(env.DEV3_ARTIFACT_TEMPLATE_DIR, "AUTHORING.md"), "utf8")).toContain(
+			"DEV3_ARTIFACT_TEMPLATE_DIR",
+		);
+	});
+
+	it("fails loudly when the bundled starter is incomplete", () => {
+		const root = tempDir("dev3-artifact-missing-");
+		const sourceDir = join(root, "bundle");
+		const taskContainerDir = join(root, "task-container");
+		mkdirSync(sourceDir, { recursive: true });
+		writeFileSync(join(sourceDir, "index.html"), "<html>starter</html>");
+		writeFileSync(join(sourceDir, "AUTHORING.md"), "Authoring guide");
+
+		expect(() => ensureArtifactTemplate(project("/repo"), task(), { sourceDir, taskContainerDir })).toThrow(
+			/Bundled dev3 artifact template is missing dev3-icon\.png/,
+		);
+	});
+});
+
+describe("bundled artifact starter contract", () => {
+	const sourceDir = resolve(import.meta.dirname, "../../assets/artifact-template");
+	const htmlPath = join(sourceDir, "index.html");
+
+	it("ships the branded responsive interactive starter and authoring guide", () => {
+		expect(existsSync(htmlPath)).toBe(true);
+		const html = readFileSync(htmlPath, "utf8");
+		const guide = readFileSync(join(sourceDir, "AUTHORING.md"), "utf8");
+
+		expect(html).toContain('data-dev3-artifact-template="v1"');
+		expect(html).toContain("DEV3 ARTIFACT · OPERATIONS");
+		expect(html).toContain("Built with dev3 Artifacts");
+		expect(html).toContain('src="dev3-icon.png"');
+		expect(html).toContain("◐ Auto");
+		expect(html).toContain("☀ Light");
+		expect(html).toContain("☾ Dark");
+		expect(html).toContain("prefers-color-scheme");
+		expect(html).toContain("dev3-artifact-theme");
+		expect(html).toContain("@media(max-width:560px)");
+		expect(html).toContain("<form");
+		expect(html).toContain("<svg");
+		expect(html).toContain("data-sort");
+		expect(guide).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
+		expect(guide).toContain("dev3 show-artifact");
+	});
+
+	it("defines the complete dev3 semantic token contract without network dependencies", () => {
+		const html = readFileSync(htmlPath, "utf8");
+		for (const token of [
+			"--dev3-surface-base",
+			"--dev3-surface-raised",
+			"--dev3-surface-elevated",
+			"--dev3-text-primary",
+			"--dev3-text-secondary",
+			"--dev3-text-muted",
+			"--dev3-border",
+			"--dev3-accent",
+			"--dev3-success",
+			"--dev3-warning",
+			"--dev3-danger",
+			"--dev3-on-accent",
+			"--dev3-shadow",
+		]) {
+			expect(html).toContain(token);
+		}
+		expect(html).not.toMatch(/https?:\/\//);
+	});
+});

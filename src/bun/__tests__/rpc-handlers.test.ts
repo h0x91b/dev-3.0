@@ -191,6 +191,12 @@ vi.mock("../agent-hooks", () => ({
 	setupAgentHooks: vi.fn(),
 }));
 
+vi.mock("../artifact-template", () => ({
+	ensureArtifactTemplateEnv: vi.fn(() => ({
+		DEV3_ARTIFACT_TEMPLATE_DIR: "/tmp/test-dev3/artifact-template-v1",
+	})),
+}));
+
 vi.mock("../cow-clone", () => ({
 	clonePaths: vi.fn(),
 }));
@@ -6561,7 +6567,10 @@ describe("handlers.removeProject with project terminal", () => {
 // ================================================================
 
 describe("handlers.spawnAgentInTask", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
+	});
 
 	it("spawns agent with split-window -h in the tmux session", async () => {
 		const project = makeProject();
@@ -6591,6 +6600,8 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(splitCall).toBeDefined();
 		expect(splitCall![0]).toContain("DEV3_TASK_ID=abcd1234-full-id");
 		expect(splitCall![0]).toContain("DEV3_WORKTREE_ROOT=/tmp/wt");
+		const [, script] = (globalThis as any).Bun.write.mock.calls[0];
+		expect(script).toContain("export DEV3_ARTIFACT_TEMPLATE_DIR='/tmp/test-dev3/artifact-template-v1'");
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
 			agentId: "builtin-claude",
 			configId: "claude-default",
@@ -6680,6 +6691,7 @@ describe("handlers.spawnBugHuntersInTask", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		vi.useFakeTimers();
+		(globalThis as any).Bun.write = vi.fn().mockResolvedValue(undefined);
 	});
 	afterEach(() => {
 		vi.useRealTimers();
@@ -6726,6 +6738,11 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		// collapse the main left pane to 1/N of the window height.
 		const layoutCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]).filter((args) => args.includes("select-layout"));
 		expect(layoutCalls).toHaveLength(0);
+		const writtenScripts = (globalThis as any).Bun.write.mock.calls.map(([, script]: [string, string]) => script);
+		expect(writtenScripts).toHaveLength(3);
+		for (const script of writtenScripts) {
+			expect(script).toContain("export DEV3_ARTIFACT_TEMPLATE_DIR='/tmp/test-dev3/artifact-template-v1'");
+		}
 
 		// After 5s the auto-paste of /dev3-bug-hunter happens. The prompt MUST
 		// lock the hunter to changes in this branch only — otherwise hunters
@@ -6865,6 +6882,24 @@ describe("launchTaskPty", () => {
 		// this block toggle process.env.SHELL, so reset the cache to honor it.
 		const shellEnv = await import("../shell-env");
 		shellEnv._resetUserShellCacheForTests();
+	});
+
+	it("injects the absolute task-local artifact starter path into the session", async () => {
+		const project = makeProject();
+		const task = makeTask();
+
+		await launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+
+		expect(pty.createSession).toHaveBeenCalledWith(
+			task.id,
+			project.id,
+			"/tmp/wt",
+			expect.any(String),
+			expect.objectContaining({
+				DEV3_ARTIFACT_TEMPLATE_DIR: "/tmp/test-dev3/artifact-template-v1",
+			}),
+			expect.any(String),
+		);
 	});
 
 	it("does not append manual review instructions for Claude launches when automatic review is enabled", async () => {

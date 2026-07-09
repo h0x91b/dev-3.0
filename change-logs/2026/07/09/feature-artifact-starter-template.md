@@ -1,0 +1,1 @@
+Give every dev3 task a pristine branded HTML artifact starter with semantic tokens, responsive interactive components, and an Auto/Light/Dark theme switch. Agents receive its absolute task-local path and guidance that unqualified interactive artifact requests usually mean dev3 artifacts.

@@ -37,6 +37,17 @@ describe("platform feedback skill section (always present)", () => {
 });
 
 describe("dev3 skill content", () => {
+	it("routes unqualified artifacts to the task-local dev3 starter", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("## dev3 HTML artifacts");
+			expect(skill).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
+			expect(skill).toContain("Copy the entire template directory");
+			expect(skill).toContain("Read `AUTHORING.md`");
+			expect(skill).toContain("Claude Artifacts");
+			expect(skill).toContain("dev3 show-artifact");
+		}
+	});
+
 	it("folds label guidance into the session-start title pass", () => {
 		const codexSkill = getCodexSkillContent();
 		expect(codexSkill).toContain(

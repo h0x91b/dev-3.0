@@ -10,3 +10,9 @@ describe("electrobun macOS entitlements", () => {
 		);
 	});
 });
+
+describe("electrobun bundled resources", () => {
+	it("ships the canonical artifact starter beside the app resources", () => {
+		expect(config.build.copy["src/assets/artifact-template"]).toBe("artifact-template");
+	});
+});

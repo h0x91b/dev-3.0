@@ -31,6 +31,7 @@ Last updated: 2026-07-09
 | **Status hooks (automatic)** | Yes (4 hooks) | — | Yes (6 worktree-local hooks, automatically trusted) | — | — |
 | **Status management** | Automatic via hooks | Manual (SKILL.md) | Automatic via hooks with `user-questions`/legacy-session fallback | Manual (SKILL.md) | Manual (SKILL.md) |
 | **Rate-limit tracking** | Yes (statusLine wrapper injected via `--settings`, `dev3 statusline`) | — | Yes (rollout files + cached live monthly credits via `codex app-server`) | — | — |
+| **dev3 artifact starter** | Yes (`DEV3_ARTIFACT_TEMPLATE_DIR`) | Yes | Yes | Yes | Yes |
 
 ## Status Hooks
 
@@ -70,7 +71,7 @@ The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Thre
 - **Codex variant** — full body; hook-aware status section with manual fallback for older sessions, keeps the `/bin/bash` shell note. The same body is also injected out-of-band as a developer message via `-c developer_instructions=...` on every dev3 launch, including scratch tasks and resume (decision 115); the skill file remains the fallback for sessions started outside the dev3 launcher
 - **Generic variant** — full body (for Gemini it is the only protocol channel); full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
 
-All variants teach the same two-step dev3 bug-feedback flow: send the private anonymous vent first, then offer to create a public `h0x91b/dev-3.0` GitHub issue with the `Reported by AI` label after explicit user approval.
+All variants teach the same two-step dev3 bug-feedback flow: send the private anonymous vent first, then offer to create a public `h0x91b/dev-3.0` GitHub issue with the `Reported by AI` label after explicit user approval. They also treat an unqualified interactive artifact/report/dashboard request as a likely dev3 HTML artifact, while preserving explicit Claude Artifact and build/package meanings, and require agents to copy the task-local starter before editing it.
 
 ### dev3-project-config (project configuration)
 

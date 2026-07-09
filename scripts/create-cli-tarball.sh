@@ -18,6 +18,7 @@ set -euo pipefail
 #   ./dev3                ← compiled CLI + headless server (one binary)
 #   ./dist/index.html     ← UI entry
 #   ./dist/assets/...     ← UI assets
+#   ./artifact-template/  ← canonical dev3 HTML artifact starter
 
 OS="${1:?Usage: $0 <os> <arch> (os: macos|linux, arch: arm64|x64)}"
 ARCH="${2:?Usage: $0 <os> <arch> (os: macos|linux, arch: arm64|x64)}"
@@ -46,6 +47,7 @@ chmod 0755 "$STAGE_DIR/dev3"
 
 cp ./dist/index.html "$STAGE_DIR/dist/"
 [ -d ./dist/assets ] && cp -r ./dist/assets "$STAGE_DIR/dist/assets"
+cp -r ./src/assets/artifact-template "$STAGE_DIR/artifact-template"
 
 # Pack contents (no leading ./dev3-cli/ wrapper — extracts straight into CWD).
 # Plain `tar czf` — works on both GNU tar (Linux) and BSD tar (macOS).
