@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskDetailModal from "../TaskDetailModal";
 import { I18nProvider } from "../../i18n";
@@ -17,6 +17,9 @@ vi.mock("../../rpc", () => ({
 			deleteTaskNote: vi.fn(),
 			deleteTask: vi.fn(),
 			setTaskLabels: vi.fn(),
+			uploadFileBase64: vi.fn(),
+			pasteClipboardImage: vi.fn(),
+			readImageBase64: vi.fn(),
 		},
 	},
 }));
@@ -66,6 +69,27 @@ function makeTodoTask(overrides: Partial<Task> = {}): Task {
 		updatedAt: "2025-01-01T00:00:00Z",
 		...overrides,
 	};
+}
+
+function makeFileList(files: File[]): FileList {
+	return {
+		length: files.length,
+		item: (index: number) => files[index] ?? null,
+		...Object.fromEntries(files.map((file, index) => [index, file])),
+	} as unknown as FileList;
+}
+
+function dispatchDrop(target: Element, files: File[]) {
+	const event = new MouseEvent("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(event, "dataTransfer", {
+		value: {
+			files: makeFileList(files),
+			dropEffect: "copy" as const,
+		},
+	});
+	act(() => {
+		target.dispatchEvent(event);
+	});
 }
 
 function renderModal(
@@ -183,6 +207,36 @@ describe("TaskDetailModal", () => {
 			renderModal(task);
 
 			expect(screen.queryByText("Edit")).not.toBeInTheDocument();
+		});
+
+		it("uploads an image dropped into the edit textarea and appends the saved path", async () => {
+			mockedApi.request.uploadFileBase64.mockResolvedValue({ path: "/tmp/uploaded-drop.png" });
+			mockedApi.request.readImageBase64.mockResolvedValue({ dataUrl: "data:image/png;base64,AAAA" });
+			const task = makeTodoTask({ description: "original" });
+			renderModal(task);
+			const user = userEvent.setup();
+
+			await user.click(screen.getByText("Edit"));
+			const textarea = screen.getByRole("textbox") as HTMLTextAreaElement;
+			// Caret at end so the inserted path is appended deterministically.
+			textarea.selectionStart = textarea.value.length;
+			textarea.selectionEnd = textarea.value.length;
+			const file = new File(["abc"], "drop.jpg", { type: "image/jpeg", lastModified: 1711111111111 });
+
+			// The textarea's parent is the drop-zone wrapper carrying the DnD handlers.
+			dispatchDrop(textarea.parentElement!, [file]);
+
+			await waitFor(() => {
+				expect(mockedApi.request.uploadFileBase64).toHaveBeenCalledWith({
+					projectId: "p1",
+					base64: "YWJj",
+					filename: "drop.jpg",
+					mimeType: "image/jpeg",
+				});
+			});
+			await waitFor(() => {
+				expect(textarea.value).toBe("original\n/tmp/uploaded-drop.png\n");
+			});
 		});
 	});
 

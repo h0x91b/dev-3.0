@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { Project, Task, TaskStatus } from "../../shared/types";
@@ -7,6 +7,7 @@ import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import { NoteItem, formatDate } from "./NoteItem";
+import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -15,6 +16,9 @@ import { getStatusLabel } from "../utils/statusLabel";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { trackEvent, agentNameFromId } from "../analytics";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { useClipboardPaste } from "../hooks/useClipboardPaste";
+import { useFileDrop } from "../hooks/useFileDrop";
+import { removeImagePath } from "../utils/imageAttachments";
 
 interface TaskDetailModalProps {
 	task: Task;
@@ -69,6 +73,36 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 		setEditValue(task.description);
 		setIsEditing(true);
 	}
+
+	// Insert an uploaded/pasted path into the edit textarea at the caret, mirroring
+	// CreateTaskModal so editing a todo task supports drag-drop and paste image upload.
+	const insertPathAtCursor = useCallback((path: string) => {
+		setEditValue((prev) => {
+			const el = textareaRef.current;
+			if (!el) {
+				return prev + (prev && !prev.endsWith("\n") ? "\n" : "") + path + "\n";
+			}
+			const start = el.selectionStart;
+			const end = el.selectionEnd;
+			const prefix = start > 0 && prev[start - 1] !== "\n" ? "\n" : "";
+			const insert = prefix + path + "\n";
+			const next = prev.slice(0, start) + insert + prev.slice(end);
+			requestAnimationFrame(() => {
+				const pos = start + insert.length;
+				el.selectionStart = pos;
+				el.selectionEnd = pos;
+				el.focus();
+			});
+			return next;
+		});
+	}, []);
+
+	const handleRemovePath = useCallback((path: string) => {
+		setEditValue((prev) => removeImagePath(prev, path));
+	}, []);
+
+	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
 
 	async function handleSave() {
 		const trimmed = editValue.trim();
@@ -432,15 +466,38 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 
 						{isEditing ? (
 							<div className="space-y-2">
-								<textarea
-									ref={textareaRef}
-									value={editValue}
-									onChange={(e) => setEditValue(e.target.value)}
-									onKeyDown={handleEditKeyDown}
-									rows={8}
-									className="w-full bg-elevated border border-edge-active rounded-xl px-3 py-2.5 text-sm text-fg leading-relaxed resize-y outline-none focus:border-accent/60 transition-colors min-h-[7.5rem] max-h-[25rem]"
-									disabled={saving}
-								/>
+								<div
+									className="relative"
+									onDragOver={handleDragOver}
+									onDragEnter={handleDragEnter}
+									onDragLeave={handleDragLeave}
+									onDrop={handleDrop}
+								>
+									{isDragging && (
+										<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent/10 pointer-events-none">
+											<div className="flex items-center gap-2 text-accent font-medium text-sm">
+												<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+													<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+												</svg>
+												{t("images.dropHere")}
+											</div>
+										</div>
+									)}
+									<textarea
+										ref={textareaRef}
+										value={editValue}
+										onChange={(e) => setEditValue(e.target.value)}
+										onKeyDown={handleEditKeyDown}
+										onPaste={handlePaste}
+										rows={8}
+										className="w-full bg-elevated border border-edge-active rounded-xl px-3 py-2.5 text-sm text-fg leading-relaxed resize-y outline-none focus:border-accent/60 transition-colors min-h-[7.5rem] max-h-[25rem]"
+										disabled={saving}
+									/>
+								</div>
+								{isPasting && (
+									<span className="text-[0.6875rem] text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
+								)}
+								<ImageAttachmentsStrip text={editValue} onRemovePath={handleRemovePath} />
 								{generatedTitle && generatedTitle !== editValue.trim() && (
 									<div className="text-fg-3 text-xs">
 										{t("createTask.generatedTitle")}{" "}

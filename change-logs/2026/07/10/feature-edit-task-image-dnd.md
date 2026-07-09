@@ -1,0 +1,1 @@
+Editing a todo task's description now supports drag-and-drop and clipboard-paste image/file upload, with an inline attachments strip — matching the create-task modal. Previously the edit textarea in the task detail modal was plain text only.
