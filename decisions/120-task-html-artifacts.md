@@ -10,7 +10,7 @@ A full TSX/backend mini-runtime adds dependency installation, port lifecycle, sh
 
 ## Decision
 
-`dev3 show-artifact` accepts one self-contained `.html` file plus optional `--images` assets from the HTML directory tree, preserves their safe relative paths inside an additive `shared-artifacts/<id>/` directory, and stores `Task.sharedArtifacts` alongside the untouched `sharedImages` field. The renderer uses an opaque-origin `iframe sandbox="allow-scripts"`, an injected restrictive CSP, and a stable namespaced dark/light token contract; assets are data-URL rewritten only for display. Artifacts open in a resizable right-side workspace with fullscreen, while downloads return HTML alone or a dependency-free STORE ZIP when images exist.
+`dev3 show-artifact` accepts one self-contained `.html` file plus optional `--images` assets from the HTML directory tree, preserves their safe relative paths inside an additive `shared-artifacts/<id>/` directory, and stores `Task.sharedArtifacts` alongside the untouched `sharedImages` field. The renderer uses an opaque-origin `iframe sandbox="allow-scripts"`, an injected restrictive CSP, and a stable namespaced dark/light token contract with a viewer-local Follow dev3/Light/Dark override; assets are data-URL rewritten only for display. Artifacts open in a pointer-captured, resizable right-side workspace with fullscreen, while downloads return HTML alone or a dependency-free STORE ZIP when images exist.
 
 ## Risks
 

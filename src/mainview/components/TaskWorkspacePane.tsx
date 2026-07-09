@@ -17,6 +17,16 @@ const MIN_ARTIFACT_WIDTH = 360;
 const MAX_ARTIFACT_RATIO = 0.8;
 const ARTIFACT_WIDTH_KEY = "dev3-artifact-panel-width";
 
+interface ArtifactResizeSession {
+	pointerId: number;
+	startX: number;
+	startWidth: number;
+	lastWidth: number;
+	target: HTMLDivElement;
+	previousCursor: string;
+	previousUserSelect: string;
+}
+
 function initialArtifactWidth(): number {
 	try {
 		const value = Number(localStorage.getItem(ARTIFACT_WIDTH_KEY));
@@ -57,36 +67,69 @@ function TaskWorkspacePane({
 	const t = useT();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [artifactWidth, setArtifactWidth] = useState(initialArtifactWidth);
+	const [artifactResizing, setArtifactResizing] = useState(false);
 	const artifactPanelRef = useRef<HTMLDivElement>(null);
+	const resizeSessionRef = useRef<ArtifactResizeSession | null>(null);
 	const showArtifact = artifactViewer?.taskId === taskId && !inlineDiffRequest;
 
 	useEffect(() => {
 		try { localStorage.setItem(ARTIFACT_WIDTH_KEY, String(Math.round(artifactWidth))); } catch { /* ignore */ }
 	}, [artifactWidth]);
 
-	const onArtifactResizeStart = useCallback((event: React.MouseEvent) => {
+	const clampArtifactWidth = useCallback((width: number) => {
+		const total = artifactPanelRef.current?.parentElement?.clientWidth || window.innerWidth;
+		return Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, width));
+	}, []);
+
+	const finishArtifactResize = useCallback((releaseCapture: boolean) => {
+		const session = resizeSessionRef.current;
+		if (!session) return;
+		resizeSessionRef.current = null;
+		setArtifactWidth(session.lastWidth);
+		setArtifactResizing(false);
+		document.body.style.cursor = session.previousCursor;
+		document.body.style.userSelect = session.previousUserSelect;
+		if (releaseCapture && session.target.hasPointerCapture(session.pointerId)) {
+			session.target.releasePointerCapture(session.pointerId);
+		}
+	}, []);
+
+	const onArtifactResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+		if (event.button !== 0) return;
 		event.preventDefault();
-		const startX = event.clientX;
 		const startWidth = artifactPanelRef.current?.offsetWidth ?? artifactWidth;
-		const panel = artifactPanelRef.current;
-		function onMove(move: MouseEvent) {
-			const total = panel?.parentElement?.clientWidth || window.innerWidth;
-			const width = Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, startWidth - (move.clientX - startX)));
-			if (panel) panel.style.width = `${width}px`;
-		}
-		function onUp(up: MouseEvent) {
-			document.removeEventListener("mousemove", onMove);
-			document.removeEventListener("mouseup", onUp);
-			const total = panel?.parentElement?.clientWidth || window.innerWidth;
-			setArtifactWidth(Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, startWidth - (up.clientX - startX))));
-		}
-		document.addEventListener("mousemove", onMove);
-		document.addEventListener("mouseup", onUp);
+		event.currentTarget.setPointerCapture(event.pointerId);
+		resizeSessionRef.current = {
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			startWidth,
+			lastWidth: startWidth,
+			target: event.currentTarget,
+			previousCursor: document.body.style.cursor,
+			previousUserSelect: document.body.style.userSelect,
+		};
+		document.body.style.cursor = "col-resize";
+		document.body.style.userSelect = "none";
+		setArtifactResizing(true);
 	}, [artifactWidth]);
 
+	const onArtifactResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+		const session = resizeSessionRef.current;
+		if (!session || session.pointerId !== event.pointerId) return;
+		const width = clampArtifactWidth(session.startWidth - (event.clientX - session.startX));
+		session.lastWidth = width;
+		if (artifactPanelRef.current) artifactPanelRef.current.style.width = `${width}px`;
+	}, [clampArtifactWidth]);
+
 	const resizeArtifactBy = useCallback((delta: number) => {
-		const total = artifactPanelRef.current?.parentElement?.clientWidth || window.innerWidth;
-		setArtifactWidth((width) => Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, width + delta)));
+		setArtifactWidth((width) => clampArtifactWidth(width + delta));
+	}, [clampArtifactWidth]);
+
+	useEffect(() => () => {
+		const session = resizeSessionRef.current;
+		if (!session) return;
+		document.body.style.cursor = session.previousCursor;
+		document.body.style.userSelect = session.previousUserSelect;
 	}, []);
 
 	useEffect(() => {
@@ -123,6 +166,9 @@ function TaskWorkspacePane({
 
 	return (
 		<div className="h-full w-full relative overflow-hidden">
+			{artifactResizing && (
+				<div data-testid="artifact-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize" />
+			)}
 			<div className={inlineDiffRequest ? "h-full hidden" : "h-full flex min-w-0"}>
 				{/* key={taskId} forces a fresh TaskTerminal instance per task.
 				   Without it, the previous task's cached `ptyUrl` state is
@@ -147,9 +193,13 @@ function TaskWorkspacePane({
 					<>
 						{!isNarrow && (
 							<div
-								className="flex w-[5px] flex-shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10"
-								onMouseDown={onArtifactResizeStart}
-								onDoubleClick={() => setArtifactWidth(DEFAULT_ARTIFACT_WIDTH)}
+								className={`group flex w-4 flex-shrink-0 touch-none cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10 focus-visible:bg-accent/10 focus-visible:outline-none ${artifactResizing ? "bg-accent/15" : ""}`}
+								onPointerDown={onArtifactResizeStart}
+								onPointerMove={onArtifactResizeMove}
+								onPointerUp={() => finishArtifactResize(true)}
+								onPointerCancel={() => finishArtifactResize(true)}
+								onLostPointerCapture={() => finishArtifactResize(false)}
+								onDoubleClick={() => setArtifactWidth(clampArtifactWidth(DEFAULT_ARTIFACT_WIDTH))}
 								onKeyDown={(event) => {
 									if (event.key === "ArrowLeft") { event.preventDefault(); resizeArtifactBy(24); }
 									else if (event.key === "ArrowRight") { event.preventDefault(); resizeArtifactBy(-24); }
@@ -162,7 +212,7 @@ function TaskWorkspacePane({
 								aria-valuemax={Math.round((artifactPanelRef.current?.parentElement?.clientWidth || window.innerWidth) * MAX_ARTIFACT_RATIO)}
 								aria-valuenow={Math.round(artifactWidth)}
 							>
-								<div className="h-8 w-[3px] rounded-full bg-fg-muted/40" />
+								<div className={`h-10 rounded-full transition-all group-hover:bg-accent group-focus-visible:bg-accent ${artifactResizing ? "w-1 bg-accent" : "w-[3px] bg-fg-muted/40"}`} />
 							</div>
 						)}
 						<div

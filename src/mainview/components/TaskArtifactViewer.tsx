@@ -11,6 +11,8 @@ interface TaskArtifactViewerProps {
 	onClose: () => void;
 }
 
+type ArtifactThemeMode = "follow" | "light" | "dark";
+
 const ICON = "'JetBrainsMono Nerd Font Mono'";
 
 function currentTheme(): "dark" | "light" {
@@ -36,6 +38,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 	const [error, setError] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
 	const [downloading, setDownloading] = useState(false);
+	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>("follow");
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const viewerRef = useRef<HTMLElement>(null);
 	const current = artifacts[index];
@@ -58,8 +61,13 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 	}, [current]);
 
 	const sendTheme = useCallback(() => {
-		frameRef.current?.contentWindow?.postMessage({ type: "dev3-artifact-theme", theme: currentTheme() }, "*");
-	}, []);
+		const theme = themeMode === "follow" ? currentTheme() : themeMode;
+		frameRef.current?.contentWindow?.postMessage({ type: "dev3-artifact-theme", theme }, "*");
+	}, [themeMode]);
+
+	useEffect(() => {
+		sendTheme();
+	}, [sendTheme]);
 
 	useEffect(() => {
 		const observer = new MutationObserver(sendTheme);
@@ -105,6 +113,12 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 		}
 	};
 	const iconButton = "flex h-11 w-11 sm:h-8 sm:w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-40";
+	const themeName = themeMode === "follow"
+		? t("artifactViewer.themeFollow")
+		: themeMode === "light" ? t("artifactViewer.themeLight") : t("artifactViewer.themeDark");
+	const themeLabel = t("artifactViewer.themeMode", { mode: themeName });
+	const cycleTheme = () => setThemeMode((mode) => mode === "follow" ? "light" : mode === "light" ? "dark" : "follow");
+	const themeIcon = themeMode === "follow" ? "◐" : themeMode === "light" ? "" : "";
 
 	return (
 		<section
@@ -128,6 +142,14 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 						<button type="button" className={iconButton} disabled={index === artifacts.length - 1} onClick={() => go(1)} aria-label={t("artifactViewer.next")}><span style={{ fontFamily: ICON }}></span></button>
 					</>
 				)}
+				<button
+					type="button"
+					data-testid="artifact-viewer-theme"
+					className={`${iconButton} ${themeMode === "follow" ? "" : "bg-accent/10 text-accent"}`}
+					onClick={cycleTheme}
+					aria-label={themeLabel}
+					title={themeLabel}
+				><span style={{ fontFamily: ICON }}>{themeIcon}</span></button>
 				<button type="button" className={iconButton} disabled={downloading} onClick={download} aria-label={current.bundlePath ? t("artifactViewer.downloadZip") : t("artifactViewer.downloadHtml")}><span style={{ fontFamily: ICON }}>{downloading ? "" : ""}</span></button>
 				<button type="button" data-testid="artifact-viewer-fullscreen" className={iconButton} onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("artifactViewer.exitFullscreen") : t("artifactViewer.fullscreen")}><span style={{ fontFamily: ICON }}>{fullscreen ? "" : ""}</span></button>
 				<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>

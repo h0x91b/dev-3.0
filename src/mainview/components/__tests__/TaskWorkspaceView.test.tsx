@@ -1,5 +1,5 @@
 import { useEffect, type ReactElement } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, SharedArtifact, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -197,6 +197,22 @@ describe("TaskWorkspaceView", () => {
 		separator.focus();
 		await userEvent.keyboard("{ArrowLeft}");
 		expect(separator).toHaveAttribute("aria-valuenow", "584");
+		const setPointerCapture = vi.fn();
+		const releasePointerCapture = vi.fn();
+		Object.defineProperties(separator, {
+			setPointerCapture: { value: setPointerCapture },
+			releasePointerCapture: { value: releasePointerCapture },
+			hasPointerCapture: { value: () => true },
+		});
+		fireEvent.pointerDown(separator, { pointerId: 7, clientX: 900 });
+		expect(setPointerCapture).toHaveBeenCalledWith(7);
+		expect(screen.getByTestId("artifact-resize-shield")).toBeInTheDocument();
+		fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
+		fireEvent.pointerUp(separator, { pointerId: 7, clientX: 850 });
+		expect(releasePointerCapture).toHaveBeenCalledWith(7);
+		expect(screen.queryByTestId("artifact-resize-shield")).not.toBeInTheDocument();
+		expect(document.body.style.cursor).toBe("");
+		expect(document.body.style.userSelect).toBe("");
 		await userEvent.click(screen.getByText("Close Artifact"));
 		expect(onClose).toHaveBeenCalledOnce();
 	});
