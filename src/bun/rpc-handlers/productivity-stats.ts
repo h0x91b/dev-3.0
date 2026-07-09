@@ -35,6 +35,9 @@ export function toStatEvent(
 		agentId: task.agentId ?? null,
 		groupId: task.groupId ?? null,
 		variantIndex: task.variantIndex ?? null,
+		statusDurations: task.statusDurations ?? {},
+		statusEnteredAt: task.statusEnteredAt ?? null,
+		focusMs: task.focusMs ?? 0,
 	};
 }
 

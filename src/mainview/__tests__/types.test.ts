@@ -14,8 +14,9 @@ import {
 	LABEL_COLORS,
 	isBuiltinOpsProject,
 	orderProjectsForDisplay,
+	computeTaskTimeBreakdown,
 } from "../../shared/types";
-import type { Project, TaskStatus } from "../../shared/types";
+import type { Project, TaskStatus, TaskTimeInput } from "../../shared/types";
 
 // ---- hexToRgb ----
 
@@ -469,5 +470,71 @@ describe("orderProjectsForDisplay", () => {
 		const v = proj({ id: "v", kind: "virtual" });
 		const input = [a, v];
 		expect(orderProjectsForDisplay(input)).toBe(input);
+	});
+});
+
+// ---- computeTaskTimeBreakdown ----
+
+describe("computeTaskTimeBreakdown", () => {
+	const HOUR = 3_600_000;
+	const MIN = 60_000;
+	const NOW = Date.parse("2026-07-05T12:00:00.000Z");
+	const iso = (offsetMs: number) => new Date(NOW - offsetMs).toISOString();
+
+	it("uses finalized durations for a terminal (completed) task", () => {
+		const task: TaskTimeInput = {
+			status: "completed",
+			createdAt: iso(4 * HOUR),
+			movedAt: iso(1 * HOUR), // total lifetime = 3h
+			statusDurations: { "in-progress": 90 * MIN, "review-by-ai": 30 * MIN, "review-by-user": 20 * MIN },
+			statusEnteredAt: iso(1 * HOUR),
+			focusMs: 25 * MIN,
+		};
+		const tb = computeTaskTimeBreakdown(task, NOW);
+		expect(tb.totalMs).toBe(3 * HOUR);
+		expect(tb.agentMs).toBe(90 * MIN + 30 * MIN);
+		expect(tb.userMs).toBe(20 * MIN);
+		expect(tb.focusMs).toBe(25 * MIN);
+		expect(tb.hasStatusTracking).toBe(true);
+	});
+
+	it("credits the live portion of the current status for an active task", () => {
+		const task: TaskTimeInput = {
+			status: "in-progress",
+			createdAt: iso(2 * HOUR),
+			statusDurations: { "in-progress": 30 * MIN }, // prior in-progress stint
+			statusEnteredAt: iso(15 * MIN), // entered current in-progress 15m ago
+			focusMs: 10 * MIN,
+		};
+		const tb = computeTaskTimeBreakdown(task, NOW);
+		expect(tb.totalMs).toBe(2 * HOUR); // create → now (active)
+		expect(tb.agentMs).toBe(30 * MIN + 15 * MIN); // prior + live 15m
+	});
+
+	it("reports total time but zero agent/user split for legacy tasks", () => {
+		const task: TaskTimeInput = {
+			status: "completed",
+			createdAt: iso(90 * MIN),
+			movedAt: iso(30 * MIN),
+		};
+		const tb = computeTaskTimeBreakdown(task, NOW);
+		expect(tb.totalMs).toBe(60 * MIN);
+		expect(tb.agentMs).toBe(0);
+		expect(tb.userMs).toBe(0);
+		expect(tb.hasStatusTracking).toBe(false);
+	});
+
+	it("never credits the sit-time of a terminal status", () => {
+		// A completed task's statusEnteredAt is old, but 'completed' isn't an agent/
+		// user status and the live portion is not credited for terminal tasks.
+		const task: TaskTimeInput = {
+			status: "completed",
+			createdAt: iso(3 * HOUR),
+			movedAt: iso(2 * HOUR),
+			statusDurations: { "in-progress": 60 * MIN },
+			statusEnteredAt: iso(2 * HOUR),
+		};
+		const tb = computeTaskTimeBreakdown(task, NOW);
+		expect(tb.agentMs).toBe(60 * MIN);
 	});
 });

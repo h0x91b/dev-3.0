@@ -33,6 +33,9 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		agentId: "claude",
 		groupId: null,
 		variantIndex: null,
+		statusDurations: {},
+		statusEnteredAt: null,
+		focusMs: 0,
 		...over,
 	};
 }
@@ -116,6 +119,39 @@ describe("ProductivityStatsView", () => {
 		// Wait for data, then confirm the desktop gauge branch is used.
 		expect(await screen.findByText("Tasks shipped")).toBeInTheDocument();
 		expect(screen.queryByTestId("hero-stats-compact")).not.toBeInTheDocument();
+	});
+
+	it("renders the Time invested section with agent/your split from tracking data", async () => {
+		mockGet.mockResolvedValue({
+			events: [
+				ev({
+					createdAt: new Date(Date.now() - 3 * DAY).toISOString(),
+					movedAt: new Date(Date.now() - 1 * DAY).toISOString(),
+					statusDurations: { "in-progress": 90 * 60_000, "review-by-ai": 15 * 60_000 },
+					statusEnteredAt: new Date(Date.now() - 1 * DAY).toISOString(),
+					focusMs: 45 * 60_000,
+				}),
+			],
+			generatedAt: new Date().toISOString(),
+		});
+		renderView();
+		expect(await screen.findByText("Time invested")).toBeInTheDocument();
+		expect(screen.getByText("Agent time")).toBeInTheDocument();
+		expect(screen.getByText("Your time")).toBeInTheDocument();
+		// Agent = 90m + 15m → "1h 45m"; your focus = 45m → "45m".
+		expect(screen.getByText("1h 45m")).toBeInTheDocument();
+		expect(screen.getByText("45m")).toBeInTheDocument();
+		// The agent-vs-you split bar renders when there is hands-on time.
+		expect(screen.getByText("Agent vs you")).toBeInTheDocument();
+	});
+
+	it("shows the tracking-starts-now hint for legacy tasks without tracking", async () => {
+		mockGet.mockResolvedValue({
+			events: [ev({ statusDurations: {}, statusEnteredAt: null, focusMs: 0 })],
+			generatedAt: new Date().toISOString(),
+		});
+		renderView();
+		expect(await screen.findByText("Agent / your split starts tracking now")).toBeInTheDocument();
 	});
 
 	it("shows token + API-cost counters when agent usage exists in the period", async () => {

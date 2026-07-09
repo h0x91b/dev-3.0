@@ -3,7 +3,7 @@ import type { AgentUsageDay, ProductivityStatEvent } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import type { Route } from "../state";
-import { computeProductivityStats, gaugeMax, type StatsRange } from "../utils/productivityStats";
+import { computeProductivityStats, formatDuration, gaugeMax, type StatsRange } from "../utils/productivityStats";
 import { StatGauge } from "./stats/StatGauge";
 import { BarChart } from "./stats/BarChart";
 import { AreaChart } from "./stats/AreaChart";
@@ -35,7 +35,7 @@ function compact(n: number): string {
 const fmtInt = (n: number): string => String(Math.round(n));
 const fmtPct = (n: number): string => `${Math.round(n)}%`;
 const fmtOne = (n: number): string => n.toFixed(1);
-function formatDuration(hours: number, units: { minute: string; hour: string; day: string }): string {
+function formatLifetimeUnits(hours: number, units: { minute: string; hour: string; day: string }): string {
 	const minutes = Math.round(hours * 60);
 	if (minutes < 60) return `${minutes}${units.minute}`;
 	const days = Math.floor(minutes / (24 * 60));
@@ -151,7 +151,7 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 	})();
 	const periodRange = `${new Date(data.periodFrom).toLocaleDateString()} – ${new Date(data.periodTo).toLocaleDateString()}`;
 	const periodNavTitle = offset === 0 ? periodRange : `${t("stats.nav.current")} · ${periodRange}`;
-	const formatLifetime = (hours: number) => formatDuration(hours, {
+	const formatLifetime = (hours: number) => formatLifetimeUnits(hours, {
 		minute: t("stats.unit.minuteShort"),
 		hour: t("stats.unit.hourShort"),
 		day: t("stats.unit.dayShort"),
@@ -467,6 +467,53 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 							)}
 						</div>
 
+						{/* Time invested — total / agent / your-focus across the period's completed tasks */}
+						<div>
+							<div className="flex items-center justify-between mb-3">
+								<div className="text-fg-2 text-sm font-semibold">{t("stats.time.title")}</div>
+								<div className="text-fg-muted text-[0.625rem]">
+									{data.time.count === 0
+										? t("stats.time.empty")
+										: !data.time.hasTracking
+											? t("stats.time.trackingNone")
+											: data.time.trackingSince
+												? t("stats.time.trackingSince", { date: data.time.trackingSince })
+												: t("stats.time.subtitle", { period: periodLabel })}
+								</div>
+							</div>
+							<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+								<TimeCard
+									label={t("stats.time.total")}
+									caption={t("stats.time.totalCaption")}
+									ms={data.time.totalMs}
+									sub={data.time.count > 0 ? t("stats.time.avgEach", { value: formatDuration(data.time.avgTotalMs) }) : undefined}
+								/>
+								<TimeCard
+									label={t("stats.time.agent")}
+									caption={t("stats.time.agentCaption")}
+									ms={data.time.agentMs}
+									muted={!data.time.hasTracking}
+									sub={data.time.count > 0 ? t("stats.time.avgEach", { value: formatDuration(data.time.avgAgentMs) }) : undefined}
+								/>
+								<TimeCard
+									label={t("stats.time.you")}
+									caption={t("stats.time.youCaption")}
+									ms={data.time.focusMs}
+									accent
+									sub={data.time.count > 0 ? t("stats.time.avgEach", { value: formatDuration(data.time.avgFocusMs) }) : undefined}
+								/>
+							</div>
+							{data.time.agentMs + data.time.focusMs > 0 && (
+								<AgentVsYouBar
+									agentMs={data.time.agentMs}
+									focusMs={data.time.focusMs}
+									title={t("stats.time.split")}
+									agentLabel={t("stats.time.splitAgent")}
+									youLabel={t("stats.time.splitYou")}
+								/>
+							)}
+						</div>
+
 						{/* Lifetime shipping medals */}
 						<div>
 							<div className="text-fg-2 text-sm font-semibold mb-3">{t("stats.milestones.title")}</div>
@@ -505,10 +552,23 @@ function ProductivityStatsView({ navigate, goBack, canGoBack }: ProductivityStat
 												<span className="text-fg text-sm font-bold tabular-nums flex-shrink-0">{p.completed}</span>
 											</div>
 											<SegmentedBar value={p.completed} max={projMax} ariaLabel={`${p.name}: ${p.completed} ${t("stats.unit.tasks")}`} />
-										<div className="text-fg-muted text-[0.625rem] flex gap-2">
-											{p.lines > 0 && <span>{compact(p.lines)} {t("stats.unit.lines")}</span>}
-											<span>{p.averageLifetimeMs == null ? t("stats.perProject.lifetimeUnavailable") : `${t("stats.perProject.lifetime")}: ${formatLifetime(p.averageLifetimeMs / 3_600_000)}`}</span>
-										</div>
+											<div className="flex items-center gap-2 text-fg-muted text-[0.625rem]">
+												{p.lines > 0 && <span>{compact(p.lines)} {t("stats.unit.lines")}</span>}
+												<span>{p.averageLifetimeMs == null ? t("stats.perProject.lifetimeUnavailable") : `${t("stats.perProject.lifetime")}: ${formatLifetime(p.averageLifetimeMs / 3_600_000)}`}</span>
+												{p.totalMs > 0 && (
+													<span
+														className="inline-flex items-center gap-1"
+														title={t("stats.time.perProjectTip", {
+															total: formatDuration(p.totalMs),
+															agent: formatDuration(p.agentMs),
+															you: formatDuration(p.focusMs),
+														})}
+													>
+														<span style={{ fontFamily: ICON }}>{"\u{F0150}"}</span>
+														{formatDuration(p.totalMs)}
+													</span>
+												)}
+											</div>
 										</button>
 									))}
 								</div>
@@ -555,6 +615,85 @@ function Counter({
 				<CountUp value={value} format={format} />
 			</div>
 			<div className="text-fg-3 text-xs">{label}</div>
+		</div>
+	);
+}
+
+/**
+ * One "Time invested" metric card (Total / Agent / Your time). Durations are
+ * informational — no gauge/red-zone — so this is a compact card with an optional
+ * "avg / task" sub-line. `accent` tints the "your time" value; `muted` dims the
+ * agent value when per-status tracking hasn't started yet.
+ */
+function TimeCard({
+	label,
+	caption,
+	ms,
+	sub,
+	accent,
+	muted,
+}: {
+	label: string;
+	caption: string;
+	ms: number;
+	sub?: string;
+	accent?: boolean;
+	muted?: boolean;
+}) {
+	const valueColor = accent ? "text-accent" : muted ? "text-fg-3" : "text-fg";
+	return (
+		<div className="rounded-xl border border-edge bg-raised px-4 py-3 flex flex-col gap-0.5">
+			<div className={`text-2xl font-bold tabular-nums leading-none ${valueColor}`}>{formatDuration(ms)}</div>
+			<div className="text-fg-2 text-xs font-semibold">{label}</div>
+			<div className="text-fg-muted text-[0.625rem] leading-tight">{caption}</div>
+			{sub && <div className="text-fg-3 text-[0.625rem] leading-tight mt-0.5 tabular-nums">{sub}</div>}
+		</div>
+	);
+}
+
+/**
+ * A two-segment proportion bar comparing hands-on agent time vs your focus time
+ * (their sum = 100%). Answers "was this task mostly agent-driven or did I babysit
+ * it?" — a genuine split, NOT a fraction of total wall-clock (agent + focus ≠ total).
+ */
+function AgentVsYouBar({
+	agentMs,
+	focusMs,
+	title,
+	agentLabel,
+	youLabel,
+}: {
+	agentMs: number;
+	focusMs: number;
+	title: string;
+	agentLabel: string;
+	youLabel: string;
+}) {
+	const total = agentMs + focusMs;
+	const agentPct = total > 0 ? (agentMs / total) * 100 : 0;
+	const youPct = 100 - agentPct;
+	return (
+		<div className="mt-3 rounded-2xl border border-edge bg-raised p-4">
+			<div className="flex items-center justify-between mb-2">
+				<span className="text-fg-2 text-xs font-semibold">{title}</span>
+				<span className="text-fg-muted text-[0.625rem] tabular-nums">{Math.round(agentPct)}% · {Math.round(youPct)}%</span>
+			</div>
+			<div
+				className="flex h-2.5 w-full overflow-hidden rounded-full bg-elevated"
+				role="img"
+				aria-label={`${agentLabel} ${formatDuration(agentMs)}, ${youLabel} ${formatDuration(focusMs)}`}
+			>
+				<div className="h-full bg-fg-3" style={{ width: `${agentPct}%` }} />
+				<div className="h-full bg-accent" style={{ width: `${youPct}%` }} />
+			</div>
+			<div className="mt-2 flex items-center justify-between text-[0.625rem]">
+				<span className="inline-flex items-center gap-1.5 text-fg-3">
+					<span className="w-2 h-2 rounded-sm bg-fg-3" /> {agentLabel} · {formatDuration(agentMs)}
+				</span>
+				<span className="inline-flex items-center gap-1.5 text-accent">
+					<span className="w-2 h-2 rounded-sm bg-accent" /> {youLabel} · {formatDuration(focusMs)}
+				</span>
+			</div>
 		</div>
 	);
 }

@@ -1041,6 +1041,119 @@ export interface Task {
 	 * by setting it back to null.
 	 */
 	scheduledLaunch?: ScheduledLaunch | null;
+	/**
+	 * Cumulative wall-clock time (ms) the task has spent in each status,
+	 * finalized on every status transition (see `applyTaskUpdate` in data.ts).
+	 * The *current* status's live portion is NOT included until the task leaves
+	 * it — consumers add `now - statusEnteredAt` for live totals. Absent on tasks
+	 * created before time tracking shipped (their split is unknown, but total
+	 * lifetime is still derivable from `createdAt` → `movedAt`). Powers the
+	 * Productivity "Time invested" split (agent vs your time). See
+	 * {@link AGENT_TIME_STATUSES} / {@link USER_TIME_STATUSES}.
+	 */
+	statusDurations?: Partial<Record<TaskStatus, number>>;
+	/**
+	 * ISO time the task entered its CURRENT status. Seeded to `createdAt` at
+	 * creation and reset on every status change (not on custom-column-only moves,
+	 * which keep the same status). Used with {@link Task.statusDurations} to
+	 * credit the live portion of the current status. Absent on legacy tasks.
+	 */
+	statusEnteredAt?: string;
+	/**
+	 * Cumulative real UI attention time (ms) — the seconds this task was the
+	 * on-screen ("active context") task while the app window was foregrounded and
+	 * the user was not idle. Accumulated by the backend focus tracker
+	 * (`src/bun/focus-tracker.ts`) and flushed periodically. This is the "your
+	 * time" / focus-time metric on the Productivity dashboard — distinct from the
+	 * wall-clock a task sits in a user-owned status. Absent/0 on legacy tasks.
+	 */
+	focusMs?: number;
+}
+
+/**
+ * Statuses whose wall-clock counts as "agent time" on the Productivity
+ * dashboard — the agent is doing work (coding) or an AI is reviewing it.
+ */
+export const AGENT_TIME_STATUSES: readonly TaskStatus[] = ["in-progress", "review-by-ai"];
+
+/**
+ * Statuses whose wall-clock counts as "your time" (the human owns the task):
+ * answering questions, reviewing changes, or a colleague's PR review. Note this
+ * is wall-clock in-status, NOT the same as the idle-gated `focusMs` attention
+ * metric — the dashboard surfaces `focusMs` as the primary "your time" and can
+ * use this for a status-based fallback.
+ */
+export const USER_TIME_STATUSES: readonly TaskStatus[] = [
+	"user-questions",
+	"review-by-user",
+	"review-by-colleague",
+];
+
+/** The three durations (ms) a task's lifetime is decomposed into for the dashboard. */
+export interface TaskTimeBreakdown {
+	/** Wall-clock from creation to completion (or to `now` while still active). */
+	totalMs: number;
+	/** Wall-clock spent in {@link AGENT_TIME_STATUSES} (coding + AI review). */
+	agentMs: number;
+	/** Wall-clock spent in {@link USER_TIME_STATUSES} (status-based, not idle-gated). */
+	userMs: number;
+	/** Idle-gated real UI attention time (`Task.focusMs`). */
+	focusMs: number;
+	/** True when per-status tracking data exists — agent/user splits are meaningful. */
+	hasStatusTracking: boolean;
+}
+
+/** The subset of {@link Task} fields {@link computeTaskTimeBreakdown} needs. */
+export type TaskTimeInput = Pick<Task, "status" | "createdAt"> & {
+	movedAt?: string | null;
+	statusDurations?: Partial<Record<TaskStatus, number>>;
+	statusEnteredAt?: string | null;
+	focusMs?: number;
+};
+
+const TERMINAL_STATUSES: readonly TaskStatus[] = ["completed", "cancelled"];
+
+function sumStatusDurations(
+	durations: Partial<Record<TaskStatus, number>>,
+	statuses: readonly TaskStatus[],
+): number {
+	let total = 0;
+	for (const s of statuses) total += durations[s] ?? 0;
+	return total;
+}
+
+/**
+ * Decompose a task's lifetime into total / agent / user / focus durations (ms).
+ * Pure — `nowMs` is injected for determinism. For an active task, the live
+ * portion of the current status (`nowMs - statusEnteredAt`) is credited so the
+ * split reflects work in progress; terminal tasks use the finalized durations
+ * as-is (their `completed`/`cancelled` sit-time is never credited). `totalMs`
+ * is always available; agent/user need per-status tracking (legacy tasks: 0).
+ */
+export function computeTaskTimeBreakdown(task: TaskTimeInput, nowMs: number): TaskTimeBreakdown {
+	const createdMs = Date.parse(task.createdAt);
+	const isTerminal = TERMINAL_STATUSES.includes(task.status);
+	const endMs = isTerminal ? Date.parse(task.movedAt ?? task.createdAt) : nowMs;
+	const totalMs = Number.isFinite(createdMs) && Number.isFinite(endMs) ? Math.max(0, endMs - createdMs) : 0;
+
+	const durations: Partial<Record<TaskStatus, number>> = { ...(task.statusDurations ?? {}) };
+	// Credit the live portion of the current status for active tasks only.
+	if (!isTerminal && task.statusEnteredAt) {
+		const enteredMs = Date.parse(task.statusEnteredAt);
+		if (Number.isFinite(enteredMs)) {
+			durations[task.status] = (durations[task.status] ?? 0) + Math.max(0, nowMs - enteredMs);
+		}
+	}
+
+	const hasStatusTracking = task.statusEnteredAt != null || Object.keys(task.statusDurations ?? {}).length > 0;
+
+	return {
+		totalMs,
+		agentMs: sumStatusDurations(durations, AGENT_TIME_STATUSES),
+		userMs: sumStatusDurations(durations, USER_TIME_STATUSES),
+		focusMs: Math.max(0, task.focusMs ?? 0),
+		hasStatusTracking,
+	};
 }
 
 /** A one-shot deferred launch persisted on a `todo` task. See {@link Task.scheduledLaunch}. */
@@ -1776,6 +1889,16 @@ export interface ProductivityStatEvent {
 	agentId: string | null;
 	groupId: string | null;
 	variantIndex: number | null;
+	/**
+	 * Per-status wall-clock (ms) accumulated on the task — {@link Task.statusDurations}.
+	 * The renderer feeds this to {@link computeTaskTimeBreakdown} for the agent/your
+	 * time split. `{}` on legacy tasks with no tracking.
+	 */
+	statusDurations: Partial<Record<TaskStatus, number>>;
+	/** ISO time the task entered its current status ({@link Task.statusEnteredAt}); null on legacy tasks. */
+	statusEnteredAt: string | null;
+	/** Idle-gated real UI attention time in ms ({@link Task.focusMs}); 0 when untracked. */
+	focusMs: number;
 }
 
 export interface ProductivityStats {

@@ -92,6 +92,27 @@ describe("toStatEvent", () => {
 		expect(ev.projectKind).toBe("virtual");
 		expect(ev.title).toBe("Custom");
 	});
+
+	it("passes through time-tracking fields (durations, statusEnteredAt, focusMs)", () => {
+		const ev = toStatEvent(
+			makeProject(),
+			makeTask({
+				statusDurations: { "in-progress": 3_600_000, "review-by-ai": 600_000 },
+				statusEnteredAt: "2026-06-02T00:00:00.000Z",
+				focusMs: 120_000,
+			}),
+		);
+		expect(ev.statusDurations).toEqual({ "in-progress": 3_600_000, "review-by-ai": 600_000 });
+		expect(ev.statusEnteredAt).toBe("2026-06-02T00:00:00.000Z");
+		expect(ev.focusMs).toBe(120_000);
+	});
+
+	it("defaults time-tracking fields for legacy tasks", () => {
+		const ev = toStatEvent(makeProject(), makeTask());
+		expect(ev.statusDurations).toEqual({});
+		expect(ev.statusEnteredAt).toBeNull();
+		expect(ev.focusMs).toBe(0);
+	});
 });
 
 describe("getProductivityStats", () => {

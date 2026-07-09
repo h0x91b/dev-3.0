@@ -1,4 +1,4 @@
-import { DEFAULT_AGENTS, type ProductivityStatEvent } from "../../shared/types";
+import { computeTaskTimeBreakdown, DEFAULT_AGENTS, type ProductivityStatEvent } from "../../shared/types";
 
 export type StatsRange = "day" | "week" | "month" | "all";
 
@@ -41,6 +41,33 @@ export interface PerProjectStat {
 	/** Share of the period's completed tasks, 0–100. */
 	sharePct: number;
 	busiest: boolean;
+	/** Sum of lifetime (create→complete) time over the period's completed tasks, ms. */
+	totalMs: number;
+	/** Sum of agent time (in-progress + AI review) over the period's completed tasks, ms. */
+	agentMs: number;
+	/** Sum of real UI attention time over the period's completed tasks, ms. */
+	focusMs: number;
+}
+
+/**
+ * Aggregate time invested across the period's completed tasks. Total = lifetime
+ * wall-clock; agent = time an agent/AI worked; focus = idle-gated UI attention.
+ * Agent/focus require per-status tracking, so they are 0 for tasks completed
+ * before tracking shipped — `hasTracking` gates the "agent vs your split" UI.
+ */
+export interface TimeInvested {
+	totalMs: number;
+	agentMs: number;
+	focusMs: number;
+	/** Number of completed tasks in the period that contributed. */
+	count: number;
+	avgTotalMs: number;
+	avgAgentMs: number;
+	avgFocusMs: number;
+	/** True once any task (lifetime) carries per-status time tracking. */
+	hasTracking: boolean;
+	/** ISO date (YYYY-MM-DD) time tracking effectively started, or null. */
+	trackingSince: string | null;
 }
 
 export interface PerAgentStat {
@@ -129,6 +156,8 @@ export interface ProductivityDashboardData {
 	series: SeriesBucket[];
 	perProject: PerProjectStat[];
 	perAgent: PerAgentStat[];
+	/** Time invested (total / agent / your-focus) across the period's completed tasks. */
+	time: TimeInvested;
 }
 
 const DAY_MS = 86_400_000;
@@ -456,6 +485,11 @@ export function computeProductivityStats(
 	const perAgentMap = new Map<string, PerAgentStat>();
 	const completedForSeries: Array<{ at: number; lines: number }> = [];
 
+	// --- Time invested (period, completed tasks) ---
+	let timeTotalCur = 0;
+	let timeAgentCur = 0;
+	let timeFocusCur = 0;
+
 	// --- All-time aggregates ---
 	let allTimeCompleted = 0;
 	let allTimeLines = 0;
@@ -464,12 +498,21 @@ export function computeProductivityStats(
 	const completedDayCounts = new Map<string, number>();
 	let locTrackingSince: number | null = null;
 	let lifecycleTrackingSince: number | null = null;
+	let hasTimeTracking = false;
+	let timeTrackingSince: number | null = null;
 
 	for (const e of events) {
 		if (e.agentId) agentsRun += 1;
 		const at = completedAtMs(e);
 		const lines = e.insertions + e.deletions;
 		const lifetimeMs = lifecycleDurationMs(e, at);
+		const hasTracking = e.statusEnteredAt != null || Object.keys(e.statusDurations ?? {}).length > 0;
+		if (hasTracking) hasTimeTracking = true;
+		// Time tracking "started" at the earliest completed task that carries
+		// per-status tracking — parallels the LOC "tracking since" hint.
+		if (isCompleted(e) && hasTracking && at != null) {
+			if (timeTrackingSince == null || at < timeTrackingSince) timeTrackingSince = at;
+		}
 		// LOC tracking "started" at the earliest completed task that has real diff
 		// data (lines > 0) — used to show an honest "tracking since" hint.
 		if (isCompleted(e) && lines > 0 && at != null) {
@@ -492,6 +535,12 @@ export function computeProductivityStats(
 				completedCur += 1;
 				linesCur += lines;
 				projectsTouched.add(e.projectId);
+				// Time invested — terminal task, so the breakdown uses finalized
+				// durations (nowMs is irrelevant for a completed task).
+				const tb = computeTaskTimeBreakdown(e, nowMs);
+				timeTotalCur += tb.totalMs;
+				timeAgentCur += tb.agentMs;
+				timeFocusCur += tb.focusMs;
 				const pp = perProjectMap.get(e.projectId) ?? {
 					projectId: e.projectId,
 					name: e.projectName,
@@ -501,6 +550,9 @@ export function computeProductivityStats(
 					averageLifetimeMs: null,
 					sharePct: 0,
 					busiest: false,
+					totalMs: 0,
+					agentMs: 0,
+					focusMs: 0,
 				};
 				pp.completed += 1;
 				pp.lines += lines;
@@ -510,6 +562,9 @@ export function computeProductivityStats(
 					current.count += 1;
 					perProjectLifetime.set(e.projectId, current);
 				}
+				pp.totalMs += tb.totalMs;
+				pp.agentMs += tb.agentMs;
+				pp.focusMs += tb.focusMs;
 				perProjectMap.set(e.projectId, pp);
 
 				const agentId = e.agentId || "unknown";
@@ -560,6 +615,19 @@ export function computeProductivityStats(
 	const perAgent = [...perAgentMap.values()].sort((a, b) => b.completed - a.completed || b.lines - a.lines);
 	for (const pa of perAgent) pa.sharePct = completedCur > 0 ? Math.round((pa.completed / completedCur) * 100) : 0;
 	if (perAgent.length > 0 && perAgent[0].completed > 0) perAgent[0].busiest = true;
+
+	// --- Time invested (period) ---
+	const time: TimeInvested = {
+		totalMs: timeTotalCur,
+		agentMs: timeAgentCur,
+		focusMs: timeFocusCur,
+		count: completedCur,
+		avgTotalMs: completedCur > 0 ? timeTotalCur / completedCur : 0,
+		avgAgentMs: completedCur > 0 ? timeAgentCur / completedCur : 0,
+		avgFocusMs: completedCur > 0 ? timeFocusCur / completedCur : 0,
+		hasTracking: hasTimeTracking,
+		trackingSince: timeTrackingSince != null ? dayKey(timeTrackingSince) : null,
+	};
 
 	// --- Streaks ---
 	const streaks = computeStreaks(allDayKeys, nowMs);
@@ -684,5 +752,22 @@ export function computeProductivityStats(
 		series,
 		perProject,
 		perAgent,
+		time,
 	};
+}
+
+/**
+ * Humanize a duration (ms) for the dashboard: "0m", "45m", "2h 15m", "3d 4h".
+ * Coarse on purpose — two significant units, no seconds — since these are
+ * cumulative work durations, not stopwatch readings.
+ */
+export function formatDuration(ms: number): string {
+	if (!Number.isFinite(ms) || ms <= 0) return "0m";
+	const totalMinutes = Math.floor(ms / 60_000);
+	const days = Math.floor(totalMinutes / 1440);
+	const hours = Math.floor((totalMinutes % 1440) / 60);
+	const minutes = totalMinutes % 60;
+	if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+	if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+	return `${minutes}m`;
 }
