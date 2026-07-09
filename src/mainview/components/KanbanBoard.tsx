@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES, ACTIVE_STATUSES, getBoardColumns } from "../../shared/types";
+import type { BoardColumnSlot, CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
+import { ALL_STATUSES, ACTIVE_STATUSES, getBoardColumns, DEFAULT_PRIORITY } from "../../shared/types";
 
 // Column ordering + visibility lives in the shared, unit-tested getBoardColumns
 // (single source of truth for the board's column layout).
@@ -62,6 +62,7 @@ function KanbanBoard({
 	const [dragFromCustomColumnId, setDragFromCustomColumnId] = useState<string | null>(null);
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
 	const [activeFilters, setActiveFilters] = useState<string[]>([]);
+	const [priorityFilters, setPriorityFilters] = useState<TaskPriority[]>([]);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const moveCounterRef = useRef(0);
@@ -298,6 +299,9 @@ function KanbanBoard({
 	if (activeFilters.length > 0) {
 		displayTasks = displayTasks.filter((t) => activeFilters.some((id) => t.labelIds?.includes(id)));
 	}
+	if (priorityFilters.length > 0) {
+		displayTasks = displayTasks.filter((t) => priorityFilters.includes(t.priority ?? DEFAULT_PRIORITY));
+	}
 	if (searchQuery.trim()) {
 		displayTasks = displayTasks.filter((t) => matchesSearchQuery(t, searchQuery, { prNumber: taskPrMap.get(t.id)?.number }));
 	}
@@ -507,7 +511,16 @@ function KanbanBoard({
 						prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
 					)
 				}
-				onClear={() => setActiveFilters([])}
+				activePriorities={priorityFilters}
+				onTogglePriority={(p) =>
+					setPriorityFilters((prev) =>
+						prev.includes(p) ? prev.filter((f) => f !== p) : [...prev, p],
+					)
+				}
+				onClear={() => {
+					setActiveFilters([]);
+					setPriorityFilters([]);
+				}}
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}

@@ -43,6 +43,7 @@ vi.mock("../data", () => ({
 	addVirtualProject: vi.fn(),
 	loadTasks: vi.fn(),
 	updateTask: vi.fn(),
+	setTaskPriority: vi.fn(),
 	addTask: vi.fn(),
 	addProject: vi.fn(),
 	reorderProjects: vi.fn(),
@@ -1152,6 +1153,51 @@ describe("handlers.reorderProjects", () => {
 
 		expect(data.reorderProjects).toHaveBeenCalledWith(["proj-2", "proj-1"]);
 		expect(result).toEqual(projects);
+	});
+});
+
+describe("handlers.setTaskPriority", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("writes the priority and pushes an update for every changed task", async () => {
+		const project = makeProject();
+		const changed = [
+			makeTask({ id: "task-1", priority: "P0" }),
+			makeTask({ id: "task-2", priority: "P0" }),
+		];
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.setTaskPriority).mockResolvedValue(changed);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		const result = await handlers.setTaskPriority({ taskId: "task-1", projectId: "proj-1", priority: "P0" });
+
+		expect(data.setTaskPriority).toHaveBeenCalledWith(project, "task-1", "P0");
+		expect(push).toHaveBeenCalledTimes(2);
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: "proj-1", task: changed[0] });
+		expect(result).toEqual(changed);
+	});
+
+	it("returns an empty list and pushes nothing when the value is unchanged", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.setTaskPriority).mockResolvedValue([]);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		const result = await handlers.setTaskPriority({ taskId: "task-1", projectId: "proj-1", priority: "P2" });
+
+		expect(result).toEqual([]);
+		expect(push).not.toHaveBeenCalled();
+	});
+
+	it("propagates a not-found error from the data layer", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		vi.mocked(data.setTaskPriority).mockRejectedValue(new Error("Task not found: task-x"));
+
+		await expect(
+			handlers.setTaskPriority({ taskId: "task-x", projectId: "proj-1", priority: "P0" }),
+		).rejects.toThrow("Task not found");
 	});
 });
 

@@ -33,6 +33,19 @@ const columns = {
 	"labels.failedSetLabels": "Не удалось обновить метки задачи: {error}",
 	"labels.taskLabels": "Метки",
 
+	// Priority
+	"priority.label": "Приоритет",
+	"priority.filterTitle": "Приоритет",
+	"priority.pickerTitle": "Задать приоритет",
+	"priority.badgeAria": "Приоритет {level} ({name}) — изменить",
+	"priority.filterAria": "Фильтр по приоритету {level} ({name})",
+	"priority.failedSet": "Не удалось задать приоритет: {error}",
+	"priority.name.P0": "Наивысший",
+	"priority.name.P1": "Высокий",
+	"priority.name.P2": "Обычный",
+	"priority.name.P3": "Низкий",
+	"priority.name.P4": "Наименьший",
+
 	// Notes
 	"notes.title": "Заметки",
 	"notes.add": "+ Добавить заметку",

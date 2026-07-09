@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
 import type { CodingAgent, CustomColumn, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, comparePriority, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { api } from "../rpc";
@@ -69,13 +69,16 @@ const STATUS_ORDER: TaskStatus[] = [
 ];
 
 /**
- * Within-group order for the sidebar: oldest-first by `movedAt` (longest-waiting
- * task on top). The sidebar is a work queue, not a feed — the oldest task is the
- * most at risk of being forgotten, and for review/questions groups it is the one
- * the agent has been blocked on longest. Tasks without `movedAt` sink to the
- * bottom; `seq` is a stable tiebreak. See UX_DECISIONS 2026-06-22.
+ * Within-group order for the sidebar: strict priority bands first (P0 on top),
+ * then oldest-first by `movedAt` (longest-waiting task on top) within a band. The
+ * sidebar is a work queue, not a feed — priority leads with what matters, and the
+ * oldest task in a band is the most at risk of being forgotten. Tasks without
+ * `movedAt` sink to the bottom of their band; `seq` is a stable tiebreak.
+ * See UX_DECISIONS 2026-06-22.
  */
-function byMovedAtOldestFirst(a: Task, b: Task): number {
+function byPriorityThenMovedAtOldestFirst(a: Task, b: Task): number {
+	const byPriority = comparePriority(a.priority, b.priority);
+	if (byPriority !== 0) return byPriority;
 	const aTime = a.movedAt ? new Date(a.movedAt).getTime() : Infinity;
 	const bTime = b.movedAt ? new Date(b.movedAt).getTime() : Infinity;
 	if (aTime !== bTime) return aTime - bTime;
@@ -302,7 +305,7 @@ function ActiveTasksSidebar({
 				busy: status === "in-progress" || status === "review-by-ai",
 				tasks: activeTasks
 					.filter((task) => task.status === status && !task.customColumnId)
-					.sort(byMovedAtOldestFirst),
+					.sort(byPriorityThenMovedAtOldestFirst),
 			}))
 			.filter((g) => g.tasks.length > 0);
 
@@ -325,7 +328,7 @@ function ActiveTasksSidebar({
 		for (const { projId, col } of orderedCols) {
 			const colTasks = customTasksByCol.get(`${projId}|${col.id}`);
 			if (colTasks && colTasks.length > 0) {
-				customGroups.push({ key: `custom:${projId}:${col.id}`, label: col.name, color: col.color, busy: false, tasks: colTasks.sort(byMovedAtOldestFirst) });
+				customGroups.push({ key: `custom:${projId}:${col.id}`, label: col.name, color: col.color, busy: false, tasks: colTasks.sort(byPriorityThenMovedAtOldestFirst) });
 			}
 		}
 

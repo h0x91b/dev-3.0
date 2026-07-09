@@ -37,6 +37,9 @@ const help = {
 	"help.board.filterBar.title": "Búsqueda y filtros",
 	"help.board.filterBar.body":
 		"Acota el tablero: escribe para filtrar tarjetas por título, haz clic en las etiquetas para mostrar solo las tareas que coinciden. Para renombrar, recolorear o eliminar etiquetas, abre Configuración del proyecto → Etiquetas.",
+	"help.board.priorityFilter.title": "Filtro de prioridad",
+	"help.board.priorityFilter.body":
+		"Cada tarea tiene una prioridad P0 (la más alta) … P4 (la más baja, P2 por defecto). Las columnas siempre se ordenan por ella, así lo más importante queda arriba. Haz clic en un chip para mostrar solo esa prioridad; arrastra una tarjeta a otra banda para recategorizarla.",
 	"help.board.taskCard.title": "Tarjeta de tarea",
 	"help.board.taskCard.body":
 		"Los puntos de colores son variantes paralelas de agentes (cada una en su worktree), la campana significa que el agente te llama, y la insignia #123 es el PR de la tarea con su estado de CI y revisión. Clic derecho para todas las acciones.",

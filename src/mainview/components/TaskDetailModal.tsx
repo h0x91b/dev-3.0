@@ -6,6 +6,7 @@ import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../..
 import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import PriorityBadge from "./PriorityBadge";
 import { NoteItem, formatDate } from "./NoteItem";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import type { AppAction } from "../state";
@@ -103,6 +104,16 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
+
+	async function handleSetPriority(priority: Task["priority"]) {
+		if (!priority) return;
+		try {
+			const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: project.id, priority });
+			for (const t of changed) dispatch({ type: "updateTask", task: t });
+		} catch (err) {
+			toast.error(t("priority.failedSet", { error: String(err) }));
+		}
+	}
 
 	async function handleSave() {
 		const trimmed = editValue.trim();
@@ -362,6 +373,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 				<div className="flex items-center justify-between px-6 pt-5 pb-3">
 					<div className="flex items-center gap-3">
 						<span className="text-fg-muted text-xs font-mono">#{task.seq}</span>
+						<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="sm" />
 						<div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-fg/5">
 							<div
 								className="w-2 h-2 rounded-full flex-shrink-0"
@@ -661,6 +673,8 @@ function ArchivedView({
 				<div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-edge">
 					<div className="flex items-center gap-3">
 						<span className="text-fg-muted text-xs font-mono">#{task.seq}</span>
+						{/* Archived task — priority is read-only (terminal column, no re-sort). */}
+						<PriorityBadge priority={task.priority} size="sm" />
 
 						{/* Status badge with dropdown */}
 						<div className="relative" ref={menuRef}>

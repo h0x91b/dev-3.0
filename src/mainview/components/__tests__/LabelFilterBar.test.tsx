@@ -14,6 +14,8 @@ function renderBar(
 				labels={[]}
 				activeFilters={[]}
 				onToggle={vi.fn()}
+				activePriorities={[]}
+				onTogglePriority={vi.fn()}
 				onClear={vi.fn()}
 				searchQuery={searchQuery}
 				onSearchChange={onSearchChange}
@@ -24,23 +26,26 @@ function renderBar(
 }
 
 describe("LabelFilterBar inline help", () => {
-	it("shows the section HelpSpot when labels exist", () => {
+	it("shows both the priority and label HelpSpots when labels exist", () => {
 		render(
 			<I18nProvider>
 				<LabelFilterBar
 					labels={[{ id: "l1", name: "Bug", color: "#ef4444" }]}
 					activeFilters={[]}
 					onToggle={vi.fn()}
+					activePriorities={[]}
+					onTogglePriority={vi.fn()}
 					onClear={vi.fn()}
 					searchQuery=""
 					onSearchChange={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
-		expect(screen.getByRole("button", { name: "About this section" })).toBeInTheDocument();
+		// Two section help buttons: priority (always) + labels (labels present).
+		expect(screen.getAllByRole("button", { name: "About this section" })).toHaveLength(2);
 	});
 
-	it("opens the help card with the manage hint on click", async () => {
+	it("opens the label help card with the manage hint on click", async () => {
 		const user = userEvent.setup();
 		render(
 			<I18nProvider>
@@ -48,19 +53,27 @@ describe("LabelFilterBar inline help", () => {
 					labels={[{ id: "l1", name: "Bug", color: "#ef4444" }]}
 					activeFilters={[]}
 					onToggle={vi.fn()}
+					activePriorities={[]}
+					onTogglePriority={vi.fn()}
 					onClear={vi.fn()}
 					searchQuery=""
 					onSearchChange={vi.fn()}
 				/>
 			</I18nProvider>,
 		);
-		await user.click(screen.getByRole("button", { name: "About this section" }));
+		// Priority HelpSpot is first in the DOM, labels HelpSpot is second.
+		const spots = screen.getAllByRole("button", { name: "About this section" });
+		await user.click(spots[1]);
 		expect(screen.getByText(/open Project Settings → Labels/)).toBeInTheDocument();
 	});
 
-	it("does not show the HelpSpot when there are no labels", () => {
+	it("always shows the priority HelpSpot, even with no labels", async () => {
+		const user = userEvent.setup();
 		renderBar();
-		expect(screen.queryByRole("button", { name: "About this section" })).not.toBeInTheDocument();
+		const spots = screen.getAllByRole("button", { name: "About this section" });
+		expect(spots).toHaveLength(1);
+		await user.click(spots[0]);
+		expect(screen.getByText(/Every task has a priority/)).toBeInTheDocument();
 	});
 });
 
@@ -153,6 +166,8 @@ describe("LabelFilterBar narrow viewport", () => {
 					labels={labels}
 					activeFilters={activeFilters}
 					onToggle={onToggle}
+					activePriorities={[]}
+					onTogglePriority={vi.fn()}
 					onClear={vi.fn()}
 					searchQuery=""
 					onSearchChange={vi.fn()}
@@ -182,5 +197,45 @@ describe("LabelFilterBar narrow viewport", () => {
 		await userEvent.click(screen.getByLabelText("Filter by label"));
 		await userEvent.click(screen.getByText("Bug"));
 		expect(onToggle).toHaveBeenCalledWith("l1");
+	});
+});
+
+describe("LabelFilterBar priority chips", () => {
+	function renderWithPriority(activePriorities: string[] = []) {
+		const onTogglePriority = vi.fn();
+		render(
+			<I18nProvider>
+				<LabelFilterBar
+					labels={[]}
+					activeFilters={[]}
+					onToggle={vi.fn()}
+					activePriorities={activePriorities as never}
+					onTogglePriority={onTogglePriority}
+					onClear={vi.fn()}
+					searchQuery=""
+					onSearchChange={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		return { onTogglePriority };
+	}
+
+	it("renders all five priority chips even with no labels", () => {
+		renderWithPriority();
+		for (const level of ["P0", "P1", "P2", "P3", "P4"]) {
+			expect(screen.getByRole("button", { name: new RegExp(`priority ${level}`, "i") })).toBeInTheDocument();
+		}
+	});
+
+	it("toggling a priority chip calls onTogglePriority with the level", async () => {
+		const { onTogglePriority } = renderWithPriority();
+		await userEvent.click(screen.getByRole("button", { name: /priority P0/i }));
+		expect(onTogglePriority).toHaveBeenCalledWith("P0");
+	});
+
+	it("marks an active priority chip as pressed", () => {
+		renderWithPriority(["P1"]);
+		expect(screen.getByRole("button", { name: /priority P1/i })).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByRole("button", { name: /priority P2/i })).toHaveAttribute("aria-pressed", "false");
 	});
 });

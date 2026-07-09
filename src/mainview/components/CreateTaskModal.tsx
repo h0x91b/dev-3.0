@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { skillInvocationPrefix, titleFromDescription, type Project, type Task } from "../../shared/types";
+import { DEFAULT_PRIORITY, skillInvocationPrefix, titleFromDescription, type Project, type Task, type TaskPriority } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import PriorityBadge from "./PriorityBadge";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import { useClipboardPaste } from "../hooks/useClipboardPaste";
 import { useFileDrop } from "../hooks/useFileDrop";
@@ -41,6 +42,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
+	const [priority, setPriority] = useState<TaskPriority>(DEFAULT_PRIORITY);
 	const [labelPickerOpen, setLabelPickerOpen] = useState(false);
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
 	const [customTitle, setCustomTitle] = useState<string | null>(null);
@@ -252,6 +254,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 				...(mode === "scratch" ? { scratch: true } : {}),
 				...(branch ? { existingBranch: branch } : {}),
 				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
+				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
 			});
 			// The task is now persisted on disk. Make it visible on the board
 			// IMMEDIATELY — a task created into "todo" pushes no taskUpdated, so
@@ -553,6 +556,14 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 						</div>
 					</div>
 				)}
+
+				{/* Priority selector — compact badge + picker, defaults to P2. */}
+				<div className="flex items-center gap-2">
+					<label className="text-fg-2 text-sm font-medium">
+						{t("priority.label")}
+					</label>
+					<PriorityBadge priority={priority} onChange={setPriority} size="sm" />
+				</div>
 
 				{/* Label selector — compact: only the selected labels show as chips;
 				    the picker popover (search / toggle / inline-create) owns the full list. */}

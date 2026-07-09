@@ -1,4 +1,4 @@
-import type { Task } from "../../shared/types";
+import { comparePriority, type Task } from "../../shared/types";
 
 export function sortTasksForColumn(
 	tasks: Task[],
@@ -6,6 +6,11 @@ export function sortTasksForColumn(
 	moveOrderMap: Map<string, number>,
 ): Task[] {
 	return [...tasks].sort((a, b) => {
+		// Strict priority bands are the TOPMOST key: every P0 above every P1, etc.
+		// A whole variant group shares one priority, so banding never splits a group.
+		// All existing rules below apply UNCHANGED within a single band.
+		const byPriority = comparePriority(a.priority, b.priority);
+		if (byPriority !== 0) return byPriority;
 		// Move order takes top priority (in-session cross-column moves)
 		const aOrder = moveOrderMap.get(a.id) ?? 0;
 		const bOrder = moveOrderMap.get(b.id) ?? 0;
