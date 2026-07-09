@@ -14,8 +14,8 @@ import {
 // prompt via --append-system-prompt), so body-content assertions run against
 // CLAUDE_SKILL_BODY — the text Claude actually receives.
 
-describe("vent feedback skill section (always present)", () => {
-	it("teaches every agent the vent command, anonymity rules, and scope", () => {
+describe("platform feedback skill section (always present)", () => {
+	it("teaches every agent the private vent and opt-in public issue workflows", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## Platform feedback — vents");
 			expect(skill).toContain('dev3 vents "short name" "markdown body"');
@@ -23,6 +23,15 @@ describe("vent feedback skill section (always present)", () => {
 			expect(skill).toContain("would the dev3 maintainer have to change or extend dev3 to address this?");
 			expect(skill).toContain("Something is missing that would help");
 			expect(skill).toContain("at most once per user message");
+			expect(skill).toContain("### Offer to file a public bug report");
+			expect(skill).toContain("send the private vent first");
+			expect(skill).toContain("ask for explicit approval before creating it");
+			expect(skill).toContain("--repo h0x91b/dev-3.0");
+			expect(skill).toContain('--label "Reported by AI"');
+			expect(skill).toContain("the already-sent private vent still stands");
+			expect(skill.indexOf('dev3 vents "short name" "markdown body"')).toBeLessThan(
+				skill.indexOf("### Offer to file a public bug report"),
+			);
 		}
 	});
 });
