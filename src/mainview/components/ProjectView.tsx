@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type MutableRefObject } from "react";
+import { useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
 import type { CodingAgent, PortInfo, Project, Task, ResourceUsage } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
@@ -51,16 +51,34 @@ function ProjectView({
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const inlineDiff = useTaskInlineDiffState(activeTaskId);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const taskUpdateEpochRef = useRef(0);
+
+	// A scheduled launch can push its new task while this view's initial fetch is
+	// in flight. Keep the live update instead of letting the older disk snapshot
+	// overwrite it when the request returns.
+	useEffect(() => {
+		function onTaskUpdated(e: Event) {
+			const { task } = (e as CustomEvent<{ task: Task }>).detail;
+			if (task?.projectId === projectId) taskUpdateEpochRef.current += 1;
+		}
+		window.addEventListener("rpc:taskUpdated", onTaskUpdated);
+		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
+	}, [projectId]);
 
 	useEffect(() => {
+		const taskUpdateEpoch = taskUpdateEpochRef.current;
+		let cancelled = false;
 		(async () => {
 			try {
 				const tasks = await api.request.getTasks({ projectId });
-				dispatch({ type: "setTasks", tasks });
+				if (!cancelled && taskUpdateEpoch === taskUpdateEpochRef.current) {
+					dispatch({ type: "setTasks", tasks });
+				}
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
 			}
 		})();
+		return () => { cancelled = true; };
 	}, [projectId, dispatch]);
 
 	useEffect(() => {
