@@ -1,0 +1,1 @@
+Improved terminal contrast for every Claude Code `/theme` variant. Regular and colorblind diff palettes now adapt in both directions when the Claude theme and dev3 theme use opposite light/dark modes, while ANSI-only themes retain the configured terminal palette. The README now recommends Codex `dracula` for dark dev3 and `github` for light dev3.

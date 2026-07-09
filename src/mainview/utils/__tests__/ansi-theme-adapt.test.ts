@@ -290,8 +290,8 @@ describe("createAnsiThemeFilter — white backgrounds (dark)", () => {
 	});
 });
 
-describe("createAnsiThemeFilter — Codex diff backgrounds (dark)", () => {
-	it("replaces GitHub-light removal and addition backgrounds with dark diff colors", () => {
+describe("createAnsiThemeFilter — opposite-polarity diff backgrounds", () => {
+	it("replaces Codex GitHub-light backgrounds with dark diff colors", () => {
 		expect(filterAll([`${ESC}[48;2;255;221;221mremoved`], "dark")).toBe(
 			`${ESC}[48;2;63;37;42mremoved`,
 		);
@@ -303,7 +303,7 @@ describe("createAnsiThemeFilter — Codex diff backgrounds (dark)", () => {
 	it("brightens GitHub-light code foregrounds on remapped diff backgrounds", () => {
 		expect(
 			filterAll([`${ESC}[48;2;255;221;221;38;2;51;51;51mremoved`], "dark"),
-		).toBe(`${ESC}[48;2;63;37;42;38;2;108;108;108mremoved`);
+		).toBe(`${ESC}[48;2;63;37;42;38;2;173;173;173mremoved`);
 		expect(
 			filterAll([`${ESC}[48;2;221;255;221m${ESC}[38;2;24;54;145madded`], "dark"),
 		).toMatch(/^\x1b\[48;2;36;61;46m\x1b\[38;2;\d+;\d+;\d+madded$/);
@@ -312,6 +312,76 @@ describe("createAnsiThemeFilter — Codex diff backgrounds (dark)", () => {
 	it("keeps Codex GitHub-light diff backgrounds unchanged in light mode", () => {
 		const input = `${ESC}[48;2;255;221;221mremoved${ESC}[48;2;221;255;221madded`;
 		expect(filterAll([input], "light")).toBe(input);
+	});
+
+	it("maps Claude light removal and green-addition shades for a dark terminal", () => {
+		expect(filterAll([`${ESC}[48;2;255;220;220mrow`], "dark")).toBe(
+			`${ESC}[48;2;63;37;42mrow`,
+		);
+		expect(filterAll([`${ESC}[48;2;255;199;199mword`], "dark")).toBe(
+			`${ESC}[48;2;92;45;52mword`,
+		);
+		expect(filterAll([`${ESC}[48;2;220;255;220mrow`], "dark")).toBe(
+			`${ESC}[48;2;36;61;46mrow`,
+		);
+		expect(filterAll([`${ESC}[48;2;178;255;178mword`], "dark")).toBe(
+			`${ESC}[48;2;34;82;49mword`,
+		);
+	});
+
+	it("maps Claude light colorblind blue shades for a dark terminal", () => {
+		expect(filterAll([`${ESC}[48;2;219;237;255mrow`], "dark")).toBe(
+			`${ESC}[48;2;35;54;78mrow`,
+		);
+		expect(filterAll([`${ESC}[48;2;179;217;255mword`], "dark")).toBe(
+			`${ESC}[48;2;35;73;108mword`,
+		);
+	});
+
+	it("raises light-theme foreground contrast on remapped dark diff rows", () => {
+		expect(
+			filterAll([`${ESC}[38;2;51;51;51m${ESC}[48;2;255;220;220mremoved`], "dark"),
+		).toBe(
+			`${ESC}[38;2;108;108;108m${ESC}[48;2;63;37;42;38;2;173;173;173mremoved`,
+		);
+		expect(
+			filterAll([`${ESC}[48;2;219;237;255m${ESC}[38;2;51;51;51madded`], "dark"),
+		).toBe(`${ESC}[48;2;35;54;78m${ESC}[38;2;173;173;173madded`);
+	});
+
+	it("maps Claude dark removal and green-addition shades for a light terminal", () => {
+		expect(filterAll([`${ESC}[48;2;61;1;0mrow`], "light")).toBe(
+			`${ESC}[48;2;255;220;220mrow`,
+		);
+		expect(filterAll([`${ESC}[48;2;92;2;0mword`], "light")).toBe(
+			`${ESC}[48;2;255;199;199mword`,
+		);
+		expect(filterAll([`${ESC}[48;2;2;40;0mrow`], "light")).toBe(
+			`${ESC}[48;2;220;255;220mrow`,
+		);
+		expect(filterAll([`${ESC}[48;2;4;71;0mword`], "light")).toBe(
+			`${ESC}[48;2;178;255;178mword`,
+		);
+	});
+
+	it("maps Claude dark colorblind blue shades for a light terminal", () => {
+		expect(filterAll([`${ESC}[48;2;0;27;41mrow`], "light")).toBe(
+			`${ESC}[48;2;219;237;255mrow`,
+		);
+		expect(filterAll([`${ESC}[48;2;0;48;71mword`], "light")).toBe(
+			`${ESC}[48;2;179;217;255mword`,
+		);
+	});
+
+	it("lowers dark-theme foreground contrast on remapped light diff rows", () => {
+		expect(
+			filterAll([`${ESC}[38;2;248;248;242m${ESC}[48;2;61;1;0mremoved`], "light"),
+		).toBe(
+			`${ESC}[38;2;107;107;105m${ESC}[48;2;255;220;220;38;2;77;77;75mremoved`,
+		);
+		expect(
+			filterAll([`${ESC}[48;2;0;27;41m${ESC}[38;2;248;248;242madded`], "light"),
+		).toBe(`${ESC}[48;2;219;237;255m${ESC}[38;2;77;77;75madded`);
 	});
 });
 
