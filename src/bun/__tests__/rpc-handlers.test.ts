@@ -6411,8 +6411,12 @@ describe("handlers.spawnAgentInTask", () => {
 	it("spawns agent with split-window -h in the tmux session", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		const updatedTask = { ...task, agentId: "builtin-claude", configId: "claude-default" };
+		const push = vi.fn();
+		setPushMessage(push);
 		(data.getProject as any).mockResolvedValue(project);
 		(data.getTask as any).mockResolvedValue(task);
+		(data.updateTask as any).mockResolvedValue(updatedTask);
 		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "claude --resume", extraEnv: { FOO: "bar" } });
 		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
 
@@ -6432,6 +6436,11 @@ describe("handlers.spawnAgentInTask", () => {
 		expect(splitCall).toBeDefined();
 		expect(splitCall![0]).toContain("DEV3_TASK_ID=abcd1234-full-id");
 		expect(splitCall![0]).toContain("DEV3_WORKTREE_ROOT=/tmp/wt");
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
+			agentId: "builtin-claude",
+			configId: "claude-default",
+		}));
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: updatedTask });
 	});
 
 	it("uses resolveCommandForProject when agentId is null", async () => {
