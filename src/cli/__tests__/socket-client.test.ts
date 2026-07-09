@@ -179,6 +179,91 @@ describe("sendRequest", () => {
 		}
 	});
 
+	// Reproduces the false "Empty response from server" failure on
+	// dev-server stop/restart: the app drops the in-flight connection during the
+	// tmux socket handoff and closes it with no reply. The first connection ends
+	// with zero bytes; the settle-and-retry window must reconnect and get the
+	// real status instead of surfacing the empty-response error (vents 07-04/06).
+	it("retries an empty response and succeeds once the server replies", async () => {
+		cleanSocket();
+		let connections = 0;
+		const server = await new Promise<Server>((resolve) => {
+			const srv = createServer((conn) => {
+				connections++;
+				if (connections === 1) {
+					// Handoff: accept, then close mid-request with no response body.
+					conn.end();
+					return;
+				}
+				conn.on("data", (chunk) => {
+					const req = JSON.parse(chunk.toString().trim());
+					conn.write(JSON.stringify({ id: req.id, ok: true, data: { running: false } }) + "\n");
+					conn.end();
+				});
+			});
+			srv.listen(TEST_SOCKET, () => resolve(srv));
+		});
+
+		try {
+			const resp = await sendRequest(TEST_SOCKET, "devServer.stop", {}, {
+				retryEmptyResponse: true,
+				emptyResponseSettleMs: 10,
+			});
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toEqual({ running: false });
+			expect(connections).toBe(2);
+		} finally {
+			server.close();
+		}
+	});
+
+	it("does NOT retry an empty response unless the caller opts in", async () => {
+		cleanSocket();
+		let connections = 0;
+		const server = await new Promise<Server>((resolve) => {
+			const srv = createServer((conn) => {
+				connections++;
+				conn.end();
+			});
+			srv.listen(TEST_SOCKET, () => resolve(srv));
+		});
+
+		try {
+			await expect(
+				sendRequest(TEST_SOCKET, "task.create", {}),
+			).rejects.toThrow("Empty response from server");
+			// A non-idempotent mutation must not be silently replayed.
+			expect(connections).toBe(1);
+		} finally {
+			server.close();
+		}
+	});
+
+	it("gives up with 'Empty response from server' after exhausting empty-response retries", async () => {
+		cleanSocket();
+		let connections = 0;
+		const server = await new Promise<Server>((resolve) => {
+			const srv = createServer((conn) => {
+				connections++;
+				conn.end();
+			});
+			srv.listen(TEST_SOCKET, () => resolve(srv));
+		});
+
+		try {
+			await expect(
+				sendRequest(TEST_SOCKET, "devServer.restart", {}, {
+					retryEmptyResponse: true,
+					emptyResponseAttempts: 3,
+					emptyResponseSettleMs: 10,
+				}),
+			).rejects.toThrow("Empty response from server");
+			expect(connections).toBe(3);
+		} finally {
+			server.close();
+		}
+	});
+
 	it("handles large responses without truncation", async () => {
 		// Generate a large payload (~50KB) similar to tasks.list with many tasks
 		const largeTasks = Array.from({ length: 100 }, (_, i) => ({
