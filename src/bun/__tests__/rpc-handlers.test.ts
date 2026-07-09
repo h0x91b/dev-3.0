@@ -2559,6 +2559,26 @@ describe("handlers.editTask", () => {
 		}));
 	});
 
+	it("converts a scratch task into a normal task when its description is edited", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", scratch: true, description: "Scratch — 15:50" });
+		const updated = makeTask({ status: "todo", scratch: false, description: "Plan HTML artifacts" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+
+		await handlers.editTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			description: "Plan HTML artifacts",
+		});
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
+			description: "Plan HTML artifacts",
+			scratch: false,
+		}));
+	});
+
 	it("throws when task is not in todo status", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });

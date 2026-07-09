@@ -487,9 +487,13 @@ function scratchPlaceholder(now: Date = new Date()): string {
 	return `Scratch — ${hh}:${mm}`;
 }
 
+function isScratchPlaceholderDescription(description: string): boolean {
+	return /^Scratch — \d{2}:\d{2}$/.test(description.trim());
+}
+
 function taskWithLaunchDescription(task: Task, forceBlank = false): Task {
 	const hasScratchPlaceholder = task.scratch === true
-		&& /^Scratch — \d{2}:\d{2}$/.test(task.description.trim());
+		&& isScratchPlaceholderDescription(task.description);
 	return forceBlank || hasScratchPlaceholder ? { ...task, description: "" } : task;
 }
 
@@ -1255,6 +1259,13 @@ async function editTask(params: { taskId: string; projectId: string; description
 		throw new Error(`Can only edit tasks in todo status (got ${task.status})`);
 	}
 	const updates: Partial<Task> = { description: params.description };
+	if (
+		task.scratch === true
+		&& params.description.trim()
+		&& !isScratchPlaceholderDescription(params.description)
+	) {
+		updates.scratch = false;
+	}
 	if (!task.customTitle) {
 		updates.title = titleFromDescription(params.description);
 	}

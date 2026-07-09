@@ -1,1 +1,1 @@
-Preserve meaningful task descriptions when launching multiple variants from an edited scratch task, while still keeping untouched scratch placeholders out of the agent prompt.
+Convert scratch tasks into normal tasks when their description is edited, so multi-variant launches deliver the meaningful prompt to every agent. Untouched scratch placeholders remain excluded from agent prompts.

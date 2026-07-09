@@ -262,10 +262,18 @@ const handlers: Record<string, Handler> = {
 			}
 		}
 		if (params.description !== undefined) {
-			updates.description = params.description as string;
+			const description = params.description as string;
+			updates.description = description;
+			if (
+				task.scratch === true
+				&& description.trim()
+				&& !/^Scratch — \d{2}:\d{2}$/.test(description.trim())
+			) {
+				updates.scratch = false;
+			}
 			// Only recompute auto-title if there's no custom override
 			if (!task.customTitle && !updates.customTitle) {
-				updates.title = titleFromDescription(params.description as string);
+				updates.title = titleFromDescription(description);
 			}
 		}
 
