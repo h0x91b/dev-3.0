@@ -69,7 +69,7 @@ const tips = {
 	"tip.yaziFileBrowser.title": "Explorador de archivos yazi",
 	"tip.yaziFileBrowser.body": "Pulsa el botón Files en la cabecera de la tarea para abrir un panel yazi y navegar por el worktree.",
 	"tip.reviewModeBranch.title": "Crea una tarea de revisión",
-	"tip.reviewModeBranch.body": "En el modal de crear tarea, elige una rama y activa el modo Review para rellenar automáticamente el prompt de code review.",
+	"tip.reviewModeBranch.body": "Pega una URL de PR de GitHub en el modal de crear tarea (o en el campo de rama) para traer la rama y empezar una revisión de código.",
 	"tip.autoCompleteOnPrMerge.title": "Completar tarea al mergear PR",
 	"tip.autoCompleteOnPrMerge.body": "Las tareas en \"Review by You\" se verifican cada 60 s — al detectar el merge, un diálogo ofrece marcarlas como completadas.",
 	"tip.exposeTaskPorts.title": "Puertos en vivo por tarea",

@@ -69,7 +69,7 @@ const tips = {
 	"tip.yaziFileBrowser.title": "Файловый браузер yazi",
 	"tip.yaziFileBrowser.body": "Нажмите кнопку Files в шапке задачи, чтобы открыть yazi-панель для навигации по воркдереву.",
 	"tip.reviewModeBranch.title": "Задача для ревью PR",
-	"tip.reviewModeBranch.body": "В форме создания задачи выберите ветку и включите Review mode — промпт для код-ревью подставится автоматически.",
+	"tip.reviewModeBranch.body": "Вставьте ссылку на PR GitHub в форму создания задачи (или в поле ветки) — ветка подтянется сама и запустится код-ревью.",
 	"tip.autoCompleteOnPrMerge.title": "Автозавершение при мерже PR",
 	"tip.autoCompleteOnPrMerge.body": "Задачи в статусе «Review by You» проверяются каждые 60 с — при обнаружении мержа появляется диалог с предложением завершить задачу.",
 	"tip.exposeTaskPorts.title": "Порты задачи в реальном времени",

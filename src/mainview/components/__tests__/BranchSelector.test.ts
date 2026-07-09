@@ -5,6 +5,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			listBranches: vi.fn(),
 			fetchBranches: vi.fn(),
+			resolvePrUrl: vi.fn(),
 		},
 	},
 }));
@@ -13,7 +14,56 @@ vi.mock("../../analytics", () => ({
 	trackEvent: vi.fn(),
 }));
 
-import { parseForkRef, normalizeBranchQuery, matchesBranchQuery, splitBranchWords, sortBranchesForDisplay } from "../BranchSelector";
+import { parseForkRef, parsePrUrl, normalizeBranchQuery, matchesBranchQuery, splitBranchWords, sortBranchesForDisplay } from "../BranchSelector";
+
+// ─── parsePrUrl ──────────────────────────────────────────────────────────────
+
+describe("parsePrUrl", () => {
+	it("parses a plain github.com PR URL", () => {
+		expect(parsePrUrl("https://github.com/h0x91b/dev-3.0/pull/42")).toEqual({
+			url: "https://github.com/h0x91b/dev-3.0/pull/42",
+			number: 42,
+		});
+	});
+
+	it("parses a PR URL with a /files suffix", () => {
+		expect(parsePrUrl("https://github.com/owner/repo/pull/7/files")).toEqual({
+			url: "https://github.com/owner/repo/pull/7/files",
+			number: 7,
+		});
+	});
+
+	it("parses a PR URL with a query string and hash", () => {
+		expect(parsePrUrl("https://github.com/owner/repo/pull/123?w=1#discussion")).toEqual({
+			url: "https://github.com/owner/repo/pull/123?w=1#discussion",
+			number: 123,
+		});
+	});
+
+	it("extracts a PR URL embedded in surrounding text", () => {
+		const result = parsePrUrl("please review https://github.com/o/r/pull/9 thanks");
+		expect(result).toEqual({ url: "https://github.com/o/r/pull/9", number: 9 });
+	});
+
+	it("supports GitHub Enterprise hosts", () => {
+		expect(parsePrUrl("https://ghe.corp.example/team/app/pull/5")).toEqual({
+			url: "https://ghe.corp.example/team/app/pull/5",
+			number: 5,
+		});
+	});
+
+	it("returns null for a non-PR github URL", () => {
+		expect(parsePrUrl("https://github.com/owner/repo/issues/42")).toBeNull();
+	});
+
+	it("returns null for a plain branch name", () => {
+		expect(parsePrUrl("feat/some-feature")).toBeNull();
+	});
+
+	it("returns null for an empty string", () => {
+		expect(parsePrUrl("")).toBeNull();
+	});
+});
 
 // ─── parseForkRef ────────────────────────────────────────────────────────────
 

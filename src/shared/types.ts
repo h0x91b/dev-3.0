@@ -2458,6 +2458,17 @@ export type AppRPCSchema = {
 				params: { projectId: string; forkRef?: string };
 				response: Array<{ name: string; isRemote: boolean }>;
 			};
+			resolvePrUrl: {
+				params: { projectId: string; url: string };
+				response: {
+					ok: boolean;
+					branch: string | null;
+					number: number | null;
+					title: string | null;
+					isFork: boolean;
+					error: string | null;
+				};
+			};
 			getProjectCurrentBranch: {
 				params: { projectId: string };
 				response: { branch: string | null; isBaseBranch: boolean; isDirty: boolean; behindOrigin: number };

@@ -64,6 +64,7 @@ vi.mock("../git", () => ({
 	isGitRepo: vi.fn(),
 	getDefaultBranch: vi.fn(),
 	fetchOrigin: vi.fn().mockResolvedValue(true),
+	fetchFork: vi.fn().mockResolvedValue(true),
 	getBranchStatus: vi.fn(),
 	getTaskDiff: vi.fn(),
 	getUncommittedChanges: vi.fn(),
@@ -3946,6 +3947,95 @@ describe("handlers.getBranchStatus", () => {
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(10);
+	});
+});
+
+// ================================================================
+// handlers.resolvePrUrl
+// ================================================================
+
+describe("handlers.resolvePrUrl", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	const PR_URL = "https://github.com/test/repo/pull/42";
+
+	it("resolves a same-repo PR to origin/<head> and fetches origin", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: true,
+			stdout: JSON.stringify({ number: 42, title: "My PR", headRefName: "feat/login", isCrossRepository: false, headRepositoryOwner: { login: "test" } }),
+			stderr: "",
+			code: 0,
+		});
+
+		const result = await handlers.resolvePrUrl({ projectId: "proj-1", url: PR_URL });
+
+		expect(result).toEqual({ ok: true, branch: "origin/feat/login", number: 42, title: "My PR", isFork: false, error: null });
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "feat/login");
+		expect(git.fetchFork).not.toHaveBeenCalled();
+		// The full URL is passed straight to gh pr view.
+		expect(vi.mocked(github.runGitHub).mock.calls[0][2]).toContain(PR_URL);
+	});
+
+	it("resolves a fork PR to <forkOwner>/<head> and fetches the fork", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.fetchFork).mockResolvedValue(true);
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: true,
+			stdout: JSON.stringify({ number: 7, title: "Fork PR", headRefName: "fix/bug", isCrossRepository: true, headRepositoryOwner: { login: "contributor" } }),
+			stderr: "",
+			code: 0,
+		});
+
+		const result = await handlers.resolvePrUrl({ projectId: "proj-1", url: "https://github.com/test/repo/pull/7" });
+
+		expect(result).toEqual({ ok: true, branch: "contributor/fix/bug", number: 7, title: "Fork PR", isFork: true, error: null });
+		expect(git.fetchFork).toHaveBeenCalledWith(project.path, "contributor", "fix/bug");
+		expect(git.fetchOrigin).not.toHaveBeenCalled();
+	});
+
+	it("returns an error when gh pr view fails", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: false, stdout: "", stderr: "could not resolve to a PullRequest", code: 1 });
+
+		const result = await handlers.resolvePrUrl({ projectId: "proj-1", url: PR_URL });
+
+		expect(result.ok).toBe(false);
+		expect(result.branch).toBeNull();
+		expect(result.error).toBe("could not resolve to a PullRequest");
+	});
+
+	it("returns an error when the fork fetch fails", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(git.fetchFork).mockResolvedValue(false);
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: true,
+			stdout: JSON.stringify({ number: 7, title: "Fork PR", headRefName: "fix/bug", isCrossRepository: true, headRepositoryOwner: { login: "contributor" } }),
+			stderr: "",
+			code: 0,
+		});
+
+		const result = await handlers.resolvePrUrl({ projectId: "proj-1", url: PR_URL });
+
+		expect(result.ok).toBe(false);
+		expect(result.isFork).toBe(true);
+		expect(result.error).toContain("fix/bug");
+	});
+
+	it("returns an error on invalid JSON from gh", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "not json", stderr: "", code: 0 });
+
+		const result = await handlers.resolvePrUrl({ projectId: "proj-1", url: PR_URL });
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toBeTruthy();
 	});
 });
 
