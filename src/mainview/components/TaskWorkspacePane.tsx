@@ -193,7 +193,7 @@ function TaskWorkspacePane({
 					<>
 						{!isNarrow && (
 							<div
-								className={`group flex w-4 flex-shrink-0 touch-none cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10 focus-visible:bg-accent/10 focus-visible:outline-none ${artifactResizing ? "bg-accent/15" : ""}`}
+								className={`group flex w-2 flex-shrink-0 touch-none cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10 focus-visible:bg-accent/10 focus-visible:outline-none ${artifactResizing ? "bg-accent/15" : ""}`}
 								onPointerDown={onArtifactResizeStart}
 								onPointerMove={onArtifactResizeMove}
 								onPointerUp={() => finishArtifactResize(true)}

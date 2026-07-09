@@ -193,6 +193,7 @@ describe("TaskWorkspaceView", () => {
 		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
 		expect(screen.getByTestId("artifact-workspace")).toHaveTextContent("Metrics");
 		const separator = screen.getByRole("separator", { name: "Resize artifact panel" });
+		expect(separator).toHaveClass("w-2");
 		expect(separator).toHaveAttribute("aria-valuenow", "560");
 		separator.focus();
 		await userEvent.keyboard("{ArrowLeft}");
