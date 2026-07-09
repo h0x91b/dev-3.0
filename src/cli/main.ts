@@ -19,6 +19,7 @@ import { handleGui } from "./commands/gui";
 import { handleConversations } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
 import { handleShowImage } from "./commands/show-image";
+import { handleShowArtifact } from "./commands/show-artifact";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleDoctor } from "./commands/doctor";
@@ -67,6 +68,7 @@ Commands:
   dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
+  dev3 show-artifact <file.html> [--images <image...>] [--title "..."]  Show a task-bound HTML artifact; image assets are copied beside it and exported as ZIP
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json
@@ -226,6 +228,8 @@ async function main(): Promise<void> {
 				// path), so hand the raw tokens straight to the handler rather than
 				// through the order-losing `parseArgs`.
 				return await handleShowImage(rawArgs.slice(1), socketPath, context);
+			case "show-artifact":
+				return await handleShowArtifact(rawArgs.slice(1), socketPath, context);
 			case "ui":
 				return await handleUi(subcommand, args, socketPath, context);
 			default:

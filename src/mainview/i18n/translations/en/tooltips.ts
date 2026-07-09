@@ -89,6 +89,7 @@ export const tooltips = {
 	"ttip.devServer":
 		"Starts the project's dev script in its own tmux window, on ports allocated to this task — parallel tasks never fight over a port.",
 	"ttip.sharedImages": "Screenshots, QA captures and diagrams the agent shared with you for this task. Click to view them.",
+	"ttip.sharedArtifacts": "Interactive HTML reports the agent shared for this task. Click to open the artifact workspace.",
 	"ttip.ports.copyUrl": "Copies the public tunnel URL for this port — share it or open it on another device.",
 	"ttip.ports.section": "Ports this task listens on: open them in the browser or expose them through the remote tunnel.",
 };

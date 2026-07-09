@@ -201,6 +201,27 @@ const common = {
 	"showImage.toast_other": "El agente compartió {count} imágenes",
 	"showImage.attention_one": "Compartió una imagen",
 	"showImage.attention_other": "Compartió {count} imágenes",
+	// Shared HTML artifacts (dev3 show-artifact)
+	"artifactViewer.regionLabel": "Artefacto HTML",
+	"artifactViewer.close": "Cerrar artefacto",
+	"artifactViewer.previous": "Artefacto anterior",
+	"artifactViewer.next": "Artefacto siguiente",
+	"artifactViewer.fullscreen": "Pantalla completa",
+	"artifactViewer.exitFullscreen": "Salir de pantalla completa",
+	"artifactViewer.downloadZip": "Descargar ZIP",
+	"artifactViewer.downloadHtml": "Descargar HTML",
+	"artifactViewer.downloadFailed": "No se pudo descargar el artefacto",
+	"artifactViewer.loadFailed": "Artefacto no disponible",
+	"artifactViewer.loading": "Cargando artefacto…",
+	"artifactViewer.resize": "Cambiar el ancho del panel de artefactos",
+	"artifactViewer.themeMode": "Tema del artefacto: {mode}",
+	"artifactViewer.themeFollow": "Seguir dev3",
+	"artifactViewer.themeLight": "Claro",
+	"artifactViewer.themeDark": "Oscuro",
+	"showArtifact.toast_one": "El agente compartió un artefacto HTML",
+	"showArtifact.toast_other": "El agente compartió {count} artefactos HTML",
+	"showArtifact.attention_one": "Compartió un artefacto HTML",
+	"showArtifact.attention_other": "Compartió {count} artefactos HTML",
 };
 
 export default common;

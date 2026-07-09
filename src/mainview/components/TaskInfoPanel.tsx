@@ -22,6 +22,7 @@ import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
 import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
 import TaskSharedImages from "./task-info-panel/TaskSharedImages";
+import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
@@ -36,6 +37,7 @@ import {
 	FullscreenExitIcon,
 	PanelChevronIcon,
 	ImagesIcon,
+	ArtifactsIcon,
 } from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
@@ -895,6 +897,23 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 									<span className="text-[0.75rem] font-semibold text-accent tabular-nums">{task.sharedImages?.length}</span>
 								</button>
 							)}
+
+							{(task.sharedArtifacts?.length ?? 0) > 0 && (
+								<button
+									type="button"
+									onClick={() => {
+										setActionsSheetOpen(false);
+										window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+											detail: { taskId: task.id, artifacts: task.sharedArtifacts, index: (task.sharedArtifacts?.length ?? 1) - 1 },
+										}));
+									}}
+									className={SHEET_ROW_CLASS}
+								>
+									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
+									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
+									<span className="text-[0.75rem] font-semibold text-accent tabular-nums">{task.sharedArtifacts?.length}</span>
+								</button>
+							)}
 						</div>
 
 						<section className="border-t border-edge pt-4">
@@ -992,6 +1011,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							)}
 							<TaskExposedPorts task={task} />
 							<TaskSharedImages task={task} />
+							<TaskArtifacts task={task} />
 						</div>
 					</div>
 				</div>
@@ -1069,6 +1089,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								)}
 								<TaskExposedPorts task={task} />
 								<TaskSharedImages task={task} />
+								<TaskArtifacts task={task} />
 							</div>
 						</div>
 					</div>

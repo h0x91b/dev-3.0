@@ -202,6 +202,27 @@ const common = {
 	"showImage.toast_other": "Agent shared {count} images",
 	"showImage.attention_one": "Shared an image",
 	"showImage.attention_other": "Shared {count} images",
+	// Shared HTML artifacts (dev3 show-artifact)
+	"artifactViewer.regionLabel": "HTML artifact",
+	"artifactViewer.close": "Close artifact",
+	"artifactViewer.previous": "Previous artifact",
+	"artifactViewer.next": "Next artifact",
+	"artifactViewer.fullscreen": "Fullscreen",
+	"artifactViewer.exitFullscreen": "Exit fullscreen",
+	"artifactViewer.downloadZip": "Download ZIP",
+	"artifactViewer.downloadHtml": "Download HTML",
+	"artifactViewer.downloadFailed": "Couldn't download the artifact",
+	"artifactViewer.loadFailed": "Artifact unavailable",
+	"artifactViewer.loading": "Loading artifact…",
+	"artifactViewer.resize": "Resize artifact panel",
+	"artifactViewer.themeMode": "Artifact theme: {mode}",
+	"artifactViewer.themeFollow": "Follow dev3",
+	"artifactViewer.themeLight": "Light",
+	"artifactViewer.themeDark": "Dark",
+	"showArtifact.toast_one": "Agent shared an HTML artifact",
+	"showArtifact.toast_other": "Agent shared {count} HTML artifacts",
+	"showArtifact.attention_one": "Shared an HTML artifact",
+	"showArtifact.attention_other": "Shared {count} HTML artifacts",
 } as const;
 
 export default common;

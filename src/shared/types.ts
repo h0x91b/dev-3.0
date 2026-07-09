@@ -1027,6 +1027,12 @@ export interface Task {
 	 */
 	sharedImages?: SharedImage[];
 	/**
+	 * HTML artifacts an agent surfaced via `dev3 show-artifact`, oldest→newest.
+	 * Each artifact is stored in its own additive `shared-artifacts/<id>/`
+	 * directory together with any `--images` assets and an optional ZIP bundle.
+	 */
+	sharedArtifacts?: SharedArtifact[];
+	/**
 	 * Set when the task was created by a scheduled Automation fire (or its
 	 * "Run now" action). Drives the clock provenance glyph on the task card and
 	 * links the task back to its automation's run history.
@@ -1180,6 +1186,15 @@ export const MAX_SHARED_IMAGE_BYTES = 25 * 1024 * 1024;
 
 /** Max images accepted in a single `dev3 show-image` invocation. */
 export const MAX_SHARED_IMAGES_PER_CALL = 20;
+
+/** Per-task cap on retained HTML artifacts; oldest directories are pruned. */
+export const MAX_SHARED_ARTIFACTS_PER_TASK = 20;
+
+/** Maximum accepted HTML source size for `dev3 show-artifact` (bytes). */
+export const MAX_SHARED_ARTIFACT_HTML_BYTES = 5 * 1024 * 1024;
+
+/** Maximum raster assets accepted by one `dev3 show-artifact --images` call. */
+export const MAX_SHARED_ARTIFACT_IMAGES = 20;
 
 // ---- Package scripts runner ----
 
@@ -1460,6 +1475,37 @@ export interface SharedImage {
 	caption?: string;
 	/** ms epoch when the image was shared. */
 	createdAt: number;
+}
+
+/** One raster asset copied beside a task-bound HTML artifact. */
+export interface SharedArtifactAsset {
+	/** Basename preserved so relative references in the HTML keep working. */
+	name: string;
+	storedPath: string;
+	originalPath: string;
+	mime: string;
+	bytes: number;
+}
+
+/**
+ * A task-bound HTML artifact surfaced via `dev3 show-artifact`.
+ *
+ * The stored HTML contains the stable dev3 artifact theme contract. When
+ * `assets` is non-empty, `bundlePath` points at a portable ZIP containing the
+ * HTML and every copied image at the archive root.
+ */
+export interface SharedArtifact {
+	id: string;
+	kind: "html";
+	title: string;
+	name: string;
+	storedPath: string;
+	originalPath: string;
+	bytes: number;
+	createdAt: number;
+	assets: SharedArtifactAsset[];
+	bundlePath?: string;
+	bundleBytes?: number;
 }
 
 /** Generate a short title from a description (first ~maxLen chars, word-boundary truncated). */
@@ -2523,6 +2569,14 @@ export type AppRPCSchema = {
 			readImageBase64: {
 				params: { path: string };
 				response: { dataUrl: string } | null;
+			};
+			readArtifactContent: {
+				params: { artifact: SharedArtifact };
+				response: { html: string; assets: Array<{ name: string; mime: string; dataUrl: string }> };
+			};
+			readArtifactDownload: {
+				params: { artifact: SharedArtifact };
+				response: { fileName: string; mime: "application/zip" | "text/html"; base64: string };
 			};
 			openImageFile: {
 				params: { path: string };

@@ -40,6 +40,32 @@ vi.mock("../shared-images", () => ({
 	deleteSharedImageFiles: vi.fn(),
 }));
 
+vi.mock("../shared-artifacts", () => ({
+	SharedArtifactError: class SharedArtifactError extends Error {},
+	saveSharedArtifact: vi.fn((_projectPath: string, htmlPath: string, imagePaths: string[], title?: string) => ({
+		id: "artifact-1",
+		kind: "html",
+		title: title || "report",
+		name: "report.html",
+		storedPath: "/wt/shared-artifacts/artifact-1/report.html",
+		originalPath: htmlPath,
+		bytes: 10,
+		createdAt: 1,
+		assets: imagePaths.map((path) => ({
+			name: path.split("/").pop(),
+			storedPath: `/wt/shared-artifacts/artifact-1/${path.split("/").pop()}`,
+			originalPath: path,
+			mime: "image/png",
+			bytes: 1,
+		})),
+	})),
+	pruneSharedArtifacts: vi.fn((existing: unknown[] | undefined, incoming: unknown[]) => ({
+		kept: [...(existing ?? []), ...incoming],
+		dropped: [],
+	})),
+	deleteSharedArtifactFiles: vi.fn(),
+}));
+
 vi.mock("../pty-server", () => ({
 	destroySession: vi.fn(),
 	getTmuxLayout: vi.fn(async () => ({ sessionName: "dev3-task1234", exists: false, windows: [], panes: [] })),
@@ -129,6 +155,7 @@ import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import { addVent } from "../vents";
 import { getServerPort } from "../remote-access-server";
 import { saveSharedImage } from "../shared-images";
+import { saveSharedArtifact } from "../shared-artifacts";
 
 const { handleRequest, getSocketPath, startSocketServer, stopSocketServer } = await import(
 	"../cli-socket-server"
@@ -814,6 +841,47 @@ describe("ui.show-image", () => {
 		const resp = await handleRequest(makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: [] }));
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("At least one image path is required");
+	});
+});
+
+describe("ui.show-artifact", () => {
+	it("stores HTML plus images and pushes taskUpdated + cliShowArtifact", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 14 });
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn as never);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
+			return { task: { ...task, ...updates }, result } as never;
+		});
+
+		const response = await handleRequest(makeRequest("ui.show-artifact", {
+			taskId: task.id,
+			projectId: project.id,
+			htmlPath: "/tmp/report.html",
+			imagePaths: ["/tmp/chart.png"],
+			title: "Metrics",
+		}));
+
+		expect(response.ok).toBe(true);
+		expect(saveSharedArtifact).toHaveBeenCalledWith(project.path, "/tmp/report.html", ["/tmp/chart.png"], "Metrics");
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
+		expect(pushFn).toHaveBeenCalledWith(
+			"cliShowArtifact",
+			expect.objectContaining({ taskId: task.id, newCount: 1, taskSeq: task.seq }),
+		);
+	});
+
+	it("rejects a missing HTML path", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		const response = await handleRequest(makeRequest("ui.show-artifact", { taskId: task.id, projectId: project.id }));
+		expect(response.ok).toBe(false);
+		expect(response.error).toContain("HTML artifact path is required");
 	});
 });
 

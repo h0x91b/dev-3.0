@@ -1,7 +1,8 @@
-import { useEffect } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { useEffect, type ReactElement } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Project, Task } from "../../../shared/types";
+import type { Project, SharedArtifact, Task } from "../../../shared/types";
+import { I18nProvider } from "../../i18n";
 import TaskWorkspaceView from "../TaskWorkspaceView";
 
 const getTasksMock = vi.fn();
@@ -59,6 +60,15 @@ vi.mock("../TaskDiffViewer", () => ({
 	),
 }));
 
+vi.mock("../TaskArtifactViewer", () => ({
+	default: ({ artifacts, onClose }: { artifacts: SharedArtifact[]; onClose: () => void }) => (
+		<div data-testid="artifact-workspace">
+			{artifacts[0]?.title}
+			<button onClick={onClose}>Close Artifact</button>
+		</div>
+	),
+}));
+
 const project: Project = {
 	id: "p1",
 	name: "Test Project",
@@ -88,6 +98,8 @@ const task: Task = {
 	updatedAt: "2025-06-15T12:00:00Z",
 };
 
+const renderWorkspace = (element: ReactElement) => render(element, { wrapper: I18nProvider });
+
 describe("TaskWorkspaceView", () => {
 	beforeEach(() => {
 		mountLog.length = 0;
@@ -95,6 +107,7 @@ describe("TaskWorkspaceView", () => {
 		getTasksMock.mockReset();
 		getTasksMock.mockResolvedValue([]);
 		exitCopyModeAllPanesMock.mockClear();
+		localStorage.removeItem("dev3-artifact-panel-width");
 	});
 
 	// Regression: the fullscreen task view can be entered for a task whose
@@ -107,7 +120,7 @@ describe("TaskWorkspaceView", () => {
 		const dispatch = vi.fn();
 		getTasksMock.mockResolvedValue([task]);
 
-		render(
+		renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
 				taskId="t1"
@@ -127,7 +140,7 @@ describe("TaskWorkspaceView", () => {
 	it("toggles between terminal and inline diff", async () => {
 		const user = userEvent.setup();
 
-		render(
+		renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
 				taskId="t1"
@@ -152,6 +165,60 @@ describe("TaskWorkspaceView", () => {
 		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
 	});
 
+	it("shows a task artifact beside the terminal and closes it independently", async () => {
+		const onClose = vi.fn();
+		const artifact: SharedArtifact = {
+			id: "artifact-1",
+			kind: "html",
+			title: "Metrics",
+			name: "metrics.html",
+			storedPath: "/tmp/shared-artifacts/artifact-1/metrics.html",
+			originalPath: "/tmp/metrics.html",
+			bytes: 10,
+			createdAt: 1,
+			assets: [],
+		};
+		renderWorkspace(
+			<TaskWorkspaceView
+				projectId="p1"
+				taskId="t1"
+				tasks={[task]}
+				projects={[project]}
+				navigate={vi.fn()}
+				dispatch={vi.fn()}
+				artifactViewer={{ taskId: "t1", artifacts: [artifact], index: 0 }}
+				onCloseArtifactViewer={onClose}
+			/>,
+		);
+		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		expect(screen.getByTestId("artifact-workspace")).toHaveTextContent("Metrics");
+		const separator = screen.getByRole("separator", { name: "Resize artifact panel" });
+		expect(separator).toHaveClass("w-[7px]");
+		expect(screen.getByTestId("artifact-resize-grip")).toHaveClass("w-[3px]");
+		expect(separator).toHaveAttribute("aria-valuenow", "560");
+		separator.focus();
+		await userEvent.keyboard("{ArrowLeft}");
+		expect(separator).toHaveAttribute("aria-valuenow", "584");
+		const setPointerCapture = vi.fn();
+		const releasePointerCapture = vi.fn();
+		Object.defineProperties(separator, {
+			setPointerCapture: { value: setPointerCapture },
+			releasePointerCapture: { value: releasePointerCapture },
+			hasPointerCapture: { value: () => true },
+		});
+		fireEvent.pointerDown(separator, { pointerId: 7, clientX: 900 });
+		expect(setPointerCapture).toHaveBeenCalledWith(7);
+		expect(screen.getByTestId("artifact-resize-shield")).toBeInTheDocument();
+		fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
+		fireEvent.pointerUp(separator, { pointerId: 7, clientX: 850 });
+		expect(releasePointerCapture).toHaveBeenCalledWith(7);
+		expect(screen.queryByTestId("artifact-resize-shield")).not.toBeInTheDocument();
+		expect(document.body.style.cursor).toBe("");
+		expect(document.body.style.userSelect).toBe("");
+		await userEvent.click(screen.getByText("Close Artifact"));
+		expect(onClose).toHaveBeenCalledOnce();
+	});
+
 	// Regression test for the `key={taskId}` prop on TaskTerminal in
 	// TaskWorkspacePane (decision 041). Without the key, switching taskId
 	// keeps the same TaskTerminal instance mounted, so its cached `ptyUrl`
@@ -162,7 +229,7 @@ describe("TaskWorkspaceView", () => {
 	it("remounts TaskTerminal when taskId changes (key={taskId})", () => {
 		const otherTask: Task = { ...task, id: "t2", title: "Other Task", worktreePath: "/tmp/wt/t2", branchName: "dev3/task-t2" };
 
-		const { rerender } = render(
+		const { rerender } = renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
 				taskId="t1"

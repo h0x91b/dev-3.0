@@ -171,6 +171,11 @@ const infoPanel = {
 	"infoPanel.diffReviewResetConfirmMessage": "Это безвозвратно удалит все inline-комментарии ревью для этой задачи. Отменить нельзя.",
 	"infoPanel.imagesBadge": "Открыть присланные изображения ({count})",
 	"infoPanel.imagesLabel": "Картинки",
+	"infoPanel.artifactsBadge_one": "Открыть {count} присланный артефакт",
+	"infoPanel.artifactsBadge_few": "Открыть {count} присланных артефакта",
+	"infoPanel.artifactsBadge_many": "Открыть {count} присланных артефактов",
+	"infoPanel.artifactsBadge_other": "Открыть {count} присланных артефактов",
+	"infoPanel.artifactsLabel": "Артефакты",
 };
 
 export default infoPanel;

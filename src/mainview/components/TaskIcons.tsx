@@ -3,7 +3,7 @@ import type { SVGProps } from "react";
 /**
  * Hand-drawn glyphs for the task header row (TaskInfoPanel and its sub-panels:
  * the watch toggle, bug-hunter and spawn-agent buttons, worktree settings,
- * TaskOpenIn, TaskScripts, TaskExposedPorts, TaskSharedImages, and the
+ * TaskOpenIn, TaskScripts, TaskExposedPorts, TaskSharedImages, TaskArtifacts, and the
  * fullscreen / collapse panel chrome). They replace the old Nerd Font glyphs
  * and ad-hoc inline SVGs with a single stroke style consistent with the header
  * (HeaderIcons), tmux (TmuxIcons) and git (GitIcons) sets.
@@ -158,6 +158,20 @@ export function ImagesIcon({ className }: TaskIconProps) {
 			<circle cx="9" cy="9.8" r="1.7" className="th-im-sun" />
 			<path d="m3 16.8 4.2-4.2a1.8 1.8 0 0 1 2.6 0l6.7 6.7" pathLength={1} className="th-draw th-im-m1" />
 			<path d="m13.5 14.5 1.8-1.8a1.8 1.8 0 0 1 2.6 0l3.1 3.1" pathLength={1} className="th-draw th-im-m2" />
+		</svg>
+	);
+}
+
+// HTML artifact: a browser canvas with code brackets inside.
+export function ArtifactsIcon({ className }: TaskIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<rect x="3" y="3.5" width="18" height="17" rx="2.5" />
+			<path d="M3 8h18" />
+			<circle cx="6.2" cy="5.8" r=".6" fill="currentColor" stroke="none" />
+			<path d="m9.5 12-2.5 2 2.5 2" />
+			<path d="m14.5 12 2.5 2-2.5 2" />
+			<path d="m13 10.8-2 6.4" />
 		</svg>
 	);
 }

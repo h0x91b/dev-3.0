@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "nod
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
-import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, TipState } from "../../shared/types";
+import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, SharedArtifact, TipState } from "../../shared/types";
 import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -19,6 +19,7 @@ import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
 import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground } from "./shared";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
+import { loadSharedArtifactContent, loadSharedArtifactDownload } from "../shared-artifacts";
 
 async function updateMenuContext(params: MenuContext): Promise<void> {
 	applyMenuContext({
@@ -682,6 +683,14 @@ async function readImageBase64(params: { path: string }): Promise<{ dataUrl: str
 	}
 }
 
+async function readArtifactContent(params: { artifact: SharedArtifact }) {
+	return loadSharedArtifactContent(params.artifact);
+}
+
+async function readArtifactDownload(params: { artifact: SharedArtifact }) {
+	return loadSharedArtifactDownload(params.artifact);
+}
+
 async function openImageFile(params: { path: string }): Promise<void> {
 	log.info("→ openImageFile", { path: params.path });
 	if (!params.path.startsWith("/") || params.path.includes("..")) {
@@ -883,6 +892,8 @@ export const appHandlers = {
 	uploadFileBase64,
 	uploadImageBase64,
 	readImageBase64,
+	readArtifactContent,
+	readArtifactDownload,
 	openImageFile,
 	openFolder,
 	openInApp,

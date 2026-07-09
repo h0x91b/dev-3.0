@@ -96,6 +96,14 @@ ux_architecture:
       owner: "task"
       common_actions: ["add", "edit", "delete"]
       evidence: ["src/shared/types.ts (TaskNote)", "src/mainview/components/NoteItem.tsx", "src/mainview/components/task-info-panel/TaskNotes.tsx", "src/cli/commands/note.ts"]
+    html_artifact:
+      label: "HTML Artifact"
+      plural: "HTML Artifacts"
+      observed: true
+      owner: "task"
+      common_actions: ["view", "resize", "fullscreen", "navigate_history", "download_html_or_zip"]
+      shape: "Self-contained HTML plus optional flat raster assets copied with --images; assets trigger a portable ZIP download."
+      evidence: ["src/shared/types.ts (SharedArtifact)", "src/bun/shared-artifacts.ts", "src/cli/commands/show-artifact.ts"]
     automation:
       label: "Automation"
       plural: "Automations"
@@ -222,8 +230,8 @@ ux_architecture:
           runtime:
             position: "row2.right"
             domain: "project runtime outputs + access to them"
-            contents: ["open_in", "scripts", "dev_server"]
-            note: "open-in lives here (opens the produced worktree) and keeps the bar balanced at 3 controls. Ports/resource usage render as detail in the expanded body, not in the bar."
+            contents: ["open_in", "scripts", "dev_server", "ports", "shared_images (conditional)", "shared_artifacts (conditional)"]
+            note: "Images and Artifacts remain separate user-selected identities. Both are conditional on count>0 and are an explicit exception to the nominal four-control bar budget; the exception must not absorb unrelated controls."
         chrome:
           not_a_bar: true
           position: "row1 far-right edge"
@@ -376,6 +384,16 @@ ux_architecture:
       status: "observed"
       observed: ["TaskImageViewer.tsx", "shared-images.ts", "show-image.ts", "ui.show-image handler"]
       evidence: ["decisions/097-show-image-viewer.md", "UX_DECISIONS 2026-07-02", "src/cli/commands/show-image.ts", "src/bun/cli-socket-server.ts (ui.show-image)", "src/bun/shared-images.ts", "src/mainview/components/TaskImageViewer.tsx", "src/mainview/rpc.ts (cliShowImage)", "decisions/036-worktree-uploaded-dnd-files.md"]
+    task_artifact_workspace:
+      purpose: "Task-bound interactive HTML output surfaced via dev3 show-artifact; docked beside the terminal, horizontally resizable, and fullscreen on demand."
+      feature_class: ["object_action", "data_visualization", "notification"]
+      reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts conditional count button"]
+      allowed: ["sandboxed_html", "history_navigation", "theme_sync", "resize", "fullscreen", "download_html", "download_zip"]
+      forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "subresource_network_access", "parent_dom_or_rpc_access", "native_dialog"]
+      security: "iframe sandbox=allow-scripts without allow-same-origin; injected CSP blocks connections/subresources, frames, objects, forms and base URLs. Allowed scripts can still self-navigate their iframe, so artifacts are trusted task output rather than an untrusted-code boundary. Copied relative images are rewritten to data URLs only in the rendered srcdoc."
+      layout: "Desktop: right-side TaskWorkspacePane sibling with persisted width. Narrow: one-at-a-time artifact replaces terminal until closed."
+      export: "No assets -> HTML download. Any --images assets -> STORE ZIP containing HTML plus safe asset paths relative to the HTML."
+      evidence: ["src/mainview/components/TaskArtifactViewer.tsx", "src/mainview/components/TaskWorkspacePane.tsx", "src/bun/shared-artifacts.ts", "decisions/120-task-html-artifacts.md"]
 
   action_types:
     primary_action:
@@ -491,7 +509,7 @@ ux_architecture:
     task_info_panel:
       layout: "2x2 bar model (see surfaces.task_info_panel.bar_model)"
       per_bar_visible_budget: 4
-      note: "Highest-risk surface. New controls go into exactly one of the 4 domain bars; overflow after 4 ⇒ promote that domain to its own row."
+      note: "Highest-risk surface. New controls go into exactly one domain bar. Runtime has one explicit exception: separate conditional Images and Artifacts controls may exceed four when content exists; no unrelated control inherits this exception."
     toolbar:
       max_visible_actions: 4
       overflow_after: 4     # the app has a documented history of always-visible git/tmux button creep
@@ -592,6 +610,7 @@ ux_architecture:
       hover_terminal_preview: { narrow: "DISABLED on touch/narrow (no hover; popover obscures)", status: observed, evidence: "useTerminalPreview.ts hoverPreviewEnabled()" }
       toast: { narrow: "already max-w-[calc(100vw-2rem)] — OK", status: ok, evidence: "toast.tsx" }
       task_image_viewer: { narrow: "lightbox is full-bleed; filmstrip -> bottom horizontal-scroll strip; image area is live-content -> axis-arbitrated horizontal swipe + visible prev/next + dots (swipe never the only way); touch entry = inspector badge (>=44px) + palette action (native menu absent in remote). Clamp inner panels to max-w-[calc(100vw-2rem)]; prefers-reduced-motion snaps.", status: proposed }
+      task_artifact_workspace: { narrow: "one-at-a-time: artifact replaces terminal content until closed; header actions remain touch reachable; fullscreen is unchanged", status: observed, evidence: "TaskWorkspacePane.tsx useNarrowViewport, TaskArtifactViewer.tsx" }
     navigation_touch:
       problem: "Keyboard-first nav is DEAD on touch (Cmd+K/Cmd+Shift+P palettes, Cmd+1..9, Cmd+/ hint overlay) and the native application menu is ABSENT in remote/browser mode."
       backbone: "breadcrumb spine stays the touch nav backbone (logo->dashboard, project->board, chevron->switcher, back/forward). Keep reachable (>=44px targets, right-0 dropdown fallback, not pushed off-screen by long task titles)."

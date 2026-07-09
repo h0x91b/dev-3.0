@@ -101,7 +101,7 @@ function SplitLayout({ kanbanContent, terminalContent }: SplitLayoutProps) {
 
 			{/* Divider */}
 			<div
-				className="flex-shrink-0 w-[5px] cursor-col-resize group flex items-center justify-center hover:bg-accent/10 transition-colors"
+				className="flex-shrink-0 w-[7px] cursor-col-resize group flex items-center justify-center hover:bg-accent/10 transition-colors"
 				onMouseDown={onDragStart}
 				onDoubleClick={handleDoubleClick}
 			>
