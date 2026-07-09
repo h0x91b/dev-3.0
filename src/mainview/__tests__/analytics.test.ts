@@ -417,21 +417,32 @@ describe("trackPageView / trackDiffView", () => {
 		trackPageView({ screen: "task", projectId: "p1", taskId: "hash-xyz" }, "981-1");
 		const hit = gaHits(fetchMock)[0];
 		expect(hit.events[0].name).toBe("page_view");
-		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/task/981-1");
+		expect(hit.events[0].params.page_location).toBe("https://dev3.local/app/project/p1/task/981-1");
 		expect(hit.events[0].params.page_title).toBe("Task");
 	});
 
 	it("falls back to the raw task id when no seq label is available", () => {
 		trackPageView({ screen: "task", projectId: "p1", taskId: "hash-xyz" });
 		const hit = gaHits(fetchMock)[0];
-		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/task/hash-xyz");
+		expect(hit.events[0].params.page_location).toBe("https://dev3.local/app/project/p1/task/hash-xyz");
 	});
 
 	it("emits a diff page_view under /app/project/<id>/diff/<seqLabel>", () => {
 		trackDiffView("p1", "981-1");
 		const hit = gaHits(fetchMock)[0];
 		expect(hit.events[0].name).toBe("page_view");
-		expect(hit.events[0].params.page_location).toBe("app://dev3/app/project/p1/diff/981-1");
+		expect(hit.events[0].params.page_location).toBe("https://dev3.local/app/project/p1/diff/981-1");
+	});
+
+	// Regression guard: GA4 only derives the "Page path" dimension when
+	// page_location is a real http(s) URL. A custom scheme (the old app://dev3)
+	// left Page path "(not set)". Keep page_location parseable as https.
+	it("emits a page_location that parses as an https URL (Page path works)", () => {
+		trackPageView({ screen: "dashboard" });
+		const loc = gaHits(fetchMock)[0].events[0].params.page_location as string;
+		const url = new URL(loc);
+		expect(url.protocol).toBe("https:");
+		expect(url.pathname).toBe("/app/dashboard");
 	});
 });
 

@@ -1,0 +1,1 @@
+Fixed GA4 "Page path" being empty by sending page_location as a real https URL (https://dev3.local/app/...) instead of the custom app:// scheme, which GA4's URL parser cannot turn into a Page path. Page titles were already arriving; only the derived path dimension was affected.

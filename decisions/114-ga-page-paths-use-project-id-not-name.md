@@ -8,6 +8,16 @@ Measurement Protocol (`src/mainview/analytics.ts`). The marketing landing page
 paths (`/project/<x>/kanban`, `/task/<id>`, `/diff/<id>`) instead of the old flat
 `app://dev3/<screen>`, and to tell app hits apart from landing-page hits.
 
+## Update — page_location must be a real https URL
+
+The first cut built `page_location` as `app://dev3<path>`. GA4 derives the **Page
+path** dimension by parsing `page_location` as a URL, but only for `http(s)` — a
+custom scheme leaves Page path "(not set)" (page_title, sent explicitly, still
+arrived, which masked it). Fixed by emitting `https://dev3.local<path>`
+(`APP_LOCATION_ORIGIN` in `analytics.ts`); the synthetic host stays distinct from
+the landing host so the two remain separable. A regression test asserts
+`new URL(page_location).protocol === "https:"`.
+
 ## Decision
 
 `analyticsLocationForRoute(route, taskLabel?)` maps every `Route` to an
