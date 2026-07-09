@@ -32,9 +32,10 @@ interface CreateTaskModalProps {
 	onCreateAndRun?: (task: Task) => void;
 	onOpenAutomations?: () => void;
 	skillBaseCommand?: string;
+	skillAutocompleteEnabled?: boolean;
 }
 
-function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations, skillBaseCommand = "" }: CreateTaskModalProps) {
+function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations, skillBaseCommand = "", skillAutocompleteEnabled = true }: CreateTaskModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [description, setDescription] = useState("");
@@ -102,7 +103,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 	}, []);
 
 	const skillPrefix = skillInvocationPrefix(skillBaseCommand);
-	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription, project.path, skillPrefix);
+	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription, project.path, skillPrefix, skillAutocompleteEnabled);
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);

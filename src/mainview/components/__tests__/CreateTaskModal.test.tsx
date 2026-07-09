@@ -69,6 +69,7 @@ function renderModal(props: {
 	onCreateAndRun?: (task: Task) => void;
 	project?: Project;
 	skillBaseCommand?: string;
+	skillAutocompleteEnabled?: boolean;
 } = {}) {
 	return render(
 		<I18nProvider>
@@ -78,6 +79,7 @@ function renderModal(props: {
 				onClose={props.onClose ?? vi.fn()}
 				onCreateAndRun={props.onCreateAndRun}
 				skillBaseCommand={props.skillBaseCommand}
+				skillAutocompleteEnabled={props.skillAutocompleteEnabled}
 			/>
 		</I18nProvider>,
 	);
@@ -1351,7 +1353,7 @@ describe("CreateTaskModal skill autocomplete", () => {
 
 	it("inserts Codex skills with a dollar prefix", async () => {
 		renderModal({ skillBaseCommand: "codex" });
-		const textarea = await typeInDescription("/dev");
+		const textarea = await typeInDescription("$dev");
 		await waitFor(() => {
 			expect(screen.getByText("$dev3")).toBeInTheDocument();
 		});
@@ -1367,6 +1369,22 @@ describe("CreateTaskModal skill autocomplete", () => {
 		await waitFor(() => {
 			expect(screen.getByText("$dev3")).toBeInTheDocument();
 		});
+	});
+
+	it("does not intercept dollar-prefixed text for slash agents", async () => {
+		renderModal({ skillBaseCommand: "claude" });
+		const textarea = await typeInDescription("$dev3");
+		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+		await userEvent.keyboard("{Enter}");
+		expect(textarea.value).toBe("$dev3\n");
+	});
+
+	it("does not autocomplete until the target agent is known", async () => {
+		renderModal({ skillBaseCommand: "codex", skillAutocompleteEnabled: false });
+		const textarea = await typeInDescription("$dev");
+		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+		await userEvent.keyboard("{Enter}");
+		expect(textarea.value).toBe("$dev\n");
 	});
 
 	it("Escape closes the dropdown but keeps the modal open", async () => {

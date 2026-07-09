@@ -11,13 +11,13 @@ interface SkillToken {
 	query: string;
 }
 
-/** Find an active `/skill` or `$skill` token ending at the caret, or null. */
-export function findSkillToken(text: string, caret: number): SkillToken | null {
+/** Find an active skill token with the selected agent's prefix, or null. */
+export function findSkillToken(text: string, caret: number, invocationPrefix: "$" | "/"): SkillToken | null {
 	let start = caret;
 	while (start > 0 && !/[\s]/.test(text[start - 1])) start--;
-	if (text[start] !== "/" && text[start] !== "$") return null;
+	if (text[start] !== invocationPrefix) return null;
 	const token = text.slice(start, caret);
-	if (!/^[/$][\w-]*$/.test(token)) return null;
+	if (!/^[\w-]*$/.test(token.slice(1))) return null;
 	return { start, query: token.slice(1) };
 }
 
@@ -48,6 +48,7 @@ export function useSkillAutocomplete(
 	setValue: (next: string) => void,
 	projectPath?: string | null,
 	invocationPrefix: "$" | "/" = "/",
+	enabled = true,
 ) {
 	const [skills, setSkills] = useState<AgentSkillInfo[]>([]);
 	const [token, setToken] = useState<SkillToken | null>(null);
@@ -72,16 +73,16 @@ export function useSkillAutocomplete(
 	const sync = useCallback(() => {
 		const el = textareaRef.current;
 		if (!el) return;
-		const next = findSkillToken(el.value, el.selectionStart);
+		const next = findSkillToken(el.value, el.selectionStart, invocationPrefix);
 		setToken((prev) => {
 			if (prev?.start !== next?.start) setDismissed(false);
 			if (prev?.start === next?.start && prev?.query === next?.query) return prev;
 			setActiveIndex(0);
 			return next;
 		});
-	}, [textareaRef]);
+	}, [textareaRef, invocationPrefix]);
 
-	const items = token && !dismissed ? filterSkills(skills, token.query) : [];
+	const items = enabled && token && !dismissed ? filterSkills(skills, token.query) : [];
 	const open = items.length > 0;
 
 	const close = useCallback(() => setDismissed(true), []);

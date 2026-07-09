@@ -233,6 +233,7 @@ function App() {
 		});
 	}, []);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
+	const [agentSettingsReady, setAgentSettingsReady] = useState(false);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-auto",
@@ -1530,15 +1531,24 @@ function App() {
 		return () => window.removeEventListener("rpc:openCreateTaskModal", onOpenCreateTaskModal);
 	}, [openCreateTaskModal]);
 
-	// Load agents + global settings the first time the create-task modal opens.
-	// Needed by the LaunchVariantsModal that follows "Create & Run" / "Scratch".
-	const agentsLoadedRef = useRef(false);
+	// Load the agent selection before enabling task-prompt skill autocomplete.
+	// A slash fallback is unsafe: Codex requires `$`, so autocomplete stays inert
+	// until its target agent is known.
+	const agentSettingsLoadingRef = useRef(false);
 	useEffect(() => {
-		if (!createTaskProjectId || agentsLoadedRef.current) return;
-		agentsLoadedRef.current = true;
-		api.request.getAgents().then(setAgents).catch(() => {});
-		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
-	}, [createTaskProjectId]);
+		if (!createTaskProjectId || agentSettingsReady || agentSettingsLoadingRef.current) return;
+		agentSettingsLoadingRef.current = true;
+		Promise.all([api.request.getAgents(), api.request.getGlobalSettings()])
+			.then(([nextAgents, nextSettings]) => {
+				setAgents(nextAgents);
+				setGlobalSettings(nextSettings);
+				setAgentSettingsReady(true);
+			})
+			.catch(() => {})
+			.finally(() => {
+				agentSettingsLoadingRef.current = false;
+			});
+	}, [agentSettingsReady, createTaskProjectId]);
 
 	// Register agents with analytics on mount so events like `task_moved` can
 	// carry a human-readable agent name (the modal load above is lazy).
@@ -1786,6 +1796,7 @@ function App() {
 				<CreateTaskModal
 					project={createTaskProject}
 					skillBaseCommand={defaultSkillBaseCommand}
+					skillAutocompleteEnabled={agentSettingsReady}
 					dispatch={dispatch}
 					onClose={() => setCreateTaskProjectId(null)}
 					onCreateAndRun={(task) => {
