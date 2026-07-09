@@ -386,11 +386,20 @@ brew trust h0x91b/dev3 2>/dev/null || true   # newer Homebrew refuses untrusted 
 brew install --cask h0x91b/dev3/dev3
 ```
 
-### Terminal colors — and the "ANSI colors only" agent theme
+### Terminal colors and recommended agent themes
 
-dev-3.0 ships a hand-tuned 16-color ANSI palette for both the **dark** and **light** UI themes, plus a readability filter that remaps unreadable foreground/background colors emitted by agents on the fly. Because of that filter, agents look fine out of the box with their default themes — Claude Code's regular **Dark mode** (Monokai) works great as-is.
+dev-3.0 ships a hand-tuned 16-color ANSI palette for both the **dark** and **light** UI themes, plus a readability filter that remaps unreadable foreground/background colors emitted by agents on the fly.
 
-If you'd rather have an agent render entirely through dev-3.0's tuned palette, switch it to an "ANSI colors only" theme. For **Claude Code**, run `/theme` and pick:
+Every built-in **Claude Code** `/theme` option is supported: Auto, regular Light/Dark, both colorblind-friendly variants, and both ANSI-only variants. Fixed diff colors adapt in both directions when the Claude Code theme and dev-3.0 theme use opposite polarities, so even a Light Claude theme remains readable in dark dev-3.0 and vice versa.
+
+For the most native-looking pairing, use Auto or match the polarity:
+
+| dev-3.0 UI | Claude Code `/theme` | Codex `[tui] theme` |
+|---|---|---|
+| **Dark** | Dark mode, Dark mode (colorblind-friendly), or Dark mode (ANSI colors only) | **`dracula` (recommended)** |
+| **Light** | Light mode, Light mode (colorblind-friendly), or Light mode (ANSI colors only) | **`github` (recommended)** |
+
+If you'd rather have Claude Code render entirely through dev-3.0's tuned 16-color palette, run `/theme` and pick:
 
 - **Dark mode (ANSI colors only)** — when dev-3.0 is on the dark theme
 - **Light mode (ANSI colors only)** — when dev-3.0 is on the light theme
@@ -399,17 +408,20 @@ If you'd rather have an agent render entirely through dev-3.0's tuned palette, s
   <img src="docs/screenshots/claude-code-ansi-theme.jpg" width="640" alt="Claude Code theme picker — choose 'Dark mode (ANSI colors only)' or 'Light mode (ANSI colors only)'">
 </p>
 
-This makes Claude Code emit only the 16 base ANSI colors, which dev-3.0 resolves through its tuned palette — handy if you don't like how the default theme's colors look in the embedded terminal.
+This makes Claude Code emit only the 16 base ANSI colors, which dev-3.0 resolves through its tuned palette.
 
-**Codex** has no "ANSI colors only" mode, but the same idea applies: the readability filter keeps its default output legible, and if you want the syntax colors to match dev-3.0's UI theme, set `[tui] theme` in `~/.codex/config.toml` to a theme of the matching polarity:
+**Codex** has no "ANSI colors only" mode. Set the recommended matching theme in `~/.codex/config.toml`:
 
 ```toml
 [tui]
-# dev-3.0 dark theme → pick a dark syntax theme
-theme = "dracula"   # or: monokai-extended-origin, gruvbox-dark, base16-256, one-half-dark, solarized-dark
+# Recommended when dev-3.0 uses the dark UI
+theme = "dracula"
+```
 
-# dev-3.0 light theme → pick a light one
-# theme = "github"  # or: solarized-light, gruvbox-light, one-half-light
+```toml
+[tui]
+# Recommended when dev-3.0 uses the light UI
+theme = "github"
 ```
 
 ## Star History
@@ -419,4 +431,3 @@ theme = "dracula"   # or: monokai-extended-origin, gruvbox-dark, base16-256, one
 ## License
 
 [Apache 2.0](LICENSE) — © 2026 Arseny Pavlenko
-
