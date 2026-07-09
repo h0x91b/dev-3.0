@@ -7,7 +7,7 @@ export default function TaskArtifacts({ task }: { task: Task }) {
 	const t = useT();
 	const count = task.sharedArtifacts?.length ?? 0;
 	if (count === 0) return null;
-	const label = t("infoPanel.artifactsBadge", { count: String(count) });
+	const label = t.plural("infoPanel.artifactsBadge", count);
 	return (
 		<Tooltip content={label} detail={t("ttip.sharedArtifacts")}>
 			<button

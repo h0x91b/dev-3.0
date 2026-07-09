@@ -37,6 +37,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 	const [fullscreen, setFullscreen] = useState(false);
 	const [downloading, setDownloading] = useState(false);
 	const frameRef = useRef<HTMLIFrameElement>(null);
+	const viewerRef = useRef<HTMLElement>(null);
 	const current = artifacts[index];
 
 	useEffect(() => {
@@ -78,13 +79,13 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 
 	useEffect(() => {
 		function onKey(event: KeyboardEvent) {
+			if (!fullscreen && !viewerRef.current?.contains(document.activeElement)) return;
 			if (event.key === "Escape") {
 				event.preventDefault();
 				if (fullscreen) setFullscreen(false);
 				else onClose();
-			} else if (event.key === "ArrowLeft") go(-1);
-			else if (event.key === "ArrowRight") go(1);
-			else if (event.key === "f" || event.key === "F") setFullscreen((value) => !value);
+			} else if (event.key === "ArrowLeft") { event.preventDefault(); go(-1); }
+			else if (event.key === "ArrowRight") { event.preventDefault(); go(1); }
 		}
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
@@ -103,10 +104,11 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 			setDownloading(false);
 		}
 	};
-	const iconButton = "flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-40";
+	const iconButton = "flex h-11 w-11 sm:h-8 sm:w-8 flex-shrink-0 items-center justify-center rounded-lg text-fg-3 transition-colors hover:bg-elevated-hover hover:text-fg disabled:opacity-40";
 
 	return (
 		<section
+			ref={viewerRef}
 			data-testid="artifact-viewer"
 			data-fullscreen={fullscreen ? "true" : "false"}
 			aria-label={t("artifactViewer.regionLabel")}

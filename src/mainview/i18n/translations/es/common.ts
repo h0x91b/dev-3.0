@@ -213,6 +213,7 @@ const common = {
 	"artifactViewer.downloadFailed": "No se pudo descargar el artefacto",
 	"artifactViewer.loadFailed": "Artefacto no disponible",
 	"artifactViewer.loading": "Cargando artefacto…",
+	"artifactViewer.resize": "Cambiar el ancho del panel de artefactos",
 	"showArtifact.toast_one": "El agente compartió un artefacto HTML",
 	"showArtifact.toast_other": "El agente compartió {count} artefactos HTML",
 	"showArtifact.attention_one": "Compartió un artefacto HTML",

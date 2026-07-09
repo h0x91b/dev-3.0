@@ -106,7 +106,7 @@ describe("saveSharedArtifact", () => {
 		expect(Buffer.from(download.base64, "base64").subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
 	});
 
-	it("rejects duplicate image basenames because relative references would be ambiguous", () => {
+	it("preserves nested paths so extracted ZIP references remain portable", () => {
 		const html = join(SRC_DIR, "dupes.html");
 		const aDir = join(SRC_DIR, "a");
 		const bDir = join(SRC_DIR, "b");
@@ -115,8 +115,12 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(html, "<!doctype html>");
 		writeFileSync(join(aDir, "same.png"), "A");
 		writeFileSync(join(bDir, "same.png"), "B");
-		expect(() => saveSharedArtifact("/my/project", html, [join(aDir, "same.png"), join(bDir, "same.png")]))
-			.toThrow(SharedArtifactError);
+		const saved = saveSharedArtifact("/my/project", html, [join(aDir, "same.png"), join(bDir, "same.png")]);
+		expect(saved.assets.map((asset) => asset.name)).toEqual(["a/same.png", "b/same.png"]);
+		expect(saved.assets.every((asset) => existsSync(asset.storedPath))).toBe(true);
+		const zip = readFileSync(saved.bundlePath!);
+		expect(zip.includes(Buffer.from("a/same.png"))).toBe(true);
+		expect(zip.includes(Buffer.from("b/same.png"))).toBe(true);
 	});
 });
 
@@ -131,5 +135,16 @@ describe("pruneSharedArtifacts / deleteSharedArtifactFiles", () => {
 		writeFileSync(dropped[0].storedPath, "x");
 		deleteSharedArtifactFiles(dropped);
 		expect(existsSync(dir)).toBe(false);
+	});
+});
+
+describe("stored artifact read boundary", () => {
+	it("rejects traversal-shaped records supplied by the renderer", () => {
+		const forged = {
+			...artifact("forged"),
+			storedPath: `${TEST_HOME}/worktrees/x/shared-artifacts/id/../../../../secret.txt`,
+		};
+		expect(() => loadSharedArtifactContent(forged)).toThrow(SharedArtifactError);
+		expect(() => loadSharedArtifactDownload(forged)).toThrow(SharedArtifactError);
 	});
 });

@@ -8,7 +8,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import type { Stats } from "node:fs";
-import { basename, dirname, extname, isAbsolute } from "node:path";
+import { basename, dirname, extname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
 import type { SharedArtifact, SharedArtifactAsset } from "../shared/types";
 import {
 	MAX_SHARED_ARTIFACT_HTML_BYTES,
@@ -19,6 +19,7 @@ import {
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
 import { createStoreZip } from "./zip-store";
+import { projectSlug } from "./git";
 
 const log = createLogger("shared-artifacts");
 const IMAGE_EXTS = new Set(SHARED_IMAGE_EXTS);
@@ -42,10 +43,6 @@ html{background:rgb(var(--dev3-surface-base));color:rgb(var(--dev3-text-primary)
 /** Validation failure surfaced verbatim by the CLI socket handler. */
 export class SharedArtifactError extends Error {}
 
-function projectSlug(projectPath: string): string {
-	return projectPath.replace(/^\//, "").replaceAll("/", "-");
-}
-
 function artifactRoot(projectPath: string): string {
 	return `${DEV3_HOME}/worktrees/${projectSlug(projectPath)}/shared-artifacts`;
 }
@@ -54,6 +51,15 @@ function safeBasename(path: string): string {
 	const name = basename(path).replace(/[\0-\x1f\x7f]/g, "").slice(0, 120);
 	if (!name || name === "." || name === "..") throw new SharedArtifactError(`Invalid file name: ${path}`);
 	return name;
+}
+
+function assetNameFor(htmlPath: string, imagePath: string): string {
+	const fromHtml = relative(dirname(htmlPath), imagePath);
+	if (fromHtml && !isAbsolute(fromHtml) && fromHtml !== ".." && !fromHtml.startsWith(`..${sep}`)) {
+		const segments = fromHtml.split(sep).map((segment) => safeBasename(segment));
+		return segments.join("/");
+	}
+	return safeBasename(imagePath);
 }
 
 function assertSourceFile(path: string): Stats {
@@ -97,7 +103,7 @@ export function saveSharedArtifact(
 	let totalAssetBytes = 0;
 	const validatedAssets = imagePaths.map((path) => {
 		const stat = assertSourceFile(path);
-		const name = safeBasename(path);
+		const name = assetNameFor(htmlPath, path);
 		const ext = extname(name).replace(/^\./, "").toLowerCase();
 		if (!IMAGE_EXTS.has(ext)) throw new SharedArtifactError(`Unsupported artifact image type "${ext || "(none)"}": ${path}`);
 		if (stat.size > MAX_SHARED_IMAGE_BYTES) throw new SharedArtifactError(`Artifact image is too large: ${path}`);
@@ -119,7 +125,8 @@ export function saveSharedArtifact(
 		const html = injectArtifactThemeContract(readFileSync(htmlPath, "utf8"));
 		writeFileSync(storedPath, html, "utf8");
 		const assets: SharedArtifactAsset[] = validatedAssets.map(({ path, name, ext, stat }) => {
-			const assetPath = `${dir}/${name}`;
+			const assetPath = resolvePath(dir, name);
+			mkdirSync(dirname(assetPath), { recursive: true });
 			copyFileSync(path, assetPath);
 			return { name, storedPath: assetPath, originalPath: path, mime: MIME_BY_EXT[ext], bytes: stat.size };
 		});
@@ -174,14 +181,17 @@ export function deleteSharedArtifactFiles(artifacts: SharedArtifact[]): void {
 }
 
 function assertStoredArtifactRecord(artifact: SharedArtifact): string {
-	if (!isAbsolute(artifact.storedPath) || !artifact.storedPath.includes("/shared-artifacts/")) {
+	const worktreesRoot = `${resolvePath(DEV3_HOME, "worktrees")}${sep}`;
+	const storedPath = resolvePath(artifact.storedPath);
+	if (!isAbsolute(artifact.storedPath) || !storedPath.startsWith(worktreesRoot) || !storedPath.includes(`${sep}shared-artifacts${sep}`)) {
 		throw new SharedArtifactError("Invalid stored artifact path");
 	}
-	const dir = dirname(artifact.storedPath);
+	const dir = dirname(storedPath);
+	const artifactRoot = `${dir}${sep}`;
 	for (const asset of artifact.assets) {
-		if (dirname(asset.storedPath) !== dir) throw new SharedArtifactError("Artifact asset escaped its directory");
+		if (!resolvePath(asset.storedPath).startsWith(artifactRoot)) throw new SharedArtifactError("Artifact asset escaped its directory");
 	}
-	if (artifact.bundlePath && dirname(artifact.bundlePath) !== dir) {
+	if (artifact.bundlePath && dirname(resolvePath(artifact.bundlePath)) !== dir) {
 		throw new SharedArtifactError("Artifact bundle escaped its directory");
 	}
 	return dir;

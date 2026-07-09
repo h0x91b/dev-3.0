@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, type ReactElement } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Project, SharedArtifact, Task } from "../../../shared/types";
+import { I18nProvider } from "../../i18n";
 import TaskWorkspaceView from "../TaskWorkspaceView";
 
 const getTasksMock = vi.fn();
@@ -97,6 +98,8 @@ const task: Task = {
 	updatedAt: "2025-06-15T12:00:00Z",
 };
 
+const renderWorkspace = (element: ReactElement) => render(element, { wrapper: I18nProvider });
+
 describe("TaskWorkspaceView", () => {
 	beforeEach(() => {
 		mountLog.length = 0;
@@ -104,6 +107,7 @@ describe("TaskWorkspaceView", () => {
 		getTasksMock.mockReset();
 		getTasksMock.mockResolvedValue([]);
 		exitCopyModeAllPanesMock.mockClear();
+		localStorage.removeItem("dev3-artifact-panel-width");
 	});
 
 	// Regression: the fullscreen task view can be entered for a task whose
@@ -116,7 +120,7 @@ describe("TaskWorkspaceView", () => {
 		const dispatch = vi.fn();
 		getTasksMock.mockResolvedValue([task]);
 
-		render(
+		renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
 				taskId="t1"
@@ -136,7 +140,7 @@ describe("TaskWorkspaceView", () => {
 	it("toggles between terminal and inline diff", async () => {
 		const user = userEvent.setup();
 
-		render(
+		renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
 				taskId="t1"
@@ -174,7 +178,7 @@ describe("TaskWorkspaceView", () => {
 			createdAt: 1,
 			assets: [],
 		};
-		render(
+		renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
 				taskId="t1"
@@ -188,6 +192,11 @@ describe("TaskWorkspaceView", () => {
 		);
 		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
 		expect(screen.getByTestId("artifact-workspace")).toHaveTextContent("Metrics");
+		const separator = screen.getByRole("separator", { name: "Resize artifact panel" });
+		expect(separator).toHaveAttribute("aria-valuenow", "560");
+		separator.focus();
+		await userEvent.keyboard("{ArrowLeft}");
+		expect(separator).toHaveAttribute("aria-valuenow", "584");
 		await userEvent.click(screen.getByText("Close Artifact"));
 		expect(onClose).toHaveBeenCalledOnce();
 	});
@@ -202,7 +211,7 @@ describe("TaskWorkspaceView", () => {
 	it("remounts TaskTerminal when taskId changes (key={taskId})", () => {
 		const otherTask: Task = { ...task, id: "t2", title: "Other Task", worktreePath: "/tmp/wt/t2", branchName: "dev3/task-t2" };
 
-		const { rerender } = render(
+		const { rerender } = renderWorkspace(
 			<TaskWorkspaceView
 				projectId="p1"
 				taskId="t1"

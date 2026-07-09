@@ -214,6 +214,7 @@ const common = {
 	"artifactViewer.downloadFailed": "Couldn't download the artifact",
 	"artifactViewer.loadFailed": "Artifact unavailable",
 	"artifactViewer.loading": "Loading artifact…",
+	"artifactViewer.resize": "Resize artifact panel",
 	"showArtifact.toast_one": "Agent shared an HTML artifact",
 	"showArtifact.toast_other": "Agent shared {count} HTML artifacts",
 	"showArtifact.attention_one": "Shared an HTML artifact",

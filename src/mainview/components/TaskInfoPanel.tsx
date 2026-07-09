@@ -37,6 +37,7 @@ import {
 	FullscreenExitIcon,
 	PanelChevronIcon,
 	ImagesIcon,
+	ArtifactsIcon,
 } from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
@@ -894,6 +895,23 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
 									<span className="flex-1 text-sm font-medium">{t("infoPanel.imagesLabel")}</span>
 									<span className="text-[0.75rem] font-semibold text-accent tabular-nums">{task.sharedImages?.length}</span>
+								</button>
+							)}
+
+							{(task.sharedArtifacts?.length ?? 0) > 0 && (
+								<button
+									type="button"
+									onClick={() => {
+										setActionsSheetOpen(false);
+										window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+											detail: { taskId: task.id, artifacts: task.sharedArtifacts, index: (task.sharedArtifacts?.length ?? 1) - 1 },
+										}));
+									}}
+									className={SHEET_ROW_CLASS}
+								>
+									<ArtifactsIcon className="h-5 w-5 shrink-0 text-fg-3" />
+									<span className="flex-1 text-sm font-medium">{t("infoPanel.artifactsLabel")}</span>
+									<span className="text-[0.75rem] font-semibold text-accent tabular-nums">{task.sharedArtifacts?.length}</span>
 								</button>
 							)}
 						</div>

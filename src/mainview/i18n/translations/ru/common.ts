@@ -219,6 +219,7 @@ const common = {
 	"artifactViewer.downloadFailed": "Не удалось скачать артефакт",
 	"artifactViewer.loadFailed": "Артефакт недоступен",
 	"artifactViewer.loading": "Загрузка артефакта…",
+	"artifactViewer.resize": "Изменить ширину панели артефакта",
 	"showArtifact.toast_one": "Агент прислал HTML-артефакт",
 	"showArtifact.toast_few": "Агент прислал {count} HTML-артефакта",
 	"showArtifact.toast_many": "Агент прислал {count} HTML-артефактов",

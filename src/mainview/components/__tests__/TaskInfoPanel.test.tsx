@@ -2508,6 +2508,31 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(within(sheet).getByText("#7")).toBeInTheDocument();
 		});
 
+		it("opens artifact history from the touch actions sheet", async () => {
+			const openArtifact = vi.fn();
+			window.addEventListener("dev3:openArtifactViewer", openArtifact);
+			await act(async () => {
+				renderPanel(makeTask({
+					sharedArtifacts: [{
+						id: "artifact-1",
+						kind: "html",
+						title: "Report",
+						name: "report.html",
+						storedPath: "/tmp/shared-artifacts/artifact-1/report.html",
+						originalPath: "/tmp/report.html",
+						bytes: 10,
+						createdAt: 1,
+						assets: [],
+					}],
+				}));
+			});
+			await userEvent.click(screen.getByTestId("task-actions-kebab"));
+			await userEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Artifacts"));
+			expect(openArtifact).toHaveBeenCalledOnce();
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+			window.removeEventListener("dev3:openArtifactViewer", openArtifact);
+		});
+
 		it("closes the sheet on the close button", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ title: "Mobile task" }));

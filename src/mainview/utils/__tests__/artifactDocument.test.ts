@@ -10,8 +10,16 @@ describe("composeArtifactDocument", () => {
 		]);
 		expect(output).toContain("Content-Security-Policy");
 		expect(output).toContain("connect-src 'none'");
+		expect(output).toContain("navigate-to 'none'");
 		expect(output).toContain('src="data:image/png;base64,AAA"');
 		expect(output).toContain("url('data:image/webp;base64,BBB')");
+	});
+
+	it("rewrites nested relative image paths without flattening them", () => {
+		const output = composeArtifactDocument('<img src="assets/charts/q1.png">', [
+			{ name: "assets/charts/q1.png", mime: "image/png", dataUrl: "data:image/png;base64,NESTED" },
+		]);
+		expect(output).toContain('src="data:image/png;base64,NESTED"');
 	});
 
 	it("leaves external URLs present so CSP blocks them rather than silently changing content", () => {

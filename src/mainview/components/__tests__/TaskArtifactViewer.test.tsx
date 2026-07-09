@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { SharedArtifact } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -52,6 +52,17 @@ describe("TaskArtifactViewer", () => {
 		await userEvent.click(screen.getByTestId("artifact-viewer-fullscreen"));
 		expect(screen.getByTestId("artifact-viewer")).toHaveAttribute("data-fullscreen", "true");
 		await userEvent.click(screen.getByTestId("artifact-viewer-close"));
+		expect(onClose).toHaveBeenCalledOnce();
+	});
+
+	it("does not consume terminal shortcuts until focus enters the viewer", async () => {
+		const onClose = vi.fn();
+		render(<I18nProvider><button type="button">Terminal</button><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		screen.getByRole("button", { name: "Terminal" }).focus();
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onClose).not.toHaveBeenCalled();
+		screen.getByTestId("artifact-viewer-close").focus();
+		fireEvent.keyDown(window, { key: "Escape" });
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 

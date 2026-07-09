@@ -226,6 +226,12 @@ function App() {
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number } | null>(null);
 	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; artifacts: SharedArtifact[]; index: number } | null>(null);
+	const closeArtifactViewer = useCallback(() => {
+		setArtifactViewer(null);
+		requestAnimationFrame(() => {
+			document.querySelector<HTMLButtonElement>("[data-testid='shared-artifacts-badge']")?.focus();
+		});
+	}, []);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
@@ -1076,9 +1082,6 @@ function App() {
 		return () => window.removeEventListener("dev3:openImageViewer", onOpenViewer);
 	}, []);
 
-	const artifactViewerRef = useRef(artifactViewer);
-	artifactViewerRef.current = artifactViewer;
-
 	useEffect(() => {
 		function onCliShowArtifact(e: Event) {
 			const { taskId, projectId, artifacts, newCount, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
@@ -1096,7 +1099,7 @@ function App() {
 				(state.route.screen === "task" && state.route.taskId === taskId) ||
 				(state.route.screen === "project" && state.route.activeTaskId === taskId);
 			const foreground = typeof document === "undefined" || document.visibilityState === "visible";
-			if (artifactViewerRef.current?.taskId === taskId || (viewingThisTask && foreground)) {
+			if (viewingThisTask && foreground) {
 				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				return;
 			}
@@ -2115,7 +2118,7 @@ function App() {
 						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
 						artifactViewer={artifactViewer}
-						onCloseArtifactViewer={() => setArtifactViewer(null)}
+						onCloseArtifactViewer={closeArtifactViewer}
 					/>
 				);
 			case "project-terminal": {
@@ -2141,7 +2144,7 @@ function App() {
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}
 						artifactViewer={artifactViewer}
-						onCloseArtifactViewer={() => setArtifactViewer(null)}
+						onCloseArtifactViewer={closeArtifactViewer}
 					/>
 				);
 			case "project-settings":
