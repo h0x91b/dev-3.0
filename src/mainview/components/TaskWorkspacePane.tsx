@@ -193,7 +193,7 @@ function TaskWorkspacePane({
 					<>
 						{!isNarrow && (
 							<div
-								className={`group flex w-2 flex-shrink-0 touch-none cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10 focus-visible:bg-accent/10 focus-visible:outline-none ${artifactResizing ? "bg-accent/15" : ""}`}
+								className={`group flex w-[7px] flex-shrink-0 touch-none cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10 focus-visible:bg-accent/10 focus-visible:outline-none ${artifactResizing ? "bg-accent/15" : ""}`}
 								onPointerDown={onArtifactResizeStart}
 								onPointerMove={onArtifactResizeMove}
 								onPointerUp={() => finishArtifactResize(true)}
@@ -212,7 +212,10 @@ function TaskWorkspacePane({
 								aria-valuemax={Math.round((artifactPanelRef.current?.parentElement?.clientWidth || window.innerWidth) * MAX_ARTIFACT_RATIO)}
 								aria-valuenow={Math.round(artifactWidth)}
 							>
-								<div className={`h-10 rounded-full transition-all group-hover:bg-accent group-focus-visible:bg-accent ${artifactResizing ? "w-1 bg-accent" : "w-[3px] bg-fg-muted/40"}`} />
+								<div
+									data-testid="artifact-resize-grip"
+									className={`h-8 w-[3px] rounded-full transition-colors group-hover:bg-accent group-focus-visible:bg-accent ${artifactResizing ? "bg-accent" : "bg-fg-muted/40"}`}
+								/>
 							</div>
 						)}
 						<div
