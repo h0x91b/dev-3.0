@@ -143,3 +143,22 @@ describe("addTask — carried extras", () => {
 		expect(task.userOverview).toBeUndefined();
 	});
 });
+
+describe("task lifecycle timing", () => {
+	it("starts on first in-progress move and resets after a terminal task is reopened", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-07-09T09:00:00.000Z"));
+		const task = await addTask(testProject, "Track lifecycle");
+		const started = await updateTask(testProject, task.id, { status: "in-progress" });
+		expect(started.lifecycleStartedAt).toBe("2026-07-09T09:00:00.000Z");
+
+		vi.setSystemTime(new Date("2026-07-09T10:00:00.000Z"));
+		const reviewing = await updateTask(testProject, task.id, { status: "review-by-ai" });
+		expect(reviewing.lifecycleStartedAt).toBe(started.lifecycleStartedAt);
+
+		await updateTask(testProject, task.id, { status: "completed" });
+		vi.setSystemTime(new Date("2026-07-10T09:00:00.000Z"));
+		const reopened = await updateTask(testProject, task.id, { status: "in-progress" });
+		expect(reopened.lifecycleStartedAt).toBe("2026-07-10T09:00:00.000Z");
+	});
+});

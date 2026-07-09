@@ -66,6 +66,7 @@ describe("toStatEvent", () => {
 		expect(ev.liveStats).toBe(false);
 		expect(ev.status).toBe("completed");
 		expect(ev.movedAt).toBe("2026-06-02T00:00:00.000Z");
+		expect(ev.lifecycleStartedAt).toBeNull();
 	});
 
 	it("prefers live diff over captured and flags liveStats", () => {

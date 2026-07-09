@@ -27,6 +27,7 @@ export function toStatEvent(
 		status: task.status,
 		createdAt: task.createdAt,
 		movedAt: task.movedAt ?? null,
+		lifecycleStartedAt: task.lifecycleStartedAt ?? null,
 		insertions: diff.insertions,
 		deletions: diff.deletions,
 		files: diff.files,

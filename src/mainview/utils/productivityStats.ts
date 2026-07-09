@@ -36,6 +36,8 @@ export interface PerProjectStat {
 	kind: "git" | "virtual";
 	completed: number;
 	lines: number;
+	/** Average elapsed time from first in-progress to completion; null until tracked work completes. */
+	averageLifetimeMs: number | null;
 	/** Share of the period's completed tasks, 0–100. */
 	sharePct: number;
 	busiest: boolean;
@@ -95,6 +97,10 @@ export interface ProductivityDashboardData {
 	hasAnyData: boolean;
 	/** True once any completed task has real diff data — gates the LOC empty-state. */
 	hasAnyLines: boolean;
+	/** True when the selected period has a completed task with a tracked delivery-cycle duration. */
+	hasLifecycleData: boolean;
+	/** ISO date (YYYY-MM-DD) lifecycle tracking effectively started, or null. */
+	lifecycleTrackingSince: string | null;
 	/** ISO date (YYYY-MM-DD) LOC tracking effectively started (earliest captured/live stat), or null. */
 	locTrackingSince: string | null;
 	/** Current-period output is above the user's rolling average — drives the on-fire flair. */
@@ -111,6 +117,7 @@ export interface ProductivityDashboardData {
 		velocity: HeroMetric;
 		completionRate: HeroMetric;
 		streak: HeroMetric;
+		averageLifetimeHours: HeroMetric;
 	};
 	counters: {
 		tasksTotal: number;
@@ -221,6 +228,14 @@ function completedAtMs(e: ProductivityStatEvent): number | null {
 	if (!e.movedAt) return null;
 	const t = Date.parse(e.movedAt);
 	return Number.isFinite(t) ? t : null;
+}
+
+/** Elapsed time for one completed delivery cycle, or null when tracking was not available. */
+function lifecycleDurationMs(e: ProductivityStatEvent, completedAt: number | null): number | null {
+	if (!isCompleted(e) || completedAt == null || !e.lifecycleStartedAt) return null;
+	const startedAt = Date.parse(e.lifecycleStartedAt);
+	if (!Number.isFinite(startedAt) || startedAt > completedAt) return null;
+	return completedAt - startedAt;
 }
 
 interface Window {
@@ -430,9 +445,14 @@ export function computeProductivityStats(
 	let completedPrev = 0;
 	let linesCur = 0;
 	let linesPrev = 0;
+	let lifetimeTotalCur = 0;
+	let lifetimeCountCur = 0;
+	let lifetimeTotalPrev = 0;
+	let lifetimeCountPrev = 0;
 	let cancelledCur = 0;
 	const projectsTouched = new Set<string>();
 	const perProjectMap = new Map<string, PerProjectStat>();
+	const perProjectLifetime = new Map<string, { totalMs: number; count: number }>();
 	const perAgentMap = new Map<string, PerAgentStat>();
 	const completedForSeries: Array<{ at: number; lines: number }> = [];
 
@@ -443,11 +463,13 @@ export function computeProductivityStats(
 	const allDayKeys = new Set<string>();
 	const completedDayCounts = new Map<string, number>();
 	let locTrackingSince: number | null = null;
+	let lifecycleTrackingSince: number | null = null;
 
 	for (const e of events) {
 		if (e.agentId) agentsRun += 1;
 		const at = completedAtMs(e);
 		const lines = e.insertions + e.deletions;
+		const lifetimeMs = lifecycleDurationMs(e, at);
 		// LOC tracking "started" at the earliest completed task that has real diff
 		// data (lines > 0) — used to show an honest "tracking since" hint.
 		if (isCompleted(e) && lines > 0 && at != null) {
@@ -455,6 +477,10 @@ export function computeProductivityStats(
 		}
 
 		if (isCompleted(e) && at != null) {
+			if (lifetimeMs != null) {
+				const startedAt = Date.parse(e.lifecycleStartedAt!);
+				if (lifecycleTrackingSince == null || startedAt < lifecycleTrackingSince) lifecycleTrackingSince = startedAt;
+			}
 			allTimeCompleted += 1;
 			allTimeLines += lines;
 			const dk = dayKey(at);
@@ -472,11 +498,18 @@ export function computeProductivityStats(
 					kind: e.projectKind,
 					completed: 0,
 					lines: 0,
+					averageLifetimeMs: null,
 					sharePct: 0,
 					busiest: false,
 				};
 				pp.completed += 1;
 				pp.lines += lines;
+				if (lifetimeMs != null) {
+					const current = perProjectLifetime.get(e.projectId) ?? { totalMs: 0, count: 0 };
+					current.totalMs += lifetimeMs;
+					current.count += 1;
+					perProjectLifetime.set(e.projectId, current);
+				}
 				perProjectMap.set(e.projectId, pp);
 
 				const agentId = e.agentId || "unknown";
@@ -491,10 +524,18 @@ export function computeProductivityStats(
 				pa.completed += 1;
 				pa.lines += lines;
 				perAgentMap.set(agentId, pa);
+				if (lifetimeMs != null) {
+					lifetimeTotalCur += lifetimeMs;
+					lifetimeCountCur += 1;
+				}
 			}
 			if (win.prevFrom != null && win.prevTo != null && inPeriod(at, win.prevFrom, win.prevTo)) {
 				completedPrev += 1;
 				linesPrev += lines;
+				if (lifetimeMs != null) {
+					lifetimeTotalPrev += lifetimeMs;
+					lifetimeCountPrev += 1;
+				}
 			}
 		}
 		if (e.status === "cancelled" && at != null && inPeriod(at, win.from, win.to)) {
@@ -508,6 +549,10 @@ export function computeProductivityStats(
 
 	// --- Per-project share + busiest ---
 	const perProject = [...perProjectMap.values()].sort((a, b) => b.completed - a.completed || b.lines - a.lines);
+	for (const pp of perProject) {
+		const lifetime = perProjectLifetime.get(pp.projectId);
+		pp.averageLifetimeMs = lifetime && lifetime.count > 0 ? lifetime.totalMs / lifetime.count : null;
+	}
 	for (const pp of perProject) pp.sharePct = completedCur > 0 ? Math.round((pp.completed / completedCur) * 100) : 0;
 	if (perProject.length > 0 && perProject[0].completed > 0) perProject[0].busiest = true;
 
@@ -542,6 +587,8 @@ export function computeProductivityStats(
 
 	const roundOrNull = (n: number | null) => (n == null ? null : Math.round(n));
 	const round1OrNull = (n: number | null) => (n == null ? null : Math.round(n * 10) / 10);
+	const averageLifetimeHours = lifetimeCountCur > 0 ? lifetimeTotalCur / lifetimeCountCur / 3_600_000 : 0;
+	const previousAverageLifetimeHours = lifetimeCountPrev > 0 ? lifetimeTotalPrev / lifetimeCountPrev / 3_600_000 : null;
 
 	const hero: ProductivityDashboardData["hero"] = {
 		tasksShipped: {
@@ -580,6 +627,13 @@ export function computeProductivityStats(
 			max: Math.max(streaks.best, 7),
 			trendPct: null,
 		},
+		averageLifetimeHours: {
+			value: averageLifetimeHours,
+			previous: previousAverageLifetimeHours,
+			redZone: null,
+			max: gaugeMax(Math.max(averageLifetimeHours, previousAverageLifetimeHours ?? 0), 1),
+			trendPct: trendPct(averageLifetimeHours, previousAverageLifetimeHours),
+		},
 	};
 
 	// --- Momentum verdict (the headline) ---
@@ -613,6 +667,8 @@ export function computeProductivityStats(
 		hasAnyData: events.length > 0,
 		hasAnyLines: allTimeLines > 0,
 		locTrackingSince: locTrackingSince != null ? dayKey(locTrackingSince) : null,
+		hasLifecycleData: lifetimeCountCur > 0,
+		lifecycleTrackingSince: lifecycleTrackingSince != null ? dayKey(lifecycleTrackingSince) : null,
 		onFire: momentumState === "fire",
 		momentum: { state: momentumState, pct: momentumPct },
 		milestones: computeMilestones(allTimeCompleted),

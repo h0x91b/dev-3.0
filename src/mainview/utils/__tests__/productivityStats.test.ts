@@ -25,6 +25,7 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		groupId: null,
 		variantIndex: null,
 		...over,
+		lifecycleStartedAt: over.lifecycleStartedAt === undefined ? new Date(NOW - 2 * DAY).toISOString() : over.lifecycleStartedAt,
 	};
 }
 
@@ -116,6 +117,29 @@ describe("computeProductivityStats — all range", () => {
 
 	it("buckets monthly across the history", () => {
 		expect(r.series.length).toBeGreaterThanOrEqual(2);
+	});
+});
+
+describe("computeProductivityStats — task lifetime", () => {
+	const at = (days: number) => new Date(NOW - days * DAY).toISOString();
+
+	it("averages only tracked completion cycles and exposes them per project", () => {
+		const r = computeProductivityStats([
+			ev({ projectId: "p1", projectName: "Fast", lifecycleStartedAt: at(3), movedAt: at(1) }), // 48h
+			ev({ projectId: "p1", projectName: "Fast", lifecycleStartedAt: at(2), movedAt: at(1) }), // 24h
+			ev({ projectId: "p2", projectName: "Legacy", lifecycleStartedAt: null, movedAt: at(1) }),
+		], "week", NOW);
+
+		expect(r.hasLifecycleData).toBe(true);
+		expect(r.hero.averageLifetimeHours.value).toBe(36);
+		expect(r.perProject.find((p) => p.projectId === "p1")?.averageLifetimeMs).toBe(36 * 3_600_000);
+		expect(r.perProject.find((p) => p.projectId === "p2")?.averageLifetimeMs).toBeNull();
+	});
+
+	it("does not invent a duration for tasks completed before tracking started", () => {
+		const r = computeProductivityStats([ev({ lifecycleStartedAt: null })], "week", NOW);
+		expect(r.hasLifecycleData).toBe(false);
+		expect(r.hero.averageLifetimeHours.value).toBe(0);
 	});
 });
 
