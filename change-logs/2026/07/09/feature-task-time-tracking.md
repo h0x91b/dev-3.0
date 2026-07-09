@@ -1,0 +1,1 @@
+Tasks now track how long they took: total lifetime, agent time (coding + AI review), and your real focus time (the minutes a task was actually on-screen and active). The Productivity page gets a new "Time invested" section — total/agent/your-time with an agent-vs-you split — plus per-project total time on the breakdown cards, both globally and per project.

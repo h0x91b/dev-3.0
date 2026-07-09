@@ -426,6 +426,12 @@ startAutomationsScheduler();
 const { startScheduledLaunchScheduler } = await import("./scheduled-launch-scheduler");
 startScheduledLaunchScheduler();
 
+// Start the focus tracker — accumulates real UI attention time per task (the
+// "your time" metric on the Productivity dashboard) from the foreground +
+// idle + active-context signals the renderer already reports. Runs headless too.
+const { startFocusTracker, stopFocusTracker } = await import("./focus-tracker");
+startFocusTracker();
+
 // Wire PTY death notifications
 setOnPtyDied((sessionKey) => {
 	try {
@@ -527,6 +533,7 @@ function runGlobalQuitCleanup(): void {
 	// Snapshot window geometry so an update restart reopens on the same screen.
 	try { flushWindowState(); } catch (err) { log.warn("flushWindowState failed", { error: String(err) }); }
 	try { stopPortScanPoller(); } catch (err) { log.warn("stopPortScanPoller failed", { error: String(err) }); }
+	try { stopFocusTracker(); } catch (err) { log.warn("stopFocusTracker failed", { error: String(err) }); }
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
 	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }

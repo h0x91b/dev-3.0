@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProductivityStatEvent, TaskStatus } from "../../../shared/types";
-import { computeMilestones, computeProductivityStats, gaugeMax, SHIPPING_MILESTONES } from "../productivityStats";
+import { computeMilestones, computeProductivityStats, formatDuration, gaugeMax, SHIPPING_MILESTONES } from "../productivityStats";
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-06-28T12:00:00.000Z");
@@ -24,6 +24,9 @@ function ev(over: Partial<ProductivityStatEvent> = {}): ProductivityStatEvent {
 		agentId: "claude",
 		groupId: null,
 		variantIndex: null,
+		statusDurations: {},
+		statusEnteredAt: null,
+		focusMs: 0,
 		...over,
 		lifecycleStartedAt: over.lifecycleStartedAt === undefined ? new Date(NOW - 2 * DAY).toISOString() : over.lifecycleStartedAt,
 	};
@@ -332,6 +335,104 @@ describe("computeProductivityStats — LOC tracking hint", () => {
 		];
 		const r = computeProductivityStats(events, "all", NOW);
 		expect(r.locTrackingSince).toBe(new Date(NOW - 3 * DAY).toISOString().slice(0, 10));
+	});
+});
+
+describe("computeProductivityStats — time invested", () => {
+	const HOUR = 3_600_000;
+	const MIN = 60_000;
+
+	it("aggregates total/agent/focus over completed tasks in the period", () => {
+		const events: ProductivityStatEvent[] = [
+			ev({
+				createdAt: new Date(NOW - 5 * HOUR).toISOString(),
+				movedAt: new Date(NOW - 1 * HOUR).toISOString(), // total lifetime = 4h
+				statusDurations: {
+					"in-progress": 2 * HOUR,
+					"review-by-ai": 30 * MIN,
+					"review-by-user": 90 * MIN,
+				},
+				statusEnteredAt: new Date(NOW - 1 * HOUR).toISOString(),
+				focusMs: 45 * MIN,
+			}),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.time.count).toBe(1);
+		expect(r.time.totalMs).toBe(4 * HOUR);
+		// agent = in-progress + review-by-ai; user statuses excluded
+		expect(r.time.agentMs).toBe(2 * HOUR + 30 * MIN);
+		expect(r.time.focusMs).toBe(45 * MIN);
+		expect(r.time.avgTotalMs).toBe(4 * HOUR);
+		expect(r.time.hasTracking).toBe(true);
+	});
+
+	it("sums time across projects and per-project cards", () => {
+		const events: ProductivityStatEvent[] = [
+			ev({
+				movedAt: new Date(NOW - 1 * HOUR).toISOString(),
+				createdAt: new Date(NOW - 3 * HOUR).toISOString(),
+				statusDurations: { "in-progress": 1 * HOUR },
+				statusEnteredAt: new Date(NOW - 1 * HOUR).toISOString(),
+				focusMs: 20 * MIN,
+			}),
+			ev({
+				projectId: "p2",
+				projectName: "Proj B",
+				movedAt: new Date(NOW - 2 * HOUR).toISOString(),
+				createdAt: new Date(NOW - 4 * HOUR).toISOString(),
+				statusDurations: { "in-progress": 30 * MIN, "review-by-ai": 30 * MIN },
+				statusEnteredAt: new Date(NOW - 2 * HOUR).toISOString(),
+				focusMs: 10 * MIN,
+			}),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.time.agentMs).toBe(2 * HOUR); // 1h + (30m+30m)
+		expect(r.time.focusMs).toBe(30 * MIN);
+		const p2 = r.perProject.find((p) => p.projectId === "p2");
+		expect(p2?.totalMs).toBe(2 * HOUR);
+		expect(p2?.agentMs).toBe(1 * HOUR);
+		expect(p2?.focusMs).toBe(10 * MIN);
+	});
+
+	it("reports zero agent/focus and hasTracking=false for legacy tasks", () => {
+		const events: ProductivityStatEvent[] = [
+			ev({
+				createdAt: new Date(NOW - 2 * HOUR).toISOString(),
+				movedAt: new Date(NOW - 1 * HOUR).toISOString(),
+			}),
+		];
+		const r = computeProductivityStats(events, "week", NOW);
+		expect(r.time.totalMs).toBe(1 * HOUR); // lifetime always available
+		expect(r.time.agentMs).toBe(0);
+		expect(r.time.focusMs).toBe(0);
+		expect(r.time.hasTracking).toBe(false);
+	});
+
+	it("reports the earliest tracked completed task as trackingSince", () => {
+		const events: ProductivityStatEvent[] = [
+			ev({ movedAt: new Date(NOW - 5 * DAY).toISOString() }), // legacy, no tracking
+			ev({
+				movedAt: new Date(NOW - 3 * DAY).toISOString(),
+				statusEnteredAt: new Date(NOW - 3 * DAY).toISOString(),
+				statusDurations: { "in-progress": 1 * HOUR },
+			}),
+		];
+		const r = computeProductivityStats(events, "all", NOW);
+		expect(r.time.trackingSince).toBe(new Date(NOW - 3 * DAY).toISOString().slice(0, 10));
+	});
+});
+
+describe("formatDuration", () => {
+	const HOUR = 3_600_000;
+	const MIN = 60_000;
+	it("formats coarse durations with two significant units", () => {
+		expect(formatDuration(0)).toBe("0m");
+		expect(formatDuration(-5)).toBe("0m");
+		expect(formatDuration(45 * MIN)).toBe("45m");
+		expect(formatDuration(2 * HOUR + 15 * MIN)).toBe("2h 15m");
+		expect(formatDuration(3 * HOUR)).toBe("3h");
+		expect(formatDuration(26 * HOUR)).toBe("1d 2h");
+		expect(formatDuration(48 * HOUR)).toBe("2d");
 	});
 });
 

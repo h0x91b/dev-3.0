@@ -827,6 +827,7 @@ export async function addTask(
 			createdAt: now,
 			updatedAt: now,
 			...(status === "in-progress" ? { lifecycleStartedAt: now } : {}),
+			statusEnteredAt: now,
 			tmuxSocket: "dev3",
 			labelIds: extras?.labelIds ?? [],
 			...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
@@ -973,10 +974,17 @@ function applyTaskUpdate(
 			: undefined;
 	const updatesWithLifecycle = lifecycleStartedAt ? { ...updates, lifecycleStartedAt } : updates;
 
+	// When the builtin status changes, finalize the wall-clock spent in the status
+	// being left (credited to `statusDurations`) and stamp `statusEnteredAt` for the
+	// new one. Custom-column-only moves keep the same status, so they don't finalize
+	// a bucket — hence this is gated on `statusChanged`, not `renderedColumnChanged`.
+	// See {@link Task.statusDurations} / the Productivity "Time invested" split.
+	const statusTimePatch: Partial<Task> = statusChanged ? accumulateStatusDuration(currentTask, now) : {};
+
 	if (renderedColumnChanged) {
 		const dropPosition = options?.dropPosition;
 
-		tasks[idx] = { ...tasks[idx], ...updatesWithLifecycle, movedAt: now, columnOrder: undefined, updatedAt: now };
+		tasks[idx] = { ...tasks[idx], ...updatesWithLifecycle, ...statusTimePatch, movedAt: now, columnOrder: undefined, updatedAt: now };
 
 		if (dropPosition) {
 			const newStatus = tasks[idx].status;
@@ -1031,6 +1039,42 @@ function recordTitleOverviewHistory(
 	const changed: TaskHistoryChange = titleChanged && overviewChanged ? "both" : titleChanged ? "title" : "overview";
 	const entry: TaskHistoryEntry = { at: now, title: nextTitle, overview: nextOverview, changed };
 	tasks[idx] = { ...tasks[idx], history: [...(tasks[idx].history ?? []), entry] };
+}
+
+/**
+ * Compute the {@link Task.statusDurations} + {@link Task.statusEnteredAt} patch for a
+ * status transition: credit the wall-clock spent in the status being left, then
+ * stamp the entry time of the new status. The reference for "when did we enter the
+ * leaving status" is `statusEnteredAt`, falling back to `movedAt`/`createdAt` for
+ * tasks that predate this tracking so their first tracked stint is a best-effort
+ * estimate rather than zero.
+ */
+function accumulateStatusDuration(currentTask: Task, nowIso: string): Partial<Task> {
+	const enteredIso = currentTask.statusEnteredAt ?? currentTask.movedAt ?? currentTask.createdAt;
+	const delta = Date.parse(nowIso) - Date.parse(enteredIso);
+	const durations: Partial<Record<TaskStatus, number>> = { ...(currentTask.statusDurations ?? {}) };
+	if (Number.isFinite(delta) && delta > 0) {
+		durations[currentTask.status] = (durations[currentTask.status] ?? 0) + delta;
+	}
+	return { statusDurations: durations, statusEnteredAt: nowIso };
+}
+
+/**
+ * Add real UI attention time (ms) to a task's {@link Task.focusMs}, in place under
+ * the file lock. Deliberately minimal — it does NOT touch `updatedAt`, `movedAt`,
+ * or the title/overview history, so the focus tracker's periodic flushes don't spam
+ * board re-sorts or history entries. No-op for non-positive deltas or unknown ids.
+ */
+export async function addTaskFocusMs(project: Project, taskId: string, ms: number): Promise<void> {
+	if (!(ms > 0)) return;
+	const file = tasksFile(project);
+	return withFileLock(file, async () => {
+		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
+		const idx = tasks.findIndex((t) => t.id === taskId);
+		if (idx === -1) return;
+		tasks[idx] = { ...tasks[idx], focusMs: (tasks[idx].focusMs ?? 0) + Math.round(ms) };
+		await rawSaveTasks(project, tasks);
+	});
 }
 
 function isInSameRenderedColumn(task: Task, status: string, customColumnId: string | null | undefined): boolean {
