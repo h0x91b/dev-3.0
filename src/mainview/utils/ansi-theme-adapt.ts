@@ -34,10 +34,11 @@
  *   pale lavender — default-fg text on it is unreadable. The remap targets
  *   Claude Code's own dark theme bar colors (55/70), and explicit dark ANSI
  *   foregrounds (30/90) on those bars are flipped to light grays so
- *   dark-text-on-white bars stay legible as light-text-on-dark bars. Codex's
- *   GitHub-light diff backgrounds are remapped to muted dark red/green and
- *   then treated as dark backgrounds so its light-theme code foregrounds are
- *   brightened by the same contrast path.
+ *   dark-text-on-white bars stay legible as light-text-on-dark bars. Diff
+ *   backgrounds emitted for the opposite terminal polarity are remapped in
+ *   both directions. This covers Codex's GitHub-light palette and Claude
+ *   Code's regular and colorblind-friendly /theme previews; the remapped
+ *   backgrounds then use the normal contrast path for their foregrounds.
  * Foreground adjustment is gated by the *luminance* of the active explicit
  * background: a fg chosen for an opposite-polarity bg (vim themes, highlight
  * bars) passes through untouched, but a bad-contrast fg on a same-polarity
@@ -103,7 +104,23 @@ function adjustFgRgb(
 	g: number,
 	b: number,
 	mode: ThemeMode,
+	oppositeDiffBg = false,
 ): [number, number, number] | null {
+	if (oppositeDiffBg) {
+		const lum = luminance(r, g, b);
+		if (mode === "light") {
+			if (lum <= 0.3) return null;
+			const factor = 0.3 / lum;
+			return [Math.round(r * factor), Math.round(g * factor), Math.round(b * factor)];
+		}
+		if (lum >= 0.68) return null;
+		const blend = (0.68 - lum) / (1 - lum);
+		return [
+			Math.round(r + blend * (255 - r)),
+			Math.round(g + blend * (255 - g)),
+			Math.round(b + blend * (255 - b)),
+		];
+	}
 	return mode === "light" ? darkenPaleRgb(r, g, b) : brightenDarkRgb(r, g, b);
 }
 
@@ -133,29 +150,51 @@ const DARK_BRIGHT_WHITE_BG = ["48", "2", "70", "70", "70"];
 const DARK_BAR_FG_30 = ["38", "2", "220", "220", "220"];
 const DARK_BAR_FG_90 = ["38", "2", "160", "160", "160"];
 
-// Codex renders tool-call diffs with GitHub-light backgrounds even after it
-// correctly learns that the terminal background is dark. Match only the two
-// observed source colors so unrelated app-owned highlight backgrounds retain
-// their intended polarity.
-const CODEX_LIGHT_DIFF_REMOVAL_BG = [255, 221, 221] as const;
-const CODEX_LIGHT_DIFF_ADDITION_BG = [221, 255, 221] as const;
-const CODEX_DARK_DIFF_REMOVAL_BG = ["48", "2", "63", "37", "42"];
-const CODEX_DARK_DIFF_ADDITION_BG = ["48", "2", "36", "61", "46"];
+// Claude Code's /theme preview and live diff rows use fixed truecolor
+// backgrounds. A user may deliberately choose a light Claude theme inside a
+// dark dev3 terminal (or the reverse), so adapt the known diff colors without
+// changing unrelated app-owned highlights. The two shades in each family are
+// the row background and the stronger changed-word highlight.
+type Rgb = readonly [number, number, number];
+type DiffBgPair = readonly [source: Rgb, target: Rgb];
 
-function codexDarkDiffBgReplacement(r: number, g: number, b: number): string[] | null {
-	if (
-		r === CODEX_LIGHT_DIFF_REMOVAL_BG[0] &&
-		g === CODEX_LIGHT_DIFF_REMOVAL_BG[1] &&
-		b === CODEX_LIGHT_DIFF_REMOVAL_BG[2]
-	) {
-		return CODEX_DARK_DIFF_REMOVAL_BG;
-	}
-	if (
-		r === CODEX_LIGHT_DIFF_ADDITION_BG[0] &&
-		g === CODEX_LIGHT_DIFF_ADDITION_BG[1] &&
-		b === CODEX_LIGHT_DIFF_ADDITION_BG[2]
-	) {
-		return CODEX_DARK_DIFF_ADDITION_BG;
+const LIGHT_DIFF_TO_DARK: readonly DiffBgPair[] = [
+	// Removal — Codex GitHub-light, then Claude regular/colorblind.
+	[[255, 221, 221], [63, 37, 42]],
+	[[255, 220, 220], [63, 37, 42]],
+	[[255, 199, 199], [92, 45, 52]],
+	// Addition — Codex GitHub-light and Claude regular.
+	[[221, 255, 221], [36, 61, 46]],
+	[[220, 255, 220], [36, 61, 46]],
+	[[178, 255, 178], [34, 82, 49]],
+	// Addition — Claude colorblind-friendly.
+	[[219, 237, 255], [35, 54, 78]],
+	[[179, 217, 255], [35, 73, 108]],
+];
+
+const DARK_DIFF_TO_LIGHT: readonly DiffBgPair[] = [
+	// Removal — Claude regular/colorblind.
+	[[61, 1, 0], [255, 220, 220]],
+	[[92, 2, 0], [255, 199, 199]],
+	// Addition — Claude regular.
+	[[2, 40, 0], [220, 255, 220]],
+	[[4, 71, 0], [178, 255, 178]],
+	// Addition — Claude colorblind-friendly.
+	[[0, 27, 41], [219, 237, 255]],
+	[[0, 48, 71], [179, 217, 255]],
+];
+
+function oppositeThemeDiffBgReplacement(
+	r: number,
+	g: number,
+	b: number,
+	mode: ThemeMode,
+): string[] | null {
+	const pairs = mode === "dark" ? LIGHT_DIFF_TO_DARK : DARK_DIFF_TO_LIGHT;
+	for (const [source, target] of pairs) {
+		if (r === source[0] && g === source[1] && b === source[2]) {
+			return ["48", "2", String(target[0]), String(target[1]), String(target[2])];
+		}
 	}
 	return null;
 }
@@ -198,6 +237,10 @@ interface GateState {
 	// explicit bg of known luminance (fg adjustment stays on only for the
 	// matching mode); "unknown" = named ANSI or mid-tone bg (gated off)
 	bg: BgClass;
+	// True only while a known Claude/Codex diff background has been remapped
+	// from the opposite terminal polarity. Foregrounds on these rows need a
+	// stronger contrast target than ordinary terminal ink.
+	oppositeDiffBgActive: boolean;
 	reverseActive: boolean;
 	// Last explicit dark ANSI fg (30/90) — needed when a white bar opens
 	// *after* the fg was set (Claude emits fg first, then bg)
@@ -226,6 +269,7 @@ interface GateState {
 function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): string | null {
 	if (raw === "") {
 		gate.bg = "none";
+		gate.oppositeDiffBgActive = false;
 		gate.reverseActive = false;
 		gate.darkFg = null;
 		gate.pendingFg = null;
@@ -242,6 +286,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 	// or earlier) sits on it, append/replace it with a light gray.
 	const pushWhiteBg = (bright: boolean) => {
 		gate.bg = "white";
+		gate.oppositeDiffBgActive = false;
 		out.push(...whiteBgReplacement(bright, mode));
 		if (mode === "dark" && gate.darkFg !== null) {
 			out.push(...(gate.darkFg === "30" ? DARK_BAR_FG_30 : DARK_BAR_FG_90));
@@ -260,11 +305,33 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 			gate.pendingFg = null;
 		}
 	};
+	// The fg often arrives before the bg. It was therefore adjusted using the
+	// ordinary terminal target; once we recognize a remapped diff row, emit the
+	// same source color again using the stronger diff contrast target.
+	const upgradePendingFgForDiff = () => {
+		const pending = gate.pendingFg;
+		if (pending === null) return;
+		let rgb: [number, number, number] | null = null;
+		if (pending[0] === "38" && pending[1] === "2" && pending.length >= 5) {
+			rgb = [Number(pending[2]), Number(pending[3]), Number(pending[4])];
+		} else if (pending[0] === "38" && pending[1] === "5" && pending[2] !== undefined) {
+			const index = Number(pending[2]);
+			if (index >= 16 && index <= 255) rgb = color256ToRgb(index);
+		}
+		if (rgb !== null) {
+			const adjusted = adjustFgRgb(rgb[0], rgb[1], rgb[2], mode, true);
+			if (adjusted !== null) {
+				out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
+			}
+		}
+		gate.pendingFg = null;
+	};
 	let i = 0;
 	while (i < tokens.length) {
 		const token = tokens[i];
 		if (token === "" || token === "0") {
 			gate.bg = "none";
+			gate.oppositeDiffBgActive = false;
 			gate.reverseActive = false;
 			gate.darkFg = null;
 			gate.pendingFg = null;
@@ -290,6 +357,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 		}
 		if (token === "49") {
 			gate.bg = "none";
+			gate.oppositeDiffBgActive = false;
 			out.push(token);
 			i++;
 			continue;
@@ -349,6 +417,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 				continue;
 			}
 			gate.bg = "unknown";
+			gate.oppositeDiffBgActive = false;
 			out.push(token);
 			restorePendingFg();
 			i++;
@@ -370,6 +439,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 					} else {
 						gate.bg = "unknown";
 					}
+					gate.oppositeDiffBgActive = false;
 					out.push(token, tokens[i + 1], tokens[i + 2]);
 					restorePendingFg();
 					i += 3;
@@ -383,7 +453,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 					gate.fgExplicit = true;
 					if (index >= 16 && index <= 255 && fgAdjustable()) {
 						const [r, g, b] = color256ToRgb(index);
-						const adjusted = adjustFgRgb(r, g, b, mode);
+						const adjusted = adjustFgRgb(r, g, b, mode, gate.oppositeDiffBgActive);
 						if (adjusted) {
 							gate.pendingFg = ["38", "5", tokens[i + 2]];
 							out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
@@ -401,12 +471,15 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 					const r = Number(tokens[i + 2]);
 					const g = Number(tokens[i + 3]);
 					const b = Number(tokens[i + 4]);
-					const codexDiffBg = mode === "dark" ? codexDarkDiffBgReplacement(r, g, b) : null;
-					if (codexDiffBg !== null) {
-						gate.bg = "dark";
-						out.push(...codexDiffBg);
+					const diffBg = oppositeThemeDiffBgReplacement(r, g, b, mode);
+					if (diffBg !== null) {
+						gate.bg = mode === "dark" ? "dark" : "light";
+						gate.oppositeDiffBgActive = true;
+						out.push(...diffBg);
+						upgradePendingFgForDiff();
 					} else {
 						gate.bg = classifyBgRgb(r, g, b);
+						gate.oppositeDiffBgActive = false;
 						out.push(token, tokens[i + 1], tokens[i + 2], tokens[i + 3], tokens[i + 4]);
 					}
 					restorePendingFg();
@@ -423,7 +496,7 @@ function transformSgrParams(raw: string, mode: ThemeMode, gate: GateState): stri
 						const r = Number(tokens[i + 2]);
 						const g = Number(tokens[i + 3]);
 						const b = Number(tokens[i + 4]);
-						const adjusted = adjustFgRgb(r, g, b, mode);
+						const adjusted = adjustFgRgb(r, g, b, mode, gate.oppositeDiffBgActive);
 						if (adjusted) {
 							gate.pendingFg = ["38", "2", tokens[i + 2], tokens[i + 3], tokens[i + 4]];
 							out.push("38", "2", String(adjusted[0]), String(adjusted[1]), String(adjusted[2]));
@@ -469,6 +542,7 @@ export function createAnsiThemeFilter(): (chunk: string, mode: ThemeMode) => str
 	let carry = "";
 	const gate: GateState = {
 		bg: "none",
+		oppositeDiffBgActive: false,
 		reverseActive: false,
 		darkFg: null,
 		pendingFg: null,
