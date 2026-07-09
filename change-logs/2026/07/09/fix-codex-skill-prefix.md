@@ -1,1 +1,1 @@
-Fixed Codex skill invocation in Find bugs and Create Task. Codex now receives `$skill`; other supported agents keep `/skill`.
+Fixed Codex skill invocation in Find bugs and Create Task. Codex now receives `$skill`; other supported agents keep `/skill`. The bug-hunter lightbox now explains how to hand recorded findings back to the main agent.

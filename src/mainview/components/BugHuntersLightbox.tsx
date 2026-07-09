@@ -186,6 +186,14 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 							</p>
 						</div>
 
+						<div className="p-3 rounded-lg bg-accent/10 border border-accent/20">
+							<p className="text-fg text-xs font-medium">{t("bugHunters.nextTitle")}</p>
+							<p className="mt-1 text-fg-2 text-xs leading-relaxed">{t("bugHunters.nextStep")}</p>
+							<p className="mt-2 rounded-md bg-elevated px-2 py-1.5 text-fg text-[0.6875rem] leading-relaxed font-mono select-text">
+								{t("bugHunters.nextPrompt")}
+							</p>
+						</div>
+
 						{/* Warning for uninstalled agents */}
 						{agentNotInstalled && selectedAgent && (
 							<div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
