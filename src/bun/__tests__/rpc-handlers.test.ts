@@ -3118,6 +3118,50 @@ describe("handlers.spawnVariants", () => {
 		expect(ctxArg.taskDescription).toBe("");
 	});
 
+	it("preserves a meaningful prompt when launching variants from an edited scratch task", async () => {
+		const project = makeProject();
+		const description = "Design an embedded HTML artifact viewer";
+		const sourceTask = makeTask({ status: "todo", seq: 5, scratch: true, description });
+		const variantTasks = [
+			makeTask({ id: "variant-1", status: "in-progress", preparing: true, scratch: true, description }),
+			makeTask({ id: "variant-2", status: "in-progress", preparing: true, scratch: true, description }),
+		];
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask)
+			.mockResolvedValueOnce(variantTasks[0])
+			.mockResolvedValueOnce(variantTasks[1]);
+		vi.mocked(git.createWorktree)
+			.mockResolvedValueOnce({ worktreePath: "/tmp/vwt-1", branchName: "dev3/v1" })
+			.mockResolvedValueOnce({ worktreePath: "/tmp/vwt-2", branchName: "dev3/v2" });
+		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId) => (
+			makeTask({
+				id: taskId,
+				status: "in-progress",
+				worktreePath: taskId === "variant-1" ? "/tmp/vwt-1" : "/tmp/vwt-2",
+				scratch: true,
+				description,
+			})
+		));
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [
+				{ agentId: "agent-1", configId: null },
+				{ agentId: "agent-1", configId: null },
+			],
+		});
+
+		await vi.waitFor(() => {
+			expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(2);
+		});
+		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[2].taskDescription))
+			.toEqual([description, description]);
+	});
+
 	// Issue #583 — spawnVariants used to drop the user-edited customTitle from
 	// the source task. The new variants must inherit it so the title the user
 	// typed in the Create-Task modal survives "Save and Run".

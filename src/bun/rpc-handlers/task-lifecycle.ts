@@ -248,7 +248,7 @@ async function prepareTaskInBackground(
 					"creating-worktree",
 					{ opsWorkDir: task.opsWorkDir ?? null },
 				);
-				const taskForVirtualLaunch = task.scratch ? { ...task, description: "" } : task;
+				const taskForVirtualLaunch = taskWithLaunchDescription(task);
 				await measurePreparationStep(
 					task,
 					runId,
@@ -340,11 +340,10 @@ async function prepareTaskInBackground(
 				() => runCowClones(resolved, wt.worktreePath),
 				"cloning-shared-paths",
 			);
-			// Scratch tasks carry a placeholder `description` used only to
-			// derive the card title. At launch time we blank it so the agent
-			// receives an empty prompt (same mechanism as the reopen path in
-			// activateTask).
-			const taskForLaunch = task.scratch ? { ...task, description: "" } : task;
+			// Fresh scratch tasks carry a placeholder `description` used only to
+			// derive the card title. Blank that placeholder, but preserve a real
+			// description if the scratch task was edited before launching variants.
+			const taskForLaunch = taskWithLaunchDescription(task);
 			await measurePreparationStep(
 				task,
 				runId,
@@ -449,11 +448,10 @@ export async function activateTask(
 	// being handed a prompt, in two cases:
 	//   - reopen (completed/cancelled → active): don't replay the original prompt.
 	//     Original intent: commit a2b87778 ("Skip task prompt when reopening …").
-	//   - scratch tasks: `description` is only a `Scratch — HH:mm` placeholder used
-	//     for the card title, never a real instruction. Direct launches land here
-	//     (not just the prepareTaskInBackground / Launch Variants flow), so we must
-	//     blank it here too — otherwise the placeholder is sent as the prompt.
-	const taskForLaunch = isReopen || task.scratch ? { ...task, description: "" } : task;
+	//   - untouched scratch tasks: `description` is only the generated
+	//     `Scratch — HH:mm` placeholder used for the card title. An edited scratch
+	//     task may contain a real instruction, which must survive launch.
+	const taskForLaunch = taskWithLaunchDescription(task, isReopen);
 	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, task.agentId, task.configId, true, isReopen, { branchName: wt.branchName });
 	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
 }
@@ -477,8 +475,8 @@ async function activateVirtualTask(
 	const workDir = fixed || git.virtualWorkDir(project, task);
 	await mkdir(workDir, { recursive: true });
 	log.info("Activating virtual task", { taskId: task.id.slice(0, 8), workDir, fixed: !!fixed });
-	// Scratch/reopen → blank prompt so the agent idles (the shell pane is usable).
-	const taskForLaunch = isReopen || task.scratch ? { ...task, description: "" } : task;
+	// Reopen or untouched scratch placeholder → blank prompt so the agent idles.
+	const taskForLaunch = taskWithLaunchDescription(task, isReopen);
 	await launchTaskPty(project, taskForLaunch, workDir, task.agentId, task.configId, true, isReopen);
 	return { worktreePath: workDir, branchName: null };
 }
@@ -487,6 +485,12 @@ function scratchPlaceholder(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
 	const mm = String(now.getMinutes()).padStart(2, "0");
 	return `Scratch — ${hh}:${mm}`;
+}
+
+function taskWithLaunchDescription(task: Task, forceBlank = false): Task {
+	const hasScratchPlaceholder = task.scratch === true
+		&& /^Scratch — \d{2}:\d{2}$/.test(task.description.trim());
+	return forceBlank || hasScratchPlaceholder ? { ...task, description: "" } : task;
 }
 
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
