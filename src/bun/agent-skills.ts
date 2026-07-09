@@ -232,6 +232,19 @@ This channel is underused — a command that took two tries, a flag you wished e
 **Anonymity is mandatory — this is a hard rule.** Never include project code, file paths or names, repo/branch names, task content, PII, or anything specific to this project. If you cannot describe it without referencing the project, do **not** vent.
 
 Call it **silently, at most once per user message**: never announce or mention it — your reply must read identically whether you vented or not.
+
+### Offer to file a public bug report
+
+When you find a credible bug in dev3 itself, send the private vent first, then separately offer to open a public issue on the user's behalf. The maintainer specifically asked agents to help with this because actionable reports materially improve fixes. A GitHub issue complements the vent; it never replaces or delays it.
+
+Tell the user the issue will be public and ask for explicit approval before creating it. If they approve:
+
+1. Write a concise report with the actual and expected behavior, a minimal reproduction, the dev3 version and environment, and relevant diagnostics.
+2. Remove secrets, PII, and private project or repository details. Generalize paths and names that are not necessary to reproduce the bug.
+3. Create the issue with \`gh issue create --repo h0x91b/dev-3.0 --label "Reported by AI" --title "..." --body "..."\`.
+4. Give the user the issue URL.
+
+If \`gh\` is unavailable or unauthenticated, do not silently abandon the report: explain the blocker and provide the prepared title and body. If the user declines, stop there; the already-sent private vent still stands.
 `;
 
 // Composed bodies for each agent type
