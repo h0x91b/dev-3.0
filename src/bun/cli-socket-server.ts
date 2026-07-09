@@ -1,8 +1,9 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedImage } from "../shared/types";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
+import { SharedArtifactError, deleteSharedArtifactFiles, pruneSharedArtifacts, saveSharedArtifact } from "./shared-artifacts";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
@@ -972,6 +973,47 @@ const handlers: Record<string, Handler> = {
 			projectName: project.name,
 		});
 		return { delivered: true, stored: incoming.length, taskId: task.id };
+	},
+
+	"ui.show-artifact": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const htmlPath = typeof params.htmlPath === "string" ? params.htmlPath : "";
+		if (!htmlPath) throw new Error("HTML artifact path is required");
+		const imagePaths = Array.isArray(params.imagePaths)
+			? params.imagePaths.filter((path): path is string => typeof path === "string" && path.length > 0)
+			: [];
+		const title = typeof params.title === "string" && params.title.trim() ? params.title.trim() : undefined;
+
+		let incoming: SharedArtifact;
+		try {
+			incoming = saveSharedArtifact(project.path, htmlPath, imagePaths, title);
+		} catch (error) {
+			if (error instanceof SharedArtifactError) throw error;
+			throw new Error(`Failed to store artifact: ${error instanceof Error ? error.message : String(error)}`);
+		}
+
+		const { task: updated, result: dropped } = await data.updateTaskWith<SharedArtifact[]>(project, task.id, (current) => {
+			const pruned = pruneSharedArtifacts(current.sharedArtifacts, [incoming], MAX_SHARED_ARTIFACTS_PER_TASK);
+			return { updates: { sharedArtifacts: pruned.kept }, result: pruned.dropped };
+		});
+		if (dropped.length > 0) deleteSharedArtifactFiles(dropped);
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+
+		if ((await loadSettings()).focusMode) {
+			return { delivered: false, suppressed: true, stored: 1, taskId: task.id };
+		}
+		const push = getPushMessage();
+		if (!push) return { delivered: false, stored: 1, taskId: task.id };
+		push("cliShowArtifact", {
+			taskId: task.id,
+			projectId: project.id,
+			artifacts: updated.sharedArtifacts ?? [],
+			newCount: 1,
+			taskSeq: task.seq,
+			taskTitle: getTaskTitle(task),
+			projectName: project.name,
+		});
+		return { delivered: true, stored: 1, taskId: task.id };
 	},
 
 	// UI control: report what the app is currently showing, so the agent can decide

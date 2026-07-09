@@ -207,6 +207,26 @@ const common = {
 	"showImage.attention_few": "Прислал {count} изображения",
 	"showImage.attention_many": "Прислал {count} изображений",
 	"showImage.attention_other": "Прислал {count} изображений",
+	// Shared HTML artifacts (dev3 show-artifact)
+	"artifactViewer.regionLabel": "HTML-артефакт",
+	"artifactViewer.close": "Закрыть артефакт",
+	"artifactViewer.previous": "Предыдущий артефакт",
+	"artifactViewer.next": "Следующий артефакт",
+	"artifactViewer.fullscreen": "На весь экран",
+	"artifactViewer.exitFullscreen": "Выйти из полноэкранного",
+	"artifactViewer.downloadZip": "Скачать ZIP",
+	"artifactViewer.downloadHtml": "Скачать HTML",
+	"artifactViewer.downloadFailed": "Не удалось скачать артефакт",
+	"artifactViewer.loadFailed": "Артефакт недоступен",
+	"artifactViewer.loading": "Загрузка артефакта…",
+	"showArtifact.toast_one": "Агент прислал HTML-артефакт",
+	"showArtifact.toast_few": "Агент прислал {count} HTML-артефакта",
+	"showArtifact.toast_many": "Агент прислал {count} HTML-артефактов",
+	"showArtifact.toast_other": "Агент прислал {count} HTML-артефактов",
+	"showArtifact.attention_one": "Прислал HTML-артефакт",
+	"showArtifact.attention_few": "Прислал {count} HTML-артефакта",
+	"showArtifact.attention_many": "Прислал {count} HTML-артефактов",
+	"showArtifact.attention_other": "Прислал {count} HTML-артефактов",
 };
 
 export default common;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
-import type { CodingAgent, PortInfo, Project, Task, ResourceUsage } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api, isElectrobun } from "../rpc";
@@ -30,6 +30,8 @@ interface ProjectViewProps {
 	activeTaskId?: string;
 	taskView?: boolean;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
+	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
+	onCloseArtifactViewer?: () => void;
 }
 
 function ProjectView({
@@ -45,6 +47,8 @@ function ProjectView({
 	activeTaskId,
 	taskView,
 	navigationGuardRef,
+	artifactViewer,
+	onCloseArtifactViewer,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -120,6 +124,8 @@ function ProjectView({
 				inlineDiffRequest={inlineDiff.request}
 				onCloseInlineDiff={inlineDiff.close}
 				navigationGuardRef={navigationGuardRef}
+				artifactViewer={artifactViewer}
+				onCloseArtifactViewer={onCloseArtifactViewer}
 			/>
 		) : (
 			<div className="h-full w-full flex items-center justify-center bg-base px-6 text-center">

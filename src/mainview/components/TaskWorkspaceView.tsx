@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { Dispatch, MutableRefObject } from "react";
-import type { Project, Task } from "../../shared/types";
+import type { Project, SharedArtifact, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
@@ -18,6 +18,8 @@ interface TaskWorkspaceViewProps {
 	navigate: (route: Route) => void;
 	dispatch: Dispatch<AppAction>;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
+	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
+	onCloseArtifactViewer?: () => void;
 }
 
 function TaskWorkspaceView({
@@ -28,6 +30,8 @@ function TaskWorkspaceView({
 	navigate,
 	dispatch,
 	navigationGuardRef,
+	artifactViewer,
+	onCloseArtifactViewer,
 }: TaskWorkspaceViewProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
@@ -84,6 +88,8 @@ function TaskWorkspaceView({
 					inlineDiffRequest={inlineDiff.request}
 					onCloseInlineDiff={inlineDiff.close}
 					navigationGuardRef={navigationGuardRef}
+					artifactViewer={artifactViewer}
+					onCloseArtifactViewer={onCloseArtifactViewer}
 				/>
 			</div>
 		</div>

@@ -26,6 +26,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	cliToast: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliToast", { detail: payload })),
 	cliAttention: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliAttention", { detail: payload })),
 	cliShowImage: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowImage", { detail: payload })),
+	cliShowArtifact: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowArtifact", { detail: payload })),
 	webNotification: (payload) => window.dispatchEvent(new CustomEvent("rpc:webNotification", { detail: payload })),
 	taskPrStatus: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", { detail: payload })),
 	automationsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:automationsUpdated", { detail: payload })),

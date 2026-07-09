@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Project, Task } from "../../../shared/types";
+import type { Project, SharedArtifact, Task } from "../../../shared/types";
 import TaskWorkspaceView from "../TaskWorkspaceView";
 
 const getTasksMock = vi.fn();
@@ -55,6 +55,15 @@ vi.mock("../TaskDiffViewer", () => ({
 		<div data-testid="diff-viewer">
 			<div>{request.mode}</div>
 			<button onClick={onBack}>Back</button>
+		</div>
+	),
+}));
+
+vi.mock("../TaskArtifactViewer", () => ({
+	default: ({ artifacts, onClose }: { artifacts: SharedArtifact[]; onClose: () => void }) => (
+		<div data-testid="artifact-workspace">
+			{artifacts[0]?.title}
+			<button onClick={onClose}>Close Artifact</button>
 		</div>
 	),
 }));
@@ -150,6 +159,37 @@ describe("TaskWorkspaceView", () => {
 
 		expect(screen.queryByTestId("diff-viewer")).not.toBeInTheDocument();
 		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+	});
+
+	it("shows a task artifact beside the terminal and closes it independently", async () => {
+		const onClose = vi.fn();
+		const artifact: SharedArtifact = {
+			id: "artifact-1",
+			kind: "html",
+			title: "Metrics",
+			name: "metrics.html",
+			storedPath: "/tmp/shared-artifacts/artifact-1/metrics.html",
+			originalPath: "/tmp/metrics.html",
+			bytes: 10,
+			createdAt: 1,
+			assets: [],
+		};
+		render(
+			<TaskWorkspaceView
+				projectId="p1"
+				taskId="t1"
+				tasks={[task]}
+				projects={[project]}
+				navigate={vi.fn()}
+				dispatch={vi.fn()}
+				artifactViewer={{ taskId: "t1", artifacts: [artifact], index: 0 }}
+				onCloseArtifactViewer={onClose}
+			/>,
+		);
+		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+		expect(screen.getByTestId("artifact-workspace")).toHaveTextContent("Metrics");
+		await userEvent.click(screen.getByText("Close Artifact"));
+		expect(onClose).toHaveBeenCalledOnce();
 	});
 
 	// Regression test for the `key={taskId}` prop on TaskTerminal in

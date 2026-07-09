@@ -163,6 +163,8 @@ const infoPanel = {
 	"infoPanel.diffReviewResetConfirmMessage": "This permanently deletes all inline review comments for this task. This cannot be undone.",
 	"infoPanel.imagesBadge": "View {count} shared image(s)",
 	"infoPanel.imagesLabel": "Images",
+	"infoPanel.artifactsBadge": "View {count} shared artifact(s)",
+	"infoPanel.artifactsLabel": "Artifacts",
 } as const;
 
 export default infoPanel;

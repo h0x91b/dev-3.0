@@ -5,7 +5,7 @@ import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, SharedImage, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, SharedArtifact, SharedImage, Task, TaskStatus } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
@@ -225,6 +225,7 @@ function App() {
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number } | null>(null);
+	const [artifactViewer, setArtifactViewer] = useState<{ taskId: string; artifacts: SharedArtifact[]; index: number } | null>(null);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
@@ -1073,6 +1074,61 @@ function App() {
 		}
 		window.addEventListener("dev3:openImageViewer", onOpenViewer);
 		return () => window.removeEventListener("dev3:openImageViewer", onOpenViewer);
+	}, []);
+
+	const artifactViewerRef = useRef(artifactViewer);
+	artifactViewerRef.current = artifactViewer;
+
+	useEffect(() => {
+		function onCliShowArtifact(e: Event) {
+			const { taskId, projectId, artifacts, newCount, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				artifacts: SharedArtifact[];
+				newCount: number;
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
+			if (!taskId || !artifacts?.length) return;
+			dispatch({ type: "addBell", taskId, reason: t.plural("showArtifact.attention", newCount ?? 1) });
+			const viewingThisTask =
+				(state.route.screen === "task" && state.route.taskId === taskId) ||
+				(state.route.screen === "project" && state.route.activeTaskId === taskId);
+			const foreground = typeof document === "undefined" || document.visibilityState === "visible";
+			if (artifactViewerRef.current?.taskId === taskId || (viewingThisTask && foreground)) {
+				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
+				return;
+			}
+			const context = taskSeq !== undefined
+				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
+				: undefined;
+			toast.info(t.plural("showArtifact.toast", newCount ?? 1), {
+				context,
+				onClick: () => {
+					const openMode = getTaskOpenMode();
+					if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
+					else navigate({ screen: "project", projectId, activeTaskId: taskId });
+					setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
+				},
+			});
+		}
+		window.addEventListener("rpc:cliShowArtifact", onCliShowArtifact);
+		return () => window.removeEventListener("rpc:cliShowArtifact", onCliShowArtifact);
+	}, [dispatch, navigate, state.route, t]);
+
+	useEffect(() => {
+		function onOpenArtifactViewer(e: Event) {
+			const { taskId, artifacts, index } = (e as CustomEvent).detail as {
+				taskId: string;
+				artifacts: SharedArtifact[];
+				index?: number;
+			};
+			if (!taskId || !artifacts?.length) return;
+			setArtifactViewer({ taskId, artifacts, index: index ?? artifacts.length - 1 });
+		}
+		window.addEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
+		return () => window.removeEventListener("dev3:openArtifactViewer", onOpenArtifactViewer);
 	}, []);
 
 	// Browser Web Notifications (remote mode). The desktop WKWebView already shows
@@ -2058,6 +2114,8 @@ function App() {
 						activeTaskId={route.activeTaskId}
 						taskView={route.taskView}
 						navigationGuardRef={navigationGuardRef}
+						artifactViewer={artifactViewer}
+						onCloseArtifactViewer={() => setArtifactViewer(null)}
 					/>
 				);
 			case "project-terminal": {
@@ -2082,6 +2140,8 @@ function App() {
 						navigate={navigate}
 						dispatch={dispatch}
 						navigationGuardRef={navigationGuardRef}
+						artifactViewer={artifactViewer}
+						onCloseArtifactViewer={() => setArtifactViewer(null)}
 					/>
 				);
 			case "project-settings":

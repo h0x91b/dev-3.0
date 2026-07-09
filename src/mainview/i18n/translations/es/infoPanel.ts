@@ -163,6 +163,8 @@ const infoPanel = {
 	"infoPanel.diffReviewResetConfirmMessage": "Esto elimina permanentemente todos los comentarios de revisión en línea de esta tarea. No se puede deshacer.",
 	"infoPanel.imagesBadge": "Ver imágenes compartidas ({count})",
 	"infoPanel.imagesLabel": "Imágenes",
+	"infoPanel.artifactsBadge": "Ver artefactos compartidos ({count})",
+	"infoPanel.artifactsLabel": "Artefactos",
 };
 
 export default infoPanel;

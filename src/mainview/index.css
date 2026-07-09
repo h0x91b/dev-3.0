@@ -468,6 +468,13 @@ html[data-image-viewer="open"] [data-terminal="true"] {
 	visibility: hidden;
 }
 
+/* Fullscreen HTML artifacts use the same WKWebView overlay workaround. In the
+   docked split the terminal stays visible; only fullscreen hides its WebGL
+   plane so it cannot paint over the artifact iframe. */
+html[data-artifact-viewer="fullscreen"] [data-terminal="true"] {
+	visibility: hidden;
+}
+
 /* ---- Touch composer: reclaim vertical space while typing -------------------
    While the terminal composer textarea is focused (<html data-composer-focused>,
    set by TerminalComposer) the on-screen keyboard eats ~half the phone screen.

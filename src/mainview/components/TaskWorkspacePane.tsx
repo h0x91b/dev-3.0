@@ -1,12 +1,28 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject } from "react";
-import type { Project, Task } from "../../shared/types";
+import type { Project, SharedArtifact, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
 import TaskTerminal from "./TaskTerminal";
 import TaskDiffViewer from "./TaskDiffViewer";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
+import TaskArtifactViewer from "./TaskArtifactViewer";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+
+const DEFAULT_ARTIFACT_WIDTH = 560;
+const MIN_ARTIFACT_WIDTH = 360;
+const MAX_ARTIFACT_RATIO = 0.8;
+const ARTIFACT_WIDTH_KEY = "dev3-artifact-panel-width";
+
+function initialArtifactWidth(): number {
+	try {
+		const value = Number(localStorage.getItem(ARTIFACT_WIDTH_KEY));
+		if (Number.isFinite(value) && value >= MIN_ARTIFACT_WIDTH) return value;
+	} catch { /* ignore */ }
+	return DEFAULT_ARTIFACT_WIDTH;
+}
 
 interface TaskWorkspacePaneProps {
 	projectId: string;
@@ -18,6 +34,8 @@ interface TaskWorkspacePaneProps {
 	inlineDiffRequest: TaskInlineDiffRequest | null;
 	onCloseInlineDiff: () => void;
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
+	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
+	onCloseArtifactViewer?: () => void;
 }
 
 function TaskWorkspacePane({
@@ -30,9 +48,39 @@ function TaskWorkspacePane({
 	inlineDiffRequest,
 	onCloseInlineDiff,
 	navigationGuardRef,
+	artifactViewer,
+	onCloseArtifactViewer = () => {},
 }: TaskWorkspacePaneProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
+	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const [artifactWidth, setArtifactWidth] = useState(initialArtifactWidth);
+	const artifactPanelRef = useRef<HTMLDivElement>(null);
+	const showArtifact = artifactViewer?.taskId === taskId && !inlineDiffRequest;
+
+	useEffect(() => {
+		try { localStorage.setItem(ARTIFACT_WIDTH_KEY, String(Math.round(artifactWidth))); } catch { /* ignore */ }
+	}, [artifactWidth]);
+
+	const onArtifactResizeStart = useCallback((event: React.MouseEvent) => {
+		event.preventDefault();
+		const startX = event.clientX;
+		const startWidth = artifactPanelRef.current?.offsetWidth ?? artifactWidth;
+		const panel = artifactPanelRef.current;
+		function onMove(move: MouseEvent) {
+			const total = panel?.parentElement?.clientWidth ?? window.innerWidth;
+			const width = Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, startWidth - (move.clientX - startX)));
+			if (panel) panel.style.width = `${width}px`;
+		}
+		function onUp(up: MouseEvent) {
+			document.removeEventListener("mousemove", onMove);
+			document.removeEventListener("mouseup", onUp);
+			const total = panel?.parentElement?.clientWidth ?? window.innerWidth;
+			setArtifactWidth(Math.min(total * MAX_ARTIFACT_RATIO, Math.max(MIN_ARTIFACT_WIDTH, startWidth - (up.clientX - startX))));
+		}
+		document.addEventListener("mousemove", onMove);
+		document.addEventListener("mouseup", onUp);
+	}, [artifactWidth]);
 
 	// A pane stuck in copy-mode at scroll position 0 is visually identical to a
 	// live pane — silently swallows keystrokes until cleared. Reset on every
@@ -47,7 +95,7 @@ function TaskWorkspacePane({
 
 	return (
 		<div className="h-full w-full relative overflow-hidden">
-			<div className={inlineDiffRequest ? "h-full hidden" : "h-full"}>
+			<div className={inlineDiffRequest ? "h-full hidden" : "h-full flex min-w-0"}>
 				{/* key={taskId} forces a fresh TaskTerminal instance per task.
 				   Without it, the previous task's cached `ptyUrl` state is
 				   still in scope when `taskId` changes, so TerminalView
@@ -55,16 +103,43 @@ function TaskWorkspacePane({
 				   leaving task's content in the freshly re-created canvas,
 				   then remounts again once the new url arrives — producing
 				   the "clean of screen of the task we leave" flicker. */}
-				<TaskTerminal
-					key={taskId}
-					projectId={projectId}
-					taskId={taskId}
-					tasks={tasks}
-					projects={projects}
-					navigate={navigate}
-					dispatch={dispatch}
-					hideInfoPanel
-				/>
+				<div className={`${showArtifact && isNarrow ? "hidden" : "flex"} min-w-0 min-h-0 flex-1 flex-col`}>
+					<TaskTerminal
+						key={taskId}
+						projectId={projectId}
+						taskId={taskId}
+						tasks={tasks}
+						projects={projects}
+						navigate={navigate}
+						dispatch={dispatch}
+						hideInfoPanel
+					/>
+				</div>
+				{showArtifact && artifactViewer && (
+					<>
+						{!isNarrow && (
+							<div
+								className="flex w-[5px] flex-shrink-0 cursor-col-resize items-center justify-center transition-colors hover:bg-accent/10"
+								onMouseDown={onArtifactResizeStart}
+								onDoubleClick={() => setArtifactWidth(DEFAULT_ARTIFACT_WIDTH)}
+								aria-hidden="true"
+							>
+								<div className="h-8 w-[3px] rounded-full bg-fg-muted/40" />
+							</div>
+						)}
+						<div
+							ref={artifactPanelRef}
+							className="min-h-0 min-w-0 flex-shrink-0 overflow-hidden"
+							style={{ width: isNarrow ? "100%" : artifactWidth }}
+						>
+							<TaskArtifactViewer
+								artifacts={artifactViewer.artifacts}
+								initialIndex={artifactViewer.index}
+								onClose={onCloseArtifactViewer}
+							/>
+						</div>
+					</>
+				)}
 			</div>
 
 			{inlineDiffRequest && task && project && (

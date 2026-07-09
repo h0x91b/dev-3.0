@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-09 — HTML Artifacts: sandboxed task workspace + separate Runtime control
+
+- **Rule:** `SharedArtifact` is a task-owned HTML output opened in a resizable workspace beside the terminal (one-at-a-time on narrow), with opaque-origin iframe sandbox + network-blocking CSP, live dev3 theme tokens, and HTML/ZIP download; Runtime keeps `Images` and `Artifacts` as separate conditional controls, an explicit budget exception chosen by the user.
+- **Why:** Interactive reports need to stay portable and usable alongside the agent; rejected a modal (blocks terminal), a TSX/backend mini-runtime (server/dependency/share burden), and a merged Outputs button (user requires distinct identities).
+- **Status:** Observed. Evidence: `TaskArtifactViewer.tsx`, `TaskWorkspacePane.tsx`, `shared-artifacts.ts`, decision 120.
+
 ## 2026-07-06 — Feature-gated preset: shown-but-disabled + deep-link to enable
 
 - **Rule:** a preset that depends on an off-by-default capability (e.g. `requiresPxpipeProxy`) stays **visible** in the Provider→Model→Mode picker but renders **disabled** (`Select` disabled option, muted + lock glyph) until enabled; clicking it does not select — it fires a clickable `info` toast that deep-links (window `OPEN_SETTINGS_SECTION_EVENT` → `Route.section`) to the Global Settings section that turns it on. Its manager is a normal settings section (configuration lives in settings).

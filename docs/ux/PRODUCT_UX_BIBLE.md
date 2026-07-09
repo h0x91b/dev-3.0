@@ -65,6 +65,7 @@ Evidence: `concept.md`, `AGENTS.md`, `src/mainview/state.ts`, `src/shared/types.
 | Label | — (overlay on tasks) | — | project | create, rename, recolor, assign, filter | `types.ts (Label)`, `LabelPicker.tsx`, `LabelFilterBar.tsx` |
 | Custom Column | — (board column) | — | project | create, rename, recolor, set LLM instruction, attach agent | `types.ts (CustomColumn)`, `KanbanBoard.tsx` |
 | Note | — (in inspector) | — | task | add, edit, delete | `types.ts (TaskNote)`, `NoteItem.tsx`, `task-info-panel/TaskNotes.tsx` |
+| HTML Artifact | — (conditional Runtime-bar entry) | docked/fullscreen task workspace | task | view, resize, fullscreen, navigate history, download HTML/ZIP | `types.ts (SharedArtifact)`, `TaskArtifactViewer.tsx`, `show-artifact.ts` |
 | Automation | — (managed in `project-settings` tab `automations`) | — | project | create, edit, enable/disable, run now, view run history, delete | `types.ts (Automation)`, `ProjectSettings.tsx`, `automations-scheduler.ts` |
 
 **Automation (`Observed`, 2026-07-05):** a per-project scheduled agent run — an RFC 5545 RRULE subset + IANA timezone, a stored prompt, and an agent choice. When a schedule fires (bun-process scheduler, runs in desktop **and** `dev3 remote` headless), it creates an **ordinary task** (worktree + tmux + agent, prompt = task description) on the board — automations never grow their own board, destination, or task list. Provenance: the created task records its `automationId` and the card shows a small clock glyph; run history (fired / task created / missed while app was offline) is persisted per automation and shown only inside the Automations tab. Missed runs are surfaced (toast + per-automation status), never silently skipped. A built-in **"What I shipped" report template** pre-fills the create form; the resulting digest is again just a task. CLI: `dev3 automations …`.
@@ -112,6 +113,7 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 | Task info panel (inspector) | Active-task control: git, dev server, scripts, notes, tmux, open-in | object/git/dev-server actions, metadata, notes | global destination, cross-project action | `TaskInfoPanel.tsx` (densest surface) |
 | Diff review viewer | Full-screen read + inline-review of a task's diff | view-mode toggle, file-tree nav, search, mark-read, per-file copy-path, inline comments, review export/copy/reset | task lifecycle action, git mutation, global destination | `TaskDiffViewer.tsx` (see 5.3) |
 | Task image viewer | Task-bound lightbox for images an agent surfaced via `dev3 show-image` (history rail, newest first) | image display, history nav (thumbnails + prev/next + arrows), copy image, reveal path, clear (destructive) | global destination, task lifecycle/git mutation, persistent inspector button (badge is conditional), SVG render (v1) | `TaskImageViewer.tsx` (planned; see UX_DECISIONS 2026-07-02) |
+| Task artifact workspace | Task-bound interactive HTML surfaced via `dev3 show-artifact`; docked beside the terminal, resizable, fullscreen on demand | sandboxed HTML display, history nav, theme sync, HTML/ZIP download | global destination, task lifecycle/git mutation, parent DOM/RPC access, network access, native dialog | `TaskArtifactViewer.tsx`, `TaskWorkspacePane.tsx`, `shared-artifacts.ts` |
 | Modal | Focused create/confirm | create flow, confirm, focused config | navigation, persistent dashboard | `*Modal.tsx` |
 | Popover | Contextual preview/hint | preview, hint, quick action, remediation | multi-step flow, primary destination | `*Popover.tsx` |
 | Context menu | Right-click object actions | object action, open-in, destructive | global destination | `OpenInMenu.tsx` |
@@ -137,7 +139,7 @@ The inspector header (`TaskInfoPanel.tsx`, both collapsed and expanded states) i
 | Context | row 1, left | task identity & lifecycle | watch toggle, status dropdown, diff-summary badge, include-tests toggle, label strip | `TaskInfoPanel.tsx` (row 1 left cluster) |
 | Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls | `TaskInfoPanel.tsx` (row 1 right cluster), `TaskTmuxControls.tsx` |
 | Git | row 2, left | branch & PR | branch name/status, show diff, refresh, copy worktree path, open PR | `task-info-panel/TaskGitActions.tsx` |
-| Runtime & access | row 2, right | project runtime outputs + access to them | open-in (editor/file browser), scripts, dev server (start/stop/restart/status), shared-images viewer (agent `show-image` captures — count>0 only); ports/resources shown as detail in the expanded body | `task-info-panel/TaskOpenIn.tsx`, `task-info-panel/TaskScripts.tsx`, `task-info-panel/TaskDevServer.tsx`, `task-info-panel/TaskSharedImages.tsx` |
+| Runtime & access | row 2, right | project runtime outputs + access to them | open-in, scripts, dev server, ports, separate conditional Images and Artifacts controls (count>0 only); ports/resources also render as detail in the expanded body | `task-info-panel/TaskOpenIn.tsx`, `TaskSharedImages.tsx`, `TaskArtifacts.tsx` |
 
 Rules:
 
@@ -145,7 +147,7 @@ Rules:
 - **Chrome** (collapse/expand, fullscreen toggle, ⚙ worktree-settings) is pinned to the far right edge of row 1 and is **not** counted as a bar or against any bar's budget.
 - A new control must be assigned to exactly one domain and placed in that bar. Do not drop it into whichever bar has room — that is how the pre-2026-06 "everything in row-1-right" dumpster happened.
 - **Label overflow:** the Context bar shows up to `MAX_INLINE_LABELS` (4) chips inline, then a `+k` chip (hover lists the rest). The full label list still renders in the expanded metadata grid, so the inline strip may truncate safely.
-- Per-bar visible-action budget stays at the toolbar default (≤ 4 visible, then overflow). If Runtime or Session/Agent overflows, promote it to its own dedicated row before widening past the budget.
+- Per-bar visible-action budget stays at the toolbar default (≤ 4 visible, then overflow). **Explicit exception:** the Runtime bar may additionally show separate `Images` and `Artifacts` controls when those outputs exist; both are conditional, user-selected identities rather than permanent chrome. Do not use this exception for unrelated controls.
 
 ### 5.2 Keyboard-shortcut registry + reference overlay — `Proposed`
 
@@ -347,6 +349,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Global header | single row, ≤9 utility buttons | reflow: logo + truncated breadcrumb + **one overflow (kebab)** for all utilities; never a 9-icon row (`useCompact` at 1600 only hides labels, it does not reflow for 390px) | `Proposed` |
 | Hover terminal preview | popover on card hover | **disabled** on touch/narrow (no hover; popover obscures) — already gated in `useTerminalPreview` | `Observed` |
 | Task image viewer | lightbox + thumbnail rail | full-bleed; filmstrip → bottom scroll strip; image is live-content (axis-arbitrated swipe + prev/next + dots); touch entry = inspector badge + palette action | `Proposed` |
+| Task artifact workspace | resizable panel beside terminal | one-at-a-time: artifact replaces terminal content; close returns to terminal; fullscreen remains available | `Observed` |
 | Toast | top-right, clamped | already `max-w-[calc(100vw-2rem)]` — OK | `Observed` (OK) |
 
 ### 12.4 Navigation & action reachability on touch — `Proposed`

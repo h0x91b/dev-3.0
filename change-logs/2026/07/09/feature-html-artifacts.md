@@ -1,0 +1,1 @@
+Added `dev3 show-artifact <file.html> [--images <image...>] [--title "..."]` for task-bound interactive HTML reports. Artifacts open in a sandboxed, resizable workspace beside the terminal with live dark/light theme tokens and fullscreen mode; copied image assets stay beside the HTML and make the portable download a ZIP, while standalone artifacts download directly as HTML.

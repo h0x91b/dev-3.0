@@ -22,6 +22,7 @@ import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
 import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
 import TaskSharedImages from "./task-info-panel/TaskSharedImages";
+import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
@@ -992,6 +993,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							)}
 							<TaskExposedPorts task={task} />
 							<TaskSharedImages task={task} />
+							<TaskArtifacts task={task} />
 						</div>
 					</div>
 				</div>
@@ -1069,6 +1071,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								)}
 								<TaskExposedPorts task={task} />
 								<TaskSharedImages task={task} />
+								<TaskArtifacts task={task} />
 							</div>
 						</div>
 					</div>
