@@ -153,7 +153,7 @@ const tips = {
 	"tip.scratchTask.title": "Just need a terminal?",
 	"tip.scratchTask.body": "Click Scratch Task in the New Task modal to spin up a worktree + agent with no prompt — the agent greets you and renames the task itself once you say what you need.",
 	"tip.bugHunters.title": "Spawn a swarm of bug hunters",
-	"tip.bugHunters.body": "Click the red Find bugs button in the task header to open a lightbox — pick the count (default 3) and a swarm of read-only agents splits into the right pane, each running /dev3-bug-hunter with its own seeded strategy. They never edit code — after reporting, they ask before turning bugs into new tasks.",
+	"tip.bugHunters.body": "Click the red Find bugs button in the task header to open a lightbox — pick the count (default 3) and a swarm of read-only agents splits into the right pane, each running the dev3-bug-hunter skill with its own seeded strategy. They never edit code — after reporting, they ask before turning bugs into new tasks.",
 	"tip.multiWindow.title": "Spread projects across screens",
 	"tip.multiWindow.body": "Press Cmd+Shift+N (or File → New Window) to open another dev-3.0 window. Put a different project on each monitor and close any window without quitting the app.",
 	"tip.sidebarHide.title": "Hide the Active Tasks panel",

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -50,6 +50,20 @@ describe("isOpenCodeCommand", () => {
 		["bash", false],
 	])("%s → %s", (cmd, expected) => {
 		expect(isOpenCodeCommand(cmd)).toBe(expected);
+	});
+});
+
+describe("skillInvocationPrefix", () => {
+	it.each([
+		["codex", "$"],
+		["/opt/homebrew/bin/codex", "$"],
+		["claude", "/"],
+		["agent", "/"],
+		["gemini", "/"],
+		["opencode", "/"],
+		["", "/"],
+	])("%s → %s", (command, expected) => {
+		expect(skillInvocationPrefix(command)).toBe(expected);
 	});
 });
 

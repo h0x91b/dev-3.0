@@ -223,6 +223,15 @@ export interface CodingAgent {
 	providerConfig?: ProviderConfig;
 }
 
+/**
+ * Prefix used to invoke an installed skill from an agent prompt. Codex reserves
+ * `/` for built-in commands, while the other supported agent CLIs use `/` for
+ * skills. Unknown commands keep the broadly compatible slash default.
+ */
+export function skillInvocationPrefix(baseCommand: string): "$" | "/" {
+	return (baseCommand.split("/").pop() ?? "") === "codex" ? "$" : "/";
+}
+
 /** Fixed port of the optional local `pxpipe-proxy` (token-saving image proxy).
  *  Matches the upstream package's default; the "Fable 5 (cost trick)" preset
  *  and the Global Settings panel both key off this. Opt-in / experimental. */
