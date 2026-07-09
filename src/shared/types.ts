@@ -993,11 +993,11 @@ export interface Task {
 	 */
 	mergeCompletionPrompt?: MergeCompletionPromptState | null;
 	/**
-	 * True when the task was created via the "Scratch Task" button with no
-	 * initial prompt. The `description` holds only a `Scratch â HH:mm`
+	 * True while a task created via the "Scratch Task" button still has no
+	 * initial prompt. The `description` holds only a `Scratch — HH:mm`
 	 * placeholder used for the title; at launch time the agent receives an
-	 * empty prompt instead of the placeholder. The flag propagates from the
-	 * source todo task into every variant spawned from it.
+	 * empty prompt instead of the placeholder. Editing in a meaningful
+	 * description converts it into a normal task and clears this flag.
 	 */
 	scratch?: boolean;
 	/**

@@ -2559,6 +2559,26 @@ describe("handlers.editTask", () => {
 		}));
 	});
 
+	it("converts a scratch task into a normal task when its description is edited", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", scratch: true, description: "Scratch — 15:50" });
+		const updated = makeTask({ status: "todo", scratch: false, description: "Plan HTML artifacts" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+
+		await handlers.editTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			description: "Plan HTML artifacts",
+		});
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
+			description: "Plan HTML artifacts",
+			scratch: false,
+		}));
+	});
+
 	it("throws when task is not in todo status", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
@@ -3116,6 +3136,50 @@ describe("handlers.spawnVariants", () => {
 		});
 		const ctxArg = vi.mocked(agents.resolveCommandForAgent).mock.calls[0][2];
 		expect(ctxArg.taskDescription).toBe("");
+	});
+
+	it("preserves a meaningful prompt when launching variants from an edited scratch task", async () => {
+		const project = makeProject();
+		const description = "Design an embedded HTML artifact viewer";
+		const sourceTask = makeTask({ status: "todo", seq: 5, scratch: true, description });
+		const variantTasks = [
+			makeTask({ id: "variant-1", status: "in-progress", preparing: true, scratch: true, description }),
+			makeTask({ id: "variant-2", status: "in-progress", preparing: true, scratch: true, description }),
+		];
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask)
+			.mockResolvedValueOnce(variantTasks[0])
+			.mockResolvedValueOnce(variantTasks[1]);
+		vi.mocked(git.createWorktree)
+			.mockResolvedValueOnce({ worktreePath: "/tmp/vwt-1", branchName: "dev3/v1" })
+			.mockResolvedValueOnce({ worktreePath: "/tmp/vwt-2", branchName: "dev3/v2" });
+		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId) => (
+			makeTask({
+				id: taskId,
+				status: "in-progress",
+				worktreePath: taskId === "variant-1" ? "/tmp/vwt-1" : "/tmp/vwt-2",
+				scratch: true,
+				description,
+			})
+		));
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [
+				{ agentId: "agent-1", configId: null },
+				{ agentId: "agent-1", configId: null },
+			],
+		});
+
+		await vi.waitFor(() => {
+			expect(agents.resolveCommandForAgent).toHaveBeenCalledTimes(2);
+		});
+		expect(vi.mocked(agents.resolveCommandForAgent).mock.calls.map((call) => call[2].taskDescription))
+			.toEqual([description, description]);
 	});
 
 	// Issue #583 — spawnVariants used to drop the user-edited customTitle from
