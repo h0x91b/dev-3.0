@@ -4,20 +4,20 @@ import { api } from "../rpc";
 
 const MAX_SUGGESTIONS = 8;
 
-interface SlashToken {
-	/** Index of the leading "/" in the text. */
+interface SkillToken {
+	/** Index of the leading skill prefix in the text. */
 	start: number;
-	/** Text typed after the "/" (may be empty). */
+	/** Text typed after the prefix (may be empty). */
 	query: string;
 }
 
-/** Find an active "/skill" token ending at the caret, or null. */
-export function findSlashToken(text: string, caret: number): SlashToken | null {
+/** Find an active `/skill` or `$skill` token ending at the caret, or null. */
+export function findSkillToken(text: string, caret: number): SkillToken | null {
 	let start = caret;
 	while (start > 0 && !/[\s]/.test(text[start - 1])) start--;
-	if (text[start] !== "/") return null;
+	if (text[start] !== "/" && text[start] !== "$") return null;
 	const token = text.slice(start, caret);
-	if (!/^\/[\w-]*$/.test(token)) return null;
+	if (!/^[/$][\w-]*$/.test(token)) return null;
 	return { start, query: token.slice(1) };
 }
 
@@ -47,9 +47,10 @@ export function useSkillAutocomplete(
 	value: string,
 	setValue: (next: string) => void,
 	projectPath?: string | null,
+	invocationPrefix: "$" | "/" = "/",
 ) {
 	const [skills, setSkills] = useState<AgentSkillInfo[]>([]);
-	const [token, setToken] = useState<SlashToken | null>(null);
+	const [token, setToken] = useState<SkillToken | null>(null);
 	const [activeIndex, setActiveIndex] = useState(0);
 	const [dismissed, setDismissed] = useState(false);
 
@@ -71,7 +72,7 @@ export function useSkillAutocomplete(
 	const sync = useCallback(() => {
 		const el = textareaRef.current;
 		if (!el) return;
-		const next = findSlashToken(el.value, el.selectionStart);
+		const next = findSkillToken(el.value, el.selectionStart);
 		setToken((prev) => {
 			if (prev?.start !== next?.start) setDismissed(false);
 			if (prev?.start === next?.start && prev?.query === next?.query) return prev;
@@ -90,7 +91,7 @@ export function useSkillAutocomplete(
 			const el = textareaRef.current;
 			if (!el || !token) return;
 			const caret = el.selectionStart;
-			const insert = `/${skill.name} `;
+			const insert = `${invocationPrefix}${skill.name} `;
 			const next = value.slice(0, token.start) + insert + value.slice(caret);
 			setValue(next);
 			setToken(null);
@@ -101,7 +102,7 @@ export function useSkillAutocomplete(
 				el.focus();
 			});
 		},
-		[textareaRef, token, value, setValue],
+		[textareaRef, token, value, setValue, invocationPrefix],
 	);
 
 	/** Returns true when the event was consumed by the autocomplete. */

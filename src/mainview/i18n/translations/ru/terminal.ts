@@ -156,7 +156,7 @@ const terminal = {
 	"bugHunters.title": "Запустить охотников за багами",
 	"bugHunters.subtitle": "Read-only агенты ищут баги параллельно",
 	"bugHunters.countLabel": "Сколько охотников",
-	"bugHunters.explainer": "Каждый охотник откроется в правой половине сессии и запустит /dev3-bug-hunter со seeded-стратегией. Scope жёстко ограничен файлами, изменёнными ТОЛЬКО в этом бранче — по всему репо ходить не будут. Только чтение.",
+	"bugHunters.explainer": "Каждый охотник откроется в правой половине сессии и запустит навык dev3-bug-hunter со seeded-стратегией. Scope жёстко ограничен файлами, изменёнными ТОЛЬКО в этом бранче — по всему репо ходить не будут. Только чтение.",
 	"bugHunters.launch_one": "Запустить {count} охотника",
 	"bugHunters.launch_few": "Запустить {count} охотников",
 	"bugHunters.launch_many": "Запустить {count} охотников",

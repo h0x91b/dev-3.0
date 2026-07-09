@@ -68,6 +68,7 @@ function renderModal(props: {
 	onClose?: () => void;
 	onCreateAndRun?: (task: Task) => void;
 	project?: Project;
+	skillBaseCommand?: string;
 } = {}) {
 	return render(
 		<I18nProvider>
@@ -76,6 +77,7 @@ function renderModal(props: {
 				dispatch={props.dispatch ?? vi.fn()}
 				onClose={props.onClose ?? vi.fn()}
 				onCreateAndRun={props.onCreateAndRun}
+				skillBaseCommand={props.skillBaseCommand}
 			/>
 		</I18nProvider>,
 	);
@@ -1344,6 +1346,26 @@ describe("CreateTaskModal skill autocomplete", () => {
 		await userEvent.click(screen.getByText("/review"));
 		await waitFor(() => {
 			expect(textarea.value).toBe("/review ");
+		});
+	});
+
+	it("inserts Codex skills with a dollar prefix", async () => {
+		renderModal({ skillBaseCommand: "codex" });
+		const textarea = await typeInDescription("/dev");
+		await waitFor(() => {
+			expect(screen.getByText("$dev3")).toBeInTheDocument();
+		});
+		await userEvent.keyboard("{Enter}");
+		await waitFor(() => {
+			expect(textarea.value).toBe("$dev3 ");
+		});
+	});
+
+	it("opens autocomplete for a dollar-prefixed skill", async () => {
+		renderModal({ skillBaseCommand: "codex" });
+		await typeInDescription("$dev");
+		await waitFor(() => {
+			expect(screen.getByText("$dev3")).toBeInTheDocument();
 		});
 	});
 

@@ -132,6 +132,7 @@ vi.mock("../agents", () => ({
 	isClaudeCommand: vi.fn(() => false),
 	isCodexCommand: vi.fn((cmd: string) => cmd === "codex"),
 	isGeminiCommand: vi.fn(() => false),
+	skillInvocationPrefix: vi.fn((command: string) => (command === "codex" ? "$" : "/")),
 	supportsPreAssignedSessionId: vi.fn(() => false),
 	resolveCommandForAgent: vi.fn(() => ({ command: "claude", extraEnv: {} })),
 	resolveCommandForProject: vi.fn(() => ({ command: "claude", extraEnv: {} })),
@@ -6766,6 +6767,28 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		expect(enterCalls).toHaveLength(3);
 		for (const args of enterCalls) {
 			expect(args[args.length - 1]).toBe("Enter");
+		}
+	});
+
+	it("pastes the `$dev3-bug-hunter` prefix for Codex agents", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockResolvedValue(task);
+		(agents.resolveCommandForAgent as any).mockResolvedValue({ command: "codex", extraEnv: {}, agent: { baseCommand: "codex" } });
+		makeSplitMock(["%10", "%11"]);
+
+		await handlers.spawnBugHuntersInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-codex", configId: "codex-default", count: 2 });
+
+		vi.advanceTimersByTime(5100);
+		const pasteCalls = mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((args) => args.includes("send-keys") && !args.includes("Enter"));
+		expect(pasteCalls).toHaveLength(2);
+		for (const args of pasteCalls) {
+			const prompt = args[args.length - 1];
+			expect(prompt).toContain("$dev3-bug-hunter");
+			expect(prompt).not.toContain("/dev3-bug-hunter");
 		}
 	});
 

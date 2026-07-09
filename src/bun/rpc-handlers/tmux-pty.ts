@@ -2205,11 +2205,12 @@ export function resolveBugHunterCompareRef(task: Task, project: Project): string
 	return `origin/${taskBaseBranch}`;
 }
 
-export function buildBugHunterPrompt(task: Task, project: Project): string {
+export function buildBugHunterPrompt(task: Task, project: Project, baseCmd = ""): string {
 	const ref = resolveBugHunterCompareRef(task, project);
 	const branch = task.branchName || "HEAD";
+	const prefix = agents.skillInvocationPrefix(baseCmd);
 	return (
-		`/dev3-bug-hunter ` +
+		`${prefix}dev3-bug-hunter ` +
 		`Scope is locked to THIS branch only — only the changes this branch introduced, never commits pulled in from origin. ` +
 		`First pin the fork point, then list only this branch's own changed files: ` +
 		`run \`BASE=$(git merge-base ${ref} HEAD); git diff --name-only "$BASE" HEAD\`. ` +
@@ -2219,7 +2220,7 @@ export function buildBugHunterPrompt(task: Task, project: Project): string {
 		`Branch: ${branch}. Base: ${ref}. ` +
 		// In-task hunters run in their own pane, so their stdout report never reaches
 		// the main agent — route findings into `[bug-hunt]` dev3 notes instead. Injected
-		// only here; standalone `/dev3-bug-hunter` keeps its stdout report.
+		// only here; standalone skill invocation keeps its stdout report.
 		`You are running inside a dev3 task, so your on-screen report will NOT reach the main agent — record it as dev3 notes instead. ` +
 		`After presenting your normal report, add EACH confirmed critical/high/medium finding as its own dev3 note (one note per finding) via ` +
 		`\`dev3 note add "..."\`, starting every note body with the literal marker "[bug-hunt]" followed by the severity, the "path:lines" location, a short title, the failure mode, and a repro hint. ` +
@@ -2238,7 +2239,7 @@ async function spawnSingleBugHunterPane(opts: {
 	agentId: string | null;
 	configId: string | null;
 	splitArgs: string[];
-}): Promise<string | null> {
+}): Promise<{ paneId: string | null; baseCmd: string }> {
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
 		taskDescription: "",
@@ -2329,7 +2330,7 @@ async function spawnSingleBugHunterPane(opts: {
 		log.error("Failed to append bug hunter pane to sessionState (non-fatal)", { error: String(err) });
 	}
 
-	return newPaneId;
+	return { paneId: newPaneId, baseCmd: resolvedBaseCmd };
 }
 
 async function spawnBugHuntersInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number }): Promise<{ spawned: number }> {
@@ -2349,7 +2350,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	const paneIds: string[] = [];
 
 	// First hunter: split the current session horizontally, taking the right 50%.
-	const firstPaneId = await spawnSingleBugHunterPane({
+	const first = await spawnSingleBugHunterPane({
 		project,
 		task,
 		socket,
@@ -2359,7 +2360,8 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 		configId: params.configId,
 		splitArgs: ["-h", "-l", "50%", "-t", tmuxSession],
 	});
-	if (firstPaneId) paneIds.push(firstPaneId);
+	if (first.paneId) paneIds.push(first.paneId);
+	const resolvedBaseCmd = first.baseCmd;
 
 	// Subsequent hunters: split the right column vertically. We compute -p per
 	// split so all panes in the right column end up equal-sized WITHOUT calling
@@ -2369,12 +2371,12 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	// (N-i)/(N-i+1) of the target's current size. For N=3 → 67, 50. For N=6 →
 	// 83, 80, 75, 67, 50.
 	for (let i = 1; i < requestedCount; i++) {
-		const target = paneIds[paneIds.length - 1] ?? firstPaneId;
+		const target = paneIds[paneIds.length - 1] ?? first.paneId;
 		if (!target) break;
 		const remaining = requestedCount - i;
 		const percent = Math.round((remaining / (remaining + 1)) * 100);
 		try {
-			const paneId = await spawnSingleBugHunterPane({
+			const { paneId } = await spawnSingleBugHunterPane({
 				project,
 				task,
 				socket,
@@ -2399,7 +2401,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	// sequence as a single bracketed paste (where the trailing Enter becomes a
 	// newline inside the paste, not a submit). Splitting them guarantees Enter
 	// arrives as a discrete keypress after the paste buffer has been processed.
-	const prompt = buildBugHunterPrompt(task, project);
+	const prompt = buildBugHunterPrompt(task, project, resolvedBaseCmd);
 	for (const paneId of paneIds) {
 		setTimeout(() => {
 			try {

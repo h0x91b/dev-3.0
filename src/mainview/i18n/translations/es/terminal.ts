@@ -152,7 +152,7 @@ const terminal = {
 	"bugHunters.title": "Lanzar cazadores de bugs",
 	"bugHunters.subtitle": "Agentes de solo lectura que cazan bugs en paralelo",
 	"bugHunters.countLabel": "Cuántos cazadores",
-	"bugHunters.explainer": "Cada cazador se abre en la mitad derecha de esta sesión y ejecuta /dev3-bug-hunter con una estrategia semilla. El alcance se limita a los archivos cambiados SOLO en esta rama — no exploran todo el repo. Solo lectura.",
+	"bugHunters.explainer": "Cada cazador se abre en la mitad derecha de esta sesión y ejecuta la habilidad dev3-bug-hunter con una estrategia semilla. El alcance se limita a los archivos cambiados SOLO en esta rama — no exploran todo el repo. Solo lectura.",
 	"bugHunters.launch_one": "Lanzar {count} cazador",
 	"bugHunters.launch_other": "Lanzar {count} cazadores",
 	"bugHunters.launching": "Lanzando…",

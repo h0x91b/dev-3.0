@@ -239,6 +239,11 @@ function App() {
 		taskDropPosition: "top",
 		updateChannel: "stable",
 	});
+	const defaultAgent = agents.find((agent) => agent.id === globalSettings.defaultAgentId) ?? agents[0];
+	const defaultAgentConfig = defaultAgent?.configurations.find((config) => config.id === globalSettings.defaultConfigId)
+		?? defaultAgent?.configurations.find((config) => config.id === defaultAgent?.defaultConfigId)
+		?? defaultAgent?.configurations[0];
+	const defaultSkillBaseCommand = defaultAgentConfig?.baseCommandOverride ?? defaultAgent?.baseCommand ?? "";
 
 	// Auth failure for browser remote access (expired/invalid QR token)
 	const [authFailed, setAuthFailed] = useState(false);
@@ -1780,6 +1785,7 @@ function App() {
 			{createTaskProject && (
 				<CreateTaskModal
 					project={createTaskProject}
+					skillBaseCommand={defaultSkillBaseCommand}
 					dispatch={dispatch}
 					onClose={() => setCreateTaskProjectId(null)}
 					onCreateAndRun={(task) => {

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { AgentConfiguration, CodingAgent, LlmProvider, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
+export { skillInvocationPrefix } from "../shared/types";
 import { buildProviderEnv, getProviderDefinition, isThirdPartyProvider } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";

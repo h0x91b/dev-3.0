@@ -5,10 +5,11 @@ interface SkillAutocompleteDropdownProps {
 	activeIndex: number;
 	onHover: (index: number) => void;
 	onSelect: (skill: AgentSkillInfo) => void;
+	invocationPrefix?: "$" | "/";
 }
 
-/** Suggestion list for the "/" skill autocomplete, anchored under a textarea. */
-function SkillAutocompleteDropdown({ items, activeIndex, onHover, onSelect }: SkillAutocompleteDropdownProps) {
+/** Suggestion list for the agent-specific skill autocomplete, anchored under a textarea. */
+function SkillAutocompleteDropdown({ items, activeIndex, onHover, onSelect, invocationPrefix = "/" }: SkillAutocompleteDropdownProps) {
 	return (
 		<div
 			role="listbox"
@@ -32,7 +33,7 @@ function SkillAutocompleteDropdown({ items, activeIndex, onHover, onSelect }: Sk
 						index === activeIndex ? "bg-accent/15 text-fg" : "text-fg-2 hover:bg-elevated-hover"
 					}`}
 				>
-					<span className="font-medium text-fg shrink-0">/{skill.name}</span>
+					<span className="font-medium text-fg shrink-0">{invocationPrefix}{skill.name}</span>
 					{skill.description && (
 						<span className="text-fg-muted text-xs truncate">{skill.description}</span>
 					)}

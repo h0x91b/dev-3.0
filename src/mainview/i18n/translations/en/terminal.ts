@@ -152,7 +152,7 @@ const terminal = {
 	"bugHunters.title": "Spawn bug hunters",
 	"bugHunters.subtitle": "Read-only agents that hunt bugs in parallel",
 	"bugHunters.countLabel": "How many hunters",
-	"bugHunters.explainer": "Each hunter splits off into the right half of this session and runs /dev3-bug-hunter with a seeded strategy. Scope is locked to files changed in THIS branch only — they will not roam the whole codebase. Read-only.",
+	"bugHunters.explainer": "Each hunter splits off into the right half of this session and runs the dev3-bug-hunter skill with a seeded strategy. Scope is locked to files changed in THIS branch only — they will not roam the whole codebase. Read-only.",
 	"bugHunters.launch_one": "Launch {count} hunter",
 	"bugHunters.launch_other": "Launch {count} hunters",
 	"bugHunters.launching": "Spawning…",

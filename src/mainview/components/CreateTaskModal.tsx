@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import type { Project, Task } from "../../shared/types";
-import { titleFromDescription } from "../../shared/types";
+import { skillInvocationPrefix, titleFromDescription, type Project, type Task } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -32,9 +31,10 @@ interface CreateTaskModalProps {
 	onClose: () => void;
 	onCreateAndRun?: (task: Task) => void;
 	onOpenAutomations?: () => void;
+	skillBaseCommand?: string;
 }
 
-function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations }: CreateTaskModalProps) {
+function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations, skillBaseCommand = "" }: CreateTaskModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [description, setDescription] = useState("");
@@ -101,7 +101,8 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 		});
 	}, []);
 
-	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription, project.path);
+	const skillPrefix = skillInvocationPrefix(skillBaseCommand);
+	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription, project.path, skillPrefix);
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
@@ -448,6 +449,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 								activeIndex={skillAutocomplete.activeIndex}
 								onHover={skillAutocomplete.setActiveIndex}
 								onSelect={skillAutocomplete.accept}
+								invocationPrefix={skillPrefix}
 							/>
 						)}
 					</div>

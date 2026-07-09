@@ -153,7 +153,7 @@ const tips = {
 	"tip.scratchTask.title": "¿Solo necesitas un terminal?",
 	"tip.scratchTask.body": "Pulsa Scratch Task en la ventana de nueva tarea para lanzar un worktree + agente sin prompt — el agente te saluda y renombra la tarea en cuanto le dices qué quieres.",
 	"tip.bugHunters.title": "Lanza un enjambre de cazadores de bugs",
-	"tip.bugHunters.body": "Pulsa el botón rojo «Buscar bugs» en la cabecera de la tarea para abrir un lightbox — elige cuántos (3 por defecto) y un enjambre de agentes de solo lectura se abre en el panel derecho, cada uno ejecuta /dev3-bug-hunter con su propia estrategia semilla. Nunca editan código — tras reportar, preguntan antes de convertir bugs en tareas nuevas.",
+	"tip.bugHunters.body": "Pulsa el botón rojo «Buscar bugs» en la cabecera de la tarea para abrir un lightbox — elige cuántos (3 por defecto) y un enjambre de agentes de solo lectura se abre en el panel derecho, cada uno ejecuta la habilidad dev3-bug-hunter con su propia estrategia semilla. Nunca editan código — tras reportar, preguntan antes de convertir bugs en tareas nuevas.",
 	"tip.multiWindow.title": "Reparte proyectos entre pantallas",
 	"tip.multiWindow.body": "Pulsa Cmd+Shift+N (o Archivo → Nueva ventana) para abrir otra ventana de dev-3.0: un proyecto por monitor, y puedes cerrar cualquier ventana sin salir de la app.",
 	"tip.sidebarHide.title": "Ocultar el panel de Tareas activas",
