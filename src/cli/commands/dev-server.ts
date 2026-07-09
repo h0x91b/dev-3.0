@@ -112,7 +112,9 @@ async function waitForDevServerReady(
 	process.stdout.write(`Waiting for the dev server to open a port (timeout ${timeoutSec}s)...\n`);
 	const timeoutMs = timeoutSec * 1000;
 	for (let waited = 0; ; waited += WAIT_POLL_MS) {
-		const resp = await sendRequest(socketPath, "devServer.status", params);
+		// A status read is idempotent, and the poll can straddle the tail of the
+		// socket handoff — retry an empty response instead of aborting the wait.
+		const resp = await sendRequest(socketPath, "devServer.status", params, { retryEmptyResponse: true });
 		if (!resp.ok) exitError(resp.error || "Failed to poll dev server status");
 		const status = asStatus(resp.data);
 		if (!status.running) {
@@ -154,7 +156,13 @@ async function runAction(
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
 
-	const resp = await sendRequest(socketPath, `devServer.${action}`, params);
+	// stop/restart tear the dev tmux session down; the app can drop this in-flight
+	// connection mid-handoff and close it with no reply ("Empty response"). Every
+	// devServer.* op is idempotent (start/restart re-kill any live session first;
+	// stop/status are no-ops when already gone), so a short replay window turns a
+	// false failure into the real status instead of a stopped-but-not-restarted
+	// server the caller must recover by hand.
+	const resp = await sendRequest(socketPath, `devServer.${action}`, params, { retryEmptyResponse: true });
 	if (!resp.ok) exitError(resp.error || `Failed to ${action} dev server`);
 
 	const status = asStatus(resp.data);

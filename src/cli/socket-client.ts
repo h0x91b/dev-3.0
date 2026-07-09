@@ -22,6 +22,28 @@ const BLOCKED_CONNECT_CODES = new Set(["EPERM", "EACCES"]);
 const DEFAULT_CONNECT_ATTEMPTS = 4;
 const CONNECT_RETRY_BASE_MS = 75;
 
+// A clean socket `end` carrying zero bytes ("Empty response from server") is a
+// RESPONSE-phase transient, distinct from the connect-phase codes above: the
+// socket connected and the app accepted, but the connection closed before any
+// JSON line was written. This is exactly what happens during the tmux socket
+// handoff on `dev-server stop`/`restart` — the app tears the dev session down
+// and the CLI's in-flight connection is dropped mid-request without a reply.
+// Because the socket connected (not a "who's there?" probe), and because the
+// affected `devServer.*` ops are idempotent, the request is safe to replay
+// after a short settle window. Callers opt in via `retryEmptyResponse` so
+// non-idempotent mutations never get silently double-applied (vents 2026-07-04
+// / 2026-07-06 — false `error: Empty response from server` on stop/restart).
+const DEFAULT_EMPTY_RESPONSE_ATTEMPTS = 3;
+const EMPTY_RESPONSE_SETTLE_MS = 200;
+
+/** Socket ended cleanly with no response body — see the note above. */
+class EmptyResponseError extends Error {
+	constructor() {
+		super("Empty response from server");
+		this.name = "EmptyResponseError";
+	}
+}
+
 /** Connect failed with a code that may clear on retry while the app is alive. */
 class TransientConnectError extends Error {
 	constructor(readonly code: string) {
@@ -61,7 +83,7 @@ function sendOnce(socketPath: string, req: CliRequest, timeoutMs: number): Promi
 			const buffer = Buffer.concat(chunks).toString("utf-8");
 			const lines = buffer.split("\n").filter((l) => l.trim());
 			if (lines.length === 0) {
-				reject(new Error("Empty response from server"));
+				reject(new EmptyResponseError());
 				return;
 			}
 			try {
@@ -90,21 +112,19 @@ function sendOnce(socketPath: string, req: CliRequest, timeoutMs: number): Promi
 	});
 }
 
-export async function sendRequest(
+/**
+ * One request with connect-phase retry. Transient connect hiccups
+ * (ECONNREFUSED/ENOENT/EAGAIN) are retried a few times before concluding the
+ * app is down; an `EmptyResponseError` (response phase) is NOT handled here —
+ * it propagates so the caller can decide whether the request is safe to replay.
+ */
+async function connectAndSend(
 	socketPath: string,
-	method: string,
-	params: Record<string, unknown> = {},
-	opts: { timeoutMs?: number; connectAttempts?: number; retryDelayMs?: number } = {},
+	req: CliRequest,
+	timeoutMs: number,
+	attempts: number,
+	retryDelayMs?: number,
 ): Promise<CliResponse> {
-	const req: CliRequest = {
-		id: crypto.randomUUID(),
-		method,
-		params,
-	};
-
-	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-	const attempts = Math.max(1, opts.connectAttempts ?? DEFAULT_CONNECT_ATTEMPTS);
-
 	let lastCode = "ECONNREFUSED";
 	for (let attempt = 0; attempt < attempts; attempt++) {
 		try {
@@ -118,12 +138,13 @@ export async function sendRequest(
 				blocked.connectCode = err.code;
 				throw blocked;
 			}
-			// Only connection-level hiccups are retried. A real response (even an
-			// error one), a timeout, or a malformed payload propagates immediately.
+			// Only connection-level hiccups are retried here. A real response (even
+			// an error one), an empty response, a timeout, or a malformed payload
+			// propagates immediately.
 			if (!(err instanceof TransientConnectError)) throw err;
 			lastCode = err.code;
 			if (attempt === attempts - 1) break;
-			await delay(opts.retryDelayMs ?? CONNECT_RETRY_BASE_MS * (attempt + 1));
+			await delay(retryDelayMs ?? CONNECT_RETRY_BASE_MS * (attempt + 1));
 		}
 	}
 
@@ -132,4 +153,56 @@ export async function sendRequest(
 	const appDown = new Error("APP_NOT_RUNNING") as Error & { connectCode?: string };
 	appDown.connectCode = lastCode;
 	throw appDown;
+}
+
+export async function sendRequest(
+	socketPath: string,
+	method: string,
+	params: Record<string, unknown> = {},
+	opts: {
+		timeoutMs?: number;
+		connectAttempts?: number;
+		retryDelayMs?: number;
+		/**
+		 * Replay the whole request when the socket ends with no response body.
+		 * Only safe for idempotent operations (e.g. `devServer.*`); leave off for
+		 * mutations that must not be applied twice. See EmptyResponseError above.
+		 */
+		retryEmptyResponse?: boolean;
+		emptyResponseAttempts?: number;
+		emptyResponseSettleMs?: number;
+	} = {},
+): Promise<CliResponse> {
+	const req: CliRequest = {
+		id: crypto.randomUUID(),
+		method,
+		params,
+	};
+
+	const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const attempts = Math.max(1, opts.connectAttempts ?? DEFAULT_CONNECT_ATTEMPTS);
+
+	// When the caller opts in, an empty response gets a short settle-and-retry
+	// window (the socket handoff needs a beat to complete). When it doesn't, the
+	// single attempt below rethrows the EmptyResponseError verbatim, preserving
+	// the historical "Empty response from server" failure for every other command.
+	const emptyAttempts = opts.retryEmptyResponse
+		? Math.max(1, opts.emptyResponseAttempts ?? DEFAULT_EMPTY_RESPONSE_ATTEMPTS)
+		: 1;
+	const settleMs = opts.emptyResponseSettleMs ?? EMPTY_RESPONSE_SETTLE_MS;
+
+	for (let attempt = 0; attempt < emptyAttempts; attempt++) {
+		try {
+			return await connectAndSend(socketPath, req, timeoutMs, attempts, opts.retryDelayMs);
+		} catch (err) {
+			if (err instanceof EmptyResponseError && attempt < emptyAttempts - 1) {
+				await delay(settleMs);
+				continue;
+			}
+			throw err;
+		}
+	}
+
+	// Unreachable — the final iteration always returns or throws.
+	throw new EmptyResponseError();
 }

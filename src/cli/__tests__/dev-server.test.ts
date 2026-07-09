@@ -79,7 +79,7 @@ describe("dev-server status", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.status", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
-		});
+		}, { retryEmptyResponse: true });
 		expect(stdoutOutput).toContain("Dev server is running");
 		expect(stdoutOutput).toContain("dev3-dev-aaaaaaaa");
 		expect(stdoutOutput).toContain("DEV3_PORT0=50001");
@@ -95,7 +95,7 @@ describe("dev-server status", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.status", {
 			taskId: "bbbbbbbb",
 			projectId: CTX.projectId,
-		});
+		}, { retryEmptyResponse: true });
 	});
 
 	// Regression: `dev3 dev-server status` used to crash with
@@ -142,7 +142,7 @@ describe("dev-server start/stop/restart", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.start", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
-		});
+		}, { retryEmptyResponse: true });
 		expect(stdoutOutput).toContain("Started dev server");
 	});
 
@@ -162,7 +162,7 @@ describe("dev-server start/stop/restart", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.stop", {
 			taskId: CTX.taskId,
 			projectId: "other-proj",
-		});
+		}, { retryEmptyResponse: true });
 		expect(stdoutOutput).toContain("Stopped dev server");
 		expect(stdoutOutput).toContain("stopped");
 		expect(stdoutOutput).toContain("(none detected)");
@@ -176,7 +176,7 @@ describe("dev-server start/stop/restart", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "devServer.restart", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
-		});
+		}, { retryEmptyResponse: true });
 		expect(stdoutOutput).toContain("Restarted dev server");
 	});
 });
