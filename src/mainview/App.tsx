@@ -1098,7 +1098,7 @@ function App() {
 			const viewingThisTask =
 				(state.route.screen === "task" && state.route.taskId === taskId) ||
 				(state.route.screen === "project" && state.route.activeTaskId === taskId);
-			const foreground = typeof document === "undefined" || document.visibilityState === "visible";
+			const foreground = typeof document === "undefined" || (document.visibilityState === "visible" && document.hasFocus());
 			if (viewingThisTask && foreground) {
 				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				return;
