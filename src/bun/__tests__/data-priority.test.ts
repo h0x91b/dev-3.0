@@ -68,7 +68,7 @@ function readSavedTasks(): Task[] {
 }
 
 // ============================================================
-// Load migration — stamp P2 in place and persist
+// Load migration — stamp P3 in place and persist
 // ============================================================
 
 describe("priority load migration", () => {
@@ -79,15 +79,15 @@ describe("priority load migration", () => {
 		]);
 
 		// A mutator read (persistMigrations) runs the migration and rewrites the file.
-		await setTaskPriority(testProject, "A", "P2"); // no-op on value, but triggers a mutator read
+		await setTaskPriority(testProject, "A", "P3"); // no-op on value, but triggers a mutator read
 		const saved = readSavedTasks();
-		expect(saved[0].priority).toBe("P2");
+		expect(saved[0].priority).toBe("P3");
 	});
 
-	it("new tasks are created with P2 by default", async () => {
+	it("new tasks are created with P3 by default", async () => {
 		const task = await addTask(testProject, "Fresh task");
-		expect(task.priority).toBe("P2");
-		expect(readSavedTasks()[0].priority).toBe("P2");
+		expect(task.priority).toBe("P3");
+		expect(readSavedTasks()[0].priority).toBe("P3");
 	});
 
 	it("addTask honors an explicit priority", async () => {

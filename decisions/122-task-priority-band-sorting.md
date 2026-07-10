@@ -2,7 +2,7 @@
 
 ## Context
 
-The board treated every task as equally important; the only ways to surface an urgent task were fragile manual drag-ordering (per-column, invisible as data) or abusing labels (no ordering semantics). We added a five-level priority (`P0` highest … `P4` lowest, default `P2`) that the board and active-tasks sidebar sort by. Two design choices were non-obvious and are recorded here.
+The board treated every task as equally important; the only ways to surface an urgent task were fragile manual drag-ordering (per-column, invisible as data) or abusing labels (no ordering semantics). We added a five-level priority (`P0` highest … `P4` lowest, default `P3`) that the board and active-tasks sidebar sort by. Two design choices were non-obvious and are recorded here.
 
 ## Decision
 
@@ -10,7 +10,7 @@ The board treated every task as equally important; the only ways to surface an u
 
 2. **Dragging a card across a band re-prioritizes it (Linear-style), resolved by the neighbor BELOW the drop slot.** In `reorderTasksInColumn`, after removing the moving group we read the landing band from `remaining[clampedIndex]` (the card the item lands on top of / pushes down), falling back to the card above only at the very bottom. So "drag to the top of a band's visual region" keeps that band (the gap above the first P2 belongs to P2), "drag to the very top" adopts the top band, and "drag among/into a higher band" promotes. A same-band drop is a pure reorder and never mutates priority. The whole group adopts the new band.
 
-Storage: `priority` is stored explicitly on every task; a load-time in-place content migration in `rawLoadTasks` stamps `P2` onto tasks lacking the field (path untouched — complies with the frozen `~/.dev3.0/` layout; older app versions ignore the unknown field). New tasks are created with `P2`.
+Storage: `priority` is stored explicitly on every task; a load-time in-place content migration in `rawLoadTasks` stamps `DEFAULT_PRIORITY` (`P3`) onto tasks lacking the field (path untouched — complies with the frozen `~/.dev3.0/` layout; older app versions ignore the unknown field). New tasks are created with `P3`.
 
 ## Risks
 
