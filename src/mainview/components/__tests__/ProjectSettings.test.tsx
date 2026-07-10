@@ -1,6 +1,7 @@
 import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ProjectSettings from "../ProjectSettings";
+import { api } from "../../rpc";
 import { I18nProvider } from "../../i18n";
 import type { Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
@@ -11,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			createLabel: vi.fn(),
 			updateLabel: vi.fn(),
 			deleteLabel: vi.fn(),
+			getTasks: vi.fn().mockResolvedValue([]),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
 			listBranches: vi.fn().mockResolvedValue([]),
 			getProjectConfigs: vi.fn().mockResolvedValue({ repo: {}, local: {} }),
@@ -613,6 +615,57 @@ describe("ProjectSettings", () => {
 					expect(payload.setupScript).not.toBe("A-EDITED");
 				}
 			}
+		});
+	});
+
+	describe("label task counts", () => {
+		const labeledProject: Project = {
+			...mockProject,
+			labels: [
+				{ id: "l1", name: "Bug", color: "#ef4444" },
+				{ id: "l2", name: "Feature", color: "#84cc16" },
+				{ id: "l3", name: "Docs", color: "#a855f7" },
+			],
+		};
+		// No worktreePath: keeps these out of the worktree-config auto-load path
+		// (irrelevant to label counts) so the test stays free of async effects.
+		const labeledTasks: Task[] = [
+			{ ...mockTaskWithWorktree, id: "t1", status: "todo", worktreePath: null, labelIds: ["l1"] },
+			{ ...mockTaskWithWorktree, id: "t2", status: "todo", worktreePath: null, labelIds: ["l1", "l2"] },
+			// completed task still counts — "how many tasks in total carry it"
+			{ ...mockTaskWithWorktree, id: "t3", status: "completed", worktreePath: null, labelIds: ["l1"] },
+		];
+
+		it("shows the per-label task count next to each label", async () => {
+			await renderProjectSettings(labeledProject, {}, labeledTasks);
+			// l1 → 3 tasks, l2 → 1 task, l3 → 0 (unused)
+			expect(screen.getByTitle("3 tasks")).toHaveTextContent("3");
+			expect(screen.getByTitle("1 task")).toHaveTextContent("1");
+			expect(screen.getByTitle("0 tasks")).toHaveTextContent("0");
+		});
+
+		it("shows 0 for every label when there are no tasks", async () => {
+			await renderProjectSettings(labeledProject, {}, []);
+			expect(screen.getAllByTitle("0 tasks")).toHaveLength(3);
+		});
+
+		it("loads the project's tasks on mount so counts survive dashboard entry", async () => {
+			// Reached from the dashboard gear, ProjectView never runs — ProjectSettings
+			// must fetch tasks itself, otherwise every count would read 0.
+			(api.request.getTasks as ReturnType<typeof vi.fn>).mockClear();
+			const dispatch = vi.fn() as unknown as React.Dispatch<AppAction>;
+			(api.request.getTasks as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+				{ ...mockTaskWithWorktree, id: "x1", worktreePath: null, labelIds: ["l1"] },
+			]);
+			await act(async () => {
+				render(
+					<I18nProvider>
+						<ProjectSettings projectId={labeledProject.id} projects={[labeledProject]} tasks={[]} dispatch={dispatch} navigate={vi.fn() as (route: Route) => void} />
+					</I18nProvider>,
+				);
+			});
+			expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: labeledProject.id });
+			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "setTasks" }));
 		});
 	});
 

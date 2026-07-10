@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type Dispatch, type MutableRefObject } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type MutableRefObject } from "react";
 import { toast } from "../toast";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
@@ -36,9 +36,12 @@ interface LabelRowProps {
 	onDelete: () => void;
 	nameLabel: string;
 	deleteLabel: string;
+	/** Number of project tasks currently carrying this label (any status). */
+	taskCount: number;
 }
 
-function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel }: LabelRowProps) {
+function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel, taskCount }: LabelRowProps) {
+	const t = useT();
 	const [name, setName] = useState(label.name);
 	const [color, setColor] = useState(label.color);
 
@@ -71,6 +74,17 @@ function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel }:
 				disabled={saving}
 				className="flex-1 bg-transparent text-fg text-sm outline-none placeholder-fg-muted min-w-0"
 			/>
+			{/* Task-count badge: how many project tasks carry this label. Quiet,
+			    read-only; dimmed at 0 to flag an unused label. */}
+			<span
+				className={`flex-shrink-0 text-xs font-medium tabular-nums px-1.5 py-0.5 rounded-full bg-base ${
+					taskCount === 0 ? "text-fg-muted" : "text-fg-3"
+				}`}
+				title={t.plural("labels.taskCount", taskCount)}
+				aria-label={t.plural("labels.taskCount", taskCount)}
+			>
+				{taskCount}
+			</span>
 			{/* Color palette */}
 			<div className="flex items-center gap-1 flex-shrink-0">
 				{LABEL_COLORS.map((c) => (
@@ -867,6 +881,38 @@ function ProjectSettings({
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
 
+	// Ensure this project's tasks are loaded. Settings can be opened straight from
+	// the dashboard gear without ever mounting ProjectView (which is the only other
+	// loader), leaving `currentProjectTasks` empty/stale — which would show every
+	// label count as 0 and empty the Worktree Config task list. Mirror ProjectView's
+	// fetch so both are correct regardless of entry path.
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const loaded = await api.request.getTasks({ projectId });
+				if (!cancelled) dispatch({ type: "setTasks", tasks: loaded });
+			} catch (err) {
+				console.error("Failed to load tasks for project settings:", err);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [projectId, dispatch]);
+
+	// labelId → number of project tasks (any status) carrying it. Shown as a
+	// quiet count badge next to each label in the Labels settings list.
+	const labelTaskCounts = useMemo(() => {
+		const counts = new Map<string, number>();
+		for (const task of tasks) {
+			for (const id of task.labelIds ?? []) {
+				counts.set(id, (counts.get(id) ?? 0) + 1);
+			}
+		}
+		return counts;
+	}, [tasks]);
+
 	// Operations boards only have the Board tab (no git → no Project/Worktree
 	// config); never let a deep-linked initialTab strand them on a hidden git tab.
 	const [activeTab, setActiveTab] = useState<ConfigTab>(
@@ -1384,6 +1430,7 @@ function ProjectSettings({
 											onDelete={() => handleDeleteLabel(label.id)}
 											nameLabel={t("labels.labelName")}
 											deleteLabel={t("labels.deleteLabel")}
+											taskCount={labelTaskCounts.get(label.id) ?? 0}
 										/>
 									))}
 									{(project.labels ?? []).length === 0 && (
