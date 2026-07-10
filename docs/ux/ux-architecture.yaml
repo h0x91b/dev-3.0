@@ -204,8 +204,9 @@ ux_architecture:
       evidence: ["src/mainview/components/KanbanBoard.tsx", "src/mainview/components/KanbanColumn.tsx", "src/mainview/components/LabelFilterBar.tsx"]
     task_card:
       purpose: "Compact object summary on the board with the most relevant per-task affordances."
-      allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge"]
+      allowed: ["status_dot", "label_chip", "variant_dots", "open_action", "context_menu", "git_status_badge", "deferred_timer_chip"]
       forbidden: ["full_settings", "global_destination"]
+      deferred_timer_chip: "One shared countdown-chip slot (popover with cancel / run-now, 30s re-render) for deferred agent interactions. Content depends on state and the two NEVER coexist: scheduledLaunch on a `todo` card, scheduledMessages on a live-agent card. Do not add a second timer badge class."
       visible_budget:
         max_inline_actions: 2
         overflow_to: "context_menu"
@@ -231,7 +232,8 @@ ux_architecture:
           session_agent:
             position: "row1.right"
             domain: "drive the session & agents"
-            contents: ["spawn_agent", "bug_hunters", "tmux_controls"]
+            contents: ["spawn_agent", "bug_hunters", "tmux_controls", "send_scheduled_message"]
+            note: "send_scheduled_message (\"Send later\") queues a one-shot prompt to the live agent; it drives the session, so it lives here, NOT in the runtime bar. Offered only when a live agent session exists. See UX_DECISIONS 2026-07-11 + decisions/124."
           git:
             position: "row2.left"
             domain: "branch & PR"

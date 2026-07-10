@@ -138,7 +138,7 @@ The inspector header (`TaskInfoPanel.tsx`, both collapsed and expanded states) i
 | Bar | Position | Domain | Contents | Evidence |
 |---|---|---|---|---|
 | Context | row 1, left | task identity & lifecycle | watch toggle, status dropdown, diff-summary badge, include-tests toggle, label strip | `TaskInfoPanel.tsx` (row 1 left cluster) |
-| Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls | `TaskInfoPanel.tsx` (row 1 right cluster), `TaskTmuxControls.tsx` |
+| Session/Agent | row 1, right | drive the session & agents | spawn extra agent, bug hunters, tmux controls, send message later (scheduled agent message) | `TaskInfoPanel.tsx` (row 1 right cluster), `TaskTmuxControls.tsx` |
 | Git | row 2, left | branch & PR | branch name/status, show diff, refresh, copy worktree path, open PR | `task-info-panel/TaskGitActions.tsx` |
 | Runtime & access | row 2, right | project runtime outputs + access to them | open-in, scripts, dev server, ports, separate conditional Images and Artifacts controls (count>0 only); ports/resources also render as detail in the expanded body | `task-info-panel/TaskOpenIn.tsx`, `TaskSharedImages.tsx`, `TaskArtifacts.tsx` |
 
