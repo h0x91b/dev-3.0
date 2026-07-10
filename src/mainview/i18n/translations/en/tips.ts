@@ -59,7 +59,7 @@ const tips = {
 	"tip.imagePasteAttach.title": "Paste images into notes",
 	"tip.imagePasteAttach.body": "Press Cmd+V or drag an image into a task description or note — it's saved automatically and shown as a thumbnail.",
 	"tip.customColumns.title": "Create custom board columns",
-	"tip.customColumns.body": "Go to Project Settings to add columns with a name, color, and AI instruction so agents know when to move tasks there.",
+	"tip.customColumns.body": "Click the + before the Completed column to add one with a name, color, and an AI move instruction.",
 	"tip.cloneFromUrl.title": "Clone repos directly",
 	"tip.cloneFromUrl.body": "Click \"Add Project\", choose \"Clone from URL\", and paste a git URL — the app clones and adds it for you.",
 	"tip.activeTasksSidebar.title": "Full board in split view",

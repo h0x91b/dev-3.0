@@ -69,6 +69,8 @@ function KanbanBoard({
 	const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
 	// Ref so drag handlers can check synchronously without waiting for state update
 	const draggedColumnIdRef = useRef<string | null>(null);
+	// Custom column just created from the board's "+" — opens directly in rename mode.
+	const [autoEditColumnId, setAutoEditColumnId] = useState<string | null>(null);
 	// Feature-discovery tip rotation (board context). Shared logic lives in the hook.
 	const { tip: currentTip, tipState, applyTipState } = useTipRotation("board", globalSettings.tipsDisabled);
 	const collapseState = useColumnCollapse(project.id);
@@ -339,6 +341,39 @@ function KanbanBoard({
 		}
 	}
 
+	// Create a custom column straight from the board (issue #222): the server picks
+	// a distinct color; we append it and flag it for inline renaming so the user
+	// names it in place instead of opening Project Settings. Advanced config
+	// (color, LLM instruction, agent) stays in Project Settings — progressive disclosure.
+	async function handleCreateCustomColumn() {
+		try {
+			const column = await api.request.createCustomColumn({
+				projectId: project.id,
+				name: t("customColumns.defaultName"),
+			});
+			dispatch({ type: "updateProject", project: { ...project, customColumns: [...customColumns, column] } });
+			setAutoEditColumnId(column.id);
+		} catch (err) {
+			toast.error(t("customColumns.failedCreate", { error: String(err) }));
+		}
+	}
+
+	// Inline rename of a board custom column. Only the name changes; the merge on
+	// the server preserves color, instruction, and agent config.
+	async function handleRenameCustomColumn(columnId: string, name: string) {
+		const trimmed = name.trim();
+		if (!trimmed) return;
+		try {
+			const column = await api.request.updateCustomColumn({ projectId: project.id, columnId, name: trimmed });
+			dispatch({
+				type: "updateProject",
+				project: { ...project, customColumns: customColumns.map((c) => (c.id === columnId ? column : c)) },
+			});
+		} catch (err) {
+			toast.error(t("customColumns.failedUpdate", { error: String(err) }));
+		}
+	}
+
 	// Apply the token-DSL filter (facets + free text) — the search string is the
 	// single source of truth; the old separate `activeFilters` state is gone.
 	let displayTasks = tasks;
@@ -442,6 +477,24 @@ function KanbanBoard({
 
 	const orderedColumns = getOrderedColumns();
 	const handleTipChanged = applyTipState;
+
+	// Add-column affordance for the desktop board (issue #222). Rendered just before
+	// the Completed column so it stays in the active-lifecycle region of the board.
+	const addColumnButton = (
+		<button
+			key="add-column"
+			type="button"
+			onClick={handleCreateCustomColumn}
+			className="group/addcol flex-shrink-0 self-stretch w-11 flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-edge text-fg-3 hover:text-accent hover:border-accent/40 hover:bg-accent/5 transition-colors"
+			aria-label={t("customColumns.addColumnAria")}
+			title={t("customColumns.addColumnAria")}
+		>
+			<span className="text-2xl leading-none">+</span>
+			<span className="kanban-col-vertical-label text-xs font-semibold whitespace-nowrap opacity-0 group-hover/addcol:opacity-100 transition-opacity">
+				{t("customColumns.addColumnAria")}
+			</span>
+		</button>
+	);
 	const commonProps = {
 		project,
 		dispatch,
@@ -508,6 +561,9 @@ function KanbanBoard({
 				onColumnDragStart={() => handleColumnDragStart(col.id)}
 				onColumnDragEnd={handleColumnDragEnd}
 				onColumnDrop={(side) => handleColumnDrop(col.id, side)}
+				onRenameColumn={(name) => handleRenameCustomColumn(col.id, name ?? "")}
+				autoStartEditing={autoEditColumnId === col.id}
+				onAutoEditConsumed={() => setAutoEditColumnId(null)}
 				tip={tipColumnId === col.id ? currentTip : undefined}
 				onTipChanged={handleTipChanged}
 				tipState={tipState ?? undefined}
@@ -554,7 +610,19 @@ function KanbanBoard({
 				<MobileBoardCarousel columns={carouselColumns} />
 			) : (
 				<div className="flex-1 min-h-0 flex gap-5 px-6 pb-6 pt-2 overflow-x-auto overflow-y-hidden kanban-scroll">
-					{orderedColumns.map((slot) => renderColumnElement(slot, false))}
+					{(() => {
+						// Add-column affordance (issue #222): a slim dashed ghost strip that
+						// reuses the board's "+" idiom — no toolbar button. It sits right
+						// before the Completed column (the end-of-lifecycle boundary), not at
+						// the very end past Cancelled.
+						const hasCompleted = orderedColumns.some((s) => s.type === "builtin" && s.status === "completed");
+						return orderedColumns.flatMap((slot) => {
+							const el = renderColumnElement(slot, false);
+							const beforeCompleted = slot.type === "builtin" && slot.status === "completed";
+							return beforeCompleted ? [addColumnButton, el] : [el];
+							// Defensive fallback handled below when Completed is somehow absent.
+						}).concat(hasCompleted ? [] : [addColumnButton]);
+					})()}
 				</div>
 			)}
 

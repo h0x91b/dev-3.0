@@ -3,6 +3,8 @@ const columns = {
 	"customColumns.settingsTitle": "Columnas personalizadas",
 	"customColumns.settingsDesc": "Añade columnas al tablero Kanban. Cada columna puede incluir una breve instrucción para el agente IA sobre cuándo mover una tarea allí.",
 	"customColumns.addColumn": "+ Añadir columna",
+	"customColumns.addColumnAria": "Añadir columna",
+	"customColumns.defaultName": "Nueva columna",
 	"customColumns.noColumns": "Aún no hay columnas personalizadas.",
 	"customColumns.columnName": "Nombre de la columna",
 	"customColumns.llmInstruction": "Instrucción para LLM (cuándo mover aquí)",

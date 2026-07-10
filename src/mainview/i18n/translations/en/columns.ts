@@ -3,6 +3,8 @@ const columns = {
 	"customColumns.settingsTitle": "Custom Columns",
 	"customColumns.settingsDesc": "Add columns to the Kanban board. Each column can include a short instruction for the AI agent explaining when to move a task there.",
 	"customColumns.addColumn": "+ Add Column",
+	"customColumns.addColumnAria": "Add column",
+	"customColumns.defaultName": "New Column",
 	"customColumns.noColumns": "No custom columns yet.",
 	"customColumns.columnName": "Column name",
 	"customColumns.llmInstruction": "LLM instruction (when to move here)",

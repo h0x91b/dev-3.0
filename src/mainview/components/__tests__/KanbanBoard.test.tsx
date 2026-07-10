@@ -1,7 +1,9 @@
-import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import KanbanBoard from "../KanbanBoard";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
+import { toast } from "../../toast";
 import type { CustomColumn, Project, Task, TipState } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
@@ -15,6 +17,8 @@ vi.mock("../../rpc", () => ({
 				updateChannel: "stable",
 			}),
 			reorderColumns: vi.fn().mockResolvedValue(undefined),
+			createCustomColumn: vi.fn(),
+			updateCustomColumn: vi.fn(),
 			getTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			updateTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
 			resetTipState: vi.fn().mockResolvedValue({ snoozedUntil: 0, seen: {}, rotationIndex: 0 }),
@@ -25,6 +29,8 @@ vi.mock("../../rpc", () => ({
 }));
 
 vi.mock("../../analytics", () => ({ trackEvent: vi.fn(), agentNameFromId: vi.fn(() => "unknown") }));
+
+vi.mock("../../toast", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 const project: Project = {
 	id: "p1",
@@ -548,5 +554,97 @@ describe("mobile carousel mode", () => {
 		await renderBoardWith();
 		// Position text "n / N" is present
 		expect(screen.getByText(/^\d+ \/ \d+$/)).toBeTruthy();
+	});
+});
+
+describe("create custom column from board (issue #222)", () => {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+		// Desktop width: the "+" affordance only renders on the multi-column board,
+		// not the mobile carousel.
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: 1920 });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: (query: string) => ({
+				matches: false,
+				media: query,
+				onchange: null,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+				addListener: vi.fn(),
+				removeListener: vi.fn(),
+				dispatchEvent: vi.fn(),
+			}),
+		});
+	});
+
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	});
+
+	it("clicking the add-column button creates a column and appends it", async () => {
+		const created: CustomColumn = { id: "col-new", name: "New Column", color: "#123456", llmInstruction: "" };
+		(api.request.createCustomColumn as ReturnType<typeof vi.fn>).mockResolvedValue(created);
+		const dispatch = vi.fn();
+		await renderBoardWith({ dispatch });
+
+		const addBtn = screen.getByLabelText("Add column");
+		await userEvent.click(addBtn);
+
+		await waitFor(() => expect(api.request.createCustomColumn).toHaveBeenCalledWith({ projectId: "p1", name: "New Column" }));
+		await waitFor(() =>
+			expect(dispatch).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "updateProject",
+					project: expect.objectContaining({ customColumns: expect.arrayContaining([created]) }),
+				}),
+			),
+		);
+	});
+
+	it("places the add-column button immediately before the Completed column", async () => {
+		await renderBoardWith();
+		// The button's next sibling must be the Completed column (empty trailing
+		// columns render as a compact vertical label, so match on text content, not
+		// the expanded header span).
+		const addBtn = screen.getByLabelText("Add column");
+		const next = addBtn.nextElementSibling as HTMLElement | null;
+		expect(next?.textContent?.trim().startsWith("Completed")).toBe(true);
+	});
+
+	it("shows an error toast when column creation fails", async () => {
+		(api.request.createCustomColumn as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("boom"));
+		await renderBoardWith();
+
+		await userEvent.click(screen.getByLabelText("Add column"));
+
+		await waitFor(() => expect(toast.error).toHaveBeenCalled());
+	});
+
+	it("renaming a board custom column inline calls updateCustomColumn", async () => {
+		const updated: CustomColumn = { ...customColA, name: "Renamed" };
+		(api.request.updateCustomColumn as ReturnType<typeof vi.fn>).mockResolvedValue(updated);
+		const dispatch = vi.fn();
+		await renderBoardWith({ project: { ...project, customColumns: [customColA] }, dispatch });
+
+		// Capture the column element once — after clicking rename, its "Alpha" text
+		// span is swapped for an <input>, so a later getByText("Alpha") would fail.
+		const colEl = getColumnEl("Alpha");
+		const renameBtn = within(colEl).getByLabelText("Rename column");
+		await userEvent.click(renameBtn);
+
+		const input = colEl.querySelector("input") as HTMLInputElement;
+		await userEvent.clear(input);
+		await userEvent.type(input, "Renamed");
+		fireEvent.blur(input);
+
+		await waitFor(() =>
+			expect(api.request.updateCustomColumn).toHaveBeenCalledWith({ projectId: "p1", columnId: "col-a", name: "Renamed" }),
+		);
 	});
 });
