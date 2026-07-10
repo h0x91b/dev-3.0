@@ -54,6 +54,12 @@ export const HELP_TOPICS: HelpTopic[] = [
 		titleKey: "help.board.priorityFilter.title",
 		bodyKey: "help.board.priorityFilter.body",
 	},
+	{
+		id: "filters.dsl",
+		titleKey: "help.filters.dsl.title",
+		bodyKey: "help.filters.dsl.body",
+		shortcutIds: ["focus-search"],
+	},
 	{ id: "board.task-card", titleKey: "help.board.taskCard.title", bodyKey: "help.board.taskCard.body" },
 
 	// ── Dashboard ──

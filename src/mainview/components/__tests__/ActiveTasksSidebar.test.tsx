@@ -716,6 +716,119 @@ describe("ActiveTasksSidebar", () => {
 		expect(stale.compareDocumentPosition(fresh) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 
+	it("renders the token-DSL filter funnel and its operators HelpSpot", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ id: "t1", status: "in-progress" })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.getByTestId("filter-funnel-button")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "About this section" })).toBeInTheDocument();
+	});
+
+	it("typing a facet token filters the task list", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", agentId: "builtin-claude", configId: "claude-bypass", groupId: null as unknown as string, variantIndex: null }),
+						makeTask({ id: "b", title: "Beta task", description: "Beta", status: "in-progress", agentId: "builtin-codex", configId: "codex-default", groupId: null as unknown as string, variantIndex: null }),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent, codexAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+		expect(screen.getByText("Alpha task")).toBeInTheDocument();
+		expect(screen.getByText("Beta task")).toBeInTheDocument();
+
+		await user.type(screen.getByPlaceholderText("Search tasks..."), "agent:Codex");
+		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
+		expect(screen.getByText("Beta task")).toBeInTheDocument();
+	});
+
+	it("checking a funnel value reflects in the string and filters the list", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", agentId: "builtin-claude", configId: "claude-bypass", groupId: null as unknown as string, variantIndex: null }),
+						makeTask({ id: "b", title: "Beta task", description: "Beta", status: "review-by-user", agentId: "builtin-claude", configId: "claude-bypass", groupId: null as unknown as string, variantIndex: null }),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("filter-funnel-button"));
+		// STATUS group only offers active statuses the sidebar shows — "To Do"
+		// (an inactive status) is never a candidate.
+		expect(screen.queryByRole("checkbox", { name: "To Do" })).not.toBeInTheDocument();
+		await user.click(screen.getByRole("checkbox", { name: "Your Review" }));
+
+		// The Your Review token now filters the list to the review task only.
+		expect(screen.getByText("Beta task")).toBeInTheDocument();
+		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
+	});
+
+	it("resets the filter on unmount (ephemeral, component state)", async () => {
+		const user = userEvent.setup();
+		const tasks = [
+			makeTask({ id: "a", title: "Alpha task", description: "Alpha", status: "in-progress", groupId: null as unknown as string, variantIndex: null }),
+			makeTask({ id: "b", title: "Beta task", description: "Beta", status: "in-progress", agentId: "builtin-codex", configId: "codex-default", groupId: null as unknown as string, variantIndex: null }),
+		];
+		const props = {
+			project,
+			tasks,
+			activeTaskId: "none",
+			dispatch: vi.fn(),
+			navigate: vi.fn(),
+			agents: [claudeAgent, codexAgent],
+			bellCounts: new Map<string, number>(),
+			taskPorts: new Map(),
+		};
+		const { unmount } = render(
+			<I18nProvider>
+				<ActiveTasksSidebar {...props} />
+			</I18nProvider>,
+		);
+		await user.type(screen.getByPlaceholderText("Search tasks..."), "agent:Codex");
+		expect(screen.queryByText("Alpha task")).not.toBeInTheDocument();
+
+		unmount();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar {...props} />
+			</I18nProvider>,
+		);
+		// Fresh mount → the search string is empty again, all tasks visible.
+		expect(screen.getByPlaceholderText("Search tasks...")).toHaveValue("");
+		expect(screen.getByText("Alpha task")).toBeInTheDocument();
+		expect(screen.getByText("Beta task")).toBeInTheDocument();
+	});
+
 	it("sinks tasks without movedAt to the bottom of their group", () => {
 		render(
 			<I18nProvider>

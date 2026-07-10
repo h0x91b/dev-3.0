@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { BoardColumnSlot, CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskPriority, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES, ACTIVE_STATUSES, getBoardColumns, DEFAULT_PRIORITY } from "../../shared/types";
+import type { BoardColumnSlot, CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import { ALL_STATUSES, ACTIVE_STATUSES, ALL_PRIORITIES, getBoardColumns, DEFAULT_PRIORITY } from "../../shared/types";
+import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 
 // Column ordering + visibility lives in the shared, unit-tested getBoardColumns
 // (single source of truth for the board's column layout).
@@ -13,7 +14,8 @@ import KanbanColumn from "./KanbanColumn";
 import LaunchVariantsModal from "./LaunchVariantsModal";
 import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
-import { matchesSearchQuery } from "../utils/taskSearch";
+import { matchesTaskQuery } from "../utils/taskSearch";
+import { buildFilterGroups, taskQueryContext, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
 import { startVisibilityAwarePoll } from "../utils/poll";
 import { useTipRotation } from "../hooks/useTipRotation";
 import { useColumnCollapse } from "../hooks/useColumnCollapse";
@@ -61,8 +63,6 @@ function KanbanBoard({
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
 	const [dragFromCustomColumnId, setDragFromCustomColumnId] = useState<string | null>(null);
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
-	const [activeFilters, setActiveFilters] = useState<string[]>([]);
-	const [priorityFilters, setPriorityFilters] = useState<TaskPriority[]>([]);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [movingTaskIds, setMovingTaskIds] = useState<Set<string>>(new Set());
 	const moveCounterRef = useRef(0);
@@ -285,6 +285,51 @@ function KanbanBoard({
 	// underlying status column so the task can never silently vanish from the board.
 	const isInCustomColumn = (task: Task) => !!task.customColumnId && customColumnIds.has(task.customColumnId);
 
+	// Facet resolver + funnel pool for the token-DSL filter. Custom-column tasks
+	// report the column name as their canonical status value (mirrors where they
+	// render), while still matching their underlying built-in status.
+	const resolver: FacetResolver = useMemo(() => ({
+		agents,
+		labelsFor: (task) => projectLabels.filter((l) => task.labelIds?.includes(l.id)),
+		statusValuesFor: (task) => {
+			const col = task.customColumnId ? customColumns.find((c) => c.id === task.customColumnId) : undefined;
+			const label = customStatusLabels[task.status] || t(statusKey(task.status));
+			return col ? [col.name, task.status, label] : [task.status, label];
+		},
+		priorityFor: (task) => task.priority ?? DEFAULT_PRIORITY,
+		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
+		isAttentionFor: (task) => isAttentionTask(task, bellCounts),
+		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
+	}), [agents, projectLabels, customColumns, customStatusLabels, taskPorts, bellCounts, taskPrMap, t]);
+
+	// Priority leads the funnel; the board offers all five levels (P0…P4).
+	const priorityCandidates = useMemo<FilterFunnelOption[]>(
+		() => ALL_PRIORITIES.map((p) => ({ facet: "priority" as const, value: p, label: `${p} — ${t(PRIORITY_NAME_KEYS[p])}` })),
+		[t],
+	);
+	// The board offers every board status (plus custom columns) in the funnel.
+	const statusCandidates = useMemo<FilterFunnelOption[]>(() => [
+		...ALL_STATUSES.map((s) => ({ facet: "status" as const, value: s, label: customStatusLabels[s] || t(statusKey(s)) })),
+		...customColumns.map((c) => ({ facet: "status" as const, value: c.name, label: c.name, color: c.color })),
+	], [customStatusLabels, customColumns, t]);
+
+	const filterGroups = useMemo(
+		() => buildFilterGroups(tasks, resolver, {
+			priorityCandidates,
+			statusCandidates,
+			flagLabels: { attention: t("filter.flag.attention"), port: t("filter.flag.port") },
+		}),
+		[tasks, resolver, priorityCandidates, statusCandidates, t],
+	);
+
+	// Labels shown inline are ordered by popularity (how many tasks use each), so
+	// the funnel/"+N more" hides the least-used first.
+	const popularLabels = useMemo(() => {
+		const count = new Map<string, number>();
+		for (const task of tasks) for (const id of task.labelIds ?? []) count.set(id, (count.get(id) ?? 0) + 1);
+		return [...projectLabels].sort((a, b) => (count.get(b.id) ?? 0) - (count.get(a.id) ?? 0));
+	}, [tasks, projectLabels]);
+
 	async function handleRenameBuiltinColumn(status: TaskStatus, name: string | null) {
 		try {
 			const updated = await api.request.renameBuiltinColumn({ projectId: project.id, status, name });
@@ -294,16 +339,11 @@ function KanbanBoard({
 		}
 	}
 
-	// Apply label filters + search
+	// Apply the token-DSL filter (facets + free text) — the search string is the
+	// single source of truth; the old separate `activeFilters` state is gone.
 	let displayTasks = tasks;
-	if (activeFilters.length > 0) {
-		displayTasks = displayTasks.filter((t) => activeFilters.some((id) => t.labelIds?.includes(id)));
-	}
-	if (priorityFilters.length > 0) {
-		displayTasks = displayTasks.filter((t) => priorityFilters.includes(t.priority ?? DEFAULT_PRIORITY));
-	}
 	if (searchQuery.trim()) {
-		displayTasks = displayTasks.filter((t) => matchesSearchQuery(t, searchQuery, { prNumber: taskPrMap.get(t.id)?.number }));
+		displayTasks = displayTasks.filter((task) => matchesTaskQuery(task, searchQuery, taskQueryContext(task, resolver)));
 	}
 
 	// Built-in column tasks (exclude tasks in an existing custom column; tasks
@@ -504,31 +544,16 @@ function KanbanBoard({
 	return (
 		<>
 			<LabelFilterBar
-				labels={projectLabels}
-				activeFilters={activeFilters}
-				onToggle={(id) =>
-					setActiveFilters((prev) =>
-						prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
-					)
-				}
-				activePriorities={priorityFilters}
-				onTogglePriority={(p) =>
-					setPriorityFilters((prev) =>
-						prev.includes(p) ? prev.filter((f) => f !== p) : [...prev, p],
-					)
-				}
-				onClear={() => {
-					setActiveFilters([]);
-					setPriorityFilters([]);
-				}}
+				labels={popularLabels}
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
+				filterGroups={filterGroups}
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
 			/>
 			{isCarousel ? (
 				<MobileBoardCarousel columns={carouselColumns} />
 			) : (
-				<div className="flex-1 min-h-0 flex gap-5 p-6 overflow-x-auto overflow-y-hidden kanban-scroll">
+				<div className="flex-1 min-h-0 flex gap-5 px-6 pb-6 pt-2 overflow-x-auto overflow-y-hidden kanban-scroll">
 					{orderedColumns.map((slot) => renderColumnElement(slot, false))}
 				</div>
 			)}

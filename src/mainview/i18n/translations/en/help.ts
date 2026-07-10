@@ -42,10 +42,13 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Search & filters",
 	"help.board.filterBar.body":
-		"Narrow the board: type to filter cards by title, click label chips to show only matching tasks. To rename, recolor or delete labels, open Project Settings → Labels.",
+		"One box searches and filters the board. Type free text to fuzzy-match titles/descriptions, or filter with tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review is:attention has:port. The P0–P4 priority chips, the label chips and the funnel dropdown all edit these same tokens, so typing and clicking never disagree. The × clears everything. Manage labels in Project Settings → Labels.",
 	"help.board.priorityFilter.title": "Priority filter",
 	"help.board.priorityFilter.body":
 		"Every task has a priority P0 (highest) … P4 (lowest, default P3). Columns always sort by it, so the most important work stays on top. Click a chip to show only that priority; drag a card into another band to re-prioritize it.",
+	"help.filters.dsl.title": "Search & filters",
+	"help.filters.dsl.body":
+		"Type to fuzzy-match titles and descriptions, or filter with tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review is:attention has:port. Quote multi-word values. Combine facets (AND); repeat one facet to broaden (OR). The P0–P4 chips, label chips and the funnel all edit these same tokens. Manage labels in Project Settings → Labels.",
 	"help.board.taskCard.title": "Task card",
 	"help.board.taskCard.body":
 		"The colored dots are parallel agent variants (each in its own worktree), the bell means the agent is calling you, and the #123 badge is the task's PR with its CI and review state. Right-click the card for every task action.",

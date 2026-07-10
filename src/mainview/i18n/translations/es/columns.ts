@@ -46,6 +46,18 @@ const columns = {
 	"priority.name.P3": "Baja",
 	"priority.name.P4": "Mínima",
 
+	// Token-DSL filter funnel (shared: board + sidebar)
+	"filter.title": "Filtros",
+	"filter.funnelLabel": "Filtrar tareas",
+	"filter.group.priority": "Prioridad",
+	"filter.group.status": "Estado",
+	"filter.group.labels": "Etiquetas",
+	"filter.group.agents": "Agentes",
+	"filter.group.flags": "Indicadores",
+	"filter.flag.attention": "Requiere atención",
+	"filter.flag.port": "Con puerto activo",
+	"labels.moreLabels": "+{count} más",
+
 	// Notes
 	"notes.title": "Notas",
 	"notes.add": "+ Agregar nota",

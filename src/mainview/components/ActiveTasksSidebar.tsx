@@ -1,13 +1,16 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
 import type { CodingAgent, CustomColumn, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, comparePriority, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY, comparePriority, getTaskTitle } from "../../shared/types";
+import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { api } from "../rpc";
 import type { AppAction, Route } from "../state";
 import { useT, useLocale } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
-import { matchesSearchQuery } from "../utils/taskSearch";
+import { matchesTaskQuery } from "../utils/taskSearch";
+import { buildFilterGroups, taskQueryContext, isAttentionTask, type FacetResolver, type FilterFunnelOption } from "../utils/taskFacets";
+import FilterFunnel from "./FilterFunnel";
 import { ageParts, compactAge, type AgeUnit } from "../utils/statusAge";
 import LabelChip from "./LabelChip";
 import TipCard from "./TipCard";
@@ -27,9 +30,6 @@ function statusTint(hex: string, alpha: number): string {
 	const b = parseInt(hex.slice(5, 7), 16);
 	return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
-
-/** Statuses that require the user's attention — the "attention" scope shows only these. */
-const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
 
 function readScope(): SidebarScope {
 	try {
@@ -208,23 +208,22 @@ function ActiveTasksSidebar({
 	// A task needs attention if it is in an attention status, OR it is a
 	// `review-by-colleague` (PR Review) task that currently has a live bell — the
 	// background PR poller raises the bell on a CI/review signal, and opening the
-	// task clears it, so a signalled PR surfaces here until it is read.
-	const isAttentionTask = useCallback(
-		(task: Task) =>
-			ATTENTION_STATUSES.includes(task.status) ||
-			(task.status === "review-by-colleague" && (bellCounts.get(task.id) ?? 0) > 0),
+	// task clears it, so a signalled PR surfaces here until it is read. Shared with
+	// the `is:attention` filter facet (`isAttentionTask` in taskFacets).
+	const isAttention = useCallback(
+		(task: Task) => isAttentionTask(task, bellCounts),
 		[bellCounts],
 	);
 
 	// Count of attention tasks across all available data (global when loaded, else project).
 	const attentionCount = useMemo(() => {
 		const pool = globalTasks.length > 0 ? globalTasks : tasks;
-		return pool.filter(isAttentionTask).length;
-	}, [globalTasks, tasks, isAttentionTask]);
+		return pool.filter(isAttention).length;
+	}, [globalTasks, tasks, isAttention]);
 
 	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
 	if (scope === "attention") {
-		activeTasks = activeTasks.filter(isAttentionTask);
+		activeTasks = activeTasks.filter(isAttention);
 		// Sort oldest-first by movedAt (status-change timestamp) so the
 		// longest-waiting task is always at the top.
 		activeTasks = activeTasks.slice().sort((a, b) => {
@@ -232,9 +231,6 @@ function ActiveTasksSidebar({
 			const bTime = b.movedAt ? new Date(b.movedAt).getTime() : 0;
 			return aTime - bTime;
 		});
-	}
-	if (searchQuery.trim()) {
-		activeTasks = activeTasks.filter((task) => matchesSearchQuery(task, searchQuery));
 	}
 
 	const projectById = useMemo(() => {
@@ -245,6 +241,59 @@ function ActiveTasksSidebar({
 		map.set(project.id, project);
 		return map;
 	}, [allProjects, project]);
+
+	// Facet resolver + funnel pool for the token-DSL filter. Labels/statuses are
+	// resolved per the task's OWN project (the pool may be cross-project in
+	// global/attention scope). The sidebar has no per-task PR number.
+	const resolver: FacetResolver = useMemo(() => ({
+		agents,
+		labelsFor: (task) => {
+			const pool = projectById.get(task.projectId)?.labels ?? [];
+			return pool.filter((l) => task.labelIds?.includes(l.id));
+		},
+		statusValuesFor: (task) => {
+			const proj = projectById.get(task.projectId);
+			const col = task.customColumnId ? proj?.customColumns?.find((c) => c.id === task.customColumnId) : undefined;
+			const label = getStatusLabel(task.status, t, proj);
+			return col ? [col.name, task.status, label] : [task.status, label];
+		},
+		priorityFor: (task) => task.priority ?? DEFAULT_PRIORITY,
+		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
+		isAttentionFor: (task) => isAttention(task),
+	}), [agents, projectById, taskPorts, isAttention, t]);
+
+	const priorityCandidates = useMemo<FilterFunnelOption[]>(
+		() => ALL_PRIORITIES.map((p) => ({ facet: "priority" as const, value: p, label: `${p} — ${t(PRIORITY_NAME_KEYS[p])}` })),
+		[t],
+	);
+	// The sidebar offers only the active statuses it displays (STATUS_ORDER),
+	// plus any custom columns present across the projects in scope.
+	const statusCandidates = useMemo<FilterFunnelOption[]>(() => {
+		const byValue = new Map<string, FilterFunnelOption>();
+		for (const status of STATUS_ORDER) {
+			byValue.set(status.toLowerCase(), { facet: "status", value: status, label: getStatusLabel(status, t, project) });
+		}
+		for (const proj of projectById.values()) {
+			for (const col of proj.customColumns ?? []) {
+				const key = col.name.toLowerCase();
+				if (!byValue.has(key)) byValue.set(key, { facet: "status", value: col.name, label: col.name, color: col.color });
+			}
+		}
+		return [...byValue.values()];
+	}, [projectById, project, t]);
+
+	const filterGroups = useMemo(
+		() => buildFilterGroups(activeTasks, resolver, {
+			priorityCandidates,
+			statusCandidates,
+			flagLabels: { attention: t("filter.flag.attention"), port: t("filter.flag.port") },
+		}),
+		[activeTasks, resolver, priorityCandidates, statusCandidates, t],
+	);
+
+	if (searchQuery.trim()) {
+		activeTasks = activeTasks.filter((task) => matchesTaskQuery(task, searchQuery, taskQueryContext(task, resolver)));
+	}
 
 	const siblingMap = useMemo(() => {
 		const map = new Map<string, Task[]>();
@@ -446,9 +495,9 @@ function ActiveTasksSidebar({
 				</div>
 			</div>
 
-			{/* Search input */}
-			<div className="px-3 py-1.5 border-b border-edge flex-shrink-0">
-				<div className="relative">
+			{/* Search input + token-DSL filter funnel */}
+			<div className="px-3 py-1.5 border-b border-edge flex-shrink-0 flex items-center gap-1.5">
+				<div className="relative flex-1 min-w-0">
 					<svg
 						className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-fg-3 pointer-events-none"
 						fill="none"
@@ -485,6 +534,7 @@ function ActiveTasksSidebar({
 						</button>
 					)}
 				</div>
+				<FilterFunnel query={searchQuery} onChange={setSearchQuery} groups={filterGroups} size="xs" helpTopicId="filters.dsl" />
 			</div>
 
 			{/* Feature-discovery tip — terminal-context tips lead here (see useTipRotation) */}
