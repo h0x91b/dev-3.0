@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type MutableRefObject } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch, type DragEvent, type MutableRefObject } from "react";
 import { toast } from "../toast";
 import type { CodingAgent, ColumnAgentConfig, CustomColumn, Dev3RepoConfig, GitHubAccount, GitHubCliStatus, Label, Project, SetupScriptLaunchMode, Task } from "../../shared/types";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
@@ -38,9 +38,45 @@ interface LabelRowProps {
 	deleteLabel: string;
 	/** Number of project tasks currently carrying this label (any status). */
 	taskCount: number;
+	// ---- Reorder ----
+	/** Whether reorder affordances are active (disabled while any label saves). */
+	reorderEnabled: boolean;
+	/** This row is the current drag source (dimmed). */
+	dragged: boolean;
+	/** Show the accent drop line on this edge while a sibling is dragged over. */
+	dropSide: "before" | "after" | null;
+	isFirst: boolean;
+	isLast: boolean;
+	onDragStart: () => void;
+	onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+	onDragLeave: () => void;
+	onDrop: (event: DragEvent<HTMLDivElement>) => void;
+	onDragEnd: () => void;
+	onMoveUp: () => void;
+	onMoveDown: () => void;
 }
 
-function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel, taskCount }: LabelRowProps) {
+function LabelRow({
+	label,
+	saving,
+	onUpdate,
+	onDelete,
+	nameLabel,
+	deleteLabel,
+	taskCount,
+	reorderEnabled,
+	dragged,
+	dropSide,
+	isFirst,
+	isLast,
+	onDragStart,
+	onDragOver,
+	onDragLeave,
+	onDrop,
+	onDragEnd,
+	onMoveUp,
+	onMoveDown,
+}: LabelRowProps) {
 	const t = useT();
 	const [name, setName] = useState(label.name);
 	const [color, setColor] = useState(label.color);
@@ -51,8 +87,56 @@ function LabelRow({ label, saving, onUpdate, onDelete, nameLabel, deleteLabel, t
 		}
 	}
 
+	const canDrag = reorderEnabled && !saving;
+
 	return (
-		<div className="flex items-center gap-2 p-2.5 bg-raised rounded-xl border border-edge">
+		<div
+			className={`relative flex items-center gap-2 p-2.5 bg-raised rounded-xl border border-edge transition-opacity ${dragged ? "opacity-50" : ""}`}
+			onDragOver={onDragOver}
+			onDragLeave={onDragLeave}
+			onDrop={onDrop}
+		>
+			{dropSide === "before" && <div className="absolute -top-1 left-3 right-3 h-0.5 bg-accent rounded-full z-10 pointer-events-none" />}
+			{dropSide === "after" && <div className="absolute -bottom-1 left-3 right-3 h-0.5 bg-accent rounded-full z-10 pointer-events-none" />}
+			{/* Reorder cluster — grip drags, arrows step (keyboard/touch fallback). */}
+			<div className="flex items-center gap-0.5 flex-shrink-0">
+				<button
+					type="button"
+					draggable={canDrag}
+					onDragStart={(e) => {
+						if (!canDrag) return;
+						e.dataTransfer.effectAllowed = "move";
+						onDragStart();
+					}}
+					onDragEnd={onDragEnd}
+					disabled={!canDrag}
+					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-elevated cursor-grab active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+					title={t("labels.dragToReorder")}
+					aria-label={t("labels.dragToReorder")}
+				>
+					<span className="text-[1rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F01DB}"}</span>
+				</button>
+				<button
+					type="button"
+					onClick={onMoveUp}
+					disabled={!reorderEnabled || saving || isFirst}
+					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+					title={t("labels.moveUp")}
+					aria-label={t("labels.moveUp")}
+				>
+					<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF062"}</span>
+				</button>
+				<button
+					type="button"
+					onClick={onMoveDown}
+					disabled={!reorderEnabled || saving || isLast}
+					className="text-fg-muted hover:text-fg transition-colors p-1 rounded-lg hover:bg-elevated disabled:opacity-30 disabled:hover:text-fg-muted disabled:hover:bg-transparent"
+					title={t("labels.moveDown")}
+					aria-label={t("labels.moveDown")}
+				>
+					<span className="text-[0.8125rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF063"}</span>
+				</button>
+			</div>
 			{/* Color dot (shows current color) */}
 			<div
 				className="w-4 h-4 rounded-full flex-shrink-0 border border-edge-active"
@@ -963,6 +1047,9 @@ function ProjectSettings({
 	// ---- Global tab state ----
 	const [labelSaving, setLabelSaving] = useState<string | null>(null);
 	const [columnSaving, setColumnSaving] = useState<string | null>(null);
+	// Label drag-reorder transient state (source id + current drop indicator).
+	const [draggedLabelId, setDraggedLabelId] = useState<string | null>(null);
+	const [labelDropTarget, setLabelDropTarget] = useState<{ labelId: string; side: "before" | "after" } | null>(null);
 	const [githubStatus, setGitHubStatus] = useState<GitHubCliStatus | null>(null);
 
 	// ---- Config file presence (for override warning on Project Config tab) ----
@@ -1171,6 +1258,58 @@ function ProjectSettings({
 			toast.error(t("labels.failedDelete", { error: String(err) }));
 		}
 		setLabelSaving(null);
+	}
+
+	// Persist a new label order: optimistic reorder locally, then fire the RPC
+	// (mirrors the custom-column / project reorder pattern). Server also pushes
+	// projectUpdated so other surfaces (picker, cards) resync.
+	function commitLabelOrder(labelOrder: string[]) {
+		if (!project) return;
+		const byId = new Map((project.labels ?? []).map((l) => [l.id, l]));
+		const reordered = labelOrder.map((id) => byId.get(id)).filter((l): l is Label => l !== undefined);
+		dispatch({ type: "updateProject", project: { ...project, labels: reordered } });
+		api.request.reorderLabels({ projectId, labelOrder }).catch((err) => {
+			toast.error(t("labels.failedReorder", { error: String(err) }));
+		});
+	}
+
+	// Move `sourceId` to the position of `targetId` (before/after) and persist.
+	function reorderLabelTo(sourceId: string, targetId: string, side: "before" | "after") {
+		if (!project || sourceId === targetId) return;
+		const ids = (project.labels ?? []).map((l) => l.id);
+		const fromIndex = ids.indexOf(sourceId);
+		if (fromIndex === -1) return;
+		ids.splice(fromIndex, 1);
+		const targetIndex = ids.indexOf(targetId);
+		if (targetIndex === -1) return;
+		ids.splice(side === "after" ? targetIndex + 1 : targetIndex, 0, sourceId);
+		commitLabelOrder(ids);
+	}
+
+	function moveLabelByStep(labelId: string, step: -1 | 1) {
+		const labels = project?.labels ?? [];
+		const index = labels.findIndex((l) => l.id === labelId);
+		const target = labels[index + step];
+		if (!target) return;
+		reorderLabelTo(labelId, target.id, step < 0 ? "before" : "after");
+	}
+
+	function handleLabelDragOver(event: DragEvent<HTMLDivElement>, labelId: string) {
+		if (!draggedLabelId || draggedLabelId === labelId) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "move";
+		const rect = event.currentTarget.getBoundingClientRect();
+		const side: "before" | "after" = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+		setLabelDropTarget({ labelId, side });
+	}
+
+	function handleLabelDrop(event: DragEvent<HTMLDivElement>, labelId: string) {
+		event.preventDefault();
+		const sourceId = draggedLabelId;
+		const side = labelDropTarget?.labelId === labelId ? labelDropTarget.side : "before";
+		setDraggedLabelId(null);
+		setLabelDropTarget(null);
+		if (sourceId) reorderLabelTo(sourceId, labelId, side);
 	}
 
 	async function handleAddColumn() {
@@ -1421,7 +1560,7 @@ function ProjectSettings({
 									{t("labels.settingsDesc")}
 								</p>
 								<div className="space-y-2">
-									{(project.labels ?? []).map((label: Label) => (
+									{(project.labels ?? []).map((label: Label, index: number) => (
 										<LabelRow
 											key={label.id}
 											label={label}
@@ -1431,6 +1570,21 @@ function ProjectSettings({
 											nameLabel={t("labels.labelName")}
 											deleteLabel={t("labels.deleteLabel")}
 											taskCount={labelTaskCounts.get(label.id) ?? 0}
+											reorderEnabled={(project.labels ?? []).length > 1}
+											dragged={draggedLabelId === label.id}
+											dropSide={labelDropTarget?.labelId === label.id ? labelDropTarget.side : null}
+											isFirst={index === 0}
+											isLast={index === (project.labels ?? []).length - 1}
+											onDragStart={() => setDraggedLabelId(label.id)}
+											onDragOver={(e) => handleLabelDragOver(e, label.id)}
+											onDragLeave={() => setLabelDropTarget((cur) => (cur?.labelId === label.id ? null : cur))}
+											onDrop={(e) => handleLabelDrop(e, label.id)}
+											onDragEnd={() => {
+												setDraggedLabelId(null);
+												setLabelDropTarget(null);
+											}}
+											onMoveUp={() => moveLabelByStep(label.id, -1)}
+											onMoveDown={() => moveLabelByStep(label.id, 1)}
 										/>
 									))}
 									{(project.labels ?? []).length === 0 && (

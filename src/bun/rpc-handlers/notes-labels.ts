@@ -222,6 +222,26 @@ async function reorderColumns(params: { projectId: string; columnOrder: string[]
 	return updated;
 }
 
+async function reorderLabels(params: { projectId: string; labelOrder: string[] }): Promise<Project> {
+	log.info("→ reorderLabels", { projectId: params.projectId, labelOrder: params.labelOrder });
+	const { project: updated, result: reorderedCount } = await data.updateProjectWith(params.projectId, async (project) => {
+		const existing = project.labels ?? [];
+		const reordered = params.labelOrder
+			.map((id) => existing.find((label) => label.id === id))
+			.filter((label): label is Label => label !== undefined);
+		for (const label of existing) {
+			if (!reordered.find((candidate) => candidate.id === label.id)) reordered.push(label);
+		}
+		return {
+			updates: { labels: reordered },
+			result: reordered.length,
+		};
+	});
+	getPushMessage()?.("projectUpdated", { project: updated });
+	log.info("← reorderLabels done", { count: reorderedCount });
+	return updated;
+}
+
 async function setTaskLabels(params: { taskId: string; projectId: string; labelIds: string[] }): Promise<Task> {
 	log.info("→ setTaskLabels", { taskId: params.taskId, labelIds: params.labelIds });
 	const project = await data.getProject(params.projectId);
@@ -291,6 +311,7 @@ export const notesLabelsHandlers = {
 	deleteCustomColumn,
 	moveTaskToCustomColumn,
 	reorderColumns,
+	reorderLabels,
 	setTaskLabels,
 	addTaskNote,
 	updateTaskNote,

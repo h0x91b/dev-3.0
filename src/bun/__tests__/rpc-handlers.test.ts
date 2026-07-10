@@ -7236,6 +7236,49 @@ describe("reorderColumns", () => {
 	});
 });
 
+describe("reorderLabels", () => {
+	const labA = { id: "lab-aaa", name: "Alpha", color: "#ff0000" };
+	const labB = { id: "lab-bbb", name: "Beta", color: "#00ff00" };
+	const labC = { id: "lab-ccc", name: "Gamma", color: "#0000ff" };
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+	});
+
+	it("reorders labels to match labelOrder", async () => {
+		const project = makeProject({ labels: [labA, labB, labC] });
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
+
+		const result = await handlers.reorderLabels({
+			projectId: "proj-1",
+			labelOrder: ["lab-ccc", "lab-aaa", "lab-bbb"],
+		});
+
+		expect(data.updateProjectWith).toHaveBeenCalledTimes(1);
+		expect(result.labels).toEqual([labC, labA, labB]);
+	});
+
+	it("appends labels missing from labelOrder and skips unknown IDs", async () => {
+		const project = makeProject({ labels: [labA, labB, labC] });
+		vi.mocked(data.updateProjectWith).mockImplementation(async (_projectId, mutator) => {
+			const { updates, result } = await mutator(project);
+			return { project: { ...project, ...updates }, result };
+		});
+
+		// Only mentions B (+ an unknown id); A and C must survive, appended in original order.
+		const result = await handlers.reorderLabels({
+			projectId: "proj-1",
+			labelOrder: ["lab-bbb", "lab-unknown"],
+		});
+
+		expect(result.labels).toEqual([labB, labA, labC]);
+	});
+});
+
 describe("moveTaskToCustomColumn — resume logic", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
