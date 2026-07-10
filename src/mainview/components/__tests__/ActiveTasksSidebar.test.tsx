@@ -9,6 +9,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTerminalPreview: vi.fn(),
 			getAllProjectTasks: vi.fn(() => Promise.resolve([])),
+			setTaskPriority: vi.fn(() => Promise.resolve([])),
 			// Feature-discovery tip rotation (useTipRotation).
 			getGlobalSettings: vi.fn(() => Promise.resolve({ tipsDisabled: true })),
 			getTipState: vi.fn(() => Promise.resolve({ snoozedUntil: 0, seen: {}, rotationIndex: 0 })),
@@ -662,14 +663,14 @@ describe("ActiveTasksSidebar", () => {
 		const holdHeader = screen.getByText("On hold");
 		expect(holdHeader).toBeInTheDocument();
 
-		// The custom-column group sits AFTER the built-in "Your Review" group,
-		// and the parked task lives below the "On hold" header — not under the
-		// built-in review group with the plain task.
-		const yourReview = screen.getByText("Your Review");
+		// The custom-column tier sits AFTER the built-in "Needs you" tier, and the
+		// parked task lives below the "On hold" header — not in the NEEDS YOU tier
+		// with the plain task. (Its actionable status does NOT override its column.)
+		const needsYou = screen.getByText("Needs you");
 		const plain = screen.getByText("Plain review task");
 		const parked = screen.getByText("Parked task");
-		// Order in the DOM: Your Review → Plain task → On hold → Parked task.
-		expect(yourReview.compareDocumentPosition(holdHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		// Order in the DOM: Needs you → Plain task → On hold → Parked task.
+		expect(needsYou.compareDocumentPosition(holdHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(plain.compareDocumentPosition(holdHeader) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(holdHeader.compareDocumentPosition(parked) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
@@ -861,5 +862,139 @@ describe("ActiveTasksSidebar", () => {
 		const hasMoved = screen.getByText("Has timestamp");
 		const noMoved = screen.getByText("No timestamp");
 		expect(hasMoved.compareDocumentPosition(noMoved) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	// ============================================================
+	// Visible priority + readiness tiers (spec #1032)
+	// ============================================================
+
+	it("renders a priority badge on every card, including the default P3, with the heat-ramp color", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({ id: "hi", status: "review-by-user", priority: "P0" }),
+						makeTask({ id: "default", status: "review-by-user", priority: undefined }),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		// A P0 badge (danger heat-ramp token) and a P3 badge (default, always shown).
+		const p0 = screen.getByText("P0");
+		expect(p0.className).toContain("text-danger");
+		const p3 = screen.getByText("P3");
+		expect(p3.className).toContain("text-success");
+	});
+
+	it("renders a compact status label on each card", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({ id: "q", status: "user-questions" }),
+						makeTask({ id: "w", status: "in-progress" }),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		expect(screen.getByTestId("sidebar-status-label-q")).toHaveTextContent("Question");
+		expect(screen.getByTestId("sidebar-status-label-w")).toHaveTextContent("Working");
+	});
+
+	it("groups into readiness tiers with counted sticky headers", () => {
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[
+						makeTask({ id: "r1", status: "review-by-user" }),
+						makeTask({ id: "q1", status: "user-questions" }),
+						makeTask({ id: "w1", status: "in-progress" }),
+					]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		// Two built-in tiers, ordered NEEDS YOU → WAITING with correct counts.
+		expect(screen.getByText("Needs you")).toBeInTheDocument();
+		expect(screen.getByText("Waiting")).toBeInTheDocument();
+		expect(screen.getByTestId("sidebar-tier-count-needs-you")).toHaveTextContent("2");
+		expect(screen.getByTestId("sidebar-tier-count-waiting")).toHaveTextContent("1");
+		const needsYou = screen.getByText("Needs you");
+		const waiting = screen.getByText("Waiting");
+		expect(needsYou.compareDocumentPosition(waiting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it("clicking the priority badge opens the picker without navigating to the task", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ id: "t1", status: "review-by-user", priority: "P2" })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={navigate}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByText("P2"));
+		// The picker (portal) lists the other levels, e.g. P0 — proving it opened.
+		expect(screen.getByText("P0")).toBeInTheDocument();
+		// Navigation must NOT have fired from the badge click.
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("changing priority from the badge calls setTaskPriority for the task's own project", async () => {
+		const user = userEvent.setup();
+		const { api } = await import("../../rpc");
+		(api.request.setTaskPriority as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ id: "t1", projectId: "p1", status: "review-by-user", priority: "P2" })]}
+					activeTaskId="none"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByText("P2"));
+		await user.click(screen.getByText("P0"));
+		expect(api.request.setTaskPriority).toHaveBeenCalledWith(
+			expect.objectContaining({ taskId: "t1", projectId: "p1", priority: "P0" }),
+		);
 	});
 });
