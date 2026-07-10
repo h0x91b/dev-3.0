@@ -2205,6 +2205,10 @@ export type AppRPCSchema = {
 				params: { projectId: string; columnOrder: string[] };
 				response: Project;
 			};
+			reorderLabels: {
+				params: { projectId: string; labelOrder: string[] };
+				response: Project;
+			};
 			addProject: {
 				params: { path: string; name: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };

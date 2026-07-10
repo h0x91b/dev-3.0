@@ -1,0 +1,1 @@
+Labels in Project Settings can now be reordered — drag the grip handle or use the up/down arrows on each label row. The new order is saved per project and reflected wherever labels are shown (task cards, label picker).

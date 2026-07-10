@@ -12,6 +12,7 @@ vi.mock("../../rpc", () => ({
 			createLabel: vi.fn(),
 			updateLabel: vi.fn(),
 			deleteLabel: vi.fn(),
+			reorderLabels: vi.fn().mockResolvedValue(undefined),
 			getTasks: vi.fn().mockResolvedValue([]),
 			detectClonePaths: vi.fn().mockResolvedValue([]),
 			listBranches: vi.fn().mockResolvedValue([]),
@@ -666,6 +667,78 @@ describe("ProjectSettings", () => {
 			});
 			expect(api.request.getTasks).toHaveBeenCalledWith({ projectId: labeledProject.id });
 			expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "setTasks" }));
+		});
+	});
+
+	describe("label reorder", () => {
+		const labeledProject: Project = {
+			...mockProject,
+			labels: [
+				{ id: "l1", name: "Bug", color: "#ef4444" },
+				{ id: "l2", name: "Feature", color: "#84cc16" },
+				{ id: "l3", name: "Docs", color: "#a855f7" },
+			],
+		};
+
+		async function renderWithDispatch() {
+			const dispatch = vi.fn() as unknown as React.Dispatch<AppAction>;
+			await act(async () => {
+				render(
+					<I18nProvider>
+						<ProjectSettings projectId={labeledProject.id} projects={[labeledProject]} tasks={[]} dispatch={dispatch} navigate={vi.fn() as (route: Route) => void} />
+					</I18nProvider>,
+				);
+			});
+			return dispatch;
+		}
+
+		it("moves a label down via the arrow button and persists the new order", async () => {
+			(api.request.reorderLabels as ReturnType<typeof vi.fn>).mockClear();
+			const user = userEvent.setup();
+			const dispatch = await renderWithDispatch();
+
+			await user.click(screen.getAllByLabelText("Move label down")[0]);
+
+			expect(api.request.reorderLabels).toHaveBeenCalledWith({
+				projectId: "proj-1",
+				labelOrder: ["l2", "l1", "l3"],
+			});
+			// Optimistic local update with the reordered labels.
+			expect(dispatch).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "updateProject",
+					project: expect.objectContaining({
+						labels: [
+							expect.objectContaining({ id: "l2" }),
+							expect.objectContaining({ id: "l1" }),
+							expect.objectContaining({ id: "l3" }),
+						],
+					}),
+				}),
+			);
+		});
+
+		it("moves a label up via the arrow button", async () => {
+			(api.request.reorderLabels as ReturnType<typeof vi.fn>).mockClear();
+			const user = userEvent.setup();
+			await renderWithDispatch();
+
+			// Move the last label (l3) up → swaps with l2.
+			await user.click(screen.getAllByLabelText("Move label up")[2]);
+
+			expect(api.request.reorderLabels).toHaveBeenCalledWith({
+				projectId: "proj-1",
+				labelOrder: ["l1", "l3", "l2"],
+			});
+		});
+
+		it("disables Move up on the first label and Move down on the last", async () => {
+			await renderWithDispatch();
+			expect(screen.getAllByLabelText("Move label up")[0]).toBeDisabled();
+			expect(screen.getAllByLabelText("Move label down")[2]).toBeDisabled();
+			// Middle rows can move both ways.
+			expect(screen.getAllByLabelText("Move label up")[1]).not.toBeDisabled();
+			expect(screen.getAllByLabelText("Move label down")[1]).not.toBeDisabled();
 		});
 	});
 
