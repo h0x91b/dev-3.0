@@ -27,7 +27,11 @@ function devServerSessionName(taskId: string): string {
 
 async function isDevServerRunning(taskId: string, socket: string): Promise<boolean> {
 	const devSession = devServerSessionName(taskId);
-	const check = spawn(pty.tmuxArgs(socket, "has-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
+	// spawnTmux so a launch-time tmux failure surfaces as a typed TmuxSpawnError
+	// (clear FDA-pointing message) instead of a raw `posix_spawn ENOENT`. This is
+	// the first — and gating — tmux call in the status path, so catching it in
+	// buildDevServerStatus covers the whole read.
+	const check = pty.spawnTmux(socket, ["has-session", "-t", devSession], { stdout: "pipe", stderr: "pipe" });
 	const exitCode = await check.exited;
 	return exitCode === 0;
 }
@@ -38,10 +42,10 @@ async function findDevServerViewerPaneId(taskId: string, taskSession: string, de
 		return viewerPaneId;
 	}
 
-	const listProc = spawn(pty.tmuxArgs(socket,
+	const listProc = pty.spawnTmux(socket, [
 		"list-panes", "-t", taskSession,
 		"-F", "#{pane_id} #{pane_start_command}",
-	), { stdout: "pipe", stderr: "pipe" });
+	], { stdout: "pipe", stderr: "pipe" });
 	const listOutput = await new Response(listProc.stdout).text();
 	await listProc.exited;
 	for (const line of listOutput.trim().split("\n")) {
@@ -214,8 +218,42 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	const resolvedSocket = socket ?? task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	const taskSessionName = `dev3-${task.id.slice(0, 8)}`;
 	const devSessionName = devServerSessionName(task.id);
-	const running = await isDevServerRunning(task.id, resolvedSocket);
+	// `assignedPorts` comes from the in-memory port pool — no tmux — so it stays
+	// available as "last-known state" even when tmux can't be reached.
 	const assignedPorts = portPool.getPortAssignments(task.id);
+
+	// A launch-time tmux failure (e.g. macOS Full Disk Access lost) used to crash
+	// the read-only status with a raw `posix_spawn ENOENT`. Degrade instead: keep
+	// the tmux-free facts, mark the live state unknown, and carry the diagnostic
+	// in `tmuxError` for the caller to surface. Non-tmux errors still propagate.
+	let running: boolean;
+	try {
+		running = await isDevServerRunning(task.id, resolvedSocket);
+	} catch (err) {
+		if (!pty.isTmuxSpawnError(err)) throw err;
+		log.error("dev-server status degraded — tmux unreachable", {
+			taskId: task.id.slice(0, 8),
+			error: err.message,
+		});
+		return {
+			projectId,
+			taskId: task.id,
+			running: false,
+			hasDevScript,
+			worktreePath: task.worktreePath ?? null,
+			tmuxSocket: resolvedSocket,
+			taskSessionName,
+			devSessionName,
+			viewerPaneId: null,
+			panePids: [],
+			assignedPorts,
+			ports: [],
+			devPorts: [],
+			portConflicts: [],
+			tmuxError: err.message,
+		};
+	}
+
 	const viewerPaneId = running
 		? await findDevServerViewerPaneId(task.id, taskSessionName, devSessionName, resolvedSocket)
 		: null;

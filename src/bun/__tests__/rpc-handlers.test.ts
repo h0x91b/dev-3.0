@@ -108,6 +108,19 @@ vi.mock("../pty-server", () => ({
 	capturePane: vi.fn(),
 	applyTmuxTheme: vi.fn(),
 	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
+	// Forward to the shared spawn mock so existing `mockSpawn.mock.calls`
+	// assertions (has-session, list-panes) still observe dev-server tmux calls.
+	spawnTmux: vi.fn((_socket: string, args: string[], opts?: unknown) => mockSpawn(["tmux", "-L", _socket, ...args], opts)),
+	isTmuxSpawnError: (err: unknown) => (err as { name?: string })?.name === "TmuxSpawnError",
+	TmuxSpawnError: class TmuxSpawnError extends Error {
+		binary: string;
+		constructor(binary: string, cause: unknown) {
+			super(`tmux failed to spawn (${binary})`);
+			this.name = "TmuxSpawnError";
+			this.binary = binary;
+			(this as { cause?: unknown }).cause = cause;
+		}
+	},
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
 	selectTmuxBinary: vi.fn(async (preferred: string) => preferred),
@@ -5801,6 +5814,62 @@ describe("handlers.runDevServer", () => {
 		await expect(
 			handlers.runDevServer({ taskId: task.id, projectId: "proj-1" }),
 		).rejects.toThrow("tmux new-session failed");
+	});
+});
+
+// ================================================================
+// handlers.getDevServerStatus
+// ================================================================
+
+describe("handlers.getDevServerStatus", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("degrades gracefully when tmux fails to launch (no crash, carries diagnostic)", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		// isDevServerRunning's spawnTmux throws synchronously (Bun.spawn ENOENT) —
+		// e.g. macOS Full Disk Access lost mid-session.
+		vi.mocked(pty.spawnTmux).mockImplementationOnce(() => {
+			throw new pty.TmuxSpawnError("/opt/homebrew/bin/tmux", new Error("ENOENT: posix_spawn"));
+		});
+
+		const status = await handlers.getDevServerStatus({ taskId: task.id, projectId: "proj-1" });
+
+		expect(status.tmuxError).toBeDefined();
+		expect(status.tmuxError).toContain("tmux failed to spawn");
+		// Live state is unknown, not authoritatively "running", and tmux-derived
+		// fields are empty rather than throwing.
+		expect(status.running).toBe(false);
+		expect(status.taskId).toBe(task.id);
+		expect(status.devSessionName).toBe("dev3-dev-abcd1234");
+		expect(status.panePids).toEqual([]);
+		expect(status.ports).toEqual([]);
+	});
+
+	it("rethrows non-tmux errors (a data-layer failure is not masked)", async () => {
+		vi.mocked(data.getProject).mockRejectedValue(new Error("db error"));
+
+		await expect(
+			handlers.getDevServerStatus({ taskId: "task-1", projectId: "proj-1" }),
+		).rejects.toThrow("db error");
+	});
+
+	it("reports a clean stopped status (no tmuxError) when tmux launches fine", async () => {
+		const project = makeProject({ devScript: "bun run dev" });
+		const task = makeTask({ worktreePath: "/tmp/wt", id: "abcd1234-0000-0000-0000-000000000000" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		// has-session exits non-zero → not running; every other spawn is empty.
+		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(1) });
+
+		const status = await handlers.getDevServerStatus({ taskId: task.id, projectId: "proj-1" });
+
+		expect(status.tmuxError).toBeUndefined();
+		expect(status.running).toBe(false);
 	});
 });
 

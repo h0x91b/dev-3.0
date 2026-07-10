@@ -43,6 +43,9 @@ import { spawn, spawnSync } from "../spawn";
 import { DEV3_HOME } from "../paths";
 import {
 	tmuxArgs,
+	spawnTmux,
+	TmuxSpawnError,
+	isTmuxSpawnError,
 	cwdExists,
 	createSession,
 	destroySession,
@@ -144,6 +147,46 @@ describe("pty-server", () => {
 			expect(tmuxArgs("sock", "kill-session", "-t", "dev3-abc")).toEqual([
 				"tmux", "-L", "sock", "kill-session", "-t", "dev3-abc",
 			]);
+		});
+	});
+
+	// ------- spawnTmux / TmuxSpawnError -------
+
+	describe("spawnTmux / TmuxSpawnError", () => {
+		it("spawns with the full tmux argv and returns the proc on success", () => {
+			const proc = spawnTmux("dev3", ["has-session", "-t", "dev3-dev-abc"], { stdout: "pipe", stderr: "pipe" });
+			expect(proc).toBeDefined();
+			expect(mockSpawn).toHaveBeenCalledWith(
+				["tmux", "-L", "dev3", "has-session", "-t", "dev3-dev-abc"],
+				{ stdout: "pipe", stderr: "pipe" },
+			);
+		});
+
+		it("translates a launch-time spawn failure into a TmuxSpawnError with an actionable message", () => {
+			mockSpawn.mockImplementationOnce(() => {
+				throw new Error("ENOENT: no such file or directory, posix_spawn '/opt/homebrew/bin/tmux'");
+			});
+
+			let caught: unknown;
+			try {
+				spawnTmux("dev3", ["list-sessions"]);
+			} catch (err) {
+				caught = err;
+			}
+
+			expect(isTmuxSpawnError(caught)).toBe(true);
+			expect(caught).toBeInstanceOf(TmuxSpawnError);
+			const message = (caught as Error).message;
+			expect(message).toContain("tmux failed to spawn");
+			expect(message).toContain("posix_spawn"); // preserves the raw cause
+			expect(message).toContain("Full Disk Access"); // points at the usual macOS fix
+			expect((caught as TmuxSpawnError).cause).toBeInstanceOf(Error);
+		});
+
+		it("isTmuxSpawnError is false for unrelated errors and non-errors", () => {
+			expect(isTmuxSpawnError(new Error("boom"))).toBe(false);
+			expect(isTmuxSpawnError(null)).toBe(false);
+			expect(isTmuxSpawnError(undefined)).toBe(false);
 		});
 	});
 

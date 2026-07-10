@@ -1757,6 +1757,15 @@ export interface DevServerStatus {
 	 */
 	portConflicts: PortInfo[];
 	resourceUsage?: ResourceUsage;
+	/**
+	 * Set only when the live state could not be read because tmux itself failed
+	 * to launch (e.g. macOS Full Disk Access lost). When present, `running` and
+	 * every tmux-derived field are unknown, not authoritative — the CLI renders
+	 * "unknown" plus this actionable diagnostic instead of hard-crashing on a raw
+	 * `posix_spawn ENOENT`. Additive/optional: older backends never send it and
+	 * older CLIs ignore it, so it doesn't affect the frozen on-disk layout.
+	 */
+	tmuxError?: string;
 }
 
 // ---- Remote (headless `dev3 remote`) lifecycle ----

@@ -131,6 +131,44 @@ describe("dev-server status", () => {
 		expect(stdoutOutput).toContain("(none detected)");
 		expect(stdoutOutput).not.toContain("WARNING: port");
 	});
+
+	// Graceful degradation: a launch-time tmux failure (e.g. macOS Full Disk
+	// Access lost) used to hard-crash `dev3 dev-server status` with a raw
+	// `posix_spawn ENOENT`. Now the backend returns a degraded status carrying
+	// `tmuxError`, and the CLI prints last-known state + a diagnostic, exit 0.
+	it("renders an unknown state with a diagnostic when tmux is unreachable", async () => {
+		const degraded = {
+			...STATUS,
+			running: false,
+			viewerPaneId: null,
+			panePids: [],
+			ports: [],
+			devPorts: [],
+			portConflicts: [],
+			resourceUsage: undefined,
+			// assignedPorts survive (in-memory pool, no tmux) — "last-known state".
+			assignedPorts: [50001],
+			tmuxError:
+				"tmux failed to spawn (/opt/homebrew/bin/tmux): ENOENT. The path resolves but could not be executed — on macOS this usually means dev3 lost Full Disk Access. Re-add dev3 under System Settings → Privacy & Security → Full Disk Access, then retry.",
+		};
+		mockSend.mockResolvedValue(okResp(degraded));
+
+		await expect(
+			handleDevServer("status", { positional: [], flags: {} }, SOCKET, CTX),
+		).resolves.toBeUndefined();
+
+		expect(stdoutOutput).toContain("Dev server status is unknown");
+		expect(stdoutOutput).toContain("unknown (tmux unavailable)");
+		expect(stdoutOutput).toContain("WARNING: tmux failed to spawn");
+		expect(stdoutOutput).toContain("Full Disk Access");
+		// Last-known state still printed.
+		expect(stdoutOutput).toContain("DEV3_PORT0=50001");
+		// It must NOT falsely claim the server is stopped/running.
+		expect(stdoutOutput).not.toContain("Dev server is stopped");
+		expect(stdoutOutput).not.toContain("Dev server is running");
+		// Graceful = no hard exit.
+		expect(exitSpy).not.toHaveBeenCalled();
+	});
 });
 
 describe("dev-server start/stop/restart", () => {

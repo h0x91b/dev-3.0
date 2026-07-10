@@ -63,13 +63,17 @@ function printStatusLine(action: string, status: DevServerStatus): void {
 			process.stdout.write(`Stopped dev server for task ${shortTaskId}\n`);
 			return;
 		default:
+			if (status.tmuxError) {
+				process.stdout.write(`Dev server status is unknown for task ${shortTaskId} (tmux could not be reached)\n`);
+				return;
+			}
 			process.stdout.write(`Dev server is ${status.running ? "running" : "stopped"} for task ${shortTaskId}\n`);
 	}
 }
 
 function printStatusDetails(status: DevServerStatus): void {
 	const fields: Array<[string, string]> = [
-		["State:", status.running ? "running" : "stopped"],
+		["State:", status.tmuxError ? "unknown (tmux unavailable)" : status.running ? "running" : "stopped"],
 		["Task:", status.taskId.slice(0, 8)],
 		["Session:", status.devSessionName],
 		["Viewer Pane:", status.viewerPaneId ?? "(none)"],
@@ -88,6 +92,9 @@ function printStatusDetails(status: DevServerStatus): void {
 
 	printDetail(fields);
 	printPortConflicts(status);
+	if (status.tmuxError) {
+		process.stdout.write(`WARNING: ${status.tmuxError}\n`);
+	}
 }
 
 function printPortConflicts(status: DevServerStatus): void {
@@ -117,6 +124,9 @@ async function waitForDevServerReady(
 		const resp = await sendRequest(socketPath, "devServer.status", params, { retryEmptyResponse: true });
 		if (!resp.ok) exitError(resp.error || "Failed to poll dev server status");
 		const status = asStatus(resp.data);
+		if (status.tmuxError) {
+			exitError(status.tmuxError);
+		}
 		if (!status.running) {
 			exitError("Dev server exited before opening a port — check the dev server pane for errors");
 		}
