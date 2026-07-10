@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-11 — Scheduled agent message ("Send later")
+
+- **Rule:** A one-shot text queued to a task's **live agent** (deliver at a wall-clock time / after a delay; type + Enter) is a **session action**. Create it from the **Session/Agent inspector bar**, the card **context menu**, and a **clock button in the browser/touch `TerminalComposer`**; plus CLI `dev3 message [--in|--at] "…"` (bare = send now). Pending items render as a **card timer-chip** (popover: cancel / send-now) that **shares the single deferred-timer slot with deferred launch** — the two never coexist (`todo` vs live-agent). Reuses the `LaunchVariantsModal` in/at picker via an extracted shared `SchedulePicker`. Offered only when a live agent session exists.
+- **Why:** it pokes a *running* agent, so it belongs to the session domain, not Runtime; reusing the launch picker + the one deferred-timer chip adds no new badge class and no budget exception. Excluded from the ⇧⌘P palette (modal/inline-flow policy, same as spawn) and it is not a destination. Rejected: extending Automations (they create *new tasks*, not message a live agent) and a bespoke "Reminders" panel.
+- **Status:** Planned. Evidence: `decisions/124-scheduled-agent-message.md`; bible §5.1 (session_agent bar); `LaunchVariantsModal.tsx`, `TerminalComposer.tsx`, `scheduled-launch-scheduler.ts`.
+
 ## 2026-07-10 — Token-DSL task filters: search string is the single source of truth
 
 - **Rule:** Structured filtering on the board and sidebar is a token DSL (`priority:` `label:` `agent:` `status:` `is:attention` `has:port`) living inside the *one* search string; a shared `FilterFunnel` dropdown (grouped PRIORITY/STATUS/LABELS/AGENTS/FLAGS, PRIORITY first, values-in-pool only, empty groups hidden), the P0–P4 priority quick-chips, and the kanban label chips are all *views* of that string — checking/clicking edits a token, none holds separate filter state. Funnel is a `ghost` icon button snug against the search box with an accent count badge; one `HelpSpot` teaches the operators. Filter/checked use different comparisons: substring match filters, exact (case-insensitive) token presence drives checked/active. Board shows the most-popular labels inline (`+N more` opens the funnel). Ephemeral (resets on unmount), renderer-only, extensible registry.
