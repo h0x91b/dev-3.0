@@ -32,6 +32,8 @@ const columns = {
 	"labels.failedDelete": "Error al eliminar etiqueta: {error}",
 	"labels.failedSetLabels": "Error al actualizar etiquetas de tarea: {error}",
 	"labels.taskLabels": "Etiquetas",
+	"labels.taskCount_one": "{count} tarea",
+	"labels.taskCount_other": "{count} tareas",
 
 	// Priority
 	"priority.label": "Prioridad",

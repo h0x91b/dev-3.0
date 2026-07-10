@@ -32,6 +32,8 @@ const columns = {
 	"labels.failedDelete": "Failed to delete label: {error}",
 	"labels.failedSetLabels": "Failed to update task labels: {error}",
 	"labels.taskLabels": "Labels",
+	"labels.taskCount_one": "{count} task",
+	"labels.taskCount_other": "{count} tasks",
 
 	// Priority
 	"priority.label": "Priority",

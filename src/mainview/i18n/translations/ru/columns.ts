@@ -32,6 +32,10 @@ const columns = {
 	"labels.failedDelete": "Не удалось удалить метку: {error}",
 	"labels.failedSetLabels": "Не удалось обновить метки задачи: {error}",
 	"labels.taskLabels": "Метки",
+	"labels.taskCount_one": "{count} задача",
+	"labels.taskCount_few": "{count} задачи",
+	"labels.taskCount_many": "{count} задач",
+	"labels.taskCount_other": "{count} задач",
 
 	// Priority
 	"priority.label": "Приоритет",
