@@ -1,0 +1,1 @@
+The agent rate-limit indicator tooltip in the global header now shows which account each Claude/Codex limit belongs to — the active account's email/label plus its plan tier (or an API-profile marker) — so it is clear whose limits you are looking at.
