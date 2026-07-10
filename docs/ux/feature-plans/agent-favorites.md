@@ -1,8 +1,8 @@
 # Feature plan — Favorite agent configurations
 
-**Status:** Designed (grilled), not yet implemented.
-**Implementation:** tracked in a separate dev3 task (see the parent task's notes for the id).
-**Related:** [decision 124](../../../decisions/124-agent-favorites.md), `docs/ux/feature-plans/agent-picker-provider-model-mode.md` (the underlying Provider → Model → Mode picker).
+**Status:** Implemented (v3 — leading "Favorites" column; see UI section for the v1/v2 trail).
+**Implementation:** `AgentConfigPicker.tsx`, `FavoritesMenu.tsx`, `src/shared/favorites.ts`.
+**Related:** [decision 125](../../../decisions/125-agent-favorites.md), `docs/ux/feature-plans/agent-picker-provider-model-mode.md` (the underlying Provider → Model → Mode picker).
 
 ## Problem
 
@@ -74,19 +74,28 @@ New optional field → no migration needed; absent = `[]`. Never auto-purged (se
 
 ## UI
 
-- **Chips row** above the Provider/Model/Mode cascade, with a small left-aligned **"★ Favorites"**
-  label. Cross-provider, one row. Clicking a chip **only selects** (fills all three cascade fields);
-  it does **not** launch — launch stays the dedicated button (variant count / description must not be
-  skipped, and Bug Hunters/Spawn have their own launch semantics).
-- **Empty state:** when there are no favorites, the row (and label) is not rendered at all —
-  progressive disclosure, zero chrome for new users.
-- **Add / remove:** a **star toggle button** at the end of the cascade row reflects and toggles
-  whether the *current* `(agentId, configId)` is a favorite (filled = favorited, outline = not).
-  Removal is also possible via a small `×` on chip hover.
-- **Chip label:** `Provider · Model · Mode`, provider compact (icon if available, else short tag) —
-  e.g. `Claude · Sonnet 5 · Bypass · Med`. Provider is required because model names collide across
-  providers (Opus 4.6, GPT-5.3 Codex, Gemini 3.1 Pro appear under more than one). Reuse
-  `getModelGroupLabel` + `getModeLeafLabel` from `src/mainview/utils/agentPicker.ts`.
+**Final form (v3).** The picker is instantiated **once per variant** in `LaunchVariantsModal`, so a
+persistent chips row (v1) duplicated the global list N× and a right-side `[★│▾]` split (v2) dangled
+below the Selects — both wrong. Favorites now live in a **leading "Favorites" column**, peer to
+Provider/Model/Mode. See `decisions/125-agent-favorites.md` for the full rejected-alternatives trail.
+
+- **Leading column** at the START of the cascade row, with its own `Favorites` label so the control
+  aligns in-row with the three Selects. A **narrow fixed-width trigger** (not `flex-1`), so it costs
+  minimal width even rendered ×N variants.
+- **Trigger:** a Nerd Font star (`\uf005` filled / `\uf006` outline) + a chevron, styled like a
+  `Select`. The star **fills gold** (`--favorite`) when the *current* `(agentId, configId)` is saved — the only
+  at-a-glance saved-state indicator. Clicking opens the popover.
+- **Popover (`FavoritesMenu`):** left-aligned to the trigger, portal-rendered. **Top row toggles
+  Save ↔ Remove** the current combo (`☆ Save this combo` / `★ Remove this combo`) — save lives inside
+  the menu because *pick* is the frequent path and *save* the rare one; it keeps the menu open so the
+  new entry appears. Below it, the favorites **list**: clicking a row **only selects** (fills the
+  cascade), never launches; `×` per row removes; the active row is accent + checked.
+- **Always present:** the column shows even at 0 favorites, so "Save this combo" is always reachable
+  (the trigger is the sole save affordance). No empty-state hiding, no separate row star.
+- **Row label:** `Provider · Model · Mode`, provider compact — e.g. `Claude · Sonnet 5 · Bypass · Med`.
+  Provider is required because model names collide across providers (Opus 4.6, GPT-5.3 Codex,
+  Gemini 3.1 Pro appear under more than one). Reuse `getModelGroupLabel` + `getModeLeafLabel` from
+  `src/mainview/utils/agentPicker.ts`.
 
 ## Surfaces
 
@@ -133,8 +142,10 @@ there the picker sets a *default agent*, and a parallel "favorites" affordance w
 
 - Unit: ordering (uses desc, lastUsedAt tie-break), eviction (LFU-then-LRU, new-add protection),
   increment (per-agent, only-if-favorited), stale remap + hide-not-purge.
-- Component: chips row renders/hides on empty; chip click selects (does not launch); star toggle
-  reflects + flips current combo; `×` removes; `showFavorites` off → nothing rendered.
+- Component: trigger always present (even 0 favorites) + opens the menu; trigger star fills when the
+  current combo is saved; menu lists favorites ordered by usage; list click selects (does not launch);
+  top Save row toggles Save↔Remove for the current combo (keeps menu open); `×` removes; Escape closes
+  the menu before the modal; `showFavorites` off → nothing rendered.
 
 ## Out of scope / follow-ups
 

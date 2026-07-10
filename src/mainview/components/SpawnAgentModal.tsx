@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import AgentConfigPicker from "./AgentConfigPicker";
@@ -73,6 +74,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [spawning, globalSettings, agentId, configId]);
 
+	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
+
 	async function handleSpawn() {
 		setSpawning(true);
 		setError(null);
@@ -128,6 +131,9 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 								setConfigId(next.configId);
 							}}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
+							showFavorites
+							favorites={globalSettings.favorites ?? []}
+							onToggleFavorite={handleToggleFavorite}
 						/>
 
 						{/* Warning for uninstalled agents */}

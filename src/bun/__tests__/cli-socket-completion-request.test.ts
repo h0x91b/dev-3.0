@@ -65,6 +65,7 @@ vi.mock("../socket-backpressure", () => ({
 vi.mock("../settings", () => ({
 	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
 	saveSettings: vi.fn(),
+	recordFavoriteUsages: vi.fn(),
 }));
 
 vi.mock("node:fs", () => ({

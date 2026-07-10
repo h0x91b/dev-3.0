@@ -3,6 +3,7 @@ import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, Task
 import { getTaskTitle } from "../../shared/types";
 import { formatCountdown } from "../../shared/duration";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -200,6 +201,10 @@ function LaunchVariantsModal({
 			prev.map((v, i) => (i === index ? { ...v, ...updates } : v)),
 		);
 	}
+
+	// Star / unstar the given combo; bubbles fresh settings up so every variant
+	// picker's favorites trigger + menu reflect the change.
+	const handleToggleFavorite = useToggleFavorite(onGlobalSettingsChange);
 
 	// Apply the (possibly preference-derived) Watch choice to the source task
 	// before spawning/scheduling, so the toggle actually watches/unwatches it —
@@ -414,6 +419,9 @@ function LaunchVariantsModal({
 									onChange={(next) => updateVariant(index, next)}
 									className="flex-1 min-w-0 flex flex-col sm:flex-row gap-3"
 									pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
+									showFavorites
+									favorites={globalSettings.favorites ?? []}
+									onToggleFavorite={handleToggleFavorite}
 								/>
 
 								{/* Remove button */}

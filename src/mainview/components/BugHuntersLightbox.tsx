@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task } from "../../shared/types";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import AgentConfigPicker from "./AgentConfigPicker";
@@ -68,6 +69,8 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 		return () => window.removeEventListener("keydown", handleKey);
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [launching, globalSettings, agentId, configId, count]);
+
+	const handleToggleFavorite = useToggleFavorite(setGlobalSettings);
 
 	async function handleLaunch() {
 		setLaunching(true);
@@ -177,6 +180,9 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 								setConfigId(next.configId);
 							}}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
+							showFavorites
+							favorites={globalSettings.favorites ?? []}
+							onToggleFavorite={handleToggleFavorite}
 						/>
 
 						{/* Info note */}

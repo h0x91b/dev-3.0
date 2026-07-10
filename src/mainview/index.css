@@ -57,6 +57,7 @@ html {
 	--success: 74 222 128;
 	--success-hover: 34 197 94;
 	--warning: 250 204 21;
+	--favorite: 245 197 66;    /* gold star for a saved favorite combo */
 	--awake: 251 146 60;
 	--awake-hover: 249 115 22;
 	--diff-search-highlight-from: 255 227 138;
@@ -141,6 +142,7 @@ html {
 	--success: 22 163 74;
 	--success-hover: 21 128 61;
 	--warning: 202 138 4;
+	--favorite: 202 152 20;    /* deeper gold reads on a light canvas */
 	--awake: 217 119 6;
 	--awake-hover: 180 83 9;
 	--diff-search-highlight-from: 250 204 21;

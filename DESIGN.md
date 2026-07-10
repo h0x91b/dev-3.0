@@ -55,6 +55,7 @@ Glass morphism is the defining visual pattern — every kanban column and card u
 | Success | `--success` | `#4ade80` | `#16a34a` |
 | Success hover | `--success-hover` | `#22c55e` | `#15803d` |
 | Warning | `--warning` | `#facc15` | `#ca8a04` |
+| Favorite (saved star) | `--favorite` | `#f5c542` | `#ca9814` |
 
 ### Background Gradient
 
@@ -358,6 +359,7 @@ box-shadow: 0 4px 20px -4px rgb(var(--col-rgb) / 0.28),
 - Success/positive: `--success` (green)
 - Danger/destructive: `--danger` (red)
 - Warning/caution: `--warning` (yellow)
+- Favorite (saved star): `--favorite` (gold)
 - Surfaces: base → raised → elevated → overlay (4 levels)
 
 **When generating UI for this project:**

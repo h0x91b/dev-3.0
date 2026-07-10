@@ -20,7 +20,7 @@ import {
 	TaskPreparationCancelledError,
 	withTaskPreparation,
 } from "../preparation-runtime";
-import { loadSettings, loadSettingsSync } from "../settings";
+import { loadSettings, loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { buildScriptRunnerCommand, buildTaskLifecycleEnv, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
@@ -1131,6 +1131,10 @@ async function spawnVariants(params: {
 		notifyWatchedTaskStatusChange(task, "todo", params.targetStatus, project.name);
 	}
 
+	// Bump favorite usage counters for any launched combo the user has starred
+	// (once per variant/agent). Best-effort — never blocks or fails the launch.
+	void recordFavoriteUsages(params.variants);
+
 	log.info("← spawnVariants returning immediately", { count: resultTasks.length, groupId, needsWorktree });
 
 	if (needsWorktree) {
@@ -1237,6 +1241,10 @@ async function addAttempts(params: {
 	}
 
 	const updatedSource = await data.getTask(project, sourceTask.id);
+
+	// Bump favorite usage counters for any launched combo the user has starred
+	// (once per added attempt). Best-effort — never blocks or fails the launch.
+	void recordFavoriteUsages(params.variants);
 
 	log.info("← addAttempts returning", { count: resultTasks.length, groupId, needsWorktree });
 

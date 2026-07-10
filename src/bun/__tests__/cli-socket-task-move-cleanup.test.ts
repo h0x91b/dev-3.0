@@ -60,6 +60,7 @@ vi.mock("../logger", () => ({
 
 vi.mock("../settings", () => ({
 	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
+	recordFavoriteUsages: vi.fn(),
 }));
 
 vi.mock("../repo-config", () => ({

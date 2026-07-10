@@ -1,8 +1,11 @@
-import type { AgentCheckResult, CodingAgent } from "../../shared/types";
+import { useEffect, useRef, useState } from "react";
+import type { AgentCheckResult, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
+import { isFavorite } from "../../shared/favorites";
 import { useT } from "../i18n";
 import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { toast } from "../toast";
 import AgentAccountIndicator from "./AgentAccountIndicator";
+import FavoritesMenu, { StarGlyph } from "./FavoritesMenu";
 import Select, { useAgentRenderOption } from "./Select";
 import {
 	buildPickerGroups,
@@ -10,6 +13,7 @@ import {
 	groupLabelForConfig,
 	groupRequiresPxpipeProxy,
 	pickConfigForModelChange,
+	resolveFavoriteChips,
 } from "../utils/agentPicker";
 
 export interface AgentConfigSelection {
@@ -37,6 +41,17 @@ interface AgentConfigPickerProps {
 	 *  Settings. Every launch surface passes the live
 	 *  `globalSettings.pxpipeProxyEnabled`. */
 	pxpipeProxyEnabled?: boolean;
+	/** Show the cross-provider "Favorites" leading column: a compact star trigger
+	 *  (fills when the current combo is saved) that opens a popover to save the
+	 *  current combo or apply/remove a saved one. Enabled only on the launch
+	 *  surfaces (Launch/Retry, Spawn, Bug Hunters); the Settings default-agent
+	 *  pickers leave it off. */
+	showFavorites?: boolean;
+	/** Current favorites (from GlobalSettings). Only read when `showFavorites`. */
+	favorites?: FavoriteAgentConfig[];
+	/** Toggle a favorite (add or remove) for the given pair. The parent persists
+	 *  via the `toggleFavoriteAgent` RPC and syncs its in-memory settings. */
+	onToggleFavorite?: (agentId: string, configId: string) => void;
 }
 
 /**
@@ -57,9 +72,35 @@ function AgentConfigPicker({
 	idPrefix,
 	className = "flex flex-col sm:flex-row gap-3",
 	pxpipeProxyEnabled = false,
+	showFavorites = false,
+	favorites = [],
+	onToggleFavorite,
 }: AgentConfigPickerProps) {
 	const t = useT();
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
+	// Favorites popover (anchored to the leading star trigger). Per-picker so the
+	// global list is never duplicated across variant rows (decision 125).
+	const [favMenuOpen, setFavMenuOpen] = useState(false);
+	const favCaretRef = useRef<HTMLButtonElement>(null);
+	const favMenuOpenRef = useRef(favMenuOpen);
+	favMenuOpenRef.current = favMenuOpen;
+
+	// Escape closes the favorites menu FIRST, without also closing the surrounding
+	// modal. useEscapeKey is capture-phase + stopImmediatePropagation, so whichever
+	// listener registers first wins; this picker is a child of the launch modal, so
+	// its mount-time effect registers before the modal's own Escape handler. The
+	// listener is a no-op while the menu is closed (returns without consuming), so
+	// Escape then falls through to the modal as normal. (See useEscapeKey docs.)
+	useEffect(() => {
+		function onKey(e: KeyboardEvent) {
+			if (e.key !== "Escape" || !favMenuOpenRef.current) return;
+			e.preventDefault();
+			e.stopImmediatePropagation();
+			setFavMenuOpen(false);
+		}
+		window.addEventListener("keydown", onKey, true);
+		return () => window.removeEventListener("keydown", onKey, true);
+	}, []);
 
 	function handleGatedConfigClick() {
 		// The preset is visible but off. Tell the user and offer a one-click jump
@@ -102,8 +143,54 @@ function AgentConfigPicker({
 		onChange({ agentId, configId: nextConfigId || null });
 	}
 
-	return (
+	// Favorites quick-pick: ordered/resolved chips for the popover list + whether
+	// the current selection is itself starred (drives the trigger star fill).
+	const favoriteChips = showFavorites ? resolveFavoriteChips(favorites, agents) : [];
+	const currentIsFavorite = !!(agentId && configId && isFavorite(favorites, agentId, configId));
+
+	const cascade = (
 		<div className={className}>
+			{/* Favorites — a compact leading column (peer to Provider/Model/Mode).
+			    The narrow star trigger opens the FavoritesMenu popover; the star
+			    fills when the current combo is saved. Always present (even with 0
+			    favorites) so "Save this combo" stays reachable. Per-picker, so the
+			    global list is never duplicated across variant rows (decision 125). */}
+			{showFavorites && (
+				<div className="flex flex-col flex-shrink-0">
+					<label htmlFor={`${idPrefix}-favorites`} className="text-xs text-fg-3 block mb-1">
+						{t("launch.favorites")}
+					</label>
+					<button
+						id={`${idPrefix}-favorites`}
+						ref={favCaretRef}
+						type="button"
+						aria-haspopup="menu"
+						aria-expanded={favMenuOpen}
+						title={t("launch.favorites")}
+						onClick={() => setFavMenuOpen((o) => !o)}
+						className={`h-[34px] px-3 flex items-center justify-center gap-2 bg-elevated rounded-lg border transition-colors outline-none ${
+							favMenuOpen ? "border-accent" : "border-edge hover:border-edge-active"
+						}`}
+					>
+						<StarGlyph
+							filled={currentIsFavorite}
+							className={`text-base ${currentIsFavorite ? "text-favorite" : "text-fg-3"}`}
+						/>
+						<svg
+							className={`w-3 h-3 text-fg-3 flex-shrink-0 transition-transform duration-150 ${favMenuOpen ? "rotate-180" : ""}`}
+							viewBox="0 0 12 12"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.8"
+							strokeLinecap="round"
+							strokeLinejoin="round"
+						>
+							<polyline points="2,4 6,8 10,4" />
+						</svg>
+					</button>
+				</div>
+			)}
+
 			{/* Provider */}
 			<div className="flex-1 min-w-0">
 				<label htmlFor={`${idPrefix}-provider`} className="text-xs text-fg-3 block mb-1">
@@ -154,8 +241,30 @@ function AgentConfigPicker({
 					onChange={handleModeChange}
 				/>
 			</div>
+
+			{showFavorites && favMenuOpen && favCaretRef.current && (
+				<FavoritesMenu
+					chips={favoriteChips}
+					activeAgentId={agentId}
+					activeConfigId={configId}
+					currentIsFavorite={currentIsFavorite}
+					canSaveCurrent={!!(agentId && configId)}
+					onToggleCurrent={() => {
+						if (agentId && configId) onToggleFavorite?.(agentId, configId);
+					}}
+					anchorEl={favCaretRef.current}
+					onApply={(a, c) => {
+						onChange({ agentId: a, configId: c });
+						setFavMenuOpen(false);
+					}}
+					onRemove={(a, c) => onToggleFavorite?.(a, c)}
+					onClose={() => setFavMenuOpen(false)}
+				/>
+			)}
 		</div>
 	);
+
+	return cascade;
 }
 
 export default AgentConfigPicker;
