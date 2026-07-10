@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, deleteSharedArtifactFiles, pruneSharedArtifacts, saveSharedArtifact } from "./shared-artifacts";
@@ -207,9 +207,18 @@ const handlers: Record<string, Handler> = {
 		if (!projectId) throw new Error("projectId is required");
 		if (!title) throw new Error("title is required");
 
+		let priority = undefined;
+		if (params.priority !== undefined) {
+			priority = normalizePriority(String(params.priority)) ?? undefined;
+			if (!priority) throw new Error(`Invalid priority "${params.priority}". Use P0, P1, P2, P3, or P4.`);
+		}
+
 		const project = await data.getProject(projectId);
-		// Use description as the task body if provided, otherwise fall back to title
-		const task = await data.addTask(project, description || title, "todo");
+		// Use description as the task body if provided, otherwise fall back to title.
+		// Only pass the extras arg when a priority was given (keeps the common 3-arg call).
+		const task = priority
+			? await data.addTask(project, description || title, "todo", { priority })
+			: await data.addTask(project, description || title, "todo");
 		// If a separate title was given alongside a description, store it as customTitle
 		if (description && title) {
 			const updated = await data.updateTask(project, task.id, { customTitle: title });
@@ -243,6 +252,14 @@ const handlers: Record<string, Handler> = {
 		const updates: Partial<Task> = {};
 		const force = Boolean(params.force);
 		let titlePreserved = false;
+
+		// Priority is group-wide (belongs to the logical task), so it is applied via
+		// the dedicated setter below, NOT folded into the single-task `updates` patch.
+		let priority = undefined;
+		if (params.priority !== undefined) {
+			priority = normalizePriority(String(params.priority));
+			if (!priority) throw new Error(`Invalid priority "${params.priority}". Use P0, P1, P2, P3, or P4.`);
+		}
 		if (params.title !== undefined) {
 			const newTitle = (params.title as string) || null;
 			// Defensive guard: refuse to overwrite a UI-set title from the CLI
@@ -278,14 +295,19 @@ const handlers: Record<string, Handler> = {
 			}
 		}
 
-		if (Object.keys(updates).length === 0 && !titlePreserved) {
-			throw new Error("Nothing to update. Provide --title or --description.");
+		if (Object.keys(updates).length === 0 && priority === undefined && !titlePreserved) {
+			throw new Error("Nothing to update. Provide --title, --description, or --priority.");
 		}
 
 		let updated = task;
 		if (Object.keys(updates).length > 0) {
 			updated = await data.updateTask(project, task.id, updates);
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		}
+		if (priority !== undefined) {
+			const changed = await data.setTaskPriority(project, task.id, priority);
+			for (const t of changed) getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
+			updated = { ...updated, priority };
 		}
 		return { task: updated, titlePreserved };
 	},

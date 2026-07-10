@@ -33,6 +33,19 @@ const columns = {
 	"labels.failedSetLabels": "Failed to update task labels: {error}",
 	"labels.taskLabels": "Labels",
 
+	// Priority
+	"priority.label": "Priority",
+	"priority.filterTitle": "Priority",
+	"priority.pickerTitle": "Set priority",
+	"priority.badgeAria": "Priority {level} ({name}) — change",
+	"priority.filterAria": "Filter by priority {level} ({name})",
+	"priority.failedSet": "Failed to set priority: {error}",
+	"priority.name.P0": "Highest",
+	"priority.name.P1": "High",
+	"priority.name.P2": "Normal",
+	"priority.name.P3": "Low",
+	"priority.name.P4": "Lowest",
+
 	// Notes
 	"notes.title": "Notes",
 	"notes.add": "+ Add Note",

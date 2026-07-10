@@ -76,11 +76,13 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] --title "..." [--description "..."]',
-				summary: "Update a task's title and/or description.",
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..."] [--priority P0..P4]',
+				summary: "Update a task's title, description, and/or priority.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
 					'--description <text>  New description ("" clears it).',
+					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest); applies to the whole variant group.",
+					"                      Only set priority when the user asks — never on your own initiative.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
 				],
 			},

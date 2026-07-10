@@ -57,6 +57,12 @@ In the same session-start pass, also assign task labels:
 - If there is no good fit, create **one short reusable label** with \`dev3 label create "name"\` and attach it to the current task immediately.
 - Apply with \`dev3 label set <id> [<id>...]\`. Creating a label without attaching it does **not** complete this step.
 - Leave existing sensible labels alone. No spam, no near-duplicates, no workflow-state labels (\`in-progress\`, \`review\`, \`blocked\`, etc.).
+
+## Task priority
+
+Each task has a priority \`P0\` (highest) … \`P4\` (lowest), default \`P2\`; the board and sidebar sort by it. \`dev3 task show\` prints it, and \`dev3 task update --priority P0..P4\` sets it (applies to the whole variant group).
+
+**Do NOT set or change a task's priority on your own initiative** — only when the user explicitly asks you to (re)prioritize. Priority is the user's judgment of importance, in the same protected class as user-edited titles. Never re-prioritize during triage, cleanup, or "helpfully."
 `;
 
 const SKILL_CUSTOM_COLUMNS = `

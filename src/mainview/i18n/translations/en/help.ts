@@ -43,6 +43,9 @@ const help = {
 	"help.board.filterBar.title": "Search & filters",
 	"help.board.filterBar.body":
 		"Narrow the board: type to filter cards by title, click label chips to show only matching tasks. To rename, recolor or delete labels, open Project Settings → Labels.",
+	"help.board.priorityFilter.title": "Priority filter",
+	"help.board.priorityFilter.body":
+		"Every task has a priority P0 (highest) … P4 (lowest, default P2). Columns always sort by it, so the most important work stays on top. Click a chip to show only that priority; drag a card into another band to re-prioritize it.",
 	"help.board.taskCard.title": "Task card",
 	"help.board.taskCard.body":
 		"The colored dots are parallel agent variants (each in its own worktree), the bell means the agent is calling you, and the #123 badge is the task's PR with its CI and review state. Right-click the card for every task action.",

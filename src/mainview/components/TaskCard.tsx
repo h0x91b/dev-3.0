@@ -16,6 +16,7 @@ import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import PriorityBadge from "./PriorityBadge";
 import SiblingPopover from "./SiblingPopover";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
@@ -114,6 +115,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
 			toast.error(t("task.scheduleCancelFailed", { error: String(err) }));
+		}
+	}
+
+	async function handleSetPriority(priority: Task["priority"]) {
+		if (!priority) return;
+		try {
+			// Group-wide: the RPC returns every changed task in the variant group.
+			const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: project.id, priority });
+			for (const t of changed) dispatch({ type: "updateTask", task: t });
+		} catch (err) {
+			toast.error(t("priority.failedSet", { error: String(err) }));
 		}
 	}
 
@@ -582,9 +594,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				const topLabel = agent && !hasLauncherIcon ? `${prefixLabel} · ${agent.name}` : prefixLabel;
 				return (
 					<div className="text-xs text-accent font-semibold mb-1.5 flex flex-col items-start gap-0.5">
-						<span className="bg-accent/15 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center gap-1.5">
-							{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
-							<span>{topLabel}</span>
+						<span className="inline-flex items-center gap-1.5">
+							<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
+							<span className="bg-accent/15 px-2 py-0.5 rounded-md inline-flex min-h-6 items-center gap-1.5">
+								{agent && hasLauncherIcon && <AgentLauncherBadge agent={agent} />}
+								<span>{topLabel}</span>
+							</span>
 						</span>
 						{configLabel && (
 							<span className="pl-1 text-[0.6875rem] font-medium leading-tight text-accent/80">
@@ -594,7 +609,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</div>
 				);
 			})() : (
-				<div className="text-[0.625rem] text-fg-muted font-mono mb-1">#{task.seq}</div>
+				<div className="mb-1 flex items-center gap-1.5">
+					<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
+					<span className="text-[0.625rem] text-fg-muted font-mono">#{task.seq}</span>
+				</div>
 			)}
 
 			{/* Title + description expand */}

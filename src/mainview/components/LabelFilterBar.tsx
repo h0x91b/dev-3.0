@@ -1,26 +1,65 @@
 import { useRef, useEffect, useState } from "react";
-import type { Label } from "../../shared/types";
+import { ALL_PRIORITIES, type Label, type TaskPriority } from "../../shared/types";
 import { useT } from "../i18n";
 import LabelChip from "./LabelChip";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import { PRIORITY_NAME_KEYS, PRIORITY_STYLES } from "./priorityStyles";
 
 interface LabelFilterBarProps {
 	labels: Label[];
 	activeFilters: string[];
 	onToggle: (labelId: string) => void;
+	activePriorities: TaskPriority[];
+	onTogglePriority: (priority: TaskPriority) => void;
 	onClear: () => void;
 	searchQuery: string;
 	onSearchChange: (query: string) => void;
 	disableGlobalFindShortcut?: boolean;
 }
 
+/** A row of the five priority filter chips (multi-select, same model as labels). */
+function PriorityFilterChips({
+	active,
+	onToggle,
+}: {
+	active: TaskPriority[];
+	onToggle: (priority: TaskPriority) => void;
+}) {
+	const t = useT();
+	return (
+		<div className="flex items-center gap-1.5">
+			{ALL_PRIORITIES.map((level) => {
+				const isOn = active.includes(level);
+				const style = PRIORITY_STYLES[level];
+				return (
+					<button
+						key={level}
+						type="button"
+						onClick={() => onToggle(level)}
+						aria-pressed={isOn}
+						aria-label={t("priority.filterAria", { level, name: t(PRIORITY_NAME_KEYS[level]) })}
+						title={t(PRIORITY_NAME_KEYS[level])}
+						className={`font-mono text-[0.6875rem] font-semibold px-1.5 py-0.5 rounded transition-all ${
+							isOn ? style.chipActive : style.chipIdle
+						}`}
+					>
+						{level}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
 function LabelFilterBar({
 	labels,
 	activeFilters,
 	onToggle,
+	activePriorities,
+	onTogglePriority,
 	onClear,
 	searchQuery,
 	onSearchChange,
@@ -30,6 +69,27 @@ function LabelFilterBar({
 	const inputRef = useRef<HTMLInputElement>(null);
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [sheetOpen, setSheetOpen] = useState(false);
+
+	// The label chips live on a single horizontally-scrollable row (they used to
+	// wrap onto extra lines, wasting the space to the right). Fade the right edge
+	// only while there is still hidden content to scroll to — a lightweight
+	// "there's more →" hint that needs no extra control.
+	const labelScrollRef = useRef<HTMLDivElement>(null);
+	const [labelOverflowRight, setLabelOverflowRight] = useState(false);
+	const recomputeLabelOverflow = () => {
+		const el = labelScrollRef.current;
+		if (!el) return;
+		// 1px slack so sub-pixel rounding never leaves a permanent fade.
+		setLabelOverflowRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+	};
+	useEffect(() => {
+		const el = labelScrollRef.current;
+		if (!el) return;
+		recomputeLabelOverflow();
+		const ro = new ResizeObserver(recomputeLabelOverflow);
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, [labels]);
 
 	// Ctrl/Cmd+F focuses the search input
 	useEffect(() => {
@@ -48,11 +108,12 @@ function LabelFilterBar({
 	}, [disableGlobalFindShortcut]);
 
 	const hasLabels = labels.length > 0;
-	const hasActiveFilters = activeFilters.length > 0;
+	const hasActiveFilters = activeFilters.length > 0 || activePriorities.length > 0;
+	const activeFilterCount = activeFilters.length + activePriorities.length;
 
 	// Narrow viewport: the inline chip grid eats 3-4 rows. Keep search inline and
-	// move label filtering into a bottom sheet behind a funnel button, so the
-	// feature stays touch-reachable while reclaiming the vertical space.
+	// move filtering (priority + labels) into a bottom sheet behind a funnel button,
+	// so the feature stays touch-reachable while reclaiming the vertical space.
 	if (narrow) {
 		return (
 			<>
@@ -93,29 +154,27 @@ function LabelFilterBar({
 							</button>
 						)}
 					</div>
-					{hasLabels && (
-						<button
-							type="button"
-							onClick={() => setSheetOpen(true)}
-							aria-label={t("labels.openFilters")}
-							title={t("labels.openFilters")}
-							className={`relative flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border transition-colors ${
-								hasActiveFilters
-									? "border-accent/50 text-accent bg-accent/10"
-									: "border-edge text-fg-3 hover:text-fg hover:bg-elevated"
-							}`}
-						>
-							{/* Nerd Font: fa-filter (U+F0B0) */}
-							<span className="font-mono text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{""}
+					<button
+						type="button"
+						onClick={() => setSheetOpen(true)}
+						aria-label={t("labels.openFilters")}
+						title={t("labels.openFilters")}
+						className={`relative flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border transition-colors ${
+							hasActiveFilters
+								? "border-accent/50 text-accent bg-accent/10"
+								: "border-edge text-fg-3 hover:text-fg hover:bg-elevated"
+						}`}
+					>
+						{/* Nerd Font: fa-filter (U+F0B0) */}
+						<span className="font-mono text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{""}
+						</span>
+						{hasActiveFilters && (
+							<span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 flex items-center justify-center rounded-full bg-accent text-white text-[0.625rem] font-bold leading-none">
+								{activeFilterCount}
 							</span>
-							{hasActiveFilters && (
-								<span className="absolute -top-1 -right-1 min-w-[1rem] h-4 px-1 flex items-center justify-center rounded-full bg-accent text-white text-[0.625rem] font-bold leading-none">
-									{activeFilters.length}
-								</span>
-							)}
-						</button>
-					)}
+						)}
+					</button>
 				</div>
 				<BottomSheet
 					open={sheetOpen}
@@ -123,17 +182,24 @@ function LabelFilterBar({
 					title={t("labels.filterTitle")}
 					testId="label-filter-sheet"
 				>
-					<div className="flex flex-wrap gap-2">
-						{labels.map((label) => (
-							<LabelChip
-								key={label.id}
-								label={label}
-								size="sm"
-								active={activeFilters.includes(label.id)}
-								onClick={() => onToggle(label.id)}
-							/>
-						))}
-					</div>
+					<div className="mb-2 text-xs font-medium text-fg-3">{t("priority.filterTitle")}</div>
+					<PriorityFilterChips active={activePriorities} onToggle={onTogglePriority} />
+					{hasLabels && (
+						<>
+							<div className="mt-4 mb-2 text-xs font-medium text-fg-3">{t("labels.filterTitle")}</div>
+							<div className="flex flex-wrap gap-2">
+								{labels.map((label) => (
+									<LabelChip
+										key={label.id}
+										label={label}
+										size="sm"
+										active={activeFilters.includes(label.id)}
+										onClick={() => onToggle(label.id)}
+									/>
+								))}
+							</div>
+						</>
+					)}
 					{hasActiveFilters && (
 						<button
 							type="button"
@@ -149,7 +215,7 @@ function LabelFilterBar({
 	}
 
 	return (
-		<div className="flex items-center gap-2 px-6 py-2 border-b border-edge/50 flex-wrap" data-help-id="board.filter-bar">
+		<div className="flex items-center gap-2 px-6 py-2 border-b border-edge/50" data-help-id="board.filter-bar">
 			{/* Search input */}
 			<div className="relative flex-shrink-0">
 				<svg
@@ -189,23 +255,42 @@ function LabelFilterBar({
 				)}
 			</div>
 
-			{/* Label filters */}
+			{/* Priority filters */}
+			<span className="flex items-center gap-1 text-xs text-fg-3 font-medium flex-shrink-0">
+				{t("priority.filterTitle")}:
+				<HelpSpot topicId="board.priority-filter" />
+			</span>
+			<div className="flex-shrink-0">
+				<PriorityFilterChips active={activePriorities} onToggle={onTogglePriority} />
+			</div>
+
+			{/* Label filters — single scrollable row that soaks up the remaining width */}
 			{hasLabels && (
 				<>
 					<span className="flex items-center gap-1 text-xs text-fg-3 font-medium flex-shrink-0">
 						{t("labels.filterTitle")}:
 						<HelpSpot topicId="board.filter-bar" />
 					</span>
-					<div className="flex items-center gap-1.5 flex-wrap">
-						{labels.map((label) => (
-							<LabelChip
-								key={label.id}
-								label={label}
-								size="sm"
-								active={activeFilters.includes(label.id)}
-								onClick={() => onToggle(label.id)}
-							/>
-						))}
+					<div className="relative flex-1 min-w-0">
+						<div
+							ref={labelScrollRef}
+							onScroll={recomputeLabelOverflow}
+							className="flex items-center gap-1.5 overflow-x-auto filter-chip-scroll"
+						>
+							{labels.map((label) => (
+								<span key={label.id} className="flex-shrink-0">
+									<LabelChip
+										label={label}
+										size="sm"
+										active={activeFilters.includes(label.id)}
+										onClick={() => onToggle(label.id)}
+									/>
+								</span>
+							))}
+						</div>
+						{labelOverflowRight && (
+							<div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-base to-transparent" />
+						)}
 					</div>
 				</>
 			)}
@@ -214,7 +299,7 @@ function LabelFilterBar({
 				<button
 					type="button"
 					onClick={onClear}
-					className="ml-auto text-xs text-fg-3 hover:text-fg px-2 py-0.5 rounded-lg hover:bg-fg/8 transition-colors flex-shrink-0"
+					className="ml-auto text-xs text-fg-3 hover:text-fg px-2 py-0.5 rounded-lg hover:bg-elevated transition-colors flex-shrink-0"
 				>
 					× {t("labels.clearFilters")}
 				</button>

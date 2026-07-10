@@ -317,6 +317,17 @@ body, #root {
 	display: none;
 }
 
+/* ---- Single-line label filter row: horizontal scroll, no visible bar ---- */
+
+.filter-chip-scroll {
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+
+.filter-chip-scroll::-webkit-scrollbar {
+	display: none;
+}
+
 /* ---- Collapsed kanban column vertical label ---- */
 
 .kanban-col-vertical-label {

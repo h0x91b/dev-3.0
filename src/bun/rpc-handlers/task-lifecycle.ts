@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, CompletedDiffStats, TaskStatus } from "../../shared/types";
+import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskPriority, CompletedDiffStats, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -717,7 +717,7 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string }): Promise<Task> {
+async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string; priority?: TaskPriority }): Promise<Task> {
 	log.info("→ createTask", params);
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
@@ -732,6 +732,7 @@ async function createTask(params: { projectId: string; description: string; stat
 		...(params.existingBranch ? { existingBranch: params.existingBranch } : {}),
 		...(isScratch ? { scratch: true } : {}),
 		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
+		...(params.priority ? { priority: params.priority } : {}),
 	};
 	const task = await data.addTask(project, description, status, Object.keys(extras).length ? extras : undefined);
 
@@ -983,6 +984,17 @@ async function reorderTask(params: { taskId: string; projectId: string; targetIn
 	}
 	log.info("← reorderTask done", { count: updatedColumnTasks.length });
 	return updatedColumnTasks;
+}
+
+async function setTaskPriority(params: { taskId: string; projectId: string; priority: TaskPriority }): Promise<Task[]> {
+	log.info("→ setTaskPriority", params);
+	const project = await data.getProject(params.projectId);
+	const changed = await data.setTaskPriority(project, params.taskId, params.priority);
+	for (const task of changed) {
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	}
+	log.info("← setTaskPriority done", { count: changed.length });
+	return changed;
 }
 
 async function deleteTask(params: { taskId: string; projectId: string }): Promise<void> {
@@ -1505,6 +1517,7 @@ export const taskLifecycleHandlers = {
 	moveTask,
 	cancelTaskPreparation,
 	reorderTask,
+	setTaskPriority,
 	deleteTask,
 	spawnVariants,
 	addAttempts,

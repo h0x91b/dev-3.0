@@ -410,3 +410,71 @@ describe("sortTasksForColumn — columnOrder (persisted reorder)", () => {
 		expect(ids(result)).toEqual(["B", "C", "A"]);
 	});
 });
+
+// ============================================================
+// priority — strict bands are the TOPMOST sort key
+// ============================================================
+
+describe("sortTasksForColumn — priority bands", () => {
+	it("all higher-priority tasks sit above all lower ones (P0 → P4)", () => {
+		const tasks = [
+			makeTask({ id: "p4", priority: "P4" }),
+			makeTask({ id: "p0", priority: "P0" }),
+			makeTask({ id: "p2", priority: "P2" }),
+			makeTask({ id: "p1", priority: "P1" }),
+			makeTask({ id: "p3", priority: "P3" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		expect(ids(result)).toEqual(["p0", "p1", "p2", "p3", "p4"]);
+	});
+
+	it("priority beats an in-session move order (band is topmost)", () => {
+		const tasks = [
+			makeTask({ id: "p1", priority: "P1", createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "p2moved", priority: "P2", createdAt: "2025-01-02T00:00:00Z" }),
+		];
+		// p2moved was just moved (top mode → would normally be first), but P1 still bands above P2.
+		const result = sortTasksForColumn(tasks, "top", new Map([["p2moved", 1]]));
+		expect(ids(result)).toEqual(["p1", "p2moved"]);
+	});
+
+	it("priority beats columnOrder across bands", () => {
+		const tasks = [
+			makeTask({ id: "p2", priority: "P2", columnOrder: 0 }),
+			makeTask({ id: "p0", priority: "P0", columnOrder: 9 }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		expect(ids(result)).toEqual(["p0", "p2"]);
+	});
+
+	it("within a band, existing rules apply unchanged (columnOrder)", () => {
+		const tasks = [
+			makeTask({ id: "b", priority: "P1", columnOrder: 1 }),
+			makeTask({ id: "a", priority: "P1", columnOrder: 0 }),
+			makeTask({ id: "top", priority: "P0", columnOrder: 5 }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		expect(ids(result)).toEqual(["top", "a", "b"]);
+	});
+
+	it("missing priority is treated as the P2 band", () => {
+		const tasks = [
+			makeTask({ id: "legacy" }), // no priority → P2
+			makeTask({ id: "p1", priority: "P1" }),
+			makeTask({ id: "p3", priority: "P3" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		expect(ids(result)).toEqual(["p1", "legacy", "p3"]);
+	});
+
+	it("a variant group (shared priority) stays adjacent and bands together", () => {
+		const tasks = [
+			makeTask({ id: "solo", priority: "P2" }),
+			makeTask({ id: "g-v1", groupId: "g1", variantIndex: 1, priority: "P0" }),
+			makeTask({ id: "g-v2", groupId: "g1", variantIndex: 2, priority: "P0" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap);
+		// The P0 group bands above the P2 solo task and stays contiguous, in variantIndex order.
+		expect(ids(result)).toEqual(["g-v1", "g-v2", "solo"]);
+	});
+});

@@ -95,6 +95,18 @@ describe("task show", () => {
 		expect(stdoutOutput).toContain("Agent is Working");
 	});
 
+	it("prints the priority field (defaulting to P2 when absent)", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Priority:\s*P2/);
+	});
+
+	it("prints an explicit priority when set", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, priority: "P0" }));
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+		expect(stdoutOutput).toMatch(/Priority:\s*P0/);
+	});
+
 	it("auto-detects taskId from context when no ID given", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
@@ -414,6 +426,37 @@ describe("task update", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.force).toBe(true);
+	});
+
+	it("--priority sends a normalized (uppercased) priority", async () => {
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, priority: "P0" }, titlePreserved: false }));
+
+		await handleTask(
+			"update",
+			args(["aaaaaaaa"], { priority: "p0" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.priority).toBe("P0");
+		expect(stdoutOutput).toContain("Updated task");
+	});
+
+	it("--priority alone (no title/description) is a valid update", async () => {
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, priority: "P3" }, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { priority: "P3" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", priority: "P3" });
+	});
+
+	it("rejects an invalid --priority value before sending", async () => {
+		await expect(
+			handleTask("update", args(["aaaaaaaa"], { priority: "urgent" }), SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--priority");
+		expect(mockSend).not.toHaveBeenCalled();
 	});
 
 	it("prints a notice when the server reports titlePreserved=true (issue #564)", async () => {

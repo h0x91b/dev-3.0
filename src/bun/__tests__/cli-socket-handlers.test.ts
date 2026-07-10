@@ -11,6 +11,7 @@ vi.mock("../data", () => ({
 	getTask: vi.fn(),
 	addTask: vi.fn(),
 	updateTask: vi.fn(),
+	setTaskPriority: vi.fn(),
 	updateTaskWith: vi.fn(),
 	updateProject: vi.fn(),
 	updateProjectWith: vi.fn(),
@@ -495,6 +496,80 @@ describe("tasks.list", () => {
 		);
 		expect(resp.ok).toBe(false);
 		expect(resp.error).toContain("Invalid status: bogus");
+	});
+});
+
+describe("task.update — priority", () => {
+	it("rejects a garbage priority value", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", { taskId: "task-abc12345", projectId: "proj-1", priority: "urgent" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Invalid priority");
+		expect(data.setTaskPriority).not.toHaveBeenCalled();
+	});
+
+	it("accepts a case-insensitive priority and writes it group-wide", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		const changed = [makeTask({ priority: "P0" }), makeTask({ id: "task-sibling-uuid", priority: "P0" })];
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.setTaskPriority).mockResolvedValue(changed);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", { taskId: "task-abc12345", projectId: "proj-1", priority: "p0" }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(data.setTaskPriority).toHaveBeenCalledWith(project, task.id, "P0");
+		// Pushes an update for every changed task in the group.
+		expect(pushFn).toHaveBeenCalledTimes(2);
+		expect((resp.data as { task: Task }).task.priority).toBe("P0");
+	});
+
+	it("errors when nothing (no title/description/priority) is provided", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", { taskId: "task-abc12345", projectId: "proj-1" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Nothing to update");
+	});
+});
+
+describe("task.create — priority", () => {
+	it("passes an explicit priority through to addTask", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", priority: "P1" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
+
+		const resp = await handleRequest(
+			makeRequest("task.create", { projectId: "proj-1", title: "Urgent", priority: "P1" }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(data.addTask).toHaveBeenCalledWith(project, "Urgent", "todo", { priority: "P1" });
+	});
+
+	it("rejects a garbage priority on create", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+		const resp = await handleRequest(
+			makeRequest("task.create", { projectId: "proj-1", title: "X", priority: "P9" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Invalid priority");
 	});
 });
 

@@ -1,5 +1,5 @@
 import type { CliResponse, Task, TaskStatus, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES, getTaskTitle, getTaskOverview } from "../../shared/types";
+import { STATUS_LABELS, ALL_STATUSES, DEFAULT_PRIORITY, getTaskTitle, getTaskOverview, normalizePriority } from "../../shared/types";
 import { CLI_EXIT_CODE_COMPLETION_DECLINED } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
@@ -84,6 +84,7 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 		["Seq:", String(task.seq)],
 		["Title:", `${getTaskTitle(task)}${titleMarker}`],
 		["Status:", STATUS_LABELS[task.status] || task.status],
+		["Priority:", task.priority ?? DEFAULT_PRIORITY],
 	];
 
 	if (task.branchName) fields.push(["Branch:", task.branchName]);
@@ -170,10 +171,10 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "force"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "force"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> --title '...' [--description '...']");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4]");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -195,12 +196,18 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 	if (rawDesc !== undefined) {
 		params.description = rawDesc.trim();
 	}
+	const rawPriority = args.flags.priority;
+	if (rawPriority !== undefined) {
+		const normalized = normalizePriority(rawPriority);
+		if (!normalized) exitUsage(`--priority must be one of P0, P1, P2, P3, P4 (got "${rawPriority}")`);
+		params.priority = normalized;
+	}
 	if (args.flags.force === "true") {
 		params.force = true;
 	}
 
-	if (params.title === undefined && params.description === undefined) {
-		exitUsage("Provide --title or --description to update");
+	if (params.title === undefined && params.description === undefined && params.priority === undefined) {
+		exitUsage("Provide --title, --description, or --priority to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);

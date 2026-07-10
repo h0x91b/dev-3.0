@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
-import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskStatus, TipState } from "../shared/types";
-import { getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskPriority, TaskStatus, TipState } from "../shared/types";
+import { comparePriority, DEFAULT_PRIORITY, getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
 import { createLogger } from "./logger";
 import { DEV3_HOME, OPS_DIR } from "./paths";
 import { detectClonePaths } from "./cow-clone";
@@ -602,9 +602,17 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 	try {
 		const tasks = JSON.parse(await readFile(file, "utf8")) as Task[];
 		// Backfill fields for tasks created before they existed
+		let backfilledPriority = false;
 		for (const task of tasks) {
 			if ((task as any).description === undefined) {
 				task.description = task.title;
+			}
+			// Priority migration: stamp the default onto tasks predating the field.
+			// In-place content rewrite only — the file path is untouched, and older
+			// app versions ignore the unknown field (frozen on-disk layout, AGENTS.md).
+			if ((task as any).priority === undefined) {
+				task.priority = DEFAULT_PRIORITY;
+				backfilledPriority = true;
 			}
 			if ((task as any).groupId === undefined) task.groupId = null;
 			if ((task as any).variantIndex === undefined) task.variantIndex = null;
@@ -646,6 +654,14 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 				log.info("Backfilled seq for tasks", { projectId: project.id });
 				await rawSaveTasks(project, tasks);
 			}
+		}
+
+		// Persist the priority backfill so the field lands on disk once (content-only,
+		// same in-place pattern as the seq migration). Only on mutator reads
+		// (persistMigrations) — pure cached reads never rewrite the file.
+		if (backfilledPriority && options?.persistMigrations) {
+			log.info("Backfilled priority for tasks", { projectId: project.id });
+			await rawSaveTasks(project, tasks);
 		}
 
 		// Heal dangling customColumnId — the task references a custom column that
@@ -789,6 +805,7 @@ export async function addTask(
 		overview?: string | null;
 		userOverview?: string | null;
 		automationId?: string | null;
+		priority?: TaskPriority;
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -817,6 +834,7 @@ export async function addTask(
 			title,
 			description,
 			status,
+			priority: extras?.priority ?? DEFAULT_PRIORITY,
 			baseBranch: deriveTaskBaseBranch(project, extras?.existingBranch),
 			worktreePath: null,
 			branchName: null,
@@ -916,6 +934,43 @@ export async function updateTaskWith<T>(
 	});
 }
 
+/**
+ * Set a task's priority. Priority belongs to the logical task, so this writes the
+ * value to EVERY task sharing the target's `groupId` (or just the single task when
+ * ungrouped) — a variant group therefore never splits across sort bands. Returns
+ * the tasks it changed (empty when the value already matched everywhere). Bumps
+ * `updatedAt` on changed tasks but never `movedAt` — priority is orthogonal to the
+ * column/status move timeline.
+ */
+export async function setTaskPriority(
+	project: Project,
+	taskId: string,
+	priority: TaskPriority,
+): Promise<Task[]> {
+	const file = tasksFile(project);
+	return withFileLock(file, async () => {
+		log.info("Setting task priority", { taskId, priority, projectId: project.id });
+		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
+		const target = tasks.find((t) => t.id === taskId);
+		if (!target) throw new Error(`Task not found: ${taskId}`);
+
+		const now = new Date().toISOString();
+		const changed: Task[] = [];
+		for (let i = 0; i < tasks.length; i++) {
+			const t = tasks[i];
+			const inGroup = target.groupId ? t.groupId === target.groupId : t.id === target.id;
+			if (!inGroup) continue;
+			if (t.priority === priority) continue;
+			tasks[i] = { ...t, priority, updatedAt: now };
+			changed.push(tasks[i]);
+		}
+
+		if (changed.length > 0) await rawSaveTasks(project, tasks);
+		log.info("Task priority set", { taskId, priority, changed: changed.length });
+		return changed;
+	});
+}
+
 export async function deleteTask(
 	project: Project,
 	taskId: string,
@@ -989,16 +1044,9 @@ function applyTaskUpdate(
 		if (dropPosition) {
 			const newStatus = tasks[idx].status;
 			const targetCustomColumnId = tasks[idx].customColumnId ?? null;
-			const columnTasks = tasks
-				.filter((t) => t.status === newStatus && (t.customColumnId ?? null) === targetCustomColumnId && t.id !== tasks[idx].id)
-				.sort((a, b) => {
-					if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
-						return a.columnOrder - b.columnOrder;
-					}
-					if (a.columnOrder !== undefined) return -1;
-					if (b.columnOrder !== undefined) return 1;
-					return a.createdAt < b.createdAt ? -1 : 1;
-				});
+			const columnTasks = sortColumnTasksForReorder(
+				tasks.filter((t) => t.status === newStatus && (t.customColumnId ?? null) === targetCustomColumnId && t.id !== tasks[idx].id),
+			);
 
 			if (dropPosition === "top") {
 				columnTasks.unshift(tasks[idx]);
@@ -1081,6 +1129,25 @@ function isInSameRenderedColumn(task: Task, status: string, customColumnId: stri
 	return task.status === status && (task.customColumnId ?? null) === (customColumnId ?? null);
 }
 
+/**
+ * Order a set of same-column tasks the way the renderer does, for the purpose of
+ * mapping a drop index onto the list the user saw: strict priority bands first
+ * (P0 on top), then persisted `columnOrder`, then `createdAt`. Deliberately omits
+ * the renderer's ephemeral in-session move order (unknown server-side); band
+ * membership — all the drop-index mapping needs — is order-independent within a
+ * band. Mirrors `sortTasksForColumn` (renderer) at the band level.
+ */
+function sortColumnTasksForReorder(tasks: Task[]): Task[] {
+	return [...tasks].sort((a, b) => {
+		const byPriority = comparePriority(a.priority, b.priority);
+		if (byPriority !== 0) return byPriority;
+		if (a.columnOrder !== undefined && b.columnOrder !== undefined) return a.columnOrder - b.columnOrder;
+		if (a.columnOrder !== undefined) return -1;
+		if (b.columnOrder !== undefined) return 1;
+		return a.createdAt < b.createdAt ? -1 : 1;
+	});
+}
+
 // ---- Preferences ----
 
 const PREFERENCES_FILE = `${DEV3_HOME}/preferences.json`;
@@ -1136,16 +1203,9 @@ export async function reorderTasksInColumn(
 		const columnStatus = task.status;
 		const columnCustomColumnId = task.customColumnId ?? null;
 
-		const columnTasks = tasks
-			.filter((t) => isInSameRenderedColumn(t, columnStatus, columnCustomColumnId))
-			.sort((a, b) => {
-				if (a.columnOrder !== undefined && b.columnOrder !== undefined) {
-					return a.columnOrder - b.columnOrder;
-				}
-				if (a.columnOrder !== undefined) return -1;
-				if (b.columnOrder !== undefined) return 1;
-				return a.createdAt < b.createdAt ? -1 : 1;
-			});
+		const columnTasks = sortColumnTasksForReorder(
+			tasks.filter((t) => isInSameRenderedColumn(t, columnStatus, columnCustomColumnId)),
+		);
 
 		const movingIds = new Set<string>();
 		if (task.groupId) {
@@ -1160,6 +1220,24 @@ export async function reorderTasksInColumn(
 		const remaining = columnTasks.filter((t) => !movingIds.has(t.id));
 
 		const clampedIndex = Math.max(0, Math.min(targetIndex, remaining.length));
+
+		// Drag re-prioritization (Linear-style): a drop whose landing band differs
+		// from the card's current band re-prioritizes it to that band; a drop inside
+		// its own band is a pure reorder and never mutates priority. The landing band
+		// is the neighbor the card lands ON TOP OF (the one it pushes down) —
+		// remaining[clampedIndex] — falling back to the card above only at the very
+		// bottom. This makes "drag to the top of a band's region" keep that band (the
+		// gap above the first P2 card belongs to P2), while "drag among/above a higher
+		// band" promotes. An empty remaining column (only the moving group) keeps its
+		// priority. Priority belongs to the whole group, so we write every moving item.
+		if (remaining.length > 0) {
+			const neighbor = clampedIndex < remaining.length ? remaining[clampedIndex] : remaining[remaining.length - 1];
+			const targetPriority = neighbor.priority ?? DEFAULT_PRIORITY;
+			if (comparePriority(targetPriority, task.priority) !== 0) {
+				for (const t of movingItems) t.priority = targetPriority;
+			}
+		}
+
 		remaining.splice(clampedIndex, 0, ...movingItems);
 
 		const now = new Date().toISOString();

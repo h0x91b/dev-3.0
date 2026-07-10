@@ -33,6 +33,19 @@ const columns = {
 	"labels.failedSetLabels": "Error al actualizar etiquetas de tarea: {error}",
 	"labels.taskLabels": "Etiquetas",
 
+	// Priority
+	"priority.label": "Prioridad",
+	"priority.filterTitle": "Prioridad",
+	"priority.pickerTitle": "Definir prioridad",
+	"priority.badgeAria": "Prioridad {level} ({name}) — cambiar",
+	"priority.filterAria": "Filtrar por prioridad {level} ({name})",
+	"priority.failedSet": "No se pudo definir la prioridad: {error}",
+	"priority.name.P0": "Máxima",
+	"priority.name.P1": "Alta",
+	"priority.name.P2": "Normal",
+	"priority.name.P3": "Baja",
+	"priority.name.P4": "Mínima",
+
 	// Notes
 	"notes.title": "Notas",
 	"notes.add": "+ Agregar nota",
