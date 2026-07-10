@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import RateLimitIndicator from "../RateLimitIndicator";
 import type { AgentRateLimitsReport } from "../../../shared/rate-limits";
+import type { AgentAccountsState } from "../../../shared/agent-accounts";
 
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
 			getAgentRateLimits: vi.fn(),
+			listAgentAccounts: vi.fn(),
 		},
 	},
 }));
@@ -16,6 +18,14 @@ vi.mock("../../rpc", () => ({
 import { api } from "../../rpc";
 
 const mockedGet = api.request.getAgentRateLimits as ReturnType<typeof vi.fn>;
+const mockedAccounts = api.request.listAgentAccounts as ReturnType<typeof vi.fn>;
+
+function emptyAccounts(): AgentAccountsState {
+	return {
+		claude: { accounts: [], activeId: null, systemIdentity: null },
+		codex: { accounts: [], activeId: null, currentIdentity: null },
+	};
+}
 
 function report(percent: number): AgentRateLimitsReport {
 	return {
@@ -46,6 +56,8 @@ function renderIndicator() {
 
 beforeEach(() => {
 	mockedGet.mockReset();
+	mockedAccounts.mockReset();
+	mockedAccounts.mockResolvedValue(emptyAccounts());
 });
 
 describe("RateLimitIndicator", () => {
@@ -116,5 +128,61 @@ describe("RateLimitIndicator", () => {
 		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("monthly credits");
 		await userEvent.tab();
 		expect(await screen.findByText(/329.53 \/ 8,824/)).toBeTruthy();
+	});
+
+	it("shows the system-login account identity and plan in the tooltip", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		mockedAccounts.mockResolvedValue({
+			claude: {
+				accounts: [],
+				activeId: null,
+				systemIdentity: {
+					email: "alice@example.com",
+					organization: null,
+					plan: "default_claude_max_5x",
+					planLabel: "Max 5x",
+					accountId: "uuid-1",
+				},
+			},
+			codex: { accounts: [], activeId: null, currentIdentity: null },
+		});
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		expect(await screen.findByText("alice@example.com")).toBeTruthy();
+		expect(screen.getByText("Max 5x")).toBeTruthy();
+	});
+
+	it("shows the active managed account label for its source", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		mockedAccounts.mockResolvedValue({
+			claude: {
+				accounts: [
+					{
+						id: "acc-1",
+						kind: "claude",
+						label: "Work account",
+						identity: {
+							email: "work@corp.com",
+							organization: "Corp",
+							plan: "default_claude_pro",
+							planLabel: "Pro",
+							accountId: "uuid-2",
+						},
+						auth: "oauth",
+						api: null,
+						createdAt: 0,
+					},
+				],
+				activeId: "acc-1",
+				systemIdentity: null,
+			},
+			codex: { accounts: [], activeId: null, currentIdentity: null },
+		});
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		expect(await screen.findByText("Work account")).toBeTruthy();
+		expect(screen.getByText("Pro")).toBeTruthy();
 	});
 });
