@@ -1,16 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
-import type { CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ALL_STATUSES, ACTIVE_STATUSES } from "../../shared/types";
+import type { BoardColumnSlot, CodingAgent, CustomColumn, GlobalSettings, PortInfo, PRInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
+import { ALL_STATUSES, ACTIVE_STATUSES, getBoardColumns } from "../../shared/types";
 
-// Default built-in column order (custom columns can be freely interspersed)
-const DEFAULT_BEFORE_CUSTOM: TaskStatus[] = ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user"];
-const DEFAULT_AFTER_CUSTOM: TaskStatus[] = ["review-by-colleague", "completed", "cancelled"];
-const ALL_BUILTIN: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM, ...DEFAULT_AFTER_CUSTOM];
-
-type ColumnSlot =
-	| { type: "builtin"; status: TaskStatus }
-	| { type: "custom"; col: CustomColumn };
+// Column ordering + visibility lives in the shared, unit-tested getBoardColumns
+// (single source of truth for the board's column layout).
+type ColumnSlot = BoardColumnSlot;
 import type { AppAction, Route } from "../state";
 import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
@@ -327,76 +322,13 @@ function KanbanBoard({
 		}
 	}
 
-	// Returns all columns in their effective display order, respecting project.columnOrder
+	// Returns all columns in their effective display order (delegates to the
+	// shared getBoardColumns). "Your Review" stays even on virtual boards: a
+	// finished ops task is handed
+	// back via review-by-user, so hiding it would drop the task off the board.
 	function getOrderedColumns(): ColumnSlot[] {
-		const cols = customColumns;
-		const peerReviewEnabled = project.peerReviewEnabled !== false;
-		// Show AI Review column by default (on when builtinColumnAgents is unset or has review-by-ai config)
-		const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
 		const aiReviewHasItems = tasks.some((t) => t.status === "review-by-ai" && !isInCustomColumn(t));
-		// Virtual ("Operations") boards have no diff/PR, so the AI Review and PR
-		// Review columns are hidden. "Your Review" stays: a finished ops task is
-		// handed back via review-by-user, so without the column it would vanish
-		// from the board entirely. Flow: todo → in-progress → user-questions →
-		// review-by-user → done.
-		const isVirtual = project.kind === "virtual";
-		const shouldHide = (s: TaskStatus) =>
-			(isVirtual && (s === "review-by-ai" || s === "review-by-colleague")) ||
-			(s === "review-by-colleague" && !peerReviewEnabled) ||
-			(s === "review-by-ai" && !aiReviewEnabled && !aiReviewHasItems);
-		const filterBuiltin = (statuses: TaskStatus[]) =>
-			statuses.filter((s) => !shouldHide(s));
-		if (!project.columnOrder || project.columnOrder.length === 0) {
-			return [
-				...filterBuiltin(DEFAULT_BEFORE_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
-				...cols.map((c) => ({ type: "custom" as const, col: c })),
-				...filterBuiltin(DEFAULT_AFTER_CUSTOM).map((s) => ({ type: "builtin" as const, status: s })),
-			];
-		}
-		const result: ColumnSlot[] = [];
-		const used = new Set<string>();
-		for (const id of project.columnOrder) {
-			if ((ALL_BUILTIN as string[]).includes(id) && shouldHide(id as TaskStatus)) { used.add(id); continue; }
-			if ((ALL_BUILTIN as string[]).includes(id)) {
-				result.push({ type: "builtin", status: id as TaskStatus });
-				used.add(id);
-			} else {
-				const col = cols.find((c) => c.id === id);
-				if (col) { result.push({ type: "custom", col }); used.add(id); }
-			}
-		}
-		// review-by-ai: if missing from stored order, insert right before "review-by-user"
-		// so it stays in the correct lifecycle position for existing users.
-		if (!used.has("review-by-ai") && !shouldHide("review-by-ai")) {
-			const reviewByUserIdx = result.findIndex((c) => c.type === "builtin" && c.status === "review-by-user");
-			const slot = { type: "builtin" as const, status: "review-by-ai" as TaskStatus };
-			if (reviewByUserIdx !== -1) {
-				result.splice(reviewByUserIdx, 0, slot);
-			} else {
-				result.push(slot);
-			}
-			used.add("review-by-ai");
-		}
-		// review-by-colleague: if missing from stored order, insert right before "completed"
-		// (not at the tail) so it stays in a logical position for existing users.
-		if (!used.has("review-by-colleague") && !shouldHide("review-by-colleague")) {
-			const completedIdx = result.findIndex((c) => c.type === "builtin" && c.status === "completed");
-			const slot = { type: "builtin" as const, status: "review-by-colleague" as TaskStatus };
-			if (completedIdx !== -1) {
-				result.splice(completedIdx, 0, slot);
-			} else {
-				result.push(slot);
-			}
-			used.add("review-by-colleague");
-		}
-		// Append anything else missing (new built-ins, or new custom cols)
-		for (const s of ALL_BUILTIN) {
-			if (!used.has(s) && !shouldHide(s)) {
-				result.push({ type: "builtin", status: s });
-			}
-		}
-		for (const col of cols) { if (!used.has(col.id)) result.push({ type: "custom", col }); }
-		return result;
+		return getBoardColumns(project, { aiReviewHasItems });
 	}
 
 	function handleColumnDragStart(colId: string) {

@@ -1,9 +1,24 @@
-import type { Project, Task } from "../../shared/types";
+import type { Task } from "../../shared/types";
 import { STATUS_LABELS, getTaskTitle } from "../../shared/types";
-import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect } from "../context";
+import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect, type ProjectDirect } from "../context";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError } from "../output";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../../shared/build-info.generated";
+
+/**
+ * Print the project's custom columns and their move IDs. Shared by the online
+ * and offline branches so agents can discover custom-column IDs (to pass to
+ * `dev3 task move --status <id>`) regardless of whether the app is running.
+ */
+function printCustomColumns(project: ProjectDirect | null): void {
+	const customColumns = project?.customColumns ?? [];
+	if (customColumns.length === 0) return;
+	process.stdout.write("\nCustom columns (use with `dev3 task move --status <id>`):\n");
+	for (const col of customColumns) {
+		const instruction = col.llmInstruction ? `  → "${col.llmInstruction}"` : "";
+		process.stdout.write(`  ${col.id.slice(0, 8)}   ${col.name}${instruction}\n`);
+	}
+}
 
 /**
  * Show current project/task context detected from worktree.
@@ -76,18 +91,9 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 					}
 				}
 
-				// Show custom columns for this project
-				const customColumns = (project as Project | null)?.customColumns ?? [];
-				if (customColumns.length > 0) {
-					process.stdout.write("\n");
-					process.stdout.write("Custom columns (use with `dev3 task move --status <id>`):\n");
-					for (const col of customColumns) {
-						const instruction = col.llmInstruction
-							? `  → "${col.llmInstruction}"`
-							: "";
-						process.stdout.write(`  ${col.id.slice(0, 8)}   ${col.name}${instruction}\n`);
-					}
-				}
+				// Show custom columns for this project (works because readProjectDirect
+				// now returns the full stored Project, not just id/name/path).
+				printCustomColumns(project);
 
 				process.stdout.write(`\nCLI build: v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
 
@@ -156,6 +162,9 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 
 		printDetail(fields);
 	}
+
+	// Custom columns surface offline too (gap the online branch used to have).
+	printCustomColumns(project);
 
 	process.stdout.write(`\nCLI build: v${BUILD_VERSION} (${BUILD_COMMIT}) ${BUILD_TIME}\n`);
 }

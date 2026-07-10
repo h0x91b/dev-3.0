@@ -218,6 +218,29 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("proj-001");
 		});
 
+		it("prints custom columns online (regression #vent: cast dropped customColumns)", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: SOCKET,
+			});
+			mockSend.mockResolvedValue(okResp(FAKE_TASK));
+			mockReadProject.mockReturnValue({
+				id: "proj-001",
+				name: "My Project",
+				path: "/dev/proj",
+				customColumns: [
+					{ id: "deadbeef-1111-2222-3333-444444444444", name: "Deploy", color: "#abcdef", llmInstruction: "when ready to ship" },
+				],
+			});
+
+			await handleCurrent(SOCKET);
+
+			expect(stdoutOutput).toContain("Custom columns");
+			expect(stdoutOutput).toContain("deadbeef");
+			expect(stdoutOutput).toContain("Deploy");
+		});
+
 		it("falls back to offline mode when socket request fails", async () => {
 			mockDetect.mockReturnValue({
 				projectId: "proj-001",
@@ -339,6 +362,30 @@ describe("handleCurrent", () => {
 
 			expect(stdoutOutput).toContain("Description:");
 			expect(stdoutOutput).toContain("longer description");
+		});
+
+		it("prints the project's custom columns offline (regression: used to only try online)", async () => {
+			mockDetect.mockReturnValue({
+				projectId: "proj-001",
+				taskId: FAKE_TASK.id,
+				socketPath: "",
+			});
+			mockReadProject.mockReturnValue({
+				id: "proj-001",
+				name: "My Project",
+				path: "/dev/proj",
+				customColumns: [
+					{ id: "deadbeef-1111-2222-3333-444444444444", name: "Deploy", color: "#abcdef", llmInstruction: "when ready to ship" },
+				],
+			});
+			mockReadTask.mockReturnValue({ id: FAKE_TASK.id, title: "Auth task", status: "todo" });
+
+			await handleCurrent(null);
+
+			expect(stdoutOutput).toContain("Custom columns");
+			expect(stdoutOutput).toContain("deadbeef");
+			expect(stdoutOutput).toContain("Deploy");
+			expect(stdoutOutput).toContain("when ready to ship");
 		});
 
 		it("hides description in offline --brief mode", async () => {
