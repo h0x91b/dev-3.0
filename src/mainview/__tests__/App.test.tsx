@@ -128,6 +128,9 @@ vi.mock("../components/gauges/GaugeDemo", () => ({
 vi.mock("../components/ProjectTerminal", () => ({
 	default: () => <div data-testid="project-terminal-screen" />,
 }));
+vi.mock("../components/TaskImageViewer", () => ({
+	default: () => <div data-testid="image-viewer" />,
+}));
 
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -416,6 +419,81 @@ describe("App keyboard shortcuts", () => {
 			triggerQuickShell();
 
 			expect(await screen.findByTestId("task-screen")).toBeInTheDocument();
+		});
+	});
+
+	// `dev3 show-image` while the user is elsewhere raises a clickable toast.
+	// Regression: clicking it opened the lightbox but stayed on the current
+	// screen, so the user never knew which task produced the image. The toast
+	// must navigate to the owning task (honoring open-mode) before opening it.
+	describe("CLI shared-image toast navigation", () => {
+		const oneProject = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+		const sharedImage = {
+			id: "img1",
+			storedPath: "/a/shared-images/img1.png",
+			originalPath: "/tmp/img1.png",
+			name: "img1.png",
+			mime: "image/png",
+			bytes: 123,
+			createdAt: 0,
+		};
+
+		function dispatchShowImage() {
+			act(() => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:cliShowImage", {
+						detail: {
+							taskId: "t-img",
+							projectId: "p1",
+							images: [sharedImage],
+							newCount: 1,
+							taskSeq: 42,
+							taskTitle: "Some task",
+							projectName: "Alpha",
+						},
+					}),
+				);
+			});
+		}
+
+		afterEach(() => {
+			localStorage.removeItem("dev3-task-open-mode");
+		});
+
+		it("split open-mode: clicking the toast navigates to the owning task and opens the viewer", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			// On the board, no task focused.
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "");
+
+			dispatchShowImage();
+			await userEvent.click(await screen.findByText("Agent shared an image"));
+
+			const view = screen.getByTestId("project-screen");
+			expect(view).toHaveAttribute("data-project-id", "p1");
+			expect(view).toHaveAttribute("data-active-task-id", "t-img");
+			expect(screen.getByTestId("image-viewer")).toBeInTheDocument();
+		});
+
+		it("fullscreen open-mode: clicking the toast opens the full-page task view", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			dispatchShowImage();
+			await userEvent.click(await screen.findByText("Agent shared an image"));
+
+			expect(await screen.findByTestId("task-screen")).toBeInTheDocument();
+			expect(screen.getByTestId("image-viewer")).toBeInTheDocument();
 		});
 	});
 

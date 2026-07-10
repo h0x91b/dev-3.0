@@ -1057,7 +1057,7 @@ function App() {
 	// the lightbox ONLY when the user is already looking at this task (never steal focus).
 	useEffect(() => {
 		function onCliShowImage(e: Event) {
-			const { taskId, images, newCount, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, images, newCount, taskSeq, taskTitle, projectName } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				images: SharedImage[];
@@ -1083,18 +1083,24 @@ function App() {
 				return;
 			}
 
-			// Elsewhere: don't steal focus — a clickable toast opens the viewer.
+			// Elsewhere: don't steal focus automatically — a clickable toast both
+			// navigates to the owning task and opens the viewer (honoring open-mode).
 			const context = taskSeq !== undefined
 				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
 				: undefined;
 			toast.info(t.plural("showImage.toast", newCount ?? 1), {
 				context,
-				onClick: () => setImageViewer({ taskId, images, index: images.length - 1 }),
+				onClick: () => {
+					const openMode = getTaskOpenMode();
+					if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
+					else navigate({ screen: "project", projectId, activeTaskId: taskId });
+					setImageViewer({ taskId, images, index: images.length - 1 });
+				},
 			});
 		}
 		window.addEventListener("rpc:cliShowImage", onCliShowImage);
 		return () => window.removeEventListener("rpc:cliShowImage", onCliShowImage);
-	}, [dispatch, t, state.route]);
+	}, [dispatch, navigate, t, state.route]);
 
 	// Reopen the image viewer from a task-scoped trigger (the inspector image badge).
 	useEffect(() => {

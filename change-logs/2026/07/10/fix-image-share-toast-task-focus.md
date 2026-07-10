@@ -1,0 +1,1 @@
+Clicking the "Agent shared an image" toast now navigates to the task that produced the image (honoring your task open-mode) before opening the lightbox, instead of opening the viewer without switching focus. Matches how shared HTML artifacts already behave.
