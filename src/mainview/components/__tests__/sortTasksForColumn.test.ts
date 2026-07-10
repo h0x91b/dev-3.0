@@ -457,14 +457,14 @@ describe("sortTasksForColumn — priority bands", () => {
 		expect(ids(result)).toEqual(["top", "a", "b"]);
 	});
 
-	it("missing priority is treated as the P2 band", () => {
+	it("missing priority is treated as the P3 band", () => {
 		const tasks = [
-			makeTask({ id: "legacy" }), // no priority → P2
+			makeTask({ id: "legacy" }), // no priority → P3
 			makeTask({ id: "p1", priority: "P1" }),
-			makeTask({ id: "p3", priority: "P3" }),
+			makeTask({ id: "p4", priority: "P4" }),
 		];
 		const result = sortTasksForColumn(tasks, "top", emptyMap);
-		expect(ids(result)).toEqual(["p1", "legacy", "p3"]);
+		expect(ids(result)).toEqual(["p1", "legacy", "p4"]);
 	});
 
 	it("a variant group (shared priority) stays adjacent and bands together", () => {

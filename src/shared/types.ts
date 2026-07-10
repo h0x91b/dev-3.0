@@ -155,12 +155,12 @@ export type TaskPriority = "P0" | "P1" | "P2" | "P3" | "P4";
 export const ALL_PRIORITIES: TaskPriority[] = ["P0", "P1", "P2", "P3", "P4"];
 
 /** Default priority for new tasks and for legacy tasks missing the field. */
-export const DEFAULT_PRIORITY: TaskPriority = "P2";
+export const DEFAULT_PRIORITY: TaskPriority = "P3";
 
 /**
  * Sort rank of a priority: 0 (P0, highest) … 4 (P4, lowest). Missing/invalid
  * values fall back to the {@link DEFAULT_PRIORITY} rank so legacy tasks band as
- * P2. Lower rank sorts first (on top of a column).
+ * P3. Lower rank sorts first (on top of a column).
  */
 export function priorityRank(priority: TaskPriority | null | undefined): number {
 	if (priority && /^P[0-4]$/.test(priority)) return Number(priority.slice(1));

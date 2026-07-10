@@ -60,7 +60,7 @@ In the same session-start pass, also assign task labels:
 
 ## Task priority
 
-Each task has a priority \`P0\` (highest) … \`P4\` (lowest), default \`P2\`; the board and sidebar sort by it. \`dev3 task show\` prints it, and \`dev3 task update --priority P0..P4\` sets it (applies to the whole variant group).
+Each task has a priority \`P0\` (highest) … \`P4\` (lowest), default \`P3\`; the board and sidebar sort by it. \`dev3 task show\` prints it, and \`dev3 task update --priority P0..P4\` sets it (applies to the whole variant group).
 
 **Do NOT set or change a task's priority on your own initiative** — only when the user explicitly asks you to (re)prioritize. Priority is the user's judgment of importance, in the same protected class as user-edited titles. Never re-prioritize during triage, cleanup, or "helpfully."
 `;

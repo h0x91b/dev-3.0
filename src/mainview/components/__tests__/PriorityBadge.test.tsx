@@ -18,9 +18,9 @@ describe("PriorityBadge", () => {
 		expect(screen.getByRole("button", { name: /Priority P0/ })).toHaveTextContent("P0");
 	});
 
-	it("falls back to P2 when priority is undefined", () => {
+	it("falls back to P3 when priority is undefined", () => {
 		renderBadge({ priority: undefined, onChange: vi.fn() });
-		expect(screen.getByRole("button", { name: /Priority P2/ })).toHaveTextContent("P2");
+		expect(screen.getByRole("button", { name: /Priority P3/ })).toHaveTextContent("P3");
 	});
 
 	it("renders a static, non-interactive chip when onChange is omitted", () => {

@@ -557,7 +557,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 					</div>
 				)}
 
-				{/* Priority selector — compact badge + picker, defaults to P2. */}
+				{/* Priority selector — compact badge + picker, defaults to P3. */}
 				<div className="flex items-center gap-2">
 					<label className="text-fg-2 text-sm font-medium">
 						{t("priority.label")}

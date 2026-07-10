@@ -95,10 +95,10 @@ describe("task show", () => {
 		expect(stdoutOutput).toContain("Agent is Working");
 	});
 
-	it("prints the priority field (defaulting to P2 when absent)", async () => {
+	it("prints the priority field (defaulting to P3 when absent)", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
-		expect(stdoutOutput).toMatch(/Priority:\s*P2/);
+		expect(stdoutOutput).toMatch(/Priority:\s*P3/);
 	});
 
 	it("prints an explicit priority when set", async () => {
