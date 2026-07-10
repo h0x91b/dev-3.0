@@ -105,6 +105,9 @@ function renderColumn(overrides: {
 	isDraggedColumn?: boolean;
 	customColumnId?: string;
 	label?: string;
+	onRenameColumn?: (name: string | null) => void;
+	autoStartEditing?: boolean;
+	onAutoEditConsumed?: () => void;
 } = {}) {
 	return render(
 		<I18nProvider>
@@ -138,6 +141,9 @@ function renderColumn(overrides: {
 				onColumnDragEnd={vi.fn()}
 				onColumnDrop={overrides.onColumnDrop}
 				isDraggedColumn={overrides.isDraggedColumn}
+				onRenameColumn={overrides.onRenameColumn}
+				autoStartEditing={overrides.autoStartEditing}
+				onAutoEditConsumed={overrides.onAutoEditConsumed}
 			/>
 		</I18nProvider>,
 	);
@@ -731,5 +737,38 @@ describe("KanbanColumn — task reorder within a built-in column", () => {
 		expect(onReorderTask).toHaveBeenCalledTimes(1);
 		// task0 removed, dropped at the visible boundary (15) → adjusted to 14.
 		expect(onReorderTask).toHaveBeenCalledWith("t0", 14);
+	});
+});
+
+describe("custom column inline rename (issue #222)", () => {
+	it("renders a rename affordance when onRenameColumn is provided", () => {
+		renderColumn({ onRenameColumn: vi.fn() });
+		expect(screen.getByLabelText("Rename column")).toBeTruthy();
+	});
+
+	it("opens directly in rename mode when autoStartEditing is set", () => {
+		const onAutoEditConsumed = vi.fn();
+		const { container } = renderColumn({
+			label: "New Column",
+			onRenameColumn: vi.fn(),
+			autoStartEditing: true,
+			onAutoEditConsumed,
+		});
+		// A freshly created column mounts straight into the rename input.
+		const input = container.querySelector("input") as HTMLInputElement;
+		expect(input).toBeTruthy();
+		expect(input.value).toBe("New Column");
+		// The trigger is consumed once so it can't re-fire on re-render.
+		expect(onAutoEditConsumed).toHaveBeenCalledTimes(1);
+	});
+
+	it("commits a renamed value through onRenameColumn", async () => {
+		const onRenameColumn = vi.fn();
+		renderColumn({ label: "Alpha", onRenameColumn });
+		await userEvent.click(screen.getByLabelText("Rename column"));
+		const input = screen.getByDisplayValue("Alpha") as HTMLInputElement;
+		await userEvent.clear(input);
+		await userEvent.type(input, "Beta{Enter}");
+		expect(onRenameColumn).toHaveBeenCalledWith("Beta");
 	});
 });

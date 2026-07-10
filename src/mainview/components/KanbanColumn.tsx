@@ -71,6 +71,10 @@ interface KanbanColumnProps {
 	collapseDragHandlers?: { onDragEnter: () => void; onDragLeave: () => void; onDragEnd: () => void };
 	// Rename support for built-in columns
 	onRenameColumn?: (newName: string | null) => void;
+	// Freshly created board columns open directly in rename mode so the user can
+	// name them without leaving the board (issue #222).
+	autoStartEditing?: boolean;
+	onAutoEditConsumed?: () => void;
 	// Mobile carousel: stretch the column to fill the carousel track (one column per screen)
 	fullWidth?: boolean;
 }
@@ -118,6 +122,8 @@ function KanbanColumn({
 	onCollapseToggle,
 	collapseDragHandlers,
 	onRenameColumn,
+	autoStartEditing,
+	onAutoEditConsumed,
 	fullWidth,
 }: KanbanColumnProps) {
 	const t = useT();
@@ -206,6 +212,16 @@ function KanbanColumn({
 		}
 		onRenameColumn(trimmed);
 	}
+
+	// A board-created custom column mounts straight into rename mode (issue #222)
+	// so the user names it in place. Runs once on mount; the parent clears the
+	// trigger via onAutoEditConsumed so it never re-fires on later re-renders.
+	useEffect(() => {
+		if (!autoStartEditing) return;
+		startEditing();
+		onAutoEditConsumed?.();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	// Is this a same-column reorder drag?
 	const isSameColumnDrag = isCustomColumn

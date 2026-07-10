@@ -3,6 +3,8 @@ const columns = {
 	"customColumns.settingsTitle": "Пользовательские колонки",
 	"customColumns.settingsDesc": "Добавьте колонки на доску Kanban. Каждая колонка может содержать краткую инструкцию для ИИ-агента о том, когда перемещать туда задачу.",
 	"customColumns.addColumn": "+ Добавить колонку",
+	"customColumns.addColumnAria": "Добавить колонку",
+	"customColumns.defaultName": "Новая колонка",
 	"customColumns.noColumns": "Пользовательских колонок пока нет.",
 	"customColumns.columnName": "Название колонки",
 	"customColumns.llmInstruction": "Инструкция для LLM (когда перемещать сюда)",

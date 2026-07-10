@@ -1131,7 +1131,7 @@ function ProjectSettings({
 		if (!project) return;
 		setColumnSaving("new");
 		try {
-			const column = await api.request.createCustomColumn({ projectId, name: "New Column" });
+			const column = await api.request.createCustomColumn({ projectId, name: t("customColumns.defaultName") });
 			const updated: Project = { ...project, customColumns: [...(project.customColumns ?? []), column] };
 			dispatch({ type: "updateProject", project: updated });
 		} catch (err) {

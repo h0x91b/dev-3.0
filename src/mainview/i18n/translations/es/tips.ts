@@ -59,7 +59,7 @@ const tips = {
 	"tip.imagePasteAttach.title": "Pega imágenes en las notas",
 	"tip.imagePasteAttach.body": "Pulsa Cmd+V o arrastra una imagen a la descripción o nota de una tarea — se guarda sola y aparece como miniatura.",
 	"tip.customColumns.title": "Crea columnas personalizadas",
-	"tip.customColumns.body": "Ve a Project Settings para añadir columnas con nombre, color e instrucción de IA para que los agentes sepan cuándo mover tareas allí.",
+	"tip.customColumns.body": "Pulsa el + antes de la columna Completed para añadir una con nombre, color e instrucción de IA.",
 	"tip.cloneFromUrl.title": "Clona repositorios directamente",
 	"tip.cloneFromUrl.body": "Haz clic en \"Add Project\", elige \"Clone from URL\" y pega una URL de git — la app clona y añade el proyecto por ti.",
 	"tip.activeTasksSidebar.title": "Tablero completo en vista dividida",
