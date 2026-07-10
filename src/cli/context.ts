@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
+import type { Project } from "../shared/types";
 
 const HOME = process.env.HOME || "/tmp";
 const DEV3_HOME = `${HOME}/.dev3.0`;
@@ -15,12 +16,14 @@ const VIRTUAL_PROJECTS_FILE = `${DEV3_HOME}/virtual-projects.json`;
  * Read all projects (git + virtual) for offline ID resolution, without a socket.
  * Either file may be absent — an unreadable file contributes nothing rather than
  * throwing, so a missing virtual-projects.json simply yields the git projects.
+ * Returns the full stored Project objects so callers can read column config
+ * (customColumns, columnOrder, …) offline, not just id/name/path.
  */
-function readAllProjectsRaw(): Array<{ id: string; name?: string; path: string }> {
-	const out: Array<{ id: string; name?: string; path: string }> = [];
+function readAllProjectsRaw(): Project[] {
+	const out: Project[] = [];
 	for (const file of [PROJECTS_FILE, VIRTUAL_PROJECTS_FILE]) {
 		try {
-			const parsed = JSON.parse(readFileSync(file, "utf-8")) as Array<{ id: string; name?: string; path: string }>;
+			const parsed = JSON.parse(readFileSync(file, "utf-8")) as Project[];
 			if (Array.isArray(parsed)) out.push(...parsed);
 		} catch {
 			// File missing or unreadable — skip it.
@@ -495,11 +498,20 @@ export function resolveProjectId(flagValue: string | undefined, context: CliCont
 }
 
 /**
- * Read project info directly from data files (no socket needed).
+ * A project as read directly from disk offline. `id`/`name`/`path` are always
+ * present; every other Project field is best-effort (may be absent in older data
+ * files), which is exactly the shape callers need to read column config offline.
  */
-export function readProjectDirect(projectId: string): { id: string; name: string; path: string } | null {
+export type ProjectDirect = Pick<Project, "id" | "name" | "path"> & Partial<Project>;
+
+/**
+ * Read a project directly from data files (no socket needed). Returns the full
+ * stored object (incl. customColumns/columnOrder/kind) so offline callers can
+ * enumerate board columns; `name` is coalesced to "" if a legacy record lacks it.
+ */
+export function readProjectDirect(projectId: string): ProjectDirect | null {
 	const match = readAllProjectsRaw().find((p) => p.id === projectId || p.id.startsWith(projectId));
-	return match ? { id: match.id, name: match.name ?? "", path: match.path } : null;
+	return match ? { ...match, name: match.name ?? "" } : null;
 }
 
 /**

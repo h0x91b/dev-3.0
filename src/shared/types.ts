@@ -904,6 +904,104 @@ export function orderProjectsForDisplay<T extends Pick<Project, "kind" | "builti
 	return [...builtin, ...projects.filter((p) => !isBuiltinOpsProject(p))];
 }
 
+// ---- Board columns (single source of truth for column ordering + visibility) ----
+
+/** Default built-in column order — custom columns are interspersed between these two halves. */
+export const DEFAULT_BEFORE_CUSTOM_COLUMNS: TaskStatus[] = [
+	"todo",
+	"in-progress",
+	"user-questions",
+	"review-by-ai",
+	"review-by-user",
+];
+export const DEFAULT_AFTER_CUSTOM_COLUMNS: TaskStatus[] = ["review-by-colleague", "completed", "cancelled"];
+export const ALL_BUILTIN_COLUMNS: TaskStatus[] = [...DEFAULT_BEFORE_CUSTOM_COLUMNS, ...DEFAULT_AFTER_CUSTOM_COLUMNS];
+
+/** A single board column: either a built-in status column or a user-defined custom column. */
+export type BoardColumnSlot =
+	| { type: "builtin"; status: TaskStatus }
+	| { type: "custom"; col: CustomColumn };
+
+/**
+ * Returns every column a project's board renders, in effective display order,
+ * respecting `columnOrder` and hiding columns that don't apply (virtual boards
+ * have no AI/PR review; `peerReviewEnabled === false` hides PR review; AI review
+ * hides when disabled and empty). Single source of truth for the board's column
+ * layout — see [[KanbanBoard]].
+ *
+ * Pure function of the project plus `opts.aiReviewHasItems` (the renderer passes
+ * whether the AI-review column currently holds tasks).
+ */
+export function getBoardColumns(
+	project: Pick<Project, "customColumns" | "columnOrder" | "peerReviewEnabled" | "builtinColumnAgents" | "kind">,
+	opts: { aiReviewHasItems?: boolean } = {},
+): BoardColumnSlot[] {
+	const cols = project.customColumns ?? [];
+	const peerReviewEnabled = project.peerReviewEnabled !== false;
+	// AI Review shows by default (on when builtinColumnAgents is unset or has a review-by-ai config).
+	const aiReviewEnabled = project.builtinColumnAgents === undefined || !!project.builtinColumnAgents?.["review-by-ai"];
+	const aiReviewHasItems = opts.aiReviewHasItems ?? false;
+	// Virtual ("Operations") boards have no diff/PR, so AI Review and PR Review are hidden.
+	const isVirtual = project.kind === "virtual";
+	const shouldHide = (s: TaskStatus) =>
+		(isVirtual && (s === "review-by-ai" || s === "review-by-colleague")) ||
+		(s === "review-by-colleague" && !peerReviewEnabled) ||
+		(s === "review-by-ai" && !aiReviewEnabled && !aiReviewHasItems);
+	const filterBuiltin = (statuses: TaskStatus[]) => statuses.filter((s) => !shouldHide(s));
+
+	if (!project.columnOrder || project.columnOrder.length === 0) {
+		return [
+			...filterBuiltin(DEFAULT_BEFORE_CUSTOM_COLUMNS).map((s) => ({ type: "builtin" as const, status: s })),
+			...cols.map((c) => ({ type: "custom" as const, col: c })),
+			...filterBuiltin(DEFAULT_AFTER_CUSTOM_COLUMNS).map((s) => ({ type: "builtin" as const, status: s })),
+		];
+	}
+
+	const result: BoardColumnSlot[] = [];
+	const used = new Set<string>();
+	for (const id of project.columnOrder) {
+		if ((ALL_BUILTIN_COLUMNS as string[]).includes(id) && shouldHide(id as TaskStatus)) {
+			used.add(id);
+			continue;
+		}
+		if ((ALL_BUILTIN_COLUMNS as string[]).includes(id)) {
+			result.push({ type: "builtin", status: id as TaskStatus });
+			used.add(id);
+		} else {
+			const col = cols.find((c) => c.id === id);
+			if (col) {
+				result.push({ type: "custom", col });
+				used.add(id);
+			}
+		}
+	}
+	// review-by-ai: if missing from stored order, insert right before "review-by-user"
+	// so it stays in the correct lifecycle position for existing users.
+	if (!used.has("review-by-ai") && !shouldHide("review-by-ai")) {
+		const reviewByUserIdx = result.findIndex((c) => c.type === "builtin" && c.status === "review-by-user");
+		const slot: BoardColumnSlot = { type: "builtin", status: "review-by-ai" };
+		if (reviewByUserIdx !== -1) result.splice(reviewByUserIdx, 0, slot);
+		else result.push(slot);
+		used.add("review-by-ai");
+	}
+	// review-by-colleague: if missing from stored order, insert right before "completed".
+	if (!used.has("review-by-colleague") && !shouldHide("review-by-colleague")) {
+		const completedIdx = result.findIndex((c) => c.type === "builtin" && c.status === "completed");
+		const slot: BoardColumnSlot = { type: "builtin", status: "review-by-colleague" };
+		if (completedIdx !== -1) result.splice(completedIdx, 0, slot);
+		else result.push(slot);
+		used.add("review-by-colleague");
+	}
+	// Append anything else missing (new built-ins, or new custom cols).
+	for (const s of ALL_BUILTIN_COLUMNS) {
+		if (!used.has(s) && !shouldHide(s)) result.push({ type: "builtin", status: s });
+	}
+	for (const col of cols) {
+		if (!used.has(col.id)) result.push({ type: "custom", col });
+	}
+	return result;
+}
+
 /**
  * Compact git-diff stats captured for a task. For completed/cancelled git tasks
  * this is captured ONCE at completion time (in `moveTask`, before the worktree is
