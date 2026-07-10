@@ -36,10 +36,13 @@ const help = {
 	// ── Board chrome ──
 	"help.board.filterBar.title": "Búsqueda y filtros",
 	"help.board.filterBar.body":
-		"Acota el tablero: escribe para filtrar tarjetas por título, haz clic en las etiquetas para mostrar solo las tareas que coinciden. Para renombrar, recolorear o eliminar etiquetas, abre Configuración del proyecto → Etiquetas.",
+		"Una sola caja busca y filtra el tablero. Escribe texto libre para una búsqueda difusa por título/descripción, o filtra con tokens — priority:P0 label:\"Bug Fix\" agent:Codex status:review is:attention has:port. Los chips de prioridad P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens, así que escribir y hacer clic nunca se contradicen. La × lo borra todo. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
 	"help.board.priorityFilter.title": "Filtro de prioridad",
 	"help.board.priorityFilter.body":
 		"Cada tarea tiene una prioridad P0 (la más alta) … P4 (la más baja, P3 por defecto). Las columnas siempre se ordenan por ella, así lo más importante queda arriba. Haz clic en un chip para mostrar solo esa prioridad; arrastra una tarjeta a otra banda para recategorizarla.",
+	"help.filters.dsl.title": "Búsqueda y filtros",
+	"help.filters.dsl.body":
+		"Escribe para una búsqueda difusa por títulos y descripciones, o filtra con tokens: priority:P0 label:\"Bug Fix\" agent:Codex status:review is:attention has:port. Entrecomilla los valores con espacios. Combina facetas (Y); repite una faceta para ampliar (O). Los chips P0–P4, los chips de etiquetas y el embudo editan estos mismos tokens. Gestiona las etiquetas en Configuración del proyecto → Etiquetas.",
 	"help.board.taskCard.title": "Tarjeta de tarea",
 	"help.board.taskCard.body":
 		"Los puntos de colores son variantes paralelas de agentes (cada una en su worktree), la campana significa que el agente te llama, y la insignia #123 es el PR de la tarea con su estado de CI y revisión. Clic derecho para todas las acciones.",

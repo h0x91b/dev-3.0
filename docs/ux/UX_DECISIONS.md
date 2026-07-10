@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-10 — Token-DSL task filters: search string is the single source of truth
+
+- **Rule:** Structured filtering on the board and sidebar is a token DSL (`priority:` `label:` `agent:` `status:` `is:attention` `has:port`) living inside the *one* search string; a shared `FilterFunnel` dropdown (grouped PRIORITY/STATUS/LABELS/AGENTS/FLAGS, PRIORITY first, values-in-pool only, empty groups hidden), the P0–P4 priority quick-chips, and the kanban label chips are all *views* of that string — checking/clicking edits a token, none holds separate filter state. Funnel is a `ghost` icon button snug against the search box with an accent count badge; one `HelpSpot` teaches the operators. Filter/checked use different comparisons: substring match filters, exact (case-insensitive) token presence drives checked/active. Board shows the most-popular labels inline (`+N more` opens the funnel). Ephemeral (resets on unmount), renderer-only, extensible registry.
+- **Why:** a growing task list needs AND-across / OR-within filtering both surfaces share; one parsed string keeps typed and clicked filters from ever disagreeing and adds one control, not a facet toolbar. This **supersedes the priority feature's separate `priorityFilters`/`activeFilters` board state** (PR #893) — folding priority into the same single-source string is the whole point. Rejected: a separate structured-filter state beside search (two sources drift), and dropping the chips (loses at-a-glance board filtering).
+- **Status:** Implemented. Evidence: bible §5 (board/sidebar rows), §12.6 board-filters row; `utils/taskSearch.ts`, `taskFacets.ts`, `FilterFunnel.tsx`, `LabelFilterBar.tsx`, `ActiveTasksSidebar.tsx`; `decisions/123-token-dsl-task-filters.md`.
+
 ## 2026-07-10 — Diagnostics: in-UI crash/error surface for remote/mobile
 
 - **Rule:** One framework-agnostic diagnostics store feeds three surfaces — a provider-wrapping `RootErrorBoundary` (self-contained English fallback), a phase+timeout `BootstrapScreen` (Retry/Reload replaces the bare spinner), and a `DiagnosticsPanel` opened from a floating pill that appears ONLY in remote mode when `errorCount > 0` (plus a pre-React loader in `index.html`).

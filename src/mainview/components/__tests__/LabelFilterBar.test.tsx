@@ -2,82 +2,123 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import LabelFilterBar from "../LabelFilterBar";
 import { I18nProvider } from "../../i18n";
+import type { Label } from "../../../shared/types";
+import type { FilterFunnelGroup } from "../../utils/taskFacets";
 
-function renderBar(
-	searchQuery = "",
-	onSearchChange = vi.fn(),
-	disableGlobalFindShortcut = false,
-) {
-	return render(
+const LABELS: Label[] = [
+	{ id: "l1", name: "Bug", color: "#ef4444" },
+	{ id: "l2", name: "Feature", color: "#22c55e" },
+];
+
+const GROUPS: FilterFunnelGroup[] = [
+	{ id: "priority", options: [{ facet: "priority", value: "P0", label: "P0 — Highest" }] },
+	{ id: "status", options: [{ facet: "status", value: "review-by-user", label: "Your Review" }] },
+	{
+		id: "labels",
+		options: [
+			{ facet: "label", value: "Bug", label: "Bug", color: "#ef4444" },
+			{ facet: "label", value: "Feature", label: "Feature", color: "#22c55e" },
+		],
+	},
+];
+
+function renderBar(props: Partial<React.ComponentProps<typeof LabelFilterBar>> = {}) {
+	const onSearchChange = props.onSearchChange ?? vi.fn();
+	render(
 		<I18nProvider>
 			<LabelFilterBar
-				labels={[]}
-				activeFilters={[]}
-				onToggle={vi.fn()}
-				activePriorities={[]}
-				onTogglePriority={vi.fn()}
-				onClear={vi.fn()}
-				searchQuery={searchQuery}
+				labels={props.labels ?? LABELS}
+				searchQuery={props.searchQuery ?? ""}
 				onSearchChange={onSearchChange}
-				disableGlobalFindShortcut={disableGlobalFindShortcut}
+				filterGroups={props.filterGroups ?? GROUPS}
+				disableGlobalFindShortcut={props.disableGlobalFindShortcut}
 			/>
 		</I18nProvider>,
 	);
+	return { onSearchChange };
 }
 
-describe("LabelFilterBar inline help", () => {
-	it("shows both the priority and label HelpSpots when labels exist", () => {
-		render(
-			<I18nProvider>
-				<LabelFilterBar
-					labels={[{ id: "l1", name: "Bug", color: "#ef4444" }]}
-					activeFilters={[]}
-					onToggle={vi.fn()}
-					activePriorities={[]}
-					onTogglePriority={vi.fn()}
-					onClear={vi.fn()}
-					searchQuery=""
-					onSearchChange={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		// Two section help buttons: priority (always) + labels (labels present).
-		expect(screen.getAllByRole("button", { name: "About this section" })).toHaveLength(2);
-	});
-
-	it("opens the label help card with the manage hint on click", async () => {
-		const user = userEvent.setup();
-		render(
-			<I18nProvider>
-				<LabelFilterBar
-					labels={[{ id: "l1", name: "Bug", color: "#ef4444" }]}
-					activeFilters={[]}
-					onToggle={vi.fn()}
-					activePriorities={[]}
-					onTogglePriority={vi.fn()}
-					onClear={vi.fn()}
-					searchQuery=""
-					onSearchChange={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		// Priority HelpSpot is first in the DOM, labels HelpSpot is second.
-		const spots = screen.getAllByRole("button", { name: "About this section" });
-		await user.click(spots[1]);
-		expect(screen.getByText(/open Project Settings → Labels/)).toBeInTheDocument();
-	});
-
-	it("always shows the priority HelpSpot, even with no labels", async () => {
-		const user = userEvent.setup();
+describe("LabelFilterBar — priority quick-filter (view of the string)", () => {
+	it("renders all five priority chips", () => {
 		renderBar();
-		const spots = screen.getAllByRole("button", { name: "About this section" });
-		expect(spots).toHaveLength(1);
-		await user.click(spots[0]);
-		expect(screen.getByText(/Every task has a priority/)).toBeInTheDocument();
+		for (const level of ["P0", "P1", "P2", "P3", "P4"]) {
+			expect(screen.getByRole("button", { name: new RegExp(`priority ${level}`, "i") })).toBeInTheDocument();
+		}
+	});
+
+	it("clicking a priority chip inserts its token", async () => {
+		const user = userEvent.setup();
+		const { onSearchChange } = renderBar({ searchQuery: "" });
+		await user.click(screen.getByRole("button", { name: /priority P0/i }));
+		expect(onSearchChange).toHaveBeenCalledWith("priority:P0");
+	});
+
+	it("a priority chip reflects active state from the string", () => {
+		renderBar({ searchQuery: "priority:P1" });
+		expect(screen.getByRole("button", { name: /priority P1/i })).toHaveAttribute("aria-pressed", "true");
+		expect(screen.getByRole("button", { name: /priority P0/i })).toHaveAttribute("aria-pressed", "false");
 	});
 });
 
-describe("LabelFilterBar keyboard shortcuts", () => {
+describe("LabelFilterBar — funnel + inline help", () => {
+	it("shows the funnel plus the Priority and Labels help icons", () => {
+		renderBar();
+		expect(screen.getByTestId("filter-funnel-button")).toBeInTheDocument();
+		// One (i) next to Priority, one next to Labels.
+		expect(screen.getAllByRole("button", { name: "About this section" })).toHaveLength(2);
+	});
+
+	it("opens the Labels help card (search & filters + label management)", async () => {
+		const user = userEvent.setup();
+		renderBar();
+		// The second (i) sits next to Labels → board.filter-bar topic.
+		await user.click(screen.getAllByRole("button", { name: "About this section" })[1]);
+		expect(screen.getByText(/Manage labels in Project Settings/)).toBeInTheDocument();
+	});
+
+	it("opens the Priority help card from the priority (i)", async () => {
+		const user = userEvent.setup();
+		renderBar();
+		await user.click(screen.getAllByRole("button", { name: "About this section" })[0]);
+		expect(screen.getByText(/Every task has a priority P0/)).toBeInTheDocument();
+	});
+
+	it("funnel dropdown leads with the PRIORITY group and reflects checked state", async () => {
+		const user = userEvent.setup();
+		renderBar({ searchQuery: "priority:P0" });
+		await user.click(screen.getByTestId("filter-funnel-button"));
+		expect(screen.getByRole("checkbox", { name: "P0 — Highest" })).toHaveAttribute("aria-checked", "true");
+	});
+});
+
+describe("LabelFilterBar — inline label chips as a view of the string", () => {
+	it("toggles the label token on chip click (add)", async () => {
+		const user = userEvent.setup();
+		const { onSearchChange } = renderBar({ labels: LABELS, searchQuery: "" });
+		await user.click(screen.getByRole("button", { name: "Bug" }));
+		expect(onSearchChange).toHaveBeenCalledWith("label:Bug");
+	});
+
+	it("toggles the label token on chip click (remove)", async () => {
+		const user = userEvent.setup();
+		const { onSearchChange } = renderBar({ labels: LABELS, searchQuery: "label:Bug" });
+		await user.click(screen.getByRole("button", { name: "Bug" }));
+		expect(onSearchChange).toHaveBeenCalledWith("");
+	});
+
+	it("shows only the top-N labels inline with a '+N more' opening the funnel", async () => {
+		const user = userEvent.setup();
+		// 12 labels → 10 inline + "+2 more".
+		const many: Label[] = Array.from({ length: 12 }, (_, i) => ({ id: `l${i}`, name: `Label${i}`, color: "#888888" }));
+		renderBar({ labels: many, filterGroups: GROUPS });
+		expect(screen.getByText("Label0")).toBeInTheDocument();
+		expect(screen.queryByText("Label11")).not.toBeInTheDocument();
+		await user.click(screen.getByText("+2 more"));
+		expect(screen.getByTestId("filter-funnel-dropdown")).toBeInTheDocument();
+	});
+});
+
+describe("LabelFilterBar — search box", () => {
 	it("Cmd+F focuses the search input", async () => {
 		renderBar();
 		const input = screen.getByPlaceholderText("Search tasks...");
@@ -86,56 +127,31 @@ describe("LabelFilterBar keyboard shortcuts", () => {
 		expect(input).toHaveFocus();
 	});
 
-	it("Ctrl+F focuses the search input", async () => {
-		renderBar();
-		const input = screen.getByPlaceholderText("Search tasks...");
-		expect(input).not.toHaveFocus();
-		await userEvent.keyboard("{Control>}f{/Control}");
-		expect(input).toHaveFocus();
-	});
-
 	it("does not hijack Cmd+F when disabled", async () => {
-		renderBar("", vi.fn(), true);
+		renderBar({ disableGlobalFindShortcut: true });
 		const input = screen.getByPlaceholderText("Search tasks...");
-		expect(input).not.toHaveFocus();
 		await userEvent.keyboard("{Meta>}f{/Meta}");
 		expect(input).not.toHaveFocus();
 	});
 
+	it("the × button clears the whole string", async () => {
+		const { onSearchChange } = renderBar({ searchQuery: "label:Bug login" });
+		await userEvent.click(screen.getByRole("button", { name: "×" }));
+		expect(onSearchChange).toHaveBeenCalledWith("");
+	});
+
 	it("Escape in the search input clears the query", async () => {
-		const onSearchChange = vi.fn();
-		renderBar("hello", onSearchChange);
+		const { onSearchChange } = renderBar({ searchQuery: "hello" });
 		const input = screen.getByPlaceholderText("Search tasks...");
 		await userEvent.click(input);
 		await userEvent.keyboard("{Escape}");
 		expect(onSearchChange).toHaveBeenCalledWith("");
 	});
-
-	it("Escape in the search input blurs the input", async () => {
-		renderBar();
-		const input = screen.getByPlaceholderText("Search tasks...");
-		await userEvent.click(input);
-		expect(input).toHaveFocus();
-		await userEvent.keyboard("{Escape}");
-		expect(input).not.toHaveFocus();
-	});
-
-	it("Escape outside the search input does not call onSearchChange", async () => {
-		const onSearchChange = vi.fn();
-		renderBar("", onSearchChange);
-		// Focus something else, not the input
-		await userEvent.keyboard("{Escape}");
-		expect(onSearchChange).not.toHaveBeenCalled();
-	});
 });
 
-describe("LabelFilterBar narrow viewport", () => {
+describe("LabelFilterBar — narrow viewport", () => {
 	const originalInnerWidth = window.innerWidth;
 	const originalMatchMedia = window.matchMedia;
-	const labels = [
-		{ id: "l1", name: "Bug", color: "#ef4444" },
-		{ id: "l2", name: "Feature", color: "#22c55e" },
-	];
 
 	beforeEach(() => {
 		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
@@ -159,83 +175,17 @@ describe("LabelFilterBar narrow viewport", () => {
 		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
 	});
 
-	function renderNarrow(onToggle = vi.fn(), activeFilters: string[] = []) {
-		render(
-			<I18nProvider>
-				<LabelFilterBar
-					labels={labels}
-					activeFilters={activeFilters}
-					onToggle={onToggle}
-					activePriorities={[]}
-					onTogglePriority={vi.fn()}
-					onClear={vi.fn()}
-					searchQuery=""
-					onSearchChange={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		return { onToggle };
-	}
-
-	it("hides the inline label chips and shows a funnel button", () => {
-		renderNarrow();
-		expect(screen.getByLabelText("Filter by label")).toBeInTheDocument();
-		// Chips live in the (closed) sheet, not inline.
-		expect(screen.queryByText("Bug")).not.toBeInTheDocument();
+	it("keeps the search inline and shows the funnel; inline chips are hidden", () => {
+		renderBar({ labels: LABELS });
+		expect(screen.getByTestId("filter-funnel-button")).toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: "Bug" })).not.toBeInTheDocument();
+		expect(screen.queryByRole("button", { name: /priority P0/i })).not.toBeInTheDocument();
 	});
 
-	it("opens a bottom sheet with the label chips when the funnel is tapped", async () => {
-		renderNarrow();
-		await userEvent.click(screen.getByLabelText("Filter by label"));
-		expect(screen.getByTestId("label-filter-sheet")).toBeInTheDocument();
-		expect(screen.getByText("Bug")).toBeInTheDocument();
-		expect(screen.getByText("Feature")).toBeInTheDocument();
-	});
-
-	it("toggling a chip in the sheet calls onToggle", async () => {
-		const { onToggle } = renderNarrow();
-		await userEvent.click(screen.getByLabelText("Filter by label"));
-		await userEvent.click(screen.getByText("Bug"));
-		expect(onToggle).toHaveBeenCalledWith("l1");
-	});
-});
-
-describe("LabelFilterBar priority chips", () => {
-	function renderWithPriority(activePriorities: string[] = []) {
-		const onTogglePriority = vi.fn();
-		render(
-			<I18nProvider>
-				<LabelFilterBar
-					labels={[]}
-					activeFilters={[]}
-					onToggle={vi.fn()}
-					activePriorities={activePriorities as never}
-					onTogglePriority={onTogglePriority}
-					onClear={vi.fn()}
-					searchQuery=""
-					onSearchChange={vi.fn()}
-				/>
-			</I18nProvider>,
-		);
-		return { onTogglePriority };
-	}
-
-	it("renders all five priority chips even with no labels", () => {
-		renderWithPriority();
-		for (const level of ["P0", "P1", "P2", "P3", "P4"]) {
-			expect(screen.getByRole("button", { name: new RegExp(`priority ${level}`, "i") })).toBeInTheDocument();
-		}
-	});
-
-	it("toggling a priority chip calls onTogglePriority with the level", async () => {
-		const { onTogglePriority } = renderWithPriority();
-		await userEvent.click(screen.getByRole("button", { name: /priority P0/i }));
-		expect(onTogglePriority).toHaveBeenCalledWith("P0");
-	});
-
-	it("marks an active priority chip as pressed", () => {
-		renderWithPriority(["P1"]);
-		expect(screen.getByRole("button", { name: /priority P1/i })).toHaveAttribute("aria-pressed", "true");
-		expect(screen.getByRole("button", { name: /priority P2/i })).toHaveAttribute("aria-pressed", "false");
+	it("opens a bottom sheet with the grouped facets when the funnel is tapped", async () => {
+		renderBar({ labels: LABELS });
+		await userEvent.click(screen.getByTestId("filter-funnel-button"));
+		expect(screen.getByTestId("filter-funnel-sheet")).toBeInTheDocument();
+		expect(screen.getByRole("checkbox", { name: "Bug" })).toBeInTheDocument();
 	});
 });

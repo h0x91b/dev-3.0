@@ -214,6 +214,8 @@ const tips = {
 	"tip.cliDoctor.body": "Что-то сломалось после обновления? Запустите `dev3 doctor` в любом терминале — проверит приложение, tmux и Homebrew и подскажет команды для починки.",
 	"tip.llmProvider.title": "Claude через Amazon Bedrock",
 	"tip.llmProvider.body": "Настройки → Coding Agents → LLM Provider направляет агента Claude в Amazon Bedrock — dev3 подставит модель; учётные данные и регион остаются в вашей конфигурации.",
+	"tip.filterTokens.title": "Фильтруйте задачи токенами",
+	"tip.filterTokens.body": "В поле поиска наберите label:Bug agent:Codex status:review is:attention has:port — или соберите фильтр кликом по воронке.",
 };
 
 export default tips;

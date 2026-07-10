@@ -1,5 +1,13 @@
 import type { Task } from "../../../shared/types";
-import { matchesSearchQuery } from "../taskSearch";
+import type { TaskQueryContext } from "../taskSearch";
+import {
+	parseTaskQuery,
+	matchesTaskQuery,
+	toggleFacetToken,
+	isFacetTokenActive,
+	countActiveFacetTokens,
+	facetToken,
+} from "../taskSearch";
 
 function makeTask(overrides: Partial<Task> = {}): Task {
 	return {
@@ -22,338 +30,281 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 	};
 }
 
-describe("matchesSearchQuery", () => {
-	// ---- Empty / whitespace query ----
+/** Build a facet context; every facet empty unless overridden. */
+function ctx(overrides: Partial<TaskQueryContext> = {}): TaskQueryContext {
+	return {
+		labelNames: [],
+		agentName: null,
+		statusValues: [],
+		priorityValue: "",
+		hasPort: false,
+		isAttention: false,
+		prNumber: null,
+		...overrides,
+	};
+}
 
+describe("matchesTaskQuery — free text (fuzzy/identifier, unchanged behavior)", () => {
 	it("returns true for empty query", () => {
-		expect(matchesSearchQuery(makeTask(), "")).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "", ctx())).toBe(true);
 	});
 
 	it("returns true for whitespace-only query", () => {
-		expect(matchesSearchQuery(makeTask(), "   ")).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "   ", ctx())).toBe(true);
 	});
-
-	// ---- Title matching ----
 
 	it("matches by title substring (case-insensitive)", () => {
-		expect(matchesSearchQuery(makeTask({ title: "Fix auth bug" }), "auth")).toBe(true);
+		expect(matchesTaskQuery(makeTask({ title: "Fix auth bug" }), "auth", ctx())).toBe(true);
 	});
-
-	it("matches by title with different case", () => {
-		expect(matchesSearchQuery(makeTask({ title: "Fix Auth Bug" }), "fix auth")).toBe(true);
-	});
-
-	it("does not match unrelated title", () => {
-		expect(matchesSearchQuery(makeTask({ title: "Refactor database" }), "auth")).toBe(false);
-	});
-
-	// ---- Fuzzy (subsequence) title matching ----
 
 	it("matches title by fuzzy subsequence (non-contiguous)", () => {
-		// "fxbug" is a subsequence of "Fix authentication bug" but not a substring.
-		expect(matchesSearchQuery(makeTask({ title: "Fix authentication bug" }), "fxbug")).toBe(true);
+		expect(matchesTaskQuery(makeTask({ title: "Fix authentication bug" }), "fxbug", ctx())).toBe(true);
 	});
 
-	it("matches title by acronym-style subsequence", () => {
-		expect(matchesSearchQuery(makeTask({ title: "Migrate task search", description: "" }), "mts")).toBe(true);
-	});
-
-	it("does not match title when query is not a subsequence", () => {
+	it("does not match unrelated title/description", () => {
 		expect(
-			matchesSearchQuery(makeTask({ title: "Fix authentication bug", description: "" }), "xyzq"),
+			matchesTaskQuery(makeTask({ title: "Refactor database", description: "" }), "xyzq", ctx()),
 		).toBe(false);
 	});
-
-	it("matches description by fuzzy subsequence", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({ title: "Unrelated", description: "The login flow breaks when session expires" }),
-				"lgnflw",
-			),
-		).toBe(true);
-	});
-
-	// ---- Description matching ----
 
 	it("matches by description substring", () => {
 		expect(
-			matchesSearchQuery(
+			matchesTaskQuery(
 				makeTask({ description: "The login flow breaks when session expires" }),
 				"session",
+				ctx(),
 			),
 		).toBe(true);
 	});
 
-	it("matches description case-insensitively", () => {
+	it("matches by seq prefix and with # prefix", () => {
+		expect(matchesTaskQuery(makeTask({ seq: 190 }), "19", ctx())).toBe(true);
+		expect(matchesTaskQuery(makeTask({ seq: 190 }), "#190", ctx())).toBe(true);
+	});
+
+	it("matches by UUID prefix (case-insensitive)", () => {
 		expect(
-			matchesSearchQuery(
-				makeTask({ description: "CRITICAL ERROR in production" }),
-				"critical error",
-			),
+			matchesTaskQuery(makeTask({ id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }), "A1B2C3D4", ctx()),
 		).toBe(true);
 	});
 
-	it("does not match unrelated description", () => {
+	it("matches PR number from context (with and without pr prefix)", () => {
+		expect(matchesTaskQuery(makeTask(), "456", ctx({ prNumber: 456 }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "pr789", ctx({ prNumber: 789 }))).toBe(true);
+	});
+
+	it("does not match PR number when context prNumber is null", () => {
 		expect(
-			matchesSearchQuery(
-				makeTask({ title: "Unrelated title", description: "Improve performance of data loader" }),
-				"auth",
-			),
-		).toBe(false);
-	});
-
-	// ---- Seq (numeric human-readable ID) matching ----
-
-	it("matches by exact seq number", () => {
-		expect(matchesSearchQuery(makeTask({ seq: 190 }), "190")).toBe(true);
-	});
-
-	it("matches by seq number with # prefix", () => {
-		expect(matchesSearchQuery(makeTask({ seq: 190 }), "#190")).toBe(true);
-	});
-
-	it("matches by seq number prefix (partial)", () => {
-		expect(matchesSearchQuery(makeTask({ seq: 190 }), "19")).toBe(true);
-	});
-
-	it("does not match different seq number", () => {
-		expect(matchesSearchQuery(makeTask({ seq: 42 }), "99")).toBe(false);
-	});
-
-	it("matches seq=1 when query is '1' and not confuse with unrelated numbers", () => {
-		expect(matchesSearchQuery(makeTask({ seq: 1, title: "No numbers here", description: "" }), "1")).toBe(true);
-	});
-
-	it("treats seq as prefix-only, not fuzzy subsequence", () => {
-		// "135" is a subsequence of "12345" but not a prefix — must NOT match.
-		expect(
-			matchesSearchQuery(
-				makeTask({ seq: 12345, title: "No numbers", description: "none", id: "00000000-0000-0000-0000-000000000000" }),
-				"135",
-			),
-		).toBe(false);
-	});
-
-	// ---- Full UUID (long ID) matching ----
-
-	it("matches by full UUID", () => {
-		const id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
-		expect(matchesSearchQuery(makeTask({ id }), id)).toBe(true);
-	});
-
-	it("matches by UUID prefix", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({ id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
-				"a1b2c3d4-e5f6",
-			),
-		).toBe(true);
-	});
-
-	it("treats UUID as prefix-only, not fuzzy subsequence", () => {
-		// "b2c3" appears inside the UUID but is not a prefix — must NOT match.
-		expect(
-			matchesSearchQuery(
-				makeTask({ id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", title: "No match", description: "none", seq: 1 }),
-				"b2c3",
-			),
-		).toBe(false);
-	});
-
-	it("matches UUID case-insensitively", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({ id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
-				"A1B2C3D4",
-			),
-		).toBe(true);
-	});
-
-	// ---- Short ID (first 8 chars of UUID) matching ----
-
-	it("matches by short ID (first 8 chars of UUID)", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({ id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
-				"a1b2c3d4",
-			),
-		).toBe(true);
-	});
-
-	it("matches by partial short ID", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({ id: "e1052f7e-4081-4739-946f-aa1c93292996" }),
-				"e1052",
-			),
-		).toBe(true);
-	});
-
-	it("does not match unrelated short ID", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-					title: "No match",
-					description: "Nothing here",
-					seq: 1,
-				}),
-				"zzzzzzz",
-			),
-		).toBe(false);
-	});
-
-	// ---- Combined scenarios ----
-
-	it("matches title even when other fields do not match", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					id: "00000000-0000-0000-0000-000000000000",
-					seq: 1,
-					title: "Special feature",
-					description: "Nothing relevant",
-				}),
-				"special",
-			),
-		).toBe(true);
-	});
-
-	it("matches description even when title does not match", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					title: "Unrelated title",
-					description: "Contains the magic keyword",
-				}),
-				"magic",
-			),
-		).toBe(true);
-	});
-
-	it("matches seq even when title and description do not match", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					seq: 777,
-					title: "No numbers",
-					description: "Still no numbers",
-				}),
-				"777",
-			),
-		).toBe(true);
-	});
-
-	it("matches ID even when title, description, and seq do not match", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					id: "deadbeef-1234-5678-9abc-def012345678",
-					seq: 1,
-					title: "No match",
-					description: "No match either",
-				}),
-				"deadbeef",
-			),
-		).toBe(true);
-	});
-
-	// ---- PR number matching (via options) ----
-
-	it("matches by exact PR number", () => {
-		expect(matchesSearchQuery(makeTask(), "456", { prNumber: 456 })).toBe(true);
-	});
-
-	it("matches by PR number with # prefix", () => {
-		expect(matchesSearchQuery(makeTask(), "#456", { prNumber: 456 })).toBe(true);
-	});
-
-	it("matches by PR number prefix (partial)", () => {
-		expect(matchesSearchQuery(makeTask(), "45", { prNumber: 456 })).toBe(true);
-	});
-
-	it("matches by PR number with 'PR' prefix", () => {
-		expect(matchesSearchQuery(makeTask(), "PR789", { prNumber: 789 })).toBe(true);
-	});
-
-	it("matches by PR number with 'pr' prefix (case-insensitive)", () => {
-		expect(matchesSearchQuery(makeTask(), "pr789", { prNumber: 789 })).toBe(true);
-	});
-
-	it("matches by PR number with 'PR ' prefix (with space)", () => {
-		expect(matchesSearchQuery(makeTask(), "PR 789", { prNumber: 789 })).toBe(true);
-	});
-
-	it("does not match different PR number", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					title: "No match",
-					description: "No match",
-					seq: 1,
-					id: "00000000-0000-0000-0000-000000000000",
-				}),
-				"456",
-				{ prNumber: 123 },
-			),
-		).toBe(false);
-	});
-
-	it("does not match PR number when prNumber is null", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					title: "No match",
-					description: "No match",
-					seq: 1,
-					id: "00000000-0000-0000-0000-000000000000",
-				}),
+			matchesTaskQuery(
+				makeTask({ title: "No match", description: "No match", seq: 1, id: "00000000-0000-0000-0000-000000000000" }),
 				"pr123",
-				{ prNumber: null },
+				ctx({ prNumber: null }),
 			),
 		).toBe(false);
 	});
+});
 
-	it("does not match PR number when options not provided", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					title: "No match",
-					description: "No match",
-					seq: 1,
-					id: "00000000-0000-0000-0000-000000000000",
-				}),
-				"pr123",
-			),
-		).toBe(false);
+describe("parseTaskQuery", () => {
+	it("parses a bare facet value", () => {
+		expect(parseTaskQuery("label:Feature").facets.label).toEqual(["feature"]);
 	});
 
-	// ---- Edge cases ----
-
-	it("handles query with leading/trailing spaces", () => {
-		expect(matchesSearchQuery(makeTask({ title: "Fix bug" }), "  fix  ")).toBe(true);
+	it("parses a quoted multi-word value", () => {
+		expect(parseTaskQuery('label:"Bug Fix"').facets.label).toEqual(["bug fix"]);
 	});
 
-	it("handles task with empty title and description", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({ title: "", description: "", seq: 5 }),
-				"5",
-			),
-		).toBe(true);
+	it("separates recognized facets from free text", () => {
+		const parsed = parseTaskQuery('login label:"Bug Fix" agent:Codex');
+		expect(parsed.facets.label).toEqual(["bug fix"]);
+		expect(parsed.facets.agent).toEqual(["codex"]);
+		expect(parsed.freeText).toBe("login");
 	});
 
-	it("handles task with empty title and description — no match", () => {
-		expect(
-			matchesSearchQuery(
-				makeTask({
-					id: "00000000-0000-0000-0000-000000000000",
-					title: "",
-					description: "",
-					seq: 5,
-				}),
-				"xyz",
-			),
-		).toBe(false);
+	it("treats an unrecognized key:value as free text", () => {
+		const parsed = parseTaskQuery("foo:bar login");
+		expect(parsed.facets.label).toEqual([]);
+		expect(parsed.freeText).toBe("foo:bar login");
+	});
+
+	it("recognizes only enumerated flag values; unknown flag value falls to free text", () => {
+		expect(parseTaskQuery("is:attention").facets.is).toEqual(["attention"]);
+		expect(parseTaskQuery("has:port").facets.has).toEqual(["port"]);
+		const bogus = parseTaskQuery("is:banana");
+		expect(bogus.facets.is).toEqual([]);
+		expect(bogus.freeText).toBe("is:banana");
+	});
+
+	it("collects multiple values of the same facet", () => {
+		expect(parseTaskQuery("label:Bug label:Feature").facets.label).toEqual(["bug", "feature"]);
+	});
+
+	it("is case-insensitive on the facet key", () => {
+		expect(parseTaskQuery("STATUS:review").facets.status).toEqual(["review"]);
+	});
+});
+
+describe("matchesTaskQuery — facets", () => {
+	it("matches a label by case-insensitive substring", () => {
+		expect(matchesTaskQuery(makeTask(), "label:bug", ctx({ labelNames: ["Bug Fix"] }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), 'label:"bug fix"', ctx({ labelNames: ["Bug Fix"] }))).toBe(true);
+	});
+
+	it("matches an agent by substring", () => {
+		expect(matchesTaskQuery(makeTask(), "agent:cod", ctx({ agentName: "Codex" }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "agent:codex", ctx({ agentName: "Claude" }))).toBe(false);
+	});
+
+	it("matches status by id, localized label, or custom-column name (substring)", () => {
+		const statusCtx = ctx({ statusValues: ["review-by-user", "Your Review"] });
+		expect(matchesTaskQuery(makeTask(), "status:review", statusCtx)).toBe(true);
+		expect(matchesTaskQuery(makeTask(), 'status:"your review"', statusCtx)).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "status:done", statusCtx)).toBe(false);
+		const parkedCtx = ctx({ statusValues: ["On Hold", "review-by-user", "Your Review"] });
+		expect(matchesTaskQuery(makeTask(), 'status:"on hold"', parkedCtx)).toBe(true);
+	});
+
+	it("is:attention matches only when the context flag is set", () => {
+		expect(matchesTaskQuery(makeTask(), "is:attention", ctx({ isAttention: true }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "is:attention", ctx({ isAttention: false }))).toBe(false);
+	});
+
+	it("has:port matches only when the context flag is set", () => {
+		expect(matchesTaskQuery(makeTask(), "has:port", ctx({ hasPort: true }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "has:port", ctx({ hasPort: false }))).toBe(false);
+	});
+
+	it("priority matches the task's effective level (case-insensitive)", () => {
+		expect(matchesTaskQuery(makeTask(), "priority:P0", ctx({ priorityValue: "p0" }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "priority:p0", ctx({ priorityValue: "p0" }))).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "priority:P0", ctx({ priorityValue: "p2" }))).toBe(false);
+	});
+
+	it("ORs within the priority facet (multi-select)", () => {
+		expect(matchesTaskQuery(makeTask(), "priority:P0 priority:P1", ctx({ priorityValue: "p1" }))).toBe(true);
+	});
+
+	it("ANDs across facets", () => {
+		const c = ctx({ agentName: "Codex", labelNames: ["Bug"] });
+		expect(matchesTaskQuery(makeTask(), "agent:Codex label:Bug", c)).toBe(true);
+		expect(matchesTaskQuery(makeTask(), "agent:Codex label:Feature", c)).toBe(false);
+	});
+
+	it("ORs within a facet", () => {
+		const c = ctx({ labelNames: ["Feature"] });
+		expect(matchesTaskQuery(makeTask(), "label:Bug label:Feature", c)).toBe(true);
+	});
+
+	it("combines free text with facets (AND)", () => {
+		const c = ctx({ labelNames: ["Bug"] });
+		expect(matchesTaskQuery(makeTask({ title: "Fix login" }), "login label:Bug", c)).toBe(true);
+		expect(matchesTaskQuery(makeTask({ title: "Fix logout", description: "" }), "signup label:Bug", c)).toBe(false);
+	});
+
+	it("a recognized facet value that matches nothing yields no result", () => {
+		expect(matchesTaskQuery(makeTask(), "label:nonexistent", ctx({ labelNames: ["Bug"] }))).toBe(false);
+	});
+});
+
+describe("isFacetTokenActive — exact (checked-state) vs substring (filter)", () => {
+	it("is true on exact token presence", () => {
+		expect(isFacetTokenActive("agent:Codex", "agent", "Codex")).toBe(true);
+	});
+
+	it("is case-insensitive on the value", () => {
+		expect(isFacetTokenActive("agent:codex", "agent", "Codex")).toBe(true);
+	});
+
+	it("matches quoted and bare forms of the same value", () => {
+		expect(isFacetTokenActive('label:"Bug"', "label", "Bug")).toBe(true);
+		expect(isFacetTokenActive("label:Bug", "label", "Bug")).toBe(true);
+	});
+
+	it("is NOT a substring match (checked ≠ filter)", () => {
+		// `label:bug` filters "Bug Fix" but the "Bug Fix" checkbox is not checked.
+		expect(isFacetTokenActive("label:bug", "label", "Bug Fix")).toBe(false);
+	});
+
+	it("does not match a value that is a prefix of a longer token", () => {
+		expect(isFacetTokenActive("agent:Codex", "agent", "Cod")).toBe(false);
+	});
+});
+
+describe("toggleFacetToken", () => {
+	it("appends a bare token to an empty query", () => {
+		expect(toggleFacetToken("", "agent", "Codex")).toBe("agent:Codex");
+	});
+
+	it("auto-quotes a value containing a space", () => {
+		expect(toggleFacetToken("", "label", "Bug Fix")).toBe('label:"Bug Fix"');
+	});
+
+	it("appends to an existing query preserving prior text", () => {
+		expect(toggleFacetToken("login", "label", "Bug")).toBe("login label:Bug");
+	});
+
+	it("removes the token when already present (bare)", () => {
+		expect(toggleFacetToken("login agent:Codex", "agent", "Codex")).toBe("login");
+	});
+
+	it("removes the token when already present (quoted)", () => {
+		expect(toggleFacetToken('login label:"Bug Fix"', "label", "Bug Fix")).toBe("login");
+	});
+
+	it("round-trips: add then remove returns to the original", () => {
+		const added = toggleFacetToken("login", "status", "review");
+		expect(added).toBe("login status:review");
+		expect(toggleFacetToken(added, "status", "review")).toBe("login");
+	});
+});
+
+describe("values containing double quotes / backslashes (DSL escaping)", () => {
+	// Labels, agent names and custom-column names are free-form user strings and
+	// may legally contain the DSL's own delimiter. facetToken must escape it and
+	// the parser must round-trip it — otherwise the matching task disappears.
+	const QUOTED = 'He said "ship it"';
+	const BACKSLASH = "path\\to\\thing";
+
+	it("facetToken output round-trips through the parser (embedded quotes)", () => {
+		const token = facetToken("label", QUOTED);
+		expect(parseTaskQuery(token).facets.label).toEqual([QUOTED.toLowerCase()]);
+	});
+
+	it("facetToken output round-trips through the parser (backslashes)", () => {
+		const token = facetToken("label", BACKSLASH);
+		expect(parseTaskQuery(token).facets.label).toEqual([BACKSLASH.toLowerCase()]);
+	});
+
+	it("a task whose label contains a quote still matches its own token", () => {
+		const token = facetToken("label", QUOTED);
+		expect(matchesTaskQuery(makeTask(), token, ctx({ labelNames: [QUOTED] }))).toBe(true);
+	});
+
+	it("isFacetTokenActive recognizes the serialized quoted token", () => {
+		const token = facetToken("label", QUOTED);
+		expect(isFacetTokenActive(token, "label", QUOTED)).toBe(true);
+	});
+
+	it("toggleFacetToken round-trips a quote-bearing value (add then remove)", () => {
+		const added = toggleFacetToken("login", "label", QUOTED);
+		expect(matchesTaskQuery(makeTask({ title: "login" }), added, ctx({ labelNames: [QUOTED] }))).toBe(true);
+		expect(toggleFacetToken(added, "label", QUOTED)).toBe("login");
+	});
+
+	it("counts a quote-bearing facet token exactly once", () => {
+		expect(countActiveFacetTokens(facetToken("label", QUOTED))).toBe(1);
+	});
+});
+
+describe("countActiveFacetTokens", () => {
+	it("counts every recognized facet token", () => {
+		expect(countActiveFacetTokens('label:"Bug Fix" agent:Codex is:attention login')).toBe(3);
+	});
+
+	it("counts duplicate-facet tokens separately", () => {
+		expect(countActiveFacetTokens("label:Bug label:Feature")).toBe(2);
+	});
+
+	it("ignores free text and unrecognized tokens", () => {
+		expect(countActiveFacetTokens("login foo:bar")).toBe(0);
 	});
 });

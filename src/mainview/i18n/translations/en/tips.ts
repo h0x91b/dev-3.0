@@ -214,6 +214,8 @@ const tips = {
 	"tip.cliDoctor.body": "Something off after an update? Run `dev3 doctor` in any terminal — it checks the app, tmux and Homebrew and prints exact fix commands.",
 	"tip.llmProvider.title": "Run Claude on Amazon Bedrock",
 	"tip.llmProvider.body": "Settings → Coding Agents → LLM Provider points the Claude agent at Amazon Bedrock — dev3 pins the mapped model; credentials and region stay in your own config.",
+	"tip.filterTokens.title": "Filter tasks with tokens",
+	"tip.filterTokens.body": "In the search box type label:Bug agent:Codex status:review is:attention has:port — or click the funnel to build it.",
 } as const;
 
 export default tips;
