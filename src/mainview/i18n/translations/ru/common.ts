@@ -72,6 +72,15 @@ const common = {
 	"sidebar.statusChanged": "Статус изменён {ago} · {date}",
 	"sidebar.scopeAttention": "Требует внимания — задачи, ожидающие вашего ответа, по всем проектам",
 	"sidebar.noAttentionTasks": "Всё в порядке, ничего не ждёт вашего ответа",
+	// Readiness-tier headers (built-in tiers; custom columns keep their own name)
+	"sidebar.tier.needsYou": "Нужны вы",
+	"sidebar.tier.waiting": "Ожидание",
+	// Compact per-card status labels (statuses merge within a tier, so each card names its kind)
+	"sidebar.statusShort.review": "Ревью",
+	"sidebar.statusShort.question": "Вопрос",
+	"sidebar.statusShort.aiReview": "AI-ревью",
+	"sidebar.statusShort.prReview": "PR-ревью",
+	"sidebar.statusShort.working": "В работе",
 
 	// Task switcher (Option+Tab)
 	"taskSwitcher.title": "Переключить задачу",

@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect, useMemo, useCallback, type Dispatch } from "react";
-import type { CodingAgent, CustomColumn, PortInfo, Project, Task, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY, comparePriority, getTaskTitle } from "../../shared/types";
+import type { CodingAgent, PortInfo, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import { ACTIVE_STATUSES, ALL_PRIORITIES, DEFAULT_PRIORITY, getTaskTitle } from "../../shared/types";
 import { PRIORITY_NAME_KEYS } from "./priorityStyles";
+import PriorityBadge from "./PriorityBadge";
+import { groupTasksIntoTiers } from "./sidebarTiers";
+import { toast } from "../toast";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import { api } from "../rpc";
@@ -59,7 +62,11 @@ interface ActiveTasksSidebarProps {
 	disableGlobalFindShortcut?: boolean;
 }
 
-/** Status display order: most actionable for the user first */
+/**
+ * Active statuses offered by the token-DSL filter funnel (the funnel pool only —
+ * card grouping is by readiness tier, see {@link groupTasksIntoTiers}). Ordered
+ * most-actionable-first for a tidy dropdown.
+ */
 const STATUS_ORDER: TaskStatus[] = [
 	"review-by-user",
 	"review-by-colleague",
@@ -69,21 +76,17 @@ const STATUS_ORDER: TaskStatus[] = [
 ];
 
 /**
- * Within-group order for the sidebar: strict priority bands first (P0 on top),
- * then oldest-first by `movedAt` (longest-waiting task on top) within a band. The
- * sidebar is a work queue, not a feed — priority leads with what matters, and the
- * oldest task in a band is the most at risk of being forgotten. Tasks without
- * `movedAt` sink to the bottom of their band; `seq` is a stable tiebreak.
- * See UX_DECISIONS 2026-06-22.
+ * Compact per-card status label keys. Statuses merge within a readiness tier, so
+ * each card names its kind ("Review", "Question", "Working", …) — the tier header
+ * no longer carries that information on its own.
  */
-function byPriorityThenMovedAtOldestFirst(a: Task, b: Task): number {
-	const byPriority = comparePriority(a.priority, b.priority);
-	if (byPriority !== 0) return byPriority;
-	const aTime = a.movedAt ? new Date(a.movedAt).getTime() : Infinity;
-	const bTime = b.movedAt ? new Date(b.movedAt).getTime() : Infinity;
-	if (aTime !== bTime) return aTime - bTime;
-	return a.seq - b.seq;
-}
+const SHORT_STATUS_KEYS: Partial<Record<TaskStatus, string>> = {
+	"review-by-user": "sidebar.statusShort.review",
+	"user-questions": "sidebar.statusShort.question",
+	"review-by-ai": "sidebar.statusShort.aiReview",
+	"review-by-colleague": "sidebar.statusShort.prReview",
+	"in-progress": "sidebar.statusShort.working",
+};
 
 /** Maps the single most-significant age unit to its verbose i18n key. */
 const AGE_UNIT_KEY: Record<AgeUnit, string> = {
@@ -100,6 +103,7 @@ function ActiveTasksSidebar({
 	tasks,
 	allProjects,
 	activeTaskId,
+	dispatch,
 	navigate,
 	agents,
 	bellCounts,
@@ -222,15 +226,11 @@ function ActiveTasksSidebar({
 	}, [globalTasks, tasks, isAttention]);
 
 	let activeTasks = sourceTasks.filter((task) => ACTIVE_STATUSES.includes(task.status));
+	// Attention scope keeps only tasks needing the user (funnel pool + search
+	// operate on this subset). The priority-first ordering is applied by
+	// `groupTasksIntoTiers` below — same sort as every other tier.
 	if (scope === "attention") {
 		activeTasks = activeTasks.filter(isAttention);
-		// Sort oldest-first by movedAt (status-change timestamp) so the
-		// longest-waiting task is always at the top.
-		activeTasks = activeTasks.slice().sort((a, b) => {
-			const aTime = a.movedAt ? new Date(a.movedAt).getTime() : 0;
-			const bTime = b.movedAt ? new Date(b.movedAt).getTime() : 0;
-			return aTime - bTime;
-		});
 	}
 
 	const projectById = useMemo(() => {
@@ -326,63 +326,76 @@ function ActiveTasksSidebar({
 		[projectById, statusColors],
 	);
 
-	// A rendered group: either a built-in status column or a custom column.
-	// `busy` drives the header spinner (agent actively working).
+	// A rendered readiness-tier block. `showHeader` is false only for the
+	// attention scope, which renders a single flat list with no header.
 	interface SidebarGroup {
 		key: string;
 		label: string;
 		color: string;
-		busy: boolean;
+		showHeader: boolean;
 		tasks: Task[];
 	}
 
-	// In attention mode, render a single flat list sorted oldest-first by movedAt;
-	// grouping would reorder tasks by status, defeating age ordering.
-	// Otherwise mirror the kanban: built-in status columns exclude tasks parked
-	// in a custom column, and each custom column becomes its own group.
-	let grouped: SidebarGroup[];
-	if (scope === "attention") {
-		grouped = activeTasks.length > 0
-			? [{ key: "attention", label: "", color: statusColors["user-questions"], busy: false, tasks: activeTasks }]
-			: [];
-	} else {
-		const builtinGroups: SidebarGroup[] = STATUS_ORDER
-			.map((status) => ({
-				key: status,
-				label: getStatusLabel(status, t, project),
-				color: statusColors[status],
-				busy: status === "in-progress" || status === "review-by-ai",
-				tasks: activeTasks
-					.filter((task) => task.status === status && !task.customColumnId)
-					.sort(byPriorityThenMovedAtOldestFirst),
-			}))
-			.filter((g) => g.tasks.length > 0);
-
-		// Custom-column groups, ordered by each owning project's customColumns
-		// order. Scan all projects in global scope, just the current one otherwise.
-		const customTasksByCol = new Map<string, Task[]>();
-		for (const task of activeTasks) {
-			if (!task.customColumnId) continue;
-			const key = `${task.projectId}|${task.customColumnId}`;
-			const existing = customTasksByCol.get(key);
-			if (existing) existing.push(task);
-			else customTasksByCol.set(key, [task]);
-		}
-		const orderedCols: { projId: string; col: CustomColumn }[] = [];
+	// Custom columns in render order (project order). Scan all projects in global
+	// scope, just the current one otherwise — mirrors the kanban's column order.
+	const orderedCustomColumns = useMemo(() => {
+		const cols: { projectId: string; columnId: string }[] = [];
 		const projectsToScan = scope === "global" ? Array.from(projectById.values()) : [project];
 		for (const p of projectsToScan) {
-			for (const col of p.customColumns ?? []) orderedCols.push({ projId: p.id, col });
+			for (const col of p.customColumns ?? []) cols.push({ projectId: p.id, columnId: col.id });
 		}
-		const customGroups: SidebarGroup[] = [];
-		for (const { projId, col } of orderedCols) {
-			const colTasks = customTasksByCol.get(`${projId}|${col.id}`);
-			if (colTasks && colTasks.length > 0) {
-				customGroups.push({ key: `custom:${projId}:${col.id}`, label: col.name, color: col.color, busy: false, tasks: colTasks.sort(byPriorityThenMovedAtOldestFirst) });
-			}
-		}
+		return cols;
+	}, [scope, projectById, project]);
 
-		grouped = [...builtinGroups, ...customGroups];
-	}
+	// Readiness tiers: NEEDS YOU → custom columns → WAITING (attention scope: one
+	// flat NEEDS-YOU list). Grouping + within-tier ordering is a pure function so
+	// it is unit-tested without rendering; here we only map it to header chrome.
+	const tiers = groupTasksIntoTiers(activeTasks, { scope, bellCounts, orderedCustomColumns });
+	const grouped: SidebarGroup[] = tiers.map((tier) => {
+		if (tier.kind === "needs-you") {
+			return {
+				key: tier.key,
+				label: scope === "attention" ? "" : t("sidebar.tier.needsYou"),
+				// Warm attention hue (the "act now" zone), matching the bell.
+				color: statusColors["user-questions"],
+				showHeader: scope !== "attention",
+				tasks: tier.tasks,
+			};
+		}
+		if (tier.kind === "waiting") {
+			return {
+				key: tier.key,
+				label: t("sidebar.tier.waiting"),
+				// Neutral grey — nothing needs the user in this zone.
+				color: statusColors["review-by-ai"],
+				showHeader: true,
+				tasks: tier.tasks,
+			};
+		}
+		// Custom column — resolve its own name + color from the owning project.
+		const col = projectById.get(tier.projectId!)?.customColumns?.find((c) => c.id === tier.customColumnId);
+		return {
+			key: tier.key,
+			label: col?.name ?? "",
+			color: col?.color ?? statusColors["in-progress"],
+			showHeader: true,
+			tasks: tier.tasks,
+		};
+	});
+
+	const handleSetPriority = useCallback(
+		async (task: Task, priority: TaskPriority) => {
+			try {
+				// Group-wide: the RPC returns every changed task in the variant group.
+				// Use the task's OWN project so it works in cross-project scopes too.
+				const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: task.projectId, priority });
+				for (const changedTask of changed) dispatch({ type: "updateTask", task: changedTask });
+			} catch (err) {
+				toast.error(t("priority.failedSet", { error: String(err) }));
+			}
+		},
+		[dispatch, t],
+	);
 
 	function handleTaskClick(task: Task) {
 		preview.close();
@@ -559,16 +572,19 @@ function ActiveTasksSidebar({
 								: t("sidebar.noActiveTasks")}
 					</div>
 				) : (
-					grouped.map(({ key: groupKey, label: groupLabel, color: groupColor, busy: groupBusy, tasks: groupTasks }, groupIdx) => (
+					grouped.map(({ key: groupKey, label: groupLabel, color: groupColor, showHeader: groupShowHeader, tasks: groupTasks }, groupIdx) => (
 						<div key={groupKey}>
-							{/* Solid separator between status groups */}
-							{groupIdx > 0 && scope !== "attention" && (
+							{/* Solid separator between readiness-tier blocks */}
+							{groupIdx > 0 && groupShowHeader && (
 								<div className="mx-3 border-t border-edge" />
 							)}
 
-							{/* Group header (hidden in attention mode — flat list, no grouping) */}
-							{scope !== "attention" && <div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
-								{/* Faint status wash + left bar so the group reads as one color zone */}
+							{/* Tier header with count (hidden in attention mode — flat list).
+							    No spinner: the WAITING tier merges working + AI-review + PRs, so
+							    a tier-wide spinner would mislead; the per-card rail busy-flow
+							    animation remains the "agent working" cue. */}
+							{groupShowHeader && <div className="relative px-3 py-1.5 flex items-center gap-2 sticky top-0 bg-base/95 backdrop-blur-sm z-10">
+								{/* Faint zone wash + left bar so the tier reads as one color zone */}
 								<span
 									className="absolute inset-0 pointer-events-none"
 									style={{ background: statusTint(groupColor, 0.1) }}
@@ -577,26 +593,14 @@ function ActiveTasksSidebar({
 									className="absolute left-0 top-0 bottom-0 w-[3px]"
 									style={{ background: groupColor }}
 								/>
-								{groupBusy ? (
-									<div
-										className="w-3 h-3 flex-shrink-0 rounded-full animate-spin"
-										style={{
-											border: `1.5px solid ${groupColor}33`,
-											borderTopColor: groupColor,
-										}}
-										data-testid={`sidebar-status-spinner-${groupKey}`}
-										aria-label={groupLabel}
-									/>
-								) : (
-									<div
-										className="w-2 h-2 rounded-full flex-shrink-0 relative"
-										style={{ background: groupColor }}
-									/>
-								)}
+								<div
+									className="w-2 h-2 rounded-full flex-shrink-0 relative"
+									style={{ background: groupColor }}
+								/>
 								<span className="text-[0.625rem] font-semibold text-fg-3 uppercase tracking-wider">
 									{groupLabel}
 								</span>
-								<span className="text-[0.625rem] text-fg-muted">
+								<span className="text-[0.625rem] text-fg-muted" data-testid={`sidebar-tier-count-${groupKey}`}>
 									{groupTasks.length}
 								</span>
 							</div>}
@@ -624,12 +628,23 @@ function ActiveTasksSidebar({
 										{idx > 0 && (
 											<div className="mx-3 border-t border-dashed border-edge" />
 										)}
-										<button
+										<div
 											data-hint-id={`task:${task.id}`}
+											role="button"
+											tabIndex={0}
+											aria-label={displayTitle}
 											onClick={() => handleTaskClick(task)}
+											onKeyDown={(e) => {
+												// Card is a div (so the nested PriorityBadge button is valid
+												// HTML); restore native button keyboard activation.
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													handleTaskClick(task);
+												}
+											}}
 											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
 											onMouseLeave={preview.handlers.onMouseLeave}
-											className={`w-full text-left px-3 py-2 transition-all relative ${
+											className={`w-full text-left px-3 py-2 transition-all relative cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
 												isActive
 													? "bg-accent/20 ring-1 ring-inset ring-accent/50"
 													: "hover:bg-elevated-hover"
@@ -700,6 +715,14 @@ function ActiveTasksSidebar({
 												)}
 
 												<div className="mb-1 flex items-center gap-1.5 min-w-0">
+													{/* Priority badge — first element, always visible incl. P3.
+													    Same component + picker as the kanban card; changing it
+													    re-prioritizes the whole variant group. It stops its own
+													    click, so tapping it never opens the task. */}
+													<PriorityBadge
+														priority={task.priority}
+														onChange={(p) => handleSetPriority(task, p)}
+													/>
 													{agent && <AgentLauncherBadge agent={agent} size={14} />}
 													<div
 														className={`min-w-0 flex-1 truncate text-[0.625rem] font-medium ${
@@ -744,6 +767,23 @@ function ActiveTasksSidebar({
 												})()}
 
 												<div className="mt-1 flex items-center gap-1 min-w-0">
+													{/* Compact status label — statuses merge within a tier, so
+													    each card names its kind. Colored by its real status hue
+													    (not the custom-column color) so "Working"/"Review" read. */}
+													{(() => {
+														const statusKey = SHORT_STATUS_KEYS[task.status];
+														if (!statusKey) return null;
+														const hue = statusColors[task.status];
+														return (
+															<span
+																className="shrink-0 text-[0.5625rem] font-semibold uppercase tracking-wide leading-none px-1 py-0.5 rounded"
+																style={{ color: hue, background: statusTint(hue, 0.14) }}
+																data-testid={`sidebar-status-label-${task.id}`}
+															>
+																{t(statusKey as Parameters<typeof t>[0])}
+															</span>
+														);
+													})()}
 													<div className="text-[0.5625rem] text-fg-3 font-mono shrink-0">
 														#{task.seq}
 													</div>
@@ -813,7 +853,7 @@ function ActiveTasksSidebar({
 														</div>
 													);
 												})()}
-										</button>
+										</div>
 									</div>
 								);
 							})}

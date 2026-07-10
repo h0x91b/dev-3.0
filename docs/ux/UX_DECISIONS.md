@@ -177,11 +177,11 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** Tips previously reached only the Kanban board, so terminal-surface discovery facts never reached terminal dwellers; boost-not-filter keeps every surface cycling everything. Rejected: a ticker (annoying), a permanent terminal footer (chrome creep), an exclusive-context flag.
 - **Status:** Observed. Evidence: `tips.ts` (`TipContext`), `hooks/useTipRotation.ts`.
 
-## 2026-06-22 — Active Tasks sidebar: within-group ordering is oldest-first (work-queue, not feed)
+## 2026-07-11 — Active Tasks sidebar: readiness tiers + visible priority (supersedes 2026-06-22)
 
-- **Rule:** Sidebar groups sort oldest-first by `movedAt`, uniform across all groups; the sidebar does NOT reuse the kanban's `sortTasksForColumn`.
-- **Why:** A queue must surface the longest-waiting (most starvation-prone, often agent-blocked-on-user) task first — matching the attention/bell scope's oldest-first; a per-group direction split breaks scan predictability. Known trade-off: variant siblings can separate.
-- **Status:** Observed. Evidence: `ActiveTasksSidebar.tsx`.
+- **Rule:** The sidebar groups by **readiness tier** — `NEEDS YOU` (review-by-user ∪ user-questions ∪ *signalled* review-by-colleague) → custom columns (project order) → `WAITING` (in-progress ∪ review-by-ai ∪ unsignalled review-by-colleague) — not by status; within every tier it sorts by priority band P0→P4, then oldest `movedAt`, then `seq`. Each card shows the kanban's `PriorityBadge` (picker → `setTaskPriority`) + a compact status label; the attention/bell scope is the `NEEDS YOU` tier at global breadth with the same sort. Grouping+sort is a pure function (`groupTasksIntoTiers`).
+- **Why:** A work queue must first answer "does this need me?" then "how important?"; a live PR signal is the only status whose tier is runtime-driven, and manual custom-column parking must outrank a merely-busy agent. Rejected: keep per-status groups (priority already sorts within them, but the user can't see priority and can't tell actionable from churning). Supersedes the 2026-06-22 oldest-first-uniform rule (priority now leads; oldest-`movedAt` is the in-band tiebreak).
+- **Status:** Implemented. Evidence: `sidebarTiers.ts` (+`__tests__`), `ActiveTasksSidebar.tsx`; `decisions/124-sidebar-readiness-tiers.md`.
 
 ## 2026-06-21 — Hint navigation is a cross-surface primitive; keyboard-first expert layer
 
