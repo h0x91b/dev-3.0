@@ -1,0 +1,1 @@
+Fixed Codex agents failing to launch (exit 2, "unexpected argument --profile-v2") after codex was upgraded while dev3 kept running. dev3 now re-detects the codex profile launch flag whenever the installed codex version changes, instead of caching it for the whole app-process lifetime, so a mid-session codex upgrade no longer requires restarting dev3.

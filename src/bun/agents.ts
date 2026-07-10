@@ -374,7 +374,7 @@ export function quoteIfUnsafe(s: string): string {
 }
 
 let codexProfileLaunchFlagOverride: CodexProfileLaunchFlag | null = null;
-let cachedCodexProfileLaunchFlag: CodexProfileLaunchFlag | undefined;
+let cachedProfileFlag: { flag: CodexProfileLaunchFlag; version: string | null } | undefined;
 
 /**
  * Test-only override for codex profile launch-flag detection.
@@ -382,22 +382,42 @@ let cachedCodexProfileLaunchFlag: CodexProfileLaunchFlag | undefined;
  */
 export function __setCodexProfileV2Override(value: boolean | null): void {
 	codexProfileLaunchFlagOverride = value === null ? null : value ? "--profile-v2" : "--profile";
-	cachedCodexProfileLaunchFlag = undefined;
+	cachedProfileFlag = undefined;
+}
+
+/**
+ * Decide the profile flag, reusing the cached result only while the installed
+ * codex version is unchanged. Pure so the cache-invalidation logic is testable
+ * without spawning: `detect` is called only on a first read or a version change.
+ */
+export function resolveProfileFlagForVersion(
+	currentVersion: string | null,
+	cached: { flag: CodexProfileLaunchFlag; version: string | null } | undefined,
+	detect: () => CodexProfileLaunchFlag,
+): { flag: CodexProfileLaunchFlag; version: string | null } {
+	if (cached !== undefined && cached.version === currentVersion) return cached;
+	return { flag: detect(), version: currentVersion };
 }
 
 /**
  * The flag the installed Codex accepts to select a dev3 profile. `--profile-v2`
  * existed only in a short transition window before it was renamed to
  * `--profile`/`-p` (same file-based semantics); newer codex rejects it outright.
- * Feature-detected from `codex --help` and cached for the process lifetime —
- * version numbers do not map reliably to the rename. See issue #611.
+ * Feature-detected from `codex --help`; version numbers do not map reliably to
+ * the rename. See issue #611.
+ *
+ * The detection is re-run whenever the installed codex version changes so a
+ * mid-session `codex` upgrade under a long-running dev3 is picked up. Caching it
+ * for the whole process lifetime (the original #611 fix) left the flag stale
+ * across an upgrade that crossed the rename, so every new Codex pane launched
+ * with a flag the new binary rejects (exit 2) until dev3 was restarted. The
+ * `codex --version` probe is cheap; the pricier `--help` parse only re-runs when
+ * the version actually changed.
  */
 function getCodexProfileLaunchFlag(): CodexProfileLaunchFlag {
 	if (codexProfileLaunchFlagOverride !== null) return codexProfileLaunchFlagOverride;
-	if (cachedCodexProfileLaunchFlag === undefined) {
-		cachedCodexProfileLaunchFlag = detectCodexProfileLaunchFlag();
-	}
-	return cachedCodexProfileLaunchFlag;
+	cachedProfileFlag = resolveProfileFlagForVersion(detectCodexVersion(), cachedProfileFlag, detectCodexProfileLaunchFlag);
+	return cachedProfileFlag.flag;
 }
 
 /**

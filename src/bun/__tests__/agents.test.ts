@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, isOpenCodeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, claudeModelFamily, __setCodexProfileV2Override, resolveProfileFlagForVersion, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -554,6 +554,74 @@ describe("resolveAgentCommand — resume", () => {
 		expect(cmd).not.toContain("resume --last");
 		// Unsupported agent still gets the prompt (no resume behavior)
 		expect(cmd).toContain("Some task");
+	});
+});
+
+// Cache-invalidation for the codex profile flag: a mid-session `codex` upgrade
+// must re-run detection, otherwise the flag is stale and every launch fails
+// (issue #611 follow-up — the original fix cached the flag for the whole
+// process lifetime, so an upgrade across the --profile-v2 → --profile rename
+// kept launching with a flag the new binary rejects until dev3 restarted).
+describe("resolveProfileFlagForVersion (codex mid-session upgrade)", () => {
+	it("detects on first read (no cache) and remembers the version", () => {
+		let calls = 0;
+		const detect = () => {
+			calls++;
+			return "--profile-v2" as const;
+		};
+		const result = resolveProfileFlagForVersion("codex-cli 0.131.0", undefined, detect);
+		expect(result).toEqual({ flag: "--profile-v2", version: "codex-cli 0.131.0" });
+		expect(calls).toBe(1);
+	});
+
+	it("reuses the cached flag while the version is unchanged (no re-detect)", () => {
+		let calls = 0;
+		const detect = () => {
+			calls++;
+			return "--profile-v2" as const;
+		};
+		const cached = { flag: "--profile-v2" as const, version: "codex-cli 0.131.0" };
+		const result = resolveProfileFlagForVersion("codex-cli 0.131.0", cached, detect);
+		expect(result).toBe(cached);
+		expect(calls).toBe(0);
+	});
+
+	it("re-detects when the version changed across the --profile-v2 rename", () => {
+		let calls = 0;
+		const detect = () => {
+			calls++;
+			return "--profile" as const;
+		};
+		// Cached as --profile-v2 for old codex; codex upgraded to 0.144.1 which
+		// dropped the flag. Must re-detect and land on --profile.
+		const cached = { flag: "--profile-v2" as const, version: "codex-cli 0.133.0" };
+		const result = resolveProfileFlagForVersion("codex-cli 0.144.1", cached, detect);
+		expect(result).toEqual({ flag: "--profile", version: "codex-cli 0.144.1" });
+		expect(calls).toBe(1);
+	});
+
+	it("re-detects when the version becomes unknown (null)", () => {
+		let calls = 0;
+		const detect = () => {
+			calls++;
+			return "--profile" as const;
+		};
+		const cached = { flag: "--profile-v2" as const, version: "codex-cli 0.133.0" };
+		const result = resolveProfileFlagForVersion(null, cached, detect);
+		expect(result).toEqual({ flag: "--profile", version: null });
+		expect(calls).toBe(1);
+	});
+
+	it("does not re-detect while the version stays unknown (null === null)", () => {
+		let calls = 0;
+		const detect = () => {
+			calls++;
+			return "--profile" as const;
+		};
+		const cached = { flag: "--profile" as const, version: null };
+		const result = resolveProfileFlagForVersion(null, cached, detect);
+		expect(result).toBe(cached);
+		expect(calls).toBe(0);
 	});
 });
 
