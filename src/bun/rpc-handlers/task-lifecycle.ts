@@ -876,6 +876,13 @@ export async function moveTask(params: {
 				oldStatus,
 				hasWorktree: !!task.worktreePath,
 			});
+			// Announce the "shutting down" window BEFORE the slow teardown below
+			// (destroySession → cleanup script → removeWorktree can take many
+			// seconds). This decorates a transient, NEVER-persisted `shuttingDown`
+			// flag onto the pushed snapshot so every renderer (board + remote
+			// browser) shows the muted card state and blocks opening. The terminal
+			// `taskUpdated` push below replaces the task wholesale and clears it.
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: { ...task, shuttingDown: true } });
 			try {
 				pty.destroySession(task.id, task.tmuxSocket ?? undefined);
 			} catch (err) {

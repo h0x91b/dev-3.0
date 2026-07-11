@@ -88,7 +88,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const [ctxMenuPos, setCtxMenuPos] = useState({ top: 0, left: 0 });
 
 	const isPreparing = task.preparing === true;
-	const isDisabled = moving || isMovingProp || isPreparing || cancellingPreparation;
+	// Transient teardown window pushed by the server while completing/cancelling
+	// (destroy session → cleanup script → remove worktree). Unlike `preparing`,
+	// the card is NOT openable — the worktree/session are being destroyed.
+	const isShuttingDown = task.shuttingDown === true;
+	const isDisabled = moving || isMovingProp || isPreparing || cancellingPreparation || isShuttingDown;
 	const isTodo = task.status === "todo";
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
@@ -372,6 +376,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	function handleContextMenu(e: React.MouseEvent) {
+		if (isShuttingDown) return;
 		if (!task.worktreePath) return;
 		e.preventDefault();
 		e.stopPropagation();
@@ -464,7 +469,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	function handleCardMouseEnter() {
-		if (!isActive || menuOpen) return;
+		if (!isActive || menuOpen || isShuttingDown) return;
 		if (!cardRef.current) return;
 		preview.handlers.onMouseEnter(task.id, cardRef.current);
 	}
@@ -490,8 +495,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
-			} ${isCompleting ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
-			style={{ borderLeftColor: isCompleting ? "#888" : color }}
+			} ${isCompleting || isShuttingDown ? "grayscale opacity-40 pointer-events-none" : isPreparing ? "opacity-60" : isDisabled ? "opacity-50 pointer-events-none" : ""}`}
+			style={{ borderLeftColor: isCompleting || isShuttingDown ? "#888" : color }}
 			onClick={handleClick}
 		>
 			{/* Moving spinner overlay */}
@@ -548,6 +553,31 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 									{t("task.cancel")}
 								</button>
 							</Tooltip>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Shutting-down overlay — muted, indeterminate "powering down" while the
+			    session/worktree are torn down. The opposite of the preparing loader:
+			    grey (not accent), no progress bar (teardown duration is unknowable),
+			    no actions. The card is pointer-events-none, so it is not openable. */}
+			{isShuttingDown && (
+				<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-base/55 px-3 backdrop-blur-[2px]">
+					<div
+						className="flex max-w-full items-center gap-2 rounded-xl border border-edge bg-overlay/95 px-3 py-2 shadow-xl shadow-black/30"
+						role="status"
+						aria-live="polite"
+						aria-busy="true"
+					>
+						<div className="h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 border-fg-muted/30 border-t-fg-muted animate-spin motion-reduce:animate-none" />
+						<div className="min-w-0">
+							<div className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-3">
+								{t("task.shuttingDown")}
+							</div>
+							<div className="truncate text-xs text-fg-muted">
+								{t("task.shuttingDownDetail")}
+							</div>
 						</div>
 					</div>
 				</div>

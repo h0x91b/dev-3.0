@@ -1,0 +1,1 @@
+Task cards now show a muted "Shutting down…" state (the opposite of the blue "preparing" loader) while a completed/cancelled task tears down its session and worktree — a window that can last several seconds. The card is greyed and locked (not openable, no context menu) until teardown finishes, so you no longer click a card whose worktree is being destroyed.
