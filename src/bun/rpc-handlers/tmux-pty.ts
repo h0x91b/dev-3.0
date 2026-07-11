@@ -368,9 +368,10 @@ async function ensureAgentTrust(
 	worktreePath: string,
 	projectPath: string,
 	resolvedBaseCmd: string,
+	accountId?: string | null,
 ): Promise<void> {
 	try {
-		await agents.ensureClaudeTrust(worktreePath, projectPath);
+		await agents.ensureClaudeTrust(worktreePath, projectPath, accountId);
 		log.info("Claude trust ensured", { worktreePath });
 	} catch (err) {
 		log.error("ensureClaudeTrust failed (non-fatal)", {
@@ -612,7 +613,7 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, task.accountId);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
@@ -1338,7 +1339,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					} else {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, pane.sessionId ?? undefined) ?? pane.agentCmd;
 					}
-					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd);
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 					});
@@ -2224,7 +2225,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	// Register trust / re-patch the agent's config before spawning. The primary
 	// task launch does this; without it a spawned Codex pane runs against a stale
 	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
-	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd);
+	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 	});
@@ -2381,7 +2382,7 @@ async function spawnSingleBugHunterPane(opts: {
 
 	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
 	// otherwise launches against a stale config.toml and crashes.
-	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd);
+	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 	});

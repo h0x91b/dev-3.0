@@ -311,6 +311,18 @@ function currentCodexIdentity(paths: AccountPaths): AgentAccountIdentity | null 
 	return parseCodexIdentity(safeReadJson(join(paths.codexHome, "auth.json")));
 }
 
+/** Absolute dirs of every managed codex account (each a per-account CODEX_HOME).
+ *  The rate-limit monitor uses this to find rollout/session files that per-launch
+ *  CODEX_HOME injection scatters out of ~/.codex/sessions. Best-effort: returns
+ *  [] when the registry is unreadable. */
+export function listCodexAccountDirs(paths: AccountPaths = defaultAccountPaths()): string[] {
+	try {
+		return loadRegistry(paths).codex.accounts.map((e) => codexAccountDir(e.id, paths));
+	} catch {
+		return [];
+	}
+}
+
 export async function listAgentAccounts(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccountsState> {
 	const registry = loadRegistry(paths);
 	return {

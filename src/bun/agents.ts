@@ -1082,7 +1082,7 @@ const TRUST_ENTRY = {
  * approvals/rejections from `<projectPath>/.claude/settings.local.json` or
  * `<projectPath>/.claude/settings.json` are preserved.
  */
-export async function ensureClaudeTrust(dirPath: string, projectPath?: string): Promise<void> {
+export async function ensureClaudeTrust(dirPath: string, projectPath?: string, accountId?: string | null): Promise<void> {
 	try {
 		// Resolve symlinks so the path matches what claude sees
 		const resolved = await realpath(dirPath);
@@ -1091,9 +1091,10 @@ export async function ensureClaudeTrust(dirPath: string, projectPath?: string): 
 
 		// A managed account (agent account switcher) reads trust from ITS OWN
 		// .claude.json inside the CLAUDE_CONFIG_DIR we inject — register there too,
-		// or every launch under a switched account re-asks the trust dialog.
+		// or every launch under a switched account re-asks the trust dialog. Use the
+		// per-launch account (falls back to the registry default when undefined).
 		try {
-			const accountDir = await getActiveClaudeConfigDir();
+			const accountDir = await getActiveClaudeConfigDir(accountId);
 			if (accountDir) {
 				await writeClaudeTrustEntry(join(accountDir, ".claude.json"), resolved);
 			}

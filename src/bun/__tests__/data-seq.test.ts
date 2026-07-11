@@ -265,6 +265,28 @@ describe("addTask — seq assignment", () => {
 		expect(loaded[0].existingBranch).toBeUndefined();
 	});
 
+	it("addTask persists the per-launch accountId (managed account and system-login null)", async () => {
+		seedTasks([]);
+
+		const managed = await addTask(testProject, "On a managed account", "todo", { accountId: "acc-123" });
+		expect(managed.accountId).toBe("acc-123");
+		expect((await loadTasks(testProject))[0].accountId).toBe("acc-123");
+
+		seedTasks([]);
+		// null is an explicit choice (system login) and must round-trip as null.
+		const systemLogin = await addTask(testProject, "On the system login", "todo", { accountId: null });
+		expect(systemLogin.accountId).toBeNull();
+		expect((await loadTasks(testProject))[0].accountId).toBeNull();
+	});
+
+	it("addTask without accountId leaves the field unset (uses the registry default)", async () => {
+		seedTasks([]);
+
+		const task = await addTask(testProject, "No explicit account");
+		expect(task.accountId).toBeUndefined();
+		expect((await loadTasks(testProject))[0].accountId).toBeUndefined();
+	});
+
 	it("addTask after backfill continues from correct seq", async () => {
 		// Old tasks without seq
 		const tasks = [
