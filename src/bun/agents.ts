@@ -468,6 +468,12 @@ export interface CommandOptions {
 	 *  supplied via injected provider env (ANTHROPIC_MODEL) instead.
 	 *  Only affects the Claude agent. */
 	llmProvider?: LlmProvider;
+	/** Per-launch managed account selection (agent account switcher). `undefined`
+	 *  → use the registry default (the preselect); `null` → force the system
+	 *  login (~/.claude / ~/.codex); a string → that specific managed account.
+	 *  Threaded into the account env resolution so each spawned session locks to
+	 *  its chosen account instead of a single global active one. */
+	accountId?: string | null;
 }
 
 /**
@@ -745,10 +751,14 @@ function applyStatusLineOption(
  *  config's envVars disables the injection entirely, and per-key values set by
  *  the config always win. Affects new sessions only; running agents keep their
  *  in-memory credentials. */
-async function applyClaudeAccountEnv(baseCmd: string, extraEnv: Record<string, string>): Promise<void> {
+async function applyClaudeAccountEnv(
+	baseCmd: string,
+	extraEnv: Record<string, string>,
+	accountId?: string | null,
+): Promise<void> {
 	if (!isClaudeCommand(baseCmd) || extraEnv.CLAUDE_CONFIG_DIR) return;
 	try {
-		const accountEnv = await getActiveClaudeSessionEnv();
+		const accountEnv = await getActiveClaudeSessionEnv(accountId);
 		for (const [key, value] of Object.entries(accountEnv)) {
 			if (!(key in extraEnv)) extraEnv[key] = value;
 		}
@@ -830,7 +840,7 @@ export async function resolveCommandForAgent(
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
-	await applyClaudeAccountEnv(baseCmd, extraEnv);
+	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
 	const command = resolveAgentCommand(
 		agentWithPath,
 		applyModelOverride(config, baseCmd, extraEnv),
@@ -906,7 +916,7 @@ export async function resolveCommandForProject(
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
-		await applyClaudeAccountEnv(baseCmd, extraEnv);
+		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
 		const command = resolveAgentCommand(
 			agentWithPath,
 			applyModelOverride(config, baseCmd, extraEnv),

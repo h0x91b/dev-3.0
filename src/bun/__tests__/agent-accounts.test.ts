@@ -200,17 +200,30 @@ describe("setActiveClaudeAccount / getActiveClaudeConfigDir", () => {
 		seedClaudeLogin();
 		const account = await importCurrentClaudeAccount(paths);
 
-		expect(await getActiveClaudeConfigDir(paths)).toBeNull();
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
 
 		await setActiveClaudeAccount(account.id, paths);
-		expect(await getActiveClaudeConfigDir(paths)).toBe(claudeAccountDir(account.id, paths));
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBe(claudeAccountDir(account.id, paths));
 
 		await setActiveClaudeAccount(null, paths);
-		expect(await getActiveClaudeConfigDir(paths)).toBeNull();
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
 	});
 
 	it("rejects unknown account ids", async () => {
 		await expect(setActiveClaudeAccount("nope", paths)).rejects.toThrow(/Unknown Claude account/);
+	});
+
+	it("per-launch accountId override selects an account regardless of the registry default", async () => {
+		seedClaudeLogin();
+		const account = await importCurrentClaudeAccount(paths);
+		// Registry default stays the system login (activeId=null)…
+		await setActiveClaudeAccount(null, paths);
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
+		// …but an explicit per-launch override picks the managed account for THIS launch.
+		expect(await getActiveClaudeConfigDir(account.id, paths)).toBe(claudeAccountDir(account.id, paths));
+		// null override forces the system login even when the default points elsewhere.
+		await setActiveClaudeAccount(account.id, paths);
+		expect(await getActiveClaudeConfigDir(null, paths)).toBeNull();
 	});
 });
 
@@ -336,7 +349,7 @@ describe("claude API profiles", () => {
 		);
 		await setActiveClaudeAccount(account.id, paths);
 
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(account.id, paths));
 		expect(env.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
 		expect(env.ANTHROPIC_API_KEY).toBe("sk-or-key");
@@ -363,7 +376,7 @@ describe("claude API profiles", () => {
 		);
 		await setActiveClaudeAccount(account.id, paths);
 
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("provider/fast");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Fast");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION).toBe("Cheap background model");
@@ -374,11 +387,11 @@ describe("claude API profiles", () => {
 
 	it("active OAuth account injects CLAUDE_CONFIG_DIR and unsets every API-profile var; empty registry injects nothing", async () => {
 		seedClaudeLogin();
-		expect(await getActiveClaudeSessionEnv(paths)).toEqual({});
+		expect(await getActiveClaudeSessionEnv(undefined, paths)).toEqual({});
 
 		const account = await importCurrentClaudeAccount(paths);
 		await setActiveClaudeAccount(account.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(account.id, paths));
 		for (const key of claudeApiProfileEnvKeys()) {
 			if (key === "CLAUDE_CONFIG_DIR") continue;
@@ -390,7 +403,7 @@ describe("claude API profiles", () => {
 		seedClaudeLogin();
 		await importCurrentClaudeAccount(paths);
 		// activeId stays null → system login, but a stale profile env must still be cleared.
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		for (const key of claudeApiProfileEnvKeys()) {
 			expect(env[key]).toBe(ENV_UNSET);
 		}
@@ -401,7 +414,7 @@ describe("claude API profiles", () => {
 		await addClaudeApiProfile({ apiKey: "sk-x", env: { CLAUDE_CODE_USE_BEDROCK: "1" } }, paths);
 		const oauth = await importCurrentClaudeAccount(paths);
 		await setActiveClaudeAccount(oauth.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
 		expect(env.ANTHROPIC_API_KEY).toBe(ENV_UNSET);
 	});
@@ -412,7 +425,7 @@ describe("claude API profiles", () => {
 		expect(account.label).toBe("API profile 1");
 		await removeAgentAccount("claude", account.id, paths);
 		expect(existsSync(claudeAccountDir(account.id, paths))).toBe(false);
-		expect(await getActiveClaudeSessionEnv(paths)).toEqual({});
+		expect(await getActiveClaudeSessionEnv(undefined, paths)).toEqual({});
 	});
 
 	it("draft returns the editable fields including the key value and slot overrides", async () => {
@@ -460,7 +473,7 @@ describe("claude API profiles", () => {
 		});
 		// Key preserved on disk (apiKey omitted → keep); master model fans out to slots.
 		await setActiveClaudeAccount(account.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.ANTHROPIC_API_KEY).toBe("sk-original");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("new-model");
 		expect(env.ANTHROPIC_MODEL).toBe(ENV_UNSET);
@@ -473,7 +486,7 @@ describe("claude API profiles", () => {
 		const account = await addClaudeApiProfile({ apiKey: "sk-x", model: "master-model" }, paths);
 		await updateClaudeApiProfile(account.id, { model: "", slotModels: { sonnet: { id: "provider/sonnet" } } }, paths);
 		await setActiveClaudeAccount(account.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("provider/sonnet");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(ENV_UNSET);
 	});
@@ -483,7 +496,7 @@ describe("claude API profiles", () => {
 		const account = await addClaudeApiProfile({ apiKey: "sk-original-key" }, paths);
 		await updateClaudeApiProfile(account.id, { apiKey: "sk-brand-new-key-1234567890" }, paths);
 		await setActiveClaudeAccount(account.id, paths);
-		expect((await getActiveClaudeSessionEnv(paths)).ANTHROPIC_API_KEY).toBe("sk-brand-new-key-1234567890");
+		expect((await getActiveClaudeSessionEnv(undefined, paths)).ANTHROPIC_API_KEY).toBe("sk-brand-new-key-1234567890");
 		const seeded = JSON.parse(readFileSync(join(claudeAccountDir(account.id, paths), ".claude.json"), "utf-8"));
 		expect(seeded.customApiKeyResponses.approved).toContain("sk-brand-new-key-1234567890".slice(-20));
 	});

@@ -313,10 +313,23 @@ export async function listAgentAccounts(paths: AccountPaths = defaultAccountPath
 	};
 }
 
-/** CLAUDE_CONFIG_DIR to inject into new Claude sessions, or null for ~/.claude. */
-export async function getActiveClaudeConfigDir(paths: AccountPaths = defaultAccountPaths()): Promise<string | null> {
+/** Resolve which Claude account a launch should use.
+ *  `accountIdOverride === undefined` → the registry default (`activeId`, i.e. the
+ *  preselect); `null` → force the system login (~/.claude); a string → that
+ *  specific managed account. This is the per-launch selection seam. */
+function resolveClaudeAccountId(registry: Registry, accountIdOverride: string | null | undefined): string | null {
+	return accountIdOverride === undefined ? registry.claude.activeId : accountIdOverride;
+}
+
+/** CLAUDE_CONFIG_DIR to inject into new Claude sessions, or null for ~/.claude.
+ *  `accountIdOverride` selects a specific account for THIS launch (per-launch
+ *  selector); omit it to use the registry default. */
+export async function getActiveClaudeConfigDir(
+	accountIdOverride?: string | null,
+	paths: AccountPaths = defaultAccountPaths(),
+): Promise<string | null> {
 	const registry = loadRegistry(paths);
-	const id = registry.claude.activeId;
+	const id = resolveClaudeAccountId(registry, accountIdOverride);
 	if (!id || !registry.claude.accounts.some((e) => e.id === id)) return null;
 	const dir = claudeAccountDir(id, paths);
 	return existsSync(join(dir, ".claude.json")) ? dir : null;
@@ -370,12 +383,15 @@ function collectClearableEnvKeys(registry: Registry, paths: AccountPaths): Set<s
  *
  *  Empty record when no accounts are registered at all (feature unused —
  *  never touch the ambient env of users who don't use the switcher). */
-export async function getActiveClaudeSessionEnv(paths: AccountPaths = defaultAccountPaths()): Promise<Record<string, string>> {
+export async function getActiveClaudeSessionEnv(
+	accountIdOverride?: string | null,
+	paths: AccountPaths = defaultAccountPaths(),
+): Promise<Record<string, string>> {
 	const registry = loadRegistry(paths);
 	if (registry.claude.accounts.length === 0) return {};
 
 	const env: Record<string, string> = {};
-	const id = registry.claude.activeId;
+	const id = resolveClaudeAccountId(registry, accountIdOverride);
 	const entry = id ? registry.claude.accounts.find((e) => e.id === id) : undefined;
 	if (entry) {
 		const dir = claudeAccountDir(entry.id, paths);
