@@ -691,6 +691,18 @@ describe("resolveAgentCommand — sessionId", () => {
 		expect(cmd).not.toContain("--resume");
 	});
 
+	it("Gemini: injects --session-id for fresh launch (PR #26060)", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "gemini" }),
+			makeConfig({ model: undefined }),
+			makeCtx(),
+			{ sessionId: "gem-fresh" },
+		);
+
+		expect(cmd).toContain("--session-id gem-fresh");
+		expect(cmd).not.toContain("--resume");
+	});
+
 	it("Claude: uses --resume <id> when both resume and sessionId", () => {
 		const cmd = resolveAgentCommand(
 			makeAgent({ baseCommand: "claude" }),
@@ -782,8 +794,8 @@ describe("supportsPreAssignedSessionId", () => {
 		["claude", true],
 		["agent", true],
 		["/usr/local/bin/claude", true],
+		["gemini", true],
 		["codex", false],
-		["gemini", false],
 		["bash", false],
 		["opencode", false],
 	])("%s → %s", (cmd, expected) => {

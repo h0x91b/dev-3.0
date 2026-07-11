@@ -499,9 +499,17 @@ export function supportsResume(baseCmd: string): boolean {
 }
 
 /** Returns true when the agent supports pre-assigned session IDs at launch time.
- *  These agents can accept a UUID on first launch and resume it later by ID. */
+ *  These agents can accept a UUID on first launch and resume it later by ID.
+ *
+ *  Claude (`--session-id`) and Cursor (`--resume <uuid>`, creates if missing)
+ *  have always supported this. Gemini added the launch-time `--session-id` flag
+ *  in gemini-cli PR #26060 (merged 2026-04-27); dev3 does NOT version-guard it,
+ *  so a gemini older than that build will reject `--session-id` at launch — users
+ *  on such a build must upgrade gemini-cli. Codex/OpenCode cannot pre-assign (no
+ *  launch flag / resume-only `--session`); Codex instead captures its real session
+ *  id post-hoc from the lifecycle hook (see cli-socket-server `task.agentHook`). */
 export function supportsPreAssignedSessionId(baseCmd: string): boolean {
-	return isClaudeCommand(baseCmd) || isCursorCommand(baseCmd);
+	return isClaudeCommand(baseCmd) || isCursorCommand(baseCmd) || isGeminiCommand(baseCmd);
 }
 
 export function resolveAgentCommand(

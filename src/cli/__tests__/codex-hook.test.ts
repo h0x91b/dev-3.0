@@ -20,10 +20,14 @@ let stdout = "";
 let stderr = "";
 let stdoutSpy: ReturnType<typeof vi.spyOn>;
 let stderrSpy: ReturnType<typeof vi.spyOn>;
+let originalTmuxPane: string | undefined;
 
 beforeEach(() => {
 	stdout = "";
 	stderr = "";
+	// Tests may run inside tmux (TMUX_PANE set); clear it so cases control it explicitly.
+	originalTmuxPane = process.env.TMUX_PANE;
+	delete process.env.TMUX_PANE;
 	stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation((chunk: string | Uint8Array) => {
 		stdout += String(chunk);
 		return true;
@@ -38,6 +42,8 @@ beforeEach(() => {
 afterEach(() => {
 	stdoutSpy.mockRestore();
 	stderrSpy.mockRestore();
+	if (originalTmuxPane === undefined) delete process.env.TMUX_PANE;
+	else process.env.TMUX_PANE = originalTmuxPane;
 });
 
 describe("handleCodexHook", () => {
@@ -58,6 +64,26 @@ describe("handleCodexHook", () => {
 		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 		expect(stdout).toBe("{}");
 		expect(stderr).toBe("");
+	});
+
+	it("forwards the pane id from $TMUX_PANE for per-pane Codex session capture", async () => {
+		mockSend.mockResolvedValue({ id: "1", ok: true, data: {} });
+		process.env.TMUX_PANE = "%42";
+
+		await handleCodexHook(
+			JSON.stringify({ hook_event_name: "SessionStart", session_id: "session-9" }),
+			SOCKET,
+			CONTEXT,
+		);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.agentHook", {
+			taskId: "task-1",
+			projectId: "project-1",
+			event: "SessionStart",
+			sessionId: "session-9",
+			paneId: "%42",
+		}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
+		expect(stdout).toBe("{}");
 	});
 
 	it("is a successful no-op outside a dev3 task", async () => {
