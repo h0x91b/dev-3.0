@@ -12,7 +12,7 @@ import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
-import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv } from "./agent-accounts";
+import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 
@@ -767,6 +767,26 @@ async function applyClaudeAccountEnv(
 	}
 }
 
+/** Inject the selected Codex account's CODEX_HOME into a Codex launch. Mirrors
+ *  applyClaudeAccountEnv: an explicit CODEX_HOME in the config's envVars disables
+ *  the injection, and `accountId` selects a specific account for THIS session
+ *  (per-launch selector). Affects new sessions only. */
+async function applyCodexAccountEnv(
+	baseCmd: string,
+	extraEnv: Record<string, string>,
+	accountId?: string | null,
+): Promise<void> {
+	if (!isCodexCommand(baseCmd) || extraEnv.CODEX_HOME) return;
+	try {
+		const accountEnv = await getActiveCodexSessionEnv(accountId);
+		for (const [key, value] of Object.entries(accountEnv)) {
+			if (!(key in extraEnv)) extraEnv[key] = value;
+		}
+	} catch (err) {
+		log.warn("Failed to resolve active Codex account env", { error: String(err) });
+	}
+}
+
 /** Classify a concrete Claude model id into its alias family. dev3 presets pass
  *  concrete ids (`claude-opus-4-8[1m]`, `claude-sonnet-5`, `claude-fable-5`), not
  *  the `opus`/`sonnet`/… aliases, so alias-default env vars alone never bind —
@@ -841,6 +861,7 @@ export async function resolveCommandForAgent(
 		Object.assign(extraEnv, config.envVars);
 	}
 	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
+	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
 	const command = resolveAgentCommand(
 		agentWithPath,
 		applyModelOverride(config, baseCmd, extraEnv),
@@ -917,6 +938,7 @@ export async function resolveCommandForProject(
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
 		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
+		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
 		const command = resolveAgentCommand(
 			agentWithPath,
 			applyModelOverride(config, baseCmd, extraEnv),

@@ -599,9 +599,11 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	const handleCancelAdd = useCallback(() => {
 		if (!addFlow) return;
-		// A prepared-but-unverified Claude dir is an orphan — clean it up.
-		if (addFlow.kind === "claude" && addFlow.accountId) {
-			api.request.removeAgentAccount({ kind: "claude", accountId: addFlow.accountId }).catch(() => {});
+		// A prepared-but-unverified login dir (Claude CLAUDE_CONFIG_DIR or Codex
+		// CODEX_HOME) is an orphan — clean it up. Both flows now hand back an
+		// accountId for the scaffolded dir.
+		if (addFlow.accountId) {
+			api.request.removeAgentAccount({ kind: addFlow.kind, accountId: addFlow.accountId }).catch(() => {});
 		}
 		setAddFlow(null);
 	}, [addFlow]);

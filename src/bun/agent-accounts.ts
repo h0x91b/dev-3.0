@@ -94,6 +94,13 @@ export const CLAUDE_SHARED_ENTRIES = [
 	"todos",
 ];
 
+/** Entries of ~/.codex shared across per-account CODEX_HOME dirs via symlinks:
+ *  user configuration (config.toml) and prompts. auth.json stays per-account (it
+ *  is the whole point of the switch); sessions/history are created per-account so
+ *  usage/rate-limit tracking can attribute them (see rate-limit-monitor). Missing
+ *  source entries are simply skipped — a fresh codex install may have none. */
+export const CODEX_SHARED_ENTRIES = ["config.toml", "prompts"];
+
 interface RegistryEntry {
 	id: string;
 	label: string;
@@ -169,13 +176,39 @@ export function claudeAccountDir(id: string, paths: AccountPaths = defaultAccoun
 	return join(paths.accountsDir, "claude", id);
 }
 
-function codexAccountDir(id: string, paths: AccountPaths): string {
+export function codexAccountDir(id: string, paths: AccountPaths = defaultAccountPaths()): string {
 	assertSafeAccountId(id);
 	return join(paths.accountsDir, "codex", id);
 }
 
 function codexAccountAuthFile(id: string, paths: AccountPaths): string {
 	return join(codexAccountDir(id, paths), "auth.json");
+}
+
+/** Make the account dir a usable CODEX_HOME: ensure it exists and symlink the
+ *  shared config entries from ~/.codex (idempotent — safe to call on every env
+ *  build and on import/login). auth.json is written separately and stays
+ *  per-account. Symlink failures are non-fatal (codex falls back to defaults). */
+function ensureCodexAccountHome(id: string, paths: AccountPaths): string {
+	const dir = codexAccountDir(id, paths);
+	mkdirSync(dir, { recursive: true });
+	for (const entry of CODEX_SHARED_ENTRIES) {
+		const source = join(paths.codexHome, entry);
+		if (!existsSync(source)) continue;
+		const linkPath = join(dir, entry);
+		try {
+			lstatSync(linkPath);
+			continue; // already linked
+		} catch {
+			// missing — create below
+		}
+		try {
+			symlinkSync(source, linkPath);
+		} catch (err) {
+			log.warn("Failed to symlink shared codex entry", { entry, error: String(err) });
+		}
+	}
+	return dir;
 }
 
 function safeReadJson(path: string): unknown {
@@ -278,27 +311,8 @@ function currentCodexIdentity(paths: AccountPaths): AgentAccountIdentity | null 
 	return parseCodexIdentity(safeReadJson(join(paths.codexHome, "auth.json")));
 }
 
-/** Snapshot id whose stored account matches the login currently in ~/.codex/auth.json. */
-function reconcileCodexActive(registry: Registry, paths: AccountPaths): string | null {
-	const current = currentCodexIdentity(paths);
-	if (!current?.accountId) return null;
-	for (const entry of registry.codex.accounts) {
-		if (codexAccountIdentity(entry.id, paths)?.accountId === current.accountId) return entry.id;
-	}
-	return null;
-}
-
 export async function listAgentAccounts(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccountsState> {
 	const registry = loadRegistry(paths);
-	const codexActive = reconcileCodexActive(registry, paths);
-	if (codexActive !== registry.codex.activeId) {
-		registry.codex.activeId = codexActive;
-		try {
-			saveRegistry(registry, paths);
-		} catch (err) {
-			log.debug("Failed to persist reconciled codex activeId", { error: String(err) });
-		}
-	}
 	return {
 		claude: {
 			accounts: registry.claude.accounts.map((e) => toAccount(e, "claude", paths)),
@@ -307,7 +321,7 @@ export async function listAgentAccounts(paths: AccountPaths = defaultAccountPath
 		},
 		codex: {
 			accounts: registry.codex.accounts.map((e) => toAccount(e, "codex", paths)),
-			activeId: codexActive,
+			activeId: registry.codex.accounts.some((e) => e.id === registry.codex.activeId) ? registry.codex.activeId : null,
 			currentIdentity: currentCodexIdentity(paths),
 		},
 	};
@@ -416,6 +430,23 @@ export async function getActiveClaudeSessionEnv(
 		if (!(key in env)) env[key] = ENV_UNSET;
 	}
 	return env;
+}
+
+/** CODEX_HOME to inject into a new Codex session, or {} for the system login
+ *  (~/.codex, no override). `accountIdOverride`: undefined → the registry default
+ *  (`activeId`); null → force the system login; a string → that managed account.
+ *  Unlike the old model this NEVER swaps ~/.codex/auth.json — each session gets
+ *  its own CODEX_HOME, so concurrent sessions can run on different accounts. */
+export async function getActiveCodexSessionEnv(
+	accountIdOverride?: string | null,
+	paths: AccountPaths = defaultAccountPaths(),
+): Promise<Record<string, string>> {
+	const registry = loadRegistry(paths);
+	const id = accountIdOverride === undefined ? registry.codex.activeId : accountIdOverride;
+	if (!id || !registry.codex.accounts.some((e) => e.id === id)) return {};
+	// Missing snapshot (account added but creds gone) → fall back to system login.
+	if (!existsSync(codexAccountAuthFile(id, paths))) return {};
+	return { CODEX_HOME: ensureCodexAccountHome(id, paths) };
 }
 
 /** Create the per-account config dir with symlinks into ~/.claude for shared state. */
@@ -754,50 +785,43 @@ export async function importCurrentCodexAccount(paths: AccountPaths = defaultAcc
 	assertNoDuplicate(registry, "codex", identity, paths);
 
 	const id = crypto.randomUUID();
+	ensureCodexAccountHome(id, paths);
 	const target = codexAccountAuthFile(id, paths);
-	mkdirSync(codexAccountDir(id, paths), { recursive: true });
 	copyFileSync(authFile, target);
 	chmodSync(target, 0o600);
 	const account = registerAccount(registry, "codex", id, identity, paths);
-	registry.codex.activeId = id;
+	registry.codex.activeId = id; // newly imported becomes the default preselect
 	saveRegistry(registry, paths);
 	return account;
 }
 
-/** Codex has exactly one on-disk login, so adding a new account means logging in
- *  over it. Auto-snapshot the current login first (so it isn't lost), then hand
- *  the user the login command. */
-export async function prepareCodexLogin(paths: AccountPaths = defaultAccountPaths()): Promise<{ accountId: string | null; loginCommand: string }> {
-	const registry = loadRegistry(paths);
-	const current = currentCodexIdentity(paths);
-	if (current?.accountId && !reconcileCodexActive(registry, paths)) {
-		try {
-			await importCurrentCodexAccount(paths);
-		} catch (err) {
-			log.warn("Auto-import of current codex login failed", { error: String(err) });
-		}
-	}
-	return { accountId: null, loginCommand: "codex login" };
+/** Scaffold a fresh CODEX_HOME for a new login and return the command to run.
+ *  The dir is NOT registered until the login is verified (completeCodexLogin) —
+ *  the user's ~/.codex is never touched, mirroring the Claude login flow. */
+export async function prepareCodexLogin(paths: AccountPaths = defaultAccountPaths()): Promise<{ accountId: string; loginCommand: string }> {
+	const id = crypto.randomUUID();
+	const dir = ensureCodexAccountHome(id, paths);
+	return { accountId: id, loginCommand: `CODEX_HOME='${dir}' codex login` };
 }
 
-/** Snapshot whatever login `codex login` just produced as a managed account. */
-export async function completeCodexLogin(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccount> {
-	const authFile = join(paths.codexHome, "auth.json");
+/** Verify a prepared CODEX_HOME login dir and register it as an account. */
+export async function completeCodexLogin(accountId: string, paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccount> {
+	const authFile = codexAccountAuthFile(accountId, paths);
 	const identity = parseCodexIdentity(safeReadJson(authFile));
 	if (!identity?.accountId) {
-		throw new Error("Login not detected yet. Run `codex login`, finish the flow, then verify again.");
+		throw new Error("Login not detected yet. Run the login command, finish the flow, then verify again.");
 	}
 	const registry = loadRegistry(paths);
-	// Same account re-login → refresh the existing snapshot instead of duplicating.
-	for (const entry of registry.codex.accounts) {
-		if (codexAccountIdentity(entry.id, paths)?.accountId === identity.accountId) {
-			copyFileSync(authFile, codexAccountAuthFile(entry.id, paths));
-			registry.codex.activeId = entry.id;
-			saveRegistry(registry, paths);
-			return toAccount(entry, "codex", paths);
-		}
+	assertNoDuplicate(registry, "codex", identity, paths, accountId);
+	chmodSync(authFile, 0o600);
+	if (registry.codex.accounts.some((e) => e.id === accountId)) {
+		saveRegistry(registry, paths);
+		return toAccount(registry.codex.accounts.find((e) => e.id === accountId)!, "codex", paths);
 	}
-	return importCurrentCodexAccount(paths);
+	const account = registerAccount(registry, "codex", accountId, identity, paths);
+	registry.codex.activeId = accountId; // newly added becomes the default preselect
+	saveRegistry(registry, paths);
+	return account;
 }
 
 /** Claude activation is registry-only: new sessions pick up CLAUDE_CONFIG_DIR. */
@@ -810,39 +834,18 @@ export async function setActiveClaudeAccount(accountId: string | null, paths: Ac
 	saveRegistry(registry, paths);
 }
 
-/** Codex activation copies the snapshot into ~/.codex/auth.json. The outgoing
- *  login's refreshed tokens are synced back into its own snapshot first, so a
- *  later switch back does not resurrect a stale refresh token. */
-export async function setActiveCodexAccount(accountId: string, paths: AccountPaths = defaultAccountPaths()): Promise<void> {
+/** Codex activation is now registry-only — it just moves the default pointer.
+ *  Each launch injects its own CODEX_HOME (getActiveCodexSessionEnv), so nothing
+ *  swaps ~/.codex/auth.json anymore. `null` → the system login (~/.codex) is the
+ *  default. Concurrent sessions on different accounts are therefore possible. */
+export async function setActiveCodexAccount(accountId: string | null, paths: AccountPaths = defaultAccountPaths()): Promise<void> {
 	const registry = loadRegistry(paths);
-	if (!registry.codex.accounts.some((e) => e.id === accountId)) {
+	if (accountId !== null && !registry.codex.accounts.some((e) => e.id === accountId)) {
 		throw new Error(`Unknown Codex account: ${accountId}`);
 	}
-	const snapshot = codexAccountAuthFile(accountId, paths);
-	if (!existsSync(snapshot)) {
-		throw new Error("Stored credentials for this account are missing. Remove it and log in again.");
-	}
-	const authFile = join(paths.codexHome, "auth.json");
-
-	const current = currentCodexIdentity(paths);
-	if (current?.accountId) {
-		for (const entry of registry.codex.accounts) {
-			if (codexAccountIdentity(entry.id, paths)?.accountId === current.accountId) {
-				copyFileSync(authFile, codexAccountAuthFile(entry.id, paths));
-				break;
-			}
-		}
-	}
-
-	mkdirSync(paths.codexHome, { recursive: true });
-	// Same-directory tmp + rename keeps the swap atomic (never a torn auth.json).
-	const tmp = join(paths.codexHome, `.auth.json.dev3-tmp-${crypto.randomUUID()}`);
-	copyFileSync(snapshot, tmp);
-	chmodSync(tmp, 0o600);
-	renameSync(tmp, authFile);
 	registry.codex.activeId = accountId;
 	saveRegistry(registry, paths);
-	log.info("Codex account activated", { accountId });
+	log.info("Codex default account set", { accountId });
 }
 
 /** Remove a managed account (stored snapshot/config dir). The provider-side
