@@ -34,7 +34,8 @@ Last updated: 2026-07-11
 |---------|:-----------:|:------------:|:-----:|:----------:|:--------:|
 | **Skill injection** | Yes (`!` command syntax) | Yes (generic) | Yes (generic) | Yes (generic) | Yes (generic) |
 | **System prompt injection** | `--append-system-prompt` | via prompt arg | `-c developer_instructions=...` (developer-role message; covers scratch + resume — see decision 115) | — | via `--prompt` |
-| **Session resume** | `--continue` | `--continue` | `resume --last` | `--resume latest` | `--continue` |
+| **Session resume** | `--resume <id>` / `--continue` | `--resume <id>` / `--continue` | `resume <id>` / `resume --last` | `--resume <id>` / `--resume latest` | `--continue` |
+| **Targeted recovery** (resume the *exact* session, incl. multi-session worktrees) | Yes — pre-assign `--session-id` | Yes — pre-assign `--resume <uuid>` | Yes — session id captured per-pane from the lifecycle hook (`session_id` + `$TMUX_PANE`); no launch flag exists (see decision 125) | Yes — pre-assign `--session-id` (gemini-cli #26060; **not** version-guarded) | No — resume-last only (`--session` is resume-only) |
 | **Permission mode** | `--permission-mode` | `--mode plan` / `--force` | `--permission-mode` | `--approval-mode` | — |
 | **Effort level** | `--effort` | — | `--effort` | — | — |
 | **Max budget** | `--max-budget-usd` | — | `--max-budget-usd` | — | — |
@@ -74,6 +75,8 @@ Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.to
 | `PermissionRequest` | → `user-questions` | Codex is waiting for a tool or network approval |
 | `PostToolUse` | → `in-progress` | Clears the waiting state after an approved tool finishes |
 | `Stop` | → `review-by-ai` / `review-by-user` | One atomic server-side transition selects the correct review target and returns valid JSON to Codex |
+
+Beyond status, the `SessionStart`/`UserPromptSubmit` hook payloads carry the Codex `session_id` (the resumable rollout id), and the hook process inherits `$TMUX_PANE`. dev3 records that id onto the matching `sessionState` pane so recovery can `codex resume <id>` the exact per-pane session — Codex has no launch-time session-id flag, so this is the only way to target a specific session (see decision 125).
 
 ## Skill Differences
 

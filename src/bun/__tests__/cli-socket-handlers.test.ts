@@ -428,6 +428,81 @@ describe("task.agentHook", () => {
 
 		expect(response.error).toContain("Unsupported Codex hook event");
 	});
+
+	function mockStatefulHookUpdate(project: Project, initial: Task): { get: () => Task } {
+		let stored = initial;
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockImplementation(async () => [stored]);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_p, _t, mutator: any) => {
+			const { updates, result } = await mutator(stored);
+			stored = { ...stored, ...updates };
+			return { task: stored, result };
+		});
+		return { get: () => stored };
+	}
+
+	type Pane = NonNullable<Task["sessionState"]>["panes"][number];
+	const codexPane = (paneId: string | null, sessionId: string | null): Pane =>
+		({ paneId, agentCmd: "codex", sessionId, agentId: null, configId: null });
+
+	it("captures the Codex session id onto the pane matching $TMUX_PANE", async () => {
+		const project = makeProject();
+		const store = mockStatefulHookUpdate(project, makeTask({
+			status: "in-progress",
+			sessionState: { panes: [codexPane("%1", null), codexPane("%2", null)] },
+		}));
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: store.get().id,
+			projectId: project.id,
+			event: "SessionStart",
+			sessionId: "codex-sess-2",
+			paneId: "%2",
+		}));
+
+		const panes = store.get().sessionState?.panes ?? [];
+		expect(panes[0]?.sessionId).toBeNull();
+		expect(panes[1]?.sessionId).toBe("codex-sess-2");
+	});
+
+	it("adopts the lone null-paneId (main) pane when no stored paneId matches", async () => {
+		const project = makeProject();
+		const store = mockStatefulHookUpdate(project, makeTask({
+			status: "in-progress",
+			sessionState: { panes: [codexPane(null, null)] },
+		}));
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: store.get().id,
+			projectId: project.id,
+			event: "UserPromptSubmit",
+			sessionId: "codex-main",
+			paneId: "%7",
+		}));
+
+		const main = store.get().sessionState?.panes?.[0];
+		expect(main?.paneId).toBe("%7");
+		expect(main?.sessionId).toBe("codex-main");
+	});
+
+	it("does not capture when paneId is ambiguous (multiple null-paneId panes)", async () => {
+		const project = makeProject();
+		const store = mockStatefulHookUpdate(project, makeTask({
+			status: "in-progress",
+			sessionState: { panes: [codexPane(null, null), codexPane(null, null)] },
+		}));
+
+		await handleRequest(makeRequest("task.agentHook", {
+			taskId: store.get().id,
+			projectId: project.id,
+			event: "SessionStart",
+			sessionId: "codex-x",
+			paneId: "%9",
+		}));
+
+		const panes = store.get().sessionState?.panes ?? [];
+		expect(panes.every((p) => p.sessionId === null)).toBe(true);
+	});
 });
 
 describe("projects.list", () => {

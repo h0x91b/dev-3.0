@@ -136,6 +136,56 @@ function getCodexApprovalResumeStatus(
 	return entry.status;
 }
 
+/**
+ * Persist a Codex session id onto the sessionState pane it belongs to, so
+ * resumeTask can `codex resume <id>` the exact session per pane — targeted
+ * recovery for multi-session worktrees (e.g. reviving several bug hunters).
+ * Codex has no launch-time --session-id, so the id is only knowable post-hoc:
+ * its lifecycle hook reports the resumable session_id together with $TMUX_PANE
+ * (see src/cli/commands/codex-hook.ts).
+ *
+ * Matching: extra panes store their tmux paneId at spawn, so match by paneId.
+ * The main pane (panes[0]) is persisted without a paneId (assigned lazily by
+ * pane-exit reconciliation); when no entry matches and exactly one entry has no
+ * paneId, adopt that entry — it is the main pane — recording both its paneId and
+ * session id. Ambiguous cases (no match, ≠1 null-paneId entries) are skipped; a
+ * later hook fires once ids settle. A no-op once the id is already recorded.
+ */
+async function captureCodexPaneSession(
+	project: Project,
+	taskId: string,
+	paneId: string,
+	sessionId: string,
+): Promise<void> {
+	try {
+		const { task: updated, result } = await data.updateTaskWith(project, taskId, (current) => {
+			const panes = current.sessionState?.panes;
+			if (!panes?.length) return { updates: {}, result: { changed: false } };
+			let idx = panes.findIndex((p) => p.paneId === paneId);
+			let adoptPaneId = false;
+			if (idx === -1) {
+				const nullIdxs = panes.flatMap((p, i) => (p.paneId ? [] : [i]));
+				if (nullIdxs.length !== 1) return { updates: {}, result: { changed: false } };
+				idx = nullIdxs[0];
+				adoptPaneId = true;
+			}
+			if (panes[idx].sessionId === sessionId && !adoptPaneId) {
+				return { updates: {}, result: { changed: false } };
+			}
+			const nextPanes = panes.map((p, i) =>
+				i === idx ? { ...p, sessionId, ...(adoptPaneId ? { paneId } : {}) } : p,
+			);
+			return { updates: { sessionState: { panes: nextPanes } }, result: { changed: true } };
+		});
+		if (result.changed) {
+			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			log.info("Captured Codex pane session id", { taskId: taskId.slice(0, 8), paneId });
+		}
+	} catch (err) {
+		log.warn("Failed to capture Codex pane session id (non-fatal)", { error: String(err) });
+	}
+}
+
 const handlers: Record<string, Handler> = {
 	// Cross-instance notification: another dev-3.0 instance changed data.
 	// Re-read from disk and push to local renderer only (no re-broadcast).
@@ -688,6 +738,12 @@ const handlers: Record<string, Handler> = {
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 			notifyWatchedTaskStatusChange(updated, result.oldStatus, result.target, project.name);
 			await triggerColumnAgentIfNeeded(result.target, project, updated);
+		}
+
+		// Record the Codex session id for this pane (targeted per-pane recovery).
+		const paneId = typeof params.paneId === "string" ? params.paneId : null;
+		if (sessionId && paneId) {
+			await captureCodexPaneSession(project, task.id, paneId, sessionId);
 		}
 
 		return updated;

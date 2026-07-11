@@ -43,12 +43,22 @@ export async function handleCodexHook(
 	const payload = parsePayload(rawInput);
 
 	if (payload && socketPath && context?.taskId) {
+		// The hook runs inside the Codex pane, so $TMUX_PANE identifies which pane
+		// this session belongs to. Combined with the payload's session_id (== the
+		// resumable rollout id), it lets dev3 record each pane's Codex session for
+		// targeted recovery — essential when several Codex sessions (e.g. multiple
+		// bug hunters) share one worktree. Codex has no launch-time --session-id, so
+		// this post-hoc capture is the only way to resume the exact session per pane.
+		const paneId = typeof process.env.TMUX_PANE === "string" && process.env.TMUX_PANE
+			? process.env.TMUX_PANE
+			: undefined;
 		try {
 			const response = await sendRequest(socketPath, "task.agentHook", {
 				taskId: context.taskId,
 				projectId: context.projectId,
 				event: payload.event,
 				...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+				...(paneId ? { paneId } : {}),
 			}, { timeoutMs: 3_000, connectAttempts: 2, retryDelayMs: 50 });
 			if (!response.ok) {
 				process.stderr.write(`dev3 Codex hook: ${response.error || "status update failed"}\n`);
