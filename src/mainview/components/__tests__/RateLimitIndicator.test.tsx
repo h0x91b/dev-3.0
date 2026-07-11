@@ -76,6 +76,25 @@ describe("RateLimitIndicator", () => {
 		expect(screen.getByRole("status").className).toContain("text-fg-3");
 	});
 
+	it("labels the header percentage as used so it is not ambiguous", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		renderIndicator();
+		await act(async () => {});
+		// The number and the "used" qualifier sit in the same badge.
+		expect(screen.getByText("42%")).toBeTruthy();
+		expect(screen.getByText("used")).toBeTruthy();
+		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("42% used");
+	});
+
+	it("spells out '<n>% used' on each Claude window row in the tooltip", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		expect(await screen.findByText(/5h — 5% used/)).toBeTruthy();
+		expect(await screen.findByText(/7d — 42% used/)).toBeTruthy();
+	});
+
 	it("escalates to the warning token at ≥80%", async () => {
 		mockedGet.mockResolvedValue(report(83));
 		renderIndicator();
