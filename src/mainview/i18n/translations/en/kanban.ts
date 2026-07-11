@@ -149,6 +149,17 @@ const kanban = {
 	"launch.scheduleHint": "Will launch {day} at {time} — in {rel}",
 	"launch.scheduleInvalid": "Pick a delay or time first",
 
+	// Scheduled message ("Send later")
+	"scheduleMessage.title": "Send message later",
+	"scheduleMessage.placeholder": "Message to send to the agent…",
+	"scheduleMessage.deliverTo": "Deliver to",
+	"scheduleMessage.targetAgent": "Agent",
+	"scheduleMessage.paneOption": "Pane {pane} · {cmd}",
+	"scheduleMessage.schedule": "Schedule",
+	"scheduleMessage.scheduling": "Scheduling…",
+	"scheduleMessage.failed": "Failed to schedule: {error}",
+	"scheduleMessage.scheduleHint": "Will send {day} at {time} — in {rel}",
+
 	// SpawnAgentModal
 	"spawnAgent.title": "Spawn Agent",
 	"spawnAgent.spawn": "Spawn",
@@ -165,6 +176,13 @@ const kanban = {
 	"task.cancelSchedule": "Cancel schedule",
 	"task.scheduleCancelFailed": "Failed to cancel schedule: {error}",
 	"task.unwatchTooltip": "Unwatch — stop notifications",
+	"task.sendLater": "Send later",
+	"task.sendLaterShort": "Later",
+	"task.sendLaterHint": "Queue a message to this task's agent for later",
+	"task.sendMessageLater": "Send message later…",
+	"task.scheduledMessageTooltip": "Scheduled message — click for options",
+	"task.sendNow": "Send now",
+	"task.sendNowFailed": "Failed to send message: {error}",
 
 	// Pipeline
 	"pipeline.current": "current",

@@ -151,6 +151,17 @@ const kanban = {
 	"launch.scheduleHint": "Запустится {day} в {time} — через {rel}",
 	"launch.scheduleInvalid": "Укажите задержку или время",
 
+	// Scheduled message ("Send later")
+	"scheduleMessage.title": "Отправить сообщение позже",
+	"scheduleMessage.placeholder": "Сообщение для агента…",
+	"scheduleMessage.deliverTo": "Доставить в",
+	"scheduleMessage.targetAgent": "Агент",
+	"scheduleMessage.paneOption": "Панель {pane} · {cmd}",
+	"scheduleMessage.schedule": "Запланировать",
+	"scheduleMessage.scheduling": "Планирование…",
+	"scheduleMessage.failed": "Не удалось запланировать: {error}",
+	"scheduleMessage.scheduleHint": "Отправит {day} в {time} — через {rel}",
+
 	// SpawnAgentModal
 	"spawnAgent.title": "Запустить агента",
 	"spawnAgent.spawn": "Запустить",
@@ -167,6 +178,13 @@ const kanban = {
 	"task.cancelSchedule": "Отменить запуск",
 	"task.scheduleCancelFailed": "Не удалось отменить запуск: {error}",
 	"task.unwatchTooltip": "Не следить — отключить уведомления",
+	"task.sendLater": "Отправить позже",
+	"task.sendLaterShort": "Позже",
+	"task.sendLaterHint": "Поставить сообщение агенту в очередь на потом",
+	"task.sendMessageLater": "Отправить сообщение позже…",
+	"task.scheduledMessageTooltip": "Запланированное сообщение — нажмите для опций",
+	"task.sendNow": "Отправить сейчас",
+	"task.sendNowFailed": "Не удалось отправить сообщение: {error}",
 
 	// Pipeline
 	"pipeline.current": "текущий",

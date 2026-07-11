@@ -10,6 +10,7 @@ import * as data from "./data";
 import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
+import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { getUserIdleSeconds } from "./user-activity";
 import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
@@ -995,6 +996,26 @@ const handlers: Record<string, Handler> = {
 		if (!push) return { delivered: false, taskId: task.id };
 		push("cliAttention", { taskId: task.id, reason });
 		return { delivered: true, taskId: task.id, projectId: project.id };
+	},
+
+	// `dev3 message "text"` (no time flag): deliver a message into the task's live
+	// agent immediately (send-keys paste + Enter). Best-effort — throws if no live
+	// agent pane can be resolved.
+	"message.send": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const text = ((params.text as string) ?? "").toString();
+		await sendMessageImmediately(task, text);
+		return { delivered: true, taskId: task.id, projectId: project.id };
+	},
+
+	// `dev3 message --in <dur> | --at <hh:mm> "text"`: queue a scheduled message on
+	// the task's live agent (validation + cap live in the scheduler core).
+	"message.schedule": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const text = ((params.text as string) ?? "").toString();
+		const at = (params.at as string) ?? "";
+		const updated = await scheduleMessageCore(project, task, { text, at });
+		return { taskId: task.id, projectId: project.id, at, pending: (updated.scheduledMessages ?? []).length };
 	},
 
 	// UI control: surface images (screenshots, renders, QA captures) an agent wants

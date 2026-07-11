@@ -200,6 +200,7 @@ const terminal = {
 	"terminal.composerInsert": "Insert without Enter",
 	"terminal.composerExpand": "Expand editor",
 	"terminal.composerCollapse": "Collapse editor",
+	"terminal.composerScheduleLater": "Send later",
 	"terminal.rawKeyboard": "Direct keyboard input",
 } as const;
 

@@ -18,6 +18,7 @@ import { handleRemote } from "./commands/remote";
 import { handleGui } from "./commands/gui";
 import { handleConversations } from "./commands/conversations";
 import { handleNotify, handleAttention, handleUi } from "./commands/ui-control";
+import { handleMessage } from "./commands/message";
 import { handleShowImage } from "./commands/show-image";
 import { handleShowArtifact } from "./commands/show-artifact";
 import { handleStatusLine } from "./commands/statusline";
@@ -67,6 +68,7 @@ Commands:
   dev3 dev-server status [task-id]      Show task dev server status
   dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
+  dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later)
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
   dev3 show-artifact <file.html> [--images <image...>] [--title "..."]  Show a task-bound HTML artifact; image assets are copied beside it and exported as ZIP
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
@@ -223,6 +225,10 @@ async function main(): Promise<void> {
 			case "attention":
 				// Same shape as `notify`: first positional is the reason.
 				return await handleAttention(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath, context);
+			case "message":
+				// `message` takes no subcommand — its first positional is the text
+				// (supports @file), so re-parse from the raw args without the split.
+				return await handleMessage(resolveFileArgs(parseArgs(rawArgs.slice(1))), socketPath, context);
 			case "show-image":
 				// Parsing is order-aware (a `--caption` binds to the preceding image
 				// path), so hand the raw tokens straight to the handler rather than

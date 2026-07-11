@@ -149,6 +149,17 @@ const kanban = {
 	"launch.scheduleHint": "Se lanzará {day} a las {time} — en {rel}",
 	"launch.scheduleInvalid": "Elige primero un retraso o una hora",
 
+	// Scheduled message ("Send later")
+	"scheduleMessage.title": "Enviar mensaje más tarde",
+	"scheduleMessage.placeholder": "Mensaje para el agente…",
+	"scheduleMessage.deliverTo": "Entregar a",
+	"scheduleMessage.targetAgent": "Agente",
+	"scheduleMessage.paneOption": "Panel {pane} · {cmd}",
+	"scheduleMessage.schedule": "Programar",
+	"scheduleMessage.scheduling": "Programando…",
+	"scheduleMessage.failed": "Error al programar: {error}",
+	"scheduleMessage.scheduleHint": "Se enviará {day} a las {time} — en {rel}",
+
 	// SpawnAgentModal
 	"spawnAgent.title": "Lanzar agente",
 	"spawnAgent.spawn": "Lanzar",
@@ -165,6 +176,13 @@ const kanban = {
 	"task.cancelSchedule": "Cancelar programación",
 	"task.scheduleCancelFailed": "Error al cancelar la programación: {error}",
 	"task.unwatchTooltip": "Dejar de vigilar — detener notificaciones",
+	"task.sendLater": "Enviar más tarde",
+	"task.sendLaterShort": "Luego",
+	"task.sendLaterHint": "Poner en cola un mensaje al agente para más tarde",
+	"task.sendMessageLater": "Enviar mensaje más tarde…",
+	"task.scheduledMessageTooltip": "Mensaje programado — clic para opciones",
+	"task.sendNow": "Enviar ahora",
+	"task.sendNowFailed": "Error al enviar el mensaje: {error}",
 
 	// Pipeline
 	"pipeline.current": "actual",
