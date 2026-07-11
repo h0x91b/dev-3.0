@@ -1,4 +1,6 @@
-import type { AgentConfiguration, CodingAgent } from "../../shared/types";
+import type { AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../shared/types";
+import { DEPRECATED_DEFAULT_CONFIG_REMAP } from "../../shared/types";
+import { orderFavorites } from "../../shared/favorites";
 
 /**
  * Presentation helpers for the Provider → Model → Mode launch picker.
@@ -207,4 +209,50 @@ export function pickConfigForModelChange(
 	if (sameLeaf) return sameLeaf;
 
 	return group.configs[0];
+}
+
+/** A favorite resolved to a currently-renderable quick-pick chip. */
+export interface FavoriteChip {
+	agentId: string;
+	/** Resolved (deprecation-remapped) configId — used when clicking to select. */
+	configId: string;
+	/** Original stored configId — used to remove the favorite (matches storage). */
+	storedConfigId: string;
+	/** "Provider · Model · Mode" label. */
+	label: string;
+}
+
+/**
+ * Turn stored favorites into ordered, renderable chips for the launch picker.
+ * Ordered by usage (most-used first, then most-recent), each stored `configId`
+ * is deprecation-remapped and resolved against the live agents; entries that no
+ * longer resolve are **dropped from display** (never mutated in storage), and
+ * duplicates that collapse onto the same live (agentId, configId) are de-duped
+ * keeping the higher-ranked one. Provider is always included because model names
+ * collide across providers (e.g. Opus 4.6, GPT-5.3 Codex).
+ */
+export function resolveFavoriteChips(
+	favorites: FavoriteAgentConfig[],
+	agents: CodingAgent[],
+): FavoriteChip[] {
+	const ordered = orderFavorites(favorites);
+	const seen = new Set<string>();
+	const chips: FavoriteChip[] = [];
+	for (const fav of ordered) {
+		const agent = agents.find((a) => a.id === fav.agentId);
+		if (!agent) continue;
+		const resolvedConfigId = DEPRECATED_DEFAULT_CONFIG_REMAP[fav.configId] ?? fav.configId;
+		const config = agent.configurations.find((c) => c.id === resolvedConfigId);
+		if (!config) continue;
+		const key = `${agent.id} ${resolvedConfigId}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		chips.push({
+			agentId: agent.id,
+			configId: resolvedConfigId,
+			storedConfigId: fav.configId,
+			label: `${agent.name} · ${getModelGroupLabel(config)} · ${getModeLeafLabel(config)}`,
+		});
+	}
+	return chips;
 }

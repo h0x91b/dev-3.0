@@ -614,6 +614,22 @@ export const DEFAULT_EXTERNAL_APPS: ExternalApp[] = [
 	{ id: "sublime", name: "Sublime Text", macAppName: "Sublime Text" },
 ];
 
+/**
+ * A user's "favorite" agent configuration — a thin pointer to an existing
+ * (agentId, configId) preset, surfaced as a quick-pick chip on the launch
+ * picker. Carries no config overrides of its own (custom tweaks live in the
+ * agent editor); `uses`/`lastUsedAt` drive chip ordering and eviction. See
+ * `src/shared/favorites.ts` and decisions/125-agent-favorites.md.
+ */
+export interface FavoriteAgentConfig {
+	agentId: string;
+	configId: string;
+	/** Launches with this (agentId, configId); +1 per spawned agent. Starts at 0. */
+	uses: number;
+	/** epoch ms; set on add and updated on every use. */
+	lastUsedAt: number;
+}
+
 export interface GlobalSettings {
 	defaultAgentId: string;
 	defaultConfigId: string;
@@ -667,6 +683,13 @@ export interface GlobalSettings {
 	 * Settings "Token-saving proxy" section. See PxpipeProxyStatus.
 	 */
 	pxpipeProxyEnabled?: boolean;
+	/**
+	 * Cross-provider "favorite" agent configs shown as quick-pick chips on the
+	 * launch picker (Launch/Retry, Spawn, Bug Hunters). Thin pointers, capped at
+	 * MAX_FAVORITES with LFU-then-LRU eviction; ordered by uses then recency.
+	 * See src/shared/favorites.ts. Undefined ⇒ none.
+	 */
+	favorites?: FavoriteAgentConfig[];
 }
 
 /**
@@ -2284,6 +2307,14 @@ export type AppRPCSchema = {
 			saveGlobalSettings: {
 				params: GlobalSettings;
 				response: void;
+			};
+			/** Toggle an (agentId, configId) pair in the global favorites list —
+			 *  add it (with LFU-then-LRU eviction once MAX_FAVORITES is reached) or
+			 *  remove it if already present. Returns the updated settings so the
+			 *  renderer can sync its in-memory copy. */
+			toggleFavoriteAgent: {
+				params: { agentId: string; configId: string };
+				response: GlobalSettings;
 			};
 			/** Report live state of the local pxpipe token-saving proxy (npx
 			 *  availability, port 47821 owner, whether our managed instance runs). */

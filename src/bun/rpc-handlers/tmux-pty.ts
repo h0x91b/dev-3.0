@@ -9,7 +9,7 @@ import * as repoConfig from "../repo-config";
 import { buildProcessTree, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, waitForPortsFree } from "../port-scanner";
 import { getPidCwd, terminatePidsVerified } from "../process-reaper";
 import { getResourceUsage } from "../resource-monitor";
-import { loadSettings } from "../settings";
+import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
@@ -2232,6 +2232,9 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		log.error("Failed to append pane to sessionState (non-fatal)", { error: String(err) });
 	}
 
+	// Bump the favorite usage counter if this launched combo is starred (best-effort).
+	void recordFavoriteUsages([{ agentId: launchedAgentId, configId: launchedConfigId }]);
+
 	log.info("← spawnAgentInTask done", { taskId: params.taskId.slice(0, 8) });
 }
 
@@ -2470,6 +2473,11 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 			}, BUG_HUNTER_ENTER_DELAY_MS);
 		}, BUG_HUNTER_AUTOTYPE_DELAY_MS);
 	}
+
+	// Bump favorite usage — one per hunter actually spawned (all share the combo). Best-effort.
+	void recordFavoriteUsages(
+		Array.from({ length: paneIds.length }, () => ({ agentId: params.agentId, configId: params.configId })),
+	);
 
 	log.info("← spawnBugHuntersInTask done", { taskId: params.taskId.slice(0, 8), spawned: paneIds.length });
 	return { spawned: paneIds.length };

@@ -165,6 +165,7 @@ vi.mock("../settings", () => ({
 	loadSettings: vi.fn(() => ({ updateChannel: "stable", taskDropPosition: "top" })),
 	loadSettingsSync: vi.fn(() => ({ playSoundOnTaskComplete: false })),
 	saveSettings: vi.fn(),
+	recordFavoriteUsages: vi.fn(),
 }));
 
 vi.mock("../repo-config", () => {

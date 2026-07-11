@@ -30,6 +30,7 @@ export default {
 				},
 				danger: "rgb(var(--danger) / <alpha-value>)",
 				warning: "rgb(var(--warning) / <alpha-value>)",
+				favorite: "rgb(var(--favorite) / <alpha-value>)",
 				awake: {
 					DEFAULT: "rgb(var(--awake) / <alpha-value>)",
 					hover: "rgb(var(--awake-hover) / <alpha-value>)",

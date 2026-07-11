@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { AgentConfiguration, CodingAgent } from "../../../shared/types";
+import type { AgentConfiguration, CodingAgent, FavoriteAgentConfig } from "../../../shared/types";
 import {
 	buildPickerGroups,
 	getModelGroupLabel,
@@ -7,6 +7,7 @@ import {
 	groupLabelForConfig,
 	pickConfigForModelChange,
 	prettifyModel,
+	resolveFavoriteChips,
 	MODEL_GROUP_LABELS,
 	type PickerGroup,
 } from "../agentPicker";
@@ -206,5 +207,62 @@ describe("MODEL_GROUP_LABELS", () => {
 		expect(MODEL_GROUP_LABELS["claude-opus-4-8[1m]"]).toBe("Opus 4.8");
 		expect(MODEL_GROUP_LABELS["claude-sonnet-5"]).toBe("Sonnet 5");
 		expect(MODEL_GROUP_LABELS["claude-opus-4-7[1m]"]).toBe("Opus 4.7");
+	});
+});
+
+describe("resolveFavoriteChips", () => {
+	const codex: CodingAgent = {
+		id: "builtin-codex",
+		name: "Codex",
+		baseCommand: "codex",
+		configurations: [{ id: "codex-default", name: "Default (GPT-5.5)", model: "gpt-5.5" }],
+	};
+	// A config whose id is the live target of a real DEPRECATED_DEFAULT_CONFIG_REMAP entry.
+	const remapAgent: CodingAgent = {
+		id: "builtin-claude",
+		name: "Claude",
+		baseCommand: "claude",
+		configurations: [
+			{ id: "claude-bypass-sonnet5-xhigh", name: "Bypass (Sonnet 5, X-High)", model: "claude-sonnet-5", permissionMode: "bypassPermissions", effort: "xhigh" },
+		],
+	};
+	const fav = (agentId: string, configId: string, uses = 0, lastUsedAt = 0): FavoriteAgentConfig => ({ agentId, configId, uses, lastUsedAt });
+
+	it("orders by uses (then recency) and builds Provider · Model · Mode labels", () => {
+		const chips = resolveFavoriteChips(
+			[fav("builtin-claude", "bypass-opus-medium", 1, 5), fav("builtin-codex", "codex-default", 9, 1)],
+			[claude, codex],
+		);
+		expect(chips.map((c) => c.label)).toEqual([
+			"Codex · GPT-5.5 · Default",
+			"Claude · Opus 4.8 · Bypass · Medium",
+		]);
+		expect(chips[1]).toMatchObject({ agentId: "builtin-claude", configId: "bypass-opus-medium", storedConfigId: "bypass-opus-medium" });
+	});
+
+	it("drops favorites whose agent or config no longer resolves (without touching storage)", () => {
+		const favs = [fav("builtin-claude", "gone"), fav("ghost-agent", "bypass-opus-medium"), fav("builtin-claude", "bypass-opus-medium")];
+		const chips = resolveFavoriteChips(favs, [claude]);
+		expect(chips.map((c) => c.configId)).toEqual(["bypass-opus-medium"]);
+	});
+
+	it("remaps a deprecated stored configId to its live equivalent, keeping storedConfigId for removal", () => {
+		const chips = resolveFavoriteChips([fav("builtin-claude", "claude-bypass-sonnet5")], [remapAgent]);
+		expect(chips).toHaveLength(1);
+		expect(chips[0]).toMatchObject({
+			agentId: "builtin-claude",
+			configId: "claude-bypass-sonnet5-xhigh",
+			storedConfigId: "claude-bypass-sonnet5",
+		});
+	});
+
+	it("de-dupes favorites that resolve to the same live pair, keeping the higher-ranked one", () => {
+		const chips = resolveFavoriteChips(
+			[fav("builtin-claude", "claude-bypass-sonnet5", 1, 0), fav("builtin-claude", "claude-bypass-sonnet5-xhigh", 5, 0)],
+			[remapAgent],
+		);
+		expect(chips).toHaveLength(1);
+		// Higher uses (the -xhigh entry) wins; its storedConfigId is the live id.
+		expect(chips[0].storedConfigId).toBe("claude-bypass-sonnet5-xhigh");
 	});
 });

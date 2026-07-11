@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
 import type { GlobalSettings } from "../shared/types";
 import { DEFAULT_AGENTS, DEPRECATED_DEFAULT_CONFIG_REMAP } from "../shared/types";
+import { recordFavoriteUsage, sanitizeFavorites } from "../shared/favorites";
 import { withFileLock } from "./file-lock";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -94,6 +95,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
+			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
+			favorites: sanitizeFavorites(data.favorites),
 		};
 	} catch (err) {
 		log.error("Failed to load settings", { error: String(err) });
@@ -111,6 +114,40 @@ export async function saveSettings(settings: GlobalSettings): Promise<void> {
 		renameSync(tempFile, SETTINGS_FILE);
 	});
 	log.info("Global settings saved");
+}
+
+/**
+ * Best-effort: bump `uses`/`lastUsedAt` for each launched (agentId, configId)
+ * that is already a favorite (once per spawned agent). Loads → applies → saves
+ * only when something changed; null halves and non-favorite pairs are ignored.
+ * Never throws — a failed counter update must not break a launch. Load-modify-save
+ * is not fully atomic (a rare concurrent settings write could drop an increment),
+ * which is acceptable for a best-effort usage counter.
+ */
+export async function recordFavoriteUsages(
+	pairs: Array<{ agentId: string | null | undefined; configId: string | null | undefined }>,
+): Promise<void> {
+	try {
+		const clean = pairs.filter(
+			(p): p is { agentId: string; configId: string } => !!p.agentId && !!p.configId,
+		);
+		if (clean.length === 0) return;
+		const settings = await loadSettings();
+		let favorites = settings.favorites ?? [];
+		if (favorites.length === 0) return;
+		const now = Date.now();
+		let changed = false;
+		for (const { agentId, configId } of clean) {
+			const next = recordFavoriteUsage(favorites, agentId, configId, now);
+			if (next !== favorites) {
+				favorites = next;
+				changed = true;
+			}
+		}
+		if (changed) await saveSettings({ ...settings, favorites });
+	} catch (err) {
+		log.error("Failed to record favorite usage", { error: String(err) });
+	}
 }
 
 export function loadSettingsSync(): GlobalSettings {
@@ -162,6 +199,8 @@ export function loadSettingsSync(): GlobalSettings {
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
+			// Cross-provider favorite pointers; shape-validated, capped, empty ⇒ undefined.
+			favorites: sanitizeFavorites(data.favorites),
 		};
 	} catch (err) {
 		log.error("Failed to load settings (sync)", { error: String(err) });

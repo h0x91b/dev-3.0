@@ -9,6 +9,7 @@ import * as updater from "../updater";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
+import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
 import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
@@ -124,6 +125,19 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	log.info("→ saveGlobalSettings", { params });
 	await saveSettings(params);
 	log.info("← saveGlobalSettings done");
+}
+
+/** Add or remove an (agentId, configId) pair in the global favorites list,
+ *  applying the cap + LFU-then-LRU eviction server-side (single source of truth),
+ *  then persist. Returns the updated settings so the renderer can sync. */
+async function toggleFavoriteAgent(params: { agentId: string; configId: string }): Promise<GlobalSettings> {
+	log.info("→ toggleFavoriteAgent", { agentId: params.agentId, configId: params.configId });
+	const settings = await loadSettings();
+	const favorites = toggleFavorite(settings.favorites ?? [], params.agentId, params.configId, Date.now());
+	const next: GlobalSettings = { ...settings, favorites };
+	await saveSettings(next);
+	log.info("← toggleFavoriteAgent", { count: favorites.length });
+	return next;
 }
 
 async function installDev3Cli(): Promise<{ installedFrom: string }> {
@@ -374,6 +388,7 @@ export const settingsConfigHandlers = {
 	getGlobalSettings,
 	getGitHubCliStatus,
 	saveGlobalSettings,
+	toggleFavoriteAgent,
 	installDev3Cli,
 	getAgents,
 	saveAgents,
