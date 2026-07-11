@@ -95,8 +95,8 @@ describe("AgentAccountsSection", () => {
 		expect(screen.getByText("work@example.com")).toBeTruthy();
 		expect(screen.getByText("main@example.com")).toBeTruthy();
 		expect(screen.getByText("Max 5x")).toBeTruthy();
-		// System login is active by default (activeId=null).
-		expect(screen.getByText("Active")).toBeTruthy();
+		// System login is the default by default (activeId=null).
+		expect(screen.getByText("Default")).toBeTruthy();
 	});
 
 	it("activates an account on row click", async () => {

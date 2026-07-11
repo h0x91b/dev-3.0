@@ -1381,6 +1381,16 @@ export function computeTaskTimeBreakdown(task: TaskTimeInput, nowMs: number): Ta
 	};
 }
 
+/** One row of the Launch modal: the agent + configuration to run, plus the
+ *  per-launch managed account (`undefined` → the registry default; `null` → the
+ *  system login; a string → that account). Shared by every spawn/schedule RPC so
+ *  the trio travels as one named concept instead of a repeated inline literal. */
+export interface LaunchVariant {
+	agentId: string | null;
+	configId: string | null;
+	accountId?: string | null;
+}
+
 /** A one-shot deferred launch persisted on a `todo` task. See {@link Task.scheduledLaunch}. */
 export interface ScheduledLaunch {
 	/** ISO timestamp when the launch should fire. */
@@ -1388,7 +1398,7 @@ export interface ScheduledLaunch {
 	/** Column the spawned variants land in (same as an immediate launch). */
 	targetStatus: TaskStatus;
 	/** Agent/config/account variants captured from the Launch modal at schedule time. */
-	variants: Array<{ agentId: string | null; configId: string | null; accountId?: string | null }>;
+	variants: LaunchVariant[];
 }
 
 /**
@@ -2540,7 +2550,7 @@ export type AppRPCSchema = {
 					taskId: string;
 					projectId: string;
 					targetStatus: TaskStatus;
-					variants: Array<{ agentId: string | null; configId: string | null; accountId?: string | null }>;
+					variants: LaunchVariant[];
 				};
 				response: Task[];
 			};
@@ -2548,7 +2558,7 @@ export type AppRPCSchema = {
 				params: {
 					taskId: string;
 					projectId: string;
-					variants: Array<{ agentId: string | null; configId: string | null; accountId?: string | null }>;
+					variants: LaunchVariant[];
 				};
 				response: Task[];
 			};
@@ -2780,7 +2790,7 @@ export type AppRPCSchema = {
 					/** ISO timestamp; must be in the future. */
 					at: string;
 					targetStatus: TaskStatus;
-					variants: Array<{ agentId: string | null; configId: string | null; accountId?: string | null }>;
+					variants: LaunchVariant[];
 				};
 				response: Task;
 			};

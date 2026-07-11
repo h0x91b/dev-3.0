@@ -339,12 +339,12 @@ export async function listAgentAccounts(paths: AccountPaths = defaultAccountPath
 	};
 }
 
-/** Resolve which Claude account a launch should use.
- *  `accountIdOverride === undefined` → the registry default (`activeId`, i.e. the
- *  preselect); `null` → force the system login (~/.claude); a string → that
- *  specific managed account. This is the per-launch selection seam. */
-function resolveClaudeAccountId(registry: Registry, accountIdOverride: string | null | undefined): string | null {
-	return accountIdOverride === undefined ? registry.claude.activeId : accountIdOverride;
+/** Resolve a per-launch account override against a provider's registry default.
+ *  `accountIdOverride === undefined` → the default (`activeId`, i.e. the
+ *  preselect); `null` → force the system login (~/.claude / ~/.codex); a string →
+ *  that specific managed account. Shared by both providers' env resolution. */
+function resolveAccountIdOverride(activeId: string | null, accountIdOverride: string | null | undefined): string | null {
+	return accountIdOverride === undefined ? activeId : accountIdOverride;
 }
 
 /** CLAUDE_CONFIG_DIR to inject into new Claude sessions, or null for ~/.claude.
@@ -355,7 +355,7 @@ export async function getActiveClaudeConfigDir(
 	paths: AccountPaths = defaultAccountPaths(),
 ): Promise<string | null> {
 	const registry = loadRegistry(paths);
-	const id = resolveClaudeAccountId(registry, accountIdOverride);
+	const id = resolveAccountIdOverride(registry.claude.activeId, accountIdOverride);
 	if (!id || !registry.claude.accounts.some((e) => e.id === id)) return null;
 	const dir = claudeAccountDir(id, paths);
 	return existsSync(join(dir, ".claude.json")) ? dir : null;
@@ -417,7 +417,7 @@ export async function getActiveClaudeSessionEnv(
 	if (registry.claude.accounts.length === 0) return {};
 
 	const env: Record<string, string> = {};
-	const id = resolveClaudeAccountId(registry, accountIdOverride);
+	const id = resolveAccountIdOverride(registry.claude.activeId, accountIdOverride);
 	const entry = id ? registry.claude.accounts.find((e) => e.id === id) : undefined;
 	if (entry) {
 		const dir = claudeAccountDir(entry.id, paths);
@@ -454,7 +454,7 @@ export async function getActiveCodexSessionEnv(
 	paths: AccountPaths = defaultAccountPaths(),
 ): Promise<Record<string, string>> {
 	const registry = loadRegistry(paths);
-	const id = accountIdOverride === undefined ? registry.codex.activeId : accountIdOverride;
+	const id = resolveAccountIdOverride(registry.codex.activeId, accountIdOverride);
 	if (!id || !registry.codex.accounts.some((e) => e.id === id)) return {};
 	// Missing snapshot (account added but creds gone) → fall back to system login.
 	if (!existsSync(codexAccountAuthFile(id, paths))) return {};

@@ -96,9 +96,9 @@ function codexSessionsRoot(): string {
  *  injection scatters rollouts across those, so a single root would miss the
  *  latest session whenever it ran under a non-default account. */
 function codexSessionRoots(): string[] {
-	const roots = [codexSessionsRoot()];
-	for (const dir of listCodexAccountDirs()) roots.push(join(dir, "sessions"));
-	return roots;
+	const roots = new Set<string>([codexSessionsRoot()]);
+	for (const dir of listCodexAccountDirs()) roots.add(join(dir, "sessions"));
+	return [...roots];
 }
 
 function listSortedDirs(dir: string): string[] {

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import type { ColumnAgentConfig, CustomColumn, PreparingStage, Project, Task, TaskPriority, CompletedDiffStats, TaskStatus } from "../../shared/types";
+import type { ColumnAgentConfig, CustomColumn, LaunchVariant, PreparingStage, Project, Task, TaskPriority, CompletedDiffStats, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -1065,7 +1065,7 @@ async function spawnVariants(params: {
 	taskId: string;
 	projectId: string;
 	targetStatus: TaskStatus;
-	variants: Array<{ agentId: string | null; configId: string | null; accountId?: string | null }>;
+	variants: LaunchVariant[];
 }): Promise<Task[]> {
 	log.info("→ spawnVariants", { taskId: params.taskId, count: params.variants.length });
 	const project = await data.getProject(params.projectId);
@@ -1175,7 +1175,7 @@ async function spawnVariants(params: {
 async function addAttempts(params: {
 	taskId: string;
 	projectId: string;
-	variants: Array<{ agentId: string | null; configId: string | null; accountId?: string | null }>;
+	variants: LaunchVariant[];
 }): Promise<Task[]> {
 	log.info("→ addAttempts", { taskId: params.taskId, count: params.variants.length });
 	const project = await data.getProject(params.projectId);
@@ -1454,7 +1454,7 @@ async function scheduleTaskLaunch(params: {
 	projectId: string;
 	at: string;
 	targetStatus: TaskStatus;
-	variants: Array<{ agentId: string | null; configId: string | null; accountId?: string | null }>;
+	variants: LaunchVariant[];
 }): Promise<Task> {
 	log.info("→ scheduleTaskLaunch", { taskId: params.taskId, at: params.at, count: params.variants.length });
 	const project = await data.getProject(params.projectId);
