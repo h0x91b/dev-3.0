@@ -1,0 +1,1 @@
+The agent rate-limit header badge and the Claude window rows in its tooltip now spell out that the percentage is the amount "used" (e.g. "22% used"), removing the ambiguity of a bare "22%". Codex already reads "% left", so its rows are unchanged.

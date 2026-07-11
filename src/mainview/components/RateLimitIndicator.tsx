@@ -64,7 +64,9 @@ function snapshotRows(
 	for (const win of snap.windows) {
 		if (win.id === "monthly_credits") continue;
 		const reset = formatResetDelta(win.resetsAt, now);
-		rows.push(`${windowLabel(win)} — ${Math.round(win.usedPercent)}%${reset ? ` · ${t("rateLimits.resetsIn", { time: reset })}` : ""}`);
+		rows.push(
+			`${windowLabel(win)} — ${t("rateLimits.percentUsed", { percent: Math.round(win.usedPercent) })}${reset ? ` · ${t("rateLimits.resetsIn", { time: reset })}` : ""}`,
+		);
 	}
 	if (snap.creditsBalance != null) {
 		rows.push(t("rateLimits.credits", { balance: snap.creditsBalance }));
@@ -142,7 +144,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 
 	const worstReset = formatResetDelta(worst.window.resetsAt, now);
 	const worstLabel = worst.window.id === "monthly_credits" ? t("rateLimits.monthlyLabel") : windowLabel(worst.window);
-	const ariaLabel = `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[worst.source] ?? worst.source} ${worstLabel} ${percent}%${worstReset ? `, ${t("rateLimits.resetsIn", { time: worstReset })}` : ""}`;
+	const ariaLabel = `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[worst.source] ?? worst.source} ${worstLabel} ${t("rateLimits.percentUsed", { percent })}${worstReset ? `, ${t("rateLimits.resetsIn", { time: worstReset })}` : ""}`;
 
 	const colorClasses = danger
 		? "text-danger bg-danger/15 border-danger/30"
@@ -196,7 +198,11 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				className={`header-anim flex cursor-pointer select-none items-center gap-1 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
 			>
 				<RateLimitIcon className="w-[1.125rem] h-[1.125rem]" />
-				{!compact && <span className="text-[0.6875rem] font-medium tabular-nums">{percent}%</span>}
+				{!compact && (
+					<span className="text-[0.6875rem] font-medium tabular-nums">
+						{percent}%<span className="ml-0.5 text-[0.5625rem] font-normal opacity-70">{t("rateLimits.used")}</span>
+					</span>
+				)}
 			</div>
 		</Tooltip>
 	);
