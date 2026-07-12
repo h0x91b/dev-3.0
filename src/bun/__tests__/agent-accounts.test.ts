@@ -5,10 +5,12 @@ import { join } from "node:path";
 import {
 	addClaudeApiProfile,
 	claudeAccountDir,
+	codexAccountDir,
 	completeClaudeLogin,
 	completeCodexLogin,
 	getActiveClaudeConfigDir,
 	getActiveClaudeSessionEnv,
+	getActiveCodexSessionEnv,
 	getClaudeApiProfileDraft,
 	importCurrentClaudeAccount,
 	importCurrentCodexAccount,
@@ -200,22 +202,35 @@ describe("setActiveClaudeAccount / getActiveClaudeConfigDir", () => {
 		seedClaudeLogin();
 		const account = await importCurrentClaudeAccount(paths);
 
-		expect(await getActiveClaudeConfigDir(paths)).toBeNull();
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
 
 		await setActiveClaudeAccount(account.id, paths);
-		expect(await getActiveClaudeConfigDir(paths)).toBe(claudeAccountDir(account.id, paths));
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBe(claudeAccountDir(account.id, paths));
 
 		await setActiveClaudeAccount(null, paths);
-		expect(await getActiveClaudeConfigDir(paths)).toBeNull();
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
 	});
 
 	it("rejects unknown account ids", async () => {
 		await expect(setActiveClaudeAccount("nope", paths)).rejects.toThrow(/Unknown Claude account/);
 	});
+
+	it("per-launch accountId override selects an account regardless of the registry default", async () => {
+		seedClaudeLogin();
+		const account = await importCurrentClaudeAccount(paths);
+		// Registry default stays the system login (activeId=null)…
+		await setActiveClaudeAccount(null, paths);
+		expect(await getActiveClaudeConfigDir(undefined, paths)).toBeNull();
+		// …but an explicit per-launch override picks the managed account for THIS launch.
+		expect(await getActiveClaudeConfigDir(account.id, paths)).toBe(claudeAccountDir(account.id, paths));
+		// null override forces the system login even when the default points elsewhere.
+		await setActiveClaudeAccount(account.id, paths);
+		expect(await getActiveClaudeConfigDir(null, paths)).toBeNull();
+	});
 });
 
 describe("codex accounts", () => {
-	it("import snapshots auth.json and becomes the active account", async () => {
+	it("import snapshots auth.json into a per-account CODEX_HOME and becomes the default", async () => {
 		seedCodexLogin("acc-1");
 		const account = await importCurrentCodexAccount(paths);
 		expect(account.label).toBe("acc-1@example.com");
@@ -224,69 +239,71 @@ describe("codex accounts", () => {
 		const state = await listAgentAccounts(paths);
 		expect(state.codex.activeId).toBe(account.id);
 		expect(state.codex.currentIdentity?.accountId).toBe("acc-1");
+		// The account dir is a usable CODEX_HOME holding its own auth.json.
+		expect(existsSync(join(codexAccountDir(account.id, paths), "auth.json"))).toBe(true);
 	});
 
 	it("rejects import without a ChatGPT login", async () => {
 		await expect(importCurrentCodexAccount(paths)).rejects.toThrow(/No Codex login/);
 	});
 
-	it("switching accounts swaps auth.json and syncs refreshed tokens back", async () => {
+	it("prepareCodexLogin scaffolds a fresh CODEX_HOME and hands a scoped login command", async () => {
+		const { accountId, loginCommand } = await prepareCodexLogin(paths);
+		expect(accountId).toBeTruthy();
+		const dir = codexAccountDir(accountId, paths);
+		expect(loginCommand).toBe(`CODEX_HOME='${dir}' codex login`);
+		expect(existsSync(dir)).toBe(true);
+		// Not registered until verified — the user's ~/.codex is untouched.
+		const state = await listAgentAccounts(paths);
+		expect(state.codex.accounts).toHaveLength(0);
+	});
+
+	it("completeCodexLogin verifies the scoped dir and registers it as the default", async () => {
+		const { accountId } = await prepareCodexLogin(paths);
+		// Simulate `codex login` writing auth.json into the scoped CODEX_HOME.
+		writeFileSync(join(codexAccountDir(accountId, paths), "auth.json"), codexAuth("acc-new"));
+		const account = await completeCodexLogin(accountId, paths);
+		expect(account.identity?.accountId).toBe("acc-new");
+		const state = await listAgentAccounts(paths);
+		expect(state.codex.activeId).toBe(account.id);
+		expect(state.codex.accounts).toHaveLength(1);
+	});
+
+	it("completeCodexLogin rejects a login that duplicates an existing account", async () => {
 		seedCodexLogin("acc-1");
+		await importCurrentCodexAccount(paths);
+		const { accountId } = await prepareCodexLogin(paths);
+		writeFileSync(join(codexAccountDir(accountId, paths), "auth.json"), codexAuth("acc-1"));
+		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(/already added/);
+	});
+
+	it("setActiveCodexAccount only moves the default pointer — never swaps ~/.codex", async () => {
+		seedCodexLogin("acc-sys");
+		const original = readFileSync(join(paths.codexHome, "auth.json"), "utf-8");
 		const first = await importCurrentCodexAccount(paths);
-
-		// User logs into a second account (auth.json overwritten by codex login).
-		writeFileSync(join(paths.codexHome, "auth.json"), codexAuth("acc-2"));
-		const second = await completeCodexLogin(paths);
-		expect(second.id).not.toBe(first.id);
-
-		let state = await listAgentAccounts(paths);
-		expect(state.codex.activeId).toBe(second.id);
-
-		// Simulate codex refreshing acc-2's tokens in place.
-		writeFileSync(join(paths.codexHome, "auth.json"), codexAuth("acc-2", "acc-2@example.com", { last_refresh: "2026-07-05T12:00:00Z" }));
 
 		await setActiveCodexAccount(first.id, paths);
-		const live = JSON.parse(readFileSync(join(paths.codexHome, "auth.json"), "utf-8"));
-		expect(live.tokens.account_id).toBe("acc-1");
-
-		// The outgoing account's snapshot picked up the refreshed tokens.
-		const snap = JSON.parse(readFileSync(join(paths.accountsDir, "codex", second.id, "auth.json"), "utf-8"));
-		expect(snap.last_refresh).toBe("2026-07-05T12:00:00Z");
-
-		state = await listAgentAccounts(paths);
+		let state = await listAgentAccounts(paths);
 		expect(state.codex.activeId).toBe(first.id);
-	});
+		// Activation is registry-only — the system login file is never rewritten.
+		expect(readFileSync(join(paths.codexHome, "auth.json"), "utf-8")).toBe(original);
 
-	it("re-login into a known account refreshes its snapshot instead of duplicating", async () => {
-		seedCodexLogin("acc-1");
-		const first = await importCurrentCodexAccount(paths);
-
-		writeFileSync(join(paths.codexHome, "auth.json"), codexAuth("acc-1", "acc-1@example.com", { last_refresh: "2026-07-05T09:00:00Z" }));
-		const again = await completeCodexLogin(paths);
-		expect(again.id).toBe(first.id);
-
-		const state = await listAgentAccounts(paths);
-		expect(state.codex.accounts).toHaveLength(1);
-	});
-
-	it("prepareCodexLogin auto-imports an unmanaged current login", async () => {
-		seedCodexLogin("acc-1");
-		const { loginCommand } = await prepareCodexLogin(paths);
-		expect(loginCommand).toBe("codex login");
-		const state = await listAgentAccounts(paths);
-		expect(state.codex.accounts).toHaveLength(1);
-	});
-
-	it("reconciles activeId from whatever auth.json actually holds", async () => {
-		seedCodexLogin("acc-1");
-		const first = await importCurrentCodexAccount(paths);
-
-		// User switches accounts outside dev3.
-		writeFileSync(join(paths.codexHome, "auth.json"), codexAuth("acc-external"));
-		const state = await listAgentAccounts(paths);
+		// null → the system login (~/.codex) becomes the default.
+		await setActiveCodexAccount(null, paths);
+		state = await listAgentAccounts(paths);
 		expect(state.codex.activeId).toBeNull();
-		expect(state.codex.currentIdentity?.accountId).toBe("acc-external");
-		expect(state.codex.accounts.map((a) => a.id)).toContain(first.id);
+	});
+
+	it("getActiveCodexSessionEnv injects the selected account's CODEX_HOME; per-launch override wins", async () => {
+		seedCodexLogin("acc-1");
+		const account = await importCurrentCodexAccount(paths);
+		// Default points at the imported account.
+		expect(await getActiveCodexSessionEnv(undefined, paths)).toEqual({ CODEX_HOME: codexAccountDir(account.id, paths) });
+		// null override → system login (~/.codex), no CODEX_HOME.
+		expect(await getActiveCodexSessionEnv(null, paths)).toEqual({});
+		// Explicit id override selects that account even when the default is the system login.
+		await setActiveCodexAccount(null, paths);
+		expect(await getActiveCodexSessionEnv(account.id, paths)).toEqual({ CODEX_HOME: codexAccountDir(account.id, paths) });
 	});
 });
 
@@ -336,7 +353,7 @@ describe("claude API profiles", () => {
 		);
 		await setActiveClaudeAccount(account.id, paths);
 
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(account.id, paths));
 		expect(env.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
 		expect(env.ANTHROPIC_API_KEY).toBe("sk-or-key");
@@ -363,7 +380,7 @@ describe("claude API profiles", () => {
 		);
 		await setActiveClaudeAccount(account.id, paths);
 
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL).toBe("provider/fast");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME).toBe("Fast");
 		expect(env.ANTHROPIC_DEFAULT_HAIKU_MODEL_DESCRIPTION).toBe("Cheap background model");
@@ -374,11 +391,11 @@ describe("claude API profiles", () => {
 
 	it("active OAuth account injects CLAUDE_CONFIG_DIR and unsets every API-profile var; empty registry injects nothing", async () => {
 		seedClaudeLogin();
-		expect(await getActiveClaudeSessionEnv(paths)).toEqual({});
+		expect(await getActiveClaudeSessionEnv(undefined, paths)).toEqual({});
 
 		const account = await importCurrentClaudeAccount(paths);
 		await setActiveClaudeAccount(account.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.CLAUDE_CONFIG_DIR).toBe(claudeAccountDir(account.id, paths));
 		for (const key of claudeApiProfileEnvKeys()) {
 			if (key === "CLAUDE_CONFIG_DIR") continue;
@@ -390,7 +407,7 @@ describe("claude API profiles", () => {
 		seedClaudeLogin();
 		await importCurrentClaudeAccount(paths);
 		// activeId stays null → system login, but a stale profile env must still be cleared.
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		for (const key of claudeApiProfileEnvKeys()) {
 			expect(env[key]).toBe(ENV_UNSET);
 		}
@@ -401,7 +418,7 @@ describe("claude API profiles", () => {
 		await addClaudeApiProfile({ apiKey: "sk-x", env: { CLAUDE_CODE_USE_BEDROCK: "1" } }, paths);
 		const oauth = await importCurrentClaudeAccount(paths);
 		await setActiveClaudeAccount(oauth.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.CLAUDE_CODE_USE_BEDROCK).toBe(ENV_UNSET);
 		expect(env.ANTHROPIC_API_KEY).toBe(ENV_UNSET);
 	});
@@ -412,7 +429,7 @@ describe("claude API profiles", () => {
 		expect(account.label).toBe("API profile 1");
 		await removeAgentAccount("claude", account.id, paths);
 		expect(existsSync(claudeAccountDir(account.id, paths))).toBe(false);
-		expect(await getActiveClaudeSessionEnv(paths)).toEqual({});
+		expect(await getActiveClaudeSessionEnv(undefined, paths)).toEqual({});
 	});
 
 	it("draft returns the editable fields including the key value and slot overrides", async () => {
@@ -460,7 +477,7 @@ describe("claude API profiles", () => {
 		});
 		// Key preserved on disk (apiKey omitted → keep); master model fans out to slots.
 		await setActiveClaudeAccount(account.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.ANTHROPIC_API_KEY).toBe("sk-original");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe("new-model");
 		expect(env.ANTHROPIC_MODEL).toBe(ENV_UNSET);
@@ -473,7 +490,7 @@ describe("claude API profiles", () => {
 		const account = await addClaudeApiProfile({ apiKey: "sk-x", model: "master-model" }, paths);
 		await updateClaudeApiProfile(account.id, { model: "", slotModels: { sonnet: { id: "provider/sonnet" } } }, paths);
 		await setActiveClaudeAccount(account.id, paths);
-		const env = await getActiveClaudeSessionEnv(paths);
+		const env = await getActiveClaudeSessionEnv(undefined, paths);
 		expect(env.ANTHROPIC_DEFAULT_SONNET_MODEL).toBe("provider/sonnet");
 		expect(env.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(ENV_UNSET);
 	});
@@ -483,7 +500,7 @@ describe("claude API profiles", () => {
 		const account = await addClaudeApiProfile({ apiKey: "sk-original-key" }, paths);
 		await updateClaudeApiProfile(account.id, { apiKey: "sk-brand-new-key-1234567890" }, paths);
 		await setActiveClaudeAccount(account.id, paths);
-		expect((await getActiveClaudeSessionEnv(paths)).ANTHROPIC_API_KEY).toBe("sk-brand-new-key-1234567890");
+		expect((await getActiveClaudeSessionEnv(undefined, paths)).ANTHROPIC_API_KEY).toBe("sk-brand-new-key-1234567890");
 		const seeded = JSON.parse(readFileSync(join(claudeAccountDir(account.id, paths), ".claude.json"), "utf-8"));
 		expect(seeded.customApiKeyResponses.approved).toContain("sk-brand-new-key-1234567890".slice(-20));
 	});

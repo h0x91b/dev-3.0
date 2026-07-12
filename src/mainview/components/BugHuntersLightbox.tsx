@@ -23,6 +23,8 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
 	const [agentId, setAgentId] = useState<string | null>(null);
 	const [configId, setConfigId] = useState<string | null>(null);
+	// One per-launch account shared by all N hunters (undefined → default preselect).
+	const [accountId, setAccountId] = useState<string | null | undefined>(undefined);
 	const [count, setCount] = useState<number>(DEFAULT_HUNTERS);
 	const [launching, setLaunching] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 				agentId,
 				configId,
 				count,
+				accountId,
 			});
 			trackEvent("bug_hunters_spawned", {
 				project_id: project.id,
@@ -179,6 +182,8 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 								setAgentId(next.agentId);
 								setConfigId(next.configId);
 							}}
+							accountId={accountId}
+							onAccountChange={setAccountId}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 							showFavorites
 							favorites={globalSettings.favorites ?? []}

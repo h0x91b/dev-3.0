@@ -12,7 +12,7 @@ import { DEV3_HOME } from "./paths";
 import { loadSettings, saveSettings } from "./settings";
 import { getCodexProfileForCurrentUiTheme, getCodexThemeForCurrentUiTheme } from "./theme-state";
 import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
-import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv } from "./agent-accounts";
+import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
 
@@ -468,6 +468,12 @@ export interface CommandOptions {
 	 *  supplied via injected provider env (ANTHROPIC_MODEL) instead.
 	 *  Only affects the Claude agent. */
 	llmProvider?: LlmProvider;
+	/** Per-launch managed account selection (agent account switcher). `undefined`
+	 *  → use the registry default (the preselect); `null` → force the system
+	 *  login (~/.claude / ~/.codex); a string → that specific managed account.
+	 *  Threaded into the account env resolution so each spawned session locks to
+	 *  its chosen account instead of a single global active one. */
+	accountId?: string | null;
 }
 
 /**
@@ -745,15 +751,39 @@ function applyStatusLineOption(
  *  config's envVars disables the injection entirely, and per-key values set by
  *  the config always win. Affects new sessions only; running agents keep their
  *  in-memory credentials. */
-async function applyClaudeAccountEnv(baseCmd: string, extraEnv: Record<string, string>): Promise<void> {
+async function applyClaudeAccountEnv(
+	baseCmd: string,
+	extraEnv: Record<string, string>,
+	accountId?: string | null,
+): Promise<void> {
 	if (!isClaudeCommand(baseCmd) || extraEnv.CLAUDE_CONFIG_DIR) return;
 	try {
-		const accountEnv = await getActiveClaudeSessionEnv();
+		const accountEnv = await getActiveClaudeSessionEnv(accountId);
 		for (const [key, value] of Object.entries(accountEnv)) {
 			if (!(key in extraEnv)) extraEnv[key] = value;
 		}
 	} catch (err) {
 		log.warn("Failed to resolve active Claude account env", { error: String(err) });
+	}
+}
+
+/** Inject the selected Codex account's CODEX_HOME into a Codex launch. Mirrors
+ *  applyClaudeAccountEnv: an explicit CODEX_HOME in the config's envVars disables
+ *  the injection, and `accountId` selects a specific account for THIS session
+ *  (per-launch selector). Affects new sessions only. */
+async function applyCodexAccountEnv(
+	baseCmd: string,
+	extraEnv: Record<string, string>,
+	accountId?: string | null,
+): Promise<void> {
+	if (!isCodexCommand(baseCmd) || extraEnv.CODEX_HOME) return;
+	try {
+		const accountEnv = await getActiveCodexSessionEnv(accountId);
+		for (const [key, value] of Object.entries(accountEnv)) {
+			if (!(key in extraEnv)) extraEnv[key] = value;
+		}
+	} catch (err) {
+		log.warn("Failed to resolve active Codex account env", { error: String(err) });
 	}
 }
 
@@ -830,7 +860,8 @@ export async function resolveCommandForAgent(
 	if (config?.envVars) {
 		Object.assign(extraEnv, config.envVars);
 	}
-	await applyClaudeAccountEnv(baseCmd, extraEnv);
+	await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
+	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
 	const command = resolveAgentCommand(
 		agentWithPath,
 		applyModelOverride(config, baseCmd, extraEnv),
@@ -906,7 +937,8 @@ export async function resolveCommandForProject(
 			...providerEnvForAgent(agentWithPath, config),
 			...buildTaskEnv(project, taskTitle, "", worktreePath, config),
 		};
-		await applyClaudeAccountEnv(baseCmd, extraEnv);
+		await applyClaudeAccountEnv(baseCmd, extraEnv, options?.accountId);
+		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
 		const command = resolveAgentCommand(
 			agentWithPath,
 			applyModelOverride(config, baseCmd, extraEnv),
@@ -1050,7 +1082,7 @@ const TRUST_ENTRY = {
  * approvals/rejections from `<projectPath>/.claude/settings.local.json` or
  * `<projectPath>/.claude/settings.json` are preserved.
  */
-export async function ensureClaudeTrust(dirPath: string, projectPath?: string): Promise<void> {
+export async function ensureClaudeTrust(dirPath: string, projectPath?: string, accountId?: string | null): Promise<void> {
 	try {
 		// Resolve symlinks so the path matches what claude sees
 		const resolved = await realpath(dirPath);
@@ -1059,9 +1091,10 @@ export async function ensureClaudeTrust(dirPath: string, projectPath?: string): 
 
 		// A managed account (agent account switcher) reads trust from ITS OWN
 		// .claude.json inside the CLAUDE_CONFIG_DIR we inject — register there too,
-		// or every launch under a switched account re-asks the trust dialog.
+		// or every launch under a switched account re-asks the trust dialog. Use the
+		// per-launch account (falls back to the registry default when undefined).
 		try {
-			const accountDir = await getActiveClaudeConfigDir();
+			const accountDir = await getActiveClaudeConfigDir(accountId);
 			if (accountDir) {
 				await writeClaudeTrustEntry(join(accountDir, ".claude.json"), resolved);
 			}

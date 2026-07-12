@@ -96,23 +96,22 @@ async function prepareAgentAccountLogin(params: { kind: AgentAccountKind }): Pro
 
 async function completeAgentAccountLogin(params: { kind: AgentAccountKind; accountId?: string | null }): Promise<AgentAccount> {
 	log.info("→ completeAgentAccountLogin", params);
-	let account: AgentAccount;
-	if (params.kind === "claude") {
-		if (!params.accountId) throw new Error("accountId is required for claude login verification");
-		account = await accounts.completeClaudeLogin(params.accountId);
-	} else {
-		account = await accounts.completeCodexLogin();
-	}
+	if (!params.accountId) throw new Error(`accountId is required for ${params.kind} login verification`);
+	const account =
+		params.kind === "claude"
+			? await accounts.completeClaudeLogin(params.accountId)
+			: await accounts.completeCodexLogin(params.accountId);
 	log.info("← completeAgentAccountLogin", { id: account.id, label: account.label });
 	return account;
 }
 
 async function setActiveAgentAccount(params: { kind: AgentAccountKind; accountId: string | null }): Promise<void> {
 	log.info("→ setActiveAgentAccount", params);
+	// Both kinds now accept null = "default to the system login" (~/.claude /
+	// ~/.codex). Codex no longer swaps auth.json — this only moves the default.
 	if (params.kind === "claude") {
 		await accounts.setActiveClaudeAccount(params.accountId);
 	} else {
-		if (!params.accountId) throw new Error("Codex has no system-login fallback — accountId is required");
 		await accounts.setActiveCodexAccount(params.accountId);
 	}
 	log.info("← setActiveAgentAccount done");

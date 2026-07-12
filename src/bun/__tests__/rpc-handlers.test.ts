@@ -6826,7 +6826,8 @@ describe("handlers.spawnAgentInTask", () => {
 
 		await handlers.spawnAgentInTask({ taskId: "abcd1234-full-id", projectId: "proj-1", agentId: "builtin-claude", configId: "claude-default" });
 
-		expect(agents.ensureClaudeTrust).toHaveBeenCalledWith("/tmp/wt", project.path);
+		// 3rd arg is the per-launch accountId (undefined here → registry default).
+		expect(agents.ensureClaudeTrust).toHaveBeenCalledWith("/tmp/wt", project.path, undefined);
 	});
 });
 

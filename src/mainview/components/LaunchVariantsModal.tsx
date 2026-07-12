@@ -16,6 +16,9 @@ import SchedulePicker from "./SchedulePicker";
 interface VariantRow {
 	agentId: string | null;
 	configId: string | null;
+	/** Per-launch managed account: `undefined` → default; `null` → system login;
+	 *  string → that account. Seeded from the source task on retry. */
+	accountId?: string | null;
 }
 
 type LaunchMode = "spawn" | "addAttempts";
@@ -72,7 +75,9 @@ function LaunchVariantsModal({
 			agent?.defaultConfigId ??
 			agent?.configurations[0]?.id ??
 			null;
-		return { agentId, configId };
+		// On retry (addAttempts) seed the source task's account so the attempt
+		// re-runs under the same one; a fresh todo has none → the default preselect.
+		return { agentId, configId, accountId: task.accountId };
 	}
 
 	const [variants, setVariants] = useState<VariantRow[]>(() => [makeDefaultVariant()]);
@@ -302,6 +307,8 @@ function LaunchVariantsModal({
 									configId={variant.configId}
 									agentAvailability={agentAvailability}
 									onChange={(next) => updateVariant(index, next)}
+									accountId={variant.accountId}
+									onAccountChange={(accountId) => updateVariant(index, { accountId })}
 									className="flex-1 min-w-0 flex flex-col sm:flex-row gap-3"
 									pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 									showFavorites

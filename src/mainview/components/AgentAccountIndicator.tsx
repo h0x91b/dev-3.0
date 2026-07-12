@@ -9,7 +9,6 @@ import type {
 } from "../../shared/agent-accounts";
 import type { CodingAgent } from "../../shared/types";
 import { api } from "../rpc";
-import { confirm } from "../confirm";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 import { useEscapeKey } from "../hooks/useEscapeKey";
@@ -177,36 +176,55 @@ function SwitcherPopover({
 }
 
 /**
- * "via <active account>" line under the launch picker's Provider field.
+ * Account pill under the launch picker's Provider field. Two modes:
+ *
+ * - **Local per-launch selector** (`onSelect` provided): picking writes to the
+ *   caller's state for THIS launch only — no global mutation, no confirm. Used
+ *   by the spawn dialogs (Launch Variants / Spawn Agent / Bug Hunters).
+ * - **Global default switcher** (`onSelect` omitted): picking moves the default
+ *   account (billing acknowledgement kept). Used by Settings surfaces.
  *
  * Progressive disclosure: renders nothing unless the selected provider is a
  * claude/codex command AND the user has registered managed accounts — a
- * single-login user never sees it. Clicking opens a quick popover switcher
- * (same global switch as Settings → Agent Accounts; affects new sessions only).
+ * single-login user never sees it.
  */
-export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | undefined | null }) {
+export default function AgentAccountIndicator({
+	agent,
+	value,
+	onSelect,
+}: {
+	agent: CodingAgent | undefined | null;
+	/** Per-launch selection: `undefined` → the registry default (the preselect);
+	 *  `null` → the system login; a string → that managed account. Local mode only. */
+	value?: string | null;
+	/** When provided the pill is a LOCAL per-launch selector (no global mutation,
+	 *  no confirm). When omitted it stays the global default switcher. */
+	onSelect?: (accountId: string | null) => void;
+}) {
 	const t = useT();
 	const kind = agent ? agentAccountKindForCommand(agent.baseCommand) : null;
 	const state = useAgentAccountsState(kind !== null);
 	const [anchor, setAnchor] = useState<DOMRect | null>(null);
 	const [busy, setBusy] = useState(false);
 	const buttonRef = useRef<HTMLButtonElement>(null);
+	const isLocal = !!onSelect;
 
-	const handleSelect = useCallback(
-		async (accountKind: AgentAccountKind, accountId: string | null, name: string) => {
+	const handleSelectLocal = useCallback(
+		(accountId: string | null) => {
+			setAnchor(null);
+			onSelect?.(accountId);
+		},
+		[onSelect],
+	);
+
+	const handleSelectGlobal = useCallback(
+		async (accountKind: AgentAccountKind, accountId: string | null) => {
 			setBusy(true);
-			// Close the popover before the confirm dialog opens — otherwise the list
-			// sits behind the dialog (both visible at once).
 			setAnchor(null);
 			try {
-				// Billing-sensitive: same acknowledgement as the settings section —
-				// every NEW session (and its cost) moves to the target account.
-				const ok = await confirm({
-					title: t("settings.accountsSwitchConfirmTitle"),
-					message: t("settings.accountsSwitchConfirmMessage", { name }),
-					danger: true,
-				});
-				if (!ok) return;
+				// Setting the DEFAULT account only changes the preselect for future
+				// launches (no ~/.codex swap, no running-session cost move), so no
+				// confirmation — the per-launch selector is the real guard.
 				await api.request.setActiveAgentAccount({ kind: accountKind, accountId });
 				notifyAgentAccountsChanged();
 			} catch (err) {
@@ -215,29 +233,38 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 				setBusy(false);
 			}
 		},
-		[t],
+		[],
 	);
 
 	if (!kind || !state) return null;
 	const kindState = state[kind];
 	if (kindState.accounts.length === 0) return null;
 
-	const active: AgentAccount | null = kindState.accounts.find((a) => a.id === kindState.activeId) ?? null;
+	// The effective selected id: the local per-launch value (undefined → the
+	// registry default) or, for the global switcher, the registry default itself.
+	const effectiveSelectedId = isLocal && value !== undefined ? value : kindState.activeId;
+
+	const selectedAccount: AgentAccount | null = kindState.accounts.find((a) => a.id === effectiveSelectedId) ?? null;
 	const fallbackIdentity = kind === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
 	const fallbackLabel =
 		kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged");
-	const activeLabel = active ? active.label : (fallbackIdentity?.email ?? fallbackLabel);
+	const activeLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
 
 	const rows: PopoverRow[] = [];
-	if (kind === "claude") {
+	// System-login row: selectable for BOTH kinds in local mode (codex now has a
+	// real system-login fallback); in the global switcher it stays claude-only
+	// selectable, and codex renders an informational "unmanaged" row.
+	if (kind === "claude" || isLocal) {
 		rows.push({
 			key: "system",
-			label: t("settings.accountsSystemLogin"),
-			sub: state.claude.systemIdentity?.email ?? null,
-			planLabel: identityBadge(state.claude.systemIdentity),
+			label: kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged"),
+			sub: fallbackIdentity?.email ?? null,
+			planLabel: identityBadge(fallbackIdentity),
 			isApi: false,
-			isActive: kindState.activeId === null,
-			onSelect: () => handleSelect("claude", null, t("settings.accountsSystemLogin")),
+			isActive: effectiveSelectedId === null,
+			onSelect: isLocal
+				? () => handleSelectLocal(null)
+				: () => handleSelectGlobal("claude", null),
 		});
 	} else if (kindState.activeId === null && state.codex.currentIdentity) {
 		rows.push({
@@ -257,8 +284,10 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 			sub: account.auth === "api" ? apiHost(account.api) : (account.identity?.email ?? null),
 			planLabel: account.auth === "api" ? null : identityBadge(account.identity),
 			isApi: account.auth === "api",
-			isActive: account.id === kindState.activeId,
-			onSelect: () => handleSelect(kind, account.id, account.label),
+			isActive: account.id === effectiveSelectedId,
+			onSelect: isLocal
+				? () => handleSelectLocal(account.id)
+				: () => handleSelectGlobal(kind, account.id),
 		});
 	}
 
@@ -280,7 +309,7 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 					{"\u{F0004}"}
 				</span>
 				<span className="truncate">{activeLabel}</span>
-				{active?.auth === "api" ? (
+				{selectedAccount?.auth === "api" ? (
 					<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
 				) : null}
 				<span
@@ -296,9 +325,9 @@ export default function AgentAccountIndicator({ agent }: { agent: CodingAgent | 
 					anchor={anchor}
 					rows={rows}
 					busy={busy}
-					hint={t("settings.accountsNewSessionsHint")}
-					title={t("launch.accountActiveTitle")}
-					subtitle={t("launch.accountGlobalSubtitle")}
+					hint={isLocal ? t("launch.accountForLaunchHint") : t("settings.accountsNewSessionsHint")}
+					title={isLocal ? t("launch.accountForLaunchTitle") : t("launch.accountActiveTitle")}
+					subtitle={isLocal ? t("launch.accountForLaunchSubtitle") : t("launch.accountGlobalSubtitle")}
 					onClose={() => setAnchor(null)}
 				/>
 			) : null}

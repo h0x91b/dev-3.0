@@ -21,6 +21,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
 	const [agentId, setAgentId] = useState<string | null>(null);
 	const [configId, setConfigId] = useState<string | null>(null);
+	// Per-launch account (undefined → the registry default preselect).
+	const [accountId, setAccountId] = useState<string | null | undefined>(undefined);
 	const [spawning, setSpawning] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [agentAvailability, setAgentAvailability] = useState<AgentCheckResult[]>([]);
@@ -85,6 +87,7 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				projectId: project.id,
 				agentId,
 				configId,
+				accountId,
 			});
 			trackEvent("spawn_extra_agent", { project_id: project.id, agent_id: agentId ?? "default" });
 			trackAgentLaunched(agents, agentId, configId);
@@ -130,6 +133,8 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 								setAgentId(next.agentId);
 								setConfigId(next.configId);
 							}}
+							accountId={accountId}
+							onAccountChange={setAccountId}
 							pxpipeProxyEnabled={globalSettings.pxpipeProxyEnabled ?? false}
 							showFavorites
 							favorites={globalSettings.favorites ?? []}

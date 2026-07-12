@@ -65,10 +65,13 @@ function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState 
 	};
 }
 
-function renderIndicator(agent: CodingAgent | null = claudeAgent) {
+function renderIndicator(
+	agent: CodingAgent | null = claudeAgent,
+	opts?: { value?: string | null; onSelect?: (accountId: string | null) => void },
+) {
 	return render(
 		<I18nProvider>
-			<AgentAccountIndicator agent={agent} />
+			<AgentAccountIndicator agent={agent} value={opts?.value} onSelect={opts?.onSelect} />
 		</I18nProvider>,
 	);
 }
@@ -143,8 +146,7 @@ describe("AgentAccountIndicator", () => {
 		expect(mockedApi.request.listAgentAccounts.mock.calls.length).toBeGreaterThan(1);
 	});
 
-	it("asks for confirmation and does not switch when declined", async () => {
-		mockedConfirm.mockResolvedValue(false);
+	it("switches the default without a confirmation dialog (global mode)", async () => {
 		const base = makeState();
 		mockedApi.request.listAgentAccounts.mockResolvedValue(
 			makeState({ claude: { ...base.claude, activeId: null } }),
@@ -155,7 +157,34 @@ describe("AgentAccountIndicator", () => {
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 		await user.click(screen.getByText("work@example.com"));
 
-		await waitFor(() => expect(mockedConfirm).toHaveBeenCalled());
+		await waitFor(() => expect(mockedApi.request.setActiveAgentAccount).toHaveBeenCalled());
+		// Setting a default is no longer billing-destructive → no confirm.
+		expect(mockedConfirm).not.toHaveBeenCalled();
+	});
+
+	it("local per-launch mode: picks via onSelect without mutating the global default", async () => {
+		const onSelect = vi.fn();
+		const user = userEvent.setup();
+		// value=null → system login selected, so the managed account row is clickable.
+		renderIndicator(claudeAgent, { value: null, onSelect });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await user.click(screen.getByText("work@example.com"));
+
+		expect(onSelect).toHaveBeenCalledWith("cl-1");
+		expect(mockedApi.request.setActiveAgentAccount).not.toHaveBeenCalled();
+		expect(mockedConfirm).not.toHaveBeenCalled();
+	});
+
+	it("local per-launch mode: the system login row is selectable and yields null", async () => {
+		const onSelect = vi.fn();
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: "cl-1", onSelect });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await user.click(screen.getByText("System login (~/.claude)"));
+
+		expect(onSelect).toHaveBeenCalledWith(null);
 		expect(mockedApi.request.setActiveAgentAccount).not.toHaveBeenCalled();
 	});
 

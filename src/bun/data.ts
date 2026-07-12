@@ -789,6 +789,7 @@ export async function addTask(
 		autoVariantIndex?: boolean;
 		agentId?: string | null;
 		configId?: string | null;
+		accountId?: string | null;
 		seq?: number;
 		existingBranch?: string;
 		preparing?: boolean;
@@ -842,6 +843,7 @@ export async function addTask(
 			variantIndex,
 			agentId: extras?.agentId ?? null,
 			configId: extras?.configId ?? null,
+			...(extras?.accountId !== undefined ? { accountId: extras.accountId } : {}),
 			createdAt: now,
 			updatedAt: now,
 			...(status === "in-progress" ? { lifecycleStartedAt: now } : {}),

@@ -1138,6 +1138,14 @@ export interface Task {
 	variantIndex: number | null;
 	agentId: string | null;
 	configId: string | null;
+	/**
+	 * Managed agent account this task's agent launched under (agent account
+	 * switcher). Absent → the registry default (the preselect); `null` →
+	 * explicitly the system login (~/.claude / ~/.codex); a string → that managed
+	 * account. Persisted so Retry and session recovery re-launch on the same
+	 * account. See decisions/125-per-launch-agent-account-selection.md.
+	 */
+	accountId?: string | null;
 	createdAt: string;
 	updatedAt: string;
 	movedAt?: string;
@@ -1373,14 +1381,24 @@ export function computeTaskTimeBreakdown(task: TaskTimeInput, nowMs: number): Ta
 	};
 }
 
+/** One row of the Launch modal: the agent + configuration to run, plus the
+ *  per-launch managed account (`undefined` → the registry default; `null` → the
+ *  system login; a string → that account). Shared by every spawn/schedule RPC so
+ *  the trio travels as one named concept instead of a repeated inline literal. */
+export interface LaunchVariant {
+	agentId: string | null;
+	configId: string | null;
+	accountId?: string | null;
+}
+
 /** A one-shot deferred launch persisted on a `todo` task. See {@link Task.scheduledLaunch}. */
 export interface ScheduledLaunch {
 	/** ISO timestamp when the launch should fire. */
 	at: string;
 	/** Column the spawned variants land in (same as an immediate launch). */
 	targetStatus: TaskStatus;
-	/** Agent/config variants captured from the Launch modal at schedule time. */
-	variants: Array<{ agentId: string | null; configId: string | null }>;
+	/** Agent/config/account variants captured from the Launch modal at schedule time. */
+	variants: LaunchVariant[];
 }
 
 /**
@@ -1563,6 +1581,9 @@ export interface PaneSessionEntry {
 	agentId: string | null;
 	/** Agent config ID used at launch time. */
 	configId: string | null;
+	/** Managed agent account used at launch time — re-injected on resume so a
+	 *  recovered session keeps running under the same account (absent → default). */
+	accountId?: string | null;
 }
 
 /** Captured session state for agent recovery after tmux death / app restart. */
@@ -2529,7 +2550,7 @@ export type AppRPCSchema = {
 					taskId: string;
 					projectId: string;
 					targetStatus: TaskStatus;
-					variants: Array<{ agentId: string | null; configId: string | null }>;
+					variants: LaunchVariant[];
 				};
 				response: Task[];
 			};
@@ -2537,7 +2558,7 @@ export type AppRPCSchema = {
 				params: {
 					taskId: string;
 					projectId: string;
-					variants: Array<{ agentId: string | null; configId: string | null }>;
+					variants: LaunchVariant[];
 				};
 				response: Task[];
 			};
@@ -2769,7 +2790,7 @@ export type AppRPCSchema = {
 					/** ISO timestamp; must be in the future. */
 					at: string;
 					targetStatus: TaskStatus;
-					variants: Array<{ agentId: string | null; configId: string | null }>;
+					variants: LaunchVariant[];
 				};
 				response: Task;
 			};
@@ -2854,11 +2875,11 @@ export type AppRPCSchema = {
 				response: { ok: boolean; tool: string | null };
 			};
 			spawnAgentInTask: {
-				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null };
+				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; accountId?: string | null };
 				response: void;
 			};
 			spawnBugHuntersInTask: {
-				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number };
+				params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number; accountId?: string | null };
 				response: { spawned: number };
 			};
 			pasteClipboardImage: {

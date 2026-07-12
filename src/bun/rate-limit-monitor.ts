@@ -20,6 +20,7 @@ import { join } from "node:path";
 import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../shared/rate-limits";
 import { extractCodexSnapshotFromRolloutLines, mergeCodexRateLimitSnapshots, parseClaudeStatusLinePayload } from "../shared/rate-limits";
 import { fetchCodexRateLimitSnapshot } from "./codex-rate-limits";
+import { listCodexAccountDirs } from "./agent-accounts";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
 import { loadSettings } from "./settings";
@@ -90,6 +91,16 @@ function codexSessionsRoot(): string {
 	return process.env.CODEX_HOME ? join(process.env.CODEX_HOME, "sessions") : join(homedir(), ".codex", "sessions");
 }
 
+/** Every codex session root to scan: the system login (~/.codex or $CODEX_HOME)
+ *  plus each managed account's per-account CODEX_HOME — per-launch account
+ *  injection scatters rollouts across those, so a single root would miss the
+ *  latest session whenever it ran under a non-default account. */
+function codexSessionRoots(): string[] {
+	const roots = new Set<string>([codexSessionsRoot()]);
+	for (const dir of listCodexAccountDirs()) roots.add(join(dir, "sessions"));
+	return [...roots];
+}
+
 function listSortedDirs(dir: string): string[] {
 	try {
 		return readdirSync(dir, { withFileTypes: true })
@@ -156,11 +167,26 @@ function readTailLines(path: string, maxBytes: number): string[] {
 	}
 }
 
-export function readCodexSnapshot(root: string = codexSessionsRoot()): AgentRateLimitSnapshot | null {
+/** Pick the globally-newest rollout across the given roots (default: the system
+ *  root + every managed-account CODEX_HOME), so the indicator reflects whichever
+ *  codex session ran most recently regardless of which account it used. Pass an
+ *  explicit `root` to scan just one (used by tests). */
+export function readCodexSnapshot(root?: string): AgentRateLimitSnapshot | null {
 	try {
-		const rollout = findLatestCodexRollout(root);
-		if (!rollout) return null;
-		return extractCodexSnapshotFromRolloutLines(readTailLines(rollout, CODEX_TAIL_BYTES));
+		const roots = root !== undefined ? [root] : codexSessionRoots();
+		let best: { path: string; mtimeMs: number } | null = null;
+		for (const r of roots) {
+			const rollout = findLatestCodexRollout(r);
+			if (!rollout) continue;
+			try {
+				const mtimeMs = statSync(rollout).mtimeMs;
+				if (!best || mtimeMs > best.mtimeMs) best = { path: rollout, mtimeMs };
+			} catch {
+				// file vanished mid-scan
+			}
+		}
+		if (!best) return null;
+		return extractCodexSnapshotFromRolloutLines(readTailLines(best.path, CODEX_TAIL_BYTES));
 	} catch (err) {
 		log.warn("Codex rollout scan failed", { error: String(err) });
 		return null;

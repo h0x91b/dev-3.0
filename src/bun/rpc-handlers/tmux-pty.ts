@@ -368,9 +368,10 @@ async function ensureAgentTrust(
 	worktreePath: string,
 	projectPath: string,
 	resolvedBaseCmd: string,
+	accountId?: string | null,
 ): Promise<void> {
 	try {
-		await agents.ensureClaudeTrust(worktreePath, projectPath);
+		await agents.ensureClaudeTrust(worktreePath, projectPath, accountId);
 		log.info("Claude trust ensured", { worktreePath });
 	} catch (err) {
 		log.error("ensureClaudeTrust failed (non-fatal)", {
@@ -468,7 +469,11 @@ export async function launchTaskPty(
 	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
 
 	try {
-		const cmdOptions: agents.CommandOptions = {};
+		// The task's persisted managed account (per-launch selector) drives which
+		// CLAUDE_CONFIG_DIR / CODEX_HOME the main pane's agent env resolves to —
+		// on fresh launches, retries, reopens AND resumes, so a recovered session
+		// keeps running under the same account. undefined → registry default.
+		const cmdOptions: agents.CommandOptions = { accountId: task.accountId };
 		let freshSessionId: string | null = null;
 
 		if (resume) {
@@ -515,6 +520,7 @@ export async function launchTaskPty(
 				sessionId: effectiveSessionId ?? null,
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
+				accountId: task.accountId,
 			};
 			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry] };
@@ -607,7 +613,7 @@ export async function launchTaskPty(
 		}
 	}
 
-	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd);
+	await ensureAgentTrust(worktreePath, project.path, resolvedBaseCmd, task.accountId);
 
 	const stopTarget = project.autoReviewEnabled ? "review-by-ai" : "review-by-user";
 	tmuxCmd = await applyAgentHooksToCommand(worktreePath, resolvedBaseCmd, tmuxCmd, {
@@ -1320,7 +1326,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
-					const cmdOpts: agents.CommandOptions = { resume: true };
+					const cmdOpts: agents.CommandOptions = { resume: true, accountId: pane.accountId };
 					if (pane.sessionId) cmdOpts.sessionId = pane.sessionId;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;
@@ -1333,7 +1339,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					} else {
 						resumeCmd = agents.buildResumeCommand(pane.agentCmd, pane.sessionId ?? undefined) ?? pane.agentCmd;
 					}
-					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd);
+					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 					});
@@ -2164,7 +2170,7 @@ async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panes
 	return { panesExited: total };
 }
 
-async function spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null }): Promise<void> {
+async function spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; accountId?: string | null }): Promise<void> {
 	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId });
 
 	const project = await data.getProject(params.projectId);
@@ -2190,7 +2196,8 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 
 	// Pre-assign a session ID for Claude so we can recover this pane later
 	const freshSessionId = crypto.randomUUID();
-	const cmdOptions: agents.CommandOptions = { sessionId: freshSessionId };
+	// Per-launch account for THIS extra pane (independent of the main pane's).
+	const cmdOptions: agents.CommandOptions = { sessionId: freshSessionId, accountId: params.accountId };
 
 	if (params.agentId) {
 		const resolved = await agents.resolveCommandForAgent(params.agentId, params.configId, ctx, cmdOptions);
@@ -2218,7 +2225,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	// Register trust / re-patch the agent's config before spawning. The primary
 	// task launch does this; without it a spawned Codex pane runs against a stale
 	// config.toml and crashes on the legacy-profile check (see ensureAgentTrust).
-	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd);
+	await ensureAgentTrust(task.worktreePath, project.path, resolvedBaseCmd, params.accountId);
 	tmuxCmd = await applyAgentHooksToCommand(task.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 	});
@@ -2260,6 +2267,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
 		agentId: launchedAgentId,
 		configId: launchedConfigId,
+		accountId: params.accountId,
 	};
 	const existingPanes = task.sessionState?.panes ?? [];
 	try {
@@ -2330,6 +2338,7 @@ async function spawnSingleBugHunterPane(opts: {
 	worktreePath: string;
 	agentId: string | null;
 	configId: string | null;
+	accountId?: string | null;
 	splitArgs: string[];
 }): Promise<{ paneId: string | null; baseCmd: string }> {
 	const ctx: agents.TemplateContext = {
@@ -2341,7 +2350,7 @@ async function spawnSingleBugHunterPane(opts: {
 	};
 
 	const freshSessionId = crypto.randomUUID();
-	const cmdOptions: agents.CommandOptions = { sessionId: freshSessionId };
+	const cmdOptions: agents.CommandOptions = { sessionId: freshSessionId, accountId: opts.accountId };
 
 	let tmuxCmd: string;
 	let extraEnv: Record<string, string>;
@@ -2373,7 +2382,7 @@ async function spawnSingleBugHunterPane(opts: {
 
 	// Same trust/config-ensure the primary launch does — a Codex bug-hunter pane
 	// otherwise launches against a stale config.toml and crashes.
-	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd);
+	await ensureAgentTrust(opts.worktreePath, opts.project.path, resolvedBaseCmd, opts.accountId);
 	tmuxCmd = await applyAgentHooksToCommand(opts.worktreePath, resolvedBaseCmd, tmuxCmd, {
 		stopTarget: opts.project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 	});
@@ -2411,6 +2420,7 @@ async function spawnSingleBugHunterPane(opts: {
 		sessionId: agents.supportsPreAssignedSessionId(resolvedBaseCmd) ? freshSessionId : null,
 		agentId: launchedAgentId,
 		configId: launchedConfigId,
+		accountId: opts.accountId,
 	};
 	try {
 		const freshTask = await data.getTask(opts.project, opts.task.id);
@@ -2428,7 +2438,7 @@ async function spawnSingleBugHunterPane(opts: {
 	return { paneId: newPaneId, baseCmd: resolvedBaseCmd };
 }
 
-async function spawnBugHuntersInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number }): Promise<{ spawned: number }> {
+async function spawnBugHuntersInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; count: number; accountId?: string | null }): Promise<{ spawned: number }> {
 	log.info("→ spawnBugHuntersInTask", { taskId: params.taskId.slice(0, 8), count: params.count, agentId: params.agentId });
 
 	const requestedCount = Math.max(1, Math.min(6, Math.floor(params.count)));
@@ -2453,6 +2463,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 		worktreePath: task.worktreePath,
 		agentId: params.agentId,
 		configId: params.configId,
+		accountId: params.accountId,
 		splitArgs: ["-h", "-l", "50%", "-t", tmuxSession],
 	});
 	if (first.paneId) paneIds.push(first.paneId);
@@ -2479,6 +2490,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				worktreePath: task.worktreePath,
 				agentId: params.agentId,
 				configId: params.configId,
+				accountId: params.accountId,
 				splitArgs: ["-v", "-l", `${percent}%`, "-t", target],
 			});
 			if (paneId) paneIds.push(paneId);

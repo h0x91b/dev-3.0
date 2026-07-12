@@ -95,8 +95,8 @@ describe("AgentAccountsSection", () => {
 		expect(screen.getByText("work@example.com")).toBeTruthy();
 		expect(screen.getByText("main@example.com")).toBeTruthy();
 		expect(screen.getByText("Max 5x")).toBeTruthy();
-		// System login is active by default (activeId=null).
-		expect(screen.getByText("Active")).toBeTruthy();
+		// System login is the default by default (activeId=null).
+		expect(screen.getByText("Default")).toBeTruthy();
 	});
 
 	it("activates an account on row click", async () => {
@@ -112,14 +112,14 @@ describe("AgentAccountsSection", () => {
 		});
 	});
 
-	it("does not switch the active account when the confirm is declined", async () => {
-		mockedConfirm.mockResolvedValue(false);
+	it("sets the default account without a confirmation dialog", async () => {
 		const user = userEvent.setup();
 		renderSection();
 		const row = await screen.findByText("work@example.com");
 		await user.click(row);
-		await waitFor(() => expect(mockedConfirm).toHaveBeenCalled());
-		expect(mockedApi.request.setActiveAgentAccount).not.toHaveBeenCalled();
+		await waitFor(() => expect(mockedApi.request.setActiveAgentAccount).toHaveBeenCalled());
+		// Setting the default is no longer billing-destructive (per-launch is the guard).
+		expect(mockedConfirm).not.toHaveBeenCalled();
 	});
 
 	it("dispatches the accounts-changed window event after a mutation", async () => {

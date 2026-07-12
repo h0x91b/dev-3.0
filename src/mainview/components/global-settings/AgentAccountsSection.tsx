@@ -599,9 +599,11 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	const handleCancelAdd = useCallback(() => {
 		if (!addFlow) return;
-		// A prepared-but-unverified Claude dir is an orphan — clean it up.
-		if (addFlow.kind === "claude" && addFlow.accountId) {
-			api.request.removeAgentAccount({ kind: "claude", accountId: addFlow.accountId }).catch(() => {});
+		// A prepared-but-unverified login dir (Claude CLAUDE_CONFIG_DIR or Codex
+		// CODEX_HOME) is an orphan — clean it up. Both flows now hand back an
+		// accountId for the scaffolded dir.
+		if (addFlow.accountId) {
+			api.request.removeAgentAccount({ kind: addFlow.kind, accountId: addFlow.accountId }).catch(() => {});
 		}
 		setAddFlow(null);
 	}, [addFlow]);
@@ -668,18 +670,13 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 	}, [apiForm, apiEdit, closeApiForm, reload]);
 
 	const handleSetActive = useCallback(
-		async (kind: AgentAccountKind, accountId: string | null, name: string) => {
-			// Billing-sensitive: switching re-routes every NEW session (and its cost)
-			// to the target account — always make the user acknowledge it.
-			const ok = await confirm({
-				title: t("settings.accountsSwitchConfirmTitle"),
-				message: t("settings.accountsSwitchConfirmMessage", { name }),
-				danger: true,
-			});
-			if (!ok) return;
+		(kind: AgentAccountKind, accountId: string | null) => {
+			// Setting the DEFAULT account only changes the preselect for future
+			// launches — it no longer swaps ~/.codex/auth.json or moves any running
+			// session's cost, so no confirmation is needed (per-launch is the guard).
 			run(() => api.request.setActiveAgentAccount({ kind, accountId }));
 		},
-		[run, t],
+		[run],
 	);
 
 	const handleRemove = useCallback(
@@ -749,7 +746,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 							identity={account.identity}
 							api={account.api}
 							isActive={account.id === activeId}
-							onActivate={account.id === activeId ? undefined : () => handleSetActive(kind, account.id, account.label)}
+							onActivate={account.id === activeId ? undefined : () => handleSetActive(kind, account.id)}
 							onRename={account.auth === "api" ? undefined : (label) => handleRename(kind, account.id, label)}
 							onEditApi={account.auth === "api" ? () => handleStartEditApi(account) : undefined}
 							onRemove={() => handleRemove(kind, account)}
@@ -810,7 +807,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					onActivate={
 						state.claude.activeId === null
 							? undefined
-							: () => handleSetActive("claude", null, t("settings.accountsSystemLogin"))
+							: () => handleSetActive("claude", null)
 					}
 					t={t}
 				/>,

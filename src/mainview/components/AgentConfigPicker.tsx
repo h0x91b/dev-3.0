@@ -52,6 +52,14 @@ interface AgentConfigPickerProps {
 	/** Toggle a favorite (add or remove) for the given pair. The parent persists
 	 *  via the `toggleFavoriteAgent` RPC and syncs its in-memory settings. */
 	onToggleFavorite?: (agentId: string, configId: string) => void;
+	/** Per-launch managed account selection for the account pill under Provider:
+	 *  `undefined` → the registry default; `null` → system login; string → account.
+	 *  Only meaningful together with `onAccountChange` (spawn surfaces). */
+	accountId?: string | null;
+	/** When provided, the account pill becomes a LOCAL per-launch selector writing
+	 *  here (spawn dialogs). When omitted the pill stays the global default
+	 *  switcher (Settings surfaces). */
+	onAccountChange?: (accountId: string | null) => void;
 }
 
 /**
@@ -75,6 +83,8 @@ function AgentConfigPicker({
 	showFavorites = false,
 	favorites = [],
 	onToggleFavorite,
+	accountId,
+	onAccountChange,
 }: AgentConfigPickerProps) {
 	const t = useT();
 	const renderAgentOption = useAgentRenderOption(agentAvailability, t("settings.agentNotInstalled"));
@@ -204,8 +214,9 @@ function AgentConfigPicker({
 					renderOption={renderAgentOption}
 				/>
 				{/* Progressive disclosure: renders only when the selected provider has
-				    managed accounts (Settings → Agent Accounts). */}
-				<AgentAccountIndicator agent={selectedAgent} />
+				    managed accounts (Settings → Agent Accounts). With onAccountChange
+				    it is a local per-launch selector; without it, the global default switcher. */}
+				<AgentAccountIndicator agent={selectedAgent} value={accountId} onSelect={onAccountChange} />
 			</div>
 
 			{/* Model */}
