@@ -68,8 +68,6 @@ function renderModal(props: {
 	onClose?: () => void;
 	onCreateAndRun?: (task: Task) => void;
 	project?: Project;
-	skillBaseCommand?: string;
-	skillAutocompleteEnabled?: boolean;
 } = {}) {
 	return render(
 		<I18nProvider>
@@ -78,8 +76,6 @@ function renderModal(props: {
 				dispatch={props.dispatch ?? vi.fn()}
 				onClose={props.onClose ?? vi.fn()}
 				onCreateAndRun={props.onCreateAndRun}
-				skillBaseCommand={props.skillBaseCommand}
-				skillAutocompleteEnabled={props.skillAutocompleteEnabled}
 			/>
 		</I18nProvider>,
 	);
@@ -1352,7 +1348,7 @@ describe("CreateTaskModal skill autocomplete", () => {
 	});
 
 	it("inserts Codex skills with a dollar prefix", async () => {
-		renderModal({ skillBaseCommand: "codex" });
+		renderModal();
 		const textarea = await typeInDescription("$dev");
 		await waitFor(() => {
 			expect(screen.getByText("$dev3")).toBeInTheDocument();
@@ -1364,27 +1360,23 @@ describe("CreateTaskModal skill autocomplete", () => {
 	});
 
 	it("opens autocomplete for a dollar-prefixed skill", async () => {
-		renderModal({ skillBaseCommand: "codex" });
+		renderModal();
 		await typeInDescription("$dev");
 		await waitFor(() => {
 			expect(screen.getByText("$dev3")).toBeInTheDocument();
 		});
 	});
 
-	it("does not intercept dollar-prefixed text for slash agents", async () => {
-		renderModal({ skillBaseCommand: "claude" });
-		const textarea = await typeInDescription("$dev3");
-		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-		await userEvent.keyboard("{Enter}");
-		expect(textarea.value).toBe("$dev3\n");
-	});
-
-	it("does not autocomplete until the target agent is known", async () => {
-		renderModal({ skillBaseCommand: "codex", skillAutocompleteEnabled: false });
+	it("shows Codex suggestions when the default agent uses slash skills", async () => {
+		renderModal();
 		const textarea = await typeInDescription("$dev");
-		expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+		await waitFor(() => {
+			expect(screen.getByText("$dev3")).toBeInTheDocument();
+		});
 		await userEvent.keyboard("{Enter}");
-		expect(textarea.value).toBe("$dev\n");
+		await waitFor(() => {
+			expect(textarea.value).toBe("$dev3 ");
+		});
 	});
 
 	it("Escape closes the dropdown but keeps the modal open", async () => {

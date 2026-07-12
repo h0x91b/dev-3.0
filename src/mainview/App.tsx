@@ -244,19 +244,13 @@ function App() {
 		});
 	}, []);
 	const [agents, setAgents] = useState<CodingAgent[]>([]);
-	const [agentSettingsReady, setAgentSettingsReady] = useState(false);
+	const [agentSettingsLoaded, setAgentSettingsLoaded] = useState(false);
 	const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({
 		defaultAgentId: "builtin-claude",
 		defaultConfigId: "claude-auto",
 		taskDropPosition: "top",
 		updateChannel: "stable",
 	});
-	const defaultAgent = agents.find((agent) => agent.id === globalSettings.defaultAgentId) ?? agents[0];
-	const defaultAgentConfig = defaultAgent?.configurations.find((config) => config.id === globalSettings.defaultConfigId)
-		?? defaultAgent?.configurations.find((config) => config.id === defaultAgent?.defaultConfigId)
-		?? defaultAgent?.configurations[0];
-	const defaultSkillBaseCommand = defaultAgentConfig?.baseCommandOverride ?? defaultAgent?.baseCommand ?? "";
-
 	// Auth failure for browser remote access (expired/invalid QR token)
 	const [authFailed, setAuthFailed] = useState(false);
 
@@ -1560,24 +1554,23 @@ function App() {
 		return () => window.removeEventListener("rpc:openCreateTaskModal", onOpenCreateTaskModal);
 	}, [openCreateTaskModal]);
 
-	// Load the agent selection before enabling task-prompt skill autocomplete.
-	// A slash fallback is unsafe: Codex requires `$`, so autocomplete stays inert
-	// until its target agent is known.
+	// Load agents before the subsequent launch dialog opens. Skill autocomplete
+	// accepts both agent syntaxes because that dialog chooses the final agent.
 	const agentSettingsLoadingRef = useRef(false);
 	useEffect(() => {
-		if (!createTaskProjectId || agentSettingsReady || agentSettingsLoadingRef.current) return;
+		if (!createTaskProjectId || agentSettingsLoaded || agentSettingsLoadingRef.current) return;
 		agentSettingsLoadingRef.current = true;
 		Promise.all([api.request.getAgents(), api.request.getGlobalSettings()])
 			.then(([nextAgents, nextSettings]) => {
 				setAgents(nextAgents);
 				setGlobalSettings(nextSettings);
-				setAgentSettingsReady(true);
+				setAgentSettingsLoaded(true);
 			})
 			.catch(() => {})
 			.finally(() => {
 				agentSettingsLoadingRef.current = false;
 			});
-	}, [agentSettingsReady, createTaskProjectId]);
+	}, [agentSettingsLoaded, createTaskProjectId]);
 
 	// Register agents with analytics on mount so events like `task_moved` can
 	// carry a human-readable agent name (the modal load above is lazy).
@@ -1834,8 +1827,6 @@ function App() {
 			{createTaskProject && (
 				<CreateTaskModal
 					project={createTaskProject}
-					skillBaseCommand={defaultSkillBaseCommand}
-					skillAutocompleteEnabled={agentSettingsReady}
 					dispatch={dispatch}
 					onClose={() => setCreateTaskProjectId(null)}
 					onCreateAndRun={(task) => {
