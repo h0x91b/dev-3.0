@@ -74,7 +74,7 @@ describe("ProjectView task-view layout", () => {
 		resolveTasks!([]);
 
 		await Promise.resolve();
-		expect(dispatch).not.toHaveBeenCalledWith({ type: "setTasks", tasks: [] });
+		expect(dispatch).not.toHaveBeenCalledWith({ type: "setTasks", projectId: "p1", tasks: [] });
 	});
 
 	it("shows the empty-terminal placeholder when taskView is set but no task is selected", async () => {

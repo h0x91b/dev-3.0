@@ -46,14 +46,18 @@ function TaskWorkspaceView({
 	// Load the project's tasks on mount, mirroring ProjectView, so the chrome
 	// always renders regardless of the entry point.
 	useEffect(() => {
+		let cancelled = false;
 		(async () => {
 			try {
 				const loaded = await api.request.getTasks({ projectId });
-				dispatch({ type: "setTasks", tasks: loaded });
+				if (!cancelled) dispatch({ type: "setTasks", projectId, tasks: loaded });
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
 			}
 		})();
+		return () => {
+			cancelled = true;
+		};
 	}, [projectId, dispatch]);
 
 	// The inline diff opens in-place (not a route) — fire its page view once per

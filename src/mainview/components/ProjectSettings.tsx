@@ -975,7 +975,7 @@ function ProjectSettings({
 		(async () => {
 			try {
 				const loaded = await api.request.getTasks({ projectId });
-				if (!cancelled) dispatch({ type: "setTasks", tasks: loaded });
+				if (!cancelled) dispatch({ type: "setTasks", projectId, tasks: loaded });
 			} catch (err) {
 				console.error("Failed to load tasks for project settings:", err);
 			}

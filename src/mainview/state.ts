@@ -166,7 +166,7 @@ export type AppAction =
 	| { type: "goForward" }
 	| { type: "setProjects"; projects: Project[] }
 	| { type: "reorderProjects"; projectIds: string[] }
-	| { type: "setTasks"; tasks: Task[] }
+	| { type: "setTasks"; projectId: string; tasks: Task[] }
 	| { type: "updateTask"; task: Task }
 	| { type: "addTask"; task: Task }
 	| { type: "removeTask"; taskId: string }
@@ -216,6 +216,8 @@ export function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
 		case "navigate": {
 			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, action.route);
+			const currentProjectId = projectIdForRoute(state.route);
+			const nextProjectId = projectIdForRoute(action.route);
 			// Truncate any forward history beyond the current index, then push
 			const base = state.routeHistory.slice(0, state.historyIndex + 1);
 			base.push(action.route);
@@ -223,7 +225,16 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			const routeHistory = base.length > HISTORY_LIMIT ? base.slice(base.length - HISTORY_LIMIT) : base;
 			const historyIndex = routeHistory.length - 1;
 			const taskMru = bumpMru(state.taskMru, action.route);
-			return { ...state, route: action.route, routeHistory, historyIndex, bellCounts, bellReasons, taskMru };
+			return {
+				...state,
+				route: action.route,
+				routeHistory,
+				historyIndex,
+				bellCounts,
+				bellReasons,
+				taskMru,
+				currentProjectTasks: currentProjectId === nextProjectId ? state.currentProjectTasks : [],
+			};
 		}
 		case "goBack": {
 			if (state.historyIndex <= 0) return state;
@@ -231,7 +242,16 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			const route = state.routeHistory[newIndex];
 			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
 			const taskMru = bumpMru(state.taskMru, route);
-			return { ...state, route, historyIndex: newIndex, bellCounts, bellReasons, taskMru };
+			return {
+				...state,
+				route,
+				historyIndex: newIndex,
+				bellCounts,
+				bellReasons,
+				taskMru,
+				currentProjectTasks:
+					projectIdForRoute(state.route) === projectIdForRoute(route) ? state.currentProjectTasks : [],
+			};
 		}
 		case "goForward": {
 			if (state.historyIndex >= state.routeHistory.length - 1) return state;
@@ -239,7 +259,16 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			const route = state.routeHistory[newIndex];
 			const { bellCounts, bellReasons } = clearBellForRoute(state.bellCounts, state.bellReasons, route);
 			const taskMru = bumpMru(state.taskMru, route);
-			return { ...state, route, historyIndex: newIndex, bellCounts, bellReasons, taskMru };
+			return {
+				...state,
+				route,
+				historyIndex: newIndex,
+				bellCounts,
+				bellReasons,
+				taskMru,
+				currentProjectTasks:
+					projectIdForRoute(state.route) === projectIdForRoute(route) ? state.currentProjectTasks : [],
+			};
 		}
 		case "setProjects":
 			return { ...state, projects: action.projects };
@@ -259,6 +288,10 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			return { ...state, projects: reordered };
 		}
 		case "setTasks":
+			// Task fetches are asynchronous. Ignore a response that belongs to a
+			// project the user has already left instead of repopulating the new
+			// project's board with stale cards.
+			if (projectIdForRoute(state.route) !== action.projectId) return state;
 			return { ...state, currentProjectTasks: action.tasks };
 		case "updateTask": {
 			const exists = state.currentProjectTasks.some((t) => t.id === action.task.id);

@@ -58,6 +58,42 @@ describe("reducer", () => {
 		expect(next.route).toEqual({ screen: "project", projectId: "p1" });
 	});
 
+	it("navigate: clears tasks from the previous project immediately", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p1" },
+			currentProjectTasks: [mockTask],
+		};
+
+		const next = reducer(state, {
+			type: "navigate",
+			route: { screen: "project", projectId: "p2" },
+		});
+
+		expect(next.currentProjectTasks).toEqual([]);
+	});
+
+	it("history navigation: clears tasks when crossing project boundaries", () => {
+		const taskForSecondProject = { ...mockTask, id: "t2", projectId: "p2" };
+		const secondProjectRoute = { screen: "project" as const, projectId: "p2" };
+		const state: AppState = {
+			...initialState,
+			route: secondProjectRoute,
+			routeHistory: [{ screen: "project", projectId: "p1" }, secondProjectRoute],
+			historyIndex: 1,
+			currentProjectTasks: [taskForSecondProject],
+		};
+
+		const previousProject = reducer(state, { type: "goBack" });
+		expect(previousProject.currentProjectTasks).toEqual([]);
+
+		const nextProject = reducer(
+			{ ...previousProject, currentProjectTasks: [mockTask] },
+			{ type: "goForward" },
+		);
+		expect(nextProject.currentProjectTasks).toEqual([]);
+	});
+
 	it("navigate: pushes to routeHistory and advances historyIndex", () => {
 		const next = reducer(initialState, {
 			type: "navigate",
@@ -259,11 +295,33 @@ describe("reducer", () => {
 	});
 
 	it("setTasks: replaces currentProjectTasks", () => {
-		const next = reducer(initialState, {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p1" },
+		};
+		const next = reducer(state, {
 			type: "setTasks",
+			projectId: "p1",
 			tasks: [mockTask],
 		});
 		expect(next.currentProjectTasks).toEqual([mockTask]);
+	});
+
+	it("setTasks: ignores a late response from a different project", () => {
+		const taskForCurrentProject = { ...mockTask, id: "t2", projectId: "p2" };
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p2" },
+			currentProjectTasks: [taskForCurrentProject],
+		};
+
+		const next = reducer(state, {
+			type: "setTasks",
+			projectId: "p1",
+			tasks: [mockTask],
+		});
+
+		expect(next).toBe(state);
 	});
 
 	it("updateTask: updates matching task", () => {
