@@ -9200,6 +9200,31 @@ describe("handlers.createPullRequest", () => {
 		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
 	});
 
+	it("routes a legacy Codex main pane before a focused shell split", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: {
+				panes: [{ paneId: null, agentCmd: "codex", sessionId: null, agentId: "builtin-codex", configId: null }],
+			},
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			// The initial agent pane is listed first, but a shell split is focused.
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%5\n%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%5"]));
+	});
+
 	// A registered agent pane that no longer exists must not hijack the routing —
 	// fall back to the active pane (preserves the legacy behavior).
 	it("falls back to the active pane when the recorded agent pane is dead", async () => {
