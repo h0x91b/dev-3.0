@@ -21,15 +21,17 @@ import {
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
 describe("buildClaudeHooks", () => {
-	it("returns UserPromptSubmit, PreToolUse, PermissionRequest and Stop matcher groups", () => {
+	it("returns UserPromptSubmit, tool, PermissionRequest and Stop matcher groups", () => {
 		const hooks = buildClaudeHooks();
 
 		expect(hooks).toHaveProperty("UserPromptSubmit");
 		expect(hooks).toHaveProperty("PreToolUse");
+		expect(hooks).toHaveProperty("PostToolUse");
 		expect(hooks).toHaveProperty("PermissionRequest");
 		expect(hooks).toHaveProperty("Stop");
 		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
+		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
 	});
@@ -52,6 +54,16 @@ describe("buildClaudeHooks", () => {
 		expect(cmd).toContain("--status in-progress");
 		expect(cmd).toContain("--if-status-not review-by-ai");
 		expect(cmd).not.toContain("review-by-user");
+	});
+
+	it("PostToolUse resumes work after AskUserQuestion receives an answer", () => {
+		const hooks = buildClaudeHooks();
+
+		expect(hooks).toHaveProperty("PostToolUse");
+		const cmd = hooks.PostToolUse[0].hooks[0].command;
+		expect(cmd).toContain(DEV3_CLI);
+		expect(cmd).toContain("--status in-progress");
+		expect(cmd).toContain("--if-status-not review-by-ai");
 	});
 
 	it("uses correct three-level nesting (event → matcher group → hooks)", () => {
@@ -174,10 +186,10 @@ describe("buildClaudeHooks", () => {
 		}
 	});
 
-	it("working hooks (PreToolUse/UserPromptSubmit) keep the move guard before the offline fallback", () => {
+	it("working hooks keep the move guard before the offline fallback", () => {
 		const hooks = buildClaudeHooks();
 
-		for (const event of ["PreToolUse", "UserPromptSubmit"] as const) {
+		for (const event of ["PreToolUse", "PostToolUse", "UserPromptSubmit"] as const) {
 			const cmd = hooks[event][0].hooks[0].command;
 			expect(cmd).toContain("--status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]");
 		}
@@ -199,6 +211,7 @@ describe("mergeClaudeHooks", () => {
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 		expect(hooks.UserPromptSubmit).toHaveLength(1);
 		expect(hooks.PreToolUse).toHaveLength(1);
+		expect(hooks.PostToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
 	});
@@ -212,7 +225,7 @@ describe("mergeClaudeHooks", () => {
 		expect(result.hooks).toBeDefined();
 	});
 
-	it("preserves existing hooks on unrelated events", () => {
+	it("preserves user-defined hooks when a dev3 hook shares the event", () => {
 		const existing = {
 			hooks: {
 				PostToolUse: [{ hooks: [{ type: "command", command: "echo post" }] }],
@@ -221,7 +234,9 @@ describe("mergeClaudeHooks", () => {
 		const result = mergeClaudeHooks(existing);
 		const hooks = result.hooks as Record<string, MatcherGroup[]>;
 
-		expect(hooks.PostToolUse).toHaveLength(1);
+		expect(hooks.PostToolUse).toHaveLength(2);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe("echo post");
+		expect(hooks.PostToolUse[1].hooks[0].command).toContain("--status in-progress");
 		expect(hooks.PreToolUse).toHaveLength(1);
 		expect(hooks.PermissionRequest).toHaveLength(1);
 		expect(hooks.Stop).toHaveLength(1);
@@ -476,6 +491,8 @@ describe("writeClaudeHooks", () => {
 
 		expect(hooks.PreToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
 		expect(hooks.PreToolUse[0].hooks[0].command).not.toContain("review-by-user");
+		expect(hooks.PostToolUse[0].hooks[0].command).toContain("--if-status-not review-by-ai");
+		expect(hooks.PostToolUse[0].hooks[0].command).not.toContain("review-by-user");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toContain("--if-status-not review-by-ai");
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).not.toContain("review-by-user");
 	});
