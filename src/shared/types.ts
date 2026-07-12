@@ -524,6 +524,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "cursor-gpt", name: "GPT-5.3 Codex High", model: "gpt-5.3-codex-high" },
 			{ id: "cursor-yolo-gpt", name: "YOLO GPT-5.3 Codex", model: "gpt-5.3-codex-high", permissionMode: "bypassPermissions" },
 			{ id: "cursor-gemini", name: "Gemini 3.1 Pro", model: "gemini-3.1-pro" },
+			{ id: "cursor-composer-2-5", name: "Composer 2.5", model: "composer-2.5" },
 		],
 		defaultConfigId: "cursor-default",
 	},
