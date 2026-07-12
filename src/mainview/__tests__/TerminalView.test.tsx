@@ -122,10 +122,14 @@ vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
 
 // Minimal WebSocket stub (just needs to not throw during connectPty)
 let lastWebSocket: MockWebSocket | null = null;
+let webSockets: MockWebSocket[] = [];
 let clipboardWriteTextMock: ReturnType<typeof vi.fn>;
 
 class MockWebSocket {
+	static CONNECTING = 0;
 	static OPEN = 1;
+	static CLOSING = 2;
+	static CLOSED = 3;
 	readyState = MockWebSocket.OPEN;
 	send = vi.fn();
 	close = vi.fn();
@@ -136,6 +140,7 @@ class MockWebSocket {
 
 	constructor() {
 		lastWebSocket = this;
+		webSockets.push(this);
 	}
 }
 vi.stubGlobal("WebSocket", class extends MockWebSocket {});
@@ -171,6 +176,9 @@ beforeAll(() => {
 beforeEach(() => {
 	vi.clearAllMocks();
 	fireResize = null;
+	lastWebSocket = null;
+	webSockets = [];
+	Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 
 	// document.fonts.load must resolve immediately so setup() runs in tests
 	Object.defineProperty(document, "fonts", {
@@ -206,6 +214,47 @@ async function renderAndSetup() {
 	});
 	return result;
 }
+
+describe("TerminalView – PTY reconnect", () => {
+	it("ignores initial pageshow but reconnects after a bfcache restore", async () => {
+		await renderAndSetup();
+		const initialPageShow = new Event("pageshow");
+		Object.defineProperty(initialPageShow, "persisted", { value: false });
+		window.dispatchEvent(initialPageShow);
+		expect(webSockets).toHaveLength(1);
+
+		const restoredPageShow = new Event("pageshow");
+		Object.defineProperty(restoredPageShow, "persisted", { value: true });
+		window.dispatchEvent(restoredPageShow);
+		expect(webSockets).toHaveLength(2);
+	});
+
+	it("replaces an apparently-open PTY socket after a mobile background cycle", async () => {
+		await renderAndSetup();
+		expect(webSockets).toHaveLength(1);
+
+		Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+		document.dispatchEvent(new Event("visibilitychange"));
+		Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+		document.dispatchEvent(new Event("visibilitychange"));
+
+		expect(webSockets).toHaveLength(2);
+		expect(webSockets[0].close).toHaveBeenCalledTimes(1);
+	});
+
+	it("reconnects the PTY when a dropped mobile connection returns to the foreground", async () => {
+		await renderAndSetup();
+		expect(webSockets).toHaveLength(1);
+
+		await act(async () => {
+			webSockets[0].readyState = WebSocket.CLOSED;
+			webSockets[0].onclose?.({ code: 1006, reason: "network gone", wasClean: false } as CloseEvent);
+			document.dispatchEvent(new Event("visibilitychange"));
+		});
+
+		expect(webSockets).toHaveLength(2);
+	});
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 

@@ -330,6 +330,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		let disposed = false;
 		let fitAddon: FitAddon | null = null;
 		let ws: WebSocket | null = null;
+		let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+		let reconnectAttempt = 0;
+		let terminalInputBound = false;
+		let wasHidden = document.visibilityState === "hidden";
 		let layoutObserver: ResizeObserver | null = null;
 		let mouseCleanup: (() => void) | undefined;
 		let nativeSelectionClipboardCleanup: (() => void) | undefined;
@@ -1041,37 +1045,49 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		}
 
 		function connectPty(term: Terminal, fit: FitAddon) {
+			if (disposed || ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+			if (reconnectTimer !== null) {
+				clearTimeout(reconnectTimer);
+				reconnectTimer = null;
+			}
 			batchTerm = term;
-			console.log("[TerminalView] Creating WebSocket connection to", ptyUrl);
+			const diagnosticPtyUrl = ptyUrl.replace(/([?&]token=)[^&]+/, "$1***");
+			console.log("[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
+			let socket: WebSocket;
 			try {
-				ws = new WebSocket(ptyUrl);
+				socket = new WebSocket(ptyUrl);
 			} catch (err) {
 				console.error("[TerminalView] WebSocket constructor FAILED:", err);
-				console.error("[TerminalView] URL was:", ptyUrl);
+				console.error("[TerminalView] URL was:", diagnosticPtyUrl);
+				schedulePtyReconnect(term, fit);
 				return;
 			}
+			ws = socket;
 			wsRef.current = ws;
 			console.log("[TerminalView] WebSocket created, readyState:", ws.readyState);
 
-			ws.onopen = () => {
+			socket.onopen = () => {
+				if (socket !== ws) return;
 				console.log("[TerminalView] WebSocket OPEN");
 				if (disposed) return;
+				reconnectAttempt = 0;
 				const dims = fit.proposeDimensions();
 				console.log("[TerminalView] Proposed dimensions:", dims);
 				if (dims) {
 					// See buildResizeDance() — row-nudge keeps text wrapping
 					// identical between the two paints. See decision 041.
 					const [nudge, correct] = buildResizeDance(dims.cols, dims.rows);
-					ws?.send(nudge);
+					socket.send(nudge);
 					setTimeout(() => {
-						if (ws?.readyState === WebSocket.OPEN) {
-							ws.send(correct);
+						if (socket === ws && socket.readyState === WebSocket.OPEN) {
+							socket.send(correct);
 						}
 					}, 50);
 				}
 			};
 
-			ws.onmessage = (event) => {
+			socket.onmessage = (event) => {
+				if (socket !== ws) return;
 				if (disposed) return;
 				try {
 					if (typeof event.data === "string") {
@@ -1088,23 +1104,29 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				}
 			};
 
-			ws.onclose = (event) => {
+			socket.onclose = (event) => {
+				if (socket !== ws) return;
+				ws = null;
+				wsRef.current = null;
 				console.warn("[TerminalView] WebSocket CLOSED", {
 					code: event.code,
 					reason: event.reason,
 					wasClean: event.wasClean,
 				});
 				if (disposed) return;
-				try { term.writeln("\r\n\x1b[2m[session ended]\x1b[0m"); } catch { /* disposed */ }
+				if (event.code === 1000 && event.wasClean) {
+					try { term.writeln("\r\n\x1b[2m[session ended]\x1b[0m"); } catch { /* disposed */ }
+					return;
+				}
+				schedulePtyReconnect(term, fit);
 			};
 
-			ws.onerror = (event) => {
+			socket.onerror = (event) => {
+				if (socket !== ws) return;
 				console.error("[TerminalView] WebSocket ERROR", event);
-				if (disposed) return;
-				try { term.writeln("\x1b[31mFailed to connect to PTY server\x1b[0m"); } catch { /* disposed */ }
 			};
 
-			termSubs.push(
+			if (!terminalInputBound) termSubs.push(
 				term.onData((data) => {
 					if (disposed) return;
 					if (ws?.readyState === WebSocket.OPEN) {
@@ -1118,13 +1140,58 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 					}
 				}),
 			);
+			terminalInputBound = true;
 		}
+
+		function schedulePtyReconnect(term: Terminal, fit: FitAddon): void {
+			if (disposed || reconnectTimer !== null) return;
+			if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+			const delayMs = Math.min(1_000 * 2 ** reconnectAttempt, 15_000);
+			reconnectAttempt += 1;
+			reconnectTimer = setTimeout(() => {
+				reconnectTimer = null;
+				connectPty(term, fit);
+			}, delayMs);
+		}
+
+		function reconnectPtyOnResume(event: Event): void {
+			if (disposed) return;
+			if (document.visibilityState === "hidden") {
+				wasHidden = true;
+				return;
+			}
+			const term = termRef.current;
+			const fit = fitAddonRef.current;
+			if (!term || !fit) return;
+			const returnedFromBackground = wasHidden;
+			wasHidden = false;
+			// Ignore the non-persisted pageshow fired during initial page load. A
+			// persisted pageshow is a bfcache resume and must replace the socket.
+			if (event.type === "pageshow" && !(event as PageTransitionEvent).persisted && !returnedFromBackground) return;
+			if (ws?.readyState === WebSocket.OPEN && event.type === "visibilitychange" && !returnedFromBackground) return;
+			// Mobile browsers can suspend a socket while it is CONNECTING and never
+			// emit its eventual close; an OPEN socket can be stale for the same reason.
+			// Foregrounding explicitly replaces either state.
+			const stale = ws;
+			ws = null;
+			wsRef.current = null;
+			try { stale?.close(); } catch { /* already closed */ }
+			connectPty(term, fit);
+		}
+
+		document.addEventListener("visibilitychange", reconnectPtyOnResume);
+		window.addEventListener("pageshow", reconnectPtyOnResume);
+		window.addEventListener("online", reconnectPtyOnResume);
 
 		// setup() is called after font preload above — not here directly
 
 		return () => {
 			console.log("[TerminalView] Cleanup (unmount/re-render)", { taskId: taskId.slice(0, 8) });
 			disposed = true;
+			document.removeEventListener("visibilitychange", reconnectPtyOnResume);
+			window.removeEventListener("pageshow", reconnectPtyOnResume);
+			window.removeEventListener("online", reconnectPtyOnResume);
+			if (reconnectTimer !== null) clearTimeout(reconnectTimer);
 			// Cancel pending write batch to prevent writing to disposed terminal
 			if (writeRafId !== null) {
 				cancelAnimationFrame(writeRafId);
@@ -1286,11 +1353,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			try { dims = fit.proposeDimensions(); } catch { return; /* disposed */ }
 			if (!dims) return;
 
-			const nudgeCols = Math.max(2, dims.cols - 1);
-			ws.send(`\x1b]resize;${nudgeCols};${dims.rows}\x07`);
+			const [nudge, correct] = buildResizeDance(dims.cols, dims.rows);
+			ws.send(nudge);
 			setTimeout(() => {
 				if (ws.readyState === WebSocket.OPEN) {
-					ws.send(`\x1b]resize;${dims.cols};${dims.rows}\x07`);
+					ws.send(correct);
 				}
 			}, 50);
 		}

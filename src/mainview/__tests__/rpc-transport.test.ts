@@ -92,6 +92,7 @@ describe("Browser RPC transport", () => {
 		vi.resetModules();
 		vi.clearAllMocks();
 		vi.unstubAllGlobals();
+		localStorage.clear();
 		delete (window as any).__electrobunWebviewId;
 		document.documentElement.classList.remove("browser-mode");
 	});
@@ -156,5 +157,64 @@ describe("Browser RPC transport", () => {
 		await Promise.resolve();
 		expect(rejection).toBeInstanceOf(Error);
 		expect((rejection as Error).message).toContain("RPC connection closed");
+	});
+
+	it("delivers requests started while reconnecting after the replacement socket opens", async () => {
+		vi.useFakeTimers();
+		const sockets: MockWebSocket[] = [];
+		localStorage.setItem("dev3-remote-session", "stored-token");
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ token: "refreshed-token" }),
+		}));
+
+		class MockWebSocket {
+			static CONNECTING = 0;
+			static OPEN = 1;
+			static CLOSING = 2;
+			static CLOSED = 3;
+
+			readyState = MockWebSocket.CONNECTING;
+			readonly send = vi.fn();
+			readonly close = vi.fn();
+			private readonly listeners = new Map<string, Array<(event: any) => void>>();
+
+			constructor(public readonly url: string) {
+				sockets.push(this);
+			}
+
+			addEventListener(type: string, listener: (event: any) => void) {
+				const current = this.listeners.get(type) ?? [];
+				current.push(listener);
+				this.listeners.set(type, current);
+			}
+
+			dispatch(type: string, event: any = {}) {
+				for (const listener of this.listeners.get(type) ?? []) listener(event);
+			}
+		}
+
+		vi.stubGlobal("WebSocket", MockWebSocket);
+
+		const { api } = await import("../rpc");
+		await Promise.resolve();
+		await Promise.resolve();
+		const first = sockets[0];
+		first.readyState = MockWebSocket.OPEN;
+		first.dispatch("open");
+		first.readyState = MockWebSocket.CLOSED;
+		first.dispatch("close", { code: 1006, reason: "network gone" });
+
+		void (api.request as any).getAvailableApps();
+		await vi.advanceTimersByTimeAsync(2_000);
+		const replacement = sockets[1];
+		expect(replacement).toBeDefined();
+		replacement.readyState = MockWebSocket.OPEN;
+		replacement.dispatch("open");
+		await Promise.resolve();
+
+		expect(replacement.send).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(sockets).toHaveLength(2);
 	});
 });
