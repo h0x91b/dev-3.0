@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-12 — Variant switching: capped clickable dots, inspector switcher, ⇧⌘[/] cycle
+
+- **Rule:** One sibling affordance on both card surfaces — max 3 clickable status dots (self ring-highlighted + lowest variantIndexes, NO `+N` counter) opening an upgraded `SiblingPopover` (current-variant marker + per-variant titles); the inspector Context bar leads with a conditional segmented variant switcher (alive variants only, one composite control); `⇧⌘[`/`⇧⌘]` cycles alive variants (`keymap.ts`).
+- **Why:** Per-variant cards stay honest to sidebar readiness tiers and diverged titles; the grilling (task seq 1042) rejected collapsing a group into one card and epic-style click-to-filter chips — the proven kanban dots+popover mechanic gets unified across surfaces and bounded instead.
+- **Status:** Agreed, implementation pending. Rules: bible §5.1 + surface table + glossary; yaml `variant-switching-affordances` + `surfaces.task_card.variant_dots`.
+
 ## 2026-07-12 — PR Review always belongs in NEEDS YOU
 
 - **Rule:** Every `review-by-colleague` task stays in the sidebar's top NEEDS YOU tier and the `is:attention` filter, regardless of its live bell count; WAITING contains only `in-progress` and `review-by-ai` tasks.
