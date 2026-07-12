@@ -17,14 +17,51 @@ interface AutomationEditModalProps {
 	onSaved: () => void;
 }
 
-type ScheduleMode = "daily" | "weekly" | "monthly" | "custom";
+type ScheduleMode = "daily" | "monthly" | "custom";
 
-/** Map an existing RRULE onto the simple builder, or fall back to custom. */
+/** All weekdays (Sun..Sat), the "every day" selection. */
+const ALL_DOW = [0, 1, 2, 3, 4, 5, 6];
+
+interface WorkWeek {
+	/** Work days for the "Weekdays" preset (JS getDay: 0=Sun..6=Sat). */
+	weekdays: number[];
+	/** Rest days for the "Weekend" preset. */
+	weekend: number[];
+	/** Day the weekday-chip row starts on (0=Sun, 1=Mon). */
+	weekStart: number;
+}
+
+/** Western work week: Mon–Fri work, Sat–Sun rest, Monday-first chips. */
+const WESTERN_WEEK: WorkWeek = { weekdays: [1, 2, 3, 4, 5], weekend: [0, 6], weekStart: 1 };
+/** Israeli work week: Sun–Thu work, Fri–Sat rest, Sunday-first chips. */
+const ISRAELI_WEEK: WorkWeek = { weekdays: [0, 1, 2, 3, 4], weekend: [5, 6], weekStart: 0 };
+
+/**
+ * Work-week convention keyed by IANA timezone. Israel (Asia/Jerusalem) works
+ * Sun–Thu and rests Fri–Sat, so its "Weekdays"/"Weekend" presets differ from the
+ * Western default. Extend this map for other Fri–Sat-weekend regions as needed.
+ */
+function workWeekFor(timezone: string): WorkWeek {
+	return timezone === "Asia/Jerusalem" ? ISRAELI_WEEK : WESTERN_WEEK;
+}
+
+/** True if two day-of-week sets are identical (order-independent). */
+function sameDaySet(a: number[], b: number[]): boolean {
+	if (a.length !== b.length) return false;
+	const setB = new Set(b);
+	return a.every((d) => setB.has(d));
+}
+
+/**
+ * Map an existing RRULE onto the simple builder, or fall back to custom. The
+ * "daily" mode owns both every-day (FREQ=DAILY) and specific-weekday
+ * (FREQ=WEEKLY;BYDAY=…) rules — a weekday subset is just "daily, on these days".
+ */
 function scheduleModeFor(spec: RRuleSpec): ScheduleMode {
 	const simpleTime = spec.byHour.length === 1 && spec.byMinute.length === 1 && spec.interval === 1;
 	if (!simpleTime) return "custom";
 	if (spec.freq === "DAILY" && spec.byDay.length === 0) return "daily";
-	if (spec.freq === "WEEKLY") return "weekly";
+	if (spec.freq === "WEEKLY") return "daily";
 	if (spec.freq === "MONTHLY" && spec.byMonthDay.length <= 1) return "monthly";
 	return "custom";
 }
@@ -33,13 +70,15 @@ function pad2(n: number): string {
 	return String(n).padStart(2, "0");
 }
 
-/** Localized short weekday labels, Monday-first, indexed as [dow, label]. */
-function weekdayLabels(locale: string): Array<{ dow: number; label: string }> {
+/**
+ * Localized short weekday labels ordered from `weekStart` (0=Sun, 1=Mon),
+ * indexed as [dow, label]. 2024-01-07 is a Sunday, so Jan 7+dow lands on that dow.
+ */
+function weekdayLabels(locale: string, weekStart: number): Array<{ dow: number; label: string }> {
 	const fmt = new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" });
-	// 2024-01-07 is a Sunday; +1..+7 walks Mon..Sun.
-	return [1, 2, 3, 4, 5, 6, 0].map((dow) => ({
+	return Array.from({ length: 7 }, (_, i) => (weekStart + i) % 7).map((dow) => ({
 		dow,
-		label: fmt.format(new Date(Date.UTC(2024, 0, 7 + (dow === 0 ? 7 : dow)))),
+		label: fmt.format(new Date(Date.UTC(2024, 0, 7 + dow))),
 	}));
 }
 
@@ -60,9 +99,10 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 
 	const [name, setName] = useState(automation?.name ?? "");
 	const [prompt, setPrompt] = useState(automation?.prompt ?? "");
-	const [mode, setMode] = useState<ScheduleMode>(parsedSpec ? scheduleModeFor(parsedSpec) : "weekly");
+	const [mode, setMode] = useState<ScheduleMode>(parsedSpec ? scheduleModeFor(parsedSpec) : "daily");
 	const [time, setTime] = useState(parsedSpec && parsedSpec.byHour.length === 1 ? `${pad2(parsedSpec.byHour[0])}:${pad2(parsedSpec.byMinute[0] ?? 0)}` : "09:00");
-	const [byDay, setByDay] = useState<number[]>(parsedSpec && parsedSpec.byDay.length > 0 ? parsedSpec.byDay : [5]); // Friday
+	// FREQ=WEEKLY carries the chosen weekdays; FREQ=DAILY (or a fresh draft) means every day.
+	const [byDay, setByDay] = useState<number[]>(parsedSpec && parsedSpec.byDay.length > 0 ? parsedSpec.byDay : ALL_DOW);
 	const [monthDay, setMonthDay] = useState<number>(parsedSpec?.byMonthDay[0] ?? 1);
 	const [customRRule, setCustomRRule] = useState(automation?.rrule ?? "FREQ=DAILY;BYHOUR=9;BYMINUTE=0");
 	const [timezone, setTimezone] = useState(automation?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -79,7 +119,8 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 		api.request.getAgents().then(setAgents).catch(() => {});
 	}, []);
 
-	const weekdays = useMemo(() => weekdayLabels(locale), [locale]);
+	const workWeek = useMemo(() => workWeekFor(timezone.trim()), [timezone]);
+	const weekdays = useMemo(() => weekdayLabels(locale, workWeek.weekStart), [locale, workWeek.weekStart]);
 
 	function applyTemplate(templateId: string) {
 		const template = AUTOMATION_TEMPLATES.find((tpl) => tpl.id === templateId);
@@ -91,7 +132,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 			const m = scheduleModeFor(spec);
 			setMode(m);
 			if (spec.byHour.length === 1) setTime(`${pad2(spec.byHour[0])}:${pad2(spec.byMinute[0] ?? 0)}`);
-			if (spec.byDay.length > 0) setByDay(spec.byDay);
+			setByDay(spec.byDay.length > 0 ? spec.byDay : ALL_DOW);
 			if (spec.byMonthDay.length > 0) setMonthDay(spec.byMonthDay[0]);
 		} catch {
 			setMode("custom");
@@ -105,10 +146,12 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 		const hour = Number.isInteger(hh) ? hh : 9;
 		const minute = Number.isInteger(mm) ? mm : 0;
 		if (mode === "daily") {
-			return formatRRule({ freq: "DAILY", interval: 1, byDay: [], byMonthDay: [], byHour: [hour], byMinute: [minute] });
-		}
-		if (mode === "weekly") {
-			return formatRRule({ freq: "WEEKLY", interval: 1, byDay: byDay.length > 0 ? byDay : [5], byMonthDay: [], byHour: [hour], byMinute: [minute] });
+			// Every day → FREQ=DAILY; a weekday subset → FREQ=WEEKLY;BYDAY=… (same rule).
+			const days = [...byDay].sort((a, b) => a - b);
+			if (days.length >= 7) {
+				return formatRRule({ freq: "DAILY", interval: 1, byDay: [], byMonthDay: [], byHour: [hour], byMinute: [minute] });
+			}
+			return formatRRule({ freq: "WEEKLY", interval: 1, byDay: days.length > 0 ? days : ALL_DOW, byMonthDay: [], byHour: [hour], byMinute: [minute] });
 		}
 		return formatRRule({ freq: "MONTHLY", interval: 1, byDay: [], byMonthDay: [Math.min(31, Math.max(1, monthDay))], byHour: [hour], byMinute: [minute] });
 	}
@@ -157,7 +200,8 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 
 	const selectedAgent = agents.find((a) => a.id === agentId);
 	const configs = selectedAgent?.configurations ?? [];
-	const canSave = name.trim().length > 0 && prompt.trim().length > 0 && !saving;
+	const hasDays = mode !== "daily" || byDay.length > 0;
+	const canSave = name.trim().length > 0 && prompt.trim().length > 0 && hasDays && !saving;
 
 	const inputClass = "w-full bg-raised border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:border-edge-active focus:outline-none";
 	const labelClass = "text-xs text-fg-3 block mb-1";
@@ -234,25 +278,48 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 						<label className={labelClass}>{t("automations.schedule")}</label>
 						<div className="flex gap-1 bg-elevated/50 rounded-lg p-1 mb-2 w-fit">
 							<button type="button" onClick={() => setMode("daily")} className={modeButtonClass("daily")}>{t("automations.scheduleDaily")}</button>
-							<button type="button" onClick={() => setMode("weekly")} className={modeButtonClass("weekly")}>{t("automations.scheduleWeekly")}</button>
 							<button type="button" onClick={() => setMode("monthly")} className={modeButtonClass("monthly")}>{t("automations.scheduleMonthly")}</button>
 							<button type="button" onClick={() => setMode("custom")} className={modeButtonClass("custom")}>{t("automations.scheduleCustom")}</button>
 						</div>
 
-						{mode === "weekly" && (
-							<div className="flex gap-1 mb-2">
-								{weekdays.map(({ dow, label }) => (
-									<button
-										key={dow}
-										type="button"
-										onClick={() => toggleWeekday(dow)}
-										className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-											byDay.includes(dow) ? "bg-accent text-white" : "bg-raised text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
-										}`}
-									>
-										{label}
-									</button>
-								))}
+						{mode === "daily" && (
+							<div className="mb-2 space-y-2">
+								<div className="flex flex-wrap gap-1">
+									{([
+										{ key: "automations.daysEveryDay", days: ALL_DOW },
+										{ key: "automations.daysWeekdays", days: workWeek.weekdays },
+										{ key: "automations.daysWeekend", days: workWeek.weekend },
+									] as const).map(({ key, days }) => (
+										<button
+											key={key}
+											type="button"
+											onClick={() => setByDay([...days])}
+											className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+												sameDaySet(byDay, days) ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
+											}`}
+										>
+											{t(key)}
+										</button>
+									))}
+								</div>
+								<div className="flex gap-1">
+									{weekdays.map(({ dow, label }) => (
+										<button
+											key={dow}
+											type="button"
+											aria-pressed={byDay.includes(dow)}
+											onClick={() => toggleWeekday(dow)}
+											className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+												byDay.includes(dow) ? "bg-accent text-white" : "bg-raised text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
+											}`}
+										>
+											{label}
+										</button>
+									))}
+								</div>
+								{byDay.length === 0 && (
+									<p className="text-danger text-xs">{t("automations.daysNoneHint")}</p>
+								)}
 							</div>
 						)}
 
