@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { DEFAULT_PRIORITY, skillInvocationPrefix, titleFromDescription, type Project, type Task, type TaskPriority } from "../../shared/types";
+import { DEFAULT_PRIORITY, titleFromDescription, type Project, type Task, type TaskPriority } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -32,11 +32,9 @@ interface CreateTaskModalProps {
 	onClose: () => void;
 	onCreateAndRun?: (task: Task) => void;
 	onOpenAutomations?: () => void;
-	skillBaseCommand?: string;
-	skillAutocompleteEnabled?: boolean;
 }
 
-function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations, skillBaseCommand = "", skillAutocompleteEnabled = true }: CreateTaskModalProps) {
+function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations }: CreateTaskModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [description, setDescription] = useState("");
@@ -104,8 +102,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 		});
 	}, []);
 
-	const skillPrefix = skillInvocationPrefix(skillBaseCommand);
-	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription, project.path, skillPrefix, skillAutocompleteEnabled);
+	const skillAutocomplete = useSkillAutocomplete(textareaRef, description, setDescription, project.path);
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
@@ -453,7 +450,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 								activeIndex={skillAutocomplete.activeIndex}
 								onHover={skillAutocomplete.setActiveIndex}
 								onSelect={skillAutocomplete.accept}
-								invocationPrefix={skillPrefix}
+								invocationPrefix={skillAutocomplete.invocationPrefix}
 							/>
 						)}
 					</div>
