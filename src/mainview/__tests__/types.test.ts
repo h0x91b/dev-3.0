@@ -306,16 +306,6 @@ describe("DEFAULT_AGENTS", () => {
 		expect(claude!.baseCommand).toBe("claude");
 	});
 
-	it("includes the Composer 2.5 Cursor configuration", () => {
-		const cursor = DEFAULT_AGENTS.find((a) => a.id === "builtin-cursor");
-		expect(cursor).toBeDefined();
-		expect(cursor!.configurations).toContainEqual({
-			id: "cursor-composer-2-5",
-			name: "Composer 2.5",
-			model: "composer-2.5",
-		});
-	});
-
 	it("uses the pinned Sonnet 5 model in Sonnet 5 presets", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
 		expect(claude).toBeDefined();

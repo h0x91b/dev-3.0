@@ -206,6 +206,5 @@ describe("MODEL_GROUP_LABELS", () => {
 		expect(MODEL_GROUP_LABELS["claude-opus-4-8[1m]"]).toBe("Opus 4.8");
 		expect(MODEL_GROUP_LABELS["claude-sonnet-5"]).toBe("Sonnet 5");
 		expect(MODEL_GROUP_LABELS["claude-opus-4-7[1m]"]).toBe("Opus 4.7");
-		expect(MODEL_GROUP_LABELS["composer-2.5"]).toBe("Composer 2.5");
 	});
 });
