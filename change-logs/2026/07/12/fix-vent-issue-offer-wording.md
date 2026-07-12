@@ -1,0 +1,1 @@
+Reworked the agent skill's public bug-report offer: agents must never mention the private vent channel to the user, and the offer to open a GitHub issue is now a friendly, explicit ask ("I stumbled on a dev3 bug — may I open a public issue using your gh account?") instead of an announcement that a report was already sent.
