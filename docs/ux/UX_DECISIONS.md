@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-12 — PR Review always belongs in NEEDS YOU
+
+- **Rule:** Every `review-by-colleague` task stays in the sidebar's top NEEDS YOU tier and the `is:attention` filter, regardless of its live bell count; WAITING contains only `in-progress` and `review-by-ai` tasks.
+- **Why:** A pending PR is a human decision queue, not background agent churn; a bell marks new activity but must not decide whether a review is visible. Rejected: signal-gated promotion, which stranded quiet PRs below working tasks.
+- **Status:** Implemented. Evidence: `sidebarTiers.ts`, `taskFacets.ts`, `ActiveTasksSidebar.tsx`; `decisions/127-pr-review-needs-you-tier.md`.
+
 ## 2026-07-11 — Scheduled agent message ("Send later")
 
 - **Rule:** A one-shot text queued to a task's **live agent** (deliver at a wall-clock time / after a delay; type + Enter) is a **session action**. Create it from the **Session/Agent inspector bar**, the card **context menu**, and a **clock button in the browser/touch `TerminalComposer`**; plus CLI `dev3 message [--in|--at] "…"` (bare = send now). Pending items render as a **card timer-chip** (popover: cancel / send-now) that **shares the single deferred-timer slot with deferred launch** — the two never coexist (`todo` vs live-agent). Reuses the `LaunchVariantsModal` in/at picker via an extracted shared `SchedulePicker`. Offered only when a live agent session exists.

@@ -48,18 +48,16 @@ const featureLabel: Label = { id: "l-feat", name: "Feature", color: "#22c55e" };
 
 describe("isAttentionTask", () => {
 	it("is true for attention statuses", () => {
-		expect(isAttentionTask(makeTask({ status: "user-questions" }), new Map())).toBe(true);
-		expect(isAttentionTask(makeTask({ status: "review-by-user" }), new Map())).toBe(true);
+		expect(isAttentionTask(makeTask({ status: "user-questions" }))).toBe(true);
+		expect(isAttentionTask(makeTask({ status: "review-by-user" }))).toBe(true);
 	});
 
 	it("is false for a working task", () => {
-		expect(isAttentionTask(makeTask({ status: "in-progress" }), new Map())).toBe(false);
+		expect(isAttentionTask(makeTask({ status: "in-progress" }))).toBe(false);
 	});
 
-	it("is true for a PR-review task only with a live bell", () => {
-		const task = makeTask({ id: "pr", status: "review-by-colleague" });
-		expect(isAttentionTask(task, new Map())).toBe(false);
-		expect(isAttentionTask(task, new Map([["pr", 1]]))).toBe(true);
+	it("is true for every PR-review task", () => {
+		expect(isAttentionTask(makeTask({ status: "review-by-colleague" }))).toBe(true);
 	});
 });
 
@@ -106,7 +104,7 @@ describe("buildFilterGroups", () => {
 	];
 	const candidates = { priorityCandidates, statusCandidates, flagLabels: { attention: "Needs attention", port: "Has running port" } };
 
-	function resolverFor(bellCounts = new Map<string, number>()): FacetResolver {
+	function resolverFor(): FacetResolver {
 		const labelsById: Record<string, Label[]> = {
 			working: [bugLabel],
 			parked: [featureLabel],
@@ -119,7 +117,7 @@ describe("buildFilterGroups", () => {
 				task.customColumnId === "col" ? ["On Hold", task.status, "Your Review"] : [task.status, "Agent is Working"],
 			priorityFor: (task) => task.priority ?? "P2",
 			hasPortFor: (task) => ports.has(task.id),
-			isAttentionFor: (task) => isAttentionTask(task, bellCounts),
+		isAttentionFor: (task) => isAttentionTask(task),
 		};
 	}
 

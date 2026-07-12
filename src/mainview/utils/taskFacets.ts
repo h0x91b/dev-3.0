@@ -28,19 +28,16 @@ export interface FilterFunnelGroup {
 	options: FilterFunnelOption[];
 }
 
-/** Statuses that, on their own, mean a task is waiting on the user. */
-const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user"];
+/** Statuses that belong at the top of the user's work queue. */
+const ATTENTION_STATUSES: TaskStatus[] = ["user-questions", "review-by-user", "review-by-colleague"];
 
 /**
- * A task needs attention when it is in an attention status, OR it is a PR-review
- * (`review-by-colleague`) task that currently has a live bell. Single source of
- * truth for both the sidebar attention scope and the `is:attention` facet.
+ * A task needs attention when its status belongs at the top of the user's work
+ * queue. Single source of truth for the sidebar attention scope and the
+ * `is:attention` facet. Per-task bells remain visual notifications only.
  */
-export function isAttentionTask(task: Task, bellCounts: Map<string, number>): boolean {
-	return (
-		ATTENTION_STATUSES.includes(task.status) ||
-		(task.status === "review-by-colleague" && (bellCounts.get(task.id) ?? 0) > 0)
-	);
+export function isAttentionTask(task: Task): boolean {
+	return ATTENTION_STATUSES.includes(task.status);
 }
 
 export interface FacetResolver {
