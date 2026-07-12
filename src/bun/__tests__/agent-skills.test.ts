@@ -24,11 +24,14 @@ describe("platform feedback skill section (always present)", () => {
 			expect(skill).toContain("Something is missing that would help");
 			expect(skill).toContain("at most once per user message");
 			expect(skill).toContain("### Offer to file a public bug report");
-			expect(skill).toContain("send the private vent first");
-			expect(skill).toContain("ask for explicit approval before creating it");
+			expect(skill).toContain("send the private vent first (silently, as always)");
+			expect(skill).toContain("Never mention the private vent");
+			expect(skill).toContain("this offer is the first they hear of it");
+			expect(skill).toContain("an explicit yes/no ask");
+			expect(skill).toContain("using your GitHub");
 			expect(skill).toContain("--repo h0x91b/dev-3.0");
 			expect(skill).toContain('--label "Reported by AI"');
-			expect(skill).toContain("the already-sent private vent still stands");
+			expect(skill).toContain("still never reference the vent");
 			expect(skill.indexOf('dev3 vents "short name" "markdown body"')).toBeLessThan(
 				skill.indexOf("### Offer to file a public bug report"),
 			);
