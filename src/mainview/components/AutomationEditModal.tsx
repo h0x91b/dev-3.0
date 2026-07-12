@@ -21,10 +21,29 @@ type ScheduleMode = "daily" | "monthly" | "custom";
 
 /** All weekdays (Sun..Sat), the "every day" selection. */
 const ALL_DOW = [0, 1, 2, 3, 4, 5, 6];
-/** Mon..Fri — the "Weekdays" preset. */
-const WEEKDAYS_DOW = [1, 2, 3, 4, 5];
-/** Sat + Sun — the "Weekend" preset. */
-const WEEKEND_DOW = [0, 6];
+
+interface WorkWeek {
+	/** Work days for the "Weekdays" preset (JS getDay: 0=Sun..6=Sat). */
+	weekdays: number[];
+	/** Rest days for the "Weekend" preset. */
+	weekend: number[];
+	/** Day the weekday-chip row starts on (0=Sun, 1=Mon). */
+	weekStart: number;
+}
+
+/** Western work week: Mon–Fri work, Sat–Sun rest, Monday-first chips. */
+const WESTERN_WEEK: WorkWeek = { weekdays: [1, 2, 3, 4, 5], weekend: [0, 6], weekStart: 1 };
+/** Israeli work week: Sun–Thu work, Fri–Sat rest, Sunday-first chips. */
+const ISRAELI_WEEK: WorkWeek = { weekdays: [0, 1, 2, 3, 4], weekend: [5, 6], weekStart: 0 };
+
+/**
+ * Work-week convention keyed by IANA timezone. Israel (Asia/Jerusalem) works
+ * Sun–Thu and rests Fri–Sat, so its "Weekdays"/"Weekend" presets differ from the
+ * Western default. Extend this map for other Fri–Sat-weekend regions as needed.
+ */
+function workWeekFor(timezone: string): WorkWeek {
+	return timezone === "Asia/Jerusalem" ? ISRAELI_WEEK : WESTERN_WEEK;
+}
 
 /** True if two day-of-week sets are identical (order-independent). */
 function sameDaySet(a: number[], b: number[]): boolean {
@@ -51,13 +70,15 @@ function pad2(n: number): string {
 	return String(n).padStart(2, "0");
 }
 
-/** Localized short weekday labels, Monday-first, indexed as [dow, label]. */
-function weekdayLabels(locale: string): Array<{ dow: number; label: string }> {
+/**
+ * Localized short weekday labels ordered from `weekStart` (0=Sun, 1=Mon),
+ * indexed as [dow, label]. 2024-01-07 is a Sunday, so Jan 7+dow lands on that dow.
+ */
+function weekdayLabels(locale: string, weekStart: number): Array<{ dow: number; label: string }> {
 	const fmt = new Intl.DateTimeFormat(locale, { weekday: "short", timeZone: "UTC" });
-	// 2024-01-07 is a Sunday; +1..+7 walks Mon..Sun.
-	return [1, 2, 3, 4, 5, 6, 0].map((dow) => ({
+	return Array.from({ length: 7 }, (_, i) => (weekStart + i) % 7).map((dow) => ({
 		dow,
-		label: fmt.format(new Date(Date.UTC(2024, 0, 7 + (dow === 0 ? 7 : dow)))),
+		label: fmt.format(new Date(Date.UTC(2024, 0, 7 + dow))),
 	}));
 }
 
@@ -98,7 +119,8 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 		api.request.getAgents().then(setAgents).catch(() => {});
 	}, []);
 
-	const weekdays = useMemo(() => weekdayLabels(locale), [locale]);
+	const workWeek = useMemo(() => workWeekFor(timezone.trim()), [timezone]);
+	const weekdays = useMemo(() => weekdayLabels(locale, workWeek.weekStart), [locale, workWeek.weekStart]);
 
 	function applyTemplate(templateId: string) {
 		const template = AUTOMATION_TEMPLATES.find((tpl) => tpl.id === templateId);
@@ -265,8 +287,8 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 								<div className="flex flex-wrap gap-1">
 									{([
 										{ key: "automations.daysEveryDay", days: ALL_DOW },
-										{ key: "automations.daysWeekdays", days: WEEKDAYS_DOW },
-										{ key: "automations.daysWeekend", days: WEEKEND_DOW },
+										{ key: "automations.daysWeekdays", days: workWeek.weekdays },
+										{ key: "automations.daysWeekend", days: workWeek.weekend },
 									] as const).map(({ key, days }) => (
 										<button
 											key={key}

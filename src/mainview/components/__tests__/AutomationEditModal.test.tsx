@@ -59,6 +59,13 @@ async function fillNameAndPrompt(user: ReturnType<typeof userEvent.setup>) {
 	await user.type(screen.getByLabelText(/Prompt/), "Do the thing.");
 }
 
+// The default timezone is the host machine's, so pin it for deterministic presets.
+async function setTimezone(user: ReturnType<typeof userEvent.setup>, tz: string) {
+	const input = screen.getByLabelText(/Timezone/);
+	await user.clear(input);
+	await user.type(input, tz);
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 });
@@ -80,10 +87,11 @@ describe("AutomationEditModal — daily day picker", () => {
 		);
 	});
 
-	it("the Weekdays preset saves a Mon–Fri weekly rule", async () => {
+	it("the Weekdays preset saves a Mon–Fri weekly rule (Western timezone)", async () => {
 		const user = userEvent.setup();
 		renderCreate();
 		await fillNameAndPrompt(user);
+		await setTimezone(user, "Europe/Berlin");
 
 		await user.click(screen.getByRole("button", { name: "Weekdays" }));
 		expect(screen.getByRole("button", { name: "Sat" }).getAttribute("aria-pressed")).toBe("false");
@@ -92,6 +100,40 @@ describe("AutomationEditModal — daily day picker", () => {
 		await user.click(screen.getByRole("button", { name: "Create" }));
 		expect(api.request.createAutomation).toHaveBeenCalledWith(
 			expect.objectContaining({ rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0" }),
+		);
+	});
+
+	it("uses the Israeli work week (Sun–Thu) when the timezone is Asia/Jerusalem", async () => {
+		const user = userEvent.setup();
+		renderCreate();
+		await fillNameAndPrompt(user);
+		await setTimezone(user, "Asia/Jerusalem");
+
+		await user.click(screen.getByRole("button", { name: "Weekdays" }));
+		// Sun–Thu are work days; Fri–Sat are the weekend.
+		for (const day of ["Sun", "Mon", "Tue", "Wed", "Thu"]) {
+			expect(screen.getByRole("button", { name: day }).getAttribute("aria-pressed")).toBe("true");
+		}
+		for (const day of ["Fri", "Sat"]) {
+			expect(screen.getByRole("button", { name: day }).getAttribute("aria-pressed")).toBe("false");
+		}
+
+		await user.click(screen.getByRole("button", { name: "Create" }));
+		expect(api.request.createAutomation).toHaveBeenCalledWith(
+			expect.objectContaining({ rrule: "FREQ=WEEKLY;BYDAY=SU,MO,TU,WE,TH;BYHOUR=9;BYMINUTE=0" }),
+		);
+	});
+
+	it("the Weekend preset is Fri–Sat under Asia/Jerusalem", async () => {
+		const user = userEvent.setup();
+		renderCreate();
+		await fillNameAndPrompt(user);
+		await setTimezone(user, "Asia/Jerusalem");
+
+		await user.click(screen.getByRole("button", { name: "Weekend" }));
+		await user.click(screen.getByRole("button", { name: "Create" }));
+		expect(api.request.createAutomation).toHaveBeenCalledWith(
+			expect.objectContaining({ rrule: "FREQ=WEEKLY;BYDAY=FR,SA;BYHOUR=9;BYMINUTE=0" }),
 		);
 	});
 
