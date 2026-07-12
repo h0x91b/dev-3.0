@@ -133,7 +133,7 @@ describe("TaskWorkspaceView", () => {
 
 		await waitFor(() => expect(getTasksMock).toHaveBeenCalledWith({ projectId: "p1" }));
 		await waitFor(() =>
-			expect(dispatch).toHaveBeenCalledWith({ type: "setTasks", tasks: [task] }),
+			expect(dispatch).toHaveBeenCalledWith({ type: "setTasks", projectId: "p1", tasks: [task] }),
 		);
 	});
 

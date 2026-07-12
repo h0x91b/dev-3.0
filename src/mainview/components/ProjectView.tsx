@@ -76,7 +76,7 @@ function ProjectView({
 			try {
 				const tasks = await api.request.getTasks({ projectId });
 				if (!cancelled && taskUpdateEpoch === taskUpdateEpochRef.current) {
-					dispatch({ type: "setTasks", tasks });
+					dispatch({ type: "setTasks", projectId, tasks });
 				}
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
