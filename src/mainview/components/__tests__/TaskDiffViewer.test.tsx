@@ -268,6 +268,7 @@ const diffPayload: TaskDiffResponse = {
 	compareRef: "origin/main",
 	compareLabel: "origin/main",
 	fallbackReason: null,
+	recentCount: null,
 	summary: {
 		files: 3,
 		insertions: 5,
@@ -320,6 +321,7 @@ function singleFilePayload(newContent: string, hunk: string, oldContent = "base\
 		compareRef: "origin/main",
 		compareLabel: "origin/main",
 		fallbackReason: null,
+		recentCount: null,
 		summary: {
 			files: 1,
 			insertions: 1,
@@ -460,6 +462,7 @@ describe("TaskDiffViewer", () => {
 			compareRef: null,
 			compareLabel: "Working tree",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 3, insertions: 0, deletions: 0 },
 			files: [
 				{
@@ -529,6 +532,7 @@ describe("TaskDiffViewer", () => {
 			compareRef: mode === "uncommitted" ? null : "origin/main",
 			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 3, insertions: 0, deletions: 0 },
 			files: [],
 			skippedFiles: [
@@ -599,6 +603,7 @@ describe("TaskDiffViewer", () => {
 			compareRef: mode === "uncommitted" ? null : "origin/main",
 			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 2, insertions: 2, deletions: 0 },
 			files: [
 				{
@@ -667,6 +672,7 @@ describe("TaskDiffViewer", () => {
 			compareRef: mode === "uncommitted" ? null : "origin/main",
 			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 3, insertions: 1, deletions: 1 },
 			files: [
 				{
@@ -1279,6 +1285,7 @@ describe("TaskDiffViewer", () => {
 			compareRef: "origin/main",
 			compareLabel: "origin/main",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 2, insertions: 2, deletions: 0 },
 			files: [
 				{
@@ -2513,6 +2520,7 @@ describe("TaskDiffViewer", () => {
 			compareRef: "origin/main",
 			compareLabel: "origin/main",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 2, insertions: 2, deletions: 0 },
 			files: [
 				{
@@ -2642,5 +2650,177 @@ describe("TaskDiffViewer narrow viewport", () => {
 		expect(screen.queryByTestId("diff-files-sheet")).not.toBeInTheDocument();
 		await user.click(screen.getByTestId("diff-files-sheet-trigger"));
 		expect(await screen.findByTestId("diff-files-sheet")).toBeInTheDocument();
+	});
+});
+
+describe("TaskDiffViewer — recent commits mode", () => {
+	// A recent-aware mock: for `recent` it echoes the requested count clamped to 3
+	// (a pretend 3-own-commit branch); other modes reuse the shared branch payload.
+	function recentAwareDiff(count?: number): TaskDiffResponse {
+		const effective = Math.min(count ?? 1, 3);
+		return {
+			mode: "recent",
+			compareRef: effective > 0 ? `HEAD~${effective}` : null,
+			compareLabel: `HEAD~${effective}`,
+			fallbackReason: null,
+			recentCount: effective,
+			summary: { files: effective > 0 ? 1 : 0, insertions: 1, deletions: 0 },
+			files: effective > 0
+				? [{
+					id: "c.ts",
+					status: "added",
+					displayPath: "c.ts",
+					oldPath: null,
+					newPath: "c.ts",
+					oldContent: "",
+					newContent: "export const c = 3;\n",
+					hunks: null,
+					insertions: 1,
+					deletions: 0,
+				}]
+				: [],
+			skippedFiles: [],
+		};
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode, count }) =>
+			mode === "recent"
+				? recentAwareDiff(count)
+				: { ...diffPayload, mode, compareRef: "origin/main", compareLabel: "origin/main" },
+		);
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		});
+		localStorage.clear();
+		document.documentElement.dataset.theme = "dark";
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+		Object.defineProperty(window.screen, "availWidth", { configurable: true, value: 2560 });
+	});
+
+	function renderViewer() {
+		return render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("renders the recent split-button labeled 'Last commit'", async () => {
+		renderViewer();
+		const body = await screen.findByTestId("diff-mode-recent");
+		expect(body).toHaveTextContent("Last commit");
+		expect(screen.getByTestId("diff-mode-recent-caret")).toBeInTheDocument();
+		// Popover is closed until the caret is clicked.
+		expect(screen.queryByTestId("diff-mode-recent-menu")).not.toBeInTheDocument();
+	});
+
+	it("activates recent mode with count 1 when the button body is clicked", async () => {
+		const user = userEvent.setup();
+		renderViewer();
+		await screen.findByTestId("diff-mode-recent");
+
+		await user.click(screen.getByTestId("diff-mode-recent"));
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ mode: "recent", count: 1 }),
+			);
+		});
+	});
+
+	it("opens the preset popover from the caret", async () => {
+		const user = userEvent.setup();
+		renderViewer();
+		await screen.findByTestId("diff-mode-recent-caret");
+
+		await user.click(screen.getByTestId("diff-mode-recent-caret"));
+
+		const menu = await screen.findByTestId("diff-mode-recent-menu");
+		expect(menu).toBeInTheDocument();
+		// All five presets are offered.
+		for (const n of [1, 2, 3, 5, 10]) {
+			expect(screen.getByTestId(`diff-recent-preset-${n}`)).toBeInTheDocument();
+		}
+	});
+
+	it("selecting a preset sets the count and activates recent mode", async () => {
+		const user = userEvent.setup();
+		renderViewer();
+		await screen.findByTestId("diff-mode-recent-caret");
+
+		await user.click(screen.getByTestId("diff-mode-recent-caret"));
+		await user.click(await screen.findByTestId("diff-recent-preset-3"));
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ mode: "recent", count: 3 }),
+			);
+		});
+		// Popover closes after selection.
+		expect(screen.queryByTestId("diff-mode-recent-menu")).not.toBeInTheDocument();
+		// The body label reflects the selected N.
+		expect(screen.getByTestId("diff-mode-recent")).toHaveTextContent("Last 3 commits");
+	});
+
+	it("resets N to 1 on reopen even though recent mode stays the preference", async () => {
+		const user = userEvent.setup();
+		const { rerender } = renderViewer();
+		await screen.findByTestId("diff-mode-recent-caret");
+
+		// Pick N=3, which also persists `recent` as the mode preference.
+		await user.click(screen.getByTestId("diff-mode-recent-caret"));
+		await user.click(await screen.findByTestId("diff-recent-preset-3"));
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ mode: "recent", count: 3 }),
+			);
+		});
+
+		// Reopen with a fresh request object → mode preference is still recent, but N resets to 1.
+		rerender(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ mode: "recent", count: 1 }),
+			);
+		});
+		expect(screen.getByTestId("diff-mode-recent")).toHaveTextContent("Last commit");
+	});
+
+	it("shows the empty state when the branch has no commits of its own", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) =>
+			mode === "recent"
+				? recentAwareDiff(0)
+				: { ...diffPayload, mode, compareRef: "origin/main", compareLabel: "origin/main" },
+		);
+		renderViewer();
+		await screen.findByTestId("diff-mode-recent");
+
+		await user.click(screen.getByTestId("diff-mode-recent"));
+
+		expect(await screen.findByText("No changes to show")).toBeInTheDocument();
+		// Header reflects the honest "no commits" state, and the button stays enabled.
+		expect(screen.getByText("No commits on this branch yet")).toBeInTheDocument();
+		expect(screen.getByTestId("diff-mode-recent")).toBeEnabled();
 	});
 });

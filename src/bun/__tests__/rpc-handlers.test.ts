@@ -4306,6 +4306,7 @@ describe("handlers.getTaskDiff", () => {
 			compareRef: "origin/main",
 			compareLabel: "origin/main",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 1, insertions: 3, deletions: 1 },
 			files: [],
 			skippedFiles: [],
@@ -4342,6 +4343,7 @@ describe("handlers.getTaskDiff", () => {
 			compareRef: null,
 			compareLabel: "Working tree",
 			fallbackReason: null,
+			recentCount: null,
 			summary: { files: 0, insertions: 0, deletions: 0 },
 			files: [],
 			skippedFiles: [],
@@ -4354,6 +4356,34 @@ describe("handlers.getTaskDiff", () => {
 			baseBranch: "main",
 			compareRef: undefined,
 			compareLabel: undefined,
+		});
+	});
+
+	it("skips origin fetch for recent diffs and forwards the commit count", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", baseBranch: "main" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getTaskDiff).mockResolvedValue({
+			mode: "recent",
+			compareRef: "HEAD~3",
+			compareLabel: "HEAD~3",
+			fallbackReason: null,
+			recentCount: 3,
+			summary: { files: 1, insertions: 1, deletions: 0 },
+			files: [],
+			skippedFiles: [],
+		});
+
+		await handlers.getTaskDiff({ taskId: "task-1", projectId: "proj-1", mode: "recent", count: 3 });
+
+		// `recent` is purely local — no network fetch — and `count` reaches git.getTaskDiff.
+		expect(git.fetchOrigin).not.toHaveBeenCalled();
+		expect(git.getTaskDiff).toHaveBeenCalledWith("/tmp/wt", "recent", {
+			baseBranch: "main",
+			compareRef: undefined,
+			compareLabel: undefined,
+			count: 3,
 		});
 	});
 });

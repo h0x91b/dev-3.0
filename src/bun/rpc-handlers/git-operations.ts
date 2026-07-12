@@ -752,6 +752,7 @@ async function getTaskDiff(params: {
 	mode: TaskDiffMode;
 	compareRef?: string;
 	compareLabel?: string;
+	count?: number;
 }): Promise<TaskDiffResponse> {
 	log.info("→ getTaskDiff", params);
 	const project = await data.getProject(params.projectId);
@@ -760,7 +761,10 @@ async function getTaskDiff(params: {
 	assertGitTask(project, task);
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	if (params.mode !== "uncommitted") {
+	// `uncommitted` needs no remote ref; `recent` is purely local — it diffs
+	// `HEAD~N..HEAD` and clamps against the already on-disk `origin/<base>`
+	// merge-base — so neither pays for a network fetch.
+	if (params.mode !== "uncommitted" && params.mode !== "recent") {
 		await git.fetchOrigin(project.path, baseBranch);
 		const compareRefBranch = params.compareRef?.startsWith("origin/") ? params.compareRef.slice("origin/".length) : null;
 		if (compareRefBranch && compareRefBranch !== baseBranch) {
@@ -772,6 +776,7 @@ async function getTaskDiff(params: {
 		baseBranch,
 		compareRef: params.compareRef,
 		compareLabel: params.compareLabel,
+		count: params.count,
 	});
 	const skippedBinary = result.skippedFiles.filter((f) => f.reason === "binary").length;
 	const skippedLarge = result.skippedFiles.filter((f) => f.reason === "too-large").length;

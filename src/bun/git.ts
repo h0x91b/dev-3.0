@@ -1740,6 +1740,35 @@ export async function getUpstreamRef(
 	return result.ok && result.stdout ? result.stdout : null;
 }
 
+/**
+ * Number of commits that belong to this branch — i.e. commits reachable from
+ * HEAD but not from the base branch. Used to clamp `recent` mode's `HEAD~N` so
+ * it never reaches into base-branch history. Purely local: prefers the already
+ * on-disk `origin/<base>` remote-tracking ref (populated at worktree creation),
+ * then the local base branch, and finally the full HEAD history as a floor so a
+ * detached or origin-less repo still gets a sane clamp instead of erroring.
+ */
+async function getBranchCommitCount(
+	worktreePath: string,
+	compareRef: string,
+	baseBranch: string,
+): Promise<number> {
+	for (const ref of [compareRef, baseBranch]) {
+		if (!ref) continue;
+		const mergeBase = await run(["git", "merge-base", ref, "HEAD"], worktreePath);
+		if (!mergeBase.ok || !mergeBase.stdout) continue;
+		const count = await run(
+			["git", "rev-list", "--count", `${mergeBase.stdout}..HEAD`],
+			worktreePath,
+		);
+		if (count.ok) return parseInt(count.stdout, 10) || 0;
+	}
+	// No usable base ref (origin-less test repo, orphaned branch): clamp to the
+	// full first-parent history so `HEAD~N` can never step before the root commit.
+	const total = await run(["git", "rev-list", "--count", "HEAD"], worktreePath);
+	return total.ok ? parseInt(total.stdout, 10) || 0 : 0;
+}
+
 export async function getTaskDiff(
 	worktreePath: string,
 	mode: TaskDiffMode,
@@ -1747,10 +1776,47 @@ export async function getTaskDiff(
 		baseBranch: string;
 		compareRef?: string;
 		compareLabel?: string;
+		count?: number;
 	},
 ): Promise<TaskDiffResponse> {
 	const defaultCompareRef = options.compareRef || `origin/${options.baseBranch}`;
 	const defaultCompareLabel = options.compareLabel || defaultCompareRef;
+
+	if (mode === "recent") {
+		// Requested N, floored at 1, then clamped to the branch's own commit count
+		// so we never diff into base-branch history. `HEAD~effective..HEAD` is a
+		// direct first-parent range, so a two-dot diff is exact here (no merge-base
+		// gymnastics). effective === 0 → `HEAD~0..HEAD` is naturally empty.
+		const requested = Math.max(1, Math.floor(options.count ?? 1));
+		const branchCommitCount = await getBranchCommitCount(worktreePath, defaultCompareRef, options.baseBranch);
+		const effective = Math.min(requested, branchCommitCount);
+		const oldRef = `HEAD~${effective}`;
+		const entries = await listDiffEntries(worktreePath, [oldRef, "HEAD"]);
+		const [summary, numstat] = await Promise.all([
+			getDiffShortStat(worktreePath, [oldRef, "HEAD"]),
+			getNumstat(worktreePath, [oldRef, "HEAD"]),
+		]);
+		const filesResult = await buildTaskDiffFiles(
+			worktreePath,
+			entries,
+			{ kind: "ref", ref: oldRef },
+			{ kind: "ref", ref: "HEAD" },
+			numstat,
+		);
+		return {
+			mode,
+			compareRef: effective > 0 ? oldRef : null,
+			compareLabel: oldRef,
+			fallbackReason: null,
+			recentCount: effective,
+			summary: {
+				files: entries.length,
+				insertions: summary.insertions,
+				deletions: summary.deletions,
+			},
+			...filesResult,
+		};
+	}
 
 	if (mode === "uncommitted") {
 		const [entries, untrackedEntries, summary, numstat] = await Promise.all([
@@ -1772,6 +1838,7 @@ export async function getTaskDiff(
 			compareRef: null,
 			compareLabel: "Working tree",
 			fallbackReason: null,
+			recentCount: null,
 			summary: {
 				files: allEntries.length,
 				insertions: summary.insertions,
@@ -1815,6 +1882,7 @@ export async function getTaskDiff(
 				compareRef: upstreamRef,
 				compareLabel: upstreamRef,
 				fallbackReason: null,
+				recentCount: null,
 				summary: {
 					...summary,
 					files: entries.length,
@@ -1840,6 +1908,7 @@ export async function getTaskDiff(
 			compareRef: defaultCompareRef,
 			compareLabel: defaultCompareLabel,
 			fallbackReason: "no-upstream",
+			recentCount: null,
 			summary: {
 				files: branchEntries.length,
 				insertions: summary.insertions,
@@ -1866,6 +1935,7 @@ export async function getTaskDiff(
 		compareRef: defaultCompareRef,
 		compareLabel: defaultCompareLabel,
 		fallbackReason: null,
+		recentCount: null,
 		summary: {
 			files: branchEntries.length,
 			insertions: summary.insertions,
