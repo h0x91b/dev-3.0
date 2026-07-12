@@ -17,14 +17,32 @@ interface AutomationEditModalProps {
 	onSaved: () => void;
 }
 
-type ScheduleMode = "daily" | "weekly" | "monthly" | "custom";
+type ScheduleMode = "daily" | "monthly" | "custom";
 
-/** Map an existing RRULE onto the simple builder, or fall back to custom. */
+/** All weekdays (Sun..Sat), the "every day" selection. */
+const ALL_DOW = [0, 1, 2, 3, 4, 5, 6];
+/** Mon..Fri — the "Weekdays" preset. */
+const WEEKDAYS_DOW = [1, 2, 3, 4, 5];
+/** Sat + Sun — the "Weekend" preset. */
+const WEEKEND_DOW = [0, 6];
+
+/** True if two day-of-week sets are identical (order-independent). */
+function sameDaySet(a: number[], b: number[]): boolean {
+	if (a.length !== b.length) return false;
+	const setB = new Set(b);
+	return a.every((d) => setB.has(d));
+}
+
+/**
+ * Map an existing RRULE onto the simple builder, or fall back to custom. The
+ * "daily" mode owns both every-day (FREQ=DAILY) and specific-weekday
+ * (FREQ=WEEKLY;BYDAY=…) rules — a weekday subset is just "daily, on these days".
+ */
 function scheduleModeFor(spec: RRuleSpec): ScheduleMode {
 	const simpleTime = spec.byHour.length === 1 && spec.byMinute.length === 1 && spec.interval === 1;
 	if (!simpleTime) return "custom";
 	if (spec.freq === "DAILY" && spec.byDay.length === 0) return "daily";
-	if (spec.freq === "WEEKLY") return "weekly";
+	if (spec.freq === "WEEKLY") return "daily";
 	if (spec.freq === "MONTHLY" && spec.byMonthDay.length <= 1) return "monthly";
 	return "custom";
 }
@@ -60,9 +78,10 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 
 	const [name, setName] = useState(automation?.name ?? "");
 	const [prompt, setPrompt] = useState(automation?.prompt ?? "");
-	const [mode, setMode] = useState<ScheduleMode>(parsedSpec ? scheduleModeFor(parsedSpec) : "weekly");
+	const [mode, setMode] = useState<ScheduleMode>(parsedSpec ? scheduleModeFor(parsedSpec) : "daily");
 	const [time, setTime] = useState(parsedSpec && parsedSpec.byHour.length === 1 ? `${pad2(parsedSpec.byHour[0])}:${pad2(parsedSpec.byMinute[0] ?? 0)}` : "09:00");
-	const [byDay, setByDay] = useState<number[]>(parsedSpec && parsedSpec.byDay.length > 0 ? parsedSpec.byDay : [5]); // Friday
+	// FREQ=WEEKLY carries the chosen weekdays; FREQ=DAILY (or a fresh draft) means every day.
+	const [byDay, setByDay] = useState<number[]>(parsedSpec && parsedSpec.byDay.length > 0 ? parsedSpec.byDay : ALL_DOW);
 	const [monthDay, setMonthDay] = useState<number>(parsedSpec?.byMonthDay[0] ?? 1);
 	const [customRRule, setCustomRRule] = useState(automation?.rrule ?? "FREQ=DAILY;BYHOUR=9;BYMINUTE=0");
 	const [timezone, setTimezone] = useState(automation?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -91,7 +110,7 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 			const m = scheduleModeFor(spec);
 			setMode(m);
 			if (spec.byHour.length === 1) setTime(`${pad2(spec.byHour[0])}:${pad2(spec.byMinute[0] ?? 0)}`);
-			if (spec.byDay.length > 0) setByDay(spec.byDay);
+			setByDay(spec.byDay.length > 0 ? spec.byDay : ALL_DOW);
 			if (spec.byMonthDay.length > 0) setMonthDay(spec.byMonthDay[0]);
 		} catch {
 			setMode("custom");
@@ -105,10 +124,12 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 		const hour = Number.isInteger(hh) ? hh : 9;
 		const minute = Number.isInteger(mm) ? mm : 0;
 		if (mode === "daily") {
-			return formatRRule({ freq: "DAILY", interval: 1, byDay: [], byMonthDay: [], byHour: [hour], byMinute: [minute] });
-		}
-		if (mode === "weekly") {
-			return formatRRule({ freq: "WEEKLY", interval: 1, byDay: byDay.length > 0 ? byDay : [5], byMonthDay: [], byHour: [hour], byMinute: [minute] });
+			// Every day → FREQ=DAILY; a weekday subset → FREQ=WEEKLY;BYDAY=… (same rule).
+			const days = [...byDay].sort((a, b) => a - b);
+			if (days.length >= 7) {
+				return formatRRule({ freq: "DAILY", interval: 1, byDay: [], byMonthDay: [], byHour: [hour], byMinute: [minute] });
+			}
+			return formatRRule({ freq: "WEEKLY", interval: 1, byDay: days.length > 0 ? days : ALL_DOW, byMonthDay: [], byHour: [hour], byMinute: [minute] });
 		}
 		return formatRRule({ freq: "MONTHLY", interval: 1, byDay: [], byMonthDay: [Math.min(31, Math.max(1, monthDay))], byHour: [hour], byMinute: [minute] });
 	}
@@ -157,7 +178,8 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 
 	const selectedAgent = agents.find((a) => a.id === agentId);
 	const configs = selectedAgent?.configurations ?? [];
-	const canSave = name.trim().length > 0 && prompt.trim().length > 0 && !saving;
+	const hasDays = mode !== "daily" || byDay.length > 0;
+	const canSave = name.trim().length > 0 && prompt.trim().length > 0 && hasDays && !saving;
 
 	const inputClass = "w-full bg-raised border border-edge rounded-lg px-3 py-2 text-sm text-fg placeholder-fg-muted focus:border-edge-active focus:outline-none";
 	const labelClass = "text-xs text-fg-3 block mb-1";
@@ -234,25 +256,48 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 						<label className={labelClass}>{t("automations.schedule")}</label>
 						<div className="flex gap-1 bg-elevated/50 rounded-lg p-1 mb-2 w-fit">
 							<button type="button" onClick={() => setMode("daily")} className={modeButtonClass("daily")}>{t("automations.scheduleDaily")}</button>
-							<button type="button" onClick={() => setMode("weekly")} className={modeButtonClass("weekly")}>{t("automations.scheduleWeekly")}</button>
 							<button type="button" onClick={() => setMode("monthly")} className={modeButtonClass("monthly")}>{t("automations.scheduleMonthly")}</button>
 							<button type="button" onClick={() => setMode("custom")} className={modeButtonClass("custom")}>{t("automations.scheduleCustom")}</button>
 						</div>
 
-						{mode === "weekly" && (
-							<div className="flex gap-1 mb-2">
-								{weekdays.map(({ dow, label }) => (
-									<button
-										key={dow}
-										type="button"
-										onClick={() => toggleWeekday(dow)}
-										className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-											byDay.includes(dow) ? "bg-accent text-white" : "bg-raised text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
-										}`}
-									>
-										{label}
-									</button>
-								))}
+						{mode === "daily" && (
+							<div className="mb-2 space-y-2">
+								<div className="flex flex-wrap gap-1">
+									{([
+										{ key: "automations.daysEveryDay", days: ALL_DOW },
+										{ key: "automations.daysWeekdays", days: WEEKDAYS_DOW },
+										{ key: "automations.daysWeekend", days: WEEKEND_DOW },
+									] as const).map(({ key, days }) => (
+										<button
+											key={key}
+											type="button"
+											onClick={() => setByDay([...days])}
+											className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+												sameDaySet(byDay, days) ? "bg-accent/15 text-accent" : "text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
+											}`}
+										>
+											{t(key)}
+										</button>
+									))}
+								</div>
+								<div className="flex gap-1">
+									{weekdays.map(({ dow, label }) => (
+										<button
+											key={dow}
+											type="button"
+											aria-pressed={byDay.includes(dow)}
+											onClick={() => toggleWeekday(dow)}
+											className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+												byDay.includes(dow) ? "bg-accent text-white" : "bg-raised text-fg-3 hover:text-fg-2 hover:bg-raised-hover"
+											}`}
+										>
+											{label}
+										</button>
+									))}
+								</div>
+								{byDay.length === 0 && (
+									<p className="text-danger text-xs">{t("automations.daysNoneHint")}</p>
+								)}
 							</div>
 						)}
 

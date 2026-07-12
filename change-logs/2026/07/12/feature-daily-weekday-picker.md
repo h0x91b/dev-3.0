@@ -1,0 +1,1 @@
+Automation schedules now let you pick which weekdays a "Daily" run fires on: quick presets (Every day / Weekdays / Weekend) plus per-day toggles, so you can schedule "every day except weekends" in one click. The separate Weekly tab is folded into Daily — selecting a subset of days emits a weekly rule, all days emit a daily one.
