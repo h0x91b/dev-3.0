@@ -34,6 +34,7 @@ export const MODEL_GROUP_LABELS: Record<string, string> = {
 	"opus-4.6-thinking": "Opus 4.6",
 	"gpt-5.3-codex-high": "GPT-5.3 Codex",
 	"gemini-3.1-pro": "Gemini 3.1 Pro",
+	"composer-2.5": "Composer 2.5",
 	// OpenCode (namespaced)
 	"anthropic/claude-opus-4-6": "Opus 4.6",
 	"anthropic/claude-sonnet-4-6": "Sonnet 4.6",
