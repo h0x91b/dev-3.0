@@ -392,21 +392,29 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install codex",
 		installUrl: "https://github.com/openai/codex",
 		configurations: [
-			// --- GPT-5.6 Sol (frontier: everyday through maximum/delegated reasoning) ---
+			// --- GPT-5.6 Luna (fast/affordable: practical default through max reasoning) ---
 			{
 				id: "codex-default",
-				name: "GPT-5.6 Sol Bypass [High] — Default",
-				model: "gpt-5.6-sol",
-				groupLabel: "GPT-5.6 Sol",
-				modeLabel: "Bypass [High] — Default",
-				version: 8,
-				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
+				name: "GPT-5.6 Luna Bypass [X-High] — Default",
+				model: "gpt-5.6-luna",
+				groupLabel: "GPT-5.6 Luna",
+				modeLabel: "Bypass [X-High] — Default",
+				version: 9,
+				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="xhigh"'],
 			},
+			...createCodexReasoningPresets(
+				"gpt-5.6-luna",
+				"GPT-5.6 Luna",
+				"codex-5.6-luna",
+				["max", "high", "medium"],
+				["medium", "high"],
+			),
+			// --- GPT-5.6 Sol (frontier: everyday through deeper reasoning) ---
 			...createCodexReasoningPresets(
 				"gpt-5.6-sol",
 				"GPT-5.6 Sol",
 				"codex-5.6-sol",
-				["medium", "xhigh", "max", "ultra"],
+				["xhigh", "high", "medium"],
 				["medium", "high"],
 			),
 			// Sol-only workflows follow the popular Bypass and Standard modes.
@@ -430,22 +438,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
-			// --- GPT-5.6 Terra (balanced: everyday through deeper reasoning) ---
-			...createCodexReasoningPresets(
-				"gpt-5.6-terra",
-				"GPT-5.6 Terra",
-				"codex-5.6-terra",
-				["medium", "high", "xhigh"],
-				["medium", "high"],
-			),
-			// --- GPT-5.6 Luna (fast/affordable: light through deeper reasoning) ---
-			...createCodexReasoningPresets(
-				"gpt-5.6-luna",
-				"GPT-5.6 Luna",
-				"codex-5.6-luna",
-				["low", "medium", "high"],
-				["low", "medium"],
-			),
 			// --- GPT-5.5 (legacy) ---
 			{
 				id: "codex-5.4-medium-bypass",
@@ -483,6 +475,14 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				version: 6,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
 			},
+			// --- GPT-5.6 Terra (balanced: kept as the final Codex tier) ---
+			...createCodexReasoningPresets(
+				"gpt-5.6-terra",
+				"GPT-5.6 Terra",
+				"codex-5.6-terra",
+				["medium", "high", "xhigh"],
+				["medium", "high"],
+			),
 		],
 		defaultConfigId: "codex-default",
 	},
