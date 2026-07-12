@@ -419,20 +419,29 @@ function initBrowserApi(): ApiShape {
 
 	let ws: WebSocket | null = null;
 	let requestId = 0;
-	const pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
-	// Promise that resolves when WS is open — reset on each connect
-	let wsReady: Promise<void>;
-	let wsReadyResolve: (() => void) | null = null;
+	let authComplete = false;
+	let wasHidden = document.visibilityState === "hidden";
+	const pending = new Map<number, {
+		resolve: (v: any) => void;
+		reject: (e: Error) => void;
+		packet: string;
+		sent: boolean;
+	}>();
+	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-	function resetWsReady() {
-		wsReady = new Promise((resolve) => { wsReadyResolve = resolve; });
-	}
-	resetWsReady();
-
-	function rejectPendingRequests(error: Error) {
+	function rejectSentRequests(error: Error) {
 		for (const [id, entry] of pending.entries()) {
+			if (!entry.sent) continue;
 			pending.delete(id);
 			entry.reject(error);
+		}
+	}
+
+	function flushQueuedRequests(socket: WebSocket): void {
+		for (const entry of pending.values()) {
+			if (entry.sent) continue;
+			socket.send(entry.packet);
+			entry.sent = true;
 		}
 	}
 
@@ -440,21 +449,36 @@ function initBrowserApi(): ApiShape {
 	// "connecting" from a post-drop "reconnecting" (better wording for the user).
 	let hasConnected = false;
 
+	function scheduleReconnect(delayMs = 2_000): void {
+		if (reconnectTimer !== null) return;
+		reconnectTimer = setTimeout(() => {
+			reconnectTimer = null;
+			connect();
+		}, delayMs);
+	}
+
 	function connect() {
+		if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+		if (reconnectTimer !== null) {
+			clearTimeout(reconnectTimer);
+			reconnectTimer = null;
+		}
 		const wsUrl = buildWsUrl("/rpc");
 		console.log("[browser-rpc] Connecting WS to", wsUrl.replace(/token=[^&]+/, "token=***"));
 		setRpcState(hasConnected ? "reconnecting" : "connecting");
-		resetWsReady();
-		ws = new WebSocket(wsUrl);
+		const socket = new WebSocket(wsUrl);
+		ws = socket;
 
-		ws.addEventListener("open", () => {
+		socket.addEventListener("open", () => {
+			if (socket !== ws) return;
 			console.log("[browser-rpc] WS OPEN");
 			hasConnected = true;
 			setRpcState("connected");
-			wsReadyResolve?.();
+			flushQueuedRequests(socket);
 		});
 
-		ws.addEventListener("message", (event) => {
+		socket.addEventListener("message", (event) => {
+			if (socket !== ws) return;
 			try {
 				const packet = JSON.parse(event.data);
 
@@ -477,9 +501,11 @@ function initBrowserApi(): ApiShape {
 			}
 		});
 
-		ws.addEventListener("close", (event) => {
+		socket.addEventListener("close", (event) => {
+			if (socket !== ws) return;
+			ws = null;
 			console.warn("[browser-rpc] WS CLOSED", { code: event.code, reason: event.reason, hasToken: !!sessionToken });
-			rejectPendingRequests(
+			rejectSentRequests(
 				new Error(`RPC connection closed (code ${event.code}${event.reason ? `: ${event.reason}` : ""})`),
 			);
 			// Only reconnect if we have a valid session token (or are in Vite dev mode).
@@ -492,7 +518,7 @@ function initBrowserApi(): ApiShape {
 					message: `Connection to the server dropped (code ${event.code})${event.reason ? `: ${event.reason}` : ""}`,
 					source: "websocket",
 				});
-				setTimeout(connect, 2000);
+				scheduleReconnect();
 			} else {
 				console.warn("[browser-rpc] No session token — skipping reconnect");
 				setRpcState("closed");
@@ -505,7 +531,8 @@ function initBrowserApi(): ApiShape {
 			}
 		});
 
-		ws.addEventListener("error", (event) => {
+		socket.addEventListener("error", (event) => {
+			if (socket !== ws) return;
 			console.error("[browser-rpc] WS ERROR", event);
 			recordDiagnostic({
 				kind: "rpc",
@@ -520,15 +547,47 @@ function initBrowserApi(): ApiShape {
 	// Soft reconnect for the bootstrap "Retry": drop the current socket (its close
 	// handler schedules a reconnect) and, if it was already closed, open a fresh one.
 	reconnectImpl = () => {
-		if (ws && ws.readyState === WebSocket.OPEN) {
-			ws.close();
-		} else {
-			connect();
+		rejectSentRequests(new Error("RPC connection restarted"));
+		const stale = ws;
+		ws = null;
+		if (reconnectTimer !== null) {
+			clearTimeout(reconnectTimer);
+			reconnectTimer = null;
 		}
+		try { stale?.close(); } catch { /* already closed */ }
+		connect();
 	};
 
+	function reconnectOnResume(event: Event): void {
+		if (document.visibilityState === "hidden") {
+			wasHidden = true;
+			return;
+		}
+		if (!authComplete) return;
+		const returnedFromBackground = wasHidden;
+		wasHidden = false;
+		// `pageshow` also fires once on a normal first load. Only its persisted
+		// (bfcache restore) form is a resume signal; initial auth owns first connect.
+		if (event.type === "pageshow" && !(event as PageTransitionEvent).persisted && !returnedFromBackground) return;
+		if (ws?.readyState === WebSocket.OPEN && event.type === "visibilitychange" && !returnedFromBackground) return;
+		// A CONNECTING socket created before mobile suspension can remain stuck
+		// indefinitely, and an apparently OPEN socket may already be dead underneath.
+		// Replace either one after a real background/pageshow/online transition.
+		rejectSentRequests(new Error("RPC connection replaced after resume"));
+		const stale = ws;
+		ws = null;
+		try { stale?.close(); } catch { /* already closed */ }
+		connect();
+	}
+	document.addEventListener("visibilitychange", reconnectOnResume);
+	window.addEventListener("pageshow", reconnectOnResume);
+	window.addEventListener("online", reconnectOnResume);
+
 	// Gate WS connection behind auth
-	authReady.then(connect);
+	authReady.then(() => {
+		authComplete = true;
+		connect();
+	});
 
 	function rpcRequest(method: string, params: any): Promise<any> {
 		return new Promise((resolve, reject) => {
@@ -544,20 +603,19 @@ function initBrowserApi(): ApiShape {
 				reject(new Error(`RPC request "${method}" timed out`));
 			}, RPC_TIMEOUT_MS);
 
-			pending.set(id, {
-				resolve: (v) => { clearTimeout(timeout); resolve(v); },
-				reject: (e) => { clearTimeout(timeout); reject(e); },
-			});
-
 			const packet = JSON.stringify({ type: "request", id, method, params });
+			const entry = {
+				resolve: (v: any) => { clearTimeout(timeout); resolve(v); },
+				reject: (e: Error) => { clearTimeout(timeout); reject(e); },
+				packet,
+				sent: false,
+			};
+			pending.set(id, entry);
 
-			// Wait for WS to be open before sending (no polling)
-			wsReady.then(() => {
-				if (!pending.has(id)) return; // already timed out
-				if (ws?.readyState === WebSocket.OPEN) {
-					ws.send(packet);
-				}
-			});
+			if (ws?.readyState === WebSocket.OPEN) {
+				ws.send(packet);
+				entry.sent = true;
+			}
 		});
 	}
 

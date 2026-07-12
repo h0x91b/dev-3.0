@@ -1,0 +1,1 @@
+Mobile remote sessions now recover both RPC requests and the active tmux terminal after the browser returns from the background. Reconnects replace stale sockets without duplicating listeners, requests made during an outage are delivered when the replacement RPC socket opens, and authenticated PTY URLs are redacted from reconnect logs.
