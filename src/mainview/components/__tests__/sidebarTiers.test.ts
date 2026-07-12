@@ -25,7 +25,6 @@ function makeTask(overrides: Partial<Task> & { id: string }): Task {
 function ctx(overrides?: Partial<TierGroupingContext>): TierGroupingContext {
 	return {
 		scope: "project",
-		bellCounts: new Map(),
 		orderedCustomColumns: [],
 		...overrides,
 	};
@@ -65,21 +64,14 @@ describe("groupTasksIntoTiers — tier membership by status", () => {
 		expect(ids(tiers[0].tasks).sort()).toEqual(["ai", "working"]);
 	});
 
-	it("review-by-colleague WITHOUT a signal sinks into WAITING", () => {
+	it("review-by-colleague always goes to NEEDS YOU", () => {
 		const tasks = [makeTask({ id: "pr", status: "review-by-colleague" })];
 		const tiers = groupTasksIntoTiers(tasks, ctx());
-		expect(kinds(tiers)).toEqual(["waiting"]);
-		expect(ids(tiers[0].tasks)).toEqual(["pr"]);
-	});
-
-	it("review-by-colleague WITH a live signal (bell) is promoted to NEEDS YOU", () => {
-		const tasks = [makeTask({ id: "pr", status: "review-by-colleague" })];
-		const tiers = groupTasksIntoTiers(tasks, ctx({ bellCounts: new Map([["pr", 1]]) }));
 		expect(kinds(tiers)).toEqual(["needs-you"]);
 		expect(ids(tiers[0].tasks)).toEqual(["pr"]);
 	});
 
-	it("full active set produces NEEDS YOU → WAITING with signal-driven PR split", () => {
+	it("full active set produces NEEDS YOU → WAITING with all PR reviews on top", () => {
 		const tasks = [
 			makeTask({ id: "working", status: "in-progress" }),
 			makeTask({ id: "ai", status: "review-by-ai" }),
@@ -88,27 +80,27 @@ describe("groupTasksIntoTiers — tier membership by status", () => {
 			makeTask({ id: "pr-hot", status: "review-by-colleague" }),
 			makeTask({ id: "pr-cold", status: "review-by-colleague" }),
 		];
-		const tiers = groupTasksIntoTiers(tasks, ctx({ bellCounts: new Map([["pr-hot", 3]]) }));
+		const tiers = groupTasksIntoTiers(tasks, ctx());
 		expect(kinds(tiers)).toEqual(["needs-you", "waiting"]);
-		expect(ids(tiers[0].tasks).sort()).toEqual(["pr-hot", "question", "review"]);
-		expect(ids(tiers[1].tasks).sort()).toEqual(["ai", "pr-cold", "working"]);
+		expect(ids(tiers[0].tasks).sort()).toEqual(["pr-cold", "pr-hot", "question", "review"]);
+		expect(ids(tiers[1].tasks).sort()).toEqual(["ai", "working"]);
 	});
 });
 
 // ============================================================
-// Per-task attention bell is visual-only (never reorders/retiers a normal task)
+// Non-actionable statuses stay in WAITING
 // ============================================================
 
-describe("groupTasksIntoTiers — attention bell does not move non-PR tasks", () => {
-	it("a bell on an in-progress task keeps it in WAITING", () => {
+describe("groupTasksIntoTiers — non-actionable statuses", () => {
+	it("an in-progress task stays in WAITING", () => {
 		const tasks = [makeTask({ id: "working", status: "in-progress" })];
-		const tiers = groupTasksIntoTiers(tasks, ctx({ bellCounts: new Map([["working", 5]]) }));
+		const tiers = groupTasksIntoTiers(tasks, ctx());
 		expect(kinds(tiers)).toEqual(["waiting"]);
 	});
 
-	it("a bell only promotes review-by-colleague, not review-by-ai", () => {
+	it("review-by-ai stays in WAITING", () => {
 		const tasks = [makeTask({ id: "ai", status: "review-by-ai" })];
-		const tiers = groupTasksIntoTiers(tasks, ctx({ bellCounts: new Map([["ai", 2]]) }));
+		const tiers = groupTasksIntoTiers(tasks, ctx());
 		expect(kinds(tiers)).toEqual(["waiting"]);
 	});
 });
@@ -266,13 +258,10 @@ describe("groupTasksIntoTiers — attention scope", () => {
 			makeTask({ id: "pr-cold", status: "review-by-colleague" }),
 			makeTask({ id: "pr-hot", status: "review-by-colleague" }),
 		];
-		const tiers = groupTasksIntoTiers(tasks, ctx({
-			scope: "attention",
-			bellCounts: new Map([["pr-hot", 1]]),
-		}));
+		const tiers = groupTasksIntoTiers(tasks, ctx({ scope: "attention" }));
 		expect(kinds(tiers)).toEqual(["needs-you"]);
 		expect(tiers[0].key).toBe("attention");
-		expect(ids(tiers[0].tasks).sort()).toEqual(["pr-hot", "question", "review"]);
+		expect(ids(tiers[0].tasks).sort()).toEqual(["pr-cold", "pr-hot", "question", "review"]);
 	});
 
 	it("sorts the attention tier by priority band, then oldest movedAt", () => {

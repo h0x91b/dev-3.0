@@ -1,6 +1,6 @@
 ux_architecture:
   version: 1
-  updated_at: "2026-06-29"
+  updated_at: "2026-07-12"
   source: "derived_from_repository"
   confidence: "medium"
 
@@ -297,6 +297,7 @@ ux_architecture:
       purpose: "Active tasks list / quick jump across running agents, with global-scope toggle."
       allowed: ["destination", "task_jump", "terminal_hover_preview", "search"]
       forbidden: ["durable_configuration"]
+      queue_policy: "Readiness tiers are NEEDS YOU (review-by-user, user-questions, review-by-colleague) → project custom columns → WAITING (in-progress, review-by-ai). Per-task bells are visual notifications and never alter tier membership."
       evidence: ["src/mainview/components/ActiveTasksSidebar.tsx", "src/mainview/components/ActiveTasksStrip.tsx"]
     stats_dashboard:
       purpose: "Read-only full-screen 'Velocity Cockpit' proving how much the user ships: hero speedometer gauges (tasks shipped, lines changed, velocity, completion rate, streak), SVG bar/area charts over time, a per-project gauge wall, and a counters strip — all re-scoped by a Day/Week/Month/All time range and browsable across past periods via a prev/next stepper."

@@ -1,0 +1,1 @@
+PR Review tasks now always appear in the Active Tasks sidebar's top Needs You queue and the attention filter. Working and AI Review tasks remain in Waiting, while bells continue to signal new activity without changing queue placement.

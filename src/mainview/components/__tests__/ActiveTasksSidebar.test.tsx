@@ -288,7 +288,7 @@ describe("ActiveTasksSidebar", () => {
 		expect(localStorage.getItem("dev3-sidebar-scope")).toBe("attention");
 	});
 
-	it("attention scope includes a review-by-colleague (PR Review) task only when it has a live bell", async () => {
+	it("attention scope includes every review-by-colleague (PR Review) task", async () => {
 		const user = userEvent.setup();
 		const { api } = await import("../../rpc");
 		const signalled = makeTask({
@@ -330,8 +330,7 @@ describe("ActiveTasksSidebar", () => {
 		await waitFor(() => {
 			expect(screen.getByText("PR signalled")).toBeInTheDocument();
 		});
-		// The PR-review task without a bell stays out of the attention pane.
-		expect(screen.queryByText("PR quiet")).not.toBeInTheDocument();
+		expect(screen.getByText("PR quiet")).toBeInTheDocument();
 	});
 
 	it("shows a count badge on the bell when tasks await input and attention scope is inactive", () => {

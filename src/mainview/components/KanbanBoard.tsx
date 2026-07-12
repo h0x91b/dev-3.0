@@ -300,9 +300,9 @@ function KanbanBoard({
 		},
 		priorityFor: (task) => task.priority ?? DEFAULT_PRIORITY,
 		hasPortFor: (task) => (taskPorts.get(task.id)?.length ?? 0) > 0,
-		isAttentionFor: (task) => isAttentionTask(task, bellCounts),
+		isAttentionFor: isAttentionTask,
 		prNumberFor: (task) => taskPrMap.get(task.id)?.number ?? null,
-	}), [agents, projectLabels, customColumns, customStatusLabels, taskPorts, bellCounts, taskPrMap, t]);
+	}), [agents, projectLabels, customColumns, customStatusLabels, taskPorts, taskPrMap, t]);
 
 	// Priority leads the funnel; the board offers all five levels (P0…P4).
 	const priorityCandidates = useMemo<FilterFunnelOption[]>(

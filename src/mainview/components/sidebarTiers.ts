@@ -7,17 +7,14 @@ import { isAttentionTask } from "../utils/taskFacets";
  * status. Three tiers, rendered top → bottom:
  *
  *   - `needs-you`  — waiting on the user: `review-by-user` ∪ `user-questions` ∪
- *                    `review-by-colleague` that currently has a live signal.
+ *                    `review-by-colleague`.
  *   - `custom`     — one tier per project custom column (deliberate manual
  *                    placement), in the project's column order, between the two
  *                    built-in tiers.
- *   - `waiting`    — nothing needs the user: `in-progress` ∪ `review-by-ai` ∪
- *                    `review-by-colleague` without a signal.
+ *   - `waiting`    — nothing needs the user: `in-progress` ∪ `review-by-ai`.
  *
- * "Signal" = a positive per-task bell count on a `review-by-colleague` task (the
- * background PR poller raises it on a CI/review event). It is the one status
- * whose tier depends on runtime signal, not status alone. Per-task attention
- * bells (`dev3 attention`) are purely visual and never move a task between tiers.
+ * Per-task bells (`dev3 attention`) are purely visual and never move a task
+ * between tiers.
  *
  * See UX_DECISIONS 2026-07-11 and decision record 124.
  */
@@ -43,9 +40,6 @@ export interface OrderedCustomColumn {
 
 export interface TierGroupingContext {
 	scope: "project" | "global" | "attention";
-	/** Per-task live bell count; a positive value is the `review-by-colleague`
-	 *  "signal" that promotes a PR into the `needs-you` tier. */
-	bellCounts: Map<string, number>;
 	/** Custom columns in the order their tiers should render. For project scope
 	 *  this is the current project's columns; for global scope, every project's
 	 *  columns concatenated. Ignored in attention scope. */
@@ -80,10 +74,10 @@ export function byPriorityThenMovedAtOldestFirst(a: Task, b: Task): number {
  * `waiting` tiers are never produced.
  */
 export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): SidebarTier[] {
-	const { scope, bellCounts, orderedCustomColumns } = ctx;
+	const { scope, orderedCustomColumns } = ctx;
 
 	if (scope === "attention") {
-		const filtered = tasks.filter((task) => isAttentionTask(task, bellCounts));
+		const filtered = tasks.filter(isAttentionTask);
 		if (filtered.length === 0) return [];
 		return [
 			{ kind: "needs-you", key: "attention", tasks: filtered.slice().sort(byPriorityThenMovedAtOldestFirst) },
@@ -103,10 +97,9 @@ export function groupTasksIntoTiers(tasks: Task[], ctx: TierGroupingContext): Si
 			continue;
 		}
 		// A non-custom task is "needs you" on exactly the same rule as the
-		// attention bell/`is:attention` facet — reuse that single source of truth
-		// (an attention status, or a signalled `review-by-colleague`) so the
-		// sidebar's tier split and the attention scope can never disagree.
-		if (isAttentionTask(task, bellCounts)) needsYou.push(task);
+		// `is:attention` facet, so the sidebar's tier split and attention scope
+		// can never disagree.
+		if (isAttentionTask(task)) needsYou.push(task);
 		else waiting.push(task);
 	}
 

@@ -209,15 +209,9 @@ function ActiveTasksSidebar({
 
 	const sourceTasks = (scope === "global" || scope === "attention") ? globalTasks : tasks;
 
-	// A task needs attention if it is in an attention status, OR it is a
-	// `review-by-colleague` (PR Review) task that currently has a live bell — the
-	// background PR poller raises the bell on a CI/review signal, and opening the
-	// task clears it, so a signalled PR surfaces here until it is read. Shared with
-	// the `is:attention` filter facet (`isAttentionTask` in taskFacets).
-	const isAttention = useCallback(
-		(task: Task) => isAttentionTask(task, bellCounts),
-		[bellCounts],
-	);
+	// The attention scope and `is:attention` facet share the same status rule.
+	// PR Review belongs in this queue whether or not it currently has a bell.
+	const isAttention = useCallback((task: Task) => isAttentionTask(task), []);
 
 	// Count of attention tasks across all available data (global when loaded, else project).
 	const attentionCount = useMemo(() => {
@@ -350,7 +344,7 @@ function ActiveTasksSidebar({
 	// Readiness tiers: NEEDS YOU → custom columns → WAITING (attention scope: one
 	// flat NEEDS-YOU list). Grouping + within-tier ordering is a pure function so
 	// it is unit-tested without rendering; here we only map it to header chrome.
-	const tiers = groupTasksIntoTiers(activeTasks, { scope, bellCounts, orderedCustomColumns });
+	const tiers = groupTasksIntoTiers(activeTasks, { scope, orderedCustomColumns });
 	const grouped: SidebarGroup[] = tiers.map((tier) => {
 		if (tier.kind === "needs-you") {
 			return {
