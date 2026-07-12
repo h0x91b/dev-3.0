@@ -101,6 +101,7 @@ vi.mock("../pty-server", () => ({
 	hasSession: vi.fn(),
 	hasDeadSession: vi.fn(),
 	tmuxSessionExists: vi.fn(() => true),
+	listPaneIds: vi.fn(() => Promise.resolve(["%5"])),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
 	getSessionSocket: vi.fn(() => "dev3"),
@@ -7132,6 +7133,32 @@ describe("launchTaskPty", () => {
 		await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default");
 
 		expect((agents as any).ensureCodexTrust).toHaveBeenCalledWith("/tmp/codex-wt");
+	});
+
+	it("persists the initial Codex pane ID before its first lifecycle hook", async () => {
+		const project = makeProject();
+		const task = makeTask({ agentId: "builtin-codex", configId: "codex-default" });
+		(agents.resolveCommandForAgent as any).mockResolvedValueOnce({
+			command: "codex --model gpt-test",
+			extraEnv: {},
+			agent: { baseCommand: "codex" },
+			config: {},
+		});
+		vi.mocked(pty.listPaneIds).mockResolvedValueOnce(["%42"]);
+
+		await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default");
+
+		expect(data.updateTask).toHaveBeenLastCalledWith(project, task.id, {
+			sessionState: {
+				panes: [{
+					paneId: "%42",
+					agentCmd: "codex",
+					sessionId: null,
+					agentId: "builtin-codex",
+					configId: "codex-default",
+				}],
+			},
+		});
 	});
 
 	it("adds the generated Codex hook override only to the launched session", async () => {
