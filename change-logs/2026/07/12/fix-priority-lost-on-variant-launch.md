@@ -1,0 +1,1 @@
+Fixed the task priority (e.g. P0) picked in the New Task dialog being reset to the default P3 once the task was launched with variants. Both spawnVariants and addAttempts now carry the source task's priority onto the spawned variants/attempts, since priority belongs to the whole variant group.

@@ -3341,6 +3341,37 @@ describe("handlers.spawnVariants", () => {
 		);
 	});
 
+	// The priority the user picks in the Create-Task modal is stored on the
+	// source task, but spawnVariants deletes that source and creates fresh
+	// variants — so the variants must inherit it, otherwise "Create and Run"
+	// silently resets a P0 task back to the default P3.
+	it("preserves priority from the source task on spawned variants", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({ status: "todo", seq: 5, priority: "P0" });
+		const variantTask = makeTask({ id: "variant-1", status: "in-progress", preparing: true, priority: "P0" });
+		const updatedVariant = makeTask({ id: "variant-1", status: "in-progress", worktreePath: "/tmp/vwt", priority: "P0" });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+		vi.mocked(data.addTask).mockResolvedValue(variantTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+
+		await handlers.spawnVariants({
+			taskId: "task-1",
+			projectId: "proj-1",
+			targetStatus: "in-progress",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ priority: "P0" }),
+		);
+	});
+
 	// A task can sit in To Do and accumulate notes + an overview before being
 	// launched with variants. spawnVariants deletes the source, so without carrying
 	// them onto the variants that context is silently lost.
@@ -3569,6 +3600,54 @@ describe("handlers.addAttempts", () => {
 			sourceTask.description,
 			"in-progress",
 			expect.objectContaining({ labelIds: ["lbl-1", "lbl-2"] }),
+		);
+	});
+
+	// Added attempts belong to the same group as the source task, so they must
+	// carry the same priority — priority belongs to the whole variant group, so
+	// re-running a P0 task must not spawn a P3 sibling.
+	it("inherits priority from the source task into added attempts", async () => {
+		const project = makeProject();
+		const sourceTask = makeTask({
+			status: "in-progress",
+			seq: 5,
+			groupId: "group-1",
+			variantIndex: 1,
+			priority: "P0",
+		});
+		const attemptTask = makeTask({
+			id: "attempt-2",
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex: 2,
+			priority: "P0",
+			preparing: true,
+		});
+		const updatedAttempt = makeTask({
+			...attemptTask,
+			worktreePath: "/tmp/attempt-2",
+		});
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce(sourceTask);
+		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
+		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/attempt-2", branchName: "dev3/v2" });
+		vi.mocked(data.updateTask).mockResolvedValue(updatedAttempt);
+
+		await handlers.addAttempts({
+			taskId: "task-1",
+			projectId: "proj-1",
+			variants: [{ agentId: "agent-1", configId: null }],
+		});
+
+		expect(data.addTask).toHaveBeenCalledWith(
+			project,
+			sourceTask.description,
+			"in-progress",
+			expect.objectContaining({ priority: "P0" }),
 		);
 	});
 
