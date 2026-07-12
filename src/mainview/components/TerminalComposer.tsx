@@ -8,6 +8,8 @@ interface TerminalComposerProps {
 
 /** Collapsed autogrow ceiling — roughly 4 lines of 16px text. */
 const MAX_COLLAPSED_HEIGHT_PX = 120;
+/** Ignore minor browser-chrome viewport shifts; a keyboard consumes much more space. */
+const KEYBOARD_VIEWPORT_DELTA_PX = 80;
 
 const NERD_FONT = "'JetBrainsMono Nerd Font Mono'";
 
@@ -27,6 +29,7 @@ function TerminalComposer({ handle }: TerminalComposerProps) {
 	const [text, setText] = useState("");
 	const [expanded, setExpanded] = useState(false);
 	const taRef = useRef<HTMLTextAreaElement>(null);
+	const focusedViewportHeightRef = useRef<number | null>(null);
 
 	function autogrow() {
 		const ta = taRef.current;
@@ -55,6 +58,43 @@ function TerminalComposer({ handle }: TerminalComposerProps) {
 		if (on) document.documentElement.dataset.composerFocused = "true";
 		else delete document.documentElement.dataset.composerFocused;
 	}
+
+	function handleFocus() {
+		focusedViewportHeightRef.current = window.visualViewport?.height ?? null;
+		markFocused(true);
+	}
+
+	function handleBlur() {
+		focusedViewportHeightRef.current = null;
+		markFocused(false);
+	}
+
+	useEffect(() => {
+		const viewport = window.visualViewport;
+		if (!viewport) return;
+		const activeViewport = viewport as VisualViewport;
+
+		function syncComposerChrome() {
+			const textarea = taRef.current;
+			if (!textarea || document.activeElement !== textarea) {
+				focusedViewportHeightRef.current = null;
+				markFocused(false);
+				return;
+			}
+
+			const focusedHeight = focusedViewportHeightRef.current;
+			if (focusedHeight === null || activeViewport.height > focusedHeight) {
+				focusedViewportHeightRef.current = activeViewport.height;
+				markFocused(true);
+				return;
+			}
+
+			markFocused(activeViewport.height < focusedHeight - KEYBOARD_VIEWPORT_DELTA_PX);
+		}
+
+		activeViewport.addEventListener("resize", syncComposerChrome);
+		return () => activeViewport.removeEventListener("resize", syncComposerChrome);
+	}, []);
 
 	function deliver(withEnter: boolean) {
 		if (!text) return;
@@ -136,8 +176,8 @@ function TerminalComposer({ handle }: TerminalComposerProps) {
 				autogrow();
 			}}
 			onKeyDown={onKeyDown}
-			onFocus={() => markFocused(true)}
-			onBlur={() => markFocused(false)}
+			onFocus={handleFocus}
+			onBlur={handleBlur}
 			placeholder={t("terminal.composerPlaceholder")}
 			rows={1}
 			autoCapitalize="off"
