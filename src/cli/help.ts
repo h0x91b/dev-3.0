@@ -358,6 +358,19 @@ const COMMANDS: CommandHelp[] = [
 		],
 	},
 	{
+		name: "message",
+		summary: "Send text to the task's live agent now, or schedule it for later.",
+		subcommands: [],
+		usage: 'dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>]',
+		details: [
+			"Bare form delivers the text into the live agent immediately (types it + Enter).",
+			"--in <dur>    Schedule after a delay, e.g. 30m, 2h, 1h30m (Send later).",
+			"--at <hh:mm>  Schedule at the next occurrence of a local time (today or tomorrow).",
+			"Text can be a positional arg, --message, or @file. An agent may schedule its own wake-up.",
+			"Targets the current worktree's task; override with --task <id>.",
+		],
+	},
+	{
 		name: "show-artifact",
 		summary: "Surface a task-bound HTML artifact in the running app.",
 		subcommands: [],

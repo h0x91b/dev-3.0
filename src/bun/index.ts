@@ -426,6 +426,12 @@ startAutomationsScheduler();
 const { startScheduledLaunchScheduler } = await import("./scheduled-launch-scheduler");
 startScheduledLaunchScheduler();
 
+// Start the scheduled-message scheduler ("Send later" — deliver a queued prompt
+// into a task's live agent). One-shot; the first tick catches up messages that
+// came due while the app was offline (fires late + notifies).
+const { startScheduledMessageScheduler } = await import("./scheduled-message-scheduler");
+startScheduledMessageScheduler();
+
 // Start the focus tracker — accumulates real UI attention time per task (the
 // "your time" metric on the Productivity dashboard) from the foreground +
 // idle + active-context signals the renderer already reports. Runs headless too.

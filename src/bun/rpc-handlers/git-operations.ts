@@ -1,11 +1,11 @@
 import {
 	type BranchStatus,
-	type PaneSessionEntry,
 	type PRInfo,
 	type Project,
 	type Task,
 	type TaskDiffMode,
 	type TaskDiffResponse,
+	type ScheduledMessageTarget,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 } from "../../shared/types";
 import * as data from "../data";
@@ -13,6 +13,12 @@ import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
+import { sendPromptToAgentPane } from "../agent-prompt";
+import {
+	scheduleMessage as scheduleMessageCore,
+	cancelScheduledMessage as cancelScheduledMessageCore,
+	sendScheduledMessageNow as sendScheduledMessageNowCore,
+} from "../scheduled-message-scheduler";
 import { Semaphore } from "../concurrency";
 import { loadSettings } from "../settings";
 import { getActiveContext, getPushMessage, isAppForeground, log, notifyWatchedTaskEvent } from "./shared";
@@ -967,114 +973,6 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 	log.info("← pushTask (pane opened)", { paneId });
 }
 
-/** Delay between typing the prompt and sending Enter — gives the agent's input
- * layer time to process the paste buffer so Enter lands as a discrete submit. */
-const AGENT_PROMPT_ENTER_DELAY_MS = 800;
-
-/**
- * Resolve the pane a hand-off prompt should be typed into.
- *
- * `agentPanes` is the task's recorded agent-pane registry (`sessionState.panes`),
- * the only reliable source of "which panes run an agent" — `pane_current_command`
- * is useless here because an agent constantly spawns child processes (a live
- * Claude pane reports `zsh`/`node` at random moments). Routing rules (issue #609):
- *
- *  - Exactly ONE live agent pane → target it unconditionally, even if a
- *    non-agent pane (a shell, a dev server) is currently focused. There is no
- *    ambiguity about where the agent lives, so focus must not misroute the prompt.
- *  - Exactly ONE unresolved main-agent entry → target tmux's first pane. This
- *    covers legacy tasks and the brief Codex pre-hook interval, when pane[0]'s
- *    ID has not been persisted yet but a shell split may be focused.
- *  - TWO OR MORE live agent panes, including a main pane whose id was not
- *    persisted → ambiguous; respect the user's focus and use the session's
- *    active pane.
- *  - ZERO known agent panes (legacy tasks with no sessionState) → fall back to
- *    the active pane, preserving the historical behavior.
- *
- * Returns the pane id, or null when nothing usable could be resolved.
- */
-async function resolveAgentPromptTargetPane(
-	tmuxSession: string,
-	socket: string,
-	agentPanes: PaneSessionEntry[] | undefined,
-): Promise<string | null> {
-	let activePane: string | null = null;
-	try {
-		const proc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-		const stdout = await new Response(proc.stdout).text();
-		if ((await proc.exited) === 0) activePane = stdout.trim() || null;
-	} catch { /* best effort */ }
-
-	const registeredIds = (agentPanes ?? [])
-		.map((p) => p.paneId)
-		.filter((id): id is string => Boolean(id));
-	const hasUnresolvedAgentPane = (agentPanes ?? []).some((pane) => !pane.paneId);
-
-	if (registeredIds.length > 0 || hasUnresolvedAgentPane) {
-		let livePaneIds = new Set<string>();
-		let orderedLivePaneIds: string[] = [];
-		try {
-			const proc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-			const stdout = await new Response(proc.stdout).text();
-			if ((await proc.exited) === 0) {
-				orderedLivePaneIds = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
-				livePaneIds = new Set(orderedLivePaneIds);
-			}
-		} catch { /* best effort */ }
-
-		const liveAgentPanes = [...new Set(registeredIds.filter((id) => livePaneIds.has(id)))];
-		if (liveAgentPanes.length === 1 && !hasUnresolvedAgentPane) return liveAgentPanes[0] ?? null;
-		// Legacy main panes and a newly launched Codex pane can briefly have no
-		// recorded pane ID. Their session-state entry is pane[0], and tmux lists
-		// that initial pane first, so prefer it over an unrelated focused shell.
-		if (agentPanes?.length === 1 && hasUnresolvedAgentPane) return orderedLivePaneIds[0] ?? null;
-		// ≥2 or 0 live agent panes → fall through to the active pane below.
-	}
-
-	return activePane;
-}
-
-/**
- * Hand a task off to the AI agent running in its tmux session: pick the pane the
- * agent lives in (see {@link resolveAgentPromptTargetPane}), type `prompt` into
- * it, then send Enter as a discrete keypress after a short delay. Returns false
- * when no target pane could be resolved (nothing was sent). This is the shared
- * mechanism behind the Create-PR / auto-merge buttons and the rebase-conflict
- * handoff — the agent is a continuation of the user's conversation, so a
- * plain-language instruction is enough.
- */
-async function sendPromptToAgentPane(
-	tmuxSession: string,
-	socket: string,
-	prompt: string,
-	agentPanes: PaneSessionEntry[] | undefined,
-): Promise<boolean> {
-	const targetPane = await resolveAgentPromptTargetPane(tmuxSession, socket, agentPanes);
-
-	if (!targetPane) {
-		return false;
-	}
-
-	const pane = targetPane;
-	try {
-		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, prompt), { stdout: "pipe", stderr: "pipe" });
-		pasteProc.exited.catch(() => {});
-	} catch (err) {
-		log.warn("sendPromptToAgentPane send-keys paste failed", { paneId: pane, error: String(err) });
-		return false;
-	}
-	setTimeout(() => {
-		try {
-			const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, "Enter"), { stdout: "pipe", stderr: "pipe" });
-			enterProc.exited.catch(() => {});
-		} catch (err) {
-			log.warn("sendPromptToAgentPane send-keys Enter failed", { paneId: pane, error: String(err) });
-		}
-	}, AGENT_PROMPT_ENTER_DELAY_MS);
-
-	return true;
-}
-
 const CREATE_PR_AGENT_PROMPT =
 	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation.";
 
@@ -1353,6 +1251,34 @@ async function resolvePrUrl(params: { projectId: string; url: string }): Promise
 	}
 }
 
+/**
+ * "Send later" — queue a scheduled message on a task's live agent. Thin RPC
+ * wrapper over the scheduler core (validation + cap + broadcast live there).
+ */
+async function scheduleMessage(params: {
+	taskId: string;
+	projectId: string;
+	at: string;
+	text: string;
+	target: ScheduledMessageTarget;
+}): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	return scheduleMessageCore(project, task, { text: params.text, at: params.at, target: params.target });
+}
+
+/** Cancel one pending scheduled message (chip → "Cancel"). */
+async function cancelScheduledMessage(params: { taskId: string; projectId: string; messageId: string }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	return cancelScheduledMessageCore(project, params.taskId, params.messageId);
+}
+
+/** Deliver a pending scheduled message immediately and remove it (chip → "Send now"). */
+async function sendScheduledMessageNow(params: { taskId: string; projectId: string; messageId: string }): Promise<Task> {
+	const project = await data.getProject(params.projectId);
+	return sendScheduledMessageNowCore(project, params.taskId, params.messageId);
+}
+
 export const gitOperationHandlers = {
 	getBranchStatus,
 	getTaskDiff,
@@ -1370,4 +1296,7 @@ export const gitOperationHandlers = {
 	getProjectCurrentBranch,
 	getProjectPRs,
 	pullProjectMain,
+	scheduleMessage,
+	cancelScheduledMessage,
+	sendScheduledMessageNow,
 };

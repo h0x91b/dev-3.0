@@ -1248,6 +1248,17 @@ export interface Task {
 	 */
 	scheduledLaunch?: ScheduledLaunch | null;
 	/**
+	 * Pending scheduled messages ("Send later") — one-shot texts queued to this
+	 * task's live agent/pane, delivered by the bun scheduled-message scheduler
+	 * when each item's `at` passes. Unlike {@link Task.scheduledLaunch} this is a
+	 * queue; items are removed on delivery, cancel, or an unresolvable target
+	 * (drop-with-notice). Explicitly NOT designed to survive a tmux-server / host
+	 * restart. Shares the task-card deferred-timer chip slot with
+	 * `scheduledLaunch` — the two never coexist (`todo` vs a live-agent task).
+	 * See {@link ScheduledMessage}.
+	 */
+	scheduledMessages?: ScheduledMessage[] | null;
+	/**
 	 * Cumulative wall-clock time (ms) the task has spent in each status,
 	 * finalized on every status transition (see `applyTaskUpdate` in data.ts).
 	 * The *current* status's live portion is NOT included until the task leaves
@@ -1371,6 +1382,40 @@ export interface ScheduledLaunch {
 	/** Agent/config variants captured from the Launch modal at schedule time. */
 	variants: Array<{ agentId: string | null; configId: string | null }>;
 }
+
+/**
+ * Where a scheduled message is delivered ("Send later").
+ * - `agent` (default): resolved dynamically at fire time via the live agent-pane
+ *   registry — the agent pane is recreated with fresh ids, so we never store one.
+ * - `pane`: a concrete tmux pane id picked from the live layout. Valid only
+ *   within one tmux-server lifetime; a stale id takes the drop-with-notice path.
+ */
+export type ScheduledMessageTarget =
+	| { kind: "agent" }
+	| { kind: "pane"; paneId: string };
+
+/**
+ * A one-shot piece of text queued to a task's live agent/pane, delivered by
+ * typing it + Enter when {@link ScheduledMessage.at} passes. The messaging
+ * counterpart to {@link ScheduledLaunch} (which defers *spawning* a task); this
+ * pokes an already-running agent. See {@link Task.scheduledMessages}.
+ */
+export interface ScheduledMessage {
+	/** Stable id for cancel / send-now. */
+	id: string;
+	/** The text delivered (send-keys paste + Enter). */
+	text: string;
+	/** ISO timestamp when it should be delivered. */
+	at: string;
+	/** Delivery target; `{ kind: "agent" }` by default. */
+	target: ScheduledMessageTarget;
+}
+
+/** Per-task cap on pending scheduled messages; scheduling past this is rejected. */
+export const MAX_SCHEDULED_MESSAGES_PER_TASK = 20;
+
+/** Max length (chars) of a single scheduled message's text; longer is rejected. */
+export const MAX_SCHEDULED_MESSAGE_LENGTH = 10_000;
 
 /** Per-task cap on retained shared images; oldest are pruned (files deleted) past this. */
 export const MAX_SHARED_IMAGES_PER_TASK = 50;
@@ -2737,6 +2782,28 @@ export type AppRPCSchema = {
 			startScheduledLaunchNow: {
 				params: { taskId: string; projectId: string };
 				response: Task[];
+			};
+			/** Queue a scheduled message ("Send later") on a task with a live agent. */
+			scheduleMessage: {
+				params: {
+					taskId: string;
+					projectId: string;
+					/** ISO timestamp; must be in the future. */
+					at: string;
+					text: string;
+					target: ScheduledMessageTarget;
+				};
+				response: Task;
+			};
+			/** Remove one pending scheduled message without delivering it. */
+			cancelScheduledMessage: {
+				params: { taskId: string; projectId: string; messageId: string };
+				response: Task;
+			};
+			/** Deliver a pending scheduled message immediately and remove it. */
+			sendScheduledMessageNow: {
+				params: { taskId: string; projectId: string; messageId: string };
+				response: Task;
 			};
 			addTaskNote: {
 				params: { taskId: string; projectId: string; content: string; source?: NoteSource };

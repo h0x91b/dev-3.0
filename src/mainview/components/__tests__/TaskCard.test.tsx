@@ -21,6 +21,10 @@ vi.mock("../../rpc", () => ({
 				{ id: "vscode", name: "VS Code", macAppName: "Visual Studio Code" },
 			]),
 			openInApp: vi.fn().mockResolvedValue(undefined),
+			cancelScheduledMessage: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
+			sendScheduledMessageNow: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
+			cancelScheduledLaunch: vi.fn(),
+			startScheduledLaunchNow: vi.fn(),
 		},
 	},
 }));
@@ -182,6 +186,50 @@ describe("TaskCard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedConfirmTaskCompletion.mockResolvedValue(true);
+	});
+
+	describe("scheduled-message chip", () => {
+		function taskWithMessage() {
+			return makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/wt",
+				scheduledMessages: [
+					{ id: "m1", text: "continue when CI is green", at: new Date(Date.now() + 1_800_000).toISOString(), target: { kind: "agent" } },
+				],
+			});
+		}
+
+		it("renders the chip for a live-agent task and not the deferred-launch badge", () => {
+			renderCard(taskWithMessage());
+			expect(screen.getByTestId("task-card-scheduled-message-badge")).toBeTruthy();
+			expect(screen.queryByTestId("task-card-scheduled-badge")).toBeNull();
+		});
+
+		it("does not render the message chip on a todo task with a deferred launch", () => {
+			renderCard(makeTask({
+				status: "todo",
+				scheduledLaunch: { at: new Date(Date.now() + 1_800_000).toISOString(), targetStatus: "in-progress", variants: [{ agentId: null, configId: null }] },
+				// A stale queue on a todo task must never surface as a chip.
+				scheduledMessages: [{ id: "m1", text: "x", at: new Date(Date.now() + 60_000).toISOString(), target: { kind: "agent" } }],
+			}));
+			expect(screen.queryByTestId("task-card-scheduled-message-badge")).toBeNull();
+			expect(screen.getByTestId("task-card-scheduled-badge")).toBeTruthy();
+		});
+
+		it("cancels a pending message from the popover", async () => {
+			const dispatch = vi.fn();
+			renderCard(taskWithMessage(), { dispatch });
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			await userEvent.click(screen.getByText("Cancel"));
+			expect(mockedApi.request.cancelScheduledMessage).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", messageId: "m1" });
+		});
+
+		it("sends a pending message immediately from the popover", async () => {
+			renderCard(taskWithMessage());
+			await userEvent.click(screen.getByTestId("task-card-scheduled-message-badge"));
+			await userEvent.click(screen.getByText("Send now"));
+			expect(mockedApi.request.sendScheduledMessageNow).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", messageId: "m1" });
+		});
 	});
 
 	describe("scratch session indicator", () => {

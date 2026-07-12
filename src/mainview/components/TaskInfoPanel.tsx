@@ -18,6 +18,8 @@ import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
 import SpawnAgentModal from "./SpawnAgentModal";
+import ScheduleMessageModal from "./ScheduleMessageModal";
+import ScheduledMessagesChip from "./ScheduledMessagesChip";
 import BugHuntersLightbox from "./BugHuntersLightbox";
 import TaskDevServer from "./task-info-panel/TaskDevServer";
 import TaskExposedPorts from "./task-info-panel/TaskExposedPorts";
@@ -128,6 +130,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const [statusMenuVisible, setStatusMenuVisible] = useState(false);
 	const [movingStatus, setMovingStatus] = useState(false);
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
+	const [scheduleMsgOpen, setScheduleMsgOpen] = useState(false);
 	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
 	const [metadataBranchState, setMetadataBranchState] = useState<TaskBranchStatusMeta | null>(null);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
@@ -607,6 +610,33 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	</Tooltip>
 	) : null;
 
+	// "Send later" — queue a message to this task's live agent (session action).
+	// Same live-agent gate as spawn: an active task with a worktree/session.
+	// Compact label ("Later") keeps the session bar tight; the full "Send later"
+	// stays in the tooltip/aria. The pending queue renders in the adjacent chip.
+	const sendLaterButton = isTaskActive && task.worktreePath ? (
+		<Tooltip content={t("task.sendLater")} detail={t("task.sendLaterHint")}>
+			<button
+				onClick={() => setScheduleMsgOpen(true)}
+				className="task-anim flex items-center gap-1 px-2 py-1 rounded-lg transition-colors text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
+				aria-label={t("task.sendLater")}
+			>
+				<svg className="w-[1.05rem] h-[1.05rem]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+					<circle cx="12" cy="13" r="8" />
+					<path d="M12 9v4l2.5 1.5" />
+					<path d="M5 3 2 6M19 3l3 3" />
+				</svg>
+				{!compact && <span className="text-[0.6875rem] font-semibold whitespace-nowrap">{t("task.sendLaterShort")}</span>}
+			</button>
+		</Tooltip>
+	) : null;
+
+	// Pending scheduled-message queue for this task's session (open-task view of
+	// the same chip shown on the board card). Opens downward under the bar.
+	const scheduledMessagesChip = isTaskActive && task.worktreePath ? (
+		<ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="down" />
+	) : null;
+
 	const bugHuntersButton = project.kind !== "virtual" && isTaskActive && task.worktreePath ? (
 		<Tooltip content={t("bugHunters.buttonTooltip")} detail={t("ttip.infoPanel.bugHunters")}>
 		<button
@@ -927,6 +957,10 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					<SpawnAgentModal task={task} project={project} onClose={() => setSpawnModalOpen(false)} />,
 					document.body,
 				)}
+				{scheduleMsgOpen && createPortal(
+					<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
+					document.body,
+				)}
 				{bugHuntersOpen && createPortal(
 					<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
 					document.body,
@@ -955,6 +989,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						<div className="flex-1" />
 						{bugHuntersButton}
 						{spawnAgentButton}
+						{sendLaterButton}
+						{scheduledMessagesChip}
 						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
 						{worktreeSettingsButton}
@@ -1031,6 +1067,8 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 							<div className="flex items-center gap-1.5 flex-shrink-0" data-help-id="inspector.session-bar">
 								{bugHuntersButton}
 								{spawnAgentButton}
+								{sendLaterButton}
+								{scheduledMessagesChip}
 								<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 								<TaskTmuxControls taskId={task.id} />
 							</div>
@@ -1115,6 +1153,11 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 
 			{bugHuntersOpen && createPortal(
 				<BugHuntersLightbox task={task} project={project} onClose={() => setBugHuntersOpen(false)} />,
+				document.body,
+			)}
+
+			{scheduleMsgOpen && createPortal(
+				<ScheduleMessageModal task={task} project={project} dispatch={dispatch} onClose={() => setScheduleMsgOpen(false)} />,
 				document.body,
 			)}
 		</div>

@@ -1,9 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
+import { createPortal } from "react-dom";
 import type { TerminalHandle } from "../TerminalView";
+import type { Project, Task } from "../../shared/types";
+import { ACTIVE_STATUSES } from "../../shared/types";
+import type { AppAction } from "../state";
 import { useT } from "../i18n";
+import ScheduleMessageModal from "./ScheduleMessageModal";
 
 interface TerminalComposerProps {
 	handle: TerminalHandle;
+	/**
+	 * When a task context is supplied (the task terminal, not the project-level
+	 * terminal), the composer shows a clock button that opens "Send later" seeded
+	 * with the composer text — the browser/touch entry point for scheduling a
+	 * message (no native menu there). Omitted in project terminals.
+	 */
+	task?: Task;
+	project?: Project;
+	dispatch?: Dispatch<AppAction>;
 }
 
 /** Collapsed autogrow ceiling — roughly 4 lines of 16px text. */
@@ -24,12 +38,16 @@ const NERD_FONT = "'JetBrainsMono Nerd Font Mono'";
  * non-essential chrome (see index.css) so the terminal tail stays visible
  * above the keyboard.
  */
-function TerminalComposer({ handle }: TerminalComposerProps) {
+function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerProps) {
 	const t = useT();
 	const [text, setText] = useState("");
 	const [expanded, setExpanded] = useState(false);
+	const [scheduleOpen, setScheduleOpen] = useState(false);
 	const taRef = useRef<HTMLTextAreaElement>(null);
 	const focusedViewportHeightRef = useRef<number | null>(null);
+
+	// "Send later" is only reachable here when a live-agent task context exists.
+	const canScheduleLater = !!(task && project && dispatch && ACTIVE_STATUSES.includes(task.status) && task.worktreePath);
 
 	function autogrow() {
 		const ta = taRef.current;
@@ -138,6 +156,21 @@ function TerminalComposer({ handle }: TerminalComposerProps) {
 					{expanded ? "\u{F0294}" : "\u{F0293}"}
 				</span>
 			</button>
+			{canScheduleLater && (
+				<button
+					type="button"
+					className={`${iconBtn} bg-elevated text-fg-2 disabled:opacity-40`}
+					onMouseDown={keepFocus}
+					onClick={() => setScheduleOpen(true)}
+					disabled={!text}
+					aria-label={t("terminal.composerScheduleLater")}
+					title={t("terminal.composerScheduleLater")}
+				>
+					<span className="text-[1.125rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+						{"\u{F0954}"}
+					</span>
+				</button>
+			)}
 			<button
 				type="button"
 				className={`${iconBtn} bg-elevated text-fg-2 disabled:opacity-40`}
@@ -203,6 +236,16 @@ function TerminalComposer({ handle }: TerminalComposerProps) {
 		>
 			{textarea}
 			<div className={expanded ? "flex flex-shrink-0 items-center justify-end gap-2" : "contents"}>{buttons}</div>
+			{scheduleOpen && task && project && dispatch && createPortal(
+				<ScheduleMessageModal
+					task={task}
+					project={project}
+					dispatch={dispatch}
+					initialText={text}
+					onClose={() => setScheduleOpen(false)}
+				/>,
+				document.body,
+			)}
 		</div>
 	);
 }

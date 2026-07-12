@@ -1,7 +1,7 @@
 import { useState, useEffect, type Dispatch } from "react";
 import type { AgentCheckResult, CodingAgent, GlobalSettings, Project, Task, TaskStatus } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
-import { formatCountdown } from "../../shared/duration";
+import type { ScheduleMode } from "../../shared/schedule";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import type { AppAction } from "../state";
@@ -11,6 +11,7 @@ import { trackAgentLaunched, trackEvent } from "../analytics";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import HelpSpot from "./HelpSpot";
 import AgentConfigPicker from "./AgentConfigPicker";
+import SchedulePicker from "./SchedulePicker";
 
 interface VariantRow {
 	agentId: string | null;
@@ -34,82 +35,6 @@ interface LaunchVariantsModalProps {
 	 * (the next modal open then reflects the new default).
 	 */
 	onGlobalSettingsChange?: (settings: GlobalSettings) => void;
-}
-
-/** Format a Date as the `HH:MM` value expected by `<input type="time">`. */
-function toTimeInputValue(d: Date): string {
-	return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
-
-/**
- * `− [ n ] +` stepper for the "in X" schedule mode. Buttons step by `step`
- * (minutes wrap around, hours clamp); typing accepts any value in range and
- * ArrowUp/ArrowDown mirror the buttons.
- */
-function NumberStepper({
-	label,
-	value,
-	max,
-	step,
-	wrap = false,
-	disabled = false,
-	onChange,
-}: {
-	label: string;
-	value: number;
-	max: number;
-	step: number;
-	wrap?: boolean;
-	disabled?: boolean;
-	onChange: (v: number) => void;
-}) {
-	const bump = (dir: 1 | -1) => {
-		const next = value + dir * step;
-		if (wrap) {
-			const range = max + 1;
-			onChange(((next % range) + range) % range);
-		} else {
-			onChange(Math.min(max, Math.max(0, next)));
-		}
-	};
-	return (
-		<div className="flex items-center gap-2">
-			<span className="text-fg-3 text-xs">{label}</span>
-			<div className="flex items-center gap-1">
-				<button
-					onClick={() => bump(-1)}
-					disabled={disabled}
-					aria-label={`${label} −`}
-					className="w-8 h-8 rounded-lg border border-edge text-fg-3 hover:text-fg hover:border-edge-active transition-colors text-base leading-none disabled:opacity-50"
-				>
-					−
-				</button>
-				<input
-					value={String(value)}
-					disabled={disabled}
-					inputMode="numeric"
-					aria-label={label}
-					onChange={(e) => {
-						const digits = e.target.value.replace(/\D/g, "");
-						onChange(Math.min(max, digits ? Number.parseInt(digits, 10) : 0));
-					}}
-					onKeyDown={(e) => {
-						if (e.key === "ArrowUp") { e.preventDefault(); bump(1); }
-						if (e.key === "ArrowDown") { e.preventDefault(); bump(-1); }
-					}}
-					className="w-12 h-8 bg-transparent border border-edge rounded-lg text-center text-fg text-base outline-none focus:border-accent"
-				/>
-				<button
-					onClick={() => bump(1)}
-					disabled={disabled}
-					aria-label={`${label} +`}
-					className="w-8 h-8 rounded-lg border border-edge text-fg-3 hover:text-fg hover:border-edge-active transition-colors text-base leading-none disabled:opacity-50"
-				>
-					+
-				</button>
-			</div>
-		</div>
-	);
 }
 
 function LaunchVariantsModal({
@@ -264,43 +189,15 @@ function LaunchVariantsModal({
 
 	// "Start in…" — persist a deferred launch instead of spawning now. The task
 	// stays in To Do with a countdown badge; the bun scheduler fires the exact
-	// variants captured here when the moment arrives. Two modes:
-	//   "in" — relative delay via hour/minute steppers (e.g. 3h 45m);
-	//   "at" — absolute local wall-clock time; next occurrence (today if still
-	//          ahead, otherwise tomorrow).
+	// variants captured here when the moment arrives. The in/at picker + its pure
+	// time resolution live in the shared SchedulePicker (also used by "Send later").
 	const [scheduleOpen, setScheduleOpen] = useState(false);
-	const [scheduleMode, setScheduleMode] = useState<"in" | "at">("in");
-	const [delayHours, setDelayHours] = useState(1);
-	const [delayMinutes, setDelayMinutes] = useState(0);
-	const [atTime, setAtTime] = useState(() => toTimeInputValue(new Date(Date.now() + 3_600_000)));
-	// Re-render every 30s while the picker is open so the today/tomorrow hint
-	// and countdown stay honest (the actual target is resolved at submit time).
-	const [nowTick, setNowTick] = useState(() => Date.now());
-	useEffect(() => {
-		if (!scheduleOpen) return;
-		setNowTick(Date.now());
-		const timer = setInterval(() => setNowTick(Date.now()), 30_000);
-		return () => clearInterval(timer);
-	}, [scheduleOpen]);
-
-	/** Resolve the picker state to a concrete launch Date (null = invalid/zero). */
-	function resolveScheduleTarget(nowMs: number): Date | null {
-		if (scheduleMode === "in") {
-			const ms = delayHours * 3_600_000 + delayMinutes * 60_000;
-			return ms > 0 ? new Date(nowMs + ms) : null;
-		}
-		const m = /^(\d{1,2}):(\d{2})$/.exec(atTime);
-		if (!m) return null;
-		const d = new Date(nowMs);
-		d.setHours(Number(m[1]), Number(m[2]), 0, 0);
-		if (d.getTime() <= nowMs) d.setDate(d.getDate() + 1); // already passed → tomorrow
-		return d;
-	}
+	const [scheduleTarget, setScheduleTarget] = useState<Date | null>(null);
+	const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("in");
 
 	async function handleSchedule() {
-		const target = resolveScheduleTarget(Date.now());
-		if (!target) return;
-		const delayMs = target.getTime() - Date.now();
+		if (!scheduleTarget) return;
+		const delayMs = scheduleTarget.getTime() - Date.now();
 		setLaunching(true);
 		setError(null);
 		try {
@@ -308,7 +205,7 @@ function LaunchVariantsModal({
 			const updated = await api.request.scheduleTaskLaunch({
 				taskId: task.id,
 				projectId: project.id,
-				at: target.toISOString(),
+				at: scheduleTarget.toISOString(),
 				targetStatus,
 				variants,
 			});
@@ -325,18 +222,6 @@ function LaunchVariantsModal({
 		}
 		setLaunching(false);
 	}
-
-	const scheduleTarget = scheduleOpen ? resolveScheduleTarget(nowTick) : null;
-	const scheduleHint = (() => {
-		if (!scheduleOpen) return null;
-		if (!scheduleTarget) return t("launch.scheduleInvalid");
-		const now = new Date(nowTick);
-		const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-		const dayDiff = Math.round((startOfDay(scheduleTarget) - startOfDay(now)) / 86_400_000);
-		const day = dayDiff === 0 ? t("launch.today") : dayDiff === 1 ? t("launch.tomorrow") : scheduleTarget.toLocaleDateString();
-		const time = scheduleTarget.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-		return t("launch.scheduleHint", { day, time, rel: formatCountdown(scheduleTarget.getTime() - nowTick) });
-	})();
 
 	const isAddVariant = mode === "addAttempts";
 	const title = isAddVariant ? t("launch.retryTitle") : t("launch.title");
@@ -461,65 +346,11 @@ function LaunchVariantsModal({
 				{/* Schedule picker — roomy panel instead of a cramped footer row */}
 				{!isAddVariant && scheduleOpen && (
 					<div className="px-6 py-3 border-t border-edge bg-raised/40">
-						{/* Single compact row: mode switch + inputs, no labels above */}
-						<div className="flex items-center gap-4">
-							<div className="inline-flex h-8 items-center rounded-lg border border-edge p-0.5">
-								{(["in", "at"] as const).map((m) => (
-									<button
-										key={m}
-										onClick={() => setScheduleMode(m)}
-										className={`text-sm px-2.5 py-1 rounded-md transition-colors ${
-											scheduleMode === m
-												? "bg-elevated text-fg font-medium"
-												: "text-fg-3 hover:text-fg"
-										}`}
-									>
-										{m === "in" ? t("launch.modeIn") : t("launch.modeAt")}
-									</button>
-								))}
-							</div>
-
-							{scheduleMode === "in" ? (
-								<div className="flex items-center gap-4">
-									<NumberStepper
-										label={t("launch.hours")}
-										value={delayHours}
-										max={99}
-										step={1}
-										disabled={launching}
-										onChange={setDelayHours}
-									/>
-									<NumberStepper
-										label={t("launch.minutes")}
-										value={delayMinutes}
-										max={59}
-										step={5}
-										wrap
-										disabled={launching}
-										onChange={setDelayMinutes}
-									/>
-								</div>
-							) : (
-								<input
-									type="time"
-									value={atTime}
-									disabled={launching}
-									aria-label={t("launch.atTimeLabel")}
-									onChange={(e) => setAtTime(e.target.value)}
-									onKeyDown={(e) => {
-										if (e.key === "Enter" && scheduleTarget && !launching) handleSchedule();
-									}}
-									className="bg-transparent border border-edge rounded-lg px-2.5 h-8 text-fg text-base outline-none focus:border-accent"
-								/>
-							)}
-						</div>
-
-						<p className={`text-sm mt-2 ${scheduleTarget ? "text-fg-3" : "text-danger"}`}>
-							{scheduleHint}
-							{scheduleMode === "at" && scheduleTarget && (
-								<span className="text-fg-3"> · {t("launch.atTimeLabel").toLowerCase()}</span>
-							)}
-						</p>
+						<SchedulePicker
+							disabled={launching}
+							onSubmit={() => { if (scheduleTarget && !launching) handleSchedule(); }}
+							onTargetChange={(target, m) => { setScheduleTarget(target); setScheduleMode(m); }}
+						/>
 					</div>
 				)}
 

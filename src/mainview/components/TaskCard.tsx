@@ -24,6 +24,8 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TaskDetailModal from "./TaskDetailModal";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
+import ScheduleMessageModal from "./ScheduleMessageModal";
+import ScheduledMessagesChip from "./ScheduledMessagesChip";
 import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBadge";
 import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
 import Tooltip from "./Tooltip";
@@ -121,6 +123,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			toast.error(t("task.scheduleCancelFailed", { error: String(err) }));
 		}
 	}
+
+	// Scheduled messages ("Send later") — a queue on a live-agent task; the chip
+	// shares the deferred-timer slot with `scheduledLaunch` (never coexist: todo
+	// vs live). Rendering + queue controls live in ScheduledMessagesChip.
+	const hasLiveAgent = isActive && !!task.worktreePath;
+	const [scheduleMsgOpen, setScheduleMsgOpen] = useState(false);
 
 	async function handleSetPriority(priority: Task["priority"]) {
 		if (!priority) return;
@@ -891,6 +899,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</div>
 				)}
 
+				{/* Scheduled-message countdown chip (live-agent cards with a pending "Send later") */}
+				{!isTodo && <ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="up" />}
+
 				{/* PR + CI/review badges for non-active cards */}
 				{!isActive && prBadge}
 				{!isActive && ciBadge}
@@ -1087,6 +1098,17 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						currentCustomColumnId={task.customColumnId}
 						project={project}
 					/>
+					{hasLiveAgent && (
+						<>
+							<div className="my-1 border-t border-edge" />
+							<button
+								onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setScheduleMsgOpen(true); }}
+								className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg transition-colors"
+							>
+								{t("task.sendMessageLater")}
+							</button>
+						</>
+					)}
 				</div>,
 				document.body
 			)}
@@ -1127,6 +1149,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					path={task.worktreePath}
 					onClose={() => setCtxMenuOpen(false)}
 				/>
+			)}
+
+			{scheduleMsgOpen && createPortal(
+				<ScheduleMessageModal
+					task={task}
+					project={project}
+					dispatch={dispatch}
+					onClose={() => setScheduleMsgOpen(false)}
+				/>,
+				document.body,
 			)}
 
 			<TerminalPreviewPopover

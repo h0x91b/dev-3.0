@@ -208,6 +208,7 @@ const terminal = {
 	"terminal.composerInsert": "Вставить без Enter",
 	"terminal.composerExpand": "Развернуть редактор",
 	"terminal.composerCollapse": "Свернуть редактор",
+	"terminal.composerScheduleLater": "Отправить позже",
 	"terminal.rawKeyboard": "Прямой ввод с клавиатуры",
 };
 

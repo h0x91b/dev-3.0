@@ -356,7 +356,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
 			{touchInput && termHandle && (
 				<div className={rawMode ? "hidden" : "contents"}>
-					<TerminalComposer handle={termHandle} />
+					<TerminalComposer handle={termHandle} task={task} project={project} dispatch={dispatch} />
 				</div>
 			)}
 			{touchInput && termHandle && <ExtraKeyBar handle={termHandle} rawMode={rawMode} onToggleRaw={toggleRawMode} />}
