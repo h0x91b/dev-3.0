@@ -61,7 +61,7 @@ export interface HookEntry {
  * Unified hooks that work for both the primary agent and the review agent
  * running in the same worktree (they share .claude/settings.local.json).
  *
- * - PreToolUse/UserPromptSubmit: → in-progress (skipped when in review-by-ai)
+ * - UserPromptSubmit/PreToolUse/PostToolUse: → in-progress (skipped when in review-by-ai)
  * - PermissionRequest: → user-questions
  * - Stop: primary agent → stopTarget; review agent → review-by-user
  */
@@ -88,7 +88,7 @@ function buildMoveCommand(
 // ALSO how both Claude Code and Codex signal a *blocking* hook error (Claude:
 // blocks the tool call / erases the prompt / blocks Stop; Codex: blocks prompt
 // and tool execution). So a closed app would otherwise wedge the agent on every
-// PreToolUse/UserPromptSubmit/Stop. This guard collapses ONLY the app-offline
+// PreToolUse/PostToolUse/UserPromptSubmit/Stop. This guard collapses ONLY the app-offline
 // exit code into success; any other failure still propagates. It is deliberately
 // selective rather than `|| true`, which would mask real regressions (see
 // decisions 032 and 089). The CLI still prints its "app not running" notice to
@@ -147,6 +147,8 @@ export function buildClaudeHooks(
 	// (the review agent shares the same hooks file and must not flip status).
 	// review-by-user is intentionally allowed: when the user leaves feedback
 	// and the primary agent resumes, UserPromptSubmit should move the task back.
+	// PostToolUse also covers answers submitted to AskUserQuestion, which resume
+	// an existing tool call without emitting a new user prompt event.
 	const workingCmd = move("in-progress", "--if-status-not review-by-ai");
 
 	return {
@@ -154,6 +156,9 @@ export function buildClaudeHooks(
 			{ hooks: [{ type: "command", command: workingCmd }] },
 		],
 		PreToolUse: [
+			{ hooks: [{ type: "command", command: workingCmd }] },
+		],
+		PostToolUse: [
 			{ hooks: [{ type: "command", command: workingCmd }] },
 		],
 		PermissionRequest: [
