@@ -20,6 +20,8 @@ import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
 const fileBrowserPaneIds = new Map<string, string>();
+const MAIN_AGENT_PANE_CAPTURE_ATTEMPTS = 10;
+const MAIN_AGENT_PANE_CAPTURE_INTERVAL_MS = 100;
 
 function devServerSessionName(taskId: string): string {
 	return `dev3-dev-${taskId.slice(0, 8)}`;
@@ -314,6 +316,41 @@ async function setTmuxSessionPortEnv(taskId: string, socket: string): Promise<vo
 }
 
 /**
+ * Store the initial agent pane before Codex has emitted its first lifecycle
+ * hook. Otherwise Create PR may fall back to a focused shell pane.
+ *
+ * Setup wrappers are excluded because they initially run in a non-agent pane;
+ * their eventual agent pane is captured by the lifecycle hook or exit
+ * reconciliation instead.
+ */
+async function persistInitialAgentPaneId(
+	project: Project,
+	task: Task,
+	socket: string,
+	paneEntry: NonNullable<Task["sessionState"]>["panes"][number],
+): Promise<void> {
+	for (let attempt = 0; attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS; attempt++) {
+		const paneIds = await pty.listPaneIds(task.id, socket);
+		if (paneIds.length === 1 && paneIds[0]) {
+			await data.updateTask(project, task.id, {
+				sessionState: { panes: [{ ...paneEntry, paneId: paneIds[0] }] },
+			});
+			log.info("Persisted initial agent pane ID", {
+				taskId: task.id.slice(0, 8),
+				paneId: paneIds[0],
+			});
+			return;
+		}
+
+		if (attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS - 1) {
+			await new Promise((resolve) => setTimeout(resolve, MAIN_AGENT_PANE_CAPTURE_INTERVAL_MS));
+		}
+	}
+
+	log.warn("Could not capture initial agent pane ID", { taskId: task.id.slice(0, 8) });
+}
+
+/**
  * Register worktree trust for the resolved agent's CLI before spawning it.
  * Claude trust (with MCP pre-approval) is always ensured; Codex/Gemini trust
  * only for their respective CLIs. Codex trust also re-patches ~/.codex/config.toml
@@ -428,6 +465,7 @@ export async function launchTaskPty(
 	let extraEnv: Record<string, string>;
 	let resolvedBaseCmd = "";
 	let resolvedPermissionMode: PermissionMode | undefined;
+	let mainPaneEntry: NonNullable<Task["sessionState"]>["panes"][number] | null = null;
 
 	try {
 		const cmdOptions: agents.CommandOptions = {};
@@ -478,6 +516,7 @@ export async function launchTaskPty(
 				agentId: agentId ?? task.agentId,
 				configId: configId ?? task.configId,
 			};
+			mainPaneEntry = paneEntry;
 			const sessionState = { panes: [paneEntry] };
 			try {
 				await data.updateTask(project, task.id, { sessionState });
@@ -639,6 +678,9 @@ export async function launchTaskPty(
 		}
 		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, sessionSocket);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
+		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
+			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
+		}
 		await setTmuxSessionPortEnv(task.id, sessionSocket);
 		if (project.kind === "virtual" && !sessionPreexisted) {
 			await addVirtualShellPane(task, worktreePath, sessionSocket, userShell);

@@ -982,6 +982,9 @@ const AGENT_PROMPT_ENTER_DELAY_MS = 800;
  *  - Exactly ONE live agent pane → target it unconditionally, even if a
  *    non-agent pane (a shell, a dev server) is currently focused. There is no
  *    ambiguity about where the agent lives, so focus must not misroute the prompt.
+ *  - Exactly ONE unresolved main-agent entry → target tmux's first pane. This
+ *    covers legacy tasks and the brief Codex pre-hook interval, when pane[0]'s
+ *    ID has not been persisted yet but a shell split may be focused.
  *  - TWO OR MORE live agent panes, including a main pane whose id was not
  *    persisted → ambiguous; respect the user's focus and use the session's
  *    active pane.
@@ -1007,18 +1010,24 @@ async function resolveAgentPromptTargetPane(
 		.filter((id): id is string => Boolean(id));
 	const hasUnresolvedAgentPane = (agentPanes ?? []).some((pane) => !pane.paneId);
 
-	if (registeredIds.length > 0) {
+	if (registeredIds.length > 0 || hasUnresolvedAgentPane) {
 		let livePaneIds = new Set<string>();
+		let orderedLivePaneIds: string[] = [];
 		try {
 			const proc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
 			const stdout = await new Response(proc.stdout).text();
 			if ((await proc.exited) === 0) {
-				livePaneIds = new Set(stdout.split("\n").map((l) => l.trim()).filter(Boolean));
+				orderedLivePaneIds = stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+				livePaneIds = new Set(orderedLivePaneIds);
 			}
 		} catch { /* best effort */ }
 
 		const liveAgentPanes = [...new Set(registeredIds.filter((id) => livePaneIds.has(id)))];
 		if (liveAgentPanes.length === 1 && !hasUnresolvedAgentPane) return liveAgentPanes[0] ?? null;
+		// Legacy main panes and a newly launched Codex pane can briefly have no
+		// recorded pane ID. Their session-state entry is pane[0], and tmux lists
+		// that initial pane first, so prefer it over an unrelated focused shell.
+		if (agentPanes?.length === 1 && hasUnresolvedAgentPane) return orderedLivePaneIds[0] ?? null;
 		// ≥2 or 0 live agent panes → fall through to the active pane below.
 	}
 

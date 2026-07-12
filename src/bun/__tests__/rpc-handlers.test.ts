@@ -101,6 +101,7 @@ vi.mock("../pty-server", () => ({
 	hasSession: vi.fn(),
 	hasDeadSession: vi.fn(),
 	tmuxSessionExists: vi.fn(() => true),
+	listPaneIds: vi.fn(() => Promise.resolve(["%5"])),
 	getPtyPort: vi.fn(() => 9999),
 	getSessionProjectId: vi.fn(() => null),
 	getSessionSocket: vi.fn(() => "dev3"),
@@ -7134,6 +7135,32 @@ describe("launchTaskPty", () => {
 		expect((agents as any).ensureCodexTrust).toHaveBeenCalledWith("/tmp/codex-wt");
 	});
 
+	it("persists the initial Codex pane ID before its first lifecycle hook", async () => {
+		const project = makeProject();
+		const task = makeTask({ agentId: "builtin-codex", configId: "codex-default" });
+		(agents.resolveCommandForAgent as any).mockResolvedValueOnce({
+			command: "codex --model gpt-test",
+			extraEnv: {},
+			agent: { baseCommand: "codex" },
+			config: {},
+		});
+		vi.mocked(pty.listPaneIds).mockResolvedValueOnce(["%42"]);
+
+		await launchTaskPty(project, task, "/tmp/codex-wt", "builtin-codex", "codex-default");
+
+		expect(data.updateTask).toHaveBeenLastCalledWith(project, task.id, {
+			sessionState: {
+				panes: [{
+					paneId: "%42",
+					agentCmd: "codex",
+					sessionId: null,
+					agentId: "builtin-codex",
+					configId: "codex-default",
+				}],
+			},
+		});
+	});
+
 	it("adds the generated Codex hook override only to the launched session", async () => {
 		const project = makeProject();
 		const task = makeTask();
@@ -9171,6 +9198,31 @@ describe("handlers.createPullRequest", () => {
 		const paste = sendKeysCalls();
 		expect(paste).toHaveLength(1);
 		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+	});
+
+	it("routes a legacy Codex main pane before a focused shell split", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			id: "task-1",
+			worktreePath: "/tmp/test-worktree",
+			sessionState: {
+				panes: [{ paneId: null, agentCmd: "codex", sessionId: null, agentId: "builtin-codex", configId: null }],
+			},
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			// The initial agent pane is listed first, but a shell split is focused.
+			stdout: args.includes("display-message") ? "%3\n" : args.includes("list-panes") ? "%5\n%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.createPullRequest({ taskId: "task-1", projectId: project.id });
+
+		const paste = sendKeysCalls();
+		expect(paste).toHaveLength(1);
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%5"]));
 	});
 
 	// A registered agent pane that no longer exists must not hijack the routing —
