@@ -5,6 +5,33 @@ import TerminalComposer from "../TerminalComposer";
 import type { TerminalHandle } from "../../TerminalView";
 import { I18nProvider } from "../../i18n";
 
+let restoreVisualViewport: (() => void) | undefined;
+
+function installVisualViewport(initialHeight: number) {
+	let height = initialHeight;
+	const viewport = new EventTarget() as VisualViewport;
+	const descriptor = Object.getOwnPropertyDescriptor(window, "visualViewport");
+	Object.defineProperty(viewport, "height", {
+		configurable: true,
+		get: () => height,
+	});
+	Object.defineProperty(window, "visualViewport", {
+		configurable: true,
+		value: viewport,
+	});
+	restoreVisualViewport = () => {
+		if (descriptor) Object.defineProperty(window, "visualViewport", descriptor);
+		else Reflect.deleteProperty(window, "visualViewport");
+	};
+
+	return {
+		resize(nextHeight: number) {
+			height = nextHeight;
+			viewport.dispatchEvent(new Event("resize"));
+		},
+	};
+}
+
 function makeHandle(): TerminalHandle {
 	return {
 		sendInput: vi.fn(),
@@ -24,6 +51,8 @@ function renderComposer(handle: TerminalHandle) {
 
 afterEach(() => {
 	cleanup();
+	restoreVisualViewport?.();
+	restoreVisualViewport = undefined;
 	delete document.documentElement.dataset.composerFocused;
 });
 
@@ -86,6 +115,21 @@ describe("TerminalComposer", () => {
 		expect(document.documentElement.dataset.composerFocused).toBe("true");
 
 		(input as HTMLTextAreaElement).blur();
+		expect(document.documentElement.dataset.composerFocused).toBeUndefined();
+	});
+
+	it("restores chrome when Android closes the keyboard without blurring the textarea", async () => {
+		const viewport = installVisualViewport(900);
+		const handle = makeHandle();
+		renderComposer(handle);
+		const input = screen.getByTestId("terminal-composer-input");
+
+		await userEvent.click(input);
+		viewport.resize(450);
+		expect(document.documentElement.dataset.composerFocused).toBe("true");
+
+		viewport.resize(900);
+		expect(document.activeElement).toBe(input);
 		expect(document.documentElement.dataset.composerFocused).toBeUndefined();
 	});
 

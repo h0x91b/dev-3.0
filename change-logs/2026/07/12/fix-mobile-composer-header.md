@@ -1,0 +1,1 @@
+Restore the mobile terminal header when Android dismisses the composer keyboard without blurring its textarea. The composer now tracks visual viewport changes and has regression coverage for that focus state.
