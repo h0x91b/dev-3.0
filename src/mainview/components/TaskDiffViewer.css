@@ -1,3 +1,9 @@
+.dev3-diff-drag-host .diff-style-root {
+	/* @git-diff-view pins code to 14px. Keep the same 100% size while making
+	   app zoom and the mobile dense-zoom factor flow into the diff text. */
+	--diff-font-size--: 0.875rem !important;
+}
+
 .diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment,
 .diff-tailwindcss-wrapper .diff-line-widget-wrapper .dev3-inline-comment *,
 .diff-tailwindcss-wrapper .diff-line-extend-wrapper .dev3-inline-comment,
