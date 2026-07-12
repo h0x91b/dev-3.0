@@ -1120,6 +1120,10 @@ async function spawnVariants(params: {
 				notes: sourceTask.notes,
 				overview: sourceTask.overview,
 				userOverview: sourceTask.userOverview,
+				// Carry the priority the user picked in the Create-Task modal — the
+				// source task is deleted below, so without this "Create and Run"
+				// silently resets a P0 task back to the default P3.
+				priority: sourceTask.priority,
 				// Virtual ("Operations") tasks: carry the chosen working folder onto
 				// each variant so the worktree-less launch path targets it instead
 				// of falling back to a managed dir (the source task is deleted below).
@@ -1236,6 +1240,10 @@ async function addAttempts(params: {
 				titleEditedByUser: sourceTask.titleEditedByUser,
 				// Attempts share the source task's labels (same group).
 				labelIds: sourceTask.labelIds,
+				// Attempts share the source task's priority (priority belongs to the
+				// whole variant group), otherwise re-running a P0 task spawns a P3
+				// sibling and the group's priority becomes inconsistent.
+				priority: sourceTask.priority,
 				// NOTE: notes/overview are intentionally NOT copied here — addAttempts
 				// keeps the source task (returns it alongside the new attempts), so its
 				// notes are not lost; copying them would duplicate them across siblings.
