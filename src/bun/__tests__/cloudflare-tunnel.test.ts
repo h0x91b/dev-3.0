@@ -5,13 +5,15 @@ vi.mock("../spawn", () => ({
 	spawnSync: vi.fn(),
 }));
 
+const loggerMocks = vi.hoisted(() => ({
+	debug: vi.fn(),
+	info: vi.fn(),
+	warn: vi.fn(),
+	error: vi.fn(),
+}));
+
 vi.mock("../logger", () => ({
-	createLogger: () => ({
-		debug: vi.fn(),
-		info: vi.fn(),
-		warn: vi.fn(),
-		error: vi.fn(),
-	}),
+	createLogger: () => loggerMocks,
 }));
 
 import { spawn as mockSpawn, spawnSync as mockSpawnSync } from "../spawn";
@@ -21,6 +23,7 @@ import {
 	stopTunnel,
 	getTunnelUrl,
 	getTunnelState,
+	parseTunnelMetricsUrl,
 	parseTunnelUrl,
 	resolveTunnelProtocol,
 	tunnelManager,
@@ -110,6 +113,18 @@ describe("parseTunnelUrl", () => {
 	});
 });
 
+describe("parseTunnelMetricsUrl", () => {
+	it("extracts the local readiness endpoint from cloudflared output", () => {
+		expect(
+			parseTunnelMetricsUrl("2026-07-13T12:54:39Z INF Starting metrics server on 127.0.0.1:20241/metrics"),
+		).toBe("http://127.0.0.1:20241/ready");
+	});
+
+	it("returns null for unrelated output", () => {
+		expect(parseTunnelMetricsUrl("INF Registered tunnel connection")).toBeNull();
+	});
+});
+
 // ================================================================
 // isCloudflaredAvailable
 // ================================================================
@@ -187,6 +202,30 @@ describe("startTunnel", () => {
 			["cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:8080"],
 			{ stdout: "ignore", stderr: "pipe" },
 		);
+	});
+
+	it("keeps draining and logging cloudflared stderr after finding the URL", async () => {
+		const encoder = new TextEncoder();
+		let stderrController!: ReadableStreamDefaultController<Uint8Array>;
+		(mockSpawn as Mock).mockReturnValue({
+			kill: vi.fn(),
+			exited: new Promise<void>(() => {}),
+			stderr: new ReadableStream({
+				start(controller) {
+					stderrController = controller;
+					controller.enqueue(encoder.encode("INF | https://logged.trycloudflare.com\n"));
+				},
+			}),
+		});
+
+		await startTunnel(8080);
+		stderrController.enqueue(encoder.encode("ERR registration failed after startup\n"));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(loggerMocks.error).toHaveBeenCalledWith("cloudflared", {
+			id: "main",
+			line: "ERR registration failed after startup",
+		});
 	});
 
 	it("returns null when stderr closes without URL", async () => {
@@ -392,5 +431,54 @@ describe("process exit", () => {
 
 		expect(getTunnelState()).toBe("idle");
 		expect(getTunnelUrl()).toBeNull();
+	});
+});
+
+describe("edge readiness watchdog", () => {
+	beforeEach(() => {
+		_resetState();
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	function mockLiveTunnel(url: string, metricsPort: number) {
+		const encoder = new TextEncoder();
+		(mockSpawn as Mock).mockReturnValueOnce({
+			kill: vi.fn(),
+			exited: new Promise<void>(() => {}),
+			stderr: new ReadableStream({
+				start(controller) {
+					controller.enqueue(encoder.encode(
+						`INF Starting metrics server on 127.0.0.1:${metricsPort}/metrics\nINF | ${url}\n`,
+					));
+				},
+			}),
+		});
+	}
+
+	it("restarts a live process after three consecutive edge-readiness failures", async () => {
+		mockLiveTunnel("https://stale.trycloudflare.com", 20241);
+		mockLiveTunnel("https://recovered.trycloudflare.com", 20242);
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+			JSON.stringify({ status: 503, readyConnections: 0 }),
+			{ status: 503, headers: { "content-type": "application/json" } },
+		)));
+
+		await startTunnel(8080);
+		expect(tunnelManager.get("main")?.metricsReadyUrl).toBe("http://127.0.0.1:20241/ready");
+
+		await tunnelManager.checkHealth("main");
+		await tunnelManager.checkHealth("main");
+		await tunnelManager.checkHealth("main");
+
+		expect(mockSpawn).toHaveBeenCalledTimes(2);
+		expect(getTunnelUrl()).toBe("https://recovered.trycloudflare.com");
+		expect(loggerMocks.warn).toHaveBeenCalledWith("Tunnel unhealthy; restarting", expect.objectContaining({
+			id: "main",
+			consecutiveFailures: 3,
+		}));
 	});
 });

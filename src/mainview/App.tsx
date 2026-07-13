@@ -1628,30 +1628,56 @@ function App() {
 	}, []);
 
 	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
-	// Stops when QR is consumed (someone connected).
+	// After a QR is consumed, keep polling without visually rotating the token:
+	// a recovered Quick Tunnel gets a new hostname, and the open modal must
+	// reactivate with that new URL instead of staying green on a dead domain.
 	const qrModalOpen = remoteQR !== null;
 	const [qrCountdown, setQrCountdown] = useState(25);
 	const tunnelWantedRef = useRef(tunnelWanted);
 	tunnelWantedRef.current = tunnelWanted;
+	const qrConsumedRef = useRef(qrConsumed);
+	qrConsumedRef.current = qrConsumed;
+	const remoteQRRef = useRef(remoteQR);
+	remoteQRRef.current = remoteQR;
 	// Preserve the chosen interface/IP across the 25s token refresh — without
 	// this, picking a host would snap back to the auto-pick on the next tick.
 	const selectedHostRef = useRef<string | undefined>(undefined);
 	selectedHostRef.current = remoteQR?.selectedHost;
 	useEffect(() => {
-		if (!qrModalOpen || qrConsumed) return;
+		if (!qrModalOpen) return;
 		setQrCountdown(25);
 		let counter = 25;
+		let refreshInFlight = false;
 		const tick = setInterval(() => {
 			counter -= 1;
 			if (counter <= 0) {
 				counter = 25;
 				const host = tunnelWantedRef.current ? undefined : selectedHostRef.current;
-				api.request.getRemoteAccessQR({ tunnel: tunnelWantedRef.current, host }).then(setRemoteQR).catch(() => {});
+				if (!refreshInFlight) {
+					refreshInFlight = true;
+					api.request.getRemoteAccessQR({ tunnel: tunnelWantedRef.current, host }).then((next) => {
+						const current = remoteQRRef.current;
+						let hostnameChanged = false;
+						if (current?.tunnelState === "connected" && next.tunnelState === "connected") {
+							try {
+								hostnameChanged = new URL(current.accessUrl).hostname !== new URL(next.accessUrl).hostname;
+							} catch {
+								hostnameChanged = current.accessUrl !== next.accessUrl;
+							}
+						}
+						if (!qrConsumedRef.current || hostnameChanged) {
+							setRemoteQR(next);
+							if (hostnameChanged) setQrConsumed(false);
+						}
+					}).catch(() => {}).finally(() => {
+						refreshInFlight = false;
+					});
+				}
 			}
-			setQrCountdown(counter);
+			if (!qrConsumedRef.current) setQrCountdown(counter);
 		}, 1000);
 		return () => clearInterval(tick);
-	}, [qrModalOpen, qrConsumed]);
+	}, [qrModalOpen]);
 
 	// Track page views on route changes. Resolve the task's human-readable seq id
 	// (e.g. "981-1") from the loaded task list so analytics paths carry the task

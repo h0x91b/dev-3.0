@@ -11,7 +11,7 @@ vi.mock("../logger", () => ({
 }));
 
 import { spawn as mockSpawn } from "../spawn";
-import { _resetState } from "../cloudflare-tunnel";
+import { _resetState, tunnelManager } from "../cloudflare-tunnel";
 import {
 	exposeTaskPort,
 	exposeTaskPortsShared,
@@ -36,6 +36,21 @@ function mockNextSpawn(url: string) {
 			start(controller) {
 				controller.enqueue(encoder.encode(`INF | ${url}\n`));
 				controller.close();
+			},
+		}),
+	});
+}
+
+function mockNextLiveSpawn(url: string, metricsPort: number) {
+	const encoder = new TextEncoder();
+	(mockSpawn as Mock).mockReturnValueOnce({
+		kill: vi.fn(),
+		exited: new Promise<void>(() => {}),
+		stderr: new ReadableStream({
+			start(controller) {
+				controller.enqueue(encoder.encode(
+					`INF Starting metrics server on 127.0.0.1:${metricsPort}/metrics\nINF | ${url}\n`,
+				));
 			},
 		}),
 	});
@@ -78,6 +93,29 @@ describe("port-tunnels — exposeTaskPort", () => {
 		push.mockClear();
 		unexposeTaskPort("t", 3000);
 		expect(push).toHaveBeenCalledWith("exposedPortsChanged", { taskId: "t", ports: [] });
+	});
+
+	it("emits the rotated URL after the readiness watchdog restarts a tunnel", async () => {
+		const push = vi.fn();
+		setPortTunnelsPushHook(push);
+		mockNextLiveSpawn("https://stale-port.trycloudflare.com", 20241);
+		mockNextLiveSpawn("https://recovered-port.trycloudflare.com", 20242);
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unready", { status: 503 })));
+		try {
+			await exposeTaskPort("t", 3000);
+			push.mockClear();
+
+			await tunnelManager.checkHealth("task:t:port:3000");
+			await tunnelManager.checkHealth("task:t:port:3000");
+			await tunnelManager.checkHealth("task:t:port:3000");
+
+			expect(push).toHaveBeenLastCalledWith("exposedPortsChanged", {
+				taskId: "t",
+				ports: [expect.objectContaining({ url: "https://recovered-port.trycloudflare.com" })],
+			});
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });
 
