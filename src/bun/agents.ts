@@ -15,6 +15,16 @@ import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
+import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
+import type { AdapterLaunchOptions, CodexLaunchRuntime } from "../shared/agent-adapters/types";
+import type { TemplateContext } from "../shared/agent-adapters/template";
+
+// Re-exported for backward compat: these pure helpers now live in the shared
+// adapter layer (src/shared must not import src/bun), but many callers/tests
+// still import them from here.
+export { shellEscape, quoteIfUnsafe } from "../shared/agent-adapters/shell";
+export { interpolateTemplate } from "../shared/agent-adapters/template";
+export type { TemplateContext } from "../shared/agent-adapters/template";
 
 const log = createLogger("agents");
 
@@ -282,27 +292,6 @@ export async function saveAllAgents(agents: CodingAgent[]): Promise<void> {
 	await saveAgents(agents);
 }
 
-// ---- Template Interpolation ----
-
-export interface TemplateContext {
-	taskTitle: string;
-	taskDescription: string;
-	projectName: string;
-	projectPath: string;
-	worktreePath: string;
-}
-
-export function interpolateTemplate(template: string, ctx: TemplateContext): string {
-	const vars: Record<string, string> = {
-		TASK_TITLE: ctx.taskTitle,
-		TASK_DESCRIPTION: ctx.taskDescription,
-		PROJECT_NAME: ctx.projectName,
-		PROJECT_PATH: ctx.projectPath,
-		WORKTREE_PATH: ctx.worktreePath,
-	};
-	return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? "");
-}
-
 // ---- Command Resolution ----
 
 /**
@@ -330,45 +319,15 @@ export const DEV3_SYSTEM_PROMPT_GENERIC = GENERIC_SKILL_BODY;
  */
 export const DEV3_SYSTEM_PROMPT_CODEX = CODEX_SKILL_BODY;
 
-/** Returns true when the resolved base command is the Claude CLI. */
+/** Returns true when the resolved base command is the Claude CLI.
+ *  Retained for the Claude-only *feature* code that is orthogonal to the
+ *  per-agent launch/trust/hooks seam (managed accounts, statusLine, provider/
+ *  Bedrock, default env, MCP pre-approval). The codex/gemini/cursor/opencode
+ *  predicates were removed — their logic lives in the agent adapters
+ *  (src/shared/agent-adapters), selected via getAgentAdapter. */
 export function isClaudeCommand(baseCmd: string): boolean {
 	const name = baseCmd.split("/").pop() ?? "";
 	return name === "claude";
-}
-
-/** Returns true when the resolved base command is the Cursor Agent CLI. */
-export function isCursorCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "agent";
-}
-
-/** Returns true when the resolved base command is the Codex CLI. */
-export function isCodexCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "codex";
-}
-
-/** Returns true when the resolved base command is the Gemini CLI. */
-export function isGeminiCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "gemini";
-}
-
-/** Returns true when the resolved base command is the OpenCode CLI. */
-export function isOpenCodeCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "opencode";
-}
-
-export function shellEscape(s: string): string {
-	return "'" + s.replace(/'/g, "'\\''") + "'";
-}
-
-/** Wrap in single quotes only when the value contains shell-unsafe characters.
- *  Used for short positional values (model names, mode strings) where the raw
- *  form is more readable when safe. */
-export function quoteIfUnsafe(s: string): string {
-	return /^[A-Za-z0-9_\-./:]+$/.test(s) ? s : shellEscape(s);
 }
 
 let codexProfileLaunchFlagOverride: CodexProfileLaunchFlag | null = null;
@@ -416,30 +375,16 @@ export function __resetCodexVersionCache(): void {
 	cachedCodexVersion = undefined;
 }
 
-function applyCodexThemeProfile(args: string[]): void {
-	const themedProfile = getCodexProfileForCurrentUiTheme();
-	const launchFlag = getCodexProfileLaunchFlag();
-	for (let i = 0; i < args.length - 1; i++) {
-		if ((args[i] === "-p" || args[i] === "--profile") && args[i + 1] === "dev3") {
-			args[i + 1] = themedProfile;
-			// During the codex transition window the per-profile file
-			// `~/.codex/<name>.config.toml` was loaded only via `--profile-v2`.
-			// After the rename (#23883) `--profile-v2` was removed and `-p`/`--profile`
-			// carries the same file-based semantics, so we keep the user's flag there.
-			// Passing `--profile-v2` to a newer codex aborts with exit 2.
-			// See decision 055 + issue #611.
-			if (launchFlag === "--profile-v2") args[i] = "--profile-v2";
-			break;
-		}
-	}
-
-	// Codex 0.130 rejected `tui.theme` inside config profiles, so keep the
-	// managed profiles focused on permissions/web search and select the visual
-	// theme through the supported per-launch config override instead. Append it
-	// after additionalArgs so every dev3 Codex session follows the active app
-	// theme even when the user's global config or preset selects another theme.
-	const theme = getCodexThemeForCurrentUiTheme();
-	args.push("-c", shellEscape(`tui.theme="${theme}"`));
+/** Resolve the impure Codex launch runtime (active UI theme → profile/theme,
+ *  and the feature-detected profile launch flag) into pure data the CodexAdapter
+ *  consumes. Only called for Codex launches so non-Codex agents never trigger the
+ *  `codex --help` probe. */
+function codexLaunchRuntime(): CodexLaunchRuntime {
+	return {
+		themedProfile: getCodexProfileForCurrentUiTheme(),
+		theme: getCodexThemeForCurrentUiTheme(),
+		profileLaunchFlag: getCodexProfileLaunchFlag(),
+	};
 }
 
 export interface CommandOptions {
@@ -476,46 +421,31 @@ export interface CommandOptions {
 
 /**
  * Build a minimal resume command for a given agent command name and session ID.
- * Used for resuming sessions after tmux death / app restart.
+ * Used for resuming sessions after tmux death / app restart. Delegated to the
+ * agent adapter (single source of truth for resume syntax + capability).
  */
 export function buildResumeCommand(agentCmd: string, sessionId?: string): string | null {
-	if (isClaudeCommand(agentCmd)) {
-		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
-	}
-	if (isCodexCommand(agentCmd)) {
-		return sessionId ? `${agentCmd} resume ${sessionId}` : `${agentCmd} resume --last`;
-	}
-	if (isGeminiCommand(agentCmd)) {
-		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --resume latest`;
-	}
-	if (isCursorCommand(agentCmd)) {
-		return sessionId ? `${agentCmd} --resume ${sessionId}` : `${agentCmd} --continue`;
-	}
-	if (isOpenCodeCommand(agentCmd)) {
-		return sessionId ? `${agentCmd} --session ${sessionId}` : `${agentCmd} --continue`;
-	}
-	return null;
+	return getAgentAdapter(agentCmd).buildResumeCommand(agentCmd, sessionId);
 }
 
 /** Returns true when the agent CLI supports session resumption. */
 export function supportsResume(baseCmd: string): boolean {
-	return isClaudeCommand(baseCmd) || isCodexCommand(baseCmd) || isGeminiCommand(baseCmd) || isCursorCommand(baseCmd) || isOpenCodeCommand(baseCmd);
+	return getAgentAdapter(baseCmd).supportsResume;
 }
 
-/** Returns true when the agent supports pre-assigned session IDs at launch time.
- *  These agents can accept a UUID on first launch and resume it later by ID.
- *
- *  Claude (`--session-id`) and Cursor (`--resume <uuid>`, creates if missing)
- *  have always supported this. Gemini added the launch-time `--session-id` flag
- *  in gemini-cli PR #26060 (merged 2026-04-27); dev3 does NOT version-guard it,
- *  so a gemini older than that build will reject `--session-id` at launch — users
- *  on such a build must upgrade gemini-cli. Codex/OpenCode cannot pre-assign (no
- *  launch flag / resume-only `--session`); Codex instead captures its real session
- *  id post-hoc from the lifecycle hook (see cli-socket-server `task.agentHook`). */
+/** Returns true when the agent supports pre-assigned session IDs at launch time
+ *  (accept a UUID on first launch and resume it later by ID). See each adapter
+ *  for the per-agent details (e.g. Codex/OpenCode cannot pre-assign). */
 export function supportsPreAssignedSessionId(baseCmd: string): boolean {
-	return isClaudeCommand(baseCmd) || isCursorCommand(baseCmd) || isGeminiCommand(baseCmd);
+	return getAgentAdapter(baseCmd).supportsPreAssignedSessionId;
 }
 
+/**
+ * Assemble the full launch command for an agent. All per-agent flag/quote/order
+ * logic lives in the selected AgentAdapter (decision 124); this resolves the
+ * impure inputs the pure adapter needs — the third-party-provider skip-model
+ * rule and the Codex theme/profile runtime — and threads them in.
+ */
 export function resolveAgentCommand(
 	agent: CodingAgent,
 	config: AgentConfiguration | undefined,
@@ -523,180 +453,22 @@ export function resolveAgentCommand(
 	options?: CommandOptions,
 ): string {
 	const baseCmd = config?.baseCommandOverride || agent.baseCommand;
-	const args: string[] = [];
-	const shouldResume = options?.resume && supportsResume(baseCmd);
-	const codexAgent = isCodexCommand(baseCmd);
+	const adapter = getAgentAdapter(baseCmd);
 
-	// Resume flags per agent (Codex uses a subcommand, handled at the end)
-	if (shouldResume) {
-		const sid = options?.sessionId;
-		if (isClaudeCommand(baseCmd)) {
-			// Prefer --resume <id> for targeted resume; fall back to --continue
-			if (sid) {
-				args.push("--resume", sid);
-			} else {
-				args.push("--continue");
-			}
-		} else if (isCursorCommand(baseCmd)) {
-			// Cursor Agent: --resume <id> for targeted resume, --continue as fallback
-			if (sid) {
-				args.push("--resume", sid);
-			} else {
-				args.push("--continue");
-			}
-		} else if (isOpenCodeCommand(baseCmd)) {
-			if (sid) {
-				args.push("--session", sid);
-			} else {
-				args.push("--continue");
-			}
-		} else if (isGeminiCommand(baseCmd)) {
-			if (sid) {
-				args.push("--resume", sid);
-			} else {
-				args.push("--resume", "latest");
-			}
-		}
-		// Codex: handled below when building the final command
-	}
+	const adapterOptions: AdapterLaunchOptions = {
+		resume: options?.resume,
+		sessionId: options?.sessionId,
+		skipSystemPrompt: options?.skipSystemPrompt,
+		statuslineSettingsFile: options?.statuslineSettingsFile,
+		// Under a third-party backend (e.g. Bedrock for Claude) the model comes
+		// from injected env (ANTHROPIC_MODEL), so the adapter omits --model.
+		skipModelForProvider: isThirdPartyProvider(options?.llmProvider),
+		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
+		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
+		codex: adapter.command === "codex" ? codexLaunchRuntime() : undefined,
+	};
 
-	// For agents that support pre-assigned session IDs, inject the ID on fresh launches
-	// so we can do targeted resume later.
-	if (!shouldResume && supportsPreAssignedSessionId(baseCmd) && options?.sessionId) {
-		if (isCursorCommand(baseCmd)) {
-			args.push("--resume", options.sessionId);
-		} else {
-			args.push("--session-id", options.sessionId);
-		}
-	}
-
-	// Under a third-party backend (e.g. Bedrock for Claude), the agent selects the
-	// model from the injected provider env (ANTHROPIC_MODEL) using a provider-native
-	// id; the native alias dev3 would pass via --model is rejected by the provider
-	// with a 400. So omit --model. `options.llmProvider` is only set when it's a
-	// backend registered for this agent (see withProviderOptions), so no per-command
-	// guard is needed here. Agents on their native provider are unaffected.
-	const skipModelForProvider = isThirdPartyProvider(options?.llmProvider);
-	if (config?.model && !skipModelForProvider) {
-		// Model names may contain shell metacharacters (e.g. brackets in
-		// `claude-opus-4-8[1m]`). Quote them so zsh doesn't glob-expand.
-		args.push("--model", quoteIfUnsafe(config.model));
-	}
-
-	const cursorAgent = isCursorCommand(baseCmd);
-	const geminiAgent = isGeminiCommand(baseCmd);
-	const openCodeAgent = isOpenCodeCommand(baseCmd);
-
-	if (config?.permissionMode && config.permissionMode !== "default" && !codexAgent && !openCodeAgent) {
-		if (cursorAgent) {
-			// Cursor Agent uses different flags for modes
-			if (config.permissionMode === "plan") {
-				args.push("--mode", "plan");
-			} else if (config.permissionMode === "bypassPermissions") {
-				args.push("--force");
-			}
-			// "acceptEdits" and "dontAsk" have no cursor equivalent — skip
-		} else if (geminiAgent) {
-			// Gemini CLI uses --approval-mode with its own value set
-			const geminiModeMap: Record<string, string> = {
-				acceptEdits: "auto_edit",
-				bypassPermissions: "yolo",
-				dontAsk: "yolo",
-				plan: "plan",
-			};
-			args.push("--approval-mode", geminiModeMap[config.permissionMode] ?? config.permissionMode);
-		} else {
-			args.push("--permission-mode", config.permissionMode);
-		}
-	}
-
-	if (config?.effort && !cursorAgent && !codexAgent && !geminiAgent && !openCodeAgent) {
-		args.push("--effort", config.effort);
-	}
-
-	if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0 && !cursorAgent && !codexAgent && !geminiAgent && !openCodeAgent) {
-		args.push("--max-budget-usd", String(config.maxBudgetUsd));
-	}
-
-	// Inject --append-system-prompt for Claude-based agents (unless skipped)
-	if (isClaudeCommand(baseCmd) && !options?.skipSystemPrompt) {
-		args.push("--append-system-prompt", shellEscape(DEV3_SYSTEM_PROMPT));
-	}
-
-	// Route the statusLine through `dev3 statusline` for rate-limit capture.
-	// statusLine is scalar (last-wins) across settings levels, so the wrapper
-	// DELEGATES to the user's original statusLine — see rate-limit-monitor.ts.
-	// Skip when the user passes their own --settings via additionalArgs.
-	if (
-		isClaudeCommand(baseCmd) &&
-		options?.statuslineSettingsFile &&
-		!config?.additionalArgs?.some((a) => a === "--settings" || a.startsWith("--settings="))
-	) {
-		args.push("--settings", quoteIfUnsafe(options.statuslineSettingsFile));
-	}
-
-	if (config?.additionalArgs) {
-		args.push(...config.additionalArgs);
-	}
-
-	if (codexAgent) {
-		applyCodexThemeProfile(args);
-		// Codex has no --append-system-prompt; deliver the dev3 protocol as a
-		// developer-role message via the `-c developer_instructions=...` config
-		// override instead. Unlike the old prompt-append this also covers scratch
-		// launches (empty prompt) and resumed sessions, and keeps the turn-1 user
-		// message clean. JSON.stringify emits a valid TOML basic string, which is
-		// what `-c` expects for the value portion.
-		if (!options?.skipSystemPrompt) {
-			args.push("-c", shellEscape(`developer_instructions=${JSON.stringify(DEV3_SYSTEM_PROMPT_CODEX)}`));
-		}
-	}
-
-	// When resuming, skip the prompt — we don't want to inject a new
-	// message into the continued conversation.
-	if (!shouldResume) {
-		// Build prompt: task description + interpolated append prompt
-		let prompt = ctx.taskDescription;
-		if (config?.appendPrompt) {
-			const interpolated = interpolateTemplate(config.appendPrompt, ctx);
-			if (interpolated.trim()) {
-				prompt = prompt ? `${prompt}\n\n${interpolated}` : interpolated;
-			}
-		}
-
-		// Cursor Agent / OpenCode have no --append-system-prompt and no automatic
-		// hooks, so inject the generic system prompt via the prompt argument.
-		// (Codex gets the protocol out-of-band via `-c developer_instructions=...`
-		// above, so its prompt stays clean.)
-		//
-		// Only append it when there is an actual task prompt. On scratch / empty
-		// description launches we keep the prompt empty so the agent opens an
-		// interactive window instead of auto-running the system prompt as turn 1
-		// (matching Claude, which delivers it out-of-band). Protocol adherence
-		// then relies on the auto-installed dev3 skill + hooks.
-		if (prompt && (cursorAgent || openCodeAgent)) {
-			prompt = `${prompt}\n\n${DEV3_SYSTEM_PROMPT_GENERIC}`;
-		}
-
-		if (prompt) {
-			// OpenCode uses --prompt flag instead of positional argument
-			if (openCodeAgent) {
-				args.push("--prompt", shellEscape(prompt));
-			} else {
-				// `--` terminates option parsing so prompts starting with "---"
-				// (e.g. markdown frontmatter) are not treated as unknown flags.
-				args.push("--", shellEscape(prompt));
-			}
-		}
-	}
-
-	// Codex uses a subcommand for resume: `codex resume [--last | <id>] [args]`
-	if (shouldResume && isCodexCommand(baseCmd)) {
-		const sid = options?.sessionId;
-		return [baseCmd, "resume", sid ?? "--last", ...args].join(" ");
-	}
-
-	return [baseCmd, ...args].join(" ");
+	return adapter.launchArgs(baseCmd, config, ctx, adapterOptions).join(" ");
 }
 
 export function findConfig(
@@ -774,7 +546,9 @@ async function applyCodexAccountEnv(
 	extraEnv: Record<string, string>,
 	accountId?: string | null,
 ): Promise<void> {
-	if (!isCodexCommand(baseCmd) || extraEnv.CODEX_HOME) return;
+	// Codex account switcher is an orthogonal feature (kept in front of the
+	// adapter seam); a plain command-name gate suffices here.
+	if (agentKey(baseCmd) !== "codex" || extraEnv.CODEX_HOME) return;
 	try {
 		const accountEnv = await getActiveCodexSessionEnv(accountId);
 		for (const [key, value] of Object.entries(accountEnv)) {

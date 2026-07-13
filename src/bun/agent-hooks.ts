@@ -10,7 +10,7 @@
 
 import type { PermissionMode, TaskStatus } from "../shared/types";
 import { createLogger } from "./logger";
-import { isClaudeCommand, isCodexCommand } from "./agents";
+import { getAgentAdapter } from "../shared/agent-adapters/registry";
 import { writeClaudeHooks, writeCodexHooks } from "../shared/agent-hooks";
 import { prepareCodexWorktreeHookOverride } from "./codex-hook-trust";
 
@@ -26,29 +26,32 @@ export {
 const log = createLogger("agent-hooks");
 
 /**
- * Set up agent-native hooks in the worktree.
- * Routes to the appropriate setup function based on agent type.
+ * Set up agent-native hooks in the worktree, driven by the agent adapter's
+ * declarative hooksSpec (decision 124). The adapter decides *which* hooks (data);
+ * this executor performs the I/O. Returns a Codex `-c hooks=...` config override
+ * to splice into the launch command, or null when there is nothing to inject.
  */
 export function setupAgentHooks(
 	worktreePath: string,
 	baseCommand: string,
 	options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode },
 ): Promise<string | null> {
-	if (isClaudeCommand(baseCommand)) {
-		writeClaudeHooks(worktreePath, options);
+	const spec = getAgentAdapter(baseCommand).hooksSpec(options);
+	if (!spec) return Promise.resolve(null);
+
+	if (spec.kind === "claude") {
+		writeClaudeHooks(worktreePath, { stopTarget: spec.stopTarget, permissionMode: spec.permissionMode });
 		log.info("Claude hooks installed", {
 			worktreePath,
-			permissionMode: options?.permissionMode,
+			permissionMode: spec.permissionMode,
 		});
 		return Promise.resolve(null);
 	}
-	if (isCodexCommand(baseCommand)) {
-		writeCodexHooks(worktreePath);
-		return prepareCodexWorktreeHookOverride(worktreePath).then((configOverride) => {
-			log.info("Codex worktree hooks installed with session-scoped trust", { worktreePath });
-			return configOverride;
-		});
-	}
-	// Future: isGeminiCommand, isCursorCommand, etc.
-	return Promise.resolve(null);
+
+	// spec.kind === "codex"
+	writeCodexHooks(worktreePath);
+	return prepareCodexWorktreeHookOverride(worktreePath).then((configOverride) => {
+		log.info("Codex worktree hooks installed with session-scoped trust", { worktreePath });
+		return configOverride;
+	});
 }

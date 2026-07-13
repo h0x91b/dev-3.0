@@ -2,21 +2,22 @@
 
 Feature compatibility across supported AI coding agents.
 
-Last updated: 2026-07-11
+Last updated: 2026-07-13
 
-> **Planned refactor — this matrix is slated to become an interface, not prose.**
-> The per-agent branches that back these columns are today inline
-> `if (isCodexCommand()) … else if (isGeminiCommand()) …` ladders spread across
-> `agents.ts`, `tmux-pty.ts`, `agent-hooks.ts`, and `agent-skills.ts`. The design
-> in [decision 124](decisions/124-agent-adapter-interface.md) collapses the
-> launch/trust/hooks/skill columns into one `AgentAdapter` per agent (pure
-> descriptor + a `src/bun` executor), keyed by base command with an explicit
-> `GenericAdapter` fallback. Column → future interface member: *System prompt
-> injection / Session resume / Permission mode / Effort / Max budget / Model
-> selection* → `launchArgs()`; *Auto-trust worktree* → `trustPatch()`;
-> *Status hooks* → `hooksSpec()`; *Skill injection* → `skillBody`. The
-> Claude-only rows (*LLM provider*, *Rate-limit tracking*, managed accounts, MCP
-> pre-approval) stay outside the seam, keyed by `isClaudeCommand`.
+> **This matrix is now an interface, not prose.** The per-agent launch/trust/
+> hooks/skill differences live behind one `AgentAdapter` per agent
+> ([decision 124](decisions/124-agent-adapter-interface.md)), in
+> `src/shared/agent-adapters/` (pure descriptors + registry, keyed by base
+> command with an explicit `GenericAdapter` fallback), applied by thin executors
+> in `src/bun`. Column → interface member: *System prompt injection / Session
+> resume / Targeted recovery / Permission mode / Effort / Max budget / Model
+> selection / Agent selection* → `launchArgs()` (plus `supportsResume` /
+> `supportsPreAssignedSessionId` / `buildResumeCommand`); *Auto-trust worktree* →
+> `trustKinds`; *Status hooks* → `hooksSpec()`; *Skill injection* → `skillBody`.
+> Adding an agent is one new adapter file registered in `registry.ts`, and the
+> type-checker enumerates every member to fill in. The Claude-only rows (*LLM
+> provider*, *Rate-limit tracking*, managed accounts, MCP pre-approval) stay
+> outside the seam, keyed by `isClaudeCommand`.
 
 ## Agents
 
