@@ -76,7 +76,8 @@ export interface AgentAccountIdentity {
 	plan: string | null;
 	/** Human-readable plan label derived from `plan` (e.g. "Max 5x", "Plus"). */
 	planLabel: string | null;
-	/** Stable provider-side account id (Claude accountUuid / Codex account_id). */
+	/** Stable provider-side account id. For Codex, `account_id` is the selected
+	 *  ChatGPT workspace id, while `chatgpt_user_id` identifies the person. */
 	accountId: string | null;
 }
 
@@ -193,6 +194,11 @@ export function parseCodexIdentity(authJson: unknown): AgentAccountIdentity | nu
 		planLabel: codexPlanLabel(plan),
 		accountId: accountId ?? asString(authClaim?.chatgpt_account_id),
 	};
+}
+
+/** Compact, display-safe prefix for a Codex ChatGPT workspace id. */
+export function shortCodexWorkspaceId(identity: AgentAccountIdentity | null): string | null {
+	return identity?.accountId?.slice(0, 8) ?? null;
 }
 
 /** Default display label for a freshly added account. */

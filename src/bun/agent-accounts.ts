@@ -51,6 +51,7 @@ import {
 	defaultApiProfileLabel,
 	parseClaudeIdentity,
 	parseCodexIdentity,
+	shortCodexWorkspaceId,
 } from "../shared/agent-accounts";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -533,11 +534,18 @@ function assertNoDuplicate(
 	for (const entry of registry[kind].accounts) {
 		if (entry.id === excludeId) continue;
 		const existing = kind === "claude" ? claudeAccountIdentity(entry.id, paths) : codexAccountIdentity(entry.id, paths);
-		// One user (same accountUuid/email) can belong to several organizations —
-		// a duplicate is the same account in the SAME organization only.
-		if (existing?.accountId === identity.accountId && (existing.organization ?? null) === (identity.organization ?? null)) {
-			throw new Error(`This account is already added ("${entry.label}")`);
+		// Codex account_id is the selected ChatGPT workspace, not the person. The
+		// same email/chatgpt_user_id may therefore own several valid accounts.
+		const isDuplicate =
+			kind === "codex"
+				? existing?.accountId === identity.accountId
+				: existing?.accountId === identity.accountId &&
+					(existing.organization ?? null) === (identity.organization ?? null);
+		if (!isDuplicate) continue;
+		if (kind === "codex") {
+			throw new Error(`This Codex workspace is already added ("${entry.label}")`);
 		}
+		throw new Error(`This account is already added ("${entry.label}")`);
 	}
 }
 
@@ -550,14 +558,19 @@ function registerAccount(
 	opts?: { auth?: AgentAccountAuth; label?: string },
 ): AgentAccount {
 	let label = opts?.label ?? defaultAccountLabel(identity, registry[kind].accounts.length + 1);
-	// Same email registered from another organization — append the org so the
-	// two rows are distinguishable at a glance.
-	if (!opts?.label && identity?.email && identity.organization) {
+	// Same login email may represent several Claude organizations or Codex
+	// workspaces. Append the provider-specific discriminator to later rows.
+	if (!opts?.label && identity?.email) {
 		const emailTaken = registry[kind].accounts.some((existing) => {
 			const other = kind === "claude" ? claudeAccountIdentity(existing.id, paths) : codexAccountIdentity(existing.id, paths);
 			return other?.email === identity.email;
 		});
-		if (emailTaken) label = `${identity.email} (${identity.organization})`;
+		if (emailTaken && kind === "codex") {
+			const workspaceId = shortCodexWorkspaceId(identity);
+			if (workspaceId) label = `${identity.email} (Workspace ${workspaceId})`;
+		} else if (emailTaken && identity.organization) {
+			label = `${identity.email} (${identity.organization})`;
+		}
 	}
 	const entry: RegistryEntry = {
 		id,

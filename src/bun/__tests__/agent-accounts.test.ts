@@ -49,11 +49,23 @@ function seedClaudeLogin(email = "main@example.com", accountUuid = "claude-acc-1
 	writeFileSync(join(paths.claudeHome, "settings.json"), "{}");
 }
 
-function codexAuth(accountId: string, email = `${accountId}@example.com`, extra: Record<string, unknown> = {}) {
+function codexAuth(
+	accountId: string,
+	email = `${accountId}@example.com`,
+	extra: Record<string, unknown> = {},
+	organizations: Array<{ id: string; title: string }> = [],
+) {
 	return JSON.stringify({
 		auth_mode: "ChatGPT",
 		tokens: {
-			id_token: makeJwt({ email, "https://api.openai.com/auth": { chatgpt_plan_type: "plus", chatgpt_account_id: accountId } }),
+			id_token: makeJwt({
+				email,
+				"https://api.openai.com/auth": {
+					chatgpt_plan_type: "plus",
+					chatgpt_account_id: accountId,
+					organizations,
+				},
+			}),
 			access_token: "at",
 			refresh_token: "rt",
 			account_id: accountId,
@@ -275,6 +287,45 @@ describe("codex accounts", () => {
 		const { accountId } = await prepareCodexLogin(paths);
 		writeFileSync(join(codexAccountDir(accountId, paths), "auth.json"), codexAuth("acc-1"));
 		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(/already added/);
+	});
+
+	it("treats the Codex workspace id as authoritative when organization metadata changes", async () => {
+		mkdirSync(paths.codexHome, { recursive: true });
+		writeFileSync(
+			join(paths.codexHome, "auth.json"),
+			codexAuth("workspace-same", "shared@example.com", {}, [{ id: "org-1", title: "Wix" }]),
+		);
+		await importCurrentCodexAccount(paths);
+
+		const { accountId } = await prepareCodexLogin(paths);
+		writeFileSync(
+			join(codexAccountDir(accountId, paths), "auth.json"),
+			codexAuth("workspace-same", "shared@example.com", {}, [{ id: "org-2", title: "Personal" }]),
+		);
+
+		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(/Codex workspace is already added/);
+	});
+
+	it("allows the same Codex email in different ChatGPT workspaces", async () => {
+		seedCodexLogin("11111111-1111-1111-1111-111111111111");
+		writeFileSync(
+			join(paths.codexHome, "auth.json"),
+			codexAuth("11111111-1111-1111-1111-111111111111", "shared@example.com"),
+		);
+		await importCurrentCodexAccount(paths);
+
+		const { accountId } = await prepareCodexLogin(paths);
+		writeFileSync(
+			join(codexAccountDir(accountId, paths), "auth.json"),
+			codexAuth("22222222-2222-2222-2222-222222222222", "shared@example.com"),
+		);
+
+		await expect(completeCodexLogin(accountId, paths)).resolves.toMatchObject({
+			label: "shared@example.com (Workspace 22222222)",
+			identity: { accountId: "22222222-2222-2222-2222-222222222222", email: "shared@example.com" },
+		});
+		const state = await listAgentAccounts(paths);
+		expect(state.codex.accounts).toHaveLength(2);
 	});
 
 	it("setActiveCodexAccount only moves the default pointer — never swaps ~/.codex", async () => {

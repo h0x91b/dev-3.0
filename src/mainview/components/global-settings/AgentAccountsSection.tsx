@@ -9,7 +9,7 @@ import type {
 	ClaudeSlotModel,
 	ClaudeSlotModels,
 } from "../../../shared/agent-accounts";
-import { CLAUDE_MODEL_SLOTS } from "../../../shared/agent-accounts";
+import { CLAUDE_MODEL_SLOTS, shortCodexWorkspaceId } from "../../../shared/agent-accounts";
 import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { toast } from "../../toast";
@@ -53,8 +53,19 @@ interface AddFlow {
 	verifying: boolean;
 }
 
-function IdentityBadges({ identity, hideEmail }: { identity: AgentAccountIdentity | null; hideEmail?: string }) {
+function IdentityBadges({
+	identity,
+	hideEmail,
+	kind,
+	t,
+}: {
+	identity: AgentAccountIdentity | null;
+	hideEmail?: string;
+	kind: AgentAccountKind;
+	t: TFunction;
+}) {
 	if (!identity) return null;
+	const workspaceId = kind === "codex" ? shortCodexWorkspaceId(identity) : null;
 	return (
 		<>
 			{identity.email && identity.email !== hideEmail ? (
@@ -62,6 +73,11 @@ function IdentityBadges({ identity, hideEmail }: { identity: AgentAccountIdentit
 			) : null}
 			{identity.organization ? (
 				<span className="text-fg-muted text-xs truncate">{identity.organization}</span>
+			) : null}
+			{workspaceId ? (
+				<span className="text-fg-3 text-[0.6875rem] font-mono px-1.5 py-0.5 bg-raised rounded shrink-0">
+					{t("settings.accountsWorkspace", { id: workspaceId })}
+				</span>
 			) : null}
 			{identity.planLabel ? (
 				<span className="text-accent text-xs px-1.5 py-0.5 bg-accent/10 rounded shrink-0">
@@ -95,6 +111,7 @@ function ApiProfileBadges({ api }: { api: AgentApiProfileInfo }) {
 }
 
 function AccountRow({
+	kind,
 	label,
 	identity,
 	api,
@@ -105,6 +122,7 @@ function AccountRow({
 	onRemove,
 	t,
 }: {
+	kind: AgentAccountKind;
 	label: string;
 	identity: AgentAccountIdentity | null;
 	api?: AgentApiProfileInfo | null;
@@ -128,7 +146,7 @@ function AccountRow({
 
 	return (
 		<div
-			className={`flex items-center gap-2.5 px-3 py-2 bg-elevated border rounded-lg transition-colors ${
+			className={`flex flex-wrap items-center gap-2.5 px-3 py-2 bg-elevated border rounded-lg transition-colors ${
 				isActive ? "border-accent/50" : "border-edge"
 			} ${onActivate && !isActive ? "cursor-pointer hover:bg-elevated-hover" : ""}`}
 			role={onActivate ? "button" : undefined}
@@ -147,78 +165,85 @@ function AccountRow({
 					isActive ? "border-accent bg-accent" : "border-fg-muted/50"
 				}`}
 			/>
-			{editing ? (
-				<input
-					type="text"
-					value={draft}
-					autoFocus
-					onChange={(event) => setDraft(event.target.value)}
-					onClick={(event) => event.stopPropagation()}
-					onBlur={commitRename}
-					onKeyDown={(event) => {
-						event.stopPropagation();
-						if (event.key === "Enter") commitRename();
-						if (event.key === "Escape") {
+			<div className="basis-40 min-w-0 flex-1 flex flex-wrap items-center gap-2">
+				{editing ? (
+					<input
+						type="text"
+						value={draft}
+						autoFocus
+						onChange={(event) => setDraft(event.target.value)}
+						onClick={(event) => event.stopPropagation()}
+						onBlur={commitRename}
+						onKeyDown={(event) => {
+							event.stopPropagation();
+							if (event.key === "Enter") commitRename();
+							if (event.key === "Escape") {
+								setDraft(label);
+								setEditing(false);
+							}
+						}}
+						className="flex-none w-48 max-w-full px-2 py-0.5 bg-base border border-edge rounded text-fg text-sm outline-none focus:border-accent/40"
+					/>
+				) : (
+					<span className="text-fg text-sm font-medium truncate">{label}</span>
+				)}
+				{api ? (
+					<ApiProfileBadges api={api} />
+				) : (
+					<IdentityBadges identity={identity} hideEmail={label} kind={kind} t={t} />
+				)}
+			</div>
+			<div className="ml-auto flex items-center justify-end gap-1 shrink-0">
+				{isActive ? (
+					<span className="text-success text-xs px-1.5 py-0.5 bg-success/15 rounded shrink-0">
+						{t("settings.accountsActive")}
+					</span>
+				) : null}
+				{onEditApi ? (
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							onEditApi();
+						}}
+						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-colors shrink-0"
+						title={t("settings.accountsEditApi")}
+						aria-label={t("settings.accountsEditApi")}
+					>
+						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\uf044"}
+						</span>
+					</button>
+				) : onRename && !editing ? (
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
 							setDraft(label);
-							setEditing(false);
-						}
-					}}
-					className="flex-none w-48 px-2 py-0.5 bg-base border border-edge rounded text-fg text-sm outline-none focus:border-accent/40"
-				/>
-			) : (
-				<span className="text-fg text-sm font-medium truncate">{label}</span>
-			)}
-			{api ? <ApiProfileBadges api={api} /> : <IdentityBadges identity={identity} hideEmail={label} />}
-			<span className="flex-1" />
-			{isActive ? (
-				<span className="text-success text-xs px-1.5 py-0.5 bg-success/15 rounded shrink-0">
-					{t("settings.accountsActive")}
-				</span>
-			) : null}
-			{onEditApi ? (
-				<button
-					type="button"
-					onClick={(event) => {
-						event.stopPropagation();
-						onEditApi();
-					}}
-					className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-colors shrink-0"
-					title={t("settings.accountsEditApi")}
-					aria-label={t("settings.accountsEditApi")}
-				>
-					<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-						{"\uf044"}
-					</span>
-				</button>
-			) : onRename && !editing ? (
-				<button
-					type="button"
-					onClick={(event) => {
-						event.stopPropagation();
-						setDraft(label);
-						setEditing(true);
-					}}
-					className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-colors shrink-0"
-					title={t("settings.accountsRename")}
-					aria-label={t("settings.accountsRename")}
-				>
-					<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-						{"\uf044"}
-					</span>
-				</button>
-			) : null}
-			{onRemove ? (
-				<button
-					type="button"
-					onClick={(event) => {
-						event.stopPropagation();
-						onRemove();
-					}}
-					className="text-danger text-xs hover:bg-danger/10 px-1.5 py-0.5 rounded transition-colors shrink-0"
-				>
-					{t("settings.accountsRemove")}
-				</button>
-			) : null}
+							setEditing(true);
+						}}
+						className="p-1 rounded text-fg-muted hover:text-fg hover:bg-raised-hover transition-colors shrink-0"
+						title={t("settings.accountsRename")}
+						aria-label={t("settings.accountsRename")}
+					>
+						<span className="text-[0.75rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\uf044"}
+						</span>
+					</button>
+				) : null}
+				{onRemove ? (
+					<button
+						type="button"
+						onClick={(event) => {
+							event.stopPropagation();
+							onRemove();
+						}}
+						className="text-danger text-xs hover:bg-danger/10 px-1.5 py-0.5 rounded transition-colors shrink-0"
+					>
+						{t("settings.accountsRemove")}
+					</button>
+				) : null}
+			</div>
 		</div>
 	);
 }
@@ -742,6 +767,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 					{accounts.map((account) => (
 						<AccountRow
 							key={account.id}
+							kind={kind}
 							label={account.label}
 							identity={account.identity}
 							api={account.api}
@@ -801,6 +827,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 				state.claude.accounts,
 				state.claude.activeId,
 				<AccountRow
+					kind="claude"
 					label={t("settings.accountsSystemLogin")}
 					identity={state.claude.systemIdentity}
 					isActive={state.claude.activeId === null}
@@ -820,12 +847,13 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 				state.codex.activeId,
 				null,
 				codexUnmanaged ? (
-					<div className="flex items-center gap-2.5 px-3 py-2 bg-elevated/50 border border-edge border-dashed rounded-lg">
+					<div className="flex flex-wrap items-center gap-2.5 px-3 py-2 bg-elevated/50 border border-edge border-dashed rounded-lg">
 						<span aria-hidden className="w-3.5 h-3.5 rounded-full border-2 border-warning/60 shrink-0" />
-						<span className="text-fg-2 text-sm whitespace-nowrap">{t("settings.accountsUnmanaged")}</span>
-						<IdentityBadges identity={codexUnmanaged} />
-						<span className="flex-1" />
-						<span className="text-fg-muted text-xs">{t("settings.accountsUnmanagedHint")}</span>
+						<div className="basis-40 min-w-0 flex-1 flex flex-wrap items-center gap-2">
+							<span className="text-fg-2 text-sm whitespace-nowrap">{t("settings.accountsUnmanaged")}</span>
+							<IdentityBadges identity={codexUnmanaged} kind="codex" t={t} />
+						</div>
+						<span className="ml-auto text-fg-muted text-xs">{t("settings.accountsUnmanagedHint")}</span>
 					</div>
 				) : null,
 			)}

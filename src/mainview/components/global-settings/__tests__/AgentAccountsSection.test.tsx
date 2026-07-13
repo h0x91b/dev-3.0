@@ -423,5 +423,6 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		expect(await screen.findByText("Unmanaged login")).toBeTruthy();
 		expect(screen.getByText("codex@example.com")).toBeTruthy();
+		expect(screen.getByText("Workspace acc-1")).toBeTruthy();
 	});
 });

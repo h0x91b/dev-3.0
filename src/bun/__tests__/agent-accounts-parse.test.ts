@@ -8,6 +8,7 @@ import {
 	parseClaudeIdentity,
 	parseCodexIdentity,
 	parseEnvLines,
+	shortCodexWorkspaceId,
 } from "../../shared/agent-accounts";
 
 function makeJwt(payload: Record<string, unknown>): string {
@@ -139,6 +140,19 @@ describe("parseCodexIdentity", () => {
 	it("returns null without tokens", () => {
 		expect(parseCodexIdentity({})).toBeNull();
 		expect(parseCodexIdentity(null)).toBeNull();
+	});
+
+	it("derives a compact display id from the selected ChatGPT workspace", () => {
+		expect(
+			shortCodexWorkspaceId({
+				email: "codex@example.com",
+				organization: null,
+				plan: "plus",
+				planLabel: "Plus",
+				accountId: "81b5a3a4-9199-40e2-bcde-a6d3ebc9d654",
+			}),
+		).toBe("81b5a3a4");
+		expect(shortCodexWorkspaceId(null)).toBeNull();
 	});
 });
 

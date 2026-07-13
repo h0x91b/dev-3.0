@@ -1,0 +1,1 @@
+Codex account management now identifies duplicate logins by ChatGPT workspace, so one email can keep multiple workspaces. Account rows and launch pickers show a short workspace ID, and duplicate errors name the workspace explicitly.

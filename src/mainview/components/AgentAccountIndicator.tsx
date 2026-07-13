@@ -7,6 +7,7 @@ import type {
 	AgentAccountsState,
 	AgentApiProfileInfo,
 } from "../../shared/agent-accounts";
+import { shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import type { CodingAgent } from "../../shared/types";
 import { api } from "../rpc";
 import { toast } from "../toast";
@@ -69,6 +70,7 @@ interface PopoverRow {
 	label: string;
 	sub: string | null;
 	planLabel: string | null;
+	workspaceLabel: string | null;
 	isApi: boolean;
 	isActive: boolean;
 	/** null = row is informational only (codex unmanaged login). */
@@ -161,6 +163,11 @@ function SwitcherPopover({
 					{row.sub && row.sub !== row.label ? (
 						<span className="text-fg-muted text-xs font-mono truncate">{row.sub}</span>
 					) : null}
+					{row.workspaceLabel ? (
+						<span className="text-fg-3 text-[0.625rem] font-mono px-1 py-px bg-raised rounded shrink-0">
+							{row.workspaceLabel}
+						</span>
+					) : null}
 					<span className="flex-1" />
 					{row.planLabel ? (
 						<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">{row.planLabel}</span>
@@ -249,6 +256,7 @@ export default function AgentAccountIndicator({
 	const fallbackLabel =
 		kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged");
 	const activeLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
+	const fallbackWorkspaceId = kind === "codex" ? shortCodexWorkspaceId(fallbackIdentity) : null;
 
 	const rows: PopoverRow[] = [];
 	// System-login row: selectable for BOTH kinds in local mode (codex now has a
@@ -260,6 +268,7 @@ export default function AgentAccountIndicator({
 			label: kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged"),
 			sub: fallbackIdentity?.email ?? null,
 			planLabel: identityBadge(fallbackIdentity),
+			workspaceLabel: fallbackWorkspaceId ? t("settings.accountsWorkspace", { id: fallbackWorkspaceId }) : null,
 			isApi: false,
 			isActive: effectiveSelectedId === null,
 			onSelect: isLocal
@@ -267,22 +276,28 @@ export default function AgentAccountIndicator({
 				: () => handleSelectGlobal("claude", null),
 		});
 	} else if (kindState.activeId === null && state.codex.currentIdentity) {
+		const unmanagedWorkspaceId = shortCodexWorkspaceId(state.codex.currentIdentity);
 		rows.push({
 			key: "unmanaged",
 			label: t("settings.accountsUnmanaged"),
 			sub: state.codex.currentIdentity.email,
 			planLabel: identityBadge(state.codex.currentIdentity),
+			workspaceLabel: unmanagedWorkspaceId
+				? t("settings.accountsWorkspace", { id: unmanagedWorkspaceId })
+				: null,
 			isApi: false,
 			isActive: true,
 			onSelect: null,
 		});
 	}
 	for (const account of kindState.accounts) {
+		const workspaceId = kind === "codex" ? shortCodexWorkspaceId(account.identity) : null;
 		rows.push({
 			key: account.id,
 			label: account.label,
 			sub: account.auth === "api" ? apiHost(account.api) : (account.identity?.email ?? null),
 			planLabel: account.auth === "api" ? null : identityBadge(account.identity),
+			workspaceLabel: workspaceId ? t("settings.accountsWorkspace", { id: workspaceId }) : null,
 			isApi: account.auth === "api",
 			isActive: account.id === effectiveSelectedId,
 			onSelect: isLocal
