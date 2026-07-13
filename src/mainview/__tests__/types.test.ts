@@ -350,8 +350,8 @@ describe("DEFAULT_AGENTS", () => {
 			"Standard [Medium]", "Standard [High]",
 		]);
 		expect(modesFor("gpt-5.6-sol")).toEqual([
-			"Bypass [X-High]", "Bypass [High]", "Bypass [Medium]",
-			"Standard [Medium]", "Standard [High]",
+			"Bypass [Low]", "Bypass [Medium]", "Bypass [High]", "Bypass [X-High]", "Bypass [Max]", "Bypass [Ultra]",
+			"Standard [Low]", "Standard [Medium]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
 			"Plan [High]", "Plan → Bypass [High]",
 		]);
 		expect(modesFor("gpt-5.5")).toEqual([

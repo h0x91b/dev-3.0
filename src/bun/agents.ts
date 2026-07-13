@@ -80,11 +80,6 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"codex-5.6-medium",
 	// Superseded by the compact Bypass-first preset matrix. Keep prerelease
 	// installs from retaining removed rows as if they were user-created.
-	"codex-5.6-sol-xhigh",
-	"codex-5.6-sol-max",
-	"codex-5.6-sol-ultra",
-	"codex-5.6-sol-max-bypass",
-	"codex-5.6-sol-ultra-bypass",
 	"codex-5.6-terra-xhigh",
 	// Luna now starts at Medium; Low did not provide a useful trade-off.
 	"codex-5.6-luna-low-bypass",

@@ -1,1 +1,1 @@
-Prioritize GPT-5.6 Luna X-High and Max Codex presets, trim Sol to its practical effort tiers, and place Terra last.
+Prioritize GPT-5.6 Luna X-High and Max Codex presets, expose every available effort tier for Sol, and place Terra last.

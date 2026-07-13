@@ -414,8 +414,8 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				"gpt-5.6-sol",
 				"GPT-5.6 Sol",
 				"codex-5.6-sol",
-				["xhigh", "high", "medium"],
-				["medium", "high"],
+				["low", "medium", "high", "xhigh", "max", "ultra"],
+				["low", "medium", "high", "xhigh", "max", "ultra"],
 			),
 			// Sol-only workflows follow the popular Bypass and Standard modes.
 			{
