@@ -15,7 +15,7 @@ import { ensureClaudeStatusLineSettings } from "./rate-limit-monitor";
 import { getActiveClaudeConfigDir, getActiveClaudeSessionEnv, getActiveCodexSessionEnv } from "./agent-accounts";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "./agent-skills";
-import { getAgentAdapter } from "../shared/agent-adapters/registry";
+import { getAgentAdapter, agentKey } from "../shared/agent-adapters/registry";
 import type { AdapterLaunchOptions, CodexLaunchRuntime } from "../shared/agent-adapters/types";
 import type { TemplateContext } from "../shared/agent-adapters/template";
 
@@ -319,34 +319,15 @@ export const DEV3_SYSTEM_PROMPT_GENERIC = GENERIC_SKILL_BODY;
  */
 export const DEV3_SYSTEM_PROMPT_CODEX = CODEX_SKILL_BODY;
 
-/** Returns true when the resolved base command is the Claude CLI. */
+/** Returns true when the resolved base command is the Claude CLI.
+ *  Retained for the Claude-only *feature* code that is orthogonal to the
+ *  per-agent launch/trust/hooks seam (managed accounts, statusLine, provider/
+ *  Bedrock, default env, MCP pre-approval). The codex/gemini/cursor/opencode
+ *  predicates were removed — their logic lives in the agent adapters
+ *  (src/shared/agent-adapters), selected via getAgentAdapter. */
 export function isClaudeCommand(baseCmd: string): boolean {
 	const name = baseCmd.split("/").pop() ?? "";
 	return name === "claude";
-}
-
-/** Returns true when the resolved base command is the Cursor Agent CLI. */
-export function isCursorCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "agent";
-}
-
-/** Returns true when the resolved base command is the Codex CLI. */
-export function isCodexCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "codex";
-}
-
-/** Returns true when the resolved base command is the Gemini CLI. */
-export function isGeminiCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "gemini";
-}
-
-/** Returns true when the resolved base command is the OpenCode CLI. */
-export function isOpenCodeCommand(baseCmd: string): boolean {
-	const name = baseCmd.split("/").pop() ?? "";
-	return name === "opencode";
 }
 
 let codexProfileLaunchFlagOverride: CodexProfileLaunchFlag | null = null;
@@ -565,7 +546,9 @@ async function applyCodexAccountEnv(
 	extraEnv: Record<string, string>,
 	accountId?: string | null,
 ): Promise<void> {
-	if (!isCodexCommand(baseCmd) || extraEnv.CODEX_HOME) return;
+	// Codex account switcher is an orthogonal feature (kept in front of the
+	// adapter seam); a plain command-name gate suffices here.
+	if (agentKey(baseCmd) !== "codex" || extraEnv.CODEX_HOME) return;
 	try {
 		const accountEnv = await getActiveCodexSessionEnv(accountId);
 		for (const [key, value] of Object.entries(accountEnv)) {
