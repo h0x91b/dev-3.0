@@ -204,4 +204,69 @@ describe("RateLimitIndicator", () => {
 		expect(await screen.findByText("Work account")).toBeTruthy();
 		expect(screen.getByText("Pro")).toBeTruthy();
 	});
+
+	it("shows the workspace/organization name so same-email accounts are distinguishable", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		mockedAccounts.mockResolvedValue({
+			claude: {
+				accounts: [],
+				activeId: null,
+				systemIdentity: {
+					email: "arseny@wix.com",
+					organization: "Acme Workspace",
+					plan: "default_claude_max_5x",
+					planLabel: "Max 5x",
+					accountId: "uuid-1",
+				},
+			},
+			codex: { accounts: [], activeId: null, currentIdentity: null },
+		});
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		expect(await screen.findByText("arseny@wix.com")).toBeTruthy();
+		expect(screen.getByText("· Acme Workspace")).toBeTruthy();
+	});
+
+	it("collapses an 'email (workspace)' auto-label into a single 'email · workspace' row", async () => {
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [
+				{
+					source: "codex",
+					capturedAt: Date.now(),
+					windows: [{ id: "monthly_credits", usedPercent: 10, resetsAt: Date.now() + 86_400_000, windowMinutes: null }],
+					creditsBalance: null,
+					monthlyCredits: { limit: 8824, used: 100, remainingPercent: 98, resetsAt: Date.now() + 86_400_000 },
+					planType: "enterprise_cbp_usage_based",
+				},
+			],
+		});
+		mockedAccounts.mockResolvedValue({
+			claude: { accounts: [], activeId: null, systemIdentity: null },
+			codex: {
+				accounts: [
+					{
+						id: "acc-cdx",
+						kind: "codex",
+						label: "arsenyp@wix.com (Wix)",
+						identity: { email: "arsenyp@wix.com", organization: "Wix", plan: "enterprise", planLabel: "Enterprise", accountId: "acc-cdx" },
+						auth: "oauth",
+						api: null,
+						createdAt: 0,
+					},
+				],
+				activeId: "acc-cdx",
+				currentIdentity: null,
+			},
+		});
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		// The verbose "email (workspace)" parenthetical is collapsed to email …
+		expect(await screen.findByText("arsenyp@wix.com")).toBeTruthy();
+		expect(screen.queryByText("arsenyp@wix.com (Wix)")).toBeNull();
+		// … and the workspace shows exactly once as the chip.
+		expect(screen.getAllByText("· Wix")).toHaveLength(1);
+	});
 });

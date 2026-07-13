@@ -23,6 +23,12 @@ const SOURCE_NAMES: Record<string, string> = { claude: "Claude", codex: "Codex" 
 interface AccountLine {
 	/** Email / user-set label of the active account (null when identity unknown). */
 	name: string | null;
+	/** Login email, when known — used to collapse the auto-generated
+	 *  "email (workspace)" label into a consistent "email · workspace" row. */
+	email: string | null;
+	/** Organization / workspace name, when known. Disambiguates two accounts that
+	 *  share the same login email but live in different workspaces. */
+	organization: string | null;
 	/** Plan/tier badge (e.g. "Max 5x", "Plus"), when known. */
 	planLabel: string | null;
 	/** Active account is an API/custom-endpoint profile rather than an OAuth login. */
@@ -42,13 +48,21 @@ function resolveAccount(source: RateLimitSource, state: AgentAccountsState | nul
 	if (active) {
 		return {
 			name: active.label,
+			email: active.auth === "api" ? null : (active.identity?.email ?? null),
+			organization: active.auth === "api" ? null : (active.identity?.organization ?? null),
 			planLabel: active.auth === "api" ? null : (active.identity?.planLabel ?? null),
 			isApi: active.auth === "api",
 		};
 	}
 	const fallback = source === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
 	if (fallback) {
-		return { name: fallback.email, planLabel: fallback.planLabel, isApi: false };
+		return {
+			name: fallback.email,
+			email: fallback.email,
+			organization: fallback.organization,
+			planLabel: fallback.planLabel,
+			isApi: false,
+		};
 	}
 	return null;
 }
@@ -155,16 +169,31 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	return (
 		<Tooltip
 			content={t("rateLimits.tooltipTitle")}
+			wide
 			detail={
 				<div className="flex flex-col gap-2">
 					{report.snapshots.map((snap) => {
 						const account = resolveAccount(snap.source, accounts);
 						const rows = snapshotRows(snap, now, t, locale);
+						// Collapse the auto-generated "email (workspace)" label into a plain
+						// email so every row reads consistently as "email · workspace" (the
+						// chip carries the workspace). A user-custom label is left untouched.
+						const displayName =
+							account?.email && account.organization && account.name === `${account.email} (${account.organization})`
+								? account.email
+								: (account?.name ?? null);
+						const showOrg =
+							!!account?.organization &&
+							account.organization !== displayName &&
+							!(displayName ?? "").endsWith(`(${account.organization})`);
 						return (
 							<div key={snap.source} className="flex flex-col gap-0.5">
 								<div className="flex items-center gap-1.5">
-									<span className="text-fg-2 font-medium">{SOURCE_NAMES[snap.source] ?? snap.source}</span>
-									{account?.name && <span className="text-fg-3">{account.name}</span>}
+									<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[snap.source] ?? snap.source}</span>
+									{displayName && <span className="text-fg-3">{displayName}</span>}
+									{showOrg && (
+										<span className="text-fg-muted whitespace-nowrap shrink-0">· {account?.organization}</span>
+									)}
 									{account?.planLabel && (
 										<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded">
 											{account.planLabel}

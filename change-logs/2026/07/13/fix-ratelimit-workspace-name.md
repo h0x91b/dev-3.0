@@ -1,0 +1,1 @@
+The Agent rate-limit popup now shows each account's workspace/organization name as a consistent "email · workspace" row, so two accounts sharing the same email in different workspaces are no longer indistinguishable, and the popup is widened so long rows fit on one line.
