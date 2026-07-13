@@ -1,0 +1,1 @@
+Disabled Git actions now explain their blocking state through the styled tooltip, including uncommitted changes and missing local commits. Disabled controls remain non-interactive while their tooltips work on hover and keyboard focus.
