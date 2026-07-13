@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,6 +80,19 @@ function seedCodexLogin(accountId: string) {
 	writeFileSync(join(paths.codexHome, "auth.json"), codexAuth(accountId));
 }
 
+function mockCodexWorkspaceNames(workspaces: Array<{ id: string; name: string }>) {
+	vi.mocked(globalThis.fetch).mockResolvedValue(
+		new Response(
+			JSON.stringify({
+				accounts: Object.fromEntries(
+					workspaces.map(({ id, name }) => [id, { account: { account_id: id, name } }]),
+				),
+			}),
+			{ status: 200, headers: { "content-type": "application/json" } },
+		),
+	);
+}
+
 beforeEach(() => {
 	root = mkdtempSync(join(tmpdir(), "dev3-agent-accounts-"));
 	paths = {
@@ -88,9 +101,11 @@ beforeEach(() => {
 		claudeJson: join(root, ".claude.json"),
 		codexHome: join(root, ".codex"),
 	};
+	vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
 });
 
 afterEach(() => {
+	vi.unstubAllGlobals();
 	rmSync(root, { recursive: true, force: true });
 });
 
@@ -281,12 +296,56 @@ describe("codex accounts", () => {
 		expect(state.codex.accounts).toHaveLength(1);
 	});
 
+	it("resolves and persists the selected ChatGPT workspace name", async () => {
+		mockCodexWorkspaceNames([{ id: "workspace-base44", name: "Base44 ChatGPT Enterprise" }]);
+		const { accountId } = await prepareCodexLogin(paths);
+		writeFileSync(
+			join(codexAccountDir(accountId, paths), "auth.json"),
+			codexAuth("workspace-base44", "shared@example.com"),
+		);
+
+		const account = await completeCodexLogin(accountId, paths);
+
+		expect(account.identity?.organization).toBe("Base44 ChatGPT Enterprise");
+		const registry = JSON.parse(readFileSync(join(paths.accountsDir, "accounts.json"), "utf-8"));
+		expect(registry.codex.accounts[0].workspaceName).toBe("Base44 ChatGPT Enterprise");
+	});
+
 	it("completeCodexLogin rejects a login that duplicates an existing account", async () => {
 		seedCodexLogin("acc-1");
 		await importCurrentCodexAccount(paths);
 		const { accountId } = await prepareCodexLogin(paths);
 		writeFileSync(join(codexAccountDir(accountId, paths), "auth.json"), codexAuth("acc-1"));
 		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(/already added/);
+	});
+
+	it("names the selected workspace in a duplicate error", async () => {
+		mockCodexWorkspaceNames([{ id: "b8e0e9ae-workspace", name: "Base44 ChatGPT Enterprise" }]);
+		seedCodexLogin("b8e0e9ae-workspace");
+		await importCurrentCodexAccount(paths);
+		const { accountId } = await prepareCodexLogin(paths);
+		writeFileSync(
+			join(codexAccountDir(accountId, paths), "auth.json"),
+			codexAuth("b8e0e9ae-workspace", "shared@example.com"),
+		);
+
+		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(
+			'Codex workspace "Base44 ChatGPT Enterprise" (b8e0e9ae) is already added as',
+		);
+	});
+
+	it("backfills readable names for legacy Codex accounts", async () => {
+		seedCodexLogin("workspace-wix");
+		const imported = await importCurrentCodexAccount(paths);
+		expect(imported.identity?.organization).toBeNull();
+		await renameAgentAccount("codex", imported.id, "workspace-wix@example.com (Workspace workspac)", paths);
+
+		mockCodexWorkspaceNames([{ id: "workspace-wix", name: "Wix" }]);
+		const state = await listAgentAccounts(paths);
+
+		expect(state.codex.accounts[0]?.identity?.organization).toBe("Wix");
+		expect(state.codex.accounts[0]?.label).toBe("workspace-wix@example.com (Wix)");
+		expect(state.codex.currentIdentity?.organization).toBe("Wix");
 	});
 
 	it("treats the Codex workspace id as authoritative when organization metadata changes", async () => {
@@ -303,7 +362,7 @@ describe("codex accounts", () => {
 			codexAuth("workspace-same", "shared@example.com", {}, [{ id: "org-2", title: "Personal" }]),
 		);
 
-		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(/Codex workspace is already added/);
+		await expect(completeCodexLogin(accountId, paths)).rejects.toThrow(/Codex workspace .* is already added/);
 	});
 
 	it("allows the same Codex email in different ChatGPT workspaces", async () => {

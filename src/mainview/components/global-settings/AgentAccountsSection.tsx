@@ -66,17 +66,22 @@ function IdentityBadges({
 }) {
 	if (!identity) return null;
 	const workspaceId = kind === "codex" ? shortCodexWorkspaceId(identity) : null;
+	const workspace = kind === "codex" ? identity.organization ?? workspaceId : null;
 	return (
 		<>
 			{identity.email && identity.email !== hideEmail ? (
 				<span className="text-fg-3 text-xs font-mono truncate">{identity.email}</span>
 			) : null}
-			{identity.organization ? (
+			{kind !== "codex" && identity.organization ? (
 				<span className="text-fg-muted text-xs truncate">{identity.organization}</span>
 			) : null}
-			{workspaceId ? (
-				<span className="text-fg-3 text-[0.6875rem] font-mono px-1.5 py-0.5 bg-raised rounded shrink-0">
-					{t("settings.accountsWorkspace", { id: workspaceId })}
+			{workspace ? (
+				<span
+					className={`text-fg-3 text-[0.6875rem] px-1.5 py-0.5 bg-raised rounded max-w-full truncate ${
+						identity.organization ? "" : "font-mono"
+					}`}
+				>
+					{t("settings.accountsWorkspace", { id: workspace })}
 				</span>
 			) : null}
 			{identity.planLabel ? (

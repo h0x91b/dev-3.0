@@ -241,7 +241,7 @@ describe("AgentAccountIndicator", () => {
 		expect(screen.getAllByText("API").length).toBeGreaterThan(0);
 	});
 
-	it("shows the Codex workspace id in the account popover", async () => {
+	it("shows the readable Codex workspace name in the account popover", async () => {
 		mockedApi.request.listAgentAccounts.mockResolvedValue(
 			makeState({
 				codex: {
@@ -271,6 +271,6 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(codexAgent);
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		expect(screen.getByText("Workspace 81b5a3a4")).toBeTruthy();
+		expect(screen.getByText("Workspace Wix")).toBeTruthy();
 	});
 });

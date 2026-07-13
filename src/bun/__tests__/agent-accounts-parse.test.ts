@@ -121,11 +121,27 @@ describe("parseCodexIdentity", () => {
 		});
 		expect(identity).toEqual({
 			email: "codex@example.com",
-			organization: "Acme Org",
+			organization: null,
 			plan: "plus",
 			planLabel: "Plus",
 			accountId: "acc-1",
 		});
+	});
+
+	it("does not mistake the default API organization for the selected ChatGPT workspace", () => {
+		const identity = parseCodexIdentity({
+			tokens: {
+				id_token: makeJwt({
+					"https://api.openai.com/auth": {
+						chatgpt_account_id: "workspace-base44",
+						organizations: [{ id: "org-wix", title: "Wix", is_default: true }],
+					},
+				}),
+				account_id: "workspace-base44",
+			},
+		});
+
+		expect(identity).toMatchObject({ accountId: "workspace-base44", organization: null });
 	});
 
 	it("falls back to the JWT chatgpt_account_id when tokens.account_id is missing", () => {

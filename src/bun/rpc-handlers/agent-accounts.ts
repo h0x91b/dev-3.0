@@ -5,16 +5,29 @@
 
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "../../shared/agent-accounts";
 import type { ClaudeApiProfileDraft } from "../agent-accounts";
-import { parseEnvLines } from "../../shared/agent-accounts";
+import { parseEnvLines, shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import * as accounts from "../agent-accounts";
 import { log } from "./shared";
+
+function accountLogDetails(account: AgentAccount) {
+	return {
+		id: account.id.slice(0, 8),
+		label: account.label,
+		workspaceId: account.kind === "codex" ? shortCodexWorkspaceId(account.identity) : null,
+		workspaceName: account.kind === "codex" ? account.identity?.organization ?? null : null,
+	};
+}
 
 async function listAgentAccounts(): Promise<AgentAccountsState> {
 	log.info("→ listAgentAccounts");
 	const state = await accounts.listAgentAccounts();
 	log.info("← listAgentAccounts", {
 		claude: state.claude.accounts.length,
-		codex: state.codex.accounts.length,
+		codex: {
+			count: state.codex.accounts.length,
+			activeId: state.codex.activeId?.slice(0, 8) ?? null,
+			accounts: state.codex.accounts.map(accountLogDetails),
+		},
 	});
 	return state;
 }
@@ -25,7 +38,7 @@ async function importAgentAccount(params: { kind: AgentAccountKind }): Promise<A
 		params.kind === "claude"
 			? await accounts.importCurrentClaudeAccount()
 			: await accounts.importCurrentCodexAccount();
-	log.info("← importAgentAccount", { id: account.id, label: account.label });
+	log.info("← importAgentAccount", accountLogDetails(account));
 	return account;
 }
 
@@ -97,12 +110,21 @@ async function prepareAgentAccountLogin(params: { kind: AgentAccountKind }): Pro
 async function completeAgentAccountLogin(params: { kind: AgentAccountKind; accountId?: string | null }): Promise<AgentAccount> {
 	log.info("→ completeAgentAccountLogin", params);
 	if (!params.accountId) throw new Error(`accountId is required for ${params.kind} login verification`);
-	const account =
-		params.kind === "claude"
-			? await accounts.completeClaudeLogin(params.accountId)
-			: await accounts.completeCodexLogin(params.accountId);
-	log.info("← completeAgentAccountLogin", { id: account.id, label: account.label });
-	return account;
+	try {
+		const account =
+			params.kind === "claude"
+				? await accounts.completeClaudeLogin(params.accountId)
+				: await accounts.completeCodexLogin(params.accountId);
+		log.info("← completeAgentAccountLogin", accountLogDetails(account));
+		return account;
+	} catch (error) {
+		log.warn("← completeAgentAccountLogin failed", {
+			kind: params.kind,
+			pendingAccountId: params.accountId.slice(0, 8),
+			error: String(error),
+		});
+		throw error;
+	}
 }
 
 async function setActiveAgentAccount(params: { kind: AgentAccountKind; accountId: string | null }): Promise<void> {
