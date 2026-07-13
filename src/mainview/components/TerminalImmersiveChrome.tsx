@@ -10,14 +10,14 @@ export default function TerminalImmersiveChrome({ onExit }: TerminalImmersiveChr
 
 	return (
 		<div
-			className="h-9 min-h-9 flex-shrink-0 flex items-center justify-between gap-3 border-b border-warning/40 bg-warning/10 px-3"
+			className="h-11 min-h-11 md:h-7 md:min-h-7 flex-shrink-0 flex items-center justify-between gap-2 border-b border-edge bg-raised px-2.5"
 			data-testid="terminal-immersive-chrome"
 		>
-			<span className="text-warning text-xs font-semibold tracking-wide" aria-label="dev3">dev3</span>
+			<span className="text-fg-3 text-[0.625rem] font-semibold tracking-wide" aria-label="dev3">dev3</span>
 			<button
 				type="button"
 				onClick={onExit}
-				className="min-w-[12rem] rounded-md bg-warning px-6 py-1 text-xs font-semibold text-hint-fg transition-colors hover:bg-warning/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60"
+				className="min-w-[12rem] h-11 min-h-11 md:h-6 md:min-h-6 rounded-md border border-edge-active bg-elevated px-4 text-xs font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg focus-visible:outline-none"
 				aria-label={t("infoPanel.exitFullScreen")}
 			>
 				{t("infoPanel.exitFullScreen")}

@@ -446,8 +446,8 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.taskOpenMode.title",
 		bodyKey: "tip.taskOpenMode.body",
 		icon: "\u{F0124}", // nf-md-fullscreen
-		score: 2,
-		contexts: ["board"],
+		score: 4,
+		contexts: ["board", "terminal"],
 	},
 	{
 		id: "fork-branch-support",
