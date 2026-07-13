@@ -51,15 +51,19 @@ export function exitAppNotRunning(
 	let detail: string;
 
 	if (opts.stage === "connect") {
-		// A socket file was found but the live connection failed. The app is
-		// almost certainly running — the usual cause is the calling agent's
-		// sandbox (Claude Code seatbelt / Codex) blocking the Unix-socket connect,
-		// not the app being down (issue #726). Say so instead of "start the app".
+		// A socket file was found but the live connection failed. Two causes:
+		// the calling agent's sandbox (Claude Code seatbelt / Codex) blocking the
+		// Unix-socket connect (issue #726), or the socket belonging to an app
+		// instance that just exited — e.g. a dev-channel dev3 build that was
+		// hosted inside a dev-server session being stopped (#910/#920). Say both
+		// instead of "start the app".
 		message = "cannot reach the dev3.0 app";
 		const where = opts.socketPath ? ` (${opts.socketPath})` : "";
 		detail =
 			`A dev3.0 socket was found${where}, but the live connection was refused or blocked.\n` +
-			"The app is likely running; your agent's sandbox may be blocking the Unix socket.\n" +
+			"If the selected instance just exited (e.g. a dev build hosted in a dev-server\n" +
+			"session you stopped), its socket may be stale — simply retry the command.\n" +
+			"Otherwise the app is likely running and your agent's sandbox may be blocking the Unix socket:\n" +
 			"  • Claude Code: add the dev3 sockets dir to sandbox.network.allowUnixSockets in\n" +
 			"    ~/.claude/settings.json, then fully restart Claude Code (resume does not reapply it).\n" +
 			"  • Codex (>= 0.119): under [permissions.<profile>.network.unix_sockets] set the\n" +

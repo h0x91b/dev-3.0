@@ -28,6 +28,23 @@ function devServerSessionName(taskId: string): string {
 	return `dev3-dev-${taskId.slice(0, 8)}`;
 }
 
+// True when THIS app process was launched from inside the given task's context.
+// dev-3.0 dogfooding: the devScript (`bun run dev`) boots a dev3 app instance
+// inside the task's dev tmux session, and that session's environment carries
+// DEV3_TASK_ID (set by runDevServer below). Tearing that session down reaps its
+// full process tree — including this very process — so a stop/restart served by
+// such a "self-hosted" instance must never run the teardown before the RPC
+// reply is written, or the reply never arrives ("Empty response from server" /
+// refused reconnects; issues #910/#920, decision 128).
+function isSelfHostedByTask(taskId: string): boolean {
+	return !!process.env.DEV3_TASK_ID && process.env.DEV3_TASK_ID === taskId;
+}
+
+// Delay before a self-hosted instance tears its own host session down: long
+// enough for the already-returned RPC reply to flush to the CLI, short enough
+// that the session is gone before anyone re-inspects it.
+const SELF_HOSTED_STOP_ACK_MS = 500;
+
 async function isDevServerRunning(taskId: string, socket: string): Promise<boolean> {
 	const devSession = devServerSessionName(taskId);
 	// spawnTmux so a launch-time tmux failure surfaces as a typed TmuxSpawnError
@@ -863,6 +880,14 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 		if (await isDevServerRunning(task.id, socket)) {
+			if (isSelfHostedByTask(task.id)) {
+				throw new Error(
+					"The running dev server hosts the dev3 app instance serving this request "
+					+ "(dev-3.0 running inside dev-3.0) — killing it would drop this reply. "
+					+ "Route the command through the primary app instance, or run "
+					+ "\"dev3 dev-server stop\" first and then \"dev3 dev-server start\".",
+				);
+			}
 			await killDevServerSession(task.id, socket, task.worktreePath);
 		}
 
@@ -1013,8 +1038,26 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 		const task = await data.getTask(project, params.taskId);
 		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-		await killDevServerSession(task.id, socket, task.worktreePath);
 		const taskSession = `dev3-${task.id.slice(0, 8)}`;
+
+		if (isSelfHostedByTask(task.id)) {
+			// Tearing the session down now would reap this very process before the
+			// reply is written. Reply first with the projected stopped state, tear
+			// down once the reply has flushed. killDevServerSession is idempotent,
+			// so a replayed stop via the primary instance finishes any leftovers.
+			log.warn("stopDevServer: target session hosts this instance — acking before teardown", {
+				taskId: task.id.slice(0, 8),
+			});
+			const status = await buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
+			setTimeout(() => {
+				killDevServerSession(task.id, socket, task.worktreePath)
+					.then(() => spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited)
+					.catch((err) => log.error("Deferred self-hosted dev-server teardown failed", { error: String(err) }));
+			}, SELF_HOSTED_STOP_ACK_MS);
+			return { ...status, running: false, viewerPaneId: null, panePids: [], devPorts: [], resourceUsage: undefined };
+		}
+
+		await killDevServerSession(task.id, socket, task.worktreePath);
 		spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited.catch(() => {});
 		log.info("← stopDevServer done");
 		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
@@ -1035,6 +1078,18 @@ const DEV_SERVER_RESTART_DELAY_MS = 250;
 
 export async function restartDevServer(params: { taskId: string; projectId: string }): Promise<DevServerStatus> {
 	log.info("→ restartDevServer", params);
+	if (isSelfHostedByTask(params.taskId)) {
+		// A self-hosted instance cannot outlive the teardown a restart requires —
+		// the start half would never run (this was the "restart left the server
+		// down" failure). Refuse loudly; the CLI's failover (or a re-run) routes
+		// the restart to the primary instance, which can do it whole.
+		throw new Error(
+			"This dev server hosts the dev3 app instance serving this request "
+			+ "(dev-3.0 running inside dev-3.0) — it cannot restart itself. "
+			+ "Retry the command so it routes to the primary app instance, or run "
+			+ "\"dev3 dev-server stop\" followed by \"dev3 dev-server start\".",
+		);
+	}
 	await stopDevServer(params);
 	await new Promise((resolve) => setTimeout(resolve, DEV_SERVER_RESTART_DELAY_MS));
 	const status = await runDevServer(params);

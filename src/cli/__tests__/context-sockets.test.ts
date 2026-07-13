@@ -92,6 +92,91 @@ describe("detectContext socket selection", () => {
 		expect(killSpy).toHaveBeenCalledWith(44818, 0);
 	});
 
+	// A "guest" instance (a dev3 app launched from inside a task context — e.g.
+	// the dev-channel build a devScript boots inside the dev-server tmux session)
+	// writes a meta sidecar with hostTaskId. Its socket is the newest by mtime,
+	// but routing control commands to it is what killed stop/restart: the guest
+	// reaps its own process tree mid-request (issues #910/#920).
+	it("deprioritizes guest sockets (meta hostTaskId) even when they are newest", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockImplementation((path: unknown) => ({
+			mtimeMs: String(path).endsWith("67566.sock") ? 200 : 100,
+		}));
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: "aabbccdd-1111-2222-3333-444444444444", startedAt: "2026-07-13T00:00:00Z" });
+			}
+			return baseRead(path, ...rest);
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx).not.toBeNull();
+		expect(ctx!.socketPath).toBe(`${SOCKETS_DIR}/44818.sock`);
+	});
+
+	it("still returns a guest socket when it is the only live one", async () => {
+		mockReaddirSync.mockReturnValue(["67566.sock"]);
+		mockStatSync.mockReturnValue({ mtimeMs: 200 });
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: "aabbccdd-1111-2222-3333-444444444444", startedAt: "2026-07-13T00:00:00Z" });
+			}
+			return baseRead(path, ...rest);
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx).not.toBeNull();
+		expect(ctx!.socketPath).toBe(`${SOCKETS_DIR}/67566.sock`);
+	});
+
+	// Sandbox flavor of #910: process.kill(pid, 0) is EPERM-blocked, so even a
+	// DEAD guest's leftover socket stays a candidate. The primary must still win.
+	it("prefers a primary candidate over a guest candidate when signals are blocked", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockImplementation((path: unknown) => ({
+			mtimeMs: String(path).endsWith("67566.sock") ? 200 : 100,
+		}));
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: "aabbccdd-1111-2222-3333-444444444444", startedAt: "2026-07-13T00:00:00Z" });
+			}
+			return baseRead(path, ...rest);
+		});
+		killSpy.mockImplementation((_pid: number) => {
+			const error = new Error("blocked") as NodeJS.ErrnoException;
+			error.code = "EPERM";
+			throw error;
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx).not.toBeNull();
+		expect(ctx!.socketPath).toBe(`${SOCKETS_DIR}/44818.sock`);
+	});
+
+	// Failover discovery for devServer.* commands: the socket that just died
+	// mid-request must be excludable, or the sandbox candidate fallback keeps
+	// returning the same dead socket forever.
+	it("discoverSocketExcluding skips the excluded socket path", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockImplementation((path: unknown) => ({
+			mtimeMs: String(path).endsWith("67566.sock") ? 200 : 100,
+		}));
+
+		const { discoverSocketExcluding } = await import("../context");
+		const found = discoverSocketExcluding([`${SOCKETS_DIR}/67566.sock`]);
+
+		expect(found).toBe(`${SOCKETS_DIR}/44818.sock`);
+	});
+
 	it("resolveSocketPathWithRetry returns a socket on the first successful probe", async () => {
 		mockReaddirSync.mockReturnValue(["999.sock"]);
 		mockStatSync.mockReturnValue({ mtimeMs: 100 });

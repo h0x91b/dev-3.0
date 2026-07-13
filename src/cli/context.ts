@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 import type { Project } from "../shared/types";
+import { parseSocketMeta, socketMetaFileName } from "../shared/socket-meta";
 
 const HOME = process.env.HOME || "/tmp";
 const DEV3_HOME = `${HOME}/.dev3.0`;
@@ -278,9 +279,33 @@ export function detectContextDiagnostics(cwd: string = process.cwd()): string {
 }
 
 /**
- * Find any live socket in a given sockets directory.
+ * True when the socket's meta sidecar marks a "guest" instance — a dev3 app
+ * launched from inside a task context (`hostTaskId` set): the dev-channel build
+ * a devScript boots inside the dev-server tmux session, or a headless
+ * `dev3 remote` started from an agent pane. Guests share the data dir with the
+ * primary app but must not win discovery: routing a stop/restart into a guest
+ * hosted by the very dev session being stopped kills it mid-request (the
+ * chronic "Empty response from server" / refused-socket failures, #910/#920).
+ * No/corrupt sidecar (incl. sockets from older builds) means "primary".
  */
-function discoverSocketIn(socketsDir: string): string | null {
+function isGuestSocket(socketsDir: string, pid: number): boolean {
+	try {
+		const meta = parseSocketMeta(readFileSync(`${socketsDir}/${socketMetaFileName(pid)}`, "utf-8"));
+		return meta?.hostTaskId != null;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Find any live socket in a given sockets directory. Primary-instance sockets
+ * are preferred over guest sockets (see isGuestSocket); within each group the
+ * newest mtime (then highest pid) wins. `exclude` skips sockets that already
+ * failed this invocation (e.g. died mid-request) — vital in sandboxed envs
+ * where liveness probes are EPERM-blocked and a dead socket would otherwise be
+ * re-picked forever.
+ */
+function discoverSocketIn(socketsDir: string, exclude?: ReadonlySet<string>): string | null {
 	if (!existsSync(socketsDir)) return null;
 
 	const entries = readdirSync(socketsDir)
@@ -289,16 +314,18 @@ function discoverSocketIn(socketsDir: string): string | null {
 			const pid = parseInt(file.replace(".sock", ""), 10);
 			if (isNaN(pid)) return null;
 			const socketPath = `${socketsDir}/${file}`;
+			if (exclude?.has(socketPath)) return null;
 			let mtimeMs = 0;
 			try {
 				mtimeMs = statSync(socketPath).mtimeMs;
 			} catch {
 				mtimeMs = 0;
 			}
-			return { pid, socketPath, mtimeMs };
+			return { pid, socketPath, mtimeMs, guest: isGuestSocket(socketsDir, pid) };
 		})
-		.filter((entry): entry is { pid: number; socketPath: string; mtimeMs: number } => entry !== null)
+		.filter((entry): entry is { pid: number; socketPath: string; mtimeMs: number; guest: boolean } => entry !== null)
 		.sort((a, b) => {
+			if (a.guest !== b.guest) return a.guest ? 1 : -1;
 			if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs;
 			return b.pid - a.pid;
 		});
@@ -329,6 +356,16 @@ function discoverSocketIn(socketsDir: string): string | null {
  */
 export function discoverSocket(): string | null {
 	return discoverSocketIn(SOCKETS_DIR);
+}
+
+/**
+ * Re-discovery for instance failover: find a live socket that is NOT one of the
+ * given paths. Used by idempotent `devServer.*` commands when the instance
+ * serving the request died mid-flight (its reply never arrived, or reconnects
+ * are refused) — the replay must reach a DIFFERENT, surviving instance.
+ */
+export function discoverSocketExcluding(excludePaths: string[]): string | null {
+	return discoverSocketIn(SOCKETS_DIR, new Set(excludePaths));
 }
 
 /**
@@ -399,7 +436,8 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
 				const code = (e as NodeJS.ErrnoException).code;
 				state = code === "EPERM" ? "EPERM (sandboxed — cannot probe, may be alive)" : "process dead (stale socket)";
 			}
-			lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}`);
+			const guestTag = !isNaN(pid) && isGuestSocket(SOCKETS_DIR, pid) ? " [guest instance — deprioritized]" : "";
+			lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}${guestTag}`);
 		}
 	}
 
