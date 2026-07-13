@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { Dispatch, MutableRefObject } from "react";
-import type { CodingAgent, Project, SharedArtifact, Task } from "../../shared/types";
+import type { Project, SharedArtifact, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
@@ -33,7 +33,6 @@ function TaskWorkspaceView({
 	artifactViewer,
 	onCloseArtifactViewer,
 }: TaskWorkspaceViewProps) {
-	const [agents, setAgents] = useState<CodingAgent[]>([]);
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
 	const inlineDiff = useTaskInlineDiffState(taskId);
@@ -61,12 +60,6 @@ function TaskWorkspaceView({
 		};
 	}, [projectId, dispatch]);
 
-	useEffect(() => {
-		const getAgents = api.request.getAgents;
-		if (typeof getAgents !== "function") return;
-		getAgents().then(setAgents).catch(() => {});
-	}, []);
-
 	// The inline diff opens in-place (not a route) — fire its page view once per
 	// open so the diff surface is visible in analytics like any other screen.
 	// Use the human-readable seq id (e.g. "981-1"), falling back to the raw id.
@@ -85,7 +78,6 @@ function TaskWorkspaceView({
 					dispatch={dispatch}
 					navigate={navigate}
 					tasks={tasks}
-					agents={agents}
 					isFullPage
 					onOpenInlineDiff={inlineDiff.open}
 				/>

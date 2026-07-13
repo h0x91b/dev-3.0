@@ -2,7 +2,7 @@ import { fireEvent, render, screen, act, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import TaskInfoPanel from "../TaskInfoPanel";
 import { I18nProvider } from "../../i18n";
-import type { CodingAgent, Task, Project, BranchStatus, DevServerStatus, Label } from "../../../shared/types";
+import type { Task, Project, BranchStatus, DevServerStatus, Label } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
@@ -121,15 +121,6 @@ const project: Project = {
 	labels: [label1, label2],
 };
 
-const claudeAgent: CodingAgent = {
-	id: "builtin-claude",
-	name: "Claude",
-	baseCommand: "claude",
-	isDefault: true,
-	configurations: [{ id: "claude-default", name: "Default" }],
-	defaultConfigId: "claude-default",
-};
-
 function makeTask(overrides?: Partial<Task>): Task {
 	return {
 		id: "t1",
@@ -192,7 +183,6 @@ function renderPanel(
 		navigate?: (route: Route) => void;
 		project?: Project;
 		tasks?: Task[];
-		agents?: CodingAgent[];
 		isFullPage?: boolean;
 		onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 	},
@@ -210,7 +200,6 @@ function renderPanel(
 				dispatch={dispatch}
 				navigate={navigate}
 				tasks={opts?.tasks}
-				agents={opts?.agents}
 				isFullPage={opts?.isFullPage}
 				onOpenInlineDiff={opts?.onOpenInlineDiff}
 			/>
@@ -239,18 +228,18 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("collapsed view (default)", () => {
-		it("shows the live variant switcher and navigates to another chip", async () => {
+		it("shows numbered status chips without agent glyphs and navigates to another chip", async () => {
 			const current = makeTask({ id: "t1", title: "First attempt", groupId: "group-1", variantIndex: 1, agentId: "builtin-claude", configId: "claude-default" });
 			const sibling = makeTask({ id: "t2", title: "Renamed attempt", groupId: "group-1", variantIndex: 2, seq: 43, agentId: "builtin-claude", configId: "claude-default" });
 			const navigate = vi.fn();
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
 			await act(async () => {
-				renderPanel(current, { tasks: [current, sibling], agents: [claudeAgent], navigate });
+				renderPanel(current, { tasks: [current, sibling], navigate });
 			});
 
 			expect(screen.getByTestId("variant-switcher")).toBeInTheDocument();
-			expect(screen.getAllByRole("img", { name: "Claude" })).toHaveLength(2);
+			expect(screen.queryByRole("img", { name: "Claude" })).not.toBeInTheDocument();
 			expect(screen.getByTestId("variant-switcher-t1")).toHaveAttribute("aria-current", "true");
 			expect(screen.getByTestId("variant-switcher-t1")).toBeDisabled();
 

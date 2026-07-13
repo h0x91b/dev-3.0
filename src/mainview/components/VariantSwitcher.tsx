@@ -1,23 +1,21 @@
-import type { CodingAgent, Task } from "../../shared/types";
+import type { Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { getAliveVariants } from "../utils/variantGroups";
-import AgentLauncherBadge from "./AgentLauncherBadge";
 import Tooltip from "./Tooltip";
 
 interface VariantSwitcherProps {
 	variants: Task[];
 	currentTaskId: string;
-	agents: CodingAgent[];
 	projectId: string;
 	isFullPage?: boolean;
 	navigate: (route: Route) => void;
 }
 
 /** Compact Context-bar control for switching between the live variants. */
-function VariantSwitcher({ variants, currentTaskId, agents, projectId, isFullPage = false, navigate }: VariantSwitcherProps) {
+function VariantSwitcher({ variants, currentTaskId, projectId, isFullPage = false, navigate }: VariantSwitcherProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const aliveVariants = getAliveVariants(variants);
@@ -39,7 +37,6 @@ function VariantSwitcher({ variants, currentTaskId, agents, projectId, isFullPag
 		>
 			{aliveVariants.map((variant) => {
 				const isCurrent = variant.id === currentTaskId;
-				const agent = variant.agentId ? agents.find((candidate) => candidate.id === variant.agentId) : undefined;
 				const variantLabel = t("task.attempt", { n: String(variant.variantIndex) });
 				const title = getTaskTitle(variant);
 				const accessibleLabel = isCurrent
@@ -67,7 +64,6 @@ function VariantSwitcher({ variants, currentTaskId, agents, projectId, isFullPag
 								style={{ background: statusColors[variant.status] }}
 							/>
 							<span aria-hidden="true">{variant.variantIndex}</span>
-							{agent && <AgentLauncherBadge agent={agent} size={13} />}
 						</button>
 					</Tooltip>
 				);

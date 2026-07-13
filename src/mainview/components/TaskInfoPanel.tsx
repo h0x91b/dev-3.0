@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { CodingAgent, Task, Project, TaskStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
+import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
@@ -64,7 +64,6 @@ interface TaskInfoPanelProps {
 	taskPorts?: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	tasks?: Task[];
-	agents?: CodingAgent[];
 	isFullPage?: boolean;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
@@ -120,7 +119,7 @@ function readNumber(key: string, fallback: number): number {
 	return fallback;
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, tasks = [], agents = [], isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, tasks = [], isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
 	const t = useT();
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -155,7 +154,6 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 		<VariantSwitcher
 			variants={variantMembers}
 			currentTaskId={task.id}
-			agents={agents}
 			projectId={project.id}
 			isFullPage={isFullPage}
 			navigate={navigate}
