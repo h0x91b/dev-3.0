@@ -14,7 +14,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients, generateQrDataUrl, getAccessUrl } from "./remote-access-server";
+import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
@@ -747,11 +747,8 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		sendToFocusedWindow("zoomReset");
 	} else if (e.data.action === "show-remote-qr") {
 		try {
-			const qrDataUrl = await generateQrDataUrl();
-			const accessUrl = await getAccessUrl();
-			const { isCloudflaredAvailable, getTunnelState } = await import("./cloudflare-tunnel");
-			const { getLocalInterfaces, resolveAccessHost } = await import("./remote-access-server");
-			sendToFocusedWindow("showRemoteAccessQR", { qrDataUrl, accessUrl, tunnelState: getTunnelState(), cloudflaredInstalled: isCloudflaredAvailable(), interfaces: getLocalInterfaces(), selectedHost: resolveAccessHost() });
+			const remoteAccess = await handlers.getRemoteAccessQR({});
+			sendToFocusedWindow("showRemoteAccessQR", remoteAccess);
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}
