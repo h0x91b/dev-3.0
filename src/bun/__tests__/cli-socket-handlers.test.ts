@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
 import type { Project, Task, CliRequest, TaskNote } from "../../shared/types";
 
 // ---- Mocks ----
@@ -144,6 +144,7 @@ vi.mock("node:fs", () => ({
 	readdirSync: vi.fn(() => []),
 	unlinkSync: vi.fn(),
 	mkdirSync: vi.fn(),
+	writeFileSync: vi.fn(),
 }));
 
 import * as data from "../data";
@@ -153,7 +154,7 @@ import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage
 import { loadSettings } from "../settings";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
-import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import { addVent } from "../vents";
 import { getServerPort } from "../remote-access-server";
 import { saveSharedImage } from "../shared-images";
@@ -2722,6 +2723,89 @@ describe("stopSocketServer", () => {
 
 		stopSocketServer();
 		expect(unlinkSync).not.toHaveBeenCalled();
+	});
+});
+
+// Socket meta sidecar: records whether this instance was launched from inside a
+// dev3 task context (DEV3_TASK_ID env — devScript-booted dev builds, `dev3
+// remote` started from an agent pane). The CLI deprioritizes such guest sockets
+// during discovery so control commands route to the primary app (#910/#920).
+describe("socket meta sidecar", () => {
+	const REAL_DEV3_TASK_ID = process.env.DEV3_TASK_ID;
+
+	beforeEach(() => {
+		delete process.env.DEV3_TASK_ID;
+	});
+
+	afterEach(() => {
+		if (REAL_DEV3_TASK_ID === undefined) {
+			delete process.env.DEV3_TASK_ID;
+		} else {
+			process.env.DEV3_TASK_ID = REAL_DEV3_TASK_ID;
+		}
+	});
+
+	it("writes a meta sidecar with hostTaskId null for a primary instance", () => {
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(readdirSync).mockReturnValue([]);
+		(globalThis as any).Bun.listen = vi.fn();
+
+		const socketPath = startSocketServer();
+
+		expect(writeFileSync).toHaveBeenCalledTimes(1);
+		const [metaPath, content] = vi.mocked(writeFileSync).mock.calls[0] as [string, string];
+		expect(metaPath).toBe(socketPath.replace(/\.sock$/, ".meta.json"));
+		expect(JSON.parse(content)).toMatchObject({ pid: process.pid, hostTaskId: null });
+	});
+
+	it("records the launching task in hostTaskId when DEV3_TASK_ID is set", () => {
+		process.env.DEV3_TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(readdirSync).mockReturnValue([]);
+		(globalThis as any).Bun.listen = vi.fn();
+
+		startSocketServer();
+
+		const [, content] = vi.mocked(writeFileSync).mock.calls[0] as [string, string];
+		expect(JSON.parse(content).hostTaskId).toBe("aabbccdd-1111-2222-3333-444444444444");
+	});
+
+	it("cleans up stale meta sidecars of dead pids at startup", () => {
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockImplementation((p: unknown) => String(p).endsWith("/sockets"));
+		vi.mocked(readdirSync).mockReturnValue(["999999.sock", "999999.meta.json"] as never);
+		(globalThis as any).Bun.listen = vi.fn();
+		const killSpy = vi.spyOn(process, "kill").mockImplementation(() => {
+			const err = new Error("gone") as NodeJS.ErrnoException;
+			err.code = "ESRCH";
+			throw err;
+		});
+
+		startSocketServer();
+		killSpy.mockRestore();
+
+		const unlinked = vi.mocked(unlinkSync).mock.calls.map((c) => String(c[0]));
+		expect(unlinked.some((p) => p.endsWith("/999999.sock"))).toBe(true);
+		expect(unlinked.some((p) => p.endsWith("/999999.meta.json"))).toBe(true);
+	});
+
+	it("removes the meta sidecar on stopSocketServer", () => {
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(readdirSync).mockReturnValue([]);
+		(globalThis as any).Bun.listen = vi.fn();
+		startSocketServer();
+
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(true);
+
+		stopSocketServer();
+
+		const unlinked = vi.mocked(unlinkSync).mock.calls.map((c) => String(c[0]));
+		expect(unlinked.some((p) => p.endsWith(".sock"))).toBe(true);
+		expect(unlinked.some((p) => p.endsWith(".meta.json"))).toBe(true);
 	});
 });
 

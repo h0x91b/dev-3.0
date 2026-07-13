@@ -3,12 +3,20 @@ import { handleDevServer } from "../commands/dev-server";
 import type { CliContext } from "../context";
 import type { DevServerStatus, CliResponse } from "../../shared/types";
 
-vi.mock("../socket-client", () => ({
+vi.mock("../socket-client", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../socket-client")>()),
 	sendRequest: vi.fn(),
 }));
 
+vi.mock("../context", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../context")>()),
+	discoverSocketExcluding: vi.fn(() => null),
+}));
+
 import { sendRequest } from "../socket-client";
+import { discoverSocketExcluding } from "../context";
 const mockSend = vi.mocked(sendRequest);
+const mockDiscoverExcluding = vi.mocked(discoverSocketExcluding);
 
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -62,6 +70,8 @@ beforeEach(() => {
 		throw new Error(`EXIT_${_code ?? 0}`);
 	}) as ReturnType<typeof vi.spyOn>;
 	mockSend.mockReset();
+	mockDiscoverExcluding.mockReset();
+	mockDiscoverExcluding.mockReturnValue(null);
 });
 
 afterEach(() => {
@@ -314,6 +324,104 @@ describe("dev-server start --wait", () => {
 
 		expect(mockSend).toHaveBeenCalledTimes(1);
 		expect(stdoutOutput).not.toContain("Waiting for the dev server");
+	});
+});
+
+// Instance failover: the app instance serving a devServer.* request can die
+// mid-request when the dev session hosts a dev3 app of its own (dev-3.0
+// dogfooding — devScript boots dev-3.0 inside dev-3.0). The teardown kills the
+// responder itself, so the reply never arrives and reconnects to the same
+// socket are refused. devServer.* ops are idempotent, so the CLI re-discovers
+// (excluding the dead socket) and replays once against a surviving instance
+// (issues #910/#920).
+describe("dev-server instance failover", () => {
+	const FALLBACK_SOCKET = "/tmp/main-app.sock";
+	const stoppedStatus = {
+		...STATUS,
+		running: false,
+		viewerPaneId: null,
+		panePids: [],
+		ports: [],
+		devPorts: [],
+		resourceUsage: undefined,
+	};
+
+	function appNotRunningError(): Error {
+		const err = new Error("APP_NOT_RUNNING") as Error & { connectCode?: string };
+		err.connectCode = "ECONNREFUSED";
+		return err;
+	}
+
+	function emptyResponseError(): Error {
+		const err = new Error("Empty response from server");
+		err.name = "EmptyResponseError";
+		return err;
+	}
+
+	it("replays stop against a surviving instance when the serving instance dies (refused)", async () => {
+		mockSend
+			.mockRejectedValueOnce(appNotRunningError())
+			.mockResolvedValueOnce(okResp(stoppedStatus));
+		mockDiscoverExcluding.mockReturnValue(FALLBACK_SOCKET);
+
+		await handleDevServer("stop", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(mockDiscoverExcluding).toHaveBeenCalledWith([SOCKET]);
+		expect(mockSend).toHaveBeenNthCalledWith(2, FALLBACK_SOCKET, "devServer.stop", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+		}, { retryEmptyResponse: true });
+		expect(stdoutOutput).toContain("Stopped dev server");
+	});
+
+	it("replays restart when the response never arrives (empty response)", async () => {
+		mockSend
+			.mockRejectedValueOnce(emptyResponseError())
+			.mockResolvedValueOnce(okResp(STATUS));
+		mockDiscoverExcluding.mockReturnValue(FALLBACK_SOCKET);
+
+		await handleDevServer("restart", { positional: [], flags: {} }, SOCKET, CTX);
+
+		expect(mockSend).toHaveBeenNthCalledWith(2, FALLBACK_SOCKET, "devServer.restart", {
+			taskId: CTX.taskId,
+			projectId: CTX.projectId,
+		}, { retryEmptyResponse: true });
+		expect(stdoutOutput).toContain("Restarted dev server");
+	});
+
+	it("rethrows the original transport error when no other live instance exists", async () => {
+		mockSend.mockRejectedValue(appNotRunningError());
+		mockDiscoverExcluding.mockReturnValue(null);
+
+		await expect(
+			handleDevServer("stop", { positional: [], flags: {} }, SOCKET, CTX),
+		).rejects.toThrow("APP_NOT_RUNNING");
+		expect(mockSend).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not fail over on a regular server error response", async () => {
+		mockSend.mockResolvedValue({ id: "test-id", ok: false, error: "No dev script configured" });
+
+		await expect(
+			handleDevServer("stop", { positional: [], flags: {} }, SOCKET, CTX),
+		).rejects.toThrow("EXIT_1");
+		expect(mockDiscoverExcluding).not.toHaveBeenCalled();
+	});
+
+	it("keeps --wait polling alive across an instance loss mid-wait", async () => {
+		let statusCalls = 0;
+		mockSend.mockImplementation(async (socket: string, method: string) => {
+			if (method === "devServer.start") return okResp({ ...STATUS, devPorts: [] });
+			statusCalls++;
+			if (statusCalls === 1) throw appNotRunningError();
+			expect(socket).toBe(FALLBACK_SOCKET);
+			return okResp(STATUS);
+		});
+		mockDiscoverExcluding.mockReturnValue(FALLBACK_SOCKET);
+
+		await handleDevServer("start", { positional: [], flags: { wait: "true" } }, SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Ready: listening on 5173");
 	});
 });
 

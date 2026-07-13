@@ -37,11 +37,25 @@ const DEFAULT_EMPTY_RESPONSE_ATTEMPTS = 3;
 const EMPTY_RESPONSE_SETTLE_MS = 200;
 
 /** Socket ended cleanly with no response body — see the note above. */
-class EmptyResponseError extends Error {
+export class EmptyResponseError extends Error {
 	constructor() {
 		super("Empty response from server");
 		this.name = "EmptyResponseError";
 	}
+}
+
+/**
+ * True when the failure means "the instance behind this socket is gone or
+ * never answered": the retry budget was exhausted on connect (APP_NOT_RUNNING)
+ * or the connection kept closing with no reply (EmptyResponseError). For
+ * idempotent operations the caller may re-discover a DIFFERENT live socket and
+ * replay — e.g. `devServer.*` after the serving instance died mid-teardown
+ * because the dev session hosted the instance itself (#910/#920). Matched by
+ * name/message rather than instanceof so it stays robust across module mocks.
+ */
+export function isInstanceLossError(err: unknown): boolean {
+	if (!(err instanceof Error)) return false;
+	return err.name === "EmptyResponseError" || err.message === "APP_NOT_RUNNING";
 }
 
 /** Connect failed with a code that may clear on retry while the app is alive. */

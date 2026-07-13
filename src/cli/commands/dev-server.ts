@@ -1,11 +1,42 @@
-import type { DevServerStatus } from "../../shared/types";
-import { sendRequest } from "../socket-client";
+import type { CliResponse, DevServerStatus } from "../../shared/types";
+import { isInstanceLossError, sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, resolveProjectId, type CliContext } from "../context";
+import { discoverSocketExcluding, expandShortId, resolveProjectId, type CliContext } from "../context";
 
 const WAIT_POLL_MS = 500;
 const WAIT_DEFAULT_TIMEOUT_S = 120;
+
+/**
+ * devServer.* transport with instance failover. The instance serving a
+ * stop/restart can die mid-request when the target dev session hosts a dev3
+ * app of its own (dev-3.0 dogfooding: `bun run dev` boots dev-3.0 inside
+ * dev-3.0) — the teardown reaps the responder itself, so the reply never
+ * arrives and every reconnect to the same socket is refused (#910/#920). All
+ * devServer.* ops are idempotent, so on such an instance loss we re-discover
+ * (excluding the dead socket) and replay once against a surviving instance —
+ * typically the primary app, which also finishes any teardown the dying
+ * instance left incomplete. `socketRef` is updated in place so follow-up
+ * requests (e.g. --wait status polls) stick to the surviving instance.
+ */
+async function sendWithInstanceFailover(
+	socketRef: { current: string },
+	method: string,
+	params: Record<string, unknown>,
+): Promise<CliResponse> {
+	try {
+		return await sendRequest(socketRef.current, method, params, { retryEmptyResponse: true });
+	} catch (err) {
+		if (!isInstanceLossError(err)) throw err;
+		const fallback = discoverSocketExcluding([socketRef.current]);
+		if (!fallback || fallback === socketRef.current) throw err;
+		process.stderr.write(
+			`note: the app instance serving this command went away mid-request; retrying via ${fallback}\n`,
+		);
+		socketRef.current = fallback;
+		return await sendRequest(fallback, method, params, { retryEmptyResponse: true });
+	}
+}
 
 /**
  * Coerce a raw `devServer.*` RPC payload into a DevServerStatus with every
@@ -112,7 +143,7 @@ function printPortConflicts(status: DevServerStatus): void {
  * server — not a stale process still serving the previous build.
  */
 async function waitForDevServerReady(
-	socketPath: string,
+	socketRef: { current: string },
 	params: Record<string, unknown>,
 	timeoutSec: number,
 ): Promise<void> {
@@ -121,7 +152,7 @@ async function waitForDevServerReady(
 	for (let waited = 0; ; waited += WAIT_POLL_MS) {
 		// A status read is idempotent, and the poll can straddle the tail of the
 		// socket handoff — retry an empty response instead of aborting the wait.
-		const resp = await sendRequest(socketPath, "devServer.status", params, { retryEmptyResponse: true });
+		const resp = await sendWithInstanceFailover(socketRef, "devServer.status", params);
 		if (!resp.ok) exitError(resp.error || "Failed to poll dev server status");
 		const status = asStatus(resp.data);
 		if (status.tmuxError) {
@@ -171,8 +202,10 @@ async function runAction(
 	// devServer.* op is idempotent (start/restart re-kill any live session first;
 	// stop/status are no-ops when already gone), so a short replay window turns a
 	// false failure into the real status instead of a stopped-but-not-restarted
-	// server the caller must recover by hand.
-	const resp = await sendRequest(socketPath, `devServer.${action}`, params, { retryEmptyResponse: true });
+	// server the caller must recover by hand. When the serving instance itself
+	// dies, sendWithInstanceFailover replays through a surviving instance.
+	const socketRef = { current: socketPath };
+	const resp = await sendWithInstanceFailover(socketRef, `devServer.${action}`, params);
 	if (!resp.ok) exitError(resp.error || `Failed to ${action} dev server`);
 
 	const status = asStatus(resp.data);
@@ -180,7 +213,7 @@ async function runAction(
 	printStatusDetails(status);
 
 	if ((action === "start" || action === "restart") && args.flags.wait !== undefined) {
-		await waitForDevServerReady(socketPath, params, parseWaitTimeout(args));
+		await waitForDevServerReady(socketRef, params, parseWaitTimeout(args));
 	}
 }
 

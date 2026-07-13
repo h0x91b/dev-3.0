@@ -1,5 +1,6 @@
-import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import { socketMetaPathFor, type SocketMeta } from "../shared/socket-meta";
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
@@ -59,8 +60,10 @@ function cleanupStaleSockets(): void {
 	if (!existsSync(SOCKETS_DIR)) return;
 
 	for (const file of readdirSync(SOCKETS_DIR)) {
-		if (!file.endsWith(".sock")) continue;
-		const pid = parseInt(file.replace(".sock", ""), 10);
+		// Both the socket and its meta sidecar (`<pid>.sock` / `<pid>.meta.json`)
+		// are keyed by pid; a SIGKILLed instance leaves both behind.
+		if (!file.endsWith(".sock") && !file.endsWith(".meta.json")) continue;
+		const pid = parseInt(file.split(".")[0], 10);
 		if (isNaN(pid)) continue;
 
 		try {
@@ -1320,7 +1323,24 @@ export function startSocketServer(): string {
 		},
 	});
 
-	log.info("CLI socket server started", { path: socketPath });
+	// Meta sidecar: record whether this instance was launched from inside a dev3
+	// task context (DEV3_TASK_ID is injected into task/dev-server tmux panes —
+	// devScript-booted dev builds, `dev3 remote` from an agent pane). The CLI
+	// deprioritizes such guest sockets during discovery so control commands
+	// route to the primary app instead of an instance the command may be about
+	// to tear down (#910/#920). See src/shared/socket-meta.ts.
+	try {
+		const meta: SocketMeta = {
+			pid: process.pid,
+			hostTaskId: process.env.DEV3_TASK_ID || null,
+			startedAt: new Date().toISOString(),
+		};
+		writeFileSync(socketMetaPathFor(socketPath), JSON.stringify(meta));
+	} catch (err) {
+		log.warn("Failed to write socket meta sidecar (non-fatal)", { error: String(err) });
+	}
+
+	log.info("CLI socket server started", { path: socketPath, guestOfTask: process.env.DEV3_TASK_ID ?? null });
 	return socketPath;
 }
 
@@ -1329,6 +1349,13 @@ export function stopSocketServer(): void {
 		try {
 			unlinkSync(socketPath);
 			log.info("CLI socket removed", { path: socketPath });
+		} catch {
+			// Ignore cleanup errors
+		}
+	}
+	if (socketPath && existsSync(socketMetaPathFor(socketPath))) {
+		try {
+			unlinkSync(socketMetaPathFor(socketPath));
 		} catch {
 			// Ignore cleanup errors
 		}
