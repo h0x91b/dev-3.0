@@ -4,6 +4,7 @@ import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
 import * as agents from "../agents";
+import { getAgentAdapter } from "../../shared/agent-adapters/registry";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { buildProcessTree, clearPortDataForTask, collectDescendants, collectTaskPids, findPortHolders, getLsofOutput, getPortsForTask, getSessionPanePids, parseLsofOutput, scanTaskPorts, waitForPortsFree } from "../port-scanner";
@@ -370,36 +371,18 @@ async function ensureAgentTrust(
 	resolvedBaseCmd: string,
 	accountId?: string | null,
 ): Promise<void> {
-	try {
-		await agents.ensureClaudeTrust(worktreePath, projectPath, accountId);
-		log.info("Claude trust ensured", { worktreePath });
-	} catch (err) {
-		log.error("ensureClaudeTrust failed (non-fatal)", {
-			worktreePath,
-			error: String(err),
-			stack: (err as Error)?.stack ?? "no stack",
-		});
-	}
-
-	if (agents.isCodexCommand(resolvedBaseCmd)) {
+	// The agent adapter declares which trust routines this agent needs, in order
+	// (decision 124). Every adapter includes "claude" first — dev3 has always
+	// registered the worktree in ~/.claude.json (harmless superset + MCP
+	// pre-approval) for every agent — then any agent-native trust (codex/gemini).
+	for (const kind of getAgentAdapter(resolvedBaseCmd).trustKinds) {
 		try {
-			await agents.ensureCodexTrust(worktreePath);
-			log.info("Codex trust ensured", { worktreePath });
+			if (kind === "claude") await agents.ensureClaudeTrust(worktreePath, projectPath, accountId);
+			else if (kind === "codex") await agents.ensureCodexTrust(worktreePath);
+			else if (kind === "gemini") await agents.ensureGeminiTrust(worktreePath);
+			log.info(`${kind} trust ensured`, { worktreePath });
 		} catch (err) {
-			log.error("ensureCodexTrust failed (non-fatal)", {
-				worktreePath,
-				error: String(err),
-				stack: (err as Error)?.stack ?? "no stack",
-			});
-		}
-	}
-
-	if (agents.isGeminiCommand(resolvedBaseCmd)) {
-		try {
-			await agents.ensureGeminiTrust(worktreePath);
-			log.info("Gemini trust ensured", { worktreePath });
-		} catch (err) {
-			log.error("ensureGeminiTrust failed (non-fatal)", {
+			log.error(`ensure ${kind} trust failed (non-fatal)`, {
 				worktreePath,
 				error: String(err),
 				stack: (err as Error)?.stack ?? "no stack",
