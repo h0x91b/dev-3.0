@@ -423,5 +423,38 @@ describe("AgentAccountsSection", () => {
 		renderSection();
 		expect(await screen.findByText("Unmanaged login")).toBeTruthy();
 		expect(screen.getByText("codex@example.com")).toBeTruthy();
+		expect(screen.getByText("Workspace acc-1")).toBeTruthy();
+	});
+
+	it("shows a readable name for a resolved Codex workspace", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				codex: {
+					accounts: [
+						{
+							id: "codex-1",
+							kind: "codex",
+							label: "shared@example.com",
+							identity: {
+								email: "shared@example.com",
+								organization: "Base44 ChatGPT Enterprise",
+								plan: "enterprise_cbp_usage_based",
+								planLabel: "Enterprise",
+								accountId: "b8e0e9ae-workspace",
+							},
+							auth: "oauth",
+							api: null,
+							createdAt: 1,
+						},
+					],
+					activeId: "codex-1",
+					currentIdentity: null,
+				},
+			}),
+		);
+
+		renderSection();
+		expect(await screen.findByText("Workspace Base44 ChatGPT Enterprise")).toBeTruthy();
+		expect(screen.queryByText("Workspace b8e0e9ae")).toBeNull();
 	});
 });

@@ -279,6 +279,7 @@ const settings = {
 	"settings.accountsRemoveConfirmMessage": "Снимок учётных данных «{label}» будет удалён из dev3. Сам аккаунт не пострадает.",
 	"settings.accountsUnmanaged": "Неуправляемый логин",
 	"settings.accountsUnmanagedHint": "Текущий логин ~/.codex/auth.json ещё не сохранён в dev3",
+	"settings.accountsWorkspace": "Воркспейс {id}",
 	"settings.accountsNoneYet": "Аккаунты пока не добавлены.",
 	"settings.accountsNewSessionsHint": "Аккаунт по умолчанию — это преселект для новых запусков; каждый запуск может выбрать другой; запущенные сессии сохраняют текущий логин.",
 	"settings.accountsAddApi": "API-профиль",

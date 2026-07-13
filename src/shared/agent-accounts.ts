@@ -70,13 +70,14 @@ export interface AgentApiProfileInfo {
 export interface AgentAccountIdentity {
 	/** Login email, when known. */
 	email: string | null;
-	/** Organization / workspace name, when known. */
+	/** Claude organization or resolved ChatGPT workspace name, when known. */
 	organization: string | null;
 	/** Raw plan/tier string (e.g. "default_claude_max_5x", "plus"). */
 	plan: string | null;
 	/** Human-readable plan label derived from `plan` (e.g. "Max 5x", "Plus"). */
 	planLabel: string | null;
-	/** Stable provider-side account id (Claude accountUuid / Codex account_id). */
+	/** Stable provider-side account id. For Codex, `account_id` is the selected
+	 *  ChatGPT workspace id, while `chatgpt_user_id` identifies the person. */
 	accountId: string | null;
 }
 
@@ -183,16 +184,22 @@ export function parseCodexIdentity(authJson: unknown): AgentAccountIdentity | nu
 	const payload = idToken ? decodeJwtPayload(idToken) : null;
 	const authClaim = asRecord(payload?.[OPENAI_AUTH_CLAIM]);
 	const plan = asString(authClaim?.chatgpt_plan_type);
-	const orgs = Array.isArray(authClaim?.organizations) ? authClaim.organizations : [];
-	const firstOrg = asRecord(orgs[0]);
 	if (!accountId && !payload) return null;
 	return {
 		email: asString(payload?.email),
-		organization: asString(firstOrg?.title),
+		// `organizations` lists API organizations and does not identify the
+		// selected ChatGPT workspace. The readable workspace name is resolved by
+		// the bun process from the selected `chatgpt_account_id`.
+		organization: null,
 		plan,
 		planLabel: codexPlanLabel(plan),
 		accountId: accountId ?? asString(authClaim?.chatgpt_account_id),
 	};
+}
+
+/** Compact, display-safe prefix for a Codex ChatGPT workspace id. */
+export function shortCodexWorkspaceId(identity: AgentAccountIdentity | null): string | null {
+	return identity?.accountId?.slice(0, 8) ?? null;
 }
 
 /** Default display label for a freshly added account. */

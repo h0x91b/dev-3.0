@@ -278,6 +278,7 @@ const settings = {
 	"settings.accountsRemoveConfirmMessage": "Se elimina la copia de credenciales “{label}” de dev3. La cuenta en sí no se ve afectada.",
 	"settings.accountsUnmanaged": "Sesión no gestionada",
 	"settings.accountsUnmanagedHint": "La sesión actual de ~/.codex/auth.json aún no está guardada en dev3",
+	"settings.accountsWorkspace": "Espacio {id}",
 	"settings.accountsNoneYet": "Aún no hay cuentas añadidas.",
 	"settings.accountsNewSessionsHint": "La cuenta predeterminada es la preselección para los nuevos lanzamientos — cada lanzamiento puede elegir otra; las sesiones en ejecución mantienen su login actual.",
 	"settings.accountsAddApi": "Perfil API",

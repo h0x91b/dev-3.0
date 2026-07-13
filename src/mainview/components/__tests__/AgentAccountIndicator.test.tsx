@@ -31,6 +31,13 @@ const claudeAgent: CodingAgent = {
 	configurations: [],
 };
 
+const codexAgent: CodingAgent = {
+	id: "builtin-codex",
+	name: "Codex",
+	baseCommand: "codex",
+	configurations: [],
+};
+
 function makeState(overrides?: Partial<AgentAccountsState>): AgentAccountsState {
 	return {
 		claude: {
@@ -232,5 +239,38 @@ describe("AgentAccountIndicator", () => {
 		await user.click(trigger);
 		expect(screen.getByText("openrouter.ai")).toBeTruthy();
 		expect(screen.getAllByText("API").length).toBeGreaterThan(0);
+	});
+
+	it("shows the readable Codex workspace name in the account popover", async () => {
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				codex: {
+					accounts: [
+						{
+							id: "codex-1",
+							kind: "codex",
+							label: "shared@example.com",
+							identity: {
+								email: "shared@example.com",
+								organization: "Wix",
+								plan: "enterprise_cbp_usage_based",
+								planLabel: "Enterprise",
+								accountId: "81b5a3a4-9199-40e2-bcde-a6d3ebc9d654",
+							},
+							auth: "oauth",
+							api: null,
+							createdAt: 1,
+						},
+					],
+					activeId: "codex-1",
+					currentIdentity: null,
+				},
+			}),
+		);
+		const user = userEvent.setup();
+		renderIndicator(codexAgent);
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		expect(screen.getByText("Workspace Wix")).toBeTruthy();
 	});
 });

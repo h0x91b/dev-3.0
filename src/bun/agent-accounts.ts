@@ -51,6 +51,7 @@ import {
 	defaultApiProfileLabel,
 	parseClaudeIdentity,
 	parseCodexIdentity,
+	shortCodexWorkspaceId,
 } from "../shared/agent-accounts";
 import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
@@ -104,6 +105,9 @@ export const CODEX_SHARED_ENTRIES = ["config.toml", "prompts"];
 interface RegistryEntry {
 	id: string;
 	label: string;
+	/** Resolved ChatGPT workspace name for Codex accounts. Additive metadata;
+	 *  older versions safely ignore it and the lookup can restore it. */
+	workspaceName?: string;
 	/** Absent = "oauth" (pre-API-profile registries stay readable as-is). */
 	auth?: AgentAccountAuth;
 	createdAt: number;
@@ -138,6 +142,7 @@ function loadRegistry(paths: AccountPaths): Registry {
 				? v.accounts.filter((a: any) => typeof a?.id === "string" && isSafeAccountId(a.id)).map((a: any) => ({
 						id: a.id,
 						label: typeof a.label === "string" ? a.label : a.id,
+						workspaceName: typeof a.workspaceName === "string" && a.workspaceName.trim() ? a.workspaceName.trim() : undefined,
 						auth: a.auth === "api" ? ("api" as const) : undefined,
 						createdAt: typeof a.createdAt === "number" ? a.createdAt : 0,
 					}))
@@ -185,6 +190,47 @@ function codexAccountAuthFile(id: string, paths: AccountPaths): string {
 	return join(codexAccountDir(id, paths), "auth.json");
 }
 
+const CODEX_ACCOUNTS_ENDPOINT = "https://chatgpt.com/backend-api/accounts/check/v4-2023-04-27";
+
+type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+	return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** Resolve every ChatGPT workspace visible to a Codex OAuth token. The caller
+ *  owns fallback behavior because this first-party endpoint is best-effort. */
+export async function fetchCodexWorkspaceNames(
+	authJson: unknown,
+	fetchImpl: FetchLike = globalThis.fetch,
+): Promise<Record<string, string>> {
+	const root = jsonRecord(authJson);
+	const tokens = jsonRecord(root?.tokens);
+	const accessToken = nonEmptyString(tokens?.access_token);
+	if (!accessToken) throw new Error("Codex access token is missing");
+
+	const response = await fetchImpl(CODEX_ACCOUNTS_ENDPOINT, {
+		headers: { authorization: `Bearer ${accessToken}` },
+		signal: AbortSignal.timeout(5_000),
+	});
+	if (!response.ok) throw new Error(`ChatGPT workspace lookup failed (HTTP ${response.status})`);
+
+	const payload = jsonRecord(await response.json());
+	const accounts = jsonRecord(payload?.accounts);
+	const names: Record<string, string> = {};
+	for (const item of Object.values(accounts ?? {})) {
+		const account = jsonRecord(jsonRecord(item)?.account);
+		const accountId = nonEmptyString(account?.account_id);
+		const name = nonEmptyString(account?.name);
+		if (accountId && name) names[accountId] = name;
+	}
+	return names;
+}
+
 /** Make the account dir a usable CODEX_HOME: ensure it exists and symlink the
  *  shared config entries from ~/.codex (idempotent — safe to call on every env
  *  build and on import/login). auth.json is written separately and stays
@@ -219,12 +265,86 @@ function safeReadJson(path: string): unknown {
 	}
 }
 
+function withCodexWorkspaceName(
+	identity: AgentAccountIdentity | null,
+	workspaceName: string | null | undefined,
+): AgentAccountIdentity | null {
+	return identity && workspaceName ? { ...identity, organization: workspaceName } : identity;
+}
+
+async function lookupCodexWorkspaceNames(authJson: unknown): Promise<Record<string, string>> {
+	const selected = parseCodexIdentity(authJson);
+	try {
+		const names = await fetchCodexWorkspaceNames(authJson);
+		log.info("Codex workspace lookup succeeded", {
+			selectedWorkspaceId: shortCodexWorkspaceId(selected),
+			selectedWorkspaceName: selected?.accountId ? names[selected.accountId] ?? null : null,
+			workspaceCount: Object.keys(names).length,
+		});
+		return names;
+	} catch (error) {
+		log.warn("Codex workspace lookup unavailable; using id fallback", {
+			selectedWorkspaceId: shortCodexWorkspaceId(selected),
+			error: String(error),
+		});
+		return {};
+	}
+}
+
+function applyCodexWorkspaceNames(
+	registry: Registry,
+	names: Record<string, string>,
+	paths: AccountPaths,
+): boolean {
+	let changed = false;
+	for (const entry of registry.codex.accounts) {
+		const identity = parseCodexIdentity(safeReadJson(codexAccountAuthFile(entry.id, paths)));
+		const name = identity?.accountId ? names[identity.accountId] ?? entry.workspaceName : null;
+		if (!name) continue;
+		if (entry.workspaceName !== name) {
+			entry.workspaceName = name;
+			changed = true;
+		}
+		const workspaceId = shortCodexWorkspaceId(identity);
+		const email = identity?.email;
+		const legacyAutoLabel = email && workspaceId ? `${email} (Workspace ${workspaceId})` : null;
+		if (legacyAutoLabel && entry.label === legacyAutoLabel) {
+			entry.label = `${email} (${name})`;
+			changed = true;
+		}
+	}
+	return changed;
+}
+
+const codexWorkspaceBackfills = new Map<string, Promise<void>>();
+
+async function backfillCodexWorkspaceNames(registry: Registry, paths: AccountPaths): Promise<void> {
+	const missingWorkspaceIds = registry.codex.accounts
+		.filter((entry) => !entry.workspaceName)
+		.map((entry) => codexAccountIdentity(entry.id, paths)?.accountId ?? entry.id)
+		.sort();
+	if (missingWorkspaceIds.length === 0) return;
+	const key = `${paths.accountsDir}:${missingWorkspaceIds.join(",")}`;
+	let pending = codexWorkspaceBackfills.get(key);
+	if (!pending) {
+		pending = (async () => {
+			const source = registry.codex.accounts.find((entry) => existsSync(codexAccountAuthFile(entry.id, paths)));
+			if (!source) return;
+			const authJson = safeReadJson(codexAccountAuthFile(source.id, paths));
+			const names = await lookupCodexWorkspaceNames(authJson);
+			if (applyCodexWorkspaceNames(registry, names, paths)) saveRegistry(registry, paths);
+		})();
+		codexWorkspaceBackfills.set(key, pending);
+	}
+	await pending;
+}
+
 function claudeAccountIdentity(id: string, paths: AccountPaths): AgentAccountIdentity | null {
 	return parseClaudeIdentity(safeReadJson(join(claudeAccountDir(id, paths), ".claude.json")));
 }
 
-function codexAccountIdentity(id: string, paths: AccountPaths): AgentAccountIdentity | null {
-	return parseCodexIdentity(safeReadJson(codexAccountAuthFile(id, paths)));
+function codexAccountIdentity(id: string, paths: AccountPaths, workspaceName?: string): AgentAccountIdentity | null {
+	return withCodexWorkspaceName(parseCodexIdentity(safeReadJson(codexAccountAuthFile(id, paths))), workspaceName);
 }
 
 /** On-disk shape of <claude account dir>/api-profile.json (0600 — holds the key). */
@@ -300,15 +420,20 @@ function toAccount(entry: RegistryEntry, kind: AgentAccountKind, paths: AccountP
 			? null
 			: kind === "claude"
 				? claudeAccountIdentity(entry.id, paths)
-				: codexAccountIdentity(entry.id, paths),
+				: codexAccountIdentity(entry.id, paths, entry.workspaceName),
 		auth: isApi ? "api" : "oauth",
 		api: isApi ? apiProfileInfo(readApiProfile(entry.id, paths)) : null,
 		createdAt: entry.createdAt,
 	};
 }
 
-function currentCodexIdentity(paths: AccountPaths): AgentAccountIdentity | null {
-	return parseCodexIdentity(safeReadJson(join(paths.codexHome, "auth.json")));
+function currentCodexIdentity(paths: AccountPaths, registry: Registry): AgentAccountIdentity | null {
+	const identity = parseCodexIdentity(safeReadJson(join(paths.codexHome, "auth.json")));
+	if (!identity?.accountId) return identity;
+	const matchingEntry = registry.codex.accounts.find((entry) => {
+		return codexAccountIdentity(entry.id, paths)?.accountId === identity.accountId;
+	});
+	return withCodexWorkspaceName(identity, matchingEntry?.workspaceName);
 }
 
 /** Absolute dirs of every managed codex account (each a per-account CODEX_HOME).
@@ -324,7 +449,10 @@ export function listCodexAccountDirs(paths: AccountPaths = defaultAccountPaths()
 }
 
 export async function listAgentAccounts(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccountsState> {
-	const registry = loadRegistry(paths);
+	let registry = loadRegistry(paths);
+	if (applyCodexWorkspaceNames(registry, {}, paths)) saveRegistry(registry, paths);
+	await backfillCodexWorkspaceNames(registry, paths);
+	registry = loadRegistry(paths);
 	return {
 		claude: {
 			accounts: registry.claude.accounts.map((e) => toAccount(e, "claude", paths)),
@@ -334,7 +462,7 @@ export async function listAgentAccounts(paths: AccountPaths = defaultAccountPath
 		codex: {
 			accounts: registry.codex.accounts.map((e) => toAccount(e, "codex", paths)),
 			activeId: registry.codex.accounts.some((e) => e.id === registry.codex.activeId) ? registry.codex.activeId : null,
-			currentIdentity: currentCodexIdentity(paths),
+			currentIdentity: currentCodexIdentity(paths, registry),
 		},
 	};
 }
@@ -532,12 +660,35 @@ function assertNoDuplicate(
 	if (!identity?.accountId) return;
 	for (const entry of registry[kind].accounts) {
 		if (entry.id === excludeId) continue;
-		const existing = kind === "claude" ? claudeAccountIdentity(entry.id, paths) : codexAccountIdentity(entry.id, paths);
-		// One user (same accountUuid/email) can belong to several organizations —
-		// a duplicate is the same account in the SAME organization only.
-		if (existing?.accountId === identity.accountId && (existing.organization ?? null) === (identity.organization ?? null)) {
-			throw new Error(`This account is already added ("${entry.label}")`);
+		const existing =
+			kind === "claude"
+				? claudeAccountIdentity(entry.id, paths)
+				: codexAccountIdentity(entry.id, paths, entry.workspaceName);
+		// Codex account_id is the selected ChatGPT workspace, not the person. The
+		// same email/chatgpt_user_id may therefore own several valid accounts.
+		const isDuplicate =
+			kind === "codex"
+				? existing?.accountId === identity.accountId
+				: existing?.accountId === identity.accountId &&
+					(existing.organization ?? null) === (identity.organization ?? null);
+		if (!isDuplicate) continue;
+		if (kind === "codex") {
+			const workspaceId = shortCodexWorkspaceId(identity);
+			const workspaceName = identity.organization ?? existing?.organization;
+			const workspace = workspaceName
+				? `"${workspaceName}"${workspaceId ? ` (${workspaceId})` : ""}`
+				: workspaceId
+					? `"${workspaceId}"`
+					: "with an unknown id";
+			log.warn("Codex workspace duplicate rejected", {
+				workspaceId,
+				workspaceName: workspaceName ?? null,
+				existingAccountId: entry.id.slice(0, 8),
+				existingLabel: entry.label,
+			});
+			throw new Error(`Codex workspace ${workspace} is already added as "${entry.label}".`);
 		}
+		throw new Error(`This account is already added ("${entry.label}")`);
 	}
 }
 
@@ -547,21 +698,28 @@ function registerAccount(
 	id: string,
 	identity: AgentAccountIdentity | null,
 	paths: AccountPaths,
-	opts?: { auth?: AgentAccountAuth; label?: string },
+	opts?: { auth?: AgentAccountAuth; label?: string; workspaceName?: string | null },
 ): AgentAccount {
 	let label = opts?.label ?? defaultAccountLabel(identity, registry[kind].accounts.length + 1);
-	// Same email registered from another organization — append the org so the
-	// two rows are distinguishable at a glance.
-	if (!opts?.label && identity?.email && identity.organization) {
+	// Same login email may represent several Claude organizations or Codex
+	// workspaces. Append the provider-specific discriminator to later rows.
+	if (!opts?.label && identity?.email) {
 		const emailTaken = registry[kind].accounts.some((existing) => {
 			const other = kind === "claude" ? claudeAccountIdentity(existing.id, paths) : codexAccountIdentity(existing.id, paths);
 			return other?.email === identity.email;
 		});
-		if (emailTaken) label = `${identity.email} (${identity.organization})`;
+		if (emailTaken && kind === "codex") {
+			const workspaceId = shortCodexWorkspaceId(identity);
+			const workspace = identity.organization ?? (workspaceId ? `Workspace ${workspaceId}` : null);
+			if (workspace) label = `${identity.email} (${workspace})`;
+		} else if (emailTaken && identity.organization) {
+			label = `${identity.email} (${identity.organization})`;
+		}
 	}
 	const entry: RegistryEntry = {
 		id,
 		label,
+		workspaceName: kind === "codex" ? opts?.workspaceName ?? undefined : undefined,
 		auth: opts?.auth === "api" ? "api" : undefined,
 		createdAt: Date.now(),
 	};
@@ -789,11 +947,16 @@ export async function completeClaudeLogin(accountId: string, paths: AccountPaths
 /** Import the login currently in ~/.codex/auth.json as a managed snapshot. */
 export async function importCurrentCodexAccount(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccount> {
 	const authFile = join(paths.codexHome, "auth.json");
-	const identity = parseCodexIdentity(safeReadJson(authFile));
+	const authJson = safeReadJson(authFile);
+	let identity = parseCodexIdentity(authJson);
 	if (!identity?.accountId) {
 		throw new Error("No Codex login found (~/.codex/auth.json missing or not a ChatGPT login). Run `codex login` first.");
 	}
 	const registry = loadRegistry(paths);
+	const workspaceNames = await lookupCodexWorkspaceNames(authJson);
+	const workspaceName = workspaceNames[identity.accountId] ?? null;
+	identity = withCodexWorkspaceName(identity, workspaceName)!;
+	if (applyCodexWorkspaceNames(registry, workspaceNames, paths)) saveRegistry(registry, paths);
 	assertNoDuplicate(registry, "codex", identity, paths);
 
 	const id = crypto.randomUUID();
@@ -801,9 +964,14 @@ export async function importCurrentCodexAccount(paths: AccountPaths = defaultAcc
 	const target = codexAccountAuthFile(id, paths);
 	copyFileSync(authFile, target);
 	chmodSync(target, 0o600);
-	const account = registerAccount(registry, "codex", id, identity, paths);
+	const account = registerAccount(registry, "codex", id, identity, paths, { workspaceName });
 	registry.codex.activeId = id; // newly imported becomes the default preselect
 	saveRegistry(registry, paths);
+	log.info("Codex account imported", {
+		accountId: id.slice(0, 8),
+		workspaceId: shortCodexWorkspaceId(identity),
+		workspaceName,
+	});
 	return account;
 }
 
@@ -819,18 +987,29 @@ export async function prepareCodexLogin(paths: AccountPaths = defaultAccountPath
 /** Verify a prepared CODEX_HOME login dir and register it as an account. */
 export async function completeCodexLogin(accountId: string, paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccount> {
 	const authFile = codexAccountAuthFile(accountId, paths);
-	const identity = parseCodexIdentity(safeReadJson(authFile));
+	const authJson = safeReadJson(authFile);
+	let identity = parseCodexIdentity(authJson);
 	if (!identity?.accountId) {
 		throw new Error("Login not detected yet. Run the login command, finish the flow, then verify again.");
 	}
 	const registry = loadRegistry(paths);
+	const workspaceNames = await lookupCodexWorkspaceNames(authJson);
+	const workspaceName = workspaceNames[identity.accountId] ?? null;
+	identity = withCodexWorkspaceName(identity, workspaceName)!;
+	if (applyCodexWorkspaceNames(registry, workspaceNames, paths)) saveRegistry(registry, paths);
+	log.info("Codex login identity detected", {
+		pendingAccountId: accountId.slice(0, 8),
+		workspaceId: shortCodexWorkspaceId(identity),
+		workspaceName,
+		managedCodexAccounts: registry.codex.accounts.length,
+	});
 	assertNoDuplicate(registry, "codex", identity, paths, accountId);
 	chmodSync(authFile, 0o600);
 	if (registry.codex.accounts.some((e) => e.id === accountId)) {
 		saveRegistry(registry, paths);
 		return toAccount(registry.codex.accounts.find((e) => e.id === accountId)!, "codex", paths);
 	}
-	const account = registerAccount(registry, "codex", accountId, identity, paths);
+	const account = registerAccount(registry, "codex", accountId, identity, paths, { workspaceName });
 	registry.codex.activeId = accountId; // newly added becomes the default preselect
 	saveRegistry(registry, paths);
 	return account;

@@ -7,6 +7,7 @@ import type {
 	AgentAccountsState,
 	AgentApiProfileInfo,
 } from "../../shared/agent-accounts";
+import { shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import type { CodingAgent } from "../../shared/types";
 import { api } from "../rpc";
 import { toast } from "../toast";
@@ -69,6 +70,7 @@ interface PopoverRow {
 	label: string;
 	sub: string | null;
 	planLabel: string | null;
+	workspaceLabel: string | null;
 	isApi: boolean;
 	isActive: boolean;
 	/** null = row is informational only (codex unmanaged login). */
@@ -130,7 +132,7 @@ function SwitcherPopover({
 	return createPortal(
 		<div
 			ref={menuRef}
-			className="fixed z-[10000] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 w-[19rem] max-w-[calc(100vw-1rem)]"
+			className="fixed z-[10000] bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 w-[21rem] max-w-[calc(100vw-1rem)]"
 			style={{ top: pos.top, left: pos.left, visibility: visible ? "visible" : "hidden" }}
 			onClick={(e) => e.stopPropagation()}
 		>
@@ -144,27 +146,41 @@ function SwitcherPopover({
 					type="button"
 					disabled={busy || !row.onSelect || row.isActive}
 					onClick={row.onSelect ?? undefined}
-					className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${
+					className={`w-full text-left px-3 py-2 flex items-start gap-2 transition-colors ${
 						row.onSelect && !row.isActive ? "hover:bg-elevated-hover cursor-pointer" : "cursor-default"
 					} disabled:opacity-100`}
 				>
 					<span
 						aria-hidden
-						className={`w-3 h-3 rounded-full border-2 shrink-0 ${
+						className={`w-3 h-3 mt-1 rounded-full border-2 shrink-0 ${
 							row.isActive ? "border-accent bg-accent" : "border-fg-muted/50"
 						}`}
 					/>
-					<span className="text-fg text-sm truncate">{row.label}</span>
-					{row.isApi ? (
-						<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
-					) : null}
-					{row.sub && row.sub !== row.label ? (
-						<span className="text-fg-muted text-xs font-mono truncate">{row.sub}</span>
-					) : null}
-					<span className="flex-1" />
-					{row.planLabel ? (
-						<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">{row.planLabel}</span>
-					) : null}
+					<span className="min-w-0 flex-1">
+						<span className="flex items-center gap-2 min-w-0">
+							<span className="text-fg text-sm truncate flex-1">{row.label}</span>
+							{row.isApi ? (
+								<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
+							) : null}
+							{row.planLabel ? (
+								<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">
+									{row.planLabel}
+								</span>
+							) : null}
+						</span>
+						{(row.sub && row.sub !== row.label && !row.label.includes(row.sub)) || row.workspaceLabel ? (
+							<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
+								{row.sub && row.sub !== row.label && !row.label.includes(row.sub) ? (
+									<span className="text-fg-muted text-xs font-mono truncate max-w-full">{row.sub}</span>
+								) : null}
+								{row.workspaceLabel ? (
+									<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full">
+										{row.workspaceLabel}
+									</span>
+								) : null}
+							</span>
+						) : null}
+					</span>
 				</button>
 			))}
 			<div className="border-t border-edge mt-1 pt-1.5 px-3 pb-1">
@@ -249,6 +265,11 @@ export default function AgentAccountIndicator({
 	const fallbackLabel =
 		kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged");
 	const activeLabel = selectedAccount ? selectedAccount.label : (fallbackIdentity?.email ?? fallbackLabel);
+	const workspaceLabel = (identity: AgentAccountIdentity | null): string | null => {
+		if (kind !== "codex") return null;
+		const workspace = identity?.organization ?? shortCodexWorkspaceId(identity);
+		return workspace ? t("settings.accountsWorkspace", { id: workspace }) : null;
+	};
 
 	const rows: PopoverRow[] = [];
 	// System-login row: selectable for BOTH kinds in local mode (codex now has a
@@ -260,6 +281,7 @@ export default function AgentAccountIndicator({
 			label: kind === "claude" ? t("settings.accountsSystemLogin") : t("settings.accountsUnmanaged"),
 			sub: fallbackIdentity?.email ?? null,
 			planLabel: identityBadge(fallbackIdentity),
+			workspaceLabel: workspaceLabel(fallbackIdentity),
 			isApi: false,
 			isActive: effectiveSelectedId === null,
 			onSelect: isLocal
@@ -272,6 +294,7 @@ export default function AgentAccountIndicator({
 			label: t("settings.accountsUnmanaged"),
 			sub: state.codex.currentIdentity.email,
 			planLabel: identityBadge(state.codex.currentIdentity),
+			workspaceLabel: workspaceLabel(state.codex.currentIdentity),
 			isApi: false,
 			isActive: true,
 			onSelect: null,
@@ -283,6 +306,7 @@ export default function AgentAccountIndicator({
 			label: account.label,
 			sub: account.auth === "api" ? apiHost(account.api) : (account.identity?.email ?? null),
 			planLabel: account.auth === "api" ? null : identityBadge(account.identity),
+			workspaceLabel: workspaceLabel(account.identity),
 			isApi: account.auth === "api",
 			isActive: account.id === effectiveSelectedId,
 			onSelect: isLocal
