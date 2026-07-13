@@ -339,7 +339,7 @@ describe("DEFAULT_AGENTS", () => {
 		const modelOrder = codex!.configurations
 			.map((config) => config.model)
 			.filter((model, index, models) => model != null && models.indexOf(model) === index);
-		expect(modelOrder).toEqual(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.5", "gpt-5.6-terra"]);
+		expect(modelOrder).toEqual(["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"]);
 
 		const modesFor = (model: string) => codex!.configurations
 			.filter((config) => config.model === model)
@@ -354,12 +354,12 @@ describe("DEFAULT_AGENTS", () => {
 			"Standard [Low]", "Standard [Medium]", "Standard [High]", "Standard [X-High]", "Standard [Max]", "Standard [Ultra]",
 			"Plan [High]", "Plan → Bypass [High]",
 		]);
-		expect(modesFor("gpt-5.5")).toEqual([
-			"Bypass [Medium]", "Bypass [High]",
-			"Standard [Medium]", "Standard [High]",
-		]);
 		expect(modesFor("gpt-5.6-terra")).toEqual([
 			"Bypass [Medium]", "Bypass [High]", "Bypass [X-High]",
+			"Standard [Medium]", "Standard [High]",
+		]);
+		expect(modesFor("gpt-5.5")).toEqual([
+			"Bypass [Medium]", "Bypass [High]",
 			"Standard [Medium]", "Standard [High]",
 		]);
 	});

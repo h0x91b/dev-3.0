@@ -438,6 +438,14 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				appendPrompt: "First, produce a concrete implementation plan with risks and checkpoints. Do not start making code changes until that plan is complete.",
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "--sandbox", "danger-full-access", "-c", 'model_reasoning_effort="high"'],
 			},
+			// --- GPT-5.6 Terra (balanced: below the frontier tiers, above legacy) ---
+			...createCodexReasoningPresets(
+				"gpt-5.6-terra",
+				"GPT-5.6 Terra",
+				"codex-5.6-terra",
+				["medium", "high", "xhigh"],
+				["medium", "high"],
+			),
 			// --- GPT-5.5 (legacy) ---
 			{
 				id: "codex-5.4-medium-bypass",
@@ -475,14 +483,6 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 				version: 6,
 				additionalArgs: ["-p", "dev3", "-a", "on-request", "--no-alt-screen", "-c", 'default_permissions="dev3"', "-c", 'model_reasoning_effort="high"'],
 			},
-			// --- GPT-5.6 Terra (balanced: kept as the final Codex tier) ---
-			...createCodexReasoningPresets(
-				"gpt-5.6-terra",
-				"GPT-5.6 Terra",
-				"codex-5.6-terra",
-				["medium", "high", "xhigh"],
-				["medium", "high"],
-			),
 		],
 		defaultConfigId: "codex-default",
 	},

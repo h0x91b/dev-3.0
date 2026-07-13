@@ -10,7 +10,7 @@ const { TEST_HOME, AGENTS_FILE } = vi.hoisted(() => {
 
 vi.mock("../paths", () => ({ DEV3_HOME: TEST_HOME }));
 vi.mock("../settings", () => ({
-	loadSettings: vi.fn(async () => ({ agentsLayoutRevision: 9 })),
+	loadSettings: vi.fn(async () => ({ agentsLayoutRevision: 10 })),
 	saveSettings: vi.fn(async () => undefined),
 }));
 
