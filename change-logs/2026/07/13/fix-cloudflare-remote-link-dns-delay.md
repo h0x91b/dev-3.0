@@ -1,0 +1,1 @@
+Remote Access now automatically starts a Cloudflare tunnel when `cloudflared` is installed and keeps the public URL out of the QR modal until Cloudflare DNS has had five seconds to provision the hostname. Explicit local/LAN mode remains available by disabling the tunnel.
