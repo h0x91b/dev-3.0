@@ -792,6 +792,7 @@ function ActiveTasksSidebar({
 														agents={agents}
 														navigate={navigate}
 														projectId={task.projectId || project.id}
+														onOpen={preview.close}
 														size="sm"
 														testId={`variant-indicator-${task.id}`}
 													/>
