@@ -1,7 +1,11 @@
 # 124 — AgentAdapter interface for per-agent behavior (design)
 
-**Status:** Proposed (design only — no code yet). Crystallized from a grilling
-session on candidate #02 of the `/improve-codebase-architecture` review.
+**Status:** Implemented (2026-07). Design crystallized from a grilling session
+on candidate #02 of the `/improve-codebase-architecture` review; realized in
+`src/shared/agent-adapters/` (pure adapters + registry) with thin executors in
+`src/bun` (command assembly in `agents.ts` `resolveAgentCommand`, trust in
+`tmux-pty.ts` `ensureAgentTrust`, hooks in `agent-hooks.ts` `setupAgentHooks`).
+See **Implementation notes** below for the refinements to the sketched interface.
 
 ## Context
 
@@ -118,3 +122,37 @@ Concrete choices (from the grilling tree):
 - **Nullable adapter + call-site guards** — keeps conditional noise and re-admits
   per-site divergence; the explicit `GenericAdapter` base case removes all null
   checks.
+
+## Implementation notes
+
+Refinements to the sketched interface, decided while making the migration
+byte-identical (guarded by the Seam A golden test,
+`src/bun/__tests__/agent-command-golden.test.ts`):
+
+- **`launchArgs` returns the whole command token list (base command first)**, not
+  just the args, because Codex's resume form injects a `resume <id>` subcommand
+  *between* the base command and the rest. The executor just `.join(" ")`s it.
+- **Trust is data via `readonly trustKinds: TrustKind[]`**, not a `trustPatch()`
+  method. Each adapter declares the trust routines it needs *in order*, and every
+  adapter's list starts with `"claude"` — the pre-refactor `ensureAgentTrust`
+  applied `ensureClaudeTrust` to *every* agent (a harmless `~/.claude.json`
+  superset + MCP pre-approval), so encoding it per-adapter keeps behavior
+  byte-identical while still removing the `isCodexCommand`/`isGeminiCommand`
+  branches. The executor iterates and calls the matching `ensure*` I/O.
+- **`hooksSpec()` returns a discriminated `{kind}` descriptor**; the executor
+  dispatches to the existing pure `build*Hooks` + `write*Hooks` split rather than
+  a generic writer, since Claude and Codex hook I/O differ substantially.
+- **`GenericAdapter` injects NO skill body.** The decision text says "generic
+  skill delivered via the prompt argument," but that describes Cursor/OpenCode
+  (which have full adapters). The true unknown-command fall-through never appended
+  a body — only emitted `--model`/`--permission-mode`/`--effort`/`--max-budget-usd`
+  + a positional prompt — so `GenericAdapter` matches that exactly. Byte-identity
+  wins over the prose.
+- **Codex's impure runtime is threaded in via options.** The active-UI-theme →
+  profile/theme mapping and the feature-detected `--profile`/`--profile-v2` flag
+  (a `codex --help` probe) are resolved in `resolveAgentCommand` and passed as
+  `AdapterLaunchOptions.codex`, so `CodexAdapter` stays pure.
+- **`isClaudeCommand` kept; the other four predicates deleted.** The Codex
+  account-env feature (orthogonal to the seam) now gates on `agentKey(cmd) ===
+  "codex"` instead of `isCodexCommand`, so no per-agent predicate survives outside
+  `isClaudeCommand`.
