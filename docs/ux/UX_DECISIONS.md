@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-13 — "Recent commits" diff mode is a split-button, N not persisted
+
+- **Rule:** A 4th diff mode `recent` joins the diff-viewer segmented control (peer to branch/uncommitted/unpushed): a split-button whose body activates `HEAD~N..HEAD` (committed-only, clamped to the branch's own commits via the local `origin/base` merge-base — no origin fetch) and whose `▾` caret opens a fixed preset popover (1/2/3/5/10). Mode follows the existing localStorage preference; N does **not** — it resets to 1 each open. Header sub-label shows the backend's effective (clamped) count, localized.
+- **Why:** the primary job is "what did the agent just commit?", so the default must always be the last commit (N reset), while mode-stickiness matches the other three. A split-button keeps the frequent 1-click case zero-config yet bounds toolbar width for narrow/mobile vs inline chips. Rejected: persisting N (defeats the default), a commit-subject dropdown (needs a new `listCommits` RPC), and free numeric input (scope creep).
+- **Status:** Implemented. Evidence: bible §5.3; `decisions/128-recent-commits-diff-mode.md`; `git.ts` getTaskDiff, `TaskDiffViewer.tsx`, `rpc-handlers/git-operations.ts`.
+
 ## 2026-07-12 — Variant switching: capped clickable dots, inspector switcher, ⇧⌘[/] cycle
 
 - **Rule:** One sibling affordance on both card surfaces — max 3 clickable status dots (self ring-highlighted + lowest variantIndexes, NO `+N` counter) opening an upgraded `SiblingPopover` (current-variant marker + per-variant titles); the inspector Context bar leads with a conditional segmented variant switcher (alive variants only, one composite control); `⇧⌘[`/`⇧⌘]` cycles alive variants (`keymap.ts`).

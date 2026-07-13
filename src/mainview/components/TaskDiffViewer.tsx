@@ -30,6 +30,11 @@ const LS_DIFF_MODE_PREFERENCE = "dev3-inline-diff-mode-v1";
 const LS_DIFF_FILES_COLLAPSED = "dev3-inline-diff-files-collapsed-v1";
 const LS_DIFF_REVIEW = "dev3-inline-diff-review-v1";
 const DEFAULT_DIFF_MODE: TaskDiffMode = "uncommitted";
+// `recent` mode: how many trailing commits (`HEAD~N..HEAD`) to diff. The presets
+// the ▾ popover offers, and the default N used on every open. N itself is never
+// persisted — only the mode selection is (see readPreferredDiffMode).
+const RECENT_COUNT_PRESETS = [1, 2, 3, 5, 10] as const;
+const DEFAULT_RECENT_COUNT = 1;
 const EAGER_FILE_COUNT = 2;
 // @git-diff-view skips syntax highlighting for files longer than this many lines
 // (library default is 2000, which left large source files — e.g. this one — plain).
@@ -56,7 +61,7 @@ function writeFilesCollapsed(collapsed: boolean): void {
 function readPreferredDiffMode(): TaskDiffMode {
 	try {
 		const stored = localStorage.getItem(LS_DIFF_MODE_PREFERENCE);
-		if (stored === "branch" || stored === "uncommitted" || stored === "unpushed") {
+		if (stored === "branch" || stored === "uncommitted" || stored === "unpushed" || stored === "recent") {
 			return stored;
 		}
 	} catch {
@@ -1631,6 +1636,12 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [payload, setPayload] = useState<TaskDiffResponse | null>(null);
 	const [currentRequest, setCurrentRequest] = useState<TaskInlineDiffRequest>(() => applyPreferredDiffMode(request));
 	const [requestVersion, setRequestVersion] = useState(0);
+	// `recent` mode's trailing-commit count. Deliberately NOT persisted: it resets
+	// to DEFAULT_RECENT_COUNT on every open so the default is always "last commit".
+	const [recentCount, setRecentCount] = useState(DEFAULT_RECENT_COUNT);
+	const [recentMenuOpen, setRecentMenuOpen] = useState(false);
+	const recentMenuRef = useRef<HTMLDivElement | null>(null);
+	const recentCaretRef = useRef<HTMLButtonElement | null>(null);
 	const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({});
 	const [expandedFiles, setExpandedFiles] = useState<Record<string, boolean>>({});
 	const [readFiles, setReadFiles] = useState<Record<string, boolean>>({});
@@ -1663,6 +1674,29 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		if (!narrow) setFilesSheetOpen(false);
 	}, [narrow, viewMode]);
 	const [includeTests, setIncludeTests] = useIncludeTestsInDiff();
+	// Dismiss the recent-commits preset popover on outside click or Escape.
+	useEffect(() => {
+		if (!recentMenuOpen) return;
+		const onPointerDown = (e: PointerEvent) => {
+			const target = e.target as Node;
+			if (recentMenuRef.current?.contains(target) || recentCaretRef.current?.contains(target)) {
+				return;
+			}
+			setRecentMenuOpen(false);
+		};
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") {
+				setRecentMenuOpen(false);
+				recentCaretRef.current?.focus();
+			}
+		};
+		document.addEventListener("pointerdown", onPointerDown, true);
+		document.addEventListener("keydown", onKeyDown, true);
+		return () => {
+			document.removeEventListener("pointerdown", onPointerDown, true);
+			document.removeEventListener("keydown", onKeyDown, true);
+		};
+	}, [recentMenuOpen]);
 	const toggleFilesCollapsed = useCallback(() => {
 		setFilesCollapsed((prev) => {
 			const next = !prev;
@@ -1734,6 +1768,8 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 
 	useEffect(() => {
 		setCurrentRequest(applyPreferredDiffMode(request));
+		// N is per-open, never persisted: every fresh diff open starts at "last commit".
+		setRecentCount(DEFAULT_RECENT_COUNT);
 		if (isInitialRequestSyncRef.current) {
 			isInitialRequestSyncRef.current = false;
 			return;
@@ -1878,6 +1914,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			mode: currentRequest.mode,
 			compareRef: currentRequest.compareRef,
 			compareLabel: currentRequest.compareLabel,
+			count: currentRequest.mode === "recent" ? recentCount : undefined,
 		}).then((result) => {
 			if (cancelled) {
 				return;
@@ -1895,7 +1932,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return () => {
 			cancelled = true;
 		};
-	}, [currentRequest.compareLabel, currentRequest.compareRef, currentRequest.mode, project.id, requestVersion, task.id]);
+	}, [currentRequest.compareLabel, currentRequest.compareRef, currentRequest.mode, recentCount, project.id, requestVersion, task.id]);
 
 	useEffect(() => {
 		if (!payload) {
@@ -2593,13 +2630,16 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	}
 
 	function switchDiffMode(mode: TaskInlineDiffRequest["mode"]) {
+		setRecentMenuOpen(false);
 		if (mode === currentRequest.mode) {
 			return;
 		}
 		writePreferredDiffMode(mode);
-		if (mode === "uncommitted") {
+		// `uncommitted` and `recent` derive their comparison entirely from HEAD /
+		// the working tree, so they must not carry over a stale compareRef/label.
+		if (mode === "uncommitted" || mode === "recent") {
 			setCurrentRequest({
-				mode: "uncommitted",
+				mode,
 				focusFile: currentRequest.focusFile,
 			});
 			return;
@@ -2610,6 +2650,17 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			compareLabel: request.compareLabel,
 			focusFile: currentRequest.focusFile,
 		});
+	}
+
+	// Pick a preset from the ▾ popover: set N and activate recent mode in one action.
+	function selectRecentCount(count: number) {
+		writePreferredDiffMode("recent");
+		setRecentCount(count);
+		setRecentMenuOpen(false);
+		if (currentRequest.mode !== "recent") {
+			setCurrentRequest({ mode: "recent", focusFile: currentRequest.focusFile });
+		}
+		recentCaretRef.current?.focus();
 	}
 
 	function renderToolbarButton(label: string, active: boolean, onClick: () => void) {
@@ -2643,7 +2694,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			className="h-full flex flex-col bg-base"
 			data-inline-diff="true"
 		>
-			<div ref={toolbarRef} className="sticky top-0 z-10 border-b border-edge bg-base/95 backdrop-blur px-4 py-2" data-testid="inline-diff-toolbar">
+			<div ref={toolbarRef} className="sticky top-0 z-20 border-b border-edge bg-base/95 backdrop-blur px-4 py-2" data-testid="inline-diff-toolbar">
 				<div className="flex flex-wrap items-center gap-2">
 					<button
 						onClick={requestClose}
@@ -2657,7 +2708,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 						<div className="text-[0.6875rem] leading-tight text-fg-3">
 							{currentRequest.mode === "uncommitted"
 								? t("infoPanel.diffWorkingTreeBase")
-								: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || currentRequest.compareLabel || currentRequest.compareRef || "HEAD" })}
+								: currentRequest.mode === "recent"
+									? (payload && payload.recentCount === 0
+										? t("infoPanel.diffRecentNone")
+										: t.plural("infoPanel.diffRecentLabel", payload?.recentCount ?? recentCount))
+									: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || currentRequest.compareLabel || currentRequest.compareRef || "HEAD" })}
 						</div>
 					</div>
 					{payload && (
@@ -2741,6 +2796,76 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"))}
 					{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"))}
 					{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"))}
+					{(() => {
+						const recentActive = currentRequest.mode === "recent";
+						return (
+							<div className="relative inline-flex">
+								<div
+									className={`inline-flex items-stretch rounded-md border text-[0.6875rem] font-semibold transition-colors ${
+										recentActive
+											? "bg-accent text-white border-accent"
+											: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
+									}`}
+								>
+									<button
+										type="button"
+										onClick={() => switchDiffMode("recent")}
+										aria-pressed={recentActive}
+										className="px-2.5 py-0.5 rounded-l-md"
+										data-testid="diff-mode-recent"
+									>
+										{t.plural("infoPanel.diffRecentLabel", recentCount)}
+									</button>
+									<button
+										ref={recentCaretRef}
+										type="button"
+										onClick={() => setRecentMenuOpen((open) => !open)}
+										aria-label={t("infoPanel.diffRecentPresetsAria")}
+										aria-haspopup="menu"
+										aria-expanded={recentMenuOpen}
+										title={t("infoPanel.diffRecentPresetsAria")}
+										className={`flex items-center px-1.5 rounded-r-md border-l ${
+											recentActive ? "border-white/30" : "border-edge"
+										}`}
+										data-testid="diff-mode-recent-caret"
+									>
+										<span className="text-[0.7rem] leading-none">{"▾"}</span>
+									</button>
+								</div>
+								{recentMenuOpen && (
+									<div
+										ref={recentMenuRef}
+										role="menu"
+										aria-label={t("infoPanel.diffRecentPresetsAria")}
+										className="absolute right-0 top-full z-20 mt-1 min-w-[9rem] rounded-md border border-edge bg-elevated py-1 shadow-lg"
+										data-testid="diff-mode-recent-menu"
+									>
+										{RECENT_COUNT_PRESETS.map((preset) => {
+											const selected = recentActive && preset === recentCount;
+											return (
+												<button
+													key={preset}
+													type="button"
+													role="menuitemradio"
+													aria-checked={selected}
+													onClick={() => selectRecentCount(preset)}
+													className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[0.6875rem] font-medium transition-colors ${
+														selected ? "text-accent" : "text-fg-2 hover:bg-raised-hover"
+													}`}
+													data-testid={`diff-recent-preset-${preset}`}
+												>
+													<span>{t.plural("infoPanel.diffRecentLabel", preset)}</span>
+													{selected && (
+														<span aria-hidden="true" className="text-[0.75rem] leading-none">{"✓"}</span>
+													)}
+												</button>
+											);
+										})}
+									</div>
+								)}
+							</div>
+						);
+					})()}
 						<HelpSpot topicId="diff.modes" />
 					<div className="ml-auto flex items-center gap-2">
 						<button

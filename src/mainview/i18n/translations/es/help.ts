@@ -78,7 +78,7 @@ const help = {
 	// ── Diff viewer ──
 	"help.diff.modes.title": "Modos de diff",
 	"help.diff.modes.body":
-		"Uncommitted muestra lo que el agente aún no ha confirmado. Branch muestra toda la rama contra su base. Unpushed muestra los commits que no han salido hacia origin.",
+		"Uncommitted muestra lo que el agente aún no ha confirmado. Branch muestra toda la rama contra su base. Unpushed muestra los commits que no han salido hacia origin. Recent commits muestra solo el último commit; pulsa ▾ para ver los últimos 2, 3, 5 o 10, acotado a los commits propios de esta rama.",
 	"help.diff.review.title": "Revisión inline",
 	"help.diff.review.body":
 		"Arrastra por el margen de líneas para comentar un rango. Copy review convierte todos los comentarios en un prompt para el agente — pégalo en la terminal de la tarea. La revisión sobrevive reinicios durante 3 días.",

@@ -84,7 +84,7 @@ const help = {
 	// ── Diff viewer ──
 	"help.diff.modes.title": "Diff modes",
 	"help.diff.modes.body":
-		"Uncommitted shows what the agent has not committed yet. Branch shows the whole branch against its base. Unpushed shows commits that have not left for origin.",
+		"Uncommitted shows what the agent has not committed yet. Branch shows the whole branch against its base. Unpushed shows commits that have not left for origin. Recent commits shows just the last commit — click the ▾ to view the last 2, 3, 5, or 10 — clamped to this branch's own commits.",
 	"help.diff.review.title": "Inline review",
 	"help.diff.review.body":
 		"Drag across the line gutter to comment on a range. Copy review turns all comments into one prompt for the agent — paste it into the task terminal. The review survives restarts for 3 days.",

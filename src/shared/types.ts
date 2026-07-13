@@ -1812,7 +1812,7 @@ export interface BranchStatus {
 	mergeCompletionFingerprint: string | null; // stable key for deduping the merged-branch completion prompt
 }
 
-export type TaskDiffMode = "branch" | "uncommitted" | "unpushed";
+export type TaskDiffMode = "branch" | "uncommitted" | "unpushed" | "recent";
 
 export type TaskDiffFileStatus =
 	| "added"
@@ -1863,6 +1863,11 @@ export interface TaskDiffResponse {
 	compareRef: string | null;
 	compareLabel: string;
 	fallbackReason: TaskDiffFallbackReason | null;
+	// For `recent` mode only: the effective (clamped) commit count actually diffed
+	// (`HEAD~recentCount..HEAD`). May be smaller than the requested count when the
+	// branch has fewer of its own commits; 0 when the branch has none. Null for
+	// every other mode. The renderer uses it for the honest "Last N commits" label.
+	recentCount: number | null;
 	summary: TaskDiffSummary;
 	files: TaskDiffFile[];
 	skippedFiles: TaskDiffSkippedFile[];
@@ -2640,7 +2645,7 @@ export type AppRPCSchema = {
 				response: BranchStatus;
 			};
 			getTaskDiff: {
-				params: { taskId: string; projectId: string; mode: TaskDiffMode; compareRef?: string; compareLabel?: string };
+				params: { taskId: string; projectId: string; mode: TaskDiffMode; compareRef?: string; compareLabel?: string; count?: number };
 				response: TaskDiffResponse;
 			};
 			rebaseTask: {
