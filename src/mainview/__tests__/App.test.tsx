@@ -1024,6 +1024,43 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.queryByText("Connected")).not.toBeInTheDocument();
 		});
 
+		it("reactivates a consumed QR when the tunnel recovers with a new hostname", async () => {
+			vi.useFakeTimers({ shouldAdvanceTime: true });
+			try {
+				await renderApp();
+				window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+					detail: {
+						qrDataUrl: "data:image/png;base64,stale",
+						accessUrl: "https://stale.trycloudflare.com/?token=old",
+						tunnelState: "connected",
+						cloudflaredInstalled: true,
+					},
+				}));
+				window.dispatchEvent(new CustomEvent("rpc:qrTokenConsumed"));
+				await waitFor(() => expect(screen.getByText("Copy URL")).toBeDisabled());
+
+				vi.mocked(api.request.getRemoteAccessQR).mockResolvedValue({
+					qrDataUrl: "data:image/png;base64,recovered",
+					accessUrl: "https://recovered.trycloudflare.com/?token=new",
+					tunnelState: "connected",
+					cloudflaredInstalled: true,
+					interfaces: [],
+					selectedHost: "",
+				});
+
+				await act(async () => {
+					await vi.advanceTimersByTimeAsync(25_000);
+				});
+
+				expect(api.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: true, host: undefined });
+				expect(screen.getByText("https://recovered.trycloudflare.com/?token=new")).toBeInTheDocument();
+				expect(screen.getByText("Copy URL")).not.toBeDisabled();
+				expect(screen.queryByText("Connected")).not.toBeInTheDocument();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
 		it("shows auth failed screen when rpc:authFailed fires", async () => {
 			await renderApp();
 			window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail: { status: 401 } }));

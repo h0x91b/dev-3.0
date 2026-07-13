@@ -35,6 +35,10 @@ export interface TunnelEntry {
 	process: ReturnType<typeof spawn> | null;
 	startedAt: number;
 	subToken: string;
+	metricsReadyUrl: string | null;
+	consecutiveHealthFailures: number;
+	healthCheckInFlight: boolean;
+	healthCheckTimer: ReturnType<typeof setInterval> | null;
 }
 
 export interface StartTunnelOptions {
@@ -47,6 +51,9 @@ export interface StartTunnelOptions {
 
 const MAIN_ID = "main";
 const URL_WAIT_TIMEOUT_MS = 30_000;
+const HEALTH_CHECK_INTERVAL_MS = 10_000;
+const HEALTH_CHECK_TIMEOUT_MS = 3_000;
+const HEALTH_FAILURE_LIMIT = 3;
 
 const tunnels = new Map<string, TunnelEntry>();
 
@@ -90,55 +97,106 @@ export function parseTunnelUrl(line: string): string | null {
 	return match ? match[0] : null;
 }
 
-async function waitForUrl(stderr: ReadableStream, timeoutMs: number): Promise<string | null> {
+/**
+ * Parse cloudflared's local management endpoint from its startup output.
+ * `/ready` reports 200 only while at least one edge connection is active;
+ * a running process alone is not a tunnel-liveness signal.
+ */
+export function parseTunnelMetricsUrl(line: string): string | null {
+	const match = line.match(/Starting metrics server on\s+(\S+)/i);
+	if (!match) return null;
+	let address = match[1].replace(/[),;]+$/, "").replace(/\/metrics\/?$/, "");
+	if (address.startsWith("0.0.0.0:")) address = `127.0.0.1:${address.slice("0.0.0.0:".length)}`;
+	if (address.startsWith("[::]:")) address = `[::1]:${address.slice("[::]:".length)}`;
+	const base = /^https?:\/\//i.test(address) ? address : `http://${address}`;
+	return `${base}/ready`;
+}
+
+function logCloudflaredLine(id: string, line: string): void {
+	const trimmed = line.trim();
+	if (!trimmed) return;
+	const extra = { id, line: trimmed };
+	if (/\b(ERR|ERROR|FTL|FATAL)\b/i.test(trimmed)) {
+		log.error("cloudflared", extra);
+	} else if (/\b(WRN|WARN|WARNING)\b/i.test(trimmed)) {
+		log.warn("cloudflared", extra);
+	} else {
+		log.info("cloudflared", extra);
+	}
+}
+
+/**
+ * Drain stderr for the entire child lifetime. Previously the reader lock was
+ * released as soon as the public URL appeared, which discarded every later
+ * reconnect error and could eventually back-pressure the child process.
+ */
+function monitorStderr(entry: TunnelEntry, stderr: ReadableStream): Promise<string | null> {
 	const reader = stderr.getReader();
 	const decoder = new TextDecoder();
-	const deadline = Date.now() + timeoutMs;
 	let buffer = "";
+	let urlResolved = false;
+	let resolveUrl!: (url: string | null) => void;
+	const urlPromise = new Promise<string | null>((resolve) => {
+		resolveUrl = resolve;
+	});
 
-	try {
-		while (Date.now() < deadline) {
-			const remaining = deadline - Date.now();
-			if (remaining <= 0) break;
-
-			const result = await Promise.race([
-				reader.read(),
-				new Promise<{ done: true; value: undefined }>((resolve) =>
-					setTimeout(() => resolve({ done: true, value: undefined }), remaining),
-				),
-			]);
-
-			if (result.done) break;
-
-			buffer += decoder.decode(result.value, { stream: true });
-
-			const lines = buffer.split("\n");
-			buffer = lines.pop() ?? "";
-
-			for (const line of lines) {
-				const url = parseTunnelUrl(line);
-				if (url) {
-					reader.releaseLock();
-					return url;
-				}
+	function processLine(line: string): void {
+		logCloudflaredLine(entry.id, line);
+		const metricsReadyUrl = parseTunnelMetricsUrl(line);
+		if (metricsReadyUrl) entry.metricsReadyUrl = metricsReadyUrl;
+		if (!urlResolved) {
+			const url = parseTunnelUrl(line);
+			if (url) {
+				urlResolved = true;
+				resolveUrl(url);
 			}
 		}
-
-		if (buffer) {
-			const url = parseTunnelUrl(buffer);
-			if (url) return url;
-		}
-	} finally {
-		try { reader.releaseLock(); } catch { /* already released */ }
 	}
 
-	return null;
+	void (async () => {
+		try {
+			while (true) {
+				const result = await reader.read();
+				if (result.done) break;
+				buffer += decoder.decode(result.value, { stream: true });
+				const lines = buffer.split("\n");
+				buffer = lines.pop() ?? "";
+				for (const line of lines) processLine(line);
+			}
+			buffer += decoder.decode();
+			if (buffer) processLine(buffer);
+		} catch (err) {
+			log.warn("Failed to read cloudflared stderr", { id: entry.id, error: String(err) });
+		} finally {
+			if (!urlResolved) resolveUrl(null);
+			try { reader.releaseLock(); } catch { /* already released */ }
+		}
+	})();
+
+	return urlPromise;
+}
+
+async function waitForUrl(urlPromise: Promise<string | null>, timeoutMs: number): Promise<string | null> {
+	let timeout: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			urlPromise,
+			new Promise<null>((resolve) => {
+				timeout = setTimeout(() => resolve(null), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timeout !== undefined) clearTimeout(timeout);
+	}
 }
 
 interface TunnelFilter {
 	kind?: TunnelKind;
 	taskId?: string;
 }
+
+type TunnelChangeHook = (entry: TunnelEntry, previousUrl: string | null) => void;
+let tunnelChangeHook: TunnelChangeHook | null = null;
 
 function matchesFilter(entry: TunnelEntry, filter?: TunnelFilter): boolean {
 	if (!filter) return true;
@@ -165,6 +223,10 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 		process: null,
 		startedAt: Date.now(),
 		subToken: randomBytes(24).toString("base64url"),
+		metricsReadyUrl: null,
+		consecutiveHealthFailures: 0,
+		healthCheckInFlight: false,
+		healthCheckTimer: null,
 	};
 	tunnels.set(opts.id, entry);
 
@@ -176,21 +238,24 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 		entry.process = proc;
 
 		// Reset state when the cloudflared process exits unexpectedly.
-		proc.exited.then(() => {
-			log.info("Tunnel process exited", { id: opts.id });
+		proc.exited.then((exitCode) => {
+			log.info("Tunnel process exited", { id: opts.id, exitCode });
 			const current = tunnels.get(opts.id);
 			if (current === entry) {
+				if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
+				entry.healthCheckTimer = null;
 				entry.process = null;
 				entry.url = null;
 				entry.state = "idle";
 			}
 		});
 
-		const url = await waitForUrl(proc.stderr!, URL_WAIT_TIMEOUT_MS);
+		const url = await waitForUrl(monitorStderr(entry, proc.stderr!), URL_WAIT_TIMEOUT_MS);
 		if (url) {
 			entry.url = url;
 			entry.state = "connected";
 			log.info("Tunnel connected", { id: opts.id, url });
+			startHealthMonitor(entry);
 			return entry;
 		}
 
@@ -209,6 +274,8 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 function stopEntry(id: string): void {
 	const entry = tunnels.get(id);
 	if (!entry) return;
+	if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
+	entry.healthCheckTimer = null;
 	if (entry.process) {
 		try {
 			entry.process.kill();
@@ -219,10 +286,90 @@ function stopEntry(id: string): void {
 	tunnels.delete(id);
 }
 
+async function restartEntry(entry: TunnelEntry): Promise<void> {
+	if (tunnels.get(entry.id) !== entry) return;
+	const previousUrl = entry.url;
+	const opts: StartTunnelOptions = {
+		id: entry.id,
+		kind: entry.kind,
+		targetPort: entry.targetPort,
+		ports: [...entry.ports],
+		taskId: entry.taskId,
+	};
+	stopEntry(entry.id);
+	const restarted = await startEntry(opts);
+	if (restarted.url) {
+		log.info("Tunnel restarted", { id: entry.id, previousUrl, url: restarted.url });
+		tunnelChangeHook?.(restarted, previousUrl);
+	} else {
+		log.error("Tunnel restart failed", { id: entry.id, previousUrl });
+	}
+}
+
+async function checkHealth(id: string): Promise<void> {
+	const entry = tunnels.get(id);
+	if (!entry || entry.state !== "connected" || !entry.metricsReadyUrl || entry.healthCheckInFlight) return;
+	entry.healthCheckInFlight = true;
+	try {
+		let response: Response | null = null;
+		let detail = "";
+		try {
+			response = await fetch(entry.metricsReadyUrl, {
+				signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
+			});
+			detail = (await response.text()).slice(0, 500);
+		} catch (err) {
+			detail = String(err);
+		}
+
+		if (tunnels.get(id) !== entry) return;
+		if (response?.ok) {
+			if (entry.consecutiveHealthFailures > 0) {
+				log.info("Tunnel edge connection recovered", {
+					id,
+					previousFailures: entry.consecutiveHealthFailures,
+				});
+			}
+			entry.consecutiveHealthFailures = 0;
+			return;
+		}
+
+		entry.consecutiveHealthFailures += 1;
+		log.warn("Tunnel edge readiness check failed", {
+			id,
+			status: response?.status ?? null,
+			detail,
+			consecutiveFailures: entry.consecutiveHealthFailures,
+		});
+		if (entry.consecutiveHealthFailures >= HEALTH_FAILURE_LIMIT) {
+			log.warn("Tunnel unhealthy; restarting", {
+				id,
+				url: entry.url,
+				consecutiveFailures: entry.consecutiveHealthFailures,
+			});
+			await restartEntry(entry);
+		}
+	} finally {
+		entry.healthCheckInFlight = false;
+	}
+}
+
+function startHealthMonitor(entry: TunnelEntry): void {
+	if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
+	entry.healthCheckTimer = setInterval(() => {
+		void checkHealth(entry.id);
+	}, HEALTH_CHECK_INTERVAL_MS);
+	(entry.healthCheckTimer as ReturnType<typeof setInterval> & { unref?: () => void }).unref?.();
+}
+
 export const tunnelManager = {
 	start: startEntry,
 	stop: stopEntry,
 	get: (id: string): TunnelEntry | undefined => tunnels.get(id),
+	checkHealth,
+	setChangeHook: (hook: TunnelChangeHook | null): void => {
+		tunnelChangeHook = hook;
+	},
 	list: (filter?: TunnelFilter): TunnelEntry[] => {
 		const out: TunnelEntry[] = [];
 		for (const entry of tunnels.values()) {
@@ -264,5 +411,8 @@ export function getTunnelState(): TunnelState {
 
 /** Reset module state — only for tests */
 export function _resetState(): void {
+	for (const entry of tunnels.values()) {
+		if (entry.healthCheckTimer) clearInterval(entry.healthCheckTimer);
+	}
 	tunnels.clear();
 }

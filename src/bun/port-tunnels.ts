@@ -49,6 +49,12 @@ function emitChanged(taskId: string): void {
 	pushFn("exposedPortsChanged", { taskId, ports: getExposedPorts(taskId) });
 }
 
+// A readiness-watchdog restart rotates the random Quick Tunnel hostname.
+// Reuse the existing push path so every port surface replaces the stale URL.
+tunnelManager.setChangeHook((entry) => {
+	if (entry.taskId) emitChanged(entry.taskId);
+});
+
 export function getExposedPorts(taskId?: string): ExposedPort[] {
 	const filter = taskId !== undefined ? { taskId } : undefined;
 	return tunnelManager
