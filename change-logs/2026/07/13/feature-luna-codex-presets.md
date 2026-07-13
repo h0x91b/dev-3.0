@@ -1,0 +1,1 @@
+Prioritize GPT-5.6 Luna X-High and Max Codex presets, expose every available effort tier for Sol, and order the models Luna → Sol → Terra → GPT-5.5. Existing installations resync the expanded preset layout into the canonical order.

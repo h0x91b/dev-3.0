@@ -10,7 +10,7 @@ const { TEST_HOME, AGENTS_FILE } = vi.hoisted(() => {
 
 vi.mock("../paths", () => ({ DEV3_HOME: TEST_HOME }));
 vi.mock("../settings", () => ({
-	loadSettings: vi.fn(async () => ({ agentsLayoutRevision: 7 })),
+	loadSettings: vi.fn(async () => ({ agentsLayoutRevision: 10 })),
 	saveSettings: vi.fn(async () => undefined),
 }));
 
@@ -67,6 +67,6 @@ describe("getAllAgents persistence", () => {
 		const persistedDefault = persisted
 			.find((agent) => agent.id === "builtin-codex")!
 			.configurations.find((config) => config.id === "codex-default")!;
-		expect(persistedDefault.groupLabel).toBe("GPT-5.6 Sol");
+		expect(persistedDefault.groupLabel).toBe("GPT-5.6 Luna");
 	});
 });

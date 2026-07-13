@@ -80,12 +80,10 @@ const DEPRECATED_CONFIG_IDS = new Set([
 	"codex-5.6-medium",
 	// Superseded by the compact Bypass-first preset matrix. Keep prerelease
 	// installs from retaining removed rows as if they were user-created.
-	"codex-5.6-sol-high-bypass",
-	"codex-5.6-sol-xhigh",
-	"codex-5.6-sol-max",
-	"codex-5.6-sol-ultra",
 	"codex-5.6-terra-xhigh",
-	"codex-5.6-luna-high",
+	// Luna now starts at Medium; Low did not provide a useful trade-off.
+	"codex-5.6-luna-low-bypass",
+	"codex-5.6-luna-low",
 ]);
 
 /** Merge stored agents with defaults. Missing defaults are added; stored versions win.
@@ -177,7 +175,7 @@ function mergeAgentWithDefault(
  *  to warrant a one-time resync of already-onboarded users' stored order
  *  (mergeWithDefaults otherwise preserves stored order forever). See
  *  decisions/ for the write-up. */
-export const AGENTS_LAYOUT_REVISION = 7;
+export const AGENTS_LAYOUT_REVISION = 10;
 
 /** One-time reorder of each built-in agent's configurations to match the
  *  current DEFAULT_AGENTS declared order. Custom (non-default) configs are
