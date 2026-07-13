@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
+import type { CodingAgent, Task, Project, TaskStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
@@ -54,6 +54,7 @@ import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
+import VariantSwitcher from "./VariantSwitcher";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -62,6 +63,8 @@ interface TaskInfoPanelProps {
 	navigate: (route: Route) => void;
 	taskPorts?: Map<string, PortInfo[]>;
 	taskResourceUsage?: Map<string, ResourceUsage>;
+	tasks?: Task[];
+	agents?: CodingAgent[];
 	isFullPage?: boolean;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
@@ -117,7 +120,7 @@ function readNumber(key: string, fallback: number): number {
 	return fallback;
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
+function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, tasks = [], agents = [], isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
 	const t = useT();
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -145,6 +148,19 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
+	const variantMembers = task.groupId
+		? tasks.filter((candidate) => candidate.groupId === task.groupId)
+		: [];
+	const variantSwitcher = (
+		<VariantSwitcher
+			variants={variantMembers}
+			currentTaskId={task.id}
+			agents={agents}
+			projectId={project.id}
+			isFullPage={isFullPage}
+			navigate={navigate}
+		/>
+	);
 
 	useEffect(() => {
 		setMetadataBranchState(null);
@@ -853,6 +869,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 				{fileOpenInMenuPortal}
 				{statusDropdownPortal}
 				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
+					{variantSwitcher}
 					{statusDropdownButton}
 					<span className="flex-1 min-w-0 truncate text-fg-2 text-sm font-semibold">{getTaskTitle(task)}</span>
 					{diffSummaryBadge}
@@ -980,6 +997,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 			{collapsed ? (
 				<div className="flex flex-col h-full px-4 gap-1 justify-center">
 					<div className="flex items-center gap-1.5 min-w-0">
+						{variantSwitcher}
 						{watchToggleButton}
 						{statusDropdownButton}
 						{statusDropdownPortal}
@@ -1056,6 +1074,7 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 					<div className="flex flex-col px-4">
 						<div className="flex items-center gap-1.5 min-w-0 pt-1">
 							<div className="flex items-center gap-1.5 min-w-0" data-help-id="inspector.context-bar">
+								{variantSwitcher}
 								{watchToggleButton}
 								{statusDropdownButton}
 								{statusDropdownPortal}

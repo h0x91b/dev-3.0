@@ -98,8 +98,6 @@ const tips = {
 	"tip.cliDevServer.body": "Usa `dev3 dev-server start` en un worktree para lanzar su servidor dev, y luego detenerlo o reiniciarlo desde la terminal.",
 	"tip.diffSnapshots.title": "Tu trabajo se guarda automáticamente",
 	"tip.diffSnapshots.body": "Dev3 guarda un snapshot de git diff en cada actualización de rama para que puedas recuperar cambios aunque se borre el worktree.",
-	"tip.siblingVariantVisibility.title": "Todos los variantes a la vista",
-	"tip.siblingVariantVisibility.body": "Los puntos de colores en una tarjeta muestran dónde están sus variantes hermanas — haz clic en un punto para saltar a cualquiera en vista dividida.",
 	"tip.branchSelectorTaskCreation.title": "Inicia tareas desde cualquier rama",
 	"tip.branchSelectorTaskCreation.body": "En el modal de creación, elige una rama local o remota existente en lugar de crear siempre una nueva.",
 	"tip.resumeConversationOnReopen.title": "Reapertura retoma la conversación",
@@ -216,6 +214,8 @@ const tips = {
 	"tip.llmProvider.body": "Ajustes → Coding Agents → LLM Provider apunta el agente Claude a Amazon Bedrock — dev3 fija el modelo mapeado; las credenciales y la región quedan en tu propia configuración.",
 	"tip.filterTokens.title": "Filtra tareas con tokens",
 	"tip.filterTokens.body": "En la búsqueda escribe label:Bug agent:Codex status:review is:attention has:port — o usa el embudo para construirlo.",
+	"tip.cycleTaskVariants.title": "Cambia entre variantes",
+	"tip.cycleTaskVariants.body": "Pulsa Shift+Cmd+[ o ] (Ctrl en Linux) para moverte entre variantes activas sin salir del terminal.",
 };
 
 export default tips;

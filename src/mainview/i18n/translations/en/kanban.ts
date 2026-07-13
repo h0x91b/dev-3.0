@@ -105,6 +105,8 @@ const kanban = {
 	"task.bellTooltip": "Needs attention",
 	"task.attentionLabel": "Attention",
 	"task.siblings": "Siblings",
+	"task.currentVariant": "Current variant",
+	"task.switchToVariant": "Switch to {variant}: {title}",
 	"task.siblingsCount_one": "{count} sibling variant",
 	"task.siblingsCount_other": "{count} sibling variants",
 	"task.warnCompletionTitle": "Unsaved Changes",

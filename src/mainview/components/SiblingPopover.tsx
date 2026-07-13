@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
-import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { CodingAgent, Task } from "../../shared/types";
-import { ACTIVE_STATUSES } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import type { Route } from "../state";
 import { useT, statusKey } from "../i18n";
+import { sortVariants } from "../utils/variantGroups";
 
 interface SiblingPopoverProps {
-	siblings: Task[];
+	variants: Task[];
+	currentTaskId: string;
 	agents: CodingAgent[];
 	navigate: (route: Route) => void;
 	onClose: () => void;
@@ -16,12 +17,13 @@ interface SiblingPopoverProps {
 	projectId: string;
 }
 
-function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, projectId }: SiblingPopoverProps) {
+function SiblingPopover({ variants, currentTaskId, agents, navigate, onClose, anchorEl, projectId }: SiblingPopoverProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const popoverRef = useRef<HTMLDivElement>(null);
 	const [pos, setPos] = useState({ top: 0, left: 0 });
 	const [visible, setVisible] = useState(false);
+	const orderedVariants = sortVariants(variants);
 
 	// Position relative to anchor, clamped to viewport
 	useLayoutEffect(() => {
@@ -48,14 +50,21 @@ function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, project
 		setVisible(true);
 	}, [anchorEl]);
 
-	useEscapeKey(onClose);
+	useEffect(() => {
+		function handleKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") onClose();
+		}
+		window.addEventListener("keydown", handleKeyDown);
+		return () => window.removeEventListener("keydown", handleKeyDown);
+	}, [onClose]);
+
 	// Close on click outside
 	useEffect(() => {
-		function handleClick(e: MouseEvent) {
+		function handleClick(event: MouseEvent) {
 			if (
 				popoverRef.current &&
-				!popoverRef.current.contains(e.target as Node) &&
-				!anchorEl.contains(e.target as Node)
+				!popoverRef.current.contains(event.target as Node) &&
+				!anchorEl.contains(event.target as Node)
 			) {
 				onClose();
 			}
@@ -66,12 +75,12 @@ function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, project
 		};
 	}, [anchorEl, onClose]);
 
-	function handleSiblingClick(sibling: Task) {
-		if (ACTIVE_STATUSES.includes(sibling.status)) {
+	function handleVariantClick(variant: Task) {
+		if (variant.id !== currentTaskId && ACTIVE_STATUSES.includes(variant.status)) {
 			navigate({
 				screen: "project",
 				projectId,
-				activeTaskId: sibling.id,
+				activeTaskId: variant.id,
 			});
 		}
 		onClose();
@@ -80,47 +89,75 @@ function SiblingPopover({ siblings, agents, navigate, onClose, anchorEl, project
 	return createPortal(
 		<div
 			ref={popoverRef}
-			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden"
+			role="dialog"
+			aria-label={t("task.siblings")}
+			className="fixed z-50 overflow-hidden rounded-xl border border-edge-active bg-overlay shadow-2xl shadow-black/40"
 			style={{
 				top: pos.top,
 				left: pos.left,
-				width: 240,
+				width: 280,
 				visibility: visible ? "visible" : "hidden",
 			}}
-			onClick={(e) => e.stopPropagation()}
+			onClick={(event) => event.stopPropagation()}
 		>
-			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold border-b border-edge/50">
+			<div className="border-b border-edge/50 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-fg-3">
 				{t("task.siblings")}
 			</div>
-			<div className="max-h-48 overflow-y-auto py-1">
-				{siblings.map((sibling) => {
-					const agent = sibling.agentId ? agents.find((a) => a.id === sibling.agentId) : null;
-					const config = agent && sibling.configId
-						? agent.configurations.find((c) => c.id === sibling.configId)
-						: agent?.configurations.find((c) => c.id === agent.defaultConfigId) ?? agent?.configurations[0];
-					const isClickable = ACTIVE_STATUSES.includes(sibling.status);
+			<div className="max-h-64 overflow-y-auto py-1">
+				{orderedVariants.map((variant) => {
+					const agent = variant.agentId ? agents.find((candidate) => candidate.id === variant.agentId) : null;
+					const config = agent && variant.configId
+						? agent.configurations.find((candidate) => candidate.id === variant.configId)
+						: agent?.configurations.find((candidate) => candidate.id === agent.defaultConfigId) ?? agent?.configurations[0];
+					const isCurrent = variant.id === currentTaskId;
+					const isAlive = ACTIVE_STATUSES.includes(variant.status);
+					const isClickable = isAlive && !isCurrent;
+					const title = getTaskTitle(variant);
+					const variantLabel = t("task.attempt", { n: String(variant.variantIndex) });
+					const rowLabel = isCurrent
+						? `${t("task.currentVariant")}: ${variantLabel} — ${title}`
+						: isAlive
+							? t("task.switchToVariant", { variant: variantLabel, title })
+							: `${variantLabel} — ${title} — ${t(statusKey(variant.status))}`;
 
 					return (
 						<button
-							key={sibling.id}
+							key={variant.id}
 							type="button"
-							onClick={() => handleSiblingClick(sibling)}
-							className={`w-full text-left px-3 py-2 flex items-center gap-2.5 transition-colors ${
-								isClickable ? "hover:bg-elevated-hover cursor-pointer" : "opacity-60 cursor-default"
+							disabled={!isClickable}
+							aria-label={rowLabel}
+							aria-current={isCurrent ? "true" : undefined}
+							onClick={() => handleVariantClick(variant)}
+							className={`w-full px-3 py-2 text-left transition-colors ${
+								isCurrent
+									? "bg-accent/10"
+									: isClickable
+										? "cursor-pointer hover:bg-elevated-hover"
+										: "cursor-default opacity-55"
 							}`}
+							title={rowLabel}
 						>
-							<span
-								className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-								style={{ background: statusColors[sibling.status] }}
-							/>
-							<div className="flex-1 min-w-0">
-								<div className="text-xs text-fg truncate">
-									{t("task.attempt", { n: String(sibling.variantIndex) })}
-									{agent ? ` · ${agent.name}` : ""}
-									{config?.name ? ` (${config.name})` : ""}
-								</div>
-								<div className="text-[0.625rem] text-fg-muted truncate">
-									{t(statusKey(sibling.status))}
+							<div className="flex items-start gap-2.5">
+								<span
+									aria-hidden="true"
+									className="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full"
+									style={{ background: statusColors[variant.status] }}
+								/>
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-1.5 text-xs text-fg">
+										<span className="truncate">
+											{variantLabel}
+											{agent ? ` · ${agent.name}` : ""}
+											{config?.name ? ` (${config.name})` : ""}
+										</span>
+										{isCurrent && (
+											<span className="flex-shrink-0 rounded bg-accent/15 px-1 py-0.5 text-[0.5625rem] font-semibold uppercase tracking-wide text-accent">
+												{t("task.currentVariant")}
+											</span>
+										)}
+									</div>
+									<div className="truncate text-[0.625rem] text-fg-2">{title}</div>
+									<div className="truncate text-[0.5625rem] text-fg-muted">{t(statusKey(variant.status))}</div>
 								</div>
 							</div>
 						</button>

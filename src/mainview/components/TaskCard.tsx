@@ -17,7 +17,7 @@ import { useTerminalPreview } from "../hooks/useTerminalPreview";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
-import SiblingPopover from "./SiblingPopover";
+import VariantDots from "./VariantDots";
 import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
@@ -66,14 +66,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const menuRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 
-	// Sibling popover state
-	const [siblingPopoverOpen, setSiblingPopoverOpen] = useState(false);
-	const siblingAnchorRef = useRef<HTMLButtonElement>(null);
 	const groupMembers = task.groupId && siblingMap
 		? (siblingMap.get(task.groupId) ?? [])
 		: [];
-	const hasSiblings = groupMembers.length > 1;
-	const siblings = groupMembers.filter((s) => s.id !== task.id);
 
 	const preview = useTerminalPreview();
 	const cardRef = useRef<HTMLDivElement>(null);
@@ -705,18 +700,6 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				document.body
 			)}
 
-			{/* Sibling popover */}
-			{siblingPopoverOpen && siblingAnchorRef.current && siblings.length > 0 && (
-				<SiblingPopover
-					siblings={siblings}
-					agents={agents}
-					navigate={navigate}
-					onClose={() => setSiblingPopoverOpen(false)}
-					anchorEl={siblingAnchorRef.current}
-					projectId={project.id}
-				/>
-			)}
-
 			{/* Label chips row — always rendered so "+" is discoverable on hover */}
 			{(() => {
 				const projectLabels = project.labels ?? [];
@@ -908,24 +891,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{!isActive && reviewBadge}
 
 				{/* Sibling variant dots */}
-				{hasSiblings && (
-					<Tooltip content={t.plural("task.siblingsCount", siblings.length)} detail={t("ttip.task.siblings")}>
-						<button
-							ref={siblingAnchorRef}
-							onClick={(e) => { e.stopPropagation(); preview.close(); setSiblingPopoverOpen(!siblingPopoverOpen); }}
-							className="flex items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-fg/5"
-							aria-label={t.plural("task.siblingsCount", siblings.length)}
-						>
-							{groupMembers.map((s) => (
-								<span
-									key={s.id}
-									className={`h-2 w-2 flex-shrink-0 rounded-full ${s.id === task.id ? "ring-1 ring-fg ring-offset-1 ring-offset-base" : ""}`}
-									style={{ background: statusColors[s.status] }}
-								/>
-							))}
-						</button>
-					</Tooltip>
-				)}
+				<VariantDots
+					groupMembers={groupMembers}
+					currentTaskId={task.id}
+					statusColors={statusColors}
+					agents={agents}
+					navigate={navigate}
+					projectId={project.id}
+					onOpen={preview.close}
+					testId={`variant-indicator-${task.id}`}
+				/>
 
 				{/* Port indicator for active tasks */}
 				{isActive && ports && ports.length > 0 && (

@@ -98,8 +98,6 @@ const tips = {
 	"tip.cliDevServer.body": "Запустите `dev3 dev-server start` в worktree, чтобы поднять dev-сервер задачи, а потом остановить или перезапустить его из терминала.",
 	"tip.diffSnapshots.title": "Работа автоматически сохраняется",
 	"tip.diffSnapshots.body": "Dev3 сохраняет снимок git diff при каждом обновлении ветки, чтобы можно было восстановить изменения даже после сброса воркдерева.",
-	"tip.siblingVariantVisibility.title": "Все варианты задачи на виду",
-	"tip.siblingVariantVisibility.body": "Цветные точки на карточке показывают, где находятся связанные варианты — нажмите точку, чтобы перейти к любому из них.",
 	"tip.branchSelectorTaskCreation.title": "Задачи из любой ветки",
 	"tip.branchSelectorTaskCreation.body": "В окне создания задачи можно выбрать существующую локальную или удалённую ветку — не только создавать новую.",
 	"tip.resumeConversationOnReopen.title": "Открытие продолжает разговор",
@@ -216,6 +214,8 @@ const tips = {
 	"tip.llmProvider.body": "Настройки → Coding Agents → LLM Provider направляет агента Claude в Amazon Bedrock — dev3 подставит модель; учётные данные и регион остаются в вашей конфигурации.",
 	"tip.filterTokens.title": "Фильтруйте задачи токенами",
 	"tip.filterTokens.body": "В поле поиска наберите label:Bug agent:Codex status:review is:attention has:port — или соберите фильтр кликом по воронке.",
+	"tip.cycleTaskVariants.title": "Цикл вариантов задачи",
+	"tip.cycleTaskVariants.body": "Нажмите Shift+Cmd+[ или ] (Ctrl в Linux), чтобы переключаться между живыми вариантами прямо из терминала.",
 };
 
 export default tips;

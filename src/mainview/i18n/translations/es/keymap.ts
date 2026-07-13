@@ -17,6 +17,8 @@ const keymap = {
 	"keymap.shortcut.commandPalette": "Paleta de comandos",
 	"keymap.shortcut.back": "Atrás",
 	"keymap.shortcut.forward": "Adelante",
+	"keymap.shortcut.previousVariant": "Variante activa anterior",
+	"keymap.shortcut.nextVariant": "Siguiente variante activa",
 	"keymap.shortcut.switchProject": "Cambiar al proyecto 1–9 (mantener vista)",
 	"keymap.shortcut.switchProjectFlip": "Cambiar al proyecto 1–9 (alternar vista tablero/tarea)",
 	"keymap.shortcut.jumpOperations": "Ir al tablero de Operaciones",

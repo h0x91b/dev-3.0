@@ -147,6 +147,8 @@ function ProjectView({
 							navigate={navigate}
 							taskPorts={taskPorts}
 							taskResourceUsage={taskResourceUsage}
+							tasks={tasks}
+							agents={agents}
 							onOpenInlineDiff={inlineDiff.open}
 						/>
 					)}
@@ -168,6 +170,8 @@ function ProjectView({
 							dispatch={dispatch}
 							navigate={navigate}
 							taskPorts={taskPorts}
+							tasks={tasks}
+							agents={agents}
 							onOpenInlineDiff={inlineDiff.open}
 						/>
 					)}
@@ -196,6 +200,8 @@ function ProjectView({
 						navigate={navigate}
 						taskPorts={taskPorts}
 						taskResourceUsage={taskResourceUsage}
+						tasks={tasks}
+						agents={agents}
 						onOpenInlineDiff={inlineDiff.open}
 					/>
 				)}

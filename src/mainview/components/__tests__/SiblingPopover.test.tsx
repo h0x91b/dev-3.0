@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import SiblingPopover from "../SiblingPopover";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, Task } from "../../../shared/types";
@@ -40,7 +41,8 @@ function makeSibling(overrides?: Partial<Task>): Task {
 }
 
 function renderPopover(props: {
-	siblings?: Task[];
+	variants?: Task[];
+	currentTaskId?: string;
 	navigate?: (route: Route) => void;
 	onClose?: () => void;
 }) {
@@ -61,7 +63,8 @@ function renderPopover(props: {
 	const result = render(
 		<I18nProvider>
 			<SiblingPopover
-				siblings={props.siblings ?? [makeSibling()]}
+				variants={props.variants ?? [makeSibling()]}
+				currentTaskId={props.currentTaskId ?? "current"}
 				agents={agents}
 				navigate={props.navigate ?? vi.fn()}
 				onClose={props.onClose ?? vi.fn()}
@@ -77,65 +80,72 @@ function renderPopover(props: {
 describe("SiblingPopover", () => {
 	it("renders sibling list with status and agent info", () => {
 		renderPopover({
-			siblings: [
+		variants: [
 				makeSibling({ id: "s1", variantIndex: 1, status: "in-progress" }),
-				makeSibling({ id: "s2", variantIndex: 2, status: "user-questions" }),
+				makeSibling({ id: "s2", variantIndex: 2, status: "user-questions", title: "Renamed attempt" }),
 			],
+			currentTaskId: "s1",
 		});
 
 		expect(screen.getByText(/Variant 1/)).toBeInTheDocument();
 		expect(screen.getByText(/Variant 2/)).toBeInTheDocument();
+		expect(screen.getByText("Renamed attempt")).toBeInTheDocument();
+		expect(screen.getByText("Current variant")).toBeInTheDocument();
 		expect(screen.getByText("Siblings")).toBeInTheDocument();
 	});
 
-	it("calls navigate when clicking an active sibling", () => {
+	it("calls navigate when clicking an active sibling", async () => {
 		const navigate = vi.fn();
 		const onClose = vi.fn();
 		renderPopover({
-			siblings: [makeSibling({ id: "s1", variantIndex: 1, status: "in-progress" })],
+			variants: [
+				makeSibling({ id: "s1", variantIndex: 1, status: "in-progress" }),
+				makeSibling({ id: "s2", variantIndex: 2, status: "user-questions" }),
+			],
+			currentTaskId: "s1",
 			navigate,
 			onClose,
 		});
 
-		fireEvent.click(screen.getByText(/Variant 1/));
+		await userEvent.click(screen.getByRole("button", { name: /Switch to Variant 2/ }));
 
 		expect(navigate).toHaveBeenCalledWith({
 			screen: "project",
 			projectId: "p1",
-			activeTaskId: "s1",
+			activeTaskId: "s2",
 		});
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("closes popover but does not navigate for completed siblings", () => {
+	it("keeps completed siblings inert", async () => {
 		const navigate = vi.fn();
 		const onClose = vi.fn();
 		renderPopover({
-			siblings: [makeSibling({ id: "s1", variantIndex: 1, status: "completed" })],
+			variants: [makeSibling({ id: "s1", variantIndex: 1, status: "completed" })],
 			navigate,
 			onClose,
 		});
 
-		fireEvent.click(screen.getByText(/Variant 1/));
+		await userEvent.click(screen.getByRole("button", { name: /Variant 1/ }));
 
 		expect(navigate).not.toHaveBeenCalled();
-		expect(onClose).toHaveBeenCalled();
+		expect(onClose).not.toHaveBeenCalled();
 	});
 
-	it("closes on Escape key", () => {
+	it("closes on Escape key", async () => {
 		const onClose = vi.fn();
 		renderPopover({ onClose });
 
-		fireEvent.keyDown(document, { key: "Escape" });
+		await userEvent.keyboard("{Escape}");
 
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("closes on click outside", () => {
+	it("closes on click outside", async () => {
 		const onClose = vi.fn();
 		renderPopover({ onClose });
 
-		fireEvent.mouseDown(document.body);
+		await userEvent.click(document.body);
 
 		expect(onClose).toHaveBeenCalled();
 	});

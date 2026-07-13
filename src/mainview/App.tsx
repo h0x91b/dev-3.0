@@ -54,6 +54,7 @@ import DiagnosticsIndicator from "./components/DiagnosticsIndicator";
 import { useRpcStatus } from "./hooks/useDiagnostics";
 import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT } from "./diagnostics";
+import { getAdjacentAliveVariant } from "./utils/variantGroups";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -401,6 +402,23 @@ function App() {
 		[navigate, state.route],
 	);
 
+	const cycleVariant = useCallback((direction: -1 | 1): boolean => {
+		const taskId = routeTaskId(state.route);
+		const projectId = projectIdForRoute(state.route);
+		if (!taskId || !projectId) return false;
+		const currentTask = state.currentProjectTasks.find((candidate) => candidate.id === taskId);
+		if (!currentTask?.groupId) return false;
+		const variants = state.currentProjectTasks.filter(
+			(candidate) => candidate.projectId === projectId && candidate.groupId === currentTask.groupId,
+		);
+		const next = getAdjacentAliveVariant(variants, currentTask.id, direction);
+		if (!next) return false;
+		navigate(state.route.screen === "task"
+			? { screen: "task", projectId, taskId: next.id }
+			: { screen: "project", projectId, activeTaskId: next.id });
+		return true;
+	}, [navigate, state.currentProjectTasks, state.route]);
+
 	// Quick shell (⇧⌘`): spawn a fresh scratch op in the built-in Operations board
 	// and jump to it. The backend launches it with the default agent + config.
 	// Honor the `dev3-task-open-mode` preference like every other task-open path
@@ -691,6 +709,17 @@ function App() {
 					e.stopPropagation();
 					navigateToProject(ops.id);
 				}
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "BracketLeft") {
+				// Shift+Cmd+[ — switch to the previous live variant. Match the
+				// physical key because Shift+bracket produces layout-dependent braces.
+				if (!cycleVariant(-1)) return;
+				e.preventDefault();
+				e.stopPropagation();
+			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.code === "BracketRight") {
+				// Shift+Cmd+] — switch to the next live variant.
+				if (!cycleVariant(1)) return;
+				e.preventDefault();
+				e.stopPropagation();
 			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "[") {
 				// Cmd+[ — navigate back through route history
 				e.preventDefault();
@@ -856,7 +885,7 @@ function App() {
 				}
 			}
 		},
-		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route],
 		{ capture: true },
 	);
 

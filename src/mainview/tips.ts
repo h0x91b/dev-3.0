@@ -410,14 +410,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["diff"],
 	},
 	{
-		id: "sibling-variant-visibility",
-		titleKey: "tip.siblingVariantVisibility.title",
-		bodyKey: "tip.siblingVariantVisibility.body",
-		icon: "\u{F0CB8}", // nf-md-dots_horizontal
-		score: 4,
-		contexts: ["board", "terminal"],
-	},
-	{
 		id: "branch-selector-task-creation",
 		titleKey: "tip.branchSelectorTaskCreation.title",
 		bodyKey: "tip.branchSelectorTaskCreation.body",
@@ -878,6 +870,14 @@ const ALL_TIPS: Tip[] = [
 		titleKey: "tip.filterTokens.title",
 		bodyKey: "tip.filterTokens.body",
 		icon: "\u{F0232}", // nf-md-filter
+		score: 3,
+		contexts: ["board", "terminal"],
+	},
+	{
+		id: "cycle-task-variants",
+		titleKey: "tip.cycleTaskVariants.title",
+		bodyKey: "tip.cycleTaskVariants.body",
+		icon: "\u{F0600}", // nf-md-keyboard
 		score: 3,
 		contexts: ["board", "terminal"],
 	},

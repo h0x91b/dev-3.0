@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import ActiveTasksStrip from "../ActiveTasksStrip";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
+import { I18nProvider } from "../../i18n";
 
 const geminiAgent: CodingAgent = {
 	id: "builtin-gemini",
@@ -48,17 +49,19 @@ function makeTask(overrides?: Partial<Task>): Task {
 describe("ActiveTasksStrip", () => {
 	it("renders compact agent summary and variant dots", () => {
 		render(
-			<ActiveTasksStrip
-				project={project}
-				tasks={[
-					makeTask(),
-					makeTask({ id: "t2", variantIndex: 2 }),
-				]}
-				activeTaskId="t1"
-				navigate={vi.fn()}
-				agents={[geminiAgent]}
-				bellCounts={new Map()}
-			/>,
+			<I18nProvider>
+				<ActiveTasksStrip
+					project={project}
+					tasks={[
+						makeTask(),
+						makeTask({ id: "t2", variantIndex: 2 }),
+					]}
+					activeTaskId="t1"
+					navigate={vi.fn()}
+					agents={[geminiAgent]}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
 		);
 
 		expect(screen.getAllByRole("img", { name: "Gemini" })).toHaveLength(2);

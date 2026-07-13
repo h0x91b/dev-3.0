@@ -627,11 +627,12 @@ function ActiveTasksSidebar({
 											role="button"
 											tabIndex={0}
 											aria-label={displayTitle}
-											onClick={() => handleTaskClick(task)}
-											onKeyDown={(e) => {
-												// Card is a div (so the nested PriorityBadge button is valid
-												// HTML); restore native button keyboard activation.
-												if (e.key === "Enter" || e.key === " ") {
+							onClick={() => handleTaskClick(task)}
+							onKeyDown={(e) => {
+								// Card is a div (so the nested PriorityBadge button is valid
+								// HTML); restore native button keyboard activation.
+								if (e.target !== e.currentTarget) return;
+								if (e.key === "Enter" || e.key === " ") {
 													e.preventDefault();
 													handleTaskClick(task);
 												}
@@ -726,14 +727,6 @@ function ActiveTasksSidebar({
 													>
 														{agentSummary || `#${task.seq}`}
 													</div>
-													{task.variantIndex !== null && (
-														<VariantDots
-															groupMembers={groupMembers}
-															currentTaskId={task.id}
-															statusColors={statusColors}
-															testId={`variant-indicator-${task.id}`}
-														/>
-													)}
 												</div>
 
 												{/* Title */}
@@ -792,6 +785,16 @@ function ActiveTasksSidebar({
 															))}
 														</div>
 													)}
+													<VariantDots
+														groupMembers={groupMembers}
+														currentTaskId={task.id}
+														statusColors={statusColors}
+														agents={agents}
+														navigate={navigate}
+														projectId={task.projectId || project.id}
+														size="sm"
+														testId={`variant-indicator-${task.id}`}
+													/>
 													{(() => {
 														const part = ageParts(task.movedAt, now);
 														if (!part) return null;

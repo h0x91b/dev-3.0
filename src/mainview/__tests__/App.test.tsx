@@ -282,6 +282,76 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("live variant cycling", () => {
+		const project = {
+			id: "p1",
+			name: "Alpha",
+			path: "/a",
+			setupScript: "",
+			devScript: "",
+			cleanupScript: "",
+			defaultBaseBranch: "main",
+			createdAt: "",
+		};
+
+		function task(id: string, variantIndex: number, status: "in-progress" | "completed" = "in-progress") {
+			return {
+				id,
+				seq: variantIndex,
+				projectId: "p1",
+				title: `Variant ${variantIndex}`,
+				description: "",
+				status,
+				baseBranch: "main",
+				worktreePath: `/tmp/${id}`,
+				branchName: `dev3/${id}`,
+				groupId: "group-1",
+				variantIndex,
+				agentId: null,
+				configId: null,
+				createdAt: "",
+				updatedAt: "",
+			};
+		}
+
+		it("cycles live variants from the active task and wraps around", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([project]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "v1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: { task: task("v1", 1) } }));
+				window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: { task: task("v2", 2) } }));
+				window.dispatchEvent(new CustomEvent("rpc:taskUpdated", { detail: { task: task("v3", 3, "completed") } }));
+			});
+
+			const next = new KeyboardEvent("keydown", {
+				code: "BracketRight",
+				key: "}",
+				metaKey: true,
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true,
+			});
+			act(() => window.dispatchEvent(next));
+			expect(next.defaultPrevented).toBe(true);
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "v2");
+
+			const wrapped = new KeyboardEvent("keydown", {
+				code: "BracketRight",
+				key: "}",
+				metaKey: true,
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true,
+			});
+			act(() => window.dispatchEvent(wrapped));
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "v1");
+		});
+	});
+
 	describe("switch project (Cmd+1..9)", () => {
 		const twoProjects = [
 			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },

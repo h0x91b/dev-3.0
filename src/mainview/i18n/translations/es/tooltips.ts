@@ -34,7 +34,7 @@ export const tooltips = {
 	"ttip.task.watch":
 		"Las tareas observadas te notifican cuando el agente termina, falla o pregunta algo — puedes alejarte tranquilo.",
 	"ttip.task.siblings":
-		"Esta tarea tiene variantes hermanas — agentes independientes intentando el mismo trabajo en paralelo. Cada punto es el estado de una variante; clic para saltar entre ellas.",
+		"Abre el resumen de variantes para comparar títulos y estados, y cambia a cualquier variante activa.",
 	"ttip.task.ports":
 		"Puertos de red asignados a esta tarea. Cada tarea tiene los suyos, así los dev servers paralelos nunca chocan.",
 	"ttip.task.run": "Crea el git worktree, abre la terminal y lanza el agente en esta tarea.",
