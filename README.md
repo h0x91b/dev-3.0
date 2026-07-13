@@ -426,7 +426,7 @@ theme = "github"
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/image?repos=h0x91b/dev-3.0&type=timeline&legend=top-left)](https://www.star-history.com/?repos=h0x91b%2Fdev-3.0&type=timeline&logscale=&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=h0x91b/dev-3.0&type=date&legend=top-left&sealed_token=WnGGefyKijPrjGxSOkU0sy1POJy10qROzjxTQzjREVPRgboUHeKms8QoKfbjBhpAELRp43hLJuFfAmV8FzzqoajmuVhitbt_3JqKSxG1EJz2woJLCMrTPB-I_TYHK3f0Z3gPFlkM_nhrZe6rSBmJKso_yWZNlHbWTmZW097ch2-bCE-H5utUdU0ar_4O)](https://www.star-history.com/?repos=h0x91b%2Fdev-3.0&type=date&legend=top-left)
 
 ## License
 
