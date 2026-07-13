@@ -57,7 +57,7 @@ interface CodexSyntax {
 	 * profile-v2: per-profile settings live in `~/.codex/<name>.config.toml`,
 	 * and Codex rejects `[profiles.<name>]` blocks or top-level `profile = "<name>"`
 	 * in the main config when `--profile <name>` is used. See codex PR #22647.
-	 * Stays true for codex ≥0.131 — the file-based semantics did not go away when
+	 * Stays true for codex ≥0.134 — the file-based semantics did not go away when
 	 * the `--profile-v2` *launch flag* was later removed (see issue #611).
 	 */
 	profileV2: boolean;
@@ -79,7 +79,7 @@ const LEGACY_CODEX_SYNTAX: CodexSyntax = {
 
 const CODEX_HOOKS_RENAME_VERSION: CodexVersion = { major: 0, minor: 129, patch: 0 };
 const CODEX_WORKSPACE_ROOTS_RENAME_VERSION: CodexVersion = { major: 0, minor: 131, patch: 0 };
-const CODEX_PROFILE_V2_VERSION: CodexVersion = { major: 0, minor: 131, patch: 0 };
+const CODEX_PROFILE_V2_VERSION: CodexVersion = { major: 0, minor: 134, patch: 0 };
 const CODEX_UNIX_SOCKETS_MAP_VERSION: CodexVersion = { major: 0, minor: 119, patch: 0 };
 
 const MANAGED_DEV3_PROFILES = [
@@ -212,13 +212,11 @@ export function ensureCodexConfig(
 	// --- 0. Clean up legacy sections ---
 	config = cleanupLegacySections(config);
 	if (syntax.profileV2) {
-		// Codex ≥0.131 rejects `[profiles.<name>]` blocks and top-level
+		// Codex ≥0.134 rejects `[profiles.<name>]` blocks and top-level
 		// `profile = "<name>"` selectors when `--profile <name>` is used. Per-profile
 		// settings now live in `~/.codex/<name>.config.toml` (written by
 		// ensureCodexConfigFile). Strip the legacy entries from the main config.
-		for (const name of MANAGED_DEV3_PROFILES) {
-			config = removeSectionByHeader(config, `[profiles.${name}]`);
-		}
+		config = removeManagedDev3ProfileSections(config);
 		config = removeManagedTopLevelProfileSelector(config);
 	} else {
 		config = commentOutManagedProfileThemeLines(config);
@@ -343,7 +341,7 @@ export function ensureCodexConfig(
 	}
 
 	// --- 4. Ensure [profiles.dev3*] config profiles ---
-	// On Codex ≥0.131 these profiles live in separate per-profile files (handled
+	// On Codex ≥0.134 these profiles live in separate per-profile files (handled
 	// by ensureCodexConfigFile via ensureCodexProfileFile). For older Codex we
 	// keep the legacy in-main-config form.
 	if (!syntax.profileV2) {
@@ -380,8 +378,52 @@ function cleanupLegacySections(content: string): string {
 }
 
 /**
+ * Remove the complete managed dev3 profile namespace, including nested tables
+ * such as `[profiles.dev3-dark.tui]`. Removing only the exact parent header
+ * leaves a legacy profile table behind because TOML treats nested headers as
+ * independent sections.
+ */
+function removeManagedDev3ProfileSections(content: string): string {
+	const lines = content.split("\n");
+	const out: string[] = [];
+	let removing = false;
+	let trailingBlanks = 0;
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+			const header = trimmed.slice(1, -1);
+			const isManaged = MANAGED_DEV3_PROFILES.some(
+				(name) => header === `profiles.${name}` || header.startsWith(`profiles.${name}.`),
+			);
+			if (isManaged) {
+				if (!removing) {
+					while (trailingBlanks > 0) {
+						out.pop();
+						trailingBlanks--;
+					}
+				}
+				removing = true;
+				continue;
+			}
+			removing = false;
+		}
+
+		if (removing) continue;
+		if (trimmed === "") {
+			trailingBlanks++;
+		} else {
+			trailingBlanks = 0;
+		}
+		out.push(line);
+	}
+
+	return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
  * Drop a top-level `profile = "dev3"|"dev3-light"|"dev3-dark"` selector. Codex
- * ≥0.131 rejects it alongside `--profile <name>`, and we never write it from
+ * ≥0.134 rejects it alongside `--profile <name>`, and we never write it from
  * dev-3.0 — but earlier dev-3.0 versions, Codex itself, or user edits may
  * have introduced it.
  */
@@ -718,7 +760,8 @@ export function ensureCodexProfileFile(
 /**
  * Read, patch, and write the Codex config.toml.
  * Ensures a dedicated dev3 permission profile and config profile.
- * Called on app startup from installAgentSkills().
+ * Called after the app resolves the user's shell PATH during startup, and by
+ * installAgentSkills() when the skills installer is invoked directly.
  */
 export function ensureCodexConfigFile(homePath: string): void {
 	const configPath = `${homePath}/.codex/config.toml`;

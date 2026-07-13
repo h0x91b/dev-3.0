@@ -125,9 +125,11 @@ describe("ensureCodexConfig", () => {
 			expect(getCodexSyntaxForVersion("codex-cli 0.131.0")).toEqual({
 				filesystemRootKey: ":workspace_roots",
 				hooksFeatureKey: "hooks",
-				profileV2: true,
+				profileV2: false,
 				unixSocketsAsMap: true,
 			});
+			expect(getCodexSyntaxForVersion("codex-cli 0.133.9").profileV2).toBe(false);
+			expect(getCodexSyntaxForVersion("codex-cli 0.134.0").profileV2).toBe(true);
 		});
 
 		it("switches the unix-socket allowlist to map form at codex 0.119", () => {
@@ -497,7 +499,7 @@ trust_level = "trusted"
 		});
 	});
 
-	describe("profile-v2 (Codex ≥0.131)", () => {
+	describe("profile-v2 (Codex ≥0.134)", () => {
 		it("does not emit [profiles.dev3*] blocks in the main config", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], {
 				codexVersion: "codex-cli 0.134.0",
@@ -555,6 +557,35 @@ trust_level = "trusted"
 			expect(result).toContain('[projects."/Users/testuser/app"]');
 		});
 
+		it("removes nested managed profile tables while preserving user profiles", () => {
+			const existing = `model = "gpt-5.4"
+
+[profiles.dev3-dark]
+web_search = "live"
+
+[profiles.dev3-dark.tui]
+theme = "dracula"
+
+[profiles.dev3-light.tui]
+theme = "github"
+
+[profiles.dev3-dark-custom]
+web_search = "disabled"
+
+[profiles.ro]
+sandbox_mode = "read-only"
+`;
+			const result = ensureCodexConfig(existing, WORKTREES_PATH, SOCKETS_PATH, [], {
+				codexVersion: "codex-cli 0.134.0",
+			});
+
+			expect(result).not.toContain("[profiles.dev3-dark]");
+			expect(result).not.toContain("[profiles.dev3-dark.tui]");
+			expect(result).not.toContain("[profiles.dev3-light.tui]");
+			expect(result).toContain("[profiles.dev3-dark-custom]");
+			expect(result).toContain("[profiles.ro]");
+		});
+
 		it("does not strip an unrelated top-level profile selector", () => {
 			const existing = `profile = "my-custom"
 `;
@@ -565,7 +596,7 @@ trust_level = "trusted"
 			expect(result).toContain('profile = "my-custom"');
 		});
 
-		it("legacy Codex (<0.131) still gets [profiles.dev3*] in main config", () => {
+		it("legacy Codex (<0.134) still gets [profiles.dev3*] in main config", () => {
 			const result = ensureCodexConfig(null, WORKTREES_PATH, SOCKETS_PATH, [], {
 				codexVersion: "codex-cli 0.130.0",
 			});

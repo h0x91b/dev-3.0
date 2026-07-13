@@ -6903,7 +6903,7 @@ describe("handlers.spawnAgentInTask", () => {
 
 	// Regression: the primary launch path re-patches ~/.codex/config.toml via
 	// ensureCodexTrust before every codex launch (strips the legacy
-	// [profiles.dev3-*] tables codex ≥0.131 rejects). Spawning an extra Codex
+	// [profiles.dev3-*] tables codex ≥0.134 rejects). Spawning an extra Codex
 	// agent used to skip that step, so the pane crashed with
 	// "--profile dev3-dark cannot be used while config.toml contains legacy profile".
 	it("ensures Codex trust before spawning a Codex agent", async () => {

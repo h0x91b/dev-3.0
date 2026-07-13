@@ -18,6 +18,7 @@ import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-s
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
+import { ensureCodexConfigFile } from "./codex-config";
 import { makeTitle } from "./app-utils";
 import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange } from "../shared/application-menu";
 import { openLogsDirectory } from "./menu-actions";
@@ -26,6 +27,7 @@ import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedW
 import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 
 const log = createLogger("main");
 
@@ -122,7 +124,7 @@ log.info("Log files", { dir: getLogPath() });
 
 	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).
-	installAgentSkills();
+	installAgentSkills({ configureCodex: false });
 
 	// Append ~/.dev3.0/bin to the user's shell rc files (idempotent).
 	// This makes `dev3` available in all terminals, not just worktree tmux
@@ -190,6 +192,10 @@ if (shellEnv.path) {
 		}
 	}
 }
+
+// Codex profile migration depends on `codex --version`. Run it only after the
+// user's shell PATH is available; the app bundle starts with a minimal PATH.
+ensureCodexConfigFile(homedir());
 
 if (shellEnv.lang) {
 	process.env.LANG = shellEnv.lang;

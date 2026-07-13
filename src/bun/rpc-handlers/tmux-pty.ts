@@ -373,7 +373,7 @@ async function persistInitialAgentPaneId(
  * Claude trust (with MCP pre-approval) is always ensured; Codex/Gemini trust
  * only for their respective CLIs. Codex trust also re-patches ~/.codex/config.toml
  * — stripping the legacy `[profiles.dev3-*]` tables / top-level `profile = "..."`
- * selectors that codex ≥0.131 rejects and (re)writing the per-profile files. All
+ * selectors that codex ≥0.134 rejects and (re)writing the per-profile files. All
  * calls are idempotent and non-fatal: a failure logs and continues so a trust
  * hiccup never blocks the launch.
  *
