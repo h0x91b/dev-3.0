@@ -32,6 +32,8 @@ interface ProjectViewProps {
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
 	onCloseArtifactViewer?: () => void;
+	isTerminalFullscreen?: boolean;
+	onToggleTerminalFullscreen?: () => void;
 }
 
 function ProjectView({
@@ -49,6 +51,8 @@ function ProjectView({
 	navigationGuardRef,
 	artifactViewer,
 	onCloseArtifactViewer,
+	isTerminalFullscreen,
+	onToggleTerminalFullscreen,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -148,6 +152,8 @@ function ProjectView({
 							taskPorts={taskPorts}
 							taskResourceUsage={taskResourceUsage}
 							tasks={tasks}
+							isTerminalFullscreen={isTerminalFullscreen}
+							onToggleTerminalFullscreen={onToggleTerminalFullscreen}
 							onOpenInlineDiff={inlineDiff.open}
 						/>
 					)}
@@ -170,6 +176,8 @@ function ProjectView({
 							navigate={navigate}
 							taskPorts={taskPorts}
 							tasks={tasks}
+							isTerminalFullscreen={isTerminalFullscreen}
+							onToggleTerminalFullscreen={onToggleTerminalFullscreen}
 							onOpenInlineDiff={inlineDiff.open}
 						/>
 					)}
@@ -199,6 +207,8 @@ function ProjectView({
 						taskPorts={taskPorts}
 						taskResourceUsage={taskResourceUsage}
 						tasks={tasks}
+						isTerminalFullscreen={isTerminalFullscreen}
+						onToggleTerminalFullscreen={onToggleTerminalFullscreen}
 						onOpenInlineDiff={inlineDiff.open}
 					/>
 				)}

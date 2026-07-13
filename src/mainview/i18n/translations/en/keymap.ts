@@ -41,6 +41,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Hard refresh",
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
 	"keymap.shortcut.helpMode": "Explain this screen (help mode)",
+	"keymap.shortcut.terminalFullscreen": "Toggle terminal immersive fullscreen (task terminal only)",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
 	"keymap.shortcut.openQuickShell": "Open Quick Shell",
 	"keymap.shortcut.quit": "Quit",
