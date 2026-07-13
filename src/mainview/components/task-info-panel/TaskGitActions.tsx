@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
+import { cloneElement, useEffect, useRef, useState, type Dispatch, type ReactElement, type ReactNode } from "react";
 import type { BranchStatus, Project, Task } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
@@ -27,6 +27,54 @@ interface TaskGitActionsProps {
 	compact?: boolean;
 	onBranchStatusChange?: (meta: TaskBranchStatusMeta) => void;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
+}
+
+type GitActionButton = ReactElement<{
+	className?: string;
+	"aria-label"?: string;
+	"aria-hidden"?: boolean;
+	tabIndex?: number;
+}>;
+
+interface GitActionTooltipProps {
+	content: ReactNode;
+	detail?: ReactNode;
+	disabled: boolean;
+	children: GitActionButton;
+}
+
+/**
+ * Native disabled controls do not dispatch mouse events, so anchor their
+ * tooltip to a focusable wrapper while keeping the real button disabled.
+ */
+function GitActionTooltip({ content, detail, disabled, children }: GitActionTooltipProps) {
+	if (!disabled) {
+		return (
+			<Tooltip content={content} detail={detail}>
+				{children}
+			</Tooltip>
+		);
+	}
+
+	const disabledButton = cloneElement(children, {
+		className: `${children.props.className ?? ""} pointer-events-none`.trim(),
+		tabIndex: -1,
+		"aria-hidden": true,
+	});
+
+	return (
+		<Tooltip content={content} detail={detail}>
+			<span
+				className="inline-flex"
+				role="button"
+				aria-disabled="true"
+				aria-label={children.props["aria-label"]}
+				tabIndex={0}
+			>
+				{disabledButton}
+			</span>
+		</Tooltip>
+	);
 }
 
 export default function TaskGitActions({
@@ -206,6 +254,7 @@ export default function TaskGitActions({
 			<span>−{branchStatus.deletions}</span>
 		</span>
 	) : null;
+	const hasUncommittedChanges = !!branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
 
 	// A conflicting rebase (behind but can't apply cleanly) no longer disables the
 	// button — it hands the rebase off to the agent instead. Only "nothing to
@@ -224,7 +273,7 @@ export default function TaskGitActions({
 	const pushTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: branchStatus.ahead === 0
-			? t("infoPanel.pushDisabled")
+			? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
 			: t("infoPanel.push");
 
 	const hasPR = branchStatus && branchStatus.prNumber !== null;
@@ -238,13 +287,17 @@ export default function TaskGitActions({
 
 	function getPRTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
-		if (branchStatus.ahead === 0) return t("infoPanel.createPRDisabledNoCommits");
+		if (branchStatus.ahead === 0) {
+			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
+		}
 		return t("infoPanel.createPRAgentTooltip");
 	}
 
 	function getPRAutoMergeTooltip(): string {
 		if (!branchStatus) return t("infoPanel.statusLoading");
-		if (branchStatus.ahead === 0) return t("infoPanel.createPRDisabledNoCommits");
+		if (branchStatus.ahead === 0) {
+			return t(hasUncommittedChanges ? "infoPanel.createPRDisabledUncommitted" : "infoPanel.createPRDisabledNoCommits");
+		}
 		return t("infoPanel.createPRAutoMergeTooltip");
 	}
 
@@ -252,7 +305,7 @@ export default function TaskGitActions({
 	const mergeTooltip = !branchStatus
 		? t("infoPanel.statusLoading")
 		: branchStatus.ahead === 0
-			? t("infoPanel.mergeDisabledNoCommits")
+			? t(hasUncommittedChanges ? "infoPanel.mergeDisabledUncommitted" : "infoPanel.mergeDisabledNoCommits")
 			: branchStatus.behind > 0
 				? t("infoPanel.mergeDisabledBehind")
 				: t("infoPanel.merge");
@@ -297,7 +350,7 @@ export default function TaskGitActions({
 
 	const gitActionButtons = isTaskActive && task.worktreePath ? (
 		<span className="flex items-center gap-1 text-[0.6875rem] flex-shrink-0">
-			<Tooltip content={showDiffTooltip} detail={t("ttip.infoPanel.showDiff")}>
+			<GitActionTooltip content={showDiffTooltip} detail={t("ttip.infoPanel.showDiff")} disabled={showDiffDisabled}>
 				<button
 					onClick={() => onOpenInlineDiff?.({
 						mode: "branch",
@@ -312,8 +365,8 @@ export default function TaskGitActions({
 				>
 					{btnContent(<ShowDiffIcon className={iconClass} />, t("infoPanel.showDiffShort"))}
 				</button>
-			</Tooltip>
-			<Tooltip content={rebaseTooltip} detail={t("ttip.git.rebase")}>
+			</GitActionTooltip>
+			<GitActionTooltip content={rebaseTooltip} detail={t("ttip.git.rebase")} disabled={rebaseDisabled}>
 				<button
 					onClick={handleRebase}
 					disabled={rebaseDisabled}
@@ -332,8 +385,8 @@ export default function TaskGitActions({
 						rebasing,
 					)}
 				</button>
-			</Tooltip>
-			<Tooltip content={pushTooltip} detail={t("ttip.git.push")}>
+			</GitActionTooltip>
+			<GitActionTooltip content={pushTooltip} detail={t("ttip.git.push")} disabled={pushDisabled}>
 				<button
 					onClick={handlePush}
 					disabled={pushDisabled}
@@ -344,11 +397,11 @@ export default function TaskGitActions({
 				>
 					{btnContent(<PushIcon className={iconClass} />, pushing ? t("infoPanel.pushing") : t("infoPanel.push"), pushing)}
 				</button>
-			</Tooltip>
+			</GitActionTooltip>
 			{/* When a PR already exists, the "PR #N" badge above already links to it - no Open PR button needed. */}
 			{!hasPR && (
 				<>
-					<Tooltip content={getPRTooltip()} detail={t("ttip.git.createPR")}>
+					<GitActionTooltip content={getPRTooltip()} detail={t("ttip.git.createPR")} disabled={createPRDisabled}>
 						<button
 							onClick={() => void handleCreatePR(false)}
 							disabled={createPRDisabled}
@@ -359,8 +412,8 @@ export default function TaskGitActions({
 						>
 							{btnContent(<CreatePRIcon className={iconClass} />, getPRButtonLabel(), creatingPR)}
 						</button>
-					</Tooltip>
-					<Tooltip content={getPRAutoMergeTooltip()} detail={t("ttip.git.autoMerge")}>
+					</GitActionTooltip>
+					<GitActionTooltip content={getPRAutoMergeTooltip()} detail={t("ttip.git.autoMerge")} disabled={createPRDisabled}>
 						<button
 							onClick={() => void handleCreatePR(true)}
 							disabled={createPRDisabled}
@@ -371,10 +424,10 @@ export default function TaskGitActions({
 						>
 							{btnContent(<AutoMergeIcon className={iconClass} />, creatingPR ? t("infoPanel.creatingPR") : t("infoPanel.createPRAutoMergeShort"), creatingPR)}
 						</button>
-					</Tooltip>
+					</GitActionTooltip>
 				</>
 			)}
-			<Tooltip content={mergeTooltip} detail={t("ttip.git.merge")}>
+			<GitActionTooltip content={mergeTooltip} detail={t("ttip.git.merge")} disabled={mergeDisabled}>
 				<button
 					onClick={handleMerge}
 					disabled={mergeDisabled}
@@ -385,8 +438,8 @@ export default function TaskGitActions({
 				>
 					{btnContent(<MergeIcon className={iconClass} />, merging ? t("infoPanel.merging") : t("infoPanel.merge"), merging)}
 				</button>
-			</Tooltip>
-			<Tooltip content={t("infoPanel.refreshStatus")} detail={t("ttip.git.refresh")}>
+			</GitActionTooltip>
+			<GitActionTooltip content={t("infoPanel.refreshStatus")} detail={t("ttip.git.refresh")} disabled={refreshingStatus}>
 				<button
 					onClick={handleRefreshStatus}
 					disabled={refreshingStatus}
@@ -403,7 +456,7 @@ export default function TaskGitActions({
 							d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 					</svg>
 				</button>
-			</Tooltip>
+			</GitActionTooltip>
 		</span>
 	) : null;
 

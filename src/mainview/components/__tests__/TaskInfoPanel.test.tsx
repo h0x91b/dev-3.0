@@ -1281,6 +1281,54 @@ describe("TaskInfoPanel", () => {
 			}
 		});
 
+		it("explains uncommitted changes on disabled git actions", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 0,
+				behind: 2,
+				insertions: 10,
+				deletions: 3,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			async function expectTooltip(label: string, content: string) {
+				const button = screen.getAllByText(label)[0].closest("button")!;
+				const anchor = button.parentElement!;
+				await user.hover(anchor);
+				expect(await screen.findByRole("tooltip")).toHaveTextContent(content);
+				await user.unhover(anchor);
+			}
+
+			await expectTooltip("Push", "Nothing to push — commit the uncommitted changes first");
+			await expectTooltip("PR", "No commits for a PR — commit the uncommitted changes first");
+			await expectTooltip("Auto PR", "No commits for a PR — commit the uncommitted changes first");
+			await expectTooltip("Merge", "Nothing to merge — commit the uncommitted changes first");
+		});
+
+		it("explains when there are no local commits to push", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				ahead: 0,
+				behind: 0,
+				insertions: 0,
+				deletions: 0,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const pushButton = screen.getAllByText("Push")[0].closest("button")!;
+			const anchor = pushButton.parentElement!;
+			await user.hover(anchor);
+			expect(await screen.findByRole("tooltip")).toHaveTextContent("Nothing to push — no local commits ahead");
+		});
+
 		it("merge is disabled when behind > 0", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
