@@ -65,6 +65,24 @@ export interface WebNotificationDetail {
 	projectName?: string;
 }
 
+interface PendingWebNotification {
+	detail: WebNotificationDetail;
+	onOpenTask: ((taskId: string, projectId: string) => void) | null;
+}
+
+let suppressed = false;
+const pendingNotifications: PendingWebNotification[] = [];
+
+/** Suppress browser notifications while terminal immersive fullscreen is active. */
+export function setWebNotificationsSuppressed(value: boolean): void {
+	if (suppressed === value) return;
+	suppressed = value;
+	if (suppressed) return;
+
+	const pending = pendingNotifications.splice(0, pendingNotifications.length);
+	pending.forEach(({ detail, onOpenTask }) => showWebNotificationOrToast(detail, onOpenTask));
+}
+
 /**
  * Show a browser Web Notification for the payload, or fall back to an in-app
  * toast when the Notification API is unavailable (insecure LAN context), not
@@ -74,6 +92,11 @@ export function showWebNotificationOrToast(
 	detail: WebNotificationDetail,
 	onOpenTask: ((taskId: string, projectId: string) => void) | null,
 ): void {
+	if (suppressed) {
+		pendingNotifications.push({ detail, onOpenTask });
+		return;
+	}
+
 	const openTask =
 		detail.taskId && detail.projectId && onOpenTask
 			? () => onOpenTask(detail.taskId, detail.projectId)

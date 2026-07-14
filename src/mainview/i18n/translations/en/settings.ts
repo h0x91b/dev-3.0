@@ -119,7 +119,7 @@ const settings = {
 	"settings.externalAppMacName": "macOS app name (used with open -a)",
 	"settings.addExternalApp": "Add App",
 	"settings.focusMode": "Focus Mode",
-	"settings.focusModeDesc": "Silence agent attention pings — suppresses in-app toasts, the red attention badge, and native notifications triggered by agents (dev3 notify / dev3 attention).",
+	"settings.focusModeDesc": "Pause agent attention pings — queues toasts, badges, terminal bells, viewer events, and native notifications until Focus Mode ends.",
 	"settings.browserNotifications": "Browser Notifications",
 	"settings.browserNotificationsDesc": "Show desktop notifications from this browser tab (dev3 notify --desktop and watched-task updates). Requires a secure context (HTTPS tunnel or localhost).",
 	"settings.browserNotificationsEnable": "Enable browser notifications",

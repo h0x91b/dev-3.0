@@ -477,6 +477,8 @@ describe("App keyboard shortcuts", () => {
 				}));
 			});
 
+			expect(screen.queryByText("Task update")).not.toBeInTheDocument();
+			await userEvent.keyboard("{F11}");
 			await userEvent.click(await screen.findByRole("button", { name: "Task update" }));
 			await waitFor(() => {
 				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");

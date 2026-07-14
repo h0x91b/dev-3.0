@@ -1,1 +1,0 @@
-Add an ephemeral task-terminal immersive fullscreen mode with a minimal dev3 exit strip, F11 and Cmd/Ctrl+Shift+F toggles, shortcut tooltip guidance, preserved tmux layouts, and notification navigation that exits fullscreen first. The focus chrome uses neutral compact surfaces, and the high-priority terminal tip explains that tmux state stays untouched.

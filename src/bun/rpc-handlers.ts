@@ -19,6 +19,17 @@ export {
 	isAppForeground,
 	setActiveContext,
 	getActiveContext,
+	setTerminalFocus,
+	setFocusMode,
+	isTerminalFocusActive,
+	isNotificationSuppressed,
+	queueTerminalFocusToast,
+	queueTerminalFocusAttention,
+	pushCliToast,
+	pushCliAttention,
+	pushTerminalBell,
+	pushCliShowImage,
+	pushCliShowArtifact,
 } from "./rpc-handlers/shared";
 export {
 	startMergeDetectionPoller,

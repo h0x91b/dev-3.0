@@ -656,7 +656,7 @@ export interface GlobalSettings {
 	 * vars (PATH/LANG/...) for an isolated environment.
 	 */
 	importShellEnv?: boolean;
-	focusMode?: boolean; // when true, suppress agent-initiated attention UI (dev3 notify/attention)
+	focusMode?: boolean; // when true, queue agent-initiated attention UI and viewer events until Focus Mode ends
 	/**
 	 * Track agent rate-limit windows (Claude via an injected statusLine wrapper,
 	 * Codex via rollout files) and show the ambient header indicator.
@@ -3076,6 +3076,14 @@ export type AppRPCSchema = {
 			 */
 			setWindowForeground: {
 				params: { focused: boolean };
+				response: void;
+			};
+			/**
+			 * Renderer tells the backend when terminal immersive fullscreen owns the
+			 * screen so agent notifications can queue until the user exits.
+			 */
+			setTerminalFocus: {
+				params: { active: boolean };
 				response: void;
 			};
 			/**

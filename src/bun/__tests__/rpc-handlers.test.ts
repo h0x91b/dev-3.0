@@ -320,6 +320,9 @@ const {
 	setAppForeground,
 	isAppForeground,
 	setActiveContext,
+	setTerminalFocus,
+	setFocusMode,
+	isNotificationSuppressed,
 	emitTaskSound,
 	runCleanupScript,
 	portableReadKey,
@@ -1564,6 +1567,16 @@ describe("handlers.saveGlobalSettings", () => {
 		const settings = { updateChannel: "stable" } as GlobalSettings;
 		await handlers.saveGlobalSettings(settings);
 		expect(saveSettings).toHaveBeenCalledWith(settings);
+	});
+
+	it("does not release Focus Mode when an optional patch omits it", async () => {
+		_resetWatchedNotificationState();
+		setFocusMode(true);
+
+		await handlers.saveGlobalSettings({ updateChannel: "stable" } as GlobalSettings);
+
+		expect(isNotificationSuppressed()).toBe(true);
+		_resetWatchedNotificationState();
 	});
 });
 
@@ -8939,6 +8952,23 @@ describe("notifyWatchedTaskStatusChange", () => {
 		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
 
 		expect(consumeRecentWatchedNotification()).toEqual({ taskId: task.id, projectId: "proj-bg" });
+	});
+
+	it("queues watched-task notifications until terminal focus ends", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setTerminalFocus(true);
+		const task = makeTask({ watched: true, projectId: "proj-focus" });
+
+		notifyWatchedTaskStatusChange(task, "in-progress", "review-by-user", "MyProject");
+
+		expect(Utils.showNotification).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalled();
+
+		setTerminalFocus(false);
+
+		expect(Utils.showNotification).toHaveBeenCalledTimes(1);
+		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ taskId: task.id }));
 	});
 });
 

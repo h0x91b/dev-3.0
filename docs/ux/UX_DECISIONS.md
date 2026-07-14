@@ -6,7 +6,7 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
 ## 2026-07-13 — Terminal immersive fullscreen is app-only and ephemeral
 
-- **Rule:** The TaskInfoPanel fullscreen toggle plus F11 / Cmd/Ctrl+Shift+F enters a task-bound renderer view with only a thin `dev3` strip and a wide yellow Exit full screen button; notification clicks exit before normal task navigation.
+- **Rule:** The TaskInfoPanel fullscreen toggle plus F11 / Cmd/Ctrl+Shift+F enters a task-bound renderer view with only a thin `dev3` strip and a wide neutral Exit full screen button; agent-facing notifications and viewer events queue during immersive fullscreen or persistent Focus Mode and flush when the active mode ends, with notification clicks exiting immersive fullscreen before normal task navigation.
 - **Why:** Keeping the existing Route and tmux session preserves the user's exact layout and makes the feature identical in desktop and browser mode. Rejected native/browser fullscreen and tmux `resize-pane -Z` because they either diverge by transport or overwrite user-controlled pane state.
 - **Status:** Implemented. Evidence: `App.tsx`, `TaskInfoPanel.tsx`, `keymap.ts`, `webNotification.ts`.
 

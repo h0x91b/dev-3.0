@@ -66,6 +66,12 @@ describe("show-artifact", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({ imagePaths: [] }));
 	});
 
+	it("reports an artifact viewer queued by Focus Mode", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, queued: true, stored: 1, taskId: CTX.taskId }));
+		await handleShowArtifact([HTML], SOCKET, CTX);
+		expect(stdoutSpy).toHaveBeenCalledWith("Stored artifact — viewer queued until Focus Mode ends.\n");
+	});
+
 	it("rejects non-HTML input and unsupported assets", async () => {
 		await expect(handleShowArtifact([PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		const txt = join(DIR, "bad.txt");

@@ -23,6 +23,7 @@ interface TaskWorkspaceViewProps {
 	immersive?: boolean;
 	isTerminalFullscreen?: boolean;
 	onToggleTerminalFullscreen?: () => void;
+	skipCopyModeReset?: boolean;
 }
 
 function TaskWorkspaceView({
@@ -38,6 +39,7 @@ function TaskWorkspaceView({
 	immersive = false,
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
+	skipCopyModeReset,
 }: TaskWorkspaceViewProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
@@ -103,6 +105,7 @@ function TaskWorkspaceView({
 					navigationGuardRef={navigationGuardRef}
 					artifactViewer={artifactViewer}
 					onCloseArtifactViewer={onCloseArtifactViewer}
+					skipCopyModeReset={skipCopyModeReset}
 				/>
 			</div>
 		</div>

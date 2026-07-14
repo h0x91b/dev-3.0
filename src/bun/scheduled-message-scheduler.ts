@@ -16,7 +16,7 @@ import { sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
 // this module through cli-socket-server — don't load the real Electrobun-backed
 // shared module. Used lazily (inside functions), so the git-operations ↔ this
 // module ↔ barrel import cycle is resolved safely at call time.
-import { getPushMessage } from "./rpc-handlers";
+import { getPushMessage, pushCliAttention, pushCliToast } from "./rpc-handlers";
 import { createLogger } from "./logger";
 
 const log = createLogger("scheduled-message-scheduler");
@@ -66,9 +66,7 @@ async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<b
 
 /** Toast + attention for a late-fire or drop. Silent path never calls this. */
 function notifyOutcome(project: Project, task: Task, opts: { toast: string; level: "success" | "error"; reason: string }): void {
-	const push = getPushMessage();
-	if (!push) return;
-	push("cliToast", {
+	pushCliToast({
 		taskId: task.id,
 		projectId: project.id,
 		message: opts.toast,
@@ -77,7 +75,7 @@ function notifyOutcome(project: Project, task: Task, opts: { toast: string; leve
 		taskTitle: getTaskTitle(task),
 		projectName: project.name,
 	});
-	push("cliAttention", { taskId: task.id, reason: opts.reason });
+	pushCliAttention({ taskId: task.id, reason: opts.reason });
 }
 
 /** Remove one queued message and broadcast the updated task. Returns the updated

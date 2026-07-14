@@ -14,6 +14,7 @@ import {
 	webNotificationsSupported,
 	canShowWebNotification,
 	showWebNotificationOrToast,
+	setWebNotificationsSuppressed,
 	BROWSER_NOTIFICATIONS_PREF_KEY,
 	type WebNotificationDetail,
 } from "../webNotification";
@@ -68,6 +69,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	setWebNotificationsSuppressed(false);
 	uninstallNotification();
 });
 
@@ -164,5 +166,19 @@ describe("showWebNotificationOrToast", () => {
 		showWebNotificationOrToast({ ...baseDetail, level: "error" }, null);
 		expect(toastMock.error).toHaveBeenCalledTimes(1);
 		expect(toastMock.info).not.toHaveBeenCalled();
+	});
+
+	it("queues notifications while suppressed and preserves click navigation", () => {
+		const onOpen = vi.fn();
+		setWebNotificationsSuppressed(true);
+		showWebNotificationOrToast(baseDetail, onOpen);
+
+		expect(FakeNotification.instances).toHaveLength(0);
+		expect(toastMock.info).not.toHaveBeenCalled();
+
+		setWebNotificationsSuppressed(false);
+		expect(FakeNotification.instances).toHaveLength(1);
+		FakeNotification.instances[0].onclick?.();
+		expect(onOpen).toHaveBeenCalledWith("task-1", "proj-1");
 	});
 });

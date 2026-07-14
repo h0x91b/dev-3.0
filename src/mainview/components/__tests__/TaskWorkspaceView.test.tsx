@@ -137,6 +137,22 @@ describe("TaskWorkspaceView", () => {
 		);
 	});
 
+	it("does not reset tmux copy mode when entering immersive fullscreen", () => {
+		renderWorkspace(
+			<TaskWorkspaceView
+				projectId="p1"
+				taskId="t1"
+				tasks={[task]}
+				projects={[project]}
+				navigate={vi.fn()}
+				dispatch={vi.fn()}
+				skipCopyModeReset
+			/>,
+		);
+
+		expect(exitCopyModeAllPanesMock).not.toHaveBeenCalled();
+	});
+
 	it("toggles between terminal and inline diff", async () => {
 		const user = userEvent.setup();
 

@@ -17,7 +17,7 @@ import { DEV3_HOME } from "../paths";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
-import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground } from "./shared";
+import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground, setTerminalFocus } from "./shared";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
 import { loadSharedArtifactContent, loadSharedArtifactDownload } from "../shared-artifacts";
 
@@ -89,6 +89,11 @@ async function hideApp(): Promise<void> {
  */
 async function setWindowForeground(params: { focused: boolean }): Promise<void> {
 	setAppForeground(params.focused);
+}
+
+/** The renderer gates transient notifications while terminal immersive fullscreen owns the screen. */
+async function setTerminalFocusHandler(params: { active: boolean }): Promise<void> {
+	setTerminalFocus(params.active);
 }
 
 /**
@@ -873,6 +878,7 @@ export const appHandlers = {
 	openNewWindow,
 	hideApp,
 	setWindowForeground,
+	setTerminalFocus: setTerminalFocusHandler,
 	setActiveContext: setActiveContextHandler,
 	ping,
 	updateMenuContext,

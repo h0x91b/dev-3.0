@@ -115,8 +115,12 @@ export async function handleShowImage(
 	const resp = await sendRequest(socketPath, "ui.show-image", params);
 	if (!resp.ok) exitError(resp.error || "Failed to show image");
 
-	const data = resp.data as { delivered: boolean; stored: number; taskId: string; suppressed?: boolean };
+	const data = resp.data as { delivered: boolean; stored: number; taskId: string; queued?: boolean; suppressed?: boolean };
 	const plural = data.stored === 1 ? "image" : "images";
+	if (data.queued) {
+		process.stdout.write(`Stored ${data.stored} ${plural} — viewer queued until Focus Mode ends.\n`);
+		return;
+	}
 	if (data.suppressed) {
 		process.stdout.write(`Stored ${data.stored} ${plural} — focus mode is on, viewer not opened.\n`);
 		return;

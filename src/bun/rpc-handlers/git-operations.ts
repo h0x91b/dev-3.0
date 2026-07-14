@@ -20,8 +20,7 @@ import {
 	sendScheduledMessageNow as sendScheduledMessageNowCore,
 } from "../scheduled-message-scheduler";
 import { Semaphore } from "../concurrency";
-import { loadSettings } from "../settings";
-import { getActiveContext, getPushMessage, isAppForeground, log, notifyWatchedTaskEvent } from "./shared";
+import { getActiveContext, getPushMessage, isAppForeground, log, notifyWatchedTaskEvent, pushCliAttention } from "./shared";
 import {
 	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
 	ACTIVE_PROJECT_PR_INTERVAL_MS,
@@ -587,17 +586,14 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 				});
 
 				// Raise the bell / native notification only on a *transition* to a new
-				// worthy signal, and only once per state. Focus Mode suppresses the
-				// attention UI but we still record the state so it isn't replayed later.
+				// worthy signal, and only once per state. Suppressing modes queue the
+				// attention event while still recording the state to avoid duplicates.
 				const signalKey = computeSignalKey(ciStatus, reviewState);
 				if (signalKey && prSignalState.get(task.id) !== signalKey) {
 					prSignalState.set(task.id, signalKey);
-					const focusMode = (await loadSettings()).focusMode;
-					if (!focusMode) {
-						const reason = reasonForSignal(ciStatus, reviewState);
-						pushMessage("cliAttention", { taskId: task.id, reason });
-						notifyWatchedTaskEvent(task, reason, project.name);
-					}
+					const reason = reasonForSignal(ciStatus, reviewState);
+					pushCliAttention({ taskId: task.id, reason });
+					notifyWatchedTaskEvent(task, reason, project.name);
 				} else if (!signalKey) {
 					prSignalState.delete(task.id);
 				}

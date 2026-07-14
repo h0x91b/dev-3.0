@@ -34,6 +34,7 @@ interface ProjectViewProps {
 	onCloseArtifactViewer?: () => void;
 	isTerminalFullscreen?: boolean;
 	onToggleTerminalFullscreen?: () => void;
+	skipCopyModeReset?: boolean;
 }
 
 function ProjectView({
@@ -53,6 +54,7 @@ function ProjectView({
 	onCloseArtifactViewer,
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
+	skipCopyModeReset,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -130,6 +132,7 @@ function ProjectView({
 				navigationGuardRef={navigationGuardRef}
 				artifactViewer={artifactViewer}
 				onCloseArtifactViewer={onCloseArtifactViewer}
+				skipCopyModeReset={skipCopyModeReset}
 			/>
 		) : (
 			<div className="h-full w-full flex items-center justify-center bg-base px-6 text-center">

@@ -177,7 +177,7 @@ const tips = {
 	"tip.agentCanPingYou.title": "Los agentes pueden avisarte",
 	"tip.agentCanPingYou.body": "Un agente ejecuta `dev3 notify` o `dev3 attention` para mostrar un toast o insignia que te lleva a su tarea.",
 	"tip.focusModeMutesPings.title": "¿Te distraen los avisos?",
-	"tip.focusModeMutesPings.body": "Activa el Modo concentración en Ajustes → Comportamiento para silenciar todos los toasts, insignias y notificaciones de agentes.",
+	"tip.focusModeMutesPings.body": "Activa el Modo concentración en Ajustes → Comportamiento para poner en cola toasts, avisos y visores de agentes.",
 	"tip.prCiReviewBadges.title": "CI y revisión en la tarjeta",
 	"tip.prCiReviewBadges.body": "Las tareas en revisión de PR muestran insignias de CI y revisión; haz clic en una para devolver la tarea a tu revisión.",
 	"tip.operationsBoard.title": "Tablero de Operaciones",

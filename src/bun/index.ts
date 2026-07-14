@@ -4,7 +4,7 @@ import Electrobun, {
 	Updater,
 	Utils,
 } from "electrobun/bun";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
@@ -358,6 +358,10 @@ setPushMessage((name, payload) => {
 	pushToBrowserClients(name, payload);
 });
 
+// Initialize the backend gate before background pollers and CLI requests can
+// raise agent notifications. Queued entries flush when Focus Mode is disabled.
+setFocusMode(loadSettingsSync().focusMode === true);
+
 // `exposedPortsChanged` rides its own hook because port-tunnels lives below
 // rpc-handlers — same broadcast target as above.
 import("./port-tunnels").then(({ setPortTunnelsPushHook }) => {
@@ -471,7 +475,7 @@ setOnBell((sessionKey) => {
 		if (sessionKey.startsWith("project-")) return;
 
 		log.debug("Terminal bell, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-		broadcastToAllWindows("terminalBell", { taskId: sessionKey });
+		pushTerminalBell(sessionKey);
 		// Auto-move task from "in-progress" to "user-questions" on bell
 		handleBellAutoStatus(sessionKey).catch((err) => {
 			log.error("handleBellAutoStatus unhandled error", { error: String(err) });
@@ -496,7 +500,7 @@ setOnIdle((sessionKey) => {
 		if (!inProgress) return;
 		try {
 			log.debug("Terminal idle, notifying renderer", { taskId: sessionKey.slice(0, 8) });
-			broadcastToAllWindows("terminalBell", { taskId: sessionKey });
+			pushTerminalBell(sessionKey);
 		} catch (err) {
 			log.error("Failed to handle terminal idle", {
 				taskId: sessionKey.slice(0, 8),

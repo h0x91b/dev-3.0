@@ -20,7 +20,7 @@
 
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited } from "./rpc-handlers";
+import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
@@ -183,6 +183,10 @@ setPushMessage((name, payload) => {
 	}
 	pushToBrowserClients(name, payload);
 });
+
+// Initialize the backend gate before remote pollers and CLI requests can raise
+// agent notifications for a browser session.
+setFocusMode((await loadSettings()).focusMode === true);
 
 // Port-tunnels module needs the same broadcast hook for `exposedPortsChanged`
 // events so connected browsers see new public URLs appear in real time.
@@ -356,7 +360,7 @@ setOnBell((sessionKey) => {
 	try {
 		if (sessionKey.startsWith("project-")) return;
 		log.debug("Terminal bell", { taskId: sessionKey.slice(0, 8) });
-		pushToBrowserClients("terminalBell", { taskId: sessionKey });
+		pushTerminalBell(sessionKey);
 		handleBellAutoStatus(sessionKey).catch((err) => {
 			log.error("handleBellAutoStatus failed", { error: String(err) });
 		});
@@ -370,7 +374,7 @@ setOnIdle((sessionKey) => {
 	isTaskInProgress(sessionKey).then((inProgress) => {
 		if (!inProgress) return;
 		try {
-			pushToBrowserClients("terminalBell", { taskId: sessionKey });
+			pushTerminalBell(sessionKey);
 		} catch (err) {
 			log.error("Failed to handle terminal idle", { taskId: sessionKey.slice(0, 8), error: String(err) });
 		}

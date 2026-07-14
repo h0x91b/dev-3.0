@@ -17,7 +17,7 @@ export default function TerminalImmersiveChrome({ onExit }: TerminalImmersiveChr
 			<button
 				type="button"
 				onClick={onExit}
-				className="min-w-[12rem] h-11 min-h-11 md:h-6 md:min-h-6 rounded-md border border-edge-active bg-elevated px-4 text-xs font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg focus-visible:outline-none"
+				className="min-w-[12rem] h-11 min-h-11 md:h-6 md:min-h-6 rounded-lg border border-edge-active bg-elevated px-4 text-xs font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg outline-none"
 				aria-label={t("infoPanel.exitFullScreen")}
 			>
 				{t("infoPanel.exitFullScreen")}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type Route, type SettingsSectionId } from "./state";
 import { api, isElectrobun } from "./rpc";
-import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
+import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
@@ -29,7 +29,7 @@ import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
-import { ToastHost, toast } from "./toast";
+import { setToastSuppressed, ToastHost, toast } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -96,6 +96,41 @@ function App() {
 	const [, setLocale] = useLocale();
 	const [terminalImmersive, setTerminalImmersive] = useState(false);
 	const terminalImmersiveVisible = terminalImmersive && isTaskTerminalRoute(state.route);
+	const skipNextTerminalCopyResetRef = useRef(false);
+	const skipTerminalCopyReset = terminalImmersiveVisible || skipNextTerminalCopyResetRef.current;
+	const setTerminalImmersiveActive = useCallback((active: boolean) => {
+		if (active) {
+			skipNextTerminalCopyResetRef.current = true;
+			setToastSuppressed(true);
+			setWebNotificationsSuppressed(true);
+			setTerminalImmersive(true);
+			void api.request.setTerminalFocus?.({ active: true })?.catch?.(() => { /* best-effort */ });
+			return;
+		}
+
+		skipNextTerminalCopyResetRef.current = true;
+		setTerminalImmersive(false);
+		// Release the renderer gate before asking the backend to flush. The backend
+		// remains authoritative for agent notifications, while this ordering keeps
+		// locally generated toasts from racing the queued push messages.
+		setWebNotificationsSuppressed(false);
+		setToastSuppressed(false);
+		void api.request.setTerminalFocus?.({ active: false })?.catch?.(() => { /* best-effort */ });
+	}, []);
+	useEffect(() => {
+		// Immersive toggling remounts the workspace tree. Clear the one-shot marker
+		// after its new tree has rendered so ordinary task navigation still resets a
+		// genuinely stale tmux copy-mode session.
+		skipNextTerminalCopyResetRef.current = false;
+	}, [terminalImmersiveVisible]);
+
+	useEffect(() => {
+		return () => {
+			setWebNotificationsSuppressed(false);
+			setToastSuppressed(false);
+			void api.request.setTerminalFocus?.({ active: false })?.catch?.(() => { /* best-effort */ });
+		};
+	}, []);
 	useViewport(state.route);
 	useMobileDenseZoom(state.route);
 	// RPC/WebSocket connection state — drives the bootstrap screen's "Connecting…"
@@ -376,14 +411,14 @@ function App() {
 
 	const toggleTerminalImmersive = useCallback(() => {
 		if (!isTaskTerminalRoute(routeRef.current)) return;
-		setTerminalImmersive((active) => !active);
-	}, []);
+		setTerminalImmersiveActive(!terminalImmersive);
+	}, [setTerminalImmersiveActive, terminalImmersive]);
 
 	// Shared click-to-open path for every task notification surface. Exiting the
 	// ephemeral terminal view happens before applying the user's normal open mode.
 	const openTaskFromNotification = useCallback(
 		(taskId: string, projectId: string) => {
-			setTerminalImmersive(false);
+			setTerminalImmersiveActive(false);
 			if (!taskId || !projectId) return;
 			const openMode = getTaskOpenMode();
 			if (openMode === "fullscreen") {
@@ -392,14 +427,14 @@ function App() {
 				navigate({ screen: "project", projectId, activeTaskId: taskId });
 			}
 		},
-		[navigate],
+		[navigate, setTerminalImmersiveActive],
 	);
 
 	useEffect(() => {
 		if (terminalImmersive && !isTaskTerminalRoute(state.route)) {
-			setTerminalImmersive(false);
+			setTerminalImmersiveActive(false);
 		}
-	}, [state.route, terminalImmersive]);
+	}, [state.route, setTerminalImmersiveActive, terminalImmersive]);
 
 	// Deep-link into a Global Settings section (e.g. clicking a proxy-gated
 	// preset in the launch picker dispatches this). Kept as a window event so no
@@ -1832,7 +1867,7 @@ function App() {
 	return (
 		<div className="h-full w-full flex flex-col">
 			{terminalImmersiveVisible ? (
-				<TerminalImmersiveChrome onExit={() => setTerminalImmersive(false)} />
+				<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
 			) : (
 				<>
 					{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
@@ -2238,6 +2273,7 @@ function App() {
 				onToggleTerminalFullscreen={toggleTerminalImmersive}
 				artifactViewer={null}
 				onCloseArtifactViewer={closeArtifactViewer}
+				skipCopyModeReset={skipTerminalCopyReset}
 			/>
 		);
 	}
@@ -2273,6 +2309,7 @@ function App() {
 						onCloseArtifactViewer={closeArtifactViewer}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
+						skipCopyModeReset={skipTerminalCopyReset}
 					/>
 				);
 			case "project-terminal": {
@@ -2301,6 +2338,7 @@ function App() {
 						onCloseArtifactViewer={closeArtifactViewer}
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
+						skipCopyModeReset={skipTerminalCopyReset}
 					/>
 				);
 			case "project-settings":
