@@ -923,7 +923,12 @@ function installOpenAiMetadata(home: string): void {
  * and update ~/.agents/AGENTS.md.
  * Overwritten on every app start to match the running version (same pattern as CLI binary).
  */
-export function installAgentSkills(): void {
+export interface InstallAgentSkillsOptions {
+	/** Skip Codex config patching when the caller has not resolved the user PATH yet. */
+	configureCodex?: boolean;
+}
+
+export function installAgentSkills(options: InstallAgentSkillsOptions = {}): void {
 	const home = homedir();
 
 	// Install Claude-specific skill (with command injection). SKILL.md is short
@@ -1052,5 +1057,7 @@ export function installAgentSkills(): void {
 	installOpenAiMetadata(home);
 	installAgentsMd();
 	ensureClaudeSettings(home);
-	ensureCodexConfigFile(home);
+	if (options.configureCodex !== false) {
+		ensureCodexConfigFile(home);
+	}
 }

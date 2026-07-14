@@ -1,0 +1,1 @@
+Codex profile migration now switches to per-profile config files at Codex 0.134.0, removes nested managed legacy profile tables, and detects the installed version after the user's shell PATH is loaded.

@@ -78,6 +78,13 @@ describe("installAgentSkills", () => {
 		expect(ensureCodexConfigFile).toHaveBeenCalledWith(tempHome);
 	});
 
+	it("can defer Codex config patching until the shell PATH is resolved", async () => {
+		const { installAgentSkills, ensureCodexConfigFile } = await loadModule();
+		installAgentSkills({ configureCodex: false });
+
+		expect(ensureCodexConfigFile).not.toHaveBeenCalled();
+	});
+
 	it("writes the full-protocol PROTOCOL.md fallback next to the short Claude SKILL.md", async () => {
 		const { installAgentSkills } = await loadModule();
 		installAgentSkills();
