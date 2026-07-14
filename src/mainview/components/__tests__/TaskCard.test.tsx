@@ -159,6 +159,7 @@ function renderCard(
 		isMoving?: boolean;
 		projectOverride?: Project;
 		prInfo?: TaskPRBadgeInfo;
+		siblingMap?: Map<string, Task[]>;
 	},
 ) {
 	return render(
@@ -177,6 +178,7 @@ function renderCard(
 				isActiveInSplit={opts?.isActiveInSplit}
 				isMoving={opts?.isMoving}
 				prInfo={opts?.prInfo}
+				siblingMap={opts?.siblingMap}
 			/>
 		</I18nProvider>,
 	);
@@ -186,6 +188,25 @@ describe("TaskCard", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedConfirmTaskCompletion.mockResolvedValue(true);
+	});
+
+	it("uses the shared capped variant button on the kanban card", async () => {
+		const variants = [1, 2, 3, 4, 5].map((variantIndex) => makeTask({
+			id: `t${variantIndex}`,
+			seq: variantIndex,
+			status: "in-progress",
+			groupId: "group-1",
+			variantIndex,
+		}));
+
+		renderCard(variants[4], {
+			siblingMap: new Map([["group-1", variants]]),
+		});
+
+		expect(screen.getAllByTestId(/^variant-indicator-t5-dot-/)).toHaveLength(3);
+		expect(screen.getByTestId("variant-indicator-t5-dot-t5")).toHaveClass("ring-1");
+		await userEvent.click(screen.getByTestId("variant-indicator-t5"));
+		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
 	});
 
 	describe("scheduled-message chip", () => {

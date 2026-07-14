@@ -1,0 +1,1 @@
+Variant task cards and active-task surfaces now share bounded sibling navigation, while the task inspector and keyboard shortcuts provide fast switching between live variants. Opening the sibling overview now also closes any terminal hover preview so the group stays unobstructed. The workspace variant switcher now keeps only numbered status chips without decorative agent glyphs.

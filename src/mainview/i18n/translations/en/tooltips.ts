@@ -36,7 +36,7 @@ export const tooltips = {
 	"ttip.task.watch":
 		"Watched tasks notify you when the agent finishes, fails or asks a question — so you can safely step away.",
 	"ttip.task.siblings":
-		"This task has sibling variants — independent agents trying the same job in parallel. Each dot is one sibling's status; click to jump between them.",
+		"Open the sibling overview to compare variant titles and statuses, then jump to any live variant.",
 	"ttip.task.ports":
 		"Network ports allocated to this task. Every task gets its own ports, so parallel dev servers never collide.",
 	"ttip.task.run": "Creates the git worktree, opens the terminal and launches the agent on this task.",

@@ -20,6 +20,8 @@ const keymap = {
 	"keymap.shortcut.commandPalette": "Command palette",
 	"keymap.shortcut.back": "Back",
 	"keymap.shortcut.forward": "Forward",
+	"keymap.shortcut.previousVariant": "Previous live variant",
+	"keymap.shortcut.nextVariant": "Next live variant",
 	"keymap.shortcut.switchProject": "Switch to project 1–9 (keep current view)",
 	"keymap.shortcut.switchProjectFlip": "Switch to project 1–9 (flip board/task view)",
 	"keymap.shortcut.jumpOperations": "Jump to the Operations board",

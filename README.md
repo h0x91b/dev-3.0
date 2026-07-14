@@ -282,6 +282,7 @@ every shortcut in one panel (App + Terminal/tmux tabs). The full list is defined
 | Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
 | Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
+| Previous / next live variant | ⇧⌘[ / ⇧⌘] | Ctrl+Shift+[ / Ctrl+Shift+] |
 | Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |
 | Switch to project 1–9 (flip view) | ⇧⌘1–9 | Ctrl+Shift+1–9 |
 | Cycle active tasks (this project / all) | ⌥Tab / ⌥⇧Tab | Ctrl+Tab / Ctrl+Shift+Tab |

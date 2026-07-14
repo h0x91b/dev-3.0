@@ -17,6 +17,8 @@ const keymap = {
 	"keymap.shortcut.commandPalette": "Палитра команд",
 	"keymap.shortcut.back": "Назад",
 	"keymap.shortcut.forward": "Вперёд",
+	"keymap.shortcut.previousVariant": "Предыдущий живой вариант",
+	"keymap.shortcut.nextVariant": "Следующий живой вариант",
 	"keymap.shortcut.switchProject": "Переключить на проект 1–9 (сохранить вид)",
 	"keymap.shortcut.switchProjectFlip": "Переключить на проект 1–9 (сменить вид доска/задача)",
 	"keymap.shortcut.jumpOperations": "Перейти к борду «Операции»",

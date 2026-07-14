@@ -69,6 +69,8 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "command-palette", keys: { mac: "⇧⌘P", other: "Ctrl+Shift+P" }, descKey: "keymap.shortcut.commandPalette", category: "navigation" },
 	{ id: "back", keys: { mac: "⌘[", other: "Ctrl+[" }, descKey: "keymap.shortcut.back", category: "navigation" },
 	{ id: "forward", keys: { mac: "⌘]", other: "Ctrl+]" }, descKey: "keymap.shortcut.forward", category: "navigation" },
+	{ id: "previous-variant", keys: { mac: "⇧⌘[", other: "Ctrl+Shift+[" }, descKey: "keymap.shortcut.previousVariant", category: "navigation" },
+	{ id: "next-variant", keys: { mac: "⇧⌘]", other: "Ctrl+Shift+]" }, descKey: "keymap.shortcut.nextVariant", category: "navigation" },
 	{ id: "switch-project", keys: { mac: "⌘1–9", other: "Ctrl+1–9" }, remoteKeys: { mac: "G then 1–9", other: "G then 1–9" }, descKey: "keymap.shortcut.switchProject", category: "navigation" },
 	{ id: "switch-project-flip", keys: { mac: "⇧⌘1–9", other: "Ctrl+Shift+1–9" }, descKey: "keymap.shortcut.switchProjectFlip", category: "navigation" },
 	{ id: "jump-operations", keys: { mac: "⌘0", other: "Ctrl+0" }, descKey: "keymap.shortcut.jumpOperations", category: "navigation" },

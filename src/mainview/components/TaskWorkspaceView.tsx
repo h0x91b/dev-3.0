@@ -77,6 +77,7 @@ function TaskWorkspaceView({
 					project={project}
 					dispatch={dispatch}
 					navigate={navigate}
+					tasks={tasks}
 					isFullPage
 					onOpenInlineDiff={inlineDiff.open}
 				/>

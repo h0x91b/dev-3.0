@@ -4,6 +4,27 @@ import { I18nProvider } from "../../i18n";
 import ActiveTasksSidebar from "../ActiveTasksSidebar";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
 
+const terminalPreview = vi.hoisted(() => ({
+	close: vi.fn(),
+	handlers: {
+		onMouseEnter: vi.fn(),
+		onMouseLeave: vi.fn(),
+	},
+	state: {
+		open: false,
+		html: null,
+		loading: false,
+		pos: { top: 0, left: 0 },
+		activeTaskId: null,
+		cancelClose: vi.fn(),
+		scheduleClose: vi.fn(),
+	},
+}));
+
+vi.mock("../../hooks/useTerminalPreview", () => ({
+	useTerminalPreview: () => terminalPreview,
+}));
+
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
@@ -20,6 +41,7 @@ vi.mock("../../rpc", () => ({
 
 beforeEach(() => {
 	localStorage.removeItem("dev3-sidebar-scope");
+	terminalPreview.close.mockClear();
 });
 
 const claudeAgent: CodingAgent = {
@@ -76,8 +98,9 @@ function makeTask(overrides?: Partial<Task>): Task {
 	};
 }
 
-describe("ActiveTasksSidebar", () => {
+	describe("ActiveTasksSidebar", () => {
 	it("shows agent-first identity with compact config and variant dots", () => {
+		const navigate = vi.fn();
 		render(
 			<I18nProvider>
 				<ActiveTasksSidebar
@@ -93,7 +116,7 @@ describe("ActiveTasksSidebar", () => {
 					]}
 					activeTaskId="t1"
 					dispatch={vi.fn()}
-					navigate={vi.fn()}
+					navigate={navigate}
 					agents={[claudeAgent, codexAgent]}
 					bellCounts={new Map()}
 					taskPorts={new Map()}
@@ -106,7 +129,56 @@ describe("ActiveTasksSidebar", () => {
 		expect(screen.getByText("Claude · Opus 4.7 · Bypass")).toBeInTheDocument();
 		expect(screen.getByText("Codex · GPT-5.5 Heavy Bypass")).toBeInTheDocument();
 		expect(screen.getByTestId("variant-indicator-t1")).toBeInTheDocument();
+		expect(screen.getByTestId("sidebar-status-label-t1").parentElement).toContainElement(screen.getByTestId("variant-indicator-t1"));
 		expect(screen.getAllByText("#494")).toHaveLength(2);
+	});
+
+	it("does not activate the task when the dots button receives keyboard input", async () => {
+		const navigate = vi.fn();
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask(), makeTask({ id: "t2", variantIndex: 2 })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={navigate}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		const dots = screen.getByTestId("variant-indicator-t1");
+		dots.focus();
+		await user.keyboard(" ");
+
+		expect(navigate).not.toHaveBeenCalled();
+		expect(screen.getByRole("dialog", { name: "Siblings" })).toBeInTheDocument();
+	});
+
+	it("closes the terminal preview before opening the sibling overview", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask(), makeTask({ id: "t2", variantIndex: 2 })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={vi.fn()}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByTestId("variant-indicator-t1"));
+
+		expect(terminalPreview.close).toHaveBeenCalledTimes(1);
 	});
 
 	it("renders a per-card status color rail (status hue for inactive, accent for active)", () => {

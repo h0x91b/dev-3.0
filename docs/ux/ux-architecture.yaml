@@ -230,7 +230,7 @@ ux_architecture:
             domain: "task identity & lifecycle"
             contents: ["variant_switcher (conditional)", "watch_toggle", "status_dropdown", "diff_summary_badge", "include_tests_toggle", "label_strip"]
             label_overflow: "Show up to MAX_INLINE_LABELS (4) chips inline, then a +k chip (hover lists the rest). Full list also in expanded metadata grid."
-            variant_switcher: "Conditional (renders only when the task's variant group has >=2 ALIVE variants): a leading compact segmented control — one numbered chip per alive variant (status-colored, agent glyph, current highlighted), click switches the workspace to that sibling. Counts as ONE composite control (like label_strip), an explicit conditional exception to the four-control budget; no unrelated control inherits it. Keyboard: Shift+Cmd+[ / Shift+Cmd+] cycles alive variants (keymap.ts)."
+            variant_switcher: "Conditional (renders only when the task's variant group has >=2 ALIVE variants): a leading compact segmented control — one numbered chip per alive variant (status-colored, current highlighted), click switches the workspace to that sibling. Counts as ONE composite control (like label_strip), an explicit conditional exception to the four-control budget; no unrelated control inherits it. Keyboard: Shift+Cmd+[ / Shift+Cmd+] cycles alive variants (keymap.ts)."
           session_agent:
             position: "row1.right"
             domain: "drive the session & agents"

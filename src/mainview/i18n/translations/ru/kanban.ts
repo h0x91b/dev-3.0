@@ -105,6 +105,8 @@ const kanban = {
 	"task.bellTooltip": "Требует внимания",
 	"task.attentionLabel": "Внимание",
 	"task.siblings": "Варианты",
+	"task.currentVariant": "Текущий вариант",
+	"task.switchToVariant": "Переключиться на {variant}: {title}",
 	"task.siblingsCount_one": "{count} вариант-сиблинг",
 	"task.siblingsCount_few": "{count} варианта-сиблинга",
 	"task.siblingsCount_many": "{count} вариантов-сиблингов",

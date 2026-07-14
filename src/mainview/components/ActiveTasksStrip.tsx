@@ -70,9 +70,19 @@ function ActiveTasksStrip({
 				const summary = [agent?.name, configLabel].filter(Boolean).join(" · ");
 
 				return (
-					<button
+					<div
 						key={task.id}
+						role="button"
+						tabIndex={0}
+						aria-label={title}
 						onClick={() => handleTaskClick(task)}
+						onKeyDown={(event) => {
+							if (event.target !== event.currentTarget) return;
+							if (event.key === "Enter" || event.key === " ") {
+								event.preventDefault();
+								handleTaskClick(task);
+							}
+						}}
 						className={`flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-[0.625rem] leading-tight max-w-[220px] transition-colors ${
 							isActive
 								? "bg-accent/15 text-accent"
@@ -95,6 +105,9 @@ function ActiveTasksStrip({
 								groupMembers={groupMembers}
 								currentTaskId={task.id}
 								statusColors={statusColors}
+								agents={agents}
+								navigate={navigate}
+								projectId={task.projectId || project.id}
 								testId={`variant-indicator-${task.id}`}
 							/>
 						)}
@@ -103,7 +116,7 @@ function ActiveTasksStrip({
 								{bellCount > 9 ? "9+" : bellCount}
 							</span>
 						)}
-					</button>
+					</div>
 				);
 			})}
 		</div>
