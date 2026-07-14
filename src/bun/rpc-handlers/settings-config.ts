@@ -14,7 +14,7 @@ import { DEV3_HOME } from "../paths";
 import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
-import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath } from "./shared";
+import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { VENDORED_TMUX_PATHS } from "./shared-pure";
 import { whichSync } from "../which";
 
@@ -123,6 +123,12 @@ async function getGitHubCliStatus(): Promise<GitHubCliStatus> {
 
 async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 	log.info("→ saveGlobalSettings", { params });
+	// A JSON-RPC patch may omit optional `focusMode`; preserve the live gate in
+	// that case instead of accidentally releasing queued agent notifications while
+	// the user changes an unrelated setting.
+	if (Object.prototype.hasOwnProperty.call(params, "focusMode")) {
+		setFocusMode(params.focusMode === true);
+	}
 	await saveSettings(params);
 	log.info("← saveGlobalSettings done");
 }

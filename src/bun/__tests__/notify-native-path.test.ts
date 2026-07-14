@@ -44,6 +44,14 @@ const {
 	consumeRecentWatchedNotification,
 	_resetWatchedNotificationState,
 	setPushMessage,
+	setTerminalFocus,
+	setFocusMode,
+	queueTerminalFocusToast,
+	pushCliToast,
+	pushCliAttention,
+	pushTerminalBell,
+	pushCliShowImage,
+	pushCliShowArtifact,
 } = await import("../rpc-handlers/shared");
 
 function makeTask(overrides?: Partial<Task>): Task {
@@ -109,5 +117,113 @@ describe("native notification channel routing", () => {
 			silent: true,
 		});
 		expect(consumeRecentWatchedNotification()).toEqual({ taskId: "task-1", projectId: "proj-1" });
+	});
+
+	it("queues native and web notifications until terminal focus ends", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
+		setTerminalFocus(true);
+
+		notifyFromCliDesktop({ task: makeTask(), body: "done", projectName: "MyProject" });
+
+		expect(postNativeTaskNotification).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalled();
+
+		setTerminalFocus(false);
+
+		expect(postNativeTaskNotification).toHaveBeenCalledWith(expect.objectContaining({ body: "done" }));
+		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ body: "done" }));
+	});
+
+	it("queues native and web notifications until persistent Focus Mode ends", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		vi.mocked(postNativeTaskNotification).mockReturnValue(true);
+		setFocusMode(true);
+
+		notifyFromCliDesktop({ task: makeTask(), body: "done", projectName: "MyProject" });
+
+		expect(postNativeTaskNotification).not.toHaveBeenCalled();
+		expect(push).not.toHaveBeenCalled();
+
+		setFocusMode(false);
+
+		expect(postNativeTaskNotification).toHaveBeenCalledWith(expect.objectContaining({ body: "done" }));
+		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ body: "done" }));
+	});
+
+	it("flushes queued CLI toasts after terminal focus ends", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setTerminalFocus(true);
+		const payload = {
+			taskId: "task-1",
+			projectId: "proj-1",
+			message: "build done",
+			level: "success" as const,
+			taskSeq: 42,
+			taskTitle: "Fix bug",
+			projectName: "MyProject",
+		};
+
+		queueTerminalFocusToast(payload);
+		expect(push).not.toHaveBeenCalled();
+
+		setTerminalFocus(false);
+
+		expect(push).toHaveBeenCalledWith("cliToast", payload);
+	});
+
+	it("flushes queued attention badges after Focus Mode ends", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setFocusMode(true);
+
+		pushCliAttention({ taskId: "task-1", reason: "CI passed" });
+		expect(push).not.toHaveBeenCalled();
+
+		setFocusMode(false);
+
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", reason: "CI passed" });
+	});
+
+	it("flushes mixed notification types in arrival order with their task targets", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setFocusMode(true);
+
+		pushCliToast({ taskId: "task-1", projectId: "proj-1", message: "toast", level: "info" });
+		pushTerminalBell("task-1");
+		pushCliShowImage({ taskId: "task-1", projectId: "proj-1", images: [], newCount: 1 });
+		pushCliAttention({ taskId: "task-2", reason: "attention" });
+		pushCliShowArtifact({ taskId: "task-2", projectId: "proj-1", artifacts: [], newCount: 1 });
+
+		expect(push).not.toHaveBeenCalled();
+		setFocusMode(false);
+
+		expect(push.mock.calls.map(([name]) => name)).toEqual([
+			"cliToast",
+			"terminalBell",
+			"cliShowImage",
+			"cliAttention",
+			"cliShowArtifact",
+		]);
+		expect(push).toHaveBeenCalledWith("cliShowImage", expect.objectContaining({ taskId: "task-1" }));
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-2", reason: "attention" });
+	});
+
+	it("keeps queued notifications hidden until every suppression source ends", () => {
+		const push = vi.fn();
+		setPushMessage(push);
+		setTerminalFocus(true);
+		setFocusMode(true);
+
+		pushCliAttention({ taskId: "task-1", reason: "still busy" });
+		setTerminalFocus(false);
+		expect(push).not.toHaveBeenCalled();
+
+		setFocusMode(false);
+		expect(push).toHaveBeenCalledWith("cliAttention", { taskId: "task-1", reason: "still busy" });
 	});
 });

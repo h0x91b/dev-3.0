@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type Route, type SettingsSectionId } from "./state";
 import { api, isElectrobun } from "./rpc";
-import { showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
+import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
@@ -29,7 +29,7 @@ import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
-import { ToastHost, toast } from "./toast";
+import { setToastSuppressed, ToastHost, toast } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -51,10 +51,12 @@ import { HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
 import BootstrapScreen, { type BootPhase } from "./components/BootstrapScreen";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
 import DiagnosticsIndicator from "./components/DiagnosticsIndicator";
+import TerminalImmersiveChrome from "./components/TerminalImmersiveChrome";
 import { useRpcStatus } from "./hooks/useDiagnostics";
 import { reconnectRpc } from "./rpc";
 import { DIAGNOSTICS_OPEN_EVENT } from "./diagnostics";
 import { getAdjacentAliveVariant } from "./utils/variantGroups";
+import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
 
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
@@ -92,6 +94,43 @@ function App() {
 	const [state, dispatch] = useAppState();
 	const t = useT();
 	const [, setLocale] = useLocale();
+	const [terminalImmersive, setTerminalImmersive] = useState(false);
+	const terminalImmersiveVisible = terminalImmersive && isTaskTerminalRoute(state.route);
+	const skipNextTerminalCopyResetRef = useRef(false);
+	const skipTerminalCopyReset = terminalImmersiveVisible || skipNextTerminalCopyResetRef.current;
+	const setTerminalImmersiveActive = useCallback((active: boolean) => {
+		if (active) {
+			skipNextTerminalCopyResetRef.current = true;
+			setToastSuppressed(true);
+			setWebNotificationsSuppressed(true);
+			setTerminalImmersive(true);
+			void api.request.setTerminalFocus?.({ active: true })?.catch?.(() => { /* best-effort */ });
+			return;
+		}
+
+		skipNextTerminalCopyResetRef.current = true;
+		setTerminalImmersive(false);
+		// Release the renderer gate before asking the backend to flush. The backend
+		// remains authoritative for agent notifications, while this ordering keeps
+		// locally generated toasts from racing the queued push messages.
+		setWebNotificationsSuppressed(false);
+		setToastSuppressed(false);
+		void api.request.setTerminalFocus?.({ active: false })?.catch?.(() => { /* best-effort */ });
+	}, []);
+	useEffect(() => {
+		// Immersive toggling remounts the workspace tree. Clear the one-shot marker
+		// after its new tree has rendered so ordinary task navigation still resets a
+		// genuinely stale tmux copy-mode session.
+		skipNextTerminalCopyResetRef.current = false;
+	}, [terminalImmersiveVisible]);
+
+	useEffect(() => {
+		return () => {
+			setWebNotificationsSuppressed(false);
+			setToastSuppressed(false);
+			void api.request.setTerminalFocus?.({ active: false })?.catch?.(() => { /* best-effort */ });
+		};
+	}, []);
 	useViewport(state.route);
 	useMobileDenseZoom(state.route);
 	// RPC/WebSocket connection state — drives the bootstrap screen's "Connecting…"
@@ -370,6 +409,33 @@ function App() {
 		[commitNavigation],
 	);
 
+	const toggleTerminalImmersive = useCallback(() => {
+		if (!isTaskTerminalRoute(routeRef.current)) return;
+		setTerminalImmersiveActive(!terminalImmersive);
+	}, [setTerminalImmersiveActive, terminalImmersive]);
+
+	// Shared click-to-open path for every task notification surface. Exiting the
+	// ephemeral terminal view happens before applying the user's normal open mode.
+	const openTaskFromNotification = useCallback(
+		(taskId: string, projectId: string) => {
+			setTerminalImmersiveActive(false);
+			if (!taskId || !projectId) return;
+			const openMode = getTaskOpenMode();
+			if (openMode === "fullscreen") {
+				navigate({ screen: "task", projectId, taskId });
+			} else {
+				navigate({ screen: "project", projectId, activeTaskId: taskId });
+			}
+		},
+		[navigate, setTerminalImmersiveActive],
+	);
+
+	useEffect(() => {
+		if (terminalImmersive && !isTaskTerminalRoute(state.route)) {
+			setTerminalImmersiveActive(false);
+		}
+	}, [state.route, setTerminalImmersiveActive, terminalImmersive]);
+
 	// Deep-link into a Global Settings section (e.g. clicking a proxy-gated
 	// preset in the launch picker dispatches this). Kept as a window event so no
 	// surface needs a navigate prop threaded through it.
@@ -605,6 +671,17 @@ function App() {
 	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
 	useGlobalShortcut(
 		(e) => {
+			const isTerminalFullscreenShortcut =
+				!e.repeat &&
+				((e.key === "F11" && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) ||
+					((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f"));
+			if (isTerminalFullscreenShortcut) {
+				if (!isTaskTerminalRoute(state.route)) return;
+				e.preventDefault();
+				e.stopPropagation();
+				toggleTerminalImmersive();
+				return;
+			}
 			// While hint mode is active the overlay owns every keystroke.
 			if (hintMode) return;
 			// In browser remote mode the native menu is gone and the browser claims
@@ -885,7 +962,7 @@ function App() {
 				}
 			}
 		},
-		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route],
+		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route, toggleTerminalImmersive],
 		{ capture: true },
 	);
 
@@ -1055,11 +1132,7 @@ function App() {
 			if (!message) return;
 			const onClick =
 				taskId && projectId
-					? () => {
-							const openMode = getTaskOpenMode();
-							if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
-							else navigate({ screen: "project", projectId, activeTaskId: taskId });
-						}
+					? () => openTaskFromNotification(taskId, projectId)
 					: undefined;
 			// Compact source line, e.g. "#804 · dev-3.0 · Task title".
 			const context = taskSeq !== undefined
@@ -1069,7 +1142,7 @@ function App() {
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
-	}, [navigate]);
+	}, [openTaskFromNotification]);
 
 	// Keep the current viewer visible to the cliShowImage listener without
 	// re-subscribing it every time the viewer opens/closes.
@@ -1114,16 +1187,14 @@ function App() {
 			toast.info(t.plural("showImage.toast", newCount ?? 1), {
 				context,
 				onClick: () => {
-					const openMode = getTaskOpenMode();
-					if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
-					else navigate({ screen: "project", projectId, activeTaskId: taskId });
+					openTaskFromNotification(taskId, projectId);
 					setImageViewer({ taskId, images, index: images.length - 1 });
 				},
 			});
 		}
 		window.addEventListener("rpc:cliShowImage", onCliShowImage);
 		return () => window.removeEventListener("rpc:cliShowImage", onCliShowImage);
-	}, [dispatch, navigate, t, state.route]);
+	}, [dispatch, openTaskFromNotification, t, state.route]);
 
 	// Reopen the image viewer from a task-scoped trigger (the inspector image badge).
 	useEffect(() => {
@@ -1167,16 +1238,14 @@ function App() {
 			toast.info(t.plural("showArtifact.toast", newCount ?? 1), {
 				context,
 				onClick: () => {
-					const openMode = getTaskOpenMode();
-					if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
-					else navigate({ screen: "project", projectId, activeTaskId: taskId });
+					openTaskFromNotification(taskId, projectId);
 					setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				},
 			});
 		}
 		window.addEventListener("rpc:cliShowArtifact", onCliShowArtifact);
 		return () => window.removeEventListener("rpc:cliShowArtifact", onCliShowArtifact);
-	}, [dispatch, navigate, state.route, t]);
+	}, [dispatch, openTaskFromNotification, state.route, t]);
 
 	useEffect(() => {
 		function onOpenArtifactViewer(e: Event) {
@@ -1200,15 +1269,11 @@ function App() {
 		function onWebNotification(e: Event) {
 			const detail = (e as CustomEvent).detail as WebNotificationDetail;
 			if (!detail?.body) return;
-			showWebNotificationOrToast(detail, (taskId, projectId) => {
-				const openMode = getTaskOpenMode();
-				if (openMode === "fullscreen") navigate({ screen: "task", projectId, taskId });
-				else navigate({ screen: "project", projectId, activeTaskId: taskId });
-			});
+			showWebNotificationOrToast(detail, openTaskFromNotification);
 		}
 		window.addEventListener("rpc:webNotification", onWebNotification);
 		return () => window.removeEventListener("rpc:webNotification", onWebNotification);
-	}, [navigate]);
+	}, [openTaskFromNotification]);
 
 	// Listen for port scan updates
 	useEffect(() => {
@@ -1384,25 +1449,6 @@ function App() {
 		return () => window.removeEventListener("rpc:updateCheckOutcome", onUpdateCheckOutcome);
 	}, [t]);
 
-	// Click-to-open for task notifications.
-	// Bun pushes the clicked target (native delegate click on macOS, or the
-	// focus-proxy fallback elsewhere). We navigate straight into the task.
-	const openTaskFromNotification = useCallback(
-		(taskId: string, projectId: string) => {
-			if (!taskId || !projectId) return;
-			// Open the task the same way a normal card click does — honoring the user's
-			// `dev3-task-open-mode` preference. Default is "split" (task terminal next to
-			// the board), NOT fullscreen zoom. Only users who chose fullscreen get zoomed.
-			const openMode = getTaskOpenMode();
-			if (openMode === "fullscreen") {
-				navigate({ screen: "task", projectId, taskId });
-			} else {
-				navigate({ screen: "project", projectId, activeTaskId: taskId });
-			}
-		},
-		[navigate],
-	);
-
 	useEffect(() => {
 		function onOpenTaskFromNotification(e: Event) {
 			const { taskId, projectId } = (e as CustomEvent).detail as { taskId: string; projectId: string };
@@ -1418,8 +1464,9 @@ function App() {
 	// the listener registration above; same pattern as consumePendingQuitDialog.
 	// Optional-chained: some tests mock `api.request` without this method.
 	useEffect(() => {
-		api.request
-			.consumePendingNotificationNav?.()
+		const pending = api.request.consumePendingNotificationNav?.();
+		if (!pending) return;
+		pending
 			.then((target) => {
 				if (target) openTaskFromNotification(target.taskId, target.projectId);
 			})
@@ -1819,26 +1866,36 @@ function App() {
 
 	return (
 		<div className="h-full w-full flex flex-col">
-			{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
-			<GlobalHeader
-				route={route}
-				projects={state.projects}
-				tasks={state.currentProjectTasks}
-				navigate={navigate}
-				goBack={() => dispatch({ type: "goBack" })}
-				goForward={() => dispatch({ type: "goForward" })}
-				canGoBack={state.historyIndex > 0}
-				canGoForward={state.historyIndex < state.routeHistory.length - 1}
-				updateVersion={updateVersion}
-				updateDownloadStatus={updateDownloadStatus}
-			/>
-			{ghWarning && (
-				<GhWarningBanner
-					notInstalled={ghWarning.notInstalled}
-					onDismiss={() => setGhWarning(null)}
-				/>
+			{terminalImmersiveVisible ? (
+				<TerminalImmersiveChrome onExit={() => setTerminalImmersiveActive(false)} />
+			) : (
+				<>
+					{!isElectrobun && <AppMenuBar context={menuContext} onAction={handleMenuBarAction} />}
+					<GlobalHeader
+						route={route}
+						projects={state.projects}
+						tasks={state.currentProjectTasks}
+						navigate={navigate}
+						goBack={() => dispatch({ type: "goBack" })}
+						goForward={() => dispatch({ type: "goForward" })}
+						canGoBack={state.historyIndex > 0}
+						canGoForward={state.historyIndex < state.routeHistory.length - 1}
+						updateVersion={updateVersion}
+						updateDownloadStatus={updateDownloadStatus}
+					/>
+					{ghWarning && (
+						<GhWarningBanner
+							notInstalled={ghWarning.notInstalled}
+							onDismiss={() => setGhWarning(null)}
+						/>
+					)}
+				</>
 			)}
-			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">{renderScreen()}</div>
+			<div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+				{terminalImmersiveVisible ? renderTerminalImmersiveScreen() : renderScreen()}
+			</div>
+			{!terminalImmersiveVisible && (
+			<>
 			{switcher.session && (
 				<TaskSwitcherOverlay
 					session={switcher.session}
@@ -2171,7 +2228,6 @@ function App() {
 					</div>
 				</div>
 			)}
-			<ToastHost />
 			<StuckPreparationPopover tasks={state.currentProjectTasks} />
 			<FolderPickerHost />
 			<KeyboardShortcutsModal
@@ -2191,8 +2247,36 @@ function App() {
 			{aboutVersion && <AboutModal version={aboutVersion} onClose={() => setAboutVersion(null)} />}
 			<DiagnosticsIndicator />
 			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
+			</>
+			)}
+			{/* Toasts are transient feedback, not immersive chrome; notification toasts
+			    must remain clickable so their handler can exit fullscreen first. */}
+			<ToastHost />
 		</div>
 	);
+
+	function renderTerminalImmersiveScreen() {
+		const taskId = routeTaskId(route);
+		const projectId = projectIdForRoute(route);
+		if (!taskId || !projectId) return null;
+		return (
+			<TaskWorkspaceView
+				projectId={projectId}
+				taskId={taskId}
+				tasks={state.currentProjectTasks}
+				projects={state.projects}
+				navigate={navigate}
+				dispatch={dispatch}
+				navigationGuardRef={navigationGuardRef}
+				immersive
+				isTerminalFullscreen
+				onToggleTerminalFullscreen={toggleTerminalImmersive}
+				artifactViewer={null}
+				onCloseArtifactViewer={closeArtifactViewer}
+				skipCopyModeReset={skipTerminalCopyReset}
+			/>
+		);
+	}
 
 	function renderScreen() {
 		switch (route.screen) {
@@ -2223,6 +2307,9 @@ function App() {
 						navigationGuardRef={navigationGuardRef}
 						artifactViewer={artifactViewer}
 						onCloseArtifactViewer={closeArtifactViewer}
+						isTerminalFullscreen={terminalImmersiveVisible}
+						onToggleTerminalFullscreen={toggleTerminalImmersive}
+						skipCopyModeReset={skipTerminalCopyReset}
 					/>
 				);
 			case "project-terminal": {
@@ -2249,6 +2336,9 @@ function App() {
 						navigationGuardRef={navigationGuardRef}
 						artifactViewer={artifactViewer}
 						onCloseArtifactViewer={closeArtifactViewer}
+						isTerminalFullscreen={terminalImmersiveVisible}
+						onToggleTerminalFullscreen={toggleTerminalImmersive}
+						skipCopyModeReset={skipTerminalCopyReset}
 					/>
 				);
 			case "project-settings":

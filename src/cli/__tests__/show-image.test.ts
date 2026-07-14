@@ -119,10 +119,10 @@ describe("show-image", () => {
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 
-	it("reports focus-mode suppression", async () => {
-		mockSend.mockResolvedValue(okResp({ delivered: false, suppressed: true, stored: 2, taskId: CTX.taskId }));
+	it("reports a viewer queued by Focus Mode", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, queued: true, stored: 2, taskId: CTX.taskId }));
 		await handleShowImage([PNG], SOCKET, CTX);
-		expect(stdoutOutput).toContain("focus mode is on");
+		expect(stdoutOutput).toContain("viewer queued until Focus Mode ends");
 	});
 
 	it("errors with a usage code when no paths are given", async () => {

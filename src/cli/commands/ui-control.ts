@@ -50,7 +50,13 @@ export async function handleNotify(
 	const resp = await sendRequest(socketPath, "ui.notify", params);
 	if (!resp.ok) exitError(resp.error || "Failed to send notification");
 
-	const data = resp.data as { delivered: boolean; mode: string; suppressed?: boolean };
+	const data = resp.data as { delivered: boolean; mode: string; queued?: boolean; suppressed?: boolean };
+	if (data.queued) {
+		process.stdout.write(
+			`${data.mode === "desktop" ? "Desktop notification" : "Toast"} queued until Focus Mode ends.\n`,
+		);
+		return;
+	}
 	if (data.suppressed) {
 		process.stdout.write("Focus mode is on — notification suppressed.\n");
 		return;
@@ -90,7 +96,11 @@ export async function handleAttention(
 	const resp = await sendRequest(socketPath, "ui.attention", params);
 	if (!resp.ok) exitError(resp.error || "Failed to raise attention");
 
-	const data = resp.data as { delivered: boolean; taskId: string; suppressed?: boolean };
+	const data = resp.data as { delivered: boolean; taskId: string; queued?: boolean; suppressed?: boolean };
+	if (data.queued) {
+		process.stdout.write("Attention badge queued until Focus Mode ends.\n");
+		return;
+	}
 	if (data.suppressed) {
 		process.stdout.write("Focus mode is on — attention badge suppressed.\n");
 		return;

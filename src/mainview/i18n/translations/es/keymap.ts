@@ -38,6 +38,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Recarga completa",
 	"keymap.shortcut.keyboardShortcuts": "Mostrar este panel de atajos de teclado",
 	"keymap.shortcut.helpMode": "Explicar esta pantalla (modo ayuda)",
+	"keymap.shortcut.terminalFullscreen": "Alternar pantalla inmersiva del terminal (solo en terminal de tarea)",
 	"keymap.shortcut.toggleProjectTerminal": "Alternar terminal del proyecto",
 	"keymap.shortcut.openQuickShell": "Abrir Shell rápido",
 	"keymap.shortcut.quit": "Salir",

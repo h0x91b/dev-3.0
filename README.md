@@ -281,6 +281,7 @@ every shortcut in one panel (App + Terminal/tmux tabs). The full list is defined
 | Command palette | ⇧⌘P | Ctrl+Shift+P |
 | Keyboard shortcuts panel | ⌘/ | Ctrl+/ |
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
+| Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |
 | Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
 | Previous / next live variant | ⇧⌘[ / ⇧⌘] | Ctrl+Shift+[ / Ctrl+Shift+] |
 | Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |

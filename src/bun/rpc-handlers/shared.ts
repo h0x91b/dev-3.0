@@ -23,7 +23,7 @@ export {
 import { extname } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { dlopen, FFIType } from "bun:ffi";
-import type { RendererLogLevel, RequirementCheckResult, Task } from "../../shared/types";
+import type { RendererLogLevel, RequirementCheckResult, SharedArtifact, SharedImage, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { postNativeTaskNotification } from "../native-notifications";
@@ -134,6 +134,160 @@ export function getActiveContext(): { projectId: string | null; taskId: string |
 	return activeContext;
 }
 
+export interface TerminalFocusToastPayload {
+	taskId: string | null;
+	projectId: string | null;
+	message: string;
+	level: "info" | "success" | "error";
+	taskSeq?: number;
+	taskTitle?: string;
+	projectName?: string;
+}
+
+export interface TerminalFocusAttentionPayload {
+	taskId: string;
+	reason: string;
+}
+
+export interface TerminalFocusBellPayload {
+	taskId: string;
+}
+
+export interface TerminalFocusImagePayload {
+	taskId: string;
+	projectId: string;
+	images: SharedImage[];
+	newCount: number;
+	taskSeq?: number;
+	taskTitle?: string;
+	projectName?: string;
+}
+
+export interface TerminalFocusArtifactPayload {
+	taskId: string;
+	projectId: string;
+	artifacts: SharedArtifact[];
+	newCount: number;
+	taskSeq?: number;
+	taskTitle?: string;
+	projectName?: string;
+}
+
+type QueuedTerminalNotification =
+	| { kind: "task"; task: Task; body: string; projectName?: string }
+	| { kind: "toast"; payload: TerminalFocusToastPayload }
+	| { kind: "attention"; payload: TerminalFocusAttentionPayload }
+	| { kind: "terminalBell"; payload: TerminalFocusBellPayload }
+	| { kind: "showImage"; payload: TerminalFocusImagePayload }
+	| { kind: "showArtifact"; payload: TerminalFocusArtifactPayload };
+
+export type NotificationSuppressionSource = "terminalImmersive" | "focusMode";
+
+const notificationSuppressionSources = new Set<NotificationSuppressionSource>();
+const queuedTerminalNotifications: QueuedTerminalNotification[] = [];
+
+export function isTerminalFocusActive(): boolean {
+	return notificationSuppressionSources.has("terminalImmersive");
+}
+
+export function isNotificationSuppressed(): boolean {
+	return notificationSuppressionSources.size > 0;
+}
+
+function flushQueuedNotifications(): void {
+	if (isNotificationSuppressed() || queuedTerminalNotifications.length === 0) return;
+
+	const queued = queuedTerminalNotifications.splice(0, queuedTerminalNotifications.length);
+	for (const notification of queued) {
+		if (notification.kind === "task") {
+			deliverTaskNotification(notification.task, notification.body, notification.projectName, true);
+		} else if (notification.kind === "toast") {
+			getPushMessage()?.("cliToast", notification.payload);
+		} else if (notification.kind === "attention") {
+			getPushMessage()?.("cliAttention", notification.payload);
+		} else if (notification.kind === "terminalBell") {
+			getPushMessage()?.("terminalBell", notification.payload);
+		} else if (notification.kind === "showImage") {
+			getPushMessage()?.("cliShowImage", notification.payload);
+		} else {
+			getPushMessage()?.("cliShowArtifact", notification.payload);
+		}
+	}
+}
+
+/** Queue or release agent-facing notifications for a renderer-owned mode. */
+export function setNotificationSuppressed(source: NotificationSuppressionSource, active: boolean): void {
+	if (active) {
+		notificationSuppressionSources.add(source);
+		return;
+	}
+
+	notificationSuppressionSources.delete(source);
+	flushQueuedNotifications();
+}
+
+/** Queue agent-facing notifications while immersive fullscreen owns the screen. */
+export function setTerminalFocus(active: boolean): void {
+	setNotificationSuppressed("terminalImmersive", active);
+}
+
+/** Queue agent-facing notifications while the persistent Focus Mode setting is enabled. */
+export function setFocusMode(active: boolean): void {
+	setNotificationSuppressed("focusMode", active);
+}
+
+export function queueTerminalFocusToast(payload: TerminalFocusToastPayload): void {
+	queuedTerminalNotifications.push({ kind: "toast", payload });
+}
+
+export function queueTerminalFocusAttention(payload: TerminalFocusAttentionPayload): void {
+	queuedTerminalNotifications.push({ kind: "attention", payload });
+}
+
+export function pushCliToast(payload: TerminalFocusToastPayload): void {
+	if (isNotificationSuppressed()) {
+		queueTerminalFocusToast(payload);
+		return;
+	}
+	getPushMessage()?.("cliToast", payload);
+}
+
+export function pushCliAttention(payload: TerminalFocusAttentionPayload): void {
+	if (isNotificationSuppressed()) {
+		queueTerminalFocusAttention(payload);
+		return;
+	}
+	getPushMessage()?.("cliAttention", payload);
+}
+
+/** Queue or deliver a terminal bell while an attention-suppressing mode is active. */
+export function pushTerminalBell(taskId: string): void {
+	const payload = { taskId };
+	if (isNotificationSuppressed()) {
+		queuedTerminalNotifications.push({ kind: "terminalBell", payload });
+		return;
+	}
+	getPushMessage()?.("terminalBell", payload);
+}
+
+/** Queue or deliver a shared-image notification while an attention-suppressing mode is active. */
+export function pushCliShowImage(payload: TerminalFocusImagePayload): void {
+	if (isNotificationSuppressed()) {
+		queuedTerminalNotifications.push({ kind: "showImage", payload });
+		return;
+	}
+	getPushMessage()?.("cliShowImage", payload);
+}
+
+/** Queue or deliver an artifact notification while an attention-suppressing mode is active. */
+export function pushCliShowArtifact(payload: TerminalFocusArtifactPayload): void {
+	if (isNotificationSuppressed()) {
+		queuedTerminalNotifications.push({ kind: "showArtifact", payload });
+		return;
+	}
+	getPushMessage()?.("cliShowArtifact", payload);
+}
+
 /**
  * Mirror a native OS notification to remote/browser clients as a Web Notification
  * request. Fires alongside every `Utils.showNotification` call so that clients on
@@ -170,7 +324,12 @@ function pushWebNotification(opts: {
  * granted) this falls back to Electrobun's fire-and-forget path and arms the
  * legacy focus-proxy slot below.
  */
-function deliverTaskNotification(task: Task, body: string, projectName?: string): void {
+function deliverTaskNotification(task: Task, body: string, projectName?: string, bypassSuppression = false): void {
+	if (isNotificationSuppressed() && !bypassSuppression) {
+		queuedTerminalNotifications.push({ kind: "task", task, body, projectName });
+		return;
+	}
+
 	const title = `#${task.seq} ${getTaskTitle(task)}`;
 	const nativePosted = postNativeTaskNotification({
 		taskId: task.id,
@@ -247,6 +406,8 @@ export function _resetWatchedNotificationState(): void {
 	lastWatchedNotification = null;
 	appForeground = false;
 	activeContext = { projectId: null, taskId: null };
+	notificationSuppressionSources.clear();
+	queuedTerminalNotifications.length = 0;
 }
 
 const IMAGE_MIME_EXTENSIONS: Record<string, string> = {

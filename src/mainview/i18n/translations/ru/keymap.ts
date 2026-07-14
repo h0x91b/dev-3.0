@@ -38,6 +38,7 @@ const keymap = {
 	"keymap.shortcut.hardRefresh": "Полная перезагрузка",
 	"keymap.shortcut.keyboardShortcuts": "Показать эту панель горячих клавиш",
 	"keymap.shortcut.helpMode": "Объяснить этот экран (режим подсказок)",
+	"keymap.shortcut.terminalFullscreen": "Переключить иммерсивный fullscreen терминала (только в терминале задачи)",
 	"keymap.shortcut.toggleProjectTerminal": "Переключить терминал проекта",
 	"keymap.shortcut.openQuickShell": "Открыть быструю консоль",
 	"keymap.shortcut.quit": "Выйти",

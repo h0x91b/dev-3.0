@@ -15,7 +15,11 @@ vi.mock("../agent-prompt", () => ({
 }));
 vi.mock("../pty-server", () => ({ DEFAULT_TMUX_SOCKET: "dev3" }));
 const pushFn = vi.fn();
-vi.mock("../rpc-handlers", () => ({ getPushMessage: vi.fn(() => pushFn) }));
+vi.mock("../rpc-handlers", () => ({
+	getPushMessage: vi.fn(() => pushFn),
+	pushCliToast: vi.fn((payload: unknown) => pushFn("cliToast", payload)),
+	pushCliAttention: vi.fn((payload: unknown) => pushFn("cliAttention", payload)),
+}));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));

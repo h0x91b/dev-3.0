@@ -184,6 +184,8 @@ function renderPanel(
 		project?: Project;
 		tasks?: Task[];
 		isFullPage?: boolean;
+		isTerminalFullscreen?: boolean;
+		onToggleTerminalFullscreen?: () => void;
 		onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 	},
 ) {
@@ -201,6 +203,8 @@ function renderPanel(
 				navigate={navigate}
 				tasks={opts?.tasks}
 				isFullPage={opts?.isFullPage}
+				isTerminalFullscreen={opts?.isTerminalFullscreen}
+				onToggleTerminalFullscreen={opts?.onToggleTerminalFullscreen}
 				onOpenInlineDiff={opts?.onOpenInlineDiff}
 			/>
 		</I18nProvider>,
@@ -1934,6 +1938,34 @@ describe("TaskInfoPanel", () => {
 				projectId: "p1",
 				activeTaskId: "t1",
 			});
+		});
+
+		it("uses the app immersive toggle when provided instead of navigating", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const navigate = vi.fn();
+			const toggle = vi.fn();
+			await act(async () => {
+				renderPanel(makeTask(), { navigate, onToggleTerminalFullscreen: toggle });
+			});
+
+			await user.click(screen.getByLabelText("Full screen"));
+
+			expect(toggle).toHaveBeenCalledTimes(1);
+			expect(navigate).not.toHaveBeenCalled();
+		});
+
+		it("shows the fullscreen shortcuts in the button tooltip", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			await act(async () => {
+				renderPanel(makeTask(), { onToggleTerminalFullscreen: vi.fn() });
+			});
+
+			await user.hover(screen.getByLabelText("Full screen"));
+			await act(async () => {
+				vi.advanceTimersByTime(300);
+			});
+
+			expect(screen.getByText(/F11/)).toBeInTheDocument();
 		});
 	});
 

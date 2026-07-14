@@ -1,6 +1,10 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ToastHost, toast } from "../toast";
+import { setToastSuppressed, ToastHost, toast } from "../toast";
+
+afterEach(() => {
+	setToastSuppressed(false);
+});
 
 describe("toast service", () => {
 	it("renders nothing until a toast is emitted", () => {
@@ -59,5 +63,21 @@ describe("toast service", () => {
 
 	it("does not throw when no host is mounted", () => {
 		expect(() => toast.error("orphan")).not.toThrow();
+	});
+
+	it("queues toasts while suppressed and flushes them in order", async () => {
+		render(<ToastHost />);
+		setToastSuppressed(true);
+		act(() => {
+			toast.info("First queued");
+			toast.error("Second queued");
+		});
+
+		expect(screen.queryByText("First queued")).not.toBeInTheDocument();
+		expect(screen.queryByText("Second queued")).not.toBeInTheDocument();
+
+		setToastSuppressed(false);
+		expect(await screen.findByText("First queued")).toBeInTheDocument();
+		expect(screen.getByText("Second queued")).toBeInTheDocument();
 	});
 });

@@ -8,7 +8,7 @@ import { SharedArtifactError, deleteSharedArtifactFiles, pruneSharedArtifacts, s
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
-import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext } from "./rpc-handlers";
+import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -944,10 +944,9 @@ const handlers: Record<string, Handler> = {
 		const level = rawLevel as "info" | "success" | "error";
 		const desktop = params.desktop === true;
 
-		// Focus mode: user opted out of agent-initiated attention UI.
-		if ((await loadSettings()).focusMode) {
-			return { delivered: false, mode: desktop ? "desktop" : "toast", suppressed: true };
-		}
+		// Keep the in-memory gate aligned for CLI requests that arrive before the
+		// renderer has reported the persisted setting (for example after a restart).
+		if ((await loadSettings()).focusMode) setFocusMode(true);
 
 		// Resolve the originating task when one is in context, so the toast/notification
 		// is clickable and lands the user on it.
@@ -972,18 +971,24 @@ const handlers: Record<string, Handler> = {
 				body: message,
 				projectName: projectName ?? undefined,
 			});
-			return { delivered: true, mode: "desktop", taskId: task.id };
+			return { delivered: true, mode: "desktop", taskId: task.id, queued: isNotificationSuppressed() };
 		}
 
-		const push = getPushMessage();
-		if (!push) return { delivered: false, mode: "toast" };
-		push("cliToast", {
+		const payload = {
 			taskId,
 			projectId,
 			message,
 			level,
 			...(task ? { taskSeq: task.seq, taskTitle: getTaskTitle(task), projectName: projectName ?? undefined } : {}),
-		});
+		};
+		if (isNotificationSuppressed()) {
+			pushCliToast(payload);
+			return { delivered: true, mode: "toast", taskId, queued: true };
+		}
+
+		const push = getPushMessage();
+		if (!push) return { delivered: false, mode: "toast" };
+		push("cliToast", payload);
 		return { delivered: true, mode: "toast", taskId };
 	},
 
@@ -991,9 +996,10 @@ const handlers: Record<string, Handler> = {
 	"ui.attention": async (params) => {
 		const reason = ((params.reason as string) ?? "").trim();
 		const { project, task } = await resolveTaskFromParams(params);
-		// Focus mode: user opted out of agent-initiated attention UI.
-		if ((await loadSettings()).focusMode) {
-			return { delivered: false, suppressed: true, taskId: task.id };
+		if ((await loadSettings()).focusMode) setFocusMode(true);
+		if (isNotificationSuppressed()) {
+			pushCliAttention({ taskId: task.id, reason });
+			return { delivered: true, queued: true, taskId: task.id, projectId: project.id };
 		}
 		const push = getPushMessage();
 		if (!push) return { delivered: false, taskId: task.id };
@@ -1025,6 +1031,7 @@ const handlers: Record<string, Handler> = {
 	// the human to look at, bound to the task and kept as a clickable history.
 	"ui.show-image": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
+		if ((await loadSettings()).focusMode) setFocusMode(true);
 		// Preferred shape: images: [{ path, caption? }] — one note per image.
 		// Back-compat: paths: string[] + a single caption applied to all.
 		const items: { path: string; caption?: string }[] = [];
@@ -1065,15 +1072,7 @@ const handlers: Record<string, Handler> = {
 		// Persist to state everywhere (badge + history) regardless of focus mode.
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 
-		// Focus mode: the user opted out of agent-initiated interruptions — keep the
-		// history/badge (pushed above) but skip the toast / auto-open / attention.
-		if ((await loadSettings()).focusMode) {
-			return { delivered: false, suppressed: true, stored: incoming.length, taskId: task.id };
-		}
-
-		const push = getPushMessage();
-		if (!push) return { delivered: false, stored: incoming.length, taskId: task.id };
-		push("cliShowImage", {
+		const payload = {
 			taskId: task.id,
 			projectId: project.id,
 			images: updated.sharedImages ?? [],
@@ -1081,12 +1080,21 @@ const handlers: Record<string, Handler> = {
 			taskSeq: task.seq,
 			taskTitle: getTaskTitle(task),
 			projectName: project.name,
-		});
+		};
+		if (isNotificationSuppressed()) {
+			pushCliShowImage(payload);
+			return { delivered: true, queued: true, stored: incoming.length, taskId: task.id };
+		}
+
+		const push = getPushMessage();
+		if (!push) return { delivered: false, stored: incoming.length, taskId: task.id };
+		push("cliShowImage", payload);
 		return { delivered: true, stored: incoming.length, taskId: task.id };
 	},
 
 	"ui.show-artifact": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
+		if ((await loadSettings()).focusMode) setFocusMode(true);
 		const htmlPath = typeof params.htmlPath === "string" ? params.htmlPath : "";
 		if (!htmlPath) throw new Error("HTML artifact path is required");
 		const imagePaths = Array.isArray(params.imagePaths)
@@ -1109,12 +1117,7 @@ const handlers: Record<string, Handler> = {
 		if (dropped.length > 0) deleteSharedArtifactFiles(dropped);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 
-		if ((await loadSettings()).focusMode) {
-			return { delivered: false, suppressed: true, stored: 1, taskId: task.id };
-		}
-		const push = getPushMessage();
-		if (!push) return { delivered: false, stored: 1, taskId: task.id };
-		push("cliShowArtifact", {
+		const payload = {
 			taskId: task.id,
 			projectId: project.id,
 			artifacts: updated.sharedArtifacts ?? [],
@@ -1122,7 +1125,14 @@ const handlers: Record<string, Handler> = {
 			taskSeq: task.seq,
 			taskTitle: getTaskTitle(task),
 			projectName: project.name,
-		});
+		};
+		if (isNotificationSuppressed()) {
+			pushCliShowArtifact(payload);
+			return { delivered: true, queued: true, stored: 1, taskId: task.id };
+		}
+		const push = getPushMessage();
+		if (!push) return { delivered: false, stored: 1, taskId: task.id };
+		push("cliShowArtifact", payload);
 		return { delivered: true, stored: 1, taskId: task.id };
 	},
 

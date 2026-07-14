@@ -47,6 +47,7 @@ interface TaskWorkspacePaneProps {
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
 	onCloseArtifactViewer?: () => void;
+	skipCopyModeReset?: boolean;
 }
 
 function TaskWorkspacePane({
@@ -61,6 +62,7 @@ function TaskWorkspacePane({
 	navigationGuardRef,
 	artifactViewer,
 	onCloseArtifactViewer = () => {},
+	skipCopyModeReset = false,
 }: TaskWorkspacePaneProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
@@ -154,15 +156,16 @@ function TaskWorkspacePane({
 	}, [isNarrow, showArtifact]);
 
 	// A pane stuck in copy-mode at scroll position 0 is visually identical to a
-	// live pane — silently swallows keystrokes until cleared. Reset on every
-	// re-entry into the terminal view.
+	// live pane — silently swallows keystrokes until cleared. Reset on ordinary
+	// terminal re-entry, but never as a side effect of the app-only fullscreen
+	// remount because that would mutate user-owned tmux state.
 	const terminalVisible = !inlineDiffRequest;
 	useEffect(() => {
-		if (!terminalVisible) return;
+		if (!terminalVisible || skipCopyModeReset) return;
 		api.request.exitCopyModeAllPanes({ taskId }).catch(() => {
 			// best effort — session may not exist yet for brand-new tasks
 		});
-	}, [taskId, terminalVisible]);
+	}, [skipCopyModeReset, taskId, terminalVisible]);
 
 	return (
 		<div className="h-full w-full relative overflow-hidden">

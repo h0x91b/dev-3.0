@@ -17,9 +17,15 @@ type Listener = (entry: ToastEntry) => void;
 
 const listeners = new Set<Listener>();
 let counter = 0;
+let suppressed = false;
+const pendingEntries: ToastEntry[] = [];
 
 /** Default auto-dismiss delay. Long on purpose so error messages aren't missed. */
 const DEFAULT_DURATION_MS = 30_000;
+
+function deliver(entry: ToastEntry): void {
+	listeners.forEach((l) => l(entry));
+}
 
 function emit(message: string, variant: ToastVariant, opts?: ToastOpts) {
 	const entry: ToastEntry = {
@@ -30,8 +36,12 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts) {
 		onClick: opts?.onClick,
 		context: opts?.context,
 	};
+	if (suppressed) {
+		pendingEntries.push(entry);
+		return;
+	}
 	// No host mounted (e.g. in unit tests) → silently drop.
-	listeners.forEach((l) => l(entry));
+	deliver(entry);
 }
 
 interface ToastOpts {
@@ -56,6 +66,16 @@ export const toast = {
 	info: (message: string, opts?: ToastOpts) => emit(message, "info", opts),
 	warning: (message: string, opts?: ToastOpts) => emit(message, "warning", opts),
 };
+
+/** Suppress transient toasts while terminal immersive fullscreen is active. */
+export function setToastSuppressed(value: boolean): void {
+	if (suppressed === value) return;
+	suppressed = value;
+	if (suppressed) return;
+
+	const pending = pendingEntries.splice(0, pendingEntries.length);
+	pending.forEach(deliver);
+}
 
 const VARIANT: Record<ToastVariant, { icon: string; border: string; text: string; bar: string }> = {
 	error: { icon: "\uf06a", border: "border-danger/40", text: "text-danger", bar: "bg-danger" },

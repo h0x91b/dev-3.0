@@ -97,6 +97,14 @@ vi.mock("../rpc-handlers", () => {
 		notifyFromCliDesktop: vi.fn(),
 		isAppForeground: vi.fn(() => false),
 		getActiveContext: vi.fn(() => ({ projectId: null, taskId: null })),
+		isTerminalFocusActive: vi.fn(() => false),
+		isNotificationSuppressed: vi.fn(() => false),
+		pushCliAttention: vi.fn(),
+		pushCliToast: vi.fn(),
+		pushCliShowImage: vi.fn(),
+		pushCliShowArtifact: vi.fn(),
+		setFocusMode: vi.fn(),
+		queueTerminalFocusToast: vi.fn(),
 	};
 });
 
@@ -150,7 +158,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, triggerColumnAgentIfNeeded, notifyFromCliDesktop, isAppForeground, getActiveContext } from "../rpc-handlers";
+import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, triggerColumnAgentIfNeeded, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode } from "../rpc-handlers";
 import { loadSettings } from "../settings";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
@@ -209,6 +217,7 @@ function makeRequest(method: string, params: Record<string, unknown> = {}): CliR
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(isNotificationSuppressed).mockReturnValue(false);
 });
 
 describe("remote.accessUrl", () => {
@@ -935,21 +944,23 @@ describe("ui.show-image", () => {
 		);
 	});
 
-	it("focus mode: persists (taskUpdated) but suppresses cliShowImage", async () => {
+	it("focus mode: persists (taskUpdated) but queues cliShowImage", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		const pushFn = vi.fn();
 		wireShowImage(project, task, pushFn);
 		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
 
 		const resp = await handleRequest(
 			makeRequest("ui.show-image", { taskId: task.id, projectId: project.id, paths: ["/tmp/a.png"] }),
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ delivered: false, suppressed: true, stored: 1 });
+		expect(resp.data).toMatchObject({ delivered: true, queued: true, stored: 1 });
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
 		expect(pushFn).not.toHaveBeenCalledWith("cliShowImage", expect.anything());
+		expect(pushCliShowImage).toHaveBeenCalledWith(expect.objectContaining({ taskId: task.id, newCount: 1 }));
 	});
 
 	it("accepts the images:[{path,caption}] shape and threads per-image captions", async () => {
@@ -1035,6 +1046,32 @@ describe("ui.show-artifact", () => {
 		expect(response.ok).toBe(false);
 		expect(response.error).toContain("HTML artifact path is required");
 	});
+
+	it("focus mode queues cliShowArtifact after persisting it", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 14 });
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn as never);
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => Promise<{ updates: Partial<Task>; result: unknown }>)(task);
+			return { task: { ...task, ...updates }, result } as never;
+		});
+		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+
+		const response = await handleRequest(makeRequest("ui.show-artifact", {
+			taskId: task.id,
+			projectId: project.id,
+			htmlPath: "/tmp/report.html",
+		}));
+
+		expect(response.ok).toBe(true);
+		expect(response.data).toMatchObject({ delivered: true, queued: true, stored: 1 });
+		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.anything());
+		expect(pushCliShowArtifact).toHaveBeenCalledWith(expect.objectContaining({ taskId: task.id, newCount: 1 }));
+	});
 });
 
 describe("ui control (notify / attention / state)", () => {
@@ -1046,6 +1083,21 @@ describe("ui control (notify / attention / state)", () => {
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toMatchObject({ delivered: true, mode: "toast", taskId: null });
 		expect(pushFn).toHaveBeenCalledWith("cliToast", {
+			taskId: null,
+			projectId: null,
+			message: "hello",
+			level: "info",
+		});
+	});
+
+	it("ui.notify: queues the cliToast during notification suppression", async () => {
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
+
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "hello", level: "info" }));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toMatchObject({ delivered: true, mode: "toast", queued: true });
+		expect(pushCliToast).toHaveBeenCalledWith({
 			taskId: null,
 			projectId: null,
 			message: "hello",
@@ -1116,18 +1168,20 @@ describe("ui control (notify / attention / state)", () => {
 		expect(resp.error).toContain("message is required");
 	});
 
-	it("ui.notify: focus mode suppresses the toast (no push)", async () => {
+	it("ui.notify: focus mode queues the toast", async () => {
 		const pushFn = vi.fn();
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
 
 		const resp = await handleRequest(makeRequest("ui.notify", { message: "hi" }));
 		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ delivered: false, suppressed: true });
+		expect(resp.data).toMatchObject({ delivered: true, queued: true });
 		expect(pushFn).not.toHaveBeenCalled();
+		expect(setFocusMode).toHaveBeenCalledWith(true);
 	});
 
-	it("ui.attention: focus mode suppresses the badge (no push)", async () => {
+	it("ui.attention: focus mode queues the badge", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		const pushFn = vi.fn();
@@ -1135,11 +1189,13 @@ describe("ui control (notify / attention / state)", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(getPushMessage).mockReturnValue(pushFn);
 		vi.mocked(loadSettings).mockReturnValueOnce({ focusMode: true } as never);
+		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
 
 		const resp = await handleRequest(makeRequest("ui.attention", { taskId: task.id, projectId: project.id, reason: "x" }));
 		expect(resp.ok).toBe(true);
-		expect(resp.data).toMatchObject({ delivered: false, suppressed: true });
+		expect(resp.data).toMatchObject({ delivered: true, queued: true });
 		expect(pushFn).not.toHaveBeenCalled();
+		expect(pushCliAttention).toHaveBeenCalledWith({ taskId: task.id, reason: "x" });
 	});
 
 	it("ui.attention: pushes cliAttention for the resolved task", async () => {

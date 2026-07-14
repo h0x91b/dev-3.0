@@ -52,7 +52,7 @@ export const tooltips = {
 	"ttip.infoPanel.worktreeConfig": "Переопределения настройки worktree для конкретной таски.",
 	"ttip.infoPanel.copyPath": "Копирует абсолютный путь к git worktree таски — вставьте его в любой терминал или редактор.",
 	"ttip.infoPanel.actions": "Все действия таски в одном списке: git, скрипты, dev-сервер, open-in и прочее.",
-	"ttip.infoPanel.fullScreen": "Терминал занимает всё окно. Нажмите ещё раз, чтобы вернуться.",
+	"ttip.infoPanel.fullScreen": "Терминал занимает всё окно. Нажмите ещё раз, чтобы вернуться. Горячие клавиши: {shortcuts}.",
 	"ttip.infoPanel.expand": "Открывает полную панель: git-действия, скрипты, dev-сервер и управление рантаймом.",
 	"ttip.infoPanel.collapse": "Сворачивает панель обратно в одну компактную строку.",
 

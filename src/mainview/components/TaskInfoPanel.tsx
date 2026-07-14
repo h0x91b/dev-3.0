@@ -55,6 +55,8 @@ import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
 import Tooltip from "./Tooltip";
 import VariantSwitcher from "./VariantSwitcher";
+import { isMac } from "../utils/platform";
+import { terminalFullscreenShortcutLabel } from "../utils/terminalFullscreen";
 
 interface TaskInfoPanelProps {
 	task: Task;
@@ -65,6 +67,8 @@ interface TaskInfoPanelProps {
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	tasks?: Task[];
 	isFullPage?: boolean;
+	isTerminalFullscreen?: boolean;
+	onToggleTerminalFullscreen?: () => void;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
 }
 
@@ -119,7 +123,19 @@ function readNumber(key: string, fallback: number): number {
 	return fallback;
 }
 
-function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResourceUsage, tasks = [], isFullPage, onOpenInlineDiff }: TaskInfoPanelProps) {
+function TaskInfoPanel({
+	task,
+	project,
+	dispatch,
+	navigate,
+	taskPorts,
+	taskResourceUsage,
+	tasks = [],
+	isFullPage,
+	isTerminalFullscreen,
+	onToggleTerminalFullscreen,
+	onOpenInlineDiff,
+}: TaskInfoPanelProps) {
 	const t = useT();
 	const compact = useCompact();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -145,6 +161,26 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 	const statusMenuRef = useRef<HTMLDivElement>(null);
 	const diffFilesTriggerRef = useRef<HTMLButtonElement>(null);
 	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const terminalFullscreenActive = onToggleTerminalFullscreen
+		? Boolean(isTerminalFullscreen)
+		: Boolean(isFullPage);
+	const terminalFullscreenLabel = terminalFullscreenActive
+		? t("infoPanel.exitFullScreen")
+		: t("infoPanel.fullScreen");
+	const toggleTerminalFullscreen = () => {
+		if (onToggleTerminalFullscreen) {
+			onToggleTerminalFullscreen();
+			return;
+		}
+		navigate(
+			isFullPage
+				? { screen: "project", projectId: project.id, activeTaskId: task.id }
+				: { screen: "task", projectId: project.id, taskId: task.id },
+		);
+	};
+	const terminalFullscreenTooltip = t("ttip.infoPanel.fullScreen", {
+		shortcuts: terminalFullscreenShortcutLabel(isMac()),
+	});
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 	const variantMembers = task.groupId
@@ -1010,16 +1046,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
 						{worktreeSettingsButton}
-						<Tooltip content={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")} detail={t("ttip.infoPanel.fullScreen")}>
+						<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 							<button
-								onClick={() => isFullPage
-									? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
-									: navigate({ screen: "task", projectId: project.id, taskId: task.id })
-								}
+								onClick={toggleTerminalFullscreen}
 								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-								aria-label={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
+								aria-label={terminalFullscreenLabel}
 							>
-								{isFullPage
+								{terminalFullscreenActive
 									? <FullscreenExitIcon className="w-3.5 h-3.5" />
 									: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
 							</button>
@@ -1090,16 +1123,13 @@ function TaskInfoPanel({ task, project, dispatch, navigate, taskPorts, taskResou
 								<TaskTmuxControls taskId={task.id} />
 							</div>
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
-							<Tooltip content={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")} detail={t("ttip.infoPanel.fullScreen")}>
+							<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 								<button
-									onClick={() => isFullPage
-										? navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })
-										: navigate({ screen: "task", projectId: project.id, taskId: task.id })
-									}
+									onClick={toggleTerminalFullscreen}
 									className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
-									aria-label={isFullPage ? t("infoPanel.exitFullScreen") : t("infoPanel.fullScreen")}
+									aria-label={terminalFullscreenLabel}
 								>
-									{isFullPage
+									{terminalFullscreenActive
 										? <FullscreenExitIcon className="w-3.5 h-3.5" />
 										: <FullscreenEnterIcon className="w-3.5 h-3.5" />}
 								</button>

@@ -52,7 +52,7 @@ export const tooltips = {
 	"ttip.infoPanel.worktreeConfig": "Ajustes específicos de cómo se prepara el worktree de esta tarea.",
 	"ttip.infoPanel.copyPath": "Copia la ruta absoluta del git worktree de esta tarea — pégala en cualquier terminal o editor.",
 	"ttip.infoPanel.actions": "Todas las acciones de la tarea en una hoja: git, scripts, dev server, abrir-en y más.",
-	"ttip.infoPanel.fullScreen": "La terminal ocupa toda la ventana. Pulsa de nuevo para volver.",
+	"ttip.infoPanel.fullScreen": "La terminal ocupa toda la ventana. Pulsa de nuevo para volver. Atajos: {shortcuts}.",
 	"ttip.infoPanel.expand": "Abre el panel completo: acciones git, scripts, dev server y controles de ejecución.",
 	"ttip.infoPanel.collapse": "Reduce el panel a una sola fila compacta.",
 

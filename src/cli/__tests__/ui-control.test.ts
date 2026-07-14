@@ -122,6 +122,14 @@ describe("notify", () => {
 		expect(stdoutOutput).toContain("Focus mode is on");
 	});
 
+	it("reports a queued toast", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", queued: true }));
+
+		await handleNotify(args(["x"]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Toast queued until Focus Mode ends");
+	});
+
 	it("works without a task (plain non-clickable toast)", async () => {
 		const ctxNoTask: CliContext = { projectId: null, taskId: null, socketPath: SOCKET } as unknown as CliContext;
 		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: null }));
@@ -162,6 +170,14 @@ describe("attention", () => {
 		await handleAttention(args(["x"]), SOCKET, CTX);
 
 		expect(stdoutOutput).toContain("Focus mode is on");
+	});
+
+	it("reports a queued attention badge", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, queued: true, taskId: CTX.taskId }));
+
+		await handleAttention(args(["x"]), SOCKET, CTX);
+
+		expect(stdoutOutput).toContain("Attention badge queued until Focus Mode ends");
 	});
 
 	it("surfaces a backend error", async () => {

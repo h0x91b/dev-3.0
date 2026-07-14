@@ -54,7 +54,7 @@ export const tooltips = {
 	"ttip.infoPanel.worktreeConfig": "Per-task overrides for how this worktree is set up.",
 	"ttip.infoPanel.copyPath": "Copies the absolute path of this task's git worktree — paste it into any terminal or editor.",
 	"ttip.infoPanel.actions": "All task actions in one sheet: git, scripts, dev server, open-in and more.",
-	"ttip.infoPanel.fullScreen": "The terminal takes over the whole window. Press again to come back.",
+	"ttip.infoPanel.fullScreen": "The terminal takes over the whole window. Press again to come back. Shortcuts: {shortcuts}.",
 	"ttip.infoPanel.expand": "Opens the full info panel: git actions, scripts, dev server and runtime controls.",
 	"ttip.infoPanel.collapse": "Shrinks the info panel back to a single compact row.",
 

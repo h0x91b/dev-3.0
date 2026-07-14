@@ -87,8 +87,9 @@ export async function handleShowArtifact(argv: string[], socketPath: string, con
 
 	const response = await sendRequest(socketPath, "ui.show-artifact", params);
 	if (!response.ok) exitError(response.error || "Failed to show artifact");
-	const data = response.data as { delivered: boolean; stored: number; taskId: string; suppressed?: boolean };
-	if (data.suppressed) process.stdout.write("Stored artifact — focus mode is on, viewer not opened.\n");
+	const data = response.data as { delivered: boolean; stored: number; taskId: string; queued?: boolean; suppressed?: boolean };
+	if (data.queued) process.stdout.write("Stored artifact — viewer queued until Focus Mode ends.\n");
+	else if (data.suppressed) process.stdout.write("Stored artifact — focus mode is on, viewer not opened.\n");
 	else if (!data.delivered) process.stdout.write("Stored artifact, but the app has no open window — nothing was shown.\n");
 	else process.stdout.write(`Shared artifact to task ${data.taskId.slice(0, 8)}.\n`);
 }

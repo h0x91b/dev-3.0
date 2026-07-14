@@ -1,6 +1,6 @@
 ux_architecture:
   version: 1
-  updated_at: "2026-07-12"
+  updated_at: "2026-07-13"
   source: "derived_from_repository"
   confidence: "medium"
 
@@ -252,6 +252,17 @@ ux_architecture:
         rows:
           row1: "Drive — what the task is + how I control its session"
           row2: "Outputs — what the work produces (branch/PR + running server/ports)"
+    terminal_immersive_fullscreen:
+      purpose: "Ephemeral task-bound terminal workspace for focused tmux work."
+      allowed: ["task_terminal", "tmux_windows_and_panes", "dev3_brand", "exit_fullscreen"]
+      forbidden: ["global_header", "app_menu_bar", "task_switching_ui", "task_info_panel", "tmux_zoom_mutation", "route_persistence"]
+      entry_point: "TaskInfoPanel fullscreen toggle, F11, or Cmd/Ctrl+Shift+F when a task terminal is open."
+      exit_point: "Wide neutral Exit full screen button or either fullscreen shortcut; notification clicks exit before task navigation."
+      state: "Renderer-only, non-persistent; preserves the exact Route and all tmux window/pane/layout state."
+      notifications: "Queue agent-facing native, browser, in-app, attention, bell, image, and artifact events while immersive fullscreen or persistent Focus Mode is active; flush them in arrival order after the final mode ends without adding fullscreen chrome, preserving task click targets."
+      responsive: "The terminal keeps its existing tmux window/pane controls and touch behavior; the only app chrome is the thin top strip."
+      status: "agreed"
+      evidence: ["src/mainview/App.tsx", "src/mainview/components/TaskInfoPanel.tsx"]
     diff_review_viewer:
       purpose: "Full-screen read + inline-review of a task's diff; export comments as an XML review prompt for the agent."
       reached_from: ["inspector:show_diff", "inspector:diff_summary_badge"]

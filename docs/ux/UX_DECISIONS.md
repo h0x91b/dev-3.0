@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-13 — Terminal immersive fullscreen is app-only and ephemeral
+
+- **Rule:** The TaskInfoPanel fullscreen toggle plus F11 / Cmd/Ctrl+Shift+F enters a task-bound renderer view with only a thin `dev3` strip and a wide neutral Exit full screen button; agent-facing notifications and viewer events queue during immersive fullscreen or persistent Focus Mode and flush when the active mode ends, with notification clicks exiting immersive fullscreen before normal task navigation.
+- **Why:** Keeping the existing Route and tmux session preserves the user's exact layout and makes the feature identical in desktop and browser mode. Rejected native/browser fullscreen and tmux `resize-pane -Z` because they either diverge by transport or overwrite user-controlled pane state.
+- **Status:** Implemented. Evidence: `App.tsx`, `TaskInfoPanel.tsx`, `keymap.ts`, `webNotification.ts`.
+
 ## 2026-07-13 — "Recent commits" diff mode is a split-button, N not persisted
 
 - **Rule:** A 4th diff mode `recent` joins the diff-viewer segmented control (peer to branch/uncommitted/unpushed): a split-button whose body activates `HEAD~N..HEAD` (committed-only, clamped to the branch's own commits via the local `origin/base` merge-base — no origin fetch) and whose `▾` caret opens a fixed preset popover (1/2/3/5/10). Mode follows the existing localStorage preference; N does **not** — it resets to 1 each open. Header sub-label shows the backend's effective (clamped) count, localized.

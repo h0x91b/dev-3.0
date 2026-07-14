@@ -20,6 +20,10 @@ interface TaskWorkspaceViewProps {
 	navigationGuardRef?: MutableRefObject<NavigationGuard | null>;
 	artifactViewer?: { taskId: string; artifacts: SharedArtifact[]; index: number } | null;
 	onCloseArtifactViewer?: () => void;
+	immersive?: boolean;
+	isTerminalFullscreen?: boolean;
+	onToggleTerminalFullscreen?: () => void;
+	skipCopyModeReset?: boolean;
 }
 
 function TaskWorkspaceView({
@@ -32,6 +36,10 @@ function TaskWorkspaceView({
 	navigationGuardRef,
 	artifactViewer,
 	onCloseArtifactViewer,
+	immersive = false,
+	isTerminalFullscreen,
+	onToggleTerminalFullscreen,
+	skipCopyModeReset,
 }: TaskWorkspaceViewProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
@@ -71,7 +79,7 @@ function TaskWorkspaceView({
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">
-			{task && project && (
+			{!immersive && task && project && (
 				<TaskInfoPanel
 					task={task}
 					project={project}
@@ -79,6 +87,8 @@ function TaskWorkspaceView({
 					navigate={navigate}
 					tasks={tasks}
 					isFullPage
+					isTerminalFullscreen={isTerminalFullscreen}
+					onToggleTerminalFullscreen={onToggleTerminalFullscreen}
 					onOpenInlineDiff={inlineDiff.open}
 				/>
 			)}
@@ -95,6 +105,7 @@ function TaskWorkspaceView({
 					navigationGuardRef={navigationGuardRef}
 					artifactViewer={artifactViewer}
 					onCloseArtifactViewer={onCloseArtifactViewer}
+					skipCopyModeReset={skipCopyModeReset}
 				/>
 			</div>
 		</div>

@@ -18,6 +18,7 @@ vi.mock("../rpc", () => ({
 			quitApp: vi.fn().mockResolvedValue(undefined),
 			requestQuit: vi.fn().mockResolvedValue(undefined),
 			consumePendingQuitDialog: vi.fn().mockResolvedValue(false),
+			consumePendingNotificationNav: vi.fn().mockResolvedValue(null),
 			openNewWindow: vi.fn().mockResolvedValue(undefined),
 			hideApp: vi.fn().mockResolvedValue(undefined),
 			listTmuxSessions: vi.fn().mockResolvedValue([]),
@@ -111,7 +112,7 @@ vi.mock("../components/ProjectView", () => ({
 	),
 }));
 vi.mock("../components/TaskWorkspaceView", () => ({
-	default: () => <div data-testid="task-screen" />,
+	default: (props: { immersive?: boolean }) => <div data-testid="task-screen" data-immersive={props.immersive ? "true" : "false"} />,
 }));
 vi.mock("../components/TaskTerminal", () => ({
 	default: () => <div data-testid="task-screen" />,
@@ -349,6 +350,161 @@ describe("App keyboard shortcuts", () => {
 			});
 			act(() => window.dispatchEvent(wrapped));
 			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "v1");
+		});
+	});
+
+	describe("terminal immersive fullscreen", () => {
+		const projects = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+
+		afterEach(() => {
+			localStorage.removeItem("dev3-task-open-mode");
+		});
+
+		it("F11 toggles immersive mode for a split task and restores the exact route", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+
+			await userEvent.keyboard("{F11}");
+			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
+			expect(screen.getByTestId("task-screen")).toHaveAttribute("data-immersive", "true");
+			act(() => {
+				window.dispatchEvent(new KeyboardEvent("keydown", { key: "F11", repeat: true, bubbles: true }));
+			});
+			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
+
+			await userEvent.click(screen.getByRole("button", { name: "Exit full screen" }));
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
+		});
+
+		it("Cmd/Ctrl+Shift+F toggles immersive mode on a task terminal", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "task", projectId: "p1", taskId: "t1" }),
+			});
+
+			await renderApp();
+			await waitFor(() => expect(screen.getByTestId("task-screen")).toBeInTheDocument());
+			await userEvent.keyboard("{Meta>}{Shift>}f{/Shift}{/Meta}");
+			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
+			expect(screen.getByTestId("task-screen")).toHaveAttribute("data-immersive", "true");
+
+			await userEvent.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+		});
+
+		it("is a no-op on Kanban routes", async () => {
+			await renderApp();
+			await userEvent.keyboard("{F11}");
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+		});
+
+		it("is a no-op on Settings routes", async () => {
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "settings" }),
+			});
+			await renderApp();
+			await userEvent.keyboard("{F11}");
+			await userEvent.keyboard("{Meta>}{Shift>}f{/Shift}{/Meta}");
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+		});
+
+		it("exits before native notification navigation and preserves split open mode", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			await userEvent.keyboard("{F11}");
+			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
+					detail: { taskId: "t2", projectId: "p2" },
+				}));
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t2");
+			});
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+		});
+
+		it("exits but does not navigate when a notification target is malformed", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			await userEvent.keyboard("{F11}");
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", {
+					detail: { taskId: "", projectId: "" },
+				}));
+			});
+
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+			expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t1");
+		});
+
+		it("exits before a clickable in-app task toast navigates", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			await userEvent.keyboard("{F11}");
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliToast", {
+					detail: { taskId: "t2", projectId: "p2", message: "Task update", level: "info" },
+				}));
+			});
+
+			expect(screen.queryByText("Task update")).not.toBeInTheDocument();
+			await userEvent.keyboard("{F11}");
+			await userEvent.click(await screen.findByRole("button", { name: "Task update" }));
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t2");
+			});
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+		});
+
+		it("exits before pending notification navigation and preserves fullscreen open mode", async () => {
+			localStorage.setItem("dev3-task-open-mode", "fullscreen");
+			vi.mocked(api.request.getProjects).mockResolvedValue(projects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+			let resolvePending!: (target: { taskId: string; projectId: string }) => void;
+			vi.mocked(api.request.consumePendingNotificationNav).mockImplementationOnce(
+				() => new Promise((resolve) => { resolvePending = resolve; }),
+			);
+
+			await renderApp();
+			await userEvent.keyboard("{F11}");
+			expect(screen.getByTestId("terminal-immersive-chrome")).toBeInTheDocument();
+			resolvePending({ taskId: "t2", projectId: "p2" });
+
+			await waitFor(() => expect(screen.getByTestId("task-screen")).toHaveAttribute("data-immersive", "false"));
+			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
 		});
 	});
 
