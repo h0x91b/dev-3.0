@@ -29,6 +29,8 @@ The shim shipped with a self-poisoning bug: `~/.dev3.0/bin` is first in PATH (it
 
 **Second incident (v1.29.2):** the self-heal itself crashed app startup on the very installs it was meant to fix. `sanitizeTmuxShim()` runs at module load of `pty-server.ts`, and its catch branch called `log.warn` — but `const log = createLogger("pty")` was declared ~150 lines below the call site, so the TDZ access threw and killed module evaluation before a window ever appeared. Healthy installs never entered the catch branch, so tests and most users saw nothing. Fixed by declaring the logger immediately after the imports; a module-load repro test (`pty-server-module-load.test.ts`) imports the module with a poisoned shim mocked in. Lesson: any code executed at module load must only reference bindings declared above it — and a self-heal path needs a test that runs it under the exact broken state it heals.
 
+**Third incident:** a saved `customBinaryPaths.tmux` could point at an existing directory (observed: the user's home directory). Existence-only validation accepted it, recreated the shim to that directory after every restart, and `dev3 doctor` reported the manually repaired shim as healthy without inspecting the poisoned setting. Binary resolution and shim management now require an executable regular file that identifies itself as tmux, doctor validates both the setting and target, and task preparation verifies that a real tmux session appeared. Launch failures are propagated to the lifecycle layer and persisted on the reverted To Do card so Git projects cannot silently jump back without feedback.
+
 ## Alternatives considered
 
 - **Linking tmux@3.6 into PATH**: conflicts with an existing core tmux install; brew link behavior becomes unpredictable.

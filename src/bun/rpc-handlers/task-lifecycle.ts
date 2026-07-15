@@ -49,7 +49,7 @@ async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<voi
 	}
 }
 
-function preparingResetUpdates(): Partial<Task> {
+function preparingResetUpdates(preparationError: string | null = null): Partial<Task> {
 	return {
 		status: "todo",
 		preparing: false,
@@ -59,6 +59,7 @@ function preparingResetUpdates(): Partial<Task> {
 		worktreePath: null,
 		branchName: null,
 		customColumnId: null,
+		preparationError,
 	};
 }
 
@@ -113,7 +114,7 @@ async function killTrackedPreparationProcesses(taskId: string, pids: number[]): 
 	}
 }
 
-async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<Task> {
+async function revertPreparingTaskToTodo(project: Project, task: Task, preparationError: string | null = null): Promise<Task> {
 	cleanupTaskState(task.id);
 	portPool.releasePorts(task.id);
 
@@ -169,7 +170,7 @@ async function revertPreparingTaskToTodo(project: Project, task: Task): Promise<
 		}
 	}
 
-	const updated = await data.updateTask(project, task.id, preparingResetUpdates());
+	const updated = await data.updateTask(project, task.id, preparingResetUpdates(preparationError));
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	return updated;
 }
@@ -406,12 +407,13 @@ async function prepareTaskInBackground(
 					// survives app restarts. Move it back to todo (cleaning up any
 					// half-created worktree) so it is recoverable, and surface the real
 					// preparation error to the renderer as a toast.
-					const reverted = await revertPreparingTaskToTodo(project, task);
+					const preparationError = err instanceof Error ? err.message : String(err);
+					const reverted = await revertPreparingTaskToTodo(project, task, preparationError);
 					getPushMessage()?.("taskPreparationFailed", {
 						taskId: task.id,
 						projectId: project.id,
 						taskTitle: getTaskTitle(reverted),
-						error: err instanceof Error ? err.message : String(err),
+						error: preparationError,
 					});
 				}
 			} catch (revertErr) {

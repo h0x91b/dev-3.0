@@ -1596,6 +1596,27 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("task preparation failure feedback", () => {
+		it("shows the backend failure reason when a Git task is reverted to To Do", async () => {
+			await renderApp();
+
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:taskPreparationFailed", {
+					detail: {
+						taskId: "t1",
+						projectId: "p1",
+						taskTitle: "Broken task",
+						error: "tmux failed to spawn",
+					},
+				}));
+			});
+
+			expect(await screen.findByRole("alert")).toHaveTextContent(
+				"Couldn't prepare \"Broken task\" — moved back to To Do: tmux failed to spawn",
+			);
+		});
+	});
+
 	describe("agent completion request dialog", () => {
 		const fireAgentCompletionRequested = (requestId: string, taskId: string, projectId: string) =>
 			act(async () => {

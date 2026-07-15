@@ -8,6 +8,7 @@ const kanban = {
 	"kanban.createdButFollowUpFailed": "Задача создана, но не удалось применить заголовок/метки: {error}",
 	"kanban.columnAgentFailed": "Не удалось запустить агента для колонки «{columnName}»: {error}",
 	"kanban.taskPreparationFailed": "Не удалось подготовить «{taskTitle}» — задача возвращена в To Do: {error}",
+	"task.launchFailed": "Ошибка запуска: {error}",
 	"kanban.failedReorderColumns": "Не удалось изменить порядок колонок: {error}",
 	"kanban.showMore": "Показать ещё ({count})",
 	"kanban.showLess": "Свернуть",

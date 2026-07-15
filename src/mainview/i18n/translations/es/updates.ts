@@ -33,7 +33,8 @@ const updates = {
 	"requirements.installYazi": "Instalar con Homebrew (opcional, para explorador de archivos):",
 	"requirements.optional": "opcional",
 	"requirements.customPathHint": "O especifique la ruta completa al binario:",
-	"requirements.pathNotFound": "Archivo no encontrado en esta ruta",
+	"requirements.pathNotFound": "La ruta guardada no existe o no apunta a un archivo ejecutable",
+	"requirements.pathInvalidBinary": "La ruta debe apuntar a un binario ejecutable de {name}",
 	"requirements.setPath": "Establecer ruta",
 
 	// Changelog

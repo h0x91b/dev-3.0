@@ -5,6 +5,7 @@ import { resolveSocketPath } from "../context";
 import { BUILD_VERSION } from "../../shared/build-info.generated";
 import { CLI_EXIT_CODE_DOCTOR_PROBLEMS, CLI_EXIT_CODE_SUCCESS } from "../../shared/cli-exit-codes";
 import type { ParsedArgs } from "../args";
+import { isExecutableFile } from "../../bun/executable";
 
 // `dev3 doctor` — install health check. Deliberately works WITHOUT the app
 // running (and without the socket): its whole purpose is diagnosing installs
@@ -35,6 +36,7 @@ export interface DoctorDeps {
 	readlink: (path: string) => string;
 	/** Throws on dangling targets and ELOOP cycles — same probe as pty-server's shim sanitizer. */
 	realpath: (path: string) => string;
+	isExecutableFile: (path: string) => boolean;
 	readFile: (path: string) => string;
 	/** Run a binary; null status/empty stdout on any spawn failure. */
 	exec: (cmd: string, args: string[]) => { status: number | null; stdout: string };
@@ -65,6 +67,7 @@ export function realDoctorDeps(): DoctorDeps {
 		},
 		readlink: (path) => readlinkSync(path),
 		realpath: (path) => realpathSync(path),
+		isExecutableFile,
 		readFile: (path) => readFileSync(path, "utf-8"),
 		exec: (cmd, args) => {
 			try {
@@ -156,6 +159,64 @@ function checkCliVersion(deps: DoctorDeps, appVersion?: string): CheckResult {
 	};
 }
 
+function tmuxVersion(deps: DoctorDeps, binary: string): string | undefined {
+	const result = deps.exec(binary, ["-V"]);
+	const version = result.stdout.trim();
+	return result.status === 0 && /^tmux \d/.test(version) ? version : undefined;
+}
+
+function tmuxSettingRepairHints(deps: DoctorDeps, settingsPath: string): string[] {
+	return [
+		"Quit dev-3.0 completely before changing this setting.",
+		`cp ${settingsPath} ${settingsPath}.before-tmux-fix`,
+		deps.platform === "darwin"
+			? `plutil -remove customBinaryPaths.tmux ${settingsPath}`
+			: `Remove customBinaryPaths.tmux from ${settingsPath}.`,
+		`rm -f ${deps.home}/.dev3.0/bin/tmux`,
+		"Relaunch dev-3.0 — it will resolve tmux again and recreate the shim.",
+	];
+}
+
+function checkTmuxSetting(deps: DoctorDeps): CheckResult {
+	const settingsPath = `${deps.home}/.dev3.0/settings.json`;
+	if (!deps.existsSync(settingsPath)) {
+		return { label: "tmux setting", status: "ok", detail: "no custom path saved (automatic resolution)" };
+	}
+	let customPath: unknown;
+	try {
+		const settings = JSON.parse(deps.readFile(settingsPath)) as { customBinaryPaths?: { tmux?: unknown } };
+		customPath = settings.customBinaryPaths?.tmux;
+	} catch {
+		return {
+			label: "tmux setting",
+			status: "warn",
+			detail: `${settingsPath} could not be parsed; custom tmux path was not checked`,
+			hints: ["Open the file and repair its JSON, then run `dev3 doctor` again."],
+		};
+	}
+	if (customPath === undefined) {
+		return { label: "tmux setting", status: "ok", detail: "no custom path saved (automatic resolution)" };
+	}
+	if (typeof customPath !== "string" || !deps.isExecutableFile(customPath)) {
+		return {
+			label: "tmux setting",
+			status: "fail",
+			detail: `saved custom path is not an executable file: ${String(customPath)}`,
+			hints: tmuxSettingRepairHints(deps, settingsPath),
+		};
+	}
+	const version = tmuxVersion(deps, customPath);
+	if (!version) {
+		return {
+			label: "tmux setting",
+			status: "fail",
+			detail: `saved custom path is executable but is not tmux: ${customPath}`,
+			hints: tmuxSettingRepairHints(deps, settingsPath),
+		};
+	}
+	return { label: "tmux setting", status: "ok", detail: `${customPath} (${version})` };
+}
+
 function checkTmuxShim(deps: DoctorDeps): CheckResult {
 	const shim = `${deps.home}/.dev3.0/bin/tmux`;
 	if (!deps.existsSync(shim) && !deps.isSymlink(shim)) {
@@ -170,7 +231,23 @@ function checkTmuxShim(deps: DoctorDeps): CheckResult {
 		};
 	}
 	try {
-		deps.realpath(shim); // throws on dangling targets and self-referential ELOOP cycles
+		const target = deps.realpath(shim); // throws on dangling targets and self-referential ELOOP cycles
+		if (!deps.isExecutableFile(target)) {
+			return {
+				label: "tmux shim",
+				status: "fail",
+				detail: `broken symlink → ${deps.readlink(shim)} (target is not an executable file)`,
+				hints: [`rm ${shim}`, "then relaunch dev-3.0 — it recreates a healthy shim."],
+			};
+		}
+		if (!tmuxVersion(deps, target)) {
+			return {
+				label: "tmux shim",
+				status: "fail",
+				detail: `broken symlink → ${deps.readlink(shim)} (target is not tmux)`,
+				hints: [`rm ${shim}`, "then relaunch dev-3.0 — it recreates a healthy shim."],
+			};
+		}
 		return { label: "tmux shim", status: "ok", detail: `→ ${deps.readlink(shim)}` };
 	} catch {
 		let target = "(unreadable)";
@@ -189,20 +266,20 @@ function checkTmuxShim(deps: DoctorDeps): CheckResult {
 }
 
 function checkTmuxBinary(deps: DoctorDeps): CheckResult {
-	const keg = VENDORED_TMUX_PATHS.find((p) => deps.existsSync(p));
-	if (keg) {
-		const version = deps.exec(keg, ["-V"]).stdout.trim();
-		return { label: "pinned tmux", status: "ok", detail: `${keg} (${version || "version unknown"})` };
+	for (const keg of VENDORED_TMUX_PATHS) {
+		if (!deps.existsSync(keg) || !deps.isExecutableFile(keg)) continue;
+		const version = tmuxVersion(deps, keg);
+		if (version) return { label: "pinned tmux", status: "ok", detail: `${keg} (${version})` };
 	}
 	// No keg — the app falls back to PATH tmux (fine for a single instance,
 	// unless it's the known-bad 3.7 line).
 	const pathTmux = deps.exec("tmux", ["-V"]);
 	const version = pathTmux.stdout.trim();
-	if (pathTmux.status !== 0 || !version) {
+	if (pathTmux.status !== 0 || !/^tmux \d/.test(version)) {
 		return {
 			label: "pinned tmux",
 			status: "fail",
-			detail: "no tmux@3.6 keg and no tmux in PATH — terminals cannot start",
+			detail: "no usable tmux@3.6 keg and no tmux in PATH — terminals cannot start",
 			hints: ["brew install h0x91b/dev3/tmux@3.6"],
 		};
 	}
@@ -280,6 +357,7 @@ export function collectChecks(deps: DoctorDeps): CheckResult[] {
 	results.push(app.result);
 	results.push(checkAppRunning(deps));
 	results.push(checkCliVersion(deps, app.appVersion));
+	results.push(checkTmuxSetting(deps));
 	results.push(checkTmuxShim(deps));
 	results.push(checkTmuxBinary(deps));
 	results.push(...checkHomebrew(deps, app.appVersion, Boolean(app.bundlePath)));

@@ -8,6 +8,7 @@ const kanban = {
 	"kanban.createdButFollowUpFailed": "Task created, but its title/labels couldn't be applied: {error}",
 	"kanban.columnAgentFailed": "Column agent failed to launch for \"{columnName}\": {error}",
 	"kanban.taskPreparationFailed": "Couldn't prepare \"{taskTitle}\" — moved back to To Do: {error}",
+	"task.launchFailed": "Launch failed: {error}",
 	"kanban.failedReorderColumns": "Failed to reorder columns: {error}",
 	"kanban.showMore": "Show more ({count})",
 	"kanban.showLess": "Show less",

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { RequirementCheckResult } from "../../shared/types";
 import { useT } from "../i18n";
 import { api } from "../rpc";
@@ -15,6 +15,8 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 	const [copiedId, setCopiedId] = useState<string | null>(null);
 	const [customPaths, setCustomPaths] = useState<Record<string, string>>({});
 	const [savingId, setSavingId] = useState<string | null>(null);
+	const [pathErrors, setPathErrors] = useState<Record<string, boolean>>({});
+	const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
 	const handleCopy = useCallback((id: string, command: string) => {
 		navigator.clipboard.writeText(command);
@@ -27,12 +29,21 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 		if (!path) return;
 		setSavingId(reqId);
 		try {
-			await api.request.setCustomBinaryPath({ requirementId: reqId, path });
+			const result = await api.request.setCustomBinaryPath({ requirementId: reqId, path });
+			if (!result.ok) {
+				setPathErrors((prev) => ({ ...prev, [reqId]: true }));
+				inputRefs.current[reqId]?.focus();
+				return;
+			}
+			setPathErrors((prev) => ({ ...prev, [reqId]: false }));
 			await onRefreshResults();
 		} catch (err) {
 			console.error("Failed to save custom binary path:", err);
+			setPathErrors((prev) => ({ ...prev, [reqId]: true }));
+			inputRefs.current[reqId]?.focus();
+		} finally {
+			setSavingId(null);
 		}
-		setSavingId(null);
 	}, [customPaths, onRefreshResults]);
 
 	return (
@@ -46,11 +57,14 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 				</p>
 
 				<div className="space-y-3 mb-6">
-					{results.map((req) => (
-						<div
-							key={req.id}
-							className="flex items-start gap-3 p-3 rounded-lg bg-raised"
-						>
+					{results.map((req) => {
+						const hasPathError = Boolean(pathErrors[req.id] || req.customPathError);
+						const pathErrorId = `requirement-${req.id}-path-error`;
+						return (
+							<div
+								key={req.id}
+								className="flex items-start gap-3 p-3 rounded-lg bg-raised"
+							>
 							<span className="mt-0.5 text-lg leading-none">
 								{req.installed ? (
 									<span className="text-green-400">&#10003;</span>
@@ -121,18 +135,29 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 											<p className="text-fg-3 text-xs mb-1.5">
 												{t("requirements.customPathHint")}
 											</p>
-											{req.customPathError && (
-												<p className="text-danger text-xs mb-1.5">
-													{t("requirements.pathNotFound")}
+											{hasPathError && (
+												<p id={pathErrorId} className="text-danger text-xs mb-1.5">
+													{pathErrors[req.id]
+														? t("requirements.pathInvalidBinary", { name: req.name })
+														: t("requirements.pathNotFound")}
 												</p>
 											)}
 											<div className="flex items-center gap-1.5">
 												<input
+													ref={(node) => { inputRefs.current[req.id] = node; }}
 													type="text"
 													value={customPaths[req.id] ?? ""}
-													onChange={(e) => setCustomPaths((prev) => ({ ...prev, [req.id]: e.target.value }))}
+													onChange={(e) => {
+														setCustomPaths((prev) => ({ ...prev, [req.id]: e.target.value }));
+														setPathErrors((prev) => ({ ...prev, [req.id]: false }));
+													}}
+													onKeyDown={(e) => {
+														if (e.key === "Enter" && savingId !== req.id) void handleSetCustomPath(req.id);
+													}}
+													aria-invalid={hasPathError}
+													aria-describedby={hasPathError ? pathErrorId : undefined}
 													placeholder={`/path/to/${req.name.toLowerCase()}`}
-													className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${req.customPathError ? "border-danger" : "border-edge"}`}
+													className={`flex-1 bg-base border rounded px-2 py-1 text-xs font-mono text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none ${hasPathError ? "border-danger" : "border-edge"}`}
 												/>
 												<button
 													type="button"
@@ -147,8 +172,9 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 									</div>
 								)}
 							</div>
-						</div>
-					))}
+							</div>
+						);
+					})}
 				</div>
 
 				<button

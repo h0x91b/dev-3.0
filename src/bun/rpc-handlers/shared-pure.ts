@@ -3,7 +3,6 @@
  * Split from shared.ts so that modules like tmux-pty.ts can be imported
  * in standalone bun scripts (e.g. e2e tests) without triggering native deps.
  */
-import { existsSync } from "node:fs";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -11,6 +10,7 @@ import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { broadcastToOtherInstances } from "../instance-broadcast";
 import { whichSync } from "../which";
+import { isExecutableFile } from "../executable";
 
 export const log = createLogger("rpc");
 
@@ -136,7 +136,7 @@ export function resolveBinaryPath(
 	let customPathError = false;
 
 	if (customPath) {
-		if (existsSync(customPath)) {
+		if (isExecutableFile(customPath)) {
 			resolvedPath = customPath;
 		} else {
 			customPathError = true;
@@ -144,17 +144,18 @@ export function resolveBinaryPath(
 	}
 
 	if (!resolvedPath && vendoredPaths) {
-		resolvedPath = vendoredPaths.find((p) => existsSync(p));
+		resolvedPath = vendoredPaths.find(isExecutableFile);
 	}
 
 	if (!resolvedPath) {
-		resolvedPath = whichSync(binaryName) ?? undefined;
+		const pathCandidate = whichSync(binaryName) ?? undefined;
+		resolvedPath = pathCandidate && isExecutableFile(pathCandidate) ? pathCandidate : undefined;
 	}
 
 	if (!resolvedPath) {
 		for (const dir of FALLBACK_BIN_PATHS) {
 			const candidate = `${dir}/${binaryName}`;
-			if (existsSync(candidate)) {
+			if (isExecutableFile(candidate)) {
 				resolvedPath = candidate;
 				if (!process.env.PATH?.split(":").includes(dir)) {
 					process.env.PATH = `${dir}:${process.env.PATH}`;

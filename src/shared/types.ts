@@ -1184,6 +1184,11 @@ export interface Task {
 	/** ISO timestamp when preparation started. Used to detect stuck clones. */
 	preparingStartedAt?: string | null;
 	/**
+	 * Last worktree/PTY preparation failure. Persisted on the reverted To Do task
+	 * so launch feedback survives a missed push/toast; cleared by the next launch.
+	 */
+	preparationError?: string | null;
+	/**
 	 * True while a terminal move (→ completed/cancelled) is tearing the task down
 	 * server-side: destroying the tmux session, running the cleanup script, and
 	 * removing the git worktree. This window can last many seconds and is the
@@ -2760,7 +2765,7 @@ export type AppRPCSchema = {
 			};
 			setCustomBinaryPath: {
 				params: { requirementId: string; path: string };
-				response: void;
+				response: { ok: boolean };
 			};
 			checkAgentAvailability: {
 				params: void;

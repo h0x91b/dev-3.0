@@ -161,7 +161,7 @@ brew trust h0x91b/dev3   # newer Homebrew refuses untrusted third-party taps (sk
 brew install --cask dev3
 ```
 
-Auto-installs the required `git`, `tmux`, and `cloudflared` dependencies (the last one powers the public-tunnel option used by `dev3 remote` and the in-app remote-access modal). The tmux dependency is the pinned `h0x91b/dev3/tmux@3.6` — tmux 3.7 has a client-side CPU regression; see [Troubleshooting](#tmux-37--cpu-storms-and-frozen-terminals-pinned-tmux36).
+Auto-installs the required `git`, `tmux`, and `cloudflared` dependencies (the last one powers the public-tunnel option used by `dev3 remote` and the in-app remote-access modal). The tmux dependency is the pinned `h0x91b/dev3/tmux@3.6` — tmux 3.7 has a client-side CPU regression; see [Troubleshooting](#troubleshooting).
 
 ```sh
 brew upgrade --cask dev3   # update
@@ -325,78 +325,39 @@ See [agent-support-matrix.md](agent-support-matrix.md) for feature compatibility
 
 ## Troubleshooting
 
-### macOS app crashes on startup — remove the stale tmux shim
+### Start with `dev3 doctor`
 
-If dev-3.0 crashes during launch and the launcher log contains `sanitizeTmuxShim()` with `TypeError: undefined is not an object (evaluating 'log11.warn')`, remove the stale tmux shim and relaunch the app:
+Run this before changing files, reinstalling the app, or creating tmux symlinks:
 
 ```sh
-rm -f ~/.dev3.0/bin/tmux
+dev3 doctor
 ```
 
-The app recreates the shim on the next launch. This is a recovery workaround for an invalid shim; it does not remove projects, tasks, or settings.
+It works while the app is closed and checks the app/CLI versions, the saved tmux path, the managed shim, the pinned tmux binary, and Homebrew state. Follow the commands printed under the failed check. Do not create `~/.dev3.0/bin/tmux` yourself — dev-3.0 owns and recreates that shim.
 
-### macOS — Full Disk Access required for `git` / `tmux`
+### tmux is missing or terminals do not start
 
-dev-3.0 runs `git` and `tmux` as child processes. On macOS, the system can silently start blocking file access for these spawned binaries even after they worked fine — usually triggered by an OS update, a TCC database change, or other security-agent activity. It doesn't happen to everyone, and once it kicks in you can't `git` inside dev-3.0 task terminals at all.
+If `dev3 doctor` reports that no usable tmux binary exists, install the pinned version and relaunch dev-3.0:
 
-Symptoms:
+```sh
+brew tap h0x91b/dev3
+brew trust h0x91b/dev3 2>/dev/null || true
+brew install h0x91b/dev3/tmux@3.6
+```
 
-- New task is stuck on **`PREPARING… Fetching origin`** forever — the clone phase hangs and never completes.
-- Any `git` command that talks to a remote — `git fetch`, `git pull`, `git push`, `git clone`, `git ls-remote` — hangs indefinitely when run inside a dev-3.0 task terminal. Local-only commands (`git status`, `git log`, `git diff`) keep working.
-- The exact same `git fetch` works fine in a regular terminal (iTerm, Terminal.app) — only hangs when spawned from dev-3.0.
+The in-app updater replaces only the app bundle, so upgraded installs and DMG installs may still need this once. If Homebrew says the Command Line Tools are outdated, update them as instructed by Homebrew, then rerun the install command. If doctor instead reports `tmux setting` or `tmux shim`, use its reset commands; installing another tmux will not repair a poisoned saved path.
 
-**Fix:** Grant **Full Disk Access** to the dev-3.0 app, then restart it.
+### Git network commands hang only inside dev-3.0 on macOS
+
+If `git fetch` works in Terminal.app but hangs inside a dev-3.0 task, grant **Full Disk Access** to dev-3.0 and restart it:
 
 1. Open **System Settings → Privacy & Security → Full Disk Access**
-2. Click **+** and add `dev-3.0` (from `/Applications` or wherever you installed it)
-3. Make sure the toggle next to `dev-3.0` is **on**
-4. Quit and relaunch dev-3.0
+2. Add `dev-3.0` and enable its toggle
+3. Quit and relaunch dev-3.0
 
 <p align="center">
   <img src="docs/screenshots/full-disk-access.jpg" width="700" alt="System Settings → Privacy & Security → Full Disk Access with dev-3.0 toggled on">
 </p>
-
-Why this happens: macOS evaluates permissions per-binary, and TCC (the system permissions database) can silently revoke network/file access for `git`/`tmux` spawned by another app — typically after an OS update or background security-agent activity. Granting Full Disk Access to dev-3.0 covers the app and all its child processes, so `git fetch` to remotes works again.
-
-### tmux 3.7 — CPU storms and frozen terminals (pinned tmux@3.6)
-
-tmux **3.7** (released June 2026) has a client-side regression: when the tmux server socket is congested, clients busy-spin at 100% CPU instead of waiting, which snowballs into 10–35 second UI freezes. It shows up mainly when **more than one dev-3.0 instance** runs on the same machine (e.g. developing dev-3.0 inside dev-3.0), but any sufficiently busy server can trigger it. tmux **3.6a and older are not affected**.
-
-Because of this, dev-3.0 depends on the pinned keg-only formula **`h0x91b/dev3/tmux@3.6`** and prefers it automatically over whatever `tmux` is in your PATH (a custom binary path set in Settings still wins). Agents inside dev-3.0 terminals pick up the same binary via a shim, so client and server versions never mix.
-
-If you installed dev-3.0 before this pin and already have tmux 3.7 from `brew`:
-
-```sh
-brew trust h0x91b/dev3      # newer Homebrew refuses untrusted taps at upgrade time
-brew upgrade --cask dev3    # pulls in h0x91b/dev3/tmux@3.6 as a new dependency
-```
-
-> **Note:** the in-app updater updates only the app itself — it cannot install the tmux@3.6 keg. Without the keg the app keeps using your PATH tmux (fine for a single dev-3.0 instance); run the two commands above once to get the pinned 3.6a.
-
-The app switches to the 3.6a keg on its own. One caveat: a tmux server keeps its version until it dies, so if a 3.7 dev3 server is still running, the app keeps using 3.7 for that server's lifetime (mixed-version tmux clients can't talk to it at all). After your sessions wind down — or immediately via `tmux -L dev3 kill-server` (kills all dev-3.0 terminals!) or a reboot — everything runs on 3.6a. Your system-wide `tmux` stays untouched.
-
-### Homebrew and updates — recovering from a broken upgrade
-
-dev-3.0 updates through two channels: the **in-app updater** (swaps only the `.app` bundle) and **Homebrew** (`brew upgrade --cask dev3`). After an in-app update, brew's records lag behind the actually-installed version, and an unlucky `brew upgrade` on top of that could remove the app mid-upgrade or replace the bundle under a running instance. The cask is now marked `auto_updates`, so a bulk `brew upgrade` skips dev3 entirely — to update via brew, quit the app and run `brew upgrade --cask dev3` explicitly.
-
-**Start with `dev3 doctor`** — it runs all of these checks automatically (app bundle, tmux shim, pinned tmux keg, Homebrew cask/formula state) and prints the exact fix command for anything broken. It works even when the app can't start. If you'd rather diagnose by hand, find your symptom:
-
-| Symptom | Fix |
-|---|---|
-| Terminals stop opening with "ENOENT" error toasts right after a `brew upgrade`, while git keeps working | The upgrade replaced the `.app` bundle under the running instance. Quit and relaunch dev-3.0. |
-| The app vanished from `/Applications` after a `brew upgrade` that failed ("It seems there is already an App at…", "Directory not empty") | The upgrade died mid-move. Run the full reset below. |
-| You installed the DMG manually and want brew to manage updates again | `brew install --cask h0x91b/dev3/dev3 --adopt` — adopts the app in place, nothing is reinstalled. |
-| You ran `brew install h0x91b/dev3/dev3` **without `--cask`** and no app appeared | That installs the headless CLI formula, not the desktop app. `brew uninstall --formula dev3`, then `brew install --cask h0x91b/dev3/dev3`. |
-| The app won't open after an update (dock icon bounces and gives up), or tmux errors mention "too many levels of symbolic links" | [Remove the stale tmux shim](#macos-app-crashes-on-startup--remove-the-stale-tmux-shim), then relaunch — the app recreates it. |
-
-Full reset — safe to run even when brew's state is inconsistent; your projects, tasks, and settings live in `~/.dev3.0` and are not touched:
-
-```sh
-brew uninstall --cask dev3 2>/dev/null || true
-rm -rf "$(brew --prefix)/Caskroom/dev3"
-brew trust h0x91b/dev3 2>/dev/null || true   # newer Homebrew refuses untrusted taps
-brew install --cask h0x91b/dev3/dev3
-```
 
 ### Terminal colors and recommended agent themes
 

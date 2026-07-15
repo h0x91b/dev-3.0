@@ -8,6 +8,7 @@ import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
 import { writeShellInit } from "./shell-init";
+import { isExecutableFile } from "./executable";
 
 // Must be initialized before any module-load code below — sanitizeTmuxShim()
 // runs at module evaluation and logs when it finds a broken shim. Declaring
@@ -221,6 +222,17 @@ async function probeTmuxServer(binary: string, socket: string): Promise<TmuxServ
 	}
 }
 
+export async function probeTmuxVersion(binary: string): Promise<string | undefined> {
+	try {
+		const proc = spawn([binary, "-V"], { stdout: "pipe", stderr: "pipe" });
+		const stdout = (await new Response(proc.stdout).text()).trim();
+		const exitCode = await proc.exited;
+		return exitCode === 0 && /^tmux \d/.test(stdout) ? stdout : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
 /** PATH shim kept in sync with the app-selected tmux binary (see updateTmuxShim). */
 export const TMUX_SHIM_PATH = `${DEV3_HOME}/bin/tmux`;
 
@@ -234,14 +246,17 @@ export const TMUX_SHIM_PATH = `${DEV3_HOME}/bin/tmux`;
  * resolution and bare `tmux` PATH lookups.
  */
 export function dereferenceTmuxShim(binaryPath: string): string | undefined {
-	if (binaryPath !== TMUX_SHIM_PATH) return binaryPath;
+	if (binaryPath !== TMUX_SHIM_PATH) {
+		return !binaryPath.startsWith("/") || isExecutableFile(binaryPath) ? binaryPath : undefined;
+	}
 	// A regular file here is not ours — the app only ever creates a symlink.
 	// Treat it as the user's own tmux binary: use it as-is, never delete it
 	// (updateTmuxShim likewise leaves non-symlinks alone).
-	if (!isSymlink(binaryPath)) return existsSync(binaryPath) ? binaryPath : undefined;
+	if (!isSymlink(binaryPath)) return isExecutableFile(binaryPath) ? binaryPath : undefined;
 	try {
-		realpathSync(binaryPath); // throws on ELOOP cycles and dangling targets
-		return readlinkSync(binaryPath);
+		const target = realpathSync(binaryPath); // throws on ELOOP cycles and dangling targets
+		if (!isExecutableFile(target)) throw new Error("tmux shim target is not an executable file");
+		return target;
 	} catch {
 		log.warn("tmux shim is broken — removing it", { shim: binaryPath });
 		try {
@@ -261,7 +276,8 @@ export function dereferenceTmuxShim(binaryPath: string): string | undefined {
 export function sanitizeTmuxShim(): void {
 	if (!isSymlink(TMUX_SHIM_PATH)) return;
 	try {
-		realpathSync(TMUX_SHIM_PATH);
+		const target = realpathSync(TMUX_SHIM_PATH);
+		if (!isExecutableFile(target)) throw new Error("tmux shim target is not an executable file");
 	} catch {
 		log.warn("removing broken tmux shim", { shim: TMUX_SHIM_PATH });
 		try {
@@ -285,6 +301,10 @@ export function updateTmuxShim(binaryPath: string): void {
 	if (binaryPath === TMUX_SHIM_PATH) {
 		// Guard against the ELOOP disaster: never point the shim at itself.
 		log.warn("refusing to point the tmux shim at itself", { shim: binaryPath });
+		return;
+	}
+	if (!isExecutableFile(binaryPath)) {
+		log.warn("refusing to point the tmux shim at a non-executable path", { binaryPath });
 		return;
 	}
 	try {
@@ -322,30 +342,48 @@ function isSymlink(path: string): boolean {
  * PATH shim. The preferred binary wins again after the next kill-server or
  * reboot, when no incompatible server is left running.
  */
-export async function selectTmuxBinary(preferred: string, fallbackCandidates: string[] = []): Promise<string> {
+export async function selectTmuxBinary(preferred: string, fallbackCandidates: string[] = []): Promise<string | undefined> {
 	// Never commit the PATH shim itself — dereference it to its real target
 	// (whichSync returns the shim because ~/.dev3.0/bin is first in PATH).
-	const preferredReal =
-		dereferenceTmuxShim(preferred) ??
-		fallbackCandidates.find((c) => c !== TMUX_SHIM_PATH && existsSync(c)) ??
-		"tmux";
-	let chosen = preferredReal;
-	const probe = await probeTmuxServer(preferredReal, DEFAULT_TMUX_SOCKET);
+	const preferredReal = dereferenceTmuxShim(preferred);
+	const candidates = Array.from(new Set([
+		preferredReal,
+		...fallbackCandidates.filter((candidate) => candidate !== TMUX_SHIM_PATH),
+	].filter((candidate): candidate is string => Boolean(candidate))));
+	const validCandidates: string[] = [];
+	for (const candidate of candidates) {
+		if (candidate.startsWith("/") && !isExecutableFile(candidate)) continue;
+		if (await probeTmuxVersion(candidate)) validCandidates.push(candidate);
+	}
+	if (preferred === TMUX_SHIM_PATH && preferredReal && !validCandidates.includes(preferredReal) && isSymlink(TMUX_SHIM_PATH)) {
+		log.warn("tmux shim points to an executable that is not tmux — removing it", { shim: TMUX_SHIM_PATH, target: preferredReal });
+		try {
+			unlinkSync(TMUX_SHIM_PATH);
+		} catch {
+			log.debug("could not remove invalid tmux shim (already gone?)");
+		}
+	}
+	let chosen = validCandidates[0];
+	if (!chosen) {
+		log.error("no executable tmux binary found", { preferred, fallbacks: fallbackCandidates });
+		return undefined;
+	}
+	const probe = await probeTmuxServer(chosen, DEFAULT_TMUX_SOCKET);
 	if (probe === "mismatch") {
-		for (const candidate of fallbackCandidates) {
-			if (candidate === preferredReal || candidate === TMUX_SHIM_PATH || !existsSync(candidate)) continue;
+		for (const candidate of validCandidates) {
+			if (candidate === chosen) continue;
 			if ((await probeTmuxServer(candidate, DEFAULT_TMUX_SOCKET)) === "compatible") {
 				log.warn("preferred tmux binary can't talk to the running dev3 server — falling back until the server restarts", {
-					preferred: preferredReal,
+					preferred: chosen,
 					fallback: candidate,
 				});
 				chosen = candidate;
 				break;
 			}
 		}
-		if (chosen === preferredReal) {
+		if (chosen === validCandidates[0]) {
 			log.warn("running dev3 tmux server is incompatible with every known tmux binary — a one-time `tmux -L dev3 kill-server` is required", {
-				preferred: preferredReal,
+				preferred: chosen,
 			});
 		}
 	}
@@ -580,7 +618,15 @@ export function createSession(
 	};
 	sessions.set(taskId, session);
 	// Spawn immediately in the background — don't wait for WS connection
-	spawnPty(session, 220, 50);
+	try {
+		spawnPty(session, 220, 50);
+	} catch (err) {
+		// A session that never spawned must not look recoverable/alive to callers.
+		// Propagate the launch failure so task preparation can revert to To Do and
+		// surface the actual cause instead of silently emitting only `ptyDied`.
+		sessions.delete(taskId);
+		throw err;
+	}
 }
 
 export function destroySession(taskId: string, fallbackSocket?: string): void {
@@ -1317,8 +1363,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 			error: String(err),
 			stack: (err as Error)?.stack ?? "no stack",
 		});
-		onPtyDiedCallback?.(session.taskId);
-		return;
+		throw new TmuxSpawnError(tmuxBinary, err);
 	}
 
 	session.proc = proc;

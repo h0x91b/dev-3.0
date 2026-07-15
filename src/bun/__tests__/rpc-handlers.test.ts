@@ -125,6 +125,7 @@ vi.mock("../pty-server", () => ({
 	},
 	setTmuxBinary: vi.fn(),
 	getTmuxBinary: vi.fn(() => "tmux"),
+	probeTmuxVersion: vi.fn(async () => "tmux 3.6a"),
 	selectTmuxBinary: vi.fn(async (preferred: string) => preferred),
 	updateTmuxShim: vi.fn(),
 	dereferenceTmuxShim: vi.fn((p: string) => (p === "/mock/dev3-home/bin/tmux" ? "/opt/homebrew/bin/tmux" : p)),
@@ -243,9 +244,11 @@ vi.mock("../spawn", () => ({
 
 // Mock node:fs for existsSync and readdirSync
 vi.mock("node:fs", () => ({
+	accessSync: vi.fn(() => undefined),
+	constants: { X_OK: 1 },
 	existsSync: vi.fn(() => true),
 	readdirSync: vi.fn(() => []),
-	statSync: vi.fn(() => ({ isDirectory: () => true, size: 0 })),
+	statSync: vi.fn(() => ({ isDirectory: () => true, isFile: () => true, mode: 0o755, size: 0 })),
 	mkdirSync: vi.fn(() => undefined),
 	writeFileSync: vi.fn(() => undefined),
 }));
@@ -283,7 +286,7 @@ import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
 import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { accessSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createTaskPreparation, registerPreparationSpawn } from "../preparation-runtime";
 
 // Import handlers and pure helper functions after all mocks are set up
@@ -3180,7 +3183,13 @@ describe("handlers.spawnVariants", () => {
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		vi.mocked(data.addTask).mockResolvedValue(variantTask);
 		vi.mocked(data.updateTask).mockResolvedValue(revertedVariant);
-		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("bad repo config"));
+		vi.mocked(repoConfig.resolveProjectConfig).mockImplementation(async (candidate) => {
+			// Background preparation from an earlier test may still be draining. Tie
+			// this failure to this test's project object so it cannot consume a shared
+			// one-shot rejection before the attempt under test reaches the resolver.
+			if (candidate === project) throw new Error("bad repo config");
+			return candidate;
+		});
 
 		const push = vi.fn();
 		setPushMessage(push);
@@ -3221,6 +3230,8 @@ describe("handlers.spawnVariants", () => {
 		vi.mocked(pty.createSession).mockImplementationOnce(() => {
 			throw new Error("pty boom");
 		});
+		const push = vi.fn();
+		setPushMessage(push);
 
 		await handlers.spawnVariants({
 			taskId: "task-1",
@@ -3233,11 +3244,21 @@ describe("handlers.spawnVariants", () => {
 			expect(data.updateTask).toHaveBeenCalledWith(
 				project,
 				"variant-1",
-				expect.objectContaining({ status: "todo", preparing: false, worktreePath: null, branchName: null }),
+				expect.objectContaining({
+					status: "todo",
+					preparing: false,
+					worktreePath: null,
+					branchName: null,
+					preparationError: "pty boom",
+				}),
 			);
 		});
 		// The half-created worktree must be cleaned up, not left dangling.
 		expect(git.removeWorktree).toHaveBeenCalled();
+		expect(push).toHaveBeenCalledWith("taskPreparationFailed", expect.objectContaining({
+			taskId: "variant-1",
+			error: "pty boom",
+		}));
 	});
 
 	it("uses worktree-resolved sparse checkout and clone paths while preparing variants", async () => {
@@ -3511,7 +3532,9 @@ describe("handlers.spawnVariants", () => {
 			// Wait for the background preparation to persist the worktreePath.
 			let updateArgs: Record<string, unknown> | undefined;
 			await vi.waitFor(() => {
-				updateArgs = vi.mocked(data.updateTask).mock.calls.find((c) => "worktreePath" in (c[2] as object))?.[2] as Record<string, unknown>;
+				updateArgs = vi.mocked(data.updateTask).mock.calls.find(
+					(c) => c[1] === "v1" && "worktreePath" in (c[2] as object),
+				)?.[2] as Record<string, unknown>;
 				expect(updateArgs).toBeDefined();
 			});
 			expect(git.createWorktree).not.toHaveBeenCalled();
@@ -3522,6 +3545,40 @@ describe("handlers.spawnVariants", () => {
 			);
 			expect(updateArgs!.worktreePath).toBe("/tmp/test-dev3/ops/operations/v1/work");
 			expect(updateArgs!.branchName).toBeNull();
+		});
+
+		it("persists and pushes the same launch error when an Operations PTY fails", async () => {
+			const project = makeProject({ id: "vp-fail", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
+			const sourceTask = makeTask({ id: "src-fail", projectId: project.id, status: "todo" });
+			const variantTask = makeTask({ id: "v-fail", projectId: project.id, status: "in-progress", preparing: true });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
+			vi.mocked(data.addTask).mockResolvedValue(variantTask);
+			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...variantTask, ...updates } as Task));
+			vi.mocked(pty.createSession).mockImplementation((taskId) => {
+				if (taskId === variantTask.id) throw new Error("operations tmux boom");
+			});
+			const push = vi.fn();
+			setPushMessage(push);
+
+			await handlers.spawnVariants({
+				taskId: sourceTask.id,
+				projectId: project.id,
+				targetStatus: "in-progress",
+				variants: [{ agentId: "agent-1", configId: null }],
+			});
+
+			await vi.waitFor(() => {
+				expect(data.updateTask).toHaveBeenCalledWith(
+					project,
+					variantTask.id,
+					expect.objectContaining({ status: "todo", preparationError: "operations tmux boom" }),
+				);
+			});
+			expect(push).toHaveBeenCalledWith("taskPreparationFailed", expect.objectContaining({
+				taskId: variantTask.id,
+				error: "operations tmux boom",
+			}));
 		});
 
 		it("carries the chosen opsWorkDir from the source task onto each variant", async () => {
@@ -3902,7 +3959,10 @@ describe("handlers.addAttempts", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
 		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
 		vi.mocked(data.updateTask).mockResolvedValue(revertedAttempt);
-		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("bad repo config"));
+		vi.mocked(repoConfig.resolveProjectConfig).mockImplementation(async (candidate) => {
+			if (candidate === project) throw new Error("bad repo config");
+			return candidate;
+		});
 
 		const push = vi.fn();
 		setPushMessage(push);
@@ -3919,7 +3979,13 @@ describe("handlers.addAttempts", () => {
 			expect(data.updateTask).toHaveBeenCalledWith(
 				project,
 				"attempt-2",
-				expect.objectContaining({ status: "todo", preparing: false, worktreePath: null, branchName: null }),
+				expect.objectContaining({
+					status: "todo",
+					preparing: false,
+					worktreePath: null,
+					branchName: null,
+					preparationError: "bad repo config",
+				}),
 			);
 		});
 
@@ -4051,6 +4117,7 @@ describe("handlers.cancelTaskPreparation", () => {
 			worktreePath: null,
 			branchName: null,
 			customColumnId: null,
+			preparationError: null,
 		});
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, expect.objectContaining({
 			id: task.id,
@@ -5097,6 +5164,9 @@ describe("handlers.hideApp", () => {
 describe("handlers.checkSystemRequirements", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(statSync).mockReturnValue({ isFile: () => true, mode: 0o755 } as any);
+		vi.mocked(accessSync).mockImplementation(() => undefined);
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as any);
 	});
 
@@ -5115,7 +5185,7 @@ describe("handlers.checkSystemRequirements", () => {
 		mockSpawnSync
 			.mockReturnValueOnce({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") })  // git found
 			.mockReturnValueOnce({ exitCode: 1 });  // tmux not found via which
-		vi.mocked(existsSync).mockReturnValue(false);  // no fallback paths exist
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/usr/bin/git"); // git exists; no tmux candidates do
 
 		const results = await handlers.checkSystemRequirements();
 		expect(results[0].installed).toBe(true);
@@ -5163,13 +5233,78 @@ describe("handlers.checkSystemRequirements", () => {
 		// candidate, or the shim ends up symlinked onto itself.
 		const SHIM = "/mock/dev3-home/bin/tmux";
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode(SHIM) });
-		vi.mocked(existsSync).mockReturnValue(false); // vendored keg not installed
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === SHIM); // valid shim; vendored keg not installed
 
 		await handlers.checkSystemRequirements();
 		expect(pty.dereferenceTmuxShim).toHaveBeenCalledWith(SHIM);
 		const fallbacks = vi.mocked(pty.selectTmuxBinary).mock.calls[0][1] as string[];
 		expect(fallbacks).toContain("/opt/homebrew/bin/tmux");
 		expect(fallbacks).not.toContain(SHIM);
+	});
+
+	it("rejects a PATH tmux shim that resolves to a directory", async () => {
+		const SHIM = "/mock/dev3-home/bin/tmux";
+		mockSpawnSync
+			.mockReturnValueOnce({ exitCode: 0, stdout: new TextEncoder().encode("/usr/bin/git") })
+			.mockReturnValueOnce({ exitCode: 0, stdout: new TextEncoder().encode(SHIM) });
+		vi.mocked(existsSync).mockImplementation((p) => ["/usr/bin/git", SHIM].includes(String(p)));
+		vi.mocked(statSync).mockImplementation(((p: string) => ({ isFile: () => String(p) !== SHIM })) as any);
+
+		const results = await handlers.checkSystemRequirements();
+
+		expect(results[1].installed).toBe(false);
+		expect(results[1].customPathError).toBe(false);
+		expect(pty.selectTmuxBinary).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// handlers.setCustomBinaryPath
+// ================================================================
+
+describe("handlers.setCustomBinaryPath", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(loadSettings).mockResolvedValue({
+			updateChannel: "stable",
+			customBinaryPaths: { git: "/known/good/git" },
+		} as any);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(statSync).mockReturnValue({ isFile: () => true, mode: 0o755 } as any);
+		vi.mocked(accessSync).mockImplementation(() => undefined);
+		vi.mocked(pty.probeTmuxVersion).mockResolvedValue("tmux 3.6a");
+	});
+
+	it("rejects a directory without persisting it", async () => {
+		vi.mocked(statSync).mockReturnValue({ isFile: () => false } as any);
+
+		const result = await handlers.setCustomBinaryPath({ requirementId: "tmux", path: "/Users/tester" });
+
+		expect(result).toEqual({ ok: false });
+		expect(saveSettings).not.toHaveBeenCalled();
+		expect(pty.probeTmuxVersion).not.toHaveBeenCalled();
+	});
+
+	it("rejects an executable that is not tmux without persisting it", async () => {
+		vi.mocked(pty.probeTmuxVersion).mockResolvedValue(undefined);
+
+		const result = await handlers.setCustomBinaryPath({ requirementId: "tmux", path: "/usr/bin/true" });
+
+		expect(result).toEqual({ ok: false });
+		expect(saveSettings).not.toHaveBeenCalled();
+	});
+
+	it("persists a validated tmux binary and preserves other custom paths", async () => {
+		const result = await handlers.setCustomBinaryPath({ requirementId: "tmux", path: "  /opt/homebrew/bin/tmux  " });
+
+		expect(result).toEqual({ ok: true });
+		expect(pty.probeTmuxVersion).toHaveBeenCalledWith("/opt/homebrew/bin/tmux");
+		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
+			customBinaryPaths: {
+				git: "/known/good/git",
+				tmux: "/opt/homebrew/bin/tmux",
+			},
+		}));
 	});
 });
 
@@ -5180,6 +5315,9 @@ describe("handlers.checkSystemRequirements", () => {
 describe("resolveTmuxBinaryAtStartup", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(statSync).mockReturnValue({ isFile: () => true, mode: 0o755 } as any);
+		vi.mocked(accessSync).mockImplementation(() => undefined);
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable" } as any);
 	});
 
@@ -5191,6 +5329,26 @@ describe("resolveTmuxBinaryAtStartup", () => {
 		const chosen = await resolveTmuxBinaryAtStartup();
 		expect(chosen).toBe("/opt/homebrew/opt/tmux@3.6/bin/tmux");
 		expect(pty.selectTmuxBinary).toHaveBeenCalled();
+	});
+
+	it("ignores a saved home-directory path instead of recreating the shim to it", async () => {
+		const homeDirectory = "/Users/tester";
+		const keg = "/opt/homebrew/opt/tmux@3.6/bin/tmux";
+		vi.mocked(loadSettings).mockResolvedValue({
+			updateChannel: "stable",
+			customBinaryPaths: { tmux: homeDirectory },
+		} as any);
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+		vi.mocked(existsSync).mockImplementation((path) => [homeDirectory, keg].includes(String(path)));
+		vi.mocked(statSync).mockImplementation(((path: string) => ({
+			isFile: () => String(path) === keg,
+		})) as any);
+
+		const { resolveTmuxBinaryAtStartup } = await import("../rpc-handlers/settings-config");
+		const chosen = await resolveTmuxBinaryAtStartup();
+
+		expect(chosen).toBe(keg);
+		expect(pty.selectTmuxBinary).toHaveBeenCalledWith(keg, expect.not.arrayContaining([homeDirectory]));
 	});
 
 	it("returns undefined when tmux is not found anywhere", async () => {
@@ -7455,6 +7613,26 @@ describe("launchTaskPty", () => {
 		expect(pty.createSession).not.toHaveBeenCalled();
 	});
 
+	it("rejects a launch when the tmux client exits without creating a session", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+
+		try {
+			const launch = launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+			const rejection = expect(launch).rejects.toThrow(
+				"tmux started but did not create session dev3-task-1",
+			);
+			await vi.runAllTimersAsync();
+			await rejection;
+			expect(pty.tmuxSessionExists).toHaveBeenCalledTimes(10);
+		} finally {
+			vi.useRealTimers();
+			vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		}
+	});
+
 	it("continues launching when ensureClaudeTrust fails", async () => {
 		const project = makeProject();
 		const task = makeTask();
@@ -8823,6 +9001,8 @@ describe("resolveBinaryPath", () => {
 	beforeEach(() => {
 		mockSpawnSync.mockReset();
 		vi.mocked(existsSync).mockReset().mockReturnValue(false);
+		vi.mocked(statSync).mockReset().mockReturnValue({ isFile: () => true, mode: 0o755 } as any);
+		vi.mocked(accessSync).mockReset().mockImplementation(() => undefined);
 	});
 
 	it("returns custom path when it exists", () => {
@@ -8840,8 +9020,20 @@ describe("resolveBinaryPath", () => {
 		expect(result.resolvedPath).toBeUndefined();
 	});
 
+	it("rejects an existing directory configured as a custom binary path", () => {
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(statSync).mockReturnValue({ isDirectory: () => true, isFile: () => false, size: 0 } as any);
+		mockSpawnSync.mockReturnValue({ exitCode: 1, stdout: null });
+
+		const result = resolveBinaryPath("tmux", "/Users/tester");
+
+		expect(result.customPathError).toBe(true);
+		expect(result.resolvedPath).toBeUndefined();
+	});
+
 	it("finds binary via which when no custom path", () => {
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") });
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/usr/local/bin/claude");
 		const result = resolveBinaryPath("claude");
 		expect(result.resolvedPath).toBe("/usr/local/bin/claude");
 		expect(result.customPathError).toBe(false);
@@ -8885,7 +9077,7 @@ describe("resolveBinaryPath", () => {
 	});
 
 	it("falls through to which when no vendored path exists", () => {
-		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(existsSync).mockImplementation((p) => String(p) === "/opt/homebrew/bin/tmux");
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/opt/homebrew/bin/tmux") });
 		const result = resolveBinaryPath("tmux", undefined, ["/opt/homebrew/opt/tmux@3.6/bin/tmux"]);
 		expect(result.resolvedPath).toBe("/opt/homebrew/bin/tmux");
@@ -8898,6 +9090,8 @@ describe("checkAgentAvailability", () => {
 	beforeEach(() => {
 		mockSpawnSync.mockReset();
 		vi.mocked(existsSync).mockReset().mockReturnValue(false);
+		vi.mocked(statSync).mockReset().mockReturnValue({ isFile: () => true, mode: 0o755 } as any);
+		vi.mocked(accessSync).mockReset().mockImplementation(() => undefined);
 		vi.mocked(agents.getAllAgents).mockResolvedValue([
 			{ id: "builtin-claude", name: "Claude", baseCommand: "claude", isDefault: true, configurations: [], installCommand: "brew install claude-code" },
 			{ id: "builtin-codex", name: "Codex", baseCommand: "codex", isDefault: true, configurations: [], installCommand: "npm install -g @openai/codex" },
@@ -8923,6 +9117,7 @@ describe("checkAgentAvailability", () => {
 	});
 
 	it("detects installed agent via which", async () => {
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/usr/local/bin/claude");
 		mockSpawnSync.mockImplementation((args: string[]) => {
 			if (args[0] === "which" && args[1] === "claude") {
 				return { exitCode: 0, stdout: new TextEncoder().encode("/usr/local/bin/claude") };
@@ -8953,6 +9148,7 @@ describe("checkAgentAvailability", () => {
 	});
 
 	it("auto-saves resolved paths when found", async () => {
+		vi.mocked(existsSync).mockImplementation((path) => String(path) === "/opt/homebrew/bin/claude");
 		mockSpawnSync.mockImplementation((args: string[]) => {
 			if (args[0] === "which" && args[1] === "claude") {
 				return { exitCode: 0, stdout: new TextEncoder().encode("/opt/homebrew/bin/claude") };
