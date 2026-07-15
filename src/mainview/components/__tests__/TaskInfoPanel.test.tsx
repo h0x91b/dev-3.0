@@ -19,6 +19,7 @@ vi.mock("../../rpc", () => ({
 			stopDevServer: vi.fn(),
 			restartDevServer: vi.fn(),
 			getBranchStatus: vi.fn(),
+			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
 			prepareMergeCompletionPrompt: vi.fn(),
 			dismissMergeCompletionPrompt: vi.fn(),
 			rebaseTask: vi.fn(),
@@ -1768,6 +1769,51 @@ describe("TaskInfoPanel", () => {
 			expect(badges.length).toBeGreaterThanOrEqual(1);
 		});
 
+		it("shows the unresolved comment count on the PR section", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", {
+					detail: {
+						projectId: "p1",
+						taskId: "t1",
+						prNumber: 42,
+						prUrl: "https://github.com/test/repo/pull/42",
+						ciStatus: "pending",
+						reviewState: null,
+						unresolvedCount: 4,
+						mergeState: { mergeable: "MERGEABLE", status: "CLEAN" },
+						checks: [],
+						prTitle: "Status surface",
+						isDraft: false,
+					},
+				}));
+			});
+
+			expect(await screen.findAllByLabelText("4 unresolved comments")).not.toHaveLength(0);
+		});
+
+		it("refreshes rich PR status when opening a task with an existing PR", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
 		it("opens PR URL in new tab when Open PR is clicked", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const openSpy = vi.fn(); window.open = openSpy;
@@ -1842,7 +1888,7 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
-		it("shows PR badge tooltip with PR number", async () => {
+		it("shows PR status popover with PR number", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
 				ahead: 3,
@@ -1858,8 +1904,8 @@ describe("TaskInfoPanel", () => {
 			const badges = screen.getAllByText(/PR #42/);
 			const btn = badges[0].closest("button")!;
 			await userEvent.hover(btn);
-			const tooltip = await screen.findByRole("tooltip");
-			expect(tooltip.textContent).toContain("42");
+			const popover = await screen.findByTestId("pr-status-popover");
+			expect(popover).toHaveTextContent("PR #42 status");
 		});
 
 		it("PR badge does not open a tab when prUrl is null", async () => {

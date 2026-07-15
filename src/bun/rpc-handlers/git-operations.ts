@@ -1,6 +1,8 @@
 import {
 	type BranchStatus,
 	type PRInfo,
+	type PRMergeState,
+	type PRCIStatus,
 	type Project,
 	type Task,
 	type TaskDiffMode,
@@ -23,8 +25,10 @@ import { Semaphore } from "../concurrency";
 import { getActiveContext, getPushMessage, isAppForeground, log, notifyWatchedTaskEvent, pushCliAttention } from "./shared";
 import {
 	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
+	ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS,
 	ACTIVE_PROJECT_PR_INTERVAL_MS,
 	BACKGROUND_PROJECT_MERGE_INTERVAL_MS,
+	BACKGROUND_PROJECT_PENDING_PR_INTERVAL_MS,
 	BACKGROUND_PROJECT_PR_INTERVAL_MS,
 	MERGE_POLL_INTERVAL_MS,
 	PR_POLL_INTERVAL_MS,
@@ -40,7 +44,7 @@ import {
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
 } from "./merge-prompt-suppression";
-import { computeSignalKey, mapReviewDecision, reasonForSignal, rollupCiStatus } from "./pr-status";
+import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, reasonForSignal, rollupCiStatus } from "./pr-status";
 
 /**
  * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir
@@ -81,6 +85,7 @@ const prSignalState = new Map<string, string>();
 // git-poll-throttle.ts (dependency-free + unit-tested).
 const mergeTaskNextDue = new Map<string, number>();
 const prTaskNextDue = new Map<string, number>();
+const prPendingState = new Map<string, boolean>();
 // Wall-clock of the previous tick, per poller, to detect host sleep gaps.
 let mergeLastTickAt = 0;
 let prLastTickAt = 0;
@@ -485,8 +490,250 @@ export function _resetPRPollerState(): void {
 	prPromotedTasks.clear();
 	prSignalState.clear();
 	prTaskNextDue.clear();
+	prPendingState.clear();
 	prLastTickAt = 0;
 	scheduleRandom = Math.random;
+}
+
+interface GitHubPullRequestSummary {
+	number?: unknown;
+	isDraft?: unknown;
+	url?: unknown;
+	title?: unknown;
+	state?: unknown;
+	mergeable?: unknown;
+	mergeStateStatus?: unknown;
+	statusCheckRollup?: unknown;
+	reviewDecision?: unknown;
+}
+
+interface PolledPRStatus {
+	found: boolean;
+	ciStatus: PRCIStatus | null;
+}
+
+const REVIEW_STATUS_CANDIDATES = new Set<Task["status"]>(["review-by-user", "review-by-colleague"]);
+const TERMINAL_TASK_STATUSES = new Set<Task["status"]>(["completed", "cancelled"]);
+
+function isStickyPRTask(task: Task): boolean {
+	return task.prNumber != null && !TERMINAL_TASK_STATUSES.has(task.status);
+}
+
+async function persistTaskPrIdentity(project: Project, task: Task, prNumber: number, prUrl: string): Promise<void> {
+	if (task.prNumber === prNumber && task.prUrl === prUrl) return;
+	const updated = await data.updateTask(project, task.id, { prNumber, prUrl });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+}
+
+async function persistProjectPrIdentities(project: Project, prs: PRInfo[]): Promise<void> {
+	let tasks: Task[];
+	try {
+		tasks = await data.loadTasks(project);
+	} catch (err) {
+		log.warn("getProjectPRs: failed to load tasks for sticky PR persistence", { error: String(err) });
+		return;
+	}
+
+	for (const pr of prs) {
+		const task = tasks.find((candidate) => candidate.branchName === pr.headRefName);
+		if (task) await persistTaskPrIdentity(project, task, pr.number, pr.url);
+	}
+}
+
+function prPollInterval(isActiveForeground: boolean, taskId: string): number {
+	return prPendingState.get(taskId)
+		? intervalForTask(isActiveForeground, ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS, BACKGROUND_PROJECT_PENDING_PR_INTERVAL_MS)
+		: intervalForTask(isActiveForeground, ACTIVE_PROJECT_PR_INTERVAL_MS, BACKGROUND_PROJECT_PR_INTERVAL_MS);
+}
+
+function parseGitHubPullRequestUrl(url: string): { host: string; owner: string; repo: string } | null {
+	try {
+		const parsed = new URL(url);
+		const parts = parsed.pathname.split("/").filter(Boolean);
+		const pullIndex = parts.indexOf("pull");
+		if (pullIndex < 2) return null;
+		const owner = parts[pullIndex - 2];
+		const repo = parts[pullIndex - 1]?.replace(/\.git$/, "");
+		return owner && repo && parsed.hostname ? { host: parsed.hostname, owner, repo } : null;
+	} catch {
+		return null;
+	}
+}
+
+const REVIEW_THREADS_QUERY = `
+query($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $after) {
+        nodes { isResolved }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  }
+}`;
+
+async function fetchUnresolvedReviewThreadCount(
+	project: Project,
+	worktreePath: string,
+	prUrl: string,
+	prNumber: number,
+): Promise<number | null> {
+	const repository = parseGitHubPullRequestUrl(prUrl);
+	if (!repository) return null;
+	const selectedHost = project.githubAuthHost?.trim().toLowerCase();
+	if (selectedHost && selectedHost !== repository.host.toLowerCase()) {
+		log.warn("PR review-thread lookup skipped because project and PR hosts differ", {
+			projectHost: selectedHost,
+			prHost: repository.host,
+			pr: prNumber,
+		});
+		return null;
+	}
+
+	let after: string | null = null;
+	let count = 0;
+	try {
+		for (let page = 0; page < 100; page++) {
+			const args = [
+				"api",
+				"graphql",
+				"--hostname",
+				repository.host,
+				"-f",
+				`query=${REVIEW_THREADS_QUERY}`,
+				"-F",
+				`owner=${repository.owner}`,
+				"-F",
+				`name=${repository.repo}`,
+				"-F",
+				`number=${prNumber}`,
+				"-F",
+				`after=${after ?? "null"}`,
+			];
+			const result = await github.runGitHub(project, worktreePath, args, { timeoutMs: PR_DETECTION_TIMEOUT_MS });
+			if (!result.ok || !result.stdout) return null;
+
+			const payload = JSON.parse(result.stdout) as {
+				data?: {
+					repository?: {
+						pullRequest?: {
+							reviewThreads?: {
+								nodes?: unknown;
+								pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
+							};
+						} | null;
+					};
+				};
+				errors?: unknown;
+			};
+			if (payload.errors) return null;
+			const threads = payload.data?.repository?.pullRequest?.reviewThreads;
+			if (!threads) return null;
+			count += countUnresolvedReviewThreads(threads.nodes);
+			if (!threads.pageInfo?.hasNextPage || !threads.pageInfo.endCursor) return count;
+			after = threads.pageInfo.endCursor;
+		}
+	} catch (err) {
+		log.warn("PR review-thread lookup failed (non-fatal)", { pr: prNumber, error: String(err) });
+	}
+	return null;
+}
+
+async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNullable<ReturnType<typeof getPushMessage>>): Promise<PolledPRStatus | null> {
+	if (!task.worktreePath) return null;
+	const branchName = await git.getCurrentBranch(task.worktreePath);
+	if (!branchName) return null;
+
+	const unpushed = await git.getUnpushedCount(task.worktreePath, branchName);
+	if (unpushed === -1) return null;
+
+	const ghResult = await github.runGitHub(
+		project,
+		task.worktreePath,
+		[
+			"pr",
+			"list",
+			"--head",
+			branchName,
+			"--state",
+			"open",
+			"--json",
+			"number,isDraft,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title",
+			"--limit",
+			"1",
+		],
+		{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
+	);
+	if (!ghResult.ok || !ghResult.stdout) return null;
+
+	let prs: GitHubPullRequestSummary[];
+	try {
+		prs = JSON.parse(ghResult.stdout);
+	} catch {
+		return null;
+	}
+	const pr = Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
+	if (!pr) return { found: false, ciStatus: null };
+
+	const prNumber = typeof pr.number === "number" ? pr.number : null;
+	const prUrl = typeof pr.url === "string" ? pr.url : null;
+	if (prNumber === null) return null;
+
+	const ciStatus = rollupCiStatus(pr.statusCheckRollup);
+	const reviewState = mapReviewDecision(pr.reviewDecision);
+	const checks = normalizeChecks(pr.statusCheckRollup);
+	const unresolvedCount = prUrl
+		? await fetchUnresolvedReviewThreadCount(project, task.worktreePath, prUrl, prNumber)
+		: null;
+	const mergeState: PRMergeState = {
+		mergeable: typeof pr.mergeable === "string" ? pr.mergeable.toUpperCase() : null,
+		status: typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus.toUpperCase() : null,
+		state: typeof pr.state === "string" ? pr.state.toUpperCase() : null,
+	};
+	const prTitle = typeof pr.title === "string" ? pr.title : null;
+	const isDraft = typeof pr.isDraft === "boolean" ? pr.isDraft : null;
+
+	if (prUrl) await persistTaskPrIdentity(project, task, prNumber, prUrl);
+
+	pushMessage("taskPrStatus", {
+		projectId: project.id,
+		taskId: task.id,
+		prNumber,
+		prUrl,
+		ciStatus,
+		reviewState,
+		unresolvedCount,
+		mergeState,
+		checks,
+		prTitle,
+		isDraft,
+	});
+
+	// Raise the bell / native notification only on a *transition* to a new
+	// worthy signal. Unresolved-thread changes deliberately stay passive.
+	const signalKey = computeSignalKey(ciStatus, reviewState);
+	if (signalKey && prSignalState.get(task.id) !== signalKey) {
+		prSignalState.set(task.id, signalKey);
+		const reason = reasonForSignal(ciStatus, reviewState);
+		pushCliAttention({ taskId: task.id, reason });
+		notifyWatchedTaskEvent(task, reason, project.name);
+	} else if (!signalKey) {
+		prSignalState.delete(task.id);
+	}
+
+	const isOpenNonDraft = isDraft === false;
+	if (task.status === "review-by-user" && isOpenNonDraft && !prPromotedTasks.has(task.id)) {
+		prPromotedTasks.add(task.id);
+		log.info("Open PR detected — promoting to review-by-colleague", {
+			taskId: task.id.slice(0, 8),
+			branch: branchName,
+			pr: prNumber,
+		});
+		const updated = await data.updateTask(project, task.id, { status: "review-by-colleague" });
+		pushMessage("taskUpdated", { projectId: project.id, task: updated });
+	}
+
+	return { found: true, ciStatus };
 }
 
 
@@ -508,25 +755,22 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 
 	const liveTaskIds = new Set<string>();
 	for (const project of projects) {
-		if (project.peerReviewEnabled === false) continue;
-
 		const tasks = await data.loadTasks(project);
-		// Poll `review-by-user` (to detect an open PR and promote it) AND
-		// `review-by-colleague` (to keep refreshing CI/review status while the PR
-		// is being reviewed). `prPromotedTasks` only gates the one-shot promotion
-		// below — it must NOT exclude a task from continued CI/review polling.
+		// Detection remains limited to review statuses, but a task with a persisted
+		// PR identity stays sticky through every non-terminal status so CI/review
+		// state remains visible while an agent fixes reviewer feedback.
 		const candidates = tasks.filter(
 			(task) =>
-				(task.status === "review-by-user" || task.status === "review-by-colleague") && !!task.worktreePath,
+				!!task.worktreePath &&
+				(isStickyPRTask(task) || (project.peerReviewEnabled !== false && REVIEW_STATUS_CANDIDATES.has(task.status))),
 		);
 
 		if (candidates.length === 0) continue;
 
 		const isActiveFg = foreground && project.id === activeProjectId;
-		const interval = intervalForTask(isActiveFg, ACTIVE_PROJECT_PR_INTERVAL_MS, BACKGROUND_PROJECT_PR_INTERVAL_MS);
-
 		const dueTasks = candidates.filter((task) => {
 			liveTaskIds.add(task.id);
+			const interval = prPollInterval(isActiveFg, task.id);
 			let scheduled = prTaskNextDue.get(task.id);
 			if (scheduled === undefined) {
 				scheduled = isActiveFg ? now : staggeredDue(now, interval, scheduleRandom);
@@ -543,82 +787,17 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 
 		for (const task of dueTasks) {
 			try {
-				const branchName = await git.getCurrentBranch(task.worktreePath!);
-				if (!branchName) continue;
-
-				const unpushed = await git.getUnpushedCount(task.worktreePath!, branchName);
-				if (unpushed === -1) continue;
-
-				const ghResult = await github.runGitHub(
-					project,
-					task.worktreePath!,
-					["pr", "list", "--head", branchName, "--state", "open", "--json", "number,isDraft,url,statusCheckRollup,reviewDecision", "--limit", "1"],
-				);
-				if (!ghResult.ok || !ghResult.stdout) continue;
-
-				let prs: Array<{
-					number: number;
-					isDraft: boolean;
-					url?: string;
-					statusCheckRollup?: unknown;
-					reviewDecision?: unknown;
-				}>;
-				try {
-					prs = JSON.parse(ghResult.stdout);
-				} catch {
-					continue;
-				}
-
-				const pr = Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
-				if (!pr) continue;
-
-				const ciStatus = rollupCiStatus(pr.statusCheckRollup);
-				const reviewState = mapReviewDecision(pr.reviewDecision);
-
-				// Always refresh the passive CI/review badges (not gated by Focus Mode).
-				pushMessage("taskPrStatus", {
-					projectId: project.id,
-					taskId: task.id,
-					prNumber: typeof pr.number === "number" ? pr.number : null,
-					prUrl: typeof pr.url === "string" ? pr.url : null,
-					ciStatus,
-					reviewState,
-				});
-
-				// Raise the bell / native notification only on a *transition* to a new
-				// worthy signal, and only once per state. Suppressing modes queue the
-				// attention event while still recording the state to avoid duplicates.
-				const signalKey = computeSignalKey(ciStatus, reviewState);
-				if (signalKey && prSignalState.get(task.id) !== signalKey) {
-					prSignalState.set(task.id, signalKey);
-					const reason = reasonForSignal(ciStatus, reviewState);
-					pushCliAttention({ taskId: task.id, reason });
-					notifyWatchedTaskEvent(task, reason, project.name);
-				} else if (!signalKey) {
-					prSignalState.delete(task.id);
-				}
-
-				// One-shot promotion: review-by-user with an open non-draft PR moves to
-				// review-by-colleague. review-by-colleague tasks fall through (already promoted).
-				const isOpenNonDraft = pr.isDraft === false;
-				if (task.status === "review-by-user" && isOpenNonDraft && !prPromotedTasks.has(task.id)) {
-					prPromotedTasks.add(task.id);
-					log.info("Open PR detected — promoting to review-by-colleague", {
-						taskId: task.id.slice(0, 8),
-						branch: branchName,
-						pr: pr.number,
-					});
-					const updated = await data.updateTask(project, task.id, { status: "review-by-colleague" });
-					pushMessage("taskUpdated", { projectId: project.id, task: updated });
-				}
+				const result = await pollTaskPrStatus(project, task, pushMessage);
+				if (result) prPendingState.set(task.id, result.found && result.ciStatus === "pending");
 			} catch (err) {
 				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
 			} finally {
-				prTaskNextDue.set(task.id, nextDueAfterRun(now, interval, scheduleRandom));
+				prTaskNextDue.set(task.id, nextDueAfterRun(now, prPollInterval(isActiveFg, task.id), scheduleRandom));
 			}
 		}
 	}
 	pruneSchedule(prTaskNextDue, liveTaskIds);
+	pruneSchedule(prPendingState, liveTaskIds);
 	// Drop signal state for tasks no longer being polled so a re-entry to a
 	// review status re-raises the signal fresh.
 	for (const id of prSignalState.keys()) {
@@ -626,11 +805,24 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 	}
 }
 
+async function refreshTaskPrStatus(params: { taskId: string; projectId: string }): Promise<void> {
+	const pushMessage = getPushMessage();
+	if (!pushMessage) return;
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	if (project.kind === "virtual" || !task.worktreePath || TERMINAL_TASK_STATUSES.has(task.status)) return;
+	const result = await pollTaskPrStatus(project, task, pushMessage);
+	if (result) prPendingState.set(task.id, result.found && result.ciStatus === "pending");
+	prTaskNextDue.delete(task.id);
+}
+
 export function cleanupTaskGitState(taskId: string): void {
 	gitOpPaneIds.delete(taskId);
 	clearMergeNotification(taskId);
 	prPromotedTasks.delete(taskId);
 	prSignalState.delete(taskId);
+	prPendingState.delete(taskId);
+	prTaskNextDue.delete(taskId);
 	branchStatusInFlight.delete(taskId);
 }
 
@@ -681,7 +873,9 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 			if (ghResult.ok && ghResult.stdout) {
 				const prs = JSON.parse(ghResult.stdout);
 				if (Array.isArray(prs) && prs.length > 0 && typeof prs[0].number === "number") {
-					return { number: prs[0].number, url: typeof prs[0].url === "string" ? prs[0].url : "" };
+					const pr = { number: prs[0].number, url: typeof prs[0].url === "string" ? prs[0].url : "" };
+					if (pr.url) await persistTaskPrIdentity(project, task, pr.number, pr.url);
+					return pr;
 				}
 			}
 		} catch (err) {
@@ -1176,6 +1370,7 @@ async function getProjectPRs(params: { projectId: string }): Promise<PRInfo[]> {
 						infos.push({ number: pr.number, url: pr.url, headRefName: pr.headRefName });
 					}
 				}
+				await persistProjectPrIdentities(project, infos);
 				log.info("← getProjectPRs", { count: infos.length });
 				return infos;
 			}
@@ -1282,6 +1477,7 @@ async function sendScheduledMessageNow(params: { taskId: string; projectId: stri
 
 export const gitOperationHandlers = {
 	getBranchStatus,
+	refreshTaskPrStatus,
 	getTaskDiff,
 	prepareMergeCompletionPrompt,
 	dismissMergeCompletionPrompt,

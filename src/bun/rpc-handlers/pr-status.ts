@@ -1,4 +1,4 @@
-import type { PRCIStatus, PRReviewState } from "../../shared/types";
+import type { PRCheckInfo, PRCIStatus, PRReviewState } from "../../shared/types";
 
 // Dependency-free helpers for collapsing GitHub PR status/review data into the
 // app's CI + review signals. Kept side-effect-free (no electrobun/pty imports)
@@ -43,6 +43,49 @@ export function rollupCiStatus(rollup: unknown): PRCIStatus | null {
 	}
 	if (!sawKnown) return null;
 	return anyPending ? "pending" : "success";
+}
+
+/**
+ * Count unresolved review threads from one or more GraphQL `reviewThreads`
+ * node arrays. The GraphQL API is the source of truth because the REST-backed
+ * `gh pr view/list --json` fields do not expose thread resolution.
+ */
+export function countUnresolvedReviewThreads(threads: unknown): number {
+	if (!Array.isArray(threads)) return 0;
+	return threads.reduce((count, thread) => {
+		if (!thread || typeof thread !== "object") return count;
+		return (thread as Record<string, unknown>).isResolved === false ? count + 1 : count;
+	}, 0);
+}
+
+/**
+ * Normalize GitHub CheckRun and StatusContext nodes into the renderer's small
+ * per-check shape. The two node families use `name`/`context`,
+ * `status`/`state`, and `detailsUrl`/`targetUrl` respectively.
+ */
+export function normalizeChecks(rollup: unknown): PRCheckInfo[] {
+	if (!Array.isArray(rollup)) return [];
+	return rollup.flatMap((check): PRCheckInfo[] => {
+		if (!check || typeof check !== "object") return [];
+		const c = check as Record<string, unknown>;
+		const name = typeof c.name === "string"
+			? c.name
+			: typeof c.context === "string"
+				? c.context
+				: "";
+		const status = typeof c.status === "string" ? c.status.toUpperCase() : null;
+		const conclusion = typeof c.conclusion === "string"
+			? c.conclusion.toUpperCase()
+			: typeof c.state === "string"
+				? c.state.toUpperCase()
+				: null;
+		const detailsUrl = typeof c.detailsUrl === "string"
+			? c.detailsUrl
+			: typeof c.targetUrl === "string"
+				? c.targetUrl
+				: null;
+		return [{ name, status, conclusion, detailsUrl }];
+	});
 }
 
 /**

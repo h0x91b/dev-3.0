@@ -1,18 +1,21 @@
 import { createPortal } from "react-dom";
-import { cloneElement, useEffect, useRef, useState, type Dispatch, type ReactElement, type ReactNode } from "react";
-import type { BranchStatus, Project, Task } from "../../../shared/types";
+import { cloneElement, useEffect, useMemo, useRef, useState, type Dispatch, type ReactElement, type ReactNode } from "react";
+import type { BranchStatus, Project, Task, TaskPRBadgeInfo } from "../../../shared/types";
 import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
+import { api } from "../../rpc";
 import { useTaskBranchStatus } from "./useTaskBranchStatus";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import Tooltip from "../Tooltip";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 import { AutoMergeIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
+import TaskPrStatusPopover from "../TaskPrStatusPopover";
 
 export interface TaskBranchStatusMeta {
 	branchStatus: BranchStatus | null;
 	compareRef?: string;
 	compareLabel: string;
+	prStatus?: TaskPRBadgeInfo | null;
 }
 
 interface TaskGitActionsProps {
@@ -94,6 +97,8 @@ export default function TaskGitActions({
 	const reducedMotion = useReducedMotion();
 	const [copiedPath, setCopiedPath] = useState(false);
 	const [refMenuOpen, setRefMenuOpen] = useState(false);
+	const [pushedPRStatus, setPushedPRStatus] = useState<TaskPRBadgeInfo | null>(null);
+	const initialPrRefreshTaskRef = useRef<string | null>(null);
 	const [refMenuPos, setRefMenuPos] = useState({ top: 0, left: 0 });
 	const refTriggerRef = useRef<HTMLButtonElement>(null);
 	const refMenuRef = useRef<HTMLDivElement>(null);
@@ -123,12 +128,78 @@ export default function TaskGitActions({
 	});
 
 	useEffect(() => {
+		function onPrStatus(event: Event) {
+			const detail = (event as CustomEvent).detail as {
+				projectId?: string;
+				taskId?: string;
+				prNumber: number | null;
+				prUrl: string | null;
+				ciStatus: TaskPRBadgeInfo["ciStatus"];
+				reviewState: TaskPRBadgeInfo["reviewState"];
+				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
+				mergeState: TaskPRBadgeInfo["mergeState"];
+				checks: TaskPRBadgeInfo["checks"];
+				prTitle: TaskPRBadgeInfo["prTitle"];
+				isDraft: TaskPRBadgeInfo["isDraft"];
+			};
+			if (detail.projectId !== project.id || detail.taskId !== task.id || detail.prNumber == null) return;
+			setPushedPRStatus({
+				number: detail.prNumber,
+				url: detail.prUrl ?? "",
+				ciStatus: detail.ciStatus,
+				reviewState: detail.reviewState,
+				unresolvedCount: detail.unresolvedCount,
+				mergeState: detail.mergeState,
+				checks: detail.checks ?? [],
+				prTitle: detail.prTitle,
+				isDraft: detail.isDraft,
+			});
+		}
+		window.addEventListener("rpc:taskPrStatus", onPrStatus);
+		return () => window.removeEventListener("rpc:taskPrStatus", onPrStatus);
+	}, [project.id, task.id]);
+
+	const prInfo = useMemo<TaskPRBadgeInfo | null>(
+		() => pushedPRStatus
+			?? (branchStatus?.prNumber != null
+				? {
+					number: branchStatus.prNumber,
+					url: branchStatus.prUrl ?? "",
+					ciStatus: null,
+					reviewState: null,
+				}
+				: task.prNumber != null
+					? {
+						number: task.prNumber,
+						url: task.prUrl ?? "",
+					}
+					: null),
+		[pushedPRStatus, branchStatus, task.prNumber, task.prUrl],
+	);
+
+	useEffect(() => {
 		onBranchStatusChange?.({
 			branchStatus,
 			compareRef: compareRef || undefined,
 			compareLabel: displayRef,
+			prStatus: prInfo,
 		});
-	}, [branchStatus, compareRef, displayRef, onBranchStatusChange]);
+	}, [branchStatus, compareRef, displayRef, onBranchStatusChange, prInfo]);
+
+	// A task can be opened after the background poller's last push. Once the
+	// branch check (or sticky task fields) identifies a PR, hydrate the inspector
+	// with the same rich status without requiring the user to press Refresh.
+	useEffect(() => {
+		if (!isTaskActive || !task.worktreePath || initialPrRefreshTaskRef.current === task.id) return;
+		const prNumber = task.prNumber ?? branchStatus?.prNumber;
+		const prUrl = task.prUrl ?? branchStatus?.prUrl;
+		if (prNumber == null || !prUrl) return;
+
+		initialPrRefreshTaskRef.current = task.id;
+		void api.request.refreshTaskPrStatus({ taskId: task.id, projectId: project.id }).catch(() => {
+			if (initialPrRefreshTaskRef.current === task.id) initialPrRefreshTaskRef.current = null;
+		});
+	}, [branchStatus?.prNumber, branchStatus?.prUrl, isTaskActive, project.id, task.id, task.prNumber, task.prUrl, task.worktreePath]);
 
 	useEffect(() => {
 		if (!refMenuOpen) {
@@ -185,21 +256,28 @@ export default function TaskGitActions({
 		</span>
 	) : null;
 
-	const prBadge = branchStatus && branchStatus.prNumber !== null ? (
-		<Tooltip content={t("infoPanel.openPRTooltip", { number: String(branchStatus.prNumber) })} detail={t("ttip.task.openPR")}>
+	const prBadge = prInfo ? (
+		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id}>
 			<button
+				type="button"
 				onClick={(event) => {
 					event.stopPropagation();
-					if (branchStatus.prUrl) {
-						window.open(branchStatus.prUrl, "_blank");
+					if (prInfo.url) {
+						window.open(prInfo.url, "_blank");
 					}
 				}}
 				className="inline-flex items-center gap-1 text-[0.625rem] font-mono font-semibold text-success bg-success/10 hover:bg-success/20 px-1.5 py-0.5 rounded transition-colors flex-shrink-0"
 			>
 				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
-				PR #{branchStatus.prNumber}
+				{t("task.prBadge", { number: String(prInfo.number) })}
+				{(prInfo.unresolvedCount ?? 0) > 0 && (
+					<span className="inline-flex items-center gap-0.5 text-warning" aria-label={t.plural("task.prUnresolvedComments", prInfo.unresolvedCount ?? 0)}>
+						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
+						<span>{prInfo.unresolvedCount}</span>
+					</span>
+				)}
 			</button>
-		</Tooltip>
+		</TaskPrStatusPopover>
 	) : null;
 
 	const refDropdownButton = branchStatus ? (
@@ -276,7 +354,7 @@ export default function TaskGitActions({
 			? t(hasUncommittedChanges ? "infoPanel.pushDisabledUncommitted" : "infoPanel.pushDisabled")
 			: t("infoPanel.push");
 
-	const hasPR = branchStatus && branchStatus.prNumber !== null;
+	const hasPR = prInfo !== null;
 	const createPRDisabled = hasPR ? !branchStatus?.prUrl : (!branchStatus || branchStatus.ahead === 0 || creatingPR);
 
 	function getPRButtonLabel(): string {

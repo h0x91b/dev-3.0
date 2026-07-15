@@ -1135,6 +1135,9 @@ export interface Task {
 	baseBranch: string;
 	worktreePath: string | null;
 	branchName: string | null;
+	/** Sticky identity of the GitHub pull request detected for this task. */
+	prNumber?: number | null;
+	prUrl?: string | null;
 	groupId: string | null;
 	variantIndex: number | null;
 	agentId: string | null;
@@ -1892,17 +1895,36 @@ export type PRCIStatus = "success" | "failure" | "pending";
  */
 export type PRReviewState = "approved" | "changes_requested" | "commented";
 
+/** A single check reported by GitHub's `statusCheckRollup`. */
+export interface PRCheckInfo {
+	name: string;
+	status: string | null;
+	conclusion: string | null;
+	detailsUrl: string | null;
+}
+
+/** Mergeability and merge-state status reported by GitHub for an open PR. */
+export interface PRMergeState {
+	mergeable: string | null;
+	status: string | null;
+	state?: string | null;
+}
+
 /**
  * Per-task PR badge data shown on the Kanban card: PR number/url (from
- * `getProjectPRs`) plus optional CI/review state (from the background PR
- * poller's `taskPrStatus` push). `ciStatus`/`reviewState` are absent until the
- * poller reports them.
+ * `getProjectPRs` or sticky task fields) plus optional status detail from the
+ * background PR poller's `taskPrStatus` push.
  */
 export interface TaskPRBadgeInfo {
 	number: number;
 	url: string;
 	ciStatus?: PRCIStatus | null;
 	reviewState?: PRReviewState | null;
+	unresolvedCount?: number | null;
+	mergeState?: PRMergeState | null;
+	checks?: PRCheckInfo[];
+	prTitle?: string | null;
+	isDraft?: boolean | null;
 }
 
 // ---- Listening ports ----
@@ -2644,6 +2666,10 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; compareRef?: string };
 				response: BranchStatus;
 			};
+			refreshTaskPrStatus: {
+				params: { taskId: string; projectId: string };
+				response: void;
+			};
 			getTaskDiff: {
 				params: { taskId: string; projectId: string; mode: TaskDiffMode; compareRef?: string; compareLabel?: string; count?: number };
 				response: TaskDiffResponse;
@@ -3238,6 +3264,11 @@ export type AppRPCSchema = {
 				prUrl: string | null;
 				ciStatus: PRCIStatus | null;
 				reviewState: PRReviewState | null;
+				unresolvedCount: number | null;
+				mergeState: PRMergeState | null;
+				checks: PRCheckInfo[];
+				prTitle: string | null;
+				isDraft: boolean | null;
 			};
 			/** An automation changed (CRUD, a run fired, nextRunAt advanced) — refresh the Automations panel. */
 			automationsUpdated: { projectId: string };

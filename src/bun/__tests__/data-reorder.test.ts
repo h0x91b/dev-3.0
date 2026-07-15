@@ -813,7 +813,7 @@ describe("same-status move — backward compatibility", () => {
 	const KNOWN_TASK_KEYS = new Set([
 		"id", "seq", "projectId", "title", "description", "overview", "userOverview",
 		"customTitle", "titleEditedByUser", "status", "priority", "baseBranch", "worktreePath",
-		"branchName", "groupId", "variantIndex", "agentId", "configId", "createdAt",
+		"branchName", "prNumber", "prUrl", "groupId", "variantIndex", "agentId", "configId", "createdAt",
 		"updatedAt", "movedAt", "columnOrder", "tmuxSocket", "labelIds", "existingBranch",
 		"notes", "customColumnId", "history", "preparing", "preparingStage",
 		"preparingProgress", "preparingStartedAt", "watched", "sessionState",

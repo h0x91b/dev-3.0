@@ -1,0 +1,1 @@
+Dev3 now keeps detected GitHub PR identity on tasks, refreshes CI and review-thread status through adaptive polling, and shows checks, conflicts, and unresolved comments in an in-app PR status popover. The popover sorts failures first and keeps long check lists within a ten-row scrollable viewport, while opening a task hydrates its PR status automatically.

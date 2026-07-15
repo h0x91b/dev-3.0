@@ -25,6 +25,7 @@ vi.mock("../../rpc", () => ({
 			sendScheduledMessageNow: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
 			cancelScheduledLaunch: vi.fn(),
 			startScheduledLaunchNow: vi.fn(),
+			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
 		},
 	},
 }));
@@ -1514,18 +1515,81 @@ describe("TaskCard", () => {
 			expect(screen.getByLabelText(/PR approved/)).toBeInTheDocument();
 		});
 
-		it("clicking a badge moves the task to review-by-user", async () => {
+		it("clicking a badge opens the pull request", async () => {
 			const user = userEvent.setup();
-			mockedApi.request.moveTask.mockResolvedValue(makeTask({ status: "review-by-user" }));
+			const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 			renderCard(reviewTask(), {
 				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
 			});
 			await user.click(screen.getByLabelText(/CI failed/));
-			await waitFor(() => {
-				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
-					expect.objectContaining({ taskId: "t1", newStatus: "review-by-user" }),
-				);
+			expect(openSpy).toHaveBeenCalledWith("https://example/pr/12", "_blank");
+			openSpy.mockRestore();
+		});
+
+		it("shows unresolved comments and opens the status popover", async () => {
+			renderCard(reviewTask(), {
+				prInfo: {
+					number: 12,
+					url: "https://example/pr/12",
+					unresolvedCount: 3,
+					checks: [
+						{ name: "build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://ci/build" },
+					],
+				},
 			});
+			expect(screen.getByLabelText("3 unresolved comments")).toBeInTheDocument();
+			await userEvent.hover(screen.getByLabelText("3 unresolved comments"));
+			expect(await screen.findByTestId("pr-status-popover")).toHaveTextContent("Checks");
+			expect(screen.getByRole("link", { name: "Open details for build" })).toHaveAttribute("href", "https://ci/build");
+			await userEvent.click(screen.getByRole("button", { name: "Refresh PR status" }));
+			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it("sorts failed checks first and shows merge conflicts in the popover", async () => {
+			renderCard(reviewTask(), {
+				prInfo: {
+					number: 12,
+					url: "https://example/pr/12",
+					mergeState: { mergeable: "CONFLICTING", status: "DIRTY" },
+					checks: [
+						{ name: "lint", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null },
+						{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: null },
+					],
+				},
+			});
+			await userEvent.hover(screen.getByLabelText("Open PR #12"));
+			const popover = await screen.findByTestId("pr-status-popover");
+			expect(popover).toHaveTextContent("Merge conflict");
+			const rows = popover.querySelectorAll("li");
+			expect(rows[0]).toHaveTextContent("build");
+			expect(rows[1]).toHaveTextContent("lint");
+		});
+
+		it("keeps long check lists scrollable and orders failures before pending and passed checks", async () => {
+			const checks = [
+				{ name: "passed", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null },
+				{ name: "running", status: "IN_PROGRESS", conclusion: null, detailsUrl: null },
+				{ name: "failed", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: null },
+				...Array.from({ length: 9 }, (_, index) => ({
+					name: `extra-${index}`,
+					status: "COMPLETED",
+					conclusion: "SUCCESS",
+					detailsUrl: null,
+				})),
+			];
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", checks },
+			});
+			await userEvent.hover(screen.getByLabelText("Open PR #12"));
+			const popover = await screen.findByTestId("pr-status-popover");
+			const list = screen.getByTestId("pr-check-list");
+			expect(list).toHaveClass("max-h-[17.5rem]", "overflow-y-auto");
+			const rows = [...list.querySelectorAll("li")];
+			expect(rows).toHaveLength(12);
+			expect(rows[0]).toHaveTextContent("failed");
+			expect(rows[1]).toHaveTextContent("running");
+			expect(rows[2]).toHaveTextContent("passed");
+			expect(popover).toBeInTheDocument();
 		});
 	});
 });

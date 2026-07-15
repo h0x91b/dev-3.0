@@ -30,6 +30,7 @@ import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBad
 import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
 import Tooltip from "./Tooltip";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
+import TaskPrStatusPopover from "./TaskPrStatusPopover";
 
 interface TaskCardProps {
 	task: Task;
@@ -406,42 +407,42 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
 	const prBadge = prInfo ? (
-		<Tooltip content={t("task.openPR", { number: String(prInfo.number) })} detail={t("ttip.task.openPR")}>
+		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id}>
 			<button
+				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
 					window.open(prInfo.url, "_blank");
 				}}
-				className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-green-500/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-green-400 transition-colors hover:bg-green-500/20"
+				className="inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded bg-success/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-success transition-colors hover:bg-success/20"
 				aria-label={t("task.openPR", { number: String(prInfo.number) })}
 			>
 				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
-				<span className="leading-none">#{prInfo.number}</span>
+				<span className="leading-none">{t("task.prNumber", { number: String(prInfo.number) })}</span>
 			</button>
-		</Tooltip>
+		</TaskPrStatusPopover>
 	) : null;
 
-	// CI + PR-review status badges. Clicking a badge bounces the task to your
-	// review (`review-by-user`) so a signalled PR resurfaces for action.
-	// NOTE (open question for PR review): the exact per-signal target column is
-	// still TBD — for now every badge click maps to `review-by-user`.
+	// CI + PR-review status badges. Every PR status badge opens the pull request;
+	// hovering any one of them opens the shared checks/conflict popover.
 	const CI_BADGE: Record<NonNullable<TaskPRBadgeInfo["ciStatus"]>, { glyph: string; cls: string; key: TranslationKey }> = {
-		success: { glyph: "", cls: "text-green-400 bg-green-500/10 hover:bg-green-500/20", key: "task.ci.success" },
+		success: { glyph: "", cls: "text-success bg-success/10 hover:bg-success/20", key: "task.ci.success" },
 		failure: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.ci.failure" },
-		pending: { glyph: "", cls: "text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20", key: "task.ci.pending" },
+		pending: { glyph: "", cls: "text-warning bg-warning/10 hover:bg-warning/20", key: "task.ci.pending" },
 	};
 	const REVIEW_BADGE: Record<NonNullable<TaskPRBadgeInfo["reviewState"]>, { glyph: string; cls: string; key: TranslationKey }> = {
-		approved: { glyph: "", cls: "text-green-400 bg-green-500/10 hover:bg-green-500/20", key: "task.review.approved" },
+		approved: { glyph: "", cls: "text-success bg-success/10 hover:bg-success/20", key: "task.review.approved" },
 		changes_requested: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.review.changesRequested" },
-		commented: { glyph: "", cls: "text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20", key: "task.review.commented" },
+		commented: { glyph: "", cls: "text-warning bg-warning/10 hover:bg-warning/20", key: "task.review.commented" },
 	};
 	const ciMeta = prInfo?.ciStatus ? CI_BADGE[prInfo.ciStatus] : null;
 	const ciBadge = ciMeta ? (
-		<Tooltip content={t(ciMeta.key)} detail={t("ttip.task.ci")}>
+		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id}>
 			<button
+				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
-					handleMove("review-by-user");
+					window.open(prInfo!.url, "_blank");
 				}}
 				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${ciMeta.cls}`}
 				aria-label={t(ciMeta.key)}
@@ -449,22 +450,40 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ciMeta.glyph}</span>
 				<span className="leading-none">CI</span>
 			</button>
-		</Tooltip>
+		</TaskPrStatusPopover>
 	) : null;
 	const reviewMeta = prInfo?.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const reviewBadge = reviewMeta ? (
-		<Tooltip content={t(reviewMeta.key)} detail={t("ttip.task.review")}>
+		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id}>
 			<button
+				type="button"
 				onClick={(e) => {
 					e.stopPropagation();
-					handleMove("review-by-user");
+					window.open(prInfo!.url, "_blank");
 				}}
 				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${reviewMeta.cls}`}
 				aria-label={t(reviewMeta.key)}
 			>
 				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{reviewMeta.glyph}</span>
 			</button>
-		</Tooltip>
+		</TaskPrStatusPopover>
+	) : null;
+	const unresolvedCount = prInfo?.unresolvedCount ?? 0;
+	const commentBadge = prInfo && unresolvedCount > 0 ? (
+		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id}>
+			<button
+				type="button"
+				onClick={(e) => {
+					e.stopPropagation();
+					window.open(prInfo.url, "_blank");
+				}}
+				className="inline-flex h-5 flex-shrink-0 items-center gap-1 rounded bg-warning/10 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none text-warning transition-colors hover:bg-warning/20"
+				aria-label={t.plural("task.prUnresolvedComments", unresolvedCount)}
+			>
+				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
+				<span className="leading-none">{unresolvedCount}</span>
+			</button>
+		</TaskPrStatusPopover>
 	) : null;
 
 	function handleShowDescription(e: React.MouseEvent) {
@@ -869,6 +888,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{!isActive && prBadge}
 				{!isActive && ciBadge}
 				{!isActive && reviewBadge}
+				{!isActive && commentBadge}
 
 				{/* Sibling variant dots */}
 				<VariantDots
@@ -956,11 +976,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{/* PR / CI / review status badges — their own row so they don't crowd the
 			    action row's Watch / + Variant controls (which previously squeezed them
 			    onto one overflowing line). */}
-			{isActive && (prBadge || ciBadge || reviewBadge) && (
+			{isActive && (prBadge || ciBadge || reviewBadge || commentBadge) && (
 				<div data-testid="task-card-status-badges" className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
 					{prBadge}
 					{ciBadge}
 					{reviewBadge}
+					{commentBadge}
 				</div>
 			)}
 
