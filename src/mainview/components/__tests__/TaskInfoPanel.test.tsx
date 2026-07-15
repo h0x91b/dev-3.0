@@ -713,6 +713,56 @@ describe("TaskInfoPanel", () => {
 			}));
 		});
 
+		it("does not navigate away from a newer task when terminal preflight resolves late", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			const closingTask = makeTask({ id: "closing", title: "Closing task" });
+			const newerTask = makeTask({ id: "newer", title: "Newer task" });
+			let resolveConfirmation!: (confirmed: boolean) => void;
+			mockedConfirmTaskCompletion.mockReturnValue(
+				new Promise<boolean>((resolve) => {
+					resolveConfirmation = resolve;
+				}),
+			);
+			mockedApi.request.moveTask.mockResolvedValue({ ...closingTask, status: "cancelled" });
+
+			let view!: ReturnType<typeof renderPanel>;
+			await act(async () => {
+				view = renderPanel(closingTask, { dispatch, navigate });
+			});
+
+			await user.click(screen.getByText("Agent is Working"));
+			await user.click(screen.getByText("Cancelled"));
+
+			view.rerender(
+				<I18nProvider>
+					<TaskInfoPanel
+						task={newerTask}
+						project={project}
+						dispatch={dispatch}
+						navigate={navigate}
+					/>
+				</I18nProvider>,
+			);
+
+			await act(async () => {
+				resolveConfirmation(true);
+				await Promise.resolve();
+			});
+
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+					expect.objectContaining({
+						taskId: "closing",
+						projectId: "p1",
+						newStatus: "cancelled",
+					}),
+				);
+			});
+			expect(navigate).not.toHaveBeenCalled();
+		});
+
 		it("navigates to the Kanban board on completed in fullscreen open-mode", async () => {
 			localStorage.setItem("dev3-task-open-mode", "fullscreen");
 			try {

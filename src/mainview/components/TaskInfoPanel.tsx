@@ -162,6 +162,17 @@ function TaskInfoPanel({
 	const statusMenuRef = useRef<HTMLDivElement>(null);
 	const diffFilesTriggerRef = useRef<HTMLButtonElement>(null);
 	const diffFilesHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Terminal moves await a git preflight. If the user switches tasks while it
+	// runs, the old task's callback must not overwrite that newer selection.
+	const latestTaskIdRef = useRef(task.id);
+	const mountedRef = useRef(true);
+	latestTaskIdRef.current = task.id;
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			mountedRef.current = false;
+		};
+	}, []);
 	const terminalFullscreenActive = onToggleTerminalFullscreen
 		? Boolean(isTerminalFullscreen)
 		: Boolean(isFullPage);
@@ -301,6 +312,10 @@ function TaskInfoPanel({
 		// Terminal moves leave the task screen immediately (worktree teardown runs
 		// in the background); other moves keep the panel and show a spinner.
 		const leaveScreen = terminal || !ACTIVE_STATUSES.includes(newStatus);
+		const navigateHomeIfTaskStillSelected = () => {
+			if (!mountedRef.current || latestTaskIdRef.current !== task.id) return;
+			navigate(taskClosedHomeRoute(project.id, getTaskOpenMode()));
+		};
 		await moveTaskToStatus({
 			task,
 			project,
@@ -318,10 +333,10 @@ function TaskInfoPanel({
 			// Land on the user's home surface: fullscreen open-mode → the board,
 			// split open-mode → the split task view with nothing selected.
 			afterOptimistic: terminal && leaveScreen
-				? () => navigate(taskClosedHomeRoute(project.id, getTaskOpenMode()))
+				? navigateHomeIfTaskStillSelected
 				: undefined,
 			onSuccess: !terminal && leaveScreen
-				? () => navigate(taskClosedHomeRoute(project.id, getTaskOpenMode()))
+				? navigateHomeIfTaskStillSelected
 				: undefined,
 		});
 	}
