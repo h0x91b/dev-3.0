@@ -8,7 +8,7 @@
  *   - Static file serving (built Vite assets from dist/)
  *   - RPC WebSocket at /rpc (same JSON wire protocol as Electrobun IPC)
  *   - PTY WebSocket proxy at /pty?session=xxx
- *   - Passkey authentication → httpOnly cookie
+ *   - QR token → HttpOnly session cookie auth (see the Auth section below)
  *   - QR code generation for easy mobile access
  */
 
@@ -19,7 +19,7 @@ import QRCode from "qrcode";
 import type { RemoteNetInterface } from "../shared/types";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
-import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken } from "./jwt";
+import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken, SESSION_TOKEN_TTL_S } from "./jwt";
 import { getTunnelUrl, getTunnelState, tunnelManager } from "./cloudflare-tunnel";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
@@ -27,16 +27,152 @@ import { getCurrentUiTheme } from "./theme-state";
 const log = createLogger("remote-access");
 
 // ── Auth ────────────────────────────────────────────────────────────
+//
+// The session credential is an HttpOnly cookie (decision 133, supersedes 086):
+// POST /auth/exchange trades a one-time QR token (or the dev static code) for a
+// Set-Cookie; every gated surface — the RPC and PTY WebSocket upgrades,
+// /auth/refresh, /health — authenticates by that cookie. The token never
+// appears in URLs, so it stops leaking into proxy/tunnel logs, and HttpOnly
+// keeps it unreadable to injected script. SameSite=Strict is safe because
+// static assets are served unauthenticated (the HTML shell needs no cookie;
+// every JS-initiated same-origin fetch/WS upgrade carries it). No Secure flag:
+// LAN mode is plain http — same threat model as the URL-is-the-password QR.
 
-function extractToken(req: Request): string | null {
-	const url = new URL(req.url);
-	return url.searchParams.get("token") ?? null;
+export const SESSION_COOKIE_NAME = "dev3_session";
+
+/** Parse a Cookie request header into a name → value record. */
+export function parseCookies(header: string | null): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (!header) return out;
+	for (const part of header.split(";")) {
+		const eq = part.indexOf("=");
+		if (eq === -1) continue;
+		const name = part.slice(0, eq).trim();
+		if (!name) continue;
+		out[name] = part.slice(eq + 1).trim();
+	}
+	return out;
+}
+
+/** Build the Set-Cookie value carrying a fresh session token (24h rolling). */
+export function buildSessionCookie(token: string): string {
+	return `${SESSION_COOKIE_NAME}=${token}; Max-Age=${SESSION_TOKEN_TTL_S}; Path=/; HttpOnly; SameSite=Strict`;
+}
+
+/** Build the Set-Cookie value that deletes the session cookie. */
+export function buildClearSessionCookie(): string {
+	return `${SESSION_COOKIE_NAME}=; Max-Age=0; Path=/; HttpOnly; SameSite=Strict`;
+}
+
+/**
+ * Same-origin check for WebSocket upgrades (cross-site WebSocket hijacking)
+ * and state-changing auth POSTs (CSRF). Browsers always attach an Origin
+ * header to both; a missing Origin means a non-browser client (curl, tests) —
+ * allowed, since cookie theft via a hostile page requires a browser, and a
+ * non-browser attacker gains nothing over calling the API directly.
+ */
+export function checkOrigin(req: Request): boolean {
+	const origin = req.headers.get("origin");
+	if (!origin) return true;
+	const host = req.headers.get("host");
+	if (!host) return false;
+	try {
+		return new URL(origin).host === host;
+	} catch {
+		return false;
+	}
+}
+
+function extractSessionToken(req: Request): string | null {
+	return parseCookies(req.headers.get("cookie"))[SESSION_COOKIE_NAME] ?? null;
 }
 
 async function isSessionAuthenticated(req: Request): Promise<boolean> {
-	const token = extractToken(req);
+	const token = extractSessionToken(req);
 	if (!token) return false;
 	return verifySessionToken(token);
+}
+
+interface AuthHandlerContext {
+	clientIp?: string;
+	ua?: string;
+	onQrConsumed?: () => void;
+}
+
+/**
+ * POST /auth/exchange — trade a one-time QR token (or the dev static code)
+ * for a session cookie. Exported for handler-level tests.
+ */
+export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext = {}): Promise<Response> {
+	const { clientIp, ua } = ctx;
+	if (!checkOrigin(req)) {
+		log.warn("Auth exchange: origin mismatch", { ip: clientIp, ua, origin: req.headers.get("origin") });
+		return new Response("Forbidden", { status: 403 });
+	}
+	try {
+		const body = await req.json() as { token?: string };
+		if (!body.token) {
+			log.warn("Auth exchange: missing token", { ip: clientIp, ua });
+			return new Response("Missing token", { status: 400 });
+		}
+		// Static code path — fixed code, no replay protection, dev only.
+		// When active, the JWT exchange path is disabled entirely: only
+		// the static code is accepted so that a stale QR JWT cannot bypass it.
+		const staticCode = getStaticCode();
+		if (staticCode) {
+			if (body.token !== staticCode) {
+				log.warn("Auth exchange: invalid static code", { ip: clientIp, ua });
+				return new Response("Invalid or expired token", { status: 401 });
+			}
+			const sessionToken = await createSessionToken();
+			log.info("Auth exchange: static code accepted", { ip: clientIp, ua });
+			ctx.onQrConsumed?.();
+			return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken) } });
+		}
+		const sessionToken = await exchangeQrForSession(body.token);
+		if (!sessionToken) {
+			// Do NOT clear an existing cookie here: a consumed QR token replayed
+			// from browser history must not kill a still-valid session — the
+			// client falls back to /auth/refresh with that cookie.
+			log.warn("Auth exchange: invalid/expired QR token", { ip: clientIp, ua });
+			return new Response("Invalid or expired token", { status: 401 });
+		}
+		log.info("Auth exchange: success", { ip: clientIp, ua });
+		ctx.onQrConsumed?.();
+		return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken) } });
+	} catch (err) {
+		log.error("Auth exchange: error", { ip: clientIp, error: String(err) });
+		return new Response("Bad request", { status: 400 });
+	}
+}
+
+/**
+ * POST /auth/refresh — roll the session cookie forward. Authenticates via the
+ * cookie itself (no body). A 401 means the session is genuinely dead (expired,
+ * tampered, or signed by a previous secret) — the client stops reconnecting
+ * and shows the scan-QR screen. Exported for handler-level tests.
+ */
+export async function handleAuthRefresh(req: Request, ctx: AuthHandlerContext = {}): Promise<Response> {
+	const { clientIp, ua } = ctx;
+	if (!checkOrigin(req)) {
+		log.warn("Auth refresh: origin mismatch", { ip: clientIp, ua, origin: req.headers.get("origin") });
+		return new Response("Forbidden", { status: 403 });
+	}
+	const current = extractSessionToken(req);
+	if (!current) {
+		log.warn("Auth refresh: no session cookie", { ip: clientIp, ua });
+		return new Response("Unauthorized", { status: 401 });
+	}
+	const newToken = await refreshSession(current);
+	if (!newToken) {
+		log.warn("Auth refresh: invalid/expired session cookie", { ip: clientIp, ua });
+		return new Response("Invalid or expired session", {
+			status: 401,
+			headers: { "Set-Cookie": buildClearSessionCookie() },
+		});
+	}
+	log.info("Auth refresh: success", { ip: clientIp });
+	return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(newToken) } });
 }
 
 // ── Static file serving ─────────────────────────────────────────────
@@ -450,67 +586,28 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					path: url.pathname,
 					ip: clientIp,
 					ua,
-					hasToken: !!url.searchParams.get("token"),
+					hasCookie: !!extractSessionToken(req),
 				});
 			}
 
 			// ── Auth endpoints (no session required) ──
 			if (url.pathname === "/auth/exchange" && req.method === "POST") {
-				try {
-					const body = await req.json() as { token?: string };
-					if (!body.token) {
-						log.warn("Auth exchange: missing token", { ip: clientIp, ua });
-						return new Response("Missing token", { status: 400 });
-					}
-					// Static code path — fixed code, no replay protection, dev only.
-					// When active, the JWT exchange path is disabled entirely: only
-					// the static code is accepted so that a stale QR JWT cannot bypass it.
-					const staticCode = getStaticCode();
-					if (staticCode) {
-						if (body.token !== staticCode) {
-							log.warn("Auth exchange: invalid static code", { ip: clientIp, ua });
-							return new Response("Invalid or expired token", { status: 401 });
-						}
-						const sessionToken = await createSessionToken();
-						log.info("Auth exchange: static code accepted", { ip: clientIp, ua });
-						qrConsumedCallback?.();
-						return Response.json({ token: sessionToken });
-					}
-					const sessionToken = await exchangeQrForSession(body.token);
-					if (!sessionToken) {
-						log.warn("Auth exchange: invalid/expired QR token", { ip: clientIp, ua });
-						return new Response("Invalid or expired token", { status: 401 });
-					}
-					log.info("Auth exchange: success", { ip: clientIp, ua });
-					qrConsumedCallback?.();
-					return Response.json({ token: sessionToken });
-				} catch (err) {
-					log.error("Auth exchange: error", { ip: clientIp, error: String(err) });
-					return new Response("Bad request", { status: 400 });
-				}
+				return handleAuthExchange(req, { clientIp, ua, onQrConsumed: qrConsumedCallback ?? undefined });
 			}
 
 			if (url.pathname === "/auth/refresh" && req.method === "POST") {
-				try {
-					const body = await req.json() as { token?: string };
-					if (!body.token) return new Response("Missing token", { status: 400 });
-					const newToken = await refreshSession(body.token);
-					if (!newToken) {
-						log.warn("Auth refresh: invalid/expired session", { ip: clientIp });
-						return new Response("Invalid or expired token", { status: 401 });
-					}
-					log.info("Auth refresh: success", { ip: clientIp });
-					return Response.json({ token: newToken });
-				} catch {
-					return new Response("Bad request", { status: 400 });
-				}
+				return handleAuthRefresh(req, { clientIp, ua });
 			}
 
-			// ── WebSocket upgrades (session token required) ──
+			// ── WebSocket upgrades (session cookie required) ──
 			if (url.pathname === "/rpc") {
+				if (!checkOrigin(req)) {
+					log.warn("RPC WS upgrade: origin mismatch", { ip: clientIp, ua, origin: req.headers.get("origin") });
+					return new Response("Forbidden", { status: 403 });
+				}
 				const authed = await isSessionAuthenticated(req);
 				if (!authed) {
-					log.warn("RPC WS upgrade: unauthorized", { ip: clientIp, ua, hasToken: !!extractToken(req) });
+					log.warn("RPC WS upgrade: unauthorized", { ip: clientIp, ua, hasCookie: !!extractSessionToken(req) });
 					return new Response("Unauthorized", { status: 401 });
 				}
 				log.info("RPC WS upgrade: authorized", { ip: clientIp, ua });
@@ -519,9 +616,13 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 			}
 
 			if (url.pathname === "/pty") {
+				if (!checkOrigin(req)) {
+					log.warn("PTY WS upgrade: origin mismatch", { ip: clientIp, ua, origin: req.headers.get("origin") });
+					return new Response("Forbidden", { status: 403 });
+				}
 				const authed = await isSessionAuthenticated(req);
 				if (!authed) {
-					log.warn("PTY WS upgrade: unauthorized", { ip: clientIp, ua });
+					log.warn("PTY WS upgrade: unauthorized", { ip: clientIp, ua, hasCookie: !!extractSessionToken(req) });
 					return new Response("Unauthorized", { status: 401 });
 				}
 				const sessionId = url.searchParams.get("session");
@@ -567,7 +668,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 				return proxyHttpToLocalhost(req, parsed.port, parsed.rest, url.search);
 			}
 
-			// ── API endpoints (session token required) ──
+			// ── API endpoints (session cookie required) ──
 			if (url.pathname === "/health") {
 				if (!(await isSessionAuthenticated(req))) return new Response("Unauthorized", { status: 401 });
 				return Response.json({ ok: true, ptyPort: ptyPortGetter?.() ?? 0 });

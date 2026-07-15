@@ -232,6 +232,7 @@ const common = {
 	"showArtifact.toast_other": "Agent shared {count} HTML artifacts",
 	"showArtifact.attention_one": "Shared an HTML artifact",
 	"showArtifact.attention_other": "Shared {count} HTML artifacts",
+	"mobile.backExitToast": "Press Back again to exit",
 } as const;
 
 export default common;

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { useFocusTrap } from "../utils/useFocusTrap";
+import { useBackLayer } from "../hooks/useBackLayer";
 
 interface BottomSheetProps {
 	open: boolean;
@@ -40,6 +41,9 @@ function Sheet({ onClose, title, ariaLabel, children, testId }: BottomSheetProps
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const [dragY, setDragY] = useState(0);
 	const startY = useRef<number | null>(null);
+
+	// Android hardware Back closes the sheet (mobile remote mode).
+	useBackLayer(onClose);
 
 	// Esc closes (capture phase so it wins over background handlers).
 	useEffect(() => {

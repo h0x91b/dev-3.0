@@ -6,6 +6,8 @@ import type { Project, Task } from "../../../shared/types";
 import type { Route } from "../../state";
 
 vi.mock("../../rpc", () => ({
+	// Browser mode: the fullscreen toggle row is visible in the action sheet.
+	isElectrobun: false,
 	api: {
 		request: {
 			getTasks: vi.fn(),
@@ -891,6 +893,30 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		await user.click(screen.getByLabelText("More"));
 		await user.click(screen.getByText("Project Terminal"));
 		expect(navigate).toHaveBeenCalledWith({ screen: "project-terminal", projectId: "p1" });
+	});
+
+	it("offers a Fullscreen toggle that requests element fullscreen (browser mode)", async () => {
+		const user = userEvent.setup();
+		const requestFullscreen = vi.fn(async () => {});
+		Object.defineProperty(document.documentElement, "requestFullscreen", {
+			configurable: true,
+			value: requestFullscreen,
+		});
+		renderHeader({ screen: "dashboard" });
+		await user.click(screen.getByLabelText("More"));
+		await user.click(screen.getByText("Fullscreen"));
+		expect(requestFullscreen).toHaveBeenCalledOnce();
+	});
+
+	it("hides the Fullscreen row where the API is unavailable (iPhone Safari)", async () => {
+		const user = userEvent.setup();
+		Object.defineProperty(document.documentElement, "requestFullscreen", {
+			configurable: true,
+			value: undefined,
+		});
+		renderHeader({ screen: "dashboard" });
+		await user.click(screen.getByLabelText("More"));
+		expect(screen.queryByText("Fullscreen")).not.toBeInTheDocument();
 	});
 
 	it("keeps the stateful widgets (git pull, tmux) out of the inline header", () => {

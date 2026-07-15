@@ -1,11 +1,12 @@
-import { Fragment, useState, useEffect, useRef, useCallback } from "react";
+import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import type { Project, Task } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { api } from "../rpc";
+import { api, isElectrobun } from "../rpc";
+import { subscribeFullscreen, isFullscreenActive, isFullscreenSupported, toggleFullscreen } from "../fullscreen";
 import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
@@ -67,6 +68,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const t = useT();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	// Live fullscreen state for the action-sheet toggle label (browser only).
+	const fullscreenActive = useSyncExternalStore(subscribeFullscreen, isFullscreenActive);
 	const [showActionSheet, setShowActionSheet] = useState(false);
 	const [showOverflowMenu, setShowOverflowMenu] = useState(false);
 	const overflowMenuRef = useRef<HTMLDivElement>(null);
@@ -298,6 +301,17 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				// dead on touch/remote — the kebab is its touch-reachability path.
 				{ key: "helpMode", label: t("keymap.shortcut.helpMode"), run: () => window.dispatchEvent(new CustomEvent("menu:enter-help-mode")) },
 				{ key: "quickShell", label: t("quickShell.open"), run: () => window.dispatchEvent(new CustomEvent("menu:open-quick-shell")) },
+				// Browser-only: element fullscreen is meaningless inside the
+				// Electrobun shell (it has native window fullscreen). On mobile this
+				// complements the first-tap auto-engage (see fullscreen.ts). Hidden
+				// where the API doesn't exist (iPhone Safari) — a dead row otherwise.
+				...(!isElectrobun && isFullscreenSupported()
+					? [{
+							key: "fullscreen",
+							label: fullscreenActive ? t("header.exitFullscreen") : t("header.fullscreen"),
+							run: () => { void toggleFullscreen(); },
+						}]
+					: []),
 				...(currentProjectId && !isVirtualProject
 					? [{
 							key: "projectTerminal",

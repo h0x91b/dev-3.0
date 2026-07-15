@@ -231,6 +231,7 @@ const common = {
 	"showArtifact.toast_other": "El agente compartió {count} artefactos HTML",
 	"showArtifact.attention_one": "Compartió un artefacto HTML",
 	"showArtifact.attention_other": "Compartió {count} artefactos HTML",
+	"mobile.backExitToast": "Pulsa Atrás de nuevo para salir",
 };
 
 export default common;

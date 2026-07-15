@@ -1,5 +1,11 @@
 # 086 — Persist the remote-access session token + 8h TTL
 
+> **Superseded by [133](133-remote-cookie-session-auth.md).** Session auth
+> moved to an HttpOnly cookie with a disk-persisted signing secret and a 24h
+> rolling TTL. Note: this record's stated reason for rejecting cookies
+> ("cookies don't ride WebSocket query-param auth") was incorrect — browsers
+> do send same-origin cookies on WebSocket upgrade requests.
+
 ## Context
 
 `dev3 remote` authenticates a browser by exchanging a one-time QR token for a

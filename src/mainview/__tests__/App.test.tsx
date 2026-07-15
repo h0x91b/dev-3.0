@@ -1402,6 +1402,28 @@ describe("App keyboard shortcuts", () => {
 			});
 		});
 
+		it("shows auth failed screen when the session expired BEFORE React mounted", async () => {
+			// With a dead cookie the boot probe's 401 lands before App mounts, so
+			// the rpc:authFailed event fires into the void — App must seed the
+			// screen from the transport state instead of spinning forever.
+			// No renderApp() helper here: it waits for a main screen, which never
+			// appears in this state — render directly.
+			const { getRpcConnectionState } = await import("../rpc");
+			vi.mocked(getRpcConnectionState).mockReturnValue("auth-failed");
+			try {
+				render(
+					<I18nProvider>
+						<App />
+					</I18nProvider>,
+				);
+				await waitFor(() => {
+					expect(screen.getByText("Session Expired")).toBeInTheDocument();
+				});
+			} finally {
+				vi.mocked(getRpcConnectionState).mockReturnValue("connected");
+			}
+		});
+
 		it("shows the interface picker (tunnel off) and switches host on change", async () => {
 			await renderApp();
 			const interfaces = [

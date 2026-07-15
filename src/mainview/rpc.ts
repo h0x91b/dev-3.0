@@ -3,6 +3,7 @@ import type { AppRPCSchema } from "../shared/types";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { createWatchdogState, decidePingOutcome, shouldAllowReload } from "./rpc-watchdog";
 import { recordDiagnostic, RPC_STATUS_EVENT, type RpcConnectionState } from "./diagnostics";
+import { createRemoteSession, type RemoteSessionState, type SocketLike } from "./remote-session";
 
 // ── Transport connection state ──────────────────────────────────────
 // Surfaced to the bootstrap screen so a stuck "Loading…" can tell the user
@@ -274,30 +275,19 @@ function initElectrobunApi(): ApiShape {
 
 // ── Browser WebSocket transport ─────────────────────────────────────
 // Used when running in Chrome/Safari (remote access server or Vite dev).
+// Session auth rides an HttpOnly cookie set by POST /auth/exchange (decision
+// 133): this code never sees the credential — it just sends same-origin
+// requests. All session/reconnect DECISIONS live in the remote-session state
+// machine (unit-tested); this function is the thin browser wiring around it.
 function initBrowserApi(): ApiShape {
 	const FALLBACK_RPC_PORT = (globalThis as any).__DEV3_BROWSER_RPC_PORT || 19191;
 	const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 	const isViteDevServer = window.location.port === "5173";
 
-	// ── JWT session token ──
-	// Persisted to localStorage so a "trusted device" (your own phone/laptop)
-	// reconnects without rescanning the QR: on load we refresh the stored token
-	// instead of demanding a fresh QR. The token has a server-side TTL (8h) and
-	// is rolled forward on load + every 15 min while open. Cleared the moment the
-	// server rejects it (expired/invalid) so a stale token can't loop forever.
-	const SESSION_STORAGE_KEY = "dev3-remote-session";
-	let sessionToken: string | null = null;
-	let authReady: Promise<void>;
+	// Pre-cookie versions persisted the session token in localStorage — purge
+	// the stale credential from upgraded devices.
+	try { localStorage.removeItem("dev3-remote-session"); } catch { /* storage blocked */ }
 
-	function loadStoredSession(): string | null {
-		try { return localStorage.getItem(SESSION_STORAGE_KEY); } catch { return null; }
-	}
-	function persistSession(token: string | null): void {
-		try {
-			if (token) localStorage.setItem(SESSION_STORAGE_KEY, token);
-			else localStorage.removeItem(SESSION_STORAGE_KEY);
-		} catch { /* storage blocked (private mode) — in-memory token still works for this tab */ }
-	}
 	function dispatchAuthFailed(detail: Record<string, unknown>): void {
 		setRpcState("auth-failed");
 		recordDiagnostic({
@@ -318,109 +308,15 @@ function initBrowserApi(): ApiShape {
 		window.history.replaceState({}, "", window.location.pathname);
 	}
 
-	// Obtain a session token: exchange a fresh QR token if the URL carried one,
-	// otherwise try to revive a persisted session from a previous visit.
-	async function authenticate(): Promise<void> {
-		if (isViteDevServer) {
-			console.log("[browser-rpc] auth skip (vite dev)");
-			return;
-		}
-		if (qrToken) {
-			console.log("[browser-rpc] Exchanging QR token...");
-			try {
-				const resp = await fetch("/auth/exchange", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ token: qrToken }),
-				});
-				if (resp.ok) {
-					sessionToken = (await resp.json()).token;
-					persistSession(sessionToken);
-					console.log("[browser-rpc] Auth OK, got session token");
-				} else {
-					persistSession(null);
-					console.error("[browser-rpc] Token exchange failed:", resp.status);
-					dispatchAuthFailed({ status: resp.status });
-				}
-			} catch (err) {
-				console.error("[browser-rpc] Token exchange error:", err);
-				dispatchAuthFailed({ error: String(err) });
-			}
-			return;
-		}
-
-		// No QR token in the URL — try a stored session ("trusted device").
-		const stored = loadStoredSession();
-		if (!stored) {
-			console.log("[browser-rpc] auth skip (no QR token, no stored session)");
-			return;
-		}
-		console.log("[browser-rpc] Reviving stored session (no QR in URL)...");
-		try {
-			const resp = await fetch("/auth/refresh", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ token: stored }),
-			});
-			if (resp.ok) {
-				sessionToken = (await resp.json()).token;
-				persistSession(sessionToken);
-				console.log("[browser-rpc] Reconnected via stored session — no QR needed");
-			} else {
-				// Server says the stored token is expired/invalid — drop it and
-				// fall back to the "scan a fresh QR" screen.
-				persistSession(null);
-				console.warn("[browser-rpc] Stored session rejected:", resp.status);
-				dispatchAuthFailed({ status: resp.status });
-			}
-		} catch (err) {
-			// Network hiccup — keep the stored token for a later reload retry.
-			console.error("[browser-rpc] Stored session refresh error:", err);
-			dispatchAuthFailed({ error: String(err) });
-		}
-	}
-
-	// Refresh session token periodically (every 15 minutes), rolling the TTL
-	// forward and re-persisting so an open tab stays authenticated indefinitely.
-	function startRefreshTimer(): void {
-		setInterval(async () => {
-			if (!sessionToken) return;
-			try {
-				const resp = await fetch("/auth/refresh", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ token: sessionToken }),
-				});
-				if (resp.ok) {
-					sessionToken = (await resp.json()).token;
-					persistSession(sessionToken);
-					console.log("[browser-rpc] Session token refreshed");
-				}
-			} catch {
-				// Will retry on next interval
-			}
-		}, 15 * 60 * 1000);
-	}
-
-	// Build authenticated WebSocket URL
 	function buildWsUrl(path: string, extraParams?: string): string {
 		if (isViteDevServer) {
 			return `ws://localhost:${FALLBACK_RPC_PORT}${path}`;
 		}
-		const tokenParam = sessionToken ? `token=${sessionToken}` : "";
-		const params = [tokenParam, extraParams].filter(Boolean).join("&");
-		return `${wsProtocol}//${window.location.host}${path}${params ? `?${params}` : ""}`;
+		return `${wsProtocol}//${window.location.host}${path}${extraParams ? `?${extraParams}` : ""}`;
 	}
 
-	// Start auth, then connect
-	setRpcState("authenticating");
-	authReady = authenticate().then(() => {
-		if (!isViteDevServer) startRefreshTimer();
-	});
-
-	let ws: WebSocket | null = null;
+	let activeSocket: SocketLike | null = null;
 	let requestId = 0;
-	let authComplete = false;
 	let wasHidden = document.visibilityState === "hidden";
 	const pending = new Map<number, {
 		resolve: (v: any) => void;
@@ -428,7 +324,6 @@ function initBrowserApi(): ApiShape {
 		packet: string;
 		sent: boolean;
 	}>();
-	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function rejectSentRequests(error: Error) {
 		for (const [id, entry] of pending.entries()) {
@@ -438,7 +333,7 @@ function initBrowserApi(): ApiShape {
 		}
 	}
 
-	function flushQueuedRequests(socket: WebSocket): void {
+	function flushQueuedRequests(socket: SocketLike): void {
 		for (const entry of pending.values()) {
 			if (entry.sent) continue;
 			socket.send(entry.packet);
@@ -446,117 +341,84 @@ function initBrowserApi(): ApiShape {
 		}
 	}
 
-	// Tracks whether the socket has ever opened, so we can distinguish the first
-	// "connecting" from a post-drop "reconnecting" (better wording for the user).
-	let hasConnected = false;
+	function handlePacket(data: unknown): void {
+		try {
+			const packet = JSON.parse(String(data));
 
-	function scheduleReconnect(delayMs = 2_000): void {
-		if (reconnectTimer !== null) return;
-		reconnectTimer = setTimeout(() => {
-			reconnectTimer = null;
-			connect();
-		}, delayMs);
-	}
-
-	function connect() {
-		if (ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
-		if (reconnectTimer !== null) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = null;
-		}
-		const wsUrl = buildWsUrl("/rpc");
-		console.log("[browser-rpc] Connecting WS to", wsUrl.replace(/token=[^&]+/, "token=***"));
-		setRpcState(hasConnected ? "reconnecting" : "connecting");
-		const socket = new WebSocket(wsUrl);
-		ws = socket;
-
-		socket.addEventListener("open", () => {
-			if (socket !== ws) return;
-			console.log("[browser-rpc] WS OPEN");
-			hasConnected = true;
-			setRpcState("connected");
-			flushQueuedRequests(socket);
-		});
-
-		socket.addEventListener("message", (event) => {
-			if (socket !== ws) return;
-			try {
-				const packet = JSON.parse(event.data);
-
-				if (packet.type === "response") {
-					const entry = pending.get(packet.id);
-					if (entry) {
-						pending.delete(packet.id);
-						if (packet.success) {
-							entry.resolve(packet.payload);
-						} else {
-							entry.reject(new Error(packet.error || "RPC error"));
-						}
+			if (packet.type === "response") {
+				const entry = pending.get(packet.id);
+				if (entry) {
+					pending.delete(packet.id);
+					if (packet.success) {
+						entry.resolve(packet.payload);
+					} else {
+						entry.reject(new Error(packet.error || "RPC error"));
 					}
-				} else if (packet.type === "message") {
-					const handler = pushMessageHandlers[packet.id];
-					if (handler) handler(packet.payload);
 				}
-			} catch (err) {
-				console.error("[browser-rpc] Parse error:", err);
+			} else if (packet.type === "message") {
+				const handler = pushMessageHandlers[packet.id];
+				if (handler) handler(packet.payload);
 			}
-		});
-
-		socket.addEventListener("close", (event) => {
-			if (socket !== ws) return;
-			ws = null;
-			console.warn("[browser-rpc] WS CLOSED", { code: event.code, reason: event.reason, hasToken: !!sessionToken });
-			rejectSentRequests(
-				new Error(`RPC connection closed (code ${event.code}${event.reason ? `: ${event.reason}` : ""})`),
-			);
-			// Only reconnect if we have a valid session token (or are in Vite dev mode).
-			// Without a token the server returns 401 and we'd loop forever.
-			if (isViteDevServer || sessionToken) {
-				setRpcState("reconnecting");
-				recordDiagnostic({
-					kind: "rpc",
-					level: hasConnected ? "warn" : "error",
-					message: `Connection to the server dropped (code ${event.code})${event.reason ? `: ${event.reason}` : ""}`,
-					source: "websocket",
-				});
-				scheduleReconnect();
-			} else {
-				console.warn("[browser-rpc] No session token — skipping reconnect");
-				setRpcState("closed");
-				recordDiagnostic({
-					kind: "rpc",
-					level: "error",
-					message: "Disconnected and no valid session — reload and scan the QR code again",
-					source: "websocket",
-				});
-			}
-		});
-
-		socket.addEventListener("error", (event) => {
-			if (socket !== ws) return;
-			console.error("[browser-rpc] WS ERROR", event);
-			recordDiagnostic({
-				kind: "rpc",
-				level: "error",
-				message: "WebSocket connection error",
-				detail: String((event as ErrorEvent)?.message ?? ""),
-				source: "websocket",
-			});
-		});
+		} catch (err) {
+			console.error("[browser-rpc] Parse error:", err);
+		}
 	}
 
-	// Soft reconnect for the bootstrap "Retry": drop the current socket (its close
-	// handler schedules a reconnect) and, if it was already closed, open a fresh one.
+	function mapSessionState(state: RemoteSessionState): RpcConnectionState {
+		switch (state) {
+			case "authenticating": return "authenticating";
+			case "connected": return "connected";
+			case "reconnecting": return "reconnecting";
+			case "expired": return "auth-failed";
+			default: return "connecting";
+		}
+	}
+
+	const session = createRemoteSession({
+		qrToken: qrToken || null,
+		authMode: isViteDevServer ? "none" : "cookie",
+		// The HttpOnly session cookie rides same-origin requests; be explicit so
+		// a future fetch-default change can't silently drop auth.
+		fetchFn: (url, init) => fetch(url, { ...init, credentials: "same-origin" }),
+		createSocket: () => new WebSocket(buildWsUrl("/rpc")) as unknown as SocketLike,
+		callbacks: {
+			onStateChange: (state) => setRpcState(mapSessionState(state)),
+			onSocketOpen: (socket) => {
+				console.log("[browser-rpc] WS OPEN");
+				activeSocket = socket;
+				flushQueuedRequests(socket);
+			},
+			onMessage: handlePacket,
+			onSocketClosed: ({ code, reason, hadConnected }) => {
+				activeSocket = null;
+				console.warn("[browser-rpc] WS CLOSED", { code, reason });
+				rejectSentRequests(
+					new Error(`RPC connection closed (code ${code}${reason ? `: ${reason}` : ""})`),
+				);
+				recordDiagnostic({
+					kind: "rpc",
+					level: hadConnected ? "warn" : "error",
+					message: `Connection to the server dropped (code ${code})${reason ? `: ${reason}` : ""}`,
+					source: "websocket",
+				});
+			},
+			onExpired: (detail) => {
+				activeSocket = null;
+				console.warn("[browser-rpc] Session expired — scan a fresh QR", detail);
+				dispatchAuthFailed(detail);
+			},
+			onError: (message) => {
+				console.error("[browser-rpc] WS ERROR", message);
+				recordDiagnostic({ kind: "rpc", level: "error", message, source: "websocket" });
+			},
+		},
+	});
+
+	// Soft reconnect for the bootstrap "Retry": replace the (possibly dead)
+	// socket without a full page reload.
 	reconnectImpl = () => {
 		rejectSentRequests(new Error("RPC connection restarted"));
-		const stale = ws;
-		ws = null;
-		if (reconnectTimer !== null) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = null;
-		}
-		try { stale?.close(); } catch { /* already closed */ }
-		connect();
+		session.kick();
 	};
 
 	function reconnectOnResume(event: Event): void {
@@ -564,31 +426,23 @@ function initBrowserApi(): ApiShape {
 			wasHidden = true;
 			return;
 		}
-		if (!authComplete) return;
 		const returnedFromBackground = wasHidden;
 		wasHidden = false;
 		// `pageshow` also fires once on a normal first load. Only its persisted
 		// (bfcache restore) form is a resume signal; initial auth owns first connect.
 		if (event.type === "pageshow" && !(event as PageTransitionEvent).persisted && !returnedFromBackground) return;
-		if (ws?.readyState === WebSocket.OPEN && event.type === "visibilitychange" && !returnedFromBackground) return;
+		if (session.getState() === "connected" && event.type === "visibilitychange" && !returnedFromBackground) return;
 		// A CONNECTING socket created before mobile suspension can remain stuck
 		// indefinitely, and an apparently OPEN socket may already be dead underneath.
 		// Replace either one after a real background/pageshow/online transition.
 		rejectSentRequests(new Error("RPC connection replaced after resume"));
-		const stale = ws;
-		ws = null;
-		try { stale?.close(); } catch { /* already closed */ }
-		connect();
+		session.kick();
 	}
 	document.addEventListener("visibilitychange", reconnectOnResume);
 	window.addEventListener("pageshow", reconnectOnResume);
 	window.addEventListener("online", reconnectOnResume);
 
-	// Gate WS connection behind auth
-	authReady.then(() => {
-		authComplete = true;
-		connect();
-	});
+	session.start();
 
 	function rpcRequest(method: string, params: any): Promise<any> {
 		return new Promise((resolve, reject) => {
@@ -613,8 +467,8 @@ function initBrowserApi(): ApiShape {
 			};
 			pending.set(id, entry);
 
-			if (ws?.readyState === WebSocket.OPEN) {
-				ws.send(packet);
+			if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+				activeSocket.send(packet);
 				entry.sent = true;
 			}
 		});
@@ -647,6 +501,9 @@ function initBrowserApi(): ApiShape {
 			}
 		},
 
+		// PTY WebSocket URLs carry no credential: the /pty upgrade authenticates
+		// via the same HttpOnly session cookie as /rpc, which the browser
+		// attaches to the same-origin upgrade request automatically.
 		async getPtyUrl(params: { taskId: string; resume?: boolean }) {
 			const result = await rpcRequest("getPtyUrl", params);
 			// If the server signals a recoverable session, pass it through
@@ -654,8 +511,7 @@ function initBrowserApi(): ApiShape {
 				return result;
 			}
 			// Otherwise build our own WS URL for the browser transport
-			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
-			return { url: `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}` };
+			return { url: `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}` };
 		},
 
 		async getProjectPtyUrl(params: { projectId: string }): Promise<string> {
@@ -664,20 +520,17 @@ function initBrowserApi(): ApiShape {
 			// `localhost` resolves on the laptop in browser mode, not on the
 			// server. Build the proxied `/pty` URL relative to window.location.
 			await rpcRequest("getProjectPtyUrl", params);
-			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
-			return `${wsProtocol}//${window.location.host}/pty?session=project-${params.projectId}${tokenParam}`;
+			return `${wsProtocol}//${window.location.host}/pty?session=project-${params.projectId}`;
 		},
 
 		async resumeTask(params: { taskId: string }): Promise<string> {
 			await rpcRequest("resumeTask", params);
-			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
-			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}`;
+			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}`;
 		},
 
 		async restartTask(params: { taskId: string }): Promise<string> {
 			await rpcRequest("restartTask", params);
-			const tokenParam = sessionToken ? `&token=${sessionToken}` : "";
-			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}${tokenParam}`;
+			return `${wsProtocol}//${window.location.host}/pty?session=${params.taskId}`;
 		},
 
 		async hideApp(): Promise<void> {

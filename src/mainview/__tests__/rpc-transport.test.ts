@@ -105,6 +105,9 @@ describe("Browser RPC transport", () => {
 
 	it("rejects in-flight requests immediately when the browser websocket closes", async () => {
 		const sockets: MockWebSocket[] = [];
+		// Boot with a valid session cookie: the refresh probe succeeds and the
+		// machine opens the RPC socket.
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
 		class MockWebSocket {
 			static CONNECTING = 0;
@@ -136,6 +139,8 @@ describe("Browser RPC transport", () => {
 		vi.stubGlobal("WebSocket", MockWebSocket);
 
 		const { api } = await import("../rpc");
+		await Promise.resolve();
+		await Promise.resolve();
 		const socket = sockets[0];
 		expect(socket).toBeDefined();
 		expect(document.documentElement.classList.contains("browser-mode")).toBe(true);
@@ -162,11 +167,8 @@ describe("Browser RPC transport", () => {
 	it("delivers requests started while reconnecting after the replacement socket opens", async () => {
 		vi.useFakeTimers();
 		const sockets: MockWebSocket[] = [];
-		localStorage.setItem("dev3-remote-session", "stored-token");
-		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-			ok: true,
-			json: async () => ({ token: "refreshed-token" }),
-		}));
+		// Valid session cookie throughout: boot probe and post-close probe succeed.
+		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 
 		class MockWebSocket {
 			static CONNECTING = 0;

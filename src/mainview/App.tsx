@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type Route, type SettingsSectionId } from "./state";
-import { api, isElectrobun } from "./rpc";
+import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
@@ -12,6 +12,8 @@ import { isRemote } from "./utils/platform";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
+import { useMobile } from "./hooks/useMobile";
+import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
 import GlobalSettings from "./components/GlobalSettings";
@@ -142,6 +144,21 @@ function App() {
 	}, []);
 	useViewport(state.route);
 	useMobileDenseZoom(state.route);
+	// Android hardware/gesture Back drives in-app navigation in mobile remote
+	// mode: close the topmost layer → route back → double-back-to-exit toast.
+	// Reads history depth through a ref so the popstate handler stays stable.
+	const isMobileDevice = useMobile();
+	const historyIndexRef = useRef(state.historyIndex);
+	historyIndexRef.current = state.historyIndex;
+	useAndroidBackGuard({
+		enabled: isMobileDevice && !isElectrobun,
+		routeBack: () => {
+			if (historyIndexRef.current <= 0) return false;
+			dispatch({ type: "goBack" });
+			return true;
+		},
+		showExitToast: () => toast.info(t("mobile.backExitToast"), { durationMs: 2_500 }),
+	});
 	// RPC/WebSocket connection state — drives the bootstrap screen's "Connecting…"
 	// phase so a stuck remote/mobile launch tells the user WHERE it's stuck.
 	const rpcState = useRpcStatus();
@@ -300,8 +317,12 @@ function App() {
 		taskDropPosition: "top",
 		updateChannel: "stable",
 	});
-	// Auth failure for browser remote access (expired/invalid QR token)
-	const [authFailed, setAuthFailed] = useState(false);
+	// Auth failure for browser remote access (expired/invalid session).
+	// Seeded from the transport: with a dead session the expired verdict lands
+	// BEFORE React mounts (the boot probe on localhost beats the app bootstrap),
+	// so waiting for the rpc:authFailed event alone would miss it and leave the
+	// user on an eternal "Loading…" spinner.
+	const [authFailed, setAuthFailed] = useState(() => getRpcConnectionState() === "auth-failed");
 
 	useEffect(() => {
 		function onAuthFailed() { setAuthFailed(true); }

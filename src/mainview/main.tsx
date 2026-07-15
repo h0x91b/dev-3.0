@@ -5,9 +5,10 @@ import "./index.css";
 import "./rpc";
 import App from "./App";
 import { I18nProvider } from "./i18n";
-import { MobileProvider } from "./hooks/useMobile";
+import { MobileProvider, detectMobile } from "./hooks/useMobile";
 import { initAnalytics } from "./analytics";
-import { api } from "./rpc";
+import { api, isElectrobun } from "./rpc";
+import { initAutoFullscreen } from "./fullscreen";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
@@ -74,6 +75,11 @@ systemThemeMq.addEventListener("change", applySavedTheme);
 
 // Apply saved zoom before React mounts (see zoom.ts for implementation)
 bootstrapZoom();
+
+// Mobile remote mode: enter fullscreen on the first tap after load (browser
+// chrome wastes a big share of a phone screen). Desktop/Electrobun only get
+// the fullscreenchange subscription for the menu toggle. See fullscreen.ts.
+initAutoFullscreen({ mobile: !isElectrobun && detectMobile() });
 
 // Load saved terminal scroll speed into cache before terminals mount
 bootstrapScrollSpeed();

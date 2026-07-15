@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { registerBackLayer } from "../back-navigation";
 
 /**
  * Close an overlay (modal / lightbox / popover) when Escape is pressed.
@@ -45,5 +46,13 @@ export function useEscapeKey(
 		}
 		window.addEventListener("keydown", handleKey, true);
 		return () => window.removeEventListener("keydown", handleKey, true);
+	}, [enabled]);
+
+	// Any Esc-closable overlay is also closable by the Android hardware Back
+	// button (mobile remote mode): register it in the back-layer stack for the
+	// same lifetime. The stack is inert outside the mobile back guard.
+	useEffect(() => {
+		if (!enabled) return;
+		return registerBackLayer(() => onEscapeRef.current());
 	}, [enabled]);
 }

@@ -83,6 +83,8 @@ const dashboard = {
 	"header.statsLabel": "Stats",
 	"header.moreActions": "More",
 	"header.commandPalette": "Command palette",
+	"header.fullscreen": "Fullscreen",
+	"header.exitFullscreen": "Exit fullscreen",
 	"header.remoteAccessLabel": "Remote access",
 	"header.settingsLabel": "Settings",
 	"header.reportBugTooltip": "Report a bug",
