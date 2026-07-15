@@ -106,7 +106,6 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 
 	const show = useCallback(() => {
 		cancelHide();
-		if (triggerRef.current) setPosition(anchorRect(triggerRef.current));
 		setOpen(true);
 	}, [cancelHide]);
 
@@ -127,7 +126,11 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") hide();
 		};
-		const onScroll = () => hide();
+		const onScroll = (event: Event) => {
+			const target = event.target;
+			if (target instanceof Node && popoverRef.current?.contains(target)) return;
+			hide();
+		};
 		document.addEventListener("keydown", onKeyDown, true);
 		window.addEventListener("scroll", onScroll, true);
 		return () => {

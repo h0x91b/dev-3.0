@@ -1591,5 +1591,46 @@ describe("TaskCard", () => {
 			expect(rows[2]).toHaveTextContent("passed");
 			expect(popover).toBeInTheDocument();
 		});
+
+		it("keeps the popover open while scrolling its check list", async () => {
+			renderCard(reviewTask(), {
+				prInfo: {
+					number: 12,
+					url: "https://example/pr/12",
+					checks: Array.from({ length: 12 }, (_, index) => ({
+						name: `check-${index}`,
+						status: "COMPLETED",
+						conclusion: "SUCCESS",
+						detailsUrl: null,
+					})),
+				},
+			});
+			await userEvent.hover(screen.getByLabelText("Open PR #12"));
+			const popover = await screen.findByTestId("pr-status-popover");
+			fireEvent.scroll(screen.getByTestId("pr-check-list"));
+			expect(popover).toBeInTheDocument();
+		});
+
+		it("keeps its anchored position when the pointer enters the portaled popover", async () => {
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", checks: [] },
+			});
+			const badge = screen.getByLabelText("Open PR #12");
+			vi.spyOn(badge, "getBoundingClientRect").mockReturnValue({
+				top: 100,
+				bottom: 120,
+				left: 50,
+				right: 100,
+				width: 50,
+				height: 20,
+			} as DOMRect);
+
+			await userEvent.hover(badge);
+			const popover = await screen.findByTestId("pr-status-popover");
+			const anchoredTop = popover.style.top;
+
+			await userEvent.hover(popover);
+			expect(popover).toHaveStyle({ top: anchoredTop });
+		});
 	});
 });
