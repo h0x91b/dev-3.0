@@ -2801,8 +2801,10 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			// Summary bar: kebab present, full actions sheet not yet open.
 			expect(screen.getByTestId("task-actions-kebab")).toBeInTheDocument();
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
-			// The dense desktop resize-handle/details grid is not inline anymore.
-			expect(screen.getByText("Mobile task")).toBeInTheDocument();
+			// The task title is NOT repeated in the summary bar — it already shows in
+			// the breadcrumb row above (GlobalHeader). Only status + kebab live here.
+			// (The full title is still reachable via the details grid in the sheet.)
+			expect(screen.queryByText("Mobile task")).not.toBeInTheDocument();
 		});
 
 		it("opens the actions sheet from the kebab, exposing actions + details", async () => {

@@ -979,7 +979,10 @@ function TaskInfoPanel({
 					{variantSwitcher}
 					{statusDropdownButton}
 					{priorityBadge}
-					<span className="flex-1 min-w-0 truncate text-fg-2 text-sm font-semibold">{getTaskTitle(task)}</span>
+					{/* Task title intentionally omitted here — it already shows in the
+					    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
+					    bar; the freed space keeps status + priority + diff readable. */}
+					<div className="flex-1 min-w-0" />
 					{diffSummaryBadge}
 					<Tooltip content={t("infoPanel.actionsTitle")} detail={t("ttip.infoPanel.actions")}>
 						<button
