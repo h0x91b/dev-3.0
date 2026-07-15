@@ -72,6 +72,26 @@ describe("ActiveTasksStrip", () => {
 		expect(navigate).not.toHaveBeenCalled();
 	});
 
+	it("keeps the focused task open when clicked again", async () => {
+		const navigate = vi.fn();
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksStrip
+					tasks={[makeTask(), makeTask({ id: "t2" })]}
+					project={project}
+					activeTaskId="t1"
+					navigate={navigate}
+					agents={[geminiAgent]}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getAllByRole("button", { name: "Привет! как сам?" })[0]);
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
 	it("renders compact agent summary and variant dots", () => {
 		render(
 			<I18nProvider>

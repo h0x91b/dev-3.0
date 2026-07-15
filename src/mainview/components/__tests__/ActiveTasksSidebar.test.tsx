@@ -126,6 +126,29 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(navigate).not.toHaveBeenCalled();
 	});
 
+	it("keeps the focused task open when clicked again", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask()]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={navigate}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		await user.click(screen.getByText("Привет! как сам?"));
+		expect(navigate).not.toHaveBeenCalled();
+		expect(terminalPreview.close).not.toHaveBeenCalled();
+	});
+
 	it("shows agent-first identity with compact config and variant dots", () => {
 		const navigate = vi.fn();
 		render(

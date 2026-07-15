@@ -51,14 +51,13 @@ function ActiveTasksStrip({
 	function handleTaskClick(task: Task) {
 		if (task.shuttingDown) return;
 		if (task.id === activeTaskId) {
-			navigate({ screen: "project", projectId: project.id });
-		} else {
-			navigate({
-				screen: "project",
-				projectId: project.id,
-				activeTaskId: task.id,
-			});
+			return;
 		}
+		navigate({
+			screen: "project",
+			projectId: project.id,
+			activeTaskId: task.id,
+		});
 	}
 
 	return (
