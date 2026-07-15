@@ -327,6 +327,7 @@ const handlers: Record<string, Handler> = {
 				titlePreserved = true;
 			} else {
 				updates.customTitle = newTitle;
+				if (newTitle && task.scratch === true) updates.scratch = false;
 				// CLI writes never claim a user edit — only the UI rename RPC does.
 				// When the user explicitly clears their title via --title "" we
 				// also drop the user-edit flag so future agents can rename again.

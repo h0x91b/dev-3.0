@@ -1,0 +1,1 @@
+Clear the scratch semantic flag when UI or CLI title edits turn a scratch task into a normal task. Preserve launch-time compatibility guards so legacy stale records with real descriptions still receive their prompt.

@@ -1321,6 +1321,33 @@ describe("task.update", () => {
 		}));
 	});
 
+	it("clears the scratch flag when the title becomes a real task title", async () => {
+		const project = makeProject();
+		const task = makeTask({ scratch: true, description: "Scratch — 15:50" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue({
+			...task,
+			customTitle: "Plan HTML artifacts",
+			scratch: false,
+		});
+		vi.mocked(getPushMessage).mockReturnValue(null);
+
+		const resp = await handleRequest(
+			makeRequest("task.update", {
+				taskId: task.id,
+				projectId: "proj-1",
+				title: "Plan HTML artifacts",
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(vi.mocked(data.updateTask).mock.calls[0][2]).toEqual(expect.objectContaining({
+			customTitle: "Plan HTML artifacts",
+			scratch: false,
+		}));
+	});
+
 	it("does not auto-generate title when explicit title provided", async () => {
 		const project = makeProject();
 		const task = makeTask();
