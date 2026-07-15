@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, rollupCiStatus } from "../pr-status";
+import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, rollupCiStatus, summarizeMergeability } from "../pr-status";
 
 describe("rollupCiStatus", () => {
 	it("returns null for empty / non-array input", () => {
@@ -66,6 +66,20 @@ describe("mapReviewDecision", () => {
 });
 
 describe("PR status detail helpers", () => {
+	it("distinguishes missing, disabled, and enabled auto-merge data", () => {
+		expect(parseAutoMergeEnabled(undefined)).toBeNull();
+		expect(parseAutoMergeEnabled(null)).toBe(false);
+		expect(parseAutoMergeEnabled({ enabledAt: "2026-07-15T18:00:00Z" })).toBe(true);
+	});
+
+	it("summarizes mergeability and common GitHub blocking reasons", () => {
+		expect(summarizeMergeability({ mergeable: "MERGEABLE", status: "CLEAN" })).toEqual({ state: "mergeable", reason: null });
+		expect(summarizeMergeability({ mergeable: "CONFLICTING", status: "DIRTY" })).toEqual({ state: "not_mergeable", reason: "conflict" });
+		expect(summarizeMergeability({ mergeable: "MERGEABLE", status: "BLOCKED" })).toEqual({ state: "not_mergeable", reason: "blocked" });
+		expect(summarizeMergeability({ mergeable: null, status: "BLOCKED" })).toEqual({ state: "not_mergeable", reason: "blocked" });
+		expect(summarizeMergeability({ mergeable: "UNKNOWN", status: "UNKNOWN" })).toEqual({ state: "unknown", reason: null });
+	});
+
 	it("counts only explicitly unresolved review threads", () => {
 		expect(countUnresolvedReviewThreads([
 			{ isResolved: false },

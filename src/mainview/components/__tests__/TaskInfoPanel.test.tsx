@@ -1958,6 +1958,46 @@ describe("TaskInfoPanel", () => {
 			expect(popover).toHaveTextContent("PR #42 status");
 		});
 
+		it("shows auto-merge and mergeability details in the PR status popover", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", {
+					detail: {
+						projectId: "p1",
+						taskId: "t1",
+						prNumber: 42,
+						prUrl: "https://github.com/test/repo/pull/42",
+						autoMergeEnabled: false,
+						ciStatus: "failure",
+						reviewState: null,
+						unresolvedCount: 0,
+						mergeState: { mergeable: "CONFLICTING", status: "DIRTY" },
+						checks: [],
+						prTitle: "Merge status",
+						isDraft: false,
+					},
+				}));
+			});
+
+			const badge = screen.getAllByText(/PR #42/)[0].closest("button")!;
+			await userEvent.hover(badge);
+			const popover = await screen.findByTestId("pr-status-popover");
+			expect(popover).toHaveTextContent("Merge status");
+			expect(within(popover).getByText("Auto-merge")).toBeInTheDocument();
+			expect(within(popover).getByText("Not set")).toBeInTheDocument();
+			expect(within(popover).getByText("Mergeable")).toBeInTheDocument();
+			expect(within(popover).getByText("No")).toBeInTheDocument();
+			expect(within(popover).getByText("Merge conflicts")).toBeInTheDocument();
+		});
+
 		it("PR badge does not open a tab when prUrl is null", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const openSpy = vi.fn(); window.open = openSpy;

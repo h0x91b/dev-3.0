@@ -134,6 +134,7 @@ export default function TaskGitActions({
 				taskId?: string;
 				prNumber: number | null;
 				prUrl: string | null;
+				autoMergeEnabled?: TaskPRBadgeInfo["autoMergeEnabled"];
 				ciStatus: TaskPRBadgeInfo["ciStatus"];
 				reviewState: TaskPRBadgeInfo["reviewState"];
 				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
@@ -146,6 +147,7 @@ export default function TaskGitActions({
 			setPushedPRStatus({
 				number: detail.prNumber,
 				url: detail.prUrl ?? "",
+				autoMergeEnabled: detail.autoMergeEnabled,
 				ciStatus: detail.ciStatus,
 				reviewState: detail.reviewState,
 				unresolvedCount: detail.unresolvedCount,

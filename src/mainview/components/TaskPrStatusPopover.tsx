@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import type { PRCheckInfo, TaskPRBadgeInfo } from "../../shared/types";
+import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/pr-status";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { toast } from "../toast";
@@ -68,6 +69,17 @@ function checkClass(state: CheckState): string {
 		case "pending": return "text-warning";
 		case "success": return "text-success";
 		default: return "text-fg-3";
+	}
+}
+
+function mergeReasonLabel(reason: PRMergeabilityReason, t: ReturnType<typeof useT>): string {
+	switch (reason) {
+		case "conflict": return t("task.prMergeReasonConflict");
+		case "blocked": return t("task.prMergeReasonBlocked");
+		case "behind": return t("task.prMergeReasonBehind");
+		case "draft": return t("task.prMergeReasonDraft");
+		case "unstable": return t("task.prMergeReasonUnstable");
+		case "hooks": return t("task.prMergeReasonHooks");
 	}
 }
 
@@ -205,6 +217,23 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 	}, [open, prInfo]);
 
 	const checks = sortedChecks(prInfo.checks ?? []);
+	const mergeability = summarizeMergeability(prInfo.mergeState);
+	const autoMergeLabel = prInfo.autoMergeEnabled === true
+		? t("task.prEnabled")
+		: prInfo.autoMergeEnabled === false
+			? t("task.prNotSet")
+			: t("task.prUnknown");
+	const autoMergeClass = prInfo.autoMergeEnabled === true ? "text-success" : "text-fg-3";
+	const mergeabilityLabel = mergeability.state === "mergeable"
+		? t("task.prMergeableYes")
+		: mergeability.state === "not_mergeable"
+			? t("task.prMergeableNo")
+			: t("task.prMergeableUnknown");
+	const mergeabilityClass = mergeability.state === "mergeable"
+		? "text-success"
+		: mergeability.state === "not_mergeable"
+			? "text-danger"
+			: "text-fg-3";
 	const popover = open && createPortal(
 		<div
 			ref={popoverRef}
@@ -243,6 +272,26 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 					<span>{t("task.prConflict")}</span>
 				</div>
 			)}
+
+			<div className="mt-3">
+				<div className="mb-1.5 font-medium text-fg-2">{t("task.prMergeStatus")}</div>
+				<dl className="space-y-1">
+					<div className="flex items-center justify-between gap-3">
+						<dt className="text-fg-3">{t("task.prAutoMerge")}</dt>
+						<dd className={`font-medium ${autoMergeClass}`}>{autoMergeLabel}</dd>
+					</div>
+					<div className="flex items-center justify-between gap-3">
+						<dt className="text-fg-3">{t("task.prMergeable")}</dt>
+						<dd className={`font-medium ${mergeabilityClass}`}>{mergeabilityLabel}</dd>
+					</div>
+					{mergeability.reason && (
+						<div className="flex items-start justify-between gap-3">
+							<dt className="flex-shrink-0 text-fg-3">{t("task.prMergeReason")}</dt>
+							<dd className="text-right text-danger">{mergeReasonLabel(mergeability.reason, t)}</dd>
+						</div>
+					)}
+				</dl>
+			</div>
 
 			<div className="mt-3">
 				<div className="mb-1.5 font-medium text-fg-2">{t("task.prChecks")}</div>

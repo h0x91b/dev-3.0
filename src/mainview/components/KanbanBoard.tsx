@@ -53,6 +53,7 @@ function taskPRBadgeFromStoredData(task: Task, identity?: PRIdentity): TaskPRBad
 	return {
 		number: pr.number,
 		url: pr.url,
+		autoMergeEnabled: cached?.autoMergeEnabled ?? null,
 		ciStatus: cached?.ciStatus ?? null,
 		reviewState: cached?.reviewState ?? null,
 		unresolvedCount: cached?.unresolvedCount ?? null,
@@ -69,6 +70,7 @@ function mergeTaskPRBadge(task: Task, identity: PRIdentity | undefined, existing
 	if (!existing || !samePRIdentity(existing, stored)) return stored;
 	return {
 		...stored,
+		autoMergeEnabled: existing.autoMergeEnabled ?? stored.autoMergeEnabled,
 		ciStatus: existing.ciStatus ?? stored.ciStatus,
 		reviewState: existing.reviewState ?? stored.reviewState,
 		unresolvedCount: existing.unresolvedCount ?? stored.unresolvedCount,
@@ -201,6 +203,7 @@ function KanbanBoard({
 				taskId: string;
 				prNumber: number | null;
 				prUrl: string | null;
+				autoMergeEnabled?: TaskPRBadgeInfo["autoMergeEnabled"];
 				ciStatus: TaskPRBadgeInfo["ciStatus"];
 				reviewState: TaskPRBadgeInfo["reviewState"];
 				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
@@ -219,6 +222,7 @@ function KanbanBoard({
 				next.set(detail.taskId, {
 					number,
 					url,
+					autoMergeEnabled: detail.autoMergeEnabled,
 					ciStatus: detail.ciStatus,
 					reviewState: detail.reviewState,
 					unresolvedCount: detail.unresolvedCount,

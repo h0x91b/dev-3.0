@@ -45,7 +45,7 @@ import {
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
 } from "./merge-prompt-suppression";
-import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, reasonForSignal, rollupCiStatus } from "./pr-status";
+import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, reasonForSignal, rollupCiStatus } from "./pr-status";
 
 /**
  * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir
@@ -499,6 +499,7 @@ export function _resetPRPollerState(): void {
 interface GitHubPullRequestSummary {
 	number?: unknown;
 	isDraft?: unknown;
+	autoMergeRequest?: unknown;
 	url?: unknown;
 	title?: unknown;
 	state?: unknown;
@@ -532,6 +533,7 @@ function sameFreshPRStatus(cache: TaskPRStatusCache | null | undefined, next: Fr
 	return !!cache
 		&& cache.number === next.number
 		&& cache.url === next.url
+		&& cache.autoMergeEnabled === next.autoMergeEnabled
 		&& cache.ciStatus === next.ciStatus
 		&& cache.reviewState === next.reviewState
 		&& cache.unresolvedCount === next.unresolvedCount
@@ -692,7 +694,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 			"--state",
 			"open",
 			"--json",
-			"number,isDraft,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title",
+			"number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title",
 			"--limit",
 			"1",
 		],
@@ -726,11 +728,13 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 	};
 	const prTitle = typeof pr.title === "string" ? pr.title : null;
 	const isDraft = typeof pr.isDraft === "boolean" ? pr.isDraft : null;
+	const autoMergeEnabled = parseAutoMergeEnabled(pr.autoMergeRequest);
 
 	if (prUrl) {
 		await persistTaskPrStatusCache(project, task, {
 			number: prNumber,
 			url: prUrl,
+			autoMergeEnabled,
 			ciStatus,
 			reviewState,
 			unresolvedCount,
@@ -746,6 +750,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 		taskId: task.id,
 		prNumber,
 		prUrl,
+		autoMergeEnabled,
 		ciStatus,
 		reviewState,
 		unresolvedCount,

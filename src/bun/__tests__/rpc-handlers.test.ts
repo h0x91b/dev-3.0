@@ -8008,6 +8008,7 @@ describe("checkOpenPRsForPromotion", () => {
 				stdout: JSON.stringify([{
 					number: 42,
 					isDraft: false,
+					autoMergeRequest: { enabledAt: "2026-07-15T18:00:00Z" },
 					url: prUrl,
 					statusCheckRollup: [{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://ci/build" }],
 					mergeable: "CONFLICTING",
@@ -8064,6 +8065,7 @@ describe("checkOpenPRsForPromotion", () => {
 			prStatusCache: expect.objectContaining({
 				number: 42,
 				url: prUrl,
+				autoMergeEnabled: true,
 				ciStatus: "failure",
 				unresolvedCount: 2,
 				cachedAt: expect.any(String),
@@ -8085,6 +8087,7 @@ describe("checkOpenPRsForPromotion", () => {
 		);
 		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({
 			unresolvedCount: 2,
+			autoMergeEnabled: true,
 			mergeState: { mergeable: "CONFLICTING", status: "DIRTY", state: "OPEN" },
 			checks: [{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://ci/build" }],
 			prTitle: "Needs attention",

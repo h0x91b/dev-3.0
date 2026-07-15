@@ -1925,6 +1925,8 @@ export interface PRMergeState {
 export interface TaskPRStatusCache {
 	number: number;
 	url: string;
+	/** `null` when the GitHub response did not include auto-merge data yet. */
+	autoMergeEnabled?: boolean | null;
 	ciStatus: PRCIStatus | null;
 	reviewState: PRReviewState | null;
 	unresolvedCount: number | null;
@@ -1943,6 +1945,7 @@ export interface TaskPRStatusCache {
 export interface TaskPRBadgeInfo {
 	number: number;
 	url: string;
+	autoMergeEnabled?: boolean | null;
 	ciStatus?: PRCIStatus | null;
 	reviewState?: PRReviewState | null;
 	unresolvedCount?: number | null;
@@ -3287,6 +3290,7 @@ export type AppRPCSchema = {
 				taskId: string;
 				prNumber: number | null;
 				prUrl: string | null;
+				autoMergeEnabled?: boolean | null;
 				ciStatus: PRCIStatus | null;
 				reviewState: PRReviewState | null;
 				unresolvedCount: number | null;
