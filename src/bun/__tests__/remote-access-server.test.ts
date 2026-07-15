@@ -50,6 +50,7 @@ vi.mock("../jwt", () => ({
 	exchangeQrForSession: vi.fn(),
 	refreshSession: vi.fn(),
 	verifySessionToken: vi.fn(),
+	SESSION_TOKEN_TTL_S: 24 * 60 * 60,
 }));
 
 vi.mock("../cloudflare-tunnel", () => ({
@@ -180,10 +181,11 @@ describe("serveStatic (real function)", () => {
 });
 
 // ================================================================
-// Auth endpoints
+// Theme bootstrap injection
 // ================================================================
+// The auth endpoints (/auth/exchange, /auth/refresh, cookies, Origin checks)
+// are tested against the REAL jwt module in remote-access-auth.test.ts.
 
-import { exchangeQrForSession, refreshSession, verifySessionToken } from "../jwt";
 import { injectInitialThemeBootstrap } from "../remote-access-server";
 
 describe("injectInitialThemeBootstrap", () => {
@@ -192,139 +194,6 @@ describe("injectInitialThemeBootstrap", () => {
 
 		expect(html).toContain('window.__DEV3_INITIAL_THEME__="light"');
 		expect(html).toContain('window.__DEV3_INITIAL_RESOLVED_THEME__="light"');
-	});
-});
-
-describe("auth endpoint logic", () => {
-	it("exchangeQrForSession returns session token for valid QR token", async () => {
-		(exchangeQrForSession as any).mockResolvedValueOnce("session-token-123");
-		const result = await exchangeQrForSession("qr-token");
-		expect(result).toBe("session-token-123");
-	});
-
-	it("exchangeQrForSession returns null for invalid token", async () => {
-		(exchangeQrForSession as any).mockResolvedValueOnce(null);
-		const result = await exchangeQrForSession("bad-token");
-		expect(result).toBeNull();
-	});
-
-	it("refreshSession returns new token for valid session", async () => {
-		(refreshSession as any).mockResolvedValueOnce("new-session-token");
-		const result = await refreshSession("old-session-token");
-		expect(result).toBe("new-session-token");
-	});
-
-	it("refreshSession returns null for expired session", async () => {
-		(refreshSession as any).mockResolvedValueOnce(null);
-		const result = await refreshSession("expired-token");
-		expect(result).toBeNull();
-	});
-
-	it("verifySessionToken returns false for missing token", async () => {
-		(verifySessionToken as any).mockResolvedValueOnce(false);
-		const result = await verifySessionToken("");
-		expect(result).toBe(false);
-	});
-});
-
-// ================================================================
-// onQrTokenConsumed callback
-// ================================================================
-
-describe("onQrTokenConsumed callback", () => {
-	it("is called when QR token exchange succeeds", async () => {
-		// The callback is registered via StartOptions.onQrTokenConsumed
-		// and should fire after a successful exchangeQrForSession in the
-		// /auth/exchange handler. Since we can't easily start the real server
-		// in unit tests, we verify the contract: exchangeQrForSession returns
-		// a truthy value → callback should be invoked.
-		const callback = vi.fn();
-
-		// Simulate the handler logic:
-		(exchangeQrForSession as any).mockResolvedValueOnce("session-token");
-		const result = await exchangeQrForSession("qr-token");
-		if (result) callback();
-
-		expect(callback).toHaveBeenCalledOnce();
-	});
-
-	it("is NOT called when QR token exchange fails", async () => {
-		const callback = vi.fn();
-
-		(exchangeQrForSession as any).mockResolvedValueOnce(null);
-		const result = await exchangeQrForSession("invalid-token");
-		if (result) callback();
-
-		expect(callback).not.toHaveBeenCalled();
-	});
-});
-
-// ================================================================
-// Static code auth path
-// ================================================================
-
-import { createSessionToken } from "../jwt";
-
-/**
- * Simulates the /auth/exchange handler logic for the static code path.
- * Mirrors the actual implementation in remote-access-server.ts so that
- * we can unit-test the branching without starting a real server.
- */
-async function simulateAuthExchange(
-	token: string,
-	staticCode: string | null,
-): Promise<{ status: number; body: string }> {
-	if (!token) return { status: 400, body: "Missing token" };
-
-	if (staticCode) {
-		if (token !== staticCode) {
-			return { status: 401, body: "Invalid or expired token" };
-		}
-		await createSessionToken();
-		return { status: 200, body: "ok" };
-	}
-
-	const result = await exchangeQrForSession(token);
-	if (!result) return { status: 401, body: "Invalid or expired token" };
-	return { status: 200, body: "ok" };
-}
-
-describe("static code auth path", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
-
-	it("accepts the correct static code", async () => {
-		(createSessionToken as any).mockResolvedValueOnce("session-tok");
-		const res = await simulateAuthExchange("mysecret", "mysecret");
-		expect(res.status).toBe(200);
-	});
-
-	it("rejects a wrong static code without falling through to JWT exchange", async () => {
-		// exchangeQrForSession must NOT be called when static code is active.
-		const res = await simulateAuthExchange("wrongcode", "mysecret");
-		expect(res.status).toBe(401);
-		expect(exchangeQrForSession).not.toHaveBeenCalled();
-	});
-
-	it("rejects a valid JWT token when static code mode is active", async () => {
-		// A JWT QR token must NOT bypass the static code gate.
-		const res = await simulateAuthExchange("some-jwt-qr-token", "mysecret");
-		expect(res.status).toBe(401);
-		expect(exchangeQrForSession).not.toHaveBeenCalled();
-	});
-
-	it("falls through to JWT exchange when no static code is set", async () => {
-		(exchangeQrForSession as any).mockResolvedValueOnce("session-tok");
-		const res = await simulateAuthExchange("jwt-token", null);
-		expect(res.status).toBe(200);
-		expect(exchangeQrForSession).toHaveBeenCalledWith("jwt-token");
-	});
-
-	it("returns 401 for an invalid JWT when no static code is set", async () => {
-		(exchangeQrForSession as any).mockResolvedValueOnce(null);
-		const res = await simulateAuthExchange("bad-jwt", null);
-		expect(res.status).toBe(401);
 	});
 });
 

@@ -1,4 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
 	initSecret,
 	createQrToken,
@@ -9,9 +12,19 @@ import {
 	_resetForTests,
 } from "../jwt";
 
+// Always point initSecret at a temp file — the default path is the user's
+// real ~/.dev3.0/remote-jwt-secret and tests must never touch it.
+const testSecretDir = join(tmpdir(), `dev3-jwt-test-${process.pid}`);
+const testSecretFile = join(testSecretDir, "remote-jwt-secret");
+
 beforeEach(async () => {
 	_resetForTests();
-	await initSecret();
+	rmSync(testSecretDir, { recursive: true, force: true });
+	await initSecret(testSecretFile);
+});
+
+afterAll(() => {
+	rmSync(testSecretDir, { recursive: true, force: true });
 });
 
 // ================================================================
@@ -21,11 +34,45 @@ beforeEach(async () => {
 describe("initSecret", () => {
 	it("can be called multiple times (subsequent calls are no-ops)", async () => {
 		// Already called in beforeEach; calling again should not throw
-		await initSecret();
-		await initSecret();
+		await initSecret(testSecretFile);
+		await initSecret(testSecretFile);
 		// Tokens should still work after multiple init calls
 		const token = await createQrToken();
 		expect(token.split(".")).toHaveLength(3);
+	});
+
+	it("persists the secret to disk as 64 hex chars with 0600 permissions", () => {
+		expect(existsSync(testSecretFile)).toBe(true);
+		const content = readFileSync(testSecretFile, "utf-8").trim();
+		expect(content).toMatch(/^[0-9a-f]{64}$/);
+		const mode = statSync(testSecretFile).mode & 0o777;
+		expect(mode).toBe(0o600);
+	});
+
+	it("session tokens survive a restart (secret reloaded from disk)", async () => {
+		const session = await createSessionToken();
+		// Simulate an app restart: wipe in-memory state, re-init from the same file.
+		_resetForTests();
+		await initSecret(testSecretFile);
+		expect(await verifySessionToken(session)).toBe(true);
+	});
+
+	it("a different secret file yields a different secret (tokens rejected)", async () => {
+		const session = await createSessionToken();
+		_resetForTests();
+		await initSecret(join(testSecretDir, "other-secret"));
+		expect(await verifySessionToken(session)).toBe(false);
+	});
+
+	it("regenerates and overwrites a corrupt secret file", async () => {
+		_resetForTests();
+		writeFileSync(testSecretFile, "not-hex-garbage\n");
+		await initSecret(testSecretFile);
+		const content = readFileSync(testSecretFile, "utf-8").trim();
+		expect(content).toMatch(/^[0-9a-f]{64}$/);
+		// The regenerated secret works end-to-end.
+		const session = await createSessionToken();
+		expect(await verifySessionToken(session)).toBe(true);
 	});
 });
 
@@ -66,12 +113,12 @@ describe("createQrToken", () => {
 // ================================================================
 
 describe("createSessionToken", () => {
-	it("creates tokens with type 'session' and an 8h expiry", async () => {
+	it("creates tokens with type 'session' and a 24h expiry", async () => {
 		const token = await createSessionToken();
 		const payloadB64 = token.split(".")[1];
 		const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
 		expect(payload.type).toBe("session");
-		expect(payload.exp - payload.iat).toBe(8 * 60 * 60);
+		expect(payload.exp - payload.iat).toBe(24 * 60 * 60);
 	});
 });
 
@@ -157,7 +204,7 @@ describe("refreshSession", () => {
 	it("rejects expired session token", async () => {
 		const session = await createSessionToken();
 		const originalNow = Date.now;
-		Date.now = () => originalNow() + (8 * 60 + 1) * 60 * 1000; // just past the 8h TTL
+		Date.now = () => originalNow() + (24 * 60 + 1) * 60 * 1000; // just past the 24h TTL
 		const result = await refreshSession(session);
 		Date.now = originalNow;
 		expect(result).toBeNull();
@@ -188,7 +235,7 @@ describe("verifySessionToken", () => {
 	it("returns false for expired session token", async () => {
 		const token = await createSessionToken();
 		const originalNow = Date.now;
-		Date.now = () => originalNow() + (8 * 60 + 1) * 60 * 1000; // just past the 8h TTL
+		Date.now = () => originalNow() + (24 * 60 + 1) * 60 * 1000; // just past the 24h TTL
 		expect(await verifySessionToken(token)).toBe(false);
 		Date.now = originalNow;
 	});

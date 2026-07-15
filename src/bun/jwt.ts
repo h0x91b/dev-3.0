@@ -3,21 +3,35 @@
  *
  * Two token types:
  * - "qr"      — short-lived (30s), embedded in QR code URLs, single-use
- * - "session"  — long-lived (30min), used for WebSocket auth, refreshable
+ * - "session" — long-lived (24h rolling), carried in an HttpOnly cookie,
+ *   refreshable
  */
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { DEV3_HOME } from "./paths";
 
 // ── Constants ────────────────────────────────────────────────────────
 
 const QR_TOKEN_TTL_S = 30;
-// 8 hours — long enough that a "trusted device" (your own phone/laptop) can
-// reconnect later in the same work session without rescanning the QR. The
-// browser persists this token in localStorage and refreshes it on load + every
-// 15 min while open, so an active device rolls the window forward indefinitely;
-// a device left idle past 8h expires and must rescan. Tradeoff: a leaked
-// session token stays valid longer — acceptable because remote access is
-// already gated by the one-time QR (URL-is-the-password) and is meant for the
-// user's own trusted devices. See decision 086.
-const SESSION_TOKEN_TTL_S = 8 * 60 * 60;
+// 24 hours — long enough that a "trusted device" (your own phone/laptop)
+// survives overnight idle without rescanning the QR. The session rides an
+// HttpOnly cookie refreshed on load + every 15 min while open, so an active
+// device rolls the window forward indefinitely; a device idle past 24h expires
+// and must rescan. Tradeoff: a leaked session stays valid longer — acceptable
+// because remote access is already gated by the one-time QR
+// (URL-is-the-password) and is meant for the user's own trusted devices.
+// See decision 132 (supersedes 086).
+export const SESSION_TOKEN_TTL_S = 24 * 60 * 60;
+
+/**
+ * Where the persistent HMAC signing secret lives. A NEW file under the dev3
+ * home directory (data-layout invariants: only additive — nothing existing is
+ * renamed, moved, or rewritten). Persisting the secret is what lets remote
+ * sessions survive desktop app restarts; before this the secret was random
+ * per-process and every restart silently invalidated all sessions.
+ */
+const SECRET_FILE = `${DEV3_HOME}/remote-jwt-secret`;
 
 // Pre-encoded JWT header: {"alg":"HS256","typ":"JWT"}
 const HEADER_B64 = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
@@ -78,15 +92,47 @@ function decodePayload(b64: string): JwtPayload | null {
 // ── Core JWT operations ──────────────────────────────────────────────
 
 /**
+ * Load the persisted signing secret (64 hex chars = 32 bytes), or null when
+ * the file is missing or corrupt (corrupt → regenerate and overwrite).
+ */
+function loadPersistedSecret(secretFilePath: string): Uint8Array | null {
+	try {
+		if (!existsSync(secretFilePath)) return null;
+		const hex = readFileSync(secretFilePath, "utf-8").trim();
+		if (!/^[0-9a-f]{64}$/.test(hex)) return null;
+		return new Uint8Array(Buffer.from(hex, "hex"));
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Initialize the HMAC-SHA256 signing key. Must be called once at startup.
  * Subsequent calls are no-ops.
+ *
+ * The secret is persisted to `secretFilePath` (0600, created once) so that
+ * session tokens survive app restarts. If the file cannot be written, we fall
+ * back to an in-memory secret — auth still works, sessions just die with the
+ * process (pre-persistence behavior).
+ *
+ * @param secretFilePath override for tests only — production callers use the
+ *   default `~/.dev3.0/remote-jwt-secret`.
  */
-export async function initSecret(): Promise<void> {
+export async function initSecret(secretFilePath: string = SECRET_FILE): Promise<void> {
 	if (secret) return;
-	const raw = crypto.getRandomValues(new Uint8Array(32));
+	let raw = loadPersistedSecret(secretFilePath);
+	if (!raw) {
+		raw = crypto.getRandomValues(new Uint8Array(32));
+		try {
+			mkdirSync(dirname(secretFilePath), { recursive: true });
+			writeFileSync(secretFilePath, Buffer.from(raw).toString("hex") + "\n", { mode: 0o600 });
+		} catch (err) {
+			console.warn(`[jwt] Could not persist signing secret to ${secretFilePath} — sessions will not survive restarts:`, err);
+		}
+	}
 	secret = await crypto.subtle.importKey(
 		"raw",
-		raw,
+		raw as BufferSource,
 		{ name: "HMAC", hash: "SHA-256" },
 		false,
 		["sign", "verify"],
@@ -154,7 +200,7 @@ export async function createQrToken(): Promise<string> {
 	});
 }
 
-/** Create a long-lived session token (30min). */
+/** Create a long-lived session token (24h). */
 export async function createSessionToken(): Promise<string> {
 	const now = Math.floor(Date.now() / 1000);
 	return signJwt({
@@ -186,7 +232,7 @@ export async function exchangeQrForSession(token: string): Promise<string | null
 
 /**
  * Refresh a session token. The current token must be valid and unexpired.
- * Returns a fresh session token with a new 30-minute window.
+ * Returns a fresh session token with a new 24-hour window.
  */
 export async function refreshSession(token: string): Promise<string | null> {
 	const payload = await verifyJwt(token);
