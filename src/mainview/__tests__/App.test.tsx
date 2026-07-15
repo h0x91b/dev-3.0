@@ -283,6 +283,49 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("history navigation aliases", () => {
+		it("uses Ctrl+- for back and Ctrl+Shift+- for forward", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Control>},{/Control}");
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+
+			await userEvent.keyboard("{Control>}-{/Control}");
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+			expect(mockedAdjustZoom).not.toHaveBeenCalled();
+
+			await userEvent.keyboard("{Control>}{Shift>}-{/Shift}{/Control}");
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+		});
+
+		it("keeps the existing command-bracket aliases", async () => {
+			await renderApp();
+			await userEvent.keyboard("{Meta>},{/Meta}");
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+
+			const back = new KeyboardEvent("keydown", {
+				code: "BracketLeft",
+				key: "[",
+				metaKey: true,
+				bubbles: true,
+				cancelable: true,
+			});
+			act(() => window.dispatchEvent(back));
+			expect(back.defaultPrevented).toBe(true);
+			expect(screen.getByTestId("dashboard-screen")).toBeInTheDocument();
+
+			const forward = new KeyboardEvent("keydown", {
+				code: "BracketRight",
+				key: "]",
+				metaKey: true,
+				bubbles: true,
+				cancelable: true,
+			});
+			act(() => window.dispatchEvent(forward));
+			expect(forward.defaultPrevented).toBe(true);
+			expect(screen.getByTestId("settings-screen")).toBeInTheDocument();
+		});
+	});
+
 	describe("live variant cycling", () => {
 		const project = {
 			id: "p1",
@@ -1166,9 +1209,9 @@ describe("App keyboard shortcuts", () => {
 			expect(mockedAdjustZoom).toHaveBeenCalledWith(-ZOOM_STEP);
 		});
 
-		it("Ctrl+- calls adjustZoom with -ZOOM_STEP", async () => {
+		it("Ctrl+Alt+- calls adjustZoom with -ZOOM_STEP", async () => {
 			await renderApp();
-			await userEvent.keyboard("{Control>}-{/Control}");
+			await userEvent.keyboard("{Control>}{Alt>}-{/Alt}{/Control}");
 			expect(mockedAdjustZoom).toHaveBeenCalledWith(-ZOOM_STEP);
 		});
 

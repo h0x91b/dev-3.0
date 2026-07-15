@@ -1,0 +1,1 @@
+Add VS Code-style Ctrl-minus and Ctrl-Shift-minus aliases for back and forward route navigation while preserving the existing bracket shortcuts. Move non-macOS zoom-out to Ctrl+Alt-minus to keep the new alias unambiguous, and update the shortcut reference and navigation tip.

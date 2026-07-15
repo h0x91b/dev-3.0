@@ -9,7 +9,7 @@ const tips = {
 	"tip.diffReviewPersists.title": "Твоё ревью сохраняется",
 	"tip.diffReviewPersists.body": "Inline-комментарии ревью хранятся несколько дней, чтобы их не потерять при случайном затирании буфера — открой дифф и скопируй снова, или нажми «Сбросить ревью».",
 	"tip.backForwardNav.title": "Прыгай назад и вперёд",
-	"tip.backForwardNav.body": "Стрелки ‹ › слева вверху, ⌘[ / ⌘] или боковые кнопки мыши вернут тебя туда, где ты уже был.",
+	"tip.backForwardNav.body": "Стрелки ‹ ›, ⌘[ / ⌘], Ctrl+- / Ctrl+Shift+- или мышь вернут по шагам назад.",
 	"tip.statusAgeBadge.title": "Сколько прошло с момента перехода",
 	"tip.statusAgeBadge.body": "На каждой карточке Active Tasks есть живой бейдж возраста (5m, 7h, 13d) — наведи, чтобы увидеть точное время смены статуса.",
 	"tip.cmdSwitchKeepsView.title": "Меняй проект, сохраняя вид",

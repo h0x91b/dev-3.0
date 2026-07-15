@@ -43,6 +43,24 @@ describe("keymap registry", () => {
 		expect(shortcutKeysFor(spec, false)).toBe("Ctrl+K");
 	});
 
+	it("documents both route-history shortcut aliases", () => {
+		expect(APP_SHORTCUTS.find((s) => s.id === "back")?.keys).toEqual({
+			mac: "⌘[ / Ctrl+-",
+			other: "Ctrl+[ / Ctrl+-",
+		});
+		expect(APP_SHORTCUTS.find((s) => s.id === "forward")?.keys).toEqual({
+			mac: "⌘] / Ctrl+Shift+-",
+			other: "Ctrl+] / Ctrl+Shift+-",
+		});
+	});
+
+	it("keeps zoom-out distinct from the Ctrl-minus navigation alias", () => {
+		expect(APP_SHORTCUTS.find((s) => s.id === "zoom-out")?.keys).toEqual({
+			mac: "⌘-",
+			other: "Ctrl+Alt+-",
+		});
+	});
+
 	it("shortcutsInCategory returns only that category, in registry order", () => {
 		const nav = shortcutsInCategory("navigation");
 		expect(nav.length).toBeGreaterThan(0);
