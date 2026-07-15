@@ -586,11 +586,12 @@ function KanbanBoard({
 		);
 	}
 
-	// Carousel mode: one column per screen. Collapsed columns are excluded from
-	// the rotation (already user-hidden); empty columns stay for position stability.
+	// Carousel mode: one column per screen. Built-in collapsed defaults remain
+	// reachable on mobile; only columns explicitly collapsed by the user are
+	// excluded from rotation. Empty columns stay for position stability.
 	const carouselColumns: CarouselColumn[] = isCarousel
 		? orderedColumns
-				.filter((slot) => !collapseState.isCollapsed(slot.type === "builtin" ? slot.status : slot.col.id))
+				.filter((slot) => !collapseState.isUserCollapsed(slot.type === "builtin" ? slot.status : slot.col.id))
 				.map((slot) =>
 					slot.type === "builtin"
 						? {

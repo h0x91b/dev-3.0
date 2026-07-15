@@ -10,6 +10,8 @@ describe("useColumnCollapse", () => {
 		const { result } = renderHook(() => useColumnCollapse("proj-1"));
 		expect(result.current.isCollapsed("completed")).toBe(true);
 		expect(result.current.isCollapsed("cancelled")).toBe(true);
+		expect(result.current.isUserCollapsed("completed")).toBe(false);
+		expect(result.current.isUserCollapsed("cancelled")).toBe(false);
 	});
 
 	it("todo and active statuses are expanded by default", () => {
@@ -58,5 +60,18 @@ describe("useColumnCollapse", () => {
 		expect(result.current.isCollapsed("in-progress")).toBe(false);
 		act(() => result.current.toggle("in-progress"));
 		expect(result.current.isCollapsed("in-progress")).toBe(true);
+		expect(result.current.isUserCollapsed("in-progress")).toBe(true);
+	});
+
+	it("keeps user collapse separate from built-in defaults", () => {
+		const { result } = renderHook(() => useColumnCollapse("proj-1"));
+
+		act(() => result.current.toggle("completed")); // open the default-collapsed column
+		expect(result.current.isCollapsed("completed")).toBe(false);
+		expect(result.current.isUserCollapsed("completed")).toBe(false);
+
+		act(() => result.current.toggle("completed")); // explicitly collapse it again
+		expect(result.current.isCollapsed("completed")).toBe(true);
+		expect(result.current.isUserCollapsed("completed")).toBe(true);
 	});
 });

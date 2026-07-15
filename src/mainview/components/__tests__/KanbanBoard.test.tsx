@@ -555,6 +555,13 @@ describe("mobile carousel mode", () => {
 		// Position text "n / N" is present
 		expect(screen.getByText(/^\d+ \/ \d+$/)).toBeTruthy();
 	});
+
+	it("keeps completed and cancelled columns in the mobile carousel", async () => {
+		await renderBoardWith();
+
+		expect(screen.getByText("Completed")).toBeTruthy();
+		expect(screen.getByText("Cancelled")).toBeTruthy();
+	});
 });
 
 describe("create custom column from board (issue #222)", () => {
