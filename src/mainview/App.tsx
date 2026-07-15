@@ -12,6 +12,8 @@ import { isRemote } from "./utils/platform";
 import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
+import { useMobile } from "./hooks/useMobile";
+import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
 import GlobalSettings from "./components/GlobalSettings";
@@ -142,6 +144,21 @@ function App() {
 	}, []);
 	useViewport(state.route);
 	useMobileDenseZoom(state.route);
+	// Android hardware/gesture Back drives in-app navigation in mobile remote
+	// mode: close the topmost layer → route back → double-back-to-exit toast.
+	// Reads history depth through a ref so the popstate handler stays stable.
+	const isMobileDevice = useMobile();
+	const historyIndexRef = useRef(state.historyIndex);
+	historyIndexRef.current = state.historyIndex;
+	useAndroidBackGuard({
+		enabled: isMobileDevice && !isElectrobun,
+		routeBack: () => {
+			if (historyIndexRef.current <= 0) return false;
+			dispatch({ type: "goBack" });
+			return true;
+		},
+		showExitToast: () => toast.info(t("mobile.backExitToast"), { durationMs: 2_500 }),
+	});
 	// RPC/WebSocket connection state — drives the bootstrap screen's "Connecting…"
 	// phase so a stuck remote/mobile launch tells the user WHERE it's stuck.
 	const rpcState = useRpcStatus();

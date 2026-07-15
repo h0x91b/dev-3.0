@@ -241,6 +241,7 @@ const common = {
 	"showArtifact.attention_few": "Прислал {count} HTML-артефакта",
 	"showArtifact.attention_many": "Прислал {count} HTML-артефактов",
 	"showArtifact.attention_other": "Прислал {count} HTML-артефактов",
+	"mobile.backExitToast": "Нажмите «Назад» ещё раз для выхода",
 };
 
 export default common;

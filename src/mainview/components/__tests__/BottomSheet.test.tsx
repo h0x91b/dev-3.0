@@ -1,8 +1,13 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import BottomSheet from "../BottomSheet";
 import { I18nProvider } from "../../i18n";
+import { closeTopBackLayer, __resetBackLayersForTests } from "../../back-navigation";
+
+beforeEach(() => {
+	__resetBackLayersForTests();
+});
 
 function renderSheet(props: Partial<React.ComponentProps<typeof BottomSheet>> = {}) {
 	const onClose = props.onClose ?? vi.fn();
@@ -55,5 +60,24 @@ describe("BottomSheet", () => {
 		const { onClose } = renderSheet();
 		await userEvent.keyboard("{Escape}");
 		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("registers in the Android back-layer stack while open", () => {
+		const { onClose } = renderSheet();
+		act(() => {
+			expect(closeTopBackLayer()).toBe(true);
+		});
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("does not register a back layer when closed", () => {
+		render(
+			<I18nProvider>
+				<BottomSheet open={false} onClose={vi.fn()} title="Filters" testId="sheet">
+					<span>Inside</span>
+				</BottomSheet>
+			</I18nProvider>,
+		);
+		expect(closeTopBackLayer()).toBe(false);
 	});
 });
