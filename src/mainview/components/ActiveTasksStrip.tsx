@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
+import TaskShutdownOverlay from "./TaskShutdownOverlay";
 
 interface ActiveTasksStripProps {
 	project: Project;
@@ -48,6 +49,7 @@ function ActiveTasksStrip({
 	if (activeTasks.length <= 1) return null;
 
 	function handleTaskClick(task: Task) {
+		if (task.shuttingDown) return;
 		if (task.id === activeTaskId) {
 			navigate({ screen: "project", projectId: project.id });
 		} else {
@@ -73,7 +75,8 @@ function ActiveTasksStrip({
 					<div
 						key={task.id}
 						role="button"
-						tabIndex={0}
+						tabIndex={task.shuttingDown ? -1 : 0}
+						aria-disabled={task.shuttingDown || undefined}
 						aria-label={title}
 						onClick={() => handleTaskClick(task)}
 						onKeyDown={(event) => {
@@ -83,8 +86,10 @@ function ActiveTasksStrip({
 								handleTaskClick(task);
 							}
 						}}
-						className={`flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-[0.625rem] leading-tight max-w-[220px] transition-colors ${
-							isActive
+						className={`relative flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded text-[0.625rem] leading-tight max-w-[220px] transition-colors ${
+							task.shuttingDown
+								? "grayscale opacity-40 pointer-events-none"
+								: isActive
 								? "bg-accent/15 text-accent"
 								: "text-fg-2 hover:bg-elevated-hover"
 						}`}
@@ -116,6 +121,7 @@ function ActiveTasksStrip({
 								{bellCount > 9 ? "9+" : bellCount}
 							</span>
 						)}
+						{task.shuttingDown && <TaskShutdownOverlay strip />}
 					</div>
 				);
 			})}

@@ -22,6 +22,7 @@ import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
+import TaskShutdownOverlay from "./TaskShutdownOverlay";
 
 type SidebarScope = "project" | "global" | "attention";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
@@ -392,6 +393,7 @@ function ActiveTasksSidebar({
 	);
 
 	function handleTaskClick(task: Task) {
+		if (task.shuttingDown) return;
 		preview.close();
 		const targetProjectId = task.projectId || project.id;
 		if (task.id === activeTaskId && targetProjectId === project.id) {
@@ -625,24 +627,29 @@ function ActiveTasksSidebar({
 										<div
 											data-hint-id={`task:${task.id}`}
 											role="button"
-											tabIndex={0}
+											tabIndex={task.shuttingDown ? -1 : 0}
+											aria-disabled={task.shuttingDown || undefined}
 											aria-label={displayTitle}
-							onClick={() => handleTaskClick(task)}
-							onKeyDown={(e) => {
-								// Card is a div (so the nested PriorityBadge button is valid
-								// HTML); restore native button keyboard activation.
-								if (e.target !== e.currentTarget) return;
-								if (e.key === "Enter" || e.key === " ") {
+											onClick={() => handleTaskClick(task)}
+											onKeyDown={(e) => {
+												// Card is a div (so the nested PriorityBadge button is valid
+												// HTML); restore native button keyboard activation.
+												if (e.target !== e.currentTarget) return;
+												if (e.key === "Enter" || e.key === " ") {
 													e.preventDefault();
 													handleTaskClick(task);
 												}
 											}}
-											onMouseEnter={(e) => preview.handlers.onMouseEnter(task.id, e.currentTarget)}
+											onMouseEnter={(e) => {
+												if (!task.shuttingDown) preview.handlers.onMouseEnter(task.id, e.currentTarget);
+											}}
 											onMouseLeave={preview.handlers.onMouseLeave}
 											className={`w-full text-left px-3 py-2 transition-all relative cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${
-												isActive
-													? "bg-accent/20 ring-1 ring-inset ring-accent/50"
-													: "hover:bg-elevated-hover"
+												task.shuttingDown
+													? "grayscale opacity-40 pointer-events-none"
+													: isActive
+														? "bg-accent/20 ring-1 ring-inset ring-accent/50"
+														: "hover:bg-elevated-hover"
 											}`}
 										>
 											{/* Faint status wash so the whole card carries its column color
@@ -679,6 +686,8 @@ function ActiveTasksSidebar({
 													</span>
 												);
 											})()}
+
+											{task.shuttingDown && <TaskShutdownOverlay />}
 
 											{/* Bell badge */}
 											{bellCount > 0 && (

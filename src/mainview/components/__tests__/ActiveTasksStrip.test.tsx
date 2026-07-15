@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import ActiveTasksStrip from "../ActiveTasksStrip";
 import type { CodingAgent, Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -47,6 +48,30 @@ function makeTask(overrides?: Partial<Task>): Task {
 }
 
 describe("ActiveTasksStrip", () => {
+	it("shows a busy teardown indicator and blocks a shutting-down task", async () => {
+		const navigate = vi.fn();
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<ActiveTasksStrip
+					project={project}
+					tasks={[makeTask({ shuttingDown: true }), makeTask({ id: "t2" })]}
+					activeTaskId="t2"
+					navigate={navigate}
+					agents={[geminiAgent]}
+					bellCounts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		const status = screen.getByRole("status");
+		expect(status).toHaveAttribute("aria-label", "Shutting down…");
+		expect(status).toHaveAttribute("aria-busy", "true");
+
+		await user.click(screen.getAllByRole("button", { name: "Привет! как сам?" })[0]);
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
 	it("renders compact agent summary and variant dots", () => {
 		render(
 			<I18nProvider>

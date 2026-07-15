@@ -29,6 +29,7 @@ import ScheduledMessagesChip from "./ScheduledMessagesChip";
 import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBadge";
 import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
 import Tooltip from "./Tooltip";
+import TaskShutdownOverlay from "./TaskShutdownOverlay";
 
 interface TaskCardProps {
 	task: Task;
@@ -561,30 +562,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				</div>
 			)}
 
-			{/* Shutting-down overlay — muted, indeterminate "powering down" while the
-			    session/worktree are torn down. The opposite of the preparing loader:
-			    grey (not accent), no progress bar (teardown duration is unknowable),
-			    no actions. The card is pointer-events-none, so it is not openable. */}
-			{isShuttingDown && (
-				<div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-base/55 px-3 backdrop-blur-[2px]">
-					<div
-						className="flex max-w-full items-center gap-2 rounded-xl border border-edge bg-overlay/95 px-3 py-2 shadow-xl shadow-black/30"
-						role="status"
-						aria-live="polite"
-						aria-busy="true"
-					>
-						<div className="h-3.5 w-3.5 flex-shrink-0 rounded-full border-2 border-fg-muted/30 border-t-fg-muted animate-spin motion-reduce:animate-none" />
-						<div className="min-w-0">
-							<div className="text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-fg-3">
-								{t("task.shuttingDown")}
-							</div>
-							<div className="truncate text-xs text-fg-muted">
-								{t("task.shuttingDownDetail")}
-							</div>
-						</div>
-					</div>
-				</div>
-			)}
+			{/* Shared teardown feedback used by the active-task surfaces too. */}
+			{isShuttingDown && <TaskShutdownOverlay />}
 
 			{/* Dismiss button — top-right, visible on hover */}
 			{showDismissButton && (

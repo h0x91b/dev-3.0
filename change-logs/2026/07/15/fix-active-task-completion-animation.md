@@ -1,0 +1,1 @@
+Active Tasks now shows the same muted teardown animation as Kanban while a completed or cancelled task closes its session and worktree. The task stays visible but cannot be opened until backend cleanup finishes.
