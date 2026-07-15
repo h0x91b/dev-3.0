@@ -7,20 +7,52 @@ function storageKey(projectId: string) {
 	return `dev3-kanban-collapsed-${projectId}`;
 }
 
-function loadCollapsed(projectId: string): Set<string> {
+function userCollapsedStorageKey(projectId: string) {
+	return `dev3-kanban-user-collapsed-${projectId}`;
+}
+
+function parseStoredSet(raw: string | null): Set<string> | null {
+	if (!raw) return null;
 	try {
-		const raw = localStorage.getItem(storageKey(projectId));
-		if (raw) return new Set(JSON.parse(raw));
-	} catch {}
-	return new Set(DEFAULT_COLLAPSED);
+		const parsed: unknown = JSON.parse(raw);
+		return Array.isArray(parsed) && parsed.every((value) => typeof value === "string")
+			? new Set(parsed)
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+interface LoadedCollapseState {
+	collapsed: Set<string>;
+	userCollapsed: Set<string>;
+}
+
+function loadCollapsed(projectId: string): LoadedCollapseState {
+	const storedCollapsed = parseStoredSet(localStorage.getItem(storageKey(projectId)));
+	const collapsed = storedCollapsed ?? new Set(DEFAULT_COLLAPSED);
+	const storedUserCollapsed = parseStoredSet(localStorage.getItem(userCollapsedStorageKey(projectId)));
+	if (storedUserCollapsed) return { collapsed, userCollapsed: storedUserCollapsed };
+
+	// Older versions only persisted the complete collapsed set. Treat the built-in
+	// defaults as responsive defaults so they remain reachable in the mobile carousel.
+	const userCollapsed = new Set(
+		[...collapsed].filter((columnId) => !DEFAULT_COLLAPSED.includes(columnId as TaskStatus)),
+	);
+	return { collapsed, userCollapsed };
 }
 
 function saveCollapsed(projectId: string, collapsed: Set<string>) {
 	localStorage.setItem(storageKey(projectId), JSON.stringify([...collapsed]));
 }
 
+function saveUserCollapsed(projectId: string, userCollapsed: Set<string>) {
+	localStorage.setItem(userCollapsedStorageKey(projectId), JSON.stringify([...userCollapsed]));
+}
+
 export interface ColumnCollapseState {
 	isCollapsed: (columnId: string) => boolean;
+	isUserCollapsed: (columnId: string) => boolean;
 	toggle: (columnId: string) => void;
 	dragExpandHandlers: (columnId: string) => {
 		onDragEnter: () => void;
@@ -30,8 +62,9 @@ export interface ColumnCollapseState {
 }
 
 export function useColumnCollapse(projectId: string): ColumnCollapseState {
-	const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed(projectId));
+	const [collapseState, setCollapseState] = useState<LoadedCollapseState>(() => loadCollapsed(projectId));
 	const [dragExpanded, setDragExpanded] = useState<Set<string>>(new Set());
+	const { collapsed, userCollapsed } = collapseState;
 
 	const collapsedRef = useRef(collapsed);
 	collapsedRef.current = collapsed;
@@ -40,7 +73,7 @@ export function useColumnCollapse(projectId: string): ColumnCollapseState {
 
 	// Re-load when projectId changes
 	useEffect(() => {
-		setCollapsed(loadCollapsed(projectId));
+		setCollapseState(loadCollapsed(projectId));
 		setDragExpanded(new Set());
 	}, [projectId]);
 
@@ -60,18 +93,27 @@ export function useColumnCollapse(projectId: string): ColumnCollapseState {
 		return collapsed.has(columnId);
 	}, [collapsed, dragExpanded]);
 
+	const isUserCollapsed = useCallback((columnId: string) => {
+		if (dragExpanded.has(columnId)) return false;
+		return userCollapsed.has(columnId);
+	}, [dragExpanded, userCollapsed]);
+
 	const toggle = useCallback((columnId: string) => {
-		setCollapsed((prev) => {
-			const next = new Set(prev);
-			if (next.has(columnId)) {
-				next.delete(columnId);
+		setCollapseState((prev) => {
+			const nextCollapsed = new Set(prev.collapsed);
+			const nextUserCollapsed = new Set(prev.userCollapsed);
+			if (nextCollapsed.has(columnId)) {
+				nextCollapsed.delete(columnId);
+				nextUserCollapsed.delete(columnId);
 			} else {
-				next.add(columnId);
+				nextCollapsed.add(columnId);
+				nextUserCollapsed.add(columnId);
 			}
-			persist(next);
-			return next;
+			persist(nextCollapsed);
+			saveUserCollapsed(projectId, nextUserCollapsed);
+			return { collapsed: nextCollapsed, userCollapsed: nextUserCollapsed };
 		});
-	}, [persist]);
+	}, [persist, projectId]);
 
 	const dragExpandHandlers = useCallback((columnId: string) => ({
 		onDragEnter: () => {
@@ -107,6 +149,6 @@ export function useColumnCollapse(projectId: string): ColumnCollapseState {
 	}), []);
 
 	return useMemo(() => ({
-		isCollapsed, toggle, dragExpandHandlers,
-	}), [isCollapsed, toggle, dragExpandHandlers]);
+		isCollapsed, isUserCollapsed, toggle, dragExpandHandlers,
+	}), [isCollapsed, isUserCollapsed, toggle, dragExpandHandlers]);
 }

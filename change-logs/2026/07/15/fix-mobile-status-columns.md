@@ -1,0 +1,1 @@
+Keep the Completed and Cancelled Kanban columns reachable in the narrow carousel while preserving explicit user column-collapse choices. The desktop board keeps its existing compact default presentation.
