@@ -9,7 +9,7 @@ const tips = {
 	"tip.diffReviewPersists.title": "Tu revisión se guarda",
 	"tip.diffReviewPersists.body": "Los comentarios de revisión en línea se guardan unos días, así un descuido con el portapapeles no los pierde — reabre el diff y cópialos otra vez, o usa «Restablecer revisión».",
 	"tip.backForwardNav.title": "Salta atrás y adelante",
-	"tip.backForwardNav.body": "Usa las flechas ‹ › arriba a la izquierda, ⌘[ / ⌘] o los botones laterales del ratón para volver por donde estuviste.",
+	"tip.backForwardNav.body": "Usa las flechas ‹ ›, ⌘[ / ⌘], Ctrl+- / Ctrl+Shift+- o los botones laterales para volver sobre tus pasos.",
 	"tip.statusAgeBadge.title": "Cuánto desde el cambio",
 	"tip.statusAgeBadge.body": "Cada tarjeta de Active Tasks muestra una insignia de antigüedad en vivo (5m, 7h, 13d) — pasa el ratón para ver la hora exacta del cambio de estado.",
 	"tip.cmdSwitchKeepsView.title": "Cambia de proyecto sin perder la vista",

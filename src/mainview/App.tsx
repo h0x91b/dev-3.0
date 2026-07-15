@@ -81,6 +81,11 @@ function digitFromCode(code: string): number | null {
 	return m ? Number(m[1]) : null;
 }
 
+/** Match the physical minus key, including shifted layouts where `key` is `_`. */
+function isMinusKey(event: KeyboardEvent): boolean {
+	return event.code === "Minus" || event.key === "-" || event.key === "_";
+}
+
 /** First on-screen search input (board label filter, sidebar search), for the bare `/` shortcut. */
 function findVisibleSearchInput(): HTMLElement | null {
 	for (const el of document.querySelectorAll<HTMLElement>('[data-search-input="true"]')) {
@@ -668,7 +673,7 @@ function App() {
 		};
 	}, [openCreateTaskModal, openAddProject]);
 
-	// Cmd/Ctrl+Q, Cmd/Ctrl+N, Cmd/Ctrl+,, Cmd/Ctrl+=/- (zoom) — capture phase so terminal can't swallow them
+	// Global app shortcuts — capture phase so the terminal can't swallow them.
 	useGlobalShortcut(
 		(e) => {
 			const isTerminalFullscreenShortcut =
@@ -764,7 +769,21 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				adjustZoom(ZOOM_STEP);
-			} else if ((e.metaKey || e.ctrlKey) && e.key === "-") {
+			} else if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && isMinusKey(e)) {
+				// Ctrl+- — VS Code-style alias for navigating back. Match the physical
+				// minus key because Shift+- reports `_` in the US keyboard layout.
+				e.preventDefault();
+				e.stopPropagation();
+				dispatch({ type: "goBack" });
+			} else if (e.ctrlKey && !e.metaKey && e.shiftKey && !e.altKey && isMinusKey(e)) {
+				// Ctrl+Shift+- — VS Code-style alias for navigating forward.
+				e.preventDefault();
+				e.stopPropagation();
+				dispatch({ type: "goForward" });
+			} else if (
+				(e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && isMinusKey(e)) ||
+				(e.ctrlKey && !e.metaKey && !e.shiftKey && e.altKey && isMinusKey(e))
+			) {
 				if (remote) return; // Yield to the browser's native page zoom in remote.
 				e.preventDefault();
 				e.stopPropagation();

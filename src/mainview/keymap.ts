@@ -67,8 +67,8 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	// ── Navigation ──
 	{ id: "go-to-project", keys: { mac: "⌘K", other: "Ctrl+K" }, descKey: "keymap.shortcut.goToProject", category: "navigation" },
 	{ id: "command-palette", keys: { mac: "⇧⌘P", other: "Ctrl+Shift+P" }, descKey: "keymap.shortcut.commandPalette", category: "navigation" },
-	{ id: "back", keys: { mac: "⌘[", other: "Ctrl+[" }, descKey: "keymap.shortcut.back", category: "navigation" },
-	{ id: "forward", keys: { mac: "⌘]", other: "Ctrl+]" }, descKey: "keymap.shortcut.forward", category: "navigation" },
+	{ id: "back", keys: { mac: "⌘[ / Ctrl+-", other: "Ctrl+[ / Ctrl+-" }, descKey: "keymap.shortcut.back", category: "navigation" },
+	{ id: "forward", keys: { mac: "⌘] / Ctrl+Shift+-", other: "Ctrl+] / Ctrl+Shift+-" }, descKey: "keymap.shortcut.forward", category: "navigation" },
 	{ id: "previous-variant", keys: { mac: "⇧⌘[", other: "Ctrl+Shift+[" }, descKey: "keymap.shortcut.previousVariant", category: "navigation" },
 	{ id: "next-variant", keys: { mac: "⇧⌘]", other: "Ctrl+Shift+]" }, descKey: "keymap.shortcut.nextVariant", category: "navigation" },
 	{ id: "switch-project", keys: { mac: "⌘1–9", other: "Ctrl+1–9" }, remoteKeys: { mac: "G then 1–9", other: "G then 1–9" }, descKey: "keymap.shortcut.switchProject", category: "navigation" },
@@ -89,7 +89,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	// ── View & Zoom ──
 	{ id: "settings", keys: { mac: "⌘,", other: "Ctrl+," }, descKey: "keymap.shortcut.settings", category: "view" },
 	{ id: "zoom-in", keys: { mac: "⌘=", other: "Ctrl+=" }, descKey: "keymap.shortcut.zoomIn", category: "view", scope: "desktop" },
-	{ id: "zoom-out", keys: { mac: "⌘-", other: "Ctrl+-" }, descKey: "keymap.shortcut.zoomOut", category: "view", scope: "desktop" },
+	{ id: "zoom-out", keys: { mac: "⌘-", other: "Ctrl+Alt+-" }, descKey: "keymap.shortcut.zoomOut", category: "view", scope: "desktop" },
 	{ id: "zoom-reset", keys: { mac: "⇧⌘0", other: "Ctrl+Shift+0" }, descKey: "keymap.shortcut.zoomReset", category: "view", scope: "desktop" },
 	{ id: "hard-refresh", keys: { mac: "⌘R", other: "Ctrl+R" }, descKey: "keymap.shortcut.hardRefresh", category: "view", scope: "desktop" },
 	{ id: "keyboard-shortcuts", keys: { mac: "⌘/", other: "Ctrl+/" }, descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },

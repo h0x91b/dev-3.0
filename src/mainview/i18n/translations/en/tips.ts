@@ -9,7 +9,7 @@ const tips = {
 	"tip.diffReviewPersists.title": "Your diff review is saved",
 	"tip.diffReviewPersists.body": "Inline review comments are kept for a few days, so a clipboard mishap won't lose them — reopen the diff to copy again, or hit \"Reset review\" to clear.",
 	"tip.backForwardNav.title": "Jump back and forward",
-	"tip.backForwardNav.body": "Use the ‹ › arrows top-left, ⌘[ / ⌘], or your mouse side buttons to retrace where you've been.",
+	"tip.backForwardNav.body": "Use the ‹ › arrows, ⌘[ / ⌘], Ctrl+- / Ctrl+Shift+-, or mouse side buttons to retrace your steps.",
 	"tip.statusAgeBadge.title": "How long since the move",
 	"tip.statusAgeBadge.body": "Each Active Tasks card shows a live age badge (5m, 7h, 13d) — hover it for the exact status-change time.",
 	"tip.cmdSwitchKeepsView.title": "Switch projects, keep your view",

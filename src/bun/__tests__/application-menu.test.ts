@@ -80,6 +80,16 @@ describe("buildApplicationMenu", () => {
 		expect(actionable[1].accelerator).toBeUndefined();
 	});
 
+	it("leaves Ctrl+- available for route history instead of native zoom-out", () => {
+		const menu = buildApplicationMenu() as AnyMenuItem[];
+		const zoomOut = findItemByAction(menu, MENU_ACTIONS.zoomOut);
+		expect(zoomOut).toMatchObject({
+			label: "Zoom Out (⌘- / Ctrl+Alt+-)",
+			enabled: true,
+		});
+		expect(zoomOut?.accelerator).toBeUndefined();
+	});
+
 	it("keeps Add Local Project on Command+P", () => {
 		const menu = buildApplicationMenu() as AnyMenuItem[];
 		const fileMenu = findLabeledMenu(menu, "File");

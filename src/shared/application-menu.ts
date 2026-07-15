@@ -648,7 +648,9 @@ function viewMenu(): ApplicationMenuItemConfig {
 			item({ label: "Keyboard Shortcuts (⌘/)", action: MENU_ACTIONS.helpKeyboardShortcuts }),
 			SEP,
 			item({ label: "Zoom In", action: MENU_ACTIONS.zoomIn, accelerator: "=" }),
-			item({ label: "Zoom Out", action: MENU_ACTIONS.zoomOut, accelerator: "-" }),
+			// Ctrl+- belongs to route history; keep zoom-out available through the
+			// renderer's Cmd+- / Ctrl+Alt+- shortcuts and this menu item.
+			item({ label: "Zoom Out (⌘- / Ctrl+Alt+-)", action: MENU_ACTIONS.zoomOut }),
 			// Reset Zoom moved off ⌘0 (now "Jump to Operations") to ⇧⌘0. Electrobun
 			// menu accelerators are single-char only (decision 044), so the ⇧⌘0 chord
 			// is owned by the renderer (App.tsx) and only hinted in the label here.
