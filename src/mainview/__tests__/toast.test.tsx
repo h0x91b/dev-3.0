@@ -17,6 +17,30 @@ function setRendererActivity(visible: boolean, focused: boolean): void {
 	});
 }
 
+function setViewport(width: number): () => void {
+	const originalInnerWidth = window.innerWidth;
+	const originalMatchMedia = window.matchMedia;
+	Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		value: (query: string) => ({
+			matches: query.includes("max-width: 767px") ? width < 768 : query.includes("prefers-reduced-motion"),
+			media: query,
+			onchange: null,
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			addListener: () => {},
+			removeListener: () => {},
+			dispatchEvent: () => false,
+		}),
+	});
+
+	return () => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+	};
+}
+
 beforeEach(() => {
 	setRendererActivity(true, true);
 });
@@ -51,6 +75,24 @@ describe("toast service", () => {
 		expect(await screen.findByText("First")).toBeInTheDocument();
 		expect(screen.getByText("Second")).toBeInTheDocument();
 		expect(screen.getAllByRole("alert")).toHaveLength(2);
+	});
+
+	it("shows only the newest toast in a narrow viewport", () => {
+		const restoreViewport = setViewport(390);
+		const onTaskOverflow = vi.fn();
+		const { unmount } = render(<ToastHost onTaskOverflow={onTaskOverflow} />);
+		act(() => {
+			toast.info("First", { durationMs: 60_000, taskId: "task-1" });
+			toast.success("Newest", { durationMs: 60_000 });
+		});
+
+		expect(screen.getAllByRole("alert")).toHaveLength(1);
+		expect(screen.queryByText("First")).not.toBeInTheDocument();
+		expect(screen.getByText("Newest")).toBeInTheDocument();
+		expect(onTaskOverflow).toHaveBeenCalledWith(expect.objectContaining({ message: "First", taskId: "task-1" }));
+
+		unmount();
+		restoreViewport();
 	});
 
 	it("dismisses a toast when the close button is clicked", async () => {
