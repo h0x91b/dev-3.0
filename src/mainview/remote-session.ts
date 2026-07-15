@@ -1,5 +1,5 @@
 /**
- * Remote session / reconnect state machine (decision 132).
+ * Remote session / reconnect state machine (decision 133).
  *
  * Owns everything the browser transport needs to decide: the QR-token →
  * session-cookie exchange, the silent cookie revival on boot, the rolling

@@ -15,7 +15,8 @@
  * iPhone Safari has NO Fullscreen API for arbitrary elements (Apple shipped
  * it flag-gated in 17.2 and disabled it again in 17.4) — only <video> can go
  * fullscreen there. On iPhone `isFullscreenSupported()` is false, so both the
- * auto-engage and the menu toggle are absent. Platform limitation, not a bug.
+ * auto-engage and the menu toggle are absent. Platform limitation, not a bug —
+ * see decision 134.
  */
 
 let autoEngageSpent = false;

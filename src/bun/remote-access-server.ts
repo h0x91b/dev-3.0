@@ -28,7 +28,7 @@ const log = createLogger("remote-access");
 
 // ── Auth ────────────────────────────────────────────────────────────
 //
-// The session credential is an HttpOnly cookie (decision 132, supersedes 086):
+// The session credential is an HttpOnly cookie (decision 133, supersedes 086):
 // POST /auth/exchange trades a one-time QR token (or the dev static code) for a
 // Set-Cookie; every gated surface — the RPC and PTY WebSocket upgrades,
 // /auth/refresh, /health — authenticates by that cookie. The token never

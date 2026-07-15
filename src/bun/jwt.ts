@@ -21,7 +21,7 @@ const QR_TOKEN_TTL_S = 30;
 // and must rescan. Tradeoff: a leaked session stays valid longer — acceptable
 // because remote access is already gated by the one-time QR
 // (URL-is-the-password) and is meant for the user's own trusted devices.
-// See decision 132 (supersedes 086).
+// See decision 133 (supersedes 086).
 export const SESSION_TOKEN_TTL_S = 24 * 60 * 60;
 
 /**

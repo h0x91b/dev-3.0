@@ -276,7 +276,7 @@ function initElectrobunApi(): ApiShape {
 // ── Browser WebSocket transport ─────────────────────────────────────
 // Used when running in Chrome/Safari (remote access server or Vite dev).
 // Session auth rides an HttpOnly cookie set by POST /auth/exchange (decision
-// 132): this code never sees the credential — it just sends same-origin
+// 133): this code never sees the credential — it just sends same-origin
 // requests. All session/reconnect DECISIONS live in the remote-session state
 // machine (unit-tested); this function is the thin browser wiring around it.
 function initBrowserApi(): ApiShape {

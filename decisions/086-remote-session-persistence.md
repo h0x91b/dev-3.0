@@ -1,6 +1,6 @@
 # 086 — Persist the remote-access session token + 8h TTL
 
-> **Superseded by [132](132-remote-cookie-session-auth.md).** Session auth
+> **Superseded by [133](133-remote-cookie-session-auth.md).** Session auth
 > moved to an HttpOnly cookie with a disk-persisted signing secret and a 24h
 > rolling TTL. Note: this record's stated reason for rejecting cookies
 > ("cookies don't ride WebSocket query-param auth") was incorrect — browsers

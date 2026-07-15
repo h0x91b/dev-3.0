@@ -1,4 +1,4 @@
-# 132 — Remote session auth via HttpOnly cookie + persisted JWT secret
+# 133 — Remote session auth via HttpOnly cookie + persisted JWT secret
 
 **Supersedes [086](086-remote-session-persistence.md).**
 
