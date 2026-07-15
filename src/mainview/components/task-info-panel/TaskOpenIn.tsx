@@ -47,7 +47,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 				setYaziInstallPopup(true);
 			}
 		} catch (err) {
-			toast.error(t("infoPanel.fileBrowserFailed", { error: String(err) }));
+			toast.error(t("infoPanel.fileBrowserFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -72,6 +72,7 @@ export default function TaskOpenIn({ task, project, isTaskActive, showFileBrowse
 					<OpenInMenu
 						position={openInMenuPos}
 						path={task.worktreePath}
+						taskId={task.id}
 						onClose={() => setOpenInMenuOpen(false)}
 					/>
 				)}

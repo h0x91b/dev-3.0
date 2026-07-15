@@ -132,5 +132,9 @@ export function showWebNotificationOrToast(
 		]
 			.filter(Boolean)
 			.join(" · ") || undefined;
-	toast[detail.level](detail.body, { onClick: openTask, context });
+	toast[detail.level](detail.body, {
+		onClick: openTask,
+		context,
+		taskId: detail.taskId || undefined,
+	});
 }

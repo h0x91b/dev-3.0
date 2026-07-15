@@ -227,6 +227,7 @@ function TaskWorkspacePane({
 							style={{ width: isNarrow ? "100%" : artifactWidth }}
 						>
 							<TaskArtifactViewer
+								taskId={taskId}
 								artifacts={artifactViewer.artifacts}
 								initialIndex={artifactViewer.index}
 								onClose={onCloseArtifactViewer}

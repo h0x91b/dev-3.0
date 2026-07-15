@@ -106,7 +106,7 @@ export function useTaskBranchStatus({
 
 			if (!eligible) {
 				if (force) {
-					toast.info(t("infoPanel.mergeCheckNotMerged", { branch: baseBranch }));
+					toast.info(t("infoPanel.mergeCheckNotMerged", { branch: baseBranch }), { taskId: task.id });
 				}
 				return;
 			}
@@ -217,7 +217,7 @@ export function useTaskBranchStatus({
 				autoMerge,
 			});
 		} catch (err) {
-			toast.error(t("infoPanel.createPRFailed", { error: String(err) }));
+			toast.error(t("infoPanel.createPRFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setCreatingPR(false);
 	}, [creatingPR, project.id, task.id, t]);
@@ -300,7 +300,7 @@ export function useTaskBranchStatus({
 			// user dismissed the popup earlier for this same merged head.
 			await offerMergeCompletionIfMerged(status, { force: true });
 		} catch (err) {
-			toast.error(t("infoPanel.refreshStatusFailed", { error: String(err) }));
+			toast.error(t("infoPanel.refreshStatusFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setRefreshingStatus(false);
 	}, [compareRef, isTaskActive, offerMergeCompletionIfMerged, project.id, refreshingStatus, task.id, task.worktreePath, t]);
@@ -322,9 +322,9 @@ export function useTaskBranchStatus({
 					compareRef: compareRef || undefined,
 				});
 				if (handedOff) {
-					toast.info(t("infoPanel.rebaseAgentStarted"));
+					toast.info(t("infoPanel.rebaseAgentStarted"), { taskId: task.id });
 				} else {
-					toast.error(t("infoPanel.rebaseAgentNoPane"));
+					toast.error(t("infoPanel.rebaseAgentNoPane"), { taskId: task.id });
 				}
 			} else {
 				await api.request.rebaseTask({
@@ -334,7 +334,7 @@ export function useTaskBranchStatus({
 				});
 			}
 		} catch (err) {
-			toast.error(t("infoPanel.rebaseFailed", { error: String(err) }));
+			toast.error(t("infoPanel.rebaseFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setRebasing(false);
 	}, [branchStatus, compareRef, project.id, rebasing, task.id, t]);
@@ -351,7 +351,7 @@ export function useTaskBranchStatus({
 				projectId: project.id,
 			});
 		} catch (err) {
-			toast.error(t("infoPanel.mergeFailed", { error: String(err) }));
+			toast.error(t("infoPanel.mergeFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setMerging(false);
 	}, [merging, project.id, task.id, t]);
@@ -368,7 +368,7 @@ export function useTaskBranchStatus({
 				projectId: project.id,
 			});
 		} catch (err) {
-			toast.error(t("infoPanel.pushFailed", { error: String(err) }));
+			toast.error(t("infoPanel.pushFailed", { error: String(err) }), { taskId: task.id });
 		}
 		setPushing(false);
 	}, [project.id, pushing, task.id, t]);

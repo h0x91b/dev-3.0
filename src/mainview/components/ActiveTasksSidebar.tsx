@@ -388,7 +388,7 @@ function ActiveTasksSidebar({
 				const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: task.projectId, priority });
 				for (const changedTask of changed) dispatch({ type: "updateTask", task: changedTask });
 			} catch (err) {
-				toast.error(t("priority.failedSet", { error: String(err) }));
+				toast.error(t("priority.failedSet", { error: String(err) }), { taskId: task.id });
 			}
 		},
 		[dispatch, t],

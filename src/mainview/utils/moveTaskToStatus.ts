@@ -121,7 +121,7 @@ export async function moveTaskToStatus({
 	} catch (err) {
 		if (revertOnFailure) {
 			dispatch({ type: "updateTask", task });
-			toast.error(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
 		} else {
 			console.error("moveTaskToStatus failed:", err);
 		}

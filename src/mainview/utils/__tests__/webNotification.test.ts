@@ -150,6 +150,7 @@ describe("showWebNotificationOrToast", () => {
 		const [message, opts] = toastMock.info.mock.calls[0];
 		expect(message).toBe("In Progress → Review");
 		expect(opts.context).toBe("#42 · MyProject · Fix bug");
+		expect(opts.taskId).toBe("task-1");
 		opts.onClick();
 		expect(onOpen).toHaveBeenCalledWith("task-1", "proj-1");
 	});

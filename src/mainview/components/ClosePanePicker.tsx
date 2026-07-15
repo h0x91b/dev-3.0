@@ -57,7 +57,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 		try {
 			layout = await api.request.tmuxLayout({ taskId });
 		} catch {
-			toast.error(t("tmux.pickPaneError"));
+			toast.error(t("tmux.pickPaneError"), { taskId });
 			return;
 		}
 		const activeWindow = layout.exists ? layout.windows.find((w) => w.active) ?? layout.windows[0] : undefined;
@@ -65,7 +65,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 			? layout.panes.filter((p) => p.windowIndex === activeWindow.index)
 			: [];
 		if (!activeWindow || winPanes.length === 0) {
-			toast.error(t("tmux.pickPaneError"));
+			toast.error(t("tmux.pickPaneError"), { taskId });
 			return;
 		}
 
@@ -165,7 +165,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 			try {
 				await api.request.tmuxKillPane({ taskId, paneId: box.paneId, force: true });
 			} catch {
-				toast.error(t("tmux.pickPaneError"));
+				toast.error(t("tmux.pickPaneError"), { taskId });
 			}
 			cancel();
 			return;
@@ -174,7 +174,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 		try {
 			await api.request.tmuxKillPane({ taskId, paneId: box.paneId });
 		} catch {
-			toast.error(t("tmux.pickPaneError"));
+			toast.error(t("tmux.pickPaneError"), { taskId });
 		}
 		cancel();
 	}

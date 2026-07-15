@@ -979,7 +979,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 							try {
 								if (!localStorage.getItem(TERMINAL_COPY_HINT_SEEN_KEY)) {
 									localStorage.setItem(TERMINAL_COPY_HINT_SEEN_KEY, "1");
-									toast.info(tRef.current("terminal.copyHint"), { durationMs: 8000 });
+								toast.info(tRef.current("terminal.copyHint"), { durationMs: 8000, taskId });
 								}
 							} catch {
 								// localStorage unavailable — skip the hint, copy still worked.
@@ -1463,7 +1463,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 					return uploadedPath ? uploadedPath.replace(/ /g, "\\ ") : null;
 				} catch (err) {
 					console.error(`[TerminalView] file upload failed for "${f.name}":`, err);
-					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
+					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }), { taskId });
 					return null;
 				}
 			}),

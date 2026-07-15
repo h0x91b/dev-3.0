@@ -73,7 +73,7 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	}, []);
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
-	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor, task.id);
 
 	// Load the task's live panes for the (optional) concrete-pane target. Failure
 	// is non-fatal — the default agent target always works.

@@ -102,7 +102,7 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up" }: Sc
 			const updated = await api.request.cancelScheduledMessage({ taskId: task.id, projectId: project.id, messageId });
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("task.scheduleCancelFailed", { error: String(err) }));
+			toast.error(t("task.scheduleCancelFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -113,7 +113,7 @@ function ScheduledMessagesChip({ task, project, dispatch, placement = "up" }: Sc
 			const updated = await api.request.sendScheduledMessageNow({ taskId: task.id, projectId: project.id, messageId });
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("task.sendNowFailed", { error: String(err) }));
+			toast.error(t("task.sendNowFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 

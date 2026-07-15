@@ -1,19 +1,49 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type ToastVariant = "error" | "success" | "info" | "warning";
 
-interface ToastEntry {
+export interface ToastEntry {
 	id: number;
 	message: string;
 	variant: ToastVariant;
 	durationMs: number;
+	/** Optional task identity used when capacity eviction needs a durable fallback. */
+	taskId?: string;
 	/** Optional click handler — makes the whole toast a button (e.g. navigate to a task). */
 	onClick?: () => void;
 	/** Optional source line shown above the message (e.g. "#804 · project · task title"). */
 	context?: string;
 }
 
+export interface ToastOpts {
+	durationMs?: number;
+	/** Task identity for task-scoped overflow fallback. */
+	taskId?: string;
+	/** When set, the toast becomes clickable and runs this on click (then dismisses). */
+	onClick?: () => void;
+	/** Optional source line shown above the message (e.g. "#804 · project · task title"). */
+	context?: string;
+}
+
+export interface ToastHostProps {
+	/** Receives only task-scoped entries evicted by the five-toast capacity limit. */
+	onTaskOverflow?: (entry: ToastEntry) => void;
+}
+
 type Listener = (entry: ToastEntry) => void;
+
+interface ToastRuntime {
+	remainingMs: number;
+	startedAtMs: number | null;
+	timeoutId: ReturnType<typeof setTimeout> | null;
+	hovered: boolean;
+	focused: boolean;
+}
+
+interface RenderedToast {
+	entry: ToastEntry;
+	paused: boolean;
+}
 
 const listeners = new Set<Listener>();
 let counter = 0;
@@ -22,17 +52,19 @@ const pendingEntries: ToastEntry[] = [];
 
 /** Default auto-dismiss delay. Long on purpose so error messages aren't missed. */
 const DEFAULT_DURATION_MS = 30_000;
+const MAX_VISIBLE_TOASTS = 5;
 
 function deliver(entry: ToastEntry): void {
 	listeners.forEach((l) => l(entry));
 }
 
-function emit(message: string, variant: ToastVariant, opts?: ToastOpts) {
+function emit(message: string, variant: ToastVariant, opts?: ToastOpts): void {
 	const entry: ToastEntry = {
 		id: ++counter,
 		message,
 		variant,
 		durationMs: opts?.durationMs ?? DEFAULT_DURATION_MS,
+		taskId: opts?.taskId,
 		onClick: opts?.onClick,
 		context: opts?.context,
 	};
@@ -42,14 +74,6 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts) {
 	}
 	// No host mounted (e.g. in unit tests) → silently drop.
 	deliver(entry);
-}
-
-interface ToastOpts {
-	durationMs?: number;
-	/** When set, the toast becomes clickable and runs this on click (then dismisses). */
-	onClick?: () => void;
-	/** Optional source line shown above the message (e.g. "#804 · project · task title"). */
-	context?: string;
 }
 
 /**
@@ -84,32 +108,170 @@ const VARIANT: Record<ToastVariant, { icon: string; border: string; text: string
 	warning: { icon: "\uf071", border: "border-warning/40", text: "text-warning", bar: "bg-warning" },
 };
 
-export function ToastHost() {
-	const [toasts, setToasts] = useState<ToastEntry[]>([]);
+function rendererIsActive(): boolean {
+	if (typeof document === "undefined") return true;
+	const focused = typeof document.hasFocus === "function" ? document.hasFocus() : true;
+	return document.visibilityState === "visible" && focused;
+}
+
+export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
+	const [toasts, setToasts] = useState<RenderedToast[]>([]);
+	const toastsRef = useRef<RenderedToast[]>([]);
+	const runtimesRef = useRef(new Map<number, ToastRuntime>());
+	const activeRef = useRef(rendererIsActive());
+	const overflowHandlerRef = useRef(onTaskOverflow);
+	overflowHandlerRef.current = onTaskOverflow;
+
+	function publish(next: RenderedToast[]): void {
+		toastsRef.current = next;
+		setToasts(next);
+	}
+
+	function clearRuntime(id: number): void {
+		const runtime = runtimesRef.current.get(id);
+		if (!runtime) return;
+		if (runtime.timeoutId !== null) {
+			clearTimeout(runtime.timeoutId);
+			runtime.timeoutId = null;
+		}
+		runtimesRef.current.delete(id);
+	}
+
+	function removeToast(id: number): void {
+		clearRuntime(id);
+		const next = toastsRef.current.filter(({ entry }) => entry.id !== id);
+		if (next.length === toastsRef.current.length) return;
+		publish(next);
+	}
+
+	function pauseRuntime(id: number): void {
+		const runtime = runtimesRef.current.get(id);
+		if (!runtime || runtime.startedAtMs === null) return;
+		runtime.remainingMs = Math.max(0, runtime.remainingMs - (Date.now() - runtime.startedAtMs));
+		runtime.startedAtMs = null;
+		if (runtime.timeoutId !== null) {
+			clearTimeout(runtime.timeoutId);
+			runtime.timeoutId = null;
+		}
+	}
+
+	function startRuntime(id: number): void {
+		const runtime = runtimesRef.current.get(id);
+		if (
+			!runtime ||
+			!activeRef.current ||
+			runtime.hovered ||
+			runtime.focused ||
+			runtime.startedAtMs !== null
+		) {
+			return;
+		}
+		if (runtime.remainingMs <= 0) {
+			removeToast(id);
+			return;
+		}
+		runtime.startedAtMs = Date.now();
+		runtime.timeoutId = setTimeout(() => removeToast(id), runtime.remainingMs);
+	}
+
+	function publishPauseState(): void {
+		const next = toastsRef.current.map((view) => {
+			const runtime = runtimesRef.current.get(view.entry.id);
+			const paused = !activeRef.current || !!runtime?.hovered || !!runtime?.focused;
+			return view.paused === paused ? view : { ...view, paused };
+		});
+		if (next.some((view, index) => view !== toastsRef.current[index])) publish(next);
+	}
+
+	function setInteraction(id: number, kind: "hovered" | "focused", value: boolean): void {
+		const runtime = runtimesRef.current.get(id);
+		if (!runtime || runtime[kind] === value) return;
+		runtime[kind] = value;
+		const shouldPause = !activeRef.current || runtime.hovered || runtime.focused;
+		if (shouldPause) pauseRuntime(id);
+		else startRuntime(id);
+		publishPauseState();
+	}
+
+	function updateActivity(): void {
+		const active = rendererIsActive();
+		if (active === activeRef.current) return;
+		activeRef.current = active;
+		if (active) {
+			for (const id of runtimesRef.current.keys()) startRuntime(id);
+		} else {
+			for (const id of runtimesRef.current.keys()) pauseRuntime(id);
+		}
+		publishPauseState();
+	}
+
+	useEffect(() => {
+		document.addEventListener("visibilitychange", updateActivity);
+		window.addEventListener("focus", updateActivity);
+		window.addEventListener("blur", updateActivity);
+		updateActivity();
+		return () => {
+			document.removeEventListener("visibilitychange", updateActivity);
+			window.removeEventListener("focus", updateActivity);
+			window.removeEventListener("blur", updateActivity);
+		};
+	}, []);
 
 	useEffect(() => {
 		const listener: Listener = (entry) => {
-			setToasts((prev) => [...prev, entry]);
-			setTimeout(() => {
-				setToasts((prev) => prev.filter((t) => t.id !== entry.id));
-			}, entry.durationMs);
+			const runtime: ToastRuntime = {
+				remainingMs: Math.max(0, entry.durationMs),
+				startedAtMs: null,
+				timeoutId: null,
+				hovered: false,
+				focused: false,
+			};
+			runtimesRef.current.set(entry.id, runtime);
+
+			const previous = toastsRef.current;
+			const evicted = previous.length >= MAX_VISIBLE_TOASTS ? previous[0] : undefined;
+			if (evicted) clearRuntime(evicted.entry.id);
+			const next = [
+				...previous.slice(evicted ? 1 : 0),
+				{ entry, paused: !activeRef.current },
+			];
+			publish(next);
+
+			if (evicted?.entry.taskId) {
+				overflowHandlerRef.current?.(evicted.entry);
+			}
+			startRuntime(entry.id);
 		};
 		listeners.add(listener);
 		return () => {
 			listeners.delete(listener);
+			for (const id of runtimesRef.current.keys()) clearRuntime(id);
+			toastsRef.current = [];
 		};
 	}, []);
 
 	if (!toasts.length) return null;
 
-	const dismiss = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
-
 	return (
 		<div className="fixed top-14 right-4 z-[55] flex flex-col gap-2.5 pointer-events-none">
-			{toasts.map((toastEntry) => {
-				const v = VARIANT[toastEntry.variant];
+			{toasts.map(({ entry, paused }) => {
+				const v = VARIANT[entry.variant];
 				return (
-					<div key={toastEntry.id} className="pointer-events-auto animate-slide-in-right" role="alert">
+					<div
+						key={entry.id}
+						className="pointer-events-auto animate-slide-in-right"
+						role="alert"
+						data-toast-id={entry.id}
+						onMouseEnter={() => setInteraction(entry.id, "hovered", true)}
+						onMouseLeave={() => setInteraction(entry.id, "hovered", false)}
+						onFocusCapture={() => setInteraction(entry.id, "focused", true)}
+						onBlurCapture={(event) => {
+							const nextFocus = event.relatedTarget;
+							if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus)) {
+								setInteraction(entry.id, "focused", false);
+							}
+						}}
+					>
 						<div
 							className={`relative overflow-hidden bg-overlay border ${v.border} rounded-xl shadow-2xl w-[26rem] max-w-[calc(100vw-2rem)] flex items-start gap-3 p-4`}
 						>
@@ -119,39 +281,39 @@ export function ToastHost() {
 							>
 								{v.icon}
 							</span>
-							{toastEntry.onClick ? (
+							{entry.onClick ? (
 								<button
 									type="button"
 									onClick={() => {
-										toastEntry.onClick?.();
-										dismiss(toastEntry.id);
+										entry.onClick?.();
+										removeToast(entry.id);
 									}}
 									className="flex-1 min-w-0 text-left pr-1 cursor-pointer group"
 								>
-									{toastEntry.context && (
+									{entry.context && (
 										<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
-											{toastEntry.context}
+											{entry.context}
 										</div>
 									)}
 									<div className="text-fg text-sm leading-relaxed break-words group-hover:underline">
-										{toastEntry.message}
+										{entry.message}
 									</div>
 								</button>
 							) : (
 								<div className="flex-1 min-w-0 pr-1">
-									{toastEntry.context && (
+									{entry.context && (
 										<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
-											{toastEntry.context}
+											{entry.context}
 										</div>
 									)}
 									<div className="text-fg text-sm leading-relaxed break-words">
-										{toastEntry.message}
+										{entry.message}
 									</div>
 								</div>
 							)}
 							<button
 								type="button"
-								onClick={() => dismiss(toastEntry.id)}
+								onClick={() => removeToast(entry.id)}
 								aria-label="Dismiss"
 								className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
 							>
@@ -160,8 +322,12 @@ export function ToastHost() {
 								</svg>
 							</button>
 							<div
+								data-toast-progress
 								className={`absolute bottom-0 left-0 h-0.5 ${v.bar} opacity-50`}
-								style={{ animation: `toast-shrink ${toastEntry.durationMs}ms linear forwards` }}
+								style={{
+									animation: `toast-shrink ${entry.durationMs}ms linear forwards`,
+									animationPlayState: paused ? "paused" : "running",
+								}}
 							/>
 						</div>
 					</div>

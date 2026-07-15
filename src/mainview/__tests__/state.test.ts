@@ -798,6 +798,25 @@ describe("reducer", () => {
 		expect(state.bellReasons.get("t1")).toEqual(["r3", "r4", "r5", "r6", "r7"]);
 	});
 
+	it("addBell: forced attention bypasses suppression for the focused task", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "task", projectId: "p1", taskId: "t1" },
+		};
+		const next = reducer(state, { type: "addBell", taskId: "t1", reason: "Overflow", force: true });
+		expect(next.bellCounts.get("t1")).toBe(1);
+		expect(next.bellReasons.get("t1")).toEqual(["Overflow"]);
+	});
+
+	it("addBell: forced attention counts every event and moves duplicate reasons to newest", () => {
+		let state = initialState;
+		for (const reason of ["one", "two", "three", "four", "five", "three", "six"]) {
+			state = reducer(state, { type: "addBell", taskId: "t1", reason, force: true });
+		}
+		expect(state.bellCounts.get("t1")).toBe(7);
+		expect(state.bellReasons.get("t1")).toEqual(["two", "four", "five", "three", "six"]);
+	});
+
 	it("addBell: without reason leaves bellReasons untouched", () => {
 		const next = reducer(initialState, { type: "addBell", taskId: "t1" });
 		expect(next.bellCounts.get("t1")).toBe(1);

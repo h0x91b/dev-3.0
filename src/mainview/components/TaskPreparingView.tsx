@@ -48,7 +48,7 @@ function TaskPreparingView({ task, project, onCancelled }: TaskPreparingViewProp
 			const updated = await api.request.cancelTaskPreparation({ taskId: task.id, projectId: project.id });
 			onCancelled?.(updated);
 		} catch (err) {
-			toast.error(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
 			setCancelling(false);
 		}
 	}

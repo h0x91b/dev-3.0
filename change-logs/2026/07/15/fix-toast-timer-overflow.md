@@ -1,0 +1,1 @@
+Toast timers now pause while a renderer is hidden, unfocused, hovered, or focused, resume from their remaining budget, and cap each visible stack at five entries. Task-scoped overflow evictions now feed the existing deduplicated task attention badge while ordinary dismissal and unscoped overflow remain silent.

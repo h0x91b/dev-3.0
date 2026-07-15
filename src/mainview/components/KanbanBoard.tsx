@@ -230,7 +230,7 @@ function KanbanBoard({
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
 			dispatch({ type: "updateTask", task });
-			toast.error(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
 		} finally {
 			setMovingTaskIds((prev) => {
 				const next = new Set(prev);

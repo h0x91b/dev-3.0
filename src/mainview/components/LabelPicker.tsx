@@ -23,6 +23,8 @@ interface LabelPickerProps {
 	/** Toggle a label on/off. The parent owns persistence (local state for a
 	 *  not-yet-created task, or an RPC for an existing one). */
 	onToggle: (labelId: string) => void;
+	/** Optional owning task for overflow attention fallback. */
+	taskId?: string;
 }
 
 function fuzzyMatch(text: string, query: string): boolean {
@@ -36,7 +38,7 @@ function fuzzyMatch(text: string, query: string): boolean {
 	return qi === q.length;
 }
 
-function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onToggle }: LabelPickerProps) {
+function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onToggle, taskId }: LabelPickerProps) {
 	const t = useT();
 	const [query, setQuery] = useState("");
 	const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -122,7 +124,7 @@ function LabelPicker({ project, dispatch, onClose, anchorEl, selectedIds, onTogg
 			onToggle(label.id);
 			setQuery("");
 		} catch (err) {
-			toast.error(t("labels.failedCreate", { error: String(err) }));
+			toast.error(t("labels.failedCreate", { error: String(err) }), { taskId });
 		}
 		setSaving(false);
 	}

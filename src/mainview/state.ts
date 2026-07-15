@@ -50,9 +50,9 @@ export interface AppState {
 	/**
 	 * Accumulated human-readable reasons per attention badge, set by repeated
 	 * `dev3 attention "reason"` calls. Keyed by task id, mirrors `bellCounts`
-	 * lifecycle (cleared when the badge is cleared). Each call appends one entry;
-	 * the hover preview shows them all. Terminal-bell badges / empty reasons add
-	 * nothing here.
+	 * lifecycle (cleared when the badge is cleared). Repeated reasons are kept
+	 * once and moved to the newest position; terminal-bell badges / empty reasons
+	 * add nothing here.
 	 */
 	bellReasons: Map<string, string[]>;
 	taskPorts: Map<string, PortInfo[]>;
@@ -176,7 +176,7 @@ export type AppAction =
 	| { type: "removeProject"; projectId: string }
 	| { type: "updateProject"; project: Project }
 	| { type: "setLoading"; loading: boolean }
-	| { type: "addBell"; taskId: string; reason?: string }
+	| { type: "addBell"; taskId: string; reason?: string; force?: boolean }
 	| { type: "clearBell"; taskId: string }
 	| { type: "setPorts"; taskId: string; ports: PortInfo[] }
 	| { type: "clearPorts"; taskId: string }
@@ -388,14 +388,14 @@ export function reducer(state: AppState, action: AppAction): AppState {
 			return { ...state, loading: action.loading };
 		case "addBell": {
 			// Don't add bell if user is already viewing this task's terminal
-			if (
+			if (!action.force &&
 				state.route.screen === "task" &&
 				state.route.taskId === action.taskId
 			) {
 				return state;
 			}
 			// Also suppress bell when viewing task in split view
-			if (
+			if (!action.force &&
 				state.route.screen === "project" &&
 				state.route.activeTaskId === action.taskId
 			) {
@@ -409,8 +409,12 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				return { ...state, bellCounts };
 			}
 			const bellReasons = new Map(state.bellReasons);
-			// Keep only the most recent MAX_ATTENTION_REASONS; oldest drop off.
-			const nextList = [...(bellReasons.get(action.taskId) ?? []), trimmed].slice(-MAX_ATTENTION_REASONS);
+			// Keep reasons unique while moving repeated text to the newest position,
+			// then retain only the most recent MAX_ATTENTION_REASONS entries.
+			const nextList = [
+				...(bellReasons.get(action.taskId) ?? []).filter((reason) => reason !== trimmed),
+				trimmed,
+			].slice(-MAX_ATTENTION_REASONS);
 			bellReasons.set(action.taskId, nextList);
 			return { ...state, bellCounts, bellReasons };
 		}
