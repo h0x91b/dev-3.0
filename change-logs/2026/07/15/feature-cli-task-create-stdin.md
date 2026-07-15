@@ -1,1 +1,1 @@
-`dev3 task create` now accepts `--description -` and reads the full task description from stdin, preserving multiline Markdown without shell quoting. Existing inline, positional, and `@file` description inputs remain supported.
+`dev3 task create` now accepts `--description -` and reads the full task description from stdin, preserving multiline Markdown without shell quoting. The same stdin convention now covers task description updates, note content, and automation prompts; existing inline, positional, and `@file` inputs remain supported.

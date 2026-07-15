@@ -59,6 +59,13 @@ describe("renderHelp — subcommand detail", () => {
 		expect(out).toContain("dev3 note list — List a task's notes");
 		expect(out).not.toContain("Details:");
 	});
+
+	it("documents stdin for supported long-text fields", () => {
+		expect(renderHelp("task", "update")).toContain("--description -");
+		expect(renderHelp("note", "add")).toContain("read it from stdin");
+		expect(renderHelp("automations", "create")).toContain("--prompt -");
+		expect(renderHelp("automations", "update")).toContain("--prompt -");
+	});
 });
 
 describe("renderHelp — leaf command", () => {

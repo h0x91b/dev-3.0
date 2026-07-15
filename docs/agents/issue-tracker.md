@@ -7,6 +7,7 @@ Task and project are auto-detected from the worktree; pass `--task <id>` / `--pr
 ## Conventions (dev3 tasks)
 
 - **Create an issue**: `dev3 task create --title "..." --description "..."` — lands in the To Do (`todo`) column. For multiline Markdown, pipe it with `--description -`, for example: `cat plan.md | dev3 task create --title "..." --description -`.
+- **Write long text**: `task update --description -`, `note add --content -`, and `automations ... --prompt -` read the body from stdin; `@file` remains the file-based alternative.
 - **Read an issue**: `dev3 task show --task <id> --notes --history` (always prints the current overview; `--notes` inlines note bodies, `--history` shows the title/overview change log).
 - **List issues**: `dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]` (newest first). Statuses: `todo`, `in-progress`, `user-questions`, `review-by-ai`, `review-by-user`.
 - **Comment on an issue**: `dev3 note add "..." --task <id>` — per-task notes are the durable comment/scratchpad analog; they survive worktree teardown and are surfaced to future agents.

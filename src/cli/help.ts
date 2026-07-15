@@ -76,11 +76,11 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..."] [--priority P0..P4]',
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4]',
 				summary: "Update a task's title, description, and/or priority.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
-					'--description <text>  New description ("" clears it).',
+					'--description <text>  New description ("" clears it); use - to read it from stdin.',
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest); applies to the whole variant group.",
 					"                      Only set priority when the user asks — never on your own initiative.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
@@ -123,9 +123,12 @@ const COMMANDS: CommandHelp[] = [
 		subcommands: [
 			{
 				name: "add",
-				usage: 'dev3 note add "..." [--task <id>] [--source user|ai]',
+				usage: 'dev3 note add "..." [--content "..."] [--task <id>] [--source user|ai]',
 				summary: "Add a note to a task.",
-				details: ["--source user|ai   Note author (default ai)."],
+				details: [
+					"--content <text>  Alternative to positional content; use - to read it from stdin.",
+					"--source user|ai   Note author (default ai).",
+				],
 			},
 			{
 				name: "list",
@@ -208,7 +211,7 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 automations create --name "..." --prompt "..." --rrule "FREQ=DAILY;BYHOUR=9" [--timezone <iana>]',
+				usage: 'dev3 automations create --name "..." [--prompt "..." | --prompt -] --rrule "FREQ=DAILY;BYHOUR=9" [--timezone <iana>]',
 				summary: "Create an automation.",
 				details: [
 					'--rrule        RFC 5545 subset: FREQ=HOURLY|DAILY|WEEKLY|MONTHLY, INTERVAL, BYDAY, BYMONTHDAY, BYHOUR, BYMINUTE.',
@@ -217,13 +220,14 @@ const COMMANDS: CommandHelp[] = [
 					"--catch-up     skip | runOnce — what to do with runs missed while the app was offline (default skip).",
 					"--template     Pre-fill from a built-in template (see: dev3 automations templates).",
 					"--disabled     Create paused.",
-					"--prompt @file reads the prompt from a file.",
+					"--prompt <text>  Use @file for a file or - to read the prompt from stdin.",
 				],
 			},
 			{
 				name: "update",
-				usage: "dev3 automations update <id> [--name ...] [--prompt ...] [--rrule ...] [--timezone ...] [--enable|--disable]",
+				usage: "dev3 automations update <id> [--name ...] [--prompt ... | --prompt -] [--rrule ...] [--timezone ...] [--enable|--disable]",
 				summary: "Update fields / pause / resume.",
+				details: ["--prompt <text>  Use @file for a file or - to read the prompt from stdin."],
 			},
 			{
 				name: "delete",

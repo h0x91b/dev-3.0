@@ -38,9 +38,9 @@ Commands:
   dev3 task show [--task <id>] [--notes] [--history]  Full task details
                                          (always shows current overview; --notes inlines note bodies, --history shows title/overview change log)
   dev3 task move [--task <id>] --status <status>  Change task status
-  dev3 task update [--task <id>] --title "..." [--description "..."]  Update title/description
+  dev3 task update [--task <id>] --title "..." [--description "..." | --description -]  Update title/description
   dev3 task create --title "..." [--description "..." | --description -]  Create a new task (To Do)
-  dev3 note add "..." [--task <id>] [--source user]  Add note to a task
+  dev3 note add "..." [--content "..."] [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
   dev3 note show <id> [--task <task>]   Show one note's full body (8-char prefix works)
   dev3 note delete <id> [--task <task>] Delete note (8-char prefix works)
@@ -56,8 +56,8 @@ Commands:
   dev3 tasks list [--status <s>] [--label <id>] [--limit <n>] [--offset <n>]  List tasks (newest first, default 50)
   dev3 automations list                 List project automations (scheduled agent runs)
   dev3 automations show <id>            Automation details + run history
-  dev3 automations create --name "..." --prompt "..." --rrule "FREQ=DAILY;BYHOUR=9" [--template shipped-report]
-  dev3 automations update <id> [--enable|--disable] [--rrule ...] [--prompt ...]
+  dev3 automations create --name "..." [--prompt "..." | --prompt -] --rrule "FREQ=DAILY;BYHOUR=9" [--template shipped-report]
+  dev3 automations update <id> [--enable|--disable] [--rrule ...] [--prompt ... | --prompt -]
   dev3 automations delete <id>          Delete an automation
   dev3 automations run <id>             Fire an automation now (creates its task)
   dev3 automations templates            List built-in templates
@@ -91,7 +91,7 @@ Statuses: todo, in-progress, user-questions, review-by-ai, review-by-user
 
 @file syntax: any argument starting with @ reads from file (e.g. @plan.md).
   Double @@ for literal @.
-  Use --description - with task create to read a long description from stdin.
+  Use - for stdin on task descriptions, note content, and automation prompts.
 
 Options: --project <id> (override auto-detect), --task <id> / --task-id <id> (override task target), --help, --version
 

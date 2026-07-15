@@ -199,7 +199,8 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		params.title = trimmed;
 	}
 	if (rawDesc !== undefined) {
-		params.description = rawDesc.trim();
+		const description = rawDesc === "-" ? await readStdin() : rawDesc;
+		params.description = description.trim();
 	}
 	const rawPriority = args.flags.priority;
 	if (rawPriority !== undefined) {

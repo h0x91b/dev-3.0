@@ -5,6 +5,7 @@ import { printTable, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import { readStdin } from "../stdin";
 
 function requireProjectId(args: ParsedArgs, context: CliContext | null): string {
 	const projectId = resolveProjectId(args.flags.project, context);
@@ -105,11 +106,12 @@ async function createAutomation(args: ParsedArgs, socketPath: string, context: C
 	}
 
 	const name = (args.flags.name || args.positional[0] || template?.name || "").trim();
-	const prompt = args.flags.prompt || template?.prompt || "";
 	const rrule = args.flags.rrule || template?.rrule || "";
 	if (!name) exitUsage('Usage: dev3 automations create --name "..." --prompt "..." --rrule "FREQ=DAILY;BYHOUR=9" [--timezone <iana>] [--template shipped-report]');
-	if (!prompt) exitUsage("--prompt is required (or use --template). @file syntax works: --prompt @prompt.md");
 	if (!rrule) exitUsage('--rrule is required (or use --template), e.g. "FREQ=WEEKLY;BYDAY=FR;BYHOUR=17"');
+	const rawPrompt = args.flags.prompt;
+	const prompt = rawPrompt === "-" ? await readStdin() : rawPrompt || template?.prompt || "";
+	if (!prompt) exitUsage("--prompt is required (or use --template). @file syntax works: --prompt @prompt.md");
 
 	const timezone = args.flags.timezone || args.flags.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
 	const params: Record<string, unknown> = { projectId, name, prompt, rrule, timezone };
@@ -133,7 +135,9 @@ async function updateAutomation(args: ParsedArgs, socketPath: string, context: C
 
 	const params: Record<string, unknown> = { projectId, automationId };
 	if (args.flags.name !== undefined) params.name = args.flags.name;
-	if (args.flags.prompt !== undefined) params.prompt = args.flags.prompt;
+	if (args.flags.prompt !== undefined) {
+		params.prompt = args.flags.prompt === "-" ? await readStdin() : args.flags.prompt;
+	}
 	if (args.flags.rrule !== undefined) params.rrule = args.flags.rrule;
 	const tz = args.flags.timezone ?? args.flags.tz;
 	if (tz !== undefined) params.timezone = tz;

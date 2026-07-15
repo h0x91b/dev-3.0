@@ -392,6 +392,17 @@ describe("task update", () => {
 		expect(params.description).toBe("New description");
 	});
 
+	it("reads --description - from stdin without altering Markdown", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		const markdown = '# Updated plan\n\nKeep **quotes**: "intact".';
+		mockReadStdin.mockResolvedValue(markdown);
+
+		await handleTask("update", args(["aaaaaaaa"], { description: "-" }), SOCKET, null);
+
+		expect(mockReadStdin).toHaveBeenCalledOnce();
+		expect(mockSend.mock.calls[0]![2]!.description).toBe(markdown);
+	});
+
 	it("updates both title and description at once", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
