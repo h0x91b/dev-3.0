@@ -45,7 +45,7 @@ import {
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
 } from "./merge-prompt-suppression";
-import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, reasonForSignal, rollupCiStatus } from "./pr-status";
+import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, parseReviewDecision, reasonForSignal, rollupCiStatus } from "./pr-status";
 
 /**
  * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir
@@ -536,6 +536,7 @@ function sameFreshPRStatus(cache: TaskPRStatusCache | null | undefined, next: Fr
 		&& cache.autoMergeEnabled === next.autoMergeEnabled
 		&& cache.ciStatus === next.ciStatus
 		&& cache.reviewState === next.reviewState
+		&& cache.reviewDecision === next.reviewDecision
 		&& cache.unresolvedCount === next.unresolvedCount
 		&& JSON.stringify(cache.mergeState) === JSON.stringify(next.mergeState)
 		&& JSON.stringify(cache.checks) === JSON.stringify(next.checks)
@@ -716,6 +717,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 	if (prNumber === null) return null;
 
 	const ciStatus = rollupCiStatus(pr.statusCheckRollup);
+	const reviewDecision = parseReviewDecision(pr.reviewDecision);
 	const reviewState = mapReviewDecision(pr.reviewDecision);
 	const checks = normalizeChecks(pr.statusCheckRollup);
 	const unresolvedCount = prUrl
@@ -737,6 +739,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 			autoMergeEnabled,
 			ciStatus,
 			reviewState,
+			reviewDecision,
 			unresolvedCount,
 			mergeState,
 			checks,
@@ -753,6 +756,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 		autoMergeEnabled,
 		ciStatus,
 		reviewState,
+		reviewDecision,
 		unresolvedCount,
 		mergeState,
 		checks,

@@ -56,6 +56,7 @@ function taskPRBadgeFromStoredData(task: Task, identity?: PRIdentity): TaskPRBad
 		autoMergeEnabled: cached?.autoMergeEnabled ?? null,
 		ciStatus: cached?.ciStatus ?? null,
 		reviewState: cached?.reviewState ?? null,
+		reviewDecision: cached?.reviewDecision ?? null,
 		unresolvedCount: cached?.unresolvedCount ?? null,
 		mergeState: cached?.mergeState ?? null,
 		checks: cached?.checks ?? [],
@@ -73,6 +74,7 @@ function mergeTaskPRBadge(task: Task, identity: PRIdentity | undefined, existing
 		autoMergeEnabled: existing.autoMergeEnabled ?? stored.autoMergeEnabled,
 		ciStatus: existing.ciStatus ?? stored.ciStatus,
 		reviewState: existing.reviewState ?? stored.reviewState,
+		reviewDecision: existing.reviewDecision ?? stored.reviewDecision,
 		unresolvedCount: existing.unresolvedCount ?? stored.unresolvedCount,
 		mergeState: existing.mergeState ?? stored.mergeState,
 		checks: existing.checks && existing.checks.length > 0 ? existing.checks : stored.checks,
@@ -206,6 +208,7 @@ function KanbanBoard({
 				autoMergeEnabled?: TaskPRBadgeInfo["autoMergeEnabled"];
 				ciStatus: TaskPRBadgeInfo["ciStatus"];
 				reviewState: TaskPRBadgeInfo["reviewState"];
+				reviewDecision?: TaskPRBadgeInfo["reviewDecision"];
 				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
 				mergeState: TaskPRBadgeInfo["mergeState"];
 				checks: TaskPRBadgeInfo["checks"];
@@ -225,6 +228,7 @@ function KanbanBoard({
 					autoMergeEnabled: detail.autoMergeEnabled,
 					ciStatus: detail.ciStatus,
 					reviewState: detail.reviewState,
+					reviewDecision: detail.reviewDecision,
 					unresolvedCount: detail.unresolvedCount,
 					mergeState: detail.mergeState,
 					checks: detail.checks ?? [],

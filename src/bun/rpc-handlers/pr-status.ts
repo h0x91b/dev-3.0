@@ -1,4 +1,4 @@
-import type { PRCheckInfo, PRCIStatus, PRReviewState } from "../../shared/types";
+import type { PRCheckInfo, PRCIStatus, PRReviewDecision, PRReviewState } from "../../shared/types";
 export { summarizeMergeability } from "../../shared/pr-status";
 export type { PRMergeability, PRMergeabilityReason, PRMergeabilitySummary } from "../../shared/pr-status";
 
@@ -98,6 +98,17 @@ export function normalizeChecks(rollup: unknown): PRCheckInfo[] {
 export function parseAutoMergeEnabled(value: unknown): boolean | null {
 	if (value === undefined) return null;
 	return value !== null;
+}
+
+/** Normalize GitHub's reviewDecision enum while preserving REVIEW_REQUIRED for merge diagnostics. */
+export function parseReviewDecision(value: unknown): PRReviewDecision | null {
+	if (typeof value !== "string") return null;
+	switch (value.toUpperCase()) {
+		case "APPROVED": return "approved";
+		case "CHANGES_REQUESTED": return "changes_requested";
+		case "REVIEW_REQUIRED": return "review_required";
+		default: return null;
+	}
 }
 
 /**

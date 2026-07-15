@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, rollupCiStatus, summarizeMergeability } from "../pr-status";
+import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, parseReviewDecision, rollupCiStatus, summarizeMergeability } from "../pr-status";
 
 describe("rollupCiStatus", () => {
 	it("returns null for empty / non-array input", () => {
@@ -70,6 +70,13 @@ describe("PR status detail helpers", () => {
 		expect(parseAutoMergeEnabled(undefined)).toBeNull();
 		expect(parseAutoMergeEnabled(null)).toBe(false);
 		expect(parseAutoMergeEnabled({ enabledAt: "2026-07-15T18:00:00Z" })).toBe(true);
+	});
+
+	it("preserves GitHub's review decision for merge diagnostics", () => {
+		expect(parseReviewDecision("REVIEW_REQUIRED")).toBe("review_required");
+		expect(parseReviewDecision("CHANGES_REQUESTED")).toBe("changes_requested");
+		expect(parseReviewDecision("APPROVED")).toBe("approved");
+		expect(parseReviewDecision(undefined)).toBeNull();
 	});
 
 	it("summarizes mergeability and common GitHub blocking reasons", () => {

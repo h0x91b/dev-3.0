@@ -83,6 +83,51 @@ function mergeReasonLabel(reason: PRMergeabilityReason, t: ReturnType<typeof use
 	}
 }
 
+interface MergeReasonDetail {
+	key: string;
+	label: string;
+}
+
+function mergeReasonDetails(
+	prInfo: TaskPRBadgeInfo,
+	mergeability: ReturnType<typeof summarizeMergeability>,
+	t: ReturnType<typeof useT>,
+): MergeReasonDetail[] {
+	const reasons: MergeReasonDetail[] = [];
+	const add = (key: string, label: string) => reasons.push({ key, label });
+
+	if (mergeability.reason && mergeability.reason !== "blocked") {
+		add(mergeability.reason, mergeReasonLabel(mergeability.reason, t));
+	}
+	if (prInfo.unresolvedCount != null && prInfo.unresolvedCount > 0) {
+		add("unresolved-comments", t("task.prMergeReasonUnresolvedComments"));
+	}
+	if (prInfo.reviewDecision === "review_required") {
+		add("review-required", t("task.prMergeReasonReviewRequired"));
+	} else if (prInfo.reviewDecision === "changes_requested") {
+		add("changes-requested", t("task.prMergeReasonChangesRequested"));
+	}
+
+	const failedChecks = (prInfo.checks ?? [])
+		.filter((check) => checkState(check) === "failure")
+		.map((check) => check.name || t("task.prUnnamedCheck"));
+	if (failedChecks.length > 0) {
+		add("failed-checks", t("task.prMergeReasonFailedChecks", { checks: [...new Set(failedChecks)].join(", ") }));
+	}
+
+	const pendingChecks = (prInfo.checks ?? [])
+		.filter((check) => checkState(check) === "pending")
+		.map((check) => check.name || t("task.prUnnamedCheck"));
+	if (pendingChecks.length > 0) {
+		add("pending-checks", t("task.prMergeReasonPendingChecks", { checks: [...new Set(pendingChecks)].join(", ") }));
+	}
+	if (reasons.length === 0 && mergeability.reason) {
+		add(mergeability.reason, mergeReasonLabel(mergeability.reason, t));
+	}
+
+	return reasons;
+}
+
 function anchorRect(element: HTMLElement): RectLike {
 	const rect = element.getBoundingClientRect();
 	return {
@@ -234,6 +279,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 		: mergeability.state === "not_mergeable"
 			? "text-danger"
 			: "text-fg-3";
+	const mergeReasons = mergeability.state === "not_mergeable" ? mergeReasonDetails(prInfo, mergeability, t) : [];
 	const popover = open && createPortal(
 		<div
 			ref={popoverRef}
@@ -284,10 +330,14 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 						<dt className="text-fg-3">{t("task.prMergeable")}</dt>
 						<dd className={`font-medium ${mergeabilityClass}`}>{mergeabilityLabel}</dd>
 					</div>
-					{mergeability.reason && (
+					{mergeReasons.length > 0 && (
 						<div className="flex items-start justify-between gap-3">
 							<dt className="flex-shrink-0 text-fg-3">{t("task.prMergeReason")}</dt>
-							<dd className="text-right text-danger">{mergeReasonLabel(mergeability.reason, t)}</dd>
+							<dd className="min-w-0 text-right text-danger">
+								<div className="space-y-0.5 break-words">
+									{mergeReasons.map((reason) => <div key={reason.key}>{reason.label}</div>)}
+								</div>
+							</dd>
 						</div>
 					)}
 				</dl>

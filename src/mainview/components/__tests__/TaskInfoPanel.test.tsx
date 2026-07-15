@@ -1978,9 +1978,10 @@ describe("TaskInfoPanel", () => {
 						autoMergeEnabled: false,
 						ciStatus: "failure",
 						reviewState: null,
-						unresolvedCount: 0,
-						mergeState: { mergeable: "CONFLICTING", status: "DIRTY" },
-						checks: [],
+						reviewDecision: "review_required",
+						unresolvedCount: 2,
+						mergeState: { mergeable: "MERGEABLE", status: "BLOCKED" },
+						checks: [{ name: "E2E PR Smoke Tests", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: null }],
 						prTitle: "Merge status",
 						isDraft: false,
 					},
@@ -1995,7 +1996,9 @@ describe("TaskInfoPanel", () => {
 			expect(within(popover).getByText("Not set")).toBeInTheDocument();
 			expect(within(popover).getByText("Mergeable")).toBeInTheDocument();
 			expect(within(popover).getByText("No")).toBeInTheDocument();
-			expect(within(popover).getByText("Merge conflicts")).toBeInTheDocument();
+			expect(within(popover).getByText("Unresolved comments")).toBeInTheDocument();
+			expect(within(popover).getByText("A required approving review is missing")).toBeInTheDocument();
+			expect(within(popover).getByText("Failed checks: E2E PR Smoke Tests")).toBeInTheDocument();
 		});
 
 		it("PR badge does not open a tab when prUrl is null", async () => {
