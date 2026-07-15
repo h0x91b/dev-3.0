@@ -9,6 +9,7 @@ function makeHandle(): TerminalHandle {
 	return {
 		sendInput: vi.fn(),
 		paste: vi.fn(),
+		submit: vi.fn(),
 		focus: vi.fn(),
 		blur: vi.fn(),
 	};

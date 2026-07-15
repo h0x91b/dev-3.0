@@ -31,8 +31,8 @@ const NERD_FONT = "'JetBrainsMono Nerd Font Mono'";
  * Docked chat-style composer for touch devices (browser mode). The terminal
  * itself never summons the on-screen keyboard in compose mode — prompts are
  * typed here (autocorrect/voice/swipe all work) and delivered to the PTY as a
- * single paste. Send appends two Enters; Insert leaves the text uncommitted on
- * the prompt. Expand turns the bar into a full-surface editor for long prompts.
+ * paste-aware submit or insert operation. Insert leaves the text uncommitted
+ * on the prompt. Expand turns the bar into a full-surface editor for long prompts.
  *
  * While the composer is focused, `<html data-composer-focused>` collapses
  * non-essential chrome (see index.css) so the terminal tail stays visible
@@ -114,10 +114,10 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 		return () => activeViewport.removeEventListener("resize", syncComposerChrome);
 	}, []);
 
-	function deliver(enterCount: 0 | 1 | 2) {
+	function deliver(submit: boolean) {
 		if (!text) return;
-		handle.paste(text);
-		if (enterCount > 0) handle.sendInput("\r".repeat(enterCount));
+		if (submit) handle.submit(text);
+		else handle.paste(text);
 		setText("");
 		setExpanded(false);
 		requestAnimationFrame(() => {
@@ -131,7 +131,7 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 		// Hardware keyboards: Ctrl/Cmd+Enter sends; plain Enter stays a newline.
 		if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
 			e.preventDefault();
-			deliver(1);
+			deliver(true);
 		}
 	}
 
@@ -175,7 +175,7 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 				type="button"
 				className={`${iconBtn} bg-elevated text-fg-2 disabled:opacity-40`}
 				onMouseDown={keepFocus}
-				onClick={() => deliver(0)}
+				onClick={() => deliver(false)}
 				disabled={!text}
 				aria-label={t("terminal.composerInsert")}
 				title={t("terminal.composerInsert")}
@@ -188,7 +188,7 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 				type="button"
 				className={`${iconBtn} bg-accent text-white disabled:opacity-40`}
 				onMouseDown={keepFocus}
-				onClick={() => deliver(2)}
+				onClick={() => deliver(true)}
 				disabled={!text}
 				aria-label={t("terminal.composerSend")}
 				title={t("terminal.composerSend")}

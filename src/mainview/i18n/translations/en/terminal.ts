@@ -196,7 +196,7 @@ const terminal = {
 
 	// Touch composer (mobile input mode)
 	"terminal.composerPlaceholder": "Type a prompt or command…",
-	"terminal.composerSend": "Send (paste + 2 Enters)",
+	"terminal.composerSend": "Send message",
 	"terminal.composerInsert": "Insert without Enter",
 	"terminal.composerExpand": "Expand editor",
 	"terminal.composerCollapse": "Collapse editor",

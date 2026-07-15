@@ -31,7 +31,7 @@ vi.mock("../../analytics", () => ({
 vi.mock("../../TerminalView", () => ({
 	default: ({ ptyUrl, onReady }: { ptyUrl: string; onReady?: (h: unknown) => void }) => {
 		if (onReady) {
-			setTimeout(() => onReady({ sendInput: vi.fn(), paste: vi.fn(), focus: vi.fn(), blur: vi.fn() }), 0);
+			setTimeout(() => onReady({ sendInput: vi.fn(), paste: vi.fn(), submit: vi.fn(), focus: vi.fn(), blur: vi.fn() }), 0);
 		}
 		return <div data-testid="terminal-view">{ptyUrl}</div>;
 	},
