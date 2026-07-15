@@ -65,11 +65,11 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "create",
-				usage: 'dev3 task create --title "..." [--description "..."]',
+				usage: 'dev3 task create --title "..." [--description "..." | --description -]',
 				summary: "Create a new task in the To Do column.",
 				details: [
 					"--title <text>        Task title (required).",
-					"--description <text>  Longer description (optional).",
+					"--description <text>  Longer description (optional); use - to read it from stdin.",
 					"Positional content (or @file) becomes the description; its first line",
 					"is used as the title when --title is omitted.",
 				],

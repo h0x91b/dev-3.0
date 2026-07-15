@@ -48,8 +48,9 @@ describe("renderHelp — subcommand detail", () => {
 		const out = renderHelp("task", "create")!;
 		expect(out).toContain("dev3 task create — Create a new task in the To Do column.");
 		expect(out).toContain("Usage:");
-		expect(out).toContain('dev3 task create --title "..." [--description "..."]');
+		expect(out).toContain('dev3 task create --title "..." [--description "..." | --description -]');
 		expect(out).toContain("--title <text>");
+		expect(out).toContain("read it from stdin");
 		expect(out).toContain("Global options:");
 	});
 

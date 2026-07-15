@@ -7,6 +7,7 @@ import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import { readStdin } from "../stdin";
 
 // Statuses that destroy the worktree + terminal are not directly reachable via
 // CLI. `completed` is special-cased: it becomes a blocking approval request the
@@ -146,7 +147,11 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		exitUsage("--project <id> is required (or run from inside a worktree)");
 	}
 
-	const positionalContent = args.positional[0]?.trim();
+	// A literal "-" is the conventional CLI sentinel for reading the value
+	// from stdin. Read it only for the description flag so title-only creates
+	// never consume an interactive shell's input unexpectedly.
+	const stdinDescription = args.flags.description === "-" ? await readStdin() : undefined;
+	const positionalContent = stdinDescription ?? args.positional[0]?.trim();
 
 	let title = args.flags.title?.trim();
 	if (!title && positionalContent) {
@@ -158,7 +163,7 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 		exitUsage("--title is required");
 	}
 
-	const description = args.flags.description || positionalContent;
+	const description = args.flags.description === "-" ? stdinDescription : args.flags.description || positionalContent;
 
 	const params: Record<string, unknown> = { projectId, title };
 	if (description) params.description = description;

@@ -39,7 +39,7 @@ Commands:
                                          (always shows current overview; --notes inlines note bodies, --history shows title/overview change log)
   dev3 task move [--task <id>] --status <status>  Change task status
   dev3 task update [--task <id>] --title "..." [--description "..."]  Update title/description
-  dev3 task create --title "..." [--description "..."]  Create a new task (To Do)
+  dev3 task create --title "..." [--description "..." | --description -]  Create a new task (To Do)
   dev3 note add "..." [--task <id>] [--source user]  Add note to a task
   dev3 note list [--task <id>]          List notes
   dev3 note show <id> [--task <task>]   Show one note's full body (8-char prefix works)
@@ -91,6 +91,7 @@ Statuses: todo, in-progress, user-questions, review-by-ai, review-by-user
 
 @file syntax: any argument starting with @ reads from file (e.g. @plan.md).
   Double @@ for literal @.
+  Use --description - with task create to read a long description from stdin.
 
 Options: --project <id> (override auto-detect), --task <id> / --task-id <id> (override task target), --help, --version
 
