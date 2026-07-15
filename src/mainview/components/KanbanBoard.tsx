@@ -683,6 +683,8 @@ function KanbanBoard({
 							},
 				)
 		: [];
+	const initialColumnId = carouselColumns.find((column) => column.id === "user-questions" && column.count > 0)?.id
+		?? carouselColumns.find((column) => column.id === "review-by-user" && column.count > 0)?.id;
 
 	return (
 		<>
@@ -694,7 +696,7 @@ function KanbanBoard({
 				disableGlobalFindShortcut={disableGlobalFindShortcut}
 			/>
 			{isCarousel ? (
-				<MobileBoardCarousel columns={carouselColumns} />
+				<MobileBoardCarousel columns={carouselColumns} initialColumnId={initialColumnId} />
 			) : (
 				<div className="flex-1 min-h-0 flex gap-5 px-6 pb-6 pt-2 overflow-x-auto overflow-y-hidden kanban-scroll">
 					{(() => {

@@ -1,0 +1,1 @@
+On narrow Kanban boards, the carousel now opens on Has Questions when it contains tasks and falls back to Your Review when it is empty. The focus also updates after the initial task fetch until the user navigates manually.

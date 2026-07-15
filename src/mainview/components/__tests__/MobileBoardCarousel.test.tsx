@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import MobileBoardCarousel, { type CarouselColumn } from "../MobileBoardCarousel";
 import { I18nProvider } from "../../i18n";
@@ -22,10 +22,10 @@ function makeColumns(): CarouselColumn[] {
 	];
 }
 
-function renderCarousel(columns: CarouselColumn[]) {
+function renderCarousel(columns: CarouselColumn[], initialColumnId?: string) {
 	return render(
 		<I18nProvider>
-			<MobileBoardCarousel columns={columns} />
+			<MobileBoardCarousel columns={columns} initialColumnId={initialColumnId} />
 		</I18nProvider>,
 	);
 }
@@ -37,6 +37,40 @@ describe("MobileBoardCarousel", () => {
 		expect(screen.getByText("1 / 3")).toBeTruthy();
 		// Prev is disabled on the first column
 		expect(screen.getByLabelText("Previous column").hasAttribute("disabled")).toBe(true);
+	});
+
+	it("starts at the requested initial column", () => {
+		renderCarousel(makeColumns(), "done");
+		expect(screen.getByText("3 / 3")).toBeTruthy();
+		expect(screen.getByLabelText("Previous column").hasAttribute("disabled")).toBe(false);
+	});
+
+	it("applies a preferred column that becomes available before the user navigates", async () => {
+		const result = renderCarousel(makeColumns());
+		expect(screen.getByText("1 / 3")).toBeTruthy();
+
+		result.rerender(
+			<I18nProvider>
+				<MobileBoardCarousel columns={makeColumns()} initialColumnId="done" />
+			</I18nProvider>,
+		);
+
+		await waitFor(() => expect(screen.getByText("3 / 3")).toBeTruthy());
+	});
+
+	it("keeps the user's column after a later preferred-column update", async () => {
+		const user = userEvent.setup();
+		const result = renderCarousel(makeColumns(), "todo");
+		await user.click(screen.getByLabelText("Next column"));
+		expect(screen.getByText("2 / 3")).toBeTruthy();
+
+		result.rerender(
+			<I18nProvider>
+				<MobileBoardCarousel columns={makeColumns()} initialColumnId="done" />
+			</I18nProvider>,
+		);
+
+		await waitFor(() => expect(screen.getByText("2 / 3")).toBeTruthy());
 	});
 
 	it("advances the active column when Next is clicked", async () => {
