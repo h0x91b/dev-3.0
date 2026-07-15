@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeSignalKey, mapReviewDecision, rollupCiStatus } from "../pr-status";
+import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, rollupCiStatus } from "../pr-status";
 
 describe("rollupCiStatus", () => {
 	it("returns null for empty / non-array input", () => {
@@ -62,6 +62,32 @@ describe("mapReviewDecision", () => {
 
 	it("maps any other non-empty value to commented", () => {
 		expect(mapReviewDecision("COMMENTED")).toBe("commented");
+	});
+});
+
+describe("PR status detail helpers", () => {
+	it("counts only explicitly unresolved review threads", () => {
+		expect(countUnresolvedReviewThreads([
+			{ isResolved: false },
+			{ isResolved: true },
+			{ isResolved: false },
+			{},
+			null,
+		])).toBe(2);
+		expect(countUnresolvedReviewThreads({ nodes: [{ isResolved: false }] })).toBe(0);
+	});
+
+	it("normalizes CheckRuns and StatusContexts into linkable checks", () => {
+		expect(normalizeChecks([
+			{ name: "build", status: "completed", conclusion: "success", detailsUrl: "https://ci/build" },
+			{ context: "lint", state: "failure", targetUrl: "https://ci/lint" },
+			{ status: "queued" },
+			null,
+		])).toEqual([
+			{ name: "build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://ci/build" },
+			{ name: "lint", status: null, conclusion: "FAILURE", detailsUrl: "https://ci/lint" },
+			{ name: "", status: "QUEUED", conclusion: null, detailsUrl: null },
+		]);
 	});
 });
 

@@ -4188,6 +4188,30 @@ describe("handlers.getBranchStatus", () => {
 		expect(result.prNumber).toBe(42);
 	});
 
+	it("persists a PR identity discovered by task branch status", async () => {
+		const project = makeProject();
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
+		const prUrl = "https://github.com/test/repo/pull/42";
+		const persisted = { ...task, prNumber: 42, prUrl };
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(persisted);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 1, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: JSON.stringify([{ number: 42, url: prUrl }]), stderr: "", code: 0 });
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await handlers.getBranchStatus({ taskId: task.id, projectId: project.id });
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { prNumber: 42, prUrl });
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: persisted });
+	});
+
 	it("returns prNumber=null when gh pr list returns empty array", async () => {
 		const project = makeProject();
 		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
@@ -4254,6 +4278,34 @@ describe("handlers.getBranchStatus", () => {
 
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.prNumber).toBe(10);
+	});
+});
+
+describe("handlers.getProjectPRs", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("persists PR identities matched to task branches, including terminal records", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "completed", branchName: "feat/login" });
+		const prUrl = "https://github.com/test/repo/pull/42";
+		const persisted = { ...task, prNumber: 42, prUrl };
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue(persisted);
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: true,
+			stdout: JSON.stringify([{ number: 42, headRefName: task.branchName, url: prUrl }]),
+			stderr: "",
+			code: 0,
+		});
+		const push = vi.fn();
+		setPushMessage(push);
+
+		const result = await handlers.getProjectPRs({ projectId: project.id });
+
+		expect(result).toEqual([{ number: 42, headRefName: task.branchName, url: prUrl }]);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { prNumber: 42, prUrl });
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: persisted });
 	});
 });
 
@@ -7719,6 +7771,201 @@ describe("checkOpenPRsForPromotion", () => {
 
 		await checkOpenPRsForPromotion();
 		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("keeps a detected PR polling while the task is in progress", async () => {
+		const { task } = setup({
+			status: "in-progress",
+			prNumber: 42,
+			prUrl: "https://github.com/test/repo/pull/42",
+		});
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: true,
+			stdout: JSON.stringify([{ number: 42, isDraft: false, url: "https://github.com/test/repo/pull/42", title: "Keep polling" }]),
+			stderr: "",
+			code: 0,
+		});
+
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).toHaveBeenCalledWith(task.worktreePath);
+		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({
+			taskId: task.id,
+			prNumber: 42,
+			prTitle: "Keep polling",
+		}));
+	});
+
+	it("polls sticky PRs even when peer review promotion is disabled", async () => {
+		const { task } = setup({
+			status: "in-progress",
+			prNumber: 42,
+			prUrl: "https://github.com/test/repo/pull/42",
+		}, { peerReviewEnabled: false });
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: true,
+			stdout: JSON.stringify([{ number: 42, isDraft: false, url: task.prUrl }]),
+			stderr: "",
+			code: 0,
+		});
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+
+		expect(git.getCurrentBranch).toHaveBeenCalled();
+		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({ taskId: task.id }));
+	});
+
+	it("uses the GraphQL review-thread page and persists the PR identity", async () => {
+		const { project, task } = setup({ status: "review-by-colleague" }, { githubAuthHost: "ghe.example.com" });
+		const prUrl = "https://ghe.example.com/test/repo/pull/42";
+		const persisted = { ...task, prNumber: 42, prUrl };
+	vi.mocked(github.runGitHub)
+			.mockResolvedValueOnce({
+				ok: true,
+				stdout: JSON.stringify([{
+					number: 42,
+					isDraft: false,
+					url: prUrl,
+					statusCheckRollup: [{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://ci/build" }],
+					mergeable: "CONFLICTING",
+					mergeStateStatus: "DIRTY",
+					state: "OPEN",
+					title: "Needs attention",
+				}]),
+				stderr: "",
+				code: 0,
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				stdout: JSON.stringify({
+					data: {
+						repository: {
+							pullRequest: {
+								reviewThreads: {
+									nodes: [{ isResolved: false }, { isResolved: true }],
+									pageInfo: { hasNextPage: true, endCursor: "cursor-1" },
+								},
+							},
+						},
+					},
+				}),
+				stderr: "",
+				code: 0,
+			});
+		vi.mocked(github.runGitHub).mockResolvedValueOnce({
+			ok: true,
+			stdout: JSON.stringify({
+				data: {
+					repository: {
+						pullRequest: {
+							reviewThreads: {
+								nodes: [{ isResolved: false }],
+								pageInfo: { hasNextPage: false, endCursor: null },
+							},
+						},
+					},
+				},
+			}),
+			stderr: "",
+			code: 0,
+		});
+		vi.mocked(data.updateTask).mockResolvedValue(persisted);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { prNumber: 42, prUrl });
+		expect(github.runGitHub).toHaveBeenNthCalledWith(
+			2,
+			project,
+			task.worktreePath,
+			expect.arrayContaining(["api", "graphql", "--hostname", "ghe.example.com", expect.stringContaining("reviewThreads")]),
+			expect.objectContaining({ timeoutMs: expect.any(Number) }),
+		);
+		expect(github.runGitHub).toHaveBeenNthCalledWith(
+			3,
+			project,
+			task.worktreePath,
+			expect.arrayContaining(["after=cursor-1"]),
+			expect.objectContaining({ timeoutMs: expect.any(Number) }),
+		);
+		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({
+			unresolvedCount: 2,
+			mergeState: { mergeable: "CONFLICTING", status: "DIRTY", state: "OPEN" },
+			checks: [{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://ci/build" }],
+			prTitle: "Needs attention",
+		}));
+	});
+
+	it("polls pending CI at the active one-minute cadence, then backs off when settled", async () => {
+		vi.useFakeTimers();
+		try {
+			const { task } = setup({ status: "review-by-colleague" });
+			vi.mocked(github.runGitHub)
+				.mockResolvedValueOnce({
+					ok: true,
+					stdout: JSON.stringify([{ number: 42, isDraft: false, url: "https://example/pr/42", statusCheckRollup: [{ status: "IN_PROGRESS" }] }]),
+					stderr: "",
+					code: 0,
+				})
+				.mockResolvedValueOnce({
+					ok: true,
+					stdout: JSON.stringify([{ number: 42, isDraft: false, url: "https://example/pr/42", statusCheckRollup: [{ status: "COMPLETED", conclusion: "SUCCESS" }] }]),
+					stderr: "",
+					code: 0,
+				});
+			const push = vi.fn();
+			setPushMessage(push);
+			setAppForeground(true);
+			setActiveContext({ projectId: "proj-1", taskId: null });
+			vi.setSystemTime(0);
+
+			await checkOpenPRsForPromotion();
+			expect(github.runGitHub).toHaveBeenCalledTimes(1);
+
+			vi.setSystemTime(60_000);
+			await checkOpenPRsForPromotion();
+			expect(github.runGitHub).toHaveBeenCalledTimes(2);
+
+			vi.setSystemTime(120_000);
+			await checkOpenPRsForPromotion();
+			expect(github.runGitHub).toHaveBeenCalledTimes(2);
+			expect(task.id).toBe("task-1");
+		} finally {
+			setAppForeground(false);
+			setActiveContext({ projectId: null, taskId: null });
+			vi.useRealTimers();
+		}
+	});
+
+	it("refreshes one task immediately through the RPC handler", async () => {
+		const { project, task } = setup({ status: "in-progress", prNumber: 42, prUrl: "https://example/pr/42" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(github.runGitHub).mockResolvedValue({
+			ok: true,
+			stdout: JSON.stringify([{ number: 42, isDraft: false, url: task.prUrl }]),
+			stderr: "",
+			code: 0,
+		});
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id });
+
+		expect(github.runGitHub).toHaveBeenCalledWith(
+			project,
+			task.worktreePath,
+			expect.arrayContaining(["pr", "list"]),
+			expect.objectContaining({ timeoutMs: expect.any(Number) }),
+		);
+		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({ taskId: task.id, prNumber: 42 }));
 	});
 
 	it("skips when gh pr list call fails", async () => {

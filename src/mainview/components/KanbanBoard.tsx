@@ -109,18 +109,24 @@ function KanbanBoard({
 			setTaskPrMap((prev) => {
 				const map = new Map<string, TaskPRBadgeInfo>();
 				for (const task of tasks) {
-					if (task.branchName) {
-						const pr = branchToPR.get(task.branchName);
-						if (pr) {
-							const existing = prev.get(task.id);
-							map.set(task.id, {
-								number: pr.number,
-								url: pr.url,
-								ciStatus: existing?.ciStatus ?? null,
-								reviewState: existing?.reviewState ?? null,
-							});
-						}
-					}
+					const discovered = task.branchName ? branchToPR.get(task.branchName) : undefined;
+					const sticky = task.prNumber != null && task.prUrl
+						? { number: task.prNumber, url: task.prUrl }
+						: undefined;
+					const pr = discovered ?? sticky;
+					if (!pr) continue;
+					const existing = prev.get(task.id);
+					map.set(task.id, {
+						number: pr.number,
+						url: pr.url,
+						ciStatus: existing?.ciStatus ?? null,
+						reviewState: existing?.reviewState ?? null,
+						unresolvedCount: existing?.unresolvedCount ?? null,
+						mergeState: existing?.mergeState ?? null,
+						checks: existing?.checks ?? [],
+						prTitle: existing?.prTitle ?? null,
+						isDraft: existing?.isDraft ?? null,
+					});
 				}
 				return map;
 			});
@@ -145,6 +151,11 @@ function KanbanBoard({
 				prUrl: string | null;
 				ciStatus: TaskPRBadgeInfo["ciStatus"];
 				reviewState: TaskPRBadgeInfo["reviewState"];
+				unresolvedCount: TaskPRBadgeInfo["unresolvedCount"];
+				mergeState: TaskPRBadgeInfo["mergeState"];
+				checks: TaskPRBadgeInfo["checks"];
+				prTitle: TaskPRBadgeInfo["prTitle"];
+				isDraft: TaskPRBadgeInfo["isDraft"];
 			};
 			if (detail.projectId !== project.id) return;
 			setTaskPrMap((prev) => {
@@ -153,7 +164,17 @@ function KanbanBoard({
 				const url = detail.prUrl ?? existing?.url;
 				if (number === undefined || url === undefined) return prev;
 				const next = new Map(prev);
-				next.set(detail.taskId, { number, url, ciStatus: detail.ciStatus, reviewState: detail.reviewState });
+				next.set(detail.taskId, {
+					number,
+					url,
+					ciStatus: detail.ciStatus,
+					reviewState: detail.reviewState,
+					unresolvedCount: detail.unresolvedCount,
+					mergeState: detail.mergeState,
+					checks: detail.checks ?? [],
+					prTitle: detail.prTitle,
+					isDraft: detail.isDraft,
+				});
 				return next;
 			});
 		}

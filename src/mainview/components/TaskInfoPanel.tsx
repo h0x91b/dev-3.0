@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect, type Dispatch, type MouseEvent as ReactMouseEvent } from "react";
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
-import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label } from "../../shared/types";
+import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label, TaskPRBadgeInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
@@ -28,6 +28,7 @@ import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
+import TaskPrStatusPopover from "./TaskPrStatusPopover";
 import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
 import {
 	WatchingIcon,
@@ -465,6 +466,18 @@ function TaskInfoPanel({
 	}
 
 	const metadataBranchStatus = metadataBranchState?.branchStatus ?? null;
+	const metadataPrInfo: TaskPRBadgeInfo | null = metadataBranchState?.prStatus
+		?? (metadataBranchStatus?.prNumber != null
+			? {
+				number: metadataBranchStatus.prNumber,
+				url: metadataBranchStatus.prUrl ?? "",
+			}
+			: task.prNumber != null
+				? {
+					number: task.prNumber,
+					url: task.prUrl ?? "",
+				}
+				: null);
 	const allDiffFileStats = metadataBranchStatus?.diffFileStats ?? [];
 	const visibleDiffFileStats = includeTests
 		? allDiffFileStats
@@ -753,15 +766,24 @@ function TaskInfoPanel({
 								</>
 							)}
 
-							{metadataBranchStatus && metadataBranchStatus.prNumber !== null && (
+							{metadataPrInfo && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
-									<button
-										onClick={() => metadataBranchStatus.prUrl && window.open(metadataBranchStatus.prUrl, "_blank")}
-										className="text-success font-mono font-semibold hover:underline text-left"
-									>
-										PR #{metadataBranchStatus.prNumber}
-									</button>
+									<TaskPrStatusPopover prInfo={metadataPrInfo} projectId={project.id} taskId={task.id}>
+										<button
+											type="button"
+											onClick={() => metadataPrInfo.url && window.open(metadataPrInfo.url, "_blank")}
+											className="inline-flex items-center gap-1.5 text-success font-mono font-semibold hover:underline text-left"
+										>
+											<span>{t("task.prBadge", { number: String(metadataPrInfo.number) })}</span>
+											{(metadataPrInfo.unresolvedCount ?? 0) > 0 && (
+												<span className="inline-flex items-center gap-0.5 text-warning no-underline" aria-label={t.plural("task.prUnresolvedComments", metadataPrInfo.unresolvedCount ?? 0)}>
+													<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
+													<span>{metadataPrInfo.unresolvedCount}</span>
+												</span>
+											)}
+										</button>
+									</TaskPrStatusPopover>
 								</>
 							)}
 
