@@ -66,7 +66,7 @@ Commands:
   dev3 dev-server stop [task-id]        Stop a task dev server
   dev3 dev-server restart [task-id]     Restart a task dev server
   dev3 dev-server status [task-id]      Show task dev server status
-  dev3 notify "msg" [--level info|success|error] [--duration <seconds>] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
+  dev3 notify "msg" [--level info|success|error] [--desktop]  Show an in-app toast (or OS notification); clicking opens the task
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
   dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later)
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
