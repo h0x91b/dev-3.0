@@ -8,8 +8,9 @@ import type { SVGProps } from "react";
  * Every icon carries `tmx-*` animation hooks: when a `.tmux-anim` ancestor
  * (the button / menu row) is hovered, pure-CSS keyframes in index.css act out
  * the operation the icon triggers — the split saws its divider across, the
- * zoomed pane inflates, the closed pane shudders and blinks out, and so on.
- * Idle rendering is pixel-identical to the original static glyphs.
+ * zoom magnifier leans in over the split, the closed pane shudders and blinks
+ * out, and so on. Idle rendering is pixel-identical to the original static
+ * glyphs.
  */
 
 interface TmuxIconProps {
@@ -69,15 +70,12 @@ export function CycleLayoutIcon({ className }: TmuxIconProps) {
 export function ZoomPaneIcon({ className }: TmuxIconProps) {
 	return (
 		<svg {...svgBase(className)}>
-			<rect x="4" y="6" width="16" height="12" rx="1" className="tmx tmx-z-rect" />
-			<path d="M2 5 L2 2 L5 2" className="tmx tmx-z-tl" />
-			<path d="M19 2 L22 2 L22 5" className="tmx tmx-z-tr" />
-			<path d="M22 19 L22 22 L19 22" className="tmx tmx-z-br" />
-			<path d="M5 22 L2 22 L2 19" className="tmx tmx-z-bl" />
-			<path d="M6 6 L2 2" pathLength={1} className="tmx-draw tmx-z-diag" />
-			<path d="M18 6 L22 2" pathLength={1} className="tmx-draw tmx-z-diag" />
-			<path d="M18 18 L22 22" pathLength={1} className="tmx-draw tmx-z-diag" />
-			<path d="M6 18 L2 22" pathLength={1} className="tmx-draw tmx-z-diag" />
+			<rect x="2" y="4" width="20" height="16" rx="2" />
+			<line x1="10" y1="4" x2="10" y2="20" strokeDasharray="4 3" />
+			<g className="tmx tmx-z-lens">
+				<circle cx="14.5" cy="10.5" r="4.2" />
+				<path d="m17.6 13.6 3.4 3.4" />
+			</g>
 		</svg>
 	);
 }
