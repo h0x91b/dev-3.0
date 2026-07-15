@@ -103,7 +103,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 	}, []);
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
-	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor, task.id);
 
 	async function handleSetPriority(priority: Task["priority"]) {
 		if (!priority) return;
@@ -111,7 +111,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: project.id, priority });
 			for (const t of changed) dispatch({ type: "updateTask", task: t });
 		} catch (err) {
-			toast.error(t("priority.failedSet", { error: String(err) }));
+			toast.error(t("priority.failedSet", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -132,7 +132,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			trackEvent("task_edited", { project_id: project.id });
 			setIsEditing(false);
 		} catch (err) {
-			toast.error(t("task.failedEdit", { error: String(err) }));
+			toast.error(t("task.failedEdit", { error: String(err) }), { taskId: task.id });
 		}
 		setSaving(false);
 	}
@@ -160,7 +160,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			trackEvent("task_renamed", { project_id: project.id });
 			setIsRenaming(false);
 		} catch (err) {
-			toast.error(t("task.failedRename", { error: String(err) }));
+			toast.error(t("task.failedRename", { error: String(err) }), { taskId: task.id });
 		}
 		setRenameSaving(false);
 	}
@@ -176,7 +176,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			dispatch({ type: "updateTask", task: updated });
 			setIsRenaming(false);
 		} catch (err) {
-			toast.error(t("task.failedRename", { error: String(err) }));
+			toast.error(t("task.failedRename", { error: String(err) }), { taskId: task.id });
 		}
 		setRenameSaving(false);
 	}
@@ -214,7 +214,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}`, agent_name: agentNameFromId(task.agentId) });
 			onClose();
 		} catch (err) {
-			toast.error(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
 		}
 		setMovingStatus(false);
 	}
@@ -253,7 +253,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			trackEvent("task_deleted", { project_id: project.id });
 			onClose();
 		} catch (err) {
-			toast.error(t("task.failedDelete", { error: String(err) }));
+			toast.error(t("task.failedDelete", { error: String(err) }), { taskId: task.id });
 			setDeleting(false);
 		}
 	}
@@ -267,7 +267,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("labels.failedSetLabels", { error: String(err) }));
+			toast.error(t("labels.failedSetLabels", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -284,7 +284,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("labels.failedSetLabels", { error: String(err) }));
+			toast.error(t("labels.failedSetLabels", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -300,7 +300,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("notes.failedAdd", { error: String(err) }));
+			toast.error(t("notes.failedAdd", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -327,7 +327,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("notes.failedDelete", { error: String(err) }));
+			toast.error(t("notes.failedDelete", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -572,6 +572,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 								<LabelPicker
 									project={project}
 									dispatch={dispatch}
+									taskId={task.id}
 									onClose={() => setPickerOpen(false)}
 									anchorEl={pickerAnchorRef.current}
 									selectedIds={task.labelIds ?? []}
@@ -794,6 +795,7 @@ function ArchivedView({
 									<NoteItem
 										key={note.id}
 										note={note}
+										taskId={task.id}
 										onSave={(content) => onUpdateNote(note.id, content)}
 										onDelete={() => onDeleteNote(note.id)}
 									/>

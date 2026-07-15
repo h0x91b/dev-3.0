@@ -1070,7 +1070,7 @@ describe("TaskCard", () => {
 			await user.click(screen.getByText("Agent is Working"));
 
 			await waitFor(() => {
-				expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("second"));
+				expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("second"), { taskId: "t1" });
 			});
 		});
 
@@ -1124,7 +1124,7 @@ describe("TaskCard", () => {
 			await user.click(screen.getByLabelText("Delete"));
 
 			await waitFor(() => {
-				expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("delete failed"));
+				expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("delete failed"), { taskId: "t1" });
 			});
 		});
 	});

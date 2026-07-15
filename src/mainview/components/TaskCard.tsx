@@ -116,7 +116,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			const updated = await api.request.cancelScheduledLaunch({ taskId: task.id, projectId: project.id });
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("task.scheduleCancelFailed", { error: String(err) }));
+			toast.error(t("task.scheduleCancelFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -133,7 +133,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			const changed = await api.request.setTaskPriority({ taskId: task.id, projectId: project.id, priority });
 			for (const t of changed) dispatch({ type: "updateTask", task: t });
 		} catch (err) {
-			toast.error(t("priority.failedSet", { error: String(err) }));
+			toast.error(t("priority.failedSet", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -145,7 +145,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			// no local dispatch needed beyond kicking off the RPC.
 			await api.request.startScheduledLaunchNow({ taskId: task.id, projectId: project.id });
 		} catch (err) {
-			toast.error(t("launch.failedLaunch", { error: String(err) }));
+			toast.error(t("launch.failedLaunch", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -277,7 +277,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onTaskMoved(task.id);
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}`, agent_name: agentNameFromId(task.agentId) });
 		} catch (err) {
-			toast.error(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
 		}
 		setMoving(false);
 	}
@@ -298,7 +298,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			dispatch({ type: "removeTask", taskId: task.id });
 			trackEvent("task_deleted", { project_id: project.id });
 		} catch (err) {
-			toast.error(t("task.failedDelete", { error: String(err) }));
+			toast.error(t("task.failedDelete", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -313,7 +313,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
 			setCancellingPreparation(false);
 			return;
 		}
@@ -752,6 +752,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 							<LabelPicker
 								project={project}
 								dispatch={dispatch}
+								taskId={task.id}
 								onClose={() => setPickerOpen(false)}
 								anchorEl={pickerAnchorRef.current}
 								selectedIds={taskLabelIds}
@@ -1101,6 +1102,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<OpenInMenu
 					position={ctxMenuPos}
 					path={task.worktreePath}
+					taskId={task.id}
 					onClose={() => setCtxMenuOpen(false)}
 				/>
 			)}

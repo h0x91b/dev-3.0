@@ -28,11 +28,13 @@ interface OpenInMenuProps {
 	position: { top: number; left: number };
 	/** Worktree or file path to open */
 	path: string;
+	/** Optional owning task for overflow attention fallback. */
+	taskId?: string;
 	/** Called when the menu should close */
 	onClose: () => void;
 }
 
-export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps) {
+export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMenuProps) {
 	const t = useT();
 	const apps = useAvailableApps();
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -83,7 +85,7 @@ export default function OpenInMenu({ position, path, onClose }: OpenInMenuProps)
 		try {
 			await api.request.openInApp({ appName: app.macAppName, path });
 		} catch (err) {
-			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }));
+			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }), { taskId });
 		}
 	}
 

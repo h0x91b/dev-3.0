@@ -165,7 +165,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 			setDevState(status?.running === false ? "stopped" : "running");
 		} catch (err) {
 			setDevState("stopped");
-			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -228,7 +228,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 				await startDevServerNow();
 			}
 		} catch (err) {
-			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -240,7 +240,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 			setDevState(status?.running === false ? "stopped" : "running");
 		} catch (err) {
 			setDevState("stopped");
-			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -250,7 +250,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 		try {
 			await api.request.stopDevServer({ taskId: task.id, projectId: project.id });
 		} catch (err) {
-			toast.error(t("infoPanel.devServerFailed", { error: String(err) }));
+			toast.error(t("infoPanel.devServerFailed", { error: String(err) }), { taskId: task.id });
 		}
 	}
 

@@ -107,7 +107,7 @@ function TerminalPreviewPopover({
 			}
 			setEditing(false);
 		} catch (err) {
-			toast.error(t("overview.saveFailed", { error: String(err) }));
+			toast.error(t("overview.saveFailed", { error: String(err) }), { taskId: taskId ?? undefined });
 		}
 		setSaving(false);
 	}, [taskId, projectId, value, effectiveOverview, aiOverview, t]);
@@ -120,7 +120,7 @@ function TerminalPreviewPopover({
 			setEditing(false);
 			setValue("");
 		} catch (err) {
-			toast.error(t("overview.saveFailed", { error: String(err) }));
+			toast.error(t("overview.saveFailed", { error: String(err) }), { taskId: taskId ?? undefined });
 		}
 		setSaving(false);
 	}, [taskId, projectId, t]);

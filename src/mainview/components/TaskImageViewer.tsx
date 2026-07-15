@@ -8,6 +8,7 @@ interface TaskImageViewerProps {
 	images: SharedImage[];
 	initialIndex: number;
 	onClose: () => void;
+	taskId?: string;
 }
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
@@ -32,7 +33,7 @@ const TALL_RATIO = 2.2;
  * promoted to a hardware overlay plane that paints ABOVE any DOM scrim, so
  * without this the live terminal would shine through around the card.
  */
-export default function TaskImageViewer({ images, initialIndex, onClose }: TaskImageViewerProps) {
+export default function TaskImageViewer({ images, initialIndex, onClose, taskId }: TaskImageViewerProps) {
 	const t = useT();
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(images.length - 1, initialIndex)));
 	// Cache of image id → data URL ("__error__" marks a failed load).
@@ -150,7 +151,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose }: TaskI
 			await navigator.clipboard.writeText(current.storedPath);
 			setCopied(true);
 		} catch {
-			toast.error(t("imageViewer.copyFailed"));
+			toast.error(t("imageViewer.copyFailed"), { taskId });
 		}
 	};
 
@@ -214,7 +215,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose }: TaskI
 					</button>
 					<button
 						type="button"
-						onClick={() => api.request.openImageFile({ path: current.storedPath }).catch(() => toast.error(t("imageViewer.openFailed")))}
+						onClick={() => api.request.openImageFile({ path: current.storedPath }).catch(() => toast.error(t("imageViewer.openFailed"), { taskId }))}
 						title={t("imageViewer.open")}
 						aria-label={t("imageViewer.open")}
 						className={iconBtn}

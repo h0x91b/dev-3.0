@@ -102,12 +102,18 @@ vi.mock("../components/Changelog", () => ({
 	default: (_props: { navigate: unknown; goBack: unknown; canGoBack: unknown }) => <div data-testid="changelog-screen" />,
 }));
 vi.mock("../components/ProjectView", () => ({
-	default: (props: { projectId: string; activeTaskId?: string; taskView?: boolean }) => (
+	default: (props: {
+		projectId: string;
+		activeTaskId?: string;
+		taskView?: boolean;
+		bellCounts?: Map<string, number>;
+	}) => (
 		<div
 			data-testid="project-screen"
 			data-project-id={props.projectId}
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
+			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
 		/>
 	),
 }));
@@ -763,6 +769,64 @@ describe("App keyboard shortcuts", () => {
 
 			expect(await screen.findByTestId("task-screen")).toBeInTheDocument();
 			expect(screen.getByTestId("image-viewer")).toBeInTheDocument();
+		});
+	});
+
+	describe("toast overflow attention routing", () => {
+		const oneProject = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+
+		function dispatchToast(message: string) {
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliToast", {
+					detail: { taskId: "t-overflow", projectId: "p1", message, level: "info" },
+				}));
+			});
+		}
+
+		it("routes task identity from renderer to forced attention on eviction", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			for (let index = 1; index <= 6; index += 1) dispatchToast(`Overflow ${index}`);
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "1"));
+			expect(screen.queryByText("Overflow 1")).not.toBeInTheDocument();
+			expect(screen.getByText("Overflow 6")).toBeInTheDocument();
+		});
+
+		it("does not double-count image or artifact attention when their toasts overflow", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:cliShowImage", {
+					detail: {
+						taskId: "t-overflow",
+						projectId: "p1",
+						images: [{ id: "img-1", storedPath: "/tmp/image.png", originalPath: "/tmp/image.png", name: "image.png", mime: "image/png", bytes: 1, createdAt: 0 }],
+						newCount: 1,
+					},
+				}));
+				window.dispatchEvent(new CustomEvent("rpc:cliShowArtifact", {
+					detail: {
+						taskId: "t-overflow",
+						projectId: "p1",
+						artifacts: [{ id: "artifact-1", storedPath: "/tmp/artifact.html", name: "artifact.html", mime: "text/html", bytes: 1, createdAt: 0 }],
+						newCount: 1,
+					},
+				}));
+			});
+			for (let index = 1; index <= 5; index += 1) dispatchToast(`Overflow ${index}`);
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-bell-count", "2"));
 		});
 	});
 

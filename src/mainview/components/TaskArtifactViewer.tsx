@@ -9,6 +9,7 @@ interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
 	initialIndex: number;
 	onClose: () => void;
+	taskId?: string;
 }
 
 type ArtifactThemeMode = "follow" | "light" | "dark";
@@ -31,7 +32,7 @@ function downloadBase64(base64: string, mime: string, fileName: string): void {
 	setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }: TaskArtifactViewerProps) {
+export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId }: TaskArtifactViewerProps) {
 	const t = useT();
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
 	const [srcDoc, setSrcDoc] = useState<string | null>(null);
@@ -107,7 +108,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose }:
 			const payload = await api.request.readArtifactDownload({ artifact: current });
 			downloadBase64(payload.base64, payload.mime, payload.fileName);
 		} catch {
-			toast.error(t("artifactViewer.downloadFailed"));
+			toast.error(t("artifactViewer.downloadFailed"), { taskId });
 		} finally {
 			setDownloading(false);
 		}

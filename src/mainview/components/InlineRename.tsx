@@ -59,7 +59,7 @@ export default function InlineRename({
 			trackEvent("task_renamed", { project_id: projectId });
 			setEditing(false);
 		} catch (err) {
-			toast.error(t("task.failedRename", { error: String(err) }));
+			toast.error(t("task.failedRename", { error: String(err) }), { taskId });
 		}
 		setSaving(false);
 		savingRef.current = false;

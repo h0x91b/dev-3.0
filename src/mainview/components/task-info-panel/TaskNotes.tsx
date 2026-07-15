@@ -25,7 +25,7 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("notes.failedAdd", { error: String(err) }));
+			toast.error(t("notes.failedAdd", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -52,7 +52,7 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 			});
 			dispatch({ type: "updateTask", task: updated });
 		} catch (err) {
-			toast.error(t("notes.failedDelete", { error: String(err) }));
+			toast.error(t("notes.failedDelete", { error: String(err) }), { taskId: task.id });
 		}
 	}
 
@@ -76,6 +76,7 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 				<NoteItem
 					key={note.id}
 					note={note}
+					taskId={task.id}
 					onSave={(content) => handleUpdateNote(note.id, content)}
 					onDelete={() => handleDeleteNote(note.id)}
 					projectId={project.id}

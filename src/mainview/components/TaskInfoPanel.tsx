@@ -338,7 +338,7 @@ function TaskInfoPanel({
 			dispatch({ type: "updateTask", task: updated });
 			trackEvent("task_moved", { from_status: task.status, to_status: `custom:${customColumnId}`, agent_name: agentNameFromId(task.agentId) });
 		} catch (err) {
-			toast.error(t("task.failedMove", { error: String(err) }));
+			toast.error(t("task.failedMove", { error: String(err) }), { taskId: task.id });
 		}
 		setMovingStatus(false);
 	}
@@ -576,6 +576,7 @@ function TaskInfoPanel({
 		<OpenInMenu
 			position={fileOpenInMenu.pos}
 			path={fileOpenInMenu.path}
+			taskId={task.id}
 			onClose={() => setFileOpenInMenu(null)}
 		/>
 	) : null;

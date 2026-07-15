@@ -6,6 +6,7 @@ import { uploadDroppedFile } from "../utils/uploadDroppedFile";
 export function useFileDrop(
 	projectId: string,
 	onFileDropped: (path: string) => void,
+	taskId?: string,
 ): {
 	handleDragOver: (e: React.DragEvent) => void;
 	handleDragEnter: (e: React.DragEvent) => void;
@@ -62,11 +63,11 @@ export function useFileDrop(
 					}
 				} catch (err) {
 					console.error(`[useFileDrop] file upload failed for "${file.name}":`, err);
-					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }));
+					toast.error(t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }), { taskId });
 				}
 			}));
 		},
-		[onFileDropped, projectId],
+		[onFileDropped, projectId, taskId, t],
 	);
 
 	return { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging };

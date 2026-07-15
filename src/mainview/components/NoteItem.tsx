@@ -26,9 +26,10 @@ interface NoteItemProps {
 	onSave: (content: string) => void;
 	onDelete: () => void;
 	projectId?: string;
+	taskId?: string;
 }
 
-export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
+export function NoteItem({ note, onSave, onDelete, projectId, taskId }: NoteItemProps) {
 	const t = useT();
 	const [value, setValue] = useState(note.content);
 	const isAi = note.source === "ai";
@@ -59,7 +60,7 @@ export function NoteItem({ note, onSave, onDelete, projectId }: NoteItemProps) {
 	}, [onSave]);
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(projectId ?? "", insertPath);
-	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(projectId ?? "", insertPath);
+	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(projectId ?? "", insertPath, taskId);
 
 	const handleRemovePath = useCallback((pathToRemove: string) => {
 		const next = removeImagePath(value, pathToRemove);

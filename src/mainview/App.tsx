@@ -29,7 +29,7 @@ import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
-import { setToastSuppressed, ToastHost, toast } from "./toast";
+import { setToastSuppressed, ToastHost, toast, type ToastEntry } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
@@ -97,6 +97,10 @@ function findVisibleSearchInput(): HTMLElement | null {
 
 function App() {
 	const [state, dispatch] = useAppState();
+	const handleToastOverflow = useCallback((entry: ToastEntry) => {
+		if (!entry.taskId) return;
+		dispatch({ type: "addBell", taskId: entry.taskId, reason: entry.message, force: true });
+	}, [dispatch]);
 	const t = useT();
 	const [, setLocale] = useLocale();
 	const [terminalImmersive, setTerminalImmersive] = useState(false);
@@ -1165,7 +1169,7 @@ function App() {
 			const context = taskSeq !== undefined
 				? [`#${taskSeq}`, projectName, taskTitle].filter(Boolean).join(" · ")
 				: undefined;
-			toast[level](message, { onClick, context });
+			toast[level](message, { onClick, context, taskId: taskId ?? undefined });
 		}
 		window.addEventListener("rpc:cliToast", onCliToast);
 		return () => window.removeEventListener("rpc:cliToast", onCliToast);
@@ -1546,7 +1550,7 @@ function App() {
 	// Notify user when a column-agent launch fails (custom columns have no automatic fallback)
 	useEffect(() => {
 		function onColumnAgentFailed(e: Event) {
-			const { columnName, error } = (e as CustomEvent).detail as {
+			const { taskId, columnName, error } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				columnName: string;
@@ -1554,7 +1558,7 @@ function App() {
 			};
 			// The task is parked in the target column with no running agent; surface the
 			// failure so the user can relaunch (move out and back in) or fix the column config.
-			toast.error(t("kanban.columnAgentFailed", { columnName, error }));
+			toast.error(t("kanban.columnAgentFailed", { columnName, error }), { taskId });
 		}
 		window.addEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
 		return () => window.removeEventListener("rpc:columnAgentFailed", onColumnAgentFailed);
@@ -1565,13 +1569,13 @@ function App() {
 	// the real error so the user isn't left with a misleading "[session ended]".
 	useEffect(() => {
 		function onTaskPreparationFailed(e: Event) {
-			const { taskTitle, error } = (e as CustomEvent).detail as {
+			const { taskId, taskTitle, error } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				taskTitle: string;
 				error: string;
 			};
-			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error }));
+			toast.error(t("kanban.taskPreparationFailed", { taskTitle, error }), { taskId });
 		}
 		window.addEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
 		return () => window.removeEventListener("rpc:taskPreparationFailed", onTaskPreparationFailed);
@@ -2266,6 +2270,7 @@ function App() {
 			<ConfirmHost />
 			{imageViewer && (
 				<TaskImageViewer
+					taskId={imageViewer.taskId}
 					images={imageViewer.images}
 					initialIndex={imageViewer.index}
 					onClose={() => setImageViewer(null)}
@@ -2278,7 +2283,7 @@ function App() {
 			)}
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
-			<ToastHost />
+			<ToastHost onTaskOverflow={handleToastOverflow} />
 		</div>
 	);
 
