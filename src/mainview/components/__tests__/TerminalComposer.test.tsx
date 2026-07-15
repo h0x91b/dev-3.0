@@ -66,7 +66,7 @@ describe("TerminalComposer", () => {
 		await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
 		expect(handle.paste).toHaveBeenCalledWith("run the tests");
-		expect(handle.sendInput).toHaveBeenCalledWith("\r");
+		expect(handle.sendInput).toHaveBeenCalledWith("\r\r");
 		expect(input.value).toBe("");
 	});
 

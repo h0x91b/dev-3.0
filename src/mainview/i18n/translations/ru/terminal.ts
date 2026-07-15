@@ -204,7 +204,7 @@ const terminal = {
 
 	// Touch composer (mobile input mode)
 	"terminal.composerPlaceholder": "Введите промпт или команду…",
-	"terminal.composerSend": "Отправить (вставка + Enter)",
+	"terminal.composerSend": "Отправить (вставка + 2 Enter)",
 	"terminal.composerInsert": "Вставить без Enter",
 	"terminal.composerExpand": "Развернуть редактор",
 	"terminal.composerCollapse": "Свернуть редактор",
