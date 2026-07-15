@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNarrowViewport } from "./hooks/useNarrowViewport";
 
 export type ToastVariant = "error" | "success" | "info" | "warning";
 
@@ -26,7 +27,7 @@ export interface ToastOpts {
 }
 
 export interface ToastHostProps {
-	/** Receives only task-scoped entries evicted by the five-toast capacity limit. */
+	/** Receives only task-scoped entries evicted by the visible toast capacity limit. */
 	onTaskOverflow?: (entry: ToastEntry) => void;
 }
 
@@ -53,6 +54,8 @@ const pendingEntries: ToastEntry[] = [];
 /** Default auto-dismiss delay. Long on purpose so error messages aren't missed. */
 const DEFAULT_DURATION_MS = 30_000;
 const MAX_VISIBLE_TOASTS = 5;
+const NARROW_MAX_VISIBLE_TOASTS = 1;
+const NARROW_VIEWPORT_PX = 768;
 
 function deliver(entry: ToastEntry): void {
 	listeners.forEach((l) => l(entry));
@@ -115,12 +118,16 @@ function rendererIsActive(): boolean {
 }
 
 export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
+	const narrow = useNarrowViewport(NARROW_VIEWPORT_PX);
+	const maxVisibleToasts = narrow ? NARROW_MAX_VISIBLE_TOASTS : MAX_VISIBLE_TOASTS;
 	const [toasts, setToasts] = useState<RenderedToast[]>([]);
 	const toastsRef = useRef<RenderedToast[]>([]);
 	const runtimesRef = useRef(new Map<number, ToastRuntime>());
 	const activeRef = useRef(rendererIsActive());
 	const overflowHandlerRef = useRef(onTaskOverflow);
+	const maxVisibleToastsRef = useRef(maxVisibleToasts);
 	overflowHandlerRef.current = onTaskOverflow;
+	maxVisibleToastsRef.current = maxVisibleToasts;
 
 	function publish(next: RenderedToast[]): void {
 		toastsRef.current = next;
@@ -218,6 +225,19 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 	}, []);
 
 	useEffect(() => {
+		const previous = toastsRef.current;
+		const evictedCount = Math.max(0, previous.length - maxVisibleToasts);
+		if (!evictedCount) return;
+
+		const evicted = previous.slice(0, evictedCount);
+		evicted.forEach(({ entry }) => clearRuntime(entry.id));
+		publish(previous.slice(evictedCount));
+		for (const { entry } of evicted) {
+			if (entry.taskId) overflowHandlerRef.current?.(entry);
+		}
+	}, [maxVisibleToasts]);
+
+	useEffect(() => {
 		const listener: Listener = (entry) => {
 			const runtime: ToastRuntime = {
 				remainingMs: Math.max(0, entry.durationMs),
@@ -229,16 +249,18 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 			runtimesRef.current.set(entry.id, runtime);
 
 			const previous = toastsRef.current;
-			const evicted = previous.length >= MAX_VISIBLE_TOASTS ? previous[0] : undefined;
-			if (evicted) clearRuntime(evicted.entry.id);
+			const capacity = maxVisibleToastsRef.current;
+			const evictedCount = Math.max(0, previous.length - capacity + 1);
+			const evicted = previous.slice(0, evictedCount);
+			evicted.forEach(({ entry: evictedEntry }) => clearRuntime(evictedEntry.id));
 			const next = [
-				...previous.slice(evicted ? 1 : 0),
+				...previous.slice(evictedCount),
 				{ entry, paused: !activeRef.current },
 			];
 			publish(next);
 
-			if (evicted?.entry.taskId) {
-				overflowHandlerRef.current?.(evicted.entry);
+			for (const { entry: evictedEntry } of evicted) {
+				if (evictedEntry.taskId) overflowHandlerRef.current?.(evictedEntry);
 			}
 			startRuntime(entry.id);
 		};
