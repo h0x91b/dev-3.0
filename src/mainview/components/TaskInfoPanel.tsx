@@ -1065,7 +1065,7 @@ function TaskInfoPanel({
 						<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 							<button
 								onClick={toggleTerminalFullscreen}
-								className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+								className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-hover"
 								aria-label={terminalFullscreenLabel}
 							>
 								{terminalFullscreenActive
@@ -1143,7 +1143,7 @@ function TaskInfoPanel({
 							<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 								<button
 									onClick={toggleTerminalFullscreen}
-									className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+									className="task-anim flex-shrink-0 p-1 rounded hover:bg-accent/10 transition-colors text-accent hover:text-accent-hover"
 									aria-label={terminalFullscreenLabel}
 								>
 									{terminalFullscreenActive

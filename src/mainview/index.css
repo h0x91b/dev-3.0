@@ -1307,7 +1307,7 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 .task-anim:hover .th-gear { transform-origin: 12px 12px; animation: th-gear 2.6s ease-in-out infinite; }
 
-/* -- Full screen: the corners fly along their diagonals and settle -- */
+/* -- Full screen: the arrows fly along their diagonals and settle -- */
 @keyframes th-fs-nw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, -1.6px); } }
 @keyframes th-fs-ne { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, -1.6px); } }
 @keyframes th-fs-se { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, 1.6px); } }
