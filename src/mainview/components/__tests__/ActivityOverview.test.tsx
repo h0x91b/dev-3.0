@@ -242,10 +242,14 @@ describe("ActivityOverview", () => {
 		const high = await screen.findByText("High priority");
 		const normal = screen.getByText("Normal priority");
 		const low = screen.getByText("Low priority");
+		const highRow = high.closest("button");
+		if (!highRow) throw new Error("Expected high-priority task row");
 
 		expect(screen.getByText("P1")).toBeInTheDocument();
 		expect(screen.getByText("P2")).toBeInTheDocument();
 		expect(screen.getByText("P3")).toBeInTheDocument();
+		expect(highRow.firstElementChild).toHaveTextContent("P1");
+		expect(within(highRow).getAllByText("P1")).toHaveLength(1);
 		expect(high.compareDocumentPosition(normal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		expect(normal.compareDocumentPosition(low) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});

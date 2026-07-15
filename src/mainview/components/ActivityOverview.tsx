@@ -502,10 +502,10 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 													style={{ backgroundColor: rowColor }}
 												/>
 											)}
-											<span
-												className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${narrow ? "mt-1.5" : ""}`}
-												style={{ backgroundColor: rowColor }}
-												title={rowLabel}
+											{/* Priority replaces the status dot in the leading marker slot. */}
+											<PriorityBadge
+												priority={task.priority}
+												className={`flex-shrink-0 ${narrow ? "mt-0.5" : ""}`}
 											/>
 											<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
 												<span
@@ -517,7 +517,6 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 													{bellCounts.has(task.id) && (
 														<span className="w-2 h-2 rounded-full bg-accent animate-pulse flex-shrink-0" />
 													)}
-													<PriorityBadge priority={task.priority} />
 													<span className="text-xs flex-shrink-0" style={{ color: rowColor }}>
 														{rowLabel}
 													</span>
