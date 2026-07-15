@@ -13,6 +13,7 @@ import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./termi
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
+import { submitPastedText } from "./terminal-submit";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -184,6 +185,8 @@ export interface TerminalHandle {
 	sendInput: (data: string) => void;
 	/** Paste text through ghostty — wraps in bracketed-paste (DEC 2004) only if the app enabled it. */
 	paste: (data: string) => void;
+	/** Paste text and submit once, settling unbracketed paste bursts first. */
+	submit: (data: string) => void;
 	focus: () => void;
 	blur: () => void;
 }
@@ -720,6 +723,17 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 								// ghostty's paste() wraps in \x1b[200~…\x1b[201~ only when the
 								// running app enabled DEC 2004 and routes through onData → WS.
 								paste: (data: string) => { try { term.paste(data); } catch { /* disposed */ } },
+								submit: (data: string) => {
+									submitPastedText(data, {
+										paste: (value) => term.paste(value),
+										sendInput: (value) => {
+											if (wsRef.current?.readyState === WebSocket.OPEN) {
+												wsRef.current.send(value);
+											}
+										},
+										hasBracketedPaste: () => term.hasBracketedPaste(),
+									});
+								},
 								// In browser mode focus the hidden textarea directly: term.focus()
 								// lands on ghostty's container div, which never summons the OSK.
 								focus: () => {

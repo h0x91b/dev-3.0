@@ -36,6 +36,7 @@ function makeHandle(): TerminalHandle {
 	return {
 		sendInput: vi.fn(),
 		paste: vi.fn(),
+		submit: vi.fn(),
 		focus: vi.fn(),
 		blur: vi.fn(),
 	};
@@ -57,7 +58,7 @@ afterEach(() => {
 });
 
 describe("TerminalComposer", () => {
-	it("sends text as paste + Enter and clears the input", async () => {
+	it("uses the terminal submit transport and clears the input", async () => {
 		const handle = makeHandle();
 		renderComposer(handle);
 		const input = screen.getByTestId("terminal-composer-input") as HTMLTextAreaElement;
@@ -65,8 +66,9 @@ describe("TerminalComposer", () => {
 		await userEvent.type(input, "run the tests");
 		await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
-		expect(handle.paste).toHaveBeenCalledWith("run the tests");
-		expect(handle.sendInput).toHaveBeenCalledWith("\r\r");
+		expect(handle.submit).toHaveBeenCalledWith("run the tests");
+		expect(handle.paste).not.toHaveBeenCalled();
+		expect(handle.sendInput).not.toHaveBeenCalled();
 		expect(input.value).toBe("");
 	});
 
@@ -102,8 +104,9 @@ describe("TerminalComposer", () => {
 		expect(input.value).toBe("line one\n");
 
 		await userEvent.keyboard("{Control>}{Enter}{/Control}");
-		expect(handle.paste).toHaveBeenCalledWith("line one\n");
-		expect(handle.sendInput).toHaveBeenCalledWith("\r");
+		expect(handle.submit).toHaveBeenCalledWith("line one\n");
+		expect(handle.paste).not.toHaveBeenCalled();
+		expect(handle.sendInput).not.toHaveBeenCalled();
 	});
 
 	it("marks <html data-composer-focused> while focused and clears it on blur", async () => {
@@ -165,7 +168,7 @@ describe("TerminalComposer", () => {
 		await userEvent.click(screen.getByRole("button", { name: /expand editor/i }));
 		await userEvent.click(screen.getByRole("button", { name: /send/i }));
 
-		expect(handle.paste).toHaveBeenCalledWith("long prompt");
+		expect(handle.submit).toHaveBeenCalledWith("long prompt");
 		expect(screen.getByTestId("terminal-composer").className).not.toContain("absolute");
 	});
 });

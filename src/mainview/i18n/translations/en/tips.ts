@@ -197,7 +197,7 @@ const tips = {
 	"tip.agentShowImage.title": "Agents can show you images",
 	"tip.agentShowImage.body": "Run `dev3 show-image <path>` in a task and screenshots or renders pop open in an in-app viewer with a clickable history.",
 	"tip.mobileComposer.title": "Phone-friendly prompt box",
-	"tip.mobileComposer.body": "On a phone, type prompts in the box above the key bar — Send pastes them into the terminal with two Enters.",
+	"tip.mobileComposer.body": "On a phone, type prompts in the box above the key bar — Send delivers them to the terminal.",
 	"tip.closePanePicker.title": "Pick the pane to close",
 	"tip.closePanePicker.body": "Click Close Pane and pick the split (it turns red) — or press Ctrl+D inside a pane to close it instantly.",
 	"tip.helpMode.title": "Explain this screen",

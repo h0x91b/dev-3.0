@@ -1,0 +1,1 @@
+Fix mobile terminal message delivery by using one paste-aware submit operation. When bracketed paste is unavailable, the submit Enter waits past the agent's paste-burst window instead of sending duplicate Enter characters.

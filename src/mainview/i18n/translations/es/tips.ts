@@ -197,7 +197,7 @@ const tips = {
 	"tip.agentShowImage.title": "Los agentes pueden mostrarte imágenes",
 	"tip.agentShowImage.body": "Ejecuta `dev3 show-image <path>` en una tarea y las capturas o renders se abren en un visor integrado con historial.",
 	"tip.mobileComposer.title": "Cuadro de prompts para móvil",
-	"tip.mobileComposer.body": "En un móvil, escribe prompts en el cuadro sobre la barra de teclas — Enviar los pega en el terminal con dos Enter.",
+	"tip.mobileComposer.body": "En un móvil, escribe prompts en el cuadro sobre la barra de teclas — Enviar los entrega al terminal.",
 	"tip.closePanePicker.title": "Elige el panel a cerrar",
 	"tip.closePanePicker.body": "Pulsa Cerrar panel y elige la división (se pone roja) — o pulsa Ctrl+D dentro de un panel para cerrarlo al instante.",
 	"tip.helpMode.title": "Explica esta pantalla",
