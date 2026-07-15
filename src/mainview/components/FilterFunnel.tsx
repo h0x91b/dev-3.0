@@ -5,6 +5,7 @@ import { isFacetTokenActive, toggleFacetToken, countActiveFacetTokens } from "..
 import type { FilterFunnelGroup, FilterGroupId, FilterFunnelOption } from "../utils/taskFacets";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
+import Tooltip from "./Tooltip";
 
 /** Section titles for each funnel group. */
 const GROUP_TITLE_KEY: Record<FilterGroupId, TranslationKey> = {
@@ -126,10 +127,10 @@ export default function FilterFunnel({ query, onChange, groups, size = "sm", ope
 	return (
 		<div ref={containerRef} className="relative flex-shrink-0">
 			<div className="flex items-center gap-0.5">
+				<Tooltip content={t("filter.funnelLabel")} detail={t("ttip.filter.funnel")}>
 				<button
 					type="button"
 					aria-label={t("filter.funnelLabel")}
-					title={t("filter.funnelLabel")}
 					aria-expanded={open}
 					aria-controls={open && !narrow ? panelId : undefined}
 					onClick={() => setOpen(!open)}
@@ -153,6 +154,7 @@ export default function FilterFunnel({ query, onChange, groups, size = "sm", ope
 						</span>
 					)}
 				</button>
+				</Tooltip>
 				{helpTopicId && <HelpSpot topicId={helpTopicId} />}
 			</div>
 

@@ -14,8 +14,9 @@ import type { SVGProps } from "react";
  * bug squirms under a focusing lens, the agent robot tilts hello and pings, the
  * open-in arrow launches out of its box, the file / port trees wire themselves
  * up, the scripts ƒ writes itself, the images sun rises at golden hour, the
- * settings gear ratchets, the fullscreen corners fly, the panel chevron dips
- * with a ghost echo. Idle rendering is pixel-identical to the static icon.
+ * settings gear ratchets, the fullscreen arrows burst out (or dive back in),
+ * the panel chevron dips with a ghost echo. Idle rendering is pixel-identical
+ * to the static icon.
  */
 
 interface TaskIconProps {
@@ -188,31 +189,51 @@ export function WorktreeSettingsIcon({ className }: TaskIconProps) {
 	);
 }
 
-// 11 — Full screen (enter): the corners fly outward along their diagonals.
+// 11 — Full screen (enter): two arrows stretch out along the NE/SW diagonal,
+// the macOS green-button gesture.
 export function FullscreenEnterIcon({ className }: TaskIconProps) {
 	return (
 		<svg {...svgBase(className)}>
-			<path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9" className="th-fs-nw" />
-			<path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9" className="th-fs-ne" />
-			<path d="M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15" className="th-fs-se" />
-			<path d="M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15" className="th-fs-sw" />
+			<g className="th-fs-ne"><path d="m13.6 10.4 5.9-5.9" /><path d="M14.5 4.5h5v5" /></g>
+			<g className="th-fs-sw"><path d="m10.4 13.6-5.9 5.9" /><path d="M9.5 19.5h-5v-5" /></g>
 		</svg>
 	);
 }
 
-// 12 — Full screen (exit): mirror move — the corners tuck back toward center.
+// 12 — Full screen (exit): mirror move — the arrows dive back into the center.
 export function FullscreenExitIcon({ className }: TaskIconProps) {
 	return (
 		<svg {...svgBase(className)}>
-			<path d="M9 4v3.5A1.5 1.5 0 0 1 7.5 9H4" className="th-fs-se" />
-			<path d="M15 4v3.5A1.5 1.5 0 0 0 16.5 9H20" className="th-fs-sw" />
-			<path d="M20 15h-3.5a1.5 1.5 0 0 0-1.5 1.5V20" className="th-fs-nw" />
-			<path d="M4 15h3.5A1.5 1.5 0 0 1 9 16.5V20" className="th-fs-ne" />
+			<g className="th-fs-sw"><path d="m19.5 4.5-5.9 5.9" /><path d="M13.6 5.4v5h5" /></g>
+			<g className="th-fs-ne"><path d="m4.5 19.5 5.9-5.9" /><path d="M10.4 18.6v-5h-5" /></g>
 		</svg>
 	);
 }
 
-// 13 — Panel chevron: it dips in its pointing direction, a ghost drips after.
+// 13 — Sidebar panel toggle (VS Code-style layout glyph): a frame with a
+// divider; the left pane is filled while the sidebar shows. On hover the pane
+// fades toward its post-click state — out for "hide", in for "show".
+export function PanelLeftIcon({ className, open }: TaskIconProps & { open?: boolean }) {
+	return (
+		<svg {...svgBase(className)}>
+			<rect x="3" y="4.5" width="18" height="15" rx="2.5" />
+			<path d="M9.5 4.5v15" />
+			<rect
+				x="5.1"
+				y="6.6"
+				width="2.4"
+				height="10.8"
+				rx="0.7"
+				fill="currentColor"
+				stroke="none"
+				opacity={open ? 1 : 0}
+				className={open ? "th-panel-hide" : "th-panel-show"}
+			/>
+		</svg>
+	);
+}
+
+// 14 — Panel chevron: it dips in its pointing direction, a ghost drips after.
 export function PanelChevronIcon({ className, direction = "down" }: TaskIconProps & { direction?: "up" | "down" }) {
 	const d = direction === "up" ? "m6.5 14.5 5.5-5.5 5.5 5.5" : "m6.5 9.5 5.5 5.5 5.5-5.5";
 	const move = direction === "up" ? "th-col-up" : "th-col";

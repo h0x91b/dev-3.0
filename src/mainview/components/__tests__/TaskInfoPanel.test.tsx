@@ -1940,6 +1940,30 @@ describe("TaskInfoPanel", () => {
 			});
 		});
 
+		it("shows the panel-restore toggle in full page mode and navigates to the split view", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const navigate = vi.fn();
+			await act(async () => {
+				renderPanel(makeTask(), { navigate, isFullPage: true });
+			});
+
+			await user.click(screen.getByTestId("show-active-tasks"));
+
+			expect(navigate).toHaveBeenCalledWith({
+				screen: "project",
+				projectId: "p1",
+				activeTaskId: "t1",
+			});
+		});
+
+		it("omits the panel-restore toggle in split view", async () => {
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			expect(screen.queryByTestId("show-active-tasks")).not.toBeInTheDocument();
+		});
+
 		it("uses the app immersive toggle when provided instead of navigating", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const navigate = vi.fn();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { ZoomPaneIcon } from "./TmuxIcons";
+import Tooltip from "./Tooltip";
 
 /**
  * Full-viewport (non-narrow) tmux zoom indicator.
@@ -58,17 +59,18 @@ function PaneZoomBadge({ taskId }: { taskId: string }) {
 	if (!zoomed || !multi) return null;
 
 	return (
-		<button
-			type="button"
-			onClick={() => read(false)}
-			title={t("paneZoom.restore")}
-			aria-label={t("paneZoom.restore")}
-			className="tmux-anim absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-full border border-hint-border bg-hint px-3 py-1 text-xs font-bold uppercase tracking-wide text-hint-fg shadow-lg shadow-black/40 transition-[filter] hover:brightness-110"
-		>
-			{/* Same custom zoom glyph as the tmux zoom control (TaskTmuxControls). */}
-			<ZoomPaneIcon className="h-3.5 w-3.5" />
-			{t("paneZoom.badge")}
-		</button>
+		<Tooltip content={t("paneZoom.restore")} placement="bottom">
+			<button
+				type="button"
+				onClick={() => read(false)}
+				aria-label={t("paneZoom.restore")}
+				className="tmux-anim absolute top-2 right-2 z-20 flex items-center gap-1.5 rounded-full border border-hint-border bg-hint px-3 py-1 text-xs font-bold uppercase tracking-wide text-hint-fg shadow-lg shadow-black/40 transition-[filter] hover:brightness-110"
+			>
+				{/* Same custom zoom glyph as the tmux zoom control (TaskTmuxControls). */}
+				<ZoomPaneIcon className="h-3.5 w-3.5" />
+				{t("paneZoom.badge")}
+			</button>
+		</Tooltip>
 	);
 }
 

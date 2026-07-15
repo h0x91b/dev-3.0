@@ -566,31 +566,14 @@ svg .tmx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .tmux-anim:hover .tmx-cy-right { animation: tmx-cy-right 2.6s ease-in-out infinite; }
 .tmux-anim:hover .tmx-cy-orbit { transform-origin: 12px 12px; animation: tmx-cy-orbit 2.6s ease-in-out infinite; }
 
-/* -- Zoom: the pane inflates toward the brackets, arrows fire outward -- */
-@keyframes tmx-z-rect {
-	0%, 8% { transform: scale(1); }
-	38% { transform: scale(1.22); }
-	58% { transform: scale(1.22); }
-	88%, 100% { transform: scale(1); }
+/* -- Zoom: the magnifier leans in over the split for a closer look -- */
+@keyframes tmx-z-lens {
+	0%, 8% { transform: scale(1) translate(0, 0); }
+	38% { transform: scale(1.18) translate(-.8px, -.6px); }
+	58% { transform: scale(1.18) translate(-.8px, -.6px); }
+	88%, 100% { transform: scale(1) translate(0, 0); }
 }
-@keyframes tmx-z-diag {
-	0%, 12% { stroke-dashoffset: 1; opacity: 0; }
-	20% { opacity: 1; }
-	42% { stroke-dashoffset: 0; opacity: 1; }
-	60% { stroke-dashoffset: 0; opacity: 1; }
-	80% { stroke-dashoffset: 1; opacity: 0; }
-	100% { stroke-dashoffset: 1; opacity: 0; }
-}
-@keyframes tmx-z-tl { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(-1.6px, -1.6px); } 58% { transform: translate(-1.6px, -1.6px); } 88%, 100% { transform: translate(0, 0); } }
-@keyframes tmx-z-tr { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(1.6px, -1.6px); } 58% { transform: translate(1.6px, -1.6px); } 88%, 100% { transform: translate(0, 0); } }
-@keyframes tmx-z-br { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(1.6px, 1.6px); } 58% { transform: translate(1.6px, 1.6px); } 88%, 100% { transform: translate(0, 0); } }
-@keyframes tmx-z-bl { 0%, 8% { transform: translate(0, 0); } 38% { transform: translate(-1.6px, 1.6px); } 58% { transform: translate(-1.6px, 1.6px); } 88%, 100% { transform: translate(0, 0); } }
-.tmux-anim:hover .tmx-z-rect { transform-origin: 12px 12px; animation: tmx-z-rect 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-z-diag { animation: tmx-z-diag 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-z-tl { animation: tmx-z-tl 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-z-tr { animation: tmx-z-tr 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-z-br { animation: tmx-z-br 2.4s ease-in-out infinite; }
-.tmux-anim:hover .tmx-z-bl { animation: tmx-z-bl 2.4s ease-in-out infinite; }
+.tmux-anim:hover .tmx-z-lens { transform-origin: 14.5px 10.5px; animation: tmx-z-lens 2.4s ease-in-out infinite; }
 
 /* -- Close pane: the X is slashed on, the pane shudders and blinks out -- */
 @keyframes tmx-k-x1 {
@@ -1307,7 +1290,7 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 .task-anim:hover .th-gear { transform-origin: 12px 12px; animation: th-gear 2.6s ease-in-out infinite; }
 
-/* -- Full screen: the corners fly along their diagonals and settle -- */
+/* -- Full screen: the arrows fly along their diagonals and settle -- */
 @keyframes th-fs-nw { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(-1.6px, -1.6px); } }
 @keyframes th-fs-ne { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, -1.6px); } }
 @keyframes th-fs-se { 0%, 15%, 85%, 100% { transform: translate(0, 0); } 40%, 60% { transform: translate(1.6px, 1.6px); } }
@@ -1316,6 +1299,20 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .task-anim:hover .th-fs-ne { animation: th-fs-ne 2.4s ease-in-out infinite; }
 .task-anim:hover .th-fs-se { animation: th-fs-se 2.4s ease-in-out infinite; }
 .task-anim:hover .th-fs-sw { animation: th-fs-sw 2.4s ease-in-out infinite; }
+
+/* -- Sidebar panel toggle: the pane fades toward its post-click state -- */
+@keyframes th-panel-hide {
+	0%, 18% { opacity: 1; }
+	45%, 62% { opacity: .12; }
+	88%, 100% { opacity: 1; }
+}
+@keyframes th-panel-show {
+	0%, 18% { opacity: 0; }
+	45%, 62% { opacity: .85; }
+	88%, 100% { opacity: 0; }
+}
+.task-anim:hover .th-panel-hide { animation: th-panel-hide 2.4s ease-in-out infinite; }
+.task-anim:hover .th-panel-show { animation: th-panel-show 2.4s ease-in-out infinite; }
 
 /* -- Panel chevron: it dips in its pointing direction, a ghost drips after -- */
 @keyframes th-col {

@@ -23,6 +23,8 @@ import AgentLauncherBadge from "./AgentLauncherBadge";
 import VariantDots from "./VariantDots";
 import { getTaskAgentMeta } from "../utils/taskAgentMeta";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
+import Tooltip from "./Tooltip";
+import { PanelLeftIcon } from "./TaskIcons";
 
 type SidebarScope = "project" | "global" | "attention";
 const LS_SIDEBAR_SCOPE = "dev3-sidebar-scope";
@@ -419,87 +421,93 @@ function ActiveTasksSidebar({
 				<div className="flex items-center gap-1.5 flex-shrink-0 h-5">
 					<div role="group" className="inline-flex items-center gap-px" aria-label={t("sidebar.scopeToggleTitle")}>
 						{/* Folder \u2014 this project only */}
-						<button
-							type="button"
-							onClick={() => setScope("project")}
-							aria-pressed={scope === "project"}
-							title={t("sidebar.scopeProject")}
-							className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
-								scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
-							}`}
-							data-testid="sidebar-scope-project"
-						>
-							{/* Nerd Font: nf-fa-folder_open (U+F07C) */}
-							<span
-								className="text-sm leading-none"
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						<Tooltip content={t("sidebar.scopeProject")} detail={t("ttip.sidebar.scopeProject")} placement="bottom">
+							<button
+								type="button"
+								onClick={() => setScope("project")}
+								aria-pressed={scope === "project"}
+								aria-label={t("sidebar.scopeProject")}
+								className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+									scope === "project" ? "text-fg" : "text-fg-muted hover:text-fg-2"
+								}`}
+								data-testid="sidebar-scope-project"
 							>
-								{"\uF07C"}
-							</span>
-						</button>
-						{/* Globe \u2014 all projects */}
-						<button
-							type="button"
-							onClick={() => setScope("global")}
-							aria-pressed={scope === "global"}
-							title={t("sidebar.scopeGlobal")}
-							className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
-								scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
-							}`}
-							data-testid="sidebar-scope-global"
-						>
-							{/* Nerd Font: nf-cod-globe (U+EB01) */}
-							<span
-								className="text-sm leading-none"
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							>
-								{"\uEB01"}
-							</span>
-						</button>
-						{/* Bell \u2014 attention mode: cross-project, filtered to tasks needing user input */}
-						<button
-							type="button"
-							onClick={() => setScope("attention")}
-							aria-pressed={scope === "attention"}
-							title={t("sidebar.scopeAttention")}
-							className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
-								scope === "attention"
-									? "text-awake"
-									: attentionCount > 0
-										? "text-awake/70 hover:text-awake"
-										: "text-fg-muted hover:text-fg-2"
-							}`}
-							data-testid="sidebar-scope-attention"
-						>
-							{/* Nerd Font: nf-fa-bell (U+F0A2) */}
-							<span
-								className={`text-sm leading-none ${scope !== "attention" && attentionCount > 0 ? "animate-pulse" : ""}`}
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							>
-								{"\uF0A2"}
-							</span>
-							{attentionCount > 0 && scope !== "attention" && (
-								<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-awake text-[0.5rem] font-bold text-fg leading-none pointer-events-none">
-									{attentionCount > 9 ? "9+" : attentionCount}
+								{/* Nerd Font: nf-fa-folder_open (U+F07C) */}
+								<span
+									className="text-sm leading-none"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{"\uF07C"}
 								</span>
-							)}
-						</button>
+							</button>
+						</Tooltip>
+						{/* Globe \u2014 all projects */}
+						<Tooltip content={t("sidebar.scopeGlobal")} detail={t("ttip.sidebar.scopeGlobal")} placement="bottom">
+							<button
+								type="button"
+								onClick={() => setScope("global")}
+								aria-pressed={scope === "global"}
+								aria-label={t("sidebar.scopeGlobal")}
+								className={`inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+									scope === "global" ? "text-fg" : "text-fg-muted hover:text-fg-2"
+								}`}
+								data-testid="sidebar-scope-global"
+							>
+								{/* Nerd Font: nf-cod-globe (U+EB01) */}
+								<span
+									className="text-sm leading-none"
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{"\uEB01"}
+								</span>
+							</button>
+						</Tooltip>
+						{/* Bell \u2014 attention mode: cross-project, filtered to tasks needing user input */}
+						<Tooltip content={t("sidebar.scopeAttention")} detail={t("ttip.sidebar.scopeAttention")} placement="bottom">
+							<button
+								type="button"
+								onClick={() => setScope("attention")}
+								aria-pressed={scope === "attention"}
+								aria-label={t("sidebar.scopeAttention")}
+								className={`relative inline-flex items-center justify-center h-5 w-5 leading-none transition-colors ${
+									scope === "attention"
+										? "text-awake"
+										: attentionCount > 0
+											? "text-awake/70 hover:text-awake"
+											: "text-fg-muted hover:text-fg-2"
+								}`}
+								data-testid="sidebar-scope-attention"
+							>
+								{/* Nerd Font: nf-fa-bell (U+F0A2) */}
+								<span
+									className={`text-sm leading-none ${scope !== "attention" && attentionCount > 0 ? "animate-pulse" : ""}`}
+									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+								>
+									{"\uF0A2"}
+								</span>
+								{attentionCount > 0 && scope !== "attention" && (
+									<span className="absolute -top-1 -right-1 min-w-[0.875rem] h-3.5 flex items-center justify-center px-0.5 rounded-full bg-awake text-[0.5rem] font-bold text-fg leading-none pointer-events-none">
+										{attentionCount > 9 ? "9+" : attentionCount}
+									</span>
+								)}
+							</button>
+						</Tooltip>
 					</div>
 					{activeTaskId && (
-						<button
-							type="button"
-							onClick={() =>
-								navigate({ screen: "task", projectId: project.id, taskId: activeTaskId })
-							}
-							className="inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5"
-							title={t("sidebar.hide")}
-							data-testid="sidebar-hide"
-						>
-							{/* Mirror the fullscreen/"Zoom" toggle in TaskInfoPanel */}
-							<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
-							</svg>
-						</button>
+						<Tooltip content={t("sidebar.hide")} detail={t("ttip.sidebar.hide")} placement="bottom">
+							<button
+								type="button"
+								onClick={() =>
+									navigate({ screen: "task", projectId: project.id, taskId: activeTaskId })
+								}
+								className="task-anim inline-flex items-center justify-center h-5 w-5 text-fg-muted hover:text-accent transition-colors rounded hover:bg-fg/5"
+								aria-label={t("sidebar.hide")}
+								data-testid="sidebar-hide"
+							>
+								{/* VS Code-style panel toggle; the counterpart lives in TaskInfoPanel (isFullPage) */}
+								<PanelLeftIcon open className="w-3.5 h-3.5" />
+							</button>
+						</Tooltip>
 					)}
 				</div>
 			</div>
@@ -702,20 +710,21 @@ function ActiveTasksSidebar({
 
 												{/* Project badge (global scope only) */}
 												{showProjectBadge && (
-													<div
-														className="mb-1 inline-flex items-center gap-1 max-w-full text-[0.6875rem] font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
-														title={projectBadgeName}
-														data-testid={`sidebar-project-badge-${task.id}`}
-													>
-														<span
-															aria-hidden
-															style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-															className="leading-none text-[0.75rem]"
+													<Tooltip content={projectBadgeName}>
+														<div
+															className="mb-1 inline-flex items-center gap-1 max-w-full text-[0.6875rem] font-semibold text-accent bg-accent/10 border border-accent/25 rounded px-1.5 py-[1px]"
+															data-testid={`sidebar-project-badge-${task.id}`}
 														>
-															{"\uEB01"}
-														</span>
-														<span className="truncate">{projectBadgeName}</span>
-													</div>
+															<span
+																aria-hidden
+																style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+																className="leading-none text-[0.75rem]"
+															>
+																{"\uEB01"}
+															</span>
+															<span className="truncate">{projectBadgeName}</span>
+														</div>
+													</Tooltip>
 												)}
 
 												<div className="mb-1 flex items-center gap-1.5 min-w-0">
@@ -728,14 +737,15 @@ function ActiveTasksSidebar({
 														onChange={(p) => handleSetPriority(task, p)}
 													/>
 													{agent && <AgentLauncherBadge agent={agent} size={14} />}
-													<div
-														className={`min-w-0 flex-1 truncate text-[0.625rem] font-medium ${
-															isActive ? "text-fg" : "text-fg-2"
-														}`}
-														title={agentSummary || undefined}
-													>
-														{agentSummary || `#${task.seq}`}
-													</div>
+													<Tooltip content={agentSummary} disabled={!agentSummary}>
+														<div
+															className={`min-w-0 flex-1 truncate text-[0.625rem] font-medium ${
+																isActive ? "text-fg" : "text-fg-2"
+															}`}
+														>
+															{agentSummary || `#${task.seq}`}
+														</div>
+													</Tooltip>
 												</div>
 
 												{/* Title */}
@@ -819,20 +829,21 @@ function ActiveTasksSidebar({
 															timeStyle: "short",
 														});
 														return (
-															<span
-																className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-3 font-mono whitespace-nowrap"
-																title={t("sidebar.statusChanged", { ago: relative, date })}
-																data-testid={`sidebar-status-age-${task.id}`}
-															>
+															<Tooltip content={t("sidebar.statusChanged", { ago: relative, date })}>
 																<span
-																	aria-hidden
-																	className="leading-none"
-																	style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+																	className="ml-auto shrink-0 flex items-center gap-0.5 text-[0.5625rem] text-fg-3 font-mono whitespace-nowrap"
+																	data-testid={`sidebar-status-age-${task.id}`}
 																>
-																	{"\uF017"}
+																	<span
+																		aria-hidden
+																		className="leading-none"
+																		style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+																	>
+																		{"\uF017"}
+																	</span>
+																	{compactAge(task.movedAt, now)}
 																</span>
-																{compactAge(task.movedAt, now)}
-															</span>
+															</Tooltip>
 														);
 													})()}
 												</div>
@@ -844,18 +855,18 @@ function ActiveTasksSidebar({
 													return (
 														<div className="flex flex-wrap gap-1 mt-1">
 															{ports.map((p) => (
-																<span
-																	key={p.port}
-																	className="inline-flex items-center gap-1 text-[0.5625rem] font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
-																	title={`${p.processName} (PID ${p.pid})`}
-																	onClick={(e) => {
-																		e.stopPropagation();
-																		window.open(`http://localhost:${p.port}`, "_blank");
-																	}}
-																>
-																	<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
-																	:{p.port}
-																</span>
+																<Tooltip key={p.port} content={`${p.processName} (PID ${p.pid})`}>
+																	<span
+																		className="inline-flex items-center gap-1 text-[0.5625rem] font-mono text-accent bg-accent/10 px-1.5 py-0.5 rounded"
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			window.open(`http://localhost:${p.port}`, "_blank");
+																		}}
+																	>
+																		<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF0AC"}</span>
+																		:{p.port}
+																	</span>
+																</Tooltip>
 															))}
 														</div>
 													);

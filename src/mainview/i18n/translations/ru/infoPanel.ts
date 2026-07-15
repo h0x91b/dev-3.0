@@ -12,6 +12,7 @@ const infoPanel = {
 	"infoPanel.expand": "Развернуть панель",
 	"infoPanel.fullScreen": "На весь экран",
 	"infoPanel.exitFullScreen": "Выйти из полного экрана",
+	"infoPanel.showPanel": "Показать активные задачи",
 	"infoPanel.actionsTitle": "Действия задачи",
 	"infoPanel.sheetDetails": "Детали",
 	"infoPanel.commitsBehind": "{count} коммитов позади",

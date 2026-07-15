@@ -634,14 +634,6 @@ const ALL_TIPS: Tip[] = [
 		contexts: ["board", "terminal"],
 	},
 	{
-		id: "sidebar-hide",
-		titleKey: "tip.sidebarHide.title",
-		bodyKey: "tip.sidebarHide.body",
-		icon: "\u{F0294}", // nf-md-fullscreen
-		score: 2,
-		contexts: ["terminal"],
-	},
-	{
 		id: "multi-folder-add-project",
 		titleKey: "tip.multiFolderAddProject.title",
 		bodyKey: "tip.multiFolderAddProject.body",

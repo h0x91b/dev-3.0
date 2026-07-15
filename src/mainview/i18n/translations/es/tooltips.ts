@@ -55,6 +55,14 @@ export const tooltips = {
 	"ttip.infoPanel.fullScreen": "La terminal ocupa toda la ventana. Pulsa de nuevo para volver. Atajos: {shortcuts}.",
 	"ttip.infoPanel.expand": "Abre el panel completo: acciones git, scripts, dev server y controles de ejecución.",
 	"ttip.infoPanel.collapse": "Reduce el panel a una sola fila compacta.",
+	"ttip.infoPanel.showPanel": "Devuelve el panel de Tareas activas junto a la terminal.",
+
+	// Active tasks sidebar
+	"ttip.sidebar.scopeProject": "Mostrar solo las tareas activas de este proyecto.",
+	"ttip.sidebar.scopeGlobal": "Mostrar tareas activas de todos los proyectos — las tarjetas llevan la insignia del proyecto.",
+	"ttip.sidebar.scopeAttention": "Solo tareas esperando tu respuesta — revisiones y preguntas — en todos los proyectos.",
+	"ttip.sidebar.hide": "La terminal ocupa todo el ancho. Recupera el panel con el mismo icono en la esquina superior derecha de la barra de la tarea.",
+	"ttip.filter.funnel": "Filtra la lista por prioridad, estado, etiquetas o agente. Los valores marcados se convierten en tokens del campo de búsqueda.",
 
 	// tmux pane controls
 	"ttip.tmux.splitH":

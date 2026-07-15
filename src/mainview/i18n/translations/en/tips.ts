@@ -154,8 +154,6 @@ const tips = {
 	"tip.bugHunters.body": "Click the red Find bugs button in the task header to open a lightbox — pick the count (default 3) and a swarm of read-only agents splits into the right pane, each running the dev3-bug-hunter skill with its own seeded strategy. They never edit code — after reporting, they ask before turning bugs into new tasks.",
 	"tip.multiWindow.title": "Spread projects across screens",
 	"tip.multiWindow.body": "Press Cmd+Shift+N (or File → New Window) to open another dev-3.0 window. Put a different project on each monitor and close any window without quitting the app.",
-	"tip.sidebarHide.title": "Hide the Active Tasks panel",
-	"tip.sidebarHide.body": "Click the fullscreen icon in the sidebar header to collapse it and give the terminal the whole window.",
 	"tip.multiFolderAddProject.title": "Add multiple repos at once",
 	"tip.multiFolderAddProject.body": "In Add Project → Local Folder, Cmd-click or Shift-click to pick multiple repos and add them all in one step.",
 	"tip.skillAutocomplete.title": "Autocomplete agent skills with /",
