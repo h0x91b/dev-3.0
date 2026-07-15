@@ -89,6 +89,8 @@ const dashboard = {
 	"header.statsLabel": "Статы",
 	"header.moreActions": "Ещё",
 	"header.commandPalette": "Командная палитра",
+	"header.fullscreen": "Полный экран",
+	"header.exitFullscreen": "Выйти из полного экрана",
 	"header.remoteAccessLabel": "Удалённый доступ",
 	"header.settingsLabel": "Настройки",
 	"header.reportBugTooltip": "Сообщить об ошибке",
