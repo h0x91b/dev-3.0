@@ -908,6 +908,17 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		expect(requestFullscreen).toHaveBeenCalledOnce();
 	});
 
+	it("hides the Fullscreen row where the API is unavailable (iPhone Safari)", async () => {
+		const user = userEvent.setup();
+		Object.defineProperty(document.documentElement, "requestFullscreen", {
+			configurable: true,
+			value: undefined,
+		});
+		renderHeader({ screen: "dashboard" });
+		await user.click(screen.getByLabelText("More"));
+		expect(screen.queryByText("Fullscreen")).not.toBeInTheDocument();
+	});
+
 	it("keeps the stateful widgets (git pull, tmux) out of the inline header", () => {
 		renderHeader({ screen: "project", projectId: "p1" });
 		// Folded into the kebab sheet — not sitting inline in the header row.

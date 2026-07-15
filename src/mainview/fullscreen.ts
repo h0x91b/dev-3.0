@@ -11,6 +11,11 @@
  *
  * Explicitly NOT a PWA: the serving origin (tunnel hostname / LAN port) is
  * unstable per launch, so an installed PWA would rot immediately.
+ *
+ * iPhone Safari has NO Fullscreen API for arbitrary elements (Apple shipped
+ * it flag-gated in 17.2 and disabled it again in 17.4) — only <video> can go
+ * fullscreen there. On iPhone `isFullscreenSupported()` is false, so both the
+ * auto-engage and the menu toggle are absent. Platform limitation, not a bug.
  */
 
 let autoEngageSpent = false;
@@ -33,6 +38,14 @@ function notifyListeners(): void {
 /** Whether the document is currently fullscreen. */
 export function isFullscreenActive(): boolean {
 	return typeof document !== "undefined" && !!document.fullscreenElement;
+}
+
+/** Whether element fullscreen exists at all (false on iPhone Safari). */
+export function isFullscreenSupported(): boolean {
+	return (
+		typeof document !== "undefined" &&
+		typeof document.documentElement.requestFullscreen === "function"
+	);
 }
 
 /** Subscribe to fullscreen state changes (useSyncExternalStore-compatible). */
@@ -84,8 +97,7 @@ export function initAutoFullscreen(opts: { mobile: boolean }): void {
 	document.addEventListener("fullscreenchange", onFullscreenChange);
 	installedFullscreenChange = onFullscreenChange;
 
-	if (!opts.mobile) return;
-	if (typeof document.documentElement.requestFullscreen !== "function") return;
+	if (!opts.mobile || !isFullscreenSupported()) return;
 
 	const onFirstTap = () => {
 		document.removeEventListener("click", onFirstTap, true);

@@ -6,7 +6,7 @@ import { useT } from "../i18n";
 import { useCompact } from "../utils/useCompact";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { api, isElectrobun } from "../rpc";
-import { subscribeFullscreen, isFullscreenActive, toggleFullscreen } from "../fullscreen";
+import { subscribeFullscreen, isFullscreenActive, isFullscreenSupported, toggleFullscreen } from "../fullscreen";
 import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
@@ -303,8 +303,9 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{ key: "quickShell", label: t("quickShell.open"), run: () => window.dispatchEvent(new CustomEvent("menu:open-quick-shell")) },
 				// Browser-only: element fullscreen is meaningless inside the
 				// Electrobun shell (it has native window fullscreen). On mobile this
-				// complements the first-tap auto-engage (see fullscreen.ts).
-				...(!isElectrobun
+				// complements the first-tap auto-engage (see fullscreen.ts). Hidden
+				// where the API doesn't exist (iPhone Safari) — a dead row otherwise.
+				...(!isElectrobun && isFullscreenSupported()
 					? [{
 							key: "fullscreen",
 							label: fullscreenActive ? t("header.exitFullscreen") : t("header.fullscreen"),
