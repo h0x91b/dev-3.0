@@ -478,3 +478,61 @@ describe("sortTasksForColumn — priority bands", () => {
 		expect(ids(result)).toEqual(["g-v1", "g-v2", "solo"]);
 	});
 });
+
+// ============================================================
+// Terminal columns (completed / cancelled) — recency, not priority
+// ============================================================
+
+describe("sortTasksForColumn — completed/cancelled sort by entry time (freshest on top)", () => {
+	it.each(["completed", "cancelled"] as const)("%s: most recently entered on top, ignoring priority", (status) => {
+		const tasks = [
+			// High priority but landed here first → must sink to the bottom.
+			makeTask({ id: "old-p0", priority: "P0", movedAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "mid-p4", priority: "P4", movedAt: "2025-06-01T00:00:00Z" }),
+			makeTask({ id: "new-p2", priority: "P2", movedAt: "2025-12-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap, status);
+		expect(ids(result)).toEqual(["new-p2", "mid-p4", "old-p0"]);
+	});
+
+	it("recency wins over the global 'bottom' drop-position setting", () => {
+		const tasks = [
+			makeTask({ id: "old", movedAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "new", movedAt: "2025-09-01T00:00:00Z" }),
+		];
+		// Even with dropPosition "bottom", terminal columns keep freshest on top.
+		const result = sortTasksForColumn(tasks, "bottom", emptyMap, "completed");
+		expect(ids(result)).toEqual(["new", "old"]);
+	});
+
+	it("variant grouping does NOT keep a group contiguous — pure recency ordering", () => {
+		const tasks = [
+			makeTask({ id: "g-v1", groupId: "g1", variantIndex: 1, movedAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "solo", movedAt: "2025-05-01T00:00:00Z" }),
+			makeTask({ id: "g-v2", groupId: "g1", variantIndex: 2, movedAt: "2025-09-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap, "completed");
+		expect(ids(result)).toEqual(["g-v2", "solo", "g-v1"]);
+	});
+
+	it("falls back to createdAt when movedAt is absent", () => {
+		const tasks = [
+			makeTask({ id: "a", createdAt: "2025-01-01T00:00:00Z" }),
+			makeTask({ id: "b", createdAt: "2025-08-01T00:00:00Z" }),
+		];
+		const result = sortTasksForColumn(tasks, "top", emptyMap, "cancelled");
+		expect(ids(result)).toEqual(["b", "a"]);
+	});
+
+	it("in-session move floats a just-finished card above older entries", () => {
+		const tasks = [
+			makeTask({ id: "recent", movedAt: "2025-12-01T00:00:00Z" }),
+			makeTask({ id: "just-moved", movedAt: "2025-01-01T00:00:00Z" }),
+		];
+		// `just-moved` was dropped in this session; it must jump to the top even
+		// though its persisted movedAt is older (backend refresh not yet applied).
+		const moveOrder = new Map([["just-moved", 1]]);
+		const result = sortTasksForColumn(tasks, "top", moveOrder, "completed");
+		expect(ids(result)).toEqual(["just-moved", "recent"]);
+	});
+});

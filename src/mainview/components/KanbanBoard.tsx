@@ -491,7 +491,7 @@ function KanbanBoard({
 	for (const status of ALL_STATUSES) {
 		const columnTasks = tasksByStatus.get(status);
 		if (columnTasks && columnTasks.length > 1) {
-			tasksByStatus.set(status, sortTasksForColumn(columnTasks, globalSettings.taskDropPosition, moveOrderMap));
+			tasksByStatus.set(status, sortTasksForColumn(columnTasks, globalSettings.taskDropPosition, moveOrderMap, status));
 		}
 	}
 
