@@ -674,7 +674,8 @@ function makeTask(overrides?: Partial<Task>): Task {
 		expect(screen.queryByTestId("sidebar-hide")).not.toBeInTheDocument();
 	});
 
-	it("shows a compact status-age badge with a descriptive tooltip", () => {
+	it("shows a compact status-age badge with a descriptive tooltip", async () => {
+		const user = userEvent.setup();
 		const movedAt = new Date(Date.now() - 5 * 60_000).toISOString();
 		render(
 			<I18nProvider>
@@ -693,8 +694,10 @@ function makeTask(overrides?: Partial<Task>): Task {
 
 		const badge = screen.getByTestId("sidebar-status-age-t1");
 		expect(badge).toHaveTextContent("5m");
-		expect(badge.getAttribute("title")).toContain("Status changed");
-		expect(badge.getAttribute("title")).toContain("5m ago");
+		await user.hover(badge);
+		const tooltip = await screen.findByRole("tooltip");
+		expect(tooltip).toHaveTextContent("Status changed");
+		expect(tooltip).toHaveTextContent("5m ago");
 	});
 
 	it("omits the status-age badge when movedAt is absent", () => {

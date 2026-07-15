@@ -212,7 +212,30 @@ export function FullscreenExitIcon({ className }: TaskIconProps) {
 	);
 }
 
-// 13 — Panel chevron: it dips in its pointing direction, a ghost drips after.
+// 13 — Sidebar panel toggle (VS Code-style layout glyph): a frame with a
+// divider; the left pane is filled while the sidebar shows. On hover the pane
+// fades toward its post-click state — out for "hide", in for "show".
+export function PanelLeftIcon({ className, open }: TaskIconProps & { open?: boolean }) {
+	return (
+		<svg {...svgBase(className)}>
+			<rect x="3" y="4.5" width="18" height="15" rx="2.5" />
+			<path d="M9.5 4.5v15" />
+			<rect
+				x="5.1"
+				y="6.6"
+				width="2.4"
+				height="10.8"
+				rx="0.7"
+				fill="currentColor"
+				stroke="none"
+				opacity={open ? 1 : 0}
+				className={open ? "th-panel-hide" : "th-panel-show"}
+			/>
+		</svg>
+	);
+}
+
+// 14 — Panel chevron: it dips in its pointing direction, a ghost drips after.
 export function PanelChevronIcon({ className, direction = "down" }: TaskIconProps & { direction?: "up" | "down" }) {
 	const d = direction === "up" ? "m6.5 14.5 5.5-5.5 5.5 5.5" : "m6.5 9.5 5.5 5.5 5.5-5.5";
 	const move = direction === "up" ? "th-col-up" : "th-col";

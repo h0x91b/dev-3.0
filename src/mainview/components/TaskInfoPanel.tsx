@@ -38,6 +38,7 @@ import {
 	FullscreenEnterIcon,
 	FullscreenExitIcon,
 	PanelChevronIcon,
+	PanelLeftIcon,
 	ImagesIcon,
 	ArtifactsIcon,
 } from "./TaskIcons";
@@ -181,6 +182,20 @@ function TaskInfoPanel({
 	const terminalFullscreenTooltip = t("ttip.infoPanel.fullScreen", {
 		shortcuts: terminalFullscreenShortcutLabel(isMac()),
 	});
+	// Counterpart of the sidebar-header panel toggle: on the fullscreen task
+	// screen (sidebar hidden) this brings the Active Tasks panel back.
+	const showPanelButton = isFullPage ? (
+		<Tooltip content={t("infoPanel.showPanel")} detail={t("ttip.infoPanel.showPanel")}>
+			<button
+				onClick={() => navigate({ screen: "project", projectId: project.id, activeTaskId: task.id })}
+				className="task-anim flex-shrink-0 p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg"
+				aria-label={t("infoPanel.showPanel")}
+				data-testid="show-active-tasks"
+			>
+				<PanelLeftIcon className="w-3.5 h-3.5" />
+			</button>
+		</Tooltip>
+	) : null;
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
 	const variantMembers = task.groupId
@@ -1046,6 +1061,7 @@ function TaskInfoPanel({
 						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
 						<TaskTmuxControls taskId={task.id} />
 						{worktreeSettingsButton}
+						{showPanelButton}
 						<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 							<button
 								onClick={toggleTerminalFullscreen}
@@ -1123,6 +1139,7 @@ function TaskInfoPanel({
 								<TaskTmuxControls taskId={task.id} />
 							</div>
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
+							{showPanelButton}
 							<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
 								<button
 									onClick={toggleTerminalFullscreen}

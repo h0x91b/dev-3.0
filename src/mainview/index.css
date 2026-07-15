@@ -1317,6 +1317,20 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .task-anim:hover .th-fs-se { animation: th-fs-se 2.4s ease-in-out infinite; }
 .task-anim:hover .th-fs-sw { animation: th-fs-sw 2.4s ease-in-out infinite; }
 
+/* -- Sidebar panel toggle: the pane fades toward its post-click state -- */
+@keyframes th-panel-hide {
+	0%, 18% { opacity: 1; }
+	45%, 62% { opacity: .12; }
+	88%, 100% { opacity: 1; }
+}
+@keyframes th-panel-show {
+	0%, 18% { opacity: 0; }
+	45%, 62% { opacity: .85; }
+	88%, 100% { opacity: 0; }
+}
+.task-anim:hover .th-panel-hide { animation: th-panel-hide 2.4s ease-in-out infinite; }
+.task-anim:hover .th-panel-show { animation: th-panel-show 2.4s ease-in-out infinite; }
+
 /* -- Panel chevron: it dips in its pointing direction, a ghost drips after -- */
 @keyframes th-col {
 	0%, 12% { transform: translateY(0); }

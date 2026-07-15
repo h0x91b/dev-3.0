@@ -1,0 +1,1 @@
+The Active Tasks sidebar "zoom" icon is now a VS Code-style panel toggle, with a matching counterpart in the fullscreen task toolbar that brings the panel back. All native tooltips in the sidebar zone (scope toggles, filter funnel, project badge, agent summary, status age, ports) were migrated to the styled two-tier Tooltip.
