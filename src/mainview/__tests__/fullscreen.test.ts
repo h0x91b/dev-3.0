@@ -61,7 +61,7 @@ describe("auto fullscreen on first tap (mobile)", () => {
 		expect(requestFullscreen).toHaveBeenCalledOnce();
 	});
 
-	it("respects a manual exit: no auto re-engage on further taps", async () => {
+	it("re-arms the next tap after leaving fullscreen", () => {
 		initAutoFullscreen({ mobile: true });
 		tap();
 		expect(isFullscreenActive()).toBe(true);
@@ -70,7 +70,16 @@ describe("auto fullscreen on first tap (mobile)", () => {
 		document.dispatchEvent(new Event("fullscreenchange"));
 
 		tap();
-		expect(requestFullscreen).toHaveBeenCalledOnce();
+		expect(requestFullscreen).toHaveBeenCalledTimes(2);
+	});
+
+	it("re-arms after the explicit fullscreen toggle exits", async () => {
+		initAutoFullscreen({ mobile: true });
+		await toggleFullscreen();
+		await toggleFullscreen();
+
+		tap();
+		expect(requestFullscreen).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not arm the first-tap engage on desktop", () => {

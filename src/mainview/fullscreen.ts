@@ -3,11 +3,10 @@
  *
  * Browser chrome (address bar + system bars) wastes a large share of a phone
  * screen, so on mobile the UI enters fullscreen on the FIRST tap after page
- * load (requestFullscreen needs a user gesture). One-shot per load: once
- * engaged — or once the user exits by any means (system gesture, Esc, the
- * menu toggle) — auto-engage stays off until the next page load, so the app
- * never fights the user's gestures. A deliberate Fullscreen toggle lives in
- * the mobile menu action sheet (GlobalHeader).
+ * load (requestFullscreen needs a user gesture). The listener is one-shot
+ * while fullscreen is active, then re-arms after an exit so the next user tap
+ * restores fullscreen. A deliberate Fullscreen toggle lives in the mobile
+ * menu action sheet (GlobalHeader).
  *
  * Explicitly NOT a PWA: the serving origin (tunnel hostname / LAN port) is
  * unstable per launch, so an installed PWA would rot immediately.
@@ -89,26 +88,32 @@ export function initAutoFullscreen(opts: { mobile: boolean }): void {
 	if (initialized || typeof document === "undefined") return;
 	initialized = true;
 
+	const canAutoEngage = opts.mobile && isFullscreenSupported();
+	const armFirstTap = () => {
+		if (!canAutoEngage || autoEngageSpent || installedFirstTap) return;
+		const onFirstTap = () => {
+			document.removeEventListener("click", onFirstTap, true);
+			installedFirstTap = null;
+			autoEngageSpent = true;
+			void enterFullscreen();
+		};
+		document.addEventListener("click", onFirstTap, true);
+		installedFirstTap = onFirstTap;
+	};
+
 	const onFullscreenChange = () => {
 		notifyListeners();
-		// Any exit — system gesture, Esc, or the menu toggle — is the user's
-		// call: never auto re-engage until the next page load.
-		if (!document.fullscreenElement) autoEngageSpent = true;
+		// A browser exit needs a fresh user gesture before requestFullscreen can
+		// succeed, so restore the one-shot listener instead of re-entering here.
+		if (!document.fullscreenElement) {
+			autoEngageSpent = false;
+			armFirstTap();
+		}
 	};
 	document.addEventListener("fullscreenchange", onFullscreenChange);
 	installedFullscreenChange = onFullscreenChange;
 
-	if (!opts.mobile || !isFullscreenSupported()) return;
-
-	const onFirstTap = () => {
-		document.removeEventListener("click", onFirstTap, true);
-		installedFirstTap = null;
-		if (autoEngageSpent) return;
-		autoEngageSpent = true;
-		void enterFullscreen();
-	};
-	document.addEventListener("click", onFirstTap, true);
-	installedFirstTap = onFirstTap;
+	armFirstTap();
 }
 
 /** Reset module state and uninstall document listeners. Tests only. */
