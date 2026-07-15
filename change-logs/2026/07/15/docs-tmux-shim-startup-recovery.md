@@ -1,0 +1,1 @@
+Document the macOS startup-crash recovery for stale tmux shims, including the launcher-log symptom and the safe removal command. Link the existing broken-shim troubleshooting row to the new workaround.

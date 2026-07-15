@@ -325,6 +325,16 @@ See [agent-support-matrix.md](agent-support-matrix.md) for feature compatibility
 
 ## Troubleshooting
 
+### macOS app crashes on startup — remove the stale tmux shim
+
+If dev-3.0 crashes during launch and the launcher log contains `sanitizeTmuxShim()` with `TypeError: undefined is not an object (evaluating 'log11.warn')`, remove the stale tmux shim and relaunch the app:
+
+```sh
+rm -f ~/.dev3.0/bin/tmux
+```
+
+The app recreates the shim on the next launch. This is a recovery workaround for an invalid shim; it does not remove projects, tasks, or settings.
+
 ### macOS — Full Disk Access required for `git` / `tmux`
 
 dev-3.0 runs `git` and `tmux` as child processes. On macOS, the system can silently start blocking file access for these spawned binaries even after they worked fine — usually triggered by an OS update, a TCC database change, or other security-agent activity. It doesn't happen to everyone, and once it kicks in you can't `git` inside dev-3.0 task terminals at all.
@@ -377,7 +387,7 @@ dev-3.0 updates through two channels: the **in-app updater** (swaps only the `.a
 | The app vanished from `/Applications` after a `brew upgrade` that failed ("It seems there is already an App at…", "Directory not empty") | The upgrade died mid-move. Run the full reset below. |
 | You installed the DMG manually and want brew to manage updates again | `brew install --cask h0x91b/dev3/dev3 --adopt` — adopts the app in place, nothing is reinstalled. |
 | You ran `brew install h0x91b/dev3/dev3` **without `--cask`** and no app appeared | That installs the headless CLI formula, not the desktop app. `brew uninstall --formula dev3`, then `brew install --cask h0x91b/dev3/dev3`. |
-| The app won't open after an update (dock icon bounces and gives up), or tmux errors mention "too many levels of symbolic links" | A broken tmux shim. `rm ~/.dev3.0/bin/tmux`, then relaunch — the app recreates it. |
+| The app won't open after an update (dock icon bounces and gives up), or tmux errors mention "too many levels of symbolic links" | [Remove the stale tmux shim](#macos-app-crashes-on-startup--remove-the-stale-tmux-shim), then relaunch — the app recreates it. |
 
 Full reset — safe to run even when brew's state is inconsistent; your projects, tasks, and settings live in `~/.dev3.0` and are not touched:
 
