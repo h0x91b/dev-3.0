@@ -8002,12 +8002,14 @@ describe("checkOpenPRsForPromotion", () => {
 		const { project, task } = setup({ status: "review-by-colleague" }, { githubAuthHost: "ghe.example.com" });
 		const prUrl = "https://ghe.example.com/test/repo/pull/42";
 		const persisted = { ...task, prNumber: 42, prUrl };
-	vi.mocked(github.runGitHub)
+		vi.mocked(github.runGitHub)
 			.mockResolvedValueOnce({
 				ok: true,
 				stdout: JSON.stringify([{
 					number: 42,
 					isDraft: false,
+					autoMergeRequest: { enabledAt: "2026-07-15T18:00:00Z" },
+					reviewDecision: "REVIEW_REQUIRED",
 					url: prUrl,
 					statusCheckRollup: [{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://ci/build" }],
 					mergeable: "CONFLICTING",
@@ -8064,6 +8066,8 @@ describe("checkOpenPRsForPromotion", () => {
 			prStatusCache: expect.objectContaining({
 				number: 42,
 				url: prUrl,
+				autoMergeEnabled: true,
+				reviewDecision: "review_required",
 				ciStatus: "failure",
 				unresolvedCount: 2,
 				cachedAt: expect.any(String),
@@ -8085,6 +8089,8 @@ describe("checkOpenPRsForPromotion", () => {
 		);
 		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({
 			unresolvedCount: 2,
+			autoMergeEnabled: true,
+			reviewDecision: "review_required",
 			mergeState: { mergeable: "CONFLICTING", status: "DIRTY", state: "OPEN" },
 			checks: [{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://ci/build" }],
 			prTitle: "Needs attention",

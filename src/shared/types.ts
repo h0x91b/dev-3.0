@@ -1902,6 +1902,9 @@ export type PRCIStatus = "success" | "failure" | "pending";
  */
 export type PRReviewState = "approved" | "changes_requested" | "commented";
 
+/** Raw GitHub review decision used to explain why a merge is blocked. */
+export type PRReviewDecision = "approved" | "changes_requested" | "review_required";
+
 /** A single check reported by GitHub's `statusCheckRollup`. */
 export interface PRCheckInfo {
 	name: string;
@@ -1925,8 +1928,12 @@ export interface PRMergeState {
 export interface TaskPRStatusCache {
 	number: number;
 	url: string;
+	/** `null` when the GitHub response did not include auto-merge data yet. */
+	autoMergeEnabled?: boolean | null;
 	ciStatus: PRCIStatus | null;
 	reviewState: PRReviewState | null;
+	/** Raw GitHub review decision; optional for caches written before this field existed. */
+	reviewDecision?: PRReviewDecision | null;
 	unresolvedCount: number | null;
 	mergeState: PRMergeState | null;
 	checks: PRCheckInfo[];
@@ -1943,8 +1950,10 @@ export interface TaskPRStatusCache {
 export interface TaskPRBadgeInfo {
 	number: number;
 	url: string;
+	autoMergeEnabled?: boolean | null;
 	ciStatus?: PRCIStatus | null;
 	reviewState?: PRReviewState | null;
+	reviewDecision?: PRReviewDecision | null;
 	unresolvedCount?: number | null;
 	mergeState?: PRMergeState | null;
 	checks?: PRCheckInfo[];
@@ -3289,8 +3298,10 @@ export type AppRPCSchema = {
 				taskId: string;
 				prNumber: number | null;
 				prUrl: string | null;
+				autoMergeEnabled?: boolean | null;
 				ciStatus: PRCIStatus | null;
 				reviewState: PRReviewState | null;
+				reviewDecision?: PRReviewDecision | null;
 				unresolvedCount: number | null;
 				mergeState: PRMergeState | null;
 				checks: PRCheckInfo[];

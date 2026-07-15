@@ -1,4 +1,6 @@
-import type { PRCheckInfo, PRCIStatus, PRReviewState } from "../../shared/types";
+import type { PRCheckInfo, PRCIStatus, PRReviewDecision, PRReviewState } from "../../shared/types";
+export { summarizeMergeability } from "../../shared/pr-status";
+export type { PRMergeability, PRMergeabilityReason, PRMergeabilitySummary } from "../../shared/pr-status";
 
 // Dependency-free helpers for collapsing GitHub PR status/review data into the
 // app's CI + review signals. Kept side-effect-free (no electrobun/pty imports)
@@ -86,6 +88,27 @@ export function normalizeChecks(rollup: unknown): PRCheckInfo[] {
 				: null;
 		return [{ name, status, conclusion, detailsUrl }];
 	});
+}
+
+/**
+ * Convert `gh pr view --json autoMergeRequest` into the renderer's boolean
+ * flag. A missing property means an older/partial response, while an explicit
+ * `null` means GitHub reported that auto-merge is not configured.
+ */
+export function parseAutoMergeEnabled(value: unknown): boolean | null {
+	if (value === undefined) return null;
+	return value !== null;
+}
+
+/** Normalize GitHub's reviewDecision enum while preserving REVIEW_REQUIRED for merge diagnostics. */
+export function parseReviewDecision(value: unknown): PRReviewDecision | null {
+	if (typeof value !== "string") return null;
+	switch (value.toUpperCase()) {
+		case "APPROVED": return "approved";
+		case "CHANGES_REQUESTED": return "changes_requested";
+		case "REVIEW_REQUIRED": return "review_required";
+		default: return null;
+	}
 }
 
 /**

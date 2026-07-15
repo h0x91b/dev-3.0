@@ -1,0 +1,1 @@
+PR status popovers now show whether auto-merge is enabled, whether the pull request is mergeable, and specific GitHub-derived blockers such as unresolved comments, missing approvals, and failed checks. The status is cached and localized across English, Russian, and Spanish.
