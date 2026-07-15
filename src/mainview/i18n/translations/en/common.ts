@@ -232,6 +232,8 @@ const common = {
 	"showArtifact.toast_other": "Agent shared {count} HTML artifacts",
 	"showArtifact.attention_one": "Shared an HTML artifact",
 	"showArtifact.attention_other": "Shared {count} HTML artifacts",
+	"mobile.portrait.title": "Rotate to portrait",
+	"mobile.portrait.message": "dev-3.0 works best in portrait mode on phones. Rotate your device to continue.",
 	"mobile.backExitToast": "Press Back again to exit",
 } as const;
 
