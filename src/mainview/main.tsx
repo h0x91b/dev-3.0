@@ -108,12 +108,15 @@ async function bootstrap() {
 	// Electrobun message loss under burst) while mobile/browser doesn't
 	// block forever if WS isn't connected.
 	try {
-		const { version } = await Promise.race([
+		const { version, buildChannel } = await Promise.race([
 			api.request.getAppVersion(),
 			new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000)),
 		]);
 		initAnalytics(version);
-		document.title = `dev-3.0 v${version}`;
+		// Dev builds (channel "dev" = `bun run dev` from source) get a visible
+		// prefix so the window is unmistakable next to an installed prod window.
+		const devPrefix = buildChannel === "dev" ? "[DEV from src] " : "";
+		document.title = `${devPrefix}dev-3.0 v${version}`;
 	} catch (err) {
 		console.warn("[main] Failed to init analytics:", err);
 		initAnalytics("unknown");

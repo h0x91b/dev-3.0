@@ -317,13 +317,13 @@ onMenuContextChange((ctx) => {
 // --- Main Window ---
 
 async function openMainWindow() {
+	const buildChannel = await Updater.localInfo.channel();
 	return createAppWindow({
-		title: makeTitle(APP_VERSION, lastBuildTime),
+		title: makeTitle(APP_VERSION, lastBuildTime, buildChannel),
 		url,
 		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
 		onDomReady: async (win) => {
-			const channel = await Updater.localInfo.channel();
-			if (channel === "dev") {
+			if (buildChannel === "dev") {
 				win.webview.openDevTools();
 			}
 			log.info(`DOM ready [${lastBuildTime}]`);

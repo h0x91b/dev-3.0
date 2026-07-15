@@ -1,0 +1,1 @@
+Dev builds (channel "dev", i.e. `bun run dev` from source) now show a "[DEV from src]" prefix in the window title so a locally built window is unmistakable next to an installed production/staging one.

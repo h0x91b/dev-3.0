@@ -86,4 +86,16 @@ describe("makeTitle", () => {
 			"dev-3.0 v0.3.6-beta.1 [now]",
 		);
 	});
+
+	it("prefixes dev builds with [DEV from src]", () => {
+		expect(makeTitle("1.2.3", "Mon, 4 Mar 2024", "dev")).toBe(
+			"[DEV from src] dev-3.0 v1.2.3 [Mon, 4 Mar 2024]",
+		);
+	});
+
+	it("does not prefix non-dev channels", () => {
+		expect(makeTitle("1.2.3", "now", "prod")).toBe("dev-3.0 v1.2.3 [now]");
+		expect(makeTitle("1.2.3", "now", "stable")).toBe("dev-3.0 v1.2.3 [now]");
+		expect(makeTitle("1.2.3", "now", undefined)).toBe("dev-3.0 v1.2.3 [now]");
+	});
 });

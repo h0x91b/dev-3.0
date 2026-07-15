@@ -33,7 +33,9 @@ export const formatDateTime = (d: Date) => {
 };
 
 /**
- * Builds the window title string.
+ * Builds the window title string. Dev builds (channel "dev", i.e. `bun run dev`
+ * from source) get a "[DEV from src]" prefix so they are unmistakable next to an
+ * installed production/staging window.
  */
-export const makeTitle = (version: string, dt: string) =>
-	`dev-3.0 v${version} [${dt}]`;
+export const makeTitle = (version: string, dt: string, buildChannel?: string) =>
+	`${buildChannel === "dev" ? "[DEV from src] " : ""}dev-3.0 v${version} [${dt}]`;
