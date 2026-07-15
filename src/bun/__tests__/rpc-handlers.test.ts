@@ -1561,12 +1561,18 @@ describe("handlers.getGlobalSettings", () => {
 });
 
 describe("handlers.saveGlobalSettings", () => {
-	beforeEach(() => vi.clearAllMocks());
+	const push = vi.fn();
 
-	it("delegates to saveSettings", async () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		setPushMessage(push);
+	});
+
+	it("saves and broadcasts the new settings", async () => {
 		const settings = { updateChannel: "stable" } as GlobalSettings;
 		await handlers.saveGlobalSettings(settings);
 		expect(saveSettings).toHaveBeenCalledWith(settings);
+		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", settings);
 	});
 
 	it("does not release Focus Mode when an optional patch omits it", async () => {
@@ -9129,6 +9135,7 @@ describe("toggleTaskWatch", () => {
 		const task = makeTask({ watched: true });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateTask).mockResolvedValue(task);
+		vi.mocked(saveSettings).mockClear();
 
 		const result = await handlers.toggleTaskWatch({
 			taskId: "task-1",
@@ -9137,6 +9144,7 @@ describe("toggleTaskWatch", () => {
 		});
 
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { watched: true });
+		expect(saveSettings).not.toHaveBeenCalled();
 		expect(result.watched).toBe(true);
 		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task });
 	});
@@ -9146,6 +9154,7 @@ describe("toggleTaskWatch", () => {
 		const task = makeTask({ watched: false });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateTask).mockResolvedValue(task);
+		vi.mocked(saveSettings).mockClear();
 
 		const result = await handlers.toggleTaskWatch({
 			taskId: "task-1",
@@ -9154,7 +9163,9 @@ describe("toggleTaskWatch", () => {
 		});
 
 		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { watched: false });
+		expect(saveSettings).not.toHaveBeenCalled();
 		expect(result.watched).toBe(false);
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task });
 	});
 });
 

@@ -3176,6 +3176,8 @@ export type AppRPCSchema = {
 			 * misleading "[session ended]" terminal.
 			 */
 			taskPreparationFailed: { taskId: string; projectId: string; taskTitle: string; error: string };
+			/** Emitted after a global preference is saved. */
+			globalSettingsUpdated: GlobalSettings;
 			/**
 			 * Emitted when the main window gains focus shortly after a watched-task notification fired.
 			 * The renderer navigates to the referenced task â implements click-to-open for native notifications.

@@ -1,0 +1,1 @@
+Watch now has an explicit “Watch tasks by default” preference in Settings → Behavior. Watch controls in the launch picker, task card, and inspector affect only their task, with tooltips pointing users to the global setting.

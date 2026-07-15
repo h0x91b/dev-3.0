@@ -1066,6 +1066,14 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
+	useEffect(() => {
+		function onGlobalSettingsUpdated(e: Event) {
+			setGlobalSettings((e as CustomEvent<GlobalSettingsType>).detail);
+		}
+		window.addEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
+		return () => window.removeEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
+	}, []);
+
 	// Server-initiated deletion: a scheduled launch firing consumes its source
 	// todo task (the spawned variants arrive as ordinary taskUpdated pushes).
 	useEffect(() => {

@@ -230,6 +230,21 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	const handleWatchByDefaultToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange(
+				{ watchByDefault: enabled },
+				{
+					tracking: {
+						setting: "watch_by_default",
+						value: String(enabled),
+					},
+				},
+			);
+		},
+		[persistSettingChange],
+	);
+
 	const handleTipsDisabledToggle = useCallback(
 		(disabled: boolean) => {
 			persistSettingChange({ tipsDisabled: disabled });
@@ -476,6 +491,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onKeymapChange={handleKeymapChange}
 						onPreventSleepToggle={handlePreventSleepToggle}
 						onSoundToggle={handleSoundToggle}
+						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 						onFocusModeToggle={handleFocusModeToggle}
 						onRateLimitTrackingToggle={handleRateLimitTrackingToggle}
 						onTaskDropPositionChange={handleTaskDropPositionChange}

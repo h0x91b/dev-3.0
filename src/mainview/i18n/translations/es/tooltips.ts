@@ -32,7 +32,7 @@ export const tooltips = {
 		"Detiene al agente y elimina el worktree de la tarea (tras ejecutar el script de limpieza). La tarjeta pasa a Cancelled.",
 	"ttip.task.delete": "Elimina definitivamente esta tarea cancelada del tablero.",
 	"ttip.task.watch":
-		"Las tareas observadas te notifican cuando el agente termina, falla o pregunta algo — puedes alejarte tranquilo.",
+		"Esto solo cambia esta tarea. Para observar automáticamente todas las tareas nuevas, activa Observar tareas de forma predeterminada en Ajustes → Comportamiento.",
 	"ttip.task.siblings":
 		"Abre el resumen de variantes para comparar títulos y estados, y cambia a cualquier variante activa.",
 	"ttip.task.ports":

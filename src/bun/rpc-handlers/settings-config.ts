@@ -130,6 +130,7 @@ async function saveGlobalSettings(params: GlobalSettings): Promise<void> {
 		setFocusMode(params.focusMode === true);
 	}
 	await saveSettings(params);
+	getPushMessage()?.("globalSettingsUpdated", params);
 	log.info("← saveGlobalSettings done");
 }
 

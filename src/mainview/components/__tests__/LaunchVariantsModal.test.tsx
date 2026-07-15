@@ -510,20 +510,29 @@ describe("LaunchVariantsModal", () => {
 			expect(screen.getByText("Watching")).toBeInTheDocument();
 		});
 
-		it("persists the choice as the new default when the toggle is clicked", async () => {
+		it("changes only the current task choice when the toggle is clicked", async () => {
 			const user = userEvent.setup();
 			const onGlobalSettingsChange = vi.fn();
 			renderModal(makeProject(), { globalSettings: makeGlobalSettings(), onGlobalSettingsChange });
 
 			await user.click(screen.getByText("Watch"));
 
-			expect(onGlobalSettingsChange).toHaveBeenCalledWith(
-				expect.objectContaining({ watchByDefault: true }),
-			);
-			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
-				expect.objectContaining({ watchByDefault: true }),
-			);
+			expect(onGlobalSettingsChange).not.toHaveBeenCalled();
+			expect(mockedApi.request.saveGlobalSettings).not.toHaveBeenCalled();
 			expect(screen.getByText("Watching")).toBeInTheDocument();
+		});
+
+		it("points users to Settings for the persistent default", async () => {
+			const user = userEvent.setup();
+			renderModal(makeProject());
+
+			await user.hover(screen.getByRole("button", { name: "Watch — notify on status changes" }));
+
+			expect(
+				await screen.findByText(
+					"This changes only this task. To watch every new task automatically, turn on Watch tasks by default in Settings → Behavior.",
+				),
+			).toBeInTheDocument();
 		});
 
 		it("applies the remembered Watch default to the task on launch", async () => {

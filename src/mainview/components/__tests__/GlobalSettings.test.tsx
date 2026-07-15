@@ -253,6 +253,34 @@ describe("GlobalSettings", () => {
 		});
 	});
 
+	describe("watch default", () => {
+		function getWatchDefaultSwitch() {
+			return screen.getByRole("switch", { name: "Watch tasks by default" });
+		}
+
+		it("is off when no preference is stored", async () => {
+			setupMocks();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(getWatchDefaultSwitch()).toHaveAttribute("aria-checked", "false");
+		});
+
+		it("saves the global preference without changing a task", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(getWatchDefaultSwitch());
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ watchByDefault: true }),
+			);
+			expect(getWatchDefaultSwitch()).toHaveAttribute("aria-checked", "true");
+		});
+	});
+
 	describe("default diff view mode", () => {
 		it("selects auto by default", async () => {
 			setupMocks();

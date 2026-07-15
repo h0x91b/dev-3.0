@@ -34,7 +34,7 @@ export const tooltips = {
 		"Stops the agent and removes the task's worktree (after the cleanup script runs). The card moves to Cancelled.",
 	"ttip.task.delete": "Removes this cancelled task from the board for good.",
 	"ttip.task.watch":
-		"Watched tasks notify you when the agent finishes, fails or asks a question — so you can safely step away.",
+		"This changes only this task. To watch every new task automatically, turn on Watch tasks by default in Settings → Behavior.",
 	"ttip.task.siblings":
 		"Open the sibling overview to compare variant titles and statuses, then jump to any live variant.",
 	"ttip.task.ports":
