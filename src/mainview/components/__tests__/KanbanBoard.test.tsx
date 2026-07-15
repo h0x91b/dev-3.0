@@ -587,7 +587,7 @@ describe("create custom column from board (issue #222)", () => {
 		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
 	});
 
-	it("clicking the add-column button creates a column and appends it", async () => {
+	it("clicking the add-column button creates a column immediately before Completed", async () => {
 		const created: CustomColumn = { id: "col-new", name: "New Column", color: "#123456", llmInstruction: "" };
 		(api.request.createCustomColumn as ReturnType<typeof vi.fn>).mockResolvedValue(created);
 		const dispatch = vi.fn();
@@ -601,10 +601,40 @@ describe("create custom column from board (issue #222)", () => {
 			expect(dispatch).toHaveBeenCalledWith(
 				expect.objectContaining({
 					type: "updateProject",
-					project: expect.objectContaining({ customColumns: expect.arrayContaining([created]) }),
+					project: expect.objectContaining({
+						customColumns: expect.arrayContaining([created]),
+						columnOrder: expect.any(Array),
+					}),
 				}),
 			),
 		);
+		await waitFor(() => expect(api.request.reorderColumns).toHaveBeenCalledWith({
+			projectId: "p1",
+			columnOrder: expect.arrayContaining(["col-new", "completed"]),
+		}));
+		const { columnOrder } = (api.request.reorderColumns as ReturnType<typeof vi.fn>).mock.calls[0][0] as { columnOrder: string[] };
+		expect(columnOrder[columnOrder.indexOf("completed") - 1]).toBe("col-new");
+	});
+
+	it("inserts a new column before Completed in an existing stored order", async () => {
+		const created: CustomColumn = { id: "col-new", name: "New Column", color: "#123456", llmInstruction: "" };
+		(api.request.createCustomColumn as ReturnType<typeof vi.fn>).mockResolvedValue(created);
+		const dispatch = vi.fn();
+		await renderBoardWith({
+			project: {
+				...project,
+				customColumns: [customColA],
+				columnOrder: ["todo", "in-progress", "user-questions", "review-by-ai", "review-by-user", "col-a", "review-by-colleague", "completed", "cancelled"],
+			},
+			dispatch,
+		});
+
+		await userEvent.click(screen.getByLabelText("Add column"));
+
+		await waitFor(() => expect(api.request.reorderColumns).toHaveBeenCalled());
+		const { columnOrder } = (api.request.reorderColumns as ReturnType<typeof vi.fn>).mock.calls[0][0] as { columnOrder: string[] };
+		expect(columnOrder[columnOrder.indexOf("completed") - 1]).toBe("col-new");
+		expect(columnOrder[columnOrder.indexOf("cancelled") - 1]).not.toBe("col-new");
 	});
 
 	it("places the add-column button immediately before the Completed column", async () => {

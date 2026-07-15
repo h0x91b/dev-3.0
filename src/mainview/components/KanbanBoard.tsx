@@ -342,16 +342,29 @@ function KanbanBoard({
 	}
 
 	// Create a custom column straight from the board (issue #222): the server picks
-	// a distinct color; we append it and flag it for inline renaming so the user
-	// names it in place instead of opening Project Settings. Advanced config
-	// (color, LLM instruction, agent) stays in Project Settings — progressive disclosure.
+	// a distinct color; insert it immediately before Completed and flag it for inline
+	// renaming so the user names it in place instead of opening Project Settings.
+	// Advanced config (color, LLM instruction, agent) stays in Project Settings —
+	// progressive disclosure.
 	async function handleCreateCustomColumn() {
 		try {
 			const column = await api.request.createCustomColumn({
 				projectId: project.id,
 				name: t("customColumns.defaultName"),
 			});
-			dispatch({ type: "updateProject", project: { ...project, customColumns: [...customColumns, column] } });
+			const currentOrder = getOrderedColumns().map((slot) => slot.type === "builtin" ? slot.status : slot.col.id);
+			const completedIndex = currentOrder.indexOf("completed");
+			const columnOrder = [...currentOrder];
+			columnOrder.splice(completedIndex === -1 ? columnOrder.length : completedIndex, 0, column.id);
+			dispatch({
+				type: "updateProject",
+				project: { ...project, customColumns: [...customColumns, column], columnOrder },
+			});
+			// The create RPC returns only the new column, so persist the full board order
+			// explicitly after creation. The server has committed the column by this point.
+			api.request.reorderColumns({ projectId: project.id, columnOrder }).catch((err) => {
+				toast.error(t("kanban.failedReorderColumns", { error: String(err) }));
+			});
 			setAutoEditColumnId(column.id);
 		} catch (err) {
 			toast.error(t("customColumns.failedCreate", { error: String(err) }));
