@@ -76,6 +76,7 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 					<div
 						role="switch"
 						aria-checked={!muted}
+						aria-label={t("settings.browserNotifications")}
 						tabIndex={0}
 						className={`relative w-11 h-6 rounded-full transition-colors ${
 							!muted ? "bg-accent" : "bg-raised border border-edge"
@@ -94,7 +95,9 @@ export default function BrowserNotificationsSetting({ t }: { t: TFunction }) {
 							}`}
 						/>
 					</div>
-					<span className="text-fg text-sm">{!muted ? "On" : "Off"}</span>
+					<span className="text-fg text-sm">
+						{!muted ? t("settings.on") : t("settings.off")}
+					</span>
 				</label>
 			)}
 		</div>

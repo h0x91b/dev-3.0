@@ -16,6 +16,7 @@ import { toast } from "../../toast";
 import type { TFunction } from "../../i18n";
 import { AGENT_ACCOUNTS_CHANGED_EVENT, notifyAgentAccountsChanged } from "../AgentAccountIndicator";
 import Tooltip from "../Tooltip";
+import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 
 /** Small "(i)" info glyph with a two-tier tooltip (label headline + detail),
@@ -809,12 +810,14 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 
 	if (!state) {
 		return (
-			<SettingsSection
-				title={t("settings.agentAccounts")}
-				description={t("settings.agentAccountsDesc")}
-			>
-				<p className="text-fg-muted text-xs">…</p>
-			</SettingsSection>
+			<SettingsEntry anchor="agent-accounts">
+				<SettingsSection
+					title={t("settings.agentAccounts")}
+					description={t("settings.agentAccountsDesc")}
+				>
+					<p className="text-fg-muted text-xs">…</p>
+				</SettingsSection>
+			</SettingsEntry>
 		);
 	}
 
@@ -822,10 +825,11 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 		state.codex.currentIdentity && state.codex.activeId === null ? state.codex.currentIdentity : null;
 
 	return (
-		<SettingsSection
-			title={t("settings.agentAccounts")}
-			description={t("settings.agentAccountsDesc")}
-		>
+		<SettingsEntry anchor="agent-accounts">
+			<SettingsSection
+				title={t("settings.agentAccounts")}
+				description={t("settings.agentAccountsDesc")}
+			>
 			{renderAgentBlock(
 				"claude",
 				"Claude Code",
@@ -863,6 +867,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 				) : null,
 			)}
 			<p className="text-fg-muted text-xs">{t("settings.accountsNewSessionsHint")}</p>
-		</SettingsSection>
+			</SettingsSection>
+		</SettingsEntry>
 	);
 }

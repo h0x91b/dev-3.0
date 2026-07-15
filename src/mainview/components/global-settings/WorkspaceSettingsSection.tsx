@@ -1,5 +1,6 @@
 import type { ExternalApp, GlobalSettings } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
+import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 
 interface WorkspaceSettingsSectionProps {
@@ -8,7 +9,6 @@ interface WorkspaceSettingsSectionProps {
 	onAddExternalApp: () => void;
 	onDeleteExternalApp: (appId: string) => void;
 	onPickCloneBaseDirectory: () => void;
-	onUpdateChannelChange: (channel: "stable" | "canary") => void;
 	onUpdateExternalApp: (appId: string, patch: Partial<ExternalApp>) => void;
 }
 
@@ -18,33 +18,11 @@ export default function WorkspaceSettingsSection({
 	onAddExternalApp,
 	onDeleteExternalApp,
 	onPickCloneBaseDirectory,
-	onUpdateChannelChange,
 	onUpdateExternalApp,
 }: WorkspaceSettingsSectionProps) {
 	return (
-		<SettingsSection title={t("settings.workspaceSection")} helpTopicId="settings.workspace">
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.updateChannel")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.updateChannelDesc")}
-				</p>
-				<select
-					value={globalSettings.updateChannel}
-					onChange={(event) =>
-						onUpdateChannelChange(
-							event.target.value as "stable" | "canary",
-						)
-					}
-					disabled
-					className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none appearance-none cursor-not-allowed opacity-50"
-				>
-					<option value="stable">Stable</option>
-					<option value="canary">Canary</option>
-				</select>
-			</div>
-
+		<SettingsSection title={t("settings.categoryWorkspace")} helpTopicId="settings.workspace">
+			<SettingsEntry anchor="clone-directory">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.cloneBaseDir")}
@@ -72,7 +50,9 @@ export default function WorkspaceSettingsSection({
 					</button>
 				</div>
 			</div>
+			</SettingsEntry>
 
+			<SettingsEntry anchor="external-apps">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.externalApps")}
@@ -129,6 +109,7 @@ export default function WorkspaceSettingsSection({
 					+ {t("settings.addExternalApp")}
 				</button>
 			</div>
+			</SettingsEntry>
 		</SettingsSection>
 	);
 }

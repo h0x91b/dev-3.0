@@ -16,6 +16,7 @@ import { ListEditor } from "../ListEditor";
 import AgentConfigPicker from "../AgentConfigPicker";
 import { api } from "../../rpc";
 import type { TFunction } from "../../i18n";
+import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 import {
 	BEDROCK_GEOS,
@@ -365,7 +366,8 @@ export default function AgentSettingsSection({
 	}
 
 	return (
-		<SettingsSection title={t("settings.agents")} helpTopicId="settings.agents">
+		<SettingsSection title={t("settings.categoryAgents")} helpTopicId="settings.agents">
+			<SettingsEntry anchor="default-agent">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.defaultAgent")}
@@ -412,6 +414,8 @@ export default function AgentSettingsSection({
 			})() : null}
 			</div>
 
+			</SettingsEntry>
+			<SettingsEntry anchor="agents-editor">
 			<div>
 				<div className="space-y-2 mb-3">
 					{agents.map((agent, agentIndex) => {
@@ -879,6 +883,7 @@ export default function AgentSettingsSection({
 					</button>
 				</div>
 			</div>
+			</SettingsEntry>
 		</SettingsSection>
 	);
 }
