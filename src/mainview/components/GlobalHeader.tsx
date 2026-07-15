@@ -68,6 +68,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const t = useT();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const remoteMode = !isElectrobun;
 	// Live fullscreen state for the action-sheet toggle label (browser only).
 	const fullscreenActive = useSyncExternalStore(subscribeFullscreen, isFullscreenActive);
 	const [showActionSheet, setShowActionSheet] = useState(false);
@@ -623,7 +624,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 									// Remote access server may not be running
 								}
 							}}
-							className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+							className={`header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated ${remoteMode ? "remote-access-active" : ""}`}
 							aria-label={t("header.remoteAccessTooltip")}
 						>
 							<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />

@@ -676,6 +676,21 @@ describe("GlobalHeader — project terminal button", () => {
 	});
 });
 
+describe("GlobalHeader — remote access indicator", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	it("keeps the QR icon animation active in browser remote mode", () => {
+		renderHeader({ screen: "dashboard" });
+
+		const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
+		expect(remoteButton.className).toContain("remote-access-active");
+		expect(remoteButton.querySelector(".hdr-qr1")).toBeInTheDocument();
+	});
+});
+
 describe("GlobalHeader — compact layout", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();

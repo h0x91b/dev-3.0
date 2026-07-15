@@ -1,0 +1,1 @@
+Keep the Remote Access QR icon animated continuously in browser remote mode so the active remote session remains visible in the global header. Desktop behavior and reduced-motion preferences remain unchanged.
