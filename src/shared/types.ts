@@ -3243,6 +3243,8 @@ export type AppRPCSchema = {
 				projectId: string | null;
 				message: string;
 				level: "info" | "success" | "error";
+				/** Optional in-app toast lifetime in milliseconds; omitted uses the default. */
+				durationMs?: number;
 				/** Source-task context for the toast header (present when a task was resolved). */
 				taskSeq?: number;
 				taskTitle?: string;

@@ -86,6 +86,29 @@ describe("notify", () => {
 		expect(params.level).toBe("error");
 	});
 
+	it("passes a custom toast duration in milliseconds", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
+
+		await handleNotify(args(["brief update"], { duration: "15" }), SOCKET, CTX);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.durationMs).toBe(15_000);
+	});
+
+	it("rejects an invalid toast duration", async () => {
+		await expect(handleNotify(args(["x"], { duration: "31s" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("Invalid --duration");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
+	it("rejects a custom duration for native desktop notifications", async () => {
+		await expect(
+			handleNotify(args(["x"], { duration: "2s", desktop: "true" }), SOCKET, CTX),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("cannot be combined with --desktop");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("rejects an invalid level", async () => {
 		await expect(handleNotify(args(["x"], { level: "loud" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Invalid --level");

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { socketMetaPathFor, type SocketMeta } from "../shared/socket-meta";
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
@@ -943,7 +944,14 @@ const handlers: Record<string, Handler> = {
 			throw new Error(`Invalid level "${rawLevel}". Use info, success, or error.`);
 		}
 		const level = rawLevel as "info" | "success" | "error";
+		const durationMs = params.durationMs;
+		if (durationMs !== undefined && !isValidNotificationDurationMs(durationMs)) {
+			throw new Error(`durationMs must be between ${NOTIFICATION_MIN_DURATION_MS}ms and ${NOTIFICATION_MAX_DURATION_MS}ms`);
+		}
 		const desktop = params.desktop === true;
+		if (desktop && durationMs !== undefined) {
+			throw new Error("durationMs applies to in-app toasts and cannot be combined with desktop notifications");
+		}
 
 		// Keep the in-memory gate aligned for CLI requests that arrive before the
 		// renderer has reported the persisted setting (for example after a restart).
@@ -980,6 +988,7 @@ const handlers: Record<string, Handler> = {
 			projectId,
 			message,
 			level,
+			...(durationMs !== undefined ? { durationMs } : {}),
 			...(task ? { taskSeq: task.seq, taskTitle: getTaskTitle(task), projectName: projectName ?? undefined } : {}),
 		};
 		if (isNotificationSuppressed()) {

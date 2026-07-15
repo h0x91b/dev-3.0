@@ -5,13 +5,17 @@
  */
 
 const UNIT_MS: Record<string, number> = {
+	s: 1_000,
 	m: 60_000,
 	h: 3_600_000,
 	d: 86_400_000,
 };
 
+export const NOTIFICATION_MIN_DURATION_MS = 2_000;
+export const NOTIFICATION_MAX_DURATION_MS = 30_000;
+
 /**
- * Parse a delay like `45m`, `2h`, `1h30m`, `1d2h` into milliseconds.
+ * Parse a delay like `2s`, `45m`, `2h`, `1h30m`, `1d2h` into milliseconds.
  * A bare number means minutes (`90` → 90 min). Whitespace is ignored.
  * Returns null for anything unparseable or non-positive.
  */
@@ -23,17 +27,36 @@ export function parseDelay(input: string): number | null {
 		const min = Number.parseInt(s, 10);
 		return min > 0 ? min * UNIT_MS.m : null;
 	}
-	// Sequence of <number><unit> segments, each unit at most once (m/h/d)
-	if (!/^(\d+[mhd])+$/.test(s)) return null;
+	// Sequence of <number><unit> segments, each unit at most once (s/m/h/d)
+	if (!/^(\d+[smhd])+$/.test(s)) return null;
 	let total = 0;
 	const seen = new Set<string>();
-	for (const match of s.matchAll(/(\d+)([mhd])/g)) {
+	for (const match of s.matchAll(/(\d+)([smhd])/g)) {
 		const unit = match[2];
 		if (seen.has(unit)) return null;
 		seen.add(unit);
 		total += Number.parseInt(match[1], 10) * UNIT_MS[unit];
 	}
 	return total > 0 ? total : null;
+}
+
+/** Parse the CLI notification duration, which is limited to whole seconds from 2s to 30s; the `s` suffix is optional. */
+export function parseNotificationDuration(input: string): number | null {
+	const match = input.trim().match(/^(\d+)(?:s)?$/i);
+	if (!match) return null;
+	const seconds = Number(match[1]);
+	if (!Number.isSafeInteger(seconds)) return null;
+	const durationMs = seconds * UNIT_MS.s;
+	return durationMs >= NOTIFICATION_MIN_DURATION_MS && durationMs <= NOTIFICATION_MAX_DURATION_MS
+		? durationMs
+		: null;
+}
+
+export function isValidNotificationDurationMs(value: unknown): value is number {
+	return typeof value === "number"
+		&& Number.isFinite(value)
+		&& value >= NOTIFICATION_MIN_DURATION_MS
+		&& value <= NOTIFICATION_MAX_DURATION_MS;
 }
 
 /**

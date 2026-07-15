@@ -799,6 +799,31 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByText("Overflow 6")).toBeInTheDocument();
 		});
 
+		it("applies a custom duration to a CLI toast", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			vi.useFakeTimers();
+			try {
+				act(() => {
+					window.dispatchEvent(new CustomEvent("rpc:cliToast", {
+						detail: { taskId: null, projectId: null, message: "Brief toast", level: "info", durationMs: 2_000 },
+					}));
+				});
+
+				expect(screen.getByText("Brief toast")).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(1_999));
+				expect(screen.getByText("Brief toast")).toBeInTheDocument();
+				act(() => vi.advanceTimersByTime(1));
+				expect(screen.queryByText("Brief toast")).not.toBeInTheDocument();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
 		it("does not double-count image or artifact attention when their toasts overflow", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
 			vi.mocked(api.request.getLastRoute).mockResolvedValue({
