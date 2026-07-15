@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type Route, type SettingsSectionId } from "./state";
-import { api, isElectrobun } from "./rpc";
+import { api, isElectrobun, getRpcConnectionState } from "./rpc";
 import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
@@ -317,8 +317,12 @@ function App() {
 		taskDropPosition: "top",
 		updateChannel: "stable",
 	});
-	// Auth failure for browser remote access (expired/invalid QR token)
-	const [authFailed, setAuthFailed] = useState(false);
+	// Auth failure for browser remote access (expired/invalid session).
+	// Seeded from the transport: with a dead session the expired verdict lands
+	// BEFORE React mounts (the boot probe on localhost beats the app bootstrap),
+	// so waiting for the rpc:authFailed event alone would miss it and leave the
+	// user on an eternal "Loading…" spinner.
+	const [authFailed, setAuthFailed] = useState(() => getRpcConnectionState() === "auth-failed");
 
 	useEffect(() => {
 		function onAuthFailed() { setAuthFailed(true); }
