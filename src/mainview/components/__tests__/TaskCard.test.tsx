@@ -1659,6 +1659,30 @@ describe("TaskCard", () => {
 			}
 		});
 
+		it("refreshes cached PR status after hover without hiding the cached data", async () => {
+			let resolveRefresh!: () => void;
+			mockedApi.request.refreshTaskPrStatus.mockImplementation(() => new Promise<void>((resolve) => {
+				resolveRefresh = resolve;
+			}));
+			renderCard(reviewTask(), {
+				prInfo: {
+					number: 12,
+					url: "https://example/pr/12",
+					unresolvedCount: 2,
+					checks: [{ name: "cached-build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null }],
+				},
+			});
+			await userEvent.hover(screen.getByLabelText("Open PR #12"));
+
+			await waitFor(() => expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledTimes(1), { timeout: 3000 });
+			expect(screen.getByTestId("pr-status-popover")).toHaveTextContent("cached-build");
+			expect(screen.getByRole("button", { name: "Refreshing PR status…" })).toBeDisabled();
+
+			await act(async () => {
+				resolveRefresh();
+			});
+		});
+
 		it("does not auto-refresh when the pointer leaves before the hover delay", async () => {
 			vi.useFakeTimers();
 			try {

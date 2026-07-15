@@ -4,7 +4,7 @@ import KanbanBoard from "../KanbanBoard";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 import { toast } from "../../toast";
-import type { CustomColumn, Project, Task, TipState } from "../../../shared/types";
+import type { CustomColumn, PRInfo, Project, Task, TipState } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
 	api: {
@@ -177,6 +177,37 @@ describe("column ordering", () => {
 	it("polls getProjectPRs for a git board", async () => {
 		await renderBoardWith();
 		await waitFor(() => expect(api.request.getProjectPRs).toHaveBeenCalled());
+	});
+
+	it("shows the persisted PR status cache before the live PR lookup resolves", async () => {
+		vi.mocked(api.request.getProjectPRs).mockImplementation(() => new Promise<PRInfo[]>(() => {}));
+		const task = makeTask({
+			prStatusCache: {
+				number: 42,
+				url: "https://github.com/test/repo/pull/42",
+				ciStatus: "success",
+				reviewState: "commented",
+				unresolvedCount: 2,
+				mergeState: { mergeable: "MERGEABLE", status: "CLEAN", state: "OPEN" },
+				checks: [{ name: "cached-build", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: null }],
+				prTitle: "Cached PR",
+				isDraft: false,
+				cachedAt: "2026-07-15T12:00:00.000Z",
+			},
+		});
+		const result = await renderBoardWith({ tasks: [task] });
+		try {
+			const badge = screen.getByLabelText("Open PR #42");
+			expect(badge).toBeInTheDocument();
+			await userEvent.hover(badge);
+			const popover = await screen.findByTestId("pr-status-popover");
+			expect(popover).toHaveTextContent("Cached PR");
+			expect(popover).toHaveTextContent("2 unresolved comments");
+			expect(popover).toHaveTextContent("cached-build");
+		} finally {
+			result.unmount();
+			vi.mocked(api.request.getProjectPRs).mockResolvedValue([]);
+		}
 	});
 
 	it("review-by-colleague is inserted before completed when missing from stored columnOrder", async () => {

@@ -37,6 +37,57 @@ interface KanbanBoardProps {
 	disableGlobalFindShortcut?: boolean;
 }
 
+type PRIdentity = Pick<TaskPRBadgeInfo, "number" | "url">;
+
+function samePRIdentity(left: TaskPRBadgeInfo | null | undefined, right: PRIdentity): boolean {
+	return left?.number === right.number && left.url === right.url;
+}
+
+function taskPRBadgeFromStoredData(task: Task, identity?: PRIdentity): TaskPRBadgeInfo | null {
+	const cache = task.prStatusCache;
+	const sticky = task.prNumber != null && task.prUrl ? { number: task.prNumber, url: task.prUrl } : undefined;
+	const cachedIdentity = cache?.url ? { number: cache.number, url: cache.url } : undefined;
+	const pr = identity ?? sticky ?? cachedIdentity;
+	if (!pr) return null;
+	const cached = cache && samePRIdentity({ number: cache.number, url: cache.url }, pr) ? cache : null;
+	return {
+		number: pr.number,
+		url: pr.url,
+		ciStatus: cached?.ciStatus ?? null,
+		reviewState: cached?.reviewState ?? null,
+		unresolvedCount: cached?.unresolvedCount ?? null,
+		mergeState: cached?.mergeState ?? null,
+		checks: cached?.checks ?? [],
+		prTitle: cached?.prTitle ?? null,
+		isDraft: cached?.isDraft ?? null,
+	};
+}
+
+function mergeTaskPRBadge(task: Task, identity: PRIdentity | undefined, existing: TaskPRBadgeInfo | undefined): TaskPRBadgeInfo | null {
+	const stored = taskPRBadgeFromStoredData(task, identity);
+	if (!stored) return null;
+	if (!existing || !samePRIdentity(existing, stored)) return stored;
+	return {
+		...stored,
+		ciStatus: existing.ciStatus ?? stored.ciStatus,
+		reviewState: existing.reviewState ?? stored.reviewState,
+		unresolvedCount: existing.unresolvedCount ?? stored.unresolvedCount,
+		mergeState: existing.mergeState ?? stored.mergeState,
+		checks: existing.checks && existing.checks.length > 0 ? existing.checks : stored.checks,
+		prTitle: existing.prTitle ?? stored.prTitle,
+		isDraft: existing.isDraft ?? stored.isDraft,
+	};
+}
+
+function hydrateTaskPRMap(tasks: Task[], previous = new Map<string, TaskPRBadgeInfo>()): Map<string, TaskPRBadgeInfo> {
+	const next = new Map<string, TaskPRBadgeInfo>();
+	for (const task of tasks) {
+		const badge = mergeTaskPRBadge(task, undefined, previous.get(task.id));
+		if (badge) next.set(task.id, badge);
+	}
+	return next;
+}
+
 function KanbanBoard({
 	project,
 	tasks,
@@ -75,8 +126,9 @@ function KanbanBoard({
 	const { tip: currentTip, tipState, applyTipState } = useTipRotation("board", globalSettings.tipsDisabled);
 	const collapseState = useColumnCollapse(project.id);
 
-	// PR numbers for task cards: taskId → { number, url }
-	const [taskPrMap, setTaskPrMap] = useState<Map<string, TaskPRBadgeInfo>>(new Map());
+	// PR badge data for task cards. Seed from persisted task metadata so the board
+	// stays useful while the first live GitHub lookup is still in flight.
+	const [taskPrMap, setTaskPrMap] = useState<Map<string, TaskPRBadgeInfo>>(() => hydrateTaskPRMap(tasks));
 
 	const handleSetMoving = useCallback((taskId: string, isMoving: boolean) => {
 		setMovingTaskIds((prev) => {
@@ -97,6 +149,19 @@ function KanbanBoard({
 		api.request.getGlobalSettings().then(setGlobalSettings).catch(() => {});
 	}, []);
 
+	useEffect(() => {
+		setTaskPrMap((prev) => {
+			const next = new Map<string, TaskPRBadgeInfo>();
+			for (const task of tasks) {
+				const existing = prev.get(task.id);
+				const badge = existing ?? taskPRBadgeFromStoredData(task);
+				if (badge) next.set(task.id, badge);
+			}
+			if (next.size === prev.size && [...next.keys()].every((taskId) => prev.has(taskId))) return prev;
+			return next;
+		});
+	}, [project.id, tasks]);
+
 	// Fetch open PRs for the project and map branch names to task IDs. CI/review
 	// state is supplied separately by the background poller's `taskPrStatus`
 	// push, so preserve any already-known ci/review fields when rebuilding here.
@@ -110,23 +175,10 @@ function KanbanBoard({
 				const map = new Map<string, TaskPRBadgeInfo>();
 				for (const task of tasks) {
 					const discovered = task.branchName ? branchToPR.get(task.branchName) : undefined;
-					const sticky = task.prNumber != null && task.prUrl
-						? { number: task.prNumber, url: task.prUrl }
-						: undefined;
-					const pr = discovered ?? sticky;
-					if (!pr) continue;
+					const stored = taskPRBadgeFromStoredData(task, discovered);
 					const existing = prev.get(task.id);
-					map.set(task.id, {
-						number: pr.number,
-						url: pr.url,
-						ciStatus: existing?.ciStatus ?? null,
-						reviewState: existing?.reviewState ?? null,
-						unresolvedCount: existing?.unresolvedCount ?? null,
-						mergeState: existing?.mergeState ?? null,
-						checks: existing?.checks ?? [],
-						prTitle: existing?.prTitle ?? null,
-						isDraft: existing?.isDraft ?? null,
-					});
+					const badge = stored && existing && samePRIdentity(existing, stored) ? existing : stored;
+					if (badge) map.set(task.id, badge);
 				}
 				return map;
 			});

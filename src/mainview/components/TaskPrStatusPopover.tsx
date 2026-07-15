@@ -96,8 +96,6 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 	const pointerInsideRef = useRef(false);
 	const openRef = useRef(false);
 	const refreshingRef = useRef(false);
-	const prInfoRef = useRef(prInfo);
-	prInfoRef.current = prInfo;
 
 	const cancelHide = useCallback(() => {
 		if (hideTimerRef.current !== null) {
@@ -158,7 +156,7 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 			autoRefreshTimerRef.current = null;
 			if (!pointerInsideRef.current || !openRef.current || autoRefreshAttemptedRef.current) return;
 			autoRefreshAttemptedRef.current = true;
-			if ((prInfoRef.current.checks ?? []).length === 0) void refresh();
+			void refresh();
 		}, AUTO_REFRESH_DELAY_MS);
 	}, [refresh]);
 
