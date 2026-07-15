@@ -7880,7 +7880,17 @@ describe("checkOpenPRsForPromotion", () => {
 
 		await checkOpenPRsForPromotion();
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { prNumber: 42, prUrl });
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
+			prNumber: 42,
+			prUrl,
+			prStatusCache: expect.objectContaining({
+				number: 42,
+				url: prUrl,
+				ciStatus: "failure",
+				unresolvedCount: 2,
+				cachedAt: expect.any(String),
+			}),
+		}));
 		expect(github.runGitHub).toHaveBeenNthCalledWith(
 			2,
 			project,

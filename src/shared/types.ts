@@ -1138,6 +1138,8 @@ export interface Task {
 	/** Sticky identity of the GitHub pull request detected for this task. */
 	prNumber?: number | null;
 	prUrl?: string | null;
+	/** Last rich status fetched for the task's open GitHub pull request. */
+	prStatusCache?: TaskPRStatusCache | null;
 	groupId: string | null;
 	variantIndex: number | null;
 	agentId: string | null;
@@ -1908,6 +1910,24 @@ export interface PRMergeState {
 	mergeable: string | null;
 	status: string | null;
 	state?: string | null;
+}
+
+/**
+ * Persisted rich status for a task's open pull request. This is deliberately
+ * additive task metadata: the renderer can show it immediately while the next
+ * GitHub refresh is in flight.
+ */
+export interface TaskPRStatusCache {
+	number: number;
+	url: string;
+	ciStatus: PRCIStatus | null;
+	reviewState: PRReviewState | null;
+	unresolvedCount: number | null;
+	mergeState: PRMergeState | null;
+	checks: PRCheckInfo[];
+	prTitle: string | null;
+	isDraft: boolean | null;
+	cachedAt: string;
 }
 
 /**

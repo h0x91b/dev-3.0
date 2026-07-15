@@ -5,6 +5,7 @@ import {
 	type PRCIStatus,
 	type Project,
 	type Task,
+	type TaskPRStatusCache,
 	type TaskDiffMode,
 	type TaskDiffResponse,
 	type ScheduledMessageTarget,
@@ -512,6 +513,8 @@ interface PolledPRStatus {
 	ciStatus: PRCIStatus | null;
 }
 
+type FreshPRStatus = Omit<TaskPRStatusCache, "cachedAt">;
+
 const REVIEW_STATUS_CANDIDATES = new Set<Task["status"]>(["review-by-user", "review-by-colleague"]);
 const TERMINAL_TASK_STATUSES = new Set<Task["status"]>(["completed", "cancelled"]);
 
@@ -523,6 +526,37 @@ async function persistTaskPrIdentity(project: Project, task: Task, prNumber: num
 	if (task.prNumber === prNumber && task.prUrl === prUrl) return;
 	const updated = await data.updateTask(project, task.id, { prNumber, prUrl });
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+}
+
+function sameFreshPRStatus(cache: TaskPRStatusCache | null | undefined, next: FreshPRStatus): boolean {
+	return !!cache
+		&& cache.number === next.number
+		&& cache.url === next.url
+		&& cache.ciStatus === next.ciStatus
+		&& cache.reviewState === next.reviewState
+		&& cache.unresolvedCount === next.unresolvedCount
+		&& JSON.stringify(cache.mergeState) === JSON.stringify(next.mergeState)
+		&& JSON.stringify(cache.checks) === JSON.stringify(next.checks)
+		&& cache.prTitle === next.prTitle
+		&& cache.isDraft === next.isDraft;
+}
+
+/**
+ * Keep the last successful rich PR response on the task so a later board load
+ * can render it before GitHub answers. Cache persistence is best-effort: a
+ * stale cache must never prevent the fresh response from reaching the UI.
+ */
+async function persistTaskPrStatusCache(project: Project, task: Task, next: FreshPRStatus): Promise<void> {
+	if (task.prNumber === next.number && task.prUrl === next.url && sameFreshPRStatus(task.prStatusCache, next)) return;
+	try {
+		await data.updateTask(project, task.id, {
+			prNumber: next.number,
+			prUrl: next.url,
+			prStatusCache: { ...next, cachedAt: new Date().toISOString() },
+		});
+	} catch (error) {
+		log.warn("PR status cache persistence failed (non-fatal)", { taskId: task.id.slice(0, 8), error: String(error) });
+	}
 }
 
 async function persistProjectPrIdentities(project: Project, prs: PRInfo[]): Promise<void> {
@@ -693,7 +727,19 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 	const prTitle = typeof pr.title === "string" ? pr.title : null;
 	const isDraft = typeof pr.isDraft === "boolean" ? pr.isDraft : null;
 
-	if (prUrl) await persistTaskPrIdentity(project, task, prNumber, prUrl);
+	if (prUrl) {
+		await persistTaskPrStatusCache(project, task, {
+			number: prNumber,
+			url: prUrl,
+			ciStatus,
+			reviewState,
+			unresolvedCount,
+			mergeState,
+			checks,
+			prTitle,
+			isDraft,
+		});
+	}
 
 	pushMessage("taskPrStatus", {
 		projectId: project.id,
