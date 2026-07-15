@@ -139,6 +139,7 @@ export interface TerminalFocusToastPayload {
 	projectId: string | null;
 	message: string;
 	level: "info" | "success" | "error";
+	durationMs?: number;
 	taskSeq?: number;
 	taskTitle?: string;
 	projectName?: string;

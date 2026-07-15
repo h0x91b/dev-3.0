@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { formatCountdown, parseDelay } from "../../shared/duration";
 
 const M = 60_000;
+const S = 1_000;
 const H = 3_600_000;
 const D = 86_400_000;
 
@@ -13,6 +14,7 @@ describe("parseDelay", () => {
 	});
 
 	it("parses single-unit segments", () => {
+		expect(parseDelay("2s")).toBe(2 * S);
 		expect(parseDelay("45m")).toBe(45 * M);
 		expect(parseDelay("2h")).toBe(2 * H);
 		expect(parseDelay("1d")).toBe(D);

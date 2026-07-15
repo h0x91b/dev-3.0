@@ -943,7 +943,14 @@ const handlers: Record<string, Handler> = {
 			throw new Error(`Invalid level "${rawLevel}". Use info, success, or error.`);
 		}
 		const level = rawLevel as "info" | "success" | "error";
+		const durationMs = params.durationMs;
+		if (durationMs !== undefined && (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs <= 0)) {
+			throw new Error("durationMs must be a positive finite number");
+		}
 		const desktop = params.desktop === true;
+		if (desktop && durationMs !== undefined) {
+			throw new Error("durationMs applies to in-app toasts and cannot be combined with desktop notifications");
+		}
 
 		// Keep the in-memory gate aligned for CLI requests that arrive before the
 		// renderer has reported the persisted setting (for example after a restart).
@@ -980,6 +987,7 @@ const handlers: Record<string, Handler> = {
 			projectId,
 			message,
 			level,
+			...(durationMs !== undefined ? { durationMs } : {}),
 			...(task ? { taskSeq: task.seq, taskTitle: getTaskTitle(task), projectName: projectName ?? undefined } : {}),
 		};
 		if (isNotificationSuppressed()) {

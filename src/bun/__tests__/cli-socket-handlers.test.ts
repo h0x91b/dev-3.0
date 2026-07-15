@@ -1090,6 +1090,23 @@ describe("ui control (notify / attention / state)", () => {
 		});
 	});
 
+	it("ui.notify: preserves a custom toast duration", async () => {
+		const pushFn = vi.fn();
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "brief", level: "info", durationMs: 2_000 }));
+
+		expect(resp.ok).toBe(true);
+		expect(pushFn).toHaveBeenCalledWith("cliToast", expect.objectContaining({ message: "brief", durationMs: 2_000 }));
+	});
+
+	it("ui.notify: rejects an invalid custom toast duration", async () => {
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "brief", durationMs: 0 }));
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("durationMs must be a positive finite number");
+	});
+
 	it("ui.notify: queues the cliToast during notification suppression", async () => {
 		vi.mocked(isNotificationSuppressed).mockReturnValue(true);
 

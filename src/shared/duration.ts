@@ -5,13 +5,14 @@
  */
 
 const UNIT_MS: Record<string, number> = {
+	s: 1_000,
 	m: 60_000,
 	h: 3_600_000,
 	d: 86_400_000,
 };
 
 /**
- * Parse a delay like `45m`, `2h`, `1h30m`, `1d2h` into milliseconds.
+ * Parse a delay like `2s`, `45m`, `2h`, `1h30m`, `1d2h` into milliseconds.
  * A bare number means minutes (`90` → 90 min). Whitespace is ignored.
  * Returns null for anything unparseable or non-positive.
  */
@@ -23,11 +24,11 @@ export function parseDelay(input: string): number | null {
 		const min = Number.parseInt(s, 10);
 		return min > 0 ? min * UNIT_MS.m : null;
 	}
-	// Sequence of <number><unit> segments, each unit at most once (m/h/d)
-	if (!/^(\d+[mhd])+$/.test(s)) return null;
+	// Sequence of <number><unit> segments, each unit at most once (s/m/h/d)
+	if (!/^(\d+[smhd])+$/.test(s)) return null;
 	let total = 0;
 	const seen = new Set<string>();
-	for (const match of s.matchAll(/(\d+)([mhd])/g)) {
+	for (const match of s.matchAll(/(\d+)([smhd])/g)) {
 		const unit = match[2];
 		if (seen.has(unit)) return null;
 		seen.add(unit);
