@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { I18nProvider } from "../../i18n";
@@ -66,6 +66,34 @@ describe("buildBrowserMenu", () => {
 });
 
 describe("AppMenuBar", () => {
+	const initialInnerWidth = window.innerWidth;
+	const initialMatchMedia = window.matchMedia;
+
+	function mockViewport(width: number) {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+		Object.defineProperty(window, "matchMedia", {
+			configurable: true,
+			value: vi.fn((query: string) => {
+				const match = query.match(/max-width:\s*(\d+)/);
+				return {
+					matches: match ? width <= Number(match[1]) : false,
+					media: query,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					addListener: vi.fn(),
+					removeListener: vi.fn(),
+					dispatchEvent: vi.fn(),
+				};
+			}),
+		});
+	}
+
+	beforeEach(() => mockViewport(1024));
+	afterEach(() => {
+		Object.defineProperty(window, "innerWidth", { configurable: true, value: initialInnerWidth });
+		Object.defineProperty(window, "matchMedia", { configurable: true, value: initialMatchMedia });
+	});
+
 	function renderBar(onAction = vi.fn()) {
 		render(
 			<I18nProvider>
@@ -103,5 +131,11 @@ describe("AppMenuBar", () => {
 		const pull = await screen.findByRole("menuitem", { name: /Pull main/ });
 		await user.click(pull);
 		expect(onAction).not.toHaveBeenCalled();
+	});
+
+	it("does not reserve a menu row on narrow viewports", () => {
+		mockViewport(390);
+		renderBar();
+		expect(screen.queryByRole("menubar")).not.toBeInTheDocument();
 	});
 });
