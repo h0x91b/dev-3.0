@@ -191,7 +191,7 @@ ux_architecture:
       filtering: "Drop role items (clipboard/window/quit — browser owns them), actions not in menuRouter.BROWSER_HANDLED_ACTIONS (bun-only: new-window/check-for-updates/devtools/zoom/open-logs/remote-QR), and NOT_YET_IMPLEMENTED roadmap items. Context-gated items render greyed."
       dispatch: "handleMenuAction (same router as native menu + command palette)"
       labels: "English, sourced from the shared menu definition — parity with the native menu (which is not i18n'd); documented i18n exception."
-      responsive: "Collapses to a single ☰ button below 640px (mobile remote)."
+      responsive: "Visible in wide browser/remote layouts; hidden below 768px so the GlobalHeader More bottom sheet and command palette own the narrow touch action surface."
       budget:
         max_top_level_menus: 7   # mirrors the native top-levels minus native-only role menus (Edit/Window)
         dropdown_length: "unbounded — it is the overflow/expert surface"

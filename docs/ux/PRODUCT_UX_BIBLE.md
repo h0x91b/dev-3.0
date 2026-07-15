@@ -377,6 +377,7 @@ Mobile's hardest gap: **the keyboard-first nav layer is dead on a touchscreen, a
 Doctrine:
 - **The breadcrumb spine stays the touch nav backbone**: logo→dashboard, project name→board, project chevron→switcher dropdown, back/forward. These must remain reachable (not pushed off-screen by a long task title) — give the project switcher a touch-sized target (≥44px) and a `right-0` fallback so the dropdown never clips.
 - **The command palette gains a touch entry on narrow** (a single search/jump affordance) and a responsive width. Because the native menu is gone in remote, the **action palette / per-object action sheets become the canonical action surface on mobile** — every action that on desktop lives only in the native menu must be reachable on mobile via a palette entry or an object action sheet. This is the one sanctioned exception to "palettes are keyboard-only / no button" — on narrow, a touch entry is mandatory, not button-creep.
+- **The browser application menu bar is a wide-layout surface**: hide its standalone row below 768px so the existing GlobalHeader `More` bottom sheet and command palette remain the compact touch entry points; desktop/browser menu parity is unchanged.
 - **No feature may be touch-unreachable.** If an action's only desktop path is a keyboard shortcut or the native menu, it MUST have a touch path on narrow (action sheet, palette, or inline control).
 
 ### 12.5 Overlay primitive — `BottomSheet` (new, mandated) — `Proposed`

@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApplicationMenuItemConfig } from "electrobun/bun";
 import { buildApplicationMenu, isComingSoonAction, type MenuContext } from "../../shared/application-menu";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { BROWSER_HANDLED_ACTIONS } from "../menuRouter";
 import { isMac } from "../utils/platform";
 import { useT } from "../i18n";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
 /**
  * Browser-mode application menu bar.
@@ -100,19 +102,6 @@ function formatAccelerator(accel: string): string {
 	return `${prefix}${accel.length === 1 ? accel.toUpperCase() : accel}`;
 }
 
-function useNarrow(maxWidth = 640): boolean {
-	return useSyncExternalStore(
-		(cb) => {
-			if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
-			const mql = window.matchMedia(`(max-width:${maxWidth}px)`);
-			mql.addEventListener("change", cb);
-			return () => mql.removeEventListener("change", cb);
-		},
-		() => (typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(`(max-width:${maxWidth}px)`).matches : false),
-		() => false,
-	);
-}
-
 interface DropdownProps {
 	nodes: MenuNode[];
 	onRun: (action: string) => void;
@@ -181,9 +170,11 @@ interface AppMenuBarProps {
 
 export default function AppMenuBar({ context, onAction }: AppMenuBarProps) {
 	const t = useT();
-	const narrow = useNarrow();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const menus = useMemo(() => buildBrowserMenu(context), [context]);
-	// `openIndex` is the open top-level menu in wide mode; `-1` is the compact ≡ menu.
+	// The wide browser menu is an app-level overflow surface. On narrow screens
+	// GlobalHeader owns the single More action sheet and its touch command-palette
+	// entry, so rendering another row would only consume scarce vertical space.
 	const [openIndex, setOpenIndex] = useState<number | null>(null);
 	const rootRef = useRef<HTMLDivElement>(null);
 
@@ -214,31 +205,9 @@ export default function AppMenuBar({ context, onAction }: AppMenuBarProps) {
 		};
 	}, [openIndex, close]);
 
-	if (menus.length === 0) return null;
+	if (menus.length === 0 || narrow) return null;
 
 	const topLevel = menus.filter((m): m is Extract<MenuNode, { kind: "submenu" }> => m.kind === "submenu");
-
-	// Compact: collapse all top-level menus behind a single ≡ button.
-	if (narrow) {
-		const open = openIndex === -1;
-		const asSubmenus: MenuNode[] = topLevel.map((m) => ({ kind: "submenu", label: m.label, children: m.children }));
-		return (
-			<div ref={rootRef} role="menubar" aria-label={t("menubar.label")} data-collapse-on-compose className="relative flex items-center h-8 px-1 bg-base border-b border-edge shrink-0">
-				<button
-					type="button"
-					role="menuitem"
-					aria-haspopup="menu"
-					aria-expanded={open}
-					aria-label={t("menubar.openMenu")}
-					onClick={() => setOpenIndex(open ? null : -1)}
-					className={`flex items-center justify-center w-8 h-6 rounded text-fg-3 hover:text-fg hover:bg-elevated ${open ? "bg-elevated text-fg" : ""}`}
-				>
-					<span className="text-base leading-none">{"☰"}</span>
-				</button>
-				{open && <Dropdown nodes={asSubmenus} onRun={run} />}
-			</div>
-		);
-	}
 
 	return (
 		<div ref={rootRef} role="menubar" aria-label={t("menubar.label")} data-collapse-on-compose className="relative flex items-center h-8 px-1 gap-0.5 bg-base border-b border-edge shrink-0">

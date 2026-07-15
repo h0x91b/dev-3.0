@@ -1,0 +1,1 @@
+Removed the standalone browser application-menu row from narrow/mobile layouts, reclaiming 32px above the global header while keeping the existing More bottom sheet and command-palette touch entry available.
