@@ -45,6 +45,7 @@ import type {
 } from "../shared/agent-accounts";
 import {
 	CLAUDE_MODEL_SLOTS,
+	DEV3_AGENT_ACCOUNT_ID_ENV,
 	ENV_UNSET,
 	claudeApiProfileEnvKeys,
 	defaultAccountLabel,
@@ -448,6 +449,16 @@ export function listCodexAccountDirs(paths: AccountPaths = defaultAccountPaths()
 	}
 }
 
+/** Absolute dirs of every managed Claude account. The rate-limit monitor uses
+ * these to locate account-attributed statusline snapshots. */
+export function listClaudeAccountDirs(paths: AccountPaths = defaultAccountPaths()): string[] {
+	try {
+		return loadRegistry(paths).claude.accounts.map((e) => claudeAccountDir(e.id, paths));
+	} catch {
+		return [];
+	}
+}
+
 export async function listAgentAccounts(paths: AccountPaths = defaultAccountPaths()): Promise<AgentAccountsState> {
 	let registry = loadRegistry(paths);
 	if (applyCodexWorkspaceNames(registry, {}, paths)) saveRegistry(registry, paths);
@@ -547,9 +558,11 @@ export async function getActiveClaudeSessionEnv(
 	const env: Record<string, string> = {};
 	const id = resolveAccountIdOverride(registry.claude.activeId, accountIdOverride);
 	const entry = id ? registry.claude.accounts.find((e) => e.id === id) : undefined;
+	let selectedDir: string | null = null;
 	if (entry) {
 		const dir = claudeAccountDir(entry.id, paths);
 		if (existsSync(join(dir, ".claude.json"))) {
+			selectedDir = dir;
 			env.CLAUDE_CONFIG_DIR = dir;
 			if (entry.auth === "api") {
 				const profile = readApiProfile(entry.id, paths);
@@ -565,6 +578,12 @@ export async function getActiveClaudeSessionEnv(
 				}
 			}
 		}
+	}
+	// This is deliberately unset for the system login and for a missing account
+	// snapshot, so a long-lived tmux server cannot attribute a later system-login
+	// session to the account that was selected before it.
+	if (registry.claude.accounts.length > 0) {
+		env[DEV3_AGENT_ACCOUNT_ID_ENV] = selectedDir && entry ? entry.id : ENV_UNSET;
 	}
 	for (const key of collectClearableEnvKeys(registry, paths)) {
 		if (!(key in env)) env[key] = ENV_UNSET;

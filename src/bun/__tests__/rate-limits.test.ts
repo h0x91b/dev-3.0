@@ -3,10 +3,13 @@ import {
 	extractCodexSnapshotFromRolloutLines,
 	formatResetDelta,
 	formatStatusLineSegment,
+	isRateLimitSnapshotRecent,
 	mergeCodexRateLimitSnapshots,
 	parseClaudeStatusLinePayload,
 	parseCodexAppServerRateLimits,
 	parseCodexRateLimits,
+	RATE_LIMIT_ACTIVITY_WINDOW_MS,
+	rateLimitActivityAt,
 	windowLabel,
 	worstWindow,
 } from "../../shared/rate-limits";
@@ -27,6 +30,7 @@ describe("parseClaudeStatusLinePayload", () => {
 		expect(snap).not.toBeNull();
 		expect(snap!.source).toBe("claude");
 		expect(snap!.capturedAt).toBe(NOW);
+		expect(snap!.activeAt).toBe(NOW);
 		expect(snap!.windows).toHaveLength(2);
 		expect(snap!.windows[0]).toEqual({ id: "five_hour", usedPercent: 12, resetsAt: 1_783_246_800_000, windowMinutes: 300 });
 		expect(snap!.windows[1].usedPercent).toBe(77.4);
@@ -159,6 +163,18 @@ describe("formatResetDelta", () => {
 	it("returns empty for unknown or past resets", () => {
 		expect(formatResetDelta(null, NOW)).toBe("");
 		expect(formatResetDelta(NOW - 1000, NOW)).toBe("");
+	});
+});
+
+describe("rate-limit activity freshness", () => {
+	it("uses the provider activity timestamp when live data was captured later", () => {
+		const snapshot = parseCodexRateLimits({ primary: { used_percent: 42 } }, NOW)!;
+		snapshot.capturedAt = NOW + 10 * 60_000;
+		snapshot.activeAt = NOW;
+
+		expect(rateLimitActivityAt(snapshot)).toBe(NOW);
+		expect(isRateLimitSnapshotRecent(snapshot, NOW + RATE_LIMIT_ACTIVITY_WINDOW_MS - 1)).toBe(true);
+		expect(isRateLimitSnapshotRecent(snapshot, NOW + RATE_LIMIT_ACTIVITY_WINDOW_MS + 1)).toBe(false);
 	});
 });
 

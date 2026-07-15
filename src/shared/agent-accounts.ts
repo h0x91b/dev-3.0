@@ -40,6 +40,10 @@ export type ClaudeSlotModels = Partial<Record<ClaudeModelSlot, ClaudeSlotModel>>
  *  launch is not enough, they must be explicitly removed. */
 export const ENV_UNSET = "\u0000dev3:unset\u0000";
 
+/** Internal marker carried into launched Claude sessions so local statusline
+ * telemetry can attribute a snapshot to the managed account that produced it. */
+export const DEV3_AGENT_ACCOUNT_ID_ENV = "DEV3_AGENT_ACCOUNT_ID";
+
 /** Every fixed env var the Claude API-profile mechanism can set. When the
  *  active selection does not set one of these, it is actively unset so a value
  *  leaked from a previously active profile (or the ambient shell) cannot hijack

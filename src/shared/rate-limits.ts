@@ -6,7 +6,7 @@
  * - Claude Code: the statusLine stdin JSON carries `rate_limits.{five_hour,seven_day}`
  *   with `used_percentage` + `resets_at` (unix seconds). dev3 injects a statusLine
  *   wrapper (`dev3 statusline`) via `--settings` that dumps that JSON to
- *   `~/.dev3.0/data/rate-limits/claude.json`.
+ *   `~/.dev3.0/data/rate-limits/claude.json` and additive per-account files.
  * - Codex: rollout files under `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`
  *   contain `event_msg`/`token_count` events with a `rate_limits` object
  *   (`primary`/`secondary` windows + `credits`). Windows may be null on
@@ -39,8 +39,15 @@ export interface MonthlyCreditLimit {
 
 export interface AgentRateLimitSnapshot {
 	source: RateLimitSource;
+	/** Managed account id that produced this snapshot; null is the system login.
+	 *  Undefined keeps compatibility with reports produced before account-level
+	 *  attribution was added. */
+	accountId?: string | null;
 	/** When this data was captured locally (epoch ms). */
 	capturedAt: number;
+	/** When the provider session was active. Live Codex enrichment may be read
+	 *  later than the rollout event that proves account activity. */
+	activeAt?: number;
 	windows: RateLimitWindow[];
 	/** Codex credits balance display string, when the plan exposes credits. */
 	creditsBalance: string | null;
@@ -59,6 +66,17 @@ export interface AgentRateLimitsReport {
 export const RATE_LIMIT_WARN_PERCENT = 80;
 /** Usage percentage at which the indicator/segment escalates to danger. */
 export const RATE_LIMIT_DANGER_PERCENT = 95;
+
+/** Account activity remains visible for one day after its last local signal. */
+export const RATE_LIMIT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function rateLimitActivityAt(snapshot: AgentRateLimitSnapshot): number {
+	return snapshot.activeAt ?? snapshot.capturedAt;
+}
+
+export function isRateLimitSnapshotRecent(snapshot: AgentRateLimitSnapshot, nowMs: number): boolean {
+	return rateLimitActivityAt(snapshot) >= nowMs - RATE_LIMIT_ACTIVITY_WINDOW_MS;
+}
 
 function asRecord(v: unknown): Record<string, unknown> | null {
 	return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
@@ -137,7 +155,7 @@ export function parseClaudeStatusLinePayload(payload: unknown, capturedAt: numbe
 		}
 	}
 	if (windows.length === 0) return null;
-	return { source: "claude", capturedAt, windows, creditsBalance: null, monthlyCredits: null, planType: null };
+	return { source: "claude", capturedAt, activeAt: capturedAt, windows, creditsBalance: null, monthlyCredits: null, planType: null };
 }
 
 /**
@@ -174,7 +192,7 @@ export function parseCodexRateLimits(rateLimits: unknown, eventAtMs: number): Ag
 
 	const planType = typeof root.plan_type === "string" ? root.plan_type : null;
 	if (windows.length === 0 && creditsBalance == null) return null;
-	return { source: "codex", capturedAt: eventAtMs, windows, creditsBalance, monthlyCredits: null, planType };
+	return { source: "codex", capturedAt: eventAtMs, activeAt: eventAtMs, windows, creditsBalance, monthlyCredits: null, planType };
 }
 
 /** Parse the camelCase rateLimits object returned by Codex app-server. */
@@ -227,7 +245,7 @@ export function parseCodexAppServerRateLimits(rateLimits: unknown, capturedAt: n
 
 	const planType = typeof root.planType === "string" ? root.planType : null;
 	if (windows.length === 0 && creditsBalance == null) return null;
-	return { source: "codex", capturedAt, windows, creditsBalance, monthlyCredits, planType };
+	return { source: "codex", capturedAt, activeAt: capturedAt, windows, creditsBalance, monthlyCredits, planType };
 }
 
 /** Merge a fresh app-server snapshot over the rollout fallback without losing rollout-only windows. */
@@ -242,7 +260,9 @@ export function mergeCodexRateLimitSnapshots(
 	for (const window of live.windows) windows.set(window.id, window);
 	return {
 		source: "codex",
+		accountId: live.accountId ?? rollout.accountId,
 		capturedAt: live.capturedAt,
+		activeAt: rollout.activeAt ?? rollout.capturedAt,
 		windows: [...windows.values()],
 		creditsBalance: live.creditsBalance ?? rollout.creditsBalance,
 		monthlyCredits: live.monthlyCredits,

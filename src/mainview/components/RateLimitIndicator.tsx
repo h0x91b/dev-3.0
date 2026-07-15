@@ -41,10 +41,15 @@ interface AccountLine {
  * The rate-limit windows always reflect whichever account launched the session,
  * so surfacing it answers "whose limit is this?" at a glance.
  */
-function resolveAccount(source: RateLimitSource, state: AgentAccountsState | null): AccountLine | null {
+function resolveAccount(source: RateLimitSource, state: AgentAccountsState | null, accountId?: string | null): AccountLine | null {
 	if (!state) return null;
 	const kindState = state[source];
-	const active = kindState.accounts.find((a) => a.id === kindState.activeId) ?? null;
+	const active =
+		accountId === undefined
+			? (kindState.accounts.find((a) => a.id === kindState.activeId) ?? null)
+			: accountId
+				? (kindState.accounts.find((a) => a.id === accountId) ?? null)
+				: null;
 	if (active) {
 		return {
 			name: active.label,
@@ -54,6 +59,10 @@ function resolveAccount(source: RateLimitSource, state: AgentAccountsState | nul
 			isApi: active.auth === "api",
 		};
 	}
+	// An attributed managed snapshot must never fall back to the default account
+	// when that account was removed or is still loading; that would mislabel the
+	// usage row. Null explicitly means the provider's system login.
+	if (accountId !== undefined && accountId !== null) return null;
 	const fallback = source === "claude" ? state.claude.systemIdentity : state.codex.currentIdentity;
 	if (fallback) {
 		return {
@@ -171,9 +180,9 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 			content={t("rateLimits.tooltipTitle")}
 			wide
 			detail={
-				<div className="flex flex-col gap-2">
+				<div className="flex max-h-[min(70vh,30rem)] flex-col gap-2 overflow-y-auto pr-1">
 					{report.snapshots.map((snap) => {
-						const account = resolveAccount(snap.source, accounts);
+						const account = resolveAccount(snap.source, accounts, snap.accountId);
 						const rows = snapshotRows(snap, now, t, locale);
 						// Collapse the auto-generated "email (workspace)" label into a plain
 						// email so every row reads consistently as "email · workspace" (the
@@ -187,7 +196,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 							account.organization !== displayName &&
 							!(displayName ?? "").endsWith(`(${account.organization})`);
 						return (
-							<div key={snap.source} className="flex flex-col gap-0.5">
+							<div key={`${snap.source}:${snap.accountId ?? "system"}`} className="flex flex-col gap-0.5">
 								<div className="flex items-center gap-1.5">
 									<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[snap.source] ?? snap.source}</span>
 									{displayName && <span className="text-fg-3">{displayName}</span>}

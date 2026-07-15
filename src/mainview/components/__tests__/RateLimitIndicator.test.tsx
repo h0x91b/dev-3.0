@@ -205,6 +205,46 @@ describe("RateLimitIndicator", () => {
 		expect(screen.getByText("Pro")).toBeTruthy();
 	});
 
+	it("shows each recently attributed account instead of collapsing to the default", async () => {
+		const capturedAt = Date.now();
+		const snapshot = (source: "claude" | "codex", accountId: string, percent: number) => ({
+			source,
+			accountId,
+			capturedAt,
+			activeAt: capturedAt,
+			windows: [{ id: source === "claude" ? "five_hour" : "primary", usedPercent: percent, resetsAt: capturedAt + 3_600_000, windowMinutes: 300 }],
+			creditsBalance: null,
+			monthlyCredits: null,
+			planType: null,
+		});
+		mockedGet.mockResolvedValue({
+			generatedAt: capturedAt,
+			snapshots: [snapshot("claude", "claude-1", 42), snapshot("claude", "claude-2", 17), snapshot("codex", "codex-1", 28)],
+		});
+		mockedAccounts.mockResolvedValue({
+			claude: {
+				accounts: [
+					{ id: "claude-1", kind: "claude", label: "Work Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
+					{ id: "claude-2", kind: "claude", label: "Personal Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
+				],
+				activeId: "claude-1",
+				systemIdentity: null,
+			},
+			codex: {
+				accounts: [{ id: "codex-1", kind: "codex", label: "Enterprise Codex", identity: null, auth: "oauth", api: null, createdAt: 0 }],
+				activeId: "codex-1",
+				currentIdentity: null,
+			},
+		});
+
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		expect(await screen.findByText("Work Claude")).toBeTruthy();
+		expect(screen.getByText("Personal Claude")).toBeTruthy();
+		expect(screen.getByText("Enterprise Codex")).toBeTruthy();
+	});
+
 	it("shows the workspace/organization name so same-email accounts are distinguishable", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		mockedAccounts.mockResolvedValue({
