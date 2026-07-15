@@ -17,6 +17,7 @@ const kanban = {
 
 	// CreateTaskModal
 	"createTask.title": "Новая задача",
+	"createTask.projectLabel": "Проект",
 	"createTask.descriptionLabel": "Описание",
 	"createTask.descriptionPlaceholder": "Опишите, что нужно сделать...",
 	"createTask.generatedTitle": "Заголовок:",
