@@ -587,6 +587,18 @@ describe("mobile carousel mode", () => {
 		expect(screen.getByText(/^\d+ \/ \d+$/)).toBeTruthy();
 	});
 
+	it("starts on Has Questions when it contains tasks", async () => {
+		await renderBoardWith({ tasks: [makeTask({ status: "user-questions" })] });
+		// Has Questions is the first mobile attention queue when it has work.
+		expect(screen.getByText("3 / 8")).toBeTruthy();
+	});
+
+	it("falls back to Your Review when Has Questions is empty", async () => {
+		await renderBoardWith({ tasks: [makeTask({ status: "review-by-user" })] });
+		// With no questions waiting, show the next human-action queue instead.
+		expect(screen.getByText("5 / 8")).toBeTruthy();
+	});
+
 	it("keeps completed and cancelled columns in the mobile carousel", async () => {
 		await renderBoardWith();
 

@@ -16,6 +16,12 @@ export interface CarouselColumn {
 	element: ReactNode;
 }
 
+function initialColumnIndex(columns: CarouselColumn[], initialColumnId?: string): number {
+	if (!initialColumnId) return 0;
+	const index = columns.findIndex((column) => column.id === initialColumnId);
+	return index >= 0 ? index : 0;
+}
+
 function prefersReducedMotion(): boolean {
 	return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -26,10 +32,11 @@ function prefersReducedMotion(): boolean {
  * the column body scrolls vertically. Each swipe has a button + keyboard
  * (Arrow Left/Right) equivalent and announces the active column via aria-live.
  */
-function MobileBoardCarousel({ columns }: { columns: CarouselColumn[] }) {
+function MobileBoardCarousel({ columns, initialColumnId }: { columns: CarouselColumn[]; initialColumnId?: string }) {
 	const t = useT();
 	const trackRef = useRef<HTMLDivElement>(null);
-	const [active, setActive] = useState(0);
+	const [active, setActive] = useState(() => initialColumnIndex(columns, initialColumnId));
+	const hasUserNavigatedRef = useRef(false);
 	const rafRef = useRef<number | null>(null);
 
 	// Clamp the active index when the column set shrinks (e.g. a filter hides columns).
@@ -38,7 +45,8 @@ function MobileBoardCarousel({ columns }: { columns: CarouselColumn[] }) {
 	}, [columns.length]);
 
 	const goTo = useCallback(
-		(index: number) => {
+		(index: number, userInitiated = true) => {
+			if (userInitiated) hasUserNavigatedRef.current = true;
 			const track = trackRef.current;
 			if (!track) return;
 			const clamped = Math.max(0, Math.min(index, columns.length - 1));
@@ -47,6 +55,14 @@ function MobileBoardCarousel({ columns }: { columns: CarouselColumn[] }) {
 		},
 		[columns.length],
 	);
+
+	// Tasks arrive after the board shell mounts. Until the user navigates, apply
+	// the preferred attention column as soon as it becomes available.
+	useEffect(() => {
+		if (columns.length === 0 || !initialColumnId || hasUserNavigatedRef.current) return;
+		const preferredIndex = columns.findIndex((column) => column.id === initialColumnId);
+		if (preferredIndex >= 0) goTo(preferredIndex, false);
+	}, [columns.length, goTo, initialColumnId]);
 
 	// Keep the active index in sync with manual swipes.
 	const handleScroll = useCallback(() => {
@@ -141,6 +157,7 @@ function MobileBoardCarousel({ columns }: { columns: CarouselColumn[] }) {
 			<div
 				ref={trackRef}
 				onScroll={handleScroll}
+				onPointerDown={() => { hasUserNavigatedRef.current = true; }}
 				className="flex-1 min-h-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory kanban-carousel-track"
 			>
 				{columns.map((col) => (
