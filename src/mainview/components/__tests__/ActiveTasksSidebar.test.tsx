@@ -99,6 +99,33 @@ function makeTask(overrides?: Partial<Task>): Task {
 }
 
 	describe("ActiveTasksSidebar", () => {
+	it("shows teardown feedback and blocks a shutting-down task", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		render(
+			<I18nProvider>
+				<ActiveTasksSidebar
+					project={project}
+					tasks={[makeTask({ shuttingDown: true })]}
+					activeTaskId="t1"
+					dispatch={vi.fn()}
+					navigate={navigate}
+					agents={[claudeAgent]}
+					bellCounts={new Map()}
+					taskPorts={new Map()}
+				/>
+			</I18nProvider>,
+		);
+
+		const status = screen.getByRole("status");
+		expect(status).toHaveAttribute("aria-busy", "true");
+		expect(screen.getByText("Shutting down…")).toBeInTheDocument();
+		expect(screen.getByText("Closing session & worktree")).toBeInTheDocument();
+
+		await user.click(screen.getByText("Привет! как сам?"));
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
 	it("shows agent-first identity with compact config and variant dots", () => {
 		const navigate = vi.fn();
 		render(
