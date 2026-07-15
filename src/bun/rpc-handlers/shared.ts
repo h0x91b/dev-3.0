@@ -79,7 +79,7 @@ export function logRendererEvent(params: {
 
 const SYSTEM_REQUIREMENTS: RequirementCheckResult[] = [
 	{ id: "git", name: "Git", installed: false, installHint: "requirements.installGit", installCommand: "xcode-select --install", brewInstallable: false },
-	{ id: "tmux", name: "tmux", installed: false, installHint: "requirements.installTmux", installCommand: "brew install tmux", brewInstallable: true },
+	{ id: "tmux", name: "tmux", installed: false, installHint: "requirements.installTmux", installCommand: "brew install h0x91b/dev3/tmux@3.6", brewInstallable: true },
 ];
 
 export function getSystemRequirements(): RequirementCheckResult[] {

@@ -1,0 +1,1 @@
+Tmux paths and shims now require a real executable tmux binary, `dev3 doctor` detects poisoned saved paths and provides repair steps, and failed task launches show the actual error after returning to To Do instead of failing silently.

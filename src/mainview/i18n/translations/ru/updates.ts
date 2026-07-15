@@ -33,7 +33,8 @@ const updates = {
 	"requirements.installYazi": "Установить через Homebrew (опционально, для файлового браузера):",
 	"requirements.optional": "опционально",
 	"requirements.customPathHint": "Или укажите полный путь к бинарнику:",
-	"requirements.pathNotFound": "Файл не найден по этому пути",
+	"requirements.pathNotFound": "Сохранённый путь отсутствует или не указывает на исполняемый файл",
+	"requirements.pathInvalidBinary": "Путь должен вести к исполняемому файлу {name}",
 	"requirements.setPath": "Указать путь",
 
 	// Changelog

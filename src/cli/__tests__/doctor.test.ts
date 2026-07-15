@@ -4,6 +4,7 @@ import { CLI_EXIT_CODE_DOCTOR_PROBLEMS, CLI_EXIT_CODE_SUCCESS } from "../../shar
 
 const HOME = "/Users/tester";
 const SHIM = `${HOME}/.dev3.0/bin/tmux`;
+const SETTINGS = `${HOME}/.dev3.0/settings.json`;
 const KEG = "/opt/homebrew/opt/tmux@3.6/bin/tmux";
 const BUNDLE = "/Applications/dev-3.0.app";
 const PLIST = `${BUNDLE}/Contents/Info.plist`;
@@ -24,6 +25,7 @@ function healthyDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 		isSymlink: (p) => p === SHIM,
 		readlink: () => KEG,
 		realpath: () => KEG,
+		isExecutableFile: (p) => existing.has(p) && p !== HOME,
 		readFile: (p) => {
 			if (p === PLIST) return plistWithVersion("1.30.0");
 			throw new Error(`ENOENT: ${p}`);
@@ -111,6 +113,49 @@ describe("dev3 doctor — collectChecks", () => {
 		expect(check.hints?.[0]).toBe(`rm ${SHIM}`);
 	});
 
+	it("fails when the tmux shim resolves to a directory", () => {
+		const deps = healthyDeps({
+			readlink: () => HOME,
+			realpath: () => HOME,
+		});
+
+		const check = byLabel(collectChecks(deps), "tmux shim");
+
+		expect(check.status).toBe("fail");
+		expect(check.detail).toContain("not an executable file");
+		expect(check.hints?.[0]).toBe(`rm ${SHIM}`);
+	});
+
+	it("finds a poisoned saved tmux path even when the manually repaired shim is healthy", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			existsSync: (path) => path === SETTINGS || base.existsSync(path),
+			readFile: (path) => path === SETTINGS
+				? JSON.stringify({ customBinaryPaths: { tmux: HOME } })
+				: base.readFile(path),
+		});
+
+		expect(byLabel(collectChecks(deps), "tmux shim").status).toBe("ok");
+		const setting = byLabel(collectChecks(deps), "tmux setting");
+		expect(setting.status).toBe("fail");
+		expect(setting.detail).toContain(HOME);
+		expect(setting.hints?.join("\n")).toContain(`plutil -remove customBinaryPaths.tmux ${SETTINGS}`);
+	});
+
+	it("fails when the tmux shim resolves to an executable that is not tmux", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			exec: (cmd, args) => cmd === KEG && args[0] === "-V"
+				? { status: 0, stdout: "not tmux\n" }
+				: base.exec(cmd, args),
+		});
+
+		const check = byLabel(collectChecks(deps), "tmux shim");
+
+		expect(check.status).toBe("fail");
+		expect(check.detail).toContain("target is not tmux");
+	});
+
 	it("fails when neither the keg nor a PATH tmux exists", () => {
 		const base = healthyDeps();
 		const deps = healthyDeps({
@@ -123,6 +168,21 @@ describe("dev3 doctor — collectChecks", () => {
 		const check = byLabel(collectChecks(deps), "pinned tmux");
 		expect(check.status).toBe("fail");
 		expect(check.hints?.[0]).toContain("brew install h0x91b/dev3/tmux@3.6");
+	});
+
+	it("rejects a keg path whose executable does not identify itself as tmux", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			exec: (cmd, args) => {
+				if (cmd === KEG) return { status: 0, stdout: "not tmux\n" };
+				if (cmd === "tmux") return { status: null, stdout: "" };
+				return base.exec(cmd, args);
+			},
+		});
+
+		const check = byLabel(collectChecks(deps), "pinned tmux");
+
+		expect(check.status).toBe("fail");
 	});
 
 	it("warns when the keg is absent and PATH tmux is the known-bad 3.7", () => {

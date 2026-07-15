@@ -33,7 +33,8 @@ const updates = {
 	"requirements.installYazi": "Install via Homebrew (optional, for file browser):",
 	"requirements.optional": "optional",
 	"requirements.customPathHint": "Or specify the full path to the binary:",
-	"requirements.pathNotFound": "File not found at this path",
+	"requirements.pathNotFound": "Saved path is missing or is not an executable file",
+	"requirements.pathInvalidBinary": "Path must point to an executable {name} binary",
 	"requirements.setPath": "Set path",
 
 	// Changelog

@@ -17,6 +17,7 @@ import { setCurrentUiTheme } from "../theme-state";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
 import { VENDORED_TMUX_PATHS } from "./shared-pure";
 import { whichSync } from "../which";
+import { isExecutableFile } from "../executable";
 
 // `resolveOperationalProjectConfig` moved to ../repo-config (it depends only on
 // resolveProjectConfig, so it belongs next to the config resolver and stays
@@ -237,7 +238,7 @@ async function getAppVersion(): Promise<{ version: string; channel: string; buil
  * and may fall back (e.g. to the PATH tmux that started the server) until
  * the server restarts.
  */
-async function commitTmuxBinary(preferred: string): Promise<string> {
+async function commitTmuxBinary(preferred: string): Promise<string | undefined> {
 	let pathTmux: string | null = null;
 	try {
 		pathTmux = whichSync("tmux");
@@ -297,6 +298,8 @@ async function checkSystemRequirements(): Promise<RequirementCheckResult[]> {
 	if (tmuxResult?.resolvedPath) {
 		const chosen = await commitTmuxBinary(tmuxResult.resolvedPath);
 		tmuxResult.resolvedPath = chosen;
+		tmuxResult.installed = Boolean(chosen);
+		if (!chosen && settings.customBinaryPaths?.tmux) tmuxResult.customPathError = true;
 		log.info("tmux binary set to", { path: chosen });
 	}
 
@@ -313,13 +316,23 @@ async function checkGhAvailable(): Promise<{ available: boolean; notInstalled: b
 	return { available, notInstalled };
 }
 
-async function setCustomBinaryPath(params: { requirementId: string; path: string }): Promise<void> {
+async function setCustomBinaryPath(params: { requirementId: string; path: string }): Promise<{ ok: boolean }> {
 	log.info("-> setCustomBinaryPath", params);
+	const path = params.path.trim();
+	const requirement = getSystemRequirements().find((candidate) => candidate.id === params.requirementId);
+	if (!requirement || !isExecutableFile(path)) {
+		log.warn("<- setCustomBinaryPath rejected non-executable path", { requirementId: params.requirementId, path });
+		return { ok: false };
+	}
+	if (params.requirementId === "tmux" && !(await pty.probeTmuxVersion(path))) {
+		log.warn("<- setCustomBinaryPath rejected path that is not tmux", { path });
+		return { ok: false };
+	}
 	const settings = await loadSettings();
-	const paths = settings.customBinaryPaths ?? {};
-	paths[params.requirementId] = params.path;
+	const paths = { ...(settings.customBinaryPaths ?? {}), [params.requirementId]: path };
 	await saveSettings({ ...settings, customBinaryPaths: paths });
 	log.info("<- setCustomBinaryPath saved");
+	return { ok: true };
 }
 
 async function checkAgentAvailability(): Promise<AgentCheckResult[]> {

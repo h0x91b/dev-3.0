@@ -186,6 +186,12 @@ function renderCard(
 }
 
 describe("TaskCard", () => {
+	it("keeps the last preparation failure visible after a task returns to To Do", () => {
+		renderCard(makeTask({ preparationError: "tmux failed to spawn" }));
+
+		expect(screen.getByRole("alert")).toHaveTextContent("Launch failed: tmux failed to spawn");
+	});
+
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockedConfirmTaskCompletion.mockResolvedValue(true);

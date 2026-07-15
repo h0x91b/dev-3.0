@@ -685,6 +685,22 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</button>
 				</Tooltip>
 			)}
+			{isTodo && task.preparationError && (
+				<div
+					role="alert"
+					className="mt-2 flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger"
+				>
+					<span
+						className="mt-0.5 flex-shrink-0 leading-none"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{"\uf071"}
+					</span>
+					<span className="line-clamp-2 break-words">
+						{t("task.launchFailed", { error: task.preparationError })}
+					</span>
+				</div>
+			)}
 
 			{/* Task detail modal — portal to body so it's not clipped by card */}
 			{detailOpen && createPortal(

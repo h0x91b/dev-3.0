@@ -24,6 +24,19 @@ const fileBrowserPaneIds = new Map<string, string>();
 const MAIN_AGENT_PANE_CAPTURE_ATTEMPTS = 10;
 const MAIN_AGENT_PANE_CAPTURE_INTERVAL_MS = 100;
 
+async function waitForTaskTmuxSession(taskId: string, socket: string): Promise<void> {
+	for (let attempt = 0; attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS; attempt++) {
+		if (await pty.tmuxSessionExists(taskId, socket)) return;
+		if (attempt < MAIN_AGENT_PANE_CAPTURE_ATTEMPTS - 1) {
+			await new Promise((resolve) => setTimeout(resolve, MAIN_AGENT_PANE_CAPTURE_INTERVAL_MS));
+		}
+	}
+	throw new Error(
+		`tmux started but did not create session dev3-${taskId.slice(0, 8)}. ` +
+			"Run `dev3 doctor` to verify the selected tmux binary, then retry.",
+	);
+}
+
 function devServerSessionName(taskId: string): string {
 	return `dev3-dev-${taskId.slice(0, 8)}`;
 }
@@ -683,6 +696,11 @@ export async function launchTaskPty(
 			sessionPreexisted = (await probe.exited) === 0;
 		}
 		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, sessionSocket);
+		// Bun.spawn returning only proves that the client process started. A broken
+		// binary or dynamic-loader failure can still make it exit immediately without
+		// creating a tmux session. Gate preparation on the session itself so those
+		// asynchronous launch failures are reverted and surfaced like spawn errors.
+		await waitForTaskTmuxSession(task.id, sessionSocket);
 		log.info("launchTaskPty DONE — PTY session created", { taskId: task.id.slice(0, 8) });
 		if (!skipSessionPersist && !isSetupWrapper && mainPaneEntry) {
 			await persistInitialAgentPaneId(project, task, sessionSocket, mainPaneEntry);
