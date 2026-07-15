@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { DragEvent } from "react";
 import type { Project, Task, TaskStatus } from "../../shared/types";
-import { getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
+import { comparePriority, getTaskTitle, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -10,6 +10,7 @@ import { useStatusColors } from "../hooks/useStatusColors";
 import ProjectActionButtons from "./ProjectActionButtons";
 import BottomSheet from "./BottomSheet";
 import HelpSpot from "./HelpSpot";
+import PriorityBadge from "./PriorityBadge";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 
@@ -309,14 +310,16 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 						}
 					}
 
-					// Narrow viewport: order attention rows so "your turn" sits first, then
-					// cap the list to NARROW_ROW_CAP behind a "show more" fold. Desktop keeps
-					// the natural order and always shows every row.
+					// Order every visible row by priority first. On narrow viewports, keep
+					// "your turn" ahead of colleague reviews within the same priority band,
+					// then cap the list to NARROW_ROW_CAP behind a "show more" fold.
 					const rankOf = (task: Task) =>
 						columnOf(task) !== null ? 3 : ATTENTION_RANK[task.status] ?? 3;
-					const orderedRowTasks = narrow
-						? [...rowTasks].sort((a, b) => rankOf(a) - rankOf(b))
-						: rowTasks;
+					const orderedRowTasks = [...rowTasks].sort((a, b) => {
+						const byPriority = comparePriority(a.priority, b.priority);
+						if (byPriority !== 0) return byPriority;
+						return narrow ? rankOf(a) - rankOf(b) : 0;
+					});
 					const isExpanded = expandedProjects.has(project.id);
 					const canCollapse = narrow && orderedRowTasks.length > NARROW_ROW_CAP;
 					const visibleRowTasks =
@@ -499,10 +502,10 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 													style={{ backgroundColor: rowColor }}
 												/>
 											)}
-											<span
-												className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${narrow ? "mt-1.5" : ""}`}
-												style={{ backgroundColor: rowColor }}
-												title={rowLabel}
+											{/* Priority replaces the status dot in the leading marker slot. */}
+											<PriorityBadge
+												priority={task.priority}
+												className={`flex-shrink-0 ${narrow ? "mt-0.5" : ""}`}
 											/>
 											<span className="min-w-0 flex-1 flex flex-col md:flex-row md:items-center gap-0.5 md:gap-3">
 												<span

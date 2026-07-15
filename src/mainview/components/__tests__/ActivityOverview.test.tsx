@@ -225,6 +225,35 @@ describe("ActivityOverview", () => {
 		expect(screen.getByText("PR Review")).toBeInTheDocument();
 	});
 
+	it("shows priority badges and orders visible task rows from highest to lowest", async () => {
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([
+			{
+				projectId: "p1",
+				tasks: [
+					{ ...mockTask, id: "low", title: "Low priority", priority: "P3" },
+					{ ...mockTask, id: "high", title: "High priority", priority: "P1" },
+					{ ...mockTask, id: "normal", title: "Normal priority", priority: "P2" },
+				],
+			},
+		]);
+
+		renderActivityOverview();
+
+		const high = await screen.findByText("High priority");
+		const normal = screen.getByText("Normal priority");
+		const low = screen.getByText("Low priority");
+		const highRow = high.closest("button");
+		if (!highRow) throw new Error("Expected high-priority task row");
+
+		expect(screen.getByText("P1")).toBeInTheDocument();
+		expect(screen.getByText("P2")).toBeInTheDocument();
+		expect(screen.getByText("P3")).toBeInTheDocument();
+		expect(highRow.firstElementChild).toHaveTextContent("P1");
+		expect(within(highRow).getAllByText("P1")).toHaveLength(1);
+		expect(high.compareDocumentPosition(normal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(normal.compareDocumentPosition(low) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
 	it("shows custom-column tasks as rows labeled with the column name", async () => {
 		const projWithColumn: Project = {
 			...mockProject,
@@ -428,5 +457,24 @@ describe("ActivityOverview — narrow viewport", () => {
 		const colleague = screen.getByText("Colleague PR");
 
 		expect(mine.compareDocumentPosition(colleague) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+
+	it("orders by priority before status on narrow", async () => {
+		const tasks = [
+			{ ...mockTask, id: "mine", title: "My review", status: "review-by-user" as const, priority: "P3" as const },
+			{ ...mockTask, id: "colleague", title: "Colleague PR", status: "review-by-colleague" as const, priority: "P1" as const },
+		];
+		mockedApi.request.getAllProjectTasks.mockResolvedValue([{ projectId: "p1", tasks }]);
+
+		render(
+			<I18nProvider>
+				<ActivityOverview projects={[mockProject]} navigate={vi.fn()} bellCounts={new Map()} />
+			</I18nProvider>,
+		);
+
+		const colleague = await screen.findByText("Colleague PR");
+		const mine = screen.getByText("My review");
+
+		expect(colleague.compareDocumentPosition(mine) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 });
