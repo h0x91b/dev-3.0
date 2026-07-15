@@ -68,6 +68,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	updateDownloadProgress: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateDownloadProgress", { detail: payload })),
 	columnAgentFailed: (payload) => window.dispatchEvent(new CustomEvent("rpc:columnAgentFailed", { detail: payload })),
 	taskPreparationFailed: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskPreparationFailed", { detail: payload })),
+	globalSettingsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", { detail: payload })),
 	openTaskFromNotification: (payload) => window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", { detail: payload })),
 	cliToast: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliToast", { detail: payload })),
 	cliAttention: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliAttention", { detail: payload })),

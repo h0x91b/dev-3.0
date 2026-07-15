@@ -104,6 +104,8 @@ const settings = {
 	"settings.keymapIterm2Desc": "Split: ⌘D / ⌘⇧D · Close: ⌘W · New window: ⌘T · Navigate: ⌘[ / ⌘]",
 	"settings.taskCompleteSound": "Task Complete Sound",
 	"settings.taskCompleteSoundDesc": "Play a sound when a task is completed or cancelled",
+	"settings.watchByDefault": "Watch tasks by default",
+	"settings.watchByDefaultDesc": "Preselect Watch when launching a task. You can override it for each task.",
 	"settings.taskOpenMode": "Task Open Mode",
 	"settings.taskOpenModeDesc": "How active tasks open when you click on them. Also affects Cmd+1..9: Split keeps the task view, Full screen switches to the board.",
 	"settings.taskOpenModeSplit": "Split view (sidebar + terminal)",

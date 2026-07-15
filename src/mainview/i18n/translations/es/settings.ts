@@ -104,6 +104,8 @@ const settings = {
 	"settings.keymapIterm2Desc": "Dividir: ⌘D / ⌘⇧D · Cerrar: ⌘W · Nueva ventana: ⌘T · Navegar: ⌘[ / ⌘]",
 	"settings.taskCompleteSound": "Sonido de tarea completada",
 	"settings.taskCompleteSoundDesc": "Reproducir un sonido al completar o cancelar una tarea",
+	"settings.watchByDefault": "Observar tareas de forma predeterminada",
+	"settings.watchByDefaultDesc": "Preselecciona Observar al iniciar una tarea. Puedes cambiarlo para cada tarea.",
 	"settings.taskOpenMode": "Modo de apertura de tarea",
 	"settings.taskOpenModeDesc": "Cómo se abren las tareas activas al hacer clic en ellas. También afecta a Cmd+1..9: Vista dividida mantiene la vista de tarea, Pantalla completa cambia al tablero.",
 	"settings.taskOpenModeSplit": "Vista dividida (barra lateral + terminal)",

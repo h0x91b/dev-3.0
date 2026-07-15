@@ -10,6 +10,7 @@ import { useT } from "../i18n";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import HelpSpot from "./HelpSpot";
+import Tooltip from "./Tooltip";
 import AgentConfigPicker from "./AgentConfigPicker";
 import SchedulePicker from "./SchedulePicker";
 
@@ -33,9 +34,8 @@ interface LaunchVariantsModalProps {
 	onClose: () => void;
 	mode?: LaunchMode;
 	/**
-	 * Called when the Watch toggle changes the remembered `watchByDefault`
-	 * preference, so the parent can keep its in-memory GlobalSettings in sync
-	 * (the next modal open then reflects the new default).
+	 * Called when a launch-picker action changes global settings, such as
+	 * adding or removing a favorite agent configuration.
 	 */
 	onGlobalSettingsChange?: (settings: GlobalSettings) => void;
 }
@@ -257,32 +257,27 @@ function LaunchVariantsModal({
 							</div>
 							<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
 						</div>
-						<button
-							onClick={() => {
-								const newVal = !watched;
-								setWatched(newVal);
-								// Remember this choice as the default for future launches.
-								// The task itself is (un)watched at launch time (handleLaunch).
-								if (globalSettings.watchByDefault !== newVal) {
-									const next = { ...globalSettings, watchByDefault: newVal };
-									onGlobalSettingsChange?.(next);
-									api.request.saveGlobalSettings(next).catch(() => {});
-								}
-							}}
-							className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
-								watched
-									? "text-accent bg-accent/10 border border-accent/25"
-									: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
-							}`}
-							title={watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+						<Tooltip
+							content={watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+							detail={t("ttip.task.watch")}
 						>
-							<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-								{watched ? "\u{F009A}" : "\u{F0F1C}"}
-							</span>
-							<span className="text-xs font-medium">
-								{watched ? t("task.watching") : t("task.watch")}
-							</span>
-						</button>
+							<button
+								onClick={() => setWatched(!watched)}
+								className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0 ${
+									watched
+										? "text-accent bg-accent/10 border border-accent/25"
+										: "text-fg-3 hover:text-fg hover:bg-elevated border border-edge"
+								}`}
+								aria-label={watched ? t("task.unwatchTooltip") : t("task.watchTooltip")}
+							>
+								<span className="text-[0.875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+									{watched ? "\u{F009A}" : "\u{F0F1C}"}
+								</span>
+								<span className="text-xs font-medium">
+									{watched ? t("task.watching") : t("task.watch")}
+								</span>
+							</button>
+						</Tooltip>
 					</div>
 				</div>
 

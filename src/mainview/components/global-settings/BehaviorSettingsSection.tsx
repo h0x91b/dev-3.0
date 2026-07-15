@@ -19,6 +19,7 @@ interface BehaviorSettingsSectionProps {
 	onKeymapChange: (preset: TerminalKeymapPreset) => void;
 	onPreventSleepToggle: (enabled: boolean) => void;
 	onSoundToggle: (enabled: boolean) => void;
+	onWatchByDefaultToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
 	onRateLimitTrackingToggle: (enabled: boolean) => void;
 	onTaskDropPositionChange: (position: "top" | "bottom") => void;
@@ -37,6 +38,7 @@ export default function BehaviorSettingsSection({
 	onKeymapChange,
 	onPreventSleepToggle,
 	onSoundToggle,
+	onWatchByDefaultToggle,
 	onFocusModeToggle,
 	onRateLimitTrackingToggle,
 	onTaskDropPositionChange,
@@ -161,6 +163,22 @@ export default function BehaviorSettingsSection({
 				<ToggleSwitch
 					checked={globalSettings.focusMode === true}
 					onToggle={() => onFocusModeToggle(globalSettings.focusMode !== true)}
+				/>
+			</div>
+
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.watchByDefault")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.watchByDefaultDesc")}
+				</p>
+				<ToggleSwitch
+					checked={globalSettings.watchByDefault === true}
+					ariaLabel={t("settings.watchByDefault")}
+					onToggle={() =>
+						onWatchByDefaultToggle(globalSettings.watchByDefault !== true)
+					}
 				/>
 			</div>
 
@@ -325,10 +343,12 @@ export default function BehaviorSettingsSection({
 function ToggleSwitch({
 	checked,
 	disabled = false,
+	ariaLabel,
 	onToggle,
 }: {
 	checked: boolean;
 	disabled?: boolean;
+	ariaLabel?: string;
 	onToggle: () => void;
 }) {
 	return (
@@ -336,6 +356,7 @@ function ToggleSwitch({
 			<div
 				role="switch"
 				aria-checked={checked}
+				aria-label={ariaLabel}
 				tabIndex={0}
 				className={`relative w-11 h-6 rounded-full transition-colors ${
 					disabled

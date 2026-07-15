@@ -104,6 +104,8 @@ const settings = {
 	"settings.keymapIterm2Desc": "Разделить: ⌘D / ⌘⇧D · Закрыть: ⌘W · Новое окно: ⌘T · Навигация: ⌘[ / ⌘]",
 	"settings.taskCompleteSound": "Звук завершения задачи",
 	"settings.taskCompleteSoundDesc": "Воспроизводить звук при завершении или отмене задачи",
+	"settings.watchByDefault": "Следить за задачами по умолчанию",
+	"settings.watchByDefaultDesc": "Предварительно включает «Следить» при запуске задачи. Для каждой задачи это можно изменить отдельно.",
 	"settings.taskOpenMode": "Режим открытия задачи",
 	"settings.taskOpenModeDesc": "Как открываются активные задачи при нажатии на них. Также влияет на Cmd+1..9: «Разделённый вид» сохраняет вид задачи, «Полный экран» переключает на доску.",
 	"settings.taskOpenModeSplit": "Разделённый вид (боковая панель + терминал)",
