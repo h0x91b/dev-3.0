@@ -342,10 +342,10 @@ const COMMANDS: CommandHelp[] = [
 		name: "notify",
 		summary: "Surface an in-app toast (or native OS notification) in the running app.",
 		subcommands: [],
-		usage: 'dev3 notify "message" [--level info|success|error] [--duration <dur>] [--desktop]',
+		usage: 'dev3 notify "message" [--level info|success|error] [--duration <seconds>] [--desktop]',
 		details: [
 			"--level <l>   Toast style: info (default), success, or error.",
-			"--duration <dur>  In-app toast lifetime, e.g. 2s, 30s, or 2m (default: 30s).",
+			"--duration <seconds>  In-app toast lifetime from 2s to 30s (default: 30s).",
 			"--desktop     Fire a native OS notification instead of an in-app toast (requires a task).",
 			"--duration cannot be combined with --desktop; native notification lifetime is controlled by the OS.",
 			"When a task is in context the toast/notification is clickable and opens that task.",

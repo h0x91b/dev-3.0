@@ -1101,10 +1101,10 @@ describe("ui control (notify / attention / state)", () => {
 	});
 
 	it("ui.notify: rejects an invalid custom toast duration", async () => {
-		const resp = await handleRequest(makeRequest("ui.notify", { message: "brief", durationMs: 0 }));
+		const resp = await handleRequest(makeRequest("ui.notify", { message: "brief", durationMs: 31_000 }));
 
 		expect(resp.ok).toBe(false);
-		expect(resp.error).toContain("durationMs must be a positive finite number");
+		expect(resp.error).toContain("durationMs must be between 2000ms and 30000ms");
 	});
 
 	it("ui.notify: queues the cliToast during notification suppression", async () => {

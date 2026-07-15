@@ -96,7 +96,7 @@ describe("notify", () => {
 	});
 
 	it("rejects an invalid toast duration", async () => {
-		await expect(handleNotify(args(["x"], { duration: "fast" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		await expect(handleNotify(args(["x"], { duration: "31s" }), SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Invalid --duration");
 		expect(mockSend).not.toHaveBeenCalled();
 	});

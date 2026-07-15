@@ -4,15 +4,15 @@ import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import type { TmuxLayout, TmuxPaneInfo } from "../../shared/types";
-import { parseDelay } from "../../shared/duration";
+import { parseNotificationDuration } from "../../shared/duration";
 
 const NOTIFY_MAX_LEN = 500;
 
 /**
  * `dev3 notify "message"` — surface an in-app toast (default) or a native OS
  * notification (`--desktop`) in the running app. `--duration` customizes the
- * in-app toast lifetime. When a task is in context the toast/notification is
- * clickable and lands the user on that task.
+ * in-app toast lifetime from 2s to 30s. When a task is in context the
+ * toast/notification is clickable and lands the user on that task.
  */
 export async function handleNotify(
 	args: ParsedArgs,
@@ -23,7 +23,7 @@ export async function handleNotify(
 
 	const message = (args.positional[0] ?? args.flags.message ?? "").toString().trim();
 	if (!message) {
-		exitUsage('Usage: dev3 notify "message" [--level info|success|error] [--duration <dur>] [--desktop]');
+		exitUsage('Usage: dev3 notify "message" [--level info|success|error] [--duration <seconds>] [--desktop]');
 	}
 	if (message.length > NOTIFY_MAX_LEN) {
 		exitUsage(`Message too long (${message.length} chars). Keep it under ${NOTIFY_MAX_LEN} characters.`);
@@ -36,9 +36,9 @@ export async function handleNotify(
 
 	let durationMs: number | undefined;
 	if (args.flags.duration !== undefined) {
-		const parsedDurationMs = parseDelay(args.flags.duration);
-		if (parsedDurationMs === null || !Number.isFinite(parsedDurationMs)) {
-			exitUsage(`Invalid --duration "${args.flags.duration}". Use a positive duration such as 2s, 30s, or 2m.`);
+		const parsedDurationMs = parseNotificationDuration(args.flags.duration);
+		if (parsedDurationMs === null) {
+			exitUsage(`Invalid --duration "${args.flags.duration}". Use a whole number of seconds from 2s to 30s.`);
 			return;
 		}
 		durationMs = parsedDurationMs;

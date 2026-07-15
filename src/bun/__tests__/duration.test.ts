@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCountdown, parseDelay } from "../../shared/duration";
+import {
+	formatCountdown,
+	isValidNotificationDurationMs,
+	NOTIFICATION_MAX_DURATION_MS,
+	NOTIFICATION_MIN_DURATION_MS,
+	parseDelay,
+	parseNotificationDuration,
+} from "../../shared/duration";
 
 const M = 60_000;
 const S = 1_000;
@@ -77,5 +84,27 @@ describe("formatCountdown", () => {
 	it("round-trips parseDelay output", () => {
 		expect(formatCountdown(parseDelay("1h30m")!)).toBe("1h 30m");
 		expect(formatCountdown(parseDelay("2d3h")!)).toBe("2d 3h");
+	});
+});
+
+describe("notification duration", () => {
+	it("accepts whole seconds from 2s through 30s", () => {
+		expect(parseNotificationDuration("2s")).toBe(NOTIFICATION_MIN_DURATION_MS);
+		expect(parseNotificationDuration("30s")).toBe(NOTIFICATION_MAX_DURATION_MS);
+		expect(parseNotificationDuration("15S")).toBe(15 * S);
+	});
+
+	it("rejects values outside the notification range or grammar", () => {
+		expect(parseNotificationDuration("1s")).toBeNull();
+		expect(parseNotificationDuration("31s")).toBeNull();
+		expect(parseNotificationDuration("2m")).toBeNull();
+		expect(parseNotificationDuration("2")).toBeNull();
+	});
+
+	it("validates socket durations in milliseconds", () => {
+		expect(isValidNotificationDurationMs(NOTIFICATION_MIN_DURATION_MS)).toBe(true);
+		expect(isValidNotificationDurationMs(NOTIFICATION_MAX_DURATION_MS)).toBe(true);
+		expect(isValidNotificationDurationMs(1_000)).toBe(false);
+		expect(isValidNotificationDurationMs(31_000)).toBe(false);
 	});
 });

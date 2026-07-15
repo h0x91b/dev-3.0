@@ -11,6 +11,9 @@ const UNIT_MS: Record<string, number> = {
 	d: 86_400_000,
 };
 
+export const NOTIFICATION_MIN_DURATION_MS = 2_000;
+export const NOTIFICATION_MAX_DURATION_MS = 30_000;
+
 /**
  * Parse a delay like `2s`, `45m`, `2h`, `1h30m`, `1d2h` into milliseconds.
  * A bare number means minutes (`90` → 90 min). Whitespace is ignored.
@@ -35,6 +38,25 @@ export function parseDelay(input: string): number | null {
 		total += Number.parseInt(match[1], 10) * UNIT_MS[unit];
 	}
 	return total > 0 ? total : null;
+}
+
+/** Parse the CLI notification duration, which is limited to whole seconds from 2s to 30s. */
+export function parseNotificationDuration(input: string): number | null {
+	const match = input.trim().match(/^(\d+)s$/i);
+	if (!match) return null;
+	const seconds = Number(match[1]);
+	if (!Number.isSafeInteger(seconds)) return null;
+	const durationMs = seconds * UNIT_MS.s;
+	return durationMs >= NOTIFICATION_MIN_DURATION_MS && durationMs <= NOTIFICATION_MAX_DURATION_MS
+		? durationMs
+		: null;
+}
+
+export function isValidNotificationDurationMs(value: unknown): value is number {
+	return typeof value === "number"
+		&& Number.isFinite(value)
+		&& value >= NOTIFICATION_MIN_DURATION_MS
+		&& value <= NOTIFICATION_MAX_DURATION_MS;
 }
 
 /**
