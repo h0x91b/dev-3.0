@@ -231,6 +231,8 @@ const common = {
 	"showArtifact.toast_other": "El agente compartió {count} artefactos HTML",
 	"showArtifact.attention_one": "Compartió un artefacto HTML",
 	"showArtifact.attention_other": "Compartió {count} artefactos HTML",
+	"mobile.portrait.title": "Gira el dispositivo a vertical",
+	"mobile.portrait.message": "dev-3.0 funciona mejor en modo vertical en teléfonos. Gira el dispositivo para continuar.",
 	"mobile.backExitToast": "Pulsa Atrás de nuevo para salir",
 };
 

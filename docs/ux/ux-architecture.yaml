@@ -617,13 +617,14 @@ ux_architecture:
       device_class:
         rule: "screen.width < 1024px"
         signal: "useMobile() — mount-once, NOT reactive"
-        governs: "ONLY the <meta viewport> decision in useViewport(). NOT a layout gate."
-      reconciliation: "Gate LAYOUT on useNarrowViewport (reactive). Use useMobile ONLY for viewport-meta. NEVER gate layout on isElectrobun (transport != width). Earlier 'sub-1024 / useMobile' wording was wrong; shipped gate is 768 / useNarrowViewport."
+        governs: "the <meta viewport> decision in useViewport() plus the portrait-only device guard. NOT a layout gate."
+      reconciliation: "Gate LAYOUT on useNarrowViewport (reactive). Use useMobile for viewport-meta and the portrait-only device guard. NEVER gate layout on isElectrobun (transport != width). Earlier 'sub-1024 / useMobile' wording was wrong for layout; shipped gate is 768 / useNarrowViewport."
     gesture_law:
       scroll_body: "board columns / lists / settings sections — one sibling = 100vw via CSS scroll-snap, body scrolls the OTHER axis. FULL-SURFACE SWIPE ALLOWED (axis unambiguous; delegate to browser)."
       live_content: "terminal pane / diff stream / any canvas/TUI — one element + position indicator (dots). FULL-SURFACE SWIPE ALLOWED BUT AXIS-ARBITRATED: claim a gesture only once clearly horizontal (capture-phase preventDefault+stopPropagation, cancel nascent selection); vertical drags + taps fall through to the content. scroll-snap can't do this (no sibling slides) -> manual gesture. (Revised 2026-06-29; was 'swipe forbidden, pager only' — bottom pager bar collided with the mobile keyboard. See decision 089.)"
       always: "every swipe has a button + keyboard equivalent (chevrons/dots/Arrow Left-Right); swipe is never the only way. Focus follows the active sibling; aria-live announces it. prefers-reduced-motion snaps instantly — honour EVERYWHERE (today only MobileBoardCarousel does)."
     surface_adaptation: # every §5 surface gets a narrow form
+      mobile_orientation: { narrow: "portrait-only device guard — best-effort Screen Orientation API lock, with a blocking localized rotate prompt and inert app fallback when landscape cannot be locked", status: observed, evidence: "MobilePortraitGate.tsx, usePortraitOrientation.ts" }
       kanban_board: { narrow: "column carousel (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept)", status: observed, evidence: "MobileBoardCarousel.tsx, KanbanBoard.tsx useNarrowViewport(768), KanbanColumn fullWidth" }
       task_move_drag: { narrow: "drag impossible -> 'Move to <status>' bottom action sheet (long-press) on existing status path; completion reuses confirmTaskCompletion", status: proposed }
       board_filters: { narrow: "bottom sheet behind a header funnel button (LabelFilterBar + search)", status: proposed }

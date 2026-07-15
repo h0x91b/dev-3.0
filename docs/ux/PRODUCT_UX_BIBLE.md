@@ -331,9 +331,11 @@ Three distinct widths exist in code; they are **not** the same thing and must no
 |---|---:|---|---|---|
 | **narrow (mobile)** | `< 768px` | `useNarrowViewport(768)` (matchMedia, `CAROUSEL_MAX_WIDTH`) | yes | **the mobile doctrine** — carousel/stack/sheet layout switch. This is THE gate. Aligns with Tailwind `md`. |
 | **compact** | `< 1600px` | `useCompact()` (`COMPACT_MAX_WIDTH`) | yes | dense-desktop label hiding + header overflow kebab; **not** mobile. A wide-but-not-huge desktop is compact, not narrow. |
-| **device-class** | `screen.width < 1024` | `useMobile()` | no (mount-once) | **only** the viewport-meta decision (`useViewport`) — is this physically a small device. NOT a layout gate. |
+| **device-class** | `screen.width < 1024` | `useMobile()` | no (mount-once) | viewport-meta decision plus the **portrait-only device guard** — is this physically a small device. NOT a layout gate. |
 
-Rules: **gate layout on `useNarrowViewport`** (reactive, viewport-width). Use `useMobile()` solely for the `<meta viewport>` choice. Never gate a layout on `isElectrobun` (transport ≠ width) — browser mode can be wide, desktop can be narrowed. `useViewport()` serves **device-width** to the browser so a phone reports its true width and the media queries fire (the old fixed `width=1024` is replaced). The earlier "sub-1024 / `useMobile`" wording was wrong — the shipped gate is **768 / `useNarrowViewport`**.
+Rules: **gate layout on `useNarrowViewport`** (reactive, viewport-width). Use `useMobile()` for the `<meta viewport>` choice and the portrait-only device guard. Never gate a layout on `isElectrobun` (transport ≠ width) — browser mode can be wide, desktop can be narrowed. `useViewport()` serves **device-width** to the browser so a phone reports its true width and the media queries fire (the old fixed `width=1024` is replaced). The earlier "sub-1024 / `useMobile`" wording was wrong for layout — the shipped layout gate is **768 / `useNarrowViewport`**.
+
+**Portrait-only device guard — `Observed`:** A physically small device is locked to portrait when the browser permits the Screen Orientation API. If the lock is unsupported or rejected outside fullscreen, `MobilePortraitGate` blocks the root shell in landscape with a localized rotate-to-portrait prompt and makes the underlying app inert. Narrowed desktop windows are unaffected because they are not the mobile device class.
 
 ### 12.2 The one-at-a-time pattern + gesture law
 
@@ -350,6 +352,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 
 | Surface | Desktop form | Narrow (<768) form | Status |
 |---|---|---|---|
+| Mobile orientation | natural device orientation | **portrait-only device guard**; best-effort platform lock plus a blocking rotate prompt fallback in landscape | `Observed` (`MobilePortraitGate`, `usePortraitOrientation`) |
 | Kanban board | all columns side-by-side | **column carousel** (one column/screen, swipe; vertical task scroll; collapsed cols excluded, empty kept) | `Observed` |
 | Task move (drag) | drag card across columns | drag impossible → **"Move to <status>" action sheet** (long-press card) on the existing status path; completion reuses `confirmTaskCompletion` | `Proposed` |
 | Board filters/search | inline `LabelFilterBar` + `FilterFunnel` dropdown (token-DSL) | **bottom sheet** behind the funnel button (same grouped facets) | `Proposed` |

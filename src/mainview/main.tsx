@@ -13,6 +13,7 @@ import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
 import RootErrorBoundary from "./components/RootErrorBoundary";
+import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
 
 // ── Global crash handlers (renderer) ──
@@ -128,7 +129,9 @@ async function bootstrap() {
 			<RootErrorBoundary>
 				<MobileProvider>
 					<I18nProvider>
-						<App />
+						<MobilePortraitGate>
+							<App />
+						</MobilePortraitGate>
 					</I18nProvider>
 				</MobileProvider>
 			</RootErrorBoundary>

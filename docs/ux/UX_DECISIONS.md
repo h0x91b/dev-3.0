@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-15 — Mobile devices are portrait-only
+
+- **Rule:** `useMobile()` devices attempt a portrait Screen Orientation lock; when the browser rejects it, `MobilePortraitGate` blocks the root shell in landscape with a localized rotate prompt and inert underlying content. Narrowed desktop windows stay unchanged.
+- **Why:** The landscape desktop toolbar is not functional on phones, while the lock API is limited and commonly requires fullscreen. A blocking fallback preserves a usable portrait UI; a settings toggle or rotated desktop layout would add configuration and complexity.
+- **Status:** Implemented. Evidence: `MobilePortraitGate.tsx`, `usePortraitOrientation.ts`, bible §12.1/§12.3.
+
 ## 2026-07-13 — Terminal immersive fullscreen is app-only and ephemeral
 
 - **Rule:** The TaskInfoPanel fullscreen toggle plus F11 / Cmd/Ctrl+Shift+F enters a task-bound renderer view with only a thin `dev3` strip and a wide neutral Exit full screen button; agent-facing notifications and viewer events queue during immersive fullscreen or persistent Focus Mode and flush when the active mode ends, with notification clicks exiting immersive fullscreen before normal task navigation.
