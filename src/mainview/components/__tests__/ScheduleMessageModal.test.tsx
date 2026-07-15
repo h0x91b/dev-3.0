@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { act, render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ScheduleMessageModal from "../ScheduleMessageModal";
 import { I18nProvider } from "../../i18n";
@@ -10,6 +10,8 @@ vi.mock("../../rpc", () => ({
 		request: {
 			scheduleMessage: vi.fn().mockResolvedValue({ id: "t1", scheduledMessages: [] }),
 			tmuxLayout: vi.fn().mockResolvedValue({ sessionName: "dev3-t1", exists: true, windows: [], panes: [] }),
+			uploadFileBase64: vi.fn(),
+			readImageBase64: vi.fn().mockResolvedValue(null),
 		},
 	},
 }));
@@ -37,6 +39,22 @@ function renderModal(initialText?: string) {
 		</I18nProvider>,
 	);
 	return { dispatch, onClose };
+}
+
+function makeFileList(files: File[]): FileList {
+	return {
+		length: files.length,
+		item: (index: number) => files[index] ?? null,
+		...Object.fromEntries(files.map((file, index) => [index, file])),
+	} as unknown as FileList;
+}
+
+function dispatchDrop(target: Element, files: File[]) {
+	const event = new MouseEvent("drop", { bubbles: true, cancelable: true });
+	Object.defineProperty(event, "dataTransfer", {
+		value: { files: makeFileList(files), dropEffect: "copy" as const },
+	});
+	act(() => target.dispatchEvent(event));
 }
 
 afterEach(() => {
@@ -71,6 +89,25 @@ describe("ScheduleMessageModal", () => {
 	it("seeds the textarea from initialText (composer draft)", () => {
 		renderModal("draft from composer");
 		expect((screen.getByTestId("schedule-message-input") as HTMLTextAreaElement).value).toBe("draft from composer");
+	});
+
+	it("keeps the message field focused while a dropped image uploads", async () => {
+		let resolveUpload!: (result: { path: string }) => void;
+		mockedApi.request.uploadFileBase64.mockImplementation(() => new Promise((resolve) => {
+			resolveUpload = resolve;
+		}) as never);
+		renderModal();
+		const textarea = screen.getByTestId("schedule-message-input") as HTMLTextAreaElement;
+		textarea.focus();
+		textarea.blur();
+
+		dispatchDrop(textarea.parentElement!, [new File(["image"], "photo.png", { type: "image/png" })]);
+
+		await waitFor(() => expect(mockedApi.request.uploadFileBase64).toHaveBeenCalled());
+		expect(textarea).toHaveFocus();
+		await act(async () => resolveUpload({ path: "/tmp/photo.png" }));
+		await waitFor(() => expect(textarea.value).toBe("/tmp/photo.png\n"));
+		expect(textarea).toHaveFocus();
 	});
 
 	it("offers a concrete pane target when live panes exist", async () => {

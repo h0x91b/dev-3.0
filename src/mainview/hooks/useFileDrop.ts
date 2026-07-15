@@ -45,6 +45,15 @@ export function useFileDrop(
 			const files = Array.from(e.dataTransfer.files);
 			if (!files.length) return;
 
+			// Native file drops can blur the editor before this event arrives. Restore
+			// focus before the asynchronous upload so the composer stays ready for the
+			// next keystroke while the attachment is being saved.
+			const dropZone = e.currentTarget as HTMLElement;
+			const editor = dropZone.matches("textarea, input, [contenteditable='true']")
+				? dropZone
+				: dropZone.querySelector<HTMLElement>("textarea, input, [contenteditable='true']");
+			editor?.focus();
+
 			void Promise.all(files.map(async (file) => {
 				try {
 					const uploadedPath = await uploadDroppedFile(projectId, file);
