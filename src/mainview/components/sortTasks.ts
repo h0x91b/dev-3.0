@@ -1,10 +1,40 @@
-import { comparePriority, type Task } from "../../shared/types";
+import { comparePriority, type Task, type TaskStatus } from "../../shared/types";
+
+/**
+ * Terminal columns are a chronological log, not a prioritized queue: the user
+ * wants the most recently finished/cancelled task on top, ignoring priority.
+ */
+const RECENCY_SORTED_STATUSES: ReadonlySet<TaskStatus> = new Set(["completed", "cancelled"]);
+
+// "When it landed in this column" — `movedAt` is stamped on every rendered-column
+// change; fall back to `createdAt` for tasks that predate movedAt tracking.
+function columnEntryTime(task: Task): string {
+	return task.movedAt ?? task.createdAt;
+}
 
 export function sortTasksForColumn(
 	tasks: Task[],
 	dropPosition: "top" | "bottom",
 	moveOrderMap: Map<string, number>,
+	status?: TaskStatus,
 ): Task[] {
+	// Completed / Cancelled: pure recency, freshest on top, regardless of priority,
+	// variant grouping, persisted column order, or the global drop-position setting.
+	if (status !== undefined && RECENCY_SORTED_STATUSES.has(status)) {
+		return [...tasks].sort((a, b) => {
+			// In-session cross-column moves win so a just-finished card jumps to the
+			// top instantly, before the backend `movedAt` refresh round-trips.
+			const aOrder = moveOrderMap.get(a.id) ?? 0;
+			const bOrder = moveOrderMap.get(b.id) ?? 0;
+			if (aOrder !== bOrder) return bOrder - aOrder;
+			// Then persisted entry time, most recent first.
+			const aTime = columnEntryTime(a);
+			const bTime = columnEntryTime(b);
+			if (aTime !== bTime) return aTime > bTime ? -1 : 1;
+			// Stable, deterministic tiebreak.
+			return a.id < b.id ? -1 : 1;
+		});
+	}
 	return [...tasks].sort((a, b) => {
 		// Strict priority bands are the TOPMOST key: every P0 above every P1, etc.
 		// A whole variant group shares one priority, so banding never splits a group.
