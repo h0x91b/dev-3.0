@@ -89,10 +89,10 @@ describe("notify", () => {
 	it("passes a custom toast duration in milliseconds", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, mode: "toast", taskId: CTX.taskId }));
 
-		await handleNotify(args(["brief update"], { duration: "2s" }), SOCKET, CTX);
+		await handleNotify(args(["brief update"], { duration: "15" }), SOCKET, CTX);
 
 		const params = mockSend.mock.calls[0]![2]!;
-		expect(params.durationMs).toBe(2_000);
+		expect(params.durationMs).toBe(15_000);
 	});
 
 	it("rejects an invalid toast duration", async () => {

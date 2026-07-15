@@ -88,9 +88,12 @@ describe("formatCountdown", () => {
 });
 
 describe("notification duration", () => {
-	it("accepts whole seconds from 2s through 30s", () => {
+	it("accepts whole seconds from 2s through 30s with an optional suffix", () => {
 		expect(parseNotificationDuration("2s")).toBe(NOTIFICATION_MIN_DURATION_MS);
+		expect(parseNotificationDuration("2")).toBe(NOTIFICATION_MIN_DURATION_MS);
 		expect(parseNotificationDuration("30s")).toBe(NOTIFICATION_MAX_DURATION_MS);
+		expect(parseNotificationDuration("30")).toBe(NOTIFICATION_MAX_DURATION_MS);
+		expect(parseNotificationDuration("15")).toBe(15 * S);
 		expect(parseNotificationDuration("15S")).toBe(15 * S);
 	});
 
@@ -98,7 +101,7 @@ describe("notification duration", () => {
 		expect(parseNotificationDuration("1s")).toBeNull();
 		expect(parseNotificationDuration("31s")).toBeNull();
 		expect(parseNotificationDuration("2m")).toBeNull();
-		expect(parseNotificationDuration("2")).toBeNull();
+		expect(parseNotificationDuration("15.0")).toBeNull();
 	});
 
 	it("validates socket durations in milliseconds", () => {

@@ -40,9 +40,9 @@ export function parseDelay(input: string): number | null {
 	return total > 0 ? total : null;
 }
 
-/** Parse the CLI notification duration, which is limited to whole seconds from 2s to 30s. */
+/** Parse the CLI notification duration, which is limited to whole seconds from 2s to 30s; the `s` suffix is optional. */
 export function parseNotificationDuration(input: string): number | null {
-	const match = input.trim().match(/^(\d+)s$/i);
+	const match = input.trim().match(/^(\d+)(?:s)?$/i);
 	if (!match) return null;
 	const seconds = Number(match[1]);
 	if (!Number.isSafeInteger(seconds)) return null;

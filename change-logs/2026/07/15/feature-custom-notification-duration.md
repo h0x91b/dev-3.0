@@ -1,1 +1,1 @@
-Add an optional `--duration` flag to `dev3 notify` for short-lived in-app toasts from 2 to 30 seconds, such as `--duration 2s`, while preserving the existing 30-second default. Native desktop notifications remain governed by the operating system.
+Add an optional `--duration` flag to `dev3 notify` for short-lived in-app toasts from 2 to 30 seconds; the `s` suffix is optional, so `--duration 15` means 15 seconds. The existing 30-second default remains, and native desktop notifications are governed by the operating system.
