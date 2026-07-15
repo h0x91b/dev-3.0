@@ -48,8 +48,9 @@ describe("renderHelp — subcommand detail", () => {
 		const out = renderHelp("task", "create")!;
 		expect(out).toContain("dev3 task create — Create a new task in the To Do column.");
 		expect(out).toContain("Usage:");
-		expect(out).toContain('dev3 task create --title "..." [--description "..."]');
+		expect(out).toContain('dev3 task create --title "..." [--description "..." | --description -]');
 		expect(out).toContain("--title <text>");
+		expect(out).toContain("read it from stdin");
 		expect(out).toContain("Global options:");
 	});
 
@@ -57,6 +58,13 @@ describe("renderHelp — subcommand detail", () => {
 		const out = renderHelp("note", "list")!;
 		expect(out).toContain("dev3 note list — List a task's notes");
 		expect(out).not.toContain("Details:");
+	});
+
+	it("documents stdin for supported long-text fields", () => {
+		expect(renderHelp("task", "update")).toContain("--description -");
+		expect(renderHelp("note", "add")).toContain("read it from stdin");
+		expect(renderHelp("automations", "create")).toContain("--prompt -");
+		expect(renderHelp("automations", "update")).toContain("--prompt -");
 	});
 });
 

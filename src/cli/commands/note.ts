@@ -4,6 +4,7 @@ import { printTable, printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
+import { readStdin } from "../stdin";
 
 const VALID_SOURCES: NoteSource[] = ["user", "ai"];
 
@@ -32,7 +33,8 @@ async function addNote(args: ParsedArgs, socketPath: string, context: CliContext
 	}
 	const taskId = expandShortId(rawTaskId, context);
 
-	const content = (args.positional[0] || args.flags.content || "").trim();
+	const rawContent = args.positional[0] || args.flags.content || "";
+	const content = (rawContent === "-" ? await readStdin() : rawContent).trim();
 	if (!content) {
 		exitUsage("Content is required. Usage: dev3 note add \"your note text\"");
 	}

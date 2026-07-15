@@ -8,8 +8,14 @@ vi.mock("../socket-client", () => ({
 	sendRequest: vi.fn(),
 }));
 
+vi.mock("../stdin", () => ({
+	readStdin: vi.fn(),
+}));
+
 import { sendRequest } from "../socket-client";
+import { readStdin } from "../stdin";
 const mockSend = vi.mocked(sendRequest);
+const mockReadStdin = vi.mocked(readStdin);
 
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -79,6 +85,7 @@ beforeEach(() => {
 		throw new Error(`EXIT_${_code ?? 0}`);
 	}) as ReturnType<typeof vi.spyOn>;
 	mockSend.mockReset();
+	mockReadStdin.mockReset();
 });
 
 afterEach(() => {
@@ -112,6 +119,17 @@ describe("note add", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.content).toBe("Note via flag");
+	});
+
+	it("reads --content - from stdin without altering Markdown", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		const markdown = 'Decision:\n\n- Keep "quoted" Markdown.';
+		mockReadStdin.mockResolvedValue(markdown);
+
+		await handleNote("add", args([], { content: "-", source: "user" }), SOCKET, CTX);
+
+		expect(mockReadStdin).toHaveBeenCalledOnce();
+		expect(mockSend.mock.calls[0]![2]!.content).toBe(markdown);
 	});
 
 	it("defaults source to ai", async () => {

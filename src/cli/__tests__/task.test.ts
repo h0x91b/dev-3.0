@@ -4,13 +4,19 @@ import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { Task, CliResponse } from "../../shared/types";
 
+vi.mock("../stdin", () => ({
+	readStdin: vi.fn(),
+}));
+
 // Mock sendRequest so we never hit a real socket
 vi.mock("../socket-client", () => ({
 	sendRequest: vi.fn(),
 }));
 
 import { sendRequest } from "../socket-client";
+import { readStdin } from "../stdin";
 const mockSend = vi.mocked(sendRequest);
+const mockReadStdin = vi.mocked(readStdin);
 
 let stdoutOutput: string;
 let stderrOutput: string;
@@ -72,6 +78,7 @@ beforeEach(() => {
 		throw new Error(`EXIT_${_code ?? 0}`);
 	}) as ReturnType<typeof vi.spyOn>;
 	mockSend.mockReset();
+	mockReadStdin.mockReset();
 });
 
 afterEach(() => {
@@ -383,6 +390,17 @@ describe("task update", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params.description).toBe("New description");
+	});
+
+	it("reads --description - from stdin without altering Markdown", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+		const markdown = '# Updated plan\n\nKeep **quotes**: "intact".';
+		mockReadStdin.mockResolvedValue(markdown);
+
+		await handleTask("update", args(["aaaaaaaa"], { description: "-" }), SOCKET, null);
+
+		expect(mockReadStdin).toHaveBeenCalledOnce();
+		expect(mockSend.mock.calls[0]![2]!.description).toBe(markdown);
 	});
 
 	it("updates both title and description at once", async () => {
@@ -983,6 +1001,43 @@ describe("task create --description", () => {
 
 		const params = mockSend.mock.calls[0]![2]!;
 		expect(params).not.toHaveProperty("description");
+	});
+
+	it("reads --description - from stdin without altering Markdown", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+		const markdown = '# Release notes\n\nUse **bold** and quote: "quoted".\n';
+		mockReadStdin.mockResolvedValue(markdown);
+
+		await handleTask(
+			"create",
+			args([], { project: "proj-001", title: "Release notes", description: "-" }),
+			SOCKET,
+			null,
+		);
+
+		expect(mockReadStdin).toHaveBeenCalledOnce();
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.create", {
+			projectId: "proj-001",
+			title: "Release notes",
+			description: markdown,
+		});
+	});
+
+	it("uses the first stdin line as the title when --title is omitted", async () => {
+		mockSend.mockResolvedValue(okResp(createdTask));
+		const markdown = "Release notes\n\n- Preserve this line exactly.\n";
+		mockReadStdin.mockResolvedValue(markdown);
+
+		await handleTask(
+			"create",
+			args([], { project: "proj-001", description: "-" }),
+			SOCKET,
+			null,
+		);
+
+		const params = mockSend.mock.calls[0]![2]!;
+		expect(params.title).toBe("Release notes");
+		expect(params.description).toBe(markdown);
 	});
 });
 
