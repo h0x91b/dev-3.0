@@ -1206,7 +1206,7 @@ export interface Task {
 	 * initial prompt. The `description` holds only a `Scratch — HH:mm`
 	 * placeholder used for the title; at launch time the agent receives an
 	 * empty prompt instead of the placeholder. Editing in a meaningful
-	 * description converts it into a normal task and clears this flag.
+	 * description or title converts it into a normal task and clears this flag.
 	 */
 	scratch?: boolean;
 	/**

@@ -2746,6 +2746,31 @@ describe("handlers.renameTask", () => {
 		});
 	});
 
+	it("clears scratch when the UI assigns a real title", async () => {
+		const project = makeProject();
+		const task = makeTask({ scratch: true, description: "Scratch — 15:50" });
+		const updated = makeTask({
+			scratch: false,
+			customTitle: "Plan HTML artifacts",
+			titleEditedByUser: true,
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+
+		await handlers.renameTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			customTitle: "Plan HTML artifacts",
+		});
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+			customTitle: "Plan HTML artifacts",
+			titleEditedByUser: true,
+			scratch: false,
+		});
+	});
+
 	it("treats whitespace-only customTitle as a reset", async () => {
 		const project = makeProject();
 		const task = makeTask({ customTitle: "Old", titleEditedByUser: true });
@@ -2826,6 +2851,30 @@ describe("activateTask", () => {
 		const task = makeTask({
 			status: "todo",
 			scratch: true,
+			description: "Scratch — 14:52",
+			worktreePath: null,
+			branchName: null,
+		});
+
+		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/task-1" });
+
+		await activateTask(project, task);
+
+		expect(agents.resolveCommandForProject).toHaveBeenCalledWith(
+			expect.objectContaining({ id: project.id, path: project.path }),
+			task.title,
+			"",
+			"/tmp/wt",
+			undefined,
+			expect.anything(),
+		);
+	});
+
+	it("does not launch a cleared scratch placeholder as a prompt", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "todo",
+			scratch: false,
 			description: "Scratch — 14:52",
 			worktreePath: null,
 			branchName: null,

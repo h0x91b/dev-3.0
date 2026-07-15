@@ -492,8 +492,7 @@ function isScratchPlaceholderDescription(description: string): boolean {
 }
 
 function taskWithLaunchDescription(task: Task, forceBlank = false): Task {
-	const hasScratchPlaceholder = task.scratch === true
-		&& isScratchPlaceholderDescription(task.description);
+	const hasScratchPlaceholder = isScratchPlaceholderDescription(task.description);
 	return forceBlank || hasScratchPlaceholder ? { ...task, description: "" } : task;
 }
 
@@ -1323,6 +1322,7 @@ async function renameTask(params: { taskId: string; projectId: string; customTit
 	const updated = await data.updateTask(project, task.id, {
 		customTitle: trimmed,
 		titleEditedByUser: trimmed !== null,
+		...(task.scratch === true && trimmed !== null ? { scratch: false } : {}),
 	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 	log.info("← renameTask done", { taskId: task.id });
