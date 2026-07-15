@@ -332,6 +332,8 @@ bun run test:watch    # Watch mode
 
 Running vitest directly (outside `bun run`): use `bunx vitest run`, not `npx`.
 
+**Local E2E policy:** Do not run the complete E2E suite locally (`bun run test:full` or an equivalent unfiltered command); it is reserved for CI/PR validation. When investigating or verifying a specific behavior, run only the targeted E2E file or test case.
+
 **Always run both `bun run lint` AND `bun run test` before committing** — a commit that breaks type-checking is unacceptable even if tests pass.
 
 **Hard rule — full suite before push/PR:** before `git push`, `gh pr create`, or enabling auto-merge, `bun run test` must be green end-to-end. Running only the test file you edited is NOT sufficient — sibling test files assert against the same components (e.g., `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). Fix failures and re-run until green BEFORE pushing — don't push and watch CI go red.
