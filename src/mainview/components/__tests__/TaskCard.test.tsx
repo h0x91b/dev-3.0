@@ -1632,5 +1632,52 @@ describe("TaskCard", () => {
 			await userEvent.hover(popover);
 			expect(popover).toHaveStyle({ top: anchoredTop });
 		});
+
+		it("auto-refreshes an empty PR status after a two-second hover", async () => {
+			vi.useFakeTimers();
+			try {
+				renderCard(reviewTask(), {
+					prInfo: { number: 12, url: "https://example/pr/12", checks: [] },
+				});
+				act(() => {
+					fireEvent.mouseEnter(screen.getByLabelText("Open PR #12"));
+				});
+				expect(screen.getByTestId("pr-status-popover")).toBeInTheDocument();
+
+				await act(async () => {
+					vi.advanceTimersByTime(1999);
+				});
+				expect(mockedApi.request.refreshTaskPrStatus).not.toHaveBeenCalled();
+
+				await act(async () => {
+					vi.advanceTimersByTime(1);
+				});
+				expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledTimes(1);
+				expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("does not auto-refresh when the pointer leaves before the hover delay", async () => {
+			vi.useFakeTimers();
+			try {
+				renderCard(reviewTask(), {
+					prInfo: { number: 12, url: "https://example/pr/12", checks: [] },
+				});
+				const badge = screen.getByLabelText("Open PR #12");
+				act(() => {
+					fireEvent.mouseEnter(badge);
+					fireEvent.mouseLeave(badge);
+				});
+
+				await act(async () => {
+					vi.advanceTimersByTime(2000);
+				});
+				expect(mockedApi.request.refreshTaskPrStatus).not.toHaveBeenCalled();
+			} finally {
+				vi.useRealTimers();
+			}
+		});
 	});
 });

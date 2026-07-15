@@ -35,6 +35,7 @@ const CHECK_ORDER: Record<CheckState, number> = {
 };
 
 const CHECK_LIST_MAX_HEIGHT_CLASS = "max-h-[17.5rem]";
+const AUTO_REFRESH_DELAY_MS = 2000;
 
 function sortedChecks(checks: PRCheckInfo[]): PRCheckInfo[] {
 	return checks
@@ -90,6 +91,13 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 	const triggerRef = useRef<HTMLSpanElement>(null);
 	const popoverRef = useRef<HTMLDivElement>(null);
 	const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const autoRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const autoRefreshAttemptedRef = useRef(false);
+	const pointerInsideRef = useRef(false);
+	const openRef = useRef(false);
+	const refreshingRef = useRef(false);
+	const prInfoRef = useRef(prInfo);
+	prInfoRef.current = prInfo;
 
 	const cancelHide = useCallback(() => {
 		if (hideTimerRef.current !== null) {
@@ -98,14 +106,25 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 		}
 	}, []);
 
+	const cancelAutoRefresh = useCallback(() => {
+		if (autoRefreshTimerRef.current !== null) {
+			clearTimeout(autoRefreshTimerRef.current);
+			autoRefreshTimerRef.current = null;
+		}
+	}, []);
+
 	const hide = useCallback(() => {
 		cancelHide();
+		cancelAutoRefresh();
+		pointerInsideRef.current = false;
+		openRef.current = false;
 		setOpen(false);
 		setPosition(null);
-	}, [cancelHide]);
+	}, [cancelAutoRefresh, cancelHide]);
 
 	const show = useCallback(() => {
 		cancelHide();
+		openRef.current = true;
 		setOpen(true);
 	}, [cancelHide]);
 
@@ -117,9 +136,47 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 		}, 160);
 	}, [cancelHide, hide]);
 
+	const refresh = useCallback(async () => {
+		if (refreshingRef.current) return;
+		autoRefreshAttemptedRef.current = true;
+		cancelAutoRefresh();
+		refreshingRef.current = true;
+		setRefreshing(true);
+		try {
+			await api.request.refreshTaskPrStatus({ taskId, projectId });
+		} catch (error) {
+			toast.error(t("task.prRefreshFailed", { error: String(error) }));
+		} finally {
+			refreshingRef.current = false;
+			setRefreshing(false);
+		}
+	}, [cancelAutoRefresh, projectId, t, taskId]);
+
+	const scheduleAutoRefresh = useCallback(() => {
+		if (autoRefreshAttemptedRef.current || autoRefreshTimerRef.current !== null) return;
+		autoRefreshTimerRef.current = setTimeout(() => {
+			autoRefreshTimerRef.current = null;
+			if (!pointerInsideRef.current || !openRef.current || autoRefreshAttemptedRef.current) return;
+			autoRefreshAttemptedRef.current = true;
+			if ((prInfoRef.current.checks ?? []).length === 0) void refresh();
+		}, AUTO_REFRESH_DELAY_MS);
+	}, [refresh]);
+
+	const handlePointerEnter = useCallback(() => {
+		pointerInsideRef.current = true;
+		show();
+		scheduleAutoRefresh();
+	}, [scheduleAutoRefresh, show]);
+
+	const handlePointerLeave = useCallback(() => {
+		pointerInsideRef.current = false;
+		scheduleHide();
+	}, [scheduleHide]);
+
 	useEffect(() => () => {
 		cancelHide();
-	}, [cancelHide]);
+		cancelAutoRefresh();
+	}, [cancelAutoRefresh, cancelHide]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -149,18 +206,6 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 		setPosition({ top: next.top, left: next.left });
 	}, [open, prInfo]);
 
-	async function refresh() {
-		if (refreshing) return;
-		setRefreshing(true);
-		try {
-			await api.request.refreshTaskPrStatus({ taskId, projectId });
-		} catch (error) {
-			toast.error(t("task.prRefreshFailed", { error: String(error) }));
-		} finally {
-			setRefreshing(false);
-		}
-	}
-
 	const checks = sortedChecks(prInfo.checks ?? []);
 	const popover = open && createPortal(
 		<div
@@ -170,8 +215,8 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 			data-testid="pr-status-popover"
 			className="fixed z-[1200] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-edge-active bg-overlay p-3 text-xs shadow-2xl"
 			style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}
-			onMouseEnter={cancelHide}
-			onMouseLeave={scheduleHide}
+			onMouseEnter={handlePointerEnter}
+			onMouseLeave={handlePointerLeave}
 			onBlur={(event) => {
 				const nextTarget = event.relatedTarget as Node | null;
 				if (nextTarget && (popoverRef.current?.contains(nextTarget) || triggerRef.current?.contains(nextTarget))) return;
@@ -255,8 +300,8 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 		<span
 			ref={triggerRef}
 			className="inline-flex"
-			onMouseEnter={show}
-			onMouseLeave={scheduleHide}
+			onMouseEnter={handlePointerEnter}
+			onMouseLeave={handlePointerLeave}
 			onFocus={show}
 			onBlur={(event) => {
 				const nextTarget = event.relatedTarget as Node | null;
