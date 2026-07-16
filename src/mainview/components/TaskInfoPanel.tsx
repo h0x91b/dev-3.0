@@ -3,6 +3,7 @@ import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { Task, Project, TaskStatus, PortInfo, ResourceUsage, Label, TaskPRBadgeInfo } from "../../shared/types";
 import LabelChip from "./LabelChip";
+import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
 import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
@@ -373,6 +374,23 @@ function TaskInfoPanel({
 		}
 	}
 
+	async function handleSetPriority(priority: Task["priority"]) {
+		if (!priority) return;
+		try {
+			const changed = await api.request.setTaskPriority({
+				taskId: task.id,
+				projectId: project.id,
+				priority,
+			});
+			// Priority is group-wide, so the RPC returns every changed variant.
+			for (const changedTask of changed) {
+				dispatch({ type: "updateTask", task: changedTask });
+			}
+		} catch (err) {
+			toast.error(t("priority.failedSet", { error: String(err) }), { taskId: task.id });
+		}
+	}
+
 	const toggleCollapsed = useCallback(() => {
 		setCollapsed((current) => !current);
 	}, []);
@@ -647,6 +665,8 @@ function TaskInfoPanel({
 		</button>
 		</Tooltip>
 	);
+
+	const priorityBadge = <PriorityBadge priority={task.priority} onChange={handleSetPriority} className="shrink-0" />;
 
 	const statusDropdownButton = (
 		<button
@@ -958,6 +978,7 @@ function TaskInfoPanel({
 				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
 					{variantSwitcher}
 					{statusDropdownButton}
+					{priorityBadge}
 					<span className="flex-1 min-w-0 truncate text-fg-2 text-sm font-semibold">{getTaskTitle(task)}</span>
 					{diffSummaryBadge}
 					<Tooltip content={t("infoPanel.actionsTitle")} detail={t("ttip.infoPanel.actions")}>
@@ -1086,6 +1107,7 @@ function TaskInfoPanel({
 					<div className="flex items-center gap-1.5 min-w-0">
 						{variantSwitcher}
 						{watchToggleButton}
+						{priorityBadge}
 						{statusDropdownButton}
 						{statusDropdownPortal}
 						{diffSummaryBadge}
@@ -1161,6 +1183,7 @@ function TaskInfoPanel({
 							<div className="flex items-center gap-1.5 min-w-0" data-help-id="inspector.context-bar">
 								{variantSwitcher}
 								{watchToggleButton}
+								{priorityBadge}
 								{statusDropdownButton}
 								{statusDropdownPortal}
 								{diffSummaryBadge}
