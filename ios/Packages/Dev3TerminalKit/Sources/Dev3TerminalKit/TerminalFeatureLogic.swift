@@ -66,3 +66,26 @@ public enum Dev3TerminalAccessoryKey: String, CaseIterable, Identifiable, Sendab
         .tilde: Data([0x1E])
     ]
 }
+
+public enum Dev3TerminalAccessoryRouting {
+    public static func usesTerminalTextInput(
+        key: Dev3TerminalAccessoryKey,
+        inputMode: Dev3TerminalInputMode
+    ) -> Bool {
+        key == .enter && inputMode == .raw
+    }
+}
+
+struct Dev3TerminalRawSubmitState {
+    private var previousRevision: UInt64?
+
+    mutating func consume(_ revision: UInt64) -> UInt64 {
+        guard let previousRevision else {
+            previousRevision = revision
+            return 0
+        }
+        guard previousRevision != revision else { return 0 }
+        self.previousRevision = revision
+        return revision > previousRevision ? revision - previousRevision : 1
+    }
+}

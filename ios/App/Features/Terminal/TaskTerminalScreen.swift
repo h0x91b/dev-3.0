@@ -6,6 +6,7 @@ import UIKit
 @MainActor
 struct TaskTerminalScreen: View {
     @State private var store: TerminalTaskStore
+    @State private var rawSubmitRevision: UInt64 = 0
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -134,6 +135,7 @@ private extension TaskTerminalScreen {
                 },
                 serverID: store.service.serverID,
                 inputMode: store.inputMode,
+                rawSubmitRevision: rawSubmitRevision,
                 instanceResolvedTheme: instanceResolvedTheme,
                 onError: store.report
             )
@@ -416,15 +418,19 @@ private extension TaskTerminalScreen {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(Dev3TerminalAccessoryKey.allCases) { key in
-                    Button(key.rawValue) { store.sendAccessory(key) }
-                        .buttonStyle(.bordered)
-                        .tint(
-                            key == .control && store.isControlLatched
-                                ? palette.accent
-                                : palette.textSecondary
-                        )
-                        .frame(minHeight: 44)
-                        .accessibilityValue(key == .control && store.isControlLatched ? "On" : "")
+                    Button(key.rawValue) {
+                        if store.sendAccessory(key) {
+                            rawSubmitRevision &+= 1
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(
+                        key == .control && store.isControlLatched
+                            ? palette.accent
+                            : palette.textSecondary
+                    )
+                    .frame(minHeight: 44)
+                    .accessibilityValue(key == .control && store.isControlLatched ? "On" : "")
                 }
 
                 Button {

@@ -50,3 +50,23 @@ func controlLatchHasNoBytes() {
     #expect(Dev3TerminalAccessoryKey.control.bytes(control: false) == nil)
     #expect(Dev3TerminalAccessoryKey.control.bytes(control: true) == nil)
 }
+
+@Test("Only raw accessory Enter uses SwiftTerm text input")
+func rawAccessoryEnterRouting() {
+    #expect(Dev3TerminalAccessoryRouting.usesTerminalTextInput(key: .enter, inputMode: .raw))
+    #expect(!Dev3TerminalAccessoryRouting.usesTerminalTextInput(key: .enter, inputMode: .compose))
+    #expect(!Dev3TerminalAccessoryRouting.usesTerminalTextInput(key: .tab, inputMode: .raw))
+    #expect(Dev3TerminalAccessoryKey.enter.bytes(control: false) == Data([0x0D]))
+}
+
+@Test("Raw submit revisions are idempotent and preserve coalesced taps")
+func rawSubmitRevisionState() {
+    var state = Dev3TerminalRawSubmitState()
+
+    #expect(state.consume(0) == 0)
+    #expect(state.consume(0) == 0)
+    #expect(state.consume(2) == 2)
+    #expect(state.consume(2) == 0)
+    #expect(state.consume(3) == 1)
+    #expect(state.consume(0) == 1)
+}

@@ -9,17 +9,15 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 | Area | State | Evidence / next gate |
 |---|---|---|
 | Pair and reconnect | Live green | Fresh manual pairing, saved-session cold launch, one refresh/RPC connection/refetch, and no immediate reconnect churn. |
-| Browse and create | Live green | Work/Projects navigation, one task creation, agent/config selection, preparation, and terminal handoff. Required Description affordance is implemented; final simulator visual check remains. |
-| Running-task terminal | In progress | Composer input, exact agent response, away/back reattach, task metadata update, and cold PTY continuity passed. The apparent redraw defect was a Light-device/Dark-instance mismatch; the terminal canvas now follows the instance theme, with final zoom recording pending. |
+| Browse and create | Live green | Work/Projects navigation, one task creation, agent/config selection, preparation, and terminal handoff passed. Simulator accessibility and visual QA confirm the required Description affordance. |
+| Running-task terminal | In progress | Composer and raw accessory input, exact agent responses, zoom, pane/window lifecycle, task metadata update, and cold PTY continuity passed. The terminal follows the instance theme, raw Enter clears UIKit input state, and hardware-key sequences are unit-covered; final recovery recording remains. |
 | PTY recovery | In progress | Same-process cold reattach and scene/network kick implementation tests are green. Live background/foreground and interruption continuity QA remains. |
 | Task Info | Live partial | Priority round-trip passed without changing the terminal session. Remaining destructive/completion path is held for the final end-to-end pass. |
 | Completion cleanup | Pending | Complete the live task through the native approval flow, then verify route dismissal, tmux teardown, and worktree removal. |
 
 ## Core QA still required
 
-- Pinch in/out and double-tap reset with Light device chrome and a uniform Dark-instance terminal background.
-- Raw-mode input plus hardware-key handling.
-- Split, switch, and close panes; create and navigate a tmux window.
+- Exercise the unit-covered Shift hardware-key sequences with a physical keyboard.
 - Background/foreground and remote-server interruption recovery with PTY continuity.
 - Final completion approval and cleanup.
 
@@ -36,12 +34,14 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 - `ios/qa-output/critical-running-task-e2e-part1.mp4`: creation, terminal input, metadata, navigation, zoom attempt, and cold continuity; it captures the device/instance theme mismatch found during QA.
 - `ios/qa-output/critical-running-task-e2e-part2.mp4`: fixed cold bootstrap and exact same-PTY reattachment.
 - `ios/qa-output/critical-running-task-e2e-part3.mp4`: diagnostic Light-device/Dark-instance comparison that rejected the false backing-raster workaround.
-- A final recording will cover the corrected zoom, raw/pane/window controls, recovery, and completion cleanup.
+- `ios/qa-output/critical-running-task-e2e-part4.mp4`: corrected theme and zoom, required Description affordance, raw input, and reversible pane/window lifecycle.
+- A final recording will cover same-process recovery and completion cleanup.
 
 ## Verification baseline
 
 - Dev3Kit: 94 tests passing.
 - Dev3UI: 106 tests passing.
-- Dev3TerminalKit: 31 tests passing.
+- Dev3TerminalKit: 33 tests passing.
+- Focused iOS raw-input regressions pass for exact carriage-return delivery, input-state clearing, and Ctrl-latch consumption.
 - SwiftFormat and strict SwiftLint are clean for tracked iOS sources.
 - Backend lint and all 5,783 fast mainview, Bun, and CLI tests pass at the current gate.

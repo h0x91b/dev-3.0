@@ -91,12 +91,13 @@ struct TerminalLifecycleTests {
     }
 }
 
-private actor RecordingTerminalLifecycleService: TerminalTaskServicing {
+actor RecordingTerminalLifecycleService: TerminalTaskServicing {
     struct Snapshot: Sendable {
         let attachCount: Int
         let kickCount: Int
         let activeChanges: [Bool]
         let navigationRefreshCount: Int
+        let sentData: [Data]
     }
 
     nonisolated let taskID = "task-lifecycle"
@@ -114,13 +115,15 @@ private actor RecordingTerminalLifecycleService: TerminalTaskServicing {
     private var kickCount = 0
     private var activeChanges: [Bool] = []
     private var navigationRefreshCount = 0
+    private var sentData: [Data] = []
 
     func snapshot() -> Snapshot {
         Snapshot(
             attachCount: attachCount,
             kickCount: kickCount,
             activeChanges: activeChanges,
-            navigationRefreshCount: navigationRefreshCount
+            navigationRefreshCount: navigationRefreshCount,
+            sentData: sentData
         )
     }
 
@@ -177,7 +180,9 @@ private actor RecordingTerminalLifecycleService: TerminalTaskServicing {
 
     func insert(_: String) async throws {}
 
-    func send(_: Data) async throws {}
+    func send(_ data: Data) async throws {
+        sentData.append(data)
+    }
 
     func resize(columns _: Int, rows _: Int) async throws {}
 }

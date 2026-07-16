@@ -210,14 +210,23 @@ final class TerminalTaskStore {
         }
     }
 
-    func sendAccessory(_ key: Dev3TerminalAccessoryKey) {
+    @discardableResult
+    func sendAccessory(_ key: Dev3TerminalAccessoryKey) -> Bool {
         if key == .control {
             isControlLatched.toggle()
-            return
+            return false
         }
-        guard let bytes = key.bytes(control: isControlLatched) else { return }
+        if Dev3TerminalAccessoryRouting.usesTerminalTextInput(
+            key: key,
+            inputMode: inputMode
+        ) {
+            isControlLatched = false
+            return true
+        }
+        guard let bytes = key.bytes(control: isControlLatched) else { return false }
         isControlLatched = false
         send(bytes)
+        return false
     }
 
     func pasteClipboard(_ text: String) {

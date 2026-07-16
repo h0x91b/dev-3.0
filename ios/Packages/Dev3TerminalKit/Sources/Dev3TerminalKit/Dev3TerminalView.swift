@@ -14,6 +14,7 @@
         private let resize: (@Sendable (Int, Int) async throws -> Void)?
         private let serverID: String
         private let inputMode: Dev3TerminalInputMode
+        private let rawSubmitRevision: UInt64
         private let instanceResolvedTheme: Dev3ResolvedThemeMode?
         private let fallbackFontSize: Double
         private let onError: @MainActor @Sendable (String) -> Void
@@ -24,6 +25,7 @@
             let resize: (@Sendable (Int, Int) async throws -> Void)?
             let serverID: String
             let inputMode: Dev3TerminalInputMode
+            let rawSubmitRevision: UInt64
             let theme: Dev3TerminalThemeConfiguration
             let fallbackFontSize: Double
             let onError: @MainActor @Sendable (String) -> Void
@@ -35,6 +37,7 @@
             resize: (@Sendable (Int, Int) async throws -> Void)? = nil,
             serverID: String,
             inputMode: Dev3TerminalInputMode,
+            rawSubmitRevision: UInt64 = 0,
             instanceResolvedTheme: Dev3ResolvedThemeMode? = nil,
             fallbackFontSize: Double = Dev3TerminalFontPreferenceStore.defaultSize,
             onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }
@@ -44,6 +47,7 @@
             self.resize = resize
             self.serverID = serverID
             self.inputMode = inputMode
+            self.rawSubmitRevision = rawSubmitRevision
             self.instanceResolvedTheme = instanceResolvedTheme
             self.fallbackFontSize = fallbackFontSize
             self.onError = onError
@@ -67,6 +71,7 @@
                 resize: resize,
                 serverID: serverID,
                 inputMode: inputMode,
+                rawSubmitRevision: rawSubmitRevision,
                 theme: Dev3TerminalThemeConfiguration(
                     instanceResolvedTheme: instanceResolvedTheme,
                     deviceColorScheme: colorScheme
@@ -100,6 +105,7 @@
             private var resize: (@Sendable (Int, Int) async throws -> Void)?
             private var endpointIdentity: String?
             private var serverID: String?
+            private var rawSubmitState = Dev3TerminalRawSubmitState()
             private var themeApplication = Dev3TerminalThemeApplicationState()
             private var outputTask: Task<Void, Never>?
             private var clipboardTask: Task<Void, Never>?
@@ -155,6 +161,10 @@
                 }
 
                 terminalView?.setInputMode(configuration.inputMode)
+                let submitCount = rawSubmitState.consume(configuration.rawSubmitRevision)
+                for _ in 0 ..< submitCount {
+                    terminalView?.submitRawInput()
+                }
             }
 
             fileprivate func detach() {
@@ -372,6 +382,10 @@
             let clamped = Dev3TerminalFontPreferenceStore.clamp(size)
             font = UIFont(name: Dev3Glyph.fontName, size: CGFloat(clamped))
                 ?? UIFont.monospacedSystemFont(ofSize: CGFloat(clamped), weight: .regular)
+        }
+
+        public func submitRawInput() {
+            insertText("\n")
         }
 
         fileprivate func apply(theme: Dev3ResolvedTerminalTheme) {
