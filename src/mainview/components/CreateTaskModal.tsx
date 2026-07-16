@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback, type Dispatch } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type Dispatch } from "react";
 import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import { DEFAULT_PRIORITY, titleFromDescription, type Project, type Task, type TaskPriority } from "../../shared/types";
+import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, titleFromDescription, type Project, type Task, type TaskPriority } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
@@ -19,6 +19,7 @@ import SkillAutocompleteDropdown from "./SkillAutocompleteDropdown";
 import { openFolderPicker } from "../folder-picker";
 import { useFocusTrap } from "../utils/useFocusTrap";
 import HelpSpot from "./HelpSpot";
+import Select from "./Select";
 
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
@@ -28,15 +29,26 @@ interface ProjectCurrentBranchInfo {
 
 interface CreateTaskModalProps {
 	project: Project;
+	projects?: Project[];
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
-	onCreateAndRun?: (task: Task) => void;
-	onOpenAutomations?: () => void;
+	onCreateAndRun?: (task: Task, project: Project) => void;
+	onOpenAutomations?: (project: Project) => void;
 }
 
-function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAutomations }: CreateTaskModalProps) {
+function CreateTaskModal({ project: initialProject, projects, dispatch, onClose, onCreateAndRun, onOpenAutomations }: CreateTaskModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
+	const availableProjects = useMemo(() => {
+		const visibleProjects = (projects ?? []).filter((candidate) => !candidate.deleted);
+		if (!visibleProjects.some((candidate) => candidate.id === initialProject.id)) {
+			visibleProjects.push(initialProject);
+		}
+		return orderProjectsForDisplay(visibleProjects);
+	}, [initialProject, projects]);
+	const [selectedProjectId, setSelectedProjectId] = useState(initialProject.id);
+	const selectedProject = availableProjects.find((candidate) => candidate.id === selectedProjectId) ?? initialProject;
+	const project = selectedProject;
 	const [description, setDescription] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
@@ -57,6 +69,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 	// Virtual ops only: chosen fixed working folder (null = managed temp dir).
 	const [opsFolder, setOpsFolder] = useState<string | null>(null);
 	const [opsFolderConflict, setOpsFolderConflict] = useState(false);
+	const projectBranchRequestRef = useRef(0);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const titleInputRef = useRef<HTMLInputElement>(null);
 	const keepEditingRef = useRef<HTMLButtonElement>(null);
@@ -66,20 +79,42 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 	const baseBranch = project.defaultBaseBranch || "main";
 
 	const loadProjectCurrentBranch = useCallback(async (): Promise<ProjectCurrentBranchInfo | null> => {
+		const requestId = ++projectBranchRequestRef.current;
 		try {
 			const result = await api.request.getProjectCurrentBranch({ projectId: project.id });
+			if (requestId !== projectBranchRequestRef.current) return null;
 			if (!result.isBaseBranch && result.branch) {
 				setSelectedBranch((prev) => prev ?? result.branch);
 			}
 			setProjectCurrentBranch(result);
 			return result;
 		} catch {
+			if (requestId !== projectBranchRequestRef.current) return null;
 			setProjectCurrentBranch(null);
 			return null;
 		} finally {
-			setCheckedProjectCurrentBranch(true);
+			if (requestId === projectBranchRequestRef.current) {
+				setCheckedProjectCurrentBranch(true);
+			}
 		}
 	}, [project.id]);
+
+	function handleProjectChange(projectId: string) {
+		if (creating || projectId === selectedProjectId) return;
+		projectBranchRequestRef.current += 1;
+		setSelectedProjectId(projectId);
+		setSelectedLabelIds([]);
+		setLabelPickerOpen(false);
+		setSelectedBranch(null);
+		setProjectCurrentBranch(null);
+		setCheckedProjectCurrentBranch(false);
+		setPendingBranchChoice(null);
+		setPendingSubmitMode(null);
+		setDismissedPrUrl(null);
+		setOpsFolder(null);
+		setOpsFolderConflict(false);
+		if (reviewMode) handleReviewModeChange(false);
+	}
 
 	const insertPathAtCursor = useCallback((path: string) => {
 		setDescription((prev) => {
@@ -258,7 +293,12 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 			// if a follow-up (renameTask/setTaskLabels) fails, deferring the
 			// dispatch would leave an invisible orphan and tempt a duplicate on
 			// retry. Title/labels are non-fatal follow-ups on the created task.
-			dispatch({ type: "addTask", task: created });
+			// A task created in another project must not be added to the board the
+			// user is currently viewing; its persisted taskUpdated events will load
+			// it when that project is opened.
+			if (created.projectId === initialProject.id) {
+				dispatch({ type: "addTask", task: created });
+			}
 			let task = created;
 			let followUpError: unknown = null;
 			try {
@@ -291,7 +331,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 				...(mode === "scratch" ? { source: "scratch" } : {}),
 			});
 			if ((mode === "run" || mode === "scratch") && onCreateAndRun) {
-				onCreateAndRun(task);
+				onCreateAndRun(task, project);
 			} else {
 				onClose();
 			}
@@ -396,6 +436,22 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 							<path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
 						</svg>
 					</button>
+				</div>
+
+				{/* Project context — defaults to the board that opened this modal. */}
+				<div className="space-y-1.5">
+					<label htmlFor="create-task-project" className="text-fg-2 text-sm font-medium">
+						{t("createTask.projectLabel")}
+					</label>
+					<Select
+						id="create-task-project"
+						value={project.id}
+						options={availableProjects.map((candidate) => ({
+							value: candidate.id,
+							label: isBuiltinOpsProject(candidate) ? t("ops.boardName") : candidate.name,
+						}))}
+						onChange={handleProjectChange}
+					/>
 				</div>
 
 				{/* Description textarea + drop zone */}
@@ -722,7 +778,7 @@ function CreateTaskModal({ project, dispatch, onClose, onCreateAndRun, onOpenAut
 								{onOpenAutomations ? (
 									<button
 										type="button"
-										onClick={onOpenAutomations}
+										onClick={() => onOpenAutomations(project)}
 										className="text-accent hover:text-accent-hover hover:underline transition-colors flex items-center gap-1"
 									>
 										<span

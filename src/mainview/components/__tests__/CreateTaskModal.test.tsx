@@ -45,6 +45,17 @@ const mockProject: Project = {
 	createdAt: "2025-01-01T00:00:00Z",
 };
 
+const otherProject: Project = {
+	id: "p2",
+	name: "Other Project",
+	path: "/home/user/other-project",
+	setupScript: "",
+	devScript: "",
+	cleanupScript: "",
+	defaultBaseBranch: "main",
+	createdAt: "2025-01-02T00:00:00Z",
+};
+
 const mockTask: Task = {
 	id: "t1",
 	seq: 1,
@@ -68,11 +79,13 @@ function renderModal(props: {
 	onClose?: () => void;
 	onCreateAndRun?: (task: Task) => void;
 	project?: Project;
+	projects?: Project[];
 } = {}) {
 	return render(
 		<I18nProvider>
 			<CreateTaskModal
 				project={props.project ?? mockProject}
+				projects={props.projects}
 				dispatch={props.dispatch ?? vi.fn()}
 				onClose={props.onClose ?? vi.fn()}
 				onCreateAndRun={props.onCreateAndRun}
@@ -147,6 +160,38 @@ describe("CreateTaskModal", () => {
 		expect(screen.queryByText("Save & Start")).not.toBeInTheDocument();
 	});
 
+	it("defaults the project selector to the board that opened the modal", async () => {
+		renderModal({ projects: [mockProject, otherProject] });
+
+		const projectSelector = screen.getByLabelText("Project");
+		expect(projectSelector).toHaveTextContent("Test Project");
+
+		await userEvent.click(projectSelector);
+		expect(screen.getByRole("button", { name: "Other Project" })).toBeInTheDocument();
+	});
+
+	it("creates the task in the selected project and passes it to Save & Start", async () => {
+		const otherTask = { ...mockTask, projectId: otherProject.id };
+		const dispatch = vi.fn();
+		const onCreateAndRun = vi.fn();
+		mockedApi.request.createTask.mockResolvedValue(otherTask);
+		renderModal({ projects: [mockProject, otherProject], dispatch, onCreateAndRun });
+
+		await userEvent.click(screen.getByLabelText("Project"));
+		await userEvent.click(screen.getByRole("button", { name: "Other Project" }));
+		await userEvent.type(screen.getByPlaceholderText("Describe what needs to be done..."), "Task for another project");
+		await userEvent.click(screen.getByText("Save & Start"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith({
+				projectId: otherProject.id,
+				description: "Task for another project",
+			});
+			expect(onCreateAndRun).toHaveBeenCalledWith(otherTask, otherProject);
+		});
+		expect(dispatch).not.toHaveBeenCalledWith({ type: "addTask", task: otherTask });
+	});
+
 	it("shows dual hint text when onCreateAndRun is provided", () => {
 		renderModal({ onCreateAndRun: vi.fn() });
 		expect(screen.getByText(/\u2318\u21e7Enter/)).toBeInTheDocument();
@@ -173,7 +218,7 @@ describe("CreateTaskModal", () => {
 			});
 		});
 		expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
-		expect(onCreateAndRun).toHaveBeenCalledWith(mockTask);
+		expect(onCreateAndRun).toHaveBeenCalledWith(mockTask, mockProject);
 	});
 
 	it("plain Save still calls onClose", async () => {
@@ -200,7 +245,7 @@ describe("CreateTaskModal", () => {
 		await userEvent.keyboard("{Meta>}{Shift>}{Enter}{/Shift}{/Meta}");
 
 		await waitFor(() => {
-			expect(onCreateAndRun).toHaveBeenCalledWith(mockTask);
+			expect(onCreateAndRun).toHaveBeenCalledWith(mockTask, mockProject);
 		});
 	});
 
@@ -241,7 +286,7 @@ describe("CreateTaskModal", () => {
 		await userEvent.keyboard("{Control>}{Shift>}{Enter}{/Shift}{/Control}");
 
 		await waitFor(() => {
-			expect(onCreateAndRun).toHaveBeenCalledWith(mockTask);
+			expect(onCreateAndRun).toHaveBeenCalledWith(mockTask, mockProject);
 		});
 	});
 
@@ -699,7 +744,7 @@ describe("CreateTaskModal", () => {
 			});
 		});
 		expect(dispatch).toHaveBeenCalledWith({ type: "addTask", task: mockTask });
-		expect(onCreateAndRun).toHaveBeenCalledWith(mockTask);
+		expect(onCreateAndRun).toHaveBeenCalledWith(mockTask, mockProject);
 	});
 
 	it("Scratch Task ignores typed description text (backend generates placeholder)", async () => {

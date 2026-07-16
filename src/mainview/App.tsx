@@ -1992,15 +1992,16 @@ function App() {
 			{createTaskProject && (
 				<CreateTaskModal
 					project={createTaskProject}
+					projects={state.projects}
 					dispatch={dispatch}
 					onClose={() => setCreateTaskProjectId(null)}
-					onCreateAndRun={(task) => {
+					onCreateAndRun={(task, project) => {
 						setCreateTaskProjectId(null);
-						setLaunchModal({ task, targetStatus: "in-progress", project: createTaskProject });
+						setLaunchModal({ task, targetStatus: "in-progress", project });
 					}}
-					onOpenAutomations={() => {
+					onOpenAutomations={(project) => {
 						setCreateTaskProjectId(null);
-						navigate({ screen: "project-settings", projectId: createTaskProject.id, tab: "automations" });
+						navigate({ screen: "project-settings", projectId: project.id, tab: "automations" });
 					}}
 				/>
 			)}
