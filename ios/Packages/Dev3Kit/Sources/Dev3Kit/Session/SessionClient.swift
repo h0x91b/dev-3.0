@@ -104,6 +104,7 @@ public final class SessionClient {
 
     private var started = false
     private var destroyed = false
+    private var isBootstrapping = false
     private var qrSpent = false
     private var attempts = 0
     private var retryTimer: UUID?
@@ -165,6 +166,7 @@ public extension SessionClient {
     func start() {
         guard !started, !destroyed else { return }
         started = true
+        isBootstrapping = true
         Task { [weak self] in
             guard let self else { return }
             await installConnectionHandler()
@@ -173,7 +175,7 @@ public extension SessionClient {
     }
 
     func kick() {
-        guard started, !destroyed, state != .expired, state != .authenticating else { return }
+        guard canInterruptSession else { return }
         cancelRetry()
         Task { [weak self] in
             guard let self else { return }
@@ -183,7 +185,7 @@ public extension SessionClient {
     }
 
     func refreshNow() {
-        guard started, !destroyed, currentServer != nil, state != .expired else { return }
+        guard canInterruptSession, currentServer != nil else { return }
         Task { [weak self] in
             await self?.performPeriodicRefresh()
         }
@@ -213,6 +215,8 @@ private extension SessionClient {
 
     private func bootAuthentication() async {
         guard !isDead else { return }
+        isBootstrapping = true
+        defer { isBootstrapping = false }
         setState(.authenticating)
         switch launch {
         case let .saved(server):
@@ -426,6 +430,7 @@ private extension SessionClient {
         setState(currentServer == nil ? .connecting : .reconnecting)
         retryTimer = scheduler.schedule(after: nextBackoffDelay()) { [weak self] in
             self?.retryTimer = nil
+            self?.isBootstrapping = true
             Task { [weak self] in
                 await self?.bootAuthentication()
             }
@@ -487,5 +492,9 @@ private extension SessionClient {
 
     private var isDead: Bool {
         destroyed || state == .expired
+    }
+
+    private var canInterruptSession: Bool {
+        started && !destroyed && !isBootstrapping && state != .expired && state != .authenticating
     }
 }

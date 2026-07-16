@@ -21,6 +21,22 @@ struct ConnectionControllerTests {
         #expect(harness.connections.items.count == 1)
     }
 
+    @Test("An immediate foreground event does not duplicate bootstrap authentication")
+    func foregroundDuringBootstrapIsCoalesced() async throws {
+        let saved = try makeServer(name: "Studio Mac")
+        let harness = try await ControllerHarness(servers: [saved], active: saved)
+
+        await harness.controller.start()
+        harness.controller.foregrounded()
+        await settleController()
+
+        let connection = try #require(harness.connections.items.first)
+        #expect(await harness.transport.refreshCallCount == 1)
+        #expect(await connection.connectCallCount == 1)
+        #expect(await connection.disconnectCallCount == 0)
+        #expect(harness.controller.sessionState == .connected)
+    }
+
     @Test("Manual or scanned pairing stores the chosen server name")
     func pairingStoresDisplayName() async throws {
         let harness = try await ControllerHarness()
