@@ -4296,6 +4296,30 @@ describe("handlers.getBranchStatus", () => {
 		expect(result.prNumber).toBeNull();
 	});
 
+	it("keeps a previously detected PR identity when gh pr list returns empty", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			worktreePath: "/tmp/wt",
+			branchName: "feat/login",
+			prNumber: 42,
+			prUrl: "https://github.com/test/repo/pull/42",
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("feat/login");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", code: 0 });
+
+		const result = await handlers.getBranchStatus({ taskId: task.id, projectId: project.id });
+
+		expect(result.prNumber).toBe(42);
+		expect(result.prUrl).toBe(task.prUrl);
+	});
+
 	it("returns prNumber=null when gh pr list fails", async () => {
 		const project = makeProject();
 		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "feat/login" });
@@ -7996,6 +8020,71 @@ describe("checkOpenPRsForPromotion", () => {
 
 		expect(git.getCurrentBranch).toHaveBeenCalled();
 		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({ taskId: task.id }));
+	});
+
+	it("keeps a merged sticky PR linked and reports its merged state", async () => {
+		const { project, task } = setup({
+			status: "review-by-user",
+			prNumber: 42,
+			prUrl: "https://github.com/test/repo/pull/42",
+		});
+		const mergedPr = {
+			number: 42,
+			isDraft: false,
+			autoMergeRequest: null,
+			url: task.prUrl,
+			statusCheckRollup: [],
+			reviewDecision: null,
+			mergeable: "UNKNOWN",
+			mergeStateStatus: "UNKNOWN",
+			state: "MERGED",
+			title: "Merged change",
+		};
+		vi.mocked(github.runGitHub)
+			.mockResolvedValueOnce({ ok: true, stdout: "[]", stderr: "", code: 0 })
+			.mockResolvedValueOnce({ ok: true, stdout: JSON.stringify(mergedPr), stderr: "", code: 0 })
+			.mockResolvedValueOnce({
+				ok: true,
+				stdout: JSON.stringify({
+					data: {
+						repository: {
+							pullRequest: {
+								reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+							},
+						},
+					},
+				}),
+				stderr: "",
+				code: 0,
+			});
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+
+		expect(github.runGitHub).toHaveBeenNthCalledWith(
+			2,
+			project,
+			task.worktreePath,
+			expect.arrayContaining(["pr", "view", "42", "--json"]),
+			expect.objectContaining({ timeoutMs: expect.any(Number) }),
+		);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
+			prNumber: 42,
+			prUrl: task.prUrl,
+			prStatusCache: expect.objectContaining({
+				number: 42,
+				url: task.prUrl,
+				mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+			}),
+		}));
+		expect(push).toHaveBeenCalledWith("taskPrStatus", expect.objectContaining({
+			taskId: task.id,
+			prNumber: 42,
+			prUrl: task.prUrl,
+			mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+		}));
+		expect(data.updateTask).not.toHaveBeenCalledWith(project, task.id, { status: "review-by-colleague" });
 	});
 
 	it("uses the GraphQL review-thread page and persists the PR identity", async () => {
