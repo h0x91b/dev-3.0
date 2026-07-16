@@ -380,6 +380,71 @@ public final class TaskInfoStore {
     }
 }
 
+private enum TerminalMoveBranchStatusResult: Sendable {
+    case status(Dev3BranchStatus)
+    case unavailable
+    case timedOut
+    case cancelled
+}
+
+private final class TerminalMoveBranchStatusRace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var result: TerminalMoveBranchStatusResult?
+    private var continuation: CheckedContinuation<TerminalMoveBranchStatusResult, Never>?
+    private var serviceTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
+
+    func install(serviceTask: Task<Void, Never>, timeoutTask: Task<Void, Never>) {
+        lock.lock()
+        let alreadyResolved = result != nil
+        if !alreadyResolved {
+            self.serviceTask = serviceTask
+            self.timeoutTask = timeoutTask
+        }
+        lock.unlock()
+        if alreadyResolved {
+            serviceTask.cancel()
+            timeoutTask.cancel()
+        }
+    }
+
+    func wait() async -> TerminalMoveBranchStatusResult {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if let result {
+                lock.unlock()
+                continuation.resume(returning: result)
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
+    }
+
+    func resolve(_ result: TerminalMoveBranchStatusResult) {
+        let continuation: CheckedContinuation<TerminalMoveBranchStatusResult, Never>?
+        let serviceTask: Task<Void, Never>?
+        let timeoutTask: Task<Void, Never>?
+        lock.lock()
+        guard self.result == nil else {
+            lock.unlock()
+            return
+        }
+        self.result = result
+        continuation = self.continuation
+        serviceTask = self.serviceTask
+        timeoutTask = self.timeoutTask
+        self.continuation = nil
+        self.serviceTask = nil
+        self.timeoutTask = nil
+        lock.unlock()
+
+        serviceTask?.cancel()
+        timeoutTask?.cancel()
+        continuation?.resume(returning: result)
+    }
+}
+
 private extension TaskInfoStore {
     enum TerminalMovePreflightOutcome {
         case clear
@@ -396,10 +461,6 @@ private extension TaskInfoStore {
         let worktreePath: String?
         let baseBranch: String
         let projectBaseBranch: String
-    }
-
-    enum TerminalMovePreflightError: Error {
-        case timedOut
     }
 
     func beginMutation() -> Bool {
@@ -490,21 +551,22 @@ private extension TaskInfoStore {
         for newStatus: Dev3TaskStatus,
         context: TerminalMovePreflightContext
     ) async -> TerminalMovePreflightOutcome {
-        do {
-            let currentBranchStatus = try await branchStatusForTerminalMove(
-                taskID: context.taskID,
-                projectID: context.projectID
-            )
+        let result = await branchStatusForTerminalMove(
+            taskID: context.taskID,
+            projectID: context.projectID
+        )
+        guard !Task.isCancelled else { return .stale }
+        switch result {
+        case let .status(currentBranchStatus):
             guard terminalMovePreflightGeneration == context.generation else { return .stale }
             branchStatus = currentBranchStatus
             if let warning = terminalMoveWarning(for: newStatus, branchStatus: currentBranchStatus) {
                 return .warning(warning)
             }
             return .clear
-        } catch is CancellationError {
+        case .cancelled:
             return .stale
-        } catch {
-            guard !Task.isCancelled else { return .stale }
+        case .timedOut, .unavailable:
             guard terminalMovePreflightGeneration == context.generation else { return .stale }
             if let warning = terminalMoveWarning(for: newStatus, branchStatus: branchStatus) {
                 return .warning(warning)
@@ -516,22 +578,33 @@ private extension TaskInfoStore {
     func branchStatusForTerminalMove(
         taskID: String,
         projectID: String
-    ) async throws -> Dev3BranchStatus {
+    ) async -> TerminalMoveBranchStatusResult {
+        let race = TerminalMoveBranchStatusRace()
         let service = service
         let timeout = terminalMovePreflightTimeout
-        return try await withThrowingTaskGroup(of: Dev3BranchStatus.self) { group in
-            group.addTask {
-                try await service.branchStatus(taskID: taskID, projectID: projectID)
+        let serviceTask = Task.detached {
+            do {
+                let status = try await service.branchStatus(taskID: taskID, projectID: projectID)
+                race.resolve(.status(status))
+            } catch is CancellationError {
+                race.resolve(.cancelled)
+            } catch {
+                race.resolve(.unavailable)
             }
-            group.addTask {
+        }
+        let timeoutTask = Task.detached {
+            do {
                 try await Task.sleep(for: timeout)
-                throw TerminalMovePreflightError.timedOut
+                race.resolve(.timedOut)
+            } catch {
+                // The service or caller won the race and cancelled this deadline.
             }
-            defer { group.cancelAll() }
-            guard let result = try await group.next() else {
-                throw CancellationError()
-            }
-            return result
+        }
+        race.install(serviceTask: serviceTask, timeoutTask: timeoutTask)
+        return await withTaskCancellationHandler {
+            await race.wait()
+        } onCancel: {
+            race.resolve(.cancelled)
         }
     }
 

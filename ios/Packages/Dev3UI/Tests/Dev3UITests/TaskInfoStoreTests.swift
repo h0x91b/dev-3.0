@@ -167,24 +167,37 @@ struct TaskInfoStoreTests {
     @Test("Terminal preflight timeout falls back to a conservative confirmation")
     func terminalPreflightTimeout() async throws {
         let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let gate = UncooperativeBranchGate()
         let service = try TaskInfoServiceDouble(
             response: original,
             branch: branchStatus(),
-            branchDelay: .seconds(1)
+            branchGate: gate
         )
         let store = try makeStore(
             task: original,
             service: service,
-            terminalMovePreflightTimeout: .milliseconds(10)
+            terminalMovePreflightTimeout: .milliseconds(30)
         )
 
+        let clock = ContinuousClock()
+        let startedAt = clock.now
         await store.requestCancellation()
+        let elapsed = startedAt.duration(to: clock.now)
 
+        #expect(await gate.hasStarted())
+        #expect(elapsed >= .milliseconds(20))
+        #expect(elapsed < .milliseconds(250))
         #expect(await service.branchCallCount() == 1)
         #expect(!store.isPreparingTerminalMove)
         #expect(store.pendingConfirmation?.kind == .terminalMove(.cancelled))
         #expect(store.pendingConfirmation?.title == "Branch Status Unavailable")
         #expect(await service.moveCalls().isEmpty)
+
+        _ = store.takePendingConfirmation()
+        await gate.resume()
+        await waitForBranchCompletion(service)
+        #expect(store.branchStatus == nil)
+        #expect(store.pendingConfirmation == nil)
     }
 
     @Test("A safe completion still moves immediately after its preflight")
@@ -479,10 +492,12 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
     private let response: Dev3Task
     private var branchResponses: [Dev3BranchStatus]
     private let branchDelay: Duration?
+    private let branchGate: UncooperativeBranchGate?
     private let failFirstMove: Bool
     private let failBranch: Bool
     private var didFailMove = false
     private var branchCalls = 0
+    private var branchCompletions = 0
     private var moves: [MoveCall] = []
     private var calls: [Call] = []
     private var renameResponses: [Dev3Task] = []
@@ -493,12 +508,14 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
         branch: Dev3BranchStatus,
         branchResponses: [Dev3BranchStatus]? = nil,
         branchDelay: Duration? = nil,
+        branchGate: UncooperativeBranchGate? = nil,
         failFirstMove: Bool = false,
         failBranch: Bool = false
     ) {
         self.response = response
         self.branchResponses = branchResponses ?? [branch]
         self.branchDelay = branchDelay
+        self.branchGate = branchGate
         self.failFirstMove = failFirstMove
         self.failBranch = failBranch
     }
@@ -517,6 +534,10 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
 
     func branchCallCount() -> Int {
         branchCalls
+    }
+
+    func branchCompletionCount() -> Int {
+        branchCompletions
     }
 
     func allCalls() -> [Call] {
@@ -601,9 +622,12 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
 
     func branchStatus(taskID _: String, projectID _: String) async throws -> Dev3BranchStatus {
         branchCalls += 1
-        if let branchDelay {
+        if let branchGate {
+            await branchGate.suspend()
+        } else if let branchDelay {
             try await Task.sleep(for: branchDelay)
         }
+        branchCompletions += 1
         if failBranch {
             throw TaskInfoTestError.failure
         }
@@ -625,6 +649,30 @@ private enum TaskInfoTestError: Error {
     case failure
 }
 
+private actor UncooperativeBranchGate {
+    private var started = false
+    private var isOpen = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        started = true
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func hasStarted() -> Bool {
+        started
+    }
+
+    func resume() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
 @MainActor
 private func makeStore(
     task: Dev3Task,
@@ -643,9 +691,21 @@ private func makeStore(
 
 @MainActor
 private func waitForTerminalMovePreflight(_ store: TaskInfoStore) async {
-    for _ in 0 ..< 100 where !store.isPreparingTerminalMove {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(1))
+    while !store.isPreparingTerminalMove, clock.now < deadline {
         await Task.yield()
     }
+    #expect(store.isPreparingTerminalMove, "Terminal move preflight did not start")
+}
+
+private func waitForBranchCompletion(_ service: TaskInfoServiceDouble) async {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(1))
+    while await service.branchCompletionCount() == 0, clock.now < deadline {
+        await Task.yield()
+    }
+    #expect(await service.branchCompletionCount() == 1, "Branch status service did not complete")
 }
 
 private func project() throws -> Dev3Project {
