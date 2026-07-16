@@ -109,6 +109,14 @@ public final class TaskCreationStore {
         existingTask != nil
     }
 
+    public var trimmedDescription: String {
+        descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public var isDescriptionMissing: Bool {
+        !isLaunchingExistingTask && trimmedDescription.isEmpty
+    }
+
     public var selectedProject: Dev3Project? {
         guard let selectedProjectID else { return nil }
         return projects.first { $0.id == selectedProjectID }
@@ -130,9 +138,11 @@ public final class TaskCreationStore {
     }
 
     public var canSubmit: Bool {
-        let hasSource = existingTask != nil ||
-            !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return !isLoading && !isSubmitting && !hasUncertainMutation && selectedProject != nil && hasSource
+        !isLoading &&
+            !isSubmitting &&
+            !hasUncertainMutation &&
+            selectedProject != nil &&
+            !isDescriptionMissing
     }
 
     public func replaceProjects(_ updatedProjects: [Dev3Project]) {
@@ -289,7 +299,7 @@ public final class TaskCreationStore {
         isSubmitting = true
         defer { isSubmitting = false }
         let provenance = binding.provenance
-        let description = descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let description = trimmedDescription
 
         if let existingTask {
             guard mode == .saveAndStart else {
@@ -569,7 +579,7 @@ private extension TaskCreationStore {
                 throw TaskCreationValidationError.existingTaskUnavailable
             }
         } else {
-            guard !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            guard !isDescriptionMissing else {
                 throw TaskCreationValidationError.descriptionRequired
             }
         }

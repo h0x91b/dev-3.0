@@ -97,10 +97,32 @@ public struct TaskCreationScreen: View {
             TextField("Title (optional)", text: $store.title)
                 .accessibilityIdentifier("taskCreation.title")
 
-            TextEditor(text: $store.descriptionText)
-                .frame(minHeight: 120)
-                .accessibilityLabel("Description")
-                .accessibilityIdentifier("taskCreation.description")
+            VStack(alignment: .leading, spacing: 6) {
+                Text(TaskCreationDescriptionSemantics.visibleLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $store.descriptionText)
+                        .frame(minHeight: 120)
+                        .accessibilityLabel(TaskCreationDescriptionSemantics.accessibilityLabel)
+                        .accessibilityValue(TaskCreationDescriptionSemantics.accessibilityValue(
+                            trimmedDescription: store.trimmedDescription
+                        ))
+                        .accessibilityHint(TaskCreationDescriptionSemantics.accessibilityHint)
+                        .accessibilityIdentifier("taskCreation.description")
+
+                    if store.isDescriptionMissing {
+                        Text(TaskCreationDescriptionSemantics.emptyPrompt)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
 
             Picker("Priority", selection: $store.priority) {
                 ForEach(Dev3TaskPriority.allCases, id: \.self) { priority in
@@ -214,5 +236,16 @@ public struct TaskCreationScreen: View {
             return "Preparing terminal…"
         }
         return store.isLaunchingExistingTask ? "Start" : "Save & Start"
+    }
+}
+
+enum TaskCreationDescriptionSemantics {
+    static let visibleLabel = "Description (required)"
+    static let emptyPrompt = "Describe the work to be done."
+    static let accessibilityLabel = "Description, required"
+    static let accessibilityHint = "Describe the task to enable Save and Save & Start."
+
+    static func accessibilityValue(trimmedDescription: String) -> String {
+        trimmedDescription.isEmpty ? "Empty" : trimmedDescription
     }
 }

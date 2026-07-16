@@ -17,6 +17,36 @@ struct TaskCreationStoreTests {
         #expect(store.canSubmit == false)
     }
 
+    @Test("Required description state and accessibility share the trimmed value")
+    func requiredDescriptionSemantics() {
+        let project = makeIAProject()
+        let store = TaskCreationStore(
+            projects: [project],
+            selectedProjectID: project.id,
+            serviceProvider: { nil }
+        )
+
+        store.descriptionText = "  \n  "
+        #expect(store.trimmedDescription.isEmpty)
+        #expect(store.isDescriptionMissing)
+        #expect(store.canSubmit == false)
+        #expect(TaskCreationDescriptionSemantics.visibleLabel == "Description (required)")
+        #expect(TaskCreationDescriptionSemantics.emptyPrompt == "Describe the work to be done.")
+        #expect(TaskCreationDescriptionSemantics.accessibilityLabel == "Description, required")
+        #expect(TaskCreationDescriptionSemantics.accessibilityValue(
+            trimmedDescription: store.trimmedDescription
+        ) == "Empty")
+        #expect(TaskCreationDescriptionSemantics.accessibilityHint.contains("Save & Start"))
+
+        store.descriptionText = "  Build the native flow. \n"
+        #expect(store.trimmedDescription == "Build the native flow.")
+        #expect(store.isDescriptionMissing == false)
+        #expect(store.canSubmit)
+        #expect(TaskCreationDescriptionSemantics.accessibilityValue(
+            trimmedDescription: store.trimmedDescription
+        ) == "Build the native flow.")
+    }
+
     @Test("Defaults skip gated configurations and stale favorites")
     func defaultsAndFavorites() throws {
         let agents = try agentFixtures()
