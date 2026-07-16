@@ -2,6 +2,11 @@ import Dev3Kit
 import SwiftUI
 
 public typealias TaskDestinationBuilder = @MainActor (_ projectID: String, _ taskID: String) -> AnyView
+public typealias TaskReviewDestinationBuilder = @MainActor (
+    _ destination: TaskReviewRoute,
+    _ projectID: String,
+    _ taskID: String
+) -> AnyView
 public typealias TaskInfoAction = @MainActor (_ projectID: String, _ taskID: String) -> Void
 public typealias NewTaskAction = @MainActor (_ projectID: String?) -> Void
 public typealias RunTodoTaskAction = @MainActor (_ task: Dev3Task) -> Void
@@ -11,6 +16,7 @@ public typealias SettingsAccessoryBuilder = @MainActor () -> AnyView
 public struct CompanionRootView: View {
     @Bindable private var store: AppStore
     private let taskDestinationBuilder: TaskDestinationBuilder
+    private let taskReviewDestinationBuilder: TaskReviewDestinationBuilder
     private let onOpenTaskInfo: TaskInfoAction
     private let onCreateTask: NewTaskAction
     private let onRunTodoTask: RunTodoTaskAction
@@ -22,6 +28,9 @@ public struct CompanionRootView: View {
         taskDestinationBuilder: @escaping TaskDestinationBuilder = { _, _ in
             AnyView(ContentUnavailableView("Terminal unavailable", systemImage: "terminal"))
         },
+        taskReviewDestinationBuilder: @escaping TaskReviewDestinationBuilder = { _, _, _ in
+            AnyView(ContentUnavailableView("Review unavailable", systemImage: "doc.text.magnifyingglass"))
+        },
         onOpenTaskInfo: @escaping TaskInfoAction = { _, _ in },
         onCreateTask: @escaping NewTaskAction = { _ in },
         onRunTodoTask: @escaping RunTodoTaskAction = { _ in },
@@ -31,6 +40,7 @@ public struct CompanionRootView: View {
     ) {
         self.store = store
         self.taskDestinationBuilder = taskDestinationBuilder
+        self.taskReviewDestinationBuilder = taskReviewDestinationBuilder
         self.onOpenTaskInfo = onOpenTaskInfo
         self.onCreateTask = onCreateTask
         self.onRunTodoTask = onRunTodoTask
@@ -43,6 +53,7 @@ public struct CompanionRootView: View {
                 ConnectedShellView(
                     store: store,
                     taskDestinationBuilder: taskDestinationBuilder,
+                    taskReviewDestinationBuilder: taskReviewDestinationBuilder,
                     onOpenTaskInfo: onOpenTaskInfo,
                     onCreateTask: onCreateTask,
                     onRunTodoTask: onRunTodoTask,
@@ -73,6 +84,7 @@ public struct CompanionRootView: View {
 private struct ConnectedShellView: View {
     @Bindable var store: AppStore
     let taskDestinationBuilder: TaskDestinationBuilder
+    let taskReviewDestinationBuilder: TaskReviewDestinationBuilder
     let onOpenTaskInfo: TaskInfoAction
     let onCreateTask: NewTaskAction
     let onRunTodoTask: RunTodoTaskAction
@@ -168,6 +180,11 @@ private struct ConnectedShellView: View {
                 taskID: taskID,
                 destinationBuilder: taskDestinationBuilder
             )
+        case let .taskReview(projectID, taskID, destination):
+            taskReviewDestinationBuilder(destination, projectID, taskID)
+                .onAppear {
+                    store.setActiveContext(projectId: projectID, taskId: taskID)
+                }
         case let .project(projectID):
             if let project = store.project(id: projectID) {
                 ProjectBoardOverview(

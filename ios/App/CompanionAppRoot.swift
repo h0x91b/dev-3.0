@@ -138,6 +138,13 @@ struct CompanionAppRoot: View {
                     )
                 )
             },
+            taskReviewDestinationBuilder: { destination, projectID, taskID in
+                taskReviewDestination(
+                    destination,
+                    projectID: projectID,
+                    taskID: taskID
+                )
+            },
             onOpenTaskInfo: presentTaskInfo,
             onCreateTask: presentTaskCreation,
             onRunTodoTask: presentTaskLaunch,
@@ -156,6 +163,9 @@ struct CompanionAppRoot: View {
                 onTerminalClosed: {
                     store.removeTaskRoutes(projectId: presented.projectID, taskId: presented.taskID)
                     presentedTaskInfo = nil
+                },
+                onOpenReview: { destination in
+                    openTaskReview(destination, presented: presented)
                 }
             )
             .id(identity)
@@ -405,8 +415,13 @@ struct CompanionAppRoot: View {
     }
 
     private func taskID(in path: [AppRoute]) -> String? {
-        guard let route = path.last, case let .task(_, taskID) = route else { return nil }
-        return taskID
+        guard let route = path.last else { return nil }
+        switch route {
+        case let .task(_, taskID), let .taskReview(_, taskID, _):
+            return taskID
+        case .project:
+            return nil
+        }
     }
 
     private static func completionServiceProvider(
@@ -419,7 +434,55 @@ struct CompanionAppRoot: View {
     }
 
     private func presentTaskInfo(projectID: String, taskID: String) {
-        presentedTaskInfo = PresentedTaskInfo(projectID: projectID, taskID: taskID)
+        let origin = store.selectedTab == .settings ? AppTab.work : store.selectedTab
+        presentedTaskInfo = PresentedTaskInfo(
+            projectID: projectID,
+            taskID: taskID,
+            origin: origin
+        )
+    }
+
+    private func openTaskReview(
+        _ destination: TaskReviewRoute,
+        presented: PresentedTaskInfo
+    ) {
+        presentedTaskInfo = nil
+        store.openTaskReview(
+            projectId: presented.projectID,
+            taskId: presented.taskID,
+            destination: destination,
+            from: presented.origin
+        )
+    }
+
+    private func taskReviewDestination(
+        _ destination: TaskReviewRoute,
+        projectID: String,
+        taskID: String
+    ) -> AnyView {
+        guard let project = store.project(id: projectID),
+              let task = store.task(projectId: projectID, taskId: taskID),
+              let serverID = store.controller.activeServer?.instanceId
+        else {
+            return AnyView(
+                ContentUnavailableView(
+                    "Review unavailable",
+                    systemImage: "doc.text.magnifyingglass",
+                    description: Text("This task is no longer present in the active instance.")
+                )
+            )
+        }
+        let hooks = TaskReviewDestinationFactory.make(
+            appStore: store,
+            rpcClientProvider: { [weak runtime] in runtime?.rpcClient },
+            serverID: serverID
+        )
+        switch destination {
+        case .diff:
+            return hooks.diffDestination(project, task)
+        case .pullRequest:
+            return hooks.prStatusDestination(project, task)
+        }
     }
 
     private func presentTaskCreation(projectID: String?) {
@@ -457,6 +520,7 @@ private struct CompanionShellSnapshot: Equatable {
 private struct PresentedTaskInfo: Identifiable {
     let projectID: String
     let taskID: String
+    let origin: AppTab
 
     var id: String {
         "\(projectID):\(taskID)"
@@ -598,6 +662,7 @@ private struct TaskInfoDestination: View {
     let projectID: String
     let taskID: String
     let onTerminalClosed: () -> Void
+    let onOpenReview: (TaskReviewRoute) -> Void
     private let connectionPolicy: TaskInfoConnectionPolicy
     @State private var infoStore: TaskInfoStore?
     @State private var pushObserverToken: UUID?
@@ -610,12 +675,14 @@ private struct TaskInfoDestination: View {
         connectionIdentity: CompanionConnectionIdentity,
         projectID: String,
         taskID: String,
-        onTerminalClosed: @escaping () -> Void
+        onTerminalClosed: @escaping () -> Void,
+        onOpenReview: @escaping (TaskReviewRoute) -> Void
     ) {
         self.appStore = appStore
         self.projectID = projectID
         self.taskID = taskID
         self.onTerminalClosed = onTerminalClosed
+        self.onOpenReview = onOpenReview
         connectionPolicy = TaskInfoConnectionPolicy(hasLiveService: runtime?.rpcClient != nil)
         guard let task = appStore.task(projectId: projectID, taskId: taskID),
               let project = appStore.project(id: projectID)
@@ -669,17 +736,21 @@ private struct TaskInfoDestination: View {
 
     var body: some View {
         if let infoStore {
-            TaskInfoSheet(store: infoStore)
-                .onAppear { startObservingPushes(infoStore) }
-                .onDisappear(perform: stopObservingPushes)
-                .onChange(of: appStore.isConnected, initial: true) { _, connected in
-                    infoStore.setConnected(connectionPolicy.canMutate(isConnected: connected))
+            TaskInfoSheet(
+                store: infoStore,
+                onOpenDiff: { onOpenReview(.diff) },
+                onOpenPRStatus: { onOpenReview(.pullRequest) }
+            )
+            .onAppear { startObservingPushes(infoStore) }
+            .onDisappear(perform: stopObservingPushes)
+            .onChange(of: appStore.isConnected, initial: true) { _, connected in
+                infoStore.setConnected(connectionPolicy.canMutate(isConnected: connected))
+            }
+            .onChange(of: appStore.task(projectId: projectID, taskId: taskID)) { _, task in
+                if let task {
+                    infoStore.replace(task: task, project: appStore.project(id: projectID))
                 }
-                .onChange(of: appStore.task(projectId: projectID, taskId: taskID)) { _, task in
-                    if let task {
-                        infoStore.replace(task: task, project: appStore.project(id: projectID))
-                    }
-                }
+            }
         } else {
             ContentUnavailableView(
                 "Task unavailable",

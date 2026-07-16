@@ -165,15 +165,41 @@ public extension AppStore {
         }
     }
 
+    func openTaskReview(
+        projectId: String,
+        taskId: String,
+        destination: TaskReviewRoute,
+        from tab: AppTab
+    ) {
+        guard tab != .settings else { return }
+        selectedTab = tab
+        let taskRoute = AppRoute.task(projectId: projectId, taskId: taskId)
+        let reviewRoute = AppRoute.taskReview(
+            projectId: projectId,
+            taskId: taskId,
+            destination: destination
+        )
+        switch tab {
+        case .work:
+            Self.appendReviewRoute(reviewRoute, after: taskRoute, to: &workPath)
+        case .projects:
+            Self.appendReviewRoute(reviewRoute, after: taskRoute, to: &projectsPath)
+        case .settings:
+            break
+        }
+    }
+
     func removeTaskRoutes(projectId: String, taskId: String) {
-        let route = AppRoute.task(projectId: projectId, taskId: taskId)
-        workPath.removeAll { $0 == route }
-        projectsPath.removeAll { $0 == route }
+        workPath.removeAll { $0.belongsToTask(projectId: projectId, taskId: taskId) }
+        projectsPath.removeAll { $0.belongsToTask(projectId: projectId, taskId: taskId) }
     }
 
     func removeAllTaskRoutes() {
         workPath.removeAll { route in
             if case .task = route {
+                return true
+            }
+            if case .taskReview = route {
                 return true
             }
             return false
@@ -182,8 +208,23 @@ public extension AppStore {
             if case .task = route {
                 return true
             }
+            if case .taskReview = route {
+                return true
+            }
             return false
         }
+    }
+
+    private static func appendReviewRoute(
+        _ reviewRoute: AppRoute,
+        after taskRoute: AppRoute,
+        to path: inout [AppRoute]
+    ) {
+        guard path.last != reviewRoute else { return }
+        if path.last != taskRoute {
+            path.append(taskRoute)
+        }
+        path.append(reviewRoute)
     }
 
     func clipboardStream(for taskID: String) -> AsyncStream<String> {
@@ -199,6 +240,18 @@ public extension AppStore {
                     self?.removePushObserver(token)
                 }
             }
+        }
+    }
+}
+
+private extension AppRoute {
+    func belongsToTask(projectId: String, taskId: String) -> Bool {
+        switch self {
+        case let .task(routeProjectID, routeTaskID),
+             let .taskReview(routeProjectID, routeTaskID, _):
+            routeProjectID == projectId && routeTaskID == taskId
+        case .project:
+            false
         }
     }
 }

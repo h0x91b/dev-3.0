@@ -46,8 +46,14 @@ public enum AppTab: Hashable, Sendable {
     case settings
 }
 
+public enum TaskReviewRoute: Hashable, Sendable {
+    case diff
+    case pullRequest
+}
+
 public enum AppRoute: Hashable, Sendable {
     case task(projectId: String, taskId: String)
+    case taskReview(projectId: String, taskId: String, destination: TaskReviewRoute)
     case project(String)
 }
 

@@ -4,11 +4,11 @@ import Foundation
 import SwiftUI
 
 typealias TaskDiffDestinationHook = @MainActor (_ project: Dev3Project, _ task: Dev3Task) -> AnyView
-typealias TaskPRStatusSheetHook = @MainActor (_ project: Dev3Project, _ task: Dev3Task) -> AnyView
+typealias TaskPRStatusDestinationHook = @MainActor (_ project: Dev3Project, _ task: Dev3Task) -> AnyView
 
 struct TaskReviewDestinationHooks {
     let diffDestination: TaskDiffDestinationHook
-    let prStatusSheet: TaskPRStatusSheetHook
+    let prStatusDestination: TaskPRStatusDestinationHook
 }
 
 @MainActor
@@ -35,7 +35,7 @@ enum TaskReviewDestinationFactory {
                 )
                 return AnyView(TaskDiffDestinationHost(appStore: appStore, store: store))
             },
-            prStatusSheet: { _, task in
+            prStatusDestination: { _, task in
                 let service = RPCTaskPRStatusService(rpcClientProvider: rpcClientProvider)
                 let store = TaskPRStatusStore(
                     task: task,

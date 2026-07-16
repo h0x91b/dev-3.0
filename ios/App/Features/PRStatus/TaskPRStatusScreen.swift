@@ -9,7 +9,6 @@ import SwiftUI
 struct TaskPRStatusScreen: View {
     @State private var store: TaskPRStatusStore
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.dismiss) private var dismiss
 
     init(store: TaskPRStatusStore) {
         _store = State(initialValue: store)
@@ -20,38 +19,34 @@ struct TaskPRStatusScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let detail = store.detail {
-                    statusList(detail)
-                } else {
-                    ContentUnavailableView(
-                        "No pull request",
-                        systemImage: "arrow.triangle.pull",
-                        description: Text("This task does not have an open pull request.")
-                    )
-                }
+        Group {
+            if let detail = store.detail {
+                statusList(detail)
+            } else {
+                ContentUnavailableView(
+                    "No pull request",
+                    systemImage: "arrow.triangle.pull",
+                    description: Text("This task does not have an open pull request.")
+                )
             }
-            .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { Task { await store.refresh() } } label: {
-                        if store.isRefreshing {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                        }
+        }
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { Task { await store.refresh() } } label: {
+                    if store.isRefreshing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
                     }
-                    .disabled(!store.isConnected || store.isRefreshing)
-                    .accessibilityLabel(
-                        store.isRefreshing ? "Refreshing pull request" : "Refresh pull request"
-                    )
-                    .accessibilityIdentifier("pr.refresh")
                 }
+                .disabled(!store.isConnected || store.isRefreshing)
+                .accessibilityLabel(
+                    store.isRefreshing ? "Refreshing pull request" : "Refresh pull request"
+                )
+                .accessibilityIdentifier("pr.refresh")
             }
         }
         .task { await store.refresh() }

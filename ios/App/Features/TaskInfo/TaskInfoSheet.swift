@@ -2,11 +2,41 @@ import Dev3Kit
 import Dev3UI
 import SwiftUI
 
+enum TaskReviewRowState: Equatable {
+    case hidden
+    case loading
+    case navigable
+    case unavailable
+
+    static func changes(branchStatus: Dev3BranchStatus?, isRefreshing: Bool) -> Self {
+        if branchStatus != nil {
+            return .navigable
+        }
+        return isRefreshing ? .loading : .hidden
+    }
+
+    static func pullRequest(number: Int?) -> Self {
+        number == nil ? .unavailable : .navigable
+    }
+}
+
 @MainActor
 struct TaskInfoSheet: View {
     @Bindable var store: TaskInfoStore
+    let onOpenDiff: () -> Void
+    let onOpenPRStatus: () -> Void
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+
+    init(
+        store: TaskInfoStore,
+        onOpenDiff: @escaping () -> Void = {},
+        onOpenPRStatus: @escaping () -> Void = {}
+    ) {
+        self.store = store
+        self.onOpenDiff = onOpenDiff
+        self.onOpenPRStatus = onOpenPRStatus
+    }
 
     private var palette: Dev3ThemePalette {
         Dev3Theme.palette(for: colorScheme)
@@ -262,36 +292,79 @@ private extension TaskInfoSheet {
 
     @ViewBuilder
     var branchStatusRow: some View {
-        if store.isRefreshingBranch, store.branchStatus == nil {
+        switch TaskReviewRowState.changes(
+            branchStatus: store.branchStatus,
+            isRefreshing: store.isRefreshingBranch
+        ) {
+        case .loading:
             LabeledContent("Changes") {
                 ProgressView()
                     .controlSize(.small)
             }
             .accessibilityIdentifier("taskInfo.branch.loading")
-        } else if let status = store.branchStatus {
-            LabeledContent(
-                "Changes",
-                value: "+\(status.insertions) / -\(status.deletions) · \(status.ahead) ahead"
-            )
-            .accessibilityIdentifier("taskInfo.branch.status")
+        case .navigable:
+            if let status = store.branchStatus {
+                let value = "+\(status.insertions) / -\(status.deletions) · \(status.ahead) ahead"
+                taskReviewNavigationRow(
+                    title: "Changes",
+                    value: value,
+                    hint: "Opens the task diff",
+                    action: onOpenDiff
+                )
+                .accessibilityIdentifier("taskInfo.branch.status")
+            }
+        case .hidden, .unavailable:
+            EmptyView()
         }
     }
 
     @ViewBuilder
     var pullRequestRow: some View {
-        if let url = pullRequestURL, let number = pullRequestNumber {
-            Link(destination: url) {
-                LabeledContent("Pull request", value: "#\(number) · \(pullRequestState)")
-            }
-            .accessibilityIdentifier("taskInfo.pr.link")
-        } else if let number = pullRequestNumber {
-            LabeledContent("Pull request", value: "#\(number) · \(pullRequestState)")
+        switch TaskReviewRowState.pullRequest(number: pullRequestNumber) {
+        case .navigable:
+            if let number = pullRequestNumber {
+                taskReviewNavigationRow(
+                    title: "Pull request",
+                    value: "#\(number) · \(pullRequestState)",
+                    hint: "Opens pull request status",
+                    action: onOpenPRStatus
+                )
                 .accessibilityIdentifier("taskInfo.pr")
-        } else {
+            }
+        case .unavailable:
             LabeledContent("Pull request", value: "None")
                 .foregroundStyle(palette.textSecondary)
                 .accessibilityIdentifier("taskInfo.pr.empty")
+        case .hidden, .loading:
+            EmptyView()
         }
+    }
+
+    private func taskReviewNavigationRow(
+        title: String,
+        value: String,
+        hint: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .foregroundStyle(palette.textPrimary)
+                Spacer(minLength: 12)
+                Text(value)
+                    .foregroundStyle(palette.textSecondary)
+                    .multilineTextAlignment(.trailing)
+                Image(systemName: "chevron.forward")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(palette.textTertiary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(value)")
+        .accessibilityHint(hint)
     }
 
     @ViewBuilder
@@ -360,11 +433,6 @@ private extension TaskInfoSheet {
 
     var pullRequestNumber: Int? {
         store.pushedPRStatus?.prNumber ?? store.task.prStatusCache?.number ?? store.task.prNumber
-    }
-
-    var pullRequestURL: URL? {
-        let raw = store.pushedPRStatus?.prUrl ?? store.task.prStatusCache?.url ?? store.task.prUrl
-        return raw.flatMap(URL.init(string:))
     }
 
     var pullRequestState: String {

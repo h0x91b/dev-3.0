@@ -676,6 +676,53 @@ struct AppStoreTests {
         #expect(store.projectsPath == [.project("project-a")])
     }
 
+    @Test("Review routes preserve their originating task and task cleanup removes both destinations")
+    func taskReviewRoutes() {
+        let store = AppStore(controller: makeController())
+        let taskRoute = AppRoute.task(projectId: "project-a", taskId: "task-1")
+        let diffRoute = AppRoute.taskReview(
+            projectId: "project-a",
+            taskId: "task-1",
+            destination: .diff
+        )
+        let prRoute = AppRoute.taskReview(
+            projectId: "project-a",
+            taskId: "task-1",
+            destination: .pullRequest
+        )
+
+        store.openTaskReview(
+            projectId: "project-a",
+            taskId: "task-1",
+            destination: .diff,
+            from: .work
+        )
+        #expect(store.selectedTab == .work)
+        #expect(store.workPath == [taskRoute, diffRoute])
+
+        store.openTaskReview(
+            projectId: "project-a",
+            taskId: "task-1",
+            destination: .diff,
+            from: .work
+        )
+        #expect(store.workPath == [taskRoute, diffRoute])
+
+        store.projectsPath = [.project("project-a")]
+        store.openTaskReview(
+            projectId: "project-a",
+            taskId: "task-1",
+            destination: .pullRequest,
+            from: .projects
+        )
+        #expect(store.selectedTab == .projects)
+        #expect(store.projectsPath == [.project("project-a"), taskRoute, prRoute])
+
+        store.removeTaskRoutes(projectId: "project-a", taskId: "task-1")
+        #expect(store.workPath.isEmpty)
+        #expect(store.projectsPath == [.project("project-a")])
+    }
+
     @Test("Replacing and stopping RPC ownership rejects stale stream events")
     func replacementStopAndRestart() async throws {
         let alpha = try project(id: "project-a", name: "Alpha")
