@@ -7,8 +7,11 @@ import {
 	createQrToken,
 	createSessionToken,
 	exchangeQrForSession,
+	getSessionTokenTtl,
 	refreshSession,
 	verifySessionToken,
+	IOS_SESSION_TOKEN_TTL_S,
+	SESSION_TOKEN_TTL_S,
 	_resetForTests,
 } from "../jwt";
 
@@ -16,6 +19,11 @@ import {
 // real ~/.dev3.0/remote-jwt-secret and tests must never touch it.
 const testSecretDir = join(tmpdir(), `dev3-jwt-test-${process.pid}`);
 const testSecretFile = join(testSecretDir, "remote-jwt-secret");
+
+function decodeTokenPayload(token: string): Record<string, unknown> {
+	const payloadB64 = token.split(".")[1];
+	return JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
+}
 
 beforeEach(async () => {
 	_resetForTests();
@@ -119,6 +127,14 @@ describe("createSessionToken", () => {
 		const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
 		expect(payload.type).toBe("session");
 		expect(payload.exp - payload.iat).toBe(24 * 60 * 60);
+		expect(payload.client).toBeUndefined();
+	});
+
+	it("creates explicitly marked iOS sessions with a 30-day expiry", async () => {
+		const payload = decodeTokenPayload(await createSessionToken("ios"));
+		expect(payload.type).toBe("session");
+		expect((payload.exp as number) - (payload.iat as number)).toBe(IOS_SESSION_TOKEN_TTL_S);
+		expect(payload.client).toBe("ios");
 	});
 });
 
@@ -134,6 +150,13 @@ describe("exchangeQrForSession", () => {
 		// Verify the returned token is a session token
 		const valid = await verifySessionToken(sessionToken!);
 		expect(valid).toBe(true);
+	});
+
+	it("issues the requested native session class after a valid exchange", async () => {
+		const session = await exchangeQrForSession(await createQrToken(), "ios");
+		expect(session).toBeTruthy();
+		expect(decodeTokenPayload(session!).client).toBe("ios");
+		expect(await getSessionTokenTtl(session!)).toBe(IOS_SESSION_TOKEN_TTL_S);
 	});
 
 	it("rejects expired QR token", async () => {
@@ -199,6 +222,22 @@ describe("refreshSession", () => {
 		expect(refreshed).not.toBe(session); // Different token (new jti/iat)
 		const valid = await verifySessionToken(refreshed!);
 		expect(valid).toBe(true);
+	});
+
+	it("preserves a native session's class and 30-day rolling window", async () => {
+		const refreshed = await refreshSession(await createSessionToken("ios"));
+		expect(refreshed).toBeTruthy();
+		const payload = decodeTokenPayload(refreshed!);
+		expect(payload.client).toBe("ios");
+		expect((payload.exp as number) - (payload.iat as number)).toBe(IOS_SESSION_TOKEN_TTL_S);
+		expect(await getSessionTokenTtl(refreshed!)).toBe(IOS_SESSION_TOKEN_TTL_S);
+	});
+
+	it("keeps legacy/browser sessions on the 24-hour rolling window", async () => {
+		const refreshed = await refreshSession(await createSessionToken());
+		expect(refreshed).toBeTruthy();
+		expect(decodeTokenPayload(refreshed!).client).toBeUndefined();
+		expect(await getSessionTokenTtl(refreshed!)).toBe(SESSION_TOKEN_TTL_S);
 	});
 
 	it("rejects expired session token", async () => {

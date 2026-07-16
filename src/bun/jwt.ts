@@ -3,8 +3,8 @@
  *
  * Two token types:
  * - "qr"      — short-lived (30s), embedded in QR code URLs, single-use
- * - "session" — long-lived (24h rolling), carried in an HttpOnly cookie,
- *   refreshable
+ * - "session" — rolling (24h browser / 30d native), carried in an HttpOnly
+ *   cookie, refreshable
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -23,6 +23,7 @@ const QR_TOKEN_TTL_S = 30;
 // (URL-is-the-password) and is meant for the user's own trusted devices.
 // See decision 133 (supersedes 086).
 export const SESSION_TOKEN_TTL_S = 24 * 60 * 60;
+export const IOS_SESSION_TOKEN_TTL_S = 30 * 24 * 60 * 60;
 
 /**
  * Where the persistent HMAC signing secret lives. A NEW file under the dev3
@@ -43,7 +44,11 @@ export interface JwtPayload {
 	iat: number; // issued at (epoch seconds)
 	exp: number; // expiration (epoch seconds)
 	jti: string; // unique token ID
+	/** Present only for native iOS sessions; omitted for legacy/browser tokens. */
+	client?: "ios";
 }
+
+export type SessionClient = "ios";
 
 // ── State ────────────────────────────────────────────────────────────
 
@@ -200,14 +205,19 @@ export async function createQrToken(): Promise<string> {
 	});
 }
 
-/** Create a long-lived session token (24h). */
-export async function createSessionToken(): Promise<string> {
+function sessionTtl(client?: SessionClient): number {
+	return client === "ios" ? IOS_SESSION_TOKEN_TTL_S : SESSION_TOKEN_TTL_S;
+}
+
+/** Create a rolling session token (24h browser/default, 30d native iOS). */
+export async function createSessionToken(client?: SessionClient): Promise<string> {
 	const now = Math.floor(Date.now() / 1000);
 	return signJwt({
 		type: "session",
 		iat: now,
-		exp: now + SESSION_TOKEN_TTL_S,
+		exp: now + sessionTtl(client),
 		jti: crypto.randomUUID(),
+		...(client ? { client } : {}),
 	});
 }
 
@@ -216,7 +226,7 @@ export async function createSessionToken(): Promise<string> {
  * The QR token must be valid, unexpired, type "qr", and not previously used.
  * Returns session token on success, null on failure.
  */
-export async function exchangeQrForSession(token: string): Promise<string | null> {
+export async function exchangeQrForSession(token: string, client?: SessionClient): Promise<string | null> {
 	cleanupUsedTokens();
 
 	const payload = await verifyJwt(token);
@@ -227,18 +237,26 @@ export async function exchangeQrForSession(token: string): Promise<string | null
 	if (usedQrTokens.has(payload.jti)) return null;
 	usedQrTokens.set(payload.jti, payload.exp);
 
-	return createSessionToken();
+	return createSessionToken(client);
 }
 
 /**
  * Refresh a session token. The current token must be valid and unexpired.
- * Returns a fresh session token with a new 24-hour window.
+ * Returns a fresh session token with the original client class and rolling
+ * window (24h browser/default, 30d native iOS).
  */
 export async function refreshSession(token: string): Promise<string | null> {
 	const payload = await verifyJwt(token);
 	if (!payload) return null;
 	if (payload.type !== "session") return null;
-	return createSessionToken();
+	return createSessionToken(payload.client === "ios" ? "ios" : undefined);
+}
+
+/** Return the rolling cookie/token lifetime encoded by a valid session. */
+export async function getSessionTokenTtl(token: string): Promise<number | null> {
+	const payload = await verifyJwt(token);
+	if (!payload || payload.type !== "session") return null;
+	return sessionTtl(payload.client === "ios" ? "ios" : undefined);
 }
 
 /**

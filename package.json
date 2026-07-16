@@ -29,6 +29,7 @@
 		"@headless-tree/core": "^1.6.3",
 		"@headless-tree/react": "^1.6.3",
 		"@lobehub/icons": "5.8.0",
+		"bonjour-service": "1.4.3",
 		"electrobun": "1.18.1",
 		"fuzzysort": "^3.1.0",
 		"ghostty-web": "^0.4.0",

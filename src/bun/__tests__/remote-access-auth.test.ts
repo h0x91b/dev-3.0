@@ -59,7 +59,7 @@ import {
 	handleAuthExchange,
 	handleAuthRefresh,
 } from "../remote-access-server";
-import { initSecret, createQrToken, _resetForTests } from "../jwt";
+import { initSecret, createQrToken, IOS_SESSION_TOKEN_TTL_S, SESSION_TOKEN_TTL_S, _resetForTests } from "../jwt";
 
 const testSecretDir = join(tmpdir(), `dev3-remote-auth-test-${process.pid}`);
 const testSecretFile = join(testSecretDir, "remote-jwt-secret");
@@ -77,11 +77,11 @@ afterAll(() => {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function exchangeRequest(token: string, headers: Record<string, string> = {}): Request {
+function exchangeRequest(token: string, headers: Record<string, string> = {}, client?: string): Request {
 	return new Request("http://192.168.1.10:4242/auth/exchange", {
 		method: "POST",
 		headers: { "Content-Type": "application/json", host: "192.168.1.10:4242", ...headers },
-		body: JSON.stringify({ token }),
+		body: JSON.stringify({ token, ...(client ? { client } : {}) }),
 	});
 }
 
@@ -197,6 +197,23 @@ describe("handleAuthExchange (QR flow)", () => {
 		expect(body).toEqual({ ok: true });
 	});
 
+	it("issues a 30-day native session only when the iOS marker has no Origin", async () => {
+		const resp = await handleAuthExchange(exchangeRequest(await createQrToken(), {}, "ios"));
+		expect(resp.status).toBe(200);
+		expect(resp.headers.get("set-cookie")).toContain(`Max-Age=${IOS_SESSION_TOKEN_TTL_S}`);
+	});
+
+	it("does not let a browser Origin upgrade an iOS-marked exchange", async () => {
+		const resp = await handleAuthExchange(exchangeRequest(
+			await createQrToken(),
+			{ origin: "http://192.168.1.10:4242" },
+			"ios",
+		));
+		expect(resp.status).toBe(200);
+		expect(resp.headers.get("set-cookie")).toContain(`Max-Age=${SESSION_TOKEN_TTL_S}`);
+		expect(resp.headers.get("set-cookie")).not.toContain(`Max-Age=${IOS_SESSION_TOKEN_TTL_S}`);
+	});
+
 	it("rejects a replayed QR token with 401 and no cookie", async () => {
 		const qr = await createQrToken();
 		await handleAuthExchange(exchangeRequest(qr));
@@ -276,6 +293,15 @@ describe("handleAuthRefresh", () => {
 		const newToken = cookieValue(resp.headers.get("set-cookie"));
 		expect(newToken).toBeTruthy();
 		expect(`${SESSION_COOKIE_NAME}=${newToken}`).not.toBe(cookie);
+	});
+
+	it("preserves the 30-day native window across refresh", async () => {
+		const exchange = await handleAuthExchange(exchangeRequest(await createQrToken(), {}, "ios"));
+		const token = cookieValue(exchange.headers.get("set-cookie"));
+		const resp = await handleAuthRefresh(refreshRequest(`${SESSION_COOKIE_NAME}=${token}`));
+
+		expect(resp.status).toBe(200);
+		expect(resp.headers.get("set-cookie")).toContain(`Max-Age=${IOS_SESSION_TOKEN_TTL_S}`);
 	});
 
 	it("returns 401 when no cookie is present (boot with no session)", async () => {

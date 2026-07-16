@@ -16,11 +16,14 @@ import { existsSync, statSync, readFileSync } from "node:fs";
 import { join, extname, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
+import type { RemoteInstanceInfo } from "../shared/remote-protocol";
 import type { RemoteNetInterface } from "../shared/types";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
-import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken, SESSION_TOKEN_TTL_S } from "./jwt";
+import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, getSessionTokenTtl, refreshSession, verifySessionToken, IOS_SESSION_TOKEN_TTL_S, SESSION_TOKEN_TTL_S, type SessionClient } from "./jwt";
 import { getTunnelUrl, getTunnelState, tunnelManager } from "./cloudflare-tunnel";
+import { startRemoteDiscoveryAdvertisement, type RemoteDiscoveryAdvertisement } from "./remote-discovery";
+import { getRemoteInstanceInfo } from "./remote-instance";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
 
@@ -54,9 +57,9 @@ export function parseCookies(header: string | null): Record<string, string> {
 	return out;
 }
 
-/** Build the Set-Cookie value carrying a fresh session token (24h rolling). */
-export function buildSessionCookie(token: string): string {
-	return `${SESSION_COOKIE_NAME}=${token}; Max-Age=${SESSION_TOKEN_TTL_S}; Path=/; HttpOnly; SameSite=Strict`;
+/** Build the Set-Cookie value carrying a fresh rolling session token. */
+export function buildSessionCookie(token: string, maxAge: number = SESSION_TOKEN_TTL_S): string {
+	return `${SESSION_COOKIE_NAME}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Strict`;
 }
 
 /** Build the Set-Cookie value that deletes the session cookie. */
@@ -81,6 +84,11 @@ export function checkOrigin(req: Request): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/** The native session class is accepted only from a non-browser request. */
+export function getRequestedSessionClient(req: Request, marker: unknown): SessionClient | undefined {
+	return marker === "ios" && !req.headers.has("origin") ? "ios" : undefined;
 }
 
 function extractSessionToken(req: Request): string | null {
@@ -110,11 +118,13 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 		return new Response("Forbidden", { status: 403 });
 	}
 	try {
-		const body = await req.json() as { token?: string };
+		const body = await req.json() as { token?: string; client?: unknown };
 		if (!body.token) {
 			log.warn("Auth exchange: missing token", { ip: clientIp, ua });
 			return new Response("Missing token", { status: 400 });
 		}
+		const sessionClient = getRequestedSessionClient(req, body.client);
+		const sessionTtl = sessionClient === "ios" ? IOS_SESSION_TOKEN_TTL_S : SESSION_TOKEN_TTL_S;
 		// Static code path — fixed code, no replay protection, dev only.
 		// When active, the JWT exchange path is disabled entirely: only
 		// the static code is accepted so that a stale QR JWT cannot bypass it.
@@ -124,12 +134,12 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 				log.warn("Auth exchange: invalid static code", { ip: clientIp, ua });
 				return new Response("Invalid or expired token", { status: 401 });
 			}
-			const sessionToken = await createSessionToken();
+			const sessionToken = await createSessionToken(sessionClient);
 			log.info("Auth exchange: static code accepted", { ip: clientIp, ua });
 			ctx.onQrConsumed?.();
-			return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken) } });
+			return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken, sessionTtl) } });
 		}
-		const sessionToken = await exchangeQrForSession(body.token);
+		const sessionToken = await exchangeQrForSession(body.token, sessionClient);
 		if (!sessionToken) {
 			// Do NOT clear an existing cookie here: a consumed QR token replayed
 			// from browser history must not kill a still-valid session — the
@@ -139,7 +149,7 @@ export async function handleAuthExchange(req: Request, ctx: AuthHandlerContext =
 		}
 		log.info("Auth exchange: success", { ip: clientIp, ua });
 		ctx.onQrConsumed?.();
-		return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken) } });
+		return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(sessionToken, sessionTtl) } });
 	} catch (err) {
 		log.error("Auth exchange: error", { ip: clientIp, error: String(err) });
 		return new Response("Bad request", { status: 400 });
@@ -171,8 +181,20 @@ export async function handleAuthRefresh(req: Request, ctx: AuthHandlerContext = 
 			headers: { "Set-Cookie": buildClearSessionCookie() },
 		});
 	}
+	const sessionTtl = await getSessionTokenTtl(newToken);
+	if (!sessionTtl) {
+		return new Response("Invalid or expired session", {
+			status: 401,
+			headers: { "Set-Cookie": buildClearSessionCookie() },
+		});
+	}
 	log.info("Auth refresh: success", { ip: clientIp });
-	return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(newToken) } });
+	return Response.json({ ok: true }, { headers: { "Set-Cookie": buildSessionCookie(newToken, sessionTtl) } });
+}
+
+/** Unauthenticated metadata used to validate a discovered remote instance. */
+export function handleInstanceRequest(info: RemoteInstanceInfo = getRemoteInstanceInfo()): Response {
+	return Response.json(info, { headers: { "Cache-Control": "no-store" } });
 }
 
 // ── Static file serving ─────────────────────────────────────────────
@@ -527,6 +549,25 @@ async function proxyHttpToLocalhost(req: Request, port: number, rest: string, se
 
 let serverPort = 0;
 
+interface RemoteServerHandle {
+	port?: number;
+	stop(closeActiveConnections?: boolean): void | Promise<void>;
+}
+
+let remoteServer: RemoteServerHandle | null = null;
+let discoveryAdvertisement: RemoteDiscoveryAdvertisement | null = null;
+let instanceInfo: RemoteInstanceInfo | null = null;
+
+function stopDiscoveryAdvertisement(): void {
+	if (!discoveryAdvertisement) return;
+	discoveryAdvertisement.stop();
+	discoveryAdvertisement = null;
+}
+
+function onProcessExit(): void {
+	stopDiscoveryAdvertisement();
+}
+
 interface StartOptions {
 	rpcHandler: RpcRequestHandler;
 	getPtyPort: () => number;
@@ -565,6 +606,7 @@ export function resolveListenPort(): number {
 }
 
 export async function startRemoteAccessServer(options: StartOptions): Promise<void> {
+	if (remoteServer) throw new Error("Remote access server is already running");
 	await initSecret();
 	requestHandler = options.rpcHandler;
 	ptyPortGetter = options.getPtyPort;
@@ -580,7 +622,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 			const clientIp = req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip") || "direct";
 
 			// Log all non-static requests
-			if (url.pathname.startsWith("/auth") || url.pathname === "/rpc" || url.pathname === "/pty" || url.pathname === "/health") {
+			if (url.pathname.startsWith("/auth") || url.pathname === "/instance" || url.pathname === "/rpc" || url.pathname === "/pty" || url.pathname === "/health") {
 				log.info("Remote request", {
 					method: req.method,
 					path: url.pathname,
@@ -588,6 +630,14 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					ua,
 					hasCookie: !!extractSessionToken(req),
 				});
+			}
+
+			// ── Discovery metadata (no session required) ──
+			if (url.pathname === "/instance") {
+				if (req.method !== "GET") {
+					return new Response("Method Not Allowed", { status: 405, headers: { Allow: "GET" } });
+				}
+				return handleInstanceRequest(instanceInfo ?? getRemoteInstanceInfo());
 			}
 
 			// ── Auth endpoints (no session required) ──
@@ -725,11 +775,35 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 		},
 	});
 
+	remoteServer = server as unknown as RemoteServerHandle;
 	serverPort = server.port ?? 0;
+	instanceInfo = getRemoteInstanceInfo();
 	log.info(`Remote access server running on port ${serverPort}`);
+	discoveryAdvertisement = await startRemoteDiscoveryAdvertisement(instanceInfo, serverPort);
+	process.once("exit", onProcessExit);
 
 	// Print access URL to console
 	printAccessInfo();
+}
+
+/** Stop the remote server and withdraw its DNS-SD advertisement. */
+export function stopRemoteAccessServer(): void {
+	process.removeListener("exit", onProcessExit);
+	stopDiscoveryAdvertisement();
+	if (remoteServer) {
+		try {
+			void remoteServer.stop(true);
+		} catch (error) {
+			log.debug("Remote access server stop failed", { error: String(error) });
+		}
+	}
+	remoteServer = null;
+	instanceInfo = null;
+	serverPort = 0;
+	requestHandler = null;
+	ptyPortGetter = null;
+	qrConsumedCallback = null;
+	rpcClients.clear();
 }
 
 /**
