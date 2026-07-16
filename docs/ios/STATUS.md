@@ -1,6 +1,6 @@
 # Native iOS companion status
 
-Last updated: 2026-07-16
+Last updated: 2026-07-17
 
 This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It tracks evidence and remaining gates; the implementation plan remains the scope and acceptance-criteria source of truth.
 
@@ -14,12 +14,12 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 | PTY recovery | Live green | Cold reattach, true Home-to-foreground recovery with the same app PID, and remote-server interruption recovery all retained the same durable tmux session and worktree. |
 | Task Info | Live green | Title save/reset, owner overview, built-in and custom status moves, watch, labels, notes, branch/PR refresh, priority, cancel cleanup, Todo deletion, and native completion approval passed through the live app. |
 | Completion cleanup | Live green | A full-ID agent CLI request routed only to the task-owning remote after restart, appeared in native iOS, and returned to Work after approval. The task persisted as completed while its tmux session, socket claim, worktree, and branch were removed; the root task stayed intact. |
-| Native review navigation | Code green | Task Info Changes and pull-request rows now push the existing native Diff and PR Status destinations while preserving the originating task stack. Unit, app, and repository gates pass; final connected visual QA remains. |
+| Native review navigation | Live green | Task Info opens native Diff and PR Status. PR #969 rendered its merge state and four passing checks; Back returned to the exact task and rendered fresh PTY output. A mounted 34,000-file Diff repopulated after a same-server restart, then Back restored the exact connected terminal and fresh output. |
+| Native transport limits | Live green | Native RPC receives are capped at 192 MiB and PTY frames remain capped at 1 MiB. Oversized frames fail explicitly instead of truncating; the validated large Diff loads within the RPC policy. |
 | TestFlight workflow | Account boundary | Unsigned Release validation and metadata checks pass. Signed archive/export tooling now rejects mismatched team, application ID, or default Keychain group; the first real archive and upload require the owner's Apple account configuration. |
 
 ## Selected v1 release gates
 
-- Run final connected visual QA for the new Diff and PR Status navigation.
 - Create and verify the first Apple-signed archive, then upload it through Xcode Organizer after the
   owner provides the Team ID, confirms the final bundle ID, signs into Xcode, and approves 2FA.
 - Answer App Store Connect export-compliance questions and install the processed TestFlight build.
@@ -32,6 +32,10 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 - Agent Cockpit and other non-v1 surfaces.
 - An agent-run physical-keyboard pass. The unit-covered Shift sequences will instead be included in
   the owner's smoke test on the TestFlight build.
+- Server-side pagination, chunking, or streaming for RPC and media payloads beyond the bounded native
+  policy. The 192 MiB RPC limit is a client safety ceiling, not a universal server response limit.
+- Producer-bound backpressure for `PTYClient.output`, whose upstream `AsyncStream` remains unbounded
+  before the 4 MiB handoff relay and backpressured render buffer.
 
 ## Recorded evidence
 
@@ -43,14 +47,17 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 - `ios/qa-output/critical-running-task-e2e-part6.mp4`: task-owner routing, native completion approval, cleanup, and return to Work; `ios/qa-output/part6-approval.png` and `ios/qa-output/part6-final.png` capture the approval and final state.
 - `ios/qa-output/critical-task-info-matrix.mp4`: title, overview, status/custom-column, watch, labels, notes, branch, and PR round trips; `ios/qa-output/task-info-matrix-green.png` captures the final matrix state.
 - `ios/qa-output/critical-task-info-destructive.mp4`: native cancel and delete confirmations plus cleanup; `ios/qa-output/task-info-native-cancel-confirm.png` and `ios/qa-output/task-info-native-delete-confirm.png` capture both gates.
+- `ios/qa-output/critical-review-navigation.mp4`: the first live Changes-to-Diff pass exposed URLSession's 1 MiB default receive ceiling and its reconnect loop; `ios/qa-output/review-diff-message-too-long.png` captures the failure.
+- `ios/qa-output/critical-review-navigation-fixed.mp4`: the endpoint-scoped transport fix rendered 20,994 files and returned to Task 194 with Pane 1 of 3 preserved; `ios/qa-output/review-diff-fixed-loaded-15s.png` and `ios/qa-output/review-diff-fixed-back.png` capture both states.
+- `ios/qa-output/targeted-deeplink-discriminator-dc00.mp4`: the exact final discriminator on `dc00251d`; direct Task 194 routing, mounted Diff recovery after a scoped verifier restart, Back to the connected terminal, and fresh post-Back output all passed. `ios/qa-output/discriminator-dc00-diff-recovered.png`, `ios/qa-output/discriminator-dc00-back-connected.png`, and `ios/qa-output/discriminator-dc00-back-marker-visible.png` capture the release states.
 - `ios/qa-output/keychain-cold-launch-34018.log`: an intentionally unsigned/linker-signed QA artifact lacks Simulator application identity and cannot validate Keychain persistence. A normal Xcode-installed build restored the trusted session; signed archive entitlement assertions are the release gate.
 
 ## Verification baseline
 
-- Dev3Kit: 94 tests passing.
-- Dev3UI: 107 tests passing.
-- Dev3TerminalKit: 33 tests passing.
-- App CI: 47 tests discovered, with 46 passing and the opt-in live integration test skipped.
+- Dev3Kit: 98 tests passing.
+- Dev3UI: 117 tests passing.
+- Dev3TerminalKit: 39 tests passing.
+- App CI: 49 tests discovered, with 48 passing and the opt-in live integration test skipped.
 - Focused iOS raw-input regressions pass for exact carriage-return delivery, input-state clearing, and Ctrl-latch consumption.
 - SwiftFormat and strict SwiftLint are clean for tracked iOS sources.
 - Backend lint and all 5,801 fast mainview, Bun, and CLI tests pass at the current gate.
