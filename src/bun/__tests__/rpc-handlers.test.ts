@@ -1590,7 +1590,12 @@ describe("handlers.saveGlobalSettings", () => {
 });
 
 describe("handlers.setTmuxTheme", () => {
-	beforeEach(() => vi.clearAllMocks());
+	const push = vi.fn();
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		setPushMessage(push);
+	});
 
 	it("persists the theme preference and resolved theme before applying tmux theme", async () => {
 		vi.mocked(loadSettings).mockResolvedValue({
@@ -1607,6 +1612,24 @@ describe("handlers.setTmuxTheme", () => {
 			resolvedTheme: "light",
 		}));
 		expect(pty.applyTmuxTheme).toHaveBeenCalledWith("light");
+		expect(push).toHaveBeenCalledWith("globalSettingsUpdated", expect.objectContaining({
+			theme: "system",
+			resolvedTheme: "light",
+		}));
+	});
+
+	it("broadcasts only after the tmux theme applies successfully", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		} as GlobalSettings);
+		vi.mocked(pty.applyTmuxTheme).mockRejectedValueOnce(new Error("tmux unavailable"));
+
+		await expect(handlers.setTmuxTheme({ theme: "dark" })).rejects.toThrow("tmux unavailable");
+
+		expect(push).not.toHaveBeenCalled();
 	});
 });
 

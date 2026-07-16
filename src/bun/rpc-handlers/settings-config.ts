@@ -388,13 +388,15 @@ async function setAgentBinaryPath(params: { agentId: string; path: string }): Pr
 async function setTmuxTheme(params: { theme: "dark" | "light"; preference?: "dark" | "light" | "system" }): Promise<void> {
 	log.info("→ setTmuxTheme", params);
 	const settings = await loadSettings();
-	await saveSettings({
+	const nextSettings: GlobalSettings = {
 		...settings,
 		...(params.preference !== undefined ? { theme: params.preference } : {}),
 		resolvedTheme: params.theme,
-	});
+	};
+	await saveSettings(nextSettings);
 	setCurrentUiTheme(params.theme);
 	await pty.applyTmuxTheme(params.theme);
+	getPushMessage()?.("globalSettingsUpdated", nextSettings);
 }
 
 export const settingsConfigHandlers = {

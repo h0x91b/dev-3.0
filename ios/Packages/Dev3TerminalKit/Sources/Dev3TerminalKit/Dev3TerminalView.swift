@@ -14,6 +14,7 @@
         private let resize: (@Sendable (Int, Int) async throws -> Void)?
         private let serverID: String
         private let inputMode: Dev3TerminalInputMode
+        private let instanceResolvedTheme: Dev3ResolvedThemeMode?
         private let fallbackFontSize: Double
         private let onError: @MainActor @Sendable (String) -> Void
 
@@ -23,8 +24,8 @@
             let resize: (@Sendable (Int, Int) async throws -> Void)?
             let serverID: String
             let inputMode: Dev3TerminalInputMode
+            let theme: Dev3TerminalThemeConfiguration
             let fallbackFontSize: Double
-            let colorScheme: ColorScheme
             let onError: @MainActor @Sendable (String) -> Void
         }
 
@@ -34,6 +35,7 @@
             resize: (@Sendable (Int, Int) async throws -> Void)? = nil,
             serverID: String,
             inputMode: Dev3TerminalInputMode,
+            instanceResolvedTheme: Dev3ResolvedThemeMode? = nil,
             fallbackFontSize: Double = Dev3TerminalFontPreferenceStore.defaultSize,
             onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }
         ) {
@@ -42,6 +44,7 @@
             self.resize = resize
             self.serverID = serverID
             self.inputMode = inputMode
+            self.instanceResolvedTheme = instanceResolvedTheme
             self.fallbackFontSize = fallbackFontSize
             self.onError = onError
         }
@@ -64,8 +67,11 @@
                 resize: resize,
                 serverID: serverID,
                 inputMode: inputMode,
+                theme: Dev3TerminalThemeConfiguration(
+                    instanceResolvedTheme: instanceResolvedTheme,
+                    deviceColorScheme: colorScheme
+                ),
                 fallbackFontSize: fallbackFontSize,
-                colorScheme: colorScheme,
                 onError: onError
             )
         }
@@ -94,7 +100,7 @@
             private var resize: (@Sendable (Int, Int) async throws -> Void)?
             private var endpointIdentity: String?
             private var serverID: String?
-            private var colorScheme: ColorScheme?
+            private var themeApplication = Dev3TerminalThemeApplicationState()
             private var outputTask: Task<Void, Never>?
             private var clipboardTask: Task<Void, Never>?
             // swiftformat:disable:next modifierOrder
@@ -144,11 +150,8 @@
                     terminalView?.setTerminalFontSize(size)
                 }
 
-                if colorScheme != configuration.colorScheme {
-                    colorScheme = configuration.colorScheme
-                    let palette = Dev3Theme.palette(for: configuration.colorScheme)
-                    let theme = Dev3ResolvedTerminalTheme(palette: palette)
-                    terminalView?.apply(theme: theme)
+                if themeApplication.shouldApply(configuration.theme) {
+                    terminalView?.apply(theme: configuration.theme.resolvedTheme)
                 }
 
                 terminalView?.setInputMode(configuration.inputMode)

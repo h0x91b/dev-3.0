@@ -543,6 +543,7 @@ private struct AvailableTaskTerminalDestination: View {
                     title: title,
                     service: service,
                     networkRecoveryRevision: appStore.terminalRecoveryRevision,
+                    instanceResolvedTheme: appStore.resolvedTerminalTheme,
                     onTaskInfo: onTaskInfo
                 )
             } else {

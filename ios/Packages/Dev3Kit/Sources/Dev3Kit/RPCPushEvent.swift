@@ -162,6 +162,7 @@ public enum RPCPushEvent: Equatable, Sendable {
     case webNotification(WebNotificationPush)
     case agentCompletionRequested(AgentCompletionRequestedPush)
     case osc52Clipboard(OSC52ClipboardPush)
+    case globalSettingsUpdated(Dev3GlobalSettings)
     case qrTokenConsumed
     case unknown(name: String, payload: JSONValue)
 
@@ -179,6 +180,8 @@ public enum RPCPushEvent: Equatable, Sendable {
             try .taskPRStatus(payload.decode(TaskPRStatusPush.self))
         case "ptyDied":
             try .ptyDied(payload.decode(TaskIdentifierPush.self))
+        case "globalSettingsUpdated":
+            try .globalSettingsUpdated(payload.decode(Dev3GlobalSettings.self))
         default:
             try decodeInteraction(name: name, payload: payload)
         }

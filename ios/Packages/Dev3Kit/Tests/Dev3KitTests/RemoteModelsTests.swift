@@ -121,6 +121,25 @@ struct RemoteModelsTests {
         ])
     }
 
+    @Test("Global settings pushes decode as a typed event")
+    func globalSettingsPush() throws {
+        let payload = try decoder.decode(JSONValue.self, from: Data(#"""
+        {
+          "defaultAgentId":"builtin-codex","defaultConfigId":"luna",
+          "taskDropPosition":"top","updateChannel":"stable",
+          "theme":"system","resolvedTheme":"dark"
+        }
+        """#.utf8))
+
+        let event = try RPCPushEvent.decode(name: "globalSettingsUpdated", payload: payload)
+        guard case let .globalSettingsUpdated(settings) = event else {
+            Issue.record("Expected typed global settings push")
+            return
+        }
+        #expect(settings.theme == "system")
+        #expect(settings.resolvedTheme == "dark")
+    }
+
     private var projectFixture: String {
         #"""
         {

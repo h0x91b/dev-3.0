@@ -93,12 +93,14 @@ struct AppStoreTests {
     }
 
     @Test("One RPC stream consumer fans pushes out and every opened event refetches")
+    // swiftlint:disable:next function_body_length
     func refetchAndFanout() async throws {
         let alpha = try project(id: "project-a", name: "Alpha")
         let first = try task(id: "task-1", projectId: alpha.id, seq: 1, title: "First")
         let rpc = try StoreRPC(
             projects: [alpha],
-            projectTasks: [projectTasks(projectId: alpha.id, tasks: [first])]
+            projectTasks: [projectTasks(projectId: alpha.id, tasks: [first])],
+            resolvedTheme: "dark"
         )
         let store = AppStore(
             controller: makeController(),
@@ -121,6 +123,7 @@ struct AppStoreTests {
         #expect(store.projects == [alpha])
         #expect(store.tasksByProject[alpha.id] == [first])
         #expect(store.isInitialLoading == false)
+        #expect(store.resolvedTerminalTheme == .dark)
 
         rpc.emitConnection(.opened(requiresRefetch: true))
         await settle()
@@ -141,6 +144,17 @@ struct AppStoreTests {
         #expect(firstObserverEvents == [.osc52Clipboard(clipboard)])
         #expect(secondObserverEvents == [.osc52Clipboard(clipboard)])
         #expect(rpc.pushStreamReadCount == 1)
+
+        let lightSettings = try globalSettings(
+            dropPosition: "bottom",
+            theme: "light",
+            resolvedTheme: "light"
+        )
+        rpc.emitPush(.globalSettingsUpdated(lightSettings))
+        await settle()
+        #expect(store.resolvedTerminalTheme == .light)
+        #expect(store.taskDropPosition == .bottom)
+        #expect(store.lastPush == .globalSettingsUpdated(lightSettings))
     }
 
     @Test("Fresh pairing binds the attached RPC before the initial refetch")
@@ -204,11 +218,13 @@ struct AppStoreTests {
         )
         let oldRPC = try StoreRPC(
             projects: [projectA],
-            projectTasks: [projectTasks(projectId: projectA.id, tasks: [taskA])]
+            projectTasks: [projectTasks(projectId: projectA.id, tasks: [taskA])],
+            resolvedTheme: "dark"
         )
         let newRPC = try StoreRPC(
             projects: [projectB],
-            projectTasks: [projectTasks(projectId: projectB.id, tasks: [taskB])]
+            projectTasks: [projectTasks(projectId: projectB.id, tasks: [taskB])],
+            resolvedTheme: "light"
         )
         let store = AppStore(controller: controller, rpc: nil)
 
@@ -223,6 +239,7 @@ struct AppStoreTests {
         oldRPC.emitPush(.cliToast(oldToast))
         await settle()
         #expect(store.snapshotServerID == serverA.instanceId)
+        #expect(store.resolvedTerminalTheme == .dark)
 
         let originB = try #require(URL(string: "http://127.0.0.1:4002"))
         try controller.pair(PairingCredential(origin: originB, token: "pairing-code"))
@@ -239,6 +256,7 @@ struct AppStoreTests {
         #expect(store.loadedBoardProjectIDs.isEmpty)
         #expect(store.toast == nil)
         #expect(store.isInitialLoading)
+        #expect(store.resolvedTerminalTheme == nil)
 
         newRPC.emitConnection(.opened(requiresRefetch: true))
         await settle()
@@ -246,6 +264,7 @@ struct AppStoreTests {
         #expect(store.snapshotServerID == "server-b")
         #expect(store.projects == [projectB])
         #expect(store.tasksByProject[projectB.id] == [taskB])
+        #expect(store.resolvedTerminalTheme == .light)
     }
 
     @Test("Refresh failure and disconnect retain cached data")
@@ -254,12 +273,19 @@ struct AppStoreTests {
         let first = try task(id: "task-1", projectId: alpha.id, seq: 1, title: "First")
         let rpc = try StoreRPC(
             projects: [alpha],
-            projectTasks: [projectTasks(projectId: alpha.id, tasks: [first])]
+            projectTasks: [projectTasks(projectId: alpha.id, tasks: [first])],
+            resolvedTheme: "dark"
         )
         let store = AppStore(controller: makeController(), rpc: rpc)
         await store.start()
         rpc.emitConnection(.opened(requiresRefetch: true))
         await settle()
+        #expect(store.resolvedTerminalTheme == .dark)
+
+        rpc.failNextSettingsFetch()
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+        #expect(store.resolvedTerminalTheme == .dark)
 
         rpc.failNextProjectFetch()
         rpc.emitConnection(.opened(requiresRefetch: true))
@@ -345,7 +371,11 @@ struct AppStoreTests {
         try await pairedStore.upsert(serverB, makeActive: false)
         try await pairedStore.upsert(serverA)
         let oldProject = try project(id: "old-project", name: "Old")
-        let oldRPC = StoreRPC(projects: [oldProject], projectTasks: [])
+        let oldRPC = StoreRPC(
+            projects: [oldProject],
+            projectTasks: [],
+            resolvedTheme: "dark"
+        )
         oldRPC.setGlobalDropPosition("bottom")
         let controller = makeController(pairedServerStore: pairedStore)
         let store = AppStore(controller: controller, rpc: nil)
@@ -356,6 +386,7 @@ struct AppStoreTests {
         await settle()
         #expect(store.projects == [oldProject])
         #expect(store.snapshotServerID == serverA.instanceId)
+        #expect(store.resolvedTerminalTheme == .dark)
         oldRPC.failNextProjectFetch()
         oldRPC.emitConnection(.opened(requiresRefetch: true))
         await settle()
@@ -395,6 +426,7 @@ struct AppStoreTests {
         #expect(store.lastSyncError == nil)
         #expect(store.lastPush == nil)
         #expect(store.taskDropPosition == .top)
+        #expect(store.resolvedTerminalTheme == nil)
         let newRPC = StoreRPC(projects: [], projectTasks: [])
         store.attach(newRPC)
         await settle()
@@ -411,6 +443,9 @@ struct AppStoreTests {
         let bannerBeforeOldEvents = store.banner
         let wasOpenBeforeOldEvents = store.rpcIsOpen
         oldRPC.emitPush(.taskUpdated(staleUpdate))
+        let staleSettings = try globalSettings(theme: "light", resolvedTheme: "light")
+        oldRPC.emitPush(.globalSettingsUpdated(staleSettings))
+        store.apply(.globalSettingsUpdated(staleSettings), generation: generation)
         oldRPC.emitConnection(.opened(requiresRefetch: true))
         oldRPC.emitConnection(.failed("old failure"))
         await settle()
@@ -419,12 +454,14 @@ struct AppStoreTests {
         #expect(store.tasksByProject[oldProject.id] == nil)
         #expect(store.banner == bannerBeforeOldEvents)
         #expect(store.rpcIsOpen == wasOpenBeforeOldEvents)
+        #expect(store.resolvedTerminalTheme == nil)
         oldRPC.resumeProjectFetch()
         await staleRefetch.value
 
         #expect(store.projects.isEmpty)
         #expect(store.snapshotServerID == nil)
         #expect(store.refetchRevision == 1)
+        #expect(store.resolvedTerminalTheme == nil)
     }
 
     @Test("A pre-refetch push is stamped and cleared when the active server changes")
@@ -803,6 +840,9 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     private var mutationResultByTask: [String: Dev3Task] = [:]
     private var priorityResults: [Dev3Task]?
     private var globalDropPosition = "top"
+    private var globalTheme: String?
+    private var globalResolvedTheme: String?
+    private var failsNextSettingsFetch = false
     private var projectFetchContinuation: CheckedContinuation<Void, Never>?
     private var boardFetchContinuations: [String: CheckedContinuation<Void, Never>] = [:]
     private var moveContinuation: CheckedContinuation<Void, Never>?
@@ -832,7 +872,19 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         var pingCount = 0
     }
 
-    init(projects: [Dev3Project], projectTasks: [Dev3ProjectTasks]) {
+    private struct GlobalSettingsValues {
+        let dropPosition: String
+        let theme: String?
+        let resolvedTheme: String?
+        let shouldFail: Bool
+    }
+
+    init(
+        projects: [Dev3Project],
+        projectTasks: [Dev3ProjectTasks],
+        theme: String? = nil,
+        resolvedTheme: String? = nil
+    ) {
         let pushPair = AsyncStream<RPCPushEvent>.makeStream()
         pushStream = pushPair.stream
         pushContinuation = pushPair.continuation
@@ -841,6 +893,8 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         connectionContinuation = connectionPair.continuation
         storedProjects = projects
         storedProjectTasks = projectTasks
+        globalTheme = theme
+        globalResolvedTheme = resolvedTheme
         boardTasksByProject = Dictionary(uniqueKeysWithValues: projectTasks.map {
             ($0.projectId, $0.tasks)
         })
@@ -1034,10 +1088,24 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     }
 
     func getGlobalSettings() async throws -> Dev3GlobalSettings {
-        try decode("""
-        {"defaultAgentId":"claude","defaultConfigId":"default",
-         "taskDropPosition":"\(globalDropPosition)","updateChannel":"stable"}
-        """)
+        let values = lock.withLock {
+            let shouldFail = failsNextSettingsFetch
+            failsNextSettingsFetch = false
+            return GlobalSettingsValues(
+                dropPosition: globalDropPosition,
+                theme: globalTheme,
+                resolvedTheme: globalResolvedTheme,
+                shouldFail: shouldFail
+            )
+        }
+        if values.shouldFail {
+            throw StoreTestError()
+        }
+        return try globalSettings(
+            dropPosition: values.dropPosition,
+            theme: values.theme,
+            resolvedTheme: values.resolvedTheme
+        )
     }
 
     func setWindowForeground(_ focused: Bool) async throws {
@@ -1137,6 +1205,10 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
 
     func setGlobalDropPosition(_ position: String) {
         lock.withLock { globalDropPosition = position }
+    }
+
+    func failNextSettingsFetch() {
+        lock.withLock { failsNextSettingsFetch = true }
     }
 
     func suspendNextProjectFetch() {
@@ -1278,6 +1350,26 @@ private final class StoreMemorySecureData: SecureDataStoring, @unchecked Sendabl
     func delete(account _: String) throws {
         lock.withLock { data = nil }
     }
+}
+
+private func globalSettings(
+    dropPosition: String = "top",
+    theme: String? = nil,
+    resolvedTheme: String? = nil
+) throws -> Dev3GlobalSettings {
+    var fields = [
+        #""defaultAgentId":"builtin-codex""#,
+        #""defaultConfigId":"luna""#,
+        #""taskDropPosition":"\#(dropPosition)""#,
+        #""updateChannel":"stable""#
+    ]
+    if let theme {
+        fields.append(#""theme":"\#(theme)""#)
+    }
+    if let resolvedTheme {
+        fields.append(#""resolvedTheme":"\#(resolvedTheme)""#)
+    }
+    return try decode("{\(fields.joined(separator: ","))}")
 }
 
 private func project(id: String, name: String, deleted: Bool = false) throws -> Dev3Project {

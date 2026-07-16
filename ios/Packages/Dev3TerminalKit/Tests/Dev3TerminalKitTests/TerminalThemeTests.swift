@@ -1,5 +1,6 @@
 @testable import Dev3TerminalKit
 import Dev3UI
+import SwiftUI
 import Testing
 
 @Test("Terminal themes preserve generated desktop palettes")
@@ -14,4 +15,49 @@ func terminalThemeMapping() {
     #expect(light.background == Dev3RGBA(red: 255, green: 255, blue: 255))
     #expect(light.ansi[12] == Dev3RGBA(red: 3, green: 102, blue: 214))
     #expect(light.selectionBackground.opacity == 0.145_098)
+}
+
+@Test("Instance terminal themes override opposite device appearances")
+func instanceThemeOverridesDevice() {
+    let darkOnLight = Dev3TerminalThemeConfiguration(
+        instanceResolvedTheme: .dark,
+        deviceColorScheme: .light
+    )
+    let lightOnDark = Dev3TerminalThemeConfiguration(
+        instanceResolvedTheme: .light,
+        deviceColorScheme: .dark
+    )
+    let missingOnLight = Dev3TerminalThemeConfiguration(
+        instanceResolvedTheme: nil,
+        deviceColorScheme: .light
+    )
+
+    #expect(darkOnLight.effectiveMode == .dark)
+    #expect(lightOnDark.effectiveMode == .light)
+    #expect(missingOnLight.effectiveMode == .dark)
+}
+
+@Test("Equivalent effective terminal themes apply only once")
+func effectiveThemeAppliesOnce() {
+    var state = Dev3TerminalThemeApplicationState()
+    let darkOnLight = Dev3TerminalThemeConfiguration(
+        instanceResolvedTheme: .dark,
+        deviceColorScheme: .light
+    )
+    let darkOnDark = Dev3TerminalThemeConfiguration(
+        instanceResolvedTheme: .dark,
+        deviceColorScheme: .dark
+    )
+    let lightOnDark = Dev3TerminalThemeConfiguration(
+        instanceResolvedTheme: .light,
+        deviceColorScheme: .dark
+    )
+
+    let firstApply = state.shouldApply(darkOnLight)
+    let repeatedApply = state.shouldApply(darkOnDark)
+    let changedApply = state.shouldApply(lightOnDark)
+
+    #expect(firstApply)
+    #expect(!repeatedApply)
+    #expect(changedApply)
 }

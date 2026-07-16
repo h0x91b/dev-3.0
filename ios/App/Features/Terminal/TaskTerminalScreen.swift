@@ -13,16 +13,19 @@ struct TaskTerminalScreen: View {
 
     private let title: String
     private let networkRecoveryRevision: UInt64
+    private let instanceResolvedTheme: Dev3ResolvedThemeMode?
     private let onTaskInfo: (() -> Void)?
 
     init(
         title: String,
         service: any TerminalTaskServicing,
         networkRecoveryRevision: UInt64,
+        instanceResolvedTheme: Dev3ResolvedThemeMode?,
         onTaskInfo: (() -> Void)? = nil
     ) {
         self.title = title
         self.networkRecoveryRevision = networkRecoveryRevision
+        self.instanceResolvedTheme = instanceResolvedTheme
         self.onTaskInfo = onTaskInfo
         _store = State(initialValue: TerminalTaskStore(service: service))
     }
@@ -131,6 +134,7 @@ private extension TaskTerminalScreen {
                 },
                 serverID: store.service.serverID,
                 inputMode: store.inputMode,
+                instanceResolvedTheme: instanceResolvedTheme,
                 onError: store.report
             )
             .simultaneousGesture(

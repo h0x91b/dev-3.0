@@ -103,6 +103,7 @@ public final class AppStore {
     public internal(set) var lastSyncError: String?
     public private(set) var lastPush: RPCPushEvent?
     public private(set) var taskDropPosition = TaskDropPosition.top
+    public private(set) var resolvedTerminalTheme: Dev3ResolvedThemeMode?
     public private(set) var refetchRevision = 0
     public private(set) var terminalRecoveryRevision: UInt64 = 0
     public private(set) var snapshotServerID: String?
@@ -442,8 +443,8 @@ extension AppStore {
             for (projectID, boardTasks) in refreshedBoards {
                 snapshot.replaceTasks(boardTasks, projectId: projectID)
             }
-            if let position = refreshedSettings.flatMap({ TaskDropPosition(rawValue: $0.taskDropPosition) }) {
-                taskDropPosition = position
+            if let refreshedSettings {
+                applyGlobalSettings(refreshedSettings)
             }
             refetchRevision &+= 1
             snapshotServerID = sourceServerID
@@ -468,6 +469,9 @@ extension AppStore {
               generation == rpcGeneration,
               controller.activeServer?.instanceId == sourceServerID else { return }
         lastPush = push
+        if case let .globalSettingsUpdated(settings) = push {
+            applyGlobalSettings(settings)
+        }
         if let routedToast = snapshot.reduce(push) {
             toast = routedToast
         }
@@ -484,6 +488,13 @@ extension AppStore {
         prStatusByTask = snapshot.prStatusByTask
         clipboardByTask = snapshot.clipboardByTask
         attentionByTask = snapshot.attentionByTask
+    }
+
+    private func applyGlobalSettings(_ settings: Dev3GlobalSettings) {
+        if let position = TaskDropPosition(rawValue: settings.taskDropPosition) {
+            taskDropPosition = position
+        }
+        resolvedTerminalTheme = Dev3ResolvedThemeMode(settings: settings)
     }
 
     func handleSessionState(_ state: RemoteSessionState) {
@@ -506,6 +517,7 @@ extension AppStore {
                 lastSyncError = nil
                 lastPush = nil
                 taskDropPosition = .top
+                resolvedTerminalTheme = nil
                 loadedBoardProjectIDs.removeAll()
                 projectPullStates.removeAll()
                 workPath.removeAll()
