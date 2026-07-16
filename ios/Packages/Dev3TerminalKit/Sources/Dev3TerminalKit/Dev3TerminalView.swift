@@ -10,6 +10,7 @@
         @Environment(\.colorScheme) private var colorScheme
 
         private let endpoint: Dev3TerminalEndpoint
+        private let interaction: Dev3TerminalInteraction?
         private let serverID: String
         private let inputMode: Dev3TerminalInputMode
         private let fallbackFontSize: Double
@@ -17,6 +18,7 @@
 
         fileprivate struct Configuration {
             let endpoint: Dev3TerminalEndpoint
+            let interaction: Dev3TerminalInteraction?
             let serverID: String
             let inputMode: Dev3TerminalInputMode
             let fallbackFontSize: Double
@@ -26,12 +28,14 @@
 
         public init(
             endpoint: Dev3TerminalEndpoint,
+            interaction: Dev3TerminalInteraction? = nil,
             serverID: String,
             inputMode: Dev3TerminalInputMode,
             fallbackFontSize: Double = Dev3TerminalFontPreferenceStore.defaultSize,
             onError: @escaping @MainActor @Sendable (String) -> Void = { _ in }
         ) {
             self.endpoint = endpoint
+            self.interaction = interaction
             self.serverID = serverID
             self.inputMode = inputMode
             self.fallbackFontSize = fallbackFontSize
@@ -52,6 +56,7 @@
         private var configuration: Configuration {
             Configuration(
                 endpoint: endpoint,
+                interaction: interaction,
                 serverID: serverID,
                 inputMode: inputMode,
                 fallbackFontSize: fallbackFontSize,
@@ -80,6 +85,7 @@
             private var frameBuffer = Dev3TerminalFrameBuffer()
             private let fontPreferences = Dev3TerminalFontPreferenceStore()
             private var endpoint: Dev3TerminalEndpoint?
+            private var interaction: Dev3TerminalInteraction?
             private var endpointIdentity: String?
             private var serverID: String?
             private var colorScheme: ColorScheme?
@@ -115,6 +121,7 @@
             fileprivate func configure(_ configuration: Configuration) {
                 onError = configuration.onError
                 endpoint = configuration.endpoint
+                interaction = configuration.interaction
 
                 if endpointIdentity != configuration.endpoint.identity {
                     endpointIdentity = configuration.endpoint.identity
@@ -150,6 +157,7 @@
                 terminalView?.terminalDelegate = nil
                 terminalView = nil
                 endpoint = nil
+                interaction = nil
             }
 
             fileprivate func displayFrame() {
@@ -169,6 +177,9 @@
                     )
                     let bytes = [UInt8](data)
                     terminalView.feed(byteArray: bytes[...])
+                    interaction?.updateBracketedPaste(
+                        terminalView.getTerminal().bracketedPasteMode
+                    )
                 }
             }
 
