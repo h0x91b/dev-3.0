@@ -855,7 +855,7 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
    The hand-drawn header glyphs (HeaderIcons.tsx) act out their operation when
    the hosting control — any element with .header-anim (a header-row button,
    the prevent-sleep toggle, the git-pull button) — is hovered. The Remote Access
-   QR glyph also loops while browser remote mode is active. Pure CSS, pixel-identical
+   QR glyph also loops while the Remote Access tunnel is active. Pure CSS, pixel-identical
    to the static icon when idle otherwise.
    Animated design reference: design/tmux-icons-animated.html (Top header row). */
 

@@ -121,6 +121,7 @@ function renderHeader(
 	extra?: {
 		updateVersion?: string | null;
 		updateDownloadStatus?: string | null;
+		remoteAccessActive?: boolean;
 		goBack?: () => void;
 		goForward?: () => void;
 		canGoBack?: boolean;
@@ -140,6 +141,7 @@ function renderHeader(
 				canGoForward={extra?.canGoForward ?? false}
 				updateVersion={extra?.updateVersion}
 				updateDownloadStatus={extra?.updateDownloadStatus}
+				remoteAccessActive={extra?.remoteAccessActive ?? false}
 			/>
 		</I18nProvider>,
 	);
@@ -682,12 +684,21 @@ describe("GlobalHeader — remote access indicator", () => {
 		mockedApi.request.getTasks.mockResolvedValue([]);
 	});
 
-	it("keeps the QR icon animation active in browser remote mode", () => {
+	it("keeps the QR icon neutral until the tunnel is active", () => {
 		renderHeader({ screen: "dashboard" });
 
 		const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
-		expect(remoteButton.className).toContain("remote-access-active");
+		expect(remoteButton.className).not.toContain("remote-access-active");
 		expect(remoteButton.querySelector(".hdr-qr1")).toBeInTheDocument();
+	});
+
+	it("uses the accent active state while the tunnel is connected", () => {
+		renderHeader({ screen: "dashboard" }, undefined, undefined, [], { remoteAccessActive: true });
+
+		const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
+		expect(remoteButton.className).toContain("remote-access-active");
+		expect(remoteButton.className).toContain("text-accent");
+		expect(remoteButton.className).toContain("bg-accent/15");
 	});
 });
 

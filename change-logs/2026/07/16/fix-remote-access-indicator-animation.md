@@ -1,1 +1,1 @@
-Keep the Remote Access QR icon animated continuously in browser remote mode so the active remote session remains visible in the global header. Desktop behavior and reduced-motion preferences remain unchanged.
+Keep the Remote Access QR icon blue and animated continuously while the Cloudflare tunnel is starting or connected, including after the QR modal closes. The indicator returns to its neutral state when the tunnel is idle or fails.

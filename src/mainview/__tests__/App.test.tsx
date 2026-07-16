@@ -1325,6 +1325,68 @@ describe("App keyboard shortcuts", () => {
 	});
 
 	describe("QR modal consumed state", () => {
+		it("keeps the active tunnel indicator after the QR modal closes", async () => {
+			await renderApp();
+			const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
+			const qrData = {
+				qrDataUrl: "data:image/png;base64,test",
+				accessUrl: "https://public.trycloudflare.com/?token=test",
+				tunnelState: "connected",
+				cloudflaredInstalled: true,
+			};
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
+			await waitFor(() => {
+				expect(remoteButton.className).toContain("remote-access-active");
+				expect(remoteButton.className).toContain("text-accent");
+			});
+
+			await userEvent.click(screen.getByText("Close"));
+			await waitFor(() => expect(screen.queryByText("Copy URL")).not.toBeInTheDocument());
+			expect(remoteButton.className).toContain("remote-access-active");
+		});
+
+		it("does not activate the indicator for a local-only QR session", async () => {
+			await renderApp();
+			const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,test",
+					accessUrl: "http://192.168.0.1:1234/?token=test",
+					tunnelState: "idle",
+					cloudflaredInstalled: true,
+				},
+			}));
+			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());
+			expect(remoteButton.className).not.toContain("remote-access-active");
+		});
+
+		it("activates while the tunnel is starting and deactivates after a failed start", async () => {
+			await renderApp();
+			const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,test",
+					accessUrl: "https://public.trycloudflare.com/?token=test",
+					tunnelState: "starting",
+					cloudflaredInstalled: true,
+				},
+			}));
+			await waitFor(() => expect(remoteButton.className).toContain("remote-access-active"));
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,test",
+					accessUrl: "https://public.trycloudflare.com/?token=test",
+					tunnelState: "failed",
+					cloudflaredInstalled: true,
+				},
+			}));
+			await waitFor(() => expect(remoteButton.className).not.toContain("remote-access-active"));
+		});
+
 		it("shows 'Connected' overlay and disables Copy when qrTokenConsumed fires", async () => {
 			await renderApp();
 

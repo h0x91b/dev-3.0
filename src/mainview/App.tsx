@@ -63,6 +63,19 @@ import { isTaskTerminalRoute } from "./utils/terminalFullscreen";
 /** Command shown when cloudflared is missing (Cloudflare Tunnel remote access). */
 const CLOUDFLARED_INSTALL_CMD = "brew install cloudflared";
 
+type RemoteAccessQRData = {
+	qrDataUrl: string;
+	accessUrl: string;
+	tunnelState: string;
+	cloudflaredInstalled: boolean;
+	interfaces?: RemoteNetInterface[];
+	selectedHost?: string;
+};
+
+function isRemoteTunnelActive(tunnelState?: string): boolean {
+	return tunnelState === "starting" || tunnelState === "connected";
+}
+
 /**
  * True when keystrokes should go to a focused field or the terminal rather than
  * trigger a bare-key shortcut (used to gate the Vimium-style hint hotkey).
@@ -265,10 +278,15 @@ function App() {
 	const updateClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	// Remote access QR code modal
-	const [remoteQR, setRemoteQR] = useState<{ qrDataUrl: string; accessUrl: string; tunnelState: string; cloudflaredInstalled: boolean; interfaces?: RemoteNetInterface[]; selectedHost?: string } | null>(null);
+	const [remoteQR, setRemoteQR] = useState<RemoteAccessQRData | null>(null);
+	const [remoteAccessActive, setRemoteAccessActive] = useState(false);
 	const [tunnelWanted, setTunnelWanted] = useState(false);
 	const [tunnelStarting, setTunnelStarting] = useState(false);
 	const [cloudflaredCopied, setCloudflaredCopied] = useState(false);
+	const applyRemoteQR = useCallback((next: RemoteAccessQRData) => {
+		setRemoteQR(next);
+		setRemoteAccessActive(isRemoteTunnelActive(next.tunnelState));
+	}, []);
 
 	// System requirements gate
 	const [reqStatus, setReqStatus] = useState<"checking" | "failed" | "passed">("checking");
@@ -1745,8 +1763,9 @@ function App() {
 	// Listen for View > Remote Access QR Code menu item
 	useEffect(() => {
 		function onShowRemoteQR(e: Event) {
-			const detail = (e as CustomEvent).detail;
-			setRemoteQR(detail);
+			const detail = (e as CustomEvent<RemoteAccessQRData>).detail;
+			if (!detail) return;
+			applyRemoteQR(detail);
 			setQrConsumed(false); // Reset consumed state when opening fresh QR
 			// Sync tunnel checkbox with actual tunnel state
 			setTunnelWanted(detail?.tunnelState === "connected" || detail?.tunnelState === "starting");
@@ -1754,7 +1773,7 @@ function App() {
 		}
 		window.addEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
 		return () => window.removeEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
-	}, []);
+	}, [applyRemoteQR]);
 
 	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
 	// After a QR is consumed, keep polling without visually rotating the token:
@@ -1795,8 +1814,10 @@ function App() {
 							}
 						}
 						if (!qrConsumedRef.current || hostnameChanged) {
-							setRemoteQR(next);
+							applyRemoteQR(next);
 							if (hostnameChanged) setQrConsumed(false);
+						} else {
+							setRemoteAccessActive(isRemoteTunnelActive(next.tunnelState));
 						}
 					}).catch(() => {}).finally(() => {
 						refreshInFlight = false;
@@ -1806,7 +1827,7 @@ function App() {
 			if (!qrConsumedRef.current) setQrCountdown(counter);
 		}, 1000);
 		return () => clearInterval(tick);
-	}, [qrModalOpen]);
+	}, [applyRemoteQR, qrModalOpen]);
 
 	// Track page views on route changes. Resolve the task's human-readable seq id
 	// (e.g. "981-1") from the loaded task list so analytics paths carry the task
@@ -1935,6 +1956,7 @@ function App() {
 						canGoForward={state.historyIndex < state.routeHistory.length - 1}
 						updateVersion={updateVersion}
 						updateDownloadStatus={updateDownloadStatus}
+						remoteAccessActive={remoteAccessActive}
 					/>
 					{ghWarning && (
 						<GhWarningBanner
@@ -2146,7 +2168,7 @@ function App() {
 									onChange={(e) => {
 										const host = e.target.value;
 										api.request.getRemoteAccessQR({ tunnel: false, host }).then((res) => {
-											setRemoteQR(res);
+											applyRemoteQR(res);
 											setQrCountdown(25);
 										}).catch(() => {});
 									}}
@@ -2174,16 +2196,21 @@ function App() {
 										const want = e.target.checked;
 										setTunnelWanted(want);
 										if (want && remoteQR.cloudflaredInstalled && remoteQR.tunnelState === "idle") {
+											setRemoteAccessActive(true);
 											setTunnelStarting(true);
 											api.request.getRemoteAccessQR({ tunnel: true }).then((res) => {
-												setRemoteQR(res);
+												applyRemoteQR(res);
 												setTunnelStarting(false);
 												setQrCountdown(25);
-											}).catch(() => setTunnelStarting(false));
+											}).catch(() => {
+												setTunnelStarting(false);
+												setRemoteAccessActive(false);
+											});
 										} else if (!want && remoteQR.tunnelState === "connected") {
+											setRemoteAccessActive(false);
 											api.request.stopTunnel().then(() => {
 												api.request.getRemoteAccessQR({ tunnel: false }).then((res) => {
-													setRemoteQR(res);
+													applyRemoteQR(res);
 													setQrCountdown(25);
 												}).catch(() => {});
 											}).catch(() => {});
@@ -2228,7 +2255,7 @@ function App() {
 									<button
 										onClick={() => {
 											api.request.getRemoteAccessQR({ tunnel: tunnelWanted }).then((res) => {
-												setRemoteQR(res);
+												applyRemoteQR(res);
 											}).catch(() => {});
 										}}
 										className="text-xs text-accent hover:text-accent-hover transition-colors"

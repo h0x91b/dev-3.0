@@ -7,7 +7,7 @@ import type { SVGProps } from "react";
  * stroke style consistent with the tmux (TmuxIcons) and git (GitIcons) sets.
  *
  * Every icon carries `hdr-*` animation hooks: when a `.header-anim` ancestor
- * (the hosting button) is hovered, or while browser Remote Access is active for
+ * (the hosting button) is hovered, or while the Remote Access tunnel is active for
  * the QR icon, pure-CSS keyframes in index.css act out the operation the icon
  * triggers — chevrons lunge with a ghost echo, the home
  * prompt types itself, steam rises off the coffee, the lock shackle snaps shut,
