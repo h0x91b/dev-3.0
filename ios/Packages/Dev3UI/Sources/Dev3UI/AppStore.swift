@@ -104,6 +104,7 @@ public final class AppStore {
     public private(set) var lastPush: RPCPushEvent?
     public private(set) var taskDropPosition = TaskDropPosition.top
     public private(set) var refetchRevision = 0
+    public private(set) var terminalRecoveryRevision: UInt64 = 0
     public private(set) var snapshotServerID: String?
     public internal(set) var projectPullStates: [String: ProjectPullState] = [:]
 
@@ -537,6 +538,7 @@ extension AppStore {
     }
 
     func networkBecameReachable() {
+        terminalRecoveryRevision &+= 1
         guard let rpc else { return }
         Task {
             try? await rpc.setWindowForeground(isSceneActive)

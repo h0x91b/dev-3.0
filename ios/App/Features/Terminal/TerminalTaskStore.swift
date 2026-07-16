@@ -63,6 +63,9 @@ final class TerminalTaskStore {
     private var attachTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
+    private var isAttached = false
+    private var isSceneActive = false
+    private var networkRecoveryRevision: UInt64 = 0
 
     init(service: any TerminalTaskServicing) {
         self.service = service
@@ -79,46 +82,6 @@ final class TerminalTaskStore {
             phase: phase,
             usesSharedTerminalDimensions: service.usesSharedTerminalDimensions
         )
-    }
-
-    func attach(isSceneActive: Bool) {
-        guard attachTask == nil else { return }
-        phase = .connecting
-        observeConnectionStates()
-        attachTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await service.setTerminalActive(isSceneActive)
-                try await service.attach()
-                await refreshNavigation()
-                beginPollingNavigation()
-            } catch {
-                phase = .failed(error.localizedDescription)
-            }
-            attachTask = nil
-        }
-    }
-
-    func setTerminalActive(_ active: Bool) {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await service.setTerminalActive(active)
-            } catch {
-                transientError = error.localizedDescription
-            }
-        }
-    }
-
-    func detach() async {
-        attachTask?.cancel()
-        stateTask?.cancel()
-        pollTask?.cancel()
-        attachTask = nil
-        stateTask = nil
-        pollTask = nil
-        await service.detach()
-        phase = .disconnected
     }
 
     func resume() {
@@ -365,5 +328,67 @@ final class TerminalTaskStore {
                 transientError = error.localizedDescription
             }
         }
+    }
+}
+
+extension TerminalTaskStore {
+    func attach(isSceneActive: Bool, networkRecoveryRevision: UInt64) {
+        guard attachTask == nil, !isAttached else { return }
+        self.isSceneActive = isSceneActive
+        self.networkRecoveryRevision = networkRecoveryRevision
+        phase = .connecting
+        observeConnectionStates()
+        attachTask = Task { [weak self] in
+            guard let self else { return }
+            defer { attachTask = nil }
+            do {
+                try await service.setTerminalActive(isSceneActive)
+                try await service.attach()
+                guard !Task.isCancelled else { return }
+                isAttached = true
+                await refreshNavigation()
+                beginPollingNavigation()
+            } catch {
+                guard !Task.isCancelled else { return }
+                phase = .failed(error.localizedDescription)
+            }
+        }
+    }
+
+    func sceneChanged(isActive: Bool) {
+        let shouldRecover = isAttached && !isSceneActive && isActive
+        isSceneActive = isActive
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await service.setTerminalActive(isActive)
+            } catch {
+                transientError = error.localizedDescription
+            }
+            guard shouldRecover, isAttached, isSceneActive else { return }
+            await service.kick()
+        }
+    }
+
+    func networkBecameReachable(revision: UInt64) {
+        guard revision != networkRecoveryRevision else { return }
+        networkRecoveryRevision = revision
+        guard isAttached, isSceneActive else { return }
+        Task { [weak self] in
+            guard let self, isAttached, isSceneActive else { return }
+            await service.kick()
+        }
+    }
+
+    func detach() async {
+        isAttached = false
+        attachTask?.cancel()
+        stateTask?.cancel()
+        pollTask?.cancel()
+        attachTask = nil
+        stateTask = nil
+        pollTask = nil
+        await service.detach()
+        phase = .disconnected
     }
 }

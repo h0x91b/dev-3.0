@@ -539,7 +539,12 @@ private struct AvailableTaskTerminalDestination: View {
     var body: some View {
         Group {
             if let service {
-                TaskTerminalScreen(title: title, service: service, onTaskInfo: onTaskInfo)
+                TaskTerminalScreen(
+                    title: title,
+                    service: service,
+                    networkRecoveryRevision: appStore.terminalRecoveryRevision,
+                    onTaskInfo: onTaskInfo
+                )
             } else {
                 ProgressView("Opening terminal…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

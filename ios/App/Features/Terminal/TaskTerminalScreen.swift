@@ -12,14 +12,17 @@ struct TaskTerminalScreen: View {
     @FocusState private var composerFocused: Bool
 
     private let title: String
+    private let networkRecoveryRevision: UInt64
     private let onTaskInfo: (() -> Void)?
 
     init(
         title: String,
         service: any TerminalTaskServicing,
+        networkRecoveryRevision: UInt64,
         onTaskInfo: (() -> Void)? = nil
     ) {
         self.title = title
+        self.networkRecoveryRevision = networkRecoveryRevision
         self.onTaskInfo = onTaskInfo
         _store = State(initialValue: TerminalTaskStore(service: service))
     }
@@ -99,10 +102,16 @@ struct TaskTerminalScreen: View {
             Text(store.transientError ?? "The terminal action failed.")
         }
         .task {
-            store.attach(isSceneActive: scenePhase == .active)
+            store.attach(
+                isSceneActive: scenePhase == .active,
+                networkRecoveryRevision: networkRecoveryRevision
+            )
         }
         .onChange(of: scenePhase) { _, newPhase in
-            store.setTerminalActive(newPhase == .active)
+            store.sceneChanged(isActive: newPhase == .active)
+        }
+        .onChange(of: networkRecoveryRevision) { _, revision in
+            store.networkBecameReachable(revision: revision)
         }
         .onDisappear {
             Task { await store.detach() }

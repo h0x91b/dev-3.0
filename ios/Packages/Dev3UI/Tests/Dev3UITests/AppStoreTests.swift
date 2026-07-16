@@ -675,6 +675,7 @@ struct AppStoreTests {
         path.emitReachable()
         await settle()
         #expect(rpc.foregroundCalls.last == false)
+        #expect(store.terminalRecoveryRevision == 1)
     }
 
     @Test("A blocked old focus write cannot overwrite the replacement connection request")
