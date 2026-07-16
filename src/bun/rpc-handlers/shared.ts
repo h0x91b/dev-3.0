@@ -9,6 +9,8 @@ export {
 	portableReadKey,
 	buildCmdScript,
 	resolveBinaryPath,
+	bundledTmuxCandidates,
+	tmuxSearchPaths,
 	setPushMessage,
 	getPushMessage,
 	getPushMessageLocal,

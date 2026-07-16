@@ -9,6 +9,8 @@ export {
 	getPushMessageLocal,
 	isActive,
 	resolveBinaryPath,
+	bundledTmuxCandidates,
+	tmuxSearchPaths,
 	notifyWatchedTaskStatusChange,
 	notifyWatchedTaskEvent,
 	notifyFromCliDesktop,

@@ -10,7 +10,7 @@
 		"hmr": "vite --port 5173",
 		"build": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build",
 		"build:prod": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build --channel prod",
-		"build:cli": "bun build src/cli/main.ts --compile --outfile dist/dev3 && bash scripts/sign-cli-binaries.sh && bun run build:native",
+		"build:cli": "bun build src/cli/main.ts --compile --outfile dist/dev3 && bash scripts/stage-bundled-tmux.sh && bash scripts/sign-cli-binaries.sh && bun run build:native",
 		"build:native": "bash scripts/build-native-notifications.sh",
 		"start": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && bun run build:cli && electrobun build && DEV3_FRESH_START=1 electrobun dev",
 		"lint": "bun scripts/lint.ts",

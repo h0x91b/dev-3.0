@@ -2,6 +2,7 @@ node_modules/
 /build/
 /dist/
 /artifacts/
+/vendor/
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .codex/hooks.json

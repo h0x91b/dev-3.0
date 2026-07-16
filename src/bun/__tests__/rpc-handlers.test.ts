@@ -310,6 +310,7 @@ const {
 	startPRDetectionPoller,
 	stopPRDetectionPoller,
 	resolveBinaryPath,
+	bundledTmuxCandidates,
 	launchTaskPty,
 	addVirtualShellPane,
 	activateTask,
@@ -9176,6 +9177,28 @@ describe("resolveBinaryPath", () => {
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("/opt/homebrew/bin/tmux") });
 		const result = resolveBinaryPath("tmux", undefined, ["/opt/homebrew/opt/tmux@3.6/bin/tmux"]);
 		expect(result.resolvedPath).toBe("/opt/homebrew/bin/tmux");
+	});
+});
+
+// ---- bundledTmuxCandidates (decisions/137) ----
+
+describe("bundledTmuxCandidates", () => {
+	it("maps the app-bundle layout: Contents/MacOS → Resources/app/tmux/tmux", () => {
+		const candidates = bundledTmuxCandidates("darwin", "/Applications/dev-3.0.app/Contents/MacOS");
+		expect(candidates).toContain("/Applications/dev-3.0.app/Contents/Resources/app/tmux/tmux");
+	});
+
+	it("maps the CLI tarball/libexec layout: tmux/tmux next to the binary", () => {
+		const candidates = bundledTmuxCandidates("darwin", "/opt/homebrew/Cellar/dev3/1.36.0/libexec");
+		expect(candidates).toContain("/opt/homebrew/Cellar/dev3/1.36.0/libexec/tmux/tmux");
+	});
+
+	it("returns nothing on non-macOS platforms", () => {
+		expect(bundledTmuxCandidates("linux", "/usr/lib/dev3")).toEqual([]);
+	});
+
+	it("returns nothing when the real exec dir is unknown", () => {
+		expect(bundledTmuxCandidates("darwin", undefined)).toEqual([]);
 	});
 });
 

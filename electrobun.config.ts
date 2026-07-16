@@ -44,6 +44,9 @@ export default {
 			"src/assets/artifact-template": "artifact-template",
 			// macOS notification-click shim (empty dir on Linux) — see decisions/106.
 			"dist/native": "native",
+			// Bundled self-contained tmux + license notices (empty dir on Linux and
+			// on dev machines without a local tmux build) — see decisions/137.
+			"dist/tmux": "tmux",
 		},
 		linux: {
 			bundleCEF: false,
