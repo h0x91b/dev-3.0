@@ -68,6 +68,7 @@ struct ConnectionControllerTests {
         let harness = try await ControllerHarness(servers: [first, second], active: second)
         await harness.controller.start()
         await settleController()
+        let replacedConnection = try #require(harness.connections.items.first)
 
         await harness.controller.delete(second)
         await settleController()
@@ -76,6 +77,7 @@ struct ConnectionControllerTests {
         #expect(harness.controller.savedServers.map(\.instanceId) == [first.instanceId])
         #expect(harness.controller.sessionState == .connected)
         #expect(harness.connections.items.count == 2)
+        #expect(await replacedConnection.disconnectCallCount == 1)
     }
 
     @Test("Foreground and recovered paths refresh and replace live connections")

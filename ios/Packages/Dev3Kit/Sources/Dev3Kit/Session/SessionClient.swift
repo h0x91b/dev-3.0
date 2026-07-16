@@ -194,8 +194,8 @@ public extension SessionClient {
         destroyed = true
         cancelRetry()
         cancelRefresh()
-        Task { [weak self] in
-            guard let self else { return }
+        let connection = connection
+        Task {
             await connection.setSessionEventHandler(nil)
             await connection.disconnect()
         }

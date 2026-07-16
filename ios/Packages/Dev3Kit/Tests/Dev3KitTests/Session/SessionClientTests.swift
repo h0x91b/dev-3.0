@@ -224,6 +224,24 @@ struct SessionClientTests {
         #expect(await harness.connection.connectCallCount == callsAfterDestroy)
     }
 
+    @Test("Destroy disconnects after the session client is immediately released")
+    func destroyOutlivesClient() async throws {
+        var harness: SessionHarness? = try await SessionHarness(pairing: false)
+        let connection = try #require(harness?.connection)
+        harness?.client.start()
+        await settle()
+        #expect(await connection.hasHandler)
+
+        weak let releasedClient = harness?.client
+        harness?.client.destroy()
+        harness = nil
+        #expect(releasedClient == nil)
+        await settle()
+
+        #expect(await connection.hasHandler == false)
+        #expect(await connection.disconnectCallCount == 1)
+    }
+
     private func makeServer(token: String) throws -> PairedServer {
         try PairedServer(
             origin: #require(URL(string: "http://127.0.0.1:4242")),
