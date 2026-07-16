@@ -38,7 +38,7 @@ public struct TaskPRStatusPush: Codable, Equatable, Sendable {
     public let isDraft: Bool?
 }
 
-public enum Dev3NotificationLevel: String, Codable, Sendable {
+public enum Dev3NotificationLevel: String, Codable, Equatable, Sendable {
     case info
     case success
     case error

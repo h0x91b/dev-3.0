@@ -54,6 +54,8 @@ public final class ConnectionController {
     public private(set) var discoveredInstances: [DiscoveredInstance] = []
     public private(set) var isBusy = false
     public var errorMessage: String?
+    public var onSessionStateChange: ((RemoteSessionState) -> Void)?
+    public var onNetworkReachable: (() -> Void)?
 
     private let store: PairedServerStore
     private let transport: any SessionHTTPTransporting
@@ -88,6 +90,7 @@ public final class ConnectionController {
         installDiscoveryHandlers()
         pathObserver.onReachable = { [weak self] in
             self?.connectionEnvironmentChanged()
+            self?.onNetworkReachable?()
         }
         discovery.start()
         pathObserver.start()
@@ -102,6 +105,7 @@ public final class ConnectionController {
         hasStarted = false
         isBusy = false
         sessionState = .idle
+        onSessionStateChange?(.idle)
     }
 
     public func pair(_ credential: PairingCredential, displayName: String? = nil) {
@@ -154,6 +158,7 @@ public final class ConnectionController {
                 beginSession(.saved(active))
             } else {
                 sessionState = .idle
+                onSessionStateChange?(.idle)
                 isBusy = false
             }
         } catch {
@@ -207,6 +212,7 @@ private extension ConnectionController {
         session.onStateChange = { [weak self, weak session] state in
             guard let self, self.session === session else { return }
             sessionState = state
+            onSessionStateChange?(state)
             isBusy = state == .authenticating || state == .connecting || state == .reconnecting
         }
         session.onServerChange = { [weak self, weak session] server in

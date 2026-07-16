@@ -4,6 +4,13 @@ import Foundation
 @MainActor
 public final class ConnectionRuntime {
     public let controller: ConnectionController
+    public var onRPCClientChange: ((RPCClient) -> Void)? {
+        didSet {
+            if let client = registry.client {
+                onRPCClientChange?(client)
+            }
+        }
+    }
 
     private let registry: RPCClientRegistry
 
@@ -30,10 +37,21 @@ public final class ConnectionRuntime {
                 return client
             }
         )
+        registry.onChange = { [weak self] client in
+            self?.onRPCClientChange?(client)
+        }
     }
 }
 
 @MainActor
 private final class RPCClientRegistry {
-    var client: RPCClient?
+    var client: RPCClient? {
+        didSet {
+            if let client {
+                onChange?(client)
+            }
+        }
+    }
+
+    var onChange: ((RPCClient) -> Void)?
 }

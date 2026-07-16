@@ -8,31 +8,29 @@ struct Dev3App: App {
     @Environment(\.scenePhase) private var scenePhase
 
     private let runtime: ConnectionRuntime?
-    private let controller: ConnectionController
+    private let store: AppStore
 
     init() {
         #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--uitesting") {
                 runtime = nil
-                controller = UITestDependencies.makeController()
+                store = AppStore(controller: UITestDependencies.makeController())
                 return
             }
         #endif
         let runtime = ConnectionRuntime()
         self.runtime = runtime
-        controller = runtime.controller
+        store = AppStore(runtime: runtime)
     }
 
     var body: some Scene {
         WindowGroup {
-            CompanionRootView(controller: controller)
+            CompanionRootView(store: store)
                 .task {
-                    await controller.start()
+                    await store.start()
                 }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase == .active {
-                        controller.foregrounded()
-                    }
+                    store.sceneChanged(isActive: phase == .active)
                 }
         }
     }

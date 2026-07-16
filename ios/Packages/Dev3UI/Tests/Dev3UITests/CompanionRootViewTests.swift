@@ -7,5 +7,5 @@ import Testing
 @MainActor
 func companionRootViewConstruction() {
     let runtime = ConnectionRuntime()
-    _ = CompanionRootView(controller: runtime.controller)
+    _ = CompanionRootView(store: AppStore(runtime: runtime))
 }

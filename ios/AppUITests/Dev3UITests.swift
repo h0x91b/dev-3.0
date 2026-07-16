@@ -50,6 +50,41 @@ final class Dev3UITests: XCTestCase {
     }
 
     @MainActor
+    func testLiveRuntimePairsAndRefetchesTheAppStoreWhenConfigured() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let origin = environment["DEV3_INTEGRATION_ORIGIN"], !origin.isEmpty,
+              let code = environment["DEV3_INTEGRATION_CODE"], !code.isEmpty
+        else {
+            throw XCTSkip("Set DEV3_INTEGRATION_ORIGIN and DEV3_INTEGRATION_CODE for the live runtime test.")
+        }
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+
+        XCTAssertTrue(app.buttons["pairing.manualAction"].waitForExistence(timeout: 10))
+        app.buttons["pairing.manualAction"].tap()
+        let originField = app.textFields["manual.origin"]
+        XCTAssertTrue(originField.waitForExistence(timeout: 2))
+        originField.tap()
+        originField.typeText(origin)
+        let codeField = app.secureTextFields["manual.code"]
+        codeField.tap()
+        codeField.typeText(code)
+        app.buttons["manual.connect"].tap()
+
+        XCTAssertTrue(app.otherElements["connected.shell"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Connected to dev3"].waitForExistence(timeout: 5))
+        app.buttons["connected.tab.projects"].tap()
+        let populated = app.otherElements["projects.ready"]
+        let empty = app.otherElements["projects.empty"]
+        XCTAssertTrue(
+            populated.waitForExistence(timeout: 15) || empty.waitForExistence(timeout: 2),
+            "The connected store should finish its initial project refetch."
+        )
+        XCTAssertFalse(app.otherElements["projects.loading"].exists)
+    }
+
+    @MainActor
     private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting"]

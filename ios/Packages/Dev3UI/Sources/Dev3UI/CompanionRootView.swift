@@ -3,28 +3,28 @@ import SwiftUI
 
 @MainActor
 public struct CompanionRootView: View {
-    private let controller: ConnectionController
+    @Bindable private var store: AppStore
     @State private var showsPairing = false
 
-    public init(controller: ConnectionController) {
-        self.controller = controller
+    public init(store: AppStore) {
+        self.store = store
     }
 
     public var body: some View {
         Group {
             if shouldShowConnectedShell {
-                ConnectedShellView(controller: controller) {
+                ConnectedShellView(store: store) {
                     showsPairing = true
                 }
             } else {
                 PairingHomeView(
-                    controller: controller,
-                    canCancel: controller.activeServer != nil,
+                    controller: store.controller,
+                    canCancel: store.controller.activeServer != nil && !store.shouldShowPairing,
                     onCancel: { showsPairing = false }
                 )
             }
         }
-        .onChange(of: controller.sessionState) { _, state in
+        .onChange(of: store.controller.sessionState) { _, state in
             if state == .connected {
                 showsPairing = false
             }
@@ -32,56 +32,86 @@ public struct CompanionRootView: View {
     }
 
     private var shouldShowConnectedShell: Bool {
-        controller.activeServer != nil && controller.sessionState != .expired && !showsPairing
+        !store.shouldShowPairing && !showsPairing
     }
 }
 
 @MainActor
 private struct ConnectedShellView: View {
-    let controller: ConnectionController
+    @Bindable var store: AppStore
     let onPairAnother: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TabView {
-            NavigationStack {
-                WorkPlaceholder(controller: controller)
+        TabView(selection: $store.selectedTab) {
+            NavigationStack(path: $store.workPath) {
+                WorkOverview(store: store)
                     .navigationTitle("Work")
             }
             .tabItem {
                 Label("Work", systemImage: "rectangle.3.group.fill")
             }
+            .tag(AppTab.work)
             .accessibilityIdentifier("connected.tab.work")
 
-            NavigationStack {
-                ProjectsPlaceholder()
+            NavigationStack(path: $store.projectsPath) {
+                ProjectsOverview(store: store)
                     .navigationTitle("Projects")
             }
             .tabItem {
                 Label("Projects", systemImage: "folder.fill")
             }
+            .tag(AppTab.projects)
             .accessibilityIdentifier("connected.tab.projects")
 
-            NavigationStack {
-                ServerSettingsView(controller: controller, onPairAnother: onPairAnother)
+            NavigationStack(path: $store.settingsPath) {
+                ServerSettingsView(controller: store.controller, onPairAnother: onPairAnother)
                     .navigationTitle("Settings")
             }
             .tabItem {
                 Label("Settings", systemImage: "gearshape.fill")
             }
+            .tag(AppTab.settings)
             .accessibilityIdentifier("connected.tab.settings")
         }
+        .overlay(alignment: .top) {
+            VStack(spacing: 8) {
+                if let banner = store.banner {
+                    ConnectionBannerView(banner: banner)
+                        .accessibilityIdentifier("connected.banner")
+                }
+                if let toast = store.toast {
+                    ToastView(toast: toast) {
+                        store.dismissToast()
+                    }
+                    .accessibilityIdentifier("connected.toast")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+        }
+        .animation(reduceMotion ? nil : .snappy, value: store.banner)
+        .animation(reduceMotion ? nil : .snappy, value: store.toast?.id)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("connected.shell")
     }
 }
 
 @MainActor
-private struct WorkPlaceholder: View {
-    let controller: ConnectionController
+private struct WorkOverview: View {
+    @Bindable var store: AppStore
     @Environment(\.colorScheme) private var colorScheme
 
     private var palette: Dev3ThemePalette {
         Dev3Theme.palette(for: colorScheme)
+    }
+
+    private var attentionTasks: [Dev3Task] {
+        store.tasksByProject.values.flatMap(\.self).filter { task in
+            task.status == .userQuestions ||
+                task.status == .reviewByUser ||
+                task.status == .reviewByColleague
+        }
     }
 
     var body: some View {
@@ -95,7 +125,7 @@ private struct WorkPlaceholder: View {
                         Text(statusTitle)
                             .font(.headline)
                             .accessibilityIdentifier("connected.status")
-                        Text(controller.activeServer?.name ?? "dev3")
+                        Text(store.controller.activeServer?.name ?? "dev3")
                             .font(.subheadline)
                             .foregroundStyle(palette.textSecondary)
                             .accessibilityIdentifier("connected.serverName")
@@ -103,28 +133,44 @@ private struct WorkPlaceholder: View {
                     Spacer()
                 }
                 .padding(18)
-                .background(palette.glassCard, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .background(palette.surfaceRaised, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(palette.glassBorderCard)
+                        .stroke(palette.borderDefault)
                 }
 
-                ContentUnavailableView(
-                    "Work queue is ready",
-                    systemImage: "sparkles",
-                    description: Text(
-                        "Tasks needing attention and waiting agents arrive in the next implementation slice."
-                    )
-                )
-                .frame(maxWidth: .infinity, minHeight: 320)
+                workState
+                    .frame(maxWidth: .infinity, minHeight: 320)
             }
             .padding(20)
         }
         .background(palette.surfaceBase)
     }
 
+    @ViewBuilder
+    private var workState: some View {
+        if store.isInitialLoading {
+            ProgressView("Loading work…")
+                .accessibilityIdentifier("work.loading")
+        } else if attentionTasks.isEmpty {
+            ContentUnavailableView(
+                "No work needs attention",
+                systemImage: "checkmark.circle",
+                description: Text("Tasks waiting for you across every project will appear here.")
+            )
+            .accessibilityIdentifier("work.empty")
+        } else {
+            ContentUnavailableView(
+                "\(attentionTasks.count) task\(attentionTasks.count == 1 ? "" : "s") need attention",
+                systemImage: "person.crop.circle.badge.exclamationmark",
+                description: Text("The cross-project Work queue is synchronized and ready.")
+            )
+            .accessibilityIdentifier("work.ready")
+        }
+    }
+
     private var statusTitle: String {
-        switch controller.sessionState {
+        switch store.controller.sessionState {
         case .connected:
             "Connected to dev3"
         case .authenticating, .connecting:
@@ -137,26 +183,121 @@ private struct WorkPlaceholder: View {
     }
 
     private var statusIcon: String {
-        controller.sessionState == .connected ? "link.circle.fill" : "arrow.triangle.2.circlepath.circle.fill"
+        store.controller.sessionState == .connected ?
+            "link.circle.fill" : "arrow.triangle.2.circlepath.circle.fill"
     }
 
     private var statusColor: Color {
-        controller.sessionState == .connected ? palette.success : palette.warning
+        store.controller.sessionState == .connected ? palette.success : palette.warning
     }
 }
 
 @MainActor
-private struct ProjectsPlaceholder: View {
+private struct ProjectsOverview: View {
+    @Bindable var store: AppStore
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ContentUnavailableView(
-            "Projects are next",
-            systemImage: "folder.badge.gearshape",
-            description: Text("Project navigation remains separate from the cross-project Work queue.")
-        )
+        Group {
+            if store.isInitialLoading {
+                ProgressView("Loading projects…")
+                    .accessibilityIdentifier("projects.loading")
+            } else if store.projects.isEmpty {
+                ContentUnavailableView(
+                    "No projects",
+                    systemImage: "folder",
+                    description: Text("Projects added to the connected dev3 instance will appear here.")
+                )
+                .accessibilityIdentifier("projects.empty")
+            } else {
+                ContentUnavailableView(
+                    "\(store.projects.count) project\(store.projects.count == 1 ? "" : "s") synced",
+                    systemImage: "folder.badge.checkmark",
+                    description: Text("Project boards remain separate from the cross-project Work queue.")
+                )
+                .accessibilityIdentifier("projects.ready")
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Dev3Theme.palette(for: colorScheme).surfaceBase)
     }
+}
+
+@MainActor
+private struct ConnectionBannerView: View {
+    let banner: ConnectionBanner
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let palette = Dev3Theme.palette(for: colorScheme)
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(palette.textPrimary)
+            Text(banner.message)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(palette.textPrimary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(palette.surfaceRaised, in: Capsule())
+        .overlay {
+            Capsule().stroke(palette.borderDefault)
+        }
+    }
+}
+
+@MainActor
+private struct ToastView: View {
+    let toast: AppToast
+    let onDismiss: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let palette = Dev3Theme.palette(for: colorScheme)
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(accent(palette))
+                .accessibilityHidden(true)
+            Text(toast.message)
+                .font(.subheadline)
+                .foregroundStyle(palette.textPrimary)
+            Spacer(minLength: 0)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(palette.textSecondary)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(palette.surfaceRaised, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(palette.borderDefault)
+        }
+    }
+
+    // SwiftFormat's configured compact-case style conflicts with this opt-in lint rule.
+    // swiftlint:disable switch_case_on_newline
+    private var icon: String {
+        switch toast.level {
+        case .info: "info.circle.fill"
+        case .success: "checkmark.circle.fill"
+        case .error: "exclamationmark.triangle.fill"
+        }
+    }
+
+    private func accent(_ palette: Dev3ThemePalette) -> Color {
+        switch toast.level {
+        case .info: palette.accent
+        case .success: palette.success
+        case .error: palette.danger
+        }
+    }
+    // swiftlint:enable switch_case_on_newline
 }
 
 @MainActor
