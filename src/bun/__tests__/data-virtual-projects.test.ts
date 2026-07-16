@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 
+const DEV3_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-virtual-projects`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -11,8 +13,8 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-virtual",
-	OPS_DIR: "/tmp/dev3-test-virtual/ops",
+	DEV3_HOME,
+	OPS_DIR: `${DEV3_HOME}/ops`,
 }));
 
 vi.mock("../cow-clone", () => ({
@@ -23,7 +25,6 @@ vi.mock("../file-lock", () => ({
 	withFileLock: async <T>(_filePath: string, fn: () => Promise<T>): Promise<T> => fn(),
 }));
 
-const DEV3_HOME = "/tmp/dev3-test-virtual";
 const VIRTUAL_FILE = `${DEV3_HOME}/virtual-projects.json`;
 
 beforeEach(async () => {
@@ -71,7 +72,8 @@ describe("addVirtualProject", () => {
 
 	it("never reuses a slug while its data/ dir survives", async () => {
 		// Simulate a deleted-then-recreated board: the munged data dir survives.
-		const survivingDataDir = `${DEV3_HOME}/data/tmp-dev3-test-virtual-ops-operations`;
+		const opsPath = `${DEV3_HOME}/ops/operations`;
+		const survivingDataDir = `${DEV3_HOME}/data/${opsPath.replace(/^\//, "").replaceAll("/", "-")}`;
 		mkdirSync(survivingDataDir, { recursive: true });
 		const project = await addVirtualProject("Operations");
 		expect(project.path).toBe(`${DEV3_HOME}/ops/operations-2`);
@@ -80,7 +82,7 @@ describe("addVirtualProject", () => {
 	it("does not collide with a git project's data-dir slug", async () => {
 		// A git project whose munged path equals the ops data-dir name would collide.
 		writeFileSync(`${DEV3_HOME}/projects.json`, JSON.stringify([
-			{ id: "g1", name: "g", path: "/tmp/dev3-test-virtual/ops/operations", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "2025-01-01T00:00:00Z", labels: [] },
+			{ id: "g1", name: "g", path: `${DEV3_HOME}/ops/operations`, setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "2025-01-01T00:00:00Z", labels: [] },
 		]));
 		const project = await addVirtualProject("Operations");
 		expect(project.path).toBe(`${DEV3_HOME}/ops/operations-2`);

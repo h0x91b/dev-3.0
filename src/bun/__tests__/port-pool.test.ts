@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/port-pool`);
+
 // Mock DEV3_HOME to a temp directory
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-port-pool-test",
+	DEV3_HOME: TEST_HOME,
 }));
-
-const TEST_HOME = "/tmp/dev3-port-pool-test";
 
 // Mock net/dgram to control port availability
 let portsInUse = new Set<number>();

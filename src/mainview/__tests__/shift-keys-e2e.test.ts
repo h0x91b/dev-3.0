@@ -142,10 +142,26 @@ function makeCustomHandler(sent: string[]) {
 	};
 }
 
-/** Wrap child_process.spawn exit in a Promise. */
-function waitForExit(proc: ChildProcess): Promise<void> {
-	return new Promise<void>((resolve) => {
-		proc.on("exit", () => resolve());
+function isolatedTmuxEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+	const env = { ...process.env, ...extra };
+	// Agents run the suite from inside dev3's own tmux session. A nested tmux
+	// client refuses to attach to the test server while the parent TMUX marker
+	// is present, even when -L selects a different socket.
+	delete env.TMUX;
+	return env;
+}
+
+/** Wrap child_process.spawn exit in a bounded Promise and reap stuck readers. */
+function waitForExit(proc: ChildProcess, label: string): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		const timer = setTimeout(() => {
+			proc.kill();
+			reject(new Error(`${label} timed out`));
+		}, 3_000);
+		proc.once("exit", () => {
+			clearTimeout(timer);
+			resolve();
+		});
 	});
 }
 
@@ -161,6 +177,8 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 		let tmuxSocket: string;
 		let tmuxSession: string;
 		let pythonProc: ChildProcess | undefined;
+		let bridgeStderr = "";
+		let bridgeExitCode: number | null = null;
 
 		// import.meta.url is http://localhost/... in happy-dom (browser simulation),
 		// so new URL(..., import.meta.url) gives the wrong path.
@@ -195,7 +213,7 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			const startResult = cpSpawnSync(
 				"tmux",
 				["-L", tmuxSocket, "-f", tmuxConfigPath, "new-session", "-s", tmuxSession, "-d"],
-				{ stdio: "pipe" },
+				{ stdio: "pipe", env: isolatedTmuxEnv() },
 			);
 			if (startResult.status !== 0) {
 				const stderr = startResult.stderr?.toString() ?? "";
@@ -212,23 +230,33 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 					"tmux", "-L", tmuxSocket, "attach-session", "-t", tmuxSession,
 				],
 				{
-					stdio: ["pipe", "ignore", "ignore"],
+					stdio: ["pipe", "ignore", "pipe"],
 					// Ensure TERM is set: tmux attach-session exits immediately if
 					// it cannot determine the terminal type (e.g. in CI environments).
-					env: { ...process.env, TERM: process.env.TERM || "xterm-256color" },
+					env: isolatedTmuxEnv({
+						TERM: !process.env.TERM || process.env.TERM === "dumb"
+							? "xterm-256color"
+							: process.env.TERM,
+					}),
 				},
 			);
+			pythonProc.stderr?.on("data", (chunk) => { bridgeStderr += chunk.toString(); });
+			pythonProc.once("exit", (code) => { bridgeExitCode = code; });
 
 			// Give the attach-session client time to complete its handshake with
 			// tmux and set up the PTY in raw mode before tests start sending bytes.
 			// 1000ms is conservative but necessary on loaded CI machines where
 			// the default 500ms can leave the bridge not yet connected.
 			await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+			if (pythonProc.exitCode !== null) {
+				throw new Error(`PTY bridge exited during startup: ${bridgeStderr.trim()}`);
+			}
 		}, 20_000);
 
 		afterAll(() => {
 			cpSpawnSync("tmux", ["-L", tmuxSocket, "kill-server"], {
 				stdio: "ignore",
+				env: isolatedTmuxEnv(),
 			});
 			pythonProc?.kill();
 			if (tmpDir) rmSync(tmpDir, { recursive: true, force: true });
@@ -275,6 +303,9 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 		 * drains tmux initialization bytes sent to new panes before capture starts.
 		 */
 		async function runPipelineTest(bytes: string): Promise<string> {
+			if (bridgeExitCode !== null) {
+				throw new Error(`PTY bridge exited with code ${bridgeExitCode}: ${bridgeStderr.trim()}`);
+			}
 			const N = Buffer.byteLength(bytes, "utf8");
 			const innerCmd =
 				`stty -icanon -icrnl -echo && sleep 0.2 && printf R > ${readyFifo} && ` +
@@ -284,13 +315,13 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			// POSIX: opening a FIFO in O_RDONLY blocks until a writer arrives, so
 			// `cat` will block here until the inner process writes its ready signal.
 			const readyProc = cpSpawn("cat", [readyFifo], { stdio: "ignore" });
-			const readyDone = waitForExit(readyProc);
+			const readyDone = waitForExit(readyProc, "ready FIFO");
 
 			// Kill the current pane and start the inner command fresh.
 			const r = cpSpawnSync(
 				"tmux",
 				["-L", tmuxSocket, "respawn-pane", "-t", `${tmuxSession}:1.1`, "-k", innerCmd],
-				{ stdio: "ignore" },
+				{ stdio: "ignore", env: isolatedTmuxEnv() },
 			);
 			expect(r.status, "tmux respawn-pane failed").toBe(0);
 
@@ -300,13 +331,17 @@ describe.skipIf(!tmuxAvailable || !python3Available)(
 			// Start the done-FIFO reader BEFORE sending bytes.
 			// printf D > doneFifo blocks until this reader opens the FIFO for reading.
 			const doneProc = cpSpawn("cat", [doneFifo], { stdio: "ignore" });
-			const doneDone = waitForExit(doneProc);
+			const doneDone = waitForExit(doneProc, "done FIFO");
 
 			// Write bytes to the Python helper's stdin → PTY master → tmux → pane.
 			pythonProc!.stdin!.write(bytes, "utf8");
 
 			// Wait until head -c N captured all bytes and wrote the done signal.
-			await doneDone;
+			try {
+				await doneDone;
+			} catch (error) {
+				throw new Error(`${String(error)}; bridgeExit=${bridgeExitCode}; bridge=${bridgeStderr.trim()}`);
+			}
 
 			return readFileSync(captureFile, "utf8");
 		}

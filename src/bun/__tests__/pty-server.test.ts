@@ -1322,8 +1322,8 @@ describe("pty-server", () => {
 	// ------- TMUX_CONF_PATH -------
 
 	describe("TMUX_CONF_PATH", () => {
-		it("defaults to /tmp/dev3-tmux-dark.conf", () => {
-			expect(TMUX_CONF_PATH).toBe("/tmp/dev3-tmux-dark.conf");
+		it("uses the isolated test root for the default dark config", () => {
+			expect(TMUX_CONF_PATH).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-dark.conf`);
 		});
 
 		/** Helper: reimport pty-server with mocked fs and find the dark config content. */

@@ -3,6 +3,7 @@
 // Source .conf files kept in src/bun/tmux-themes/ for reference.
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { dev3TempPath } from "./temp-paths";
 
 // ── Color palettes ──────────────────────────────────────────────────
 
@@ -205,7 +206,7 @@ source -F "#{d:current_file}/../utils/status_module.conf"
 
 // ── Write plugin to /tmp ────────────────────────────────────────────
 
-export const CATPPUCCIN_PLUGIN_DIR = "/tmp/dev3-catppuccin";
+export const CATPPUCCIN_PLUGIN_DIR = dev3TempPath("dev3-catppuccin");
 
 export function writeCatppuccinPlugin(): void {
 	const dir = CATPPUCCIN_PLUGIN_DIR;

@@ -3,12 +3,14 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Project, Task, TaskStatus } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-priority`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-priority",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../file-lock", () => ({
@@ -16,8 +18,8 @@ vi.mock("../file-lock", () => ({
 }));
 
 beforeEach(() => {
-	rmSync("/tmp/dev3-test-priority", { recursive: true, force: true });
-	mkdirSync("/tmp/dev3-test-priority", { recursive: true });
+	rmSync(TEST_HOME, { recursive: true, force: true });
+	mkdirSync(TEST_HOME, { recursive: true });
 });
 
 import { addTask, setTaskPriority, reorderTasksInColumn } from "../data";
@@ -34,7 +36,7 @@ const testProject: Project = {
 };
 
 function tasksFilePath(): string {
-	return "/tmp/dev3-test-priority/data/tmp-test-project/tasks.json";
+	return `${TEST_HOME}/data/tmp-test-project/tasks.json`;
 }
 
 function makeTask(overrides: Partial<Task> & { id: string; seq: number }): Task {

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-last-route`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -11,7 +13,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-last-route",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../file-lock", () => ({
@@ -19,13 +21,13 @@ vi.mock("../file-lock", () => ({
 }));
 
 beforeEach(() => {
-	rmSync("/tmp/dev3-test-last-route", { recursive: true, force: true });
-	mkdirSync("/tmp/dev3-test-last-route", { recursive: true });
+	rmSync(TEST_HOME, { recursive: true, force: true });
+	mkdirSync(TEST_HOME, { recursive: true });
 });
 
 import { saveLastRoute, loadLastRoute } from "../data";
 
-const LAST_ROUTE_FILE = "/tmp/dev3-test-last-route/last-route.json";
+const LAST_ROUTE_FILE = `${TEST_HOME}/last-route.json`;
 
 describe("last route persistence", () => {
 	it("returns null when no route has been saved", async () => {

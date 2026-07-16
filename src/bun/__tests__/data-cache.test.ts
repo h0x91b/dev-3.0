@@ -2,7 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mkdirSync, rmSync, writeFileSync, utimesSync } from "node:fs";
 import type { Project, Task } from "../../shared/types";
 
-const { logDebug } = vi.hoisted(() => ({ logDebug: vi.fn() }));
+const { logDebug, testHome } = vi.hoisted(() => ({
+	logDebug: vi.fn(),
+	testHome: `${process.env.DEV3_TEST_ROOT}/data-cache`,
+}));
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -14,7 +17,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-data-cache",
+	DEV3_HOME: testHome,
 }));
 
 vi.mock("../cow-clone", () => ({
@@ -27,7 +30,7 @@ vi.mock("../file-lock", () => ({
 
 import { _resetDataCaches, loadProjects, loadTasks, saveTasks } from "../data";
 
-const HOME = "/tmp/dev3-test-data-cache";
+const HOME = testHome;
 const PROJECT_PATH = "/tmp/dev3-cache-project";
 const SLUG = "tmp-dev3-cache-project";
 

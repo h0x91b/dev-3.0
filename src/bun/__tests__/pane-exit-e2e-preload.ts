@@ -1,5 +1,9 @@
 import { mock } from "bun:test";
 import type { PaneSessionEntry } from "../../shared/types";
+import { cleanupTestIsolation, configureTestIsolation } from "../../../test-isolation";
+
+const testRoot = configureTestIsolation("pane-e2e");
+process.once("exit", () => cleanupTestIsolation(testRoot));
 
 mock.module("electrobun/bun", () => ({
 	PATHS: { VIEWS_FOLDER: "/fake" },
@@ -19,6 +23,7 @@ mock.module("../data", () => ({
 	},
 	getTask: async () => ({ ...(globalThis as any).__e2eTask, sessionState: (globalThis as any).__e2eSessionState }),
 	loadProjects: async () => [(globalThis as any).__e2eProject],
+	loadVirtualProjects: async () => [],
 	getProject: async () => (globalThis as any).__e2eProject,
 	addTask: async () => ({}),
 	loadTasks: async () => [],
@@ -53,6 +58,7 @@ mock.module("../agent-hooks", () => ({
 mock.module("../settings", () => ({
 	loadSettings: async () => ({}),
 	loadSettingsSync: () => ({}),
+	recordFavoriteUsages: async () => {},
 	saveSettings: async () => {},
 }));
 
@@ -63,9 +69,17 @@ mock.module("../port-pool", () => ({
 }));
 
 mock.module("../port-scanner", () => ({
+	buildProcessTree: async () => new Map(),
+	clearPortDataForTask: () => {},
+	collectDescendants: () => [],
+	collectTaskPids: async () => new Set(),
+	findPortHolders: async () => [],
+	getLsofOutput: async () => "",
 	getPortsForTask: () => [],
 	getSessionPanePids: () => [],
+	parseLsofOutput: () => [],
 	scanTaskPorts: () => [],
+	waitForPortsFree: async () => [],
 }));
 
 mock.module("../resource-monitor", () => ({
@@ -74,6 +88,7 @@ mock.module("../resource-monitor", () => ({
 
 mock.module("../repo-config", () => ({
 	resolveProjectConfig: (_proj: any) => _proj,
+	resolveOperationalProjectConfig: (_proj: any) => _proj,
 	migrateProjectConfig: () => {},
 	loadRepoConfigRaw: () => ({}),
 }));

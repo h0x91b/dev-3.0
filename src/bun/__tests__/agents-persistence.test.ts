@@ -4,7 +4,7 @@ import type { CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 
 const { TEST_HOME, AGENTS_FILE } = vi.hoisted(() => {
-	const home = `/tmp/dev3-agents-persistence-${process.pid}`;
+	const home = `${process.env.DEV3_TEST_ROOT}/agents-persistence`;
 	return { TEST_HOME: home, AGENTS_FILE: `${home}/agents.json` };
 });
 

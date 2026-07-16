@@ -16,6 +16,7 @@ import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
 import { spawn } from "../spawn";
+import { dev3TaskTempPath } from "../temp-paths";
 import { sendPromptToAgentPane } from "../agent-prompt";
 import {
 	scheduleMessage as scheduleMessageCore,
@@ -236,7 +237,7 @@ async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: strin
 function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string, socket: string): void {
 	if (!paneId) return;
 	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
-	const exitFilePath = `/tmp/dev3-${taskId}-git-${operation}.sh.exit`;
+	const exitFilePath = dev3TaskTempPath(taskId, `git-${operation}.sh.exit`);
 
 	let interval: ReturnType<typeof setInterval> | undefined;
 	let safetyTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -1073,7 +1074,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const scriptPath = `/tmp/dev3-${task.id}-git-rebase.sh`;
+	const scriptPath = dev3TaskTempPath(task.id, "git-rebase.sh");
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
@@ -1136,7 +1137,7 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const scriptPath = `/tmp/dev3-${task.id}-git-merge.sh`;
+	const scriptPath = dev3TaskTempPath(task.id, "git-merge.sh");
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
@@ -1221,7 +1222,7 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 	assertGitTask(project, task);
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const scriptPath = `/tmp/dev3-${task.id}-git-push.sh`;
+	const scriptPath = dev3TaskTempPath(task.id, "git-push.sh");
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
@@ -1313,7 +1314,7 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 	assertGitTask(project, task);
 
 	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const scriptPath = `/tmp/dev3-${task.id}-git-openPR.sh`;
+	const scriptPath = dev3TaskTempPath(task.id, "git-openPR.sh");
 	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 	const githubEnvExports = await github.getGitHubShellExports(project);

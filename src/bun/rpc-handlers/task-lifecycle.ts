@@ -27,6 +27,7 @@ import { buildScriptRunnerCommand, buildTaskLifecycleEnv, getPushMessage, isActi
 import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
 import { resolveOperationalProjectConfig } from "./settings-config";
 import { cleanupTaskTmuxState, killDevServerSession, launchColumnAgent, launchTaskPty } from "./tmux-pty";
+import { dev3TaskTempPath } from "../temp-paths";
 
 function cleanupTaskState(taskId: string): void {
 	cleanupTaskTmuxState(taskId);
@@ -589,7 +590,7 @@ export async function runCleanupScript(
 
 	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath);
 	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
-	const scriptPath = `/tmp/dev3-${task.id}-cleanup.sh`;
+	const scriptPath = dev3TaskTempPath(task.id, "cleanup.sh");
 	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
 	const userShell = getUserShell();
 

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { Automation, Project } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/automations-data`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -12,8 +14,8 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-automations",
-	OPS_DIR: "/tmp/dev3-test-automations/ops",
+	DEV3_HOME: TEST_HOME,
+	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
 vi.mock("../cow-clone", () => ({
@@ -25,8 +27,8 @@ vi.mock("../file-lock", () => ({
 }));
 
 beforeEach(() => {
-	rmSync("/tmp/dev3-test-automations", { recursive: true, force: true });
-	mkdirSync("/tmp/dev3-test-automations", { recursive: true });
+	rmSync(TEST_HOME, { recursive: true, force: true });
+	mkdirSync(TEST_HOME, { recursive: true });
 });
 
 import {

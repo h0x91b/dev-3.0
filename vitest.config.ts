@@ -1,5 +1,10 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
+import { configureTestIsolation } from "./test-isolation";
+
+const repoRoot = fileURLToPath(new URL(".", import.meta.url));
+configureTestIsolation("mainview", repoRoot);
 
 export default defineConfig({
 	plugins: [react()],
@@ -8,5 +13,6 @@ export default defineConfig({
 		environment: "happy-dom",
 		globals: true,
 		setupFiles: ["./test-setup.ts"],
+		globalSetup: [fileURLToPath(new URL("./test-global-setup.ts", import.meta.url))],
 	},
 });

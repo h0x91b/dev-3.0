@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { Project } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-projects`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -12,7 +14,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-projects",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../cow-clone", () => ({
@@ -24,13 +26,13 @@ vi.mock("../file-lock", () => ({
 }));
 
 beforeEach(() => {
-	rmSync("/tmp/dev3-test-projects", { recursive: true, force: true });
-	mkdirSync("/tmp/dev3-test-projects", { recursive: true });
+	rmSync(TEST_HOME, { recursive: true, force: true });
+	mkdirSync(TEST_HOME, { recursive: true });
 });
 
 import { addProject, loadProjects, updateProject } from "../data";
 
-const PROJECTS_FILE = "/tmp/dev3-test-projects/projects.json";
+const PROJECTS_FILE = `${TEST_HOME}/projects.json`;
 
 describe("addProject — duplicate prevention", () => {
 	it("returns existing project when adding same path twice", async () => {

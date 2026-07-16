@@ -16,6 +16,7 @@ import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
 import { ensureArtifactTemplateEnv } from "../artifact-template";
 import { ALT_CLICK_PANE_FORMAT, altClickIneligibleReason, computeAltClickKeys, findAltClickPane, parseAltClickPanes } from "../tmux-alt-click";
+import { dev3TaskTempPath } from "../temp-paths";
 import { getPushMessage, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
@@ -594,7 +595,7 @@ export async function launchTaskPty(
 
 			log.warn("Agent binary not found, creating retry wrapper", { binaryName, installCmd });
 
-			const originalCmdPath = `/tmp/dev3-${task.id}-original-cmd.sh`;
+			const originalCmdPath = dev3TaskTempPath(task.id, "original-cmd.sh");
 			await Bun.write(originalCmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
 
 			const retryScript = [
@@ -619,7 +620,7 @@ export async function launchTaskPty(
 				"",
 			].join("\n");
 
-			const retryScriptPath = `/tmp/dev3-${task.id}-agent-check.sh`;
+			const retryScriptPath = dev3TaskTempPath(task.id, "agent-check.sh");
 			await Bun.write(retryScriptPath, retryScript);
 			tmuxCmd = buildScriptRunnerCommand(retryScriptPath, { shellPath: userShell });
 			log.info("Replaced tmuxCmd with agent-check retry wrapper");
@@ -637,7 +638,7 @@ export async function launchTaskPty(
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
 		const setupScriptLaunchMode = project.setupScriptLaunchMode ?? "parallel";
-		const prefix = `/tmp/dev3-${task.id}`;
+		const prefix = dev3TaskTempPath(task.id);
 		const setupPath = `${prefix}-setup.sh`;
 		const cmdPath = `${prefix}-cmd.sh`;
 		const startupPath = `${prefix}-startup.sh`;
@@ -675,7 +676,7 @@ export async function launchTaskPty(
 		isSetupWrapper = true;
 	}
 
-	const runScriptPath = `/tmp/dev3-${task.id}-run.sh`;
+	const runScriptPath = dev3TaskTempPath(task.id, "run.sh");
 	await Bun.write(runScriptPath, buildCmdScript(tmuxCmd, env, { keepShell: !isSetupWrapper, shellPath: userShell }));
 	const wrapperCmd = buildScriptRunnerCommand(runScriptPath, { shellPath: userShell });
 
@@ -826,13 +827,13 @@ export async function launchColumnAgent(
 		...buildAgentEnv(extraEnv, task.id),
 		...ensureArtifactTemplateEnv(project, task, worktreePath),
 	};
-	const scriptPath = `/tmp/dev3-${task.id}-col-agent.sh`;
+	const scriptPath = dev3TaskTempPath(task.id, "col-agent.sh");
 	await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env, {
 		paneTitle: options.paneTitle,
 		onExitCommand: options.onExitCommand,
 	}));
 
-	const paneFile = `/tmp/dev3-${task.id}-col-agent-pane`;
+	const paneFile = dev3TaskTempPath(task.id, "col-agent-pane");
 	try {
 		const oldPaneId = (await Bun.file(paneFile).text()).trim();
 		if (oldPaneId) {
@@ -894,7 +895,7 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 		if (!task.worktreePath) throw new Error("Task has no worktree");
 
 		const devSession = devServerSessionName(task.id);
-		const devScriptPath = `/tmp/dev3-${task.id}-dev.sh`;
+		const devScriptPath = dev3TaskTempPath(task.id, "dev.sh");
 		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
 
 		if (await isDevServerRunning(task.id, socket)) {
@@ -1399,7 +1400,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {
 						stopTarget: project.autoReviewEnabled ? "review-by-ai" : "review-by-user",
 					});
-					const scriptPath = `/tmp/dev3-${params.taskId}-resume-pane-${i}.sh`;
+					const scriptPath = dev3TaskTempPath(params.taskId, `resume-pane-${i}.sh`);
 					await Bun.write(scriptPath, buildCmdScript(resumeCmd, extraEnv, { keepShell: true }));
 					const wrappedCmd = `bash "${scriptPath}"`;
 					const newPaneId = await pty.splitAndRunCommand(params.taskId, socket, wrappedCmd, task.worktreePath);
@@ -2296,7 +2297,7 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		Object.assign(env, portPool.buildPortEnv(existingPorts));
 	}
 
-	const scriptPath = `/tmp/dev3-${task.id}-spawn-${Date.now()}.sh`;
+	const scriptPath = dev3TaskTempPath(task.id, `spawn-${Date.now()}.sh`);
 	await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env));
 
 	const socket = pty.getSessionSocket(params.taskId);
@@ -2452,7 +2453,7 @@ async function spawnSingleBugHunterPane(opts: {
 		Object.assign(env, portPool.buildPortEnv(existingPorts));
 	}
 
-	const scriptPath = `/tmp/dev3-${opts.task.id}-bughunt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`;
+	const scriptPath = dev3TaskTempPath(opts.task.id, `bughunt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`);
 	await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env));
 
 	const proc = spawn(
