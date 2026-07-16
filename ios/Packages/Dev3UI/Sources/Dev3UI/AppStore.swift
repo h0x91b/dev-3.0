@@ -2,6 +2,9 @@ import Dev3Kit
 import Foundation
 import Observation
 
+// The observable root owns lifecycle-sensitive state that cannot move to same-type extensions.
+// swiftlint:disable file_length
+
 public protocol AppRPCServing: Sendable {
     var pushes: AsyncStream<RPCPushEvent> { get }
     var connectionEvents: AsyncStream<RPCConnectionEvent> { get }
@@ -77,6 +80,13 @@ public struct AppToast: Equatable, Identifiable, Sendable {
     }
 }
 
+private struct TerminalFocusWrite: Sendable {
+    let rpc: any AppRPCServing
+    let context: AppRPCContext
+    let revision: UInt64
+    let focused: Bool
+}
+
 @MainActor
 @Observable
 public final class AppStore {
@@ -118,6 +128,7 @@ public final class AppStore {
     private var isStarted = false
     private var isSceneActive = true
     private var terminalFocusRequested = false
+    private var terminalFocusRevision: UInt64 = 0
 
     public convenience init(runtime: ConnectionRuntime) {
         self.init(controller: runtime.controller, runtime: runtime, rpc: nil)
@@ -171,6 +182,7 @@ public final class AppStore {
 
     private func detachRPC() {
         let detachedRPC = rpc
+        let terminalFocusWrite = updateTerminalFocusRequest(false)
         rpcGeneration = UUID()
         pushTask?.cancel()
         connectionTask?.cancel()
@@ -183,7 +195,9 @@ public final class AppStore {
         rpcIsOpen = false
         if let detachedRPC {
             Task {
-                try? await detachedRPC.setTerminalFocus(false)
+                if let terminalFocusWrite {
+                    try? await writeTerminalFocusUntilCurrent(terminalFocusWrite)
+                }
                 try? await detachedRPC.setWindowForeground(false)
             }
         }
@@ -203,8 +217,8 @@ public final class AppStore {
         guard let rpc else { return }
         Task {
             try? await rpc.setWindowForeground(isActive)
-            try? await rpc.setTerminalFocus(isActive && terminalFocusRequested)
         }
+        scheduleTerminalFocusRefresh()
     }
 
     public func setActiveContext(projectId: String?, taskId: String?) {
@@ -215,11 +229,24 @@ public final class AppStore {
     }
 
     public func setTerminalFocused(_ focused: Bool) {
-        terminalFocusRequested = focused
-        guard let rpc else { return }
+        guard let write = updateTerminalFocusRequest(focused) else { return }
         Task {
-            try? await rpc.setTerminalFocus(focused && isSceneActive)
+            try? await writeTerminalFocusUntilCurrent(write)
         }
+    }
+
+    public func setTerminalFocusedAndWait(
+        _ focused: Bool,
+        expectedServerID: String?,
+        expectedRPCGeneration: UUID
+    ) async throws {
+        let expectedContext = AppRPCContext(
+            generation: expectedRPCGeneration,
+            serverID: expectedServerID
+        )
+        guard owns(expectedContext) else { return }
+        guard let write = updateTerminalFocusRequest(focused) else { return }
+        try await writeTerminalFocusUntilCurrent(write)
     }
 
     public func dismissToast() {
@@ -254,13 +281,14 @@ extension AppStore {
     func attach(_ rpc: any AppRPCServing) {
         guard isStarted else { return }
         let detachedRPC = self.rpc
-        if let detachedRPC {
+        let detachedServerID = rpcServerID
+        let sourceServerID = controller.activeServer?.instanceId
+        if let detachedRPC, detachedServerID != sourceServerID {
             Task { try? await detachedRPC.setTerminalFocus(false) }
         }
         self.rpc = rpc
         rpcIsOpen = false
         let generation = UUID()
-        let sourceServerID = controller.activeServer?.instanceId
         rpcServerID = sourceServerID
         rpcGeneration = generation
         pushTask?.cancel()
@@ -290,10 +318,56 @@ extension AppStore {
         }
         Task {
             try? await rpc.setWindowForeground(isSceneActive)
-            try? await rpc.setTerminalFocus(isSceneActive && terminalFocusRequested)
         }
+        scheduleTerminalFocusRefresh()
         if controller.sessionState == .connected, isSceneActive {
             startPingLoop()
+        }
+    }
+
+    private func updateTerminalFocusRequest(_ focused: Bool) -> TerminalFocusWrite? {
+        terminalFocusRequested = focused
+        terminalFocusRevision &+= 1
+        return currentTerminalFocusWrite()
+    }
+
+    private func scheduleTerminalFocusRefresh() {
+        terminalFocusRevision &+= 1
+        guard let write = currentTerminalFocusWrite() else { return }
+        Task {
+            try? await writeTerminalFocusUntilCurrent(write)
+        }
+    }
+
+    private func currentTerminalFocusWrite() -> TerminalFocusWrite? {
+        guard let rpc, let context = currentRPCContext() else { return nil }
+        return TerminalFocusWrite(
+            rpc: rpc,
+            context: context,
+            revision: terminalFocusRevision,
+            focused: isSceneActive && terminalFocusRequested
+        )
+    }
+
+    private func writeTerminalFocusUntilCurrent(_ initialWrite: TerminalFocusWrite) async throws {
+        var write = initialWrite
+        while true {
+            do {
+                try await write.rpc.setTerminalFocus(write.focused)
+            } catch {
+                if owns(write.context), write.revision == terminalFocusRevision {
+                    throw error
+                }
+            }
+            if owns(write.context), write.revision == terminalFocusRevision {
+                return
+            }
+            guard write.context.serverID == controller.activeServer?.instanceId else {
+                try? await write.rpc.setTerminalFocus(false)
+                return
+            }
+            guard let currentWrite = currentTerminalFocusWrite() else { return }
+            write = currentWrite
         }
     }
 
@@ -436,10 +510,11 @@ extension AppStore {
                 projectPullStates.removeAll()
                 workPath.removeAll()
                 projectsPath.removeAll()
-                terminalFocusRequested = false
+                setTerminalFocused(false)
                 isInitialLoading = true
                 publishSnapshot()
             } else {
+                setTerminalFocused(false)
                 removeAllTaskRoutes()
             }
         case .connected:
@@ -455,9 +530,7 @@ extension AppStore {
             banner = .expired
             pingTask?.cancel()
             pingTask = nil
-            if let rpc {
-                Task { try? await rpc.setTerminalFocus(false) }
-            }
+            setTerminalFocused(false)
             workPath.removeAll()
             projectsPath.removeAll()
             settingsPath.removeAll()

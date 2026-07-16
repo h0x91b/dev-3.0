@@ -11,6 +11,7 @@
 
         private let endpoint: Dev3TerminalEndpoint
         private let interaction: Dev3TerminalInteraction?
+        private let resize: (@Sendable (Int, Int) async throws -> Void)?
         private let serverID: String
         private let inputMode: Dev3TerminalInputMode
         private let fallbackFontSize: Double
@@ -19,6 +20,7 @@
         fileprivate struct Configuration {
             let endpoint: Dev3TerminalEndpoint
             let interaction: Dev3TerminalInteraction?
+            let resize: (@Sendable (Int, Int) async throws -> Void)?
             let serverID: String
             let inputMode: Dev3TerminalInputMode
             let fallbackFontSize: Double
@@ -29,6 +31,7 @@
         public init(
             endpoint: Dev3TerminalEndpoint,
             interaction: Dev3TerminalInteraction? = nil,
+            resize: (@Sendable (Int, Int) async throws -> Void)? = nil,
             serverID: String,
             inputMode: Dev3TerminalInputMode,
             fallbackFontSize: Double = Dev3TerminalFontPreferenceStore.defaultSize,
@@ -36,6 +39,7 @@
         ) {
             self.endpoint = endpoint
             self.interaction = interaction
+            self.resize = resize
             self.serverID = serverID
             self.inputMode = inputMode
             self.fallbackFontSize = fallbackFontSize
@@ -57,6 +61,7 @@
             Configuration(
                 endpoint: endpoint,
                 interaction: interaction,
+                resize: resize,
                 serverID: serverID,
                 inputMode: inputMode,
                 fallbackFontSize: fallbackFontSize,
@@ -86,6 +91,7 @@
             private let fontPreferences = Dev3TerminalFontPreferenceStore()
             private var endpoint: Dev3TerminalEndpoint?
             private var interaction: Dev3TerminalInteraction?
+            private var resize: (@Sendable (Int, Int) async throws -> Void)?
             private var endpointIdentity: String?
             private var serverID: String?
             private var colorScheme: ColorScheme?
@@ -122,6 +128,7 @@
                 onError = configuration.onError
                 endpoint = configuration.endpoint
                 interaction = configuration.interaction
+                resize = configuration.resize
 
                 if endpointIdentity != configuration.endpoint.identity {
                     endpointIdentity = configuration.endpoint.identity
@@ -206,9 +213,14 @@
 
             public func sizeChanged(source _: TerminalView, newCols: Int, newRows: Int) {
                 guard newCols > 0, newRows > 0, let endpoint else { return }
+                let resize = resize
                 Task {
                     do {
-                        try await endpoint.resize(columns: newCols, rows: newRows)
+                        if let resize {
+                            try await resize(newCols, newRows)
+                        } else {
+                            try await endpoint.resize(columns: newCols, rows: newRows)
+                        }
                     } catch {
                         report(error)
                     }
@@ -222,9 +234,14 @@
             public func send(source _: TerminalView, data: ArraySlice<UInt8>) {
                 guard let endpoint else { return }
                 let payload = Data(data)
+                let interaction = interaction
                 Task {
                     do {
-                        try await endpoint.send(payload)
+                        if let interaction {
+                            try await interaction.sendInput(payload)
+                        } else {
+                            try await endpoint.send(payload)
+                        }
                     } catch {
                         report(error)
                     }

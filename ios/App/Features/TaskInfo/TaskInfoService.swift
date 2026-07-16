@@ -16,12 +16,13 @@ actor RPCTaskInfoService: TaskInfoServicing {
     }
 
     func renameTask(taskID: String, projectID: String, customTitle: String?) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.renameTask(
-            taskId: taskID,
-            projectId: projectID,
-            customTitle: customTitle
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.renameTask(
+                taskId: taskID,
+                projectId: projectID,
+                customTitle: customTitle
+            )
+        }
     }
 
     func moveTask(
@@ -30,13 +31,14 @@ actor RPCTaskInfoService: TaskInfoServicing {
         status: Dev3TaskStatus,
         force: Bool
     ) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.moveTask(
-            taskId: taskID,
-            projectId: projectID,
-            newStatus: status,
-            force: force ? true : nil
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.moveTask(
+                taskId: taskID,
+                projectId: projectID,
+                newStatus: status,
+                force: force ? true : nil
+            )
+        }
     }
 
     func moveTaskToCustomColumn(
@@ -44,12 +46,13 @@ actor RPCTaskInfoService: TaskInfoServicing {
         projectID: String,
         customColumnID: String
     ) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.moveTaskToCustomColumn(
-            taskId: taskID,
-            projectId: projectID,
-            customColumnId: customColumnID
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.moveTaskToCustomColumn(
+                taskId: taskID,
+                projectId: projectID,
+                customColumnId: customColumnID
+            )
+        }
     }
 
     func setPriority(
@@ -57,49 +60,54 @@ actor RPCTaskInfoService: TaskInfoServicing {
         projectID: String,
         priority: Dev3TaskPriority
     ) async throws -> [Dev3Task] {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.setTaskPriority(
-            taskId: taskID,
-            projectId: projectID,
-            priority: priority
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.setTaskPriority(
+                taskId: taskID,
+                projectId: projectID,
+                priority: priority
+            )
+        }
     }
 
     func setWatched(taskID: String, projectID: String, watched: Bool) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.toggleTaskWatch(
-            taskId: taskID,
-            projectId: projectID,
-            watched: watched
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.toggleTaskWatch(
+                taskId: taskID,
+                projectId: projectID,
+                watched: watched
+            )
+        }
     }
 
     func setLabels(taskID: String, projectID: String, labelIDs: [String]) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.setTaskLabels(
-            taskId: taskID,
-            projectId: projectID,
-            labelIds: labelIDs
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.setTaskLabels(
+                taskId: taskID,
+                projectId: projectID,
+                labelIds: labelIDs
+            )
+        }
     }
 
     func setUserOverview(taskID: String, projectID: String, overview: String) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.setUserOverview(
-            taskId: taskID,
-            projectId: projectID,
-            userOverview: overview
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.setUserOverview(
+                taskId: taskID,
+                projectId: projectID,
+                userOverview: overview
+            )
+        }
     }
 
     func addNote(taskID: String, projectID: String, content: String) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.addTaskNote(
-            taskId: taskID,
-            projectId: projectID,
-            content: content,
-            source: .user
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.addTaskNote(
+                taskId: taskID,
+                projectId: projectID,
+                content: content,
+                source: .user
+            )
+        }
     }
 
     func updateNote(
@@ -108,36 +116,41 @@ actor RPCTaskInfoService: TaskInfoServicing {
         noteID: String,
         content: String
     ) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.updateTaskNote(
-            taskId: taskID,
-            projectId: projectID,
-            noteId: noteID,
-            content: content
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.updateTaskNote(
+                taskId: taskID,
+                projectId: projectID,
+                noteId: noteID,
+                content: content
+            )
+        }
     }
 
     func deleteNote(taskID: String, projectID: String, noteID: String) async throws -> Dev3Task {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.deleteTaskNote(
-            taskId: taskID,
-            projectId: projectID,
-            noteId: noteID
-        )
+        try await connectionGate.perform {
+            try await self.rpcClient.deleteTaskNote(
+                taskId: taskID,
+                projectId: projectID,
+                noteId: noteID
+            )
+        }
     }
 
     func deleteTask(taskID: String, projectID: String) async throws {
-        try await connectionGate.requireCurrent()
-        try await rpcClient.deleteTask(taskId: taskID, projectId: projectID)
+        try await connectionGate.perform {
+            try await self.rpcClient.deleteTask(taskId: taskID, projectId: projectID)
+        }
     }
 
     func branchStatus(taskID: String, projectID: String) async throws -> Dev3BranchStatus {
-        try await connectionGate.requireCurrent()
-        return try await rpcClient.getBranchStatus(taskId: taskID, projectId: projectID)
+        try await connectionGate.perform {
+            try await self.rpcClient.getBranchStatus(taskId: taskID, projectId: projectID)
+        }
     }
 
     func refreshPRStatus(taskID: String, projectID: String) async throws {
-        try await connectionGate.requireCurrent()
-        try await rpcClient.refreshTaskPrStatus(taskId: taskID, projectId: projectID)
+        try await connectionGate.perform {
+            try await self.rpcClient.refreshTaskPrStatus(taskId: taskID, projectId: projectID)
+        }
     }
 }

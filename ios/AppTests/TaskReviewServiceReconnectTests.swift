@@ -1,5 +1,6 @@
 @testable import dev3
 import Dev3Kit
+import Dev3TerminalKit
 import Dev3UI
 import Foundation
 import Testing
@@ -105,6 +106,59 @@ struct CompanionConnectionOwnershipTests {
         #expect(await recorder.disconnectedPTYClients() == ["A"])
     }
 
+    @Test("Connection replacement between paste and Return blocks the stale submit frame")
+    @MainActor
+    func submitInvalidationBetweenFrames() async {
+        let state = ReconnectLeaseState()
+        let gate = CompanionConnectionLeaseGate { state.isCurrent }
+        let recorder = ReconnectTerminalIORecorder()
+        let settleGate = ReconnectAsyncGate()
+        let interaction = CompanionTerminalConnectionIO.interaction(
+            connectionGate: gate,
+            sendData: { data in await recorder.send(data) }
+        )
+        let submission = Task {
+            await Dev3TerminalSubmit.pastedText(
+                "draft",
+                transport: interaction,
+                scheduler: ReconnectSubmitScheduler(gate: settleGate)
+            )
+        }
+
+        await settleGate.waitUntilStarted()
+        state.isCurrent = false
+        await settleGate.resume()
+
+        #expect(await submission.value == .submitFailed)
+        #expect(await recorder.payloads() == [Data("draft".utf8)])
+        await #expect(throws: CompanionConnectionLeaseError.replaced) {
+            try await interaction.sendInput(Data("raw".utf8))
+        }
+        #expect(await recorder.payloads() == [Data("draft".utf8)])
+    }
+
+    @Test("A response finishing after lease replacement is rejected")
+    @MainActor
+    func responseInvalidation() async {
+        let state = ReconnectLeaseState()
+        let gate = CompanionConnectionLeaseGate { state.isCurrent }
+        let responseGate = ReconnectAsyncGate()
+        let request = Task {
+            try await gate.perform {
+                await responseGate.suspend()
+                return 42
+            }
+        }
+
+        await responseGate.waitUntilStarted()
+        state.isCurrent = false
+        await responseGate.resume()
+
+        await #expect(throws: CompanionConnectionLeaseError.replaced) {
+            try await request.value
+        }
+    }
+
     @Test("Pairing transitions dismiss Task Info while socket reconnects retain it")
     func taskInfoRoutePolicy() {
         let connected = CompanionSessionRouteState(
@@ -168,6 +222,49 @@ private actor ReconnectTerminalLifecycleRecorder {
 
     func disconnectedPTYClients() -> [String] {
         recordedPTYDisconnects
+    }
+}
+
+private actor ReconnectTerminalIORecorder {
+    private var recordedPayloads: [Data] = []
+
+    func send(_ data: Data) {
+        recordedPayloads.append(data)
+    }
+
+    func payloads() -> [Data] {
+        recordedPayloads
+    }
+}
+
+private actor ReconnectAsyncGate {
+    private var started = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func suspend() async {
+        started = true
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func waitUntilStarted() async {
+        while !started {
+            await Task.yield()
+        }
+    }
+
+    func resume() {
+        continuation?.resume()
+        continuation = nil
+    }
+}
+
+private struct ReconnectSubmitScheduler: Dev3TerminalSubmitScheduling {
+    let gate: ReconnectAsyncGate
+
+    func sleep(for _: Duration) async throws {
+        await gate.suspend()
     }
 }
 

@@ -117,6 +117,9 @@ private extension TaskTerminalScreen {
             Dev3TerminalView(
                 endpoint: store.endpoint,
                 interaction: store.service.terminalInteraction,
+                resize: { [service = store.service] columns, rows in
+                    try await service.resize(columns: columns, rows: rows)
+                },
                 serverID: store.service.serverID,
                 inputMode: store.inputMode,
                 onError: store.report

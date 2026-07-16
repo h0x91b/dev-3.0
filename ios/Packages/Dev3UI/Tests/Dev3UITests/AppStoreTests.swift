@@ -567,6 +567,89 @@ struct AppStoreTests {
         #expect(rpc.foregroundCalls.last == false)
     }
 
+    @Test("A blocked old focus write cannot overwrite the replacement connection request")
+    func staleTerminalFocusWriteCannotOverwriteReplacement() async throws {
+        let oldRPC = StoreRPC(projects: [], projectTasks: [])
+        let newRPC = StoreRPC(projects: [], projectTasks: [])
+        let store = AppStore(controller: makeController(), rpc: oldRPC)
+        await store.start()
+        await settle()
+
+        let oldGeneration = store.rpcGeneration
+        oldRPC.suspendNextTerminalFocus()
+        let blockedOldWrite = Task {
+            try await store.setTerminalFocusedAndWait(
+                true,
+                expectedServerID: nil,
+                expectedRPCGeneration: oldGeneration
+            )
+        }
+        while !oldRPC.terminalFocusIsSuspended {
+            await Task.yield()
+        }
+
+        store.attach(newRPC)
+        let newGeneration = store.rpcGeneration
+        try await store.setTerminalFocusedAndWait(
+            false,
+            expectedServerID: nil,
+            expectedRPCGeneration: newGeneration
+        )
+        try await store.setTerminalFocusedAndWait(
+            true,
+            expectedServerID: nil,
+            expectedRPCGeneration: oldGeneration
+        )
+        oldRPC.resumeTerminalFocus()
+        try await blockedOldWrite.value
+        await settle()
+
+        #expect(newRPC.terminalFocusCalls.last == false)
+    }
+
+    @Test("A blocked old focus write is cleared after switching servers")
+    func staleTerminalFocusWriteClearsOldServer() async throws {
+        let pairedStore = PairedServerStore(secureStore: StoreMemorySecureData())
+        let serverA = try pairedServer(id: "server-a", name: "Server A", port: 4001)
+        let serverB = try pairedServer(id: "server-b", name: "Server B", port: 4002)
+        try await pairedStore.upsert(serverB, makeActive: false)
+        try await pairedStore.upsert(serverA)
+        let controller = makeController(pairedServerStore: pairedStore)
+        let oldRPC = StoreRPC(projects: [], projectTasks: [])
+        let newRPC = StoreRPC(projects: [], projectTasks: [])
+        let store = AppStore(controller: controller, rpc: nil)
+        await store.start()
+        store.attach(oldRPC)
+        await settle()
+
+        let oldGeneration = store.rpcGeneration
+        oldRPC.suspendNextTerminalFocus()
+        let blockedOldWrite = Task {
+            try await store.setTerminalFocusedAndWait(
+                true,
+                expectedServerID: serverA.instanceId,
+                expectedRPCGeneration: oldGeneration
+            )
+        }
+        while !oldRPC.terminalFocusIsSuspended {
+            await Task.yield()
+        }
+
+        await controller.connect(to: serverB)
+        store.attach(newRPC)
+        try await store.setTerminalFocusedAndWait(
+            false,
+            expectedServerID: serverB.instanceId,
+            expectedRPCGeneration: store.rpcGeneration
+        )
+        oldRPC.resumeTerminalFocus()
+        try await blockedOldWrite.value
+        await settle()
+
+        #expect(oldRPC.terminalFocusCalls.suffix(2) == [true, false])
+        #expect(newRPC.terminalFocusCalls.last == false)
+    }
+
     @Test("Expired authentication clears navigation and routes back to pairing")
     func expirationRouting() async throws {
         let controller = makeController()
@@ -594,6 +677,8 @@ struct AppStoreTests {
 
 private struct StoreTestError: Error {}
 
+// This fixture intentionally implements the complete AppRPCServing surface used by the suite.
+// swiftlint:disable type_body_length
 private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     private let lock = NSLock()
     private let pushStream: AsyncStream<RPCPushEvent>
@@ -610,6 +695,7 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     private var projectFetchContinuation: CheckedContinuation<Void, Never>?
     private var boardFetchContinuations: [String: CheckedContinuation<Void, Never>] = [:]
     private var moveContinuation: CheckedContinuation<Void, Never>?
+    private var terminalFocusContinuation: CheckedContinuation<Void, Never>?
     private var state = State()
 
     private struct State {
@@ -629,6 +715,8 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         var suspendsNextProjectFetch = false
         var foregroundCalls: [Bool] = []
         var terminalFocusCalls: [Bool] = []
+        var suspendsNextTerminalFocus = false
+        var terminalFocusIsSuspended = false
         var contextCalls: [(projectId: String?, taskId: String?)] = []
         var pingCount = 0
     }
@@ -683,6 +771,10 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
 
     var terminalFocusCalls: [Bool] {
         lock.withLock { state.terminalFocusCalls }
+    }
+
+    var terminalFocusIsSuspended: Bool {
+        lock.withLock { state.terminalFocusIsSuspended }
     }
 
     var contextCalls: [(projectId: String?, taskId: String?)] {
@@ -846,6 +938,21 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     }
 
     func setTerminalFocus(_ active: Bool) async throws {
+        let shouldSuspend = lock.withLock {
+            if state.suspendsNextTerminalFocus {
+                state.suspendsNextTerminalFocus = false
+                return true
+            }
+            return false
+        }
+        if shouldSuspend {
+            await withCheckedContinuation { continuation in
+                lock.withLock {
+                    terminalFocusContinuation = continuation
+                    state.terminalFocusIsSuspended = true
+                }
+            }
+        }
         lock.withLock { state.terminalFocusCalls.append(active) }
     }
 
@@ -896,6 +1003,20 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         continuation?.resume()
     }
 
+    func suspendNextTerminalFocus() {
+        lock.withLock { state.suspendsNextTerminalFocus = true }
+    }
+
+    func resumeTerminalFocus() {
+        let continuation = lock.withLock {
+            let continuation = terminalFocusContinuation
+            terminalFocusContinuation = nil
+            state.terminalFocusIsSuspended = false
+            return continuation
+        }
+        continuation?.resume()
+    }
+
     func setMutationResult(_ task: Dev3Task, priorityGroup: [Dev3Task]? = nil) {
         lock.withLock {
             mutationResultByTask[task.id] = task
@@ -930,6 +1051,8 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         return task
     }
 }
+
+// swiftlint:enable type_body_length
 
 @MainActor
 private func makeController(

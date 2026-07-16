@@ -92,7 +92,8 @@ public final class TaskInfoStore {
 
     public var destinations: [TaskInfoDestination] {
         let statuses: [Dev3TaskStatus] = if task.status == .todo {
-            [.inProgress, .completed, .cancelled]
+            // Starting Todo work must go through spawnVariants so the agent/config is explicit.
+            [.completed, .cancelled]
         } else {
             Dev3TaskStatus.allCases.filter { $0 != task.status }
         }

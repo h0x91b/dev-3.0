@@ -147,7 +147,6 @@ struct TaskInfoStoreTests {
 
         #expect(
             store.destinations == [
-                .status(.inProgress),
                 .status(.completed),
                 .status(.cancelled),
                 .customColumn(id: "custom-other", name: "Later")

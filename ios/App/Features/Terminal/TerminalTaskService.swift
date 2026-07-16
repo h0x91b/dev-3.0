@@ -26,6 +26,28 @@ struct CompanionConnectionLeaseGate: Sendable {
             throw CompanionConnectionLeaseError.replaced
         }
     }
+
+    func perform<Result: Sendable>(
+        _ operation: @Sendable () async throws -> Result
+    ) async throws -> Result {
+        try await requireCurrent()
+        let result = try await operation()
+        try await requireCurrent()
+        return result
+    }
+}
+
+enum CompanionTerminalConnectionIO {
+    static func interaction(
+        connectionGate: CompanionConnectionLeaseGate,
+        sendData: @escaping @Sendable (Data) async throws -> Void
+    ) -> Dev3TerminalInteraction {
+        Dev3TerminalInteraction { data in
+            try await connectionGate.perform {
+                try await sendData(data)
+            }
+        }
+    }
 }
 
 actor CompanionTerminalConnectionLifecycle {
@@ -126,6 +148,7 @@ protocol TerminalTaskServicing: Sendable {
     func submit(_ text: String) async -> Dev3TerminalSubmitOutcome
     func insert(_ text: String) async throws
     func send(_ data: Data) async throws
+    func resize(columns: Int, rows: Int) async throws
 }
 
 actor RPCTerminalTaskService: TerminalTaskServicing {
@@ -165,7 +188,10 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
             clipboardText: clipboardText
         )
         endpoint = terminalEndpoint
-        terminalInteraction = Dev3TerminalInteraction(endpoint: terminalEndpoint)
+        terminalInteraction = CompanionTerminalConnectionIO.interaction(
+            connectionGate: connectionGate,
+            sendData: { data in try await terminalEndpoint.send(data) }
+        )
         connectionLifecycle = CompanionTerminalConnectionLifecycle(
             connectionGate: connectionGate,
             setTerminalFocus: setTerminalFocus ?? { active in
@@ -271,8 +297,13 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
     }
 
     func send(_ data: Data) async throws {
-        try await connectionGate.requireCurrent()
-        try await endpoint.send(data)
+        try await terminalInteraction.sendInput(data)
+    }
+
+    func resize(columns: Int, rows: Int) async throws {
+        try await connectionGate.perform {
+            try await endpoint.resize(columns: columns, rows: rows)
+        }
     }
 
     private func acquireFocusOrDisconnect() async throws {
