@@ -15,6 +15,8 @@ func makeIATask(
     variantIndex: Int? = nil,
     labelIds: [String]? = nil,
     preparing: Bool? = nil,
+    preparationError: String? = nil,
+    worktreePath: String? = nil,
     shuttingDown: Bool? = nil,
     watched: Bool? = nil,
     prNumber: Int? = nil,
@@ -39,6 +41,8 @@ func makeIATask(
     object["variantIndex"] = variantIndex
     object["labelIds"] = labelIds
     object["preparing"] = preparing
+    object["preparationError"] = preparationError
+    object["worktreePath"] = worktreePath
     object["shuttingDown"] = shuttingDown
     object["watched"] = watched
     object["prNumber"] = prNumber

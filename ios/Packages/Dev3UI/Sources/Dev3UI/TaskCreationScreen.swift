@@ -32,6 +32,7 @@ public struct TaskCreationScreen: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)
+                        .disabled(store.isSubmitting)
                         .accessibilityIdentifier("taskCreation.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -67,6 +68,7 @@ public struct TaskCreationScreen: View {
             .task {
                 await store.load()
             }
+            .interactiveDismissDisabled(store.isSubmitting)
         }
     }
 
@@ -201,13 +203,7 @@ public struct TaskCreationScreen: View {
     private func submit(_ mode: TaskCreationMode) {
         Task {
             let result = await store.submit(mode)
-            let succeeded = switch mode {
-            case .save:
-                store.lastCreatedTaskID != nil
-            case .saveAndStart:
-                result != nil
-            }
-            if succeeded {
+            if store.shouldDismissAfterSubmission(mode: mode, result: result) {
                 onSubmitted(mode)
             }
         }

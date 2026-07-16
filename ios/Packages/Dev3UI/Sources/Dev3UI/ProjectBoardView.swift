@@ -9,6 +9,7 @@ public struct ProjectBoardView: View {
     private let explicitlyCollapsedColumnIDs: Set<String>
     private let mutationsEnabled: Bool
     private let actions: (Dev3Task) -> TaskCardActions
+    private let onCreateTask: () -> Void
     private let onRefresh: () async -> Void
 
     @State private var selectedColumnID: String
@@ -23,6 +24,7 @@ public struct ProjectBoardView: View {
         explicitlyCollapsedColumnIDs: Set<String> = [],
         mutationsEnabled: Bool = true,
         actions: @escaping (Dev3Task) -> TaskCardActions,
+        onCreateTask: @escaping () -> Void = {},
         onRefresh: @escaping () async -> Void = {}
     ) {
         self.project = project
@@ -32,6 +34,7 @@ public struct ProjectBoardView: View {
         self.explicitlyCollapsedColumnIDs = explicitlyCollapsedColumnIDs
         self.mutationsEnabled = mutationsEnabled
         self.actions = actions
+        self.onCreateTask = onCreateTask
         self.onRefresh = onRefresh
         let columns = ProjectBoardProjection.columns(
             project: project,
@@ -61,6 +64,13 @@ public struct ProjectBoardView: View {
         .background(palette.surfaceBase)
         .navigationTitle(project.name)
         .dev3InlineNavigationTitle()
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("New Task", systemImage: "plus", action: onCreateTask)
+                    .disabled(!mutationsEnabled)
+                    .accessibilityIdentifier("taskCreation.open.project")
+            }
+        }
         .accessibilityIdentifier("project-board-\(project.id)")
     }
 

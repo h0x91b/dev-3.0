@@ -49,6 +49,8 @@ struct CompanionSessionRouteState: Equatable, Sendable {
 // swiftlint:disable opening_brace
 
 @MainActor
+// The composition root owns cross-feature lifecycles in one connection-scoped view.
+// swiftlint:disable type_body_length
 struct CompanionAppRoot: View {
     let store: AppStore
     let runtime: ConnectionRuntime?
@@ -58,9 +60,11 @@ struct CompanionAppRoot: View {
     @State private var mediaCoordinator: TaskMediaCoordinator
     @State private var notificationCoordinator: NativeNotificationCoordinator
     @State private var completionCoordinator: AgentCompletionCoordinator
+    @State private var taskCreationCoordinator: TaskCreationCoordinator
     @State private var globalPushObserverToken: UUID?
     @State private var completionRPCGeneration: UUID?
 
+    // swiftlint:disable:next function_body_length
     init(
         store: AppStore,
         runtime: ConnectionRuntime?,
@@ -92,6 +96,32 @@ struct CompanionAppRoot: View {
                 }
             )
         )
+        _taskCreationCoordinator = State(
+            initialValue: TaskCreationCoordinator(
+                projectsProvider: { [weak store] in
+                    store?.projects ?? []
+                },
+                serviceProvider: { [weak store] in
+                    store?.taskCreationServiceBinding()
+                },
+                onEvent: { [weak store] event in
+                    _ = store?.acceptTaskCreationEvent(event)
+                },
+                onWarning: { [weak store] warnings in
+                    store?.presentTaskCreationWarnings(warnings)
+                },
+                onTerminalReady: { [weak store] projectID, taskID, provenance in
+                    guard let store,
+                          store.acceptsTaskCreationProvenance(provenance)
+                    else { return }
+                    store.openTask(
+                        projectId: projectID,
+                        taskId: taskID,
+                        from: store.selectedTab
+                    )
+                }
+            )
+        )
     }
 
     var body: some View {
@@ -109,6 +139,8 @@ struct CompanionAppRoot: View {
                 )
             },
             onOpenTaskInfo: presentTaskInfo,
+            onCreateTask: presentTaskCreation,
+            onRunTodoTask: presentTaskLaunch,
             settingsAccessoryBuilder: {
                 AnyView(NotificationSettingsSection(coordinator: notificationCoordinator))
             }
@@ -127,6 +159,17 @@ struct CompanionAppRoot: View {
                 }
             )
             .id(identity)
+        }
+        .sheet(isPresented: taskCreationPresentationBinding) {
+            if let creationStore = taskCreationCoordinator.creationStore {
+                TaskCreationScreen(
+                    store: creationStore,
+                    onCancel: taskCreationCoordinator.cancelPresentation,
+                    onSubmitted: { _ in
+                        taskCreationCoordinator.submissionCompleted(for: creationStore)
+                    }
+                )
+            }
         }
         .onChange(of: sessionRouteState) { previous, current in
             if CompanionSessionRouteState.shouldDismissTaskInfo(from: previous, to: current) {
@@ -152,6 +195,7 @@ struct CompanionAppRoot: View {
                 snapshotServerID: snapshot.snapshotServerID
             )
             synchronizeGlobalCoordination(snapshot)
+            synchronizeTaskCreation(snapshot)
         }
         .onChange(of: notificationCoordinator.deepLinkRequest) { _, deepLink in
             if let deepLink {
@@ -171,6 +215,7 @@ struct CompanionAppRoot: View {
 
     private var companionShellSnapshot: CompanionShellSnapshot {
         CompanionShellSnapshot(
+            projects: store.projects,
             tasksByProject: store.tasksByProject,
             rpcGeneration: store.rpcGeneration,
             serverID: store.controller.activeServer?.instanceId,
@@ -222,6 +267,17 @@ struct CompanionAppRoot: View {
                     return
                 }
                 completionCoordinator.dismiss(requestID: requestID)
+            }
+        )
+    }
+
+    private var taskCreationPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { taskCreationCoordinator.isPresented },
+            set: { isPresented in
+                if !isPresented {
+                    taskCreationCoordinator.cancelPresentation()
+                }
             }
         )
     }
@@ -293,6 +349,19 @@ struct CompanionAppRoot: View {
         synchronizeNotificationState(snapshot)
     }
 
+    private func synchronizeTaskCreation(_ snapshot: CompanionShellSnapshot) {
+        let provenance = store.taskCreationServiceBinding()?.provenance
+        Task {
+            guard snapshot.serverID == store.controller.activeServer?.instanceId else { return }
+            await taskCreationCoordinator.synchronize(
+                projects: snapshot.projects,
+                tasksByProject: snapshot.tasksByProject,
+                activeServerID: snapshot.serverID,
+                provenance: provenance
+            )
+        }
+    }
+
     private func synchronizeNotificationState(_ snapshot: CompanionShellSnapshot) {
         if let serverID = snapshot.serverID {
             notificationCoordinator.synchronize(
@@ -348,9 +417,28 @@ struct CompanionAppRoot: View {
     private func presentTaskInfo(projectID: String, taskID: String) {
         presentedTaskInfo = PresentedTaskInfo(projectID: projectID, taskID: taskID)
     }
+
+    private func presentTaskCreation(projectID: String?) {
+        presentedTaskInfo = nil
+        mediaCoordinator.mediaStore.closePresentation()
+        taskCreationCoordinator.presentCreate(projectID: projectID)
+    }
+
+    private func presentTaskLaunch(_ task: Dev3Task) {
+        guard store.isConnected else {
+            presentTaskInfo(projectID: task.projectId, taskID: task.id)
+            return
+        }
+        presentedTaskInfo = nil
+        mediaCoordinator.mediaStore.closePresentation()
+        taskCreationCoordinator.presentRun(task: task)
+    }
 }
 
+// swiftlint:enable type_body_length
+
 private struct CompanionShellSnapshot: Equatable {
+    let projects: [Dev3Project]
     let tasksByProject: [String: [Dev3Task]]
     let rpcGeneration: UUID
     let serverID: String?
@@ -464,6 +552,16 @@ private struct AvailableTaskTerminalDestination: View {
                     connectionIsCurrent: { [weak appStore] in
                         guard let appStore else { return false }
                         return connectionIdentity.isCurrent(in: appStore)
+                    },
+                    setTerminalFocus: { [weak appStore] focused in
+                        guard let appStore else {
+                            throw CompanionConnectionLeaseError.replaced
+                        }
+                        try await appStore.setTerminalFocusedAndWait(
+                            focused,
+                            expectedServerID: connectionIdentity.serverID,
+                            expectedRPCGeneration: connectionIdentity.rpcGeneration
+                        )
                     }
                 )
             }

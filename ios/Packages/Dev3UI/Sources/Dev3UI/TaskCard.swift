@@ -38,6 +38,7 @@ public struct TaskCardActions {
     public let toggleWatch: () -> Void
     public let openInfo: () -> Void
     public let showVariants: () -> Void
+    public let run: () -> Void
 
     public init(
         open: @escaping () -> Void,
@@ -46,7 +47,8 @@ public struct TaskCardActions {
         setPriority: @escaping (Dev3TaskPriority) -> Void = { _ in },
         toggleWatch: @escaping () -> Void = {},
         openInfo: @escaping () -> Void = {},
-        showVariants: @escaping () -> Void = {}
+        showVariants: @escaping () -> Void = {},
+        run: @escaping () -> Void = {}
     ) {
         self.open = open
         self.move = move
@@ -55,6 +57,7 @@ public struct TaskCardActions {
         self.toggleWatch = toggleWatch
         self.openInfo = openInfo
         self.showVariants = showVariants
+        self.run = run
     }
 }
 
@@ -188,6 +191,11 @@ public struct NativeTaskCard: View {
 
     @ViewBuilder
     private var taskContextMenu: some View {
+        if task.status == .todo {
+            Button("Run", systemImage: "play.fill", action: actions.run)
+                .disabled(!mutationsEnabled)
+                .accessibilityIdentifier("task-card-run-\(task.id)")
+        }
         Menu("Move to") {
             ForEach(TaskCardContextDestinations.statuses(for: task), id: \.self) { status in
                 Button(status.displayName) { actions.move(status) }

@@ -6,6 +6,17 @@ import Testing
 @MainActor
 @Suite("Task creation store")
 struct TaskCreationStoreTests {
+    @Test("Create mode preserves an intentionally empty project selection")
+    func workCreationHasNoProjectPreselection() {
+        let store = TaskCreationStore(
+            projects: [makeIAProject()],
+            serviceProvider: { nil }
+        )
+
+        #expect(store.selectedProjectID == nil)
+        #expect(store.canSubmit == false)
+    }
+
     @Test("Defaults skip gated configurations and stale favorites")
     func defaultsAndFavorites() throws {
         let agents = try agentFixtures()
@@ -55,6 +66,7 @@ struct TaskCreationStoreTests {
         var terminalTaskID: String?
         let store = TaskCreationStore(
             projects: [project],
+            selectedProjectID: project.id,
             serviceProvider: { .init(provenance: provenance, service: service) },
             onEvent: { events.append($0) },
             onTerminalReady: { _, taskID, _ in terminalTaskID = taskID }
@@ -152,6 +164,7 @@ struct TaskCreationStoreTests {
         var events: [TaskCreationEvent] = []
         let store = TaskCreationStore(
             projects: [makeIAProject()],
+            selectedProjectID: "project-1",
             serviceProvider: { .init(provenance: provenance, service: service) },
             onEvent: { events.append($0) }
         )
@@ -159,8 +172,10 @@ struct TaskCreationStoreTests {
         store.descriptionText = "May have succeeded"
 
         _ = await store.submit(.save)
+        _ = await store.submit(.save)
 
         #expect(await service.createCount() == 1)
+        #expect(store.canSubmit == false)
         #expect(events == [.reconciled(projectID: "project-1", tasks: [source], provenance: provenance)])
         #expect(store.errorMessage?.contains("Inspect the refreshed board") == true)
     }
@@ -200,7 +215,7 @@ struct TaskCreationStoreTests {
     }
 }
 
-private enum TaskCreationCall: Equatable, Sendable {
+enum TaskCreationCall: Equatable, Sendable {
     case getAgents
     case getSettings
     case create(projectID: String, description: String, priority: Dev3TaskPriority)
@@ -213,7 +228,7 @@ private enum TaskCreationCall: Equatable, Sendable {
 
 private struct TaskCreationTestError: Error {}
 
-private actor TaskCreationServiceDouble: TaskCreationServicing {
+actor TaskCreationServiceDouble: TaskCreationServicing {
     private var recordedCalls: [TaskCreationCall] = []
     private let agents: [Dev3CodingAgent]
     private let settings: Dev3GlobalSettings
@@ -225,6 +240,10 @@ private actor TaskCreationServiceDouble: TaskCreationServicing {
     private let reconciled: [Dev3Task]
     private let failCreate: Bool
     private let failRename: Bool
+    private let failSpawn: Bool
+    private let pausesRename: Bool
+    private var renameStarted = false
+    private var renameContinuation: CheckedContinuation<Void, Never>?
 
     init(
         created: Dev3Task,
@@ -234,7 +253,9 @@ private actor TaskCreationServiceDouble: TaskCreationServicing {
         spawned: [Dev3Task] = [],
         reconciled: [Dev3Task] = [],
         failCreate: Bool = false,
-        failRename: Bool = false
+        failRename: Bool = false,
+        failSpawn: Bool = false,
+        pausesRename: Bool = false
     ) throws {
         agents = try agentFixtures()
         settings = try settingsFixture(pxpipeEnabled: false)
@@ -246,6 +267,8 @@ private actor TaskCreationServiceDouble: TaskCreationServicing {
         self.reconciled = reconciled
         self.failCreate = failCreate
         self.failRename = failRename
+        self.failSpawn = failSpawn
+        self.pausesRename = pausesRename
     }
 
     func calls() -> [TaskCreationCall] {
@@ -260,6 +283,27 @@ private actor TaskCreationServiceDouble: TaskCreationServicing {
                 false
             }
         }
+    }
+
+    func spawnCount() -> Int {
+        recordedCalls.count {
+            if case .spawn = $0 {
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    func waitUntilRenameStarted() async {
+        while !renameStarted {
+            await Task.yield()
+        }
+    }
+
+    func resumeRename() {
+        renameContinuation?.resume()
+        renameContinuation = nil
     }
 
     func getAgents() throws -> [Dev3CodingAgent] {
@@ -284,8 +328,18 @@ private actor TaskCreationServiceDouble: TaskCreationServicing {
         return created
     }
 
-    func renameTask(taskID: String, projectID _: String, customTitle: String) throws -> Dev3Task {
+    func renameTask(
+        taskID: String,
+        projectID _: String,
+        customTitle: String
+    ) async throws -> Dev3Task {
         recordedCalls.append(.rename(taskID: taskID, title: customTitle))
+        if pausesRename {
+            renameStarted = true
+            await withCheckedContinuation { continuation in
+                renameContinuation = continuation
+            }
+        }
         if failRename {
             throw TaskCreationTestError()
         }
@@ -306,8 +360,11 @@ private actor TaskCreationServiceDouble: TaskCreationServicing {
         taskID: String,
         projectID _: String,
         variants: [Dev3LaunchVariant]
-    ) -> [Dev3Task] {
+    ) throws -> [Dev3Task] {
         recordedCalls.append(.spawn(taskID: taskID, variants: variants))
+        if failSpawn {
+            throw TaskCreationTestError()
+        }
         return spawned
     }
 
@@ -326,7 +383,9 @@ private func agentFixtures() throws -> [Dev3CodingAgent] {
              {"id":"proxy","name":"Proxy","requiresPxpipeProxy":true},
              {"id":"safe","name":"Safe","requiresPxpipeProxy":false}
            ]},
-          {"id":"other","name":"Other","baseCommand":"other","configurations":[]}
+          {"id":"other","name":"Other","baseCommand":"other","configurations":[
+            {"id":"manual","name":"Manual","requiresPxpipeProxy":false}
+          ]}
         ]
         """
     )
@@ -349,7 +408,7 @@ private func settingsFixture(
     return try JSONDecoder().decode(Dev3GlobalSettings.self, from: data)
 }
 
-private func taskFixture(
+func taskFixture(
     id: String,
     status: Dev3TaskStatus,
     worktreePath: String? = nil,

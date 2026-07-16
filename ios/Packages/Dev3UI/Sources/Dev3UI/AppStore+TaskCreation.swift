@@ -21,6 +21,8 @@ public extension AppStore {
     }
 
     @discardableResult
+    // The exhaustive event reducer intentionally validates provenance per mutation shape.
+    // swiftlint:disable:next cyclomatic_complexity
     func acceptTaskCreationEvent(_ event: TaskCreationEvent) -> Bool {
         switch event {
         case let .created(task, provenance), let .updated(task, provenance):
@@ -40,6 +42,13 @@ public extension AppStore {
             snapshot.upsert(task, projectId: task.projectId)
             let detail = task.preparationError ?? "Unknown preparation error"
             toast = AppToast(message: "Task preparation failed: \(detail)", level: .error)
+        case let .launchUnavailable(task, provenance, message):
+            guard acceptsTaskCreationProvenance(provenance) else { return false }
+            snapshot.upsert(task, projectId: task.projectId)
+            toast = AppToast(message: message, level: .error)
+        case let .launchMissing(_, _, provenance, message):
+            guard acceptsTaskCreationProvenance(provenance) else { return false }
+            toast = AppToast(message: message, level: .error)
         }
         publishSnapshot()
         return true
@@ -51,6 +60,19 @@ public extension AppStore {
             provenance.serverID == rpcServerID &&
             provenance.serverID == controller.activeServer?.instanceId &&
             provenance.serverID == snapshotServerID
+    }
+
+    func presentTaskCreationWarnings(_ warnings: [String]) {
+        guard !warnings.isEmpty else { return }
+        let message = warnings.joined(separator: " ")
+        if let toast {
+            self.toast = AppToast(
+                message: "\(toast.message) \(message)",
+                level: toast.level
+            )
+        } else {
+            toast = AppToast(message: message, level: .info)
+        }
     }
 }
 

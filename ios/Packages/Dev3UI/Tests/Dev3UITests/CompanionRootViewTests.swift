@@ -25,3 +25,14 @@ func offlineTaskInfoConnectionPolicy() {
     #expect(live.canMutate(isConnected: false) == false)
     #expect(live.canMutate(isConnected: true))
 }
+
+@Test("Todo taps run only while connected and never open an unavailable terminal")
+func taskOpenRouting() {
+    let todo = makeIATask(id: "todo", status: .todo)
+    let active = makeIATask(id: "active", status: .inProgress)
+
+    #expect(CompanionTaskOpenRoute.resolve(task: todo, isConnected: true) == .run)
+    #expect(CompanionTaskOpenRoute.resolve(task: todo, isConnected: false) == .info)
+    #expect(CompanionTaskOpenRoute.resolve(task: active, isConnected: true) == .terminal)
+    #expect(CompanionTaskOpenRoute.resolve(task: active, isConnected: false) == .info)
+}

@@ -3,6 +3,8 @@ import SwiftUI
 
 public typealias TaskDestinationBuilder = @MainActor (_ projectID: String, _ taskID: String) -> AnyView
 public typealias TaskInfoAction = @MainActor (_ projectID: String, _ taskID: String) -> Void
+public typealias NewTaskAction = @MainActor (_ projectID: String?) -> Void
+public typealias RunTodoTaskAction = @MainActor (_ task: Dev3Task) -> Void
 public typealias SettingsAccessoryBuilder = @MainActor () -> AnyView
 
 @MainActor
@@ -10,6 +12,8 @@ public struct CompanionRootView: View {
     @Bindable private var store: AppStore
     private let taskDestinationBuilder: TaskDestinationBuilder
     private let onOpenTaskInfo: TaskInfoAction
+    private let onCreateTask: NewTaskAction
+    private let onRunTodoTask: RunTodoTaskAction
     private let settingsAccessoryBuilder: SettingsAccessoryBuilder
     @State private var showsPairing = false
 
@@ -19,6 +23,8 @@ public struct CompanionRootView: View {
             AnyView(ContentUnavailableView("Terminal unavailable", systemImage: "terminal"))
         },
         onOpenTaskInfo: @escaping TaskInfoAction = { _, _ in },
+        onCreateTask: @escaping NewTaskAction = { _ in },
+        onRunTodoTask: @escaping RunTodoTaskAction = { _ in },
         settingsAccessoryBuilder: @escaping SettingsAccessoryBuilder = {
             AnyView(EmptyView())
         }
@@ -26,6 +32,8 @@ public struct CompanionRootView: View {
         self.store = store
         self.taskDestinationBuilder = taskDestinationBuilder
         self.onOpenTaskInfo = onOpenTaskInfo
+        self.onCreateTask = onCreateTask
+        self.onRunTodoTask = onRunTodoTask
         self.settingsAccessoryBuilder = settingsAccessoryBuilder
     }
 
@@ -36,6 +44,8 @@ public struct CompanionRootView: View {
                     store: store,
                     taskDestinationBuilder: taskDestinationBuilder,
                     onOpenTaskInfo: onOpenTaskInfo,
+                    onCreateTask: onCreateTask,
+                    onRunTodoTask: onRunTodoTask,
                     settingsAccessoryBuilder: settingsAccessoryBuilder,
                     onPairAnother: { showsPairing = true }
                 )
@@ -64,6 +74,8 @@ private struct ConnectedShellView: View {
     @Bindable var store: AppStore
     let taskDestinationBuilder: TaskDestinationBuilder
     let onOpenTaskInfo: TaskInfoAction
+    let onCreateTask: NewTaskAction
+    let onRunTodoTask: RunTodoTaskAction
     let settingsAccessoryBuilder: SettingsAccessoryBuilder
     let onPairAnother: () -> Void
     @State private var variantSelection: VariantSelection?
@@ -72,9 +84,11 @@ private struct ConnectedShellView: View {
     var body: some View {
         TabView(selection: $store.selectedTab) {
             NavigationStack(path: $store.workPath) {
-                WorkOverview(store: store) { task in
-                    taskActions(task, origin: .work)
-                }
+                WorkOverview(
+                    store: store,
+                    actions: { task in taskActions(task, origin: .work) },
+                    onCreateTask: { onCreateTask(nil) }
+                )
                 .navigationTitle("Work")
                 .navigationDestination(for: AppRoute.self) { route in
                     destination(route, origin: .work)
@@ -156,9 +170,12 @@ private struct ConnectedShellView: View {
             )
         case let .project(projectID):
             if let project = store.project(id: projectID) {
-                ProjectBoardOverview(store: store, project: project) { task in
-                    taskActions(task, origin: origin)
-                }
+                ProjectBoardOverview(
+                    store: store,
+                    project: project,
+                    actions: { task in taskActions(task, origin: origin) },
+                    onCreateTask: { onCreateTask(project.id) }
+                )
             } else {
                 ContentUnavailableView("Project unavailable", systemImage: "folder.badge.questionmark")
             }
@@ -168,9 +185,12 @@ private struct ConnectedShellView: View {
     private func taskActions(_ task: Dev3Task, origin: AppTab) -> TaskCardActions {
         TaskCardActions(
             open: {
-                if store.isConnected {
+                switch CompanionTaskOpenRoute.resolve(task: task, isConnected: store.isConnected) {
+                case .run:
+                    onRunTodoTask(task)
+                case .terminal:
                     store.openTask(projectId: task.projectId, taskId: task.id, from: origin)
-                } else {
+                case .info:
                     onOpenTaskInfo(task.projectId, task.id)
                 }
             },
@@ -191,8 +211,25 @@ private struct ConnectedShellView: View {
             },
             showVariants: {
                 variantSelection = VariantSelection(projectID: task.projectId, taskID: task.id)
+            },
+            run: {
+                onRunTodoTask(task)
             }
         )
+    }
+}
+
+enum CompanionTaskOpenRoute: Equatable, Sendable {
+    case run
+    case terminal
+    case info
+
+    static func resolve(task: Dev3Task, isConnected: Bool) -> CompanionTaskOpenRoute {
+        guard isConnected else { return .info }
+        if task.status == .todo {
+            return .run
+        }
+        return .terminal
     }
 }
 

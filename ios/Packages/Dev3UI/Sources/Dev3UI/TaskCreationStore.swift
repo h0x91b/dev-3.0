@@ -44,6 +44,8 @@ public typealias TaskCreationTerminalHandler =
 
 @MainActor
 @Observable
+// The transaction store keeps one observable lifecycle so in-flight mutations cannot be orphaned.
+// swiftlint:disable type_body_length
 public final class TaskCreationStore {
     public let context: TaskCreationContext
     public private(set) var projects: [Dev3Project]
@@ -55,6 +57,7 @@ public final class TaskCreationStore {
     public private(set) var warningMessages: [String] = []
     public private(set) var pendingTerminalTaskID: String?
     public private(set) var lastCreatedTaskID: String?
+    public private(set) var hasUncertainMutation = false
 
     public var selectedProjectID: String? {
         didSet { projectSelectionChanged(from: oldValue) }
@@ -91,7 +94,7 @@ public final class TaskCreationStore {
         } else {
             selectedProjectID
         }
-        self.selectedProjectID = Self.initialProjectID(
+        self.selectedProjectID = Self.validProjectID(
             projects: self.projects,
             preferredID: contextProjectID
         )
@@ -129,18 +132,18 @@ public final class TaskCreationStore {
     public var canSubmit: Bool {
         let hasSource = existingTask != nil ||
             !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return !isLoading && !isSubmitting && selectedProject != nil && hasSource
+        return !isLoading && !isSubmitting && !hasUncertainMutation && selectedProject != nil && hasSource
     }
 
     public func replaceProjects(_ updatedProjects: [Dev3Project]) {
         projects = Self.availableProjects(updatedProjects)
-        selectedProjectID = Self.initialProjectID(
+        selectedProjectID = Self.validProjectID(
             projects: projects,
             preferredID: selectedProjectID
         )
     }
 
-    public func load() async {
+    public func load(preservingSelections: Bool = false) async {
         guard let binding = serviceProvider() else {
             resetForUnavailableConnection()
             return
@@ -155,6 +158,8 @@ public final class TaskCreationStore {
         }
         errorMessage = nil
         let provenance = binding.provenance
+        let priorWatched = watched
+        let priorVariants = variants
         do {
             async let agents = binding.service.getAgents()
             async let settings = binding.service.getGlobalSettings()
@@ -162,8 +167,17 @@ public final class TaskCreationStore {
             guard owns(provenance), loadRequestID == requestID else { return }
             self.agents = loaded.0
             self.settings = loaded.1
-            watched = existingTask?.watched ?? loaded.1.watchByDefault ?? false
-            variants = [TaskCreationAgentResolver.defaultVariant(agents: loaded.0, settings: loaded.1)]
+            if preservingSelections {
+                watched = priorWatched
+                variants = preserveValidVariants(
+                    priorVariants,
+                    agents: loaded.0,
+                    settings: loaded.1
+                )
+            } else {
+                watched = existingTask?.watched ?? loaded.1.watchByDefault ?? false
+                variants = [TaskCreationAgentResolver.defaultVariant(agents: loaded.0, settings: loaded.1)]
+            }
             clampVariantsForSelectedProject()
         } catch {
             guard owns(provenance), loadRequestID == requestID else { return }
@@ -171,14 +185,36 @@ public final class TaskCreationStore {
         }
     }
 
-    public func connectionChanged() async {
+    public func connectionChanged(to provenance: TaskCreationProvenance) async {
+        if pendingTerminalProvenance?.serverID == provenance.serverID {
+            pendingTerminalProvenance = provenance
+        } else {
+            pendingTerminalTaskID = nil
+            pendingTerminalProvenance = nil
+        }
+        await load(preservingSelections: true)
+    }
+
+    public func activeServerChanged(to serverID: String?) {
+        guard pendingTerminalProvenance?.serverID != serverID else { return }
         pendingTerminalTaskID = nil
         pendingTerminalProvenance = nil
-        await load()
     }
 
     public func dismissError() {
         errorMessage = nil
+    }
+
+    func shouldDismissAfterSubmission(
+        mode: TaskCreationMode,
+        result: TaskCreationLaunchResult?
+    ) -> Bool {
+        switch mode {
+        case .save:
+            lastCreatedTaskID != nil && !hasUncertainMutation
+        case .saveAndStart:
+            result != nil
+        }
     }
 
     public func addVariant() {
@@ -235,7 +271,7 @@ public final class TaskCreationStore {
     // The transaction stays linear so every RPC result is provenance-checked before its follow-up.
     // swiftlint:disable:next cyclomatic_complexity function_body_length
     public func submit(_ mode: TaskCreationMode) async -> TaskCreationLaunchResult? {
-        guard !isSubmitting else { return nil }
+        guard !isSubmitting, !hasUncertainMutation else { return nil }
         warningMessages = []
         errorMessage = nil
         lastCreatedTaskID = nil
@@ -305,10 +341,10 @@ public final class TaskCreationStore {
                     projectID: project.id,
                     customTitle: trimmedTitle
                 )
-                guard continueTransaction(provenance) else { return nil }
+                guard continueCreatedTaskTransaction(provenance) else { return nil }
                 onEvent(.updated(currentTask, provenance: provenance))
             } catch {
-                guard continueTransaction(provenance) else { return nil }
+                guard continueCreatedTaskTransaction(provenance) else { return nil }
                 warningMessages.append("The task was created, but its title could not be updated.")
             }
         }
@@ -320,10 +356,10 @@ public final class TaskCreationStore {
                     projectID: project.id,
                     labelIDs: selectedLabelIDs.sorted()
                 )
-                guard continueTransaction(provenance) else { return nil }
+                guard continueCreatedTaskTransaction(provenance) else { return nil }
                 onEvent(.updated(currentTask, provenance: provenance))
             } catch {
-                guard continueTransaction(provenance) else { return nil }
+                guard continueCreatedTaskTransaction(provenance) else { return nil }
                 warningMessages.append("The task was created, but its labels could not be updated.")
             }
         }
@@ -336,10 +372,10 @@ public final class TaskCreationStore {
                     projectID: project.id,
                     watched: watched
                 )
-                guard continueTransaction(provenance) else { return nil }
+                guard continueCreatedTaskTransaction(provenance) else { return nil }
                 onEvent(.updated(currentTask, provenance: provenance))
             } catch {
-                guard continueTransaction(provenance) else { return nil }
+                guard continueCreatedTaskTransaction(provenance) else { return nil }
                 warningMessages.append("The task was created, but its watch setting could not be updated.")
             }
         }
@@ -362,7 +398,30 @@ public final class TaskCreationStore {
         }
         evaluateTerminalReadiness(task, provenance: provenance)
     }
+
+    public func pendingTaskRemoved(provenance: TaskCreationProvenance) {
+        guard let taskID = pendingTerminalTaskID,
+              provenance == pendingTerminalProvenance,
+              owns(provenance)
+        else {
+            return
+        }
+        pendingTerminalTaskID = nil
+        pendingTerminalProvenance = nil
+        let message = "The launched task is no longer available, so its terminal was not opened."
+        errorMessage = message
+        onEvent(
+            .launchMissing(
+                projectID: selectedProjectID ?? existingTask?.projectId ?? "",
+                taskID: taskID,
+                provenance: provenance,
+                message: message
+            )
+        )
+    }
 }
+
+// swiftlint:enable type_body_length
 
 private extension TaskCreationStore {
     func launch(
@@ -418,11 +477,11 @@ private extension TaskCreationStore {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    static func initialProjectID(projects: [Dev3Project], preferredID: String?) -> String? {
+    static func validProjectID(projects: [Dev3Project], preferredID: String?) -> String? {
         if let preferredID, projects.contains(where: { $0.id == preferredID }) {
             return preferredID
         }
-        return projects.first?.id
+        return nil
     }
 
     func projectSelectionChanged(from oldValue: String?) {
@@ -438,6 +497,28 @@ private extension TaskCreationStore {
 
     func effectiveVariants(for project: Dev3Project) -> [TaskCreationVariant] {
         project.kind == .virtual ? Array(variants.prefix(1)) : variants
+    }
+
+    func preserveValidVariants(
+        _ priorVariants: [TaskCreationVariant],
+        agents: [Dev3CodingAgent],
+        settings: Dev3GlobalSettings
+    ) -> [TaskCreationVariant] {
+        let fallback = TaskCreationAgentResolver.defaultVariant(agents: agents, settings: settings)
+        return priorVariants.map { variant in
+            if TaskCreationAgentResolver.isVariantSelectable(
+                variant,
+                agents: agents,
+                settings: settings
+            ) {
+                return variant
+            }
+            return TaskCreationVariant(
+                id: variant.id,
+                agentID: fallback.agentID,
+                configurationID: fallback.configurationID
+            )
+        }
     }
 
     func validatedProject(for mode: TaskCreationMode) throws -> Dev3Project {
@@ -489,6 +570,16 @@ private extension TaskCreationStore {
         return true
     }
 
+    func continueCreatedTaskTransaction(_ provenance: TaskCreationProvenance) -> Bool {
+        guard owns(provenance) else {
+            hasUncertainMutation = true
+            errorMessage = "The task was created, but the active dev3 connection changed. " +
+                "Inspect the refreshed board before trying again."
+            return false
+        }
+        return true
+    }
+
     func resetForUnavailableConnection() {
         agents = []
         settings = nil
@@ -504,6 +595,7 @@ private extension TaskCreationStore {
         binding: TaskCreationServiceBinding,
         action: String
     ) async {
+        hasUncertainMutation = true
         guard owns(binding.provenance) else {
             errorMessage = "The active dev3 connection changed. Review the board before continuing."
             return
@@ -535,9 +627,36 @@ private extension TaskCreationStore {
             onEvent(.preparationFailed(task, provenance: provenance))
             return
         }
+        guard task.shuttingDown != true, Self.isTerminalStatus(task.status) else {
+            pendingTerminalTaskID = nil
+            pendingTerminalProvenance = nil
+            let message = task.shuttingDown == true
+                ? "The task started shutting down before its terminal became ready."
+                : "The task is no longer active, so its terminal was not opened."
+            errorMessage = message
+            onEvent(.launchUnavailable(task, provenance: provenance, message: message))
+            return
+        }
+        if task.preparing == false, task.worktreePath == nil {
+            pendingTerminalTaskID = nil
+            pendingTerminalProvenance = nil
+            let message = "Task preparation ended before its terminal became available."
+            errorMessage = message
+            onEvent(.launchUnavailable(task, provenance: provenance, message: message))
+            return
+        }
         guard task.preparing != true, task.worktreePath != nil else { return }
         pendingTerminalTaskID = nil
         pendingTerminalProvenance = nil
         onTerminalReady(task.projectId, task.id, provenance)
+    }
+
+    static func isTerminalStatus(_ status: Dev3TaskStatus) -> Bool {
+        switch status {
+        case .inProgress, .userQuestions, .reviewByAI, .reviewByUser, .reviewByColleague:
+            true
+        case .todo, .completed, .cancelled:
+            false
+        }
     }
 }

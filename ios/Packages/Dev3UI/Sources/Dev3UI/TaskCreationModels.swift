@@ -96,6 +96,13 @@ public enum TaskCreationEvent: Equatable, Sendable {
     case replaced(TaskCreationLaunchResult)
     case reconciled(projectID: String, tasks: [Dev3Task], provenance: TaskCreationProvenance)
     case preparationFailed(Dev3Task, provenance: TaskCreationProvenance)
+    case launchUnavailable(Dev3Task, provenance: TaskCreationProvenance, message: String)
+    case launchMissing(
+        projectID: String,
+        taskID: String,
+        provenance: TaskCreationProvenance,
+        message: String
+    )
 }
 
 public enum TaskCreationValidationError: Error, Equatable, LocalizedError, Sendable {

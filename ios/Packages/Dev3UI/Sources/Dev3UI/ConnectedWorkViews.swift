@@ -4,6 +4,7 @@ import SwiftUI
 struct WorkOverview: View {
     @Bindable var store: AppStore
     let actions: (Dev3Task) -> TaskCardActions
+    let onCreateTask: () -> Void
 
     var body: some View {
         Group {
@@ -23,6 +24,13 @@ struct WorkOverview: View {
             }
         }
         .onAppear { store.setActiveContext(projectId: nil, taskId: nil) }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("New Task", systemImage: "plus", action: onCreateTask)
+                    .disabled(!store.isConnected)
+                    .accessibilityIdentifier("taskCreation.open")
+            }
+        }
     }
 }
 
@@ -60,6 +68,7 @@ struct ProjectBoardOverview: View {
     @Bindable var store: AppStore
     let project: Dev3Project
     let actions: (Dev3Task) -> TaskCardActions
+    let onCreateTask: () -> Void
 
     var body: some View {
         ProjectBoardView(
@@ -69,6 +78,7 @@ struct ProjectBoardOverview: View {
             dropPosition: store.taskDropPosition,
             mutationsEnabled: store.isConnected,
             actions: actions,
+            onCreateTask: onCreateTask,
             onRefresh: { await store.refreshProject(project.id) }
         )
         .task { await store.refreshProject(project.id) }
