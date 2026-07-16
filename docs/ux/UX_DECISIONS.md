@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-16 — Native iOS shell uses a readiness inbox plus project browser
+
+- **Rule:** Pairing is an auth gate; the connected shell is Work (readiness-only), Projects (boards), and Settings, with immersive pushed Task/Diff/Image/Artifact screens.
+- **Why:** Separating attention from browsing avoids duplicating boards across tabs; rejected a mandatory server picker and mini-desktop chrome.
+- **Status:** Planned. Evidence: `docs/ios/DESIGN.md`, `docs/ios/IMPLEMENTATION.md`, `MobileBoardCarousel.tsx`, `TaskInfoPanel.tsx`.
+
 ## 2026-07-16 — Global Settings category navigation and registry
 
 - **Rule:** Global Settings uses seven left-nav **Settings categories** with one detail pane, localized title/description search, and a narrow list→detail drill-down with an in-app back affordance. The `settings-registry.ts` registry documents **Settings entries** (metadata, category, translations, anchors, storage disposition) and integrity tests; bespoke controls remain bespoke.

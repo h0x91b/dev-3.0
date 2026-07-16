@@ -1,12 +1,16 @@
 ux_architecture:
   version: 1
-  updated_at: "2026-07-13"
+  updated_at: "2026-07-16"
   source: "derived_from_repository"
   confidence: "medium"
 
   product:
     name: "dev-3.0"
-    app_type: "full_screen_web_app" # Electrobun desktop shell rendering a React/Vite webview
+    app_type: "terminal_centric_project_manager"
+    platforms:
+      desktop_renderer: { technology: "Electrobun + React/Vite webview", status: "observed" }
+      browser_remote: { technology: "Responsive React renderer over the remote protocol", status: "observed" }
+      ios_native_companion: { technology: "SwiftUI + SwiftTerm over the existing remote protocol", status: "planned" }
     primary_users:
       - "Developers orchestrating multiple AI coding agents (Claude Code, Codex, Gemini CLI, Cursor) across tasks"
       - "Power users who live in the terminal and want Kanban-style task tracking on top of git worktrees"
@@ -51,6 +55,21 @@ ux_architecture:
       - "Selection/bulk-action model: the board has no multi-select; actions are per-task. 'selection_toolbar' rules below are Proposed, not Observed."
 
   objects:
+    dev3_instance:
+      label: "Dev3 Instance"
+      plural: "Dev3 Instances"
+      planned: true
+      owner: "device_profile"
+      scopes: ["project"]
+      primary_route: "ios:pairing_gate_or_instance_switcher"
+      detail_route: "ios:settings/instances"
+      common_actions: ["pair", "connect", "switch", "rename", "forget"]
+      shape: "An origin-opaque dev3 backend. It may be a Mac, Linux host, LAN endpoint, tunnel, or long-lived workspace; UI and storage must not assume a host type. Credentials live in iOS Keychain."
+      rules:
+        - "Pairing is an authentication gate, not a connected-shell tab or daily destination."
+        - "Reconnect the last active usable Instance automatically; show a scope switcher in Work/Projects only when multiple Instances exist."
+        - "Durable pair/rename/forget management lives in Settings -> Instances."
+      evidence: ["docs/ios/DESIGN.md §4-5", "docs/ios/IMPLEMENTATION.md T1.1/T1.5/T2.1"]
     project:
       label: "Project"
       plural: "Projects"
@@ -160,8 +179,72 @@ ux_architecture:
       forbidden: ["destructive_action", "durable_state_without_friction"]
       status: "observed"
       evidence: ["src/mainview/components/ProjectQuickSwitchModal.tsx", "src/mainview/components/CommandPaletteModal.tsx", "src/mainview/App.tsx (Cmd+K + Cmd+Shift+P)"]
+    ios_native:
+      model: "authentication_gate_then_navigation_stack_per_tab"
+      status: "planned"
+      authentication_gate:
+        entry: "Show Pairing only when no usable Instance session exists; otherwise reconnect the last active Instance."
+        allowed: ["qr_scan", "manual_url_and_code", "discovered_instances", "session_recovery"]
+        forbidden: ["permanent_tab", "forced_picker_on_every_launch"]
+      tabs:
+        work:
+          order: 1
+          default: true
+          purpose: "Cross-project readiness inbox only: NEEDS YOU -> manual/custom queues -> WAITING, using sidebarTiers semantics."
+          primary_action: "New Task"
+          forbidden: ["project_board", "durable_settings", "project_administration"]
+        projects:
+          order: 2
+          purpose: "Project collection -> one-status-column-per-page Board -> Task."
+          row_actions: "Occasional Pull Main goes to row overflow/context menu; virtual Operations projects hide git actions."
+          forbidden: ["cross_project_readiness_inbox", "durable_project_settings_in_v1"]
+        settings:
+          order: 3
+          purpose: "Instances, Appearance, Terminal, Notifications, About."
+      pushed_destinations:
+        task: "Immersive; reachable from Work or a Project Board; hides tab bar."
+        diff: "Task-bound read/review destination; hides tab bar."
+        image: "Task-bound image destination; hides tab bar."
+        artifact: "Task-bound sandboxed HTML destination; hides tab bar."
+      instance_switcher: "When multiple Instances exist, expose a scope switcher in the Work/Projects navigation title; management stays in Settings -> Instances."
+      deep_link: "Notification taps canonicalize to Work -> Task so separate tab stacks do not diverge unpredictably."
+      max_push_depth_after_tab_root: 2 # Projects -> Board -> Task
+      evidence: ["docs/ios/DESIGN.md §5", "docs/ios/IMPLEMENTATION.md T2.1-T2.5", "src/mainview/sidebarTiers.ts", "src/mainview/components/MobileBoardCarousel.tsx"]
 
   surfaces:
+    ios_pairing_gate:
+      purpose: "Establish or recover an authenticated Dev3 Instance before entering the connected shell."
+      allowed: ["qr_scan", "manual_url_and_code", "discovered_instances", "reconnect"]
+      forbidden: ["permanent_tab", "forced_picker_with_valid_last_instance", "daily_operational_action"]
+      status: "planned"
+      evidence: ["docs/ios/DESIGN.md §4-5", "docs/ios/IMPLEMENTATION.md T1.5"]
+    ios_work_queue:
+      purpose: "Cross-project human attention inbox ordered by readiness."
+      allowed: ["needs_you_tier", "manual_custom_queues", "waiting_tier", "task_jump", "new_task_primary"]
+      forbidden: ["project_board", "durable_settings", "project_administration"]
+      status: "planned"
+      evidence: ["src/mainview/sidebarTiers.ts", "src/mainview/components/ActiveTasksSidebar.tsx", "docs/ios/IMPLEMENTATION.md T2.3"]
+    ios_project_board:
+      purpose: "Project-owned operational collection with one status column per page."
+      allowed: ["board_pager", "task_card", "pull_to_refresh", "card_context_menu", "contextual_new_task"]
+      forbidden: ["cross_project_readiness_inbox", "durable_project_settings"]
+      status: "planned"
+      evidence: ["src/mainview/components/MobileBoardCarousel.tsx", "docs/ios/IMPLEMENTATION.md T2.2-T2.3"]
+    ios_task_terminal:
+      purpose: "Immersive native task terminal and typing destination."
+      allowed: ["swiftterm", "conditional_window_and_pane_navigation", "compose_and_raw_input", "task_info_entry", "task_bound_output_push"]
+      forbidden: ["visible_tab_bar", "global_utilities", "persistent_task_action_rows", "core_webview"]
+      child_destinations: ["diff", "image", "artifact"]
+      status: "planned"
+      evidence: ["src/mainview/components/MobilePaneCarousel.tsx", "src/mainview/components/MobileWindowCarousel.tsx", "src/mainview/components/TerminalComposer.tsx", "docs/ios/IMPLEMENTATION.md T2.4"]
+    ios_task_info_sheet:
+      purpose: "Detented task action and metadata surface."
+      sections: ["Context", "Session/Agent", "Git/PR", "Runtime/Outputs", "Notes"]
+      allowed: ["task_object_action", "metadata", "confirmed_lifecycle_action"]
+      forbidden: ["global_destination", "cross_project_action", "ungrouped_toolbar_dump"]
+      destructive_rule: "Lifecycle/destructive actions appear last, use the destructive role, and require confirmation."
+      status: "planned"
+      evidence: ["src/mainview/components/TaskInfoPanel.tsx", "docs/ios/IMPLEMENTATION.md T2.5"]
     diagnostics:
       purpose: "Make renderer faults visible in remote/mobile where there is no devtools: crash fallback, bootstrap phase/timeout, and a captured-error viewer."
       allowed: ["crash_fallback", "bootstrap_phase_state", "retry_reload", "captured_error_list", "copy_clear", "conditional_floating_entry"]
@@ -544,6 +627,23 @@ ux_architecture:
       overflow_after: 4     # the app has a documented history of always-visible git/tmux button creep
     tabs:
       max_visible_tabs: 6
+    ios:
+      connected_shell_tabs:
+        count: 3
+        labels: ["Work", "Projects", "Settings"]
+        overflow_rule: "A new destination must replace or consolidate an existing tab; never add a single-feature tab."
+      navigation_bar:
+        budget: "system back + title + 1 trailing object/primary action"
+        overflow_rule: "Secondary actions move to the object menu or sheet."
+      task_card:
+        max_inline_actions: 2
+        overflow_to: "long_press_context_menu"
+        exception: "Variant dots remain one existing bounded composite control."
+      task_terminal:
+        rule: "Hide the tab bar; render window/pane navigation only when siblings exist; task actions live in Task Info."
+      touch_target:
+        minimum: "44x44 pt"
+        overflow_rule: "Enlarge the control or move it into a list/sheet row."
 
   placement_rules:
     - id: "navigation-destinations-only"
@@ -601,6 +701,12 @@ ux_architecture:
       reject: ["permanent_info_icon_in_quickbars_cards_or_toolbars", "hardcoded_help_strings_in_components", "multi_step_tour_v1", "new_nav_destination_for_help"]
       status: "observed"
       rationale: "Help must add ZERO chrome to budget-protected zones (quickbars, task cards, toolbars) — they are covered by the help-mode overlay, not by standing icons. Header-bearing sections may carry at most one ghost (i). Content is data (help.ts + i18n domain), never JSX, so the same topics feed HelpSpot, help mode, and any future docs surface. See PRODUCT_UX_BIBLE §5.4 + UX_DECISIONS 2026-07-03."
+    - id: "ios-tabs-distinct-destinations"
+      when: { platform: "ios_native", feature_class: "destination" }
+      place_in: ["Work for cross-project readiness", "Projects for collection -> board browsing", "Settings for durable app/Instance preferences", "Task-bound pushed destination for task content"]
+      reject: ["project_boards_inside_Work", "permanent_pairing_tab", "single_feature_tab", "task_action_in_tab_navigation"]
+      status: "planned"
+      rationale: "The three native tabs have disjoint user jobs. Attention and project browsing must not duplicate the same boards, while object actions remain on their owning Task."
 
   responsive:
     status: "partial" # board_carousel implemented; full mobile doctrine proposed — see bible §12 (full doctrine plan in git history)
@@ -666,10 +772,17 @@ ux_architecture:
       touch_target: ">= 44x44px (many controls are 32px / p-0.5 — bump on narrow)"
     viewport_meta: "useViewport(): browser -> device-width (so a phone reports true width and media queries fire; replaces the old fixed width=1024). Keep the .browser-mode 16px input-font rule (prevents iOS focus-zoom). Honour env(safe-area-inset-*) (viewport already sets viewport-fit=cover)."
     reusable_primitives: ["useNarrowViewport(px) reactive gate", "MobileBoardCarousel scroll-snap+pager (reference)", "TerminalView touch->mouse bridge (model for canvas surfaces)", "ExtraKeyBar vw-based sizing (mobile toolbars)", "prefersReducedMotion() (apply site-wide)", ".browser-mode CSS sentinel (env-specific styling)"]
+    native_ios_overrides:
+      status: "planned"
+      layout: "Use SwiftUI size classes and safe areas; support portrait and landscape. The React <768px gate, viewport meta, and MobilePortraitGate do not apply."
+      navigation: "Use NavigationStack, system edge-swipe back, contextMenu, pull-to-refresh, detented sheets, and SwiftUI confirmationDialog; do not port browser history sentinels or custom BottomSheet mechanics."
+      terminal_gestures: "Vertical scrolling/selection wins ambiguous gestures. Pane switching may claim a full-surface swipe only after axis arbitration proves horizontal intent; windows use explicit buttons/menu because panes own the terminal swipe axis."
+      immersive: "Task, Diff, Image, and Artifact hide the tab bar. Core surfaces use SwiftUI/SwiftTerm; only HTML Artifacts use a sandboxed WKWebView."
+      accessibility: "Targets >=44x44 pt; Dynamic Type outside terminal; VoiceOver names/values for cards, status, pagers, and icons; Reduce Motion; restore focus after sheets/dialogs."
 
   anti_patterns:
-    - id: "full-surface-swipe-over-terminal"
-      description: "Hijacking full-pane horizontal swipe to change tmux panes. The terminal runs interactive TUIs (vim/htop/less) that consume touch and horizontal motion. Pane switching must use the explicit pager (optionally thin edge-swipe gutters), not a full-surface swipe. Full-surface swipe is allowed ONLY on the board, where column bodies scroll vertically."
+    - id: "unarbitrated-terminal-swipe"
+      description: "Claiming terminal gestures before establishing clearly horizontal intent. Terminal scrolling, selection, and TUI touch must win ambiguous or vertical movement; pane switching may use full-surface horizontal swipe only with axis arbitration, while window switching remains explicit."
     - id: "touch-unreachable-feature"
       description: "An action whose only path is a keyboard shortcut (Cmd+K/Cmd+Shift+P/Cmd+1..9/hint overlay) or the native application menu. On narrow (<768) it is dead — no keyboard, and the native menu is absent in remote. Every feature needs a touch path (palette touch entry, action sheet, or inline control). See responsive.navigation_touch."
     - id: "fixed-width-overlay-on-narrow"

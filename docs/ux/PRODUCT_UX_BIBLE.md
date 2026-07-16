@@ -39,9 +39,9 @@ Litmus test when shipping a feature: *"does this produce something countable a d
 
 ## 2. Product overview
 
-### Product type — `Observed`
+### Product type — desktop/web `Observed`, native iOS `Planned`
 
-- **App type:** Full-screen desktop web app. Electrobun shell (Bun main process) renders a React 19 + Tailwind + Vite webview. Not Electron, not a website.
+- **App type:** A terminal-centric project manager with three clients over one dev3 backend: the full-screen Electrobun desktop renderer, its browser/remote form, and a native iOS companion. The desktop renderer remains React 19 + Tailwind + Vite in an Electrobun shell; the iOS client is SwiftUI and speaks the existing remote protocol.
 - **Primary users:** Developers running multiple AI coding agents (Claude Code, Codex, Gemini CLI, Cursor) across many tasks; terminal-centric power users.
 - **Primary jobs:** create a task → get an isolated git worktree + tmux terminal with a preconfigured agent; track tasks on a Kanban board; run git/PR/dev-server operations per task; manage multiple git-repo projects with lifecycle scripts.
 - **Operating mode:** Long-lived window, keyboard-heavy, many concurrent terminals. Density is expected and tolerated by the audience — but not unlimited (see budgets).
@@ -59,6 +59,7 @@ Evidence: `concept.md`, `AGENTS.md`, `src/mainview/state.ts`, `src/shared/types.
 
 | Object | Route (screen) | Detail | Owner | Common actions | Evidence |
 |---|---|---|---|---|---|
+| Dev3 Instance | iOS pairing gate / instance switcher | Settings → Instances | device profile | pair, connect, switch, rename, forget | `docs/ios/DESIGN.md`, `docs/ios/IMPLEMENTATION.md` |
 | Project | `dashboard` | `project` | workspace | add, clone, open settings, reorder, remove, pull main | `types.ts (Project)`, `Dashboard.tsx`, `ProjectSettings.tsx` |
 | Project (kind: virtual) | `dashboard` (badged) | `project` | workspace | add (Operations), open, rename, remove | `types.ts (Project.kind)`, `AddProjectModal.tsx`, `data.ts (addVirtualProject)` |
 | Task | `project` (card) | `task` (full terminal) / split in `project` | project | create, move status, rename, set overview, note, spawn variants, add attempts, duplicate, delete, watch, open-in, git, dev-server | `types.ts (Task)`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, `application-menu.ts` |
@@ -71,6 +72,8 @@ Evidence: `concept.md`, `AGENTS.md`, `src/mainview/state.ts`, `src/shared/types.
 **Automation (`Observed`, 2026-07-05):** a per-project scheduled agent run — an RFC 5545 RRULE subset + IANA timezone, a stored prompt, and an agent choice. When a schedule fires (bun-process scheduler, runs in desktop **and** `dev3 remote` headless), it creates an **ordinary task** (worktree + tmux + agent, prompt = task description) on the board — automations never grow their own board, destination, or task list. Provenance: the created task records its `automationId` and the card shows a small clock glyph; run history (fired / task created / missed while app was offline) is persisted per automation and shown only inside the Automations tab. Missed runs are surfaced (toast + per-automation status), never silently skipped. A built-in **"What I shipped" report template** pre-fills the create form; the resulting digest is again just a task. CLI: `dev3 automations …`.
 
 Task lifecycle states (`ALL_STATUSES`): `todo`, `in-progress`, `user-questions`, `review-by-ai`, `review-by-user`, `review-by-colleague`, `completed`, `cancelled`. Most transitions are hook-driven, not manual.
+
+**Dev3 Instance (`Planned`, native iOS):** an origin-opaque dev3 backend paired to one device profile. It may be a Mac, Linux host, quick tunnel, LAN endpoint, or long-lived workspace; the UI calls it an **Instance**, never assumes its host type, and stores its credential in Keychain. Pairing is an authentication gate, not a daily destination. The last active instance reconnects automatically; a scope switcher appears in Work/Projects only when multiple instances exist, while durable pair/rename/forget management lives in Settings → Instances.
 
 **Project kind (`Observed`, 2026-06-23):** `Project.kind` is `git` (default) or `virtual`. A **virtual "Operations" board** is the same Project object class — it reuses the dashboard, board, cards, sidebar, labels, and notes — but its tasks run an agent + a split-right shell in a managed temp folder (or a chosen one) with **no git worktree**; the entire git domain (branch/diff/PR/push/merge/rebase, the inspector Git bar, and all three review columns) is hidden, leaving `todo → in-progress → user-questions → completed/cancelled`. One built-in board ships by default and hosts the **Quick-shell** operation (⇧⌘`), which replaced the former single home terminal. See decision 079 + feature plan.
 
@@ -98,6 +101,16 @@ Evidence: `GlobalHeader.tsx`.
 
 Only in `project-settings` (`global | project | worktree | automations`). Budget ≤ 6 visible tabs.
 
+### Native iOS navigation — `Planned`
+
+After the pairing/authentication gate, the native app has one `NavigationStack` per tab and exactly three top-level destinations:
+
+- **Work (default):** the cross-project readiness inbox only — NEEDS YOU, manual/custom queues, then WAITING, using the same ordering semantics as `sidebarTiers.ts`. It owns the one global New Task primary action. It does **not** embed project boards.
+- **Projects:** the project collection. A project pushes its one-status-column-per-page board; a card pushes its Task. Project Pull Main is an occasional row overflow/context-menu action; virtual Operations projects hide git actions. Durable project settings remain out of v1 rather than leaking into this operational surface.
+- **Settings:** Instances, Appearance, Terminal, Notifications, and About.
+
+Pairing appears only when no usable session exists; otherwise launch reconnects the last active Instance. Task is an immersive pushed destination from Work or Projects. Task-bound Diff, Image, and Artifact destinations push above it, and all four hide the tab bar. Notification deep links canonicalize through Work → Task so per-tab stacks do not diverge unpredictably. The tab root does not count as a push: `Projects → Board → Task` is the maximum two-push depth.
+
 ### Command palette (Cmd/Ctrl+K nav · Cmd/Ctrl+Shift+P actions) — `Observed`
 
 A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShell`). **Cmd+K** = navigation: fuzzy-jump to a project, Enter navigates (complements `Cmd+1..9` and the breadcrumb dropdown). **Cmd+Shift+P** = actions: fuzzy-match a command label, Enter runs it via `handleMenuAction` — a DOM mirror of the native menu, not a second command runner; only context-applicable commands show. Both fuzzy via `utils/fuzzyMatch.ts`. Destructive (delete/cancel/complete) and modal/inline flows (rename, overview, note, spawn, duplicate) are excluded from the quick palette by policy. See Surface model below.
@@ -106,6 +119,11 @@ A keyboard-summoned palette with **two modes on one shared shell** (`PaletteShel
 
 | Surface | Purpose | Allowed | Forbidden | Evidence |
 |---|---|---|---|---|
+| iOS pairing gate | Establish or recover an authenticated Instance before entering the connected shell | scan QR, enter URL/code, discovered Instances, reconnect | permanent tab, forced picker when a valid last Instance exists | `docs/ios/DESIGN.md` §4–5 |
+| iOS Work inbox | Cross-project, readiness-ordered human attention queue | NEEDS YOU/manual/WAITING tiers, task jump, one New Task primary | project boards, durable settings, project administration | `sidebarTiers.ts`, `ActiveTasksSidebar.tsx`, `docs/ios/DESIGN.md` §5 |
+| iOS project board | Project-owned operational collection, one status column per page | board pager, task cards, pull-to-refresh, card context menu | cross-project inbox, durable project settings | `MobileBoardCarousel.tsx`, `docs/ios/IMPLEMENTATION.md` T2.2–T2.3 |
+| iOS task terminal | Immersive task destination for native terminal work | terminal, conditional window/pane navigation, composer/raw input, one Task Info entry, task-bound output pushes | visible tab bar, global utilities, permanent action rows | `MobilePaneCarousel.tsx`, `MobileWindowCarousel.tsx`, `TerminalComposer.tsx`, `docs/ios/IMPLEMENTATION.md` T2.4 |
+| iOS task info sheet | Detented object-action surface grouped by Context, Session/Agent, Git/PR, Runtime/Outputs, Notes | task actions, metadata, confirmed lifecycle actions | global destinations, cross-project actions, ungrouped toolbar dump | `TaskInfoPanel.tsx`, `docs/ios/IMPLEMENTATION.md` T2.5 |
 | Global header | Location + switching + app utilities | breadcrumb, destination, project switcher, settings/changelog entry, tmux manager, prevent-sleep (awake) toggle | task-scoped action, dense filters, destructive primary | `GlobalHeader.tsx` |
 | Application menu (native) | Canonical home for the full action taxonomy | every action type | — | `application-menu.ts`, `menu-actions.ts` |
 | Kanban board | Primary work surface | task cards, create-in-column, drag-move, column config, task filter (token-DSL search + funnel; label chips are a view of it) | durable global config | `KanbanBoard.tsx`, `KanbanColumn.tsx`, `LabelFilterBar.tsx`, `FilterFunnel.tsx` |
@@ -289,6 +307,16 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 | Tabs | 6 | more-menu / subpage |
 | Task info panel | 4 bars (2×2), ≤ 4 visible per bar | assign new control to one domain bar; overflow after 4 ⇒ promote that domain to its own row (see §5.1) |
 
+Native iOS adds these platform budgets:
+
+| Surface | Budget | Overflow rule |
+|---|---:|---|
+| Connected-shell tabs | exactly 3 (`Work`, `Projects`, `Settings`) | new destinations must replace/consolidate; never add a feature tab |
+| Navigation bar | system back + title + 1 trailing object/primary action | secondaries go to the object menu/sheet |
+| iOS task card | ≤ 2 inline actions | long-press context menu; variant dots remain the existing bounded composite |
+| Task terminal | no tab bar; window/pane controls only when siblings exist | all task actions go to Task Info |
+| Touch target | ≥ 44×44 pt | enlarge or move into a list/sheet row |
+
 ## 10. Placement rules — `Observed`/`Inferred`
 
 | Feature class | Place in | Reject | Rationale |
@@ -319,9 +347,9 @@ Global Settings vocabulary is deliberate: a left-nav item is a **Settings catego
 - **Non-wrapping toolbar on narrow** — an icon/action row (`flex … justify-end` / `justify-between`, no `flex-wrap`) that silently overflows under 768px (GlobalHeader ≤9 buttons, TaskCard footer, inspector collapsed bar). On narrow, wrap or move to a bottom sheet — never a clipped row. See §12.6.
 - **Gating layout on `isElectrobun` instead of width** — transport ≠ viewport width. Browser/remote can be wide; desktop can be narrowed. Gate layout on `useNarrowViewport`; use `isElectrobun`/`useMobile` only for transport/viewport-meta decisions. See §12.1.
 
-## 12. Narrow-viewport (mobile) doctrine — board `Observed`, rest `Proposed`
+## 12. Narrow-viewport web/remote doctrine — board `Observed`, rest `Proposed`
 
-The app's secondary form factor is a **phone reached over `dev3 remote`** (any sub-768px viewport: a phone browser, a narrowed desktop browser window, or a hypothetical Electrobun-mobile build). The desktop UI is dense, wide, and keyboard-first; it must **degrade to a touch-first, one-thing-at-a-time form** on narrow screens — without becoming a second app. This section is the canonical ruleset; the Kanban board carousel (Ittai Zeidman's idea) is the **reference implementation** the rest generalises from. Full plans preserved in git history (removed feature-plans/).
+The React renderer's secondary form factor is a **phone reached over `dev3 remote`** (any sub-768px viewport: a phone browser or a narrowed desktop browser window). The desktop UI is dense, wide, and keyboard-first; it must **degrade to a touch-first, one-thing-at-a-time form** on narrow screens — without becoming a second app. This section is the canonical ruleset for the web renderer; the Kanban board carousel (Ittai Zeidman's idea) is the **reference implementation** the rest generalises from. Native iOS follows the object hierarchy and one-at-a-time principles but uses the platform overrides in §12.8 rather than these width/device gates.
 
 **The one principle:** *On a narrow viewport, show exactly one sibling at a time and move between siblings by swipe + a visible pager.* Columns, tasks-in-a-column, terminal panes, active tasks, settings sections, diff files — all collapse to the same one-at-a-time carousel/stack idiom. This is a **responsive view-mode of existing screens**, never a new destination, nav item, route, or "mobile mode" setting. Layout follows the viewport automatically.
 
@@ -406,6 +434,14 @@ The doctrine needs **one** reusable bottom-sheet primitive; none exists today (o
 - Reuse the `TerminalView` touch→mouse bridge model for any canvas surface; reuse `ExtraKeyBar`'s vw-based sizing for mobile toolbars.
 - Carousels: `aria-roledescription="carousel"`, siblings as `group`/`tabpanel`, pager as the tablist; arrow-key support when the pager is focused.
 
+### 12.8 Native iOS overrides — `Planned`
+
+- **Adaptive, not width-gated:** use SwiftUI size classes and safe areas. Portrait and landscape are supported; `MobilePortraitGate`, viewport-meta rules, and the `<768px` React layout gate do not apply.
+- **Native navigation and disclosure:** use `NavigationStack`, the system edge-swipe back gesture, `contextMenu`, pull-to-refresh, detented sheets, and SwiftUI `confirmationDialog`. Do not port browser history sentinels, custom bottom-sheet mechanics, or native-menu fallbacks.
+- **Terminal gestures:** native vertical scrolling/selection wins ambiguous gestures. Pane switching may use full-surface horizontal swipe only after axis arbitration establishes clear horizontal intent; window switching remains explicit buttons/menu because panes already own the terminal swipe axis.
+- **Immersive task children:** Task, Diff, Image, and Artifact hide the tab bar. Core surfaces stay SwiftUI/SwiftTerm; only task HTML Artifacts use a sandboxed `WKWebView`.
+- **Accessibility:** interactive targets are at least 44×44 pt; non-terminal UI supports Dynamic Type; cards, status, pagers, and icon-only controls expose VoiceOver names/values; transitions respect Reduce Motion; focus returns to the invoking control after sheets/dialogs close.
+
 ## 13. Open questions
 
 - Multi-select + a real selection toolbar on the board, or is per-task action intentional?
@@ -423,6 +459,7 @@ Shared UX vocabulary, specialized for this project (was `UX_GLOSSARY.md`).
 - **Destination** — a stable place users navigate to; in dev-3.0 a **screen** in the `Route` union (`dashboard`, `project`, `task`, `settings`, …), not a URL.
 - **Action** — a command that changes state or performs work: primary, object, git, dev-server, lifecycle, configuration, destructive, expert-shortcut.
 - **Surface** — a UI container that owns a class of interaction: global header, application menu (native), Kanban board, task card, task info panel (inspector), modal, popover, context menu, settings, sidebar, toast.
+- **Dev3 Instance** — an origin-opaque paired backend used by the native iOS client. It scopes Projects but does not imply a Mac, LAN host, or tunnel type; credentials and management live on the device.
 - **Primary action** — the one main safe action for the current screen/flow. Styled `bg-accent`. Max one visible per screen.
 - **Destructive action** — delete, remove, cancel, reset, hard refresh. Styled `text-danger`/`bg-danger`, requires confirmation, never primary styling.
 - **Configuration** — a durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account). Lives in Global or Project Settings.
