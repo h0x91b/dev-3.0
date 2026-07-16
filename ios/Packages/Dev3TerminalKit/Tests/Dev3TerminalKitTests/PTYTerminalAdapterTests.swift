@@ -74,15 +74,27 @@ private actor AdapterOutputRecorder {
     }
 }
 
-private actor AdapterRecoveryCounter {
+private actor AdapterRecoveryGate {
     private var count = 0
+    private var continuations: [CheckedContinuation<Void, Never>] = []
 
-    func record() {
+    func recover() async {
         count += 1
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
     }
 
     func snapshot() -> Int {
         count
+    }
+
+    func open() {
+        let pending = continuations
+        continuations.removeAll()
+        for continuation in pending {
+            continuation.resume()
+        }
     }
 }
 
@@ -165,7 +177,7 @@ func ptyOutputSurvivesConsumerReplacement() async throws {
 @Test("Output overflow clears the byte gap, resets the parser, and recovers once")
 func outputOverflowResetsConsumer() async {
     let source = AsyncStream.makeStream(of: Data.self)
-    let recovery = AdapterRecoveryCounter()
+    let recovery = AdapterRecoveryGate()
     let endpoint = Dev3TerminalEndpoint(
         identity: "tiny-output-buffer",
         output: source.stream,
@@ -173,26 +185,165 @@ func outputOverflowResetsConsumer() async {
         connectionStates: .finished,
         maxBufferedOutputBytes: 4,
         recoverOutputOverflow: {
-            await recovery.record()
+            await recovery.recover()
         },
         send: { _ in },
         resize: { _, _ in }
     )
-    let output = endpoint.output
+    let abandonedOutput = endpoint.output
+    let abandonedConsumer = Task {
+        var iterator = abandonedOutput.makeAsyncIterator()
+        return await iterator.next()
+    }
+    abandonedConsumer.cancel()
+    #expect(await abandonedConsumer.value == nil)
 
     source.continuation.yield(Data("ABCD".utf8))
     source.continuation.yield(Data("EFGH".utf8))
-    #expect(await eventuallyRecovery(recovery))
+    #expect(await eventuallyRecovery(recovery, count: 1))
 
+    let output = endpoint.output
     var iterator = output.makeAsyncIterator()
     #expect(await iterator.next() == .reset)
     #expect(await iterator.next() == .data(Data("EFGH".utf8)))
 
-    source.continuation.yield(Data("I".utf8))
-    #expect(await iterator.next() == .data(Data("I".utf8)))
+    source.continuation.yield(Data("IJKLMNOP".utf8))
+    let replacement = endpoint.output
+    var replacementIterator = replacement.makeAsyncIterator()
+    #expect(await replacementIterator.next() == .reset)
+    #expect(await replacementIterator.next() == .data(Data("MNOP".utf8)))
     try? await Task.sleep(for: .milliseconds(20))
     #expect(await recovery.snapshot() == 1)
+    await recovery.open()
     source.continuation.finish()
+}
+
+@Test("Output queue survives an absent consumer and newest-lease replacement")
+func outputQueueSurvivesConsumerHandoff() async {
+    let source = AsyncStream.makeStream(of: Data.self)
+    let endpoint = Dev3TerminalEndpoint(
+        identity: "output-global-queue",
+        output: source.stream,
+        send: { _ in },
+        resize: { _, _ in }
+    )
+    let firstOutput = endpoint.output
+    let firstConsumer = Task {
+        var iterator = firstOutput.makeAsyncIterator()
+        return await iterator.next()
+    }
+    firstConsumer.cancel()
+    #expect(await firstConsumer.value == nil)
+
+    source.continuation.yield(Data("while-absent".utf8))
+    try? await Task.sleep(for: .milliseconds(20))
+    _ = endpoint.output
+    source.continuation.yield(Data("while-passive".utf8))
+    try? await Task.sleep(for: .milliseconds(20))
+
+    let newestOutput = endpoint.output
+    var newestIterator = newestOutput.makeAsyncIterator()
+    #expect(await newestIterator.next() == .data(Data("while-absent".utf8)))
+    #expect(await newestIterator.next() == .data(Data("while-passive".utf8)))
+    source.continuation.finish()
+}
+
+@Test("Waiting output lease cannot receive bytes after replacement")
+func outputWaiterRevalidatesNewestLease() async {
+    let source = AsyncStream.makeStream(of: Data.self)
+    let endpoint = Dev3TerminalEndpoint(
+        identity: "output-waiter-handoff",
+        output: source.stream,
+        send: { _ in },
+        resize: { _, _ in }
+    )
+    let firstOutput = endpoint.output
+    let firstConsumer = Task {
+        var iterator = firstOutput.makeAsyncIterator()
+        return await iterator.next()
+    }
+    await Task.yield()
+
+    let replacement = endpoint.output
+    source.continuation.yield(Data("replacement-only".utf8))
+    var replacementIterator = replacement.makeAsyncIterator()
+    #expect(await firstConsumer.value == nil)
+    #expect(await replacementIterator.next() == .data(Data("replacement-only".utf8)))
+    source.continuation.finish()
+}
+
+@Test("Connection state replays the relay-global latest value")
+func connectionStateReplaysLatestAcrossHandoff() async {
+    let states = AsyncStream.makeStream(of: Dev3TerminalConnectionState.self)
+    let endpoint = Dev3TerminalEndpoint(
+        identity: "state-stream-handoff",
+        output: .finished,
+        connectionStates: states.stream,
+        send: { _ in },
+        resize: { _, _ in }
+    )
+
+    let firstStates = endpoint.connectionStates
+    var firstStateIterator = firstStates.makeAsyncIterator()
+    states.continuation.yield(.connected)
+    #expect(await firstStateIterator.next() == .connected)
+    let replacementStates = endpoint.connectionStates
+    var replacementStateIterator = replacementStates.makeAsyncIterator()
+    #expect(await replacementStateIterator.next() == .connected)
+
+    let abandonedStates = endpoint.connectionStates
+    let abandonedStateConsumer = Task {
+        var iterator = abandonedStates.makeAsyncIterator()
+        _ = await iterator.next()
+        return await iterator.next()
+    }
+    await Task.yield()
+    abandonedStateConsumer.cancel()
+    #expect(await abandonedStateConsumer.value == nil)
+    states.continuation.yield(.needsResume)
+    try? await Task.sleep(for: .milliseconds(20))
+    let statesAfterAbsence = endpoint.connectionStates
+    var statesAfterAbsenceIterator = statesAfterAbsence.makeAsyncIterator()
+    #expect(await statesAfterAbsenceIterator.next() == .needsResume)
+    states.continuation.finish()
+}
+
+@Test("Clipboard delivery follows the newest lease without replaying absence")
+func clipboardUsesLinearizedHandoff() async {
+    let clipboard = AsyncStream.makeStream(of: String.self)
+    let endpoint = Dev3TerminalEndpoint(
+        identity: "clipboard-stream-handoff",
+        output: .finished,
+        clipboardText: clipboard.stream,
+        send: { _ in },
+        resize: { _, _ in }
+    )
+    let firstClipboard = endpoint.clipboardText
+    let firstClipboardConsumer = Task {
+        var iterator = firstClipboard.makeAsyncIterator()
+        return await iterator.next()
+    }
+    await Task.yield()
+    let replacementClipboard = endpoint.clipboardText
+    clipboard.continuation.yield("replacement")
+    var replacementClipboardIterator = replacementClipboard.makeAsyncIterator()
+    #expect(await firstClipboardConsumer.value == nil)
+    #expect(await replacementClipboardIterator.next() == "replacement")
+
+    let abandonedClipboard = endpoint.clipboardText
+    let abandonedClipboardConsumer = Task {
+        var iterator = abandonedClipboard.makeAsyncIterator()
+        return await iterator.next()
+    }
+    abandonedClipboardConsumer.cancel()
+    #expect(await abandonedClipboardConsumer.value == nil)
+    clipboard.continuation.yield("dropped-without-consumer")
+    try? await Task.sleep(for: .milliseconds(20))
+    let clipboardAfterAbsence = endpoint.clipboardText
+    clipboard.continuation.yield("fresh")
+    var clipboardAfterAbsenceIterator = clipboardAfterAbsence.makeAsyncIterator()
+    #expect(await clipboardAfterAbsenceIterator.next() == "fresh")
+    clipboard.continuation.finish()
 }
 
 @Test("PTY state mapping removes transport session and error details")
@@ -273,9 +424,9 @@ private func eventuallyOutput(
     return false
 }
 
-private func eventuallyRecovery(_ recovery: AdapterRecoveryCounter) async -> Bool {
+private func eventuallyRecovery(_ recovery: AdapterRecoveryGate, count: Int) async -> Bool {
     for _ in 0 ..< 100 {
-        if await recovery.snapshot() == 1 {
+        if await recovery.snapshot() == count {
             return true
         }
         try? await Task.sleep(for: .milliseconds(10))

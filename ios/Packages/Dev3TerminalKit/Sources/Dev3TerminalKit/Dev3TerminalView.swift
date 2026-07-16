@@ -214,7 +214,7 @@
                         guard !Task.isCancelled else { break }
                         switch event {
                         case let .data(data):
-                            await currentFrameBuffer.append(data)
+                            guard await currentFrameBuffer.append(data) else { return }
                         case .reset:
                             await currentFrameBuffer.discardPending()
                             terminalView?.getTerminal().resetToInitialState()

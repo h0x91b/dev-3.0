@@ -101,11 +101,13 @@ public struct Dev3TerminalEndpoint: Sendable {
         )
         let clipboardRelay = Dev3TerminalStreamRelay(
             source: clipboardText,
-            bufferingPolicy: .bufferingNewest(1)
+            bufferingPolicy: .bufferingNewest(1),
+            replaysLatest: false
         )
         let connectionStateRelay = Dev3TerminalStreamRelay(
             source: connectionStates,
-            bufferingPolicy: .bufferingNewest(1)
+            bufferingPolicy: .bufferingNewest(1),
+            replaysLatest: true
         )
         makeOutputStream = { outputRelay.subscribe() }
         makeClipboardStream = { clipboardRelay.subscribe() }
@@ -126,20 +128,20 @@ public struct Dev3TerminalEndpoint: Sendable {
 private final class Dev3TerminalOutputRelay: @unchecked Sendable {
     private static let preferredChunkBytes = 64 * 1024
     private typealias Event = Dev3TerminalOutputEvent
-    private typealias Waiter = CheckedContinuation<Event?, Never>
+    private typealias Waiter = CheckedContinuation<Void, Never>
 
     private struct Subscription {
         let id: UUID
-        var bufferedEvents: [Event] = []
-        var bufferedBytes = 0
         var waiter: Waiter?
     }
 
     private struct State {
         var subscription: Subscription?
+        var bufferedEvents: [Event] = []
+        var bufferedBytes = 0
         var hasStarted = false
         var isFinished = false
-        var isRecoveringOverflow = false
+        var overflowRecoveryID: UUID?
     }
 
     private struct SubscriptionUpdate {
@@ -175,7 +177,7 @@ private final class Dev3TerminalOutputRelay: @unchecked Sendable {
     func subscribe() -> Dev3TerminalOutputSequence {
         let subscriptionID = UUID()
         let update = lock.withLock { () -> SubscriptionUpdate in
-            guard !state.isFinished else {
+            guard !state.isFinished || !state.bufferedEvents.isEmpty else {
                 return SubscriptionUpdate(isFinished: true, shouldStart: false, previous: nil)
             }
             let previous = state.subscription?.waiter
@@ -194,7 +196,7 @@ private final class Dev3TerminalOutputRelay: @unchecked Sendable {
                 previous: previous
             )
         }
-        update.previous?.resume(returning: nil)
+        update.previous?.resume()
         if update.isFinished {
             return Dev3TerminalOutputSequence { nil }
         }
@@ -235,79 +237,102 @@ private final class Dev3TerminalOutputRelay: @unchecked Sendable {
 
     private func publishChunk(_ chunk: Data) {
         let update = lock.withLock {
-            () -> (waiter: Waiter?, shouldRecover: Bool) in
-            guard var subscription = state.subscription else { return (nil, false) }
-            if let waiter = subscription.waiter {
-                subscription.waiter = nil
-                state.subscription = subscription
-                return (waiter, false)
-            }
+            () -> (waiter: Waiter?, recoveryID: UUID?) in
+            guard !state.isFinished else { return (nil, nil) }
 
-            var shouldRecover = false
-            if subscription.bufferedBytes + chunk.count > maxBufferedBytes {
-                // Never join bytes across a gap: discard the old queue and reset SwiftTerm before
-                // delivering the suffix that triggered transport recovery.
-                subscription.bufferedEvents = [.reset]
-                subscription.bufferedBytes = 0
-                if !state.isRecoveringOverflow {
-                    state.isRecoveringOverflow = true
-                    shouldRecover = true
+            var recoveryID: UUID?
+            if state.bufferedBytes + chunk.count > maxBufferedBytes {
+                // The queue is relay-owned: a view handoff cannot silently erase a transport gap.
+                state.bufferedEvents.removeAll(keepingCapacity: false)
+                state.bufferedBytes = 0
+                state.bufferedEvents.append(.reset)
+                if state.overflowRecoveryID == nil {
+                    let newRecoveryID = UUID()
+                    state.overflowRecoveryID = newRecoveryID
+                    recoveryID = newRecoveryID
                 }
             }
-            subscription.bufferedEvents.append(.data(chunk))
-            subscription.bufferedBytes += chunk.count
-            state.subscription = subscription
-            return (nil, shouldRecover)
+            state.bufferedEvents.append(.data(chunk))
+            state.bufferedBytes += chunk.count
+
+            var waiter: Waiter?
+            if var subscription = state.subscription {
+                waiter = subscription.waiter
+                subscription.waiter = nil
+                state.subscription = subscription
+            }
+            return (waiter, recoveryID)
         }
-        update.waiter?.resume(returning: .data(chunk))
-        guard update.shouldRecover else { return }
+        // A waiter is only a wake signal. `next` must reacquire the lock and validate its lease
+        // before it can remove an event from the relay-global queue.
+        update.waiter?.resume()
+        guard let recoveryID = update.recoveryID else { return }
         let task = Task { [weak self, recoverOverflow] in
             await recoverOverflow()
-            self?.finishOverflowRecovery()
+            self?.finishOverflowRecovery(recoveryID)
         }
         lock.withLock {
-            overflowTask?.cancel()
-            overflowTask = task
+            if state.overflowRecoveryID == recoveryID {
+                overflowTask = task
+            }
         }
     }
 
-    private func finishOverflowRecovery() {
+    private func finishOverflowRecovery(_ recoveryID: UUID) {
         lock.withLock {
-            state.isRecoveringOverflow = false
+            guard state.overflowRecoveryID == recoveryID else { return }
+            state.overflowRecoveryID = nil
             overflowTask = nil
         }
     }
 
     private func next(_ subscriptionID: UUID) async -> Event? {
-        await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                let result = lock.withLock { () -> Event?? in
-                    guard !Task.isCancelled,
-                          var subscription = state.subscription,
-                          subscription.id == subscriptionID,
-                          !state.isFinished
-                    else {
-                        return .some(nil)
-                    }
-                    if !subscription.bufferedEvents.isEmpty {
-                        let event = subscription.bufferedEvents.removeFirst()
-                        if case let .data(data) = event {
-                            subscription.bufferedBytes -= data.count
-                        }
-                        state.subscription = subscription
-                        return .some(event)
-                    }
-                    guard subscription.waiter == nil else { return .some(nil) }
-                    subscription.waiter = continuation
-                    state.subscription = subscription
-                    return nil
+        while true {
+            let event = lock.withLock { () -> Event?? in
+                guard !Task.isCancelled,
+                      state.subscription?.id == subscriptionID
+                else {
+                    return .some(nil)
                 }
-                if let result {
-                    continuation.resume(returning: result)
+                if !state.bufferedEvents.isEmpty {
+                    let event = state.bufferedEvents.removeFirst()
+                    if case let .data(data) = event {
+                        state.bufferedBytes -= data.count
+                    }
+                    if state.bufferedEvents.isEmpty {
+                        state.bufferedEvents.removeAll(keepingCapacity: false)
+                    }
+                    return .some(event)
                 }
+                return state.isFinished ? .some(nil) : nil
             }
-        } onCancel: {
-            remove(subscriptionID)
+            if let event {
+                return event
+            }
+
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    let shouldResume = lock.withLock { () -> Bool in
+                        guard !Task.isCancelled,
+                              var subscription = state.subscription,
+                              subscription.id == subscriptionID,
+                              state.bufferedEvents.isEmpty,
+                              !state.isFinished,
+                              subscription.waiter == nil
+                        else {
+                            return true
+                        }
+                        subscription.waiter = continuation
+                        state.subscription = subscription
+                        return false
+                    }
+                    if shouldResume {
+                        continuation.resume()
+                    }
+                }
+            } onCancel: {
+                remove(subscriptionID)
+            }
         }
     }
 
@@ -316,10 +341,9 @@ private final class Dev3TerminalOutputRelay: @unchecked Sendable {
             guard state.subscription?.id == subscriptionID else { return nil }
             let waiter = state.subscription?.waiter
             state.subscription = nil
-            state.isRecoveringOverflow = false
             return waiter
         }
-        waiter?.resume(returning: nil)
+        waiter?.resume()
     }
 
     private func finish() {
@@ -327,131 +351,10 @@ private final class Dev3TerminalOutputRelay: @unchecked Sendable {
             guard !state.isFinished else { return nil as Waiter? }
             state.isFinished = true
             let waiter = state.subscription?.waiter
-            state.subscription = nil
-            state.isRecoveringOverflow = false
+            state.subscription?.waiter = nil
             return waiter
         }
-        waiter?.resume(returning: nil)
-    }
-}
-
-private final class Dev3TerminalStreamRelay<Element: Sendable>: @unchecked Sendable {
-    private typealias Continuation = AsyncStream<Element>.Continuation
-
-    private struct Subscription {
-        let id: UUID
-        let continuation: Continuation
-    }
-
-    private struct State {
-        var subscription: Subscription?
-        var hasStarted = false
-        var isFinished = false
-    }
-
-    private struct SubscriptionUpdate {
-        let isFinished: Bool
-        let shouldStart: Bool
-        let previous: Continuation?
-    }
-
-    private let source: AsyncStream<Element>
-    private let bufferingPolicy: Continuation.BufferingPolicy
-    private let lock = NSLock()
-    private var state = State()
-    private var sourceTask: Task<Void, Never>?
-
-    init(
-        source: AsyncStream<Element>,
-        bufferingPolicy: AsyncStream<Element>.Continuation.BufferingPolicy
-    ) {
-        self.source = source
-        self.bufferingPolicy = bufferingPolicy
-    }
-
-    deinit {
-        sourceTask?.cancel()
-        finish()
-    }
-
-    func subscribe() -> AsyncStream<Element> {
-        let pair = AsyncStream.makeStream(
-            of: Element.self,
-            bufferingPolicy: bufferingPolicy
-        )
-        let subscriptionID = UUID()
-        pair.continuation.onTermination = { [weak self] _ in
-            self?.remove(subscriptionID)
-        }
-
-        let update = lock.withLock { () -> SubscriptionUpdate in
-            guard !state.isFinished else {
-                return SubscriptionUpdate(isFinished: true, shouldStart: false, previous: nil)
-            }
-            let previous = state.subscription?.continuation
-            state.subscription = Subscription(
-                id: subscriptionID,
-                continuation: pair.continuation
-            )
-            guard !state.hasStarted else {
-                return SubscriptionUpdate(
-                    isFinished: false,
-                    shouldStart: false,
-                    previous: previous
-                )
-            }
-            state.hasStarted = true
-            return SubscriptionUpdate(
-                isFinished: false,
-                shouldStart: true,
-                previous: previous
-            )
-        }
-        update.previous?.finish()
-        if update.isFinished {
-            pair.continuation.finish()
-        } else if update.shouldStart {
-            startSourcePump()
-        }
-        return pair.stream
-    }
-
-    private func startSourcePump() {
-        let task = Task { [weak self, source] in
-            for await element in source {
-                guard !Task.isCancelled else { break }
-                self?.publish(element)
-            }
-            self?.finish()
-        }
-        lock.withLock {
-            sourceTask = task
-        }
-    }
-
-    private func publish(_ element: Element) {
-        guard let subscription = lock.withLock({ state.subscription }) else { return }
-        if case .terminated = subscription.continuation.yield(element) {
-            remove(subscription.id)
-        }
-    }
-
-    private func remove(_ subscriptionID: UUID) {
-        lock.withLock {
-            guard state.subscription?.id == subscriptionID else { return }
-            state.subscription = nil
-        }
-    }
-
-    private func finish() {
-        let continuation = lock.withLock {
-            guard !state.isFinished else { return nil as Continuation? }
-            state.isFinished = true
-            let continuation = state.subscription?.continuation
-            state.subscription = nil
-            return continuation
-        }
-        continuation?.finish()
+        waiter?.resume()
     }
 }
 
