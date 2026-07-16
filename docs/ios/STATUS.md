@@ -15,17 +15,21 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 | Task Info | Live green | Priority round-trip passed without changing the terminal session, and the destructive native completion approval completed through the same live task route. |
 | Completion cleanup | Live green | A full-ID agent CLI request routed only to the task-owning remote after restart, appeared in native iOS, and returned to Work after approval. The task persisted as completed while its tmux session, socket claim, worktree, and branch were removed; the root task stayed intact. |
 
-## Core QA still required
+## Selected v1 release gates
 
-- Exercise the unit-covered Shift hardware-key sequences with a physical keyboard.
-
-## Later waves
-
+- Finish the live Task Info mutation and destructive-action matrix already in progress.
 - Make the existing native Diff and PR Status destinations reachable from Task Info.
-- Finish Settings: appearance, terminal default, and About.
-- Run and document the resilience matrix, accessibility/device pass, and performance measurements.
-- Finish signing, export-compliance, and TestFlight workflow documentation.
-- Keep Agent Cockpit and other non-v1 surfaces behind the core and release gates above.
+- Make the TestFlight archive and upload workflow operational up to the Apple account, signing, 2FA,
+  and export-compliance decisions that require the owner.
+
+## Deferred after core-value validation
+
+- Settings polish: appearance, terminal default, and About.
+- The extended resilience matrix, accessibility/device pass, and performance measurements beyond the
+  core-flow evidence already recorded.
+- Agent Cockpit and other non-v1 surfaces.
+- An agent-run physical-keyboard pass. The unit-covered Shift sequences will instead be included in
+  the owner's smoke test on the TestFlight build.
 
 ## Recorded evidence
 
