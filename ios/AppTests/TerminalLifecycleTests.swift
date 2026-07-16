@@ -39,7 +39,7 @@ struct TerminalLifecycleTests {
         #expect(snapshot.attachCount == 1)
         #expect(snapshot.kickCount == 1)
 
-        await store.detach()
+        store.detach()
     }
 
     @Test("Reachability recovery kicks only an active attached terminal once per revision")
@@ -71,10 +71,79 @@ struct TerminalLifecycleTests {
         try? await Task.sleep(for: .milliseconds(20))
         #expect(await service.snapshot().kickCount == 1)
 
-        await store.detach()
+        store.detach()
         store.networkBecameReachable(revision: 4)
         try? await Task.sleep(for: .milliseconds(20))
         #expect(await service.snapshot().kickCount == 1)
+    }
+
+    @Test("Returning to the same terminal observes connection states after detaching")
+    func reattachPreservesConnectionStateObservation() async {
+        let service = RecordingTerminalLifecycleService()
+        let store = TerminalTaskStore(service: service)
+
+        store.attach(isSceneActive: true, networkRecoveryRevision: 0)
+        await eventually("The first terminal visit should connect") {
+            let snapshot = await service.snapshot()
+            return store.phase == .connected && snapshot.attachCount == 1
+        }
+
+        store.detach()
+        await eventually("Leaving the terminal should finish detaching") {
+            let snapshot = await service.snapshot()
+            return store.phase == .disconnected && snapshot.detachCompletedCount == 1
+        }
+
+        store.attach(isSceneActive: true, networkRecoveryRevision: 0)
+        await eventually("The second terminal visit should observe the connected state") {
+            let snapshot = await service.snapshot()
+            return store.phase == .connected && snapshot.attachCount == 2
+        }
+
+        store.detach()
+        await eventually("The second terminal visit should finish detaching") {
+            await service.snapshot().detachCompletedCount == 2
+        }
+    }
+
+    @Test("An immediate reattach waits for the previous detach")
+    func immediateReattachWaitsForDetach() async {
+        let detachGate = TerminalLifecycleDetachGate()
+        let service = RecordingTerminalLifecycleService(detachGate: detachGate)
+        let store = TerminalTaskStore(service: service)
+
+        store.attach(isSceneActive: true, networkRecoveryRevision: 0)
+        await eventually("The first terminal visit should connect") {
+            let snapshot = await service.snapshot()
+            return store.phase == .connected && snapshot.attachCount == 1
+        }
+
+        store.detach()
+        await eventually("The detach should reach the lifecycle service") {
+            await service.snapshot().detachStartedCount == 1
+        }
+
+        store.attach(isSceneActive: true, networkRecoveryRevision: 0)
+        try? await Task.sleep(for: .milliseconds(20))
+        #expect(await service.snapshot().attachCount == 1)
+
+        await detachGate.open()
+        await eventually("The reattach should start after the detach completes") {
+            let snapshot = await service.snapshot()
+            return store.phase == .connected
+                && snapshot.attachCount == 2
+                && snapshot.events == [
+                    .attach(1),
+                    .detachStarted(1),
+                    .detachCompleted(1),
+                    .attach(2)
+                ]
+        }
+
+        store.detach()
+        await eventually("The second terminal visit should finish detaching") {
+            await service.snapshot().detachCompletedCount == 2
+        }
     }
 
     private func eventually(
@@ -92,46 +161,81 @@ struct TerminalLifecycleTests {
 }
 
 actor RecordingTerminalLifecycleService: TerminalTaskServicing {
+    enum Event: Equatable, Sendable {
+        case attach(Int)
+        case detachStarted(Int)
+        case detachCompleted(Int)
+    }
+
     struct Snapshot: Sendable {
         let attachCount: Int
+        let detachStartedCount: Int
+        let detachCompletedCount: Int
         let kickCount: Int
         let activeChanges: [Bool]
         let navigationRefreshCount: Int
         let sentData: [Data]
+        let events: [Event]
     }
 
     nonisolated let taskID = "task-lifecycle"
     nonisolated let serverID = "server-lifecycle"
-    nonisolated let endpoint = Dev3TerminalEndpoint(
-        identity: "terminal-lifecycle",
-        output: .finished,
-        send: { _ in },
-        resize: { _, _ in }
-    )
+    nonisolated let endpoint: Dev3TerminalEndpoint
     nonisolated let terminalInteraction = Dev3TerminalInteraction(sendData: { _ in })
     nonisolated let usesSharedTerminalDimensions = true
 
+    private let stateSource: TerminalLifecycleStateSource
+    private let detachGate: TerminalLifecycleDetachGate?
     private var attachCount = 0
+    private var detachStartedCount = 0
+    private var detachCompletedCount = 0
     private var kickCount = 0
     private var activeChanges: [Bool] = []
     private var navigationRefreshCount = 0
     private var sentData: [Data] = []
+    private var events: [Event] = []
+
+    init(detachGate: TerminalLifecycleDetachGate? = nil) {
+        let stateSource = TerminalLifecycleStateSource()
+        self.stateSource = stateSource
+        self.detachGate = detachGate
+        endpoint = Dev3TerminalEndpoint(
+            identity: "terminal-lifecycle",
+            output: .finished,
+            connectionStates: stateSource.stream,
+            send: { _ in },
+            resize: { _, _ in }
+        )
+    }
 
     func snapshot() -> Snapshot {
         Snapshot(
             attachCount: attachCount,
+            detachStartedCount: detachStartedCount,
+            detachCompletedCount: detachCompletedCount,
             kickCount: kickCount,
             activeChanges: activeChanges,
             navigationRefreshCount: navigationRefreshCount,
-            sentData: sentData
+            sentData: sentData,
+            events: events
         )
     }
 
     func attach() async throws {
         attachCount += 1
+        events.append(.attach(attachCount))
+        stateSource.yield(.connecting)
+        stateSource.yield(.connected)
     }
 
-    func detach() async {}
+    func detach() async {
+        detachStartedCount += 1
+        events.append(.detachStarted(detachStartedCount))
+        await detachGate?.wait()
+        detachCompletedCount += 1
+        events.append(.detachCompleted(detachCompletedCount))
+        stateSource.yield(.disconnected)
+    }
 
     func kick() async {
         kickCount += 1
@@ -185,4 +289,40 @@ actor RecordingTerminalLifecycleService: TerminalTaskServicing {
     }
 
     func resize(columns _: Int, rows _: Int) async throws {}
+}
+
+private struct TerminalLifecycleStateSource: Sendable {
+    let stream: AsyncStream<Dev3TerminalConnectionState>
+    private let continuation: AsyncStream<Dev3TerminalConnectionState>.Continuation
+
+    init() {
+        let pair = AsyncStream.makeStream(
+            of: Dev3TerminalConnectionState.self,
+            bufferingPolicy: .bufferingNewest(1)
+        )
+        stream = pair.stream
+        continuation = pair.continuation
+    }
+
+    func yield(_ state: Dev3TerminalConnectionState) {
+        continuation.yield(state)
+    }
+}
+
+actor TerminalLifecycleDetachGate {
+    private var isOpen = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func open() {
+        isOpen = true
+        continuation?.resume()
+        continuation = nil
+    }
 }

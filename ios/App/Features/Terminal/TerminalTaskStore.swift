@@ -61,16 +61,25 @@ final class TerminalTaskStore {
 
     private let draftKey: String
     private var attachTask: Task<Void, Never>?
+    private var detachTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var isAttached = false
+    private var isAttachmentDesired = false
     private var isSceneActive = false
     private var networkRecoveryRevision: UInt64 = 0
+    private var lifecycleGeneration: UInt64 = 0
 
     init(service: any TerminalTaskServicing) {
         self.service = service
         draftKey = "dev3.terminal.draft.\(service.serverID).\(service.taskID)"
         draft = UserDefaults.standard.string(forKey: draftKey) ?? ""
+    }
+
+    isolated deinit {
+        attachTask?.cancel()
+        stateTask?.cancel()
+        pollTask?.cancel()
     }
 
     var endpoint: Dev3TerminalEndpoint {
@@ -245,7 +254,7 @@ final class TerminalTaskStore {
     }
 
     private func observeConnectionStates() {
-        stateTask?.cancel()
+        guard stateTask == nil else { return }
         stateTask = Task { [weak self, endpoint] in
             for await state in endpoint.connectionStates {
                 guard !Task.isCancelled else { break }
@@ -342,24 +351,46 @@ final class TerminalTaskStore {
 
 extension TerminalTaskStore {
     func attach(isSceneActive: Bool, networkRecoveryRevision: UInt64) {
-        guard attachTask == nil, !isAttached else { return }
+        guard !isAttachmentDesired else { return }
+        isAttachmentDesired = true
         self.isSceneActive = isSceneActive
         self.networkRecoveryRevision = networkRecoveryRevision
+        lifecycleGeneration &+= 1
+        let generation = lifecycleGeneration
+        let pendingDetach = detachTask
         phase = .connecting
         observeConnectionStates()
         attachTask = Task { [weak self] in
             guard let self else { return }
-            defer { attachTask = nil }
+            await pendingDetach?.value
+            guard !Task.isCancelled,
+                  lifecycleGeneration == generation,
+                  isAttachmentDesired
+            else { return }
+            detachTask = nil
             do {
-                try await service.setTerminalActive(isSceneActive)
+                try await service.setTerminalActive(self.isSceneActive)
                 try await service.attach()
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      lifecycleGeneration == generation,
+                      isAttachmentDesired
+                else { return }
                 isAttached = true
                 await refreshNavigation()
+                guard !Task.isCancelled,
+                      lifecycleGeneration == generation,
+                      isAttachmentDesired
+                else { return }
                 beginPollingNavigation()
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      lifecycleGeneration == generation,
+                      isAttachmentDesired
+                else { return }
                 phase = .failed(error.localizedDescription)
+            }
+            if lifecycleGeneration == generation {
+                attachTask = nil
             }
         }
     }
@@ -389,15 +420,25 @@ extension TerminalTaskStore {
         }
     }
 
-    func detach() async {
+    func detach() {
+        guard isAttachmentDesired else { return }
+        isAttachmentDesired = false
+        lifecycleGeneration &+= 1
+        let generation = lifecycleGeneration
         isAttached = false
-        attachTask?.cancel()
-        stateTask?.cancel()
+        let pendingAttach = attachTask
+        let pendingDetach = detachTask
+        pendingAttach?.cancel()
         pollTask?.cancel()
         attachTask = nil
-        stateTask = nil
         pollTask = nil
-        await service.detach()
-        phase = .disconnected
+        detachTask = Task { [weak self, service] in
+            await pendingAttach?.value
+            await pendingDetach?.value
+            await service.detach()
+            guard let self, lifecycleGeneration == generation else { return }
+            detachTask = nil
+            phase = .disconnected
+        }
     }
 }

@@ -118,7 +118,7 @@ struct TaskTerminalScreen: View {
             store.networkBecameReachable(revision: revision)
         }
         .onDisappear {
-            Task { await store.detach() }
+            store.detach()
         }
         .accessibilityIdentifier("terminal.screen")
     }
