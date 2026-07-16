@@ -33,6 +33,7 @@ public struct TaskVariantSummary: Equatable, Sendable {
 public struct TaskCardActions {
     public let open: () -> Void
     public let move: (Dev3TaskStatus) -> Void
+    public let moveToCustomColumn: (String) -> Void
     public let setPriority: (Dev3TaskPriority) -> Void
     public let toggleWatch: () -> Void
     public let openInfo: () -> Void
@@ -41,6 +42,7 @@ public struct TaskCardActions {
     public init(
         open: @escaping () -> Void,
         move: @escaping (Dev3TaskStatus) -> Void = { _ in },
+        moveToCustomColumn: @escaping (String) -> Void = { _ in },
         setPriority: @escaping (Dev3TaskPriority) -> Void = { _ in },
         toggleWatch: @escaping () -> Void = {},
         openInfo: @escaping () -> Void = {},
@@ -48,6 +50,7 @@ public struct TaskCardActions {
     ) {
         self.open = open
         self.move = move
+        self.moveToCustomColumn = moveToCustomColumn
         self.setPriority = setPriority
         self.toggleWatch = toggleWatch
         self.openInfo = openInfo
@@ -58,6 +61,7 @@ public struct TaskCardActions {
 public struct NativeTaskCard: View {
     private let task: Dev3Task
     private let labels: [Dev3Label]
+    private let customColumns: [Dev3CustomColumn]
     private let variantSummary: TaskVariantSummary
     private let prStatus: TaskPRStatusPush?
     private let surface: TaskCardSurface
@@ -69,6 +73,7 @@ public struct NativeTaskCard: View {
     public init(
         task: Dev3Task,
         labels: [Dev3Label] = [],
+        customColumns: [Dev3CustomColumn] = [],
         variantSummary: TaskVariantSummary = TaskVariantSummary(),
         prStatus: TaskPRStatusPush? = nil,
         surface: TaskCardSurface = .solid,
@@ -77,6 +82,7 @@ public struct NativeTaskCard: View {
     ) {
         self.task = task
         self.labels = labels
+        self.customColumns = customColumns
         self.variantSummary = variantSummary
         self.prStatus = prStatus
         self.surface = surface
@@ -183,9 +189,11 @@ public struct NativeTaskCard: View {
     @ViewBuilder
     private var taskContextMenu: some View {
         Menu("Move to") {
-            ForEach(Dev3TaskStatus.allCases, id: \.self) { status in
+            ForEach(TaskCardContextDestinations.statuses(for: task), id: \.self) { status in
                 Button(status.displayName) { actions.move(status) }
-                    .disabled(status == task.status && task.customColumnId == nil)
+            }
+            ForEach(TaskCardContextDestinations.customColumns(for: task, among: customColumns)) { column in
+                Button(column.name) { actions.moveToCustomColumn(column.id) }
             }
         }
         .disabled(!mutationsEnabled)
@@ -216,5 +224,21 @@ public struct NativeTaskCard: View {
         mutationsEnabled
             ? "Opens task terminal. Long press for task actions."
             : "Opens task terminal. Task changes are unavailable while disconnected."
+    }
+}
+
+enum TaskCardContextDestinations {
+    static func statuses(for task: Dev3Task) -> [Dev3TaskStatus] {
+        Dev3TaskStatus.allCases.filter { status in
+            guard status != task.status || task.customColumnId != nil else { return false }
+            return !(task.status == .todo && status == .inProgress)
+        }
+    }
+
+    static func customColumns(
+        for task: Dev3Task,
+        among columns: [Dev3CustomColumn]
+    ) -> [Dev3CustomColumn] {
+        columns.filter { $0.id != task.customColumnId }
     }
 }

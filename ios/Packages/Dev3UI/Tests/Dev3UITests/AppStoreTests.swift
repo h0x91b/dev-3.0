@@ -8,6 +8,7 @@ import Testing
 
 @MainActor
 @Suite("App store", .serialized)
+// swiftlint:disable type_body_length
 struct AppStoreTests {
     @Test("Snapshot refetch and every typed state push reduce deterministically")
     func snapshotReducer() throws {
@@ -162,6 +163,167 @@ struct AppStoreTests {
         #expect(store.banner == .reconnecting)
     }
 
+    @Test("Loaded boards refetch on every reconnect and retain full cached history on failure")
+    func loadedBoardReconnects() async throws {
+        let alpha = try project(id: "project-a", name: "Alpha")
+        let active = try task(
+            id: "active",
+            projectId: alpha.id,
+            seq: 1,
+            title: "Active",
+            status: .inProgress
+        )
+        let completed = try task(
+            id: "completed",
+            projectId: alpha.id,
+            seq: 2,
+            title: "Completed",
+            status: .completed
+        )
+        let rpc = try StoreRPC(
+            projects: [alpha],
+            projectTasks: [projectTasks(projectId: alpha.id, tasks: [active])]
+        )
+        rpc.setBoardTasks([active, completed], projectID: alpha.id)
+        rpc.setGlobalDropPosition("bottom")
+        let store = AppStore(controller: makeController(), rpc: rpc)
+        await store.start()
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+
+        await store.refreshProject(alpha.id)
+        #expect(store.tasksByProject[alpha.id]?.map(\.id) == [active.id, completed.id])
+        #expect(store.taskDropPosition == .bottom)
+
+        rpc.failNextBoardFetch(projectID: alpha.id)
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+
+        #expect(rpc.boardFetchCountByProject[alpha.id] == 2)
+        #expect(store.tasksByProject[alpha.id]?.map(\.id) == [active.id, completed.id])
+    }
+
+    @Test("Stale refetch cannot erase remembered board IDs after RPC replacement")
+    func staleRefetchKeepsRememberedBoards() async throws {
+        let alpha = try project(id: "project-a", name: "Alpha")
+        let oldRPC = StoreRPC(projects: [], projectTasks: [])
+        let newRPC = StoreRPC(projects: [alpha], projectTasks: [])
+        let store = AppStore(controller: makeController(), rpc: oldRPC)
+        await store.start()
+        store.loadedBoardProjectIDs = [alpha.id]
+        oldRPC.suspendNextProjectFetch()
+        let generation = store.rpcGeneration
+        let staleRefetch = Task {
+            await store.refetch(using: oldRPC, generation: generation)
+        }
+        await settle()
+
+        store.attach(newRPC)
+        oldRPC.resumeProjectFetch()
+        await staleRefetch.value
+
+        #expect(store.loadedBoardProjectIDs == [alpha.id])
+    }
+
+    @Test("Live actions apply server responses and route every RPC")
+    func liveActions() async throws {
+        let alpha = try project(id: "project-a", name: "Alpha")
+        let original = try task(id: "task-1", projectId: alpha.id, seq: 1, title: "Original")
+        let updated = try task(id: original.id, projectId: alpha.id, seq: 1, title: "Server response")
+        let rpc = try StoreRPC(
+            projects: [alpha],
+            projectTasks: [projectTasks(projectId: alpha.id, tasks: [original])]
+        )
+        rpc.setMutationResult(updated)
+        rpc.setBoardTasks([updated], projectID: alpha.id)
+        let store = AppStore(controller: makeController(), rpc: rpc)
+        await store.start()
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+
+        await store.moveTask(original, to: .reviewByUser)
+        await store.setTaskPriority(original, priority: .p0)
+        await store.toggleTaskWatch(original)
+        await store.moveTask(original, toCustomColumn: "custom")
+        await store.pullProjectMain(alpha.id)
+
+        #expect(rpc.moveCalls.last?.taskID == original.id)
+        #expect(rpc.moveCalls.last?.status == .reviewByUser)
+        #expect(rpc.priorityCalls.last?.priority == .p0)
+        #expect(rpc.watchCalls.last?.watched == true)
+        #expect(rpc.customColumnCalls.last?.columnID == "custom")
+        #expect(rpc.pullCalls == [alpha.id])
+        #expect(store.task(projectId: alpha.id, taskId: original.id)?.title == "Server response")
+        #expect(store.projectPullStates[alpha.id] == .succeeded("Updated"))
+    }
+
+    @Test("Clipboard fanout is live-only and removes observers after every terminal closes")
+    func clipboardStreamLifecycle() async throws {
+        let rpc = StoreRPC(projects: [], projectTasks: [])
+        let store = AppStore(controller: makeController(), rpc: rpc)
+        await store.start()
+        let historical = try decode(OSC52ClipboardPush.self, """
+        {"taskId":"task-1","text":"historical","len":10}
+        """)
+        rpc.emitPush(.osc52Clipboard(historical))
+        await settle()
+
+        var firstValues: [String] = []
+        let firstConsumer = Task {
+            for await value in store.clipboardStream(for: "task-1") {
+                firstValues.append(value)
+                break
+            }
+        }
+        await settle()
+        #expect(store.pushObserverCount == 1)
+        #expect(firstValues.isEmpty)
+        let firstLive = try decode(OSC52ClipboardPush.self, """
+        {"taskId":"task-1","text":"first","len":5}
+        """)
+        rpc.emitPush(.osc52Clipboard(firstLive))
+        await firstConsumer.value
+        await settle()
+        #expect(firstValues == ["first"])
+        #expect(store.pushObserverCount == 0)
+
+        var reopenedValues: [String] = []
+        let reopenedConsumer = Task {
+            for await value in store.clipboardStream(for: "task-1") {
+                reopenedValues.append(value)
+                break
+            }
+        }
+        await settle()
+        #expect(reopenedValues.isEmpty)
+        let secondLive = try decode(OSC52ClipboardPush.self, """
+        {"taskId":"task-1","text":"second","len":6}
+        """)
+        rpc.emitPush(.osc52Clipboard(secondLive))
+        await reopenedConsumer.value
+        await settle()
+        #expect(reopenedValues == ["second"])
+        #expect(store.pushObserverCount == 0)
+        #expect(rpc.pushStreamReadCount == 1)
+    }
+
+    @Test("Offline task opening is gated and terminal route removal retains project boards")
+    func offlineRoutesAndRemoval() {
+        let store = AppStore(controller: makeController())
+        store.openTask(projectId: "project-a", taskId: "task-1", from: .work)
+        #expect(store.workPath.isEmpty)
+
+        store.workPath = [.task(projectId: "project-a", taskId: "task-1")]
+        store.projectsPath = [
+            .project("project-a"),
+            .task(projectId: "project-a", taskId: "task-1")
+        ]
+        store.removeTaskRoutes(projectId: "project-a", taskId: "task-1")
+
+        #expect(store.workPath.isEmpty)
+        #expect(store.projectsPath == [.project("project-a")])
+    }
+
     @Test("Replacing and stopping RPC ownership rejects stale stream events")
     func replacementStopAndRestart() async throws {
         let alpha = try project(id: "project-a", name: "Alpha")
@@ -264,6 +426,8 @@ struct AppStoreTests {
     }
 }
 
+// swiftlint:enable type_body_length
+
 private struct StoreTestError: Error {}
 
 private final class StoreRPC: AppRPCServing, @unchecked Sendable {
@@ -275,6 +439,11 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     private var storedProjects: [Dev3Project]
     private var storedProjectTasks: [Dev3ProjectTasks]
     private var shouldFailProjectFetch = false
+    private var boardTasksByProject: [String: [Dev3Task]]
+    private var mutationResultByTask: [String: Dev3Task] = [:]
+    private var priorityResults: [Dev3Task]?
+    private var globalDropPosition = "top"
+    private var projectFetchContinuation: CheckedContinuation<Void, Never>?
     private var state = State()
 
     private struct State {
@@ -282,6 +451,14 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         var connectionStreamReadCount = 0
         var projectFetchCount = 0
         var taskFetchCount = 0
+        var boardFetchCountByProject: [String: Int] = [:]
+        var moveCalls: [(taskID: String, status: Dev3TaskStatus)] = []
+        var priorityCalls: [(taskID: String, priority: Dev3TaskPriority)] = []
+        var watchCalls: [(taskID: String, watched: Bool)] = []
+        var customColumnCalls: [(taskID: String, columnID: String?)] = []
+        var pullCalls: [String] = []
+        var boardFetchFailures: Set<String> = []
+        var suspendsNextProjectFetch = false
         var foregroundCalls: [Bool] = []
         var terminalFocusCalls: [Bool] = []
         var contextCalls: [(projectId: String?, taskId: String?)] = []
@@ -297,6 +474,9 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         connectionContinuation = connectionPair.continuation
         storedProjects = projects
         storedProjectTasks = projectTasks
+        boardTasksByProject = Dictionary(uniqueKeysWithValues: projectTasks.map {
+            ($0.projectId, $0.tasks)
+        })
     }
 
     var pushes: AsyncStream<RPCPushEvent> {
@@ -345,8 +525,51 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         lock.withLock { state.pingCount }
     }
 
+    var boardFetchCountByProject: [String: Int] {
+        lock.withLock { state.boardFetchCountByProject }
+    }
+
+    var moveCalls: [(taskID: String, status: Dev3TaskStatus)] {
+        lock.withLock { state.moveCalls }
+    }
+
+    var priorityCalls: [(taskID: String, priority: Dev3TaskPriority)] {
+        lock.withLock { state.priorityCalls }
+    }
+
+    var watchCalls: [(taskID: String, watched: Bool)] {
+        lock.withLock { state.watchCalls }
+    }
+
+    var customColumnCalls: [(taskID: String, columnID: String?)] {
+        lock.withLock { state.customColumnCalls }
+    }
+
+    var pullCalls: [String] {
+        lock.withLock { state.pullCalls }
+    }
+
     func getProjects() async throws -> [Dev3Project] {
-        try nextProjects()
+        let shouldSuspend = lock.withLock {
+            state.projectFetchCount += 1
+            if state.suspendsNextProjectFetch {
+                state.suspendsNextProjectFetch = false
+                return true
+            }
+            return false
+        }
+        if shouldSuspend {
+            await withCheckedContinuation { continuation in
+                lock.withLock { projectFetchContinuation = continuation }
+            }
+        }
+        return try lock.withLock {
+            if shouldFailProjectFetch {
+                shouldFailProjectFetch = false
+                throw StoreTestError()
+            }
+            return storedProjects
+        }
     }
 
     func getAllProjectTasks() async throws -> [Dev3ProjectTasks] {
@@ -354,6 +577,78 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
             state.taskFetchCount += 1
             return storedProjectTasks
         }
+    }
+
+    func getTasks(projectId: String) async throws -> [Dev3Task] {
+        try lock.withLock {
+            state.boardFetchCountByProject[projectId, default: 0] += 1
+            if state.boardFetchFailures.remove(projectId) != nil {
+                throw StoreTestError()
+            }
+            return boardTasksByProject[projectId] ?? []
+        }
+    }
+
+    func pullProjectMain(projectId: String) async throws -> Dev3ProjectPullResult {
+        try lock.withLock {
+            state.pullCalls.append(projectId)
+            return try decode(#"{"ok":true,"branch":"main","output":"Updated","error":""}"#)
+        }
+    }
+
+    func moveTask(
+        taskId: String,
+        projectId: String,
+        newStatus: Dev3TaskStatus,
+        force _: Bool?,
+        clientPlayedSound _: Bool?
+    ) async throws -> Dev3Task {
+        try lock.withLock {
+            state.moveCalls.append((taskId, newStatus))
+            return try mutationResultByTask[taskId] ?? storedTask(taskId: taskId, projectId: projectId)
+        }
+    }
+
+    func setTaskPriority(
+        taskId: String,
+        projectId: String,
+        priority: Dev3TaskPriority
+    ) async throws -> [Dev3Task] {
+        try lock.withLock {
+            state.priorityCalls.append((taskId, priority))
+            return try priorityResults ?? [
+                mutationResultByTask[taskId] ?? storedTask(taskId: taskId, projectId: projectId)
+            ]
+        }
+    }
+
+    func toggleTaskWatch(
+        taskId: String,
+        projectId: String,
+        watched: Bool
+    ) async throws -> Dev3Task {
+        try lock.withLock {
+            state.watchCalls.append((taskId, watched))
+            return try mutationResultByTask[taskId] ?? storedTask(taskId: taskId, projectId: projectId)
+        }
+    }
+
+    func moveTaskToCustomColumn(
+        taskId: String,
+        projectId: String,
+        customColumnId: String?
+    ) async throws -> Dev3Task {
+        try lock.withLock {
+            state.customColumnCalls.append((taskId, customColumnId))
+            return try mutationResultByTask[taskId] ?? storedTask(taskId: taskId, projectId: projectId)
+        }
+    }
+
+    func getGlobalSettings() async throws -> Dev3GlobalSettings {
+        try decode("""
+        {"defaultAgentId":"claude","defaultConfigId":"default",
+         "taskDropPosition":"\(globalDropPosition)","updateChannel":"stable"}
+        """)
     }
 
     func setWindowForeground(_ focused: Bool) async throws {
@@ -385,15 +680,46 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         lock.withLock { shouldFailProjectFetch = true }
     }
 
-    private func nextProjects() throws -> [Dev3Project] {
-        try lock.withLock {
-            state.projectFetchCount += 1
-            if shouldFailProjectFetch {
-                shouldFailProjectFetch = false
-                throw StoreTestError()
-            }
-            return storedProjects
+    func setBoardTasks(_ tasks: [Dev3Task], projectID: String) {
+        lock.withLock { boardTasksByProject[projectID] = tasks }
+    }
+
+    func failNextBoardFetch(projectID: String) {
+        lock.withLock { _ = state.boardFetchFailures.insert(projectID) }
+    }
+
+    func setMutationResult(_ task: Dev3Task, priorityGroup: [Dev3Task]? = nil) {
+        lock.withLock {
+            mutationResultByTask[task.id] = task
+            priorityResults = priorityGroup
         }
+    }
+
+    func setGlobalDropPosition(_ position: String) {
+        lock.withLock { globalDropPosition = position }
+    }
+
+    func suspendNextProjectFetch() {
+        lock.withLock { state.suspendsNextProjectFetch = true }
+    }
+
+    func resumeProjectFetch() {
+        let continuation = lock.withLock {
+            let continuation = projectFetchContinuation
+            projectFetchContinuation = nil
+            return continuation
+        }
+        continuation?.resume()
+    }
+
+    private func storedTask(taskId: String, projectId: String) throws -> Dev3Task {
+        guard let task = storedProjectTasks
+            .first(where: { $0.projectId == projectId })?
+            .tasks.first(where: { $0.id == taskId })
+        else {
+            throw StoreTestError()
+        }
+        return task
     }
 }
 

@@ -60,6 +60,40 @@ struct TaskCardTests {
         #expect(Color(dev3Hex: "not-a-color") == nil)
     }
 
+    @Test("Context destinations expose every other project custom column")
+    func customColumnDestinations() throws {
+        let project = makeIAProject(customColumns: [
+            makeIACustomColumn("current", name: "Current"),
+            makeIACustomColumn("later", name: "Later")
+        ])
+        let task = makeIATask(id: "custom", customColumnId: "current")
+
+        let destinations = try TaskCardContextDestinations.customColumns(
+            for: task,
+            among: #require(project.customColumns)
+        )
+
+        #expect(destinations.map(\.id) == ["later"])
+        #expect(!TaskCardContextDestinations.statuses(for: task).isEmpty)
+        let todo = makeIATask(id: "todo", status: .todo)
+        #expect(!TaskCardContextDestinations.statuses(for: todo).contains(.inProgress))
+    }
+
+    @Test("Variant picker exposes ordered siblings and handles a removed task")
+    func variantPickerSiblings() {
+        let tasks = [
+            makeIATask(id: "second", groupId: "group", variantIndex: 1),
+            makeIATask(id: "other", groupId: "other", variantIndex: 0),
+            makeIATask(id: "first", groupId: "group", variantIndex: 0)
+        ]
+
+        #expect(
+            TaskVariantPickerProjection.siblings(forTaskID: "second", among: tasks).map(\.id) ==
+                ["first", "second"]
+        )
+        #expect(TaskVariantPickerProjection.siblings(forTaskID: "removed", among: tasks).isEmpty)
+    }
+
     @Test("Cards and owning screens construct for every status and state")
     @MainActor
     func componentConstruction() {

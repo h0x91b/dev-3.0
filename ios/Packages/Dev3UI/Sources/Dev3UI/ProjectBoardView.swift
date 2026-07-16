@@ -140,6 +140,7 @@ public struct ProjectBoardView: View {
                             NativeTaskCard(
                                 task: task,
                                 labels: labels(for: task),
+                                customColumns: project.customColumns ?? [],
                                 variantSummary: TaskVariantSummary.resolve(task: task, among: tasks),
                                 prStatus: prStatusByTask[task.id],
                                 surface: .kanbanGlass,

@@ -95,6 +95,7 @@ public struct WorkQueueView: View {
                 NativeTaskCard(
                     task: task,
                     labels: labels(for: task),
+                    customColumns: projectsByID[task.projectId]?.customColumns ?? [],
                     variantSummary: TaskVariantSummary.resolve(task: task, among: tasks),
                     prStatus: prStatusByTask[task.id],
                     surface: .solid,

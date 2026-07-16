@@ -8,6 +8,27 @@ public protocol AppRPCServing: Sendable {
 
     func getProjects() async throws -> [Dev3Project]
     func getAllProjectTasks() async throws -> [Dev3ProjectTasks]
+    func getTasks(projectId: String) async throws -> [Dev3Task]
+    func pullProjectMain(projectId: String) async throws -> Dev3ProjectPullResult
+    func moveTask(
+        taskId: String,
+        projectId: String,
+        newStatus: Dev3TaskStatus,
+        force: Bool?,
+        clientPlayedSound: Bool?
+    ) async throws -> Dev3Task
+    func setTaskPriority(
+        taskId: String,
+        projectId: String,
+        priority: Dev3TaskPriority
+    ) async throws -> [Dev3Task]
+    func toggleTaskWatch(taskId: String, projectId: String, watched: Bool) async throws -> Dev3Task
+    func moveTaskToCustomColumn(
+        taskId: String,
+        projectId: String,
+        customColumnId: String?
+    ) async throws -> Dev3Task
+    func getGlobalSettings() async throws -> Dev3GlobalSettings
     func setWindowForeground(_ focused: Bool) async throws
     func setActiveContext(projectId: String?, taskId: String?) async throws
     func setTerminalFocus(_ active: Bool) async throws
@@ -56,73 +77,6 @@ public struct AppToast: Equatable, Identifiable, Sendable {
     }
 }
 
-struct AppStoreSnapshot: Equatable, Sendable {
-    var projects: [Dev3Project] = []
-    var tasksByProject: [String: [Dev3Task]] = [:]
-    var prStatusByTask: [String: TaskPRStatusPush] = [:]
-    var clipboardByTask: [String: OSC52ClipboardPush] = [:]
-    var attentionByTask: [String: String] = [:]
-
-    mutating func replace(projects: [Dev3Project], projectTasks: [Dev3ProjectTasks]) {
-        self.projects = projects
-            .filter { $0.deleted != true }
-            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        tasksByProject = Dictionary(uniqueKeysWithValues: projectTasks.map { projectTasks in
-            let sortedTasks = projectTasks.tasks.sorted { lhs, rhs in
-                lhs.seq == rhs.seq ? lhs.id < rhs.id : lhs.seq < rhs.seq
-            }
-            return (projectTasks.projectId, sortedTasks)
-        })
-    }
-
-    mutating func reduce(_ push: RPCPushEvent) -> AppToast? {
-        switch push {
-        case let .taskUpdated(update):
-            upsert(update.task, projectId: update.projectId)
-        case let .taskRemoved(removal):
-            tasksByProject[removal.projectId]?.removeAll { $0.id == removal.taskId }
-            prStatusByTask[removal.taskId] = nil
-            clipboardByTask[removal.taskId] = nil
-            attentionByTask[removal.taskId] = nil
-        case let .projectUpdated(update):
-            projects.removeAll { $0.id == update.project.id }
-            if update.project.deleted != true {
-                projects.append(update.project)
-                projects.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-            } else {
-                let taskIDs = Set(tasksByProject.removeValue(forKey: update.project.id)?.map(\.id) ?? [])
-                prStatusByTask = prStatusByTask.filter { !taskIDs.contains($0.key) }
-                clipboardByTask = clipboardByTask.filter { !taskIDs.contains($0.key) }
-                attentionByTask = attentionByTask.filter { !taskIDs.contains($0.key) }
-            }
-        case let .taskPRStatus(status):
-            prStatusByTask[status.taskId] = status
-        case let .osc52Clipboard(clipboard):
-            clipboardByTask[clipboard.taskId] = clipboard
-        case let .cliAttention(attention):
-            attentionByTask[attention.taskId] = attention.reason
-        case let .cliToast(toast):
-            return AppToast(message: toast.message, level: toast.level)
-        case let .webNotification(notification):
-            let message = notification.body.isEmpty ? notification.title : notification.body
-            return AppToast(message: message, level: notification.level)
-        default:
-            break
-        }
-        return nil
-    }
-
-    private mutating func upsert(_ task: Dev3Task, projectId: String) {
-        var tasks = tasksByProject[projectId] ?? []
-        tasks.removeAll { $0.id == task.id }
-        tasks.append(task)
-        tasks.sort { lhs, rhs in
-            lhs.seq == rhs.seq ? lhs.id < rhs.id : lhs.seq < rhs.seq
-        }
-        tasksByProject[projectId] = tasks
-    }
-}
-
 @MainActor
 @Observable
 public final class AppStore {
@@ -135,9 +89,11 @@ public final class AppStore {
     public private(set) var attentionByTask: [String: String] = [:]
     public private(set) var isInitialLoading = true
     public private(set) var banner: ConnectionBanner?
-    public private(set) var toast: AppToast?
-    public private(set) var lastSyncError: String?
+    public internal(set) var toast: AppToast?
+    public internal(set) var lastSyncError: String?
     public private(set) var lastPush: RPCPushEvent?
+    public private(set) var taskDropPosition = TaskDropPosition.top
+    public internal(set) var projectPullStates: [String: ProjectPullState] = [:]
 
     public var selectedTab = AppTab.work
     public var workPath: [AppRoute] = []
@@ -147,13 +103,15 @@ public final class AppStore {
     private let runtime: ConnectionRuntime?
     private let initialRPC: (any AppRPCServing)?
     private let pingIntervalNanoseconds: UInt64
-    private var rpc: (any AppRPCServing)?
+    var rpc: (any AppRPCServing)?
     private var pushTask: Task<Void, Never>?
     private var connectionTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
-    private var snapshot = AppStoreSnapshot()
+    var snapshot = AppStoreSnapshot()
     private var pushObservers: [UUID: @MainActor (RPCPushEvent) -> Void] = [:]
-    private var rpcGeneration = UUID()
+    var rpcGeneration = UUID()
+    var loadedBoardProjectIDs: Set<String> = []
+    var rpcIsOpen = false
     private var isStarted = false
     private var isSceneActive = true
     private var terminalFocusRequested = false
@@ -218,6 +176,7 @@ public final class AppStore {
         connectionTask = nil
         pingTask = nil
         rpc = nil
+        rpcIsOpen = false
         if let detachedRPC {
             Task {
                 try? await detachedRPC.setTerminalFocus(false)
@@ -281,6 +240,10 @@ public final class AppStore {
     public var shouldShowPairing: Bool {
         controller.activeServer == nil || controller.sessionState == .expired
     }
+
+    var pushObserverCount: Int {
+        pushObservers.count
+    }
 }
 
 extension AppStore {
@@ -291,6 +254,7 @@ extension AppStore {
             Task { try? await detachedRPC.setTerminalFocus(false) }
         }
         self.rpc = rpc
+        rpcIsOpen = false
         let generation = UUID()
         rpcGeneration = generation
         pushTask?.cancel()
@@ -326,12 +290,14 @@ extension AppStore {
         guard isStarted, generation == rpcGeneration else { return }
         switch event {
         case .opened:
+            rpcIsOpen = true
             banner = nil
             if isSceneActive {
                 startPingLoop()
             }
             await refetch(using: rpc, generation: generation)
         case .closed, .failed:
+            rpcIsOpen = false
             pingTask?.cancel()
             pingTask = nil
             if controller.sessionState != .expired {
@@ -344,10 +310,31 @@ extension AppStore {
         do {
             async let projects = rpc.getProjects()
             async let tasks = rpc.getAllProjectTasks()
+            async let settings = try? rpc.getGlobalSettings()
             let refreshedProjects = try await projects
             let refreshedTasks = try await tasks
+            let refreshedSettings = await settings
+            let existingProjectIDs = Set(refreshedProjects.lazy.filter { $0.deleted != true }.map(\.id))
+            let retainedBoardProjectIDs = loadedBoardProjectIDs.intersection(existingProjectIDs)
+            var refreshedBoards: [String: [Dev3Task]] = [:]
+            for projectID in retainedBoardProjectIDs {
+                if let boardTasks = try? await rpc.getTasks(projectId: projectID) {
+                    refreshedBoards[projectID] = boardTasks
+                }
+            }
             guard isStarted, generation == rpcGeneration else { return }
-            snapshot.replace(projects: refreshedProjects, projectTasks: refreshedTasks)
+            loadedBoardProjectIDs = retainedBoardProjectIDs
+            snapshot.replace(
+                projects: refreshedProjects,
+                projectTasks: refreshedTasks,
+                preservingProjectIDs: retainedBoardProjectIDs
+            )
+            for (projectID, boardTasks) in refreshedBoards {
+                snapshot.replaceTasks(boardTasks, projectId: projectID)
+            }
+            if let position = refreshedSettings.flatMap({ TaskDropPosition(rawValue: $0.taskDropPosition) }) {
+                taskDropPosition = position
+            }
             publishSnapshot()
             isInitialLoading = false
             lastSyncError = nil
@@ -365,7 +352,7 @@ extension AppStore {
             toast = routedToast
         }
         publishSnapshot()
-        for observer in pushObservers.values {
+        for observer in Array(pushObservers.values) {
             observer(push)
         }
     }
@@ -384,6 +371,7 @@ extension AppStore {
             banner = nil
         case .authenticating, .connecting:
             banner = .connecting
+            removeAllTaskRoutes()
         case .connected:
             banner = nil
             if isSceneActive {

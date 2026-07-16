@@ -1,21 +1,37 @@
 import Dev3Kit
 import SwiftUI
 
+public typealias TaskDestinationBuilder = @MainActor (_ projectID: String, _ taskID: String) -> AnyView
+public typealias TaskInfoAction = @MainActor (_ projectID: String, _ taskID: String) -> Void
+
 @MainActor
 public struct CompanionRootView: View {
     @Bindable private var store: AppStore
+    private let taskDestinationBuilder: TaskDestinationBuilder
+    private let onOpenTaskInfo: TaskInfoAction
     @State private var showsPairing = false
 
-    public init(store: AppStore) {
+    public init(
+        store: AppStore,
+        taskDestinationBuilder: @escaping TaskDestinationBuilder = { _, _ in
+            AnyView(ContentUnavailableView("Terminal unavailable", systemImage: "terminal"))
+        },
+        onOpenTaskInfo: @escaping TaskInfoAction = { _, _ in }
+    ) {
         self.store = store
+        self.taskDestinationBuilder = taskDestinationBuilder
+        self.onOpenTaskInfo = onOpenTaskInfo
     }
 
     public var body: some View {
         Group {
             if shouldShowConnectedShell {
-                ConnectedShellView(store: store) {
-                    showsPairing = true
-                }
+                ConnectedShellView(
+                    store: store,
+                    taskDestinationBuilder: taskDestinationBuilder,
+                    onOpenTaskInfo: onOpenTaskInfo,
+                    onPairAnother: { showsPairing = true }
+                )
             } else {
                 PairingHomeView(
                     controller: store.controller,
@@ -39,14 +55,22 @@ public struct CompanionRootView: View {
 @MainActor
 private struct ConnectedShellView: View {
     @Bindable var store: AppStore
+    let taskDestinationBuilder: TaskDestinationBuilder
+    let onOpenTaskInfo: TaskInfoAction
     let onPairAnother: () -> Void
+    @State private var variantSelection: VariantSelection?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         TabView(selection: $store.selectedTab) {
             NavigationStack(path: $store.workPath) {
-                WorkOverview(store: store)
-                    .navigationTitle("Work")
+                WorkOverview(store: store) { task in
+                    taskActions(task, origin: .work)
+                }
+                .navigationTitle("Work")
+                .navigationDestination(for: AppRoute.self) { route in
+                    destination(route, origin: .work)
+                }
             }
             .tabItem {
                 Label("Work", systemImage: "rectangle.3.group.fill")
@@ -57,6 +81,9 @@ private struct ConnectedShellView: View {
             NavigationStack(path: $store.projectsPath) {
                 ProjectsOverview(store: store)
                     .navigationTitle("Projects")
+                    .navigationDestination(for: AppRoute.self) { route in
+                        destination(route, origin: .projects)
+                    }
             }
             .tabItem {
                 Label("Projects", systemImage: "folder.fill")
@@ -92,134 +119,68 @@ private struct ConnectedShellView: View {
         }
         .animation(reduceMotion ? nil : .snappy, value: store.banner)
         .animation(reduceMotion ? nil : .snappy, value: store.toast?.id)
+        .sheet(item: $variantSelection) { selected in
+            TaskVariantPicker(
+                selected: selected,
+                tasks: store.tasksByProject[selected.projectID] ?? [],
+                onOpen: { task in
+                    store.openTask(projectId: task.projectId, taskId: task.id, from: store.selectedTab)
+                }
+            )
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("connected.shell")
     }
-}
-
-@MainActor
-private struct WorkOverview: View {
-    @Bindable var store: AppStore
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var palette: Dev3ThemePalette {
-        Dev3Theme.palette(for: colorScheme)
-    }
-
-    private var attentionTasks: [Dev3Task] {
-        store.tasksByProject.values.flatMap(\.self).filter { task in
-            task.status == .userQuestions ||
-                task.status == .reviewByUser ||
-                task.status == .reviewByColleague
-        }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 12) {
-                    Image(systemName: statusIcon)
-                        .foregroundStyle(statusColor)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(statusTitle)
-                            .font(.headline)
-                            .accessibilityIdentifier("connected.status")
-                        Text(store.controller.activeServer?.name ?? "dev3")
-                            .font(.subheadline)
-                            .foregroundStyle(palette.textSecondary)
-                            .accessibilityIdentifier("connected.serverName")
-                    }
-                    Spacer()
-                }
-                .padding(18)
-                .background(palette.surfaceRaised, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(palette.borderDefault)
-                }
-
-                workState
-                    .frame(maxWidth: .infinity, minHeight: 320)
-            }
-            .padding(20)
-        }
-        .background(palette.surfaceBase)
-    }
 
     @ViewBuilder
-    private var workState: some View {
-        if store.isInitialLoading {
-            ProgressView("Loading work…")
-                .accessibilityIdentifier("work.loading")
-        } else if attentionTasks.isEmpty {
-            ContentUnavailableView(
-                "No work needs attention",
-                systemImage: "checkmark.circle",
-                description: Text("Tasks waiting for you across every project will appear here.")
+    private func destination(_ route: AppRoute, origin: AppTab) -> some View {
+        switch route {
+        case let .task(projectID, taskID):
+            TaskDestinationContext(
+                store: store,
+                projectID: projectID,
+                taskID: taskID,
+                destinationBuilder: taskDestinationBuilder
             )
-            .accessibilityIdentifier("work.empty")
-        } else {
-            ContentUnavailableView(
-                "\(attentionTasks.count) task\(attentionTasks.count == 1 ? "" : "s") need attention",
-                systemImage: "person.crop.circle.badge.exclamationmark",
-                description: Text("The cross-project Work queue is synchronized and ready.")
-            )
-            .accessibilityIdentifier("work.ready")
-        }
-    }
-
-    private var statusTitle: String {
-        switch store.controller.sessionState {
-        case .connected:
-            "Connected to dev3"
-        case .authenticating, .connecting:
-            "Connecting to dev3"
-        case .reconnecting:
-            "Reconnecting to dev3"
-        case .idle, .expired:
-            "dev3 is offline"
-        }
-    }
-
-    private var statusIcon: String {
-        store.controller.sessionState == .connected ?
-            "link.circle.fill" : "arrow.triangle.2.circlepath.circle.fill"
-    }
-
-    private var statusColor: Color {
-        store.controller.sessionState == .connected ? palette.success : palette.warning
-    }
-}
-
-@MainActor
-private struct ProjectsOverview: View {
-    @Bindable var store: AppStore
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Group {
-            if store.isInitialLoading {
-                ProgressView("Loading projects…")
-                    .accessibilityIdentifier("projects.loading")
-            } else if store.projects.isEmpty {
-                ContentUnavailableView(
-                    "No projects",
-                    systemImage: "folder",
-                    description: Text("Projects added to the connected dev3 instance will appear here.")
-                )
-                .accessibilityIdentifier("projects.empty")
+        case let .project(projectID):
+            if let project = store.project(id: projectID) {
+                ProjectBoardOverview(store: store, project: project) { task in
+                    taskActions(task, origin: origin)
+                }
             } else {
-                ContentUnavailableView(
-                    "\(store.projects.count) project\(store.projects.count == 1 ? "" : "s") synced",
-                    systemImage: "folder.badge.checkmark",
-                    description: Text("Project boards remain separate from the cross-project Work queue.")
-                )
-                .accessibilityIdentifier("projects.ready")
+                ContentUnavailableView("Project unavailable", systemImage: "folder.badge.questionmark")
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Dev3Theme.palette(for: colorScheme).surfaceBase)
+    }
+
+    private func taskActions(_ task: Dev3Task, origin: AppTab) -> TaskCardActions {
+        TaskCardActions(
+            open: {
+                if store.isConnected {
+                    store.openTask(projectId: task.projectId, taskId: task.id, from: origin)
+                } else {
+                    onOpenTaskInfo(task.projectId, task.id)
+                }
+            },
+            move: { status in
+                Task { await store.moveTask(task, to: status) }
+            },
+            moveToCustomColumn: { columnID in
+                Task { await store.moveTask(task, toCustomColumn: columnID) }
+            },
+            setPriority: { priority in
+                Task { await store.setTaskPriority(task, priority: priority) }
+            },
+            toggleWatch: {
+                Task { await store.toggleTaskWatch(task) }
+            },
+            openInfo: {
+                onOpenTaskInfo(task.projectId, task.id)
+            },
+            showVariants: {
+                variantSelection = VariantSelection(projectID: task.projectId, taskID: task.id)
+            }
+        )
     }
 }
 

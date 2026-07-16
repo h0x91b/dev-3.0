@@ -25,7 +25,7 @@ struct Dev3App: App {
 
     var body: some Scene {
         WindowGroup {
-            CompanionRootView(store: store)
+            CompanionAppRoot(store: store, runtime: runtime)
                 .task {
                     await store.start()
                 }
