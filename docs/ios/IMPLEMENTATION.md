@@ -72,11 +72,11 @@ TabView (Work / Projects / Settings) + `NavigationStack`s; observable `AppStore`
 *Accept:* kill/restart `dev3 remote` while app open → banner cycles reconnecting→connected and board refetches (integration-style UI test or scripted QA note); unit tests for store reducers.
 
 **T2.2 — Projects tab (dashboard)** (S–M)
-Project list with activity summary (mirrors mobile `Dashboard`/`ActivityOverview`): name, active/attention task counts, last activity; tap → its board; `pullProjectMain` action; virtual "Operations" projects render without git actions.
+Project list with activity summary (mirrors mobile `Dashboard`/`ActivityOverview`): name, active/attention task counts, last activity; tap → its board; `pullProjectMain` action; virtual "Operations" projects render without git actions. Projects is the exclusive owner of project boards.
 *Accept:* renders real data; snapshot test; pull action shows terminal-visible progress state per web behavior.
 
-**T2.3 — Work tab: board pager + task cards** (L)
-Attention strip (NEEDS-YOU / WAITING tiers, port `sidebarTiers.ts` ordering) + per-project board: one status column per page (`TabView(.page)` or horizontal snap `ScrollView`), auto-land on preferred attention column until user swipes, column set mirrors web incl. the user-collapsed rule (decision 132) and Completed/Cancelled entry-time sort (#968). TaskCard: status dot, title, seq, labels, ≤3 variant dots (tap → sibling switcher), priority badge, PR/git badge, preparing/shutting-down states. Long-press context menu: move-to-status, priority, watch, open info. Pull-to-refresh. Live updates via `taskUpdated`/`taskRemoved`/`projectUpdated`.
+**T2.3 — Work readiness queue + project board pager + task cards** (L)
+Work renders a cross-project readiness queue only: NEEDS-YOU, custom/manual queues, then WAITING, using `sidebarTiers.ts` ordering. Project detail owns the per-project board: one status column per page (`TabView(.page)` or horizontal snap `ScrollView`), auto-land on preferred attention column until user swipes, column set mirrors web incl. the user-collapsed rule (decision 132) and Completed/Cancelled entry-time sort (#968). TaskCard: status dot, title, seq, labels, ≤3 variant dots (tap → sibling switcher), priority badge, PR/git badge, preparing/shutting-down states. Long-press context menu: move-to-status, priority, watch, open info. Pull-to-refresh. Live updates via `taskUpdated`/`taskRemoved`/`projectUpdated`.
 *Accept:* board reflects a live desktop board incl. push updates within 1s; card snapshot tests per status; context-menu actions round-trip.
 
 **T2.4 — Task terminal screen** (XL — split into 2 PRs if needed: pagers+terminal, then composer+keybar)

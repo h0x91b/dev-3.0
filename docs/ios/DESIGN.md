@@ -1,6 +1,6 @@
 # dev3 iOS App — Design Plan
 
-Status: **approved plan, not yet implemented.** Companion doc: [IMPLEMENTATION.md](IMPLEMENTATION.md) (phases, tickets, sequencing for the agent fleet).
+Status: **approved plan, implementation in progress.** Companion doc: [IMPLEMENTATION.md](IMPLEMENTATION.md) (phases, tickets, sequencing for the agent fleet).
 
 ## 1. Goal
 
@@ -73,12 +73,18 @@ Follow the mobile web IA (Bible §12), expressed natively. `NavigationStack` per
 ```
 Entry (server picker / pairing) ─ when connected ─▶
 TabView:
- ├─ Work (default): Active-tasks strip (NEEDS YOU / WAITING tiers) + project boards
- │    Board = one status column per page, horizontal paging (mirrors MobileBoardCarousel,
- │    auto-lands on the attention column) ─▶ Task screen (push)
- ├─ Projects: dashboard list (add/clone deferred to v2; open board, pull main, settings-lite)
+ ├─ Work (default): cross-project readiness queue (NEEDS YOU / custom manual queues / WAITING)
+ │    └─ Task screen (push)
+ ├─ Projects: dashboard list (add/clone deferred to v2; pull main, settings-lite)
+ │    └─ Project board = one status column per page, horizontal paging
+ │         (mirrors MobileBoardCarousel, auto-lands on the attention column) ─▶ Task screen (push)
  └─ Settings: servers, appearance, terminal prefs, notifications, about
 ```
+
+`Work` is deliberately not a second home for project boards. It is the cross-project interruption
+queue: tasks that need the user now, followed by explicitly configured manual queues, then waiting
+agents. `Projects` exclusively owns project navigation and Kanban boards. Pairing remains an auth
+gate rather than a permanent tab, and immersive task/review/media screens hide the tab bar.
 
 - **Task screen** is the centerpiece: full-screen terminal, window pager → pane pager (swipe, mirroring `MobileWindowCarousel`/`MobilePaneCarousel` and reusing the same `tmuxWindowNavigate`/`tmuxPaneNavigate`/`tmuxAction` RPCs with their idempotent keep-zoom semantics from decision 090), docked composer, keyboard accessory bar, and a task **info sheet** (status, priority, labels, notes, git/PR, actions) as a native bottom sheet (`presentationDetents`) — the native form of the Bible's `BottomSheet` doctrine.
 - **Native conventions override web where they conflict**: swipe-back edge gesture instead of Android-back sentinel; context menus (long-press) on cards instead of hover; pull-to-refresh; standard `confirmationDialog` for destructive actions (the "no native dialogs" rule is an Electrobun-remote constraint, not an iOS one — but keep copy/danger semantics identical); landscape **supported** with adaptive layouts instead of a portrait gate.
@@ -89,7 +95,8 @@ TabView:
 | Screen | Mirrors (web) | Notes |
 |---|---|---|
 | Pairing / server picker | QR scan + `remote-session` boot | Camera QR scan, Bonjour list, manual URL entry |
-| Work tab (strip + board pager) | `ActiveTasksStrip`, `MobileBoardCarousel`, `TaskCard` | Cards: status dot, title, labels, ≤3 variant dots, priority, PR badge |
+| Work tab (readiness queue) | `ActiveTasksStrip`, `sidebarTiers`, `TaskCard` | Cross-project NEEDS-YOU, custom manual queues, then WAITING; no boards |
+| Project board | `MobileBoardCarousel`, `TaskCard` | Lives under Projects; cards show status, title, labels, ≤3 variant dots, priority, PR badge |
 | Task terminal | `TaskTerminal` + carousels + `TerminalComposer` + `ExtraKeyBar` | See §6 |
 | Task info sheet | `TaskInfoPanel` mobile summary + actions sheet | Move status, priority, labels, watch, rename, overview, notes, cancel/delete (confirmed) |
 | Diff viewer | `TaskDiffViewer` | v1 read-only (modes: uncommitted/branch/unpushed/recent-N, file list, unified); inline comments + XML review export in v1.1 |
