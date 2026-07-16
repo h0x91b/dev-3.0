@@ -106,7 +106,7 @@ function FavoritesMenu({
 			role="menu"
 			aria-label={t("launch.favorites")}
 			className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active overflow-hidden py-1 max-w-[calc(100vw-1rem)]"
-			style={{ top: pos.top, left: pos.left, width: 260, visibility: visible ? "visible" : "hidden" }}
+			style={{ top: pos.top, left: pos.left, width: 360, visibility: visible ? "visible" : "hidden" }}
 			onClick={(e) => e.stopPropagation()}
 		>
 			{/* Save/Remove the CURRENT combo (mirrors the trigger star). Keeps the

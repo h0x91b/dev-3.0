@@ -148,6 +148,19 @@ describe("AgentConfigPicker — favorites", () => {
 		expect(menuItemLabels()).toEqual(["Codex · GPT-5.5 · Default", "Claude · Opus 4.8 · Bypass · X-High"]);
 	});
 
+	it("gives the favorites menu enough width for long configuration labels", async () => {
+		const user = userEvent.setup();
+		({ container } = render(
+			<Harness
+				initial={{ agentId: "builtin-claude", configId: "fable-auto-medium" }}
+				favorites={[fav("builtin-claude", "opus-bypass-xhigh", 1, 5)]}
+			/>,
+		));
+
+		await user.click(trigger()!);
+		expect(menu()).toHaveStyle({ width: "360px" });
+	});
+
 	it("clicking a menu item selects that combo (does not launch) and closes the menu", async () => {
 		const user = userEvent.setup();
 		const onChange = vi.fn();
