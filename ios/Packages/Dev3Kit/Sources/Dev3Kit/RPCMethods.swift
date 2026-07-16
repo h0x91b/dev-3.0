@@ -127,6 +127,12 @@ private struct SetTaskLabelsParams: Encodable, Sendable {
     let labelIds: [String]
 }
 
+private struct MoveTaskToCustomColumnParams: Encodable, Sendable {
+    let taskId: String
+    let projectId: String
+    let customColumnId: String?
+}
+
 private struct CreateLabelParams: Encodable, Sendable {
     let projectId: String
     let name: String
@@ -267,6 +273,11 @@ private struct RendererErrorParams: Encodable, Sendable {
     let source: Dev3RendererErrorSource
 }
 
+private struct AgentCompletionResponseParams: Encodable, Sendable {
+    let requestId: String
+    let approved: Bool
+}
+
 /// Typed wrappers for the native v1 method subset in `AppRPCSchema`.
 public extension RPCClient {
     func getProjects() async throws -> [Dev3Project] {
@@ -367,6 +378,21 @@ public extension RPCClient {
         try await call(
             "setTaskLabels",
             params: SetTaskLabelsParams(taskId: taskId, projectId: projectId, labelIds: labelIds)
+        )
+    }
+
+    func moveTaskToCustomColumn(
+        taskId: String,
+        projectId: String,
+        customColumnId: String?
+    ) async throws -> Dev3Task {
+        try await call(
+            "moveTaskToCustomColumn",
+            params: MoveTaskToCustomColumnParams(
+                taskId: taskId,
+                projectId: projectId,
+                customColumnId: customColumnId
+            )
         )
     }
 
@@ -641,6 +667,13 @@ public extension RPCClient {
 
     func setTerminalFocus(_ active: Bool) async throws {
         try await callVoid("setTerminalFocus", params: TerminalFocusParams(active: active))
+    }
+
+    func respondToAgentCompletionRequest(requestId: String, approved: Bool) async throws {
+        try await callVoid(
+            "respondToAgentCompletionRequest",
+            params: AgentCompletionResponseParams(requestId: requestId, approved: approved)
+        )
     }
 
     func ping() async throws -> Dev3Ping {
