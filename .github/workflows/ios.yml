@@ -65,6 +65,21 @@ jobs:
         working-directory: ios
         run: xcodegen generate
 
+      - name: Select iOS Simulator
+        id: simulator
+        working-directory: ios
+        run: echo "udid=$(./scripts/select-test-simulator.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Test iOS app
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project Dev3.xcodeproj \
+            -scheme Dev3 \
+            -destination 'platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}' \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
       - name: Build iOS Simulator app
         working-directory: ios
         run: |

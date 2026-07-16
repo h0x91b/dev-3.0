@@ -36,11 +36,22 @@ swiftlint lint --strict --config .swiftlint.yml
 for package in Packages/Dev3Kit Packages/Dev3TerminalKit Packages/Dev3UI; do
   swift test --package-path "$package"
 done
+
+xcodegen generate
+SIMULATOR_UDID="$(./scripts/select-test-simulator.sh)"
+xcodebuild \
+  -project Dev3.xcodeproj \
+  -scheme Dev3 \
+  -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+  CODE_SIGNING_ALLOWED=NO \
+  test
 ```
 
-The `Dev3` Xcode scheme includes simulator UI coverage for manual pairing, validation, and the
-connected shell. Camera scanning is device-only; Simulator deliberately points testers to the manual
-route.
+The simulator selector deterministically picks the alphabetically first available iPhone on the
+newest installed iOS runtime. The `Dev3` Xcode scheme runs both app-target XCTest/Swift Testing suites
+and simulator UI coverage for manual pairing, validation, and the connected shell. The live runtime UI
+test skips unless its integration environment is configured. Camera scanning is device-only;
+Simulator deliberately points testers to the manual route.
 
 ## Live pairing integration
 
