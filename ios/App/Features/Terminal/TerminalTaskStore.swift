@@ -13,6 +13,15 @@ enum TerminalTaskPhase: Equatable, Sendable {
     case disconnected
 }
 
+enum TerminalSharedSizeNotice {
+    static let message = "Terminal dimensions are shared across connected viewers."
+    static let leaveHint = "Detaches on back"
+
+    static func isVisible(phase: TerminalTaskPhase, usesSharedTerminalDimensions: Bool) -> Bool {
+        phase == .connected && usesSharedTerminalDimensions
+    }
+}
+
 struct TerminalPagerState: Equatable, Sendable {
     var total = 0
     var activeIndex = 0
@@ -65,8 +74,11 @@ final class TerminalTaskStore {
         service.endpoint
     }
 
-    var showsSizeConstraint: Bool {
-        phase == .connected && service.warnsAboutSharedTerminalSize
+    var showsSharedTerminalSizeNotice: Bool {
+        TerminalSharedSizeNotice.isVisible(
+            phase: phase,
+            usesSharedTerminalDimensions: service.usesSharedTerminalDimensions
+        )
     }
 
     func attach(isSceneActive: Bool) {

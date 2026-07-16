@@ -127,7 +127,7 @@ protocol TerminalTaskServicing: Sendable {
     var serverID: String { get }
     var endpoint: Dev3TerminalEndpoint { get }
     var terminalInteraction: Dev3TerminalInteraction { get }
-    var warnsAboutSharedTerminalSize: Bool { get }
+    var usesSharedTerminalDimensions: Bool { get }
 
     func attach() async throws
     func detach() async
@@ -156,7 +156,7 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
     nonisolated let serverID: String
     nonisolated let endpoint: Dev3TerminalEndpoint
     nonisolated let terminalInteraction: Dev3TerminalInteraction
-    nonisolated let warnsAboutSharedTerminalSize: Bool
+    nonisolated let usesSharedTerminalDimensions: Bool
 
     private let rpcClient: RPCClient
     private let ptyClient: PTYClient
@@ -171,13 +171,13 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
         clipboardText: AsyncStream<String>,
         connectionIsCurrent: @escaping @MainActor @Sendable () -> Bool = { true },
         setTerminalFocus: (@Sendable (Bool) async throws -> Void)? = nil,
-        warnsAboutSharedTerminalSize: Bool = true
+        usesSharedTerminalDimensions: Bool = true
     ) {
         self.taskID = taskID
         self.serverID = serverID
         self.rpcClient = rpcClient
         self.ptyClient = ptyClient
-        self.warnsAboutSharedTerminalSize = warnsAboutSharedTerminalSize
+        self.usesSharedTerminalDimensions = usesSharedTerminalDimensions
         let connectionGate = CompanionConnectionLeaseGate(
             connectionIsCurrent: connectionIsCurrent
         )

@@ -36,8 +36,8 @@ struct TaskTerminalScreen: View {
             if store.panes.total != 0 {
                 panePager
             }
-            if store.showsSizeConstraint {
-                sizeConstraintBanner
+            if store.showsSharedTerminalSizeNotice {
+                sharedTerminalSizeNotice
             }
 
             terminalSurface
@@ -322,23 +322,23 @@ private extension TaskTerminalScreen {
         .accessibilityLabel(label)
     }
 
-    private var sizeConstraintBanner: some View {
+    private var sharedTerminalSizeNotice: some View {
         HStack(spacing: 8) {
             Image(systemName: "rectangle.compress.vertical")
                 .foregroundStyle(palette.warning)
                 .accessibilityHidden(true)
-            Text("This device is limiting the shared terminal size.")
+            Text(TerminalSharedSizeNotice.message)
                 .font(.caption)
                 .foregroundStyle(palette.textSecondary)
             Spacer(minLength: 0)
-            Text("Detaches on back")
+            Text(TerminalSharedSizeNotice.leaveHint)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(palette.textMuted)
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 44)
         .background(palette.warning.opacity(0.09))
-        .accessibilityIdentifier("terminal.sizeConstraint")
+        .accessibilityIdentifier("terminal.sharedSizeNotice")
     }
 
     private var composer: some View {
