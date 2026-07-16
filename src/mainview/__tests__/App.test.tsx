@@ -11,6 +11,7 @@ vi.mock("../rpc", () => ({
 	api: {
 		request: {
 			checkSystemRequirements: vi.fn().mockResolvedValue([]),
+			getRosettaWarning: vi.fn().mockResolvedValue(null),
 			checkGhAvailable: vi.fn().mockResolvedValue({ available: true, notInstalled: false }),
 			getProjects: vi.fn().mockResolvedValue([]),
 			getLastRoute: vi.fn().mockResolvedValue({ route: null }),

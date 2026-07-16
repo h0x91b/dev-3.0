@@ -2182,6 +2182,16 @@ export interface RequirementCheckResult {
 	optional?: boolean; // optional requirements don't block the app
 }
 
+// ---- Rosetta warning ----
+
+/**
+ * Reinstall info for an Intel (x64) build running translated under Rosetta 2
+ * on an Apple Silicon Mac; null when the process is not translated. `command`
+ * is a copy-pasteable terminal command to reinstall the native arm64 build;
+ * `kind` says which reinstall path it uses (affects the instruction copy).
+ */
+export type RosettaWarningInfo = { command: string; kind: "brew" | "dmg" } | null;
+
 // ---- Agent availability ----
 
 export interface AgentCheckResult {
@@ -2767,6 +2777,10 @@ export type AppRPCSchema = {
 			checkSystemRequirements: {
 				params: void;
 				response: RequirementCheckResult[];
+			};
+			getRosettaWarning: {
+				params: void;
+				response: RosettaWarningInfo;
 			};
 			checkGhAvailable: {
 				params: void;

@@ -1,11 +1,12 @@
 import { chmodSync, existsSync, mkdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { PATHS } from "../electrobun-platform";
-import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, Project, ProjectSettingsUpdate, RequirementCheckResult } from "../../shared/types";
+import type { AgentCheckResult, CodingAgent, ConfigSourceEntry, Dev3RepoConfig, GitHubCliStatus, GlobalSettings, Project, ProjectSettingsUpdate, RequirementCheckResult, RosettaWarningInfo } from "../../shared/types";
 import * as data from "../data";
 import * as agents from "../agents";
 import * as github from "../github";
 import * as updater from "../updater";
+import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
@@ -308,6 +309,14 @@ async function checkSystemRequirements(): Promise<RequirementCheckResult[]> {
 	return results;
 }
 
+async function getRosettaWarning(): Promise<RosettaWarningInfo> {
+	const info = rosetta.getRosettaWarningInfo();
+	if (info) {
+		log.warn("Rosetta-translated x64 build on Apple Silicon detected", { kind: info.kind });
+	}
+	return info;
+}
+
 async function checkGhAvailable(): Promise<{ available: boolean; notInstalled: boolean }> {
 	log.info("-> checkGhAvailable");
 	const status = await github.getGitHubCliStatus();
@@ -420,6 +429,7 @@ export const settingsConfigHandlers = {
 	getLastRoute,
 	getAppVersion,
 	checkSystemRequirements,
+	getRosettaWarning,
 	checkGhAvailable,
 	setCustomBinaryPath,
 	checkAgentAvailability,
