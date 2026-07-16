@@ -1,0 +1,8 @@
+--swiftversion 6.0
+--indent 4
+--wraparguments before-first
+--wrapparameters before-first
+--wrapcollections before-first
+--commas inline
+--ifdef indent
+--self remove

@@ -1,0 +1,60 @@
+name: iOS
+
+on:
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build and test
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install native tooling
+        run: brew install xcodegen swiftformat swiftlint
+
+      - name: Verify formatting
+        working-directory: ios
+        run: swiftformat --lint .
+
+      - name: Verify lint rules
+        working-directory: ios
+        run: swiftlint lint --strict --config .swiftlint.yml
+
+      - name: Test Swift packages
+        working-directory: ios
+        run: |
+          for package in Packages/Dev3Kit Packages/Dev3TerminalKit Packages/Dev3UI; do
+            swift test --package-path "$package"
+          done
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build iOS Simulator app
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project Dev3.xcodeproj \
+            -scheme Dev3 \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build

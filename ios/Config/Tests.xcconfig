@@ -1,0 +1,4 @@
+#include "Debug.xcconfig"
+
+CODE_SIGNING_ALLOWED = YES
+ENABLE_TESTABILITY = YES

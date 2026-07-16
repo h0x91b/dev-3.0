@@ -25,7 +25,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
+import { startRemoteAccessServer, stopRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
 import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from "./cloudflare-tunnel";
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
 import { writeRemoteState, clearRemoteStateIfOwnedBy } from "./remote-state";
@@ -408,6 +408,7 @@ function shutdown(signal: string): void {
 	stopResourceMonitor();
 	stopRateLimitMonitor();
 	stopSocketServer();
+	stopRemoteAccessServer();
 	clearRemoteStateIfOwnedBy(process.pid);
 	cleanupAllTunnels();
 	stopTunnel();

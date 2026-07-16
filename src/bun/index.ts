@@ -14,7 +14,7 @@ import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
-import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
+import { startRemoteAccessServer, stopRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
 import { writeSystemClipboard } from "./system-clipboard";
 import { stopTunnel } from "./cloudflare-tunnel";
 import { installAgentSkills } from "./agent-skills";
@@ -553,6 +553,7 @@ function runGlobalQuitCleanup(): void {
 	try { stopResourceMonitor(); } catch (err) { log.warn("stopResourceMonitor failed", { error: String(err) }); }
 	try { stopRateLimitMonitor(); } catch (err) { log.warn("stopRateLimitMonitor failed", { error: String(err) }); }
 	try { stopSocketServer(); } catch (err) { log.warn("stopSocketServer failed", { error: String(err) }); }
+	try { stopRemoteAccessServer(); } catch (err) { log.warn("stopRemoteAccessServer failed", { error: String(err) }); }
 	// Tear down every per-task cloudflared process spawned by the GUI's
 	// `Expose port` button or by `--expose-ports`. Leaving them running
 	// would orphan tunnels (and trycloudflare quotas) on app exit.

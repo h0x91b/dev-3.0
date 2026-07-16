@@ -1,0 +1,10 @@
+schemaVersion: 1
+enabledWorkflows:
+  - simulator
+  - ui-automation
+  - project-discovery
+  - utilities
+sessionDefaults:
+  scheme: Dev3
+  simulatorName: iPhone 17
+incrementalBuildsEnabled: true
