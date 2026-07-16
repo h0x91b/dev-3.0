@@ -1,0 +1,1 @@
+The app now detects when it is the Intel (x64) build running under Rosetta 2 on an Apple Silicon Mac and shows a startup warning with a copy-pasteable reinstall command (Homebrew cask when native brew is present, otherwise the arm64 DMG). Such installs run slower, stay on x64 updates forever, and trigger the macOS "Support Ending for Intel-based Apps" notice on every launch.

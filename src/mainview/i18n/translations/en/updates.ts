@@ -21,6 +21,18 @@ const updates = {
 	"update.checkFailedDetail": "Update check failed: {error}",
 	"update.applyFailed": "Couldn't apply the update: {error}",
 
+	// Rosetta warning (Intel build on Apple Silicon)
+	"rosetta.title": "Intel build on Apple Silicon",
+	"rosetta.body":
+		"This copy of dev-3.0 is the Intel (x64) build running through Rosetta 2. It runs slower, and macOS is ending Rosetta support — soon it will stop launching entirely.",
+	"rosetta.instructionBrew": "Quit dev-3.0, paste this in Terminal, then launch dev-3.0 again:",
+	"rosetta.instructionDmg":
+		"Paste this in Terminal, then drag dev-3.0 into Applications (replacing the old one) and relaunch:",
+	"rosetta.dataSafe": "Your projects, tasks, and settings are not affected.",
+	"rosetta.copyBtn": "Copy command",
+	"rosetta.copiedBtn": "Copied!",
+	"rosetta.laterBtn": "Remind me later",
+
 	// Requirements
 	"requirements.title": "System Requirements",
 	"requirements.subtitle": "The following tools must be installed to use dev-3.0",

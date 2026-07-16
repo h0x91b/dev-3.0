@@ -5,7 +5,7 @@ import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNoti
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, SharedArtifact, SharedImage, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskStatus } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
@@ -38,6 +38,7 @@ import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/Keyboard
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
+import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
@@ -393,6 +394,17 @@ function App() {
 	useEffect(() => {
 		checkRequirements();
 	}, [checkRequirements]);
+
+	// Rosetta warning: an Intel (x64) build running translated on Apple Silicon.
+	// Shown once per launch while the condition persists — it clears itself
+	// after the user reinstalls the native arm64 build.
+	const [rosettaWarning, setRosettaWarning] = useState<RosettaWarningInfo>(null);
+	useEffect(() => {
+		api.request
+			.getRosettaWarning()
+			.then(setRosettaWarning)
+			.catch((err) => console.error("Failed to check Rosetta status:", err));
+	}, []);
 
 	// Navigation guard for unsaved-changes prompts (e.g. ProjectSettings, diff viewer)
 	const navigationGuardRef = useRef<NavigationGuard | null>(null);
@@ -2327,6 +2339,13 @@ function App() {
 				/>
 			)}
 			{aboutVersion && <AboutModal version={aboutVersion} onClose={() => setAboutVersion(null)} />}
+			{rosettaWarning && (
+				<RosettaWarningModal
+					command={rosettaWarning.command}
+					kind={rosettaWarning.kind}
+					onClose={() => setRosettaWarning(null)}
+				/>
+			)}
 			<DiagnosticsIndicator />
 			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 			</>
