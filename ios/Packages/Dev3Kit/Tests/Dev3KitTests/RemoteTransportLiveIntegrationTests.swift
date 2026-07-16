@@ -113,9 +113,6 @@ struct RemoteTransportLiveIntegrationTests {
 
         let pty = PTYClient(requestBuilder: factory)
         try await pty.connect(to: .project(projectID))
-        // The remote proxy upgrade completes before its localhost PTY upstream has
-        // an open event. Match real UI pacing so the first resize/input is not dropped.
-        try await Task.sleep(for: .milliseconds(500))
         try await pty.resize(columns: 100, rows: 30)
 
         let nonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
