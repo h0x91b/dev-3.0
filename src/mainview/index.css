@@ -854,8 +854,9 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 /* ---- Animated header-row icons --------------------------------------------
    The hand-drawn header glyphs (HeaderIcons.tsx) act out their operation when
    the hosting control — any element with .header-anim (a header-row button,
-   the prevent-sleep toggle, the git-pull button) — is hovered. Pure CSS, loops
-   while hovered, pixel-identical to the static icon when idle.
+   the prevent-sleep toggle, the git-pull button) — is hovered. The Remote Access
+   QR glyph also loops while the Remote Access tunnel is active. Pure CSS, pixel-identical
+   to the static icon when idle otherwise.
    Animated design reference: design/tmux-icons-animated.html (Top header row). */
 
 /* Transform hooks resolve px origins in the 24×24 viewBox coordinate system. */
@@ -1028,6 +1029,11 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:hover .hdr-qr3 { animation: hdr-qr-blink 2.4s ease-in-out .6s infinite; }
 .header-anim:hover .hdr-qr4 { animation: hdr-qr-blink 2.4s ease-in-out .9s infinite; }
 .header-anim:hover .hdr-qr5 { animation: hdr-qr-blink 2.4s ease-in-out 1.2s infinite; }
+.header-anim.remote-access-active .hdr-qr1 { animation: hdr-qr-blink 2.4s ease-in-out infinite; }
+.header-anim.remote-access-active .hdr-qr2 { animation: hdr-qr-blink 2.4s ease-in-out .3s infinite; }
+.header-anim.remote-access-active .hdr-qr3 { animation: hdr-qr-blink 2.4s ease-in-out .6s infinite; }
+.header-anim.remote-access-active .hdr-qr4 { animation: hdr-qr-blink 2.4s ease-in-out .9s infinite; }
+.header-anim.remote-access-active .hdr-qr5 { animation: hdr-qr-blink 2.4s ease-in-out 1.2s infinite; }
 
 /* -- Gauge: the needle revs to the redline and falls back -- */
 @keyframes hdr-needle {
@@ -1143,7 +1149,9 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 
 @media (prefers-reduced-motion: reduce) {
 	.header-anim:hover [class^="hdr-"],
-	.header-anim:hover [class*=" hdr-"] {
+	.header-anim:hover [class*=" hdr-"],
+	.header-anim.remote-access-active [class^="hdr-"],
+	.header-anim.remote-access-active [class*=" hdr-"] {
 		animation: none;
 	}
 }

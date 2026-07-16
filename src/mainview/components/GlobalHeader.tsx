@@ -51,6 +51,7 @@ interface GlobalHeaderProps {
 	canGoForward: boolean;
 	updateVersion?: string | null;
 	updateDownloadStatus?: string | null;
+	remoteAccessActive: boolean;
 }
 
 interface BreadcrumbSegment {
@@ -64,7 +65,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateDownloadStatus }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
 	const t = useT();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -623,7 +624,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 									// Remote access server may not be running
 								}
 							}}
-							className="header-anim flex items-center gap-1 text-fg-3 hover:text-fg transition-colors px-1.5 py-1 rounded-lg hover:bg-elevated"
+							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${remoteAccessActive ? "text-accent bg-accent/15 hover:bg-accent/25 remote-access-active" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
 							aria-label={t("header.remoteAccessTooltip")}
 						>
 							<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
