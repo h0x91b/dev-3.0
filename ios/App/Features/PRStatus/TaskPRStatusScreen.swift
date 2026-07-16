@@ -7,12 +7,8 @@ import SwiftUI
 
 @MainActor
 struct TaskPRStatusScreen: View {
-    @State private var store: TaskPRStatusStore
+    let store: TaskPRStatusStore
     @Environment(\.colorScheme) private var colorScheme
-
-    init(store: TaskPRStatusStore) {
-        _store = State(initialValue: store)
-    }
 
     private var palette: Dev3ThemePalette {
         Dev3Theme.palette(for: colorScheme)

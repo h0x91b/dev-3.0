@@ -4,15 +4,11 @@ import SwiftUI
 
 @MainActor
 struct TaskDiffScreen: View {
-    @State private var store: TaskDiffStore
+    let store: TaskDiffStore
     @State private var showsFilePicker = false
     @State private var showsCompareRefEditor = false
     @State private var selectedFileID: String?
     @Environment(\.colorScheme) private var colorScheme
-
-    init(store: TaskDiffStore) {
-        _store = State(initialValue: store)
-    }
 
     private var palette: Dev3ThemePalette {
         Dev3Theme.palette(for: colorScheme)

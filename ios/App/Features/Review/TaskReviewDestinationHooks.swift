@@ -33,7 +33,12 @@ enum TaskReviewDestinationFactory {
                     service: service,
                     readPersistence: readStore
                 )
-                return AnyView(TaskDiffDestinationHost(appStore: appStore, store: store))
+                return AnyView(
+                    TaskDiffDestinationHost(
+                        store: store,
+                        isConnected: appStore.isConnected
+                    )
+                )
             },
             prStatusDestination: { _, task in
                 let service = RPCTaskPRStatusService(rpcClientProvider: rpcClientProvider)
@@ -43,7 +48,13 @@ enum TaskReviewDestinationFactory {
                     isConnected: appStore.isConnected,
                     service: service
                 )
-                return AnyView(TaskPRStatusDestinationHost(appStore: appStore, store: store))
+                return AnyView(
+                    TaskPRStatusDestinationHost(
+                        appStore: appStore,
+                        store: store,
+                        isConnected: appStore.isConnected
+                    )
+                )
             }
         )
     }
@@ -62,13 +73,18 @@ enum TaskReviewDestinationFactory {
 }
 
 @MainActor
-private struct TaskDiffDestinationHost: View {
-    let appStore: AppStore
-    let store: TaskDiffStore
+struct TaskDiffDestinationHost: View {
+    @State private var store: TaskDiffStore
+    let isConnected: Bool
+
+    init(store: TaskDiffStore, isConnected: Bool) {
+        _store = State(initialValue: store)
+        self.isConnected = isConnected
+    }
 
     var body: some View {
         TaskDiffScreen(store: store)
-            .onChange(of: appStore.isConnected) { _, connected in
+            .onChange(of: isConnected) { _, connected in
                 store.setConnected(connected)
                 if connected {
                     Task { await store.load() }
@@ -78,16 +94,23 @@ private struct TaskDiffDestinationHost: View {
 }
 
 @MainActor
-private struct TaskPRStatusDestinationHost: View {
+struct TaskPRStatusDestinationHost: View {
     let appStore: AppStore
-    let store: TaskPRStatusStore
+    @State private var store: TaskPRStatusStore
+    let isConnected: Bool
     @State private var pushObserverToken: UUID?
+
+    init(appStore: AppStore, store: TaskPRStatusStore, isConnected: Bool) {
+        self.appStore = appStore
+        _store = State(initialValue: store)
+        self.isConnected = isConnected
+    }
 
     var body: some View {
         TaskPRStatusScreen(store: store)
             .onAppear { startObservingPushes() }
             .onDisappear { stopObservingPushes() }
-            .onChange(of: appStore.isConnected) { _, connected in
+            .onChange(of: isConnected) { _, connected in
                 store.setConnected(connected)
                 if connected {
                     Task { await store.refresh() }

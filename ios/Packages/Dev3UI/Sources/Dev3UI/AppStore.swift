@@ -482,6 +482,9 @@ extension AppStore {
             settingsPushRevision &+= 1
             applyGlobalSettings(settings)
         }
+        if case let .taskRemoved(removal) = push {
+            removeTaskRoutes(projectId: removal.projectId, taskId: removal.taskId)
+        }
         if let routedToast = snapshot.reduce(push) {
             toast = routedToast
         }

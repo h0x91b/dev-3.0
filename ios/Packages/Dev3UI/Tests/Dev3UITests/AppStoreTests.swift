@@ -723,6 +723,41 @@ struct AppStoreTests {
         #expect(store.projectsPath == [.project("project-a")])
     }
 
+    @Test("A task removal push clears the task and review routes from every stack")
+    func taskRemovalPushClearsReviewRoutes() async throws {
+        let alpha = try project(id: "project-a", name: "Alpha")
+        let first = try task(id: "task-1", projectId: alpha.id, seq: 1, title: "First")
+        let rpc = try StoreRPC(
+            projects: [alpha],
+            projectTasks: [projectTasks(projectId: alpha.id, tasks: [first])]
+        )
+        let store = AppStore(controller: makeController(), rpc: rpc)
+        await store.start()
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+
+        let taskRoute = AppRoute.task(projectId: alpha.id, taskId: first.id)
+        store.workPath = [
+            taskRoute,
+            .taskReview(projectId: alpha.id, taskId: first.id, destination: .diff)
+        ]
+        store.projectsPath = [
+            .project(alpha.id),
+            taskRoute,
+            .taskReview(projectId: alpha.id, taskId: first.id, destination: .pullRequest)
+        ]
+
+        let removal = try decode(TaskRemovedPush.self, """
+        {"projectId":"project-a","taskId":"task-1"}
+        """)
+        rpc.emitPush(.taskRemoved(removal))
+        await settle()
+
+        #expect(store.task(projectId: alpha.id, taskId: first.id) == nil)
+        #expect(store.workPath.isEmpty)
+        #expect(store.projectsPath == [.project(alpha.id)])
+    }
+
     @Test("Replacing and stopping RPC ownership rejects stale stream events")
     func replacementStopAndRestart() async throws {
         let alpha = try project(id: "project-a", name: "Alpha")
