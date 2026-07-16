@@ -1,0 +1,1 @@
+Unit and E2E test processes now sandbox HOME, temporary files, XDG state, logs, tmux configuration, and DEV3 data under a per-worktree, per-suite run directory. Fixed data fixture directories and the real CLI Unix socket no longer collide when agents test from parallel worktrees. The tmux E2Es also run reliably inside agent tmux sessions and clean up timed-out FIFO readers.

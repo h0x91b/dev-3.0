@@ -25,7 +25,7 @@ export function setupCommonMocks() {
 	}));
 
 	vi.mock("../paths", () => ({
-		DEV3_HOME: "/tmp/dev3-test",
+		DEV3_HOME: process.env.DEV3_HOME ?? `${tmpdir()}/dev3-test-home`,
 	}));
 }
 

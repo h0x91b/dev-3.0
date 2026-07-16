@@ -3,6 +3,8 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { dirname } from "node:path";
 import type { Project, Task } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-seq`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -13,7 +15,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-seq",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../file-lock", () => ({
@@ -21,8 +23,8 @@ vi.mock("../file-lock", () => ({
 }));
 
 beforeEach(() => {
-	rmSync("/tmp/dev3-test-seq", { recursive: true, force: true });
-	mkdirSync("/tmp/dev3-test-seq", { recursive: true });
+	rmSync(TEST_HOME, { recursive: true, force: true });
+	mkdirSync(TEST_HOME, { recursive: true });
 });
 
 afterEach(() => {
@@ -43,11 +45,11 @@ const testProject: Project = {
 };
 
 function tasksFilePath(): string {
-	return "/tmp/dev3-test-seq/data/tmp-test-project/tasks.json";
+	return `${TEST_HOME}/data/tmp-test-project/tasks.json`;
 }
 
 function tasksBackupDirPath(): string {
-	return "/tmp/dev3-test-seq/data/tmp-test-project/tasks-backups";
+	return `${TEST_HOME}/data/tmp-test-project/tasks-backups`;
 }
 
 function readBackupFileNames(): string[] {

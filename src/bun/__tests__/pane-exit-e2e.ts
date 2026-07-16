@@ -70,9 +70,15 @@ function assert(condition: boolean, msg: string): void {
 	}
 }
 
+function tmuxSync(args: string[]): ReturnType<typeof nodeSpawnSync> {
+	// Bun's node:child_process compatibility layer snapshots the launch env;
+	// pass the test-specific TMUX_TMPDIR explicitly after preload isolation.
+	return nodeSpawnSync("tmux", args, { env: { ...process.env } });
+}
+
 function cleanup(): void {
 	try { pty.destroySession(TASK_ID, TEST_SOCKET); } catch { /* ignore */ }
-	try { nodeSpawnSync("tmux", ["-L", TEST_SOCKET, "kill-server"]); } catch { /* ignore */ }
+	try { tmuxSync(["-L", TEST_SOCKET, "kill-server"]); } catch { /* ignore */ }
 }
 
 async function waitFor(fn: () => boolean, timeoutMs = 10_000, intervalMs = 100): Promise<void> {
@@ -121,7 +127,7 @@ async function main() {
 
 		// Send a keystroke to trigger `read -n 1` in the setup pane (exits immediately)
 		for (const paneId of panesBefore) {
-			nodeSpawnSync("tmux", ["-L", TEST_SOCKET, "send-keys", "-t", paneId, "x"]);
+			tmuxSync(["-L", TEST_SOCKET, "send-keys", "-t", paneId, "x"]);
 		}
 
 		// Wait for reconciliation: panes[0].paneId should become non-null

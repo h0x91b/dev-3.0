@@ -3,12 +3,14 @@ import { mkdirSync, rmSync } from "node:fs";
 import type { Project } from "../../shared/types";
 import { computeTaskTimeBreakdown } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-status-time`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-status-time",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../file-lock", () => ({
@@ -16,8 +18,8 @@ vi.mock("../file-lock", () => ({
 }));
 
 beforeEach(() => {
-	rmSync("/tmp/dev3-test-status-time", { recursive: true, force: true });
-	mkdirSync("/tmp/dev3-test-status-time", { recursive: true });
+	rmSync(TEST_HOME, { recursive: true, force: true });
+	mkdirSync(TEST_HOME, { recursive: true });
 });
 
 afterEach(() => {

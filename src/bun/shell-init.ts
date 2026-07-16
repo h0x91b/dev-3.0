@@ -3,8 +3,9 @@
 // paths in the prompt while still sourcing the user's own config.
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { dev3TempPath } from "./temp-paths";
 
-export const SHELL_INIT_DIR = "/tmp/dev3-shell";
+export const SHELL_INIT_DIR = dev3TempPath("dev3-shell");
 
 // ── zsh init files ──────────────────────────────────────────────────
 

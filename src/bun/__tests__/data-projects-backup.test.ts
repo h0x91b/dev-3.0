@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import type { Project } from "../../shared/types";
 
-const TEST_HOME = "/tmp/dev3-test-projects-backup";
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-projects-backup`);
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -14,7 +14,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-projects-backup",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../cow-clone", () => ({

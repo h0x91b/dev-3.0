@@ -3,7 +3,8 @@ import { createServer, type Server } from "node:net";
 import { unlinkSync, existsSync } from "node:fs";
 import { sendRequest } from "../socket-client";
 
-const TEST_SOCKET = "/tmp/dev3-cli-test-socket.sock";
+const TEST_SOCKET = `${process.env.DEV3_TEST_ROOT}/socket-client.sock`;
+const NONEXISTENT_SOCKET = `${process.env.DEV3_TEST_ROOT}/nonexistent.sock`;
 
 function cleanSocket() {
 	try {
@@ -92,7 +93,7 @@ describe("sendRequest", () => {
 
 	it("throws APP_NOT_RUNNING when socket does not exist", async () => {
 		await expect(
-			sendRequest("/tmp/dev3-nonexistent-socket.sock", "test"),
+			sendRequest(NONEXISTENT_SOCKET, "test"),
 		).rejects.toThrow("APP_NOT_RUNNING");
 	});
 
@@ -101,7 +102,7 @@ describe("sendRequest", () => {
 		// the socket immediately rather than waiting for the 30s timeout.
 		const start = Date.now();
 		try {
-			await sendRequest("/tmp/dev3-nonexistent-socket.sock", "test");
+			await sendRequest(NONEXISTENT_SOCKET, "test");
 		} catch (err) {
 			// Expected to throw APP_NOT_RUNNING
 			expect((err as Error).message).toBe("APP_NOT_RUNNING");
@@ -157,7 +158,7 @@ describe("sendRequest", () => {
 	it("gives up with APP_NOT_RUNNING after exhausting connect retries", async () => {
 		const start = Date.now();
 		await expect(
-			sendRequest("/tmp/dev3-nonexistent-socket.sock", "test", {}, { connectAttempts: 3, retryDelayMs: 20 }),
+			sendRequest(NONEXISTENT_SOCKET, "test", {}, { connectAttempts: 3, retryDelayMs: 20 }),
 		).rejects.toThrow("APP_NOT_RUNNING");
 		expect(Date.now() - start).toBeLessThan(5000);
 	});

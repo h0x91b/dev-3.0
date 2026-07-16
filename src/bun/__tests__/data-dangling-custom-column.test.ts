@@ -3,6 +3,8 @@ import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:f
 import { dirname } from "node:path";
 import type { CustomColumn, Project, Task } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/data-dangling-custom-column`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -13,7 +15,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test-dangling-col",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../file-lock", () => ({
@@ -21,8 +23,8 @@ vi.mock("../file-lock", () => ({
 }));
 
 beforeEach(() => {
-	rmSync("/tmp/dev3-test-dangling-col", { recursive: true, force: true });
-	mkdirSync("/tmp/dev3-test-dangling-col", { recursive: true });
+	rmSync(TEST_HOME, { recursive: true, force: true });
+	mkdirSync(TEST_HOME, { recursive: true });
 });
 
 import { loadTasks, updateTask } from "../data";
@@ -42,7 +44,7 @@ const testProject: Project = {
 };
 
 function tasksFilePath(): string {
-	return "/tmp/dev3-test-dangling-col/data/tmp-test-project/tasks.json";
+	return `${TEST_HOME}/data/tmp-test-project/tasks.json`;
 }
 
 function seedTasks(tasks: unknown[]): void {

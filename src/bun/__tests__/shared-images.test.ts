@@ -4,13 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SharedImage } from "../../shared/types";
 
-// vi.mock is hoisted above module init, so the factory must use a literal path.
-vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-shared-images-test",
-	OPS_DIR: "/tmp/dev3-shared-images-test/ops",
-}));
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/shared-images`);
 
-const TEST_HOME = "/tmp/dev3-shared-images-test";
+vi.mock("../paths", () => ({
+	DEV3_HOME: TEST_HOME,
+	OPS_DIR: `${TEST_HOME}/ops`,
+}));
 
 import {
 	SharedImageError,

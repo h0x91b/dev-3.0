@@ -1057,7 +1057,7 @@ describe("end-to-end: task description → shell command escaping", () => {
 
 	// tmux 3.x limits the shell-command passed to `new-session` to ~16 320 bytes.
 	// The fix writes the full command to a temp script file, so the tmux argument
-	// is just `bash "/tmp/dev3-{taskId}-run.sh"` regardless of description length.
+	// is just `bash "<test-root>/dev3-{taskId}-run.sh"` regardless of description length.
 	const TMUX_CMD_LIMIT = 16_320;
 
 	it("keeps tmux command under the tmux limit for long task descriptions", () => {
@@ -1082,9 +1082,9 @@ describe("end-to-end: task description → shell command escaping", () => {
 		const agentCmd = `claude --model claude-sonnet-4-6 --permission-mode unrestricted --append-system-prompt ${shellEscape(realSystemPrompt)} ${shellEscaped}`;
 
 		// The fix: write the full command to a temp script file.
-		// The tmux argument is just `bash "/tmp/dev3-{taskId}-run.sh"`.
+		// The tmux argument is just `bash "<test-root>/dev3-{taskId}-run.sh"`.
 		const taskId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-		const wrapperCmd = `bash "/tmp/dev3-${taskId}-run.sh"`;
+		const wrapperCmd = `bash "${process.env.DEV3_TEST_ROOT}/dev3-${taskId}-run.sh"`;
 
 		// Script file can be arbitrarily long — no tmux limit
 		const scriptContent = buildCmdScript(agentCmd);
@@ -1092,7 +1092,9 @@ describe("end-to-end: task description → shell command escaping", () => {
 		expect(scriptContent.length).toBeGreaterThan(TMUX_CMD_LIMIT);
 
 		// But the wrapper command passed to tmux stays tiny
-		expect(wrapperCmd.length).toBeLessThan(100);
+		// The per-worktree test sandbox has a deliberately long absolute path;
+		// the wrapper still remains tiny relative to tmux's command limit.
+		expect(wrapperCmd.length).toBeLessThan(512);
 		expect(wrapperCmd.length).toBeLessThan(TMUX_CMD_LIMIT);
 	});
 });
@@ -7490,8 +7492,8 @@ describe("launchTaskPty", () => {
 
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
-			const setupIndex = script.indexOf(`'${process.env.SHELL}' -x '/tmp/dev3-task-1-setup.sh'`);
-			const splitIndex = script.indexOf(`tmux split-window -v -c "/tmp/wt" "'${process.env.SHELL}' '/tmp/dev3-task-1-cmd.sh'"`);
+			const setupIndex = script.indexOf(`'${process.env.SHELL}' -x '${process.env.DEV3_TEST_ROOT}/dev3-task-1-setup.sh'`);
+			const splitIndex = script.indexOf(`tmux split-window -v -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
 
 			expect(setupIndex).toBeGreaterThanOrEqual(0);
 			expect(splitIndex).toBeGreaterThanOrEqual(0);
@@ -7515,8 +7517,8 @@ describe("launchTaskPty", () => {
 
 			const startupCall = writeSpy.mock.calls.find(([path]) => String(path).endsWith("-startup.sh"));
 			const script = String(startupCall?.[1] ?? "");
-			const splitIndex = script.indexOf(`tmux split-window -v -c "/tmp/wt" "'${process.env.SHELL}' '/tmp/dev3-task-1-cmd.sh'"`);
-			const setupIndex = script.indexOf(`'${process.env.SHELL}' -x '/tmp/dev3-task-1-setup.sh'`);
+			const splitIndex = script.indexOf(`tmux split-window -v -c "/tmp/wt" "'${process.env.SHELL}' '${process.env.DEV3_TEST_ROOT}/dev3-task-1-cmd.sh'"`);
+			const setupIndex = script.indexOf(`'${process.env.SHELL}' -x '${process.env.DEV3_TEST_ROOT}/dev3-task-1-setup.sh'`);
 
 			expect(splitIndex).toBeGreaterThanOrEqual(0);
 			expect(setupIndex).toBeGreaterThanOrEqual(0);

@@ -7,8 +7,9 @@ import { DEV3_HOME } from "./paths";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
-import { writeShellInit } from "./shell-init";
+import { SHELL_INIT_DIR, writeShellInit } from "./shell-init";
 import { isExecutableFile } from "./executable";
+import { dev3TempPath } from "./temp-paths";
 
 // Must be initialized before any module-load code below — sanitizeTmuxShim()
 // runs at module evaluation and logs when it finds a broken shim. Declaring
@@ -48,8 +49,8 @@ export function tmuxClientCwd(): string {
  */
 export const PANE_CWD_FORMAT = "#{?pane_current_path,#{pane_current_path},#{session_path}}";
 
-export const TMUX_CONF_DARK_PATH = "/tmp/dev3-tmux-dark.conf";
-export const TMUX_CONF_LIGHT_PATH = "/tmp/dev3-tmux-light.conf";
+export const TMUX_CONF_DARK_PATH = dev3TempPath("dev3-tmux-dark.conf");
+export const TMUX_CONF_LIGHT_PATH = dev3TempPath("dev3-tmux-light.conf");
 /** Path currently loaded — kept for configureTmux() re-source. */
 export let TMUX_CONF_PATH = TMUX_CONF_DARK_PATH;
 
@@ -128,7 +129,7 @@ set -ga update-environment TERM
 set -ga update-environment TERM_PROGRAM
 
 # Shell prompt — redirect zsh to dev3 ZDOTDIR for short worktree paths
-set-environment -g ZDOTDIR /tmp/dev3-shell
+set-environment -g ZDOTDIR ${SHELL_INIT_DIR}
 `;
 
 // Status bar setup — references Catppuccin status modules built by the plugin

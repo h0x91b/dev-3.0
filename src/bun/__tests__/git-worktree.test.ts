@@ -4,6 +4,8 @@ import { join } from "path";
 import { tmpdir } from "os";
 import type { Project, Task } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/git-worktree`);
+
 vi.mock("../logger", () => ({
 	createLogger: () => ({
 		debug: vi.fn(),
@@ -14,7 +16,7 @@ vi.mock("../logger", () => ({
 }));
 
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-test",
+	DEV3_HOME: TEST_HOME,
 }));
 
 vi.mock("../spawn", async () => {
@@ -578,7 +580,7 @@ describe("createWorktree edge cases", () => {
 
 			// Pre-create the worktree at the path createWorktree will pick, then
 			// detach it so the path is "stale" (directory present, branch removed).
-			const stalePath = join("/tmp/dev3-test", "worktrees", "tmp-repo", "55555555", "worktree");
+			const stalePath = join(TEST_HOME, "worktrees", "tmp-repo", "55555555", "worktree");
 			mkdirSync(stalePath, { recursive: true });
 			writeFileSync(join(stalePath, "leftover.txt"), "leftover\n");
 
@@ -606,7 +608,7 @@ describe("createWorktree edge cases", () => {
 			g("git branch dev3/task-66666666 main", r.local);
 
 			// Stale worktree directory at the exact path createWorktree will pick.
-			const stalePath = join("/tmp/dev3-test", "worktrees", "tmp-repo", "66666666", "worktree");
+			const stalePath = join(TEST_HOME, "worktrees", "tmp-repo", "66666666", "worktree");
 			mkdirSync(stalePath, { recursive: true });
 			writeFileSync(join(stalePath, "leftover.txt"), "leftover\n");
 

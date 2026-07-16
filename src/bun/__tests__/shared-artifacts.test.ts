@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { SharedArtifact } from "../../shared/types";
 
+const TEST_HOME = vi.hoisted(() => `${process.env.DEV3_TEST_ROOT}/shared-artifacts`);
+
 vi.mock("../paths", () => ({
-	DEV3_HOME: "/tmp/dev3-shared-artifacts-test",
-	OPS_DIR: "/tmp/dev3-shared-artifacts-test/ops",
+	DEV3_HOME: TEST_HOME,
+	OPS_DIR: `${TEST_HOME}/ops`,
 }));
 
-const TEST_HOME = "/tmp/dev3-shared-artifacts-test";
 const SRC_DIR = mkdtempSync(join(tmpdir(), "dev3-artifact-src-"));
 
 import {
