@@ -29,6 +29,7 @@ import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
+import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
 import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
 import {
@@ -978,8 +979,14 @@ function TaskInfoPanel({
 				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
 					{variantSwitcher}
 					{statusDropdownButton}
-					{priorityBadge}
-					<span className="flex-1 min-w-0 truncate text-fg-2 text-sm font-semibold">{getTaskTitle(task)}</span>
+					{/* Priority sits with status (Context domain, §5.1); `sm` gives it a
+					    legible chip and a comfortable touch target on a phone (§12.6),
+					    versus the dense `xs` desktop badge. */}
+					<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="sm" className="shrink-0" />
+					{/* Task title intentionally omitted here — it already shows in the
+					    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
+					    bar; the freed space keeps status + priority + diff readable. */}
+					<div className="flex-1 min-w-0" />
 					{diffSummaryBadge}
 					<Tooltip content={t("infoPanel.actionsTitle")} detail={t("ttip.infoPanel.actions")}>
 						<button
@@ -1070,6 +1077,19 @@ function TaskInfoPanel({
 								</button>
 							)}
 						</div>
+
+						{project.kind !== "virtual" && isTaskActive && task.worktreePath && (
+							<TaskGitActionsSheet
+								task={task}
+								project={project}
+								dispatch={dispatch}
+								navigate={navigate}
+								isTaskActive={isTaskActive}
+								rowClassName={SHEET_ROW_CLASS}
+								onOpenInlineDiff={onOpenInlineDiff}
+								onAction={() => setActionsSheetOpen(false)}
+							/>
+						)}
 
 						<section className="border-t border-edge pt-4">
 							<h3 className="mb-2 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>

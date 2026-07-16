@@ -15,6 +15,7 @@ const infoPanel = {
 	"infoPanel.showPanel": "Показать активные задачи",
 	"infoPanel.actionsTitle": "Действия задачи",
 	"infoPanel.sheetDetails": "Детали",
+	"infoPanel.gitSection": "Git",
 	"infoPanel.commitsBehind": "{count} коммитов позади",
 	"infoPanel.commitsAhead": "{count} коммитов впереди",
 	"infoPanel.commitsAheadBehind": "{ahead} впереди · {behind} позади",
