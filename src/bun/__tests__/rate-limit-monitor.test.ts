@@ -26,7 +26,22 @@ describe("readClaudeSnapshot", () => {
 		);
 		const snap = readClaudeSnapshot(dump);
 		expect(snap!.capturedAt).toBe(1_783_200_000_000);
+		expect(snap!.activeAt).toBe(1_783_200_000_000);
 		expect(snap!.windows[0].usedPercent).toBe(12);
+	});
+
+	it("keeps managed-account attribution from the dump or explicit path context", () => {
+		const dump = join(tmp, "claude.json");
+		writeFileSync(
+			dump,
+			JSON.stringify({
+				capturedAt: 1_783_200_000_000,
+				accountId: "claude-account",
+				payload: { rate_limits: { five_hour: { used_percentage: 12 } } },
+			}),
+		);
+		expect(readClaudeSnapshot(dump)?.accountId).toBe("claude-account");
+		expect(readClaudeSnapshot(dump, "explicit-account")?.accountId).toBe("explicit-account");
 	});
 
 	it("returns null for a missing file", () => {
@@ -80,8 +95,10 @@ describe("readCodexSnapshot", () => {
 		writeFileSync(join(dir, "rollout-2026-07-05T10-00-00-x.jsonl"), lines.join("\n") + "\n");
 		const snap = readCodexSnapshot(tmp);
 		expect(snap!.source).toBe("codex");
+		expect(snap!.accountId).toBeUndefined();
 		expect(snap!.windows[0].usedPercent).toBe(66);
 		expect(snap!.creditsBalance).toBe("7");
+		expect(readCodexSnapshot(tmp, "codex-account")?.accountId).toBe("codex-account");
 	});
 
 	it("returns null when no rollouts exist", () => {

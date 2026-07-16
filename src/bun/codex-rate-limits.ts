@@ -18,6 +18,7 @@ export async function fetchCodexRateLimitSnapshot(
 	spawnProcess: SpawnProcess = spawn,
 	timeoutMs: number = DEFAULT_TIMEOUT_MS,
 	capturedAt: number = Date.now(),
+	env?: Record<string, string>,
 ): Promise<AgentRateLimitSnapshot | null> {
 	let proc: ReturnType<SpawnProcess> | null = null;
 	let stdin: import("bun").FileSink | null = null;
@@ -27,6 +28,7 @@ export async function fetchCodexRateLimitSnapshot(
 			stdin: "pipe",
 			stdout: "pipe",
 			stderr: "pipe",
+			...(env ? { env } : {}),
 		});
 		stdin = proc.stdin as unknown as import("bun").FileSink;
 		stdin.write(

@@ -23,10 +23,14 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { DEV3_AGENT_ACCOUNT_ID_ENV } from "../../shared/agent-accounts";
 import { formatStatusLineSegment, parseClaudeStatusLinePayload } from "../../shared/rate-limits";
 
 export const RATE_LIMITS_DIR = join(homedir(), ".dev3.0", "data", "rate-limits");
 export const CLAUDE_RATE_LIMIT_DUMP_PATH = join(RATE_LIMITS_DIR, "claude.json");
+export const CLAUDE_ACCOUNT_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude");
+
+const SAFE_ACCOUNT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /** Max time the user's original statusLine command may take before we drop it. */
 const ORIGINAL_STATUSLINE_TIMEOUT_MS = 2000;
@@ -88,13 +92,25 @@ function runOriginalStatusLine(original: OriginalStatusLine, input: string, cwd:
 	return "";
 }
 
+function managedAccountId(): string | null {
+	const value = process.env[DEV3_AGENT_ACCOUNT_ID_ENV]?.trim();
+	return value && SAFE_ACCOUNT_ID.test(value) ? value : null;
+}
+
 function dumpPayload(raw: string): void {
 	try {
+		const accountId = managedAccountId();
+		const capturedAt = Date.now();
+		const serialized = JSON.stringify({ capturedAt, accountId, payload: JSON.parse(raw) });
 		mkdirSync(dirname(CLAUDE_RATE_LIMIT_DUMP_PATH), { recursive: true });
 		// Single small write; the monitor tolerates a torn read by keeping the
 		// previous snapshot (deliberately no tmp+rename — see the on-disk layout
 		// invariants about renames under ~/.dev3.0/).
-		writeFileSync(CLAUDE_RATE_LIMIT_DUMP_PATH, JSON.stringify({ capturedAt: Date.now(), payload: JSON.parse(raw) }));
+		writeFileSync(CLAUDE_RATE_LIMIT_DUMP_PATH, serialized);
+		if (accountId) {
+			mkdirSync(CLAUDE_ACCOUNT_RATE_LIMITS_DIR, { recursive: true });
+			writeFileSync(join(CLAUDE_ACCOUNT_RATE_LIMITS_DIR, `${accountId}.json`), serialized);
+		}
 	} catch {
 		// disk/parse trouble must never break the visible statusLine
 	}

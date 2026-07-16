@@ -68,11 +68,80 @@ describe("RateLimitIndicator", () => {
 		expect(container.querySelector("[role='status']")).toBeNull();
 	});
 
-	it("shows the worst window percentage once data arrives", async () => {
+	it("shows the worst window percentage from the latest active account", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
 		expect(screen.getByText("42%")).toBeTruthy();
+		expect(screen.getByRole("status").className).toContain("text-fg-3");
+	});
+
+	it("ignores a more-used window from an older account", async () => {
+		const now = Date.now();
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "codex",
+					accountId: "exhausted",
+					capturedAt: now - 1_000,
+					activeAt: now - 1_000,
+					windows: [{ id: "primary", usedPercent: 100, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+				{
+					source: "claude",
+					accountId: "latest",
+					capturedAt: now,
+					activeAt: now,
+					windows: [{ id: "five_hour", usedPercent: 29, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+
+		expect(screen.getByText("29%")).toBeTruthy();
+		expect(screen.queryByText("100%")).toBeNull();
+		expect(screen.getByRole("status").className).toContain("text-fg-3");
+	});
+
+	it("shows unlimited latest accounts as 0% used", async () => {
+		const now = Date.now();
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "claude",
+					capturedAt: now - 1_000,
+					activeAt: now - 1_000,
+					windows: [{ id: "five_hour", usedPercent: 100, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+				{
+					source: "codex",
+					capturedAt: now,
+					activeAt: now,
+					windows: [],
+					creditsBalance: "unlimited",
+					monthlyCredits: null,
+					planType: "enterprise",
+				},
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+
+		expect(screen.getByText("0%")).toBeTruthy();
+		expect(screen.getByText("used")).toBeTruthy();
+		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("Codex 0% used");
 		expect(screen.getByRole("status").className).toContain("text-fg-3");
 	});
 
@@ -203,6 +272,46 @@ describe("RateLimitIndicator", () => {
 		await userEvent.tab();
 		expect(await screen.findByText("Work account")).toBeTruthy();
 		expect(screen.getByText("Pro")).toBeTruthy();
+	});
+
+	it("shows each recently attributed account instead of collapsing to the default", async () => {
+		const capturedAt = Date.now();
+		const snapshot = (source: "claude" | "codex", accountId: string, percent: number) => ({
+			source,
+			accountId,
+			capturedAt,
+			activeAt: capturedAt,
+			windows: [{ id: source === "claude" ? "five_hour" : "primary", usedPercent: percent, resetsAt: capturedAt + 3_600_000, windowMinutes: 300 }],
+			creditsBalance: null,
+			monthlyCredits: null,
+			planType: null,
+		});
+		mockedGet.mockResolvedValue({
+			generatedAt: capturedAt,
+			snapshots: [snapshot("claude", "claude-1", 42), snapshot("claude", "claude-2", 17), snapshot("codex", "codex-1", 28)],
+		});
+		mockedAccounts.mockResolvedValue({
+			claude: {
+				accounts: [
+					{ id: "claude-1", kind: "claude", label: "Work Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
+					{ id: "claude-2", kind: "claude", label: "Personal Claude", identity: null, auth: "oauth", api: null, createdAt: 0 },
+				],
+				activeId: "claude-1",
+				systemIdentity: null,
+			},
+			codex: {
+				accounts: [{ id: "codex-1", kind: "codex", label: "Enterprise Codex", identity: null, auth: "oauth", api: null, createdAt: 0 }],
+				activeId: "codex-1",
+				currentIdentity: null,
+			},
+		});
+
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		expect(await screen.findByText("Work Claude")).toBeTruthy();
+		expect(screen.getByText("Personal Claude")).toBeTruthy();
+		expect(screen.getByText("Enterprise Codex")).toBeTruthy();
 	});
 
 	it("shows the workspace/organization name so same-email accounts are distinguishable", async () => {

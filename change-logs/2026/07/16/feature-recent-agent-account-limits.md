@@ -1,0 +1,1 @@
+The agent rate-limit indicator now shows every Claude and Codex account with local activity in the last 24 hours, attributing each usage row to its managed account and retaining monthly Codex credit details per account. Its header percentage follows the latest active account instead of the most exhausted account, with unlimited accounts shown as 0% used.
