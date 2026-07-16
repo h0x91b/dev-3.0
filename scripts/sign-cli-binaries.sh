@@ -49,3 +49,6 @@ sign_one() {
 }
 
 sign_one dist/dev3
+# Bundled tmux helper (staged by scripts/stage-bundled-tmux.sh) must carry its
+# signature BEFORE electrobun signs/notarizes the outer app bundle.
+sign_one dist/tmux/tmux

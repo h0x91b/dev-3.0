@@ -8,6 +8,9 @@ const SETTINGS = `${HOME}/.dev3.0/settings.json`;
 const KEG = "/opt/homebrew/opt/tmux@3.6/bin/tmux";
 const BUNDLE = "/Applications/dev-3.0.app";
 const PLIST = `${BUNDLE}/Contents/Info.plist`;
+const EXEC = `${HOME}/.dev3.0/bin/dev3`;
+const BUNDLED_APP_TMUX = `${BUNDLE}/Contents/Resources/app/tmux/tmux`;
+const BUNDLED_CLI_TMUX = `${HOME}/cli/tmux/tmux`;
 
 function plistWithVersion(version: string): string {
 	return `<dict><key>CFBundleVersion</key>\n<string>${version}</string></dict>`;
@@ -20,11 +23,12 @@ function healthyDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 		platform: "darwin",
 		home: HOME,
 		cliVersion: "1.30.0",
+		execPath: EXEC,
 		existsSync: (p) => existing.has(p),
 		isWritable: () => true,
 		isSymlink: (p) => p === SHIM,
 		readlink: () => KEG,
-		realpath: () => KEG,
+		realpath: (p) => (p === EXEC ? EXEC : KEG),
 		isExecutableFile: (p) => existing.has(p) && p !== HOME,
 		readFile: (p) => {
 			if (p === PLIST) return plistWithVersion("1.30.0");
@@ -156,7 +160,39 @@ describe("dev3 doctor — collectChecks", () => {
 		expect(check.detail).toContain("target is not tmux");
 	});
 
-	it("fails when neither the keg nor a PATH tmux exists", () => {
+	it("identifies the bundled tmux inside the app bundle", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			isExecutableFile: (p) => p === BUNDLED_APP_TMUX || base.isExecutableFile(p),
+		});
+		const check = byLabel(collectChecks(deps), "tmux binary");
+		expect(check.status).toBe("ok");
+		expect(check.detail).toContain(`bundled ${BUNDLED_APP_TMUX}`);
+	});
+
+	it("identifies the bundled tmux next to the CLI binary (tarball/libexec layout)", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			realpath: (p) => (p === EXEC ? `${HOME}/cli/dev3` : KEG),
+			isExecutableFile: (p) => p === BUNDLED_CLI_TMUX || base.isExecutableFile(p),
+		});
+		const check = byLabel(collectChecks(deps), "tmux binary");
+		expect(check.status).toBe("ok");
+		expect(check.detail).toContain(`bundled ${BUNDLED_CLI_TMUX}`);
+	});
+
+	it("skips a bundled tmux that does not identify itself as tmux and reports the keg", () => {
+		const base = healthyDeps();
+		const deps = healthyDeps({
+			isExecutableFile: (p) => p === BUNDLED_APP_TMUX || base.isExecutableFile(p),
+			exec: (cmd, args) => (cmd === BUNDLED_APP_TMUX ? { status: 0, stdout: "not tmux\n" } : base.exec(cmd, args)),
+		});
+		const check = byLabel(collectChecks(deps), "tmux binary");
+		expect(check.status).toBe("ok");
+		expect(check.detail).toContain(`keg ${KEG}`);
+	});
+
+	it("fails when neither the bundled tmux, the keg, nor a PATH tmux exists", () => {
 		const base = healthyDeps();
 		const deps = healthyDeps({
 			existsSync: (p) => p !== KEG && base.existsSync(p),
@@ -165,9 +201,10 @@ describe("dev3 doctor — collectChecks", () => {
 				return base.exec(cmd, args);
 			},
 		});
-		const check = byLabel(collectChecks(deps), "pinned tmux");
+		const check = byLabel(collectChecks(deps), "tmux binary");
 		expect(check.status).toBe("fail");
-		expect(check.hints?.[0]).toContain("brew install h0x91b/dev3/tmux@3.6");
+		expect(check.detail).toContain("no bundled tmux");
+		expect(check.hints?.join("\n")).toContain("brew install h0x91b/dev3/tmux@3.6");
 	});
 
 	it("rejects a keg path whose executable does not identify itself as tmux", () => {
@@ -180,7 +217,7 @@ describe("dev3 doctor — collectChecks", () => {
 			},
 		});
 
-		const check = byLabel(collectChecks(deps), "pinned tmux");
+		const check = byLabel(collectChecks(deps), "tmux binary");
 
 		expect(check.status).toBe("fail");
 	});
@@ -194,7 +231,7 @@ describe("dev3 doctor — collectChecks", () => {
 				return base.exec(cmd, args);
 			},
 		});
-		expect(byLabel(collectChecks(deps), "pinned tmux").status).toBe("warn");
+		expect(byLabel(collectChecks(deps), "tmux binary").status).toBe("warn");
 	});
 
 	it("accepts keg absence with a healthy PATH tmux", () => {
@@ -206,7 +243,7 @@ describe("dev3 doctor — collectChecks", () => {
 				return base.exec(cmd, args);
 			},
 		});
-		expect(byLabel(collectChecks(deps), "pinned tmux").status).toBe("ok");
+		expect(byLabel(collectChecks(deps), "tmux binary").status).toBe("ok");
 	});
 
 	it("fails on a leftover Caskroom dir when the cask itself is not installed", () => {

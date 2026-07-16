@@ -15,7 +15,7 @@ import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
-import { VENDORED_TMUX_PATHS } from "./shared-pure";
+import { tmuxSearchPaths } from "./shared-pure";
 import { whichSync } from "../which";
 import { isExecutableFile } from "../executable";
 
@@ -248,7 +248,7 @@ async function commitTmuxBinary(preferred: string): Promise<string | undefined> 
 	// whichSync may hand us our own PATH shim (~/.dev3.0/bin is first in
 	// PATH) — dereference it so we never probe or commit the shim itself.
 	const pathTmuxReal = pathTmux ? pty.dereferenceTmuxShim(pathTmux) : undefined;
-	const fallbacks = [pathTmuxReal ?? "", ...VENDORED_TMUX_PATHS].filter(Boolean);
+	const fallbacks = [pathTmuxReal ?? "", ...tmuxSearchPaths()].filter(Boolean);
 	return pty.selectTmuxBinary(preferred, fallbacks);
 }
 
@@ -260,7 +260,7 @@ async function commitTmuxBinary(preferred: string): Promise<string | undefined> 
  */
 export async function resolveTmuxBinaryAtStartup(): Promise<string | undefined> {
 	const settings = await loadSettings();
-	const { resolvedPath } = resolveBinaryPath("tmux", settings.customBinaryPaths?.tmux, VENDORED_TMUX_PATHS);
+	const { resolvedPath } = resolveBinaryPath("tmux", settings.customBinaryPaths?.tmux, tmuxSearchPaths());
 	if (!resolvedPath) {
 		log.warn("startup tmux resolution: tmux not found anywhere");
 		return undefined;
@@ -275,9 +275,10 @@ async function checkSystemRequirements(): Promise<RequirementCheckResult[]> {
 	const settings = await loadSettings();
 	const results = getSystemRequirements().map((req) => {
 		const customPath = settings.customBinaryPaths?.[req.id];
-		// tmux ≥ 3.7 has a client busy-spin regression — prefer the vendored
-		// tmux@3.6 keg over PATH (see VENDORED_TMUX_PATHS in shared-pure.ts).
-		const vendored = req.id === "tmux" ? VENDORED_TMUX_PATHS : undefined;
+		// tmux ≥ 3.7 has a client busy-spin regression — prefer the bundled
+		// self-contained tmux, then the vendored tmux@3.6 keg, over PATH
+		// (see tmuxSearchPaths in shared-pure.ts and decisions/137).
+		const vendored = req.id === "tmux" ? tmuxSearchPaths() : undefined;
 		const { resolvedPath, customPathError } = resolveBinaryPath(req.id, customPath, vendored);
 
 		if (resolvedPath) {

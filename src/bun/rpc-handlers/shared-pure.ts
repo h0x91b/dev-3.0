@@ -9,6 +9,8 @@ import { ENV_UNSET } from "../../shared/agent-accounts";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { broadcastToOtherInstances } from "../instance-broadcast";
+import { realpathSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { whichSync } from "../which";
 import { isExecutableFile } from "../executable";
 
@@ -126,6 +128,42 @@ export const VENDORED_TMUX_PATHS = [
 	"/usr/local/opt/tmux@3.6/bin/tmux",
 	"/home/linuxbrew/.linuxbrew/opt/tmux@3.6/bin/tmux",
 ];
+
+/**
+ * Candidate locations of the tmux we bundle inside macOS artifacts
+ * (decisions/137): DMG installs and the in-app updater cannot run brew, so
+ * the app ships its own statically-linked tmux 3.6a. Pure so tests can cover
+ * the layout math; `realExecDir` is the directory of the REAL on-disk binary
+ * (realpath'd — brew symlinks bin/dev3 → libexec/dev3).
+ *
+ * Layouts:
+ *  - app bundle: Contents/MacOS/<bun> → ../Resources/app/tmux/tmux
+ *  - CLI tarball / brew libexec: <dir of dev3>/tmux/tmux
+ */
+export function bundledTmuxCandidates(platform: NodeJS.Platform, realExecDir: string | undefined): string[] {
+	if (platform !== "darwin" || !realExecDir) return [];
+	return [
+		resolve(realExecDir, "..", "Resources", "app", "tmux", "tmux"),
+		join(realExecDir, "tmux", "tmux"),
+	];
+}
+
+function realExecDir(): string | undefined {
+	try {
+		return dirname(realpathSync(process.execPath));
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Full preference-ordered tmux search list (after a user's custom path):
+ * bundled (self-contained, always version-pinned) → Homebrew tmux@3.6 keg →
+ * then resolveBinaryPath falls through to PATH and the fallback bin dirs.
+ */
+export function tmuxSearchPaths(): string[] {
+	return [...bundledTmuxCandidates(process.platform, realExecDir()), ...VENDORED_TMUX_PATHS];
+}
 
 export function resolveBinaryPath(
 	binaryName: string,

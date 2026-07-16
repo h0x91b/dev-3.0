@@ -115,6 +115,18 @@ jobs:
           fi
           bun scripts/fix-macho-headerpad.ts fix "$DIST"
 
+      # Self-contained tmux shipped inside the app bundle and CLI tarball
+      # (decisions/137). Built natively on this runner's arch; the cache makes
+      # it a no-op unless the build script (pins/flags) changed.
+      - name: Restore bundled tmux cache
+        uses: actions/cache@v5
+        with:
+          path: ./vendor/bundled-tmux
+          key: bundled-tmux-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-bundled-tmux.sh') }}
+
+      - name: Build bundled tmux
+        run: bash scripts/build-bundled-tmux.sh
+
       - name: Clean build directory
         run: rm -rf ./build ./artifacts
 
@@ -184,6 +196,34 @@ jobs:
               echo "::error::launcher did not print the self-extractor banner"
               exit 1
             fi
+            # Bundled tmux gate (decisions/137): the app payload must carry a
+            # signed, self-contained tmux that can run a real session with a
+            # sanitized PATH — i.e. on a machine with NO system/brew tmux.
+            TMUX_BIN=$(find "$RUNNER_TEMP/eb-payload" -path "*/Contents/Resources/app/tmux/tmux" -type f | head -1)
+            if [ -z "$TMUX_BIN" ]; then
+              echo "::error::bundled tmux missing from the app payload (Resources/app/tmux/tmux)"
+              exit 1
+            fi
+            codesign --verify --strict "$TMUX_BIN"
+            if otool -L "$TMUX_BIN" | grep -Eq "/opt/homebrew|/usr/local"; then
+              echo "::error::bundled tmux links non-system libraries:"
+              otool -L "$TMUX_BIN"
+              exit 1
+            fi
+            SMOKE_HOME=$(mktemp -d)
+            SANITIZED=(env -i HOME="$SMOKE_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" TERM=xterm-256color)
+            "${SANITIZED[@]}" "$TMUX_BIN" -V
+            "${SANITIZED[@]}" "$TMUX_BIN" -S "$SMOKE_HOME/smoke.sock" -f /dev/null new-session -d -s smoke
+            "${SANITIZED[@]}" "$TMUX_BIN" -S "$SMOKE_HOME/smoke.sock" list-sessions | grep -q "^smoke:"
+            "${SANITIZED[@]}" "$TMUX_BIN" -S "$SMOKE_HOME/smoke.sock" kill-server || true
+            LICENSES_DIR="$(dirname "$TMUX_BIN")/licenses"
+            for lic in tmux libevent utf8proc; do
+              if [ ! -s "$LICENSES_DIR/$lic.LICENSE" ]; then
+                echo "::error::bundled tmux is missing the $lic license notice"
+                exit 1
+              fi
+            done
+            echo "bundled tmux gate OK: $TMUX_BIN"
           else
             echo "::warning::no self-extractor payload (*.tar.zst) found — inner binaries and launcher not smoke-tested"
           fi
@@ -283,6 +323,18 @@ jobs:
           fi
           bun scripts/fix-macho-headerpad.ts fix "$DIST"
 
+      # Self-contained tmux shipped inside the app bundle and CLI tarball
+      # (decisions/137). Built natively on this runner's arch; the cache makes
+      # it a no-op unless the build script (pins/flags) changed.
+      - name: Restore bundled tmux cache
+        uses: actions/cache@v5
+        with:
+          path: ./vendor/bundled-tmux
+          key: bundled-tmux-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-bundled-tmux.sh') }}
+
+      - name: Build bundled tmux
+        run: bash scripts/build-bundled-tmux.sh
+
       - name: Clean build directory
         run: rm -rf ./build ./artifacts
 
@@ -351,6 +403,34 @@ jobs:
               echo "::error::launcher did not print the self-extractor banner"
               exit 1
             fi
+            # Bundled tmux gate (decisions/137): the app payload must carry a
+            # signed, self-contained tmux that can run a real session with a
+            # sanitized PATH — i.e. on a machine with NO system/brew tmux.
+            TMUX_BIN=$(find "$RUNNER_TEMP/eb-payload" -path "*/Contents/Resources/app/tmux/tmux" -type f | head -1)
+            if [ -z "$TMUX_BIN" ]; then
+              echo "::error::bundled tmux missing from the app payload (Resources/app/tmux/tmux)"
+              exit 1
+            fi
+            codesign --verify --strict "$TMUX_BIN"
+            if otool -L "$TMUX_BIN" | grep -Eq "/opt/homebrew|/usr/local"; then
+              echo "::error::bundled tmux links non-system libraries:"
+              otool -L "$TMUX_BIN"
+              exit 1
+            fi
+            SMOKE_HOME=$(mktemp -d)
+            SANITIZED=(env -i HOME="$SMOKE_HOME" PATH="/usr/bin:/bin:/usr/sbin:/sbin" TERM=xterm-256color)
+            "${SANITIZED[@]}" "$TMUX_BIN" -V
+            "${SANITIZED[@]}" "$TMUX_BIN" -S "$SMOKE_HOME/smoke.sock" -f /dev/null new-session -d -s smoke
+            "${SANITIZED[@]}" "$TMUX_BIN" -S "$SMOKE_HOME/smoke.sock" list-sessions | grep -q "^smoke:"
+            "${SANITIZED[@]}" "$TMUX_BIN" -S "$SMOKE_HOME/smoke.sock" kill-server || true
+            LICENSES_DIR="$(dirname "$TMUX_BIN")/licenses"
+            for lic in tmux libevent utf8proc; do
+              if [ ! -s "$LICENSES_DIR/$lic.LICENSE" ]; then
+                echo "::error::bundled tmux is missing the $lic license notice"
+                exit 1
+              fi
+            done
+            echo "bundled tmux gate OK: $TMUX_BIN"
           else
             echo "::warning::no self-extractor payload (*.tar.zst) found — inner binaries and launcher not smoke-tested"
           fi
@@ -714,11 +794,10 @@ jobs:
             depends_on arch: :arm64
             depends_on macos: :ventura
             depends_on formula: "git"
-            # Pinned keg-only tmux from this tap: tmux 3.7 regressed (client
-            # busy-spins on a congested server socket). The app prefers the
-            # /opt/homebrew/opt/tmux@3.6 keg and shims it into agent PATHs,
-            # so it does not need to be linked.
-            depends_on formula: "h0x91b/dev3/tmux@3.6"
+            # No tmux dependency: the app bundle ships its own self-contained
+            # pinned tmux (Resources/app/tmux) — see decisions/137. Existing
+            # installs with the h0x91b/dev3/tmux@3.6 keg keep working (the keg
+            # is the second resolution tier after the bundled binary).
             depends_on formula: "cloudflared"
 
             app "dev-3.0.app"
@@ -812,14 +891,26 @@ jobs:
               ${LINUX_ARM_BLOCK}
             end
 
-            # Pinned keg-only tmux — see the cask above for the 3.7 regression.
-            depends_on "h0x91b/dev3/tmux@3.6"
+            # No tmux dependency on macOS: the tarball ships a self-contained
+            # pinned tmux next to the binary (decisions/137). Linux tarballs
+            # don't carry it yet, so Linux keeps the pinned keg — without it a
+            # fresh Linux install on a tmux-less box would have no tmux at all.
+            on_linux do
+              depends_on "h0x91b/dev3/tmux@3.6"
+            end
             depends_on "git"
             depends_on "cloudflared"
 
             def install
               libexec.install "dev3", "dist"
               chmod 0755, libexec/"dev3"
+              # Bundled self-contained tmux (macOS tarballs only). The app
+              # resolves it at libexec/tmux/tmux — next to the real binary,
+              # same layout as the extracted tarball.
+              if File.exist?("tmux")
+                libexec.install "tmux"
+                chmod 0755, libexec/"tmux/tmux"
+              end
               # \`dev3\` is a single binary that is both the CLI and the headless
               # server (\`dev3 remote\` boots the server in-process). It serves the
               # UI from the sibling \`dist/\` resolved via realpath(execPath), so it

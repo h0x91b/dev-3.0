@@ -19,6 +19,8 @@ set -euo pipefail
 #   ./dist/index.html     ← UI entry
 #   ./dist/assets/...     ← UI assets
 #   ./artifact-template/  ← canonical dev3 HTML artifact starter
+#   ./tmux/tmux           ← bundled self-contained tmux (macOS only)
+#   ./tmux/licenses/...   ← third-party license notices for the bundled tmux
 
 OS="${1:?Usage: $0 <os> <arch> (os: macos|linux, arch: arm64|x64)}"
 ARCH="${2:?Usage: $0 <os> <arch> (os: macos|linux, arch: arm64|x64)}"
@@ -48,6 +50,19 @@ chmod 0755 "$STAGE_DIR/dev3"
 cp ./dist/index.html "$STAGE_DIR/dist/"
 [ -d ./dist/assets ] && cp -r ./dist/assets "$STAGE_DIR/dist/assets"
 cp -r ./src/assets/artifact-template "$STAGE_DIR/artifact-template"
+
+# macOS tarballs MUST carry the bundled tmux (decisions/137) — brew-less and
+# CLT-less machines have no other way to get a working tmux. Hard gate so a
+# release can never silently ship without it. Linux keeps keg/PATH resolution.
+if [ "$OS" = "macos" ]; then
+  if [ ! -f ./dist/tmux/tmux ]; then
+    echo "::error::dist/tmux/tmux missing — run \`bash scripts/build-bundled-tmux.sh\` before packaging macOS CLI artifacts"
+    ls -lh ./dist/tmux 2>/dev/null || true
+    exit 1
+  fi
+  cp -r ./dist/tmux "$STAGE_DIR/tmux"
+  chmod 0755 "$STAGE_DIR/tmux/tmux"
+fi
 
 # Pack contents (no leading ./dev3-cli/ wrapper — extracts straight into CWD).
 # Plain `tar czf` — works on both GNU tar (Linux) and BSD tar (macOS).

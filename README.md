@@ -161,7 +161,7 @@ brew trust h0x91b/dev3   # newer Homebrew refuses untrusted third-party taps (sk
 brew install --cask dev3
 ```
 
-Auto-installs the required `git`, `tmux`, and `cloudflared` dependencies (the last one powers the public-tunnel option used by `dev3 remote` and the in-app remote-access modal). The tmux dependency is the pinned `h0x91b/dev3/tmux@3.6` — tmux 3.7 has a client-side CPU regression; see [Troubleshooting](#troubleshooting).
+Auto-installs the required `git` and `cloudflared` dependencies (the latter powers the public-tunnel option used by `dev3 remote` and the in-app remote-access modal). tmux is bundled inside the app itself — a pinned, self-contained 3.6a build (tmux 3.7 has a client-side CPU regression; see [Troubleshooting](#troubleshooting)).
 
 ```sh
 brew upgrade --cask dev3   # update
@@ -170,7 +170,7 @@ brew uninstall --cask dev3 # remove
 
 #### Manual download
 
-Grab the latest `.dmg` directly — [**Apple Silicon**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-arm64-dev-3.0.dmg) or [**Intel**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-x64-dev-3.0.dmg) — drag to Applications, and run. Make sure `git`, `tmux`, and `cloudflared` are installed (`brew install cloudflared` for the public-tunnel feature; safe to skip if you don't need it).
+Grab the latest `.dmg` directly — [**Apple Silicon**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-arm64-dev-3.0.dmg) or [**Intel**](https://github.com/h0x91b/dev-3.0/releases/latest/download/stable-macos-x64-dev-3.0.dmg) — drag to Applications, and run. tmux is bundled inside the app; make sure `git` is installed, plus `cloudflared` if you want the public-tunnel feature (`brew install cloudflared`; safe to skip otherwise).
 
 Apple Silicon and Intel are both supported. Windows is on the roadmap.
 
@@ -242,7 +242,35 @@ mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
 # (optional) put it on PATH: echo 'export PATH=$HOME/.dev3:$PATH' >> ~/.bashrc
 ```
 
-Make sure `tmux`, `git`, and `cloudflared` are installed via your package manager (`apt install -y tmux git` on Debian/Ubuntu; for `cloudflared` see [Cloudflare's docs](https://github.com/cloudflare/cloudflared#installing-cloudflared)). Without `cloudflared` `dev3 remote` still works — it just falls back to LAN + SSH-forward URLs (or pass `--no-tunnel` to skip the check).
+Make sure `tmux` (see [tmux on Linux](#tmux-on-linux--version-matters) — the version matters), `git`, and `cloudflared` are installed (for `cloudflared` see [Cloudflare's docs](https://github.com/cloudflare/cloudflared#installing-cloudflared)). Without `cloudflared` `dev3 remote` still works — it just falls back to LAN + SSH-forward URLs (or pass `--no-tunnel` to skip the check).
+
+#### tmux on Linux — version matters
+
+Unlike macOS builds (which bundle a self-contained tmux 3.6a inside the app and CLI tarball), **Linux artifacts do not ship tmux — you bring your own**. The Homebrew formula still installs the pinned `h0x91b/dev3/tmux@3.6` keg automatically; tarball installs rely on the system tmux.
+
+The pinned, tested version is **3.6a**. Any 3.3–3.6 works; **avoid the 3.7.x line** — its client busy-spins at 100% CPU on a congested server socket and freezes the UI (the whole reason for the pin). Check what you have: `tmux -V`.
+
+Current stable distro repos still ship pre-3.7 versions, so the stock package is fine:
+
+```sh
+sudo apt-get update && sudo apt-get install -y tmux   # Debian / Ubuntu
+sudo dnf install -y tmux                              # Fedora / RHEL 9+ / Alma / Rocky
+sudo yum install -y tmux                              # RHEL 8 / CentOS 8
+sudo zypper install -y tmux                           # openSUSE
+sudo pacman -S --noconfirm tmux                       # Arch (rolling — check `tmux -V`, may already be 3.7!)
+sudo apk add tmux                                     # Alpine
+```
+
+If your distro already ships 3.7.x (rolling releases), install exactly 3.6a instead — either via Homebrew on Linux (`brew install h0x91b/dev3/tmux@3.6`; the app prefers the keg automatically) or from source:
+
+```sh
+sudo apt-get install -y build-essential libevent-dev libncurses-dev bison   # Debian/Ubuntu deps
+# sudo dnf install -y gcc make libevent-devel ncurses-devel bison           # Fedora/RHEL deps
+curl -fsSL https://github.com/tmux/tmux/releases/download/3.6a/tmux-3.6a.tar.gz | tar xz
+cd tmux-3.6a && ./configure && make -j"$(nproc)" && sudo make install
+```
+
+`dev3 doctor` flags a 3.7.x tmux with a warning, and the app logs it at startup.
 
 #### Caveats for cloud VMs
 
@@ -333,11 +361,11 @@ Run this before changing files, reinstalling the app, or creating tmux symlinks:
 dev3 doctor
 ```
 
-It works while the app is closed and checks the app/CLI versions, the saved tmux path, the managed shim, the pinned tmux binary, and Homebrew state. Follow the commands printed under the failed check. Do not create `~/.dev3.0/bin/tmux` yourself — dev-3.0 owns and recreates that shim.
+It works while the app is closed and checks the app/CLI versions, the saved tmux path, the managed shim, the tmux binary (bundled / keg / PATH), and Homebrew state. Follow the commands printed under the failed check. Do not create `~/.dev3.0/bin/tmux` yourself — dev-3.0 owns and recreates that shim.
 
 ### tmux is missing or terminals do not start
 
-If `dev3 doctor` reports that no usable tmux binary exists, install the pinned version and relaunch dev-3.0:
+macOS releases bundle a self-contained pinned tmux inside the app (`Contents/Resources/app/tmux/tmux`) and the CLI tarball, so no Homebrew or Command Line Tools are needed for it. If `dev3 doctor` reports that no usable tmux binary exists, reinstall the app (or update to the latest version); as an alternative remedy the pinned Homebrew keg still works:
 
 ```sh
 brew tap h0x91b/dev3
@@ -345,7 +373,9 @@ brew trust h0x91b/dev3 2>/dev/null || true
 brew install h0x91b/dev3/tmux@3.6
 ```
 
-The in-app updater replaces only the app bundle, so upgraded installs and DMG installs may still need this once. If Homebrew says the Command Line Tools are outdated, update them as instructed by Homebrew, then rerun the install command. If doctor instead reports `tmux setting` or `tmux shim`, use its reset commands; installing another tmux will not repair a poisoned saved path.
+On Linux nothing is bundled — install tmux from your package manager and mind the version: see [tmux on Linux — version matters](#tmux-on-linux--version-matters).
+
+If doctor instead reports `tmux setting` or `tmux shim`, use its reset commands; installing another tmux will not repair a poisoned saved path.
 
 ### Git network commands hang only inside dev-3.0 on macOS
 

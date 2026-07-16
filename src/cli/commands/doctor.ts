@@ -1,4 +1,5 @@
 import { accessSync, constants, existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { VENDORED_TMUX_PATHS } from "../../bun/rpc-handlers/shared-pure";
 import { resolveSocketPath } from "../context";
@@ -30,6 +31,8 @@ export interface DoctorDeps {
 	platform: NodeJS.Platform;
 	home: string;
 	cliVersion: string;
+	/** Path of the running dev3 binary — bundled tmux lives next to it in CLI artifacts. */
+	execPath: string;
 	existsSync: (path: string) => boolean;
 	isWritable: (path: string) => boolean;
 	isSymlink: (path: string) => boolean;
@@ -49,6 +52,7 @@ export function realDoctorDeps(): DoctorDeps {
 		platform: process.platform,
 		home: process.env.HOME || "/tmp",
 		cliVersion: BUILD_VERSION,
+		execPath: process.execPath,
 		existsSync,
 		isWritable: (path) => {
 			try {
@@ -265,33 +269,61 @@ function checkTmuxShim(deps: DoctorDeps): CheckResult {
 	}
 }
 
+/**
+ * Where release artifacts place the bundled self-contained tmux
+ * (decisions/137): next to the dev3 binary in CLI tarball / brew libexec
+ * installs, and under Resources/app/ inside the desktop app bundle.
+ */
+function bundledTmuxCandidates(deps: DoctorDeps): string[] {
+	if (deps.platform !== "darwin") return [];
+	const candidates: string[] = [];
+	try {
+		candidates.push(join(dirname(deps.realpath(deps.execPath)), "tmux", "tmux"));
+	} catch {
+		/* unreadable execPath — skip the CLI-sibling candidate */
+	}
+	for (const bundle of APP_BUNDLE_CANDIDATES) {
+		candidates.push(`${bundle.replace(/^~/, deps.home)}/Contents/Resources/app/tmux/tmux`);
+	}
+	return candidates;
+}
+
 function checkTmuxBinary(deps: DoctorDeps): CheckResult {
+	// Bundled self-contained tmux (preferred by the app — decisions/137).
+	for (const bundled of bundledTmuxCandidates(deps)) {
+		if (!deps.isExecutableFile(bundled)) continue;
+		const version = tmuxVersion(deps, bundled);
+		if (version) return { label: "tmux binary", status: "ok", detail: `bundled ${bundled} (${version})` };
+	}
 	for (const keg of VENDORED_TMUX_PATHS) {
 		if (!deps.existsSync(keg) || !deps.isExecutableFile(keg)) continue;
 		const version = tmuxVersion(deps, keg);
-		if (version) return { label: "pinned tmux", status: "ok", detail: `${keg} (${version})` };
+		if (version) return { label: "tmux binary", status: "ok", detail: `keg ${keg} (${version})` };
 	}
-	// No keg — the app falls back to PATH tmux (fine for a single instance,
-	// unless it's the known-bad 3.7 line).
+	// No bundled tmux and no keg — the app falls back to PATH tmux (fine for
+	// a single instance, unless it's the known-bad 3.7 line).
 	const pathTmux = deps.exec("tmux", ["-V"]);
 	const version = pathTmux.stdout.trim();
 	if (pathTmux.status !== 0 || !/^tmux \d/.test(version)) {
 		return {
-			label: "pinned tmux",
+			label: "tmux binary",
 			status: "fail",
-			detail: "no usable tmux@3.6 keg and no tmux in PATH — terminals cannot start",
-			hints: ["brew install h0x91b/dev3/tmux@3.6"],
+			detail: "no bundled tmux, no usable tmux@3.6 keg and no tmux in PATH — terminals cannot start",
+			hints: [
+				"Reinstall the dev-3.0 app (release bundles ship their own tmux since v1.36).",
+				"Or install the pinned keg: brew install h0x91b/dev3/tmux@3.6",
+			],
 		};
 	}
 	if (/tmux 3\.7/.test(version)) {
 		return {
-			label: "pinned tmux",
+			label: "tmux binary",
 			status: "warn",
-			detail: `keg absent; PATH has ${version} — known CPU-storm regression with multiple dev-3.0 instances`,
-			hints: ["brew install h0x91b/dev3/tmux@3.6   # the app prefers the keg automatically"],
+			detail: `bundled/keg tmux absent; PATH has ${version} — known CPU-storm regression with multiple dev-3.0 instances`,
+			hints: ["brew install h0x91b/dev3/tmux@3.6   # the app prefers bundled/keg tmux automatically"],
 		};
 	}
-	return { label: "pinned tmux", status: "ok", detail: `keg absent; PATH has ${version} (fine — the keg is only preferred, not required)` };
+	return { label: "tmux binary", status: "ok", detail: `bundled/keg tmux absent; PATH has ${version} (fine — bundled tmux is only preferred, not required)` };
 }
 
 function checkHomebrew(deps: DoctorDeps, appVersion?: string, bundleExists?: boolean): CheckResult[] {
