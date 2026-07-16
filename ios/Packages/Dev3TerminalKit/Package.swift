@@ -12,7 +12,7 @@ let package = Package(
         .library(name: "Dev3TerminalKit", targets: ["Dev3TerminalKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm", from: "1.14.0")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", exact: "1.14.0")
     ],
     targets: [
         .target(
