@@ -3265,6 +3265,26 @@ export type AppRPCSchema = {
 			 * terminal bell uses.
 			 */
 			cliAttention: { taskId: string; reason: string };
+			/** CLI-shared image history for the task, with the newest batch count. */
+			cliShowImage: {
+				taskId: string;
+				projectId: string;
+				images: SharedImage[];
+				newCount: number;
+				taskSeq: number;
+				taskTitle: string;
+				projectName: string;
+			};
+			/** CLI-shared HTML artifact history for the task, with the newest batch count. */
+			cliShowArtifact: {
+				taskId: string;
+				projectId: string;
+				artifacts: SharedArtifact[];
+				newCount: number;
+				taskSeq: number;
+				taskTitle: string;
+				projectName: string;
+			};
 			/**
 			 * Browser Web Notification request. Mirrors a native OS notification
 			 * (`dev3 notify --desktop`, watched-task status/event banners) for clients

@@ -85,6 +85,34 @@ describe("Electrobun RPC transport", () => {
 
 		window.removeEventListener("rpc:openTaskFromNotification", listener);
 	});
+
+	it("dispatches task removal and shared-media pushes through the typed message bridge", async () => {
+		const taskRemoved = vi.fn();
+		const showImage = vi.fn();
+		const showArtifact = vi.fn();
+		window.addEventListener("rpc:taskRemoved", taskRemoved);
+		window.addEventListener("rpc:cliShowImage", showImage);
+		window.addEventListener("rpc:cliShowArtifact", showArtifact);
+
+		await import("../rpc");
+
+		const messages = defineRPCMock.mock.calls[0]?.[0]?.handlers.messages;
+		expect(messages).toBeDefined();
+		messages.taskRemoved({ projectId: "project-1", taskId: "task-1" });
+		messages.cliShowImage({ taskId: "task-1", images: [], newCount: 1 });
+		messages.cliShowArtifact({ taskId: "task-1", artifacts: [], newCount: 1 });
+
+		expect(taskRemoved).toHaveBeenCalledOnce();
+		expect(taskRemoved.mock.calls[0]?.[0]).toMatchObject({
+			detail: { projectId: "project-1", taskId: "task-1" },
+		});
+		expect(showImage).toHaveBeenCalledOnce();
+		expect(showArtifact).toHaveBeenCalledOnce();
+
+		window.removeEventListener("rpc:taskRemoved", taskRemoved);
+		window.removeEventListener("rpc:cliShowImage", showImage);
+		window.removeEventListener("rpc:cliShowArtifact", showArtifact);
+	});
 });
 
 describe("Browser RPC transport", () => {

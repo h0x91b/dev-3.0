@@ -165,7 +165,7 @@ Remote mode also emits these renderer-directed events over the same transport:
 | `cliShowImage` | `TerminalFocusImagePayload` |
 | `cliShowArtifact` | `TerminalFocusArtifactPayload` |
 
-`cliShowImage` and `cliShowArtifact` are implemented remote events but are not yet declared in `AppRPCSchema`; clients should still treat their current payloads as provisional. Menu- and window-directed desktop events may also cross the generic channel; native clients should ignore names they do not implement.
+`cliShowImage` and `cliShowArtifact` are declared in `AppRPCSchema` with their complete task-bound histories and newest-batch counts. Menu- and window-directed desktop events may also cross the generic channel; native clients should ignore names they do not implement.
 
 ## PTY WebSocket
 

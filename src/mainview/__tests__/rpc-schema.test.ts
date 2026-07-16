@@ -14,3 +14,13 @@ describe("AppRPCSchema webview messages", () => {
 		expect(sharedTypesSource).toContain("osc52Clipboard: { taskId: string; text: string; len: number };");
 	});
 });
+
+describe("AppRPCSchema bun push messages", () => {
+	it("declares the task removal and CLI shared-media events consumed by every renderer", () => {
+		expect(sharedTypesSource).toContain("taskRemoved: { projectId: string; taskId: string };");
+		expect(sharedTypesSource).toContain("cliShowImage: {");
+		expect(sharedTypesSource).toContain("images: SharedImage[];");
+		expect(sharedTypesSource).toContain("cliShowArtifact: {");
+		expect(sharedTypesSource).toContain("artifacts: SharedArtifact[];");
+	});
+});
