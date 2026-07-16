@@ -18,6 +18,13 @@ public final class ConnectionRuntime {
         registry.client
     }
 
+    /// Creates a PTY client backed by the same rolling session credential as RPC.
+    /// A fresh client is returned per terminal so their socket lifecycles stay isolated.
+    public func makePTYClient() -> PTYClient? {
+        guard let requestBuilder = registry.requestBuilder else { return nil }
+        return PTYClient(requestBuilder: requestBuilder)
+    }
+
     public init(
         store: PairedServerStore = PairedServerStore(),
         transport: any SessionHTTPTransporting = SessionHTTPClient(),
@@ -33,6 +40,7 @@ public final class ConnectionRuntime {
             pathObserver: pathObserver,
             connectionFactory: { requestBuilder in
                 let client = RPCClient(requestBuilder: requestBuilder)
+                registry.requestBuilder = requestBuilder
                 registry.client = client
                 return client
             }
@@ -45,6 +53,7 @@ public final class ConnectionRuntime {
 
 @MainActor
 private final class RPCClientRegistry {
+    var requestBuilder: (any AuthenticatedRequestBuilding)?
     var client: RPCClient? {
         didSet {
             if let client {
