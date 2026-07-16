@@ -32,8 +32,8 @@ targets:
       - path: App
         excludes:
           - Resources
-    resources:
       - path: App/Resources
+        buildPhase: resources
     dependencies:
       - package: Dev3Kit
       - package: Dev3TerminalKit

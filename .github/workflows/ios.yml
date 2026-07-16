@@ -41,9 +41,9 @@ jobs:
       - name: Install native tooling
         run: brew install xcodegen swiftformat swiftlint
 
-      - name: Verify generated theme
+      - name: Verify generated assets
         run: |
-          bun test ios/scripts/gen-theme.test.ts
+          bun test ios/scripts/*.test.ts
           bun ios/scripts/gen-theme.ts --check
 
       - name: Verify formatting
