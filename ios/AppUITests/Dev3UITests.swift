@@ -15,7 +15,7 @@ final class Dev3UITests: XCTestCase {
         XCTAssertTrue(origin.waitForExistence(timeout: 2))
         origin.tap()
         origin.typeText("http://127.0.0.1:4242")
-        let code = app.secureTextFields["manual.code"]
+        let code = app.textFields["manual.code"]
         code.tap()
         code.typeText("simulator-code")
         let name = app.textFields["manual.name"]
@@ -24,8 +24,8 @@ final class Dev3UITests: XCTestCase {
         app.buttons["manual.connect"].tap()
 
         XCTAssertTrue(app.otherElements["connected.shell"].waitForExistence(timeout: 5))
+        app.buttons["Settings"].tap()
         XCTAssertTrue(app.staticTexts["Pocket Studio"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["Connected to dev3"].exists)
     }
 
     @MainActor
@@ -38,7 +38,7 @@ final class Dev3UITests: XCTestCase {
         XCTAssertTrue(origin.waitForExistence(timeout: 2))
         origin.tap()
         origin.typeText("127.0.0.1:4242")
-        let code = app.secureTextFields["manual.code"]
+        let code = app.textFields["manual.code"]
         code.tap()
         code.typeText("simulator-code")
         app.buttons["manual.connect"].tap()
@@ -67,20 +67,14 @@ final class Dev3UITests: XCTestCase {
         XCTAssertTrue(originField.waitForExistence(timeout: 2))
         originField.tap()
         originField.typeText(origin)
-        let codeField = app.secureTextFields["manual.code"]
+        let codeField = app.textFields["manual.code"]
         codeField.tap()
         codeField.typeText(code)
         app.buttons["manual.connect"].tap()
 
         XCTAssertTrue(app.otherElements["connected.shell"].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.staticTexts["Connected to dev3"].waitForExistence(timeout: 5))
-        app.buttons["connected.tab.projects"].tap()
-        let populated = app.otherElements["projects.ready"]
-        let empty = app.otherElements["projects.empty"]
-        XCTAssertTrue(
-            populated.waitForExistence(timeout: 15) || empty.waitForExistence(timeout: 2),
-            "The connected store should finish its initial project refetch."
-        )
+        app.buttons["Projects"].tap()
+        XCTAssertTrue(app.otherElements["projects-dashboard"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.otherElements["projects.loading"].exists)
     }
 

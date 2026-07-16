@@ -360,8 +360,10 @@ private struct ManualPairingView: View {
                         .accessibilityIdentifier("manual.origin")
                 }
                 Section("Pairing code") {
-                    SecureField("Code", text: $code)
+                    TextField("Code", text: $code)
                         .textContentType(.oneTimeCode)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                         .accessibilityIdentifier("manual.code")
                 }
                 if let errorMessage {
