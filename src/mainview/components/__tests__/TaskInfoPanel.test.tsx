@@ -2041,6 +2041,46 @@ describe("TaskInfoPanel", () => {
 			expect(within(popover).getByText("Failed checks: E2E PR Smoke Tests")).toBeInTheDocument();
 		});
 
+		it("shows a merged PR state while keeping the badge clickable", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const openSpy = vi.fn(); window.open = openSpy;
+			const prUrl = "https://github.com/test/repo/pull/42";
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				prNumber: 42,
+				prUrl,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", {
+					detail: {
+						projectId: "p1",
+						taskId: "t1",
+						prNumber: 42,
+						prUrl,
+						ciStatus: null,
+						reviewState: null,
+						unresolvedCount: null,
+						mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+						checks: [],
+						prTitle: "Merged change",
+						isDraft: false,
+					},
+				}));
+			});
+
+			const badge = screen.getAllByText(/PR #42/)[0].closest("button")!;
+			await user.hover(badge);
+			const popover = await screen.findByTestId("pr-status-popover");
+			expect(within(popover).getByText("PR status")).toBeInTheDocument();
+			expect(within(popover).getByText("Merged")).toBeInTheDocument();
+			await user.click(badge);
+			expect(openSpy).toHaveBeenCalledWith(prUrl, "_blank");
+		});
+
 		it("PR badge does not open a tab when prUrl is null", async () => {
 			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 			const openSpy = vi.fn(); window.open = openSpy;

@@ -45,7 +45,7 @@ const tips = {
 	"tip.projectGitHubAccount.title": "Elige gh por proyecto",
 	"tip.projectGitHubAccount.body": "Abre Config del proyecto y elige la cuenta de gh de ese repo antes de crear PRs o revisar su estado.",
 	"tip.prBadgeOnCard.title": "Número de PR en la tarjeta",
-	"tip.prBadgeOnCard.body": "Las tarjetas de tareas muestran una insignia de PR clicable cuando existe un pull request abierto — haz clic para ir a GitHub.",
+	"tip.prBadgeOnCard.body": "Las tarjetas de tareas muestran una insignia de PR clicable cuando hay un pull request vinculado — haz clic para ir a GitHub.",
 	"tip.showDiffButton.title": "Revisa tu diff en la tarea",
 	"tip.showDiffButton.body": "Pulsa \"Show Diff\" en el panel de la tarea para reemplazar el terminal por un diff inline de la rama, y usa Esc para volver.",
 	"tip.diffExcludeTests.title": "Oculta los tests del diff",

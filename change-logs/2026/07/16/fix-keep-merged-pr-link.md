@@ -1,0 +1,1 @@
+Keep a task's detected pull-request link after GitHub merges it by refreshing the sticky PR record and reporting the merged state in the existing PR status popover. The badge remains clickable and merged PR status is localized across supported languages.

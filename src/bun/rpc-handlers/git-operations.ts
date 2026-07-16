@@ -509,6 +509,8 @@ interface GitHubPullRequestSummary {
 	reviewDecision?: unknown;
 }
 
+const PR_STATUS_JSON_FIELDS = "number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title";
+
 interface PolledPRStatus {
 	found: boolean;
 	ciStatus: PRCIStatus | null;
@@ -695,7 +697,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 			"--state",
 			"open",
 			"--json",
-			"number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title",
+			PR_STATUS_JSON_FIELDS,
 			"--limit",
 			"1",
 		],
@@ -709,11 +711,34 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 	} catch {
 		return null;
 	}
-	const pr = Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
+	let pr = Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
+	let isOpenPr = pr !== null;
+	if (!pr && task.prNumber != null) {
+		// An open-list lookup stops finding the PR after merge. Use the sticky
+		// number to fetch that exact PR so its URL and terminal state remain
+		// visible, even if the branch has since disappeared from GitHub.
+		const knownPrResult = await github.runGitHub(
+			project,
+			task.worktreePath,
+			["pr", "view", String(task.prNumber), "--json", PR_STATUS_JSON_FIELDS],
+			{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
+		);
+		if (knownPrResult.ok && knownPrResult.stdout) {
+			try {
+				const parsed = JSON.parse(knownPrResult.stdout);
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+					pr = parsed as GitHubPullRequestSummary;
+					isOpenPr = typeof pr.state === "string" && pr.state.toUpperCase() === "OPEN";
+				}
+			} catch {
+				return null;
+			}
+		}
+	}
 	if (!pr) return { found: false, ciStatus: null };
 
-	const prNumber = typeof pr.number === "number" ? pr.number : null;
-	const prUrl = typeof pr.url === "string" ? pr.url : null;
+	const prNumber = typeof pr.number === "number" ? pr.number : task.prNumber ?? null;
+	const prUrl = typeof pr.url === "string" ? pr.url : task.prUrl ?? null;
 	if (prNumber === null) return null;
 
 	const ciStatus = rollupCiStatus(pr.statusCheckRollup);
@@ -776,7 +801,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 		prSignalState.delete(task.id);
 	}
 
-	const isOpenNonDraft = isDraft === false;
+	const isOpenNonDraft = isOpenPr && isDraft === false;
 	if (task.status === "review-by-user" && isOpenNonDraft && !prPromotedTasks.has(task.id)) {
 		prPromotedTasks.add(task.id);
 		log.info("Open PR detected — promoting to review-by-colleague", {
@@ -788,7 +813,7 @@ async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNu
 		pushMessage("taskUpdated", { projectId: project.id, task: updated });
 	}
 
-	return { found: true, ciStatus };
+	return { found: isOpenPr, ciStatus };
 }
 
 
@@ -939,13 +964,16 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		return null;
 	})();
 
-	const [status, uncommitted, unpushed, branchDiff, prInfo] = await Promise.all([
+	const [status, uncommitted, unpushed, branchDiff, detectedPr] = await Promise.all([
 		git.getBranchStatus(task.worktreePath, ref),
 		git.getUncommittedChanges(task.worktreePath),
 		git.getUnpushedCount(task.worktreePath, branchForPush),
 		git.getBranchDiffStats(task.worktreePath, ref),
 		prDetection,
 	]);
+	const prInfo = detectedPr ?? (task.prNumber != null && task.prUrl
+		? { number: task.prNumber, url: task.prUrl }
+		: null);
 	const prNumber = prInfo?.number ?? null;
 	const prUrl = prInfo?.url ?? null;
 	log.debug("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });

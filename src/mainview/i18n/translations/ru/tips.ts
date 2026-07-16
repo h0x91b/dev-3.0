@@ -45,7 +45,7 @@ const tips = {
 	"tip.projectGitHubAccount.title": "Выбери gh для проекта",
 	"tip.projectGitHubAccount.body": "Откройте настройки проекта и выберите gh-аккаунт для этого репо перед созданием PR или проверкой статуса PR.",
 	"tip.prBadgeOnCard.title": "Номер PR на карточке",
-	"tip.prBadgeOnCard.body": "На карточках задач отображается кликабельный бейдж PR — нажмите, чтобы перейти на GitHub.",
+	"tip.prBadgeOnCard.body": "На карточках задач отображается кликабельный бейдж связанного PR — нажмите, чтобы перейти на GitHub.",
 	"tip.showDiffButton.title": "Просматривайте diff прямо в задаче",
 	"tip.showDiffButton.body": "Нажмите «Show Diff» в панели задачи, чтобы заменить терминал inline diff’ом ветки, а потом нажмите Esc, чтобы вернуться.",
 	"tip.diffExcludeTests.title": "Спрячьте тесты из diff’а",

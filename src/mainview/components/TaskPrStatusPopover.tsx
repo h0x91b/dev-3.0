@@ -280,6 +280,14 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 			? "text-danger"
 			: "text-fg-3";
 	const mergeReasons = mergeability.state === "not_mergeable" ? mergeReasonDetails(prInfo, mergeability, t) : [];
+	const prState = prInfo.mergeState?.state?.toUpperCase();
+	const prStateMeta = prState === "OPEN"
+		? { label: t("task.prStatusOpen"), className: "text-fg-3" }
+		: prState === "MERGED"
+			? { label: t("task.prStatusMerged"), className: "text-success" }
+			: prState === "CLOSED"
+				? { label: t("task.prStatusClosed"), className: "text-danger" }
+				: null;
 	const popover = open && createPortal(
 		<div
 			ref={popoverRef}
@@ -322,6 +330,12 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 			<div className="mt-3">
 				<div className="mb-1.5 font-medium text-fg-2">{t("task.prMergeStatus")}</div>
 				<dl className="space-y-1">
+					{prStateMeta && (
+						<div className="flex items-center justify-between gap-3">
+							<dt className="text-fg-3">{t("task.prStatusLabel")}</dt>
+							<dd className={`font-medium ${prStateMeta.className}`}>{prStateMeta.label}</dd>
+						</div>
+					)}
 					<div className="flex items-center justify-between gap-3">
 						<dt className="text-fg-3">{t("task.prAutoMerge")}</dt>
 						<dd className={`font-medium ${autoMergeClass}`}>{autoMergeLabel}</dd>

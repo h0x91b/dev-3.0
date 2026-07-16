@@ -1138,7 +1138,7 @@ export interface Task {
 	/** Sticky identity of the GitHub pull request detected for this task. */
 	prNumber?: number | null;
 	prUrl?: string | null;
-	/** Last rich status fetched for the task's open GitHub pull request. */
+	/** Last rich status fetched for the task's associated GitHub pull request. */
 	prStatusCache?: TaskPRStatusCache | null;
 	groupId: string | null;
 	variantIndex: number | null;
@@ -1817,8 +1817,8 @@ export interface BranchStatus {
 	diffInsertions: number; // total lines added in branch vs base
 	diffDeletions: number; // total lines removed in branch vs base
 	diffFileStats: Array<{ path: string; insertions: number; deletions: number }>; // per-file stats for branch vs base
-	prNumber: number | null; // open PR number for this branch, null if none
-	prUrl: string | null; // full GitHub PR URL, null if no PR
+	prNumber: number | null; // associated PR number for this branch, null if none was detected
+	prUrl: string | null; // full GitHub PR URL, null if no associated PR was detected
 	mergeCompletionFingerprint: string | null; // stable key for deduping the merged-branch completion prompt
 }
 
@@ -1921,7 +1921,7 @@ export interface PRMergeState {
 }
 
 /**
- * Persisted rich status for a task's open pull request. This is deliberately
+ * Persisted rich status for a task's associated pull request. This is deliberately
  * additive task metadata: the renderer can show it immediately while the next
  * GitHub refresh is in flight.
  */
@@ -3288,7 +3288,7 @@ export type AppRPCSchema = {
 				projectName?: string;
 			};
 			/**
-			 * CI/checks + PR-review state for a task's open PR, emitted by the
+			 * CI/checks + PR-review state for a task's associated PR, emitted by the
 			 * background PR poller (`checkOpenPRsForPromotion`). Drives the CI and
 			 * review badges on the task card. Passive status â NOT gated by Focus
 			 * Mode (only the bell/notification raised alongside it is).
