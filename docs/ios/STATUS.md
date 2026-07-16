@@ -10,15 +10,15 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 |---|---|---|
 | Pair and reconnect | Live green | Fresh manual pairing, saved-session cold launch, one refresh/RPC connection/refetch, and no immediate reconnect churn. |
 | Browse and create | Live green | Work/Projects navigation, one task creation, agent/config selection, preparation, and terminal handoff passed. Simulator accessibility and visual QA confirm the required Description affordance. |
-| Running-task terminal | In progress | Composer and raw accessory input, exact agent responses, zoom, pane/window lifecycle, task metadata update, and cold PTY continuity passed. The terminal follows the instance theme, raw Enter clears UIKit input state, and hardware-key sequences are unit-covered; final recovery recording remains. |
-| PTY recovery | In progress | Same-process cold reattach and scene/network kick implementation tests are green. Live background/foreground and interruption continuity QA remains. |
+| Running-task terminal | Live green | Composer and raw accessory input, exact agent responses, zoom, pane/window lifecycle, task metadata update, and cold PTY continuity passed. The terminal follows the instance theme, raw Enter clears UIKit input state, and hardware-key sequences are unit-covered. |
+| PTY recovery | Live green | Cold reattach, true Home-to-foreground recovery with the same app PID, and remote-server interruption recovery all retained the same durable tmux session and worktree. |
 | Task Info | Live partial | Priority round-trip passed without changing the terminal session. Remaining destructive/completion path is held for the final end-to-end pass. |
-| Completion cleanup | Pending | Complete the live task through the native approval flow, then verify route dismissal, tmux teardown, and worktree removal. |
+| Completion cleanup | In progress | The first request safely ended with Keep session because a guest remote's agent CLI selected an unrelated desktop socket. Durable per-task owner routing is test-green and awaiting the live native approval and cleanup retry. |
 
 ## Core QA still required
 
 - Exercise the unit-covered Shift hardware-key sequences with a physical keyboard.
-- Background/foreground and remote-server interruption recovery with PTY continuity.
+- Route agent completion approval to the task-owning remote across server restarts and concurrent desktop instances.
 - Final completion approval and cleanup.
 
 ## Later waves

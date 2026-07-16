@@ -230,6 +230,12 @@ vi.mock("../paths", () => ({
 	OPS_DIR: "/tmp/test-dev3/ops",
 }));
 
+vi.mock("../socket-task-ownership", () => ({
+	claimCurrentSocketTask: vi.fn(),
+	releaseCurrentSocketTask: vi.fn(),
+	clearTaskSocketOwnership: vi.fn(),
+}));
+
 vi.mock("node:fs/promises", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("node:fs/promises")>();
 	return { ...actual, mkdir: vi.fn(() => Promise.resolve(undefined)), rm: vi.fn(() => Promise.resolve(undefined)) };
@@ -280,6 +286,7 @@ import * as github from "../github";
 import * as pty from "../pty-server";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
+import { claimCurrentSocketTask, clearTaskSocketOwnership, releaseCurrentSocketTask } from "../socket-task-ownership";
 import * as updater from "../updater";
 import { setupAgentHooks } from "../agent-hooks";
 import { loadSettings, loadSettingsSync, saveSettings } from "../settings";
@@ -2162,6 +2169,8 @@ describe("handlers.moveTask", () => {
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 		expect(result.status).toBe("completed");
+		expect(clearTaskSocketOwnership).toHaveBeenCalledWith("task-1");
+		expect(clearTaskSocketOwnership).toHaveBeenCalledTimes(2);
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 	});
@@ -2430,6 +2439,8 @@ describe("handlers.moveTask", () => {
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 		expect(result.status).toBe("completed");
+		expect(clearTaskSocketOwnership).toHaveBeenCalledWith("task-1");
+		expect(clearTaskSocketOwnership).toHaveBeenCalledTimes(2);
 		expect(pty.destroySession).not.toHaveBeenCalled();
 		expect(git.removeWorktree).not.toHaveBeenCalled();
 	});
@@ -2451,6 +2462,8 @@ describe("handlers.deleteTask", () => {
 
 		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
 		expect(data.deleteTask).toHaveBeenCalledWith(project, "task-1");
+		expect(clearTaskSocketOwnership).toHaveBeenCalledWith("task-1");
+		expect(clearTaskSocketOwnership).toHaveBeenCalledTimes(2);
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).not.toHaveBeenCalled();
 	});
@@ -4604,12 +4617,36 @@ describe("handlers.getPtyUrl", () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it("returns URL directly when session exists", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "in-progress" });
 		vi.mocked(pty.hasSession).mockReturnValue(true);
 		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
+		expect(claimCurrentSocketTask).toHaveBeenCalledWith("task-1");
+		expect(releaseCurrentSocketTask).not.toHaveBeenCalled();
+	});
+
+	it("releases a late claim when terminal status won during PTY routing", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "completed" });
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
+		expect(claimCurrentSocketTask).toHaveBeenCalledWith("task-1");
+		expect(releaseCurrentSocketTask).toHaveBeenCalledWith("task-1");
 	});
 
 	it("destroys stale session when tmux is gone and offers recovery", async () => {
@@ -4627,6 +4664,8 @@ describe("handlers.getPtyUrl", () => {
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
 		expect(result).toEqual({ recoverable: true, sessionState });
+		expect(releaseCurrentSocketTask).toHaveBeenCalledWith("task-1");
+		expect(claimCurrentSocketTask).not.toHaveBeenCalled();
 	});
 
 	it("tries to restore PTY when session is missing and tmux alive", async () => {
@@ -4749,6 +4788,8 @@ describe("handlers.getPtyUrl", () => {
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
 		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(releaseCurrentSocketTask).toHaveBeenCalledWith("task-1");
+		expect(claimCurrentSocketTask).not.toHaveBeenCalled();
 	});
 
 	it("destroys dead session and relaunches with resume flag", async () => {

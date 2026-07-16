@@ -15,6 +15,7 @@ import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
 import { ensureArtifactTemplateEnv } from "../artifact-template";
+import { claimCurrentSocketTask, releaseCurrentSocketTask } from "../socket-task-ownership";
 import { ALT_CLICK_PANE_FORMAT, altClickIneligibleReason, computeAltClickKeys, findAltClickPane, parseAltClickPanes } from "../tmux-alt-click";
 import { getPushMessage, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -1273,6 +1274,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 					taskId: params.taskId.slice(0, 8),
 					paneCount: foundTask.sessionState.panes.length,
 				});
+				releaseCurrentSocketTask(params.taskId);
 				return { recoverable: true as const, sessionState: foundTask.sessionState };
 			} else {
 				// No tmux, no session state — launch fresh
@@ -1298,7 +1300,20 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 	}
 
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${params.taskId}`;
-	log.info("← getPtyUrl", { url, sessionExists: pty.hasSession(params.taskId) });
+	const sessionExists = pty.hasSession(params.taskId);
+	if (sessionExists) {
+		claimCurrentSocketTask(params.taskId);
+		// A terminal transition can overlap the async restoration path above. Read
+		// the canonical task after claiming: if teardown won, release our late
+		// claim; if it wins after this active read, its post-persist clear removes it.
+		const { task: currentTask } = await findTaskAcrossProjects(params.taskId);
+		if (!currentTask || !isActive(currentTask.status)) {
+			releaseCurrentSocketTask(params.taskId);
+		}
+	} else {
+		releaseCurrentSocketTask(params.taskId);
+	}
+	log.info("← getPtyUrl", { url, sessionExists });
 	return { url };
 }
 

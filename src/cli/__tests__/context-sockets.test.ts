@@ -18,6 +18,8 @@ const TEST_CWD = `${TEST_HOME}/.dev3.0/worktrees/test-project/aabbccdd/worktree`
 const PROJECTS_FILE = `${TEST_HOME}/.dev3.0/projects.json`;
 const TASKS_FILE = `${TEST_HOME}/.dev3.0/data/test-project/tasks.json`;
 const SOCKETS_DIR = `${TEST_HOME}/.dev3.0/sockets`;
+const TASK_ID = "aabbccdd-1111-4222-8333-444444444444";
+const TASK_OWNER_FILE = `${SOCKETS_DIR}/task-owners/${TASK_ID}.json`;
 
 describe("detectContext socket selection", () => {
 	let killSpy: ReturnType<typeof vi.spyOn>;
@@ -45,7 +47,7 @@ describe("detectContext socket selection", () => {
 			}
 			if (path === TASKS_FILE) {
 				return JSON.stringify([
-					{ id: "aabbccdd-1111-2222-3333-444444444444" },
+					{ id: TASK_ID },
 				]);
 			}
 			throw new Error(`Unexpected readFileSync path: ${String(path)}`);
@@ -133,6 +135,157 @@ describe("detectContext socket selection", () => {
 
 		expect(ctx).not.toBeNull();
 		expect(ctx!.socketPath).toBe(`${SOCKETS_DIR}/67566.sock`);
+	});
+
+	it("prefers the logical task owner guest over an unrelated primary", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockImplementation((path: unknown) => ({
+			mtimeMs: String(path).endsWith("44818.sock") ? 300 : 100,
+		}));
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === TASK_OWNER_FILE) {
+				return JSON.stringify({ taskId: TASK_ID, ownerKey: "remote:18856", claimedAt: 500 });
+			}
+			if (path === `${SOCKETS_DIR}/44818.meta.json`) {
+				return JSON.stringify({ pid: 44818, hostTaskId: null, startedAt: "", ownerKey: "process:44818" });
+			}
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: "other-task", startedAt: "", ownerKey: "remote:18856" });
+			}
+			return baseRead(path, ...rest);
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx?.socketPath).toBe(`${SOCKETS_DIR}/67566.sock`);
+	});
+
+	it("never lets a self-hosted task owner override the primary safety route", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockReturnValue({ mtimeMs: 100 });
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === TASK_OWNER_FILE) {
+				return JSON.stringify({ taskId: TASK_ID, ownerKey: "remote:18856", claimedAt: 500 });
+			}
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: TASK_ID, startedAt: "", ownerKey: "remote:18856" });
+			}
+			return baseRead(path, ...rest);
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx?.socketPath).toBe(`${SOCKETS_DIR}/44818.sock`);
+	});
+
+	it("falls back when the claimed owner PID is dead", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockReturnValue({ mtimeMs: 100 });
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === TASK_OWNER_FILE) {
+				return JSON.stringify({ taskId: TASK_ID, ownerKey: "remote:18856", claimedAt: 500 });
+			}
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: "other-task", startedAt: "", ownerKey: "remote:18856" });
+			}
+			return baseRead(path, ...rest);
+		});
+		killSpy.mockImplementation((pid: number) => {
+			if (pid === 67566) {
+				const error = new Error("gone") as NodeJS.ErrnoException;
+				error.code = "ESRCH";
+				throw error;
+			}
+			return true;
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx?.socketPath).toBe(`${SOCKETS_DIR}/44818.sock`);
+	});
+
+	it("tries an EPERM-only task owner before an unrelated confirmed-live primary", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockReturnValue({ mtimeMs: 100 });
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === TASK_OWNER_FILE) {
+				return JSON.stringify({ taskId: TASK_ID, ownerKey: "remote:18856", claimedAt: 500 });
+			}
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: "other-task", startedAt: "", ownerKey: "remote:18856" });
+			}
+			return baseRead(path, ...rest);
+		});
+		killSpy.mockImplementation((pid: number) => {
+			if (pid === 67566) {
+				const error = new Error("blocked") as NodeJS.ErrnoException;
+				error.code = "EPERM";
+				throw error;
+			}
+			return true;
+		});
+
+		const { resolveSocketPathForTask } = await import("../context");
+		const socketPath = resolveSocketPathForTask(TASK_ID, { cwd: TEST_CWD });
+
+		expect(socketPath).toBe(`${SOCKETS_DIR}/67566.sock`);
+		expect(killSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("a restarted headless socket inherits the stable owner key without a new task claim", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock", "70000.sock"]);
+		mockStatSync.mockImplementation((path: unknown) => ({
+			mtimeMs: String(path).endsWith("70000.sock") ? 300 : 100,
+		}));
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === TASK_OWNER_FILE) {
+				return JSON.stringify({ taskId: TASK_ID, ownerKey: "remote:18856", claimedAt: 500 });
+			}
+			if (path === `${SOCKETS_DIR}/67566.meta.json` || path === `${SOCKETS_DIR}/70000.meta.json`) {
+				const pid = String(path).includes("70000") ? 70000 : 67566;
+				return JSON.stringify({ pid, hostTaskId: "other-task", startedAt: "", ownerKey: "remote:18856" });
+			}
+			return baseRead(path, ...rest);
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx?.socketPath).toBe(`${SOCKETS_DIR}/70000.sock`);
+	});
+
+	it("ignores malformed or sibling-prefix owner claims", async () => {
+		mockReaddirSync.mockReturnValue(["44818.sock", "67566.sock"]);
+		mockStatSync.mockImplementation((path: unknown) => ({
+			mtimeMs: String(path).endsWith("67566.sock") ? 200 : 100,
+		}));
+		const baseRead = mockReadFileSync.getMockImplementation()!;
+		mockReadFileSync.mockImplementation((path: unknown, ...rest: unknown[]) => {
+			if (path === TASK_OWNER_FILE) {
+				return JSON.stringify({
+					taskId: "aabbccdd-9999-4999-8999-999999999999",
+					ownerKey: "remote:18856",
+					claimedAt: 500,
+				});
+			}
+			if (path === `${SOCKETS_DIR}/67566.meta.json`) {
+				return JSON.stringify({ pid: 67566, hostTaskId: "other-task", startedAt: "", ownerKey: "remote:18856" });
+			}
+			return baseRead(path, ...rest);
+		});
+
+		const { detectContext } = await import("../context");
+		const ctx = detectContext(TEST_CWD);
+
+		expect(ctx?.socketPath).toBe(`${SOCKETS_DIR}/44818.sock`);
 	});
 
 	// Sandbox flavor of #910: process.kill(pid, 0) is EPERM-blocked, so even a

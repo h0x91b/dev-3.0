@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
-import { socketMetaPathFor, type SocketMeta } from "../shared/socket-meta";
+import { socketMetaPathFor, socketOwnerKey, type SocketMeta } from "../shared/socket-meta";
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
@@ -1354,6 +1354,7 @@ export function startSocketServer(): string {
 			pid: process.pid,
 			hostTaskId: process.env.DEV3_TASK_ID || null,
 			startedAt: new Date().toISOString(),
+			ownerKey: socketOwnerKey(process.pid),
 		};
 		writeFileSync(socketMetaPathFor(socketPath), JSON.stringify(meta));
 	} catch (err) {

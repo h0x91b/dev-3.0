@@ -5,7 +5,7 @@ import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON } from "../../shared
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
-import { expandShortId, resolveProjectId, type CliContext } from "../context";
+import { expandShortId, resolveProjectId, resolveSocketPathForTask, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { readStdin } from "../stdin";
 
@@ -247,8 +247,9 @@ async function requestCompletion(
 	);
 
 	let resp: CliResponse;
+	const ownerSocketPath = resolveSocketPathForTask(taskId) ?? socketPath;
 	try {
-		resp = await sendRequest(socketPath, "task.requestCompletion", params, {
+		resp = await sendRequest(ownerSocketPath, "task.requestCompletion", params, {
 			timeoutMs: COMPLETION_APPROVAL_TIMEOUT_MS,
 		});
 	} catch (err) {
@@ -258,7 +259,25 @@ async function requestCompletion(
 				"The approval dialog may still be open in the app — if the user approves later, the task will complete and this session will be destroyed.",
 			);
 		}
-		throw err;
+		// A task owner socket can disappear between discovery and connect (most
+		// notably an old headless PID under an EPERM-only sandbox). A connect-phase
+		// APP_NOT_RUNNING means the request was never accepted, so one replay to a
+		// different live instance is safe. Never replay an empty response: that
+		// server may already be waiting on the user's approval.
+		if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
+			const fallbackSocketPath = resolveSocketPathForTask(taskId, {
+				excludePaths: [ownerSocketPath],
+			}) ?? (socketPath !== ownerSocketPath ? socketPath : null);
+			if (fallbackSocketPath) {
+				resp = await sendRequest(fallbackSocketPath, "task.requestCompletion", params, {
+					timeoutMs: COMPLETION_APPROVAL_TIMEOUT_MS,
+				});
+			} else {
+				throw err;
+			}
+		} else {
+			throw err;
+		}
 	}
 	if (!resp.ok) exitError(resp.error || "Failed to request task completion");
 

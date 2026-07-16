@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 import type { Project } from "../shared/types";
-import { parseSocketMeta, socketMetaFileName } from "../shared/socket-meta";
+import { parseSocketMeta, parseTaskSocketOwner, socketMetaFileName, taskSocketOwnerPath } from "../shared/socket-meta";
 
 const HOME = process.env.HOME || "/tmp";
 const DEV3_HOME = `${HOME}/.dev3.0`;
@@ -124,7 +124,7 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 		if (!task) return null;
 
 		// Try to find a live socket (check real sockets dir first, then HOME-based)
-		const socketPath = discoverSocketIn(socketsDir) || discoverSocket() || "";
+		const socketPath = discoverSocketIn(socketsDir, undefined, task.id) || discoverSocket() || "";
 
 		// Derive worktree root path from the parsed info
 		const worktreeBase = `${effectiveHome}/worktrees/${pathInfo.projectSlug}/${pathInfo.taskShortId}/worktree`;
@@ -187,7 +187,7 @@ function resolveFromVirtualPath(cwd: string): CliContext | null {
 		const task = tasks.find((t) => t.id.startsWith(pathInfo.taskShortId));
 		if (!task) return null;
 
-		const socketPath = discoverSocketIn(socketsDir) || discoverSocket() || "";
+		const socketPath = discoverSocketIn(socketsDir, undefined, task.id) || discoverSocket() || "";
 		const workDir = `${effectiveHome}/ops/${pathInfo.readableSlug}/${pathInfo.taskShortId}/work`;
 
 		return {
@@ -223,7 +223,7 @@ function resolveFromEnv(): CliContext | null {
 				return {
 					projectId: project.id,
 					taskId,
-					socketPath: discoverSocket() || "",
+					socketPath: discoverSocketIn(SOCKETS_DIR, undefined, taskId) || "",
 				};
 			}
 		}
@@ -288,25 +288,45 @@ export function detectContextDiagnostics(cwd: string = process.cwd()): string {
  * chronic "Empty response from server" / refused-socket failures, #910/#920).
  * No/corrupt sidecar (incl. sockets from older builds) means "primary".
  */
-function isGuestSocket(socketsDir: string, pid: number): boolean {
+function readSocketMeta(socketsDir: string, pid: number) {
 	try {
 		const meta = parseSocketMeta(readFileSync(`${socketsDir}/${socketMetaFileName(pid)}`, "utf-8"));
-		return meta?.hostTaskId != null;
+		return meta?.pid === pid ? meta : null;
 	} catch {
-		return false;
+		return null;
+	}
+}
+
+function readTaskSocketOwner(socketsDir: string, taskId: string) {
+	const ownerPath = taskSocketOwnerPath(socketsDir, taskId);
+	if (!ownerPath) return null;
+	try {
+		const owner = parseTaskSocketOwner(readFileSync(ownerPath, "utf-8"));
+		return owner?.taskId === taskId ? owner : null;
+	} catch {
+		return null;
 	}
 }
 
 /**
  * Find any live socket in a given sockets directory. Primary-instance sockets
- * are preferred over guest sockets (see isGuestSocket); within each group the
- * newest mtime (then highest pid) wins. `exclude` skips sockets that already
- * failed this invocation (e.g. died mid-request) — vital in sandboxed envs
- * where liveness probes are EPERM-blocked and a dead socket would otherwise be
- * re-picked forever.
+ * are preferred over guest sockets; within each group the
+ * newest mtime (then highest pid) wins. When `preferredTaskId` is provided, a
+ * live instance that successfully created/restored that task's PTY wins first;
+ * the newest task claim breaks ties across viewers and server restarts. A guest
+ * hosted by the target task itself never gains this preference, preserving the
+ * self-hosted stop/restart safety invariant from #910/#920. `exclude` skips
+ * sockets that already failed this invocation (e.g. died mid-request) — vital
+ * in sandboxed envs where liveness probes are EPERM-blocked and a dead socket
+ * would otherwise be re-picked forever.
  */
-function discoverSocketIn(socketsDir: string, exclude?: ReadonlySet<string>): string | null {
+function discoverSocketIn(
+	socketsDir: string,
+	exclude?: ReadonlySet<string>,
+	preferredTaskId?: string,
+): string | null {
 	if (!existsSync(socketsDir)) return null;
+	const taskOwner = preferredTaskId ? readTaskSocketOwner(socketsDir, preferredTaskId) : null;
 
 	const entries = readdirSync(socketsDir)
 		.filter((file) => file.endsWith(".sock"))
@@ -321,10 +341,21 @@ function discoverSocketIn(socketsDir: string, exclude?: ReadonlySet<string>): st
 			} catch {
 				mtimeMs = 0;
 			}
-			return { pid, socketPath, mtimeMs, guest: isGuestSocket(socketsDir, pid) };
+			const meta = readSocketMeta(socketsDir, pid);
+			const guest = meta?.hostTaskId != null;
+			const claimedAt = preferredTaskId && taskOwner && meta && meta.hostTaskId !== preferredTaskId && meta.ownerKey === taskOwner.ownerKey
+				? taskOwner.claimedAt
+				: undefined;
+			return { pid, socketPath, mtimeMs, guest, claimedAt };
 		})
-		.filter((entry): entry is { pid: number; socketPath: string; mtimeMs: number; guest: boolean } => entry !== null)
+		.filter((entry): entry is { pid: number; socketPath: string; mtimeMs: number; guest: boolean; claimedAt: number | undefined } => entry !== null)
 		.sort((a, b) => {
+			const aOwned = a.claimedAt !== undefined;
+			const bOwned = b.claimedAt !== undefined;
+			if (aOwned !== bOwned) return aOwned ? -1 : 1;
+			if (aOwned && bOwned && b.claimedAt !== a.claimedAt) {
+				return (b.claimedAt ?? 0) - (a.claimedAt ?? 0);
+			}
 			if (a.guest !== b.guest) return a.guest ? 1 : -1;
 			if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs;
 			return b.pid - a.pid;
@@ -341,7 +372,11 @@ function discoverSocketIn(socketsDir: string, exclude?: ReadonlySet<string>): st
 			if (code === "EPERM") {
 				// Sandboxed environment (e.g. Codex seatbelt) blocks signals
 				// to processes outside the sandbox. The app may still be alive —
-				// keep as candidate and let the caller try to connect.
+				// an explicitly ranked task owner must be tried before a lower-ranked
+				// primary. Completion requests safely rediscover a different socket
+				// if that connect reports APP_NOT_RUNNING.
+				if (entry.claimedAt !== undefined) return socketPath;
+				// Otherwise keep the historical confirmed-live primary preference.
 				candidates.push(socketPath);
 			}
 			// ESRCH = process doesn't exist — skip stale socket
@@ -377,6 +412,19 @@ export function resolveSocketPath(cwd?: string): string | null {
 		return ctx.socketPath;
 	}
 	return discoverSocket();
+}
+
+/** Resolve the renderer owner for an already-expanded task UUID. */
+export function resolveSocketPathForTask(
+	taskId: string,
+	opts: { cwd?: string; excludePaths?: string[] } = {},
+): string | null {
+	const cwd = opts.cwd ?? process.cwd();
+	const pathInfo = detectFromWorktreePath(cwd) ?? detectFromVirtualPath(cwd);
+	const effectiveSocketsDir = pathInfo ? `${pathInfo.realDev3Home}/sockets` : SOCKETS_DIR;
+	const exclude = new Set(opts.excludePaths ?? []);
+	return discoverSocketIn(effectiveSocketsDir, exclude, taskId)
+		|| (effectiveSocketsDir !== SOCKETS_DIR ? discoverSocketIn(SOCKETS_DIR, exclude, taskId) : null);
 }
 
 /**
@@ -436,7 +484,9 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
 				const code = (e as NodeJS.ErrnoException).code;
 				state = code === "EPERM" ? "EPERM (sandboxed — cannot probe, may be alive)" : "process dead (stale socket)";
 			}
-			const guestTag = !isNaN(pid) && isGuestSocket(SOCKETS_DIR, pid) ? " [guest instance — deprioritized]" : "";
+			const guestTag = !isNaN(pid) && readSocketMeta(SOCKETS_DIR, pid)?.hostTaskId != null
+				? " [guest instance — deprioritized]"
+				: "";
 			lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}${guestTag}`);
 		}
 	}

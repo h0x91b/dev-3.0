@@ -22,6 +22,7 @@ import {
 } from "../preparation-runtime";
 import { loadSettings, loadSettingsSync, recordFavoriteUsages } from "../settings";
 import { getUserShell } from "../shell-env";
+import { clearTaskSocketOwnership } from "../socket-task-ownership";
 import { spawn } from "../spawn";
 import { buildScriptRunnerCommand, buildTaskLifecycleEnv, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
 import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
@@ -856,6 +857,10 @@ export async function moveTask(params: {
 	}
 
 	if (newStatus === "completed" || newStatus === "cancelled") {
+		// Terminal task cleanup is authoritative even when a different instance
+		// performs it. Do not leave a remote owner claim that could hijack future
+		// commands after the worktree and session are gone.
+		clearTaskSocketOwnership(task.id);
 		cleanupTaskState(task.id);
 		portPool.releasePorts(task.id);
 		// When a UI renderer initiates the move it plays the sound optimistically
@@ -937,6 +942,10 @@ export async function moveTask(params: {
 			...(completedDiffStats ? { completedDiffStats } : {}),
 			customColumnId: null,
 		}, dropOpts);
+		// A concurrent getPtyUrl may have observed the old active snapshot during
+		// teardown and refreshed its claim. The terminal status is now persisted,
+		// so this second authoritative clear closes that window.
+		clearTaskSocketOwnership(task.id);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 		notifyWatchedTaskStatusChange(updated, oldStatus, newStatus, project.name);
 		log.info("← moveTask done (worktree destroyed)", { taskId: task.id });
@@ -1009,6 +1018,7 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	log.info("→ deleteTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
+	clearTaskSocketOwnership(task.id);
 	cleanupTaskState(task.id);
 	portPool.releasePorts(task.id);
 
@@ -1059,6 +1069,9 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	}
 
 	await data.deleteTask(project, task.id);
+	// Clear again after deletion in case a concurrent restore claimed from the
+	// active snapshot while slow teardown was running.
+	clearTaskSocketOwnership(task.id);
 	log.info("← deleteTask done");
 }
 

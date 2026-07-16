@@ -35,6 +35,10 @@ vi.mock("../spawn", () => ({
 	spawnSync: vi.fn(),
 }));
 
+vi.mock("../socket-task-ownership", () => ({
+	releaseCurrentSocketTask: vi.fn(),
+}));
+
 // ---- Imports ----
 
 import { accessSync, existsSync, lstatSync, statSync, readlinkSync, realpathSync, unlinkSync, symlinkSync } from "node:fs";
@@ -42,6 +46,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
+import { releaseCurrentSocketTask } from "../socket-task-ownership";
 import { DEV3_HOME } from "../paths";
 import {
 	tmuxArgs,
@@ -408,6 +413,12 @@ describe("pty-server", () => {
 	// ------- destroySession -------
 
 	describe("destroySession", () => {
+		it("releases this server's task ownership before tearing down the PTY", () => {
+			destroySession("owned-task-id");
+
+			expect(releaseCurrentSocketTask).toHaveBeenCalledWith("owned-task-id");
+		});
+
 		it("removes session from the map", () => {
 			const id = track("task-dstr-01");
 			createSession(id, "proj-1", "/tmp/cwd", "bash", {});

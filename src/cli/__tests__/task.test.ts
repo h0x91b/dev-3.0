@@ -8,14 +8,27 @@ vi.mock("../stdin", () => ({
 	readStdin: vi.fn(),
 }));
 
+vi.mock("../context", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../context")>();
+	return {
+		...actual,
+		expandShortId: vi.fn((id: string, context: CliContext | null) =>
+			context?.taskId?.startsWith(id) ? context.taskId : id),
+		resolveSocketPathForTask: vi.fn(() => null),
+	};
+});
+
 // Mock sendRequest so we never hit a real socket
 vi.mock("../socket-client", () => ({
 	sendRequest: vi.fn(),
 }));
 
 import { sendRequest } from "../socket-client";
+import { expandShortId, resolveSocketPathForTask } from "../context";
 import { readStdin } from "../stdin";
 const mockSend = vi.mocked(sendRequest);
+const mockExpandShortId = vi.mocked(expandShortId);
+const mockResolveSocketPathForTask = vi.mocked(resolveSocketPathForTask);
 const mockReadStdin = vi.mocked(readStdin);
 
 let stdoutOutput: string;
@@ -79,6 +92,9 @@ beforeEach(() => {
 	}) as ReturnType<typeof vi.spyOn>;
 	mockSend.mockReset();
 	mockReadStdin.mockReset();
+	mockResolveSocketPathForTask.mockReset();
+	mockResolveSocketPathForTask.mockReturnValue(null);
+	mockExpandShortId.mockClear();
 });
 
 afterEach(() => {
@@ -663,6 +679,69 @@ describe("task move --status completed", () => {
 		expect(stderrOutput).toContain("requires user approval");
 		expect(stdoutOutput).toContain("User approved");
 		expect(stdoutOutput).toContain("moved to Completed");
+	});
+
+	it("routes an explicit full target to that task's renderer owner, not the cwd task owner", async () => {
+		const target = "bbbbbbbb-2222-4222-8222-222222222222";
+		mockResolveSocketPathForTask.mockReturnValue("/tmp/target-owner.sock");
+		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, id: target, status: "completed" } }));
+
+		await handleTask("move", args([], { task: target, status: "completed" }), SOCKET, CTX);
+
+		expect(mockResolveSocketPathForTask).toHaveBeenCalledWith(target);
+		expect(mockSend).toHaveBeenCalledWith(
+			"/tmp/target-owner.sock",
+			"task.requestCompletion",
+			expect.objectContaining({ taskId: target }),
+			{ timeoutMs: 10 * 60 * 1000 },
+		);
+	});
+
+	it("expands an explicit short target before resolving its renderer owner", async () => {
+		const target = "bbbbbbbb-2222-4222-8222-222222222222";
+		mockExpandShortId.mockReturnValueOnce(target);
+		mockResolveSocketPathForTask.mockReturnValue("/tmp/target-owner.sock");
+		mockSend.mockResolvedValue(okResp({ approved: true, task: { ...FAKE_TASK, id: target, status: "completed" } }));
+
+		await handleTask("move", args([], { task: "bbbbbbbb", status: "completed" }), SOCKET, CTX);
+
+		expect(mockResolveSocketPathForTask).toHaveBeenCalledWith(target);
+		expect(mockSend.mock.calls[0]?.[2]).toEqual(expect.objectContaining({ taskId: target }));
+	});
+
+	it("re-discovers once after owner connect loss without replaying an accepted request", async () => {
+		mockResolveSocketPathForTask
+			.mockReturnValueOnce("/tmp/dead-owner.sock")
+			.mockReturnValueOnce("/tmp/fallback.sock");
+		mockSend
+			.mockRejectedValueOnce(new Error("APP_NOT_RUNNING"))
+			.mockResolvedValueOnce(okResp({ approved: true, task: { ...FAKE_TASK, status: "completed" } }));
+
+		await handleTask("move", args([], { status: "completed" }), SOCKET, CTX);
+
+		expect(mockResolveSocketPathForTask).toHaveBeenNthCalledWith(1, CTX.taskId);
+		expect(mockResolveSocketPathForTask).toHaveBeenNthCalledWith(2, CTX.taskId, {
+			excludePaths: ["/tmp/dead-owner.sock"],
+		});
+		expect(mockSend).toHaveBeenNthCalledWith(
+			2,
+			"/tmp/fallback.sock",
+			"task.requestCompletion",
+			expect.any(Object),
+			{ timeoutMs: 10 * 60 * 1000 },
+		);
+	});
+
+	it("does not replay an empty response because the owner may already be awaiting approval", async () => {
+		mockResolveSocketPathForTask.mockReturnValue("/tmp/owner.sock");
+		const error = new Error("Empty response from server");
+		error.name = "EmptyResponseError";
+		mockSend.mockRejectedValue(error);
+
+		await expect(
+			handleTask("move", args([], { status: "completed" }), SOCKET, CTX),
+		).rejects.toThrow("Empty response from server");
+		expect(mockSend).toHaveBeenCalledTimes(1);
 	});
 
 	it("exits with code 6 when the user declines", async () => {

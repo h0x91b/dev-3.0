@@ -6,6 +6,7 @@ import { createLogger } from "./logger";
 import { DEV3_HOME } from "./paths";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
+import { releaseCurrentSocketTask } from "./socket-task-ownership";
 import { CATPPUCCIN_PLUGIN_DIR, writeCatppuccinPlugin } from "./tmux-themes";
 import { writeShellInit } from "./shell-init";
 import { isExecutableFile } from "./executable";
@@ -632,6 +633,7 @@ export function createSession(
 export function destroySession(taskId: string, fallbackSocket?: string): void {
 	const session = sessions.get(taskId);
 	const socket = session?.tmuxSocket ?? fallbackSocket ?? DEFAULT_TMUX_SOCKET;
+	releaseCurrentSocketTask(taskId);
 
 	log.info("Destroying PTY session", {
 		taskId: taskId.slice(0, 8),

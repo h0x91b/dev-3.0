@@ -2832,9 +2832,13 @@ describe("stopSocketServer", () => {
 // during discovery so control commands route to the primary app (#910/#920).
 describe("socket meta sidecar", () => {
 	const REAL_DEV3_TASK_ID = process.env.DEV3_TASK_ID;
+	const REAL_DEV3_HEADLESS = process.env.DEV3_HEADLESS;
+	const REAL_DEV3_REMOTE_PORT = process.env.DEV3_REMOTE_PORT;
 
 	beforeEach(() => {
 		delete process.env.DEV3_TASK_ID;
+		delete process.env.DEV3_HEADLESS;
+		delete process.env.DEV3_REMOTE_PORT;
 	});
 
 	afterEach(() => {
@@ -2843,6 +2847,10 @@ describe("socket meta sidecar", () => {
 		} else {
 			process.env.DEV3_TASK_ID = REAL_DEV3_TASK_ID;
 		}
+		if (REAL_DEV3_HEADLESS === undefined) delete process.env.DEV3_HEADLESS;
+		else process.env.DEV3_HEADLESS = REAL_DEV3_HEADLESS;
+		if (REAL_DEV3_REMOTE_PORT === undefined) delete process.env.DEV3_REMOTE_PORT;
+		else process.env.DEV3_REMOTE_PORT = REAL_DEV3_REMOTE_PORT;
 	});
 
 	it("writes a meta sidecar with hostTaskId null for a primary instance", () => {
@@ -2856,7 +2864,11 @@ describe("socket meta sidecar", () => {
 		expect(writeFileSync).toHaveBeenCalledTimes(1);
 		const [metaPath, content] = vi.mocked(writeFileSync).mock.calls[0] as [string, string];
 		expect(metaPath).toBe(socketPath.replace(/\.sock$/, ".meta.json"));
-		expect(JSON.parse(content)).toMatchObject({ pid: process.pid, hostTaskId: null });
+		expect(JSON.parse(content)).toMatchObject({
+			pid: process.pid,
+			hostTaskId: null,
+			ownerKey: `process:${process.pid}`,
+		});
 	});
 
 	it("records the launching task in hostTaskId when DEV3_TASK_ID is set", () => {
@@ -2870,6 +2882,34 @@ describe("socket meta sidecar", () => {
 
 		const [, content] = vi.mocked(writeFileSync).mock.calls[0] as [string, string];
 		expect(JSON.parse(content).hostTaskId).toBe("aabbccdd-1111-2222-3333-444444444444");
+	});
+
+	it("uses a stable configured-port owner key for headless restarts", () => {
+		process.env.DEV3_HEADLESS = "1";
+		process.env.DEV3_REMOTE_PORT = "18856";
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(readdirSync).mockReturnValue([]);
+		(globalThis as any).Bun.listen = vi.fn();
+
+		startSocketServer();
+
+		const [, content] = vi.mocked(writeFileSync).mock.calls[0] as [string, string];
+		expect(JSON.parse(content).ownerKey).toBe("remote:18856");
+	});
+
+	it("keeps a random-port headless socket process-scoped", () => {
+		process.env.DEV3_HEADLESS = "1";
+		process.env.DEV3_REMOTE_PORT = "0";
+		vi.clearAllMocks();
+		vi.mocked(existsSync).mockReturnValue(false);
+		vi.mocked(readdirSync).mockReturnValue([]);
+		(globalThis as any).Bun.listen = vi.fn();
+
+		startSocketServer();
+
+		const [, content] = vi.mocked(writeFileSync).mock.calls[0] as [string, string];
+		expect(JSON.parse(content).ownerKey).toBe(`process:${process.pid}`);
 	});
 
 	it("cleans up stale meta sidecars of dead pids at startup", () => {
