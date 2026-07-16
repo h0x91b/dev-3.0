@@ -298,11 +298,7 @@ extension AppStore {
         pushTask = Task { [weak self] in
             for await push in rpc.pushes {
                 guard !Task.isCancelled else { return }
-                self?.apply(
-                    push,
-                    generation: generation,
-                    sourceServerID: sourceServerID
-                )
+                self?.apply(push, generation: generation)
             }
         }
         connectionTask = Task { [weak self] in
@@ -311,8 +307,7 @@ extension AppStore {
                 await self?.handleConnectionEvent(
                     event,
                     rpc: rpc,
-                    generation: generation,
-                    sourceServerID: sourceServerID
+                    generation: generation
                 )
             }
         }
@@ -374,14 +369,17 @@ extension AppStore {
     func handleConnectionEvent(
         _ event: RPCConnectionEvent,
         rpc: any AppRPCServing,
-        generation: UUID,
-        sourceServerID: String?
+        generation: UUID
     ) async {
         guard isStarted,
-              generation == rpcGeneration,
-              controller.activeServer?.instanceId == sourceServerID else { return }
+              generation == rpcGeneration else { return }
         switch event {
         case .opened:
+            // Pairing creates the RPC client before the new server identity is available.
+            // The current generation owns its opened event, so bind it to the identity
+            // that completed authentication instead of retaining attach-time provenance.
+            let sourceServerID = controller.activeServer?.instanceId
+            rpcServerID = sourceServerID
             rpcIsOpen = true
             banner = nil
             if isSceneActive {
@@ -393,6 +391,7 @@ extension AppStore {
                 sourceServerID: sourceServerID
             )
         case .closed, .failed:
+            guard controller.activeServer?.instanceId == rpcServerID else { return }
             rpcIsOpen = false
             pingTask?.cancel()
             pingTask = nil
@@ -461,9 +460,9 @@ extension AppStore {
 
     func apply(
         _ push: RPCPushEvent,
-        generation: UUID,
-        sourceServerID: String?
+        generation: UUID
     ) {
+        let sourceServerID = rpcServerID
         guard isStarted,
               generation == rpcGeneration,
               controller.activeServer?.instanceId == sourceServerID else { return }

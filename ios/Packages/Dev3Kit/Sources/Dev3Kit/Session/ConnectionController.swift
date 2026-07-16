@@ -217,8 +217,10 @@ private extension ConnectionController {
         }
         session.onServerChange = { [weak self, weak session] server in
             guard let self, self.session === session else { return }
-            Task { @MainActor [weak self] in
-                await self?.reloadSnapshot(active: server)
+            activeServer = server
+            Task { @MainActor [weak self, weak session] in
+                guard let self, let session else { return }
+                await reloadSnapshot(active: server, session: session)
             }
         }
         session.onExpired = { [weak self, weak session] _ in
@@ -231,11 +233,14 @@ private extension ConnectionController {
         }
     }
 
-    func reloadSnapshot(active server: PairedServer) async {
+    func reloadSnapshot(active server: PairedServer, session: SessionClient) async {
         do {
-            try await apply(store.load())
+            let snapshot = try await store.load()
+            guard self.session === session else { return }
+            apply(snapshot)
             activeServer = server
         } catch {
+            guard self.session === session else { return }
             show(error)
         }
     }

@@ -138,6 +138,111 @@ struct AppStoreTests {
         #expect(rpc.pushStreamReadCount == 1)
     }
 
+    @Test("Fresh pairing binds the attached RPC before the initial refetch")
+    func freshPairingBindsRPC() async throws {
+        let alpha = try project(id: "project-a", name: "Alpha")
+        let first = try task(id: "task-1", projectId: alpha.id, seq: 1, title: "First")
+        let rpc = try StoreRPC(
+            projects: [alpha],
+            projectTasks: [projectTasks(projectId: alpha.id, tasks: [first])]
+        )
+        let pairedStore = PairedServerStore(secureStore: StoreMemorySecureData())
+        let controller = makeController(
+            pairedServerStore: pairedStore,
+            transport: StoreAcceptedPairingTransport()
+        )
+        let store = AppStore(controller: controller, rpc: rpc)
+
+        await store.start()
+        #expect(controller.activeServer == nil)
+        #expect(store.rpcServerID == nil)
+
+        let origin = try #require(URL(string: "http://127.0.0.1:4001"))
+        try controller.pair(PairingCredential(origin: origin, token: "pairing-code"))
+        await settle()
+        #expect(controller.activeServer?.instanceId == "server-a")
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+
+        #expect(store.rpcServerID == "server-a")
+        #expect(rpc.projectFetchCount == 1)
+        #expect(rpc.taskFetchCount == 1)
+        #expect(store.projects == [alpha])
+        #expect(store.tasksByProject[alpha.id] == [first])
+        #expect(store.snapshotServerID == "server-a")
+        #expect(store.isInitialLoading == false)
+
+        let toast = try decode(CLIToastPush.self, #"{"message":"Fresh","level":"success"}"#)
+        rpc.emitPush(.cliToast(toast))
+        await settle()
+        #expect(store.lastPush == .cliToast(toast))
+        #expect(store.toast?.message == "Fresh")
+    }
+
+    @Test("Pairing a new server clears prior ownership before the new refetch")
+    // swiftlint:disable:next function_body_length
+    func crossServerPairingClearsPriorSnapshot() async throws {
+        let projectA = try project(id: "project-a", name: "Alpha")
+        let taskA = try task(id: "task-a", projectId: projectA.id, seq: 1, title: "Old")
+        let projectB = try project(id: "project-b", name: "Beta")
+        let taskB = try task(id: "task-b", projectId: projectB.id, seq: 1, title: "New")
+        let serverA = try pairedServer(id: "server-a", name: "Server A", port: 4001)
+        let pairedStore = PairedServerStore(secureStore: StoreMemorySecureData())
+        try await pairedStore.upsert(serverA)
+        let controller = makeController(
+            pairedServerStore: pairedStore,
+            transport: StoreAcceptedPairingTransport(
+                instanceID: "server-b",
+                name: "Server B",
+                token: "server-b-token"
+            )
+        )
+        let oldRPC = try StoreRPC(
+            projects: [projectA],
+            projectTasks: [projectTasks(projectId: projectA.id, tasks: [taskA])]
+        )
+        let newRPC = try StoreRPC(
+            projects: [projectB],
+            projectTasks: [projectTasks(projectId: projectB.id, tasks: [taskB])]
+        )
+        let store = AppStore(controller: controller, rpc: nil)
+
+        await store.start()
+        store.attach(oldRPC)
+        oldRPC.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+        store.workPath = [.task(projectId: projectA.id, taskId: taskA.id)]
+        store.projectsPath = [.project(projectA.id)]
+        store.loadedBoardProjectIDs = [projectA.id]
+        let oldToast = try decode(CLIToastPush.self, #"{"message":"Old","level":"info"}"#)
+        oldRPC.emitPush(.cliToast(oldToast))
+        await settle()
+        #expect(store.snapshotServerID == serverA.instanceId)
+
+        let originB = try #require(URL(string: "http://127.0.0.1:4002"))
+        try controller.pair(PairingCredential(origin: originB, token: "pairing-code"))
+        store.attach(newRPC)
+        #expect(store.rpcServerID == serverA.instanceId)
+        await settle()
+
+        #expect(controller.activeServer?.instanceId == "server-b")
+        #expect(store.projects.isEmpty)
+        #expect(store.tasksByProject.isEmpty)
+        #expect(store.snapshotServerID == nil)
+        #expect(store.workPath.isEmpty)
+        #expect(store.projectsPath.isEmpty)
+        #expect(store.loadedBoardProjectIDs.isEmpty)
+        #expect(store.toast == nil)
+        #expect(store.isInitialLoading)
+
+        newRPC.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+        #expect(store.rpcServerID == "server-b")
+        #expect(store.snapshotServerID == "server-b")
+        #expect(store.projects == [projectB])
+        #expect(store.tasksByProject[projectB.id] == [taskB])
+    }
+
     @Test("Refresh failure and disconnect retain cached data")
     func cachedDataSurvivesFailure() async throws {
         let alpha = try project(id: "project-a", name: "Alpha")
@@ -1057,11 +1162,12 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
 @MainActor
 private func makeController(
     pathObserver: StorePathObserver = StorePathObserver(),
-    pairedServerStore: PairedServerStore = PairedServerStore(secureStore: StoreMemorySecureData())
+    pairedServerStore: PairedServerStore = PairedServerStore(secureStore: StoreMemorySecureData()),
+    transport: any SessionHTTPTransporting = StoreSessionTransport()
 ) -> ConnectionController {
     ConnectionController(
         store: pairedServerStore,
-        transport: StoreSessionTransport(),
+        transport: transport,
         discovery: StoreDiscovery(),
         pathObserver: pathObserver,
         connectionFactory: { _ in StoreSessionConnection() },
@@ -1080,6 +1186,39 @@ private actor StoreSessionTransport: SessionHTTPTransporting {
 
     func refresh(requestFactory _: SessionRequestFactory) async throws -> SessionAuthResponse {
         SessionAuthResponse(statusCode: 401, sessionToken: nil)
+    }
+}
+
+private actor StoreAcceptedPairingTransport: SessionHTTPTransporting {
+    private let instanceID: String
+    private let name: String
+    private let token: String
+
+    init(
+        instanceID: String = "server-a",
+        name: String = "Server A",
+        token: String = "server-a-token"
+    ) {
+        self.instanceID = instanceID
+        self.name = name
+        self.token = token
+    }
+
+    func fetchInstance(origin _: URL) async throws -> RemoteInstanceInfo {
+        RemoteInstanceInfo(
+            instanceId: instanceID,
+            name: name,
+            appVersion: "1",
+            protocolVersion: 1
+        )
+    }
+
+    func exchange(origin _: URL, token _: String) async throws -> SessionAuthResponse {
+        SessionAuthResponse(statusCode: 200, sessionToken: token)
+    }
+
+    func refresh(requestFactory _: SessionRequestFactory) async throws -> SessionAuthResponse {
+        SessionAuthResponse(statusCode: 200, sessionToken: token)
     }
 }
 
