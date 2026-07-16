@@ -26,6 +26,86 @@ xcodebuild \
 
 `Dev3.xcodeproj` is generated and ignored. Change `project.yml`, then regenerate it.
 
+## TestFlight archive and export
+
+The release script requires the Apple team, explicit bundle ID, marketing version, and a build number
+on every run. The checked-in `com.ittaiz.dev3` identifier remains a local development default; it is
+not treated as the App Store identifier. Start with the unsigned path to
+verify the generated project, Release build, and embedded version metadata without an Apple account:
+
+```bash
+cd ios
+TEAM_ID=ABCDE12345 \
+BUNDLE_ID=com.example.dev3 \
+MARKETING_VERSION=1.0.0 \
+BUILD_NUMBER=1 \
+./scripts/archive-testflight.sh --validate-only
+```
+
+After the Apple account setup below, replace the example values and create either an Organizer-ready
+archive or an archive plus a local App Store Connect IPA:
+
+```bash
+TEAM_ID=ABCDE12345 \
+BUNDLE_ID=com.example.dev3 \
+MARKETING_VERSION=1.0.0 \
+BUILD_NUMBER=1 \
+./scripts/archive-testflight.sh --archive
+
+# Or export the IPA locally as well. This still does not upload anything.
+TEAM_ID=ABCDE12345 \
+BUNDLE_ID=com.example.dev3 \
+MARKETING_VERSION=1.0.0 \
+BUILD_NUMBER=1 \
+./scripts/archive-testflight.sh --archive-and-export
+```
+
+Artifacts are written to `build/testflight/<version>-<build>/`. Existing archives and exports are
+never overwritten. If Xcode is already signed in but needs permission to fetch or update provisioning
+assets, explicitly add `--allow-provisioning-updates`; the script never enables it by default.
+
+`--validate-only` deliberately disables code signing. It validates compilation and metadata, but an
+unsigned Simulator app has no signed `application-identifier` or `keychain-access-groups` entitlement
+and therefore cannot validate Keychain persistence across relaunches or reboots. After a signed
+archive, the script verifies the signature and fails unless the archived entitlements contain the
+requested team, the explicit bundle ID, and its default Keychain access group. The account-backed
+archive step is still required before treating secure credential persistence as release-validated.
+
+### Apple-account handoff
+
+These steps require the Apple Developer Program account owner or a teammate with the listed role:
+
+1. The Account Holder must keep the team enrolled in the
+   [Apple Developer Program](https://developer.apple.com/programs/) and accept Apple's latest
+   developer agreement. Without active membership, Xcode cannot create a TestFlight archive.
+2. In Apple Developer **Certificates, Identifiers & Profiles**, an Account Holder or Admin must
+   [register an explicit App ID](https://developer.apple.com/help/account/identifiers/register-an-app-id)
+   whose bundle ID exactly matches `BUNDLE_ID`.
+3. In App Store Connect **Apps**, an Account Holder, Admin, or App Manager must
+   [create the app record](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app/)
+   with that same bundle ID. Record the ten-character Team ID from the developer account's
+   **Membership details** and choose a new build number for each upload.
+4. In Xcode, open **Xcode → Settings → Accounts**, add the Apple Account, and select the intended team.
+   When Apple requests two-factor authentication, approve the sign-in on a trusted device and enter
+   its six-digit code. Do not put an Apple password or app-specific password in this script.
+5. Run `--archive` or `--archive-and-export`. If automatic signing reports that a certificate or
+   profile is unavailable, let the Account Holder/Admin create the distribution asset or deliberately
+   rerun with `--allow-provisioning-updates` after confirming the team shown by Xcode.
+6. Open the generated archive once, for example with
+   `open build/testflight/1.0.0-1/Dev3.xcarchive`. In Xcode, choose
+   **Window → Organizer → Archives**, select **Dev3**, then
+   **Distribute App → TestFlight & App Store → Upload**. Confirm the displayed team, bundle ID, version,
+   and build before upload. A user with Account Holder, Admin, App Manager, or Developer role can
+   [upload the build](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/).
+   The script itself never uploads.
+7. In App Store Connect, open **Apps → the app → TestFlight** and wait for processing to complete.
+   If the build shows **Missing Compliance**, open the build and
+   [provide export-compliance information](https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-export-compliance-information-for-beta-builds).
+   Review the app's actual encryption use and answer the questions; this repository deliberately does
+   not claim an exemption in `Info.plist` without the account owner's confirmation.
+8. Add internal testers when the processed build is ready. External testing additionally requires
+   TestFlight test information and Apple's TestFlight App Review before external testers can install.
+
 ## Test and lint
 
 ```bash

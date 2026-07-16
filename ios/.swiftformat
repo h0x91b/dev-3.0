@@ -6,3 +6,5 @@
 --commas inline
 --ifdef indent
 --self remove
+--exclude build
+--exclude qa-output

@@ -47,8 +47,11 @@ targets:
       Release: Config/Release.xcconfig
     settings:
       base:
+        # Local-development defaults only; distribution requires explicit script inputs.
         PRODUCT_BUNDLE_IDENTIFIER: com.ittaiz.dev3
         PRODUCT_NAME: dev3
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: Config/Dev3.entitlements
         TARGETED_DEVICE_FAMILY: "1,2"
