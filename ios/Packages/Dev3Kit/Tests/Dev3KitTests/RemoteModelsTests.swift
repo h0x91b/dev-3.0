@@ -25,6 +25,8 @@ struct RemoteModelsTests {
         #expect(task.sessionState?.panes.first?.paneId == "%7")
         #expect(task.prStatusCache?.checks.first?.name == "tests")
         #expect(task.effectivePriority == .p1)
+        #expect(task.sharedImages?.first?.caption == "Inspect this")
+        #expect(task.sharedArtifacts?.first?.title == "Native report")
     }
 
     @Test("Legacy tasks default missing priority to P3")
@@ -129,6 +131,12 @@ struct RemoteModelsTests {
             "sessionId":"session-1","agentId":"builtin-codex","configId":"luna"}]},
           "statusDurations":{"in-progress":120000},
           "statusEnteredAt":"2026-07-16T10:00:00.000Z","focusMs":5000,
+          "sharedImages":[{"id":"image-1","storedPath":"/worktree/shared-images/image.png",
+            "originalPath":"/tmp/image.png","name":"image.png","mime":"image/png","bytes":3,
+            "caption":"Inspect this","createdAt":1710000000000}],
+          "sharedArtifacts":[{"id":"artifact-1","kind":"html","title":"Native report",
+            "name":"report.html","storedPath":"/worktree/shared-artifacts/report.html",
+            "originalPath":"/tmp/report.html","bytes":20,"createdAt":1710000001000,"assets":[]}],
           "futureField":{"safe":true}
         }
         """#

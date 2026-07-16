@@ -72,6 +72,22 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: Dev3
 
+  Dev3Tests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AppTests
+    dependencies:
+      - target: Dev3
+    configFiles:
+      Debug: Config/Tests.xcconfig
+      Release: Config/Tests.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ittaiz.dev3.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/dev3.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/dev3"
+
 schemes:
   Dev3:
     build:
@@ -85,6 +101,8 @@ schemes:
       config: Debug
       gatherCoverageData: true
       targets:
+        - name: Dev3Tests
+          parallelizable: true
         - name: Dev3UITests
           parallelizable: false
     archive:

@@ -239,6 +239,8 @@ public struct Dev3Task: Codable, Equatable, Identifiable, Sendable {
     public let statusDurations: [String: Double]?
     public let statusEnteredAt: String?
     public let focusMs: Double?
+    public let sharedImages: [Dev3SharedImage]?
+    public let sharedArtifacts: [Dev3SharedArtifact]?
 
     public var displayTitle: String {
         if let customTitle, !customTitle.isEmpty {
