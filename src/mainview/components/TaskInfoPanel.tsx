@@ -979,7 +979,10 @@ function TaskInfoPanel({
 				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
 					{variantSwitcher}
 					{statusDropdownButton}
-					{priorityBadge}
+					{/* Priority sits with status (Context domain, §5.1); `sm` gives it a
+					    legible chip and a comfortable touch target on a phone (§12.6),
+					    versus the dense `xs` desktop badge. */}
+					<PriorityBadge priority={task.priority} onChange={handleSetPriority} size="sm" className="shrink-0" />
 					{/* Task title intentionally omitted here — it already shows in the
 					    breadcrumb row above (GlobalHeader). Repeating it wasted the whole
 					    bar; the freed space keeps status + priority + diff readable. */}
