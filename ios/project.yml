@@ -38,6 +38,10 @@ targets:
       - package: Dev3Kit
       - package: Dev3TerminalKit
       - package: Dev3UI
+      - sdk: AVFoundation.framework
+      - sdk: Network.framework
+      - sdk: Security.framework
+      - sdk: VisionKit.framework
     configFiles:
       Debug: Config/Debug.xcconfig
       Release: Config/Release.xcconfig

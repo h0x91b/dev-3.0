@@ -1,3 +1,4 @@
+import Dev3Kit
 @testable import Dev3UI
 import SwiftUI
 import Testing
@@ -5,5 +6,6 @@ import Testing
 @Test("Companion root view is constructible on supported platforms")
 @MainActor
 func companionRootViewConstruction() {
-    _ = CompanionRootView()
+    let runtime = ConnectionRuntime()
+    _ = CompanionRootView(controller: runtime.controller)
 }

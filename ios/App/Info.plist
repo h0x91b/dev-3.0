@@ -18,6 +18,19 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_dev3._tcp</string>
+    </array>
+    <key>NSCameraUsageDescription</key>
+    <string>Scan a dev3 pairing code shown by your trusted instance.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Find and reconnect to your dev3 instances on the local network.</string>
     <key>UILaunchScreen</key>
     <dict>
         <key>UIColorName</key>
