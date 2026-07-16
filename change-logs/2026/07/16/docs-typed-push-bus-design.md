@@ -1,0 +1,1 @@
+Added decision record 136 with the grilled design for a typed push bus owning all bun→renderer events (single PushMessages source of truth, usePush/onPush API, own emitter replacing the untyped window CustomEvent bus, big-bang migration). The audit also uncovered silently dropped taskRemoved and openAddProjectModal pushes, tracked as a separate bugfix task.
