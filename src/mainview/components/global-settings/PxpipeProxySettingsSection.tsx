@@ -3,6 +3,7 @@ import { PXPIPE_PROXY_BASE_URL, type GlobalSettings, type PxpipeProxyStatus } fr
 import type { TFunction } from "../../i18n";
 import { api } from "../../rpc";
 import { toast } from "../../toast";
+import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 
 interface PxpipeProxySettingsSectionProps {
@@ -87,7 +88,7 @@ export default function PxpipeProxySettingsSection({
 	const dashboardUrl = status?.dashboardUrl ?? `${PXPIPE_PROXY_BASE_URL}/`;
 
 	return (
-		<div data-settings-section="proxy">
+		<SettingsEntry anchor="token-saving-proxy">
 			<SettingsSection
 				title={t("settings.pxpipeSection")}
 				description={t("settings.pxpipeSectionDesc")}
@@ -119,6 +120,7 @@ export default function PxpipeProxySettingsSection({
 					<div
 						role="switch"
 						aria-checked={enabled}
+						aria-label={t("settings.pxpipeSection")}
 						tabIndex={0}
 						className={`relative w-11 h-6 rounded-full transition-colors ${
 							enabled ? "bg-accent" : "bg-raised border border-edge"
@@ -216,6 +218,6 @@ export default function PxpipeProxySettingsSection({
 				    pxpipe authors (repo link lives in the links row above). */}
 				<p className="text-fg-3 text-xs">{t("pxpipe.credit")}</p>
 			</SettingsSection>
-		</div>
+		</SettingsEntry>
 	);
 }

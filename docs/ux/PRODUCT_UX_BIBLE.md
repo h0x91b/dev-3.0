@@ -273,7 +273,9 @@ Evidence: `TaskDetailModal.tsx` (primary `bg-accent`, destructive `hover:bg-dang
 
 - **List screen** (dashboard, board): header with create entry; label filter (board) / search (sidebar); per-item context menu; open navigates; compact empty states (decision 047).
 - **Detail screen** (task): two-row task header; `TaskInfoPanel` inspector; task-scoped object/git/dev-server actions; full-screen or split terminal.
-- **Settings screen** (Global / Project): grouped sections (Agent, Appearance, Behavior, Workspace, DeveloperTools); RPC save; destructive removal behind confirmation.
+- **Settings screen** (Global / Project): Global Settings uses a left-nav master-detail layout with seven Settings categories, localized entry search, and immediate RPC/local persistence; Project Settings keeps its existing tabs; destructive removal stays behind confirmation.
+
+Global Settings vocabulary is deliberate: a left-nav item is a **Settings category**, and each searchable/anchored setting is a **Settings entry** registered in `src/mainview/settings-registry.ts`. The registry documents metadata and integrity, while existing bespoke controls own rendering and CRUD behavior. Legacy deep-link ids remain accepted and map through `LEGACY_SETTINGS_CATEGORY_MAP`; Project Settings' internal `global` tab remains labeled “Board” in its UI (known collision, out of scope).
 
 ## 9. Complexity budgets
 
@@ -364,7 +366,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Diff viewer | 22rem files-aside + diff stream | **stack/one-at-a-time** — files-aside becomes a bottom-sheet file picker; the diff stream owns the screen (live-content: pager/explicit nav, no full-surface swipe) | `Proposed` |
 | Modal (`*Modal`) | fixed 26–35rem centered | **full-bleed sheet**: `max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)]` (or bottom-sheet for action-style modals) | `Proposed` |
 | Context menu (right-click) | popup at cursor | **bottom action sheet** (long-press trigger) | `Proposed` |
-| Settings (tabs + sections) | tab row + grouped sections | tabs → **one section at a time** (carousel/`<select>` switcher or accordion); no horizontal tab overflow | `Proposed` |
+| Settings (left-nav + detail) | left-nav Settings categories + one category detail pane; localized search groups registered Settings entries | **category list first → one category detail at a time** with a visible back affordance; same route and persistence, no horizontal overflow | `Observed` (`GlobalSettings.tsx`, `settings-registry.ts`) |
 | Dashboard (Activity) | project list + hover action icons + drag-reorder | vertical list, full-width cards (`p-3` not `p-7`); per-project actions **+ reorder** collapse into a **kebab → `BottomSheet` action sheet** (hover cluster, HTML5 drag, and the `hidden md:flex` up/down steps are all dead on touch); touch targets ≥44px | `Observed` |
 | Command palette (Cmd+K / Cmd+Shift+P) | keyboard-summoned, `34rem` | needs a **touch entry** + `w-full max-w-[calc(100vw-2rem)]` — see §12.4 (it is the action fallback for the absent native menu) | `Proposed` |
 | Global header | single row, ≤9 utility buttons | reflow: logo + truncated breadcrumb + **one overflow (kebab)** for all utilities; never a 9-icon row (`useCompact` at 1600 only hides labels, it does not reflow for 390px) | `Proposed` |
@@ -424,6 +426,8 @@ Shared UX vocabulary, specialized for this project (was `UX_GLOSSARY.md`).
 - **Primary action** — the one main safe action for the current screen/flow. Styled `bg-accent`. Max one visible per screen.
 - **Destructive action** — delete, remove, cancel, reset, hard refresh. Styled `text-danger`/`bg-danger`, requires confirmation, never primary styling.
 - **Configuration** — a durable change to project/app behavior (scripts, columns, labels, theme, locale, gh account). Lives in Global or Project Settings.
+- **Settings category** — one of the seven Global Settings navigation items: Appearance, Tasks & Board, Terminal, Agents, Accounts, Workspace, or System.
+- **Settings entry** — a registry-described individual setting with localized title/description metadata and an optional scroll anchor; its bespoke control remains owned by the category surface.
 - **Complexity budget** — a project-specific cap on visible controls per surface (e.g. ≤2 inline actions on a task card, ≤4 visible toolbar actions); exists because of dev-3.0's documented toolbar-button-creep history.
 - **Inspector** — the `TaskInfoPanel`: the contextual control surface for the active task (git, dev server, scripts, notes, tmux, open-in). The densest surface in the app.
 - **Variant / Attempt** — multiple parallel agent runs of the same task (a *variant group*, shared `groupId`/seq; "group" is reserved for this concept — feature grouping is **Epic**). Each variant stays its own honest card; group affordance is one unified pattern on both card surfaces: **≤ 3 clickable status dots** (self ring-highlighted + lowest indexes, no `+N`) opening the **SiblingPopover** group overview (per-variant title, agent/config, status, current marker), plus the inspector Context-bar **variant switcher** and the `⇧⌘[`/`⇧⌘]` cycle for in-workspace switching. Never collapse a group into one card.

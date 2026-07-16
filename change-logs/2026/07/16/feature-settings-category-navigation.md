@@ -1,0 +1,1 @@
+Global Settings now uses seven searchable categories with localized title and description matching, legacy deep-link compatibility, and a narrow list-to-detail layout. Existing settings editors and persistence remain intact, and System adds a reversible confirm-before-quitting toggle.

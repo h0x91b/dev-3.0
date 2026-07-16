@@ -1,4 +1,5 @@
 import type { TFunction } from "../../i18n";
+import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 
 interface DeveloperToolsSectionProps {
@@ -13,7 +14,12 @@ export default function DeveloperToolsSection({
 	onInstallDev3Cli,
 }: DeveloperToolsSectionProps) {
 	return (
-		<SettingsSection title={t("settings.devTools")} helpTopicId="settings.devtools">
+		<SettingsEntry anchor="developer-tools">
+		<SettingsSection
+			title={t("settings.devTools")}
+			description={t("settings.devToolsDesc")}
+			helpTopicId="settings.devtools"
+		>
 			<div className="flex items-center gap-3">
 				<button
 					onClick={onInstallDev3Cli}
@@ -34,5 +40,6 @@ export default function DeveloperToolsSection({
 				{t("settings.installDev3CliDesc")}
 			</p>
 		</SettingsSection>
+		</SettingsEntry>
 	);
 }

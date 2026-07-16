@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-16 — Global Settings category navigation and registry
+
+- **Rule:** Global Settings uses seven left-nav **Settings categories** with one detail pane, localized title/description search, and a narrow list→detail drill-down with an in-app back affordance. The `settings-registry.ts` registry documents **Settings entries** (metadata, category, translations, anchors, storage disposition) and integrity tests; bespoke controls remain bespoke.
+- **Why:** One category at a time keeps the large Agents and Accounts surfaces from burying smaller settings while preserving the existing route, RPC persistence, and editor behavior. Legacy section ids map through one vocabulary boundary so existing launch-picker deep-links continue to land on the correct current category.
+- **Status:** Implemented. Evidence: `GlobalSettings.tsx`, `settings-registry.ts`, `docs/ux/ux-architecture.yaml`, `decisions/136-global-settings-registry.md`.
+
 ## 2026-07-15 — Mobile devices are portrait-only
 
 - **Rule:** `useMobile()` devices attempt a portrait Screen Orientation lock; when the browser rejects it, `MobilePortraitGate` blocks the root shell in landscape with a localized rotate prompt and inert underlying content. Narrowed desktop windows stay unchanged.

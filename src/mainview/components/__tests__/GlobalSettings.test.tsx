@@ -4,6 +4,7 @@ import GlobalSettings from "../GlobalSettings";
 import { I18nProvider } from "../../i18n";
 import type { CodingAgent, GlobalSettings as GlobalSettingsType } from "../../../shared/types";
 import { KEYMAP_LS_KEY } from "../../terminal-keymaps";
+import type { SettingsSectionId } from "../../state";
 
 vi.mock("../../zoom", () => ({
 	getZoom: vi.fn(() => 1.0),
@@ -67,10 +68,10 @@ const mockGlobalSettings: GlobalSettingsType = {
 	updateChannel: "stable",
 };
 
-function renderGlobalSettings() {
+function renderGlobalSettings(section?: SettingsSectionId) {
 	return render(
 		<I18nProvider>
-			<GlobalSettings />
+			<GlobalSettings section={section} />
 		</I18nProvider>,
 	);
 }
@@ -85,14 +86,30 @@ function setupMocks(
 	mockedApi.request.saveGlobalSettings.mockResolvedValue(undefined as any);
 }
 
-/** Wait for async data (agents + settings) to be loaded into the UI.
- *  We wait for the default-config preview card's "Model:" tag, which only
- *  renders when BOTH agents and globalSettings are loaded (it requires
- *  defaultAgentId to match an agent that has configurations). Without this,
- *  tests race: agents arrive but globalSettings still has its initial
- *  defaultAgentId "builtin-claude". */
+function setViewport(width: number) {
+	Object.defineProperty(window, "innerWidth", {
+		configurable: true,
+		value: width,
+	});
+	Object.defineProperty(window, "matchMedia", {
+		configurable: true,
+		writable: true,
+		value: vi.fn((query: string) => {
+			const maxWidth = query.match(/max-width:\s*(\d+)px/)?.[1];
+			return {
+				matches: maxWidth ? width <= Number(maxWidth) : false,
+				media: query,
+				addEventListener: vi.fn(),
+				removeEventListener: vi.fn(),
+			};
+		}),
+	});
+}
+
 async function waitForLoad() {
-	await screen.findByText("Model:");
+	await waitFor(() => {
+		expect(mockedApi.request.getGlobalSettings).toHaveBeenCalled();
+	});
 }
 
 /** Open a custom Select trigger (by element id) and click the option labeled `label`. */
@@ -110,6 +127,7 @@ describe("GlobalSettings", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		localStorage.clear();
+		setViewport(1024);
 		document.documentElement.dataset.theme = "dark";
 	});
 
@@ -123,17 +141,18 @@ describe("GlobalSettings", () => {
 			expect(mockedApi.request.getGlobalSettings).toHaveBeenCalledOnce();
 		});
 
-		it("renders theme cards", async () => {
+		it("renders the category navigation and theme cards", async () => {
 			setupMocks();
 			renderGlobalSettings();
 			await waitForLoad();
 
-			expect(screen.getByText("Appearance & Language")).toBeInTheDocument();
-			expect(screen.getByText("Behavior & Terminal")).toBeInTheDocument();
-			expect(screen.getByText("Workspace & Integrations")).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Appearance" })).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "Tasks & Board" })).toBeInTheDocument();
+			expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
+		expect(document.getElementById("settings-category-title")!).toHaveTextContent("Appearance");
 			expect(screen.getByText("Dark")).toBeInTheDocument();
 			expect(screen.getByText("Light")).toBeInTheDocument();
-			expect(screen.getByText("System")).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: /^System$/ })).toBeInTheDocument();
 		});
 
 		it("renders language cards", async () => {
@@ -150,7 +169,7 @@ describe("GlobalSettings", () => {
 			const user = userEvent.setup();
 			setupMocks();
 
-			renderGlobalSettings();
+			renderGlobalSettings("workspace");
 			await waitForLoad();
 
 			await user.click(screen.getByRole("button", { name: /Add App/ }));
@@ -171,9 +190,10 @@ describe("GlobalSettings", () => {
 
 		it("renders agent list", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
 
+			await screen.findByText("Model:");
 			expect(screen.getAllByText("Claude").length).toBeGreaterThanOrEqual(1);
 			expect(screen.getAllByText("Codex").length).toBeGreaterThanOrEqual(1);
 		});
@@ -221,7 +241,10 @@ describe("GlobalSettings", () => {
 			renderGlobalSettings();
 			await waitForLoad();
 
-			await user.click(screen.getByText("System"));
+			const systemTheme = screen
+				.getAllByText("System")
+				.find((element) => element.closest("button")?.className.includes("p-4"));
+			await user.click(systemTheme!);
 
 			expect(document.documentElement.dataset.theme).toBe("dark");
 			expect(localStorage.getItem("dev3-theme")).toBe("system");
@@ -232,7 +255,7 @@ describe("GlobalSettings", () => {
 	describe("task drop position", () => {
 		it("selects top by default", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("tasks");
 			await waitForLoad();
 
 			const topButton = screen.getByText("Top").closest("button")!;
@@ -242,7 +265,7 @@ describe("GlobalSettings", () => {
 		it("switches to bottom and saves", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("tasks");
 			await waitForLoad();
 
 			await user.click(screen.getByText("Bottom"));
@@ -253,14 +276,14 @@ describe("GlobalSettings", () => {
 		});
 	});
 
-	describe("watch default", () => {
+		describe("watch default", () => {
 		function getWatchDefaultSwitch() {
 			return screen.getByRole("switch", { name: "Watch tasks by default" });
 		}
 
 		it("is off when no preference is stored", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("tasks");
 			await waitForLoad();
 
 			expect(getWatchDefaultSwitch()).toHaveAttribute("aria-checked", "false");
@@ -269,7 +292,7 @@ describe("GlobalSettings", () => {
 		it("saves the global preference without changing a task", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("tasks");
 			await waitForLoad();
 
 			await user.click(getWatchDefaultSwitch());
@@ -284,7 +307,7 @@ describe("GlobalSettings", () => {
 	describe("default diff view mode", () => {
 		it("selects auto by default", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("tasks");
 			await waitForLoad();
 
 			const autoButton = screen.getByText("Auto").closest("button")!;
@@ -294,7 +317,7 @@ describe("GlobalSettings", () => {
 		it("switches to unified and saves", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("tasks");
 			await waitForLoad();
 
 			await user.click(screen.getByText("Unified"));
@@ -307,7 +330,7 @@ describe("GlobalSettings", () => {
 		it("switches to side by side and saves", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("tasks");
 			await waitForLoad();
 
 			await user.click(screen.getByText("Side by side"));
@@ -321,7 +344,7 @@ describe("GlobalSettings", () => {
 	describe("update channel", () => {
 		it("shows stable selected by default", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("system");
 			await waitForLoad();
 
 			const select = screen.getByDisplayValue("Stable");
@@ -330,7 +353,7 @@ describe("GlobalSettings", () => {
 
 		it("select is disabled and cannot be changed", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("system");
 			await waitForLoad();
 
 			const select = screen.getByDisplayValue("Stable");
@@ -343,8 +366,9 @@ describe("GlobalSettings", () => {
 		it("changes default agent and saves with first config", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Provider picker starts on Claude (agent-1); switch to Codex (agent-2).
 			await pickFromSelect(user, "default-agent-provider", "Codex");
@@ -359,8 +383,9 @@ describe("GlobalSettings", () => {
 
 		it("shows the Provider/Model/Mode default picker when agent has configs", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			expect(document.getElementById("default-agent-provider")).toBeInTheDocument();
 			expect(document.getElementById("default-agent-model")).toBeInTheDocument();
@@ -369,8 +394,9 @@ describe("GlobalSettings", () => {
 
 		it("shows config preview card with model info", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Default config is "Default" with model "sonnet"
 			expect(screen.getByText("Model:")).toBeInTheDocument();
@@ -382,8 +408,9 @@ describe("GlobalSettings", () => {
 				...mockGlobalSettings,
 				defaultConfigId: "cfg-2",
 			});
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			expect(screen.getByText("opus")).toBeInTheDocument();
 			expect(screen.getByText("Permission Mode:")).toBeInTheDocument();
@@ -393,8 +420,9 @@ describe("GlobalSettings", () => {
 		it("changes default config and saves", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// cfg-1 (model "sonnet") and cfg-2 (model "opus") are in different Model
 			// groups; switching Model from Sonnet → Opus selects cfg-2 (the only
@@ -411,8 +439,9 @@ describe("GlobalSettings", () => {
 		it("expands agent when clicked", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Click on agent header to expand
 			const agentHeaders = screen.getAllByRole("button");
@@ -430,8 +459,9 @@ describe("GlobalSettings", () => {
 		it("collapses agent when clicked again", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			const agentHeaders = screen.getAllByRole("button");
 			const claudeHeader = agentHeaders.find((b) =>
@@ -450,8 +480,9 @@ describe("GlobalSettings", () => {
 		it("updates agent name", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Codex (non-default agent)
 			const agentHeaders = screen.getAllByRole("button");
@@ -471,8 +502,9 @@ describe("GlobalSettings", () => {
 		it("updates agent base command", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			const agentHeaders = screen.getAllByRole("button");
 			const codexHeader = agentHeaders.find((b) =>
@@ -490,8 +522,9 @@ describe("GlobalSettings", () => {
 		it("adds a new agent", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			await user.click(screen.getByText(/Add Agent/));
 
@@ -505,8 +538,9 @@ describe("GlobalSettings", () => {
 		it("deletes a non-default agent", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Codex
 			const agentHeaders = screen.getAllByRole("button");
@@ -527,8 +561,9 @@ describe("GlobalSettings", () => {
 		it("shows cannot delete message for default agents", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude (default agent)
 			const agentHeaders = screen.getAllByRole("button");
@@ -547,8 +582,9 @@ describe("GlobalSettings", () => {
 		it("expands config when clicked", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude agent
 			const agentHeaders = screen.getAllByRole("button");
@@ -571,8 +607,9 @@ describe("GlobalSettings", () => {
 		it("updates config name", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude agent, then expand first config
 			const agentHeaders = screen.getAllByRole("button");
@@ -599,8 +636,9 @@ describe("GlobalSettings", () => {
 		it("adds a new configuration", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude
 			const agentHeaders = screen.getAllByRole("button");
@@ -621,8 +659,9 @@ describe("GlobalSettings", () => {
 		it("deletes a configuration when there are multiple", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude
 			const agentHeaders = screen.getAllByRole("button");
@@ -654,8 +693,9 @@ describe("GlobalSettings", () => {
 				defaultConfigId: "cfg-2",
 			});
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude
 			const agentHeaders = screen.getAllByRole("button");
@@ -684,8 +724,9 @@ describe("GlobalSettings", () => {
 		it("does not show delete button for single config", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Codex (has only 1 config)
 			const agentHeaders = screen.getAllByRole("button");
@@ -711,8 +752,9 @@ describe("GlobalSettings", () => {
 	describe("config fields", () => {
 		async function expandFirstConfig() {
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude
 			const agentHeaders = screen.getAllByRole("button");
@@ -846,8 +888,9 @@ describe("GlobalSettings", () => {
 	describe("default badge", () => {
 		it("shows default badge on default agents", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Claude is isDefault: true
 			const badges = screen.getAllByText("Default");
@@ -855,12 +898,13 @@ describe("GlobalSettings", () => {
 		});
 	});
 
-	describe("autocapitalize disabled on technical inputs", () => {
+		describe("autocapitalize disabled on technical inputs", () => {
 		it("base command input has autocapitalize off", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Codex
 			const agentHeaders = screen.getAllByRole("button");
@@ -878,8 +922,9 @@ describe("GlobalSettings", () => {
 		it("model input has autocapitalize off", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude agent
 			const agentHeaders = screen.getAllByRole("button");
@@ -904,8 +949,9 @@ describe("GlobalSettings", () => {
 		it("base command override input has autocapitalize off", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			// Expand Claude agent
 			const agentHeaders = screen.getAllByRole("button");
@@ -933,8 +979,9 @@ describe("GlobalSettings", () => {
 	describe("config count display", () => {
 		it("shows correct config count per agent", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("agents");
 			await waitForLoad();
+			await screen.findByText("Model:");
 
 			expect(screen.getByText("2 configs")).toBeInTheDocument();
 			expect(screen.getByText("1 config")).toBeInTheDocument();
@@ -948,7 +995,7 @@ describe("GlobalSettings", () => {
 
 		it("renders the iTerm2 compatibility toggle", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("terminal");
 			await waitForLoad();
 
 			expect(getKeymapToggle()).toBeInTheDocument();
@@ -956,7 +1003,7 @@ describe("GlobalSettings", () => {
 
 		it("toggle is active by default (iTerm2 ships on)", async () => {
 			setupMocks();
-			renderGlobalSettings();
+			renderGlobalSettings("terminal");
 			await waitForLoad();
 
 			expect(getKeymapToggle().className).toContain("border-accent");
@@ -965,7 +1012,7 @@ describe("GlobalSettings", () => {
 		it("clicking the toggle opts out, saving terminalKeymap default to backend", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("terminal");
 			await waitForLoad();
 
 			await user.click(getKeymapToggle());
@@ -978,7 +1025,7 @@ describe("GlobalSettings", () => {
 		it("clicking the toggle persists the default (opt-out) preset to localStorage", async () => {
 			setupMocks();
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("terminal");
 			await waitForLoad();
 
 			await user.click(getKeymapToggle());
@@ -989,7 +1036,7 @@ describe("GlobalSettings", () => {
 		it("clicking the toggle from an explicit opt-out turns iTerm2 back on", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings, terminalKeymap: "default" });
 			const user = userEvent.setup();
-			renderGlobalSettings();
+			renderGlobalSettings("terminal");
 			await waitForLoad();
 
 			await user.click(getKeymapToggle());
@@ -1001,10 +1048,109 @@ describe("GlobalSettings", () => {
 
 		it("loads terminalKeymap from backend settings and syncs to localStorage", async () => {
 			setupMocks(mockAgents, { ...mockGlobalSettings, terminalKeymap: "iterm2" });
-			renderGlobalSettings();
+			renderGlobalSettings("terminal");
 			await waitForLoad();
 
 			expect(localStorage.getItem(KEYMAP_LS_KEY)).toBe("iterm2");
+		});
+	});
+
+	describe("category navigation and search", () => {
+		it("shows one category page at a time", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.click(screen.getByRole("button", { name: "Tasks & Board" }));
+
+			expect(document.getElementById("settings-category-title")!).toHaveTextContent("Tasks & Board");
+			expect(screen.getByText("Task Drop Position")).toBeInTheDocument();
+			expect(screen.queryByText("Choose the color theme for dev-3.0.")).not.toBeInTheDocument();
+		});
+
+		it("filters localized titles and descriptions across categories and opens the entry", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			const search = screen.getByRole("searchbox", { name: "Search settings" });
+			await user.type(search, "scroll speed");
+
+			expect(screen.getByText("Search results")).toBeInTheDocument();
+			expect(screen.getByText("Category: Terminal")).toBeInTheDocument();
+			await user.click(screen.getByRole("button", { name: /Terminal scroll speed/ }));
+
+			expect(document.getElementById("settings-category-title")).toHaveTextContent("Terminal");
+			expect(screen.getByText("Terminal Keymap")).toBeInTheDocument();
+			expect(screen.getByRole("slider", { name: "Terminal scroll speed" })).toHaveValue("2");
+		});
+
+		it("matches Russian setting copy", async () => {
+			localStorage.setItem("dev3-locale", "ru");
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			await user.type(screen.getByRole("searchbox", { name: "Поиск настроек" }), "скорость");
+
+			expect(screen.getByText("Скорость прокрутки терминала")).toBeInTheDocument();
+			expect(screen.getByText("Категория: Терминал")).toBeInTheDocument();
+		});
+
+		it("maps legacy proxy deep-links to System", async () => {
+			setupMocks();
+			renderGlobalSettings("proxy");
+			await waitForLoad();
+
+			expect(document.getElementById("settings-category-title")).toHaveTextContent("System");
+			expect(screen.getByText("Token-saving proxy (experimental)")).toBeInTheDocument();
+		});
+	});
+
+	describe("system settings", () => {
+		it("round-trips the confirm-before-quit toggle through skipQuitDialog", async () => {
+			setupMocks(mockAgents, { ...mockGlobalSettings, skipQuitDialog: true });
+			const user = userEvent.setup();
+			renderGlobalSettings("system");
+			await waitForLoad();
+
+			const toggle = await screen.findByRole("switch", {
+				name: "Confirm before quitting",
+			});
+			expect(toggle).toHaveAttribute("aria-checked", "false");
+
+			await user.click(toggle);
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenLastCalledWith(
+				expect.objectContaining({ skipQuitDialog: undefined }),
+			);
+			expect(toggle).toHaveAttribute("aria-checked", "true");
+
+			await user.click(toggle);
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenLastCalledWith(
+				expect.objectContaining({ skipQuitDialog: true }),
+			);
+		});
+	});
+
+	describe("narrow viewport", () => {
+		it("uses list-to-detail drill-down with a back affordance", async () => {
+			setViewport(390);
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings();
+			await waitForLoad();
+
+			expect(screen.queryByRole("button", { name: "Back to categories" })).not.toBeInTheDocument();
+			await user.click(screen.getByRole("button", { name: "Appearance" }));
+
+			expect(await screen.findByRole("button", { name: "Back to categories" })).toBeInTheDocument();
+			expect(screen.getByText("Theme")).toBeInTheDocument();
+
+			await user.click(screen.getByRole("button", { name: "Back to categories" }));
+			expect(screen.getByRole("searchbox", { name: "Search settings" })).toBeInTheDocument();
 		});
 	});
 

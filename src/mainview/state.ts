@@ -1,22 +1,20 @@
 import { useReducer } from "react";
 import type { PortInfo, Project, Task, ResourceUsage } from "../shared/types";
+import type { SettingsRouteSectionId } from "./settings-registry";
 
 // ---- Routes ----
 
-/** Anchors for deep-linking into a specific Global Settings section (the
- *  renderer scrolls to the matching section on mount). */
-export type SettingsSectionId =
-	| "appearance"
-	| "behavior"
-	| "workspace"
-	| "agents"
-	| "proxy"
-	| "developer";
+/**
+ * Global Settings route vocabulary. New callers use category ids; legacy
+ * section ids remain accepted so existing events and deep links keep working.
+ */
+export type SettingsSectionId = SettingsRouteSectionId;
+export type { LegacySettingsSectionId, SettingsCategoryId } from "./settings-registry";
 
 /** Fired by any surface that wants to jump the user to a Global Settings
  *  section (e.g. clicking a proxy-gated preset in the launch picker). App
- *  listens and navigates to `{ screen: "settings", section }`. The detail is a
- *  {@link SettingsSectionId}. */
+ *  listens and navigates to `{ screen: "settings", section }`. Legacy details
+ *  are normalized by GlobalSettings using the registry map. */
 export const OPEN_SETTINGS_SECTION_EVENT = "dev3:openSettingsSection";
 
 export type Route =

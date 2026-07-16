@@ -518,7 +518,10 @@ ux_architecture:
       actions: "object + git + dev-server actions, scoped to the task"
     settings_screen:
       example: "GlobalSettings, ProjectSettings"
-      grouping: "sections (Agent, Appearance, Behavior, Workspace, DeveloperTools)"
+      grouping: "GlobalSettings uses a left-nav list of seven Settings categories (Appearance, Tasks & Board, Terminal, Agents, Accounts, Workspace, System); ProjectSettings keeps its existing tabs"
+      registry: "src/mainview/settings-registry.ts is the declarative metadata source for Settings entries, localized search copy, category membership, anchors, and GlobalSettings field integrity"
+      search: "localized title + description search groups matches by Settings category and jumps to the registered anchor"
+      deep_links: "Route.section accepts current category ids plus legacy appearance/behavior/workspace/agents/proxy/developer ids, normalized by LEGACY_SETTINGS_CATEGORY_MAP"
       save_apply: "updateProjectSettings / settings RPC handlers"
       danger_zone: "remove project / destructive cleanup behind confirmation"
 
@@ -636,7 +639,7 @@ ux_architecture:
       diff_viewer: { narrow: "files-aside (22rem) -> bottom-sheet file picker; diff stream owns screen (live-content: explicit nav, no full-surface swipe)", status: proposed, evidence: "TaskDiffViewer.tsx w-[22rem] aside" }
       modal: { narrow: "full-bleed sheet: max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)], or BottomSheet for action-style modals", status: proposed, evidence: "TaskDetailModal 35rem, AddProjectModal 32.5rem, confirm() 26rem — all fixed-width" }
       context_menu: { narrow: "bottom action sheet (long-press trigger)", status: proposed }
-      settings: { narrow: "tabs -> one section at a time (carousel / <select> / accordion); no horizontal tab overflow", status: proposed, evidence: "GlobalSettings.tsx, ProjectSettings.tsx" }
+      settings: { narrow: "category list first -> one category detail at a time with an in-app back affordance; same settings route, no horizontal overflow", status: implemented, evidence: "GlobalSettings.tsx, settings-registry.ts, useNarrowViewport(768)" }
       dashboard: { narrow: "vertical project list, full-width cards (p-3 vs p-7); per-project actions + reorder collapse into a kebab -> BottomSheet action sheet (hover icon-cluster + HTML5 drag + hidden up/down steps are all dead on touch); touch targets >=44px", status: observed, evidence: "ActivityOverview.tsx useNarrowViewport(CAROUSEL_MAX_WIDTH), BottomSheet, ProjectActionButtons (hidden md:flex)" }
       command_palette: { narrow: "needs a TOUCH entry + w-full max-w-[calc(100vw-2rem)] (PaletteShell is 34rem fixed, keyboard-only) — it is the action fallback for the absent native menu", status: proposed, evidence: "PaletteShell.tsx w-[34rem], App.tsx Cmd+K/Cmd+Shift+P" }
       global_header: { narrow: "reflow: logo + truncated breadcrumb + ONE overflow kebab for all utilities; never a 9-icon row (useCompact at 1600 only hides labels)", status: proposed, evidence: "GlobalHeader.tsx flex justify-between, useCompact.ts" }

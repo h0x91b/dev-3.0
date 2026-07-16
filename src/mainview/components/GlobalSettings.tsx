@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type ReactNode,
+} from "react";
 import {
 	useLocale,
 	useT,
+	type TFunction,
 } from "../i18n";
 import { randomUUID } from "../uuid";
 import type {
@@ -20,13 +28,26 @@ import { getScrollSpeed, SCROLL_SPEED_CHANGED_EVENT } from "../scroll-speed";
 import { getKeymapPreset, setKeymapPreset } from "../terminal-keymaps";
 import { trackEvent } from "../analytics";
 import AgentAccountsSection from "./global-settings/AgentAccountsSection";
+import AgentRateLimitSettingsSection from "./global-settings/AgentRateLimitSettingsSection";
 import AgentSettingsSection from "./global-settings/AgentSettingsSection";
 import AppearanceSettingsSection from "./global-settings/AppearanceSettingsSection";
 import BehaviorSettingsSection from "./global-settings/BehaviorSettingsSection";
 import DeveloperToolsSection from "./global-settings/DeveloperToolsSection";
 import PxpipeProxySettingsSection from "./global-settings/PxpipeProxySettingsSection";
+import SystemSettingsSection from "./global-settings/SystemSettingsSection";
+import TerminalSettingsSection from "./global-settings/TerminalSettingsSection";
 import WorkspaceSettingsSection from "./global-settings/WorkspaceSettingsSection";
 import type { SettingsSectionId } from "../state";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import {
+	filterSettingsEntries,
+	groupSettingsEntriesByCategory,
+	normalizeSettingsCategoryId,
+	SETTINGS_CATEGORIES,
+	type SettingsCategoryId,
+	type SettingsEntry as SettingsRegistryEntry,
+} from "../settings-registry";
 import {
 	DEFAULT_GLOBAL_SETTINGS,
 	normalizeExternalApps,
@@ -76,11 +97,30 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 	);
 	const [tipsResetDone, setTipsResetDone] = useState(false);
 	const [caffeinateAvailable, setCaffeinateAvailable] = useState(true);
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
+	const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>(() =>
+		normalizeSettingsCategoryId(section),
+	);
+	const [mobileCategory, setMobileCategory] = useState<SettingsCategoryId | null>(
+		() => (section ? normalizeSettingsCategoryId(section) : null),
+	);
+	const [searchQuery, setSearchQuery] = useState("");
+	const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+	const detailHeadingRef = useRef<HTMLHeadingElement>(null);
 
 	const resetTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 	const globalSettingsRef = useRef<GlobalSettingsType>(DEFAULT_GLOBAL_SETTINGS);
 	const pendingAgentsSaveRef = useRef<CodingAgent[] | null>(null);
 	const agentsSaveInFlightRef = useRef(false);
+
+	const filteredSettingsEntries = useMemo(
+		() => filterSettingsEntries(searchQuery, t),
+		[searchQuery, t],
+	);
+	const groupedSearchResults = useMemo(
+		() => groupSettingsEntriesByCategory(filteredSettingsEntries),
+		[filteredSettingsEntries],
+	);
 
 	const setGlobalSettingsState = useCallback((next: GlobalSettingsType) => {
 		globalSettingsRef.current = next;
@@ -307,6 +347,13 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	const handleConfirmBeforeQuitToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ skipQuitDialog: enabled ? undefined : true });
+		},
+		[persistSettingChange],
+	);
+
 	const handleFocusModeToggle = useCallback(
 		(enabled: boolean) => {
 			persistSettingChange({ focusMode: enabled });
@@ -331,12 +378,28 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
-	// Deep-link: when navigated to a specific section, scroll it into view.
+	// Deep-links keep accepting legacy section ids while the visible route uses
+	// the current category vocabulary.
 	useEffect(() => {
-		if (!section) return;
-		const el = document.querySelector(`[data-settings-section="${section}"]`);
-		if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-	}, [section]);
+		const nextCategory = normalizeSettingsCategoryId(section);
+		setActiveCategory(nextCategory);
+		if (narrow && section) setMobileCategory(nextCategory);
+	}, [narrow, section]);
+
+	useEffect(() => {
+		if (!narrow) setMobileCategory(null);
+	}, [narrow]);
+
+	useEffect(() => {
+		if (!pendingAnchor || searchQuery.trim()) return;
+		const element = document.querySelector(
+			`[data-settings-entry="${pendingAnchor}"]`,
+		) as HTMLElement | null;
+		if (!element) return;
+		element.scrollIntoView?.({ behavior: "smooth", block: "start" });
+		setPendingAnchor(null);
+		detailHeadingRef.current?.focus({ preventScroll: true });
+	}, [activeCategory, pendingAnchor, searchQuery]);
 
 	const saveExternalApps = useCallback(
 		(apps: ExternalApp[]) => {
@@ -468,66 +531,347 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		}
 	}, []);
 
-	return (
-		<div className="h-full w-full flex flex-col">
-			<div className="flex-1 overflow-y-auto p-7">
-				<div className="max-w-4xl mx-auto bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl p-6">
+	function renderCategoryPage(category: SettingsCategoryId): ReactNode {
+		switch (category) {
+			case "appearance":
+				return (
 					<AppearanceSettingsSection
 						t={t}
 						locale={locale}
 						theme={theme}
 						zoomLevel={zoomLevel}
-						scrollSpeed={scrollSpeed}
 						onThemeChange={applyThemeChange}
 						onLocaleChange={handleLocaleChange}
 					/>
+				);
+			case "tasks":
+				return (
 					<BehaviorSettingsSection
 						t={t}
 						globalSettings={globalSettings}
-						caffeinateAvailable={caffeinateAvailable}
-						keymapPreset={keymapPreset}
 						tipsResetDone={tipsResetDone}
 						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
-						onKeymapChange={handleKeymapChange}
-						onPreventSleepToggle={handlePreventSleepToggle}
 						onSoundToggle={handleSoundToggle}
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
 						onFocusModeToggle={handleFocusModeToggle}
-						onRateLimitTrackingToggle={handleRateLimitTrackingToggle}
 						onTaskDropPositionChange={handleTaskDropPositionChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}
 						onTipsDisabledToggle={handleTipsDisabledToggle}
 						onTipsReset={handleTipsReset}
 					/>
+				);
+			case "terminal":
+				return (
+					<TerminalSettingsSection
+						t={t}
+						keymapPreset={keymapPreset}
+						scrollSpeed={scrollSpeed}
+						onKeymapChange={handleKeymapChange}
+					/>
+				);
+			case "agents":
+				return (
+					<>
+						<AgentSettingsSection
+							t={t}
+							agents={agents}
+							globalSettings={globalSettings}
+							onAgentsChange={persistAgents}
+							onDefaultAgentChange={handleDefaultAgentChange}
+							onDefaultConfigChange={handleDefaultConfigChange}
+						/>
+						<AgentRateLimitSettingsSection
+							t={t}
+							globalSettings={globalSettings}
+							onToggle={handleRateLimitTrackingToggle}
+						/>
+					</>
+				);
+			case "accounts":
+				return <AgentAccountsSection t={t} />;
+			case "workspace":
+				return (
 					<WorkspaceSettingsSection
 						t={t}
 						globalSettings={globalSettings}
 						onAddExternalApp={handleAddExternalApp}
 						onDeleteExternalApp={handleDeleteExternalApp}
 						onPickCloneBaseDirectory={handlePickCloneBaseDirectory}
-						onUpdateChannelChange={handleUpdateChannelChange}
 						onUpdateExternalApp={handleUpdateExternalApp}
 					/>
-					<AgentSettingsSection
+				);
+			case "system":
+				return (
+					<>
+						<SystemSettingsSection
+							t={t}
+							globalSettings={globalSettings}
+							caffeinateAvailable={caffeinateAvailable}
+							onUpdateChannelChange={handleUpdateChannelChange}
+							onPreventSleepToggle={handlePreventSleepToggle}
+							onConfirmBeforeQuitToggle={handleConfirmBeforeQuitToggle}
+						/>
+						<PxpipeProxySettingsSection
+							t={t}
+							globalSettings={globalSettings}
+							onToggle={handlePxpipeProxyToggle}
+						/>
+						<DeveloperToolsSection
+							t={t}
+							cliInstallStatus={cliInstallStatus}
+							onInstallDev3Cli={handleInstallDev3Cli}
+						/>
+					</>
+				);
+		}
+	}
+
+	const selectCategory = useCallback(
+		(category: SettingsCategoryId) => {
+			setSearchQuery("");
+			setPendingAnchor(null);
+			setActiveCategory(category);
+			if (narrow) setMobileCategory(category);
+		},
+		[narrow],
+	);
+
+	const selectSearchResult = useCallback(
+		(entry: SettingsRegistryEntry) => {
+			setSearchQuery("");
+			setActiveCategory(entry.category);
+			setPendingAnchor(entry.anchor ?? null);
+			if (narrow) setMobileCategory(entry.category);
+		},
+		[narrow],
+	);
+
+	const returnToCategoryList = useCallback(() => {
+		setSearchQuery("");
+		setPendingAnchor(null);
+		setMobileCategory(null);
+	}, []);
+
+	const selectedCategory =
+		SETTINGS_CATEGORIES.find((category) => category.id === activeCategory) ??
+		SETTINGS_CATEGORIES[0];
+	const settingsNavigation = (
+		<SettingsNavigation
+			t={t}
+			activeCategory={activeCategory}
+			query={searchQuery}
+			narrow={narrow}
+			searchGroups={groupedSearchResults}
+			onQueryChange={setSearchQuery}
+			onCategorySelect={selectCategory}
+			onSearchResult={selectSearchResult}
+		/>
+	);
+	const settingsDetail = (
+		<main
+			className="min-w-0 min-h-0 flex-1 overflow-y-auto p-5 md:p-7"
+			aria-labelledby="settings-category-title"
+		>
+			{narrow ? (
+				<button
+					type="button"
+					onClick={returnToCategoryList}
+					className="mb-5 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-fg-2 hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+				>
+					<span aria-hidden="true">←</span>
+					{t("settings.categoryBack")}
+				</button>
+			) : null}
+			<div className="mx-auto w-full max-w-5xl">
+				{searchQuery.trim() ? (
+					<SettingsSearchResults
 						t={t}
-						agents={agents}
-						globalSettings={globalSettings}
-						onAgentsChange={persistAgents}
-						onDefaultAgentChange={handleDefaultAgentChange}
-						onDefaultConfigChange={handleDefaultConfigChange}
+						groups={groupedSearchResults}
+						onSelect={selectSearchResult}
 					/>
-					<AgentAccountsSection t={t} />
-					<PxpipeProxySettingsSection
-						t={t}
-						globalSettings={globalSettings}
-						onToggle={handlePxpipeProxyToggle}
-					/>
-					<DeveloperToolsSection
-						t={t}
-						cliInstallStatus={cliInstallStatus}
-						onInstallDev3Cli={handleInstallDev3Cli}
-					/>
+				) : (
+					<>
+						<div className="mb-7">
+							<h2
+								id="settings-category-title"
+								ref={detailHeadingRef}
+								tabIndex={-1}
+								className="text-fg text-xl font-semibold tracking-tight outline-none"
+							>
+								{t(selectedCategory.labelKey)}
+							</h2>
+							<p className="mt-1 text-sm text-fg-3">
+								{t(selectedCategory.descriptionKey)}
+							</p>
+						</div>
+						<div className="space-y-8">{renderCategoryPage(activeCategory)}</div>
+					</>
+				)}
+			</div>
+		</main>
+	);
+
+	return (
+		<div className="h-full w-full flex flex-col">
+			<div className="min-h-0 flex-1 p-2 sm:p-4 md:p-6">
+				<div className="h-full min-h-0 max-w-6xl mx-auto overflow-hidden flex flex-col md:flex-row bg-raised/80 backdrop-blur-sm border border-edge/50 rounded-2xl">
+					{narrow ? (
+						mobileCategory ? settingsDetail : settingsNavigation
+					) : (
+						<>
+							{settingsNavigation}
+							{settingsDetail}
+						</>
+					)}
 				</div>
+			</div>
+		</div>
+	);
+}
+
+function SettingsNavigation({
+	t,
+	activeCategory,
+	query,
+	narrow,
+	searchGroups,
+	onQueryChange,
+	onCategorySelect,
+	onSearchResult,
+}: {
+	t: TFunction;
+	activeCategory: SettingsCategoryId;
+	query: string;
+	narrow: boolean;
+	searchGroups: ReturnType<typeof groupSettingsEntriesByCategory>;
+	onQueryChange: (query: string) => void;
+	onCategorySelect: (category: SettingsCategoryId) => void;
+	onSearchResult: (entry: SettingsRegistryEntry) => void;
+}) {
+	return (
+		<aside
+			className={`flex min-h-0 w-full shrink-0 flex-col ${
+				narrow ? "" : "md:w-64 md:border-r md:border-edge/60"
+			}`}
+		>
+			<div className="border-b border-edge/60 p-4 md:p-5">
+				<h1 className="text-fg text-lg font-semibold tracking-tight">
+					{t("settings.settingsTitle")}
+				</h1>
+				<p className="mt-1 text-xs text-fg-3">{t("settings.settingsDesc")}</p>
+				<div className="relative mt-4">
+					<label htmlFor="settings-search" className="sr-only">
+						{t("settings.searchLabel")}
+					</label>
+					<input
+						id="settings-search"
+						type="search"
+						value={query}
+						onChange={(event) => onQueryChange(event.target.value)}
+						placeholder={t("settings.searchPlaceholder")}
+						className="w-full rounded-xl border border-edge bg-base px-3 py-2.5 pr-10 text-sm text-fg outline-none placeholder:text-fg-muted focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+					/>
+					{query ? (
+						<button
+							type="button"
+							onClick={() => onQueryChange("")}
+							aria-label={t("settings.searchClear")}
+							className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-lg text-fg-muted hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+						>
+							×
+						</button>
+					) : null}
+				</div>
+			</div>
+			<nav
+				aria-label={t("settings.categories")}
+				className="min-h-0 flex-1 overflow-y-auto p-2"
+			>
+				{narrow && query.trim() ? (
+					<SettingsSearchResults
+						t={t}
+						groups={searchGroups}
+						onSelect={onSearchResult}
+					/>
+				) : (
+					<ul className="space-y-1">
+						{SETTINGS_CATEGORIES.map((category) => (
+							<li key={category.id}>
+								<button
+									type="button"
+									aria-current={
+										activeCategory === category.id ? "page" : undefined
+									}
+									onClick={() => onCategorySelect(category.id)}
+									className={`flex min-h-11 w-full items-center rounded-xl border px-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+										activeCategory === category.id
+											? "border-accent/50 bg-accent/10 text-accent"
+											: "border-transparent text-fg-2 hover:border-edge hover:bg-elevated hover:text-fg"
+									}`}
+								>
+									{t(category.labelKey)}
+								</button>
+							</li>
+						))}
+					</ul>
+				)}
+			</nav>
+		</aside>
+	);
+}
+
+function SettingsSearchResults({
+	t,
+	groups,
+	onSelect,
+}: {
+	t: TFunction;
+	groups: ReturnType<typeof groupSettingsEntriesByCategory>;
+	onSelect: (entry: SettingsRegistryEntry) => void;
+}) {
+	if (groups.length === 0) {
+		return (
+			<div className="rounded-xl border border-edge bg-base/50 p-4 text-sm text-fg-3">
+				{t("settings.searchNoResults")}
+			</div>
+		);
+	}
+
+	return (
+		<div>
+			<h2 className="text-fg text-xl font-semibold tracking-tight">
+				{t("settings.searchResults")}
+			</h2>
+			<div className="mt-5 space-y-6">
+				{groups.map((group) => (
+					<section key={group.category.id}>
+						<h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">
+							{t(group.category.labelKey)}
+						</h3>
+						<div className="mt-2 space-y-2">
+							{group.entries.map((entry) => (
+								<button
+									key={entry.id}
+									type="button"
+									onClick={() => onSelect(entry)}
+									className="block min-h-11 w-full rounded-xl border border-edge bg-raised p-3 text-left transition-colors hover:border-accent/50 hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+								>
+									<span className="block text-sm font-semibold text-fg">
+										{t(entry.titleKey)}
+									</span>
+									<span className="mt-0.5 block text-xs text-fg-3">
+										{t(entry.descriptionKey)}
+									</span>
+									<span className="mt-2 block text-[0.6875rem] text-fg-muted">
+										{t("settings.searchResultCategory", {
+											category: t(group.category.labelKey),
+										})}
+									</span>
+								</button>
+							))}
+						</div>
+					</section>
+				))}
 			</div>
 		</div>
 	);

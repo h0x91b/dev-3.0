@@ -1,27 +1,20 @@
 import { useState } from "react";
-import type {
-	GlobalSettings,
-	TerminalKeymapPreset,
-} from "../../../shared/types";
+import type { GlobalSettings } from "../../../shared/types";
 import type { TFunction } from "../../i18n";
 import SettingsSection from "./SettingsSection";
-import BrowserNotificationsSetting from "./BrowserNotificationsSetting";
+import SettingsEntry from "./SettingsEntry";
+import SettingsToggle from "./SettingsToggle";
 
 const AUTO_OPEN_IMAGES_KEY = "dev3-auto-open-shared-images";
 
 interface BehaviorSettingsSectionProps {
 	t: TFunction;
 	globalSettings: GlobalSettings;
-	caffeinateAvailable: boolean;
-	keymapPreset: TerminalKeymapPreset;
 	tipsResetDone: boolean;
 	onDefaultDiffViewModeChange: (mode: "split" | "unified" | "auto") => void;
-	onKeymapChange: (preset: TerminalKeymapPreset) => void;
-	onPreventSleepToggle: (enabled: boolean) => void;
 	onSoundToggle: (enabled: boolean) => void;
 	onWatchByDefaultToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
-	onRateLimitTrackingToggle: (enabled: boolean) => void;
 	onTaskDropPositionChange: (position: "top" | "bottom") => void;
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
 	onTipsDisabledToggle: (disabled: boolean) => void;
@@ -31,16 +24,11 @@ interface BehaviorSettingsSectionProps {
 export default function BehaviorSettingsSection({
 	t,
 	globalSettings,
-	caffeinateAvailable,
-	keymapPreset,
 	tipsResetDone,
 	onDefaultDiffViewModeChange,
-	onKeymapChange,
-	onPreventSleepToggle,
 	onSoundToggle,
 	onWatchByDefaultToggle,
 	onFocusModeToggle,
-	onRateLimitTrackingToggle,
 	onTaskDropPositionChange,
 	onTaskOpenModeChange,
 	onTipsDisabledToggle,
@@ -65,7 +53,8 @@ export default function BehaviorSettingsSection({
 		}
 	};
 	return (
-		<SettingsSection title={t("settings.behaviorSection")} helpTopicId="settings.behavior">
+		<SettingsSection title={t("settings.categoryTasks")} helpTopicId="settings.tasks">
+			<SettingsEntry anchor="task-drop-position">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.taskDropPosition")}
@@ -73,7 +62,7 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.taskDropPositionDesc")}
 				</p>
-				<div className="flex gap-3">
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
 					<DropPositionCard
 						label={t("settings.dropToTop")}
 						description={t("settings.dropToTopDesc")}
@@ -90,54 +79,9 @@ export default function BehaviorSettingsSection({
 					/>
 				</div>
 			</div>
+			</SettingsEntry>
 
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.terminalKeymap")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.terminalKeymapDesc")}
-				</p>
-				<button
-					onClick={() =>
-						onKeymapChange(keymapPreset === "iterm2" ? "default" : "iterm2")
-					}
-					className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
-						keymapPreset === "iterm2"
-							? "border-accent shadow-lg shadow-accent/10"
-							: "border-edge hover:border-edge-active"
-					}`}
-				>
-					<div
-						className={`w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${
-							keymapPreset === "iterm2"
-								? "border-accent bg-accent"
-								: "border-edge-active"
-						}`}
-					>
-						{keymapPreset === "iterm2" ? (
-							<svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-								<path
-									d="M1 4L3.5 6.5L9 1"
-									stroke="white"
-									strokeWidth="1.5"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-								/>
-							</svg>
-						) : null}
-					</div>
-					<div>
-						<div className="text-fg text-sm font-semibold">
-							{t("settings.keymapIterm2")}
-						</div>
-						<div className="text-fg-3 text-xs mt-0.5">
-							{t("settings.keymapIterm2Desc")}
-						</div>
-					</div>
-				</button>
-			</div>
-
+			<SettingsEntry anchor="task-complete-sound">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.taskCompleteSound")}
@@ -145,14 +89,19 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.taskCompleteSoundDesc")}
 				</p>
-				<ToggleSwitch
+				<SettingsToggle
 					checked={globalSettings.playSoundOnTaskComplete !== false}
+					ariaLabel={t("settings.taskCompleteSound")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
 					onToggle={() =>
 						onSoundToggle(globalSettings.playSoundOnTaskComplete === false)
 					}
 				/>
 			</div>
+			</SettingsEntry>
 
+			<SettingsEntry anchor="focus-mode">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.focusMode")}
@@ -160,12 +109,17 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.focusModeDesc")}
 				</p>
-				<ToggleSwitch
+				<SettingsToggle
 					checked={globalSettings.focusMode === true}
+					ariaLabel={t("settings.focusMode")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
 					onToggle={() => onFocusModeToggle(globalSettings.focusMode !== true)}
 				/>
 			</div>
+			</SettingsEntry>
 
+			<SettingsEntry anchor="watch-by-default">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.watchByDefault")}
@@ -173,15 +127,19 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.watchByDefaultDesc")}
 				</p>
-				<ToggleSwitch
+				<SettingsToggle
 					checked={globalSettings.watchByDefault === true}
 					ariaLabel={t("settings.watchByDefault")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
 					onToggle={() =>
 						onWatchByDefaultToggle(globalSettings.watchByDefault !== true)
 					}
 				/>
 			</div>
+			</SettingsEntry>
 
+			<SettingsEntry anchor="auto-open-images">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.autoOpenImages")}
@@ -189,54 +147,17 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.autoOpenImagesDesc")}
 				</p>
-				<ToggleSwitch checked={autoOpenImages} onToggle={toggleAutoOpenImages} />
-			</div>
-
-			<BrowserNotificationsSetting t={t} />
-
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.preventSleep")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.preventSleepDesc")}
-				</p>
-				<ToggleSwitch
-					checked={
-						globalSettings.preventSleepWhileRunning !== false &&
-						caffeinateAvailable
-					}
-					disabled={!caffeinateAvailable}
-					onToggle={() =>
-						onPreventSleepToggle(
-							globalSettings.preventSleepWhileRunning === false,
-						)
-					}
-				/>
-				{!caffeinateAvailable ? (
-					<p className="text-fg-muted text-xs mt-2">
-						{t("settings.preventSleepNotAvailable")}
-					</p>
-				) : null}
-			</div>
-
-			<div>
-				<label className="block text-fg text-sm font-semibold mb-2">
-					{t("settings.rateLimitTracking")}
-				</label>
-				<p className="text-fg-3 text-sm mb-3">
-					{t("settings.rateLimitTrackingDesc")}
-				</p>
-				<ToggleSwitch
-					checked={globalSettings.agentRateLimitTracking !== false}
-					onToggle={() =>
-						onRateLimitTrackingToggle(
-							globalSettings.agentRateLimitTracking === false,
-						)
-					}
+				<SettingsToggle
+					checked={autoOpenImages}
+					ariaLabel={t("settings.autoOpenImages")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
+					onToggle={toggleAutoOpenImages}
 				/>
 			</div>
+			</SettingsEntry>
 
+			<SettingsEntry anchor="task-open-mode">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.taskOpenMode")}
@@ -244,7 +165,7 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.taskOpenModeDesc")}
 				</p>
-				<div className="flex gap-3">
+				<div className="flex flex-col gap-3 sm:flex-row">
 					{(["split", "fullscreen"] as const).map((mode) => (
 						<button
 							key={mode}
@@ -262,7 +183,9 @@ export default function BehaviorSettingsSection({
 					))}
 				</div>
 			</div>
+			</SettingsEntry>
 
+			<SettingsEntry anchor="default-diff-view">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-2">
 					{t("settings.defaultDiffViewMode")}
@@ -270,7 +193,7 @@ export default function BehaviorSettingsSection({
 				<p className="text-fg-3 text-sm mb-3">
 					{t("settings.defaultDiffViewModeDesc")}
 				</p>
-				<div className="flex gap-3">
+				<div className="flex flex-col gap-3 sm:flex-row">
 					{(["auto", "split", "unified"] as const).map((mode) => (
 						<button
 							key={mode}
@@ -290,16 +213,22 @@ export default function BehaviorSettingsSection({
 					))}
 				</div>
 			</div>
+			</SettingsEntry>
 
+			<SettingsEntry anchor="tips">
 			<div>
 				<label className="block text-fg text-sm font-semibold mb-3">
 					{t("settings.tipsSection")}
 				</label>
-				<div className="flex items-center gap-4">
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.tipsDesc")}
+				</p>
+				<div className="flex flex-wrap items-center gap-4">
 					<label className="inline-flex items-center gap-3 cursor-pointer select-none">
 						<div
 							role="switch"
 							aria-checked={globalSettings.tipsDisabled === true}
+							aria-label={t("settings.tipsDisabled")}
 							tabIndex={0}
 							className={`relative w-11 h-6 rounded-full transition-colors ${
 								globalSettings.tipsDisabled
@@ -336,53 +265,8 @@ export default function BehaviorSettingsSection({
 					</button>
 				</div>
 			</div>
+			</SettingsEntry>
 		</SettingsSection>
-	);
-}
-
-function ToggleSwitch({
-	checked,
-	disabled = false,
-	ariaLabel,
-	onToggle,
-}: {
-	checked: boolean;
-	disabled?: boolean;
-	ariaLabel?: string;
-	onToggle: () => void;
-}) {
-	return (
-		<label className="inline-flex items-center gap-3 cursor-pointer select-none">
-			<div
-				role="switch"
-				aria-checked={checked}
-				aria-label={ariaLabel}
-				tabIndex={0}
-				className={`relative w-11 h-6 rounded-full transition-colors ${
-					disabled
-						? "bg-raised border border-edge opacity-50 cursor-not-allowed"
-						: checked
-							? "bg-accent"
-							: "bg-raised border border-edge"
-				}`}
-				onClick={() => {
-					if (!disabled) onToggle();
-				}}
-				onKeyDown={(event) => {
-					if (!disabled && (event.key === "Enter" || event.key === " ")) {
-						event.preventDefault();
-						onToggle();
-					}
-				}}
-			>
-				<div
-					className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-						checked ? "translate-x-5" : ""
-					}`}
-				/>
-			</div>
-			<span className="text-fg text-sm">{checked ? "On" : "Off"}</span>
-		</label>
 	);
 }
 
