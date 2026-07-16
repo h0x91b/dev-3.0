@@ -13,15 +13,19 @@ public struct PairedServer: Codable, Equatable, Identifiable, Sendable {
     public init(origin: URL, sessionToken: String, name: String, instanceId: String) throws {
         self.origin = try PairingURLParser.normalizedOrigin(from: origin)
         let normalizedToken = sessionToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedInstanceId = instanceId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedToken.isEmpty,
               normalizedToken.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
-              !normalizedToken.contains(";")
+              !normalizedToken.contains(";"),
+              !normalizedInstanceId.isEmpty,
+              normalizedInstanceId.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) })
         else {
             throw SessionRequestError.invalidCredential
         }
         self.sessionToken = normalizedToken
-        self.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "dev3" : name
-        self.instanceId = instanceId
+        self.name = normalizedName.isEmpty ? "dev3" : normalizedName
+        self.instanceId = normalizedInstanceId
     }
 }
 
@@ -65,24 +69,36 @@ public extension AuthenticatedRequestBuilding {
 }
 
 public actor SessionRequestFactory: AuthenticatedRequestBuilding {
-    private var server: PairedServer
+    private let initialOrigin: URL
+    private var server: PairedServer?
 
     public init(server: PairedServer) {
+        initialOrigin = server.origin
         self.server = server
+    }
+
+    public init(origin: URL) throws {
+        initialOrigin = try PairingURLParser.normalizedOrigin(from: origin)
+        server = nil
     }
 
     public func update(server: PairedServer) {
         self.server = server
     }
 
-    public func serverSnapshot() -> PairedServer {
+    public func serverSnapshot() -> PairedServer? {
         server
     }
 
     public func authenticatedRequest(path: String, queryItems: [URLQueryItem] = []) throws -> URLRequest {
+        guard let server else { throw SessionRequestError.invalidCredential }
         var request = try Self.request(origin: server.origin, path: path, queryItems: queryItems)
         request.setValue("dev3_session=\(server.sessionToken)", forHTTPHeaderField: "Cookie")
         return request
+    }
+
+    public func unauthenticatedRequest(path: String, queryItems: [URLQueryItem] = []) throws -> URLRequest {
+        try Self.request(origin: server?.origin ?? initialOrigin, path: path, queryItems: queryItems)
     }
 
     public static func request(

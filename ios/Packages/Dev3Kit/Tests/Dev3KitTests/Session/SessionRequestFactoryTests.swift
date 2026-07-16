@@ -53,6 +53,39 @@ struct SessionRequestFactoryTests {
         }
     }
 
+    @Test("Names and instance identifiers are normalized before secure storage")
+    func serverIdentityNormalization() throws {
+        let server = try PairedServer(
+            origin: #require(URL(string: "https://example.com")),
+            sessionToken: "token",
+            name: "  My dev3  ",
+            instanceId: "  instance-1  "
+        )
+
+        #expect(server.name == "My dev3")
+        #expect(server.instanceId == "instance-1")
+        #expect(throws: SessionRequestError.invalidCredential) {
+            try PairedServer(
+                origin: #require(URL(string: "https://example.com")),
+                sessionToken: "token",
+                name: "Name",
+                instanceId: "   "
+            )
+        }
+    }
+
+    @Test("Whitespace-only names use the neutral dev3 fallback")
+    func blankServerName() throws {
+        let server = try PairedServer(
+            origin: #require(URL(string: "https://example.com")),
+            sessionToken: "token",
+            name: " \n ",
+            instanceId: "instance-1"
+        )
+
+        #expect(server.name == "dev3")
+    }
+
     private func testServer(token: String) throws -> PairedServer {
         try PairedServer(
             origin: #require(URL(string: "http://127.0.0.1:4242")),
