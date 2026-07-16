@@ -12,13 +12,15 @@ let package = Package(
         .library(name: "Dev3TerminalKit", targets: ["Dev3TerminalKit"])
     ],
     dependencies: [
-        .package(url: "https://github.com/migueldeicaza/SwiftTerm", exact: "1.14.0")
+        .package(url: "https://github.com/migueldeicaza/SwiftTerm", exact: "1.14.0"),
+        .package(path: "../Dev3UI")
     ],
     targets: [
         .target(
             name: "Dev3TerminalKit",
             dependencies: [
-                .product(name: "SwiftTerm", package: "SwiftTerm")
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+                .product(name: "Dev3UI", package: "Dev3UI")
             ]
         ),
         .testTarget(name: "Dev3TerminalKitTests", dependencies: ["Dev3TerminalKit"])
