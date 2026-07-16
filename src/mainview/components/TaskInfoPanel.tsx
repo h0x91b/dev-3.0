@@ -29,6 +29,7 @@ import TaskArtifacts from "./task-info-panel/TaskArtifacts";
 import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
+import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
 import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
 import {
@@ -1073,6 +1074,19 @@ function TaskInfoPanel({
 								</button>
 							)}
 						</div>
+
+						{project.kind !== "virtual" && isTaskActive && task.worktreePath && (
+							<TaskGitActionsSheet
+								task={task}
+								project={project}
+								dispatch={dispatch}
+								navigate={navigate}
+								isTaskActive={isTaskActive}
+								rowClassName={SHEET_ROW_CLASS}
+								onOpenInlineDiff={onOpenInlineDiff}
+								onAction={() => setActionsSheetOpen(false)}
+							/>
+						)}
 
 						<section className="border-t border-edge pt-4">
 							<h3 className="mb-2 text-[0.625rem] font-semibold uppercase tracking-wider text-fg-muted">{t("infoPanel.sheetDetails")}</h3>

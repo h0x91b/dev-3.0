@@ -1,1 +1,0 @@
-Removed the duplicate task title from the mobile task view's status bar — it already appears in the breadcrumb row above. The freed space keeps the status and diff summary readable and leaves room for future inline actions.

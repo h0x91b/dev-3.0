@@ -2861,5 +2861,56 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			});
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 		});
+
+		it("surfaces git action rows (diff, rebase, push, create PR, merge) in the actions sheet", async () => {
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			const sheet = screen.getByTestId("task-actions-sheet");
+			// Git section header + the mutation rows are present as full-width rows.
+			expect(within(sheet).getByText("Git")).toBeInTheDocument();
+			expect(within(sheet).getByText("Show Diff")).toBeInTheDocument();
+			expect(within(sheet).getByText("Rebase")).toBeInTheDocument();
+			expect(within(sheet).getByText("Push")).toBeInTheDocument();
+			expect(within(sheet).getByText("Create PR")).toBeInTheDocument();
+			expect(within(sheet).getByText("PR + auto-merge")).toBeInTheDocument();
+			expect(within(sheet).getByText("Merge")).toBeInTheDocument();
+		});
+
+		it("triggers Create PR and dismisses the sheet", async () => {
+			mockedApi.request.createPullRequest.mockResolvedValue(undefined);
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			// Wait until the branch status loads (ahead: 3) so the row enables.
+			const createPR = await within(screen.getByTestId("task-actions-sheet")).findByText("Create PR");
+			await waitFor(() => expect(createPR.closest("button")).not.toBeDisabled());
+			await act(async () => {
+				fireEvent.click(createPR);
+			});
+			expect(mockedApi.request.createPullRequest).toHaveBeenCalledWith(
+				expect.objectContaining({ taskId: "t1", projectId: "p1", autoMerge: false }),
+			);
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+		});
+
+		it("omits the git section for a virtual (Operations) project", async () => {
+			await act(async () => {
+				renderPanel(makeTask(), { project: { ...project, kind: "virtual" } });
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			const sheet = screen.getByTestId("task-actions-sheet");
+			expect(within(sheet).queryByText("Git")).not.toBeInTheDocument();
+			expect(within(sheet).queryByText("Create PR")).not.toBeInTheDocument();
+			expect(mockedApi.request.getBranchStatus).not.toHaveBeenCalled();
+		});
 	});
 });

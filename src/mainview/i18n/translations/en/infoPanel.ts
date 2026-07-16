@@ -15,6 +15,7 @@ const infoPanel = {
 	"infoPanel.showPanel": "Show Active Tasks",
 	"infoPanel.actionsTitle": "Task actions",
 	"infoPanel.sheetDetails": "Details",
+	"infoPanel.gitSection": "Git",
 	"infoPanel.commitsBehind": "{count} commits behind",
 	"infoPanel.commitsAhead": "{count} commits ahead",
 	"infoPanel.commitsAheadBehind": "{ahead} ahead · {behind} behind",

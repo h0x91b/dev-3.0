@@ -1,0 +1,1 @@
+Mobile task view: removed the duplicate task title from the status bar (it already appears in the breadcrumb above), freeing space. Added a Git section to the task actions sheet so Show Diff, Rebase, Push, Create PR (+ auto-merge) and Merge are now reachable on a phone, mirroring the desktop inspector with the same enable/disable rules and reasons.
