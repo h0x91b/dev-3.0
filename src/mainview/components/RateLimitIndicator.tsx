@@ -8,8 +8,10 @@ import {
 	RATE_LIMIT_DANGER_PERCENT,
 	RATE_LIMIT_WARN_PERCENT,
 	formatResetDelta,
+	isUnlimitedRateLimitSnapshot,
+	latestRateLimitSnapshot,
 	windowLabel,
-	worstWindow,
+	worstSnapshotWindow,
 } from "../../shared/rate-limits";
 import type { AgentAccountsState } from "../../shared/agent-accounts";
 import { AGENT_ACCOUNTS_CHANGED_EVENT } from "./AgentAccountIndicator";
@@ -113,10 +115,11 @@ function snapshotRows(
  * Ambient agent rate-limit indicator (global header, stateful-indicators zone).
  * Passive "battery gauge" for the account-wide Claude/Codex limit windows so a
  * dev running many parallel agents is never blindsided by hitting a limit.
- * Hidden until any data exists; escalates color at ≥80% / ≥95% of the most
- * constrained window. Details (per-window % + time-to-reset) live in the
- * tooltip. Codex monthly credits come from a cached app-server account read;
- * all other data comes from local files — see rate-limit-monitor.ts.
+ * Hidden until usable data exists; shows the most constrained window for the
+ * most recently active account and treats unlimited credits as 0% used.
+ * Details for every recently active account live in the tooltip. Codex monthly
+ * credits come from a cached app-server account read; all other data comes from
+ * local files — see rate-limit-monitor.ts.
  */
 function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const t = useT();
@@ -150,11 +153,13 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		return () => window.removeEventListener(AGENT_ACCOUNTS_CHANGED_EVENT, reload);
 	}, []);
 
-	const worst = report ? worstWindow(report) : null;
-	if (!report || !worst) return null;
+	const latestSnapshot = report ? latestRateLimitSnapshot(report) : null;
+	const latestWindow = latestSnapshot ? worstSnapshotWindow(latestSnapshot) : null;
+	const unlimited = latestSnapshot ? isUnlimitedRateLimitSnapshot(latestSnapshot) : false;
+	if (!report || !latestSnapshot || (!latestWindow && !unlimited)) return null;
 
 	const now = Date.now();
-	const percent = Math.round(worst.window.usedPercent);
+	const percent = latestWindow && !unlimited ? Math.round(latestWindow.usedPercent) : 0;
 	const danger = percent >= RATE_LIMIT_DANGER_PERCENT;
 	const warn = !danger && percent >= RATE_LIMIT_WARN_PERCENT;
 
@@ -165,9 +170,13 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		}
 	}
 
-	const worstReset = formatResetDelta(worst.window.resetsAt, now);
-	const worstLabel = worst.window.id === "monthly_credits" ? t("rateLimits.monthlyLabel") : windowLabel(worst.window);
-	const ariaLabel = `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[worst.source] ?? worst.source} ${worstLabel} ${t("rateLimits.percentUsed", { percent })}${worstReset ? `, ${t("rateLimits.resetsIn", { time: worstReset })}` : ""}`;
+	const latestReset = formatResetDelta(latestWindow?.resetsAt ?? null, now);
+	const latestLabel = latestWindow
+		? latestWindow.id === "monthly_credits"
+			? t("rateLimits.monthlyLabel")
+			: windowLabel(latestWindow)
+		: null;
+	const ariaLabel = `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source}${latestLabel ? ` ${latestLabel}` : ""} ${t("rateLimits.percentUsed", { percent })}${latestReset ? `, ${t("rateLimits.resetsIn", { time: latestReset })}` : ""}`;
 
 	const colorClasses = danger
 		? "text-danger bg-danger/15 border-danger/30"

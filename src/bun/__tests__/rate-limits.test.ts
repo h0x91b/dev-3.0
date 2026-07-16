@@ -4,6 +4,8 @@ import {
 	formatResetDelta,
 	formatStatusLineSegment,
 	isRateLimitSnapshotRecent,
+	isUnlimitedRateLimitSnapshot,
+	latestRateLimitSnapshot,
 	mergeCodexRateLimitSnapshots,
 	parseClaudeStatusLinePayload,
 	parseCodexAppServerRateLimits,
@@ -11,6 +13,7 @@ import {
 	RATE_LIMIT_ACTIVITY_WINDOW_MS,
 	rateLimitActivityAt,
 	windowLabel,
+	worstSnapshotWindow,
 	worstWindow,
 } from "../../shared/rate-limits";
 
@@ -175,6 +178,20 @@ describe("rate-limit activity freshness", () => {
 		expect(rateLimitActivityAt(snapshot)).toBe(NOW);
 		expect(isRateLimitSnapshotRecent(snapshot, NOW + RATE_LIMIT_ACTIVITY_WINDOW_MS - 1)).toBe(true);
 		expect(isRateLimitSnapshotRecent(snapshot, NOW + RATE_LIMIT_ACTIVITY_WINDOW_MS + 1)).toBe(false);
+	});
+
+	it("selects the snapshot with the newest provider activity", () => {
+		const older = parseClaudeStatusLinePayload({ rate_limits: { five_hour: { used_percentage: 100 } } }, NOW)!;
+		const latest = parseCodexRateLimits({ primary: { used_percent: 24 } }, NOW + 1_000)!;
+		latest.capturedAt = NOW + 10_000;
+
+		expect(latestRateLimitSnapshot({ generatedAt: NOW + 10_000, snapshots: [older, latest] })).toBe(latest);
+		expect(worstSnapshotWindow(latest)?.usedPercent).toBe(24);
+	});
+
+	it("recognizes an unlimited credits snapshot", () => {
+		const unlimited = parseCodexRateLimits({ credits: { has_credits: true, unlimited: true } }, NOW)!;
+		expect(isUnlimitedRateLimitSnapshot(unlimited)).toBe(true);
 	});
 });
 

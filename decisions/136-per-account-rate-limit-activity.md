@@ -10,12 +10,12 @@ Claude statusline payloads run inside the launched account environment, while Co
 
 ## Decision
 
-Additive Claude snapshots live under `~/.dev3.0/data/rate-limits/claude/<accountId>.json`; the legacy `claude.json` remains a compatibility/system fallback and carries the account id when known. `AgentRateLimitSnapshot` carries `accountId` and `activeAt`, and `rate-limit-monitor.ts` deduplicates and filters snapshots to the 24-hour window before the existing header tooltip renders them.
+Additive Claude snapshots live under `~/.dev3.0/data/rate-limits/claude/<accountId>.json`; the legacy `claude.json` remains a compatibility/system fallback and carries the account id when known. `AgentRateLimitSnapshot` carries `accountId` and `activeAt`, and `rate-limit-monitor.ts` deduplicates and filters snapshots to the 24-hour window before the existing header tooltip renders them. The header badge reflects the most constrained window of the latest active snapshot, with unlimited credits represented as `0% used`; older snapshots remain detail-only.
 
 ## Risks
 
-Old global Claude dumps without attribution can only be treated as system-login data until a new statusline refresh writes the account id. Stale per-account files remain on disk but are ignored by the freshness filter and do not affect the frozen existing data paths.
+Old global Claude dumps without attribution can only be treated as system-login data until a new statusline refresh writes the account id. Stale per-account files remain on disk but are ignored by the freshness filter and do not affect the frozen existing data paths. Concurrent work on an older account may be constrained without changing the badge until that account produces the newest activity signal.
 
 ## Alternatives considered
 
-Listing every registered account was rejected because it would imply current activity and show accounts with no recent local evidence. Keeping one aggregate per provider was rejected because it loses the account identity needed to explain which subscription's limits are being consumed.
+Listing every registered account was rejected because it would imply current activity and show accounts with no recent local evidence. Aggregating percentages across accounts, including taking the maximum, was rejected because unlike quotas and unlimited plans do not form an honest combined percentage.

@@ -78,6 +78,30 @@ export function isRateLimitSnapshotRecent(snapshot: AgentRateLimitSnapshot, nowM
 	return rateLimitActivityAt(snapshot) >= nowMs - RATE_LIMIT_ACTIVITY_WINDOW_MS;
 }
 
+/** The account snapshot with the newest provider activity signal. */
+export function latestRateLimitSnapshot(report: AgentRateLimitsReport): AgentRateLimitSnapshot | null {
+	let latest: AgentRateLimitSnapshot | null = null;
+	for (const snapshot of report.snapshots) {
+		if (!latest || rateLimitActivityAt(snapshot) > rateLimitActivityAt(latest)) {
+			latest = snapshot;
+		}
+	}
+	return latest;
+}
+
+/** The most-used window within one account snapshot. */
+export function worstSnapshotWindow(snapshot: AgentRateLimitSnapshot): RateLimitWindow | null {
+	let worst: RateLimitWindow | null = null;
+	for (const window of snapshot.windows) {
+		if (!worst || window.usedPercent > worst.usedPercent) worst = window;
+	}
+	return worst;
+}
+
+export function isUnlimitedRateLimitSnapshot(snapshot: AgentRateLimitSnapshot): boolean {
+	return snapshot.creditsBalance?.trim().toLowerCase() === "unlimited";
+}
+
 function asRecord(v: unknown): Record<string, unknown> | null {
 	return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
@@ -293,7 +317,7 @@ export function extractCodexSnapshotFromRolloutLines(lines: string[]): AgentRate
 	return null;
 }
 
-/** The single most-constrained window across all snapshots (drives the ambient indicator). */
+/** The single most-constrained window across all snapshots. */
 export function worstWindow(report: AgentRateLimitsReport): { source: RateLimitSource; window: RateLimitWindow } | null {
 	let worst: { source: RateLimitSource; window: RateLimitWindow } | null = null;
 	for (const snap of report.snapshots) {

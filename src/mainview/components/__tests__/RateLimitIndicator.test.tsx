@@ -68,11 +68,80 @@ describe("RateLimitIndicator", () => {
 		expect(container.querySelector("[role='status']")).toBeNull();
 	});
 
-	it("shows the worst window percentage once data arrives", async () => {
+	it("shows the worst window percentage from the latest active account", async () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
 		expect(screen.getByText("42%")).toBeTruthy();
+		expect(screen.getByRole("status").className).toContain("text-fg-3");
+	});
+
+	it("ignores a more-used window from an older account", async () => {
+		const now = Date.now();
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "codex",
+					accountId: "exhausted",
+					capturedAt: now - 1_000,
+					activeAt: now - 1_000,
+					windows: [{ id: "primary", usedPercent: 100, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+				{
+					source: "claude",
+					accountId: "latest",
+					capturedAt: now,
+					activeAt: now,
+					windows: [{ id: "five_hour", usedPercent: 29, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+
+		expect(screen.getByText("29%")).toBeTruthy();
+		expect(screen.queryByText("100%")).toBeNull();
+		expect(screen.getByRole("status").className).toContain("text-fg-3");
+	});
+
+	it("shows unlimited latest accounts as 0% used", async () => {
+		const now = Date.now();
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "claude",
+					capturedAt: now - 1_000,
+					activeAt: now - 1_000,
+					windows: [{ id: "five_hour", usedPercent: 100, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+				{
+					source: "codex",
+					capturedAt: now,
+					activeAt: now,
+					windows: [],
+					creditsBalance: "unlimited",
+					monthlyCredits: null,
+					planType: "enterprise",
+				},
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+
+		expect(screen.getByText("0%")).toBeTruthy();
+		expect(screen.getByText("used")).toBeTruthy();
+		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("Codex 0% used");
 		expect(screen.getByRole("status").className).toContain("text-fg-3");
 	});
 
