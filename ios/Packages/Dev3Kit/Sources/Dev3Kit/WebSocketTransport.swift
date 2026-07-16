@@ -11,6 +11,7 @@ public enum WebSocketFrame: Equatable, Sendable {
 public enum WebSocketTransportError: Error, Equatable, LocalizedError, Sendable {
     case invalidURL
     case failed(String)
+    case messageTooLarge(maximumBytes: Int)
     case closed(code: Int, reason: String)
 
     public var errorDescription: String? {
@@ -19,10 +20,21 @@ public enum WebSocketTransportError: Error, Equatable, LocalizedError, Sendable 
             "The WebSocket URL is invalid."
         case let .failed(message):
             message
+        case let .messageTooLarge(maximumBytes):
+            "WebSocket message exceeded the \(maximumBytes / 1024 / 1024) MB receive limit."
         case let .closed(code, reason):
             reason.isEmpty ? "WebSocket closed with code \(code)." : reason
         }
     }
+}
+
+/// Bounds one complete native WebSocket message before Foundation materializes it in memory.
+///
+/// The largest supported RPC payload is a shared artifact: either a 105 MiB bundle encoded as
+/// Base64, or 100 MiB of Base64 assets plus a 5 MiB HTML document and its JSON envelope. 192 MiB
+/// covers those protocol limits and JSON escaping without accepting unbounded server frames.
+public enum Dev3WebSocketReceivePolicy {
+    public static let maximumMessageBytes = 192 * 1024 * 1024
 }
 
 public protocol WebSocketTransport: Sendable {
@@ -161,10 +173,51 @@ enum WebSocketRequestNormalizer {
     }
 }
 
-private final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked Sendable {
+enum WebSocketReceiveErrorMapper {
+    static func map(
+        _ error: any Error,
+        closeCode: URLSessionWebSocketTask.CloseCode,
+        closeReason: Data?
+    ) -> WebSocketTransportError {
+        if isMessageTooLarge(error as NSError) {
+            return .messageTooLarge(
+                maximumBytes: Dev3WebSocketReceivePolicy.maximumMessageBytes
+            )
+        }
+        if closeCode != .invalid {
+            let reason = closeReason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            return .closed(code: Int(closeCode.rawValue), reason: reason)
+        }
+        return .failed(error.localizedDescription)
+    }
+
+    private static func isMessageTooLarge(_ error: NSError) -> Bool {
+        // Darwin's EMSGSIZE is 40. CFNetwork can wrap it one or more levels deep.
+        if error.domain == NSPOSIXErrorDomain, error.code == 40 {
+            return true
+        }
+        if error.localizedDescription.localizedCaseInsensitiveContains(
+            "message size exceeds maximum"
+        ) {
+            return true
+        }
+        guard let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError,
+              underlying !== error
+        else {
+            return false
+        }
+        return isMessageTooLarge(underlying)
+    }
+}
+
+final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked Sendable {
     private let delegate: WebSocketOpenDelegate
     private let session: URLSession
     private let task: URLSessionWebSocketTask
+
+    var configuredMaximumMessageSize: Int {
+        task.maximumMessageSize
+    }
 
     init(request: URLRequest) throws {
         let webSocketRequest = try WebSocketRequestNormalizer.normalize(request)
@@ -175,7 +228,9 @@ private final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked
         let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         self.delegate = delegate
         self.session = session
-        task = session.webSocketTask(with: webSocketRequest)
+        let task = session.webSocketTask(with: webSocketRequest)
+        task.maximumMessageSize = Dev3WebSocketReceivePolicy.maximumMessageBytes
+        self.task = task
     }
 
     func connect() async throws {
@@ -203,12 +258,11 @@ private final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked
                 throw WebSocketTransportError.failed("Unsupported WebSocket frame type.")
             }
         } catch {
-            let code = Int(task.closeCode.rawValue)
-            if code != Int(URLSessionWebSocketTask.CloseCode.invalid.rawValue) {
-                let reason = task.closeReason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-                throw WebSocketTransportError.closed(code: code, reason: reason)
-            }
-            throw WebSocketTransportError.failed(error.localizedDescription)
+            throw WebSocketReceiveErrorMapper.map(
+                error,
+                closeCode: task.closeCode,
+                closeReason: task.closeReason
+            )
         }
     }
 
