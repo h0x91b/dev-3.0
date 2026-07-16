@@ -90,10 +90,29 @@ struct TaskMediaCoordinatorTests {
             serverID: "server-a",
             snapshotServerID: "server-a"
         )
-        try source.emit(.cliShowImage(decodeImagePush(taskID: "task-a", imageID: "before-reconnect")))
+        try source.emit(
+            .cliShowImage(
+                decodeImagePush(
+                    taskID: "task-a",
+                    imageIDs: ["seed-image", "before-reconnect"]
+                )
+            )
+        )
+        #expect(
+            coordinator.mediaStore.catalog.history(for: "task-a").images.map(\.id) == [
+                "seed-image", "before-reconnect"
+            ]
+        )
 
         source.context = mediaContext(generation: UUID(), serverID: "server-a")
-        try source.emit(.cliShowImage(decodeImagePush(taskID: "task-a", imageID: "after-reconnect")))
+        try source.emit(
+            .cliShowImage(
+                decodeImagePush(
+                    taskID: "task-a",
+                    imageIDs: ["seed-image", "before-reconnect", "after-reconnect"]
+                )
+            )
+        )
 
         #expect(
             coordinator.mediaStore.catalog.history(for: "task-a").images.map(\.id) == [
@@ -264,13 +283,26 @@ struct TaskMediaCoordinatorTests {
     }
 
     private func decodeImagePush(taskID: String, imageID: String) throws -> CLIShowImagePush {
+        try decodeImagePush(taskID: taskID, imageIDs: [imageID])
+    }
+
+    private func decodeImagePush(taskID: String, imageIDs: [String]) throws -> CLIShowImagePush {
+        let images = imageIDs
+            .enumerated()
+            .map { index, imageID in
+                """
+                {
+                  "id":"\(imageID)","storedPath":"/shared/\(imageID).png",
+                  "originalPath":"/tmp/\(imageID).png","name":"\(imageID).png",
+                  "mime":"image/png","bytes":3,"createdAt":\(index + 1)
+                }
+                """
+            }
+            .joined(separator: ",")
         let json = """
         {
-          "taskId":"\(taskID)","projectId":"project","images":[{
-            "id":"\(imageID)","storedPath":"/shared/\(imageID).png",
-            "originalPath":"/tmp/\(imageID).png","name":"\(imageID).png",
-            "mime":"image/png","bytes":3,"createdAt":1
-          }],"newCount":1,"taskSeq":1,"taskTitle":"Task","projectName":"Project"
+          "taskId":"\(taskID)","projectId":"project","images":[\(images)],
+          "newCount":1,"taskSeq":1,"taskTitle":"Task","projectName":"Project"
         }
         """
         return try JSONDecoder().decode(CLIShowImagePush.self, from: Data(json.utf8))
