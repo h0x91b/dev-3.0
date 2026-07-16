@@ -206,12 +206,12 @@ The PTY server recognizes OSC 52 sequences terminated by BEL or ST, buffers a se
 | Code or response | Meaning | Observable at remote `/pty` client |
 |---|---|---|
 | HTTP `400` | Missing `session` query | Yes, before WebSocket upgrade |
-| `4000 Missing session parameter` | Internal PTY socket opened without a session | Internal only; the remote proxy prevalidates this case |
-| `4001 Unknown session` | Internal PTY session does not exist | The internal server emits it, but the current proxy closes downstream without forwarding the code or reason |
-| `4002 PTY server not available` | Remote proxy has no internal PTY port | Yes |
-| `4003 PTY upstream error` | Remote proxy could not use the upstream socket | Yes |
+| `4000 Missing session parameter` | Internal PTY socket opened without a session | Forwarded unchanged if emitted; remote requests without `session` fail as HTTP `400` before upgrade |
+| `4001 Unknown session` | Internal PTY session does not exist | Forwarded unchanged with its reason |
+| `4002 PTY server not available` | Remote proxy has no internal PTY port | Emitted by the proxy, or forwarded unchanged from upstream |
+| `4003 PTY upstream error` | Remote proxy could not use the upstream socket | Emitted by the proxy, or forwarded unchanged from upstream |
 
-Clients must therefore handle any WebSocket close, including a close without an application code, as a PTY disconnect. Codes `4002` and `4003` are retryable availability failures. An unknown/dead session is resolved through `getPtyUrl`, `resumeTask`, or `restartTask`, not solely from close code `4001`.
+The remote proxy preserves upstream application close codes `4000`–`4003` and their reason strings verbatim; other upstream closes remain generic downstream disconnects. Clients must still handle every WebSocket close, including a close without an application code. Codes `4002` and `4003` are retryable availability failures. Code `4001` means the client must resolve the unknown/dead session through `getPtyUrl`, `resumeTask`, or `restartTask` before reconnecting.
 
 ## Reconnection sequence
 

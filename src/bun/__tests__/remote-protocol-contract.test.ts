@@ -367,7 +367,7 @@ describe("PTY proxy close contract", () => {
 		expect(ws.close).toHaveBeenCalledWith(4002, "PTY server not available");
 	});
 
-	it("uses 4003 on upstream failure and does not propagate upstream close codes", () => {
+	it("uses 4003 on upstream failure", () => {
 		const originalWebSocket = globalThis.WebSocket;
 		const listeners = new Map<string, (event?: any) => void>();
 		class FakeWebSocket {
@@ -385,10 +385,64 @@ describe("PTY proxy close contract", () => {
 			const ws = fakeSocket({ type: "pty", sessionId: "missing-task" });
 			serveOptions.websocket.open(ws);
 			listeners.get("error")?.();
-			expect(ws.close).toHaveBeenLastCalledWith(4003, "PTY upstream error");
+			expect(ws.close).toHaveBeenCalledOnce();
+			expect(ws.close).toHaveBeenCalledWith(4003, "PTY upstream error");
+			// A close event after the error must not replace the first failure.
+			listeners.get("close")?.({ code: 1006, reason: "" });
+			expect(ws.close).toHaveBeenCalledOnce();
+		} finally {
+			globalThis.WebSocket = originalWebSocket;
+		}
+	});
 
-			ws.close.mockClear();
-			listeners.get("close")?.({ code: 4001, reason: "Unknown session" });
+	it.each([
+		[4000, "Missing session parameter"],
+		[4001, "Unknown session"],
+		[4002, "PTY server not available"],
+		[4003, "PTY upstream error"],
+	])("preserves upstream close code %i and its reason", (code, reason) => {
+		const originalWebSocket = globalThis.WebSocket;
+		const listeners = new Map<string, (event?: any) => void>();
+		class FakeWebSocket {
+			static OPEN = 1;
+			readyState = 1;
+			addEventListener(name: string, listener: (event?: any) => void) {
+				listeners.set(name, listener);
+			}
+			send() {}
+			close() {}
+		}
+		globalThis.WebSocket = FakeWebSocket as any;
+
+		try {
+			const ws = fakeSocket({ type: "pty", sessionId: "task-1" });
+			serveOptions.websocket.open(ws);
+			listeners.get("close")?.({ code, reason });
+			expect(ws.close).toHaveBeenCalledOnce();
+			expect(ws.close).toHaveBeenCalledWith(code, reason);
+		} finally {
+			globalThis.WebSocket = originalWebSocket;
+		}
+	});
+
+	it("keeps non-protocol upstream closes generic", () => {
+		const originalWebSocket = globalThis.WebSocket;
+		const listeners = new Map<string, (event?: any) => void>();
+		class FakeWebSocket {
+			static OPEN = 1;
+			readyState = 1;
+			addEventListener(name: string, listener: (event?: any) => void) {
+				listeners.set(name, listener);
+			}
+			send() {}
+			close() {}
+		}
+		globalThis.WebSocket = FakeWebSocket as any;
+
+		try {
+			const ws = fakeSocket({ type: "pty", sessionId: "task-1" });
+			serveOptions.websocket.open(ws);
+			listeners.get("close")?.({ code: 1000, reason: "upstream complete" });
 			expect(ws.close).toHaveBeenCalledWith();
 		} finally {
 			globalThis.WebSocket = originalWebSocket;

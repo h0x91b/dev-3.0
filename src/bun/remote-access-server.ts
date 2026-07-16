@@ -358,6 +358,15 @@ function proxyToPty(clientWs: any, sessionId: string): void {
 
 	const targetUrl = `ws://localhost:${ptyPort}?session=${sessionId}`;
 	const upstream = new WebSocket(targetUrl);
+	let downstreamCloseStarted = false;
+	const closeDownstream = (code?: number, reason?: string): void => {
+		if (downstreamCloseStarted) return;
+		downstreamCloseStarted = true;
+		try {
+			if (code !== undefined) clientWs.close(code, reason ?? "");
+			else clientWs.close();
+		} catch { /* already closed */ }
+	};
 
 	upstream.addEventListener("open", () => {
 		log.info("PTY proxy upstream connected", { session: sessionId.slice(0, 8) });
@@ -375,12 +384,16 @@ function proxyToPty(clientWs: any, sessionId: string): void {
 		}
 	});
 
-	upstream.addEventListener("close", () => {
-		try { clientWs.close(); } catch { /* already closed */ }
+	upstream.addEventListener("close", (event) => {
+		if (event.code >= 4000 && event.code <= 4003) {
+			closeDownstream(event.code, event.reason);
+		} else {
+			closeDownstream();
+		}
 	});
 
 	upstream.addEventListener("error", () => {
-		try { clientWs.close(4003, "PTY upstream error"); } catch { /* ignore */ }
+		closeDownstream(4003, "PTY upstream error");
 	});
 
 	// Store upstream ref on the client WS for bidirectional forwarding
