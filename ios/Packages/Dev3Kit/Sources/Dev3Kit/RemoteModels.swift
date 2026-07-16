@@ -305,6 +305,21 @@ public struct Dev3CodingAgent: Codable, Equatable, Identifiable, Sendable {
     public let installUrl: String?
 }
 
+/// Wire source: src/shared/types.ts:619-631.
+public struct Dev3FavoriteAgentConfig: Codable, Equatable, Sendable {
+    public let agentId: String
+    public let configId: String
+    public let uses: Double
+    public let lastUsedAt: Double
+
+    public init(agentId: String, configId: String, uses: Double, lastUsedAt: Double) {
+        self.agentId = agentId
+        self.configId = configId
+        self.uses = uses
+        self.lastUsedAt = lastUsedAt
+    }
+}
+
 /// Wire source: src/shared/types.ts:634-699.
 public struct Dev3GlobalSettings: Codable, Equatable, Sendable {
     public let defaultAgentId: String
@@ -326,6 +341,7 @@ public struct Dev3GlobalSettings: Codable, Equatable, Sendable {
     public let agentRateLimitTracking: Bool?
     public let watchByDefault: Bool?
     public let pxpipeProxyEnabled: Bool?
+    public let favorites: [Dev3FavoriteAgentConfig]?
 }
 
 /// Wire source: src/shared/types.ts:1808-1823.

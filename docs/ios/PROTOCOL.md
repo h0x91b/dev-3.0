@@ -115,6 +115,24 @@ The server imposes no request timeout. Native clients should match the browser t
 
 The complete method surface and exact parameter/response types are the `AppRPCSchema["bun"]["requests"]` declaration in [`src/shared/types.ts`](../../src/shared/types.ts). The native v1 client intentionally wraps a subset, but it uses the same method names and payloads without a native-only envelope.
 
+### Task creation and launch transaction
+
+Native task creation uses the existing multi-call browser transaction. The initial create is authoritative and must be surfaced locally before optional metadata follow-ups because a new `todo` task does not emit `taskUpdated`.
+
+| Method | Parameters | Response |
+|---|---|---|
+| `getAgents` | `null` | `CodingAgent[]` |
+| `getGlobalSettings` | `null` | `GlobalSettings` |
+| `createTask` | `{projectId, description, status?, existingBranch?, scratch?, opsWorkDir?, priority?}` | `Task` |
+| `renameTask` | `{taskId, projectId, customTitle: string \| null}` | `Task` |
+| `setTaskLabels` | `{taskId, projectId, labelIds: string[]}` | `Task` |
+| `toggleTaskWatch` | `{taskId, projectId, watched: boolean}` | `Task` |
+| `spawnVariants` | `{taskId, projectId, targetStatus, variants: {agentId: string \| null, configId: string \| null, accountId?: string \| null}[]}` | `Task[]` |
+
+`spawnVariants` consumes the source `todo` task and returns its replacements immediately. For an active target such as `in-progress`, each returned task can still have `preparing: true`; background preparation later emits `taskUpdated`. A client must atomically replace the source locally, then wait until `preparing != true` and `worktreePath` is non-null before attaching its terminal.
+
+Title and labels are deliberately non-transactional follow-ups. Their failure never rolls back or repeats the successful `createTask`. A lost create or spawn response is ambiguous because persistence may already have happened; the client refetches that project and asks the user to inspect the board instead of retrying automatically.
+
 ## Server push messages
 
 Every live `/rpc` client receives pushes in this shape:

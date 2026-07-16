@@ -94,6 +94,33 @@ struct RemoteModelsTests {
         #expect(version.buildChannel == "staging")
     }
 
+    @Test("Global settings decode favorite agent configuration metadata")
+    func favoriteAgentSettings() throws {
+        let json = #"""
+        {
+          "defaultAgentId":"builtin-codex","defaultConfigId":"luna",
+          "taskDropPosition":"top","updateChannel":"stable",
+          "watchByDefault":true,"pxpipeProxyEnabled":false,
+          "favorites":[{
+            "agentId":"builtin-codex","configId":"luna",
+            "uses":12,"lastUsedAt":1784210000000
+          }]
+        }
+        """#
+
+        let settings = try decoder.decode(Dev3GlobalSettings.self, from: Data(json.utf8))
+        #expect(settings.watchByDefault == true)
+        #expect(settings.pxpipeProxyEnabled == false)
+        #expect(settings.favorites == [
+            Dev3FavoriteAgentConfig(
+                agentId: "builtin-codex",
+                configId: "luna",
+                uses: 12,
+                lastUsedAt: 1_784_210_000_000
+            )
+        ])
+    }
+
     private var projectFixture: String {
         #"""
         {
