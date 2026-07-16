@@ -14,6 +14,7 @@ vi.mock("../../rpc", () => ({
 			updateTaskNote: vi.fn(),
 			deleteTaskNote: vi.fn(),
 			getResolvedProject: vi.fn(),
+			setTaskPriority: vi.fn(),
 			runDevServer: vi.fn(),
 			checkDevServer: vi.fn(),
 			stopDevServer: vi.fn(),
@@ -266,6 +267,45 @@ describe("TaskInfoPanel", () => {
 				renderPanel(makeTask({ status: "in-progress" }));
 			});
 			expect(screen.getByText("Agent is Working")).toBeInTheDocument();
+		});
+
+		it("changes priority from the compact header badge", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			const task = makeTask({ priority: "P3" });
+			const changedTask = { ...task, priority: "P1" as const };
+			const dispatch = vi.fn();
+			mockedApi.request.setTaskPriority.mockResolvedValue([changedTask]);
+
+			await act(async () => {
+				renderPanel(task, { dispatch });
+			});
+
+			const priorityButton = screen.getByRole("button", { name: "Priority P3 (Low) — change" });
+			await user.click(priorityButton);
+			await user.click(screen.getByRole("menuitemradio", { name: /P1/ }));
+
+			expect(mockedApi.request.setTaskPriority).toHaveBeenCalledWith({
+				taskId: task.id,
+				projectId: project.id,
+				priority: "P1",
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: changedTask });
+		});
+
+		it("shows an error toast when changing priority fails", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.setTaskPriority.mockRejectedValue(new Error("offline"));
+
+			await act(async () => {
+				renderPanel(makeTask({ priority: "P3" }));
+			});
+
+			await user.click(screen.getByRole("button", { name: "Priority P3 (Low) — change" }));
+			await user.click(screen.getByRole("menuitemradio", { name: /P1/ }));
+
+			await waitFor(() => {
+				expect(toast.error).toHaveBeenCalledWith("Failed to set priority: Error: offline", { taskId: "t1" });
+			});
 		});
 
 		it("renders labels when present", async () => {
