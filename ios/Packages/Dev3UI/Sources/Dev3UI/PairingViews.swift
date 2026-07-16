@@ -362,8 +362,7 @@ private struct ManualPairingView: View {
                 Section("Pairing code") {
                     TextField("Code", text: $code)
                         .textContentType(.oneTimeCode)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .dev3OneTimeCodeInput()
                         .accessibilityIdentifier("manual.code")
                 }
                 if let errorMessage {
@@ -454,6 +453,16 @@ private struct NameServerView: View {
 }
 
 private extension View {
+    @ViewBuilder
+    func dev3OneTimeCodeInput() -> some View {
+        #if os(iOS)
+            textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        #else
+            self
+        #endif
+    }
+
     @ViewBuilder
     func dev3URLKeyboard() -> some View {
         #if os(iOS)
