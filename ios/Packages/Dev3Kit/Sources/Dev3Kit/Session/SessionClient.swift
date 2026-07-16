@@ -11,13 +11,13 @@ public enum RemoteSessionState: String, CaseIterable, Equatable, Sendable {
 
 public enum SessionLaunch: Equatable, Sendable {
     case saved(PairedServer)
-    case pairing(PairingCredential)
+    case pairing(PairingCredential, displayName: String? = nil)
 
     var origin: URL {
         switch self {
         case let .saved(server):
             server.origin
-        case let .pairing(credential):
+        case let .pairing(credential, _):
             credential.origin
         }
     }
@@ -109,7 +109,7 @@ public final class SessionClient {
     private var retryTimer: UUID?
     private var refreshTimer: UUID?
 
-    public init(
+    public convenience init(
         launch: SessionLaunch,
         store: PairedServerStore,
         transport: any SessionHTTPTransporting,
@@ -119,21 +119,45 @@ public final class SessionClient {
         initialBackoff: TimeInterval = SessionClient.initialBackoff,
         maximumBackoff: TimeInterval = SessionClient.maximumBackoff
     ) throws {
+        try self.init(
+            launch: launch,
+            store: store,
+            transport: transport,
+            connectionFactory: { _ in connection },
+            scheduler: scheduler,
+            refreshInterval: refreshInterval,
+            initialBackoff: initialBackoff,
+            maximumBackoff: maximumBackoff
+        )
+    }
+
+    public init(
+        launch: SessionLaunch,
+        store: PairedServerStore,
+        transport: any SessionHTTPTransporting,
+        connectionFactory: (any AuthenticatedRequestBuilding) -> any SessionConnectionControlling,
+        scheduler: any SessionScheduling = MainActorSessionScheduler(),
+        refreshInterval: TimeInterval = SessionClient.refreshInterval,
+        initialBackoff: TimeInterval = SessionClient.initialBackoff,
+        maximumBackoff: TimeInterval = SessionClient.maximumBackoff
+    ) throws {
         self.launch = launch
         self.store = store
         self.transport = transport
-        self.connection = connection
         self.scheduler = scheduler
         self.refreshInterval = refreshInterval
         self.initialBackoff = initialBackoff
         self.maximumBackoff = maximumBackoff
+        let requestFactory: SessionRequestFactory
         switch launch {
         case let .saved(server):
             currentServer = server
             requestFactory = SessionRequestFactory(server: server)
-        case let .pairing(credential):
+        case let .pairing(credential, _):
             requestFactory = try SessionRequestFactory(origin: credential.origin)
         }
+        self.requestFactory = requestFactory
+        connection = connectionFactory(requestFactory)
     }
 }
 
@@ -194,12 +218,12 @@ private extension SessionClient {
         case let .saved(server):
             await activate(server)
             await refreshForBoot(expirationReason: .noSavedSession)
-        case let .pairing(credential):
-            await authenticatePairing(credential)
+        case let .pairing(credential, displayName):
+            await authenticatePairing(credential, displayName: displayName)
         }
     }
 
-    private func authenticatePairing(_ credential: PairingCredential) async {
+    private func authenticatePairing(_ credential: PairingCredential, displayName: String?) async {
         do {
             let instance = try await transport.fetchInstance(origin: credential.origin)
             guard !isDead else { return }
@@ -217,6 +241,7 @@ private extension SessionClient {
                 response,
                 credential: credential,
                 instance: instance,
+                displayName: displayName,
                 fallback: fallback
             )
         } catch let error as SessionHTTPError {
@@ -251,6 +276,7 @@ private extension SessionClient {
         _ response: SessionAuthResponse,
         credential: PairingCredential,
         instance: RemoteInstanceInfo,
+        displayName: String?,
         fallback: PairedServer?
     ) async throws {
         guard response.isAccepted, let sessionToken = response.sessionToken else {
@@ -266,7 +292,7 @@ private extension SessionClient {
         let server = try PairedServer(
             origin: credential.origin,
             sessionToken: sessionToken,
-            name: instance.name,
+            name: displayName ?? instance.name,
             instanceId: instance.instanceId
         )
         try await persistAndActivate(server)
