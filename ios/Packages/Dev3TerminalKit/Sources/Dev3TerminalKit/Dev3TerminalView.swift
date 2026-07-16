@@ -365,12 +365,10 @@
             }
         }
 
-        func setTerminalFontSize(_ size: Double) {
+        fileprivate func setTerminalFontSize(_ size: Double) {
             let clamped = Dev3TerminalFontPreferenceStore.clamp(size)
-            layer.contents = nil
             font = UIFont(name: Dev3Glyph.fontName, size: CGFloat(clamped))
                 ?? UIFont.monospacedSystemFont(ofSize: CGFloat(clamped), weight: .regular)
-            setNeedsDisplay(bounds)
         }
 
         fileprivate func apply(theme: Dev3ResolvedTerminalTheme) {
