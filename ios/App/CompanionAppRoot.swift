@@ -3,6 +3,45 @@ import Dev3TerminalKit
 import Dev3UI
 import SwiftUI
 
+struct CompanionConnectionIdentity: Equatable, Hashable, Sendable {
+    let serverID: String?
+    let rpcGeneration: UUID
+
+    func matches(serverID: String?, rpcGeneration: UUID) -> Bool {
+        self.serverID == serverID && self.rpcGeneration == rpcGeneration
+    }
+
+    @MainActor
+    func isCurrent(in appStore: AppStore) -> Bool {
+        matches(
+            serverID: appStore.controller.activeServer?.instanceId,
+            rpcGeneration: appStore.rpcGeneration
+        )
+    }
+}
+
+struct CompanionSessionRouteState: Equatable, Sendable {
+    let sessionState: RemoteSessionState
+    let activeServerID: String?
+
+    static func shouldDismissTaskInfo(
+        from previous: CompanionSessionRouteState,
+        to current: CompanionSessionRouteState
+    ) -> Bool {
+        if previous.activeServerID != current.activeServerID {
+            return true
+        }
+        switch current.sessionState {
+        case .authenticating, .connecting, .expired:
+            return true
+        case .idle:
+            return current.activeServerID == nil
+        case .connected, .reconnecting:
+            return false
+        }
+    }
+}
+
 // The application composition root intentionally owns all cross-feature lifecycle wiring.
 // swiftlint:disable file_length
 
@@ -75,9 +114,11 @@ struct CompanionAppRoot: View {
             }
         )
         .sheet(item: $presentedTaskInfo) { presented in
+            let identity = connectionIdentity
             TaskInfoDestination(
                 appStore: store,
                 runtime: runtime,
+                connectionIdentity: identity,
                 projectID: presented.projectID,
                 taskID: presented.taskID,
                 onTerminalClosed: {
@@ -85,9 +126,10 @@ struct CompanionAppRoot: View {
                     presentedTaskInfo = nil
                 }
             )
+            .id(identity)
         }
-        .onChange(of: store.controller.sessionState) { _, state in
-            if state == .authenticating || state == .connecting {
+        .onChange(of: sessionRouteState) { previous, current in
+            if CompanionSessionRouteState.shouldDismissTaskInfo(from: previous, to: current) {
                 presentedTaskInfo = nil
             }
         }
@@ -138,6 +180,20 @@ struct CompanionAppRoot: View {
             isConnected: store.isConnected,
             isSceneActive: scenePhase == .active,
             visibleTaskID: visibleTaskID
+        )
+    }
+
+    private var connectionIdentity: CompanionConnectionIdentity {
+        CompanionConnectionIdentity(
+            serverID: store.controller.activeServer?.instanceId,
+            rpcGeneration: store.rpcGeneration
+        )
+    }
+
+    private var sessionRouteState: CompanionSessionRouteState {
+        CompanionSessionRouteState(
+            sessionState: store.controller.sessionState,
+            activeServerID: store.controller.activeServer?.instanceId
         )
     }
 
@@ -333,15 +389,21 @@ private struct TaskTerminalDestination: View {
                   let ptyClient = runtime?.makePTYClient(),
                   let serverID = store.controller.activeServer?.instanceId
         {
+            let identity = CompanionConnectionIdentity(
+                serverID: serverID,
+                rpcGeneration: store.rpcGeneration
+            )
             AvailableTaskTerminalDestination(
                 title: task.displayTitle,
                 taskID: taskID,
                 serverID: serverID,
+                connectionIdentity: identity,
                 rpcClient: rpcClient,
                 ptyClient: ptyClient,
                 appStore: store,
                 onTaskInfo: onTaskInfo
             )
+            .id(identity)
         } else {
             TerminalUnavailableView(
                 message: "The terminal connection is not ready. Return to Work and try again."
@@ -355,6 +417,7 @@ private struct AvailableTaskTerminalDestination: View {
     let title: String
     let taskID: String
     let serverID: String
+    let connectionIdentity: CompanionConnectionIdentity
     let rpcClient: RPCClient
     let ptyClient: PTYClient
     let appStore: AppStore
@@ -365,6 +428,7 @@ private struct AvailableTaskTerminalDestination: View {
         title: String,
         taskID: String,
         serverID: String,
+        connectionIdentity: CompanionConnectionIdentity,
         rpcClient: RPCClient,
         ptyClient: PTYClient,
         appStore: AppStore,
@@ -373,6 +437,7 @@ private struct AvailableTaskTerminalDestination: View {
         self.title = title
         self.taskID = taskID
         self.serverID = serverID
+        self.connectionIdentity = connectionIdentity
         self.rpcClient = rpcClient
         self.ptyClient = ptyClient
         self.appStore = appStore
@@ -395,7 +460,11 @@ private struct AvailableTaskTerminalDestination: View {
                     serverID: serverID,
                     rpcClient: rpcClient,
                     ptyClient: ptyClient,
-                    clipboardText: appStore.clipboardStream(for: taskID)
+                    clipboardText: appStore.clipboardStream(for: taskID),
+                    connectionIsCurrent: { [weak appStore] in
+                        guard let appStore else { return false }
+                        return connectionIdentity.isCurrent(in: appStore)
+                    }
                 )
             }
         }
@@ -425,9 +494,12 @@ private struct TaskInfoDestination: View {
     @State private var infoStore: TaskInfoStore?
     @State private var pushObserverToken: UUID?
 
+    // This initializer assembles the connection-bound service and all guarded result sinks.
+    // swiftlint:disable:next function_body_length
     init(
         appStore: AppStore,
         runtime: ConnectionRuntime?,
+        connectionIdentity: CompanionConnectionIdentity,
         projectID: String,
         taskID: String,
         onTerminalClosed: @escaping () -> Void
@@ -443,8 +515,15 @@ private struct TaskInfoDestination: View {
             _infoStore = State(initialValue: nil)
             return
         }
+        let connectionIsCurrent: @MainActor @Sendable () -> Bool = { [weak appStore] in
+            guard let appStore else { return false }
+            return connectionIdentity.isCurrent(in: appStore)
+        }
         let service: any TaskInfoServicing = if let rpcClient = runtime?.rpcClient {
-            RPCTaskInfoService(rpcClient: rpcClient)
+            RPCTaskInfoService(
+                rpcClient: rpcClient,
+                connectionIsCurrent: connectionIsCurrent
+            )
         } else {
             OfflineTaskInfoService()
         }
@@ -456,12 +535,14 @@ private struct TaskInfoDestination: View {
                 isConnected: connectionPolicy.canMutate(isConnected: appStore.isConnected),
                 pushedPRStatus: appStore.prStatusByTask[taskID],
                 onTaskChanged: { updated in
+                    guard connectionIsCurrent() else { return }
                     appStore.acceptTaskUpdate(updated)
                     if updated.status == .completed || updated.status == .cancelled {
                         onTerminalClosed()
                     }
                 },
                 onTasksChanged: { updated in
+                    guard connectionIsCurrent() else { return }
                     appStore.acceptTaskUpdates(updated)
                     if let current = updated.first(where: { $0.id == taskID }),
                        current.status == .completed || current.status == .cancelled
@@ -470,6 +551,7 @@ private struct TaskInfoDestination: View {
                     }
                 },
                 onDeleted: { deletedTaskID in
+                    guard connectionIsCurrent() else { return }
                     appStore.acceptTaskRemoval(taskId: deletedTaskID, projectId: projectID)
                     onTerminalClosed()
                 }

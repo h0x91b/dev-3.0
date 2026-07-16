@@ -2,6 +2,66 @@ import Dev3Kit
 import Dev3TerminalKit
 import Foundation
 
+enum CompanionConnectionLeaseError: LocalizedError, Equatable, Sendable {
+    case replaced
+
+    var errorDescription: String? {
+        "The dev3 connection was replaced. Reopen this task and try again."
+    }
+}
+
+struct CompanionConnectionLeaseGate: Sendable {
+    private let connectionIsCurrent: @MainActor @Sendable () -> Bool
+
+    init(connectionIsCurrent: @escaping @MainActor @Sendable () -> Bool) {
+        self.connectionIsCurrent = connectionIsCurrent
+    }
+
+    func isCurrent() async -> Bool {
+        await connectionIsCurrent()
+    }
+
+    func requireCurrent() async throws {
+        guard await isCurrent() else {
+            throw CompanionConnectionLeaseError.replaced
+        }
+    }
+}
+
+actor CompanionTerminalConnectionLifecycle {
+    private let focusLifecycle: Dev3TerminalFocusLifecycle
+    private let disconnectPTY: @Sendable () async -> Void
+
+    init(
+        connectionGate: CompanionConnectionLeaseGate,
+        setTerminalFocus: @escaping @Sendable (Bool) async throws -> Void,
+        disconnectPTY: @escaping @Sendable () async -> Void
+    ) {
+        focusLifecycle = Dev3TerminalFocusLifecycle { active in
+            guard await connectionGate.isCurrent() else { return }
+            try await setTerminalFocus(active)
+        }
+        self.disconnectPTY = disconnectPTY
+    }
+
+    func connected() async throws {
+        try await focusLifecycle.connected()
+    }
+
+    func setActive(_ active: Bool) async throws {
+        try await focusLifecycle.setActive(active)
+    }
+
+    func disconnecting() async {
+        await focusLifecycle.disconnecting()
+        await disconnectPTY()
+    }
+
+    func forceDisconnectPTY() async {
+        await disconnectPTY()
+    }
+}
+
 enum TerminalPagerStep: Sendable {
     case next
     case previous
@@ -77,7 +137,8 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
 
     private let rpcClient: RPCClient
     private let ptyClient: PTYClient
-    private let focusLifecycle: Dev3TerminalFocusLifecycle
+    private let connectionGate: CompanionConnectionLeaseGate
+    private let connectionLifecycle: CompanionTerminalConnectionLifecycle
 
     init(
         taskID: String,
@@ -85,6 +146,8 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
         rpcClient: RPCClient,
         ptyClient: PTYClient,
         clipboardText: AsyncStream<String>,
+        connectionIsCurrent: @escaping @MainActor @Sendable () -> Bool = { true },
+        setTerminalFocus: (@Sendable (Bool) async throws -> Void)? = nil,
         warnsAboutSharedTerminalSize: Bool = true
     ) {
         self.taskID = taskID
@@ -92,6 +155,10 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
         self.rpcClient = rpcClient
         self.ptyClient = ptyClient
         self.warnsAboutSharedTerminalSize = warnsAboutSharedTerminalSize
+        let connectionGate = CompanionConnectionLeaseGate(
+            connectionIsCurrent: connectionIsCurrent
+        )
+        self.connectionGate = connectionGate
         let terminalEndpoint = Dev3TerminalEndpoint(
             identity: "task:\(taskID)",
             ptyClient: ptyClient,
@@ -99,38 +166,49 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
         )
         endpoint = terminalEndpoint
         terminalInteraction = Dev3TerminalInteraction(endpoint: terminalEndpoint)
-        focusLifecycle = Dev3TerminalFocusLifecycle { active in
-            try await rpcClient.setTerminalFocus(active)
-        }
+        connectionLifecycle = CompanionTerminalConnectionLifecycle(
+            connectionGate: connectionGate,
+            setTerminalFocus: setTerminalFocus ?? { active in
+                try await rpcClient.setTerminalFocus(active)
+            },
+            disconnectPTY: { await ptyClient.disconnect() }
+        )
     }
 
     func attach() async throws {
+        try await connectionGate.requireCurrent()
         let resolution = try await rpcClient.getPtyUrl(taskId: taskID)
+        try await connectionGate.requireCurrent()
         try await ptyClient.connect(to: .task(taskID), resolution: resolution)
         try await acquireFocusOrDisconnect()
     }
 
     func detach() async {
-        await focusLifecycle.disconnecting()
-        await ptyClient.disconnect()
+        await connectionLifecycle.disconnecting()
     }
 
     func kick() async {
+        guard await connectionGate.isCurrent() else { return }
         await ptyClient.kick()
     }
 
     func setTerminalActive(_ active: Bool) async throws {
-        try await focusLifecycle.setActive(active)
+        try await connectionGate.requireCurrent()
+        try await connectionLifecycle.setActive(active)
     }
 
     func resume() async throws {
+        try await connectionGate.requireCurrent()
         _ = try await rpcClient.resumeTask(taskId: taskID)
+        try await connectionGate.requireCurrent()
         try await ptyClient.connect(to: .task(taskID))
         try await acquireFocusOrDisconnect()
     }
 
     func restart() async throws {
+        try await connectionGate.requireCurrent()
         _ = try await rpcClient.restartTask(taskId: taskID)
+        try await connectionGate.requireCurrent()
         try await ptyClient.connect(to: .task(taskID))
         try await acquireFocusOrDisconnect()
     }
@@ -139,11 +217,14 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
         step: TerminalPagerStep?,
         index: Int?
     ) async throws -> Dev3TmuxWindowNavigation {
-        try await rpcClient.tmuxWindowNavigate(
+        try await connectionGate.requireCurrent()
+        let result = try await rpcClient.tmuxWindowNavigate(
             taskId: taskID,
             step: step?.navigationStep,
             index: index
         )
+        try await connectionGate.requireCurrent()
+        return result
     }
 
     func paneNavigation(
@@ -151,43 +232,55 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
         index: Int?,
         zoom: Bool
     ) async throws -> Dev3TmuxPaneNavigation {
-        try await rpcClient.tmuxPaneNavigate(
+        try await connectionGate.requireCurrent()
+        let result = try await rpcClient.tmuxPaneNavigate(
             taskId: taskID,
             step: step?.navigationStep,
             index: index,
             zoom: zoom
         )
+        try await connectionGate.requireCurrent()
+        return result
     }
 
     func paneCount() async throws -> Int {
-        try await rpcClient.tmuxPaneCount(taskId: taskID).count
+        try await connectionGate.requireCurrent()
+        let count = try await rpcClient.tmuxPaneCount(taskId: taskID).count
+        try await connectionGate.requireCurrent()
+        return count
     }
 
     func perform(_ action: TerminalPaneAction, force: Bool) async throws {
+        try await connectionGate.requireCurrent()
         try await rpcClient.tmuxAction(
             taskId: taskID,
             action: action.tmuxAction,
             force: force ? true : nil
         )
+        try await connectionGate.requireCurrent()
     }
 
     func submit(_ text: String) async -> Dev3TerminalSubmitOutcome {
-        await Dev3TerminalSubmit.pastedText(text, transport: terminalInteraction)
+        guard await connectionGate.isCurrent() else { return .settleCancelled }
+        return await Dev3TerminalSubmit.pastedText(text, transport: terminalInteraction)
     }
 
     func insert(_ text: String) async throws {
+        try await connectionGate.requireCurrent()
         try await terminalInteraction.paste(text)
     }
 
     func send(_ data: Data) async throws {
+        try await connectionGate.requireCurrent()
         try await endpoint.send(data)
     }
 
     private func acquireFocusOrDisconnect() async throws {
         do {
-            try await focusLifecycle.connected()
+            try await connectionGate.requireCurrent()
+            try await connectionLifecycle.connected()
         } catch {
-            await ptyClient.disconnect()
+            await connectionLifecycle.forceDisconnectPTY()
             throw error
         }
     }
