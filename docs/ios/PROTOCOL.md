@@ -183,6 +183,7 @@ The upgrade requires the session cookie and same-origin browser header. Missing 
 
 - Server-to-client frames are a fully rendered VT/xterm UTF-8 stream from a shared tmux attach client. This is not tmux control mode and there is no application JSON envelope.
 - Ordinary client-to-server frames are decoded as UTF-8 and written to the PTY exactly as received.
+- Client frames received after the remote socket opens but before its localhost PTY upstream finishes connecting are queued and flushed in FIFO order. The pre-open queue is bounded to 64 frames and 256 KiB; exceeding either limit clears the queue and closes the remote socket with `4003 PTY input queue overflow`. Upstream or downstream close/error also clears pending input.
 - Resize is an OSC-shaped text control frame terminated by BEL:
 
   ```text
@@ -209,7 +210,7 @@ The PTY server recognizes OSC 52 sequences terminated by BEL or ST, buffers a se
 | `4000 Missing session parameter` | Internal PTY socket opened without a session | Forwarded unchanged if emitted; remote requests without `session` fail as HTTP `400` before upgrade |
 | `4001 Unknown session` | Internal PTY session does not exist | Forwarded unchanged with its reason |
 | `4002 PTY server not available` | Remote proxy has no internal PTY port | Emitted by the proxy, or forwarded unchanged from upstream |
-| `4003 PTY upstream error` | Remote proxy could not use the upstream socket | Emitted by the proxy, or forwarded unchanged from upstream |
+| `4003 PTY upstream error` or `PTY input queue overflow` | Remote proxy could not use the upstream socket, or its bounded pre-open input queue overflowed | Emitted by the proxy, or forwarded unchanged from upstream |
 
 The remote proxy preserves upstream application close codes `4000`–`4003` and their reason strings verbatim; other upstream closes remain generic downstream disconnects. Clients must still handle every WebSocket close, including a close without an application code. Codes `4002` and `4003` are retryable availability failures. Code `4001` means the client must resolve the unknown/dead session through `getPtyUrl`, `resumeTask`, or `restartTask` before reconnecting.
 

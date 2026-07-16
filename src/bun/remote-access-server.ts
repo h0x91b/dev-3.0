@@ -345,6 +345,12 @@ export function injectInitialThemeBootstrap(html: string): string {
 
 let ptyPortGetter: (() => number) | null = null;
 
+/** Bounds for client input received while the localhost PTY socket connects. */
+export const PTY_PREOPEN_MAX_FRAMES = 64;
+export const PTY_PREOPEN_MAX_BYTES = 256 * 1024;
+
+const utf8Encoder = new TextEncoder();
+
 /**
  * Proxy a WebSocket connection to the internal PTY server.
  * Browser connects to us at /pty?session=xxx, we forward to localhost:ptyPort.
@@ -359,17 +365,66 @@ function proxyToPty(clientWs: any, sessionId: string): void {
 	const targetUrl = `ws://localhost:${ptyPort}?session=${sessionId}`;
 	const upstream = new WebSocket(targetUrl);
 	let downstreamCloseStarted = false;
+	let acceptingInput = true;
+	let pendingInput: string[] = [];
+	let pendingInputBytes = 0;
+	const clearPendingInput = (): void => {
+		acceptingInput = false;
+		pendingInput = [];
+		pendingInputBytes = 0;
+	};
 	const closeDownstream = (code?: number, reason?: string): void => {
 		if (downstreamCloseStarted) return;
 		downstreamCloseStarted = true;
+		clearPendingInput();
 		try {
 			if (code !== undefined) clientWs.close(code, reason ?? "");
 			else clientWs.close();
 		} catch { /* already closed */ }
 	};
+	const failProxy = (reason: string): void => {
+		clearPendingInput();
+		closeUpstreamSocket(upstream);
+		closeDownstream(4003, reason);
+	};
+	const forwardInput = (data: string): void => {
+		if (!acceptingInput) return;
+		if (upstream.readyState === WebSocket.OPEN) {
+			try {
+				upstream.send(data);
+			} catch {
+				failProxy("PTY upstream error");
+			}
+			return;
+		}
+		if (upstream.readyState !== WebSocket.CONNECTING) return;
+
+		const byteLength = utf8Encoder.encode(data).byteLength;
+		if (
+			pendingInput.length >= PTY_PREOPEN_MAX_FRAMES ||
+			pendingInputBytes + byteLength > PTY_PREOPEN_MAX_BYTES
+		) {
+			failProxy("PTY input queue overflow");
+			return;
+		}
+		pendingInput.push(data);
+		pendingInputBytes += byteLength;
+	};
 
 	upstream.addEventListener("open", () => {
 		log.info("PTY proxy upstream connected", { session: sessionId.slice(0, 8) });
+		if (!acceptingInput) return;
+		const queued = pendingInput;
+		pendingInput = [];
+		pendingInputBytes = 0;
+		for (const data of queued) {
+			try {
+				upstream.send(data);
+			} catch {
+				failProxy("PTY upstream error");
+				return;
+			}
+		}
 	});
 
 	upstream.addEventListener("message", (event) => {
@@ -393,11 +448,13 @@ function proxyToPty(clientWs: any, sessionId: string): void {
 	});
 
 	upstream.addEventListener("error", () => {
-		closeDownstream(4003, "PTY upstream error");
+		failProxy("PTY upstream error");
 	});
 
-	// Store upstream ref on the client WS for bidirectional forwarding
+	// Store proxy hooks on the client WS for bidirectional forwarding and cleanup.
 	(clientWs as any)._ptyUpstream = upstream;
+	(clientWs as any)._ptyForwardInput = forwardInput;
+	(clientWs as any)._ptyCleanup = clearPendingInput;
 }
 
 /**
@@ -761,12 +818,9 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 						log.error("RPC message handler error", { error: String(err) });
 					});
 				} else if (wsData.type === "pty") {
-					// Forward client input to PTY upstream
-					const upstream = (ws as any)._ptyUpstream as WebSocket | undefined;
-					if (upstream?.readyState === WebSocket.OPEN) {
-						const data = typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer);
-						upstream.send(data);
-					}
+					// Input may arrive before the localhost upstream handshake completes.
+					const data = typeof raw === "string" ? raw : new TextDecoder().decode(raw as unknown as ArrayBuffer);
+					((ws as any)._ptyForwardInput as ((data: string) => void) | undefined)?.(data);
 				} else if (wsData.type === "shared-proxy") {
 					const upstream = (ws as any)._proxyUpstream as WebSocket | undefined;
 					if (upstream?.readyState === WebSocket.OPEN) {
@@ -780,6 +834,7 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 					rpcClients.delete(ws);
 					log.info("Remote RPC client disconnected", { total: rpcClients.size });
 				} else if (wsData.type === "pty") {
+					((ws as any)._ptyCleanup as (() => void) | undefined)?.();
 					closeUpstreamSocket((ws as any)._ptyUpstream as WebSocket | undefined);
 				} else if (wsData.type === "shared-proxy") {
 					closeUpstreamSocket((ws as any)._proxyUpstream as WebSocket | undefined);

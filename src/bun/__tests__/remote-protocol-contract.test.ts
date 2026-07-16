@@ -79,6 +79,8 @@ import {
 	buildClearSessionCookie,
 	buildSessionCookie,
 	getConnectedClientCount,
+	PTY_PREOPEN_MAX_BYTES,
+	PTY_PREOPEN_MAX_FRAMES,
 	pushToBrowserClients,
 	startRemoteAccessServer,
 	stopRemoteAccessServer,
@@ -99,6 +101,8 @@ type FakeSocket = {
 	sendText: ReturnType<typeof vi.fn>;
 	close: ReturnType<typeof vi.fn>;
 	_ptyUpstream?: unknown;
+	_ptyForwardInput?: (data: string) => void;
+	_ptyCleanup?: () => void;
 };
 
 let serveOptions: ServeOptions;
@@ -125,6 +129,50 @@ function fakeSocket(data: FakeSocket["data"]): FakeSocket {
 		send: vi.fn(),
 		sendText: vi.fn(),
 		close: vi.fn(),
+	};
+}
+
+function installControllableWebSocket() {
+	const originalWebSocket = globalThis.WebSocket;
+	let instance: {
+		readyState: number;
+		send: ReturnType<typeof vi.fn>;
+		close: ReturnType<typeof vi.fn>;
+		emit(name: string, event?: unknown): void;
+	} | undefined;
+	class FakeWebSocket {
+		static CONNECTING = 0;
+		static OPEN = 1;
+		static CLOSED = 3;
+		readyState = FakeWebSocket.CONNECTING;
+		private listeners = new Map<string, (event?: any) => void>();
+		send = vi.fn();
+		close = vi.fn();
+		constructor() {
+			instance = this;
+		}
+		addEventListener(name: string, listener: (event?: any) => void) {
+			this.listeners.set(name, listener);
+		}
+		emit(name: string, event?: unknown) {
+			this.listeners.get(name)?.(event);
+		}
+	}
+	globalThis.WebSocket = FakeWebSocket as any;
+
+	return {
+		get upstream() {
+			if (!instance) throw new Error("Expected proxy to create an upstream WebSocket");
+			return instance;
+		},
+		openUpstream() {
+			if (!instance) throw new Error("Expected proxy to create an upstream WebSocket");
+			instance.readyState = FakeWebSocket.OPEN;
+			instance.emit("open");
+		},
+		restore() {
+			globalThis.WebSocket = originalWebSocket;
+		},
 	};
 }
 
@@ -392,6 +440,90 @@ describe("PTY proxy close contract", () => {
 			expect(ws.close).toHaveBeenCalledOnce();
 		} finally {
 			globalThis.WebSocket = originalWebSocket;
+		}
+	});
+
+	it("flushes immediate resize and input frames in order when the upstream opens", () => {
+		const socket = installControllableWebSocket();
+		try {
+			const ws = fakeSocket({ type: "pty", sessionId: "task-1" });
+			const resize = "\x1b]resize;80;24\x07";
+			const input = "printf immediate-input";
+			serveOptions.websocket.open(ws);
+			serveOptions.websocket.message(ws, resize);
+			serveOptions.websocket.message(ws, new TextEncoder().encode(input).buffer as ArrayBuffer);
+
+			expect(socket.upstream.send).not.toHaveBeenCalled();
+			socket.openUpstream();
+			expect(socket.upstream.send.mock.calls.map(([data]) => data)).toEqual([resize, input]);
+		} finally {
+			socket.restore();
+		}
+	});
+
+	it("closes with 4003 when the pre-open frame limit is exceeded", () => {
+		const socket = installControllableWebSocket();
+		try {
+			const ws = fakeSocket({ type: "pty", sessionId: "task-1" });
+			serveOptions.websocket.open(ws);
+			for (let index = 0; index < PTY_PREOPEN_MAX_FRAMES; index += 1) {
+				serveOptions.websocket.message(ws, "x");
+			}
+			serveOptions.websocket.message(ws, "overflow");
+
+			expect(ws.close).toHaveBeenCalledOnce();
+			expect(ws.close).toHaveBeenCalledWith(4003, "PTY input queue overflow");
+			expect(socket.upstream.close).toHaveBeenCalledOnce();
+			socket.openUpstream();
+			expect(socket.upstream.send).not.toHaveBeenCalled();
+		} finally {
+			socket.restore();
+		}
+	});
+
+	it("closes with 4003 when the pre-open byte limit is exceeded", () => {
+		const socket = installControllableWebSocket();
+		try {
+			const ws = fakeSocket({ type: "pty", sessionId: "task-1" });
+			serveOptions.websocket.open(ws);
+			serveOptions.websocket.message(ws, "x".repeat(PTY_PREOPEN_MAX_BYTES));
+			expect(ws.close).not.toHaveBeenCalled();
+			serveOptions.websocket.message(ws, "y");
+
+			expect(ws.close).toHaveBeenCalledWith(4003, "PTY input queue overflow");
+			expect(socket.upstream.close).toHaveBeenCalledOnce();
+		} finally {
+			socket.restore();
+		}
+	});
+
+	it.each(["close", "error"])("clears queued input on upstream %s", (eventName) => {
+		const socket = installControllableWebSocket();
+		try {
+			const ws = fakeSocket({ type: "pty", sessionId: "task-1" });
+			serveOptions.websocket.open(ws);
+			serveOptions.websocket.message(ws, "queued-input");
+			socket.upstream.emit(eventName, eventName === "close" ? { code: 1006, reason: "" } : undefined);
+			socket.openUpstream();
+			expect(socket.upstream.send).not.toHaveBeenCalled();
+		} finally {
+			socket.restore();
+		}
+	});
+
+	it("clears queued input when the downstream closes", () => {
+		const socket = installControllableWebSocket();
+		try {
+			const ws = fakeSocket({ type: "pty", sessionId: "task-1" });
+			serveOptions.websocket.open(ws);
+			serveOptions.websocket.message(ws, "queued-input");
+			serveOptions.websocket.close(ws);
+
+			expect(socket.upstream.close).toHaveBeenCalledOnce();
+			socket.openUpstream();
+			expect(socket.upstream.send).not.toHaveBeenCalled();
+		} finally {
+			socket.restore();
 		}
 	});
 
