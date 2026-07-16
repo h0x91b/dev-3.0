@@ -157,6 +157,47 @@ struct AppStoreTests {
         #expect(store.lastPush == .globalSettingsUpdated(lightSettings))
     }
 
+    @Test("A settings push cannot be overwritten by an older same-server refetch")
+    func settingsPushWinsOverStaleRefetch() async throws {
+        let alpha = try project(id: "project-a", name: "Alpha")
+        let rpc = StoreRPC(
+            projects: [alpha],
+            projectTasks: [],
+            resolvedTheme: "dark"
+        )
+        let store = AppStore(controller: makeController(), rpc: rpc)
+        await store.start()
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+        #expect(store.resolvedTerminalTheme == .dark)
+        #expect(store.taskDropPosition == .top)
+
+        store.loadedBoardProjectIDs = [alpha.id]
+        rpc.suspendNextBoardFetch(projectID: alpha.id)
+        let refetch = Task {
+            await store.refetch(using: rpc, generation: store.rpcGeneration)
+        }
+        while !rpc.boardFetchIsSuspended(projectID: alpha.id) {
+            await Task.yield()
+        }
+
+        let pushedSettings = try globalSettings(
+            dropPosition: "bottom",
+            theme: "light",
+            resolvedTheme: "light"
+        )
+        rpc.emitPush(.globalSettingsUpdated(pushedSettings))
+        await settle()
+        #expect(store.resolvedTerminalTheme == .light)
+        #expect(store.taskDropPosition == .bottom)
+
+        rpc.resumeBoardFetch(projectID: alpha.id)
+        await refetch.value
+
+        #expect(store.resolvedTerminalTheme == .light)
+        #expect(store.taskDropPosition == .bottom)
+    }
+
     @Test("Fresh pairing binds the attached RPC before the initial refetch")
     func freshPairingBindsRPC() async throws {
         let alpha = try project(id: "project-a", name: "Alpha")
@@ -952,6 +993,10 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
 
     var boardFetchCountByProject: [String: Int] {
         lock.withLock { state.boardFetchCountByProject }
+    }
+
+    func boardFetchIsSuspended(projectID: String) -> Bool {
+        lock.withLock { boardFetchContinuations[projectID] != nil }
     }
 
     var moveCalls: [(taskID: String, status: Dev3TaskStatus)] {

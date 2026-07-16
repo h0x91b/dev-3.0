@@ -131,6 +131,7 @@ public final class AppStore {
     private var isSceneActive = true
     private var terminalFocusRequested = false
     private var terminalFocusRevision: UInt64 = 0
+    private var settingsPushRevision: UInt64 = 0
 
     public convenience init(runtime: ConnectionRuntime) {
         self.init(controller: runtime.controller, runtime: runtime, rpc: nil)
@@ -416,6 +417,7 @@ extension AppStore {
         generation: UUID,
         sourceServerID: String?
     ) async {
+        let acceptedSettingsPushRevision = settingsPushRevision
         do {
             async let projects = rpc.getProjects()
             async let tasks = rpc.getAllProjectTasks()
@@ -443,7 +445,8 @@ extension AppStore {
             for (projectID, boardTasks) in refreshedBoards {
                 snapshot.replaceTasks(boardTasks, projectId: projectID)
             }
-            if let refreshedSettings {
+            let settingsSnapshotIsCurrent = acceptedSettingsPushRevision == settingsPushRevision
+            if let refreshedSettings, settingsSnapshotIsCurrent {
                 applyGlobalSettings(refreshedSettings)
             }
             refetchRevision &+= 1
@@ -470,6 +473,7 @@ extension AppStore {
               controller.activeServer?.instanceId == sourceServerID else { return }
         lastPush = push
         if case let .globalSettingsUpdated(settings) = push {
+            settingsPushRevision &+= 1
             applyGlobalSettings(settings)
         }
         if let routedToast = snapshot.reduce(push) {
@@ -518,6 +522,7 @@ extension AppStore {
                 lastPush = nil
                 taskDropPosition = .top
                 resolvedTerminalTheme = nil
+                settingsPushRevision = 0
                 loadedBoardProjectIDs.removeAll()
                 projectPullStates.removeAll()
                 workPath.removeAll()

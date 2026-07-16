@@ -41,7 +41,7 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 ## Verification baseline
 
 - Dev3Kit: 94 tests passing.
-- Dev3UI: 105 tests passing.
+- Dev3UI: 106 tests passing.
 - Dev3TerminalKit: 31 tests passing.
 - SwiftFormat and strict SwiftLint are clean for tracked iOS sources.
 - Backend lint and all 5,783 fast mainview, Bun, and CLI tests pass at the current gate.
