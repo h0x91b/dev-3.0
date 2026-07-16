@@ -113,7 +113,7 @@ Thrown values become `error` strings. A request received before the backend hand
 
 The server imposes no request timeout. Native clients should match the browser transport: queue unsent requests until the socket opens, use a 120-second timeout, correlate by `id`, and reject in-flight requests when the socket closes.
 
-Native URLSession clients must set `URLSessionWebSocketTask.maximumMessageSize` to the bounded 192 MiB receive policy before resuming every socket. The bound accommodates the largest supported RPC responses: a 105 MiB artifact download after Base64 encoding, or 100 MiB of artifact assets plus a 5 MiB HTML document and JSON escaping. Frames above the bound are transport failures and must never be silently truncated.
+The native URLSession RPC client applies a bounded 192 MiB receive policy before resuming each `/rpc` socket. This is a client-side safety bound chosen to accommodate current large Diff responses and media wire forms, including Base64 artifact downloads; it is not a universal server response maximum. The `/pty` client keeps a separate 1 MiB per-message ceiling because terminal output is server-batched. Frames above either endpoint's native bound fail explicitly and are never silently truncated.
 
 The complete method surface and exact parameter/response types are the `AppRPCSchema["bun"]["requests"]` declaration in [`src/shared/types.ts`](../../src/shared/types.ts). The native v1 client intentionally wraps a subset, but it uses the same method names and payloads without a native-only envelope.
 

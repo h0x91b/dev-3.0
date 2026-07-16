@@ -73,7 +73,7 @@ public actor RPCClient: SessionConnectionControlling {
 
     public init(
         requestBuilder: any AuthenticatedRequestBuilding,
-        transportFactory: any WebSocketTransportCreating = URLSessionWebSocketTransportFactory(),
+        transportFactory: any WebSocketTransportCreating = URLSessionWebSocketTransportFactory.rpc,
         requestTimeout: Duration = .seconds(120)
     ) {
         self.requestBuilder = requestBuilder

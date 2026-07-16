@@ -150,7 +150,7 @@ public actor PTYClient {
 
     public init(
         requestBuilder: any AuthenticatedRequestBuilding,
-        transportFactory: any WebSocketTransportCreating = URLSessionWebSocketTransportFactory(),
+        transportFactory: any WebSocketTransportCreating = URLSessionWebSocketTransportFactory.pty,
         reconnectDelays: [Duration] = [
             .seconds(2),
             .seconds(4),

@@ -29,12 +29,22 @@ public enum WebSocketTransportError: Error, Equatable, LocalizedError, Sendable 
 }
 
 /// Bounds one complete native WebSocket message before Foundation materializes it in memory.
-///
-/// The largest supported RPC payload is a shared artifact: either a 105 MiB bundle encoded as
-/// Base64, or 100 MiB of Base64 assets plus a 5 MiB HTML document and its JSON envelope. 192 MiB
-/// covers those protocol limits and JSON escaping without accepting unbounded server frames.
-public enum Dev3WebSocketReceivePolicy {
-    public static let maximumMessageBytes = 192 * 1024 * 1024
+public enum Dev3WebSocketReceivePolicy: Sendable {
+    /// RPC can carry a 105 MiB artifact bundle as Base64, or 100 MiB of Base64 assets plus an
+    /// escaped 5 MiB HTML document. This ceiling covers those wire forms without being unbounded.
+    case rpc
+
+    /// PTY output is server-batched and must not inherit the much larger media-capable RPC bound.
+    case pty
+
+    public var maximumMessageBytes: Int {
+        switch self {
+        case .rpc:
+            192 * 1024 * 1024
+        case .pty:
+            1024 * 1024
+        }
+    }
 }
 
 public protocol WebSocketTransport: Sendable {
@@ -49,10 +59,24 @@ public protocol WebSocketTransportCreating: Sendable {
 }
 
 public struct URLSessionWebSocketTransportFactory: WebSocketTransportCreating, Sendable {
-    public init() {}
+    public static let rpc = Self(receivePolicy: .rpc)
+    public static let pty = Self(receivePolicy: .pty)
+
+    private let receivePolicy: Dev3WebSocketReceivePolicy
+
+    public init(receivePolicy: Dev3WebSocketReceivePolicy) {
+        self.receivePolicy = receivePolicy
+    }
+
+    var configuredMaximumMessageSize: Int {
+        receivePolicy.maximumMessageBytes
+    }
 
     public func makeTransport(for request: URLRequest) throws -> any WebSocketTransport {
-        try URLSessionWebSocketTransport(request: request)
+        try URLSessionWebSocketTransport(
+            request: request,
+            maximumMessageSize: receivePolicy.maximumMessageBytes
+        )
     }
 }
 
@@ -177,36 +201,42 @@ enum WebSocketReceiveErrorMapper {
     static func map(
         _ error: any Error,
         closeCode: URLSessionWebSocketTask.CloseCode,
-        closeReason: Data?
+        closeReason: Data?,
+        maximumMessageBytes: Int
     ) -> WebSocketTransportError {
-        if isMessageTooLarge(error as NSError) {
-            return .messageTooLarge(
-                maximumBytes: Dev3WebSocketReceivePolicy.maximumMessageBytes
-            )
-        }
         if closeCode != .invalid {
             let reason = closeReason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
             return .closed(code: Int(closeCode.rawValue), reason: reason)
+        }
+        if isMessageTooLarge(error as NSError) {
+            return .messageTooLarge(maximumBytes: maximumMessageBytes)
         }
         return .failed(error.localizedDescription)
     }
 
     private static func isMessageTooLarge(_ error: NSError) -> Bool {
-        // Darwin's EMSGSIZE is 40. CFNetwork can wrap it one or more levels deep.
-        if error.domain == NSPOSIXErrorDomain, error.code == 40 {
-            return true
+        let maximumDepth = 32
+        var current: NSError? = error
+        var visited: Set<ObjectIdentifier> = []
+        var depth = 0
+
+        while let candidate = current, depth < maximumDepth {
+            guard visited.insert(ObjectIdentifier(candidate)).inserted else {
+                return false
+            }
+            // Darwin's EMSGSIZE is 40. CFNetwork can wrap it one or more levels deep.
+            if candidate.domain == NSPOSIXErrorDomain, candidate.code == 40 {
+                return true
+            }
+            if candidate.localizedDescription.localizedCaseInsensitiveContains(
+                "message size exceeds maximum"
+            ) {
+                return true
+            }
+            current = candidate.userInfo[NSUnderlyingErrorKey] as? NSError
+            depth += 1
         }
-        if error.localizedDescription.localizedCaseInsensitiveContains(
-            "message size exceeds maximum"
-        ) {
-            return true
-        }
-        guard let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError,
-              underlying !== error
-        else {
-            return false
-        }
-        return isMessageTooLarge(underlying)
+        return false
     }
 }
 
@@ -219,7 +249,7 @@ final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked Sendabl
         task.maximumMessageSize
     }
 
-    init(request: URLRequest) throws {
+    init(request: URLRequest, maximumMessageSize: Int) throws {
         let webSocketRequest = try WebSocketRequestNormalizer.normalize(request)
         let delegate = WebSocketOpenDelegate()
         let configuration = URLSessionConfiguration.ephemeral
@@ -229,7 +259,7 @@ final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked Sendabl
         self.delegate = delegate
         self.session = session
         let task = session.webSocketTask(with: webSocketRequest)
-        task.maximumMessageSize = Dev3WebSocketReceivePolicy.maximumMessageBytes
+        task.maximumMessageSize = maximumMessageSize
         self.task = task
     }
 
@@ -261,7 +291,8 @@ final class URLSessionWebSocketTransport: WebSocketTransport, @unchecked Sendabl
             throw WebSocketReceiveErrorMapper.map(
                 error,
                 closeCode: task.closeCode,
-                closeReason: task.closeReason
+                closeReason: task.closeReason,
+                maximumMessageBytes: task.maximumMessageSize
             )
         }
     }
