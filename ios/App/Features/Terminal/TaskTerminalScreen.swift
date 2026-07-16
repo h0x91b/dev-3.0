@@ -105,7 +105,7 @@ struct TaskTerminalScreen: View {
         } message: {
             Text(store.transientError ?? "The terminal action failed.")
         }
-        .task {
+        .onAppear {
             store.attach(
                 isSceneActive: scenePhase == .active,
                 networkRecoveryRevision: networkRecoveryRevision
