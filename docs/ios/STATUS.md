@@ -12,14 +12,12 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 | Browse and create | Live green | Work/Projects navigation, one task creation, agent/config selection, preparation, and terminal handoff passed. Simulator accessibility and visual QA confirm the required Description affordance. |
 | Running-task terminal | Live green | Composer and raw accessory input, exact agent responses, zoom, pane/window lifecycle, task metadata update, and cold PTY continuity passed. The terminal follows the instance theme, raw Enter clears UIKit input state, and hardware-key sequences are unit-covered. |
 | PTY recovery | Live green | Cold reattach, true Home-to-foreground recovery with the same app PID, and remote-server interruption recovery all retained the same durable tmux session and worktree. |
-| Task Info | Live partial | Priority round-trip passed without changing the terminal session. Remaining destructive/completion path is held for the final end-to-end pass. |
-| Completion cleanup | In progress | The first request safely ended with Keep session because a guest remote's agent CLI selected an unrelated desktop socket. Durable per-task owner routing is test-green and awaiting the live native approval and cleanup retry. |
+| Task Info | Live green | Priority round-trip passed without changing the terminal session, and the destructive native completion approval completed through the same live task route. |
+| Completion cleanup | Live green | A full-ID agent CLI request routed only to the task-owning remote after restart, appeared in native iOS, and returned to Work after approval. The task persisted as completed while its tmux session, socket claim, worktree, and branch were removed; the root task stayed intact. |
 
 ## Core QA still required
 
 - Exercise the unit-covered Shift hardware-key sequences with a physical keyboard.
-- Route agent completion approval to the task-owning remote across server restarts and concurrent desktop instances.
-- Final completion approval and cleanup.
 
 ## Later waves
 
