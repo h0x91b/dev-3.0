@@ -51,7 +51,8 @@ The simulator selector deterministically picks the alphabetically first availabl
 newest installed iOS runtime. The `Dev3` Xcode scheme runs both app-target XCTest/Swift Testing suites
 and simulator UI coverage for manual pairing, validation, and the connected shell. The live runtime UI
 test skips unless its integration environment is configured. Camera scanning is device-only;
-Simulator deliberately points testers to the manual route.
+Simulator deliberately points testers to the manual route. The current app-target CI baseline is 45
+tests discovered: 44 pass and the opt-in live integration test skips without its environment.
 
 ## Live pairing integration
 
@@ -83,4 +84,5 @@ does not allow code reuse.
 - `Dev3UI`: design tokens and reusable SwiftUI components.
 
 Pairing, secure session rotation, saved-instance selection, and Bonjour reconnection are functional.
-The connected Work and Projects surfaces remain intentionally small until their dedicated slices land.
+Work and Projects support readiness and project navigation, task creation and actions, live terminals,
+Task Info, review details, shared media, notifications, and native completion approval.

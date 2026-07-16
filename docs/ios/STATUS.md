@@ -33,13 +33,15 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 - `ios/qa-output/critical-running-task-e2e-part2.mp4`: fixed cold bootstrap and exact same-PTY reattachment.
 - `ios/qa-output/critical-running-task-e2e-part3.mp4`: diagnostic Light-device/Dark-instance comparison that rejected the false backing-raster workaround.
 - `ios/qa-output/critical-running-task-e2e-part4.mp4`: corrected theme and zoom, required Description affordance, raw input, and reversible pane/window lifecycle.
-- A final recording will cover same-process recovery and completion cleanup.
+- `ios/qa-output/critical-running-task-e2e-part5.mp4`: same-process Home-to-foreground recovery and corrected remote-server restart recovery, retaining the durable tmux session and worktree; `ios/qa-output/critical-remote-recovered-terminal.png` captures the restored terminal.
+- `ios/qa-output/critical-running-task-e2e-part6.mp4`: task-owner routing, native completion approval, cleanup, and return to Work; `ios/qa-output/part6-approval.png` and `ios/qa-output/part6-final.png` capture the approval and final state.
 
 ## Verification baseline
 
 - Dev3Kit: 94 tests passing.
 - Dev3UI: 106 tests passing.
 - Dev3TerminalKit: 33 tests passing.
+- App CI: 45 tests discovered, with 44 passing and the opt-in live integration test skipped.
 - Focused iOS raw-input regressions pass for exact carriage-return delivery, input-state clearing, and Ctrl-latch consumption.
 - SwiftFormat and strict SwiftLint are clean for tracked iOS sources.
-- Backend lint and all 5,783 fast mainview, Bun, and CLI tests pass at the current gate.
+- Backend lint and all 5,801 fast mainview, Bun, and CLI tests pass at the current gate.
