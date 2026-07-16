@@ -61,6 +61,12 @@ public final class TaskCreationCoordinator {
         releaseStoreIfIdle()
     }
 
+    public func receive(_ push: RPCPushEvent, provenance: TaskCreationProvenance?) {
+        guard let creationStore, let provenance else { return }
+        creationStore.receive(push, provenance: provenance)
+        releaseStoreIfIdle()
+    }
+
     public func synchronize(
         projects: [Dev3Project],
         tasksByProject: [String: [Dev3Task]],
@@ -104,7 +110,7 @@ public final class TaskCreationCoordinator {
             .compactMap({ tasks in tasks.first { $0.id == pendingTaskID } })
             .first
         else {
-            creationStore.pendingTaskRemoved(provenance: activeProvenance)
+            await creationStore.reconcilePendingTaskAbsence(provenance: activeProvenance)
             releaseStoreIfIdle()
             return
         }

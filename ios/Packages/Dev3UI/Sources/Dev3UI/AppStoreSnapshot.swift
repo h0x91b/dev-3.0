@@ -47,6 +47,8 @@ struct AppStoreSnapshot: Equatable, Sendable {
             upsert(update.task, projectId: update.projectId)
         case let .taskRemoved(removal):
             removeTask(taskId: removal.taskId, projectId: removal.projectId)
+        case let .taskPreparationFailed(failure):
+            return AppToast(message: "Task preparation failed: \(failure.error)", level: .error)
         case let .projectUpdated(update):
             reduceProjectUpdate(update)
         case let .taskPRStatus(status):

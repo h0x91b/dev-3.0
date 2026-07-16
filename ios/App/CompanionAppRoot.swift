@@ -340,6 +340,10 @@ struct CompanionAppRoot: View {
     private func receiveGlobalPush(_ push: RPCPushEvent) {
         bindCompletionServiceIfNeeded(rpcGeneration: store.rpcGeneration)
         synchronizeNotificationState(companionShellSnapshot)
+        taskCreationCoordinator.receive(
+            push,
+            provenance: store.taskCreationServiceBinding()?.provenance
+        )
         completionCoordinator.receive(push)
         notificationCoordinator.receive(push)
     }

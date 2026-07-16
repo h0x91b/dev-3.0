@@ -405,10 +405,21 @@ struct RPCClientTests {
             "{\"type\":\"message\",\"id\":\"ptyDied\",\"payload\":{\"taskId\":\"task-7\"}}"
         ))
         await socket.enqueue(.text(
+            "{\"type\":\"message\",\"id\":\"taskPreparationFailed\",\"payload\":" +
+                "{\"taskId\":\"task-7\",\"projectId\":\"project-1\",\"taskTitle\":\"Build\"," +
+                "\"error\":\"clone failed\"}}"
+        ))
+        await socket.enqueue(.text(
             "{\"type\":\"message\",\"id\":\"futurePush\",\"payload\":{\"sequence\":7}}"
         ))
 
         #expect(await iterator.next() == .ptyDied(TaskIdentifierPush(taskId: "task-7")))
+        #expect(await iterator.next() == .taskPreparationFailed(TaskPreparationFailedPush(
+            taskId: "task-7",
+            projectId: "project-1",
+            taskTitle: "Build",
+            error: "clone failed"
+        )))
         #expect(await iterator.next() == .unknown(
             name: "futurePush",
             payload: .object(["sequence": .integer(7)])

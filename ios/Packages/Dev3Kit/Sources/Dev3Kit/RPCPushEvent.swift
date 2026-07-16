@@ -10,6 +10,13 @@ public struct TaskRemovedPush: Codable, Equatable, Sendable {
     public let taskId: String
 }
 
+public struct TaskPreparationFailedPush: Codable, Equatable, Sendable {
+    public let taskId: String
+    public let projectId: String
+    public let taskTitle: String
+    public let error: String
+}
+
 public struct ProjectUpdatedPush: Codable, Equatable, Sendable {
     public let project: Dev3Project
 }
@@ -142,6 +149,7 @@ public struct CLIShowArtifactPush: Codable, Equatable, Sendable {
 public enum RPCPushEvent: Equatable, Sendable {
     case taskUpdated(TaskUpdatedPush)
     case taskRemoved(TaskRemovedPush)
+    case taskPreparationFailed(TaskPreparationFailedPush)
     case projectUpdated(ProjectUpdatedPush)
     case taskPRStatus(TaskPRStatusPush)
     case ptyDied(TaskIdentifierPush)
@@ -163,6 +171,8 @@ public enum RPCPushEvent: Equatable, Sendable {
             try .taskUpdated(payload.decode(TaskUpdatedPush.self))
         case "taskRemoved":
             try .taskRemoved(payload.decode(TaskRemovedPush.self))
+        case "taskPreparationFailed":
+            try .taskPreparationFailed(payload.decode(TaskPreparationFailedPush.self))
         case "projectUpdated":
             try .projectUpdated(payload.decode(ProjectUpdatedPush.self))
         case "taskPrStatus":

@@ -79,6 +79,11 @@ struct AppStoreTests {
         {"taskId":"task-2","projectId":"project-a","title":"Agent","body":"Needs you","level":"info"}
         """)))
         #expect(notification?.message == "Needs you")
+        let preparationFailure = try snapshot.reduce(.taskPreparationFailed(decode("""
+        {"taskId":"task-2","projectId":"project-a","taskTitle":"Build","error":"clone failed"}
+        """)))
+        #expect(preparationFailure?.message == "Task preparation failed: clone failed")
+        #expect(preparationFailure?.level == .error)
 
         _ = try snapshot.reduce(.projectUpdated(decode("""
         {"project":\(encoded(project(id: alpha.id, name: "Alpha", deleted: true)))}

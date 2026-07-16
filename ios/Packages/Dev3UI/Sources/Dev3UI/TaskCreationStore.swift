@@ -189,16 +189,14 @@ public final class TaskCreationStore {
         if pendingTerminalProvenance?.serverID == provenance.serverID {
             pendingTerminalProvenance = provenance
         } else {
-            pendingTerminalTaskID = nil
-            pendingTerminalProvenance = nil
+            clearPendingTerminal()
         }
         await load(preservingSelections: true)
     }
 
     public func activeServerChanged(to serverID: String?) {
         guard pendingTerminalProvenance?.serverID != serverID else { return }
-        pendingTerminalTaskID = nil
-        pendingTerminalProvenance = nil
+        clearPendingTerminal()
     }
 
     public func dismissError() {
@@ -399,6 +397,45 @@ public final class TaskCreationStore {
         evaluateTerminalReadiness(task, provenance: provenance)
     }
 
+    func reconcilePendingTaskAbsence(provenance: TaskCreationProvenance) async {
+        guard let pendingTaskID = pendingTerminalTaskID,
+              let projectID = selectedProjectID,
+              provenance == pendingTerminalProvenance,
+              let binding = serviceProvider(),
+              binding.provenance == provenance
+        else { return }
+        guard let tasks = try? await binding.service.getTasks(projectID: projectID),
+              pendingTaskID == pendingTerminalTaskID,
+              provenance == pendingTerminalProvenance,
+              owns(provenance)
+        else { return }
+        if let pending = tasks.first(where: { $0.id == pendingTaskID }) {
+            receiveTaskUpdate(pending, provenance: provenance)
+        } else {
+            pendingTaskRemoved(provenance: provenance)
+        }
+    }
+
+    func receive(_ push: RPCPushEvent, provenance: TaskCreationProvenance) {
+        switch push {
+        case let .taskRemoved(removal):
+            guard removal.taskId == pendingTerminalTaskID,
+                  removal.projectId == selectedProjectID
+            else { return }
+            pendingTaskRemoved(provenance: provenance)
+        case let .taskPreparationFailed(failure):
+            guard failure.taskId == pendingTerminalTaskID,
+                  failure.projectId == selectedProjectID,
+                  provenance == pendingTerminalProvenance,
+                  owns(provenance)
+            else { return }
+            clearPendingTerminal()
+            errorMessage = "Task preparation failed: \(failure.error)"
+        default:
+            break
+        }
+    }
+
     public func pendingTaskRemoved(provenance: TaskCreationProvenance) {
         guard let taskID = pendingTerminalTaskID,
               provenance == pendingTerminalProvenance,
@@ -406,8 +443,7 @@ public final class TaskCreationStore {
         else {
             return
         }
-        pendingTerminalTaskID = nil
-        pendingTerminalProvenance = nil
+        clearPendingTerminal()
         let message = "The launched task is no longer available, so its terminal was not opened."
         errorMessage = message
         onEvent(
@@ -584,8 +620,7 @@ private extension TaskCreationStore {
         agents = []
         settings = nil
         loadRequestID = UUID()
-        pendingTerminalTaskID = nil
-        pendingTerminalProvenance = nil
+        clearPendingTerminal()
         isLoading = false
         errorMessage = "Reconnect to dev3 to load task creation options."
     }
@@ -621,15 +656,13 @@ private extension TaskCreationStore {
     func evaluateTerminalReadiness(_ task: Dev3Task, provenance: TaskCreationProvenance) {
         let preparationError = task.preparationError?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let preparationError, !preparationError.isEmpty {
-            pendingTerminalTaskID = nil
-            pendingTerminalProvenance = nil
+            clearPendingTerminal()
             errorMessage = "Task preparation failed: \(preparationError)"
             onEvent(.preparationFailed(task, provenance: provenance))
             return
         }
         guard task.shuttingDown != true, Self.isTerminalStatus(task.status) else {
-            pendingTerminalTaskID = nil
-            pendingTerminalProvenance = nil
+            clearPendingTerminal()
             let message = task.shuttingDown == true
                 ? "The task started shutting down before its terminal became ready."
                 : "The task is no longer active, so its terminal was not opened."
@@ -638,17 +671,20 @@ private extension TaskCreationStore {
             return
         }
         if task.preparing == false, task.worktreePath == nil {
-            pendingTerminalTaskID = nil
-            pendingTerminalProvenance = nil
+            clearPendingTerminal()
             let message = "Task preparation ended before its terminal became available."
             errorMessage = message
             onEvent(.launchUnavailable(task, provenance: provenance, message: message))
             return
         }
         guard task.preparing != true, task.worktreePath != nil else { return }
+        clearPendingTerminal()
+        onTerminalReady(task.projectId, task.id, provenance)
+    }
+
+    func clearPendingTerminal() {
         pendingTerminalTaskID = nil
         pendingTerminalProvenance = nil
-        onTerminalReady(task.projectId, task.id, provenance)
     }
 
     static func isTerminalStatus(_ status: Dev3TaskStatus) -> Bool {

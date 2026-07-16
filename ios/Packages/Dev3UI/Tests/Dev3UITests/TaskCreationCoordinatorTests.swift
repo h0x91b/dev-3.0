@@ -3,6 +3,9 @@
 import Foundation
 import Testing
 
+// The coordinator scenarios share one stateful launch fixture.
+// swiftlint:disable file_length
+
 @MainActor
 @Suite("Task creation coordinator")
 struct TaskCreationCoordinatorTests {
@@ -215,15 +218,125 @@ struct TaskCreationCoordinatorTests {
 
         await fixture.coordinator.synchronize(
             projects: [fixture.project],
+            tasksByProject: [fixture.project.id: [preparing]],
+            activeServerID: fixture.binding.provenance.serverID,
+            provenance: fixture.binding.provenance
+        )
+
+        await fixture.coordinator.synchronize(
+            projects: [fixture.project],
             tasksByProject: [fixture.project.id: []],
             activeServerID: fixture.binding.provenance.serverID,
             provenance: fixture.binding.provenance
         )
         #expect(fixture.coordinator.creationStore == nil)
+        #expect(fixture.events.last == .launchMissing(
+            projectID: fixture.project.id,
+            taskID: "variant",
+            provenance: fixture.binding.provenance,
+            message: "The launched task is no longer available, so its terminal was not opened."
+        ))
 
         fixture.coordinator.presentCreate()
         #expect(fixture.coordinator.creationStore !== pendingStore)
         #expect(fixture.coordinator.creationStore?.context == .create)
+    }
+
+    @Test("An older missing snapshot cannot hide a later preparation failure")
+    func staleMissingSnapshotWaitsForPreparationFailure() async throws {
+        let preparing = makeIATask(id: "variant", preparing: true)
+        let fixture = try CoordinatorFixture(
+            spawned: [preparing],
+            lookupTasks: [preparing]
+        )
+        fixture.coordinator.presentRun(task: makeIATask(id: "todo", status: .todo))
+        let pendingStore = try #require(fixture.coordinator.creationStore)
+        await pendingStore.load()
+        _ = await pendingStore.submit(.saveAndStart)
+        fixture.coordinator.submissionCompleted(for: pendingStore)
+
+        await fixture.coordinator.synchronize(
+            projects: [fixture.project],
+            tasksByProject: [fixture.project.id: []],
+            activeServerID: fixture.binding.provenance.serverID,
+            provenance: fixture.binding.provenance
+        )
+        #expect(fixture.coordinator.creationStore === pendingStore)
+        #expect(fixture.events.contains { event in
+            if case .launchMissing = event {
+                true
+            } else {
+                false
+            }
+        } == false)
+
+        let failed = makeIATask(
+            id: "variant",
+            status: .todo,
+            preparing: false,
+            preparationError: "clone failed"
+        )
+        await fixture.coordinator.synchronize(
+            projects: [fixture.project],
+            tasksByProject: [fixture.project.id: [failed]],
+            activeServerID: fixture.binding.provenance.serverID,
+            provenance: fixture.binding.provenance
+        )
+
+        #expect(fixture.coordinator.creationStore == nil)
+        #expect(pendingStore.errorMessage == "Task preparation failed: clone failed")
+        #expect(fixture.events.last == .preparationFailed(
+            failed,
+            provenance: fixture.binding.provenance
+        ))
+    }
+
+    @Test("A task removal push terminates an unobserved pending launch")
+    func removalPushTerminatesUnobservedLaunch() async throws {
+        let preparing = makeIATask(id: "variant", preparing: true)
+        let fixture = try CoordinatorFixture(spawned: [preparing])
+        fixture.coordinator.presentRun(task: makeIATask(id: "todo", status: .todo))
+        let pendingStore = try #require(fixture.coordinator.creationStore)
+        await pendingStore.load()
+        _ = await pendingStore.submit(.saveAndStart)
+        fixture.coordinator.submissionCompleted(for: pendingStore)
+
+        fixture.coordinator.receive(
+            .taskRemoved(.init(projectId: fixture.project.id, taskId: "variant")),
+            provenance: fixture.binding.provenance
+        )
+
+        #expect(fixture.coordinator.creationStore == nil)
+        #expect(fixture.events.last == .launchMissing(
+            projectID: fixture.project.id,
+            taskID: "variant",
+            provenance: fixture.binding.provenance,
+            message: "The launched task is no longer available, so its terminal was not opened."
+        ))
+    }
+
+    @Test("A preparation failure push clears pending launch tracking")
+    func preparationFailurePushClearsPendingLaunch() async throws {
+        let preparing = makeIATask(id: "variant", preparing: true)
+        let fixture = try CoordinatorFixture(spawned: [preparing])
+        fixture.coordinator.presentRun(task: makeIATask(id: "todo", status: .todo))
+        let pendingStore = try #require(fixture.coordinator.creationStore)
+        await pendingStore.load()
+        _ = await pendingStore.submit(.saveAndStart)
+        fixture.coordinator.submissionCompleted(for: pendingStore)
+
+        fixture.coordinator.receive(
+            .taskPreparationFailed(.init(
+                taskId: "variant",
+                projectId: fixture.project.id,
+                taskTitle: "Build",
+                error: "clone failed"
+            )),
+            provenance: fixture.binding.provenance
+        )
+
+        #expect(fixture.coordinator.creationStore == nil)
+        #expect(pendingStore.errorMessage == "Task preparation failed: clone failed")
     }
 
     @Test("Task creation warnings remain visible alongside an existing error")
@@ -243,6 +356,7 @@ private final class CoordinatorFixture {
     let project = makeIAProject()
     let service: CoordinatorServiceDouble
     var binding: TaskCreationServiceBinding
+    var events: [TaskCreationEvent] = []
     var warningBatches: [[String]] = []
     var terminalRoutes: [CoordinatorTerminalRoute] = []
     lazy var coordinator = TaskCreationCoordinator(
@@ -250,7 +364,7 @@ private final class CoordinatorFixture {
             self.map { [$0.project] } ?? []
         },
         serviceProvider: { [weak self] in self?.binding },
-        onEvent: { _ in },
+        onEvent: { [weak self] in self?.events.append($0) },
         onWarning: { [weak self] in self?.warningBatches.append($0) },
         onTerminalReady: { [weak self] projectID, taskID, provenance in
             self?.terminalRoutes.append(
@@ -266,6 +380,7 @@ private final class CoordinatorFixture {
     init(
         spawned: [Dev3Task] = [],
         failRename: Bool = false,
+        lookupTasks: [Dev3Task] = [],
         service: CoordinatorServiceDouble? = nil
     ) throws {
         let resolvedService: CoordinatorServiceDouble = if let service {
@@ -273,7 +388,8 @@ private final class CoordinatorFixture {
         } else {
             try CoordinatorServiceDouble(
                 spawned: spawned,
-                failRename: failRename
+                failRename: failRename,
+                lookupTasks: lookupTasks
             )
         }
         self.service = resolvedService
@@ -297,6 +413,7 @@ private actor CoordinatorServiceDouble: TaskCreationServicing {
     private let settings: Dev3GlobalSettings
     private let created: Dev3Task
     private let spawned: [Dev3Task]
+    private let lookupTasks: [Dev3Task]
     private let failRename: Bool
     private let pausesSpawn: Bool
     private var spawnStarted = false
@@ -305,7 +422,8 @@ private actor CoordinatorServiceDouble: TaskCreationServicing {
     init(
         spawned: [Dev3Task],
         failRename: Bool = false,
-        pausesSpawn: Bool = false
+        pausesSpawn: Bool = false,
+        lookupTasks: [Dev3Task] = []
     ) throws {
         agents = try coordinatorDecode(
             """
@@ -321,6 +439,7 @@ private actor CoordinatorServiceDouble: TaskCreationServicing {
         )
         created = makeIATask(id: "source", status: .todo, watched: false)
         self.spawned = spawned
+        self.lookupTasks = lookupTasks
         self.failRename = failRename
         self.pausesSpawn = pausesSpawn
     }
@@ -383,7 +502,7 @@ private actor CoordinatorServiceDouble: TaskCreationServicing {
     }
 
     func getTasks(projectID _: String) -> [Dev3Task] {
-        []
+        lookupTasks
     }
 
     func waitUntilSpawnStarted() async {
