@@ -62,6 +62,30 @@ private actor AdapterTransport: WebSocketTransport {
     }
 }
 
+private actor AdapterOutputRecorder {
+    private var events: [Dev3TerminalOutputEvent] = []
+
+    func append(_ event: Dev3TerminalOutputEvent) {
+        events.append(event)
+    }
+
+    func snapshot() -> [Dev3TerminalOutputEvent] {
+        events
+    }
+}
+
+private actor AdapterRecoveryCounter {
+    private var count = 0
+
+    func record() {
+        count += 1
+    }
+
+    func snapshot() -> Int {
+        count
+    }
+}
+
 @Test("PTY adapter forwards output, input, resize, and transport-neutral state")
 func ptyAdapterForwardsTransport() async throws {
     let transport = AdapterTransport()
@@ -88,13 +112,87 @@ func ptyAdapterForwardsTransport() async throws {
     try await endpoint.resize(columns: 84, rows: 26)
     await transport.emit(.data(Data("/tmp\r\n".utf8)))
 
-    #expect(await output.next() == Data("/tmp\r\n".utf8))
+    #expect(await output.next() == .data(Data("/tmp\r\n".utf8)))
     #expect(await transport.frames() == [
         .data(Data("pwd\r".utf8)),
         .text("\u{1B}]resize;84;26\u{7}")
     ])
 
     await client.disconnect()
+}
+
+@Test("PTY output survives a cancelled consumer and terminal reattach", .timeLimit(.minutes(1)))
+func ptyOutputSurvivesConsumerReplacement() async throws {
+    let transport = AdapterTransport()
+    let client = PTYClient(
+        requestBuilder: AdapterRequestBuilder(),
+        transportFactory: AdapterTransportFactory(transport: transport),
+        reconnectDelays: [.seconds(60)]
+    )
+    let endpoint = Dev3TerminalEndpoint(identity: "task-output-reuse", ptyClient: client)
+    let firstRecorder = AdapterOutputRecorder()
+    let firstOutput = endpoint.output
+    let firstConsumer = Task {
+        for await event in firstOutput {
+            await firstRecorder.append(event)
+        }
+    }
+
+    try await client.connect(to: .task("task-output-reuse"))
+    await transport.emit(.data(Data("first\r\n".utf8)))
+    #expect(await eventuallyOutput([.data(Data("first\r\n".utf8))], from: firstRecorder))
+
+    firstConsumer.cancel()
+    await firstConsumer.value
+    await client.disconnect()
+
+    let secondRecorder = AdapterOutputRecorder()
+    let secondOutput = endpoint.output
+    let secondConsumer = Task {
+        for await event in secondOutput {
+            await secondRecorder.append(event)
+        }
+    }
+    try await client.connect(to: .task("task-output-reuse"))
+    await transport.emit(.data(Data("second\r\n".utf8)))
+    #expect(await eventuallyOutput([.data(Data("second\r\n".utf8))], from: secondRecorder))
+
+    secondConsumer.cancel()
+    await secondConsumer.value
+    await client.disconnect()
+}
+
+@Test("Output overflow clears the byte gap, resets the parser, and recovers once")
+func outputOverflowResetsConsumer() async {
+    let source = AsyncStream.makeStream(of: Data.self)
+    let recovery = AdapterRecoveryCounter()
+    let endpoint = Dev3TerminalEndpoint(
+        identity: "tiny-output-buffer",
+        output: source.stream,
+        clipboardText: .finished,
+        connectionStates: .finished,
+        maxBufferedOutputBytes: 4,
+        recoverOutputOverflow: {
+            await recovery.record()
+        },
+        send: { _ in },
+        resize: { _, _ in }
+    )
+    let output = endpoint.output
+
+    source.continuation.yield(Data("ABCD".utf8))
+    source.continuation.yield(Data("EFGH".utf8))
+    #expect(await eventuallyRecovery(recovery))
+
+    var iterator = output.makeAsyncIterator()
+    #expect(await iterator.next() == .reset)
+    #expect(await iterator.next() == .data(Data("EFGH".utf8)))
+
+    source.continuation.yield(Data("I".utf8))
+    #expect(await iterator.next() == .data(Data("I".utf8)))
+    try? await Task.sleep(for: .milliseconds(20))
+    #expect(await recovery.snapshot() == 1)
+    source.continuation.finish()
 }
 
 @Test("PTY state mapping removes transport session and error details")
@@ -160,4 +258,27 @@ func taskEventChannelFiltersClipboard() async {
     )))
     #expect(await clipboard.next() == "latest")
     channel.finish()
+}
+
+private func eventuallyOutput(
+    _ expected: [Dev3TerminalOutputEvent],
+    from recorder: AdapterOutputRecorder
+) async -> Bool {
+    for _ in 0 ..< 100 {
+        if await recorder.snapshot() == expected {
+            return true
+        }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return false
+}
+
+private func eventuallyRecovery(_ recovery: AdapterRecoveryCounter) async -> Bool {
+    for _ in 0 ..< 100 {
+        if await recovery.snapshot() == 1 {
+            return true
+        }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return false
 }

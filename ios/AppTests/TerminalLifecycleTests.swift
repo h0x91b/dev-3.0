@@ -146,6 +146,56 @@ struct TerminalLifecycleTests {
         }
     }
 
+    @Test(
+        "Visibility detach waits for in-flight recovery and wins",
+        arguments: RecordingTerminalLifecycleService.RecoveryKind.allCases
+    )
+    func detachWinsAgainstRecovery(
+        kind: RecordingTerminalLifecycleService.RecoveryKind
+    ) async {
+        let recoveryGate = TerminalLifecycleDetachGate()
+        let service = RecordingTerminalLifecycleService(recoveryGate: recoveryGate)
+        let store = TerminalTaskStore(service: service)
+
+        store.attach(isSceneActive: true, networkRecoveryRevision: 0)
+        await eventually("The terminal should finish attaching") {
+            let snapshot = await service.snapshot()
+            return store.phase == .connected && snapshot.navigationRefreshCount == 2
+        }
+
+        switch kind {
+        case .resume:
+            store.resume()
+        case .restart:
+            store.restart()
+        }
+        await eventually("Recovery should reach the lifecycle service") {
+            await service.snapshot().events.contains(.recoveryStarted(kind))
+        }
+
+        store.detach()
+        try? await Task.sleep(for: .milliseconds(20))
+        var snapshot = await service.snapshot()
+        #expect(snapshot.detachStartedCount == 0)
+        #expect(snapshot.navigationRefreshCount == 2)
+
+        await recoveryGate.open()
+        await eventually("Detach should run after stale recovery finishes") {
+            let snapshot = await service.snapshot()
+            return store.phase == .disconnected && snapshot.detachCompletedCount == 1
+        }
+
+        snapshot = await service.snapshot()
+        #expect(snapshot.navigationRefreshCount == 2)
+        #expect(snapshot.events == [
+            .attach(1),
+            .recoveryStarted(kind),
+            .recoveryCompleted(kind),
+            .detachStarted(1),
+            .detachCompleted(1)
+        ])
+    }
+
     private func eventually(
         _ failureMessage: String,
         condition: @MainActor () async -> Bool
@@ -161,10 +211,17 @@ struct TerminalLifecycleTests {
 }
 
 actor RecordingTerminalLifecycleService: TerminalTaskServicing {
+    enum RecoveryKind: CaseIterable, Equatable, Sendable {
+        case resume
+        case restart
+    }
+
     enum Event: Equatable, Sendable {
         case attach(Int)
         case detachStarted(Int)
         case detachCompleted(Int)
+        case recoveryStarted(RecoveryKind)
+        case recoveryCompleted(RecoveryKind)
     }
 
     struct Snapshot: Sendable {
@@ -186,6 +243,7 @@ actor RecordingTerminalLifecycleService: TerminalTaskServicing {
 
     private let stateSource: TerminalLifecycleStateSource
     private let detachGate: TerminalLifecycleDetachGate?
+    private let recoveryGate: TerminalLifecycleDetachGate?
     private var attachCount = 0
     private var detachStartedCount = 0
     private var detachCompletedCount = 0
@@ -195,10 +253,14 @@ actor RecordingTerminalLifecycleService: TerminalTaskServicing {
     private var sentData: [Data] = []
     private var events: [Event] = []
 
-    init(detachGate: TerminalLifecycleDetachGate? = nil) {
+    init(
+        detachGate: TerminalLifecycleDetachGate? = nil,
+        recoveryGate: TerminalLifecycleDetachGate? = nil
+    ) {
         let stateSource = TerminalLifecycleStateSource()
         self.stateSource = stateSource
         self.detachGate = detachGate
+        self.recoveryGate = recoveryGate
         endpoint = Dev3TerminalEndpoint(
             identity: "terminal-lifecycle",
             output: .finished,
@@ -245,9 +307,13 @@ actor RecordingTerminalLifecycleService: TerminalTaskServicing {
         activeChanges.append(active)
     }
 
-    func resume() async throws {}
+    func resume() async throws {
+        await performRecovery(.resume)
+    }
 
-    func restart() async throws {}
+    func restart() async throws {
+        await performRecovery(.restart)
+    }
 
     func windowNavigation(
         step _: TerminalPagerStep?,
@@ -289,6 +355,13 @@ actor RecordingTerminalLifecycleService: TerminalTaskServicing {
     }
 
     func resize(columns _: Int, rows _: Int) async throws {}
+
+    private func performRecovery(_ kind: RecoveryKind) async {
+        events.append(.recoveryStarted(kind))
+        await recoveryGate?.wait()
+        events.append(.recoveryCompleted(kind))
+        stateSource.yield(.connected)
+    }
 }
 
 private struct TerminalLifecycleStateSource: Sendable {

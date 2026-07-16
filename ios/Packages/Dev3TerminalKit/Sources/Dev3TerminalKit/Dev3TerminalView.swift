@@ -210,9 +210,16 @@
                 frameBuffer = currentFrameBuffer
 
                 outputTask = Task {
-                    for await data in endpoint.output {
+                    for await event in endpoint.output {
                         guard !Task.isCancelled else { break }
-                        await currentFrameBuffer.append(data)
+                        switch event {
+                        case let .data(data):
+                            await currentFrameBuffer.append(data)
+                        case .reset:
+                            await currentFrameBuffer.discardPending()
+                            terminalView?.getTerminal().resetToInitialState()
+                            interaction?.updateBracketedPaste(false)
+                        }
                     }
                 }
 

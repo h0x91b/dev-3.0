@@ -13,6 +13,9 @@ public extension Dev3TerminalEndpoint {
             output: ptyClient.output,
             clipboardText: clipboardText,
             connectionStates: Self.connectionStates(from: ptyClient.states),
+            recoverOutputOverflow: {
+                await ptyClient.kick()
+            },
             send: { data in
                 try await ptyClient.send(data)
             },

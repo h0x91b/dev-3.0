@@ -37,6 +37,10 @@ public actor Dev3TerminalFrameBuffer {
         return frame
     }
 
+    public func discardPending() {
+        pending.removeAll(keepingCapacity: true)
+    }
+
     public func statistics() -> Dev3TerminalFrameStatistics {
         Dev3TerminalFrameStatistics(
             receivedChunks: receivedChunks,

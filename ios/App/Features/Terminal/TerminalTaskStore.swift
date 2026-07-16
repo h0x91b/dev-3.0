@@ -62,6 +62,7 @@ final class TerminalTaskStore {
     private let draftKey: String
     private var attachTask: Task<Void, Never>?
     private var detachTask: Task<Void, Never>?
+    private var recoveryTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
     private var isAttached = false
@@ -78,6 +79,7 @@ final class TerminalTaskStore {
 
     isolated deinit {
         attachTask?.cancel()
+        recoveryTask?.cancel()
         stateTask?.cancel()
         pollTask?.cancel()
     }
@@ -308,20 +310,33 @@ final class TerminalTaskStore {
     }
 
     private func runRecovery(_ operation: @escaping @Sendable () async throws -> Void) {
-        guard !isBusy else { return }
+        guard isAttachmentDesired, !isBusy else { return }
+        let generation = lifecycleGeneration
         isBusy = true
         phase = .connecting
-        Task { [weak self] in
+        recoveryTask = Task { [weak self] in
             guard let self else { return }
             do {
                 try await operation()
+                guard ownsLifecycle(generation) else { return }
                 await refreshNavigation()
+                guard ownsLifecycle(generation) else { return }
                 beginPollingNavigation()
             } catch {
+                guard ownsLifecycle(generation) else { return }
                 phase = .failed(error.localizedDescription)
             }
-            isBusy = false
+            if ownsLifecycle(generation) {
+                isBusy = false
+                recoveryTask = nil
+            }
         }
+    }
+
+    private func ownsLifecycle(_ generation: UInt64) -> Bool {
+        !Task.isCancelled
+            && lifecycleGeneration == generation
+            && isAttachmentDesired
     }
 
     private func runPaneAction(_ action: TerminalPaneAction, force: Bool) async throws {
@@ -428,12 +443,17 @@ extension TerminalTaskStore {
         isAttached = false
         let pendingAttach = attachTask
         let pendingDetach = detachTask
+        let pendingRecovery = recoveryTask
         pendingAttach?.cancel()
+        pendingRecovery?.cancel()
         pollTask?.cancel()
         attachTask = nil
+        recoveryTask = nil
         pollTask = nil
+        isBusy = false
         detachTask = Task { [weak self, service] in
             await pendingAttach?.value
+            await pendingRecovery?.value
             await pendingDetach?.value
             await service.detach()
             guard let self, lifecycleGeneration == generation else { return }
