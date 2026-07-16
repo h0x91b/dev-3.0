@@ -93,6 +93,8 @@ public final class AppStore {
     public internal(set) var lastSyncError: String?
     public private(set) var lastPush: RPCPushEvent?
     public private(set) var taskDropPosition = TaskDropPosition.top
+    public private(set) var refetchRevision = 0
+    public private(set) var snapshotServerID: String?
     public internal(set) var projectPullStates: [String: ProjectPullState] = [:]
 
     public var selectedTab = AppTab.work
@@ -104,12 +106,13 @@ public final class AppStore {
     private let initialRPC: (any AppRPCServing)?
     private let pingIntervalNanoseconds: UInt64
     var rpc: (any AppRPCServing)?
+    var rpcServerID: String?
     private var pushTask: Task<Void, Never>?
     private var connectionTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
     var snapshot = AppStoreSnapshot()
     private var pushObservers: [UUID: @MainActor (RPCPushEvent) -> Void] = [:]
-    var rpcGeneration = UUID()
+    public private(set) var rpcGeneration = UUID()
     var loadedBoardProjectIDs: Set<String> = []
     var rpcIsOpen = false
     private var isStarted = false
@@ -176,6 +179,7 @@ public final class AppStore {
         connectionTask = nil
         pingTask = nil
         rpc = nil
+        rpcServerID = nil
         rpcIsOpen = false
         if let detachedRPC {
             Task {
@@ -256,6 +260,8 @@ extension AppStore {
         self.rpc = rpc
         rpcIsOpen = false
         let generation = UUID()
+        let sourceServerID = controller.activeServer?.instanceId
+        rpcServerID = sourceServerID
         rpcGeneration = generation
         pushTask?.cancel()
         connectionTask?.cancel()
@@ -264,13 +270,22 @@ extension AppStore {
         pushTask = Task { [weak self] in
             for await push in rpc.pushes {
                 guard !Task.isCancelled else { return }
-                self?.apply(push, generation: generation)
+                self?.apply(
+                    push,
+                    generation: generation,
+                    sourceServerID: sourceServerID
+                )
             }
         }
         connectionTask = Task { [weak self] in
             for await event in rpc.connectionEvents {
                 guard !Task.isCancelled else { return }
-                await self?.handleConnectionEvent(event, rpc: rpc, generation: generation)
+                await self?.handleConnectionEvent(
+                    event,
+                    rpc: rpc,
+                    generation: generation,
+                    sourceServerID: sourceServerID
+                )
             }
         }
         Task {
@@ -285,9 +300,12 @@ extension AppStore {
     func handleConnectionEvent(
         _ event: RPCConnectionEvent,
         rpc: any AppRPCServing,
-        generation: UUID
+        generation: UUID,
+        sourceServerID: String?
     ) async {
-        guard isStarted, generation == rpcGeneration else { return }
+        guard isStarted,
+              generation == rpcGeneration,
+              controller.activeServer?.instanceId == sourceServerID else { return }
         switch event {
         case .opened:
             rpcIsOpen = true
@@ -295,7 +313,11 @@ extension AppStore {
             if isSceneActive {
                 startPingLoop()
             }
-            await refetch(using: rpc, generation: generation)
+            await refetch(
+                using: rpc,
+                generation: generation,
+                sourceServerID: sourceServerID
+            )
         case .closed, .failed:
             rpcIsOpen = false
             pingTask?.cancel()
@@ -307,6 +329,18 @@ extension AppStore {
     }
 
     func refetch(using rpc: any AppRPCServing, generation: UUID) async {
+        await refetch(
+            using: rpc,
+            generation: generation,
+            sourceServerID: controller.activeServer?.instanceId
+        )
+    }
+
+    func refetch(
+        using rpc: any AppRPCServing,
+        generation: UUID,
+        sourceServerID: String?
+    ) async {
         do {
             async let projects = rpc.getProjects()
             async let tasks = rpc.getAllProjectTasks()
@@ -322,7 +356,9 @@ extension AppStore {
                     refreshedBoards[projectID] = boardTasks
                 }
             }
-            guard isStarted, generation == rpcGeneration else { return }
+            guard isStarted,
+                  generation == rpcGeneration,
+                  controller.activeServer?.instanceId == sourceServerID else { return }
             loadedBoardProjectIDs = retainedBoardProjectIDs
             snapshot.replace(
                 projects: refreshedProjects,
@@ -335,22 +371,33 @@ extension AppStore {
             if let position = refreshedSettings.flatMap({ TaskDropPosition(rawValue: $0.taskDropPosition) }) {
                 taskDropPosition = position
             }
+            refetchRevision &+= 1
+            snapshotServerID = sourceServerID
             publishSnapshot()
             isInitialLoading = false
             lastSyncError = nil
         } catch {
-            guard isStarted, generation == rpcGeneration else { return }
+            guard isStarted,
+                  generation == rpcGeneration,
+                  controller.activeServer?.instanceId == sourceServerID else { return }
             isInitialLoading = false
             lastSyncError = "Could not refresh dev3 data. Cached data is still available."
         }
     }
 
-    func apply(_ push: RPCPushEvent, generation: UUID) {
-        guard isStarted, generation == rpcGeneration else { return }
+    func apply(
+        _ push: RPCPushEvent,
+        generation: UUID,
+        sourceServerID: String?
+    ) {
+        guard isStarted,
+              generation == rpcGeneration,
+              controller.activeServer?.instanceId == sourceServerID else { return }
         lastPush = push
         if let routedToast = snapshot.reduce(push) {
             toast = routedToast
         }
+        snapshotServerID = sourceServerID
         publishSnapshot()
         for observer in Array(pushObservers.values) {
             observer(push)
@@ -370,8 +417,31 @@ extension AppStore {
         case .idle:
             banner = nil
         case .authenticating, .connecting:
+            pingTask?.cancel()
+            pingTask = nil
             banner = .connecting
-            removeAllTaskRoutes()
+            let snapshotSwitchedServers = snapshotServerID.map {
+                $0 != controller.activeServer?.instanceId
+            } ?? false
+            let attachedRPCSwitchedServers = rpc != nil
+                && rpcServerID != controller.activeServer?.instanceId
+            if snapshotSwitchedServers || attachedRPCSwitchedServers {
+                snapshot = AppStoreSnapshot()
+                snapshotServerID = nil
+                toast = nil
+                lastSyncError = nil
+                lastPush = nil
+                taskDropPosition = .top
+                loadedBoardProjectIDs.removeAll()
+                projectPullStates.removeAll()
+                workPath.removeAll()
+                projectsPath.removeAll()
+                terminalFocusRequested = false
+                isInitialLoading = true
+                publishSnapshot()
+            } else {
+                removeAllTaskRoutes()
+            }
         case .connected:
             banner = nil
             if isSceneActive {

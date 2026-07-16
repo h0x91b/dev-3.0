@@ -11,6 +11,24 @@ struct CompanionAppRoot: View {
     let store: AppStore
     let runtime: ConnectionRuntime?
     @State private var presentedTaskInfo: PresentedTaskInfo?
+    @State private var mediaCoordinator: TaskMediaCoordinator
+
+    init(store: AppStore, runtime: ConnectionRuntime?) {
+        self.store = store
+        self.runtime = runtime
+        _mediaCoordinator = State(
+            initialValue: TaskMediaCoordinator(
+                pushSource: store,
+                serviceProviderFactory: {
+                    if let rpcClient = runtime?.rpcClient {
+                        RPCTaskMediaServiceProvider(rpcClient: rpcClient)
+                    } else {
+                        UnavailableTaskMediaServiceProvider()
+                    }
+                }
+            )
+        )
+    }
 
     var body: some View {
         CompanionRootView(
@@ -45,11 +63,46 @@ struct CompanionAppRoot: View {
                 presentedTaskInfo = nil
             }
         }
+        .background {
+            TaskMediaHost(store: mediaCoordinator.mediaStore)
+        }
+        .onAppear {
+            mediaCoordinator.start()
+        }
+        .onDisappear {
+            mediaCoordinator.stop()
+        }
+        .onChange(of: mediaShellSnapshot, initial: true) { _, snapshot in
+            mediaCoordinator.synchronize(
+                tasksByProject: snapshot.tasksByProject,
+                rpcGeneration: snapshot.rpcGeneration,
+                serverID: snapshot.serverID,
+                snapshotServerID: snapshot.snapshotServerID
+            )
+        }
+    }
+
+    private var mediaShellSnapshot: MediaShellSnapshot {
+        MediaShellSnapshot(
+            tasksByProject: store.tasksByProject,
+            rpcGeneration: store.rpcGeneration,
+            serverID: store.controller.activeServer?.instanceId,
+            snapshotServerID: store.snapshotServerID,
+            refetchRevision: store.refetchRevision
+        )
     }
 
     private func presentTaskInfo(projectID: String, taskID: String) {
         presentedTaskInfo = PresentedTaskInfo(projectID: projectID, taskID: taskID)
     }
+}
+
+private struct MediaShellSnapshot: Equatable {
+    let tasksByProject: [String: [Dev3Task]]
+    let rpcGeneration: UUID
+    let serverID: String?
+    let snapshotServerID: String?
+    let refetchRevision: Int
 }
 
 private struct PresentedTaskInfo: Identifiable {

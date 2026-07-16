@@ -225,6 +225,170 @@ struct AppStoreTests {
         #expect(store.loadedBoardProjectIDs == [alpha.id])
     }
 
+    @Test("Old RPC activity cannot mutate state under a newly selected server identity")
+    // swiftlint:disable:next function_body_length
+    func staleRefetchCannotCrossServerIdentity() async throws {
+        let secureStore = StoreMemorySecureData()
+        let pairedStore = PairedServerStore(secureStore: secureStore)
+        let serverA = try pairedServer(id: "server-a", name: "Server A", port: 4001)
+        let serverB = try pairedServer(id: "server-b", name: "Server B", port: 4002)
+        try await pairedStore.upsert(serverB, makeActive: false)
+        try await pairedStore.upsert(serverA)
+        let oldProject = try project(id: "old-project", name: "Old")
+        let oldRPC = StoreRPC(projects: [oldProject], projectTasks: [])
+        oldRPC.setGlobalDropPosition("bottom")
+        let controller = makeController(pairedServerStore: pairedStore)
+        let store = AppStore(controller: controller, rpc: nil)
+        await store.start()
+        #expect(controller.activeServer?.instanceId == serverA.instanceId)
+        store.attach(oldRPC)
+        oldRPC.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+        #expect(store.projects == [oldProject])
+        #expect(store.snapshotServerID == serverA.instanceId)
+        oldRPC.failNextProjectFetch()
+        oldRPC.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+        let oldToast = try decode(CLIToastPush.self, #"{"message":"Server A","level":"success"}"#)
+        oldRPC.emitPush(.cliToast(oldToast))
+        store.setTerminalFocused(true)
+        await settle()
+        #expect(store.toast?.message == "Server A")
+        #expect(store.lastSyncError != nil)
+        #expect(store.lastPush == .cliToast(oldToast))
+        #expect(store.taskDropPosition == .bottom)
+        store.handleSessionState(.connecting)
+        #expect(store.projects == [oldProject])
+        #expect(store.toast?.message == "Server A")
+        #expect(store.lastSyncError != nil)
+        #expect(store.lastPush == .cliToast(oldToast))
+        #expect(store.taskDropPosition == .bottom)
+
+        oldRPC.suspendNextProjectFetch()
+        let generation = store.rpcGeneration
+        let staleRefetch = Task {
+            await store.refetch(
+                using: oldRPC,
+                generation: generation,
+                sourceServerID: serverA.instanceId
+            )
+        }
+        await settle()
+
+        await controller.connect(to: serverB)
+        await settle()
+        #expect(controller.activeServer?.instanceId == serverB.instanceId)
+        #expect(store.projects.isEmpty)
+        #expect(store.snapshotServerID == nil)
+        #expect(store.isInitialLoading)
+        #expect(store.toast == nil)
+        #expect(store.lastSyncError == nil)
+        #expect(store.lastPush == nil)
+        #expect(store.taskDropPosition == .top)
+        let newRPC = StoreRPC(projects: [], projectTasks: [])
+        store.attach(newRPC)
+        await settle()
+        #expect(newRPC.terminalFocusCalls.last == false)
+        let staleTask = try task(
+            id: "stale-task",
+            projectId: oldProject.id,
+            seq: 1,
+            title: "Stale"
+        )
+        let staleUpdate = try decode(TaskUpdatedPush.self, """
+        {"projectId":"\(oldProject.id)","task":\(encoded(staleTask))}
+        """)
+        let bannerBeforeOldEvents = store.banner
+        let wasOpenBeforeOldEvents = store.rpcIsOpen
+        oldRPC.emitPush(.taskUpdated(staleUpdate))
+        oldRPC.emitConnection(.opened(requiresRefetch: true))
+        oldRPC.emitConnection(.failed("old failure"))
+        await settle()
+
+        #expect(store.lastPush == nil)
+        #expect(store.tasksByProject[oldProject.id] == nil)
+        #expect(store.banner == bannerBeforeOldEvents)
+        #expect(store.rpcIsOpen == wasOpenBeforeOldEvents)
+        oldRPC.resumeProjectFetch()
+        await staleRefetch.value
+
+        #expect(store.projects.isEmpty)
+        #expect(store.snapshotServerID == nil)
+        #expect(store.refetchRevision == 1)
+    }
+
+    @Test("A pre-refetch push is stamped and cleared when the active server changes")
+    func preRefetchPushCannotLeakAcrossServers() async throws {
+        let pairedStore = PairedServerStore(secureStore: StoreMemorySecureData())
+        let serverA = try pairedServer(id: "server-a", name: "Server A", port: 4001)
+        let serverB = try pairedServer(id: "server-b", name: "Server B", port: 4002)
+        try await pairedStore.upsert(serverB, makeActive: false)
+        try await pairedStore.upsert(serverA)
+        let task = try task(id: "early-task", projectId: "project-a", seq: 1, title: "Early")
+        let update = try decode(TaskUpdatedPush.self, """
+        {"projectId":"project-a","task":\(encoded(task))}
+        """)
+        let rpc = StoreRPC(projects: [], projectTasks: [])
+        let controller = makeController(pairedServerStore: pairedStore)
+        let store = AppStore(controller: controller, rpc: nil)
+        await store.start()
+        store.attach(rpc)
+
+        rpc.emitPush(.taskUpdated(update))
+        await settle()
+        #expect(store.snapshotServerID == serverA.instanceId)
+        #expect(store.task(projectId: task.projectId, taskId: task.id) == task)
+
+        await controller.connect(to: serverB)
+        await settle()
+        #expect(store.snapshotServerID == nil)
+        #expect(store.tasksByProject.isEmpty)
+    }
+
+    @Test("In-flight board refresh and mutation cannot publish after a server switch")
+    func staleWorkCannotCrossServerIdentity() async throws {
+        let pairedStore = PairedServerStore(secureStore: StoreMemorySecureData())
+        let serverA = try pairedServer(id: "server-a", name: "Server A", port: 4001)
+        let serverB = try pairedServer(id: "server-b", name: "Server B", port: 4002)
+        try await pairedStore.upsert(serverB, makeActive: false)
+        try await pairedStore.upsert(serverA)
+        let project = try project(id: "project-a", name: "Alpha")
+        let original = try task(id: "task-a", projectId: project.id, seq: 1, title: "Original")
+        let stale = try task(id: original.id, projectId: project.id, seq: 1, title: "Stale result")
+        let rpc = try StoreRPC(
+            projects: [project],
+            projectTasks: [projectTasks(projectId: project.id, tasks: [original])]
+        )
+        let controller = makeController(pairedServerStore: pairedStore)
+        let store = AppStore(controller: controller, rpc: nil)
+        await store.start()
+        controller.stop()
+        store.attach(rpc)
+        rpc.emitConnection(.opened(requiresRefetch: true))
+        await settle()
+        #expect(store.isConnected)
+
+        rpc.setBoardTasks([stale], projectID: project.id)
+        rpc.setMutationResult(stale)
+        rpc.suspendNextBoardFetch(projectID: project.id)
+        rpc.suspendNextMove()
+        async let refresh: Void = store.refreshProject(project.id)
+        async let mutation: Void = store.moveTask(original, to: .inProgress)
+        await settle()
+
+        await controller.connect(to: serverB)
+        await settle()
+        #expect(store.isConnected == false)
+        rpc.resumeBoardFetch(projectID: project.id)
+        rpc.resumeMove()
+        await refresh
+        await mutation
+
+        #expect(store.task(projectId: project.id, taskId: original.id) == nil)
+        #expect(store.lastSyncError == nil)
+        #expect(store.toast == nil)
+    }
+
     @Test("Live actions apply server responses and route every RPC")
     func liveActions() async throws {
         let alpha = try project(id: "project-a", name: "Alpha")
@@ -444,6 +608,8 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     private var priorityResults: [Dev3Task]?
     private var globalDropPosition = "top"
     private var projectFetchContinuation: CheckedContinuation<Void, Never>?
+    private var boardFetchContinuations: [String: CheckedContinuation<Void, Never>] = [:]
+    private var moveContinuation: CheckedContinuation<Void, Never>?
     private var state = State()
 
     private struct State {
@@ -458,6 +624,8 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         var customColumnCalls: [(taskID: String, columnID: String?)] = []
         var pullCalls: [String] = []
         var boardFetchFailures: Set<String> = []
+        var suspendedBoardFetches: Set<String> = []
+        var suspendsNextMove = false
         var suspendsNextProjectFetch = false
         var foregroundCalls: [Bool] = []
         var terminalFocusCalls: [Bool] = []
@@ -580,7 +748,15 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
     }
 
     func getTasks(projectId: String) async throws -> [Dev3Task] {
-        try lock.withLock {
+        let shouldSuspend = lock.withLock {
+            state.suspendedBoardFetches.remove(projectId) != nil
+        }
+        if shouldSuspend {
+            await withCheckedContinuation { continuation in
+                lock.withLock { boardFetchContinuations[projectId] = continuation }
+            }
+        }
+        return try lock.withLock {
             state.boardFetchCountByProject[projectId, default: 0] += 1
             if state.boardFetchFailures.remove(projectId) != nil {
                 throw StoreTestError()
@@ -603,7 +779,17 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         force _: Bool?,
         clientPlayedSound _: Bool?
     ) async throws -> Dev3Task {
-        try lock.withLock {
+        let shouldSuspend = lock.withLock {
+            let value = state.suspendsNextMove
+            state.suspendsNextMove = false
+            return value
+        }
+        if shouldSuspend {
+            await withCheckedContinuation { continuation in
+                lock.withLock { moveContinuation = continuation }
+            }
+        }
+        return try lock.withLock {
             state.moveCalls.append((taskId, newStatus))
             return try mutationResultByTask[taskId] ?? storedTask(taskId: taskId, projectId: projectId)
         }
@@ -688,6 +874,28 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
         lock.withLock { _ = state.boardFetchFailures.insert(projectID) }
     }
 
+    func suspendNextBoardFetch(projectID: String) {
+        lock.withLock { _ = state.suspendedBoardFetches.insert(projectID) }
+    }
+
+    func resumeBoardFetch(projectID: String) {
+        let continuation = lock.withLock { boardFetchContinuations.removeValue(forKey: projectID) }
+        continuation?.resume()
+    }
+
+    func suspendNextMove() {
+        lock.withLock { state.suspendsNextMove = true }
+    }
+
+    func resumeMove() {
+        let continuation = lock.withLock {
+            let continuation = moveContinuation
+            moveContinuation = nil
+            return continuation
+        }
+        continuation?.resume()
+    }
+
     func setMutationResult(_ task: Dev3Task, priorityGroup: [Dev3Task]? = nil) {
         lock.withLock {
             mutationResultByTask[task.id] = task
@@ -724,9 +932,12 @@ private final class StoreRPC: AppRPCServing, @unchecked Sendable {
 }
 
 @MainActor
-private func makeController(pathObserver: StorePathObserver = StorePathObserver()) -> ConnectionController {
+private func makeController(
+    pathObserver: StorePathObserver = StorePathObserver(),
+    pairedServerStore: PairedServerStore = PairedServerStore(secureStore: StoreMemorySecureData())
+) -> ConnectionController {
     ConnectionController(
-        store: PairedServerStore(secureStore: StoreMemorySecureData()),
+        store: pairedServerStore,
         transport: StoreSessionTransport(),
         discovery: StoreDiscovery(),
         pathObserver: pathObserver,
@@ -808,6 +1019,15 @@ private func project(id: String, name: String, deleted: Bool = false) throws -> 
      "defaultBaseBranch":"main","createdAt":"2026-07-16T10:00:00Z",
      "deleted":\(deleted)}
     """)
+}
+
+private func pairedServer(id: String, name: String, port: Int) throws -> PairedServer {
+    try PairedServer(
+        origin: #require(URL(string: "http://127.0.0.1:\(port)")),
+        sessionToken: "\(id)-token",
+        name: name,
+        instanceId: id
+    )
 }
 
 private func task(

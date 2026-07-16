@@ -8,7 +8,7 @@ struct ZoomableImageView: UIViewRepresentable {
     let reduceMotion: Bool
 
     func makeUIView(context: Context) -> UIScrollView {
-        let scrollView = UIScrollView()
+        let scrollView = ImageScrollView()
         scrollView.backgroundColor = .clear
         scrollView.delegate = context.coordinator
         scrollView.minimumZoomScale = 1
@@ -22,6 +22,7 @@ struct ZoomableImageView: UIViewRepresentable {
         imageView.clipsToBounds = true
         imageView.isAccessibilityElement = true
         scrollView.addSubview(imageView)
+        scrollView.hostedImageView = imageView
 
         let doubleTap = UITapGestureRecognizer(
             target: context.coordinator,
@@ -95,5 +96,15 @@ struct ZoomableImageView: UIViewRepresentable {
                 right: horizontal
             )
         }
+    }
+}
+
+private final class ImageScrollView: UIScrollView {
+    weak var hostedImageView: UIImageView?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard zoomScale == minimumZoomScale else { return }
+        hostedImageView?.frame = bounds
     }
 }

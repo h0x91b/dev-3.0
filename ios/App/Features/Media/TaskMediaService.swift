@@ -3,11 +3,14 @@ import Foundation
 
 enum TaskMediaServiceError: Error, LocalizedError, Sendable {
     case imageUnavailable
+    case connectionUnavailable
 
     var errorDescription: String? {
         switch self {
         case .imageUnavailable:
             "The shared image is no longer available."
+        case .connectionUnavailable:
+            "Reconnect to this dev3 instance to load shared media."
         }
     }
 }
@@ -35,6 +38,28 @@ struct RPCTaskMediaServiceProvider: TaskMediaServiceProviding {
 
     func service(for taskID: String) -> any TaskMediaServicing {
         RPCTaskMediaService(taskID: taskID, rpcClient: rpcClient)
+    }
+}
+
+struct UnavailableTaskMediaServiceProvider: TaskMediaServiceProviding {
+    func service(for taskID: String) -> any TaskMediaServicing {
+        UnavailableTaskMediaService(taskID: taskID)
+    }
+}
+
+private struct UnavailableTaskMediaService: TaskMediaServicing {
+    let taskID: String
+
+    func loadImage(_: Dev3SharedImage) async throws -> TaskMediaBinary {
+        throw TaskMediaServiceError.connectionUnavailable
+    }
+
+    func loadArtifact(_: Dev3SharedArtifact) async throws -> Dev3ArtifactWebBundle {
+        throw TaskMediaServiceError.connectionUnavailable
+    }
+
+    func loadArtifactDownload(_: Dev3SharedArtifact) async throws -> TaskMediaBinary {
+        throw TaskMediaServiceError.connectionUnavailable
     }
 }
 

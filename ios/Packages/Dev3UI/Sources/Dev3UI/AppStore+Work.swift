@@ -3,7 +3,9 @@ import Foundation
 
 public extension AppStore {
     var isConnected: Bool {
-        guard rpc != nil, rpcIsOpen else { return false }
+        guard rpc != nil,
+              rpcIsOpen,
+              rpcServerID == controller.activeServer?.instanceId else { return false }
         return controller.sessionState == .connected || controller.sessionState == .idle
     }
 
@@ -20,33 +22,35 @@ public extension AppStore {
     }
 
     func refreshAll() async {
-        guard isConnected, let rpc else { return }
-        await refetch(using: rpc, generation: rpcGeneration)
+        guard isConnected, let rpc, let context = currentRPCContext() else { return }
+        await refetch(
+            using: rpc,
+            generation: context.generation,
+            sourceServerID: context.serverID
+        )
     }
 
     func refreshProject(_ projectID: String) async {
         loadedBoardProjectIDs.insert(projectID)
-        guard isConnected, let rpc else { return }
-        let generation = rpcGeneration
+        guard isConnected, let rpc, let context = currentRPCContext() else { return }
         do {
             let tasks = try await rpc.getTasks(projectId: projectID)
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             snapshot.replaceTasks(tasks, projectId: projectID)
             publishSnapshot()
             lastSyncError = nil
         } catch {
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             lastSyncError = "Could not refresh this project. Cached board data is still available."
         }
     }
 
     func pullProjectMain(_ projectID: String) async {
-        guard isConnected, let rpc else { return }
-        let generation = rpcGeneration
+        guard isConnected, let rpc, let context = currentRPCContext() else { return }
         projectPullStates[projectID] = .pulling
         do {
             let result = try await rpc.pullProjectMain(projectId: projectID)
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             if result.ok {
                 projectPullStates[projectID] = .succeeded(Self.pullSuccessMessage(result))
                 await refreshProject(projectID)
@@ -54,14 +58,13 @@ public extension AppStore {
                 projectPullStates[projectID] = .failed(Self.pullFailureMessage(result))
             }
         } catch {
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             projectPullStates[projectID] = .failed(error.localizedDescription)
         }
     }
 
     func moveTask(_ task: Dev3Task, to status: Dev3TaskStatus) async {
-        guard isConnected, let rpc else { return }
-        let generation = rpcGeneration
+        guard isConnected, let rpc, let context = currentRPCContext() else { return }
         do {
             let updated = try await rpc.moveTask(
                 taskId: task.id,
@@ -70,61 +73,58 @@ public extension AppStore {
                 force: nil,
                 clientPlayedSound: nil
             )
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             acceptTaskUpdate(updated)
         } catch {
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             presentMutationError("Could not move task", error: error)
         }
     }
 
     func setTaskPriority(_ task: Dev3Task, priority: Dev3TaskPriority) async {
-        guard isConnected, let rpc else { return }
-        let generation = rpcGeneration
+        guard isConnected, let rpc, let context = currentRPCContext() else { return }
         do {
             let updated = try await rpc.setTaskPriority(
                 taskId: task.id,
                 projectId: task.projectId,
                 priority: priority
             )
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             acceptTaskUpdates(updated)
         } catch {
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             presentMutationError("Could not change task priority", error: error)
         }
     }
 
     func toggleTaskWatch(_ task: Dev3Task) async {
-        guard isConnected, let rpc else { return }
-        let generation = rpcGeneration
+        guard isConnected, let rpc, let context = currentRPCContext() else { return }
         do {
             let updated = try await rpc.toggleTaskWatch(
                 taskId: task.id,
                 projectId: task.projectId,
                 watched: task.watched != true
             )
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             acceptTaskUpdate(updated)
         } catch {
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             presentMutationError("Could not update task watch", error: error)
         }
     }
 
     func moveTask(_ task: Dev3Task, toCustomColumn columnID: String) async {
-        guard isConnected, let rpc else { return }
-        let generation = rpcGeneration
+        guard isConnected, let rpc, let context = currentRPCContext() else { return }
         do {
             let updated = try await rpc.moveTaskToCustomColumn(
                 taskId: task.id,
                 projectId: task.projectId,
                 customColumnId: columnID
             )
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             acceptTaskUpdate(updated)
         } catch {
-            guard generation == rpcGeneration else { return }
+            guard owns(context) else { return }
             presentMutationError("Could not move task", error: error)
         }
     }
@@ -200,6 +200,24 @@ public extension AppStore {
                 }
             }
         }
+    }
+}
+
+struct AppRPCContext: Equatable, Sendable {
+    let generation: UUID
+    let serverID: String?
+}
+
+extension AppStore {
+    func currentRPCContext() -> AppRPCContext? {
+        guard rpc != nil else { return nil }
+        return AppRPCContext(generation: rpcGeneration, serverID: rpcServerID)
+    }
+
+    func owns(_ context: AppRPCContext) -> Bool {
+        context.generation == rpcGeneration
+            && context.serverID == rpcServerID
+            && context.serverID == controller.activeServer?.instanceId
     }
 }
 

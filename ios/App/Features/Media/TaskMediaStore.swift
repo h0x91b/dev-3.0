@@ -51,6 +51,7 @@ final class TaskMediaStore {
     var transientError: String?
 
     @ObservationIgnored private var imageTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var imageLoadIDs: [String: UUID] = [:]
     @ObservationIgnored private var artifactTask: Task<Void, Never>?
     @ObservationIgnored private var artifactLoadID: UUID?
     @ObservationIgnored private var historyPrefetchTask: Task<Void, Never>?
@@ -225,6 +226,7 @@ extension TaskMediaStore {
         for key in removedKeys {
             imageTasks[key]?.cancel()
             imageTasks[key] = nil
+            imageLoadIDs[key] = nil
             imageLoadingKeys.remove(key)
         }
 
@@ -350,20 +352,27 @@ extension TaskMediaStore {
               imageErrors[key] == nil,
               imageTasks[key] == nil else { return }
         let service = serviceProvider.service(for: taskID)
+        let loadID = UUID()
+        imageLoadIDs[key] = loadID
         imageLoadingKeys.insert(key)
         imageTasks[key] = Task { [weak self] in
             defer {
-                self?.imageLoadingKeys.remove(key)
-                self?.imageTasks[key] = nil
+                if self?.imageLoadIDs[key] == loadID {
+                    self?.imageLoadingKeys.remove(key)
+                    self?.imageTasks[key] = nil
+                    self?.imageLoadIDs[key] = nil
+                }
             }
             do {
                 let binary = try await service.loadImage(image)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self?.imageLoadIDs[key] == loadID else { return }
                 self?.imageCache[key] = binary.data
             } catch is CancellationError {
                 return
             } catch {
-                self?.imageErrors[key] = error.localizedDescription
+                if self?.imageLoadIDs[key] == loadID {
+                    self?.imageErrors[key] = error.localizedDescription
+                }
             }
         }
     }
@@ -412,6 +421,7 @@ extension TaskMediaStore {
         for key in droppedKeys {
             imageTasks[key]?.cancel()
             imageTasks[key] = nil
+            imageLoadIDs[key] = nil
             imageLoadingKeys.remove(key)
         }
     }
@@ -421,6 +431,7 @@ extension TaskMediaStore {
             task.cancel()
         }
         imageTasks.removeAll()
+        imageLoadIDs.removeAll()
         imageLoadingKeys.removeAll()
         artifactTask?.cancel()
         artifactTask = nil
