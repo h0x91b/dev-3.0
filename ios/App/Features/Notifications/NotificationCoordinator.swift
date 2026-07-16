@@ -3,6 +3,9 @@ import Dev3UI
 import Foundation
 import Observation
 
+// Notification state, delivery serialization, and identity validation stay in one coordinator.
+// swiftlint:disable file_length
+
 @MainActor
 @Observable
 final class NativeNotificationCoordinator {
@@ -105,6 +108,29 @@ final class NativeNotificationCoordinator {
         )
         refreshBadge()
         projectPendingDeepLink()
+        startDrainIfNeeded()
+    }
+
+    /// Retires server-scoped notification state while preserving a cold-launch tap until
+    /// the connection controller establishes which server should validate it.
+    func clearActiveServer() {
+        if let previousServerID = activeServerID {
+            for taskID in notificationTaskIDs {
+                pendingRemovals.formUnion(NativeNotificationPolicy.identifiers(
+                    serverID: previousServerID,
+                    taskID: taskID
+                ))
+            }
+            removePendingDeliveries(serverID: previousServerID)
+        }
+        activeServerID = nil
+        authoritativeSnapshotServerID = nil
+        hasTaskSnapshot = false
+        tasksByID.removeAll()
+        attentionTaskIDs.removeAll()
+        notificationTaskIDs.removeAll()
+        deepLinkRequest = nil
+        refreshBadge()
         startDrainIfNeeded()
     }
 
@@ -497,3 +523,5 @@ private extension NativeNotificationCoordinator {
         }
     }
 }
+
+// swiftlint:enable file_length

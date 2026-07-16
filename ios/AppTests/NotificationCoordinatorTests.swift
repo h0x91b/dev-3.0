@@ -1,3 +1,6 @@
+// The serialized suite shares realistic service/state fixtures across notification behaviors.
+// swiftlint:disable file_length
+
 @testable import dev3
 import Dev3Kit
 import Foundation
@@ -229,6 +232,41 @@ struct NotificationCoordinatorTests {
 }
 
 extension NotificationCoordinatorTests {
+    @Test("Clearing the active server retires its state but retains a cold tap for identity")
+    func clearActiveServerRetainsColdTap() async throws {
+        let service = RecordingNotificationService(authorization: .authorized)
+        let stateStore = RecordingNotificationStateStore()
+        let coordinator = NativeNotificationCoordinator(service: service, stateStore: stateStore)
+        let task = try notificationTask(id: "task-a", status: "user-questions")
+        await coordinator.refreshAuthorizationStatus()
+        coordinator.setConnectionReady(true)
+        coordinator.synchronize(
+            serverID: "server-a",
+            snapshotServerID: "server-a",
+            tasks: [task],
+            attentionTaskIDs: []
+        )
+        coordinator.handleNotificationTap(userInfo: notificationUserInfo(taskID: task.id))
+        #expect(coordinator.deepLinkRequest?.taskID == task.id)
+
+        coordinator.clearActiveServer()
+        await eventually("Clearing a server should retire its task notifications and badge") {
+            coordinator.badgeCount == 0 && service.removedIdentifiers.isSuperset(
+                of: NativeNotificationPolicy.identifiers(serverID: "server-a", taskID: task.id)
+            )
+        }
+        #expect(coordinator.deepLinkRequest == nil)
+        #expect(stateStore.pendingDeepLink?.serverID == "server-a")
+
+        coordinator.synchronize(
+            serverID: "server-a",
+            snapshotServerID: "server-a",
+            tasks: [task],
+            attentionTaskIDs: []
+        )
+        #expect(coordinator.deepLinkRequest?.taskID == task.id)
+    }
+
     @Test("Authoritative snapshots remove absent task notifications while reconnect retains state")
     func authoritativeSnapshotReconciliation() async throws {
         let service = RecordingNotificationService(authorization: .authorized)

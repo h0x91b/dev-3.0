@@ -41,8 +41,8 @@ struct AgentCompletionCoordinatorTests {
                 CompletionCall(requestID: second.requestId, approved: false)
             ]
         )
-        #expect(events.values.first == "route:task-a")
-        #expect(events.values.filter { $0 == "route:task-a" }.count == 1)
+        #expect(events.values.first == "route:project:task-a")
+        #expect(events.values.filter { $0 == "route:project:task-a" }.count == 1)
         #expect(coordinator.currentConfirmation == nil)
         #expect(coordinator.pendingPromptCount == 0)
     }
@@ -130,7 +130,7 @@ struct AgentCompletionCoordinatorTests {
         #expect(
             await newService.calls == [CompletionCall(requestID: completion.requestId, approved: true)]
         )
-        #expect(events.values.filter { $0 == "route:task-a" }.count == 1)
+        #expect(events.values.filter { $0 == "route:project:task-a" }.count == 1)
         #expect(coordinator.lastResponseError == nil)
 
         coordinator.retryFailedResponses()
@@ -193,6 +193,18 @@ struct AgentCompletionCoordinatorTests {
                 CompletionCall(requestID: completion.requestId, approved: false)
             ]
         )
+
+        let resumed = try request(id: "request-b", taskID: "task-b")
+        coordinator.receive(resumed)
+        #expect(coordinator.currentRequestID == resumed.requestId)
+        coordinator.decline(requestID: resumed.requestId)
+        await eventually("A rebound coordinator should accept and resolve new prompts") {
+            await reboundService.calls.count == 2 && coordinator.pendingResponseCount == 0
+        }
+        #expect(
+            await reboundService.calls.last ==
+                CompletionCall(requestID: resumed.requestId, approved: false)
+        )
     }
 
     private func makeCoordinator(
@@ -201,7 +213,9 @@ struct AgentCompletionCoordinatorTests {
     ) -> AgentCompletionCoordinator {
         AgentCompletionCoordinator(
             serviceProvider: TestCompletionProvider(service: service),
-            removeRoute: { events.append("route:\($0)") }
+            removeRoute: { projectID, taskID in
+                events.append("route:\(projectID):\(taskID)")
+            }
         )
     }
 

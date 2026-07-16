@@ -1,4 +1,5 @@
 import Dev3Kit
+import Foundation
 
 protocol AgentCompletionServicing: Sendable {
     func respond(requestID: String, approved: Bool) async throws
@@ -13,6 +14,26 @@ struct RPCAgentCompletionServiceProvider: AgentCompletionServiceProviding {
 
     func service() -> any AgentCompletionServicing {
         RPCAgentCompletionService(rpcClient: rpcClient)
+    }
+}
+
+struct UnavailableCompletionProvider: AgentCompletionServiceProviding {
+    func service() -> any AgentCompletionServicing {
+        UnavailableAgentCompletionService()
+    }
+}
+
+private enum AgentCompletionServiceError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+        "The completion response will be sent after dev3 reconnects."
+    }
+}
+
+private actor UnavailableAgentCompletionService: AgentCompletionServicing {
+    func respond(requestID _: String, approved _: Bool) async throws {
+        throw AgentCompletionServiceError.unavailable
     }
 }
 

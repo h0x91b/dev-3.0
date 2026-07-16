@@ -3,12 +3,14 @@ import SwiftUI
 
 public typealias TaskDestinationBuilder = @MainActor (_ projectID: String, _ taskID: String) -> AnyView
 public typealias TaskInfoAction = @MainActor (_ projectID: String, _ taskID: String) -> Void
+public typealias SettingsAccessoryBuilder = @MainActor () -> AnyView
 
 @MainActor
 public struct CompanionRootView: View {
     @Bindable private var store: AppStore
     private let taskDestinationBuilder: TaskDestinationBuilder
     private let onOpenTaskInfo: TaskInfoAction
+    private let settingsAccessoryBuilder: SettingsAccessoryBuilder
     @State private var showsPairing = false
 
     public init(
@@ -16,11 +18,15 @@ public struct CompanionRootView: View {
         taskDestinationBuilder: @escaping TaskDestinationBuilder = { _, _ in
             AnyView(ContentUnavailableView("Terminal unavailable", systemImage: "terminal"))
         },
-        onOpenTaskInfo: @escaping TaskInfoAction = { _, _ in }
+        onOpenTaskInfo: @escaping TaskInfoAction = { _, _ in },
+        settingsAccessoryBuilder: @escaping SettingsAccessoryBuilder = {
+            AnyView(EmptyView())
+        }
     ) {
         self.store = store
         self.taskDestinationBuilder = taskDestinationBuilder
         self.onOpenTaskInfo = onOpenTaskInfo
+        self.settingsAccessoryBuilder = settingsAccessoryBuilder
     }
 
     public var body: some View {
@@ -30,6 +36,7 @@ public struct CompanionRootView: View {
                     store: store,
                     taskDestinationBuilder: taskDestinationBuilder,
                     onOpenTaskInfo: onOpenTaskInfo,
+                    settingsAccessoryBuilder: settingsAccessoryBuilder,
                     onPairAnother: { showsPairing = true }
                 )
             } else {
@@ -57,6 +64,7 @@ private struct ConnectedShellView: View {
     @Bindable var store: AppStore
     let taskDestinationBuilder: TaskDestinationBuilder
     let onOpenTaskInfo: TaskInfoAction
+    let settingsAccessoryBuilder: SettingsAccessoryBuilder
     let onPairAnother: () -> Void
     @State private var variantSelection: VariantSelection?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -92,8 +100,12 @@ private struct ConnectedShellView: View {
             .accessibilityIdentifier("connected.tab.projects")
 
             NavigationStack(path: $store.settingsPath) {
-                ServerSettingsView(controller: store.controller, onPairAnother: onPairAnother)
-                    .navigationTitle("Settings")
+                ServerSettingsView(
+                    controller: store.controller,
+                    settingsAccessoryBuilder: settingsAccessoryBuilder,
+                    onPairAnother: onPairAnother
+                )
+                .navigationTitle("Settings")
             }
             .tabItem {
                 Label("Settings", systemImage: "gearshape.fill")
@@ -264,6 +276,7 @@ private struct ToastView: View {
 @MainActor
 private struct ServerSettingsView: View {
     let controller: ConnectionController
+    let settingsAccessoryBuilder: SettingsAccessoryBuilder
     let onPairAnother: () -> Void
 
     var body: some View {
@@ -278,6 +291,8 @@ private struct ServerSettingsView: View {
                     ServerSettingsRow(controller: controller, server: server)
                 }
             }
+
+            settingsAccessoryBuilder()
 
             Section {
                 Button("Pair another instance", action: onPairAnother)

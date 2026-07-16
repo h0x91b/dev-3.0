@@ -7,7 +7,12 @@ import Testing
 @MainActor
 func companionRootViewConstruction() {
     let runtime = ConnectionRuntime()
-    _ = CompanionRootView(store: AppStore(runtime: runtime))
+    _ = CompanionRootView(
+        store: AppStore(runtime: runtime),
+        settingsAccessoryBuilder: {
+            AnyView(Section("Notifications") { Text("Preferences") })
+        }
+    )
 }
 
 @Test("Offline task info remains read-only after the app reconnects")

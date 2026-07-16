@@ -18,7 +18,7 @@ private struct AgentCompletionResponseIntent: Identifiable {
 @MainActor
 @Observable
 final class AgentCompletionCoordinator {
-    typealias RouteRemoval = @MainActor (String) -> Void
+    typealias RouteRemoval = @MainActor (_ projectID: String, _ taskID: String) -> Void
 
     private(set) var currentConfirmation: TaskInfoConfirmation?
     private(set) var pendingPromptCount = 0
@@ -92,6 +92,7 @@ final class AgentCompletionCoordinator {
     func rebindServiceProvider(_ serviceProvider: any AgentCompletionServiceProviding) {
         providerGeneration &+= 1
         self.serviceProvider = serviceProvider
+        stopped = false
         declineAllPresentedRequests()
         prepareFailedResponsesForRetry()
         startDrainIfNeeded()
@@ -113,7 +114,7 @@ private extension AgentCompletionCoordinator {
         guard let request = promptQueue.first, request.requestId == requestID else { return }
         promptQueue.removeFirst()
         if approved {
-            removeRoute(request.taskId)
+            removeRoute(request.projectId, request.taskId)
         }
         enqueueResponse(requestID: request.requestId, approved: approved)
         refreshPresentation()
