@@ -56,7 +56,14 @@ struct TaskInfoSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .overlay {
-                if store.isMutating {
+                if store.isPreparingTerminalMove {
+                    ProgressView()
+                        .controlSize(.large)
+                        .padding(20)
+                        .background(palette.surfaceOverlay, in: RoundedRectangle(cornerRadius: 16))
+                        .accessibilityLabel("Checking task changes")
+                        .accessibilityIdentifier("taskInfo.checkingChanges")
+                } else if store.isMutating {
                     ProgressView()
                         .controlSize(.large)
                         .padding(20)

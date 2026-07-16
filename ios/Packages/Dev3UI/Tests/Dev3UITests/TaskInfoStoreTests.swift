@@ -3,8 +3,12 @@
 import Foundation
 import Testing
 
+// Task Info's state-machine scenarios share one configurable service double.
+// swiftlint:disable file_length
+
 @MainActor
 @Suite("Task info store")
+// swiftlint:disable:next type_body_length
 struct TaskInfoStoreTests {
     @Test("Clean cancellation from the status picker waits for confirmation")
     func cleanCancellationConfirmsBeforeMutation() async throws {
@@ -64,8 +68,8 @@ struct TaskInfoStoreTests {
         #expect(store.task.status == .completed)
     }
 
-    @Test("An unavailable branch check does not block a clean terminal move")
-    func branchFailureDoesNotBlock() async throws {
+    @Test("An unavailable branch check requires conservative confirmation")
+    func branchFailureRequiresConfirmation() async throws {
         let original = try task(status: .reviewByUser, worktreePath: "/tmp/worktree")
         let completed = try task(status: .completed)
         let service = try TaskInfoServiceDouble(
@@ -77,9 +81,206 @@ struct TaskInfoStoreTests {
 
         await store.requestMove(to: .status(.completed))
 
+        let confirmation = try #require(store.pendingConfirmation)
+        #expect(confirmation.kind == .terminalMove(.completed))
+        #expect(confirmation.title == "Branch Status Unavailable")
+        #expect(confirmation.message.contains("Branch safety could not be verified"))
+        #expect(confirmation.message.contains("uncommitted, unpushed, or unmerged work may be lost"))
+        #expect(await service.moveCalls().isEmpty)
+
+        _ = store.takePendingConfirmation()
+        await store.perform(confirmation, confirmed: true)
+        #expect(await service.moveCalls() == [.init(status: .completed, force: false)])
+        #expect(store.task.status == .completed)
+    }
+
+    @Test("Cached unsafe branch status immediately preserves the exact warning")
+    func cachedUnsafeStatusIsReused() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let unsafe = try branchStatus(ahead: 2, insertions: 4, unpushed: 1)
+        let service = TaskInfoServiceDouble(response: original, branch: unsafe)
+        let store = try makeStore(task: original, service: service)
+
+        await store.refreshBranchStatus()
+        await store.requestCancellation()
+
+        let confirmation = try #require(store.pendingConfirmation)
+        #expect(await service.branchCallCount() == 1)
+        #expect(
+            try confirmation == TaskInfoCompletionPolicy.confirmation(
+                task: original,
+                project: project(),
+                newStatus: .cancelled,
+                branchStatus: unsafe
+            )
+        )
+    }
+
+    @Test("Cached clean branch status is refreshed before cancellation")
+    func cachedCleanStatusIsRefreshed() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let clean = try branchStatus()
+        let unsafe = try branchStatus(ahead: 1, deletions: 3, unpushed: 1)
+        let service = TaskInfoServiceDouble(
+            response: original,
+            branch: clean,
+            branchResponses: [clean, unsafe]
+        )
+        let store = try makeStore(task: original, service: service)
+
+        await store.refreshBranchStatus()
+        await store.requestCancellation()
+
+        #expect(await service.branchCallCount() == 2)
+        #expect(store.pendingConfirmation?.message.contains("• Uncommitted changes: +0 / -3 lines") == true)
+        #expect(store.pendingConfirmation?.message.contains("• 1 unpushed commit(s) — will be lost") == true)
+    }
+
+    @Test("Slow cancellation preflight is visible and duplicate taps are serialized")
+    func slowCancellationIsSerialized() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let service = try TaskInfoServiceDouble(
+            response: original,
+            branch: branchStatus(),
+            branchDelay: .milliseconds(100)
+        )
+        let store = try makeStore(
+            task: original,
+            service: service,
+            terminalMovePreflightTimeout: .seconds(1)
+        )
+
+        let first = Task { await store.requestCancellation() }
+        await waitForTerminalMovePreflight(store)
+        #expect(store.isPreparingTerminalMove)
+        #expect(!store.canMutate)
+
+        let second = Task { await store.requestCancellation() }
+        await second.value
+        await first.value
+
+        #expect(await service.branchCallCount() == 1)
+        #expect(!store.isPreparingTerminalMove)
+        #expect(store.pendingConfirmation?.kind == .terminalMove(.cancelled))
+    }
+
+    @Test("Terminal preflight timeout falls back to a conservative confirmation")
+    func terminalPreflightTimeout() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let service = try TaskInfoServiceDouble(
+            response: original,
+            branch: branchStatus(),
+            branchDelay: .seconds(1)
+        )
+        let store = try makeStore(
+            task: original,
+            service: service,
+            terminalMovePreflightTimeout: .milliseconds(10)
+        )
+
+        await store.requestCancellation()
+
+        #expect(await service.branchCallCount() == 1)
+        #expect(!store.isPreparingTerminalMove)
+        #expect(store.pendingConfirmation?.kind == .terminalMove(.cancelled))
+        #expect(store.pendingConfirmation?.title == "Branch Status Unavailable")
+        #expect(await service.moveCalls().isEmpty)
+    }
+
+    @Test("A safe completion still moves immediately after its preflight")
+    func safeCompletionMoves() async throws {
+        let original = try task(status: .reviewByUser, worktreePath: "/tmp/worktree")
+        let completed = try task(status: .completed)
+        let service = try TaskInfoServiceDouble(response: completed, branch: branchStatus())
+        let store = try makeStore(task: original, service: service)
+
+        await store.requestMove(to: .status(.completed))
+
         #expect(store.pendingConfirmation == nil)
         #expect(await service.moveCalls() == [.init(status: .completed, force: false)])
         #expect(store.task.status == .completed)
+    }
+
+    @Test("Disconnect rejects a terminal preflight result")
+    func disconnectRejectsPreflight() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let service = try TaskInfoServiceDouble(
+            response: original,
+            branch: branchStatus(ahead: 1, unpushed: 1),
+            branchDelay: .milliseconds(50)
+        )
+        let store = try makeStore(task: original, service: service)
+
+        let request = Task { await store.requestCancellation() }
+        await waitForTerminalMovePreflight(store)
+        store.setConnected(false)
+        await request.value
+
+        #expect(!store.isPreparingTerminalMove)
+        #expect(store.pendingConfirmation == nil)
+        #expect(await service.moveCalls().isEmpty)
+    }
+
+    @Test("Task removal rejects a terminal preflight result")
+    func removalRejectsPreflight() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let service = try TaskInfoServiceDouble(
+            response: original,
+            branch: branchStatus(ahead: 1, unpushed: 1),
+            branchDelay: .milliseconds(50)
+        )
+        let store = try makeStore(task: original, service: service)
+
+        let request = Task { await store.requestCancellation() }
+        await waitForTerminalMovePreflight(store)
+        store.receive(.taskRemoved(.init(projectId: "project-1", taskId: "task-1")))
+        await request.value
+
+        #expect(store.isDeleted)
+        #expect(!store.isPreparingTerminalMove)
+        #expect(store.pendingConfirmation == nil)
+        #expect(await service.moveCalls().isEmpty)
+    }
+
+    @Test("A task lifecycle change rejects an in-flight terminal preflight")
+    func taskChangeRejectsPreflight() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let updated = try task(status: .reviewByUser, worktreePath: "/tmp/worktree")
+        let service = try TaskInfoServiceDouble(
+            response: original,
+            branch: branchStatus(ahead: 1, unpushed: 1),
+            branchDelay: .milliseconds(50)
+        )
+        let store = try makeStore(task: original, service: service)
+
+        let request = Task { await store.requestCancellation() }
+        await waitForTerminalMovePreflight(store)
+        store.replace(task: updated)
+        await request.value
+
+        #expect(!store.isPreparingTerminalMove)
+        #expect(store.pendingConfirmation == nil)
+        #expect(await service.moveCalls().isEmpty)
+    }
+
+    @Test("Cancelling the caller cancels terminal preflight without presenting")
+    func callerCancellationStopsPreflight() async throws {
+        let original = try task(status: .inProgress, worktreePath: "/tmp/worktree")
+        let service = try TaskInfoServiceDouble(
+            response: original,
+            branch: branchStatus(ahead: 1, unpushed: 1),
+            branchDelay: .seconds(1)
+        )
+        let store = try makeStore(task: original, service: service)
+
+        let request = Task { await store.requestCancellation() }
+        await waitForTerminalMovePreflight(store)
+        request.cancel()
+        await request.value
+
+        #expect(!store.isPreparingTerminalMove)
+        #expect(store.pendingConfirmation == nil)
+        #expect(await service.moveCalls().isEmpty)
     }
 
     @Test("Disconnected state blocks every mutation entry point")
@@ -276,10 +477,12 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
     }
 
     private let response: Dev3Task
-    private let branch: Dev3BranchStatus
+    private var branchResponses: [Dev3BranchStatus]
+    private let branchDelay: Duration?
     private let failFirstMove: Bool
     private let failBranch: Bool
     private var didFailMove = false
+    private var branchCalls = 0
     private var moves: [MoveCall] = []
     private var calls: [Call] = []
     private var renameResponses: [Dev3Task] = []
@@ -288,11 +491,14 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
     init(
         response: Dev3Task,
         branch: Dev3BranchStatus,
+        branchResponses: [Dev3BranchStatus]? = nil,
+        branchDelay: Duration? = nil,
         failFirstMove: Bool = false,
         failBranch: Bool = false
     ) {
         self.response = response
-        self.branch = branch
+        self.branchResponses = branchResponses ?? [branch]
+        self.branchDelay = branchDelay
         self.failFirstMove = failFirstMove
         self.failBranch = failBranch
     }
@@ -307,6 +513,10 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
 
     func moveCalls() -> [MoveCall] {
         moves
+    }
+
+    func branchCallCount() -> Int {
+        branchCalls
     }
 
     func allCalls() -> [Call] {
@@ -389,11 +599,21 @@ private actor TaskInfoServiceDouble: TaskInfoServicing {
         calls.append(.delete)
     }
 
-    func branchStatus(taskID _: String, projectID _: String) throws -> Dev3BranchStatus {
+    func branchStatus(taskID _: String, projectID _: String) async throws -> Dev3BranchStatus {
+        branchCalls += 1
+        if let branchDelay {
+            try await Task.sleep(for: branchDelay)
+        }
         if failBranch {
             throw TaskInfoTestError.failure
         }
-        return branch
+        guard let response = branchResponses.first else {
+            throw TaskInfoTestError.failure
+        }
+        if branchResponses.count > 1 {
+            branchResponses.removeFirst()
+        }
+        return response
     }
 
     func refreshPRStatus(taskID _: String, projectID _: String) {
@@ -409,14 +629,23 @@ private enum TaskInfoTestError: Error {
 private func makeStore(
     task: Dev3Task,
     service: TaskInfoServiceDouble,
-    isConnected: Bool = true
+    isConnected: Bool = true,
+    terminalMovePreflightTimeout: Duration = .seconds(15)
 ) throws -> TaskInfoStore {
     try TaskInfoStore(
         task: task,
         project: project(),
         service: service,
-        isConnected: isConnected
+        isConnected: isConnected,
+        terminalMovePreflightTimeout: terminalMovePreflightTimeout
     )
+}
+
+@MainActor
+private func waitForTerminalMovePreflight(_ store: TaskInfoStore) async {
+    for _ in 0 ..< 100 where !store.isPreparingTerminalMove {
+        await Task.yield()
+    }
 }
 
 private func project() throws -> Dev3Project {

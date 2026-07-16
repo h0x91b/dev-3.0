@@ -2,6 +2,9 @@ import Dev3Kit
 import Foundation
 import Observation
 
+// Task Info intentionally centralizes all editor, lifecycle, and terminal-safety state.
+// swiftlint:disable file_length
+
 public protocol TaskInfoServicing: Sendable {
     func renameTask(taskID: String, projectID: String, customTitle: String?) async throws -> Dev3Task
     func moveTask(
@@ -38,6 +41,7 @@ public protocol TaskInfoServicing: Sendable {
 
 @MainActor
 @Observable
+// swiftlint:disable:next type_body_length
 public final class TaskInfoStore {
     public private(set) var task: Dev3Task
     public private(set) var project: Dev3Project
@@ -45,6 +49,7 @@ public final class TaskInfoStore {
     public private(set) var branchStatus: Dev3BranchStatus?
     public private(set) var isConnected: Bool
     public private(set) var isMutating = false
+    public private(set) var isPreparingTerminalMove = false
     public private(set) var isRefreshingBranch = false
     public private(set) var isRefreshingPR = false
     public private(set) var isDeleted = false
@@ -58,6 +63,8 @@ public final class TaskInfoStore {
     private let onTaskChanged: @MainActor (Dev3Task) -> Void
     private let onTasksChanged: @MainActor ([Dev3Task]) -> Void
     private let onDeleted: @MainActor (String) -> Void
+    private let terminalMovePreflightTimeout: Duration
+    private var terminalMovePreflightGeneration: UInt64 = 0
 
     public init(
         task: Dev3Task,
@@ -65,6 +72,7 @@ public final class TaskInfoStore {
         service: any TaskInfoServicing,
         isConnected: Bool,
         pushedPRStatus: TaskPRStatusPush? = nil,
+        terminalMovePreflightTimeout: Duration = .seconds(15),
         onTaskChanged: @escaping @MainActor (Dev3Task) -> Void = { _ in },
         onTasksChanged: @escaping @MainActor ([Dev3Task]) -> Void = { _ in },
         onDeleted: @escaping @MainActor (String) -> Void = { _ in }
@@ -74,6 +82,7 @@ public final class TaskInfoStore {
         self.service = service
         self.isConnected = isConnected
         self.pushedPRStatus = pushedPRStatus
+        self.terminalMovePreflightTimeout = terminalMovePreflightTimeout
         self.onTaskChanged = onTaskChanged
         self.onTasksChanged = onTasksChanged
         self.onDeleted = onDeleted
@@ -82,7 +91,7 @@ public final class TaskInfoStore {
     }
 
     public var canMutate: Bool {
-        isConnected && !isMutating && !isDeleted
+        isConnected && !isMutating && !isPreparingTerminalMove && !isDeleted
     }
 
     public var hasDraftChanges: Bool {
@@ -107,10 +116,16 @@ public final class TaskInfoStore {
 
     public func setConnected(_ connected: Bool) {
         isConnected = connected
+        if !connected {
+            invalidateTerminalMovePreflight()
+        }
     }
 
     public func replace(task updatedTask: Dev3Task, project updatedProject: Dev3Project? = nil) {
         guard updatedTask.id == task.id else { return }
+        if updatedTask.status != task.status || updatedTask.worktreePath != task.worktreePath {
+            invalidateTerminalMovePreflight()
+        }
         let titleWasClean = titleDraft == task.displayTitle
         let overviewWasClean = userOverviewDraft == (task.userOverview ?? "")
         task = updatedTask
@@ -136,6 +151,7 @@ public final class TaskInfoStore {
             pushedPRStatus = status
         case let .taskRemoved(removal) where removal.taskId == task.id:
             isDeleted = true
+            invalidateTerminalMovePreflight()
             onDeleted(task.id)
         default:
             break
@@ -198,11 +214,7 @@ public final class TaskInfoStore {
 
     public func requestCancellation() async {
         guard canMutate else { return }
-        if let warning = await terminalMoveConfirmation(for: .cancelled) {
-            pendingConfirmation = warning
-        } else {
-            pendingConfirmation = TaskInfoCompletionPolicy.cancelConfirmation(task: task)
-        }
+        await requestStatusMove(.cancelled)
     }
 
     public func requestDeletion() {
@@ -369,6 +381,27 @@ public final class TaskInfoStore {
 }
 
 private extension TaskInfoStore {
+    enum TerminalMovePreflightOutcome {
+        case clear
+        case warning(TaskInfoConfirmation)
+        case unavailable
+        case stale
+    }
+
+    struct TerminalMovePreflightContext {
+        let generation: UInt64
+        let taskID: String
+        let projectID: String
+        let status: Dev3TaskStatus
+        let worktreePath: String?
+        let baseBranch: String
+        let projectBaseBranch: String
+    }
+
+    enum TerminalMovePreflightError: Error {
+        case timedOut
+    }
+
     func beginMutation() -> Bool {
         guard canMutate else { return false }
         isMutating = true
@@ -386,34 +419,141 @@ private extension TaskInfoStore {
     }
 
     func requestStatusMove(_ status: Dev3TaskStatus) async {
-        if let confirmation = await terminalMoveConfirmation(for: status) {
+        guard status == .completed || status == .cancelled, task.worktreePath != nil else {
+            if status == .cancelled {
+                pendingConfirmation = TaskInfoCompletionPolicy.cancelConfirmation(task: task)
+            } else {
+                await move(to: status)
+            }
+            return
+        }
+
+        if let confirmation = terminalMoveWarning(for: status, branchStatus: branchStatus) {
             pendingConfirmation = confirmation
             return
         }
-        if status == .cancelled {
+
+        guard let context = beginTerminalMovePreflight() else { return }
+        let outcome = await terminalMovePreflight(for: status, context: context)
+        guard finishTerminalMovePreflight(context) else { return }
+
+        switch outcome {
+        case .clear where status == .cancelled:
             pendingConfirmation = TaskInfoCompletionPolicy.cancelConfirmation(task: task)
-            return
+        case .clear:
+            await move(to: status)
+        case let .warning(confirmation):
+            pendingConfirmation = confirmation
+        case .unavailable:
+            pendingConfirmation = terminalMoveUnavailableConfirmation(for: status)
+        case .stale:
+            break
         }
-        await move(to: status)
     }
 
-    func terminalMoveConfirmation(for newStatus: Dev3TaskStatus) async -> TaskInfoConfirmation? {
-        guard newStatus == .completed || newStatus == .cancelled, task.worktreePath != nil else {
-            return nil
-        }
-        let currentBranchStatus: Dev3BranchStatus?
+    func beginTerminalMovePreflight() -> TerminalMovePreflightContext? {
+        guard canMutate else { return nil }
+        terminalMovePreflightGeneration &+= 1
+        isPreparingTerminalMove = true
+        errorMessage = nil
+        return TerminalMovePreflightContext(
+            generation: terminalMovePreflightGeneration,
+            taskID: task.id,
+            projectID: project.id,
+            status: task.status,
+            worktreePath: task.worktreePath,
+            baseBranch: task.baseBranch,
+            projectBaseBranch: project.defaultBaseBranch
+        )
+    }
+
+    func finishTerminalMovePreflight(_ context: TerminalMovePreflightContext) -> Bool {
+        guard terminalMovePreflightGeneration == context.generation else { return false }
+        isPreparingTerminalMove = false
+        return isConnected &&
+            !isDeleted &&
+            task.id == context.taskID &&
+            project.id == context.projectID &&
+            task.status == context.status &&
+            task.worktreePath == context.worktreePath &&
+            task.baseBranch == context.baseBranch &&
+            project.defaultBaseBranch == context.projectBaseBranch
+    }
+
+    func invalidateTerminalMovePreflight() {
+        guard isPreparingTerminalMove else { return }
+        terminalMovePreflightGeneration &+= 1
+        isPreparingTerminalMove = false
+    }
+
+    func terminalMovePreflight(
+        for newStatus: Dev3TaskStatus,
+        context: TerminalMovePreflightContext
+    ) async -> TerminalMovePreflightOutcome {
         do {
-            currentBranchStatus = try await service.branchStatus(taskID: task.id, projectID: project.id)
+            let currentBranchStatus = try await branchStatusForTerminalMove(
+                taskID: context.taskID,
+                projectID: context.projectID
+            )
+            guard terminalMovePreflightGeneration == context.generation else { return .stale }
             branchStatus = currentBranchStatus
+            if let warning = terminalMoveWarning(for: newStatus, branchStatus: currentBranchStatus) {
+                return .warning(warning)
+            }
+            return .clear
+        } catch is CancellationError {
+            return .stale
         } catch {
-            // Matching the web: inability to inspect git state must not block a terminal move.
-            currentBranchStatus = nil
+            guard !Task.isCancelled else { return .stale }
+            guard terminalMovePreflightGeneration == context.generation else { return .stale }
+            if let warning = terminalMoveWarning(for: newStatus, branchStatus: branchStatus) {
+                return .warning(warning)
+            }
+            return .unavailable
         }
-        return TaskInfoCompletionPolicy.confirmation(
+    }
+
+    func branchStatusForTerminalMove(
+        taskID: String,
+        projectID: String
+    ) async throws -> Dev3BranchStatus {
+        let service = service
+        let timeout = terminalMovePreflightTimeout
+        return try await withThrowingTaskGroup(of: Dev3BranchStatus.self) { group in
+            group.addTask {
+                try await service.branchStatus(taskID: taskID, projectID: projectID)
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw TerminalMovePreflightError.timedOut
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw CancellationError()
+            }
+            return result
+        }
+    }
+
+    func terminalMoveWarning(
+        for newStatus: Dev3TaskStatus,
+        branchStatus: Dev3BranchStatus?
+    ) -> TaskInfoConfirmation? {
+        TaskInfoCompletionPolicy.confirmation(
             task: task,
             project: project,
             newStatus: newStatus,
-            branchStatus: currentBranchStatus
+            branchStatus: branchStatus
+        )
+    }
+
+    func terminalMoveUnavailableConfirmation(for newStatus: Dev3TaskStatus) -> TaskInfoConfirmation {
+        TaskInfoConfirmation(
+            kind: .terminalMove(newStatus),
+            title: "Branch Status Unavailable",
+            message: "Branch safety could not be verified. The worktree and branch will be deleted, " +
+                "and uncommitted, unpushed, or unmerged work may be lost. Continue?",
+            confirmTitle: newStatus == .completed ? "Complete task" : "Cancel task"
         )
     }
 
