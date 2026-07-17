@@ -57,6 +57,12 @@ public final class ConnectionController {
     public var onSessionStateChange: ((RemoteSessionState) -> Void)?
     public var onNetworkReachable: (() -> Void)?
 
+    /// Shown when a fresh QR/manual pairing is rejected by the server (the
+    /// one-time token expired or was already used). See `bind(_:)`.
+    public static let pairingRejectedMessage =
+        "Pairing failed — the code may have expired or was already used. "
+            + "Open the Remote Access QR code on the desktop again and rescan it."
+
     private let store: PairedServerStore
     private let transport: any SessionHTTPTransporting
     private let discovery: any BonjourDiscovering
@@ -223,9 +229,18 @@ private extension ConnectionController {
                 await reloadSnapshot(active: server, session: session)
             }
         }
-        session.onExpired = { [weak self, weak session] _ in
+        session.onExpired = { [weak self, weak session] reason in
             guard let self, self.session === session else { return }
             isBusy = false
+            // A fresh pairing that ends here means the one-time QR token was
+            // rejected (expired or already consumed) with no stored credential
+            // to fall back to. Surface it — otherwise the pairing screen just
+            // sits there and "Pair does nothing". Saved-session expirations
+            // (`.noSavedSession`, `.refreshRejected`, …) stay quiet: those route
+            // to the pairing screen, not a scary error.
+            if reason == .exchangeAndRefreshRejected {
+                errorMessage = Self.pairingRejectedMessage
+            }
         }
         session.onError = { [weak self, weak session] message in
             guard let self, self.session === session else { return }

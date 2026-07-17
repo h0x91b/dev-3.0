@@ -1,6 +1,27 @@
 import Dev3Kit
 import SwiftUI
 
+/// Turning a scanned QR value into a live pairing attempt.
+///
+/// A QR token is single-use and lives only ~30s (see `jwt.ts`), so the exchange
+/// MUST happen the instant the code is scanned — never behind an open-ended UI
+/// step like naming the instance, or the token is dead by the time the user acts.
+enum PairingScan {
+    /// Parse a scanned value and immediately begin pairing (consuming the
+    /// one-time token now). Returns a user-facing error string on parse
+    /// failure, or `nil` when pairing has started.
+    @MainActor
+    static func begin(scannedValue value: String, using controller: ConnectionController) -> String? {
+        do {
+            let credential = try PairingURLParser.parseScannedValue(value)
+            controller.pair(credential, displayName: credential.origin.host)
+            return nil
+        } catch {
+            return (error as? LocalizedError)?.errorDescription ?? "The QR code is not a dev3 pairing link."
+        }
+    }
+}
+
 @MainActor
 struct PairingHomeView: View {
     let controller: ConnectionController
@@ -10,7 +31,6 @@ struct PairingHomeView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsScanner = false
     @State private var showsManualEntry = false
-    @State private var pendingPairing: PendingPairing?
     @State private var localError: String?
 
     private var palette: Dev3ThemePalette {
@@ -51,9 +71,6 @@ struct PairingHomeView: View {
         }
         .sheet(isPresented: $showsManualEntry) {
             ManualPairingView(controller: controller)
-        }
-        .sheet(item: $pendingPairing) { pending in
-            NameServerView(credential: pending.credential, controller: controller)
         }
         .alert("Pairing unavailable", isPresented: localErrorBinding) {
             Button("OK", role: .cancel) {}
@@ -190,19 +207,13 @@ struct PairingHomeView: View {
     }
 
     private func handleScannedValue(_ value: String) {
-        do {
-            pendingPairing = try PendingPairing(credential: PairingURLParser.parseScannedValue(value))
-            showsScanner = false
-        } catch {
-            let fallback = "The QR code is not a dev3 pairing link."
-            localError = (error as? LocalizedError)?.errorDescription ?? fallback
-        }
+        // Close the scanner and exchange the token immediately — the single-use
+        // QR token expires in seconds, so we must not park on a naming sheet
+        // first. The instance defaults to the scanned host name and can be
+        // reconnected/removed from Settings afterward.
+        showsScanner = false
+        localError = PairingScan.begin(scannedValue: value, using: controller)
     }
-}
-
-private struct PendingPairing: Identifiable {
-    let id = UUID()
-    let credential: PairingCredential
 }
 
 @MainActor
@@ -386,8 +397,15 @@ private struct ManualPairingView: View {
             }
         }
         .onChange(of: controller.sessionState) { _, state in
-            if state == .connected {
+            switch state {
+            case .connected:
                 dismiss()
+            case .expired:
+                // The exchange was rejected (bad/expired code). Surface it here
+                // instead of leaving the sheet sitting silently open.
+                errorMessage = controller.errorMessage ?? ConnectionController.pairingRejectedMessage
+            default:
+                break
             }
         }
     }
@@ -401,53 +419,6 @@ private struct ManualPairingView: View {
         } catch {
             let fallback = "Check the instance address and code."
             errorMessage = (error as? LocalizedError)?.errorDescription ?? fallback
-        }
-    }
-}
-
-@MainActor
-private struct NameServerView: View {
-    let credential: PairingCredential
-    let controller: ConnectionController
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var name: String
-
-    init(credential: PairingCredential, controller: ConnectionController) {
-        self.credential = credential
-        self.controller = controller
-        _name = State(initialValue: credential.origin.host ?? "dev3")
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Instance name", text: $name)
-                        .textContentType(.name)
-                        .accessibilityIdentifier("nameServer.name")
-                } footer: {
-                    Text("Choose the name shown in your saved instance list.")
-                }
-            }
-            .navigationTitle("Name this instance")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Pair") {
-                        controller.pair(credential, displayName: name)
-                    }
-                    .fontWeight(.semibold)
-                    .accessibilityIdentifier("nameServer.pair")
-                }
-            }
-        }
-        .onChange(of: controller.sessionState) { _, state in
-            if state == .connected {
-                dismiss()
-            }
         }
     }
 }

@@ -8,7 +8,7 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 
 | Area | State | Evidence / next gate |
 |---|---|---|
-| Pair and reconnect | Live green | Fresh manual pairing, saved-session cold launch, one refresh/RPC connection/refetch, and no immediate reconnect churn. |
+| Pair and reconnect | Live green | Fresh manual pairing, saved-session cold launch, one refresh/RPC connection/refetch, and no immediate reconnect churn. Fixed a QR-only regression (decision 145): the single-use 30s token was exchanged only after the naming step, so it expired before "Pair" and failed silently — the token now exchanges on scan and rejections surface an actionable error. |
 | Browse and create | Live green | Work/Projects navigation, one task creation, agent/config selection, preparation, and terminal handoff passed. Simulator accessibility and visual QA confirm the required Description affordance. |
 | Running-task terminal | Live green | Composer and raw accessory input, exact agent responses, zoom, pane/window lifecycle, task metadata update, and cold PTY continuity passed. The terminal follows the instance theme, raw Enter clears UIKit input state, and hardware-key sequences are unit-covered. |
 | PTY recovery | Live green | Cold reattach, true Home-to-foreground recovery with the same app PID, and remote-server interruption recovery all retained the same durable tmux session and worktree. |
@@ -52,8 +52,8 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 
 ## Verification baseline
 
-- Dev3Kit: 98 tests passing.
-- Dev3UI: 117 tests passing.
+- Dev3Kit: 100 tests passing.
+- Dev3UI: 119 tests passing.
 - Dev3TerminalKit: 39 tests passing.
 - App CI: 52 tests discovered, with 51 passing and the opt-in live integration test skipped.
 - Focused iOS raw-input regressions pass for exact carriage-return delivery, input-state clearing, and Ctrl-latch consumption.

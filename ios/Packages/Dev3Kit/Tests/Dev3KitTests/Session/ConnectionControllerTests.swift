@@ -37,6 +37,43 @@ struct ConnectionControllerTests {
         #expect(harness.controller.sessionState == .connected)
     }
 
+    @Test("A rejected pairing exchange surfaces an actionable error instead of failing silently")
+    func rejectedPairingSurfacesError() async throws {
+        let harness = try await ControllerHarness(
+            transport: ControllerTransport(exchange: SessionAuthResponse(statusCode: 401, sessionToken: nil))
+        )
+        await harness.controller.start()
+        await settleController()
+        let credential = try PairingCredential(
+            origin: #require(URL(string: "http://127.0.0.1:4242")),
+            token: "expired-or-consumed-code"
+        )
+
+        harness.controller.pair(credential, displayName: "Pocket Studio")
+        await settleController()
+
+        #expect(harness.controller.sessionState == .expired)
+        #expect(harness.controller.errorMessage == ConnectionController.pairingRejectedMessage)
+        #expect(harness.controller.isBusy == false)
+        #expect(harness.controller.activeServer == nil)
+    }
+
+    @Test("A saved-session expiry stays quiet and does not raise a pairing error")
+    func savedSessionExpiryStaysQuiet() async throws {
+        let saved = try makeServer(name: "Studio Mac")
+        let harness = try await ControllerHarness(
+            servers: [saved],
+            active: saved,
+            transport: ControllerTransport(refresh: SessionAuthResponse(statusCode: 401, sessionToken: nil))
+        )
+
+        await harness.controller.start()
+        await settleController()
+
+        #expect(harness.controller.sessionState == .expired)
+        #expect(harness.controller.errorMessage == nil)
+    }
+
     @Test("Manual or scanned pairing stores the chosen server name")
     func pairingStoresDisplayName() async throws {
         let harness = try await ControllerHarness()
@@ -132,13 +169,18 @@ struct ConnectionControllerTests {
 @MainActor
 private final class ControllerHarness {
     let store: PairedServerStore
-    let transport = ControllerTransport()
+    let transport: ControllerTransport
     let discovery = ControllerDiscovery()
     let pathObserver = ControllerPathObserver()
     let connections = ControllerConnectionPool()
     let controller: ConnectionController
 
-    init(servers: [PairedServer] = [], active: PairedServer? = nil) async throws {
+    init(
+        servers: [PairedServer] = [],
+        active: PairedServer? = nil,
+        transport: ControllerTransport = ControllerTransport()
+    ) async throws {
+        self.transport = transport
         store = PairedServerStore(secureStore: ControllerMemoryStore())
         for server in servers {
             _ = try await store.upsert(server, makeActive: server.instanceId == active?.instanceId)
@@ -160,7 +202,14 @@ private final class ControllerHarness {
 }
 
 private actor ControllerTransport: SessionHTTPTransporting {
+    private let exchangeResponse: SessionAuthResponse?
+    private let refreshResponse: SessionAuthResponse?
     private(set) var refreshCallCount = 0
+
+    init(exchange: SessionAuthResponse? = nil, refresh: SessionAuthResponse? = nil) {
+        exchangeResponse = exchange
+        refreshResponse = refresh
+    }
 
     func fetchInstance(origin _: URL) async throws -> RemoteInstanceInfo {
         RemoteInstanceInfo(
@@ -172,12 +221,13 @@ private actor ControllerTransport: SessionHTTPTransporting {
     }
 
     func exchange(origin _: URL, token _: String) async throws -> SessionAuthResponse {
-        SessionAuthResponse(statusCode: 200, sessionToken: "exchanged-session")
+        exchangeResponse ?? SessionAuthResponse(statusCode: 200, sessionToken: "exchanged-session")
     }
 
     func refresh(requestFactory _: SessionRequestFactory) async throws -> SessionAuthResponse {
         refreshCallCount += 1
-        return SessionAuthResponse(statusCode: 200, sessionToken: "refreshed-\(refreshCallCount)")
+        return refreshResponse
+            ?? SessionAuthResponse(statusCode: 200, sessionToken: "refreshed-\(refreshCallCount)")
     }
 }
 
