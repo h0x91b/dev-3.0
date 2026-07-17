@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 
 export interface BranchInfo {
 	name: string;
@@ -215,9 +216,12 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 	return (
 		<div className="space-y-1.5">
 			<div className="flex items-center justify-between">
-				<label className="text-fg-2 text-sm font-medium">
-					{t("createTask.branchLabel")}
-				</label>
+				<div className="flex items-center gap-1.5">
+					<label className="text-fg-2 text-sm font-medium">
+						{t("createTask.branchLabel")}
+					</label>
+					<HelpSpot topicId="field.task-branch" />
+				</div>
 				{!selectedBranch && (
 					<button
 						type="button"

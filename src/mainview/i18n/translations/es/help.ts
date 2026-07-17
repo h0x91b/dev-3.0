@@ -118,6 +118,11 @@ const help = {
 	"help.sidebar.activeTasks.title": "Tareas activas",
 	"help.sidebar.activeTasks.body":
 		"Todas las tareas con un agente vivo, en todos los proyectos. Haz clic para saltar; pasa el cursor para una vista previa en vivo de la terminal.",
+
+	// ── Form fields ──
+	"help.field.taskBranch.title": "¿Por qué esta rama?",
+	"help.field.taskBranch.body":
+		"Las tareas nuevas parten de la rama activa del proyecto cuando no es la rama base, para que las tareas pequeñas se apilen sobre una función grande que estés creando. Vacía el campo para volver a la rama base predeterminada del proyecto.",
 } as const;
 
 export default help;

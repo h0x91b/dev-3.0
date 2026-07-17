@@ -124,6 +124,11 @@ const help = {
 	"help.sidebar.activeTasks.title": "Active tasks",
 	"help.sidebar.activeTasks.body":
 		"Every task with a live agent, across all projects. Click to jump to it; hover for a live terminal preview.",
+
+	// ── Form fields ──
+	"help.field.taskBranch.title": "Why this branch?",
+	"help.field.taskBranch.body":
+		"New tasks start from the project's currently checked-out branch when it isn't the base branch — so small tasks stack onto a big feature you're building. Clear the field to fall back to the project's default base branch.",
 } as const;
 
 export default help;

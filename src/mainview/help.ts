@@ -97,6 +97,9 @@ export const HELP_TOPICS: HelpTopic[] = [
 	{ id: "modal.create-task", titleKey: "help.modal.createTask.title", bodyKey: "help.modal.createTask.body" },
 	{ id: "modal.launch-variants", titleKey: "help.modal.launchVariants.title", bodyKey: "help.modal.launchVariants.body" },
 
+	// ── Form fields ──
+	{ id: "field.task-branch", titleKey: "help.field.taskBranch.title", bodyKey: "help.field.taskBranch.body" },
+
 	// ── Header / sidebar ──
 	{
 		id: "header.utilities",
