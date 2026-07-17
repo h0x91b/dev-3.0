@@ -89,9 +89,18 @@ const help = {
 		"Los agentes de código que lanzas y sus presets. Cada configuración es una receta de lanzamiento completa — modelo, modo, flags; cada tarea elige una al empezar. Arrastra para reordenar.",
 	"help.settings.appearance.title": "Apariencia",
 	"help.settings.appearance.body": "Tema, idioma, zoom y desplazamiento — cómo se ve y se siente la aplicación.",
-	"help.settings.behavior.title": "Comportamiento",
-	"help.settings.behavior.body":
-		"Lo que ocurre alrededor de tus tareas automáticamente: revisión por IA cuando un agente termina, revisión por pares, consejos de funciones, notificaciones y modo concentración.",
+	"help.settings.tasks.title": "Tareas y tablero",
+	"help.settings.tasks.body":
+		"Comportamiento por defecto del tablero y las tareas: dónde cae una tarjeta arrastrada en su columna, el sonido al completar una tarea, el modo concentración, el seguimiento por defecto y los consejos de funciones.",
+	"help.settings.terminal.title": "Terminal",
+	"help.settings.terminal.body":
+		"Cómo se siente la terminal: el preajuste de teclado (estándar o estilo iTerm2), la velocidad de desplazamiento y el restablecimiento del zoom.",
+	"help.settings.accounts.title": "Cuentas de agentes",
+	"help.settings.accounts.body":
+		"Inicia sesión en varias cuentas por agente (Claude Code, Codex), cambia cuál está activa y gestiona los perfiles de claves API.",
+	"help.settings.system.title": "Sistema",
+	"help.settings.system.body":
+		"Mecánica a nivel de aplicación: el canal de actualizaciones, mantener la máquina despierta mientras trabajan los agentes, la confirmación al salir y las notificaciones del navegador.",
 	"help.settings.workspace.title": "Espacio de trabajo",
 	"help.settings.workspace.body":
 		"Dónde viven los worktrees de las tareas en disco, qué editores y aplicaciones externas alimentan open-in, y tus cuentas de GitHub.",
@@ -115,6 +124,9 @@ const help = {
 	"help.header.utilities.title": "Utilidades de la aplicación",
 	"help.header.utilities.body":
 		"Herramientas globales: la taza de café mantiene despierta tu máquina mientras los agentes trabajan, el icono de terminal gestiona sesiones tmux, y la insignia de commits trae cambios frescos de la rama principal.",
+	"help.header.rateLimits.title": "Límites del agente",
+	"help.header.rateLimits.body":
+		"Uso en vivo, a nivel de cuenta, del límite de peticiones de tu agente. El porcentaje se vuelve amarillo al 80% y rojo al 95% — ves venir el límite antes de que detenga a tus agentes. Actívalo en Configuración → Agentes.",
 	"help.sidebar.activeTasks.title": "Tareas activas",
 	"help.sidebar.activeTasks.body":
 		"Todas las tareas con un agente vivo, en todos los proyectos. Haz clic para saltar; pasa el cursor para una vista previa en vivo de la terminal.",

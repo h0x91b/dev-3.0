@@ -214,7 +214,7 @@ function BranchSelector({ projectId, selectedBranch, onSelectBranch, reviewMode,
 	}
 
 	return (
-		<div className="space-y-1.5">
+		<div className="space-y-1.5" data-help-id="field.task-branch">
 			<div className="flex items-center justify-between">
 				<div className="flex items-center gap-1.5">
 					<label className="text-fg-2 text-sm font-medium">

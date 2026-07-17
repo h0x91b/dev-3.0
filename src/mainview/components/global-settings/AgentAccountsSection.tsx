@@ -814,6 +814,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 				<SettingsSection
 					title={t("settings.agentAccounts")}
 					description={t("settings.agentAccountsDesc")}
+					helpTopicId="settings.accounts"
 				>
 					<p className="text-fg-muted text-xs">…</p>
 				</SettingsSection>
@@ -829,6 +830,7 @@ export default function AgentAccountsSection({ t }: { t: TFunction }) {
 			<SettingsSection
 				title={t("settings.agentAccounts")}
 				description={t("settings.agentAccountsDesc")}
+				helpTopicId="settings.accounts"
 			>
 			{renderAgentBlock(
 				"claude",
