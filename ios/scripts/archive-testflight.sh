@@ -69,29 +69,53 @@ assert_plist_value() {
   [[ "$actual" == "$expected" ]] || fail "$key in $plist is '$actual', expected '$expected'."
 }
 
+assert_privacy_api_reason() {
+  local manifest_path="$1"
+  local expected_type="$2"
+  local expected_reason="$3"
+  local api_index=0
+  local actual_type
+  local reason_index
+  local actual_reason
+
+  while actual_type="$(
+    plutil -extract "NSPrivacyAccessedAPITypes.$api_index.NSPrivacyAccessedAPIType" raw -o - \
+      "$manifest_path" 2>/dev/null
+  )"; do
+    if [[ "$actual_type" == "$expected_type" ]]; then
+      reason_index=0
+      while actual_reason="$(
+        plutil -extract \
+          "NSPrivacyAccessedAPITypes.$api_index.NSPrivacyAccessedAPITypeReasons.$reason_index" \
+          raw -o - "$manifest_path" 2>/dev/null
+      )"; do
+        if [[ "$actual_reason" == "$expected_reason" ]]; then
+          return 0
+        fi
+        ((reason_index += 1))
+      done
+      fail "Privacy manifest API type '$expected_type' does not declare reason '$expected_reason': $manifest_path."
+    fi
+    ((api_index += 1))
+  done
+
+  fail "Privacy manifest does not declare API type '$expected_type': $manifest_path."
+}
+
 assert_privacy_manifest() {
   local app_path="$1"
   local manifest_path="$app_path/PrivacyInfo.xcprivacy"
-  local accessed_api_type
-  local accessed_api_reason
 
   [[ -f "$manifest_path" ]] ||
     fail "Privacy manifest was not embedded at $manifest_path. Check the app resources build phase."
   plutil -lint "$manifest_path" >/dev/null ||
     fail "Embedded privacy manifest is not a valid plist: $manifest_path."
-  accessed_api_type="$(
-    plutil -extract NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPIType raw -o - "$manifest_path" \
-      2>/dev/null
-  )" || fail "Privacy manifest does not declare an accessed API type: $manifest_path."
-  accessed_api_reason="$(
-    plutil -extract NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPITypeReasons.0 raw -o - \
-      "$manifest_path" 2>/dev/null
-  )" || fail "Privacy manifest does not declare a reason for its accessed API type: $manifest_path."
-  [[ "$accessed_api_type" == NSPrivacyAccessedAPICategoryUserDefaults ]] ||
-    fail "Privacy manifest API type is '$accessed_api_type', expected UserDefaults: $manifest_path."
-  [[ "$accessed_api_reason" == CA92.1 ]] ||
-    fail "Privacy manifest reason is '$accessed_api_reason', expected CA92.1: $manifest_path."
-  printf 'Validated embedded UserDefaults privacy declaration at %s\n' "$manifest_path"
+  assert_privacy_api_reason \
+    "$manifest_path" NSPrivacyAccessedAPICategoryUserDefaults CA92.1
+  assert_privacy_api_reason \
+    "$manifest_path" NSPrivacyAccessedAPICategoryFileTimestamp C617.1
+  printf 'Validated embedded UserDefaults and file-timestamp privacy declarations at %s\n' \
+    "$manifest_path"
 }
 
 write_export_options() {
