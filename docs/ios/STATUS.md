@@ -16,12 +16,11 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 | Completion cleanup | Live green | A full-ID agent CLI request routed only to the task-owning remote after restart, appeared in native iOS, and returned to Work after approval. The task persisted as completed while its tmux session, socket claim, worktree, and branch were removed; the root task stayed intact. |
 | Native review navigation | Live green | Task Info opens native Diff and PR Status. PR #969 rendered its merge state and four passing checks; Back returned to the exact task and rendered fresh PTY output. A mounted 34,000-file Diff repopulated after a same-server restart, then Back restored the exact connected terminal and fresh output. |
 | Native transport limits | Live green | Native RPC receives are capped at 192 MiB and PTY frames remain capped at 1 MiB. Oversized frames fail explicitly instead of truncating; the validated large Diff loads within the RPC policy. |
-| TestFlight workflow | Upload boundary | Xcode 26.6 proved the no-device flow: an unsigned `iphoneos`/arm64 archive exported to a cloud Apple Distribution IPA without a local distribution identity. The script now validates safe expansion, one IPA/app, exact metadata and required Store entitlements, the effective default Keychain group against the embedded Store profile, both privacy reasons, signature, platform, architecture, distribution summary, and dSYM; it never uploads. |
+| TestFlight workflow | Ready to Test | Xcode 26.6 cloud-signed and uploaded `1.0.0 (1)` without a registered device or local distribution identity. The owner confirmed that the app implements no listed encryption algorithms beyond Apple-provided HTTPS/WSS/TLS and Keychain services, so the checked-in exempt-encryption declaration clears compliance and is enforced by every release-script mode. The build is assigned to the Internal group and the owner has been invited. |
 
 ## Selected v1 release gates
 
-- Review and upload the validated cloud-signed IPA through Xcode Organizer or Transporter.
-- Answer App Store Connect export-compliance questions and install the processed TestFlight build.
+- The owner accepts the internal TestFlight invitation, installs `1.0.0 (1)`, and completes the release smoke test.
 
 ## Deferred after core-value validation
 
@@ -56,7 +55,7 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 - Dev3Kit: 98 tests passing.
 - Dev3UI: 117 tests passing.
 - Dev3TerminalKit: 39 tests passing.
-- App CI: 49 tests discovered, with 48 passing and the opt-in live integration test skipped.
+- App CI: 52 tests discovered, with 51 passing and the opt-in live integration test skipped.
 - Focused iOS raw-input regressions pass for exact carriage-return delivery, input-state clearing, and Ctrl-latch consumption.
 - SwiftFormat and strict SwiftLint are clean for tracked iOS sources.
 - Backend lint and all 5,801 fast mainview, Bun, and CLI tests pass at the current gate.

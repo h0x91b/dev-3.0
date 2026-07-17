@@ -44,7 +44,8 @@ BUILD_NUMBER=1 \
 
 The device-archive path also works without an Apple account, distribution certificate, provisioning
 profile, or registered physical device. It creates an unsigned `iphoneos`/arm64 archive and validates
-its metadata, executable, and privacy manifest:
+its metadata, executable, and privacy manifest. This is an inspection artifact; its intentionally empty
+team and signing identity make it unsuitable for Organizer distribution:
 
 ```bash
 TEAM_ID=ABCDE12345 \
@@ -54,9 +55,9 @@ BUILD_NUMBER=1 \
 ./scripts/archive-testflight.sh --archive
 ```
 
-After the Apple account setup below, export a cloud-signed App Store Connect IPA. The provisioning
-flag is an explicit acknowledgement that Xcode may contact Apple and create or update the App ID,
-cloud-managed distribution certificate, or Store profile; `destination=export` still prevents upload:
+After the Apple account setup below, choose one release path. Export a cloud-signed IPA when you want
+to review the exact artifact and upload it separately with Transporter. `destination=export` prevents
+this command from uploading:
 
 ```bash
 TEAM_ID=ABCDE12345 \
@@ -66,13 +67,30 @@ BUILD_NUMBER=1 \
 ./scripts/archive-testflight.sh --archive-and-export --allow-provisioning-updates
 ```
 
-Artifacts are written to `build/testflight/<version>-<build>/`. Existing archives and exports are
-never overwritten. The export is expanded only after ZIP paths and symbolic links are checked, then
-the script validates exactly one IPA and app, its cloud Apple Distribution signature, exact team and
-application identifier, Store entitlements, and effective default Keychain group against the embedded
-Store profile, plus its device platform, arm64 executable, privacy declarations, and matching dSYM.
-Xcode's account/session `Packaging.log` is protected during failure handling and removed after
-successful validation; the decoded profile copy is temporary and removed on every exit path.
+Or explicitly ask Xcode to cloud-sign and upload the build directly. This is the only script mode that
+transfers a build to App Store Connect, and it does not produce a local IPA:
+
+```bash
+TEAM_ID=ABCDE12345 \
+BUNDLE_ID=com.example.dev3 \
+MARKETING_VERSION=1.0.0 \
+BUILD_NUMBER=1 \
+./scripts/archive-testflight.sh --archive-and-upload --allow-provisioning-updates
+```
+
+`--allow-provisioning-updates` acknowledges that Xcode may create or update the App ID, cloud-managed
+distribution certificate, or Store profile. Artifacts are written to
+`build/testflight/<version>-<build>/`, and existing archives and distribution outputs are never
+overwritten. The local export path safely expands and validates exactly one IPA and app, its cloud
+Apple Distribution signature, exact team and application identifier, Store entitlements, effective
+default Keychain group, device platform, arm64 executable, privacy declarations, and matching dSYM.
+Xcode's account/session `Packaging.log` is protected during failure handling and removed after success;
+the decoded profile copy used by local validation is temporary and removed on every exit path.
+
+The account owner confirmed that the app implements none of Apple's listed encryption algorithms. It
+uses only Apple-provided HTTPS/WSS/TLS and Keychain services, so `Info.plist` declares
+`ITSAppUsesNonExemptEncryption=false`. Every script mode validates that declaration in the checked-in
+metadata and its built product before it can finish; local export also revalidates the signed app.
 
 `--validate-only` deliberately disables code signing. It validates compilation and metadata, but an
 unsigned Simulator app has no signed `application-identifier` or `keychain-access-groups` entitlement
@@ -90,7 +108,7 @@ These steps require the Apple Developer Program account owner or a teammate with
 
 1. The Account Holder must keep the team enrolled in the
    [Apple Developer Program](https://developer.apple.com/programs/) and accept Apple's latest
-   developer agreement. Without active membership, Xcode cannot create a TestFlight archive.
+   developer agreement. Without active membership, Xcode cannot sign a TestFlight build for distribution.
 2. In Apple Developer **Certificates, Identifiers & Profiles**, an Account Holder or Admin must
    [register an explicit App ID](https://developer.apple.com/help/account/identifiers/register-an-app-id)
    whose bundle ID exactly matches `BUNDLE_ID`.
@@ -101,24 +119,25 @@ These steps require the Apple Developer Program account owner or a teammate with
 4. In Xcode, open **Xcode → Settings → Accounts**, add the Apple Account, and select the intended team.
    When Apple requests two-factor authentication, approve the sign-in on a trusted device and enter
    its six-digit code. Do not put an Apple password or app-specific password in this script.
-5. Run `--archive-and-export --allow-provisioning-updates`. Xcode can cloud-sign the unsigned archive,
-   so no physical iOS device or local Apple Distribution identity is required. Confirm the requested
-   team before allowing Xcode to create or refresh developer-portal signing assets.
-6. Upload only after reviewing the validated IPA. Either open the generated archive, for example with
-   `open build/testflight/1.0.0-1/Dev3.xcarchive`. In Xcode, choose
-   **Window → Organizer → Archives**, select **Dev3**, then
-   **Distribute App → TestFlight & App Store → Upload**, or deliver the exported IPA with Transporter.
-   Confirm the displayed team, bundle ID, version, and build before upload. A user with Account Holder,
-   Admin, App Manager, or Developer role can
+5. Choose either `--archive-and-export --allow-provisioning-updates` for a validated local IPA or
+   `--archive-and-upload --allow-provisioning-updates` for an explicit direct upload. Xcode can
+   cloud-sign the unsigned intermediate, so no physical iOS device or local Apple Distribution
+   identity is required. Confirm the requested team before allowing Xcode to create or refresh
+   developer-portal signing assets.
+6. For the export path, inspect `export/dev3.ipa`, then deliver that IPA with Transporter. For the
+   direct path, successful script completion means Xcode sent the build to App Store Connect. Confirm
+   the team, bundle ID, version, and build before either upload. A user with Account Holder, Admin,
+   App Manager, or Developer role can
    [upload the build](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/).
-   The script itself never uploads.
+   No script mode other than `--archive-and-upload` uploads.
 7. In App Store Connect, open **Apps → the app → TestFlight** and wait for processing to complete.
-   If the build shows **Missing Compliance**, open the build and
-   [provide export-compliance information](https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-export-compliance-information-for-beta-builds).
-   Review the app's actual encryption use and answer the questions; this repository deliberately does
-   not claim an exemption in `Info.plist` without the account owner's confirmation.
+   The checked-in export-compliance declaration should let builds advance without a per-build Missing
+   Compliance gate. Reassess and update it before release if the app begins implementing encryption.
 8. Add internal testers when the processed build is ready. External testing additionally requires
    TestFlight test information and Apple's TestFlight App Review before external testers can install.
+
+The initial `1.0.0 (1)` upload is **Ready to Test**, assigned to the **Internal** group, and the account
+owner has been invited as an internal tester.
 
 ## Test and lint
 

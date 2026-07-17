@@ -13,15 +13,17 @@ Usage:
 
 Modes:
   --validate-only        Generate the project and build Release for Simulator without signing.
-  --archive              Create an unsigned device archive for Xcode Organizer distribution.
+  --archive              Create an unsigned device archive for inspection only.
   --archive-and-export   Create the device archive and export a signed App Store Connect IPA.
+  --archive-and-upload   Create the device archive, sign it, and upload it to App Store Connect.
 
 Optional environment:
   OUTPUT_DIR             Artifact directory. Defaults to build/testflight/<version>-<build>.
 
-The script never uploads to App Store Connect. Device archives are intentionally unsigned so teams
-without registered development devices can reach Xcode's cloud-managed distribution signing during
-export. The provisioning flag is opt-in because export may update App IDs, certificates, or profiles.
+Only --archive-and-upload transfers a build to App Store Connect. Device archives are intentionally
+unsigned so teams without registered development devices can reach Xcode's cloud-managed distribution
+signing during export or upload. The provisioning flag is opt-in because Xcode may update App IDs,
+certificates, or profiles.
 EOF
 }
 
@@ -121,8 +123,15 @@ assert_privacy_manifest() {
 }
 
 write_export_options() {
+  local destination="$1"
+
+  case "$destination" in
+    export | upload) ;;
+    *) fail "Unsupported App Store Connect destination: $destination." ;;
+  esac
+
   plutil -create xml1 "$EXPORT_OPTIONS_PATH" || fail "Could not create $EXPORT_OPTIONS_PATH."
-  plutil -insert destination -string export "$EXPORT_OPTIONS_PATH" ||
+  plutil -insert destination -string "$destination" "$EXPORT_OPTIONS_PATH" ||
     fail "Could not set the export destination."
   plutil -insert distributionBundleIdentifier -string "$BUNDLE_ID" "$EXPORT_OPTIONS_PATH" ||
     fail "Could not set the export bundle identifier."
@@ -140,6 +149,14 @@ write_export_options() {
     fail "Could not enable symbol inclusion."
   plutil -lint "$EXPORT_OPTIONS_PATH" >/dev/null ||
     fail "Generated export options are not a valid plist."
+}
+
+export_destination_for_mode() {
+  case "$1" in
+    --archive-and-export) printf 'export\n' ;;
+    --archive-and-upload) printf 'upload\n' ;;
+    *) fail "Mode $1 does not run App Store Connect distribution." ;;
+  esac
 }
 
 assert_device_binary() {
@@ -387,7 +404,7 @@ MODE="${1:-}"
 shift || true
 
 case "$MODE" in
-  --validate-only | --archive | --archive-and-export) ;;
+  --validate-only | --archive | --archive-and-export | --archive-and-upload) ;;
   --help | -h)
     usage
     exit 0
@@ -419,6 +436,9 @@ done
 if [[ "$MODE" == "--validate-only" && "$ALLOW_PROVISIONING_UPDATES" == true ]]; then
   fail "--allow-provisioning-updates cannot be used with --validate-only."
 fi
+if [[ "$MODE" == "--archive" && "$ALLOW_PROVISIONING_UPDATES" == true ]]; then
+  fail "--allow-provisioning-updates applies only to export or upload modes."
+fi
 
 require_environment TEAM_ID
 require_environment BUNDLE_ID
@@ -438,6 +458,7 @@ require_command plutil
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IOS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+assert_plist_value "$IOS_ROOT/App/Info.plist" ITSAppUsesNonExemptEncryption false
 OUTPUT_DIR="${OUTPUT_DIR:-$IOS_ROOT/build/testflight/$MARKETING_VERSION-$BUILD_NUMBER}"
 mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
@@ -498,8 +519,9 @@ if [[ "$MODE" == "--validate-only" ]]; then
   assert_plist_value "$BUILT_INFO_PLIST" CFBundleIdentifier "$BUNDLE_ID"
   assert_plist_value "$BUILT_INFO_PLIST" CFBundleShortVersionString "$MARKETING_VERSION"
   assert_plist_value "$BUILT_INFO_PLIST" CFBundleVersion "$BUILD_NUMBER"
+  assert_plist_value "$BUILT_INFO_PLIST" ITSAppUsesNonExemptEncryption false
   assert_privacy_manifest "$(dirname "$BUILT_INFO_PLIST")"
-  write_export_options
+  write_export_options export
   assert_plist_value "$EXPORT_OPTIONS_PATH" destination export
   assert_plist_value "$EXPORT_OPTIONS_PATH" distributionBundleIdentifier "$BUNDLE_ID"
   assert_plist_value "$EXPORT_OPTIONS_PATH" manageAppVersionAndBuildNumber false
@@ -543,20 +565,23 @@ ARCHIVED_APP="$ARCHIVE_PATH/Products/Applications/dev3.app"
 assert_plist_value "$ARCHIVED_INFO_PLIST" CFBundleIdentifier "$BUNDLE_ID"
 assert_plist_value "$ARCHIVED_INFO_PLIST" CFBundleShortVersionString "$MARKETING_VERSION"
 assert_plist_value "$ARCHIVED_INFO_PLIST" CFBundleVersion "$BUILD_NUMBER"
+assert_plist_value "$ARCHIVED_INFO_PLIST" ITSAppUsesNonExemptEncryption false
 assert_privacy_manifest "$ARCHIVED_APP"
 assert_device_binary "$ARCHIVED_APP"
 assert_unsigned_archive "$ARCHIVED_APP"
 printf 'Unsigned device archive created at %s\n' "$ARCHIVE_PATH"
 
 if [[ "$MODE" == "--archive" ]]; then
-  printf 'Open this archive in Xcode Organizer to apply distribution signing and upload.\n'
+  printf 'This archive is unsigned and intended for inspection only.\n'
+  printf 'Use an explicit export or upload mode to apply App Store distribution signing.\n'
   exit 0
 fi
 
 [[ ! -e "$EXPORT_PATH" ]] ||
   fail "Export already exists at $EXPORT_PATH. Use a new BUILD_NUMBER or OUTPUT_DIR."
 
-write_export_options
+EXPORT_DESTINATION="$(export_destination_for_mode "$MODE")"
+write_export_options "$EXPORT_DESTINATION"
 
 PACKAGING_LOG="$EXPORT_PATH/Packaging.log"
 trap protect_packaging_log_best_effort EXIT
@@ -568,6 +593,14 @@ xcodebuild \
   "${PROVISIONING_FLAGS[@]}"
 
 protect_packaging_log
+
+if [[ "$EXPORT_DESTINATION" == upload ]]; then
+  rm -f "$PACKAGING_LOG"
+  trap - EXIT
+  printf 'Uploaded %s %s (%s) to App Store Connect.\n' \
+    "$BUNDLE_ID" "$MARKETING_VERSION" "$BUILD_NUMBER"
+  exit 0
+fi
 
 shopt -s nullglob
 IPA_PATHS=("$EXPORT_PATH"/*.ipa)
@@ -599,6 +632,7 @@ DECODED_PROFILE_PATH="$(mktemp "${TMPDIR:-/tmp}/dev3-testflight-profile.XXXXXX")
 assert_plist_value "$EXPORTED_INFO_PLIST" CFBundleIdentifier "$BUNDLE_ID"
 assert_plist_value "$EXPORTED_INFO_PLIST" CFBundleShortVersionString "$MARKETING_VERSION"
 assert_plist_value "$EXPORTED_INFO_PLIST" CFBundleVersion "$BUILD_NUMBER"
+assert_plist_value "$EXPORTED_INFO_PLIST" ITSAppUsesNonExemptEncryption false
 assert_privacy_manifest "$EXPORTED_APP"
 assert_device_binary "$EXPORTED_APP"
 assert_signed_entitlements \
@@ -611,4 +645,4 @@ rm -f "$PACKAGING_LOG" "$DECODED_PROFILE_PATH"
 trap - EXIT
 printf 'App Store Connect IPA exported locally at %s\n' "$IPA_PATH"
 printf 'Validated cloud Apple Distribution signing, release entitlements, platform, and dSYM.\n'
-printf 'Nothing was uploaded. Use Xcode Organizer or Transporter after reviewing the archive.\n'
+printf 'Nothing was uploaded. Review this IPA, then upload it with Transporter.\n'
