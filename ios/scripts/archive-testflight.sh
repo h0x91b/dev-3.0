@@ -69,6 +69,31 @@ assert_plist_value() {
   [[ "$actual" == "$expected" ]] || fail "$key in $plist is '$actual', expected '$expected'."
 }
 
+assert_privacy_manifest() {
+  local app_path="$1"
+  local manifest_path="$app_path/PrivacyInfo.xcprivacy"
+  local accessed_api_type
+  local accessed_api_reason
+
+  [[ -f "$manifest_path" ]] ||
+    fail "Privacy manifest was not embedded at $manifest_path. Check the app resources build phase."
+  plutil -lint "$manifest_path" >/dev/null ||
+    fail "Embedded privacy manifest is not a valid plist: $manifest_path."
+  accessed_api_type="$(
+    plutil -extract NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPIType raw -o - "$manifest_path" \
+      2>/dev/null
+  )" || fail "Privacy manifest does not declare an accessed API type: $manifest_path."
+  accessed_api_reason="$(
+    plutil -extract NSPrivacyAccessedAPITypes.0.NSPrivacyAccessedAPITypeReasons.0 raw -o - \
+      "$manifest_path" 2>/dev/null
+  )" || fail "Privacy manifest does not declare a reason for its accessed API type: $manifest_path."
+  [[ "$accessed_api_type" == NSPrivacyAccessedAPICategoryUserDefaults ]] ||
+    fail "Privacy manifest API type is '$accessed_api_type', expected UserDefaults: $manifest_path."
+  [[ "$accessed_api_reason" == CA92.1 ]] ||
+    fail "Privacy manifest reason is '$accessed_api_reason', expected CA92.1: $manifest_path."
+  printf 'Validated embedded UserDefaults privacy declaration at %s\n' "$manifest_path"
+}
+
 write_export_options() {
   plutil -create xml1 "$EXPORT_OPTIONS_PATH"
   plutil -insert destination -string export "$EXPORT_OPTIONS_PATH"
@@ -227,6 +252,7 @@ if [[ "$MODE" == "--validate-only" ]]; then
   assert_plist_value "$BUILT_INFO_PLIST" CFBundleIdentifier "$BUNDLE_ID"
   assert_plist_value "$BUILT_INFO_PLIST" CFBundleShortVersionString "$MARKETING_VERSION"
   assert_plist_value "$BUILT_INFO_PLIST" CFBundleVersion "$BUILD_NUMBER"
+  assert_privacy_manifest "$(dirname "$BUILT_INFO_PLIST")"
   write_export_options
   assert_plist_value "$EXPORT_OPTIONS_PATH" destination export
   assert_plist_value "$EXPORT_OPTIONS_PATH" distributionBundleIdentifier "$BUNDLE_ID"
@@ -266,6 +292,7 @@ ARCHIVED_ENTITLEMENTS_PATH="$OUTPUT_DIR/ArchivedEntitlements.plist"
 assert_plist_value "$ARCHIVED_INFO_PLIST" CFBundleIdentifier "$BUNDLE_ID"
 assert_plist_value "$ARCHIVED_INFO_PLIST" CFBundleShortVersionString "$MARKETING_VERSION"
 assert_plist_value "$ARCHIVED_INFO_PLIST" CFBundleVersion "$BUILD_NUMBER"
+assert_privacy_manifest "$ARCHIVED_APP"
 assert_signed_entitlements "$ARCHIVED_APP" "$ARCHIVED_ENTITLEMENTS_PATH"
 printf 'Archive created at %s\n' "$ARCHIVE_PATH"
 
