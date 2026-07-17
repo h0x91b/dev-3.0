@@ -16,12 +16,11 @@ This is the live execution status for [IMPLEMENTATION.md](IMPLEMENTATION.md). It
 | Completion cleanup | Live green | A full-ID agent CLI request routed only to the task-owning remote after restart, appeared in native iOS, and returned to Work after approval. The task persisted as completed while its tmux session, socket claim, worktree, and branch were removed; the root task stayed intact. |
 | Native review navigation | Live green | Task Info opens native Diff and PR Status. PR #969 rendered its merge state and four passing checks; Back returned to the exact task and rendered fresh PTY output. A mounted 34,000-file Diff repopulated after a same-server restart, then Back restored the exact connected terminal and fresh output. |
 | Native transport limits | Live green | Native RPC receives are capped at 192 MiB and PTY frames remain capped at 1 MiB. Oversized frames fail explicitly instead of truncating; the validated large Diff loads within the RPC policy. |
-| TestFlight workflow | Account boundary | Unsigned Release validation and metadata checks pass, including embedded declarations for app-local UserDefaults (CA92.1) and SwiftTerm's app-container file metadata access (C617.1). Signed archive/export tooling rejects a missing or incomplete privacy manifest, mismatched team, application ID, or default Keychain group; the first real archive and upload require the owner's Apple account configuration. |
+| TestFlight workflow | Upload boundary | Xcode 26.6 proved the no-device flow: an unsigned `iphoneos`/arm64 archive exported to a cloud Apple Distribution IPA without a local distribution identity. The script now validates safe expansion, one IPA/app, exact metadata and required Store entitlements, the effective default Keychain group against the embedded Store profile, both privacy reasons, signature, platform, architecture, distribution summary, and dSYM; it never uploads. |
 
 ## Selected v1 release gates
 
-- Create and verify the first Apple-signed archive, then upload it through Xcode Organizer after the
-  owner provides the Team ID, confirms the final bundle ID, signs into Xcode, and approves 2FA.
+- Review and upload the validated cloud-signed IPA through Xcode Organizer or Transporter.
 - Answer App Store Connect export-compliance questions and install the processed TestFlight build.
 
 ## Deferred after core-value validation

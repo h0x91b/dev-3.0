@@ -42,8 +42,9 @@ BUILD_NUMBER=1 \
 ./scripts/archive-testflight.sh --validate-only
 ```
 
-After the Apple account setup below, replace the example values and create either an Organizer-ready
-archive or an archive plus a local App Store Connect IPA:
+The device-archive path also works without an Apple account, distribution certificate, provisioning
+profile, or registered physical device. It creates an unsigned `iphoneos`/arm64 archive and validates
+its metadata, executable, and privacy manifest:
 
 ```bash
 TEAM_ID=ABCDE12345 \
@@ -51,25 +52,37 @@ BUNDLE_ID=com.example.dev3 \
 MARKETING_VERSION=1.0.0 \
 BUILD_NUMBER=1 \
 ./scripts/archive-testflight.sh --archive
+```
 
-# Or export the IPA locally as well. This still does not upload anything.
+After the Apple account setup below, export a cloud-signed App Store Connect IPA. The provisioning
+flag is an explicit acknowledgement that Xcode may contact Apple and create or update the App ID,
+cloud-managed distribution certificate, or Store profile; `destination=export` still prevents upload:
+
+```bash
 TEAM_ID=ABCDE12345 \
 BUNDLE_ID=com.example.dev3 \
 MARKETING_VERSION=1.0.0 \
 BUILD_NUMBER=1 \
-./scripts/archive-testflight.sh --archive-and-export
+./scripts/archive-testflight.sh --archive-and-export --allow-provisioning-updates
 ```
 
 Artifacts are written to `build/testflight/<version>-<build>/`. Existing archives and exports are
-never overwritten. If Xcode is already signed in but needs permission to fetch or update provisioning
-assets, explicitly add `--allow-provisioning-updates`; the script never enables it by default.
+never overwritten. The export is expanded only after ZIP paths and symbolic links are checked, then
+the script validates exactly one IPA and app, its cloud Apple Distribution signature, exact team and
+application identifier, Store entitlements, and effective default Keychain group against the embedded
+Store profile, plus its device platform, arm64 executable, privacy declarations, and matching dSYM.
+Xcode's account/session `Packaging.log` is protected during failure handling and removed after
+successful validation; the decoded profile copy is temporary and removed on every exit path.
 
 `--validate-only` deliberately disables code signing. It validates compilation and metadata, but an
 unsigned Simulator app has no signed `application-identifier` or `keychain-access-groups` entitlement
-and therefore cannot validate Keychain persistence across relaunches or reboots. After a signed
-archive, the script verifies the signature and fails unless the archived entitlements contain the
-requested team, the explicit bundle ID, and its default Keychain access group. The account-backed
-archive step is still required before treating secure credential persistence as release-validated.
+and therefore cannot validate Keychain persistence across relaunches or reboots. The unsigned device
+archive is likewise an inspection artifact, not an installable build; distribution signing is applied
+only to the exported IPA. With the empty source entitlements, Xcode 26 omits an explicit
+`keychain-access-groups` entry from the signed app and the platform uses the app identifier as its
+effective default group. Export validation accepts that omission and rejects any explicit group other
+than the exact `TEAM_ID.BUNDLE_ID`, while also requiring `get-task-allow=false` and
+`beta-reports-active=true`.
 
 ### Apple-account handoff
 
@@ -88,14 +101,15 @@ These steps require the Apple Developer Program account owner or a teammate with
 4. In Xcode, open **Xcode → Settings → Accounts**, add the Apple Account, and select the intended team.
    When Apple requests two-factor authentication, approve the sign-in on a trusted device and enter
    its six-digit code. Do not put an Apple password or app-specific password in this script.
-5. Run `--archive` or `--archive-and-export`. If automatic signing reports that a certificate or
-   profile is unavailable, let the Account Holder/Admin create the distribution asset or deliberately
-   rerun with `--allow-provisioning-updates` after confirming the team shown by Xcode.
-6. Open the generated archive once, for example with
+5. Run `--archive-and-export --allow-provisioning-updates`. Xcode can cloud-sign the unsigned archive,
+   so no physical iOS device or local Apple Distribution identity is required. Confirm the requested
+   team before allowing Xcode to create or refresh developer-portal signing assets.
+6. Upload only after reviewing the validated IPA. Either open the generated archive, for example with
    `open build/testflight/1.0.0-1/Dev3.xcarchive`. In Xcode, choose
    **Window → Organizer → Archives**, select **Dev3**, then
-   **Distribute App → TestFlight & App Store → Upload**. Confirm the displayed team, bundle ID, version,
-   and build before upload. A user with Account Holder, Admin, App Manager, or Developer role can
+   **Distribute App → TestFlight & App Store → Upload**, or deliver the exported IPA with Transporter.
+   Confirm the displayed team, bundle ID, version, and build before upload. A user with Account Holder,
+   Admin, App Manager, or Developer role can
    [upload the build](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/).
    The script itself never uploads.
 7. In App Store Connect, open **Apps → the app → TestFlight** and wait for processing to complete.
