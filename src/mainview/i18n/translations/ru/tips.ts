@@ -214,6 +214,8 @@ const tips = {
 	"tip.filterTokens.body": "В поле поиска наберите label:Bug agent:Codex status:review is:attention has:port — или соберите фильтр кликом по воронке.",
 	"tip.cycleTaskVariants.title": "Цикл вариантов задачи",
 	"tip.cycleTaskVariants.body": "Нажмите Shift+Cmd+[ или ] (Ctrl в Linux), чтобы переключаться между живыми вариантами прямо из терминала.",
+	"tip.mobileTaskGit.title": "Git с телефона",
+	"tip.mobileTaskGit.body": "В мобильном виде задачи нажмите меню \u22ee \u2014 rebase, push, создание PR и дифф в секции Git.",
 };
 
 export default tips;

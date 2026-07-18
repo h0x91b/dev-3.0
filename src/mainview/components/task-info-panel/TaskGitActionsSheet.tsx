@@ -1,17 +1,21 @@
-import type { Dispatch, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
-import type { AppAction, Route } from "../../state";
 import { useT } from "../../i18n";
-import { useTaskBranchStatus } from "./useTaskBranchStatus";
+import type { TaskBranchStatusController } from "./useTaskBranchStatus";
 import { AutoMergeIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
 interface TaskGitActionsSheetProps {
 	task: Task;
 	project: Project;
-	dispatch: Dispatch<AppAction>;
-	navigate: (route: Route) => void;
 	isTaskActive: boolean;
+	/**
+	 * The panel-level `useTaskBranchStatus` instance. The sheet mounts only
+	 * while open, so owning the hook here would refetch on every open and show
+	 * a loading flash; the narrow TaskInfoPanel owns the single instance (it
+	 * also feeds the summary-bar diff badge) and hands it down.
+	 */
+	git: TaskBranchStatusController;
 	/** Full-width row class shared with the rest of the mobile actions sheet. */
 	rowClassName: string;
 	onOpenInlineDiff?: (request: TaskInlineDiffRequest) => void;
@@ -43,9 +47,8 @@ interface GitRow {
 export default function TaskGitActionsSheet({
 	task,
 	project,
-	dispatch,
-	navigate,
 	isTaskActive,
+	git,
 	rowClassName,
 	onOpenInlineDiff,
 	onAction,
@@ -61,7 +64,7 @@ export default function TaskGitActionsSheet({
 		handlePush,
 		handleRebase,
 		statusLoading,
-	} = useTaskBranchStatus({ task, project, dispatch, navigate, isTaskActive });
+	} = git;
 
 	// Git mutations only make sense on a real, active worktree. Virtual boards have
 	// no git domain at all (Bible §3) — the caller already gates on kind, but keep

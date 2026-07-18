@@ -214,6 +214,8 @@ const tips = {
 	"tip.filterTokens.body": "In the search box type label:Bug agent:Codex status:review is:attention has:port — or click the funnel to build it.",
 	"tip.cycleTaskVariants.title": "Cycle task variants",
 	"tip.cycleTaskVariants.body": "Press Shift+Cmd+[ or ] (Ctrl on Linux) to move between live variants without leaving the terminal.",
+	"tip.mobileTaskGit.title": "Git from your phone",
+	"tip.mobileTaskGit.body": "In the mobile task view, tap the \u22ee menu \u2014 rebase, push, create a PR, or open the diff from the Git section.",
 } as const;
 
 export default tips;

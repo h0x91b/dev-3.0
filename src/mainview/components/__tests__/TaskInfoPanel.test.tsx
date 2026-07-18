@@ -2940,6 +2940,66 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 		});
 
+		it("shows the diff summary badge once branch status loads (tap opens the diff)", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 3,
+				diffInsertions: 10,
+				diffDeletions: 2,
+				diffFileStats: [
+					{ path: "src/a.ts", insertions: 5, deletions: 1 },
+					{ path: "src/b.ts", insertions: 4, deletions: 1 },
+					{ path: "src/c.ts", insertions: 1, deletions: 0 },
+				],
+			});
+			const onOpenInlineDiff = vi.fn();
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff });
+			});
+			const badge = await screen.findByTestId("diff-summary-badge");
+			expect(badge).toHaveTextContent("3 files");
+			await act(async () => {
+				fireEvent.click(badge);
+			});
+			expect(onOpenInlineDiff).toHaveBeenCalledWith(
+				expect.objectContaining({ mode: "branch" }),
+			);
+		});
+
+		it("does not arm the hover file-list popover on touch (tap fires mouseenter)", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 1,
+				diffInsertions: 2,
+				diffDeletions: 0,
+				diffFileStats: [{ path: "src/a.ts", insertions: 2, deletions: 0 }],
+			});
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
+			});
+			const badge = await screen.findByTestId("diff-summary-badge");
+			await act(async () => {
+				fireEvent.mouseEnter(badge);
+			});
+			expect(screen.queryByText("Changed files")).not.toBeInTheDocument();
+		});
+
+		it("feeds the sheet from the panel-level status (rows enabled, no refetch on open)", async () => {
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+			await waitFor(() => expect(mockedApi.request.getBranchStatus).toHaveBeenCalled());
+			const callsBefore = mockedApi.request.getBranchStatus.mock.calls.length;
+			await act(async () => {
+				fireEvent.click(screen.getByTestId("task-actions-kebab"));
+			});
+			const sheet = screen.getByTestId("task-actions-sheet");
+			// Branch status (ahead: 3) loaded before the sheet opened, so Create PR
+			// is enabled immediately — no "Loading branch status…" flash.
+			expect(within(sheet).getByText("Create PR").closest("button")).not.toBeDisabled();
+			expect(mockedApi.request.getBranchStatus.mock.calls.length).toBe(callsBefore);
+		});
+
 		it("omits the git section for a virtual (Operations) project", async () => {
 			await act(async () => {
 				renderPanel(makeTask(), { project: { ...project, kind: "virtual" } });

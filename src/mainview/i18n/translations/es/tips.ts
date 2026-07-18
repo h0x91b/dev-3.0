@@ -214,6 +214,8 @@ const tips = {
 	"tip.filterTokens.body": "En la búsqueda escribe label:Bug agent:Codex status:review is:attention has:port — o usa el embudo para construirlo.",
 	"tip.cycleTaskVariants.title": "Cambia entre variantes",
 	"tip.cycleTaskVariants.body": "Pulsa Shift+Cmd+[ o ] (Ctrl en Linux) para moverte entre variantes activas sin salir del terminal.",
+	"tip.mobileTaskGit.title": "Git desde tu móvil",
+	"tip.mobileTaskGit.body": "En la vista móvil de la tarea, toca el menú \u22ee \u2014 rebase, push, crear PR o abrir el diff desde la sección Git.",
 };
 
 export default tips;

@@ -20,6 +20,14 @@ interface UseTaskBranchStatusParams {
 	dispatch: Dispatch<AppAction>;
 	navigate: (route: Route) => void;
 	isTaskActive: boolean;
+	/**
+	 * When false the hook is inert: no status polling, no git-op refresh
+	 * listener, `branchStatus` stays null. Lets a component that renders on
+	 * both desktop and narrow viewports own a single hook instance for the
+	 * narrow layout without double-polling next to `TaskGitActions` (which
+	 * runs its own instance on desktop). Defaults to true.
+	 */
+	enabled?: boolean;
 }
 
 function getDefaultTaskCompareRef(taskBaseBranch: string, project: Project): string {
@@ -42,6 +50,7 @@ export function useTaskBranchStatus({
 	dispatch,
 	navigate,
 	isTaskActive,
+	enabled = true,
 }: UseTaskBranchStatusParams) {
 	const t = useT();
 	const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
@@ -164,7 +173,7 @@ export function useTaskBranchStatus({
 	);
 
 	useEffect(() => {
-		if (!isTaskActive || !task.worktreePath) {
+		if (!enabled || !isTaskActive || !task.worktreePath) {
 			setBranchStatus(null);
 			return;
 		}
@@ -197,6 +206,7 @@ export function useTaskBranchStatus({
 		};
 	}, [
 		compareRef,
+		enabled,
 		isTaskActive,
 		offerMergeCompletionIfMerged,
 		project.id,
@@ -223,6 +233,7 @@ export function useTaskBranchStatus({
 	}, [creatingPR, project.id, task.id, t]);
 
 	useEffect(() => {
+		if (!enabled) return;
 		async function onGitOpCompleted(event: Event) {
 			const detail = (event as CustomEvent).detail as {
 				taskId: string;
@@ -281,7 +292,7 @@ export function useTaskBranchStatus({
 
 		window.addEventListener("rpc:gitOpCompleted", onGitOpCompleted);
 		return () => window.removeEventListener("rpc:gitOpCompleted", onGitOpCompleted);
-	}, [compareRef, completeTask, handleCreatePR, project.id, task.id, task.status, t]);
+	}, [compareRef, completeTask, enabled, handleCreatePR, project.id, task.id, task.status, t]);
 
 	const handleRefreshStatus = useCallback(async () => {
 		if (refreshingStatus || !isTaskActive || !task.worktreePath) {
@@ -401,6 +412,13 @@ export function useTaskBranchStatus({
 		rebasing,
 		refreshingStatus,
 		selectCompareRef,
-		statusLoading: isTaskActive && !!task.worktreePath && !branchStatus,
+		statusLoading: enabled && isTaskActive && !!task.worktreePath && !branchStatus,
 	};
 }
+
+/**
+ * Everything `useTaskBranchStatus` returns — status data plus the git action
+ * handlers. Passed as a prop where a parent owns the single hook instance
+ * (narrow-viewport TaskInfoPanel → TaskGitActionsSheet).
+ */
+export type TaskBranchStatusController = ReturnType<typeof useTaskBranchStatus>;
