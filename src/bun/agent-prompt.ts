@@ -82,10 +82,16 @@ export async function resolveAgentPromptTargetPane(
 }
 
 /** Type `text` into `pane`, then send Enter as a discrete keypress after a short delay. */
-function pasteThenEnter(socket: string, pane: string, text: string): boolean {
-	tmux.sendKeys(pane, [text], { socket, bestEffort: true }).catch((err) => {
+async function pasteThenEnter(socket: string, pane: string, text: string): Promise<boolean> {
+	try {
+		// bestEffort swallows non-zero tmux exits inside the client, so a rejection
+		// here means tmux itself failed to launch — nothing reached the pane. Report
+		// false (and skip Enter) so callers don't drop a queued message as delivered.
+		await tmux.sendKeys(pane, [text], { socket, bestEffort: true });
+	} catch (err) {
 		log.warn("send-keys paste failed", { paneId: pane, error: String(err) });
-	});
+		return false;
+	}
 	setTimeout(() => {
 		tmux.sendKeys(pane, ["Enter"], { socket, bestEffort: true }).catch((err) => {
 			log.warn("send-keys Enter failed", { paneId: pane, error: String(err) });
