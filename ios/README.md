@@ -133,8 +133,12 @@ These steps require the Apple Developer Program account owner or a teammate with
 7. In App Store Connect, open **Apps → the app → TestFlight** and wait for processing to complete.
    The checked-in export-compliance declaration should let builds advance without a per-build Missing
    Compliance gate. Reassess and update it before release if the app begins implementing encryption.
-8. Add internal testers when the processed build is ready. External testing additionally requires
-   TestFlight test information and Apple's TestFlight App Review before external testers can install.
+8. **Every new build must be distributed to the Internal group explicitly — a fresh upload does NOT
+   auto-appear in the TestFlight app.** After processing, open **App Store Connect → dev3 Beta →
+   TestFlight → Build Activity → the specific build (e.g. `1.0.0 (4)`) → Add Groups → Internal**
+   (the App Store Connect iOS app works too). Only then does the build show up in testers' TestFlight
+   app as an available install/update. External testing additionally requires TestFlight test
+   information and Apple's TestFlight App Review before external testers can install.
 
 The initial `1.0.0 (1)` upload is **Ready to Test**, assigned to the **Internal** group, and the account
 owner has been invited as an internal tester. It predates the QR-pairing fixes in decisions 145 and 146,
