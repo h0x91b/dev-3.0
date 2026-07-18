@@ -4,6 +4,7 @@ import { useT } from "./i18n";
 import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
+import { encodeResizeSequence } from "../shared/resize-protocol";
 // TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
@@ -114,8 +115,8 @@ function proposeDimensionsWithoutScrollbarReserve(
 export function buildResizeDance(cols: number, rows: number): [string, string] {
 	const nudgeRows = rows + 1;
 	return [
-		`\x1b]resize;${cols};${nudgeRows}\x07`,
-		`\x1b]resize;${cols};${rows}\x07`,
+		encodeResizeSequence(cols, nudgeRows),
+		encodeResizeSequence(cols, rows),
 	];
 }
 
@@ -1150,7 +1151,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				term.onResize(({ cols, rows }) => {
 					if (disposed) return;
 					if (ws?.readyState === WebSocket.OPEN) {
-						ws.send(`\x1b]resize;${cols};${rows}\x07`);
+						ws.send(encodeResizeSequence(cols, rows));
 					}
 				}),
 			);

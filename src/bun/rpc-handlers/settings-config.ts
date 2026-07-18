@@ -9,6 +9,7 @@ import * as updater from "../updater";
 import * as rosetta from "../rosetta";
 import * as repoConfig from "../repo-config";
 import * as pty from "../pty-server";
+import { tmux } from "../tmux";
 import { loadSettings, saveSettings } from "../settings";
 import { toggleFavorite } from "../../shared/favorites";
 import { DEV3_HOME } from "../paths";
@@ -248,9 +249,9 @@ async function commitTmuxBinary(preferred: string): Promise<string | undefined> 
 	}
 	// whichSync may hand us our own PATH shim (~/.dev3.0/bin is first in
 	// PATH) — dereference it so we never probe or commit the shim itself.
-	const pathTmuxReal = pathTmux ? pty.dereferenceTmuxShim(pathTmux) : undefined;
+	const pathTmuxReal = pathTmux ? tmux.dereferenceShim(pathTmux) : undefined;
 	const fallbacks = [pathTmuxReal ?? "", ...tmuxSearchPaths()].filter(Boolean);
-	return pty.selectTmuxBinary(preferred, fallbacks);
+	return tmux.selectBinary(preferred, fallbacks);
 }
 
 /**
@@ -334,7 +335,7 @@ async function setCustomBinaryPath(params: { requirementId: string; path: string
 		log.warn("<- setCustomBinaryPath rejected non-executable path", { requirementId: params.requirementId, path });
 		return { ok: false };
 	}
-	if (params.requirementId === "tmux" && !(await pty.probeTmuxVersion(path))) {
+	if (params.requirementId === "tmux" && !(await tmux.probeVersion(path))) {
 		log.warn("<- setCustomBinaryPath rejected path that is not tmux", { path });
 		return { ok: false };
 	}

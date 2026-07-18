@@ -25,14 +25,80 @@ vi.mock("../data", () => ({
 }));
 
 vi.mock("../pty-server", () => ({
-	DEFAULT_TMUX_SOCKET: "dev3",
-	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", ...args]),
-	getTmuxBinary: vi.fn(() => "/usr/bin/tmux"),
-	tmuxClientCwd: vi.fn(() => "/"),
-	spawnTmux: vi.fn(() => ({ exited: Promise.resolve(0), stdout: undefined, stderr: undefined })),
-	isTmuxSpawnError: vi.fn(() => false),
+	getSessionSocket: vi.fn(() => "dev3"),
+	getSessionTmuxName: vi.fn((key: string) => `dev3-${key.slice(0, 8)}`),
+	hasSession: vi.fn(() => false),
+	hasDeadSession: vi.fn(() => false),
+	destroySession: vi.fn(),
 	capturePane: vi.fn(),
+	listPaneIds: vi.fn(async () => []),
+	tmuxSessionExists: vi.fn(async () => true),
+	getPtyPort: vi.fn(() => 9999),
 }));
+
+// The handlers' tmux seam: mock the typed client singleton (the same pattern
+// as mocking rpc.ts in renderer tests) — no raw spawn mocking anywhere.
+vi.mock("../tmux", () => {
+	class MockTmuxError extends Error {
+		exitCode = 1;
+		stderr = "";
+		constructor() { super("tmux failed"); this.name = "TmuxError"; }
+	}
+	class MockTmuxSpawnError extends Error {
+		constructor() { super("tmux failed to spawn"); this.name = "TmuxSpawnError"; }
+	}
+	const format = { formatString: "", parse: () => [] };
+	return {
+		DEFAULT_TMUX_SOCKET: "dev3",
+		TmuxError: MockTmuxError,
+		TmuxSpawnError: MockTmuxSpawnError,
+		isTmuxSpawnError: (err: unknown) => (err as { name?: string })?.name === "TmuxSpawnError",
+		taskSessionName: (taskId: string) => `dev3-${taskId.slice(0, 8)}`,
+		devServerSessionName: (taskId: string) => `dev3-dev-${taskId.slice(0, 8)}`,
+		devServerSessionForTaskSession: (name: string) => `dev3-dev-${name.slice(5)}`,
+		parseDev3SessionName: vi.fn(() => null),
+		PANE_CWD_FORMAT: "#{pane_current_path}",
+		PANE_ID_FORMAT: format,
+		PANE_IN_MODE_FORMAT: format,
+		PANE_START_COMMAND_FORMAT: format,
+		PANE_CURRENT_COMMAND_FORMAT: format,
+		PANE_SWITCHER_FORMAT: format,
+		WINDOW_SWITCHER_FORMAT: format,
+		SESSION_OVERVIEW_FORMAT: format,
+		ALT_CLICK_PANE_FORMAT: format,
+		altClickIneligibleReason: vi.fn(() => null),
+		computeAltClickKeys: vi.fn(() => null),
+		findAltClickPane: vi.fn(() => null),
+		validAltClickPanes: vi.fn(() => []),
+		tmux: {
+			binaryPath: vi.fn(() => "/usr/bin/tmux"),
+			hasSession: vi.fn(async () => true),
+			listPanes: vi.fn(async () => []),
+			listWindows: vi.fn(async () => []),
+			listSessions: vi.fn(async () => []),
+			displayMessage: vi.fn(async () => null),
+			activePaneId: vi.fn(async () => null),
+			splitWindow: vi.fn(async () => ({ paneId: null, stderr: "" })),
+			newWindow: vi.fn(async () => ({ paneId: null, stderr: "" })),
+			newSessionDetached: vi.fn(async () => ({ stderr: "" })),
+			killSession: vi.fn(async () => undefined),
+			killPane: vi.fn(async () => undefined),
+			capturePane: vi.fn(async () => ""),
+			sendKeys: vi.fn(async () => undefined),
+			exitCopyMode: vi.fn(async () => undefined),
+			selectPane: vi.fn(async () => undefined),
+			selectWindow: vi.fn(async () => undefined),
+			selectLayout: vi.fn(async () => undefined),
+			nextLayout: vi.fn(async () => undefined),
+			toggleZoom: vi.fn(async () => undefined),
+			setOption: vi.fn(async () => undefined),
+			setWindowHook: vi.fn(async () => undefined),
+			setEnvironment: vi.fn(async () => undefined),
+			removeEnvironment: vi.fn(async () => undefined),
+			sourceFile: vi.fn(async () => undefined),
+		},
+	};
+});
 
 vi.mock("../agents", () => ({}));
 vi.mock("../repo-config", () => ({}));
@@ -81,14 +147,6 @@ vi.mock("../spawn", () => ({
 
 vi.mock("../agent-hooks", () => ({ setupAgentHooks: vi.fn() }));
 vi.mock("../artifact-template", () => ({ ensureArtifactTemplateEnv: vi.fn() }));
-
-vi.mock("../tmux-alt-click", () => ({
-	ALT_CLICK_PANE_FORMAT: "",
-	altClickIneligibleReason: vi.fn(() => null),
-	computeAltClickKeys: vi.fn(() => []),
-	findAltClickPane: vi.fn(() => null),
-	parseAltClickPanes: vi.fn(() => []),
-}));
 
 vi.mock("../rpc-handlers/shared-pure", () => ({
 	getPushMessage: vi.fn(() => null),

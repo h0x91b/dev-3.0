@@ -5,6 +5,7 @@ import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getT
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
+import { tmux, DEFAULT_TMUX_SOCKET, activeTmuxConfigPath, cleanupSessionName } from "../tmux";
 import * as portPool from "../port-pool";
 import * as repoConfig from "../repo-config";
 import { clonePaths } from "../cow-clone";
@@ -128,7 +129,7 @@ async function revertPreparingTaskToTodo(project: Project, task: Task, preparati
 		});
 	}
 
-	killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
+	killDevServerSession(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
 		log.warn("killDevServerSession failed while cancelling preparation", {
 			taskId: task.id.slice(0, 8),
 			error: String(err),
@@ -591,35 +592,34 @@ export async function runCleanupScript(
 	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath);
 	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
 	const scriptPath = dev3TaskTempPath(task.id, "cleanup.sh");
-	const sessionName = `dev3-cl-${task.id.slice(0, 8)}`;
+	const sessionName = cleanupSessionName(task.id);
 	const userShell = getUserShell();
 
 	await Bun.write(scriptPath, `#!/bin/bash\n${script}\n`);
 
 	log.info("Starting cleanup tmux session", { session: sessionName, worktreePath: task.worktreePath });
 
-	const cleanupSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	// Pass env vars via `-e KEY=VAL` so they land in session-environment
+	const cleanupSocket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+	// Env vars ride on `-e KEY=VAL` so they land in session-environment
 	// atomically. Without this, the tmux server's global env (from whichever
 	// task started the server) leaks in — DEV3_TASK_ID from task A would
 	// run task B's cleanup script against the wrong worktree/container.
-	const cleanupEnvFlags: string[] = [];
-	for (const [key, value] of Object.entries(buildCleanupScriptEnv(task, project, transition))) {
-		cleanupEnvFlags.push("-e", `${key}=${value}`);
-	}
-	const cleanupArgs = pty.tmuxArgs(cleanupSocket, "-f", pty.TMUX_CONF_PATH, "new-session", "-s", sessionName, ...cleanupEnvFlags, "-c", task.worktreePath, buildScriptRunnerCommand(scriptPath, { shellPath: userShell }));
-	const proc = spawn(
-		cleanupArgs,
-		{
-			terminal: { cols: 220, rows: 50, data: () => {} },
-			env: buildCleanupScriptEnv(task, project, transition),
-			// NOT the worktree: if this client is the one that starts the tmux
-			// server, the server would daemonize with a cwd this very cleanup is
-			// about to delete — poisoning `-c` for all future panes (tmux 3.7).
-			// The script still runs in the worktree via the `-c` flag above.
-			cwd: pty.tmuxClientCwd(),
-		},
-	);
+	// The client process cwd is pinned inside spawnAttachedSession — NOT the
+	// worktree: if this client is the one that starts the tmux server, the
+	// server would daemonize with a cwd this very cleanup is about to delete —
+	// poisoning `-c` for all future panes (tmux 3.7). The script still runs in
+	// the worktree via the `cwd` (`-c`) option.
+	const cleanupEnv = buildCleanupScriptEnv(task, project, transition);
+	const proc = tmux.spawnAttachedSession({
+		socket: cleanupSocket,
+		configFile: activeTmuxConfigPath(),
+		sessionName,
+		cwd: task.worktreePath,
+		envFlags: cleanupEnv,
+		command: buildScriptRunnerCommand(scriptPath, { shellPath: userShell }),
+		terminal: { cols: 220, rows: 50, data: () => {} },
+		processEnv: cleanupEnv,
+	});
 
 	await proc.exited;
 
@@ -894,7 +894,7 @@ export async function moveTask(params: {
 				});
 			}
 
-			killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
+			killDevServerSession(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
 				log.warn("killDevServerSession on task move failed (best-effort)", {
 					taskId: task.id.slice(0, 8), error: String(err),
 				});
@@ -1020,7 +1020,7 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	}
 
 	if (isActive(task.status) || task.worktreePath) {
-		killDevServerSession(task.id, task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
+		killDevServerSession(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
 			log.warn("killDevServerSession on task delete failed (best-effort)", {
 				taskId: task.id.slice(0, 8), error: String(err),
 			});

@@ -6,12 +6,6 @@ vi.mock("../spawn", () => ({
 	spawnSync: vi.fn(),
 }));
 
-// Mock pty-server to avoid side-effects
-vi.mock("../pty-server", () => ({
-	tmuxArgs: (socket: string, ...args: string[]) =>
-		["tmux", "-L", socket, ...args],
-}));
-
 // Mock logger
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -27,7 +21,6 @@ import {
 	getDescendantPids,
 	getSessionPanePids,
 	getAllSessionPanePids,
-	parseAllSessionPanePids,
 	scanTaskPorts,
 	getLsofOutput,
 	collectTaskPids,
@@ -228,47 +221,34 @@ describe("parseProcessInfoOutput", () => {
 	});
 });
 
-describe("parseAllSessionPanePids", () => {
-	it("groups pane PIDs by session name", () => {
-		const output = [
-			"dev3-abc12345\t100",
-			"dev3-abc12345\t101",
-			"dev3-dev-abc12345\t500",
-			"dev3-other000\t200",
-		].join("\n");
-
-		const map = parseAllSessionPanePids(output);
-		expect(map.get("dev3-abc12345")).toEqual([100, 101]);
-		expect(map.get("dev3-dev-abc12345")).toEqual([500]);
-		expect(map.get("dev3-other000")).toEqual([200]);
-	});
-
-	it("returns empty map for empty output", () => {
-		expect(parseAllSessionPanePids("").size).toBe(0);
-	});
-
-	it("skips malformed lines", () => {
-		const map = parseAllSessionPanePids("no-tab-here\ndev3-ok000000\t42\n\tmissing-session\ndev3-bad00000\tNaN\n");
-		expect([...map.keys()]).toEqual(["dev3-ok000000"]);
-		expect(map.get("dev3-ok000000")).toEqual([42]);
-	});
-});
-
 describe("getAllSessionPanePids", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
-	it("runs a single tmux list-panes -a call", async () => {
-		mockSpawn.mockReturnValue(makeProc("dev3-abc12345\t100\ndev3-def00000\t200\n"));
+	it("groups pane PIDs by session name from one tmux list-panes -a call", async () => {
+		mockSpawn.mockReturnValue(makeProc([
+			"100\tdev3-abc12345",
+			"101\tdev3-abc12345",
+			"500\tdev3-dev-abc12345",
+			"200\tdev3-other000",
+		].join("\n") + "\n"));
 
 		const map = await getAllSessionPanePids("dev3");
-		expect(map.get("dev3-abc12345")).toEqual([100]);
-		expect(map.get("dev3-def00000")).toEqual([200]);
+		expect(map.get("dev3-abc12345")).toEqual([100, 101]);
+		expect(map.get("dev3-dev-abc12345")).toEqual([500]);
+		expect(map.get("dev3-other000")).toEqual([200]);
 		expect(mockSpawn).toHaveBeenCalledTimes(1);
 		const [argv] = mockSpawn.mock.calls[0];
 		expect(argv).toContain("list-panes");
 		expect(argv).toContain("-a");
+	});
+
+	it("skips malformed lines", async () => {
+		mockSpawn.mockReturnValue(makeProc("no-tab-here\n42\tdev3-ok000000\n\t\nNaN\tdev3-bad00000\n"));
+		const map = await getAllSessionPanePids("dev3");
+		expect([...map.keys()]).toEqual(["dev3-ok000000"]);
+		expect(map.get("dev3-ok000000")).toEqual([42]);
 	});
 
 	it("returns empty map when tmux fails", async () => {
@@ -739,7 +719,7 @@ describe("poller", () => {
 		routeSpawnByArgv({
 			ps: "  100     1   50000   0.0\n",
 			lsof: "p100\ncnode\nn*:3000\n",
-			allPanes: "dev3-task-123\t100\n",
+			allPanes: "100\tdev3-task-123\n",
 		});
 
 		startPortScanPoller(push, getActiveSessions);
@@ -764,7 +744,7 @@ describe("poller", () => {
 		routeSpawnByArgv({
 			ps: "  100     1   50000   0.0\n",
 			lsof: "p100\ncnode\nn*:3000\n",
-			allPanes: "dev3-task-aaa\t100\n",
+			allPanes: "100\tdev3-task-aaa\n",
 		});
 
 		startPortScanPoller(push, getActiveSessions);
@@ -785,7 +765,7 @@ describe("poller", () => {
 		routeSpawnByArgv({
 			ps: "  500     1   60000   0.0\n",
 			lsof: "p500\ncnode\nn*:4000\n",
-			allPanes: "dev3-task-unc\t500\n",
+			allPanes: "500\tdev3-task-unc\n",
 		});
 
 		startPortScanPoller(push, getActiveSessions);
@@ -809,7 +789,7 @@ describe("poller", () => {
 		routeSpawnByArgv({
 			ps: "  100     1   50000   0.0\n  200     1   60000   0.0\n",
 			lsof: "p100\ncnode\nn*:3000\np200\ncbun\nn*:8080\n",
-			allPanes: "dev3-task-aaa\t100\ndev3-task-bbb\t200\n",
+			allPanes: "100\tdev3-task-aaa\n200\tdev3-task-bbb\n",
 		});
 
 		startPortScanPoller(push, getActiveSessions);
@@ -823,7 +803,7 @@ describe("poller", () => {
 		routeSpawnByArgv({
 			ps: "  100     1   50000   0.0\n",
 			lsof: "p100\ncnode\nn*:3000\n",
-			allPanes: "dev3-task-aaa\t100\n",
+			allPanes: "100\tdev3-task-aaa\n",
 		});
 
 		await vi.advanceTimersByTimeAsync(10_000);

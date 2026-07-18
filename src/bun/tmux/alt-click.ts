@@ -9,15 +9,17 @@
  * backend, where tmux can be asked what actually runs in the clicked pane.
  *
  * The flow (handler `tmuxAltClickMoveCursor` in rpc-handlers/tmux-pty.ts):
- *   1. list-panes of the session's current window → parseAltClickPanes()
+ *   1. tmux.listPanes(ALT_CLICK_PANE_FORMAT) → validAltClickPanes()
  *   2. hit-test the clicked cell → findAltClickPane()
  *   3. eligibility: plain shell, not copy-mode, not dead → altClickIneligibleReason()
  *   4. same-row + clamp to the line's text + delta → computeAltClickKeys()
  *   5. select-pane + send-keys Left/Right × count
  *
  * Everything in this module is pure and unit-tested; the handler only does
- * the tmux I/O around it.
+ * the tmux I/O around it. The list-panes format is a shared declaration in
+ * ./formats (ALT_CLICK_PANE_FORMAT) whose row type matches AltClickPane.
  */
+import { ALT_CLICK_PANE_FORMAT } from "./formats";
 
 export interface AltClickPane {
 	paneId: string;
@@ -40,50 +42,16 @@ export interface AltClickPane {
 }
 
 /**
- * tmux list-panes -F format consumed by parseAltClickPanes().
- * pane_current_command goes LAST so a (theoretical) tab in the command name
- * cannot shift the numeric fields.
+ * Drop rows that don't look like real panes (defense against garbage lines —
+ * a genuine pane id always starts with `%`).
  */
-export const ALT_CLICK_PANE_FORMAT = [
-	"#{pane_id}",
-	"#{pane_active}",
-	"#{pane_left}",
-	"#{pane_top}",
-	"#{pane_width}",
-	"#{pane_height}",
-	"#{pane_in_mode}",
-	"#{pane_dead}",
-	"#{cursor_x}",
-	"#{cursor_y}",
-	"#{window_zoomed_flag}",
-	"#{pane_current_command}",
-].join("\t");
+export function validAltClickPanes(panes: AltClickPane[]): AltClickPane[] {
+	return panes.filter((pane) => pane.paneId.startsWith("%"));
+}
 
+/** Parse raw `list-panes -F ALT_CLICK_PANE_FORMAT` stdout into validated panes. */
 export function parseAltClickPanes(stdout: string): AltClickPane[] {
-	return stdout
-		.split("\n")
-		.map((line) => line.trimEnd())
-		.filter(Boolean)
-		.flatMap((line) => {
-			const parts = line.split("\t");
-			if (parts.length < 12) return [];
-			const [paneId, active, left, top, width, height, inMode, dead, cursorX, cursorY, zoomed, ...cmd] = parts;
-			if (!paneId.startsWith("%")) return [];
-			return [{
-				paneId,
-				active: active === "1",
-				left: Number(left) || 0,
-				top: Number(top) || 0,
-				width: Number(width) || 0,
-				height: Number(height) || 0,
-				inMode: inMode === "1",
-				dead: dead === "1",
-				cursorX: Number(cursorX) || 0,
-				cursorY: Number(cursorY) || 0,
-				command: cmd.join("\t"),
-				zoomed: zoomed === "1",
-			}];
-		});
+	return validAltClickPanes(ALT_CLICK_PANE_FORMAT.parse(stdout));
 }
 
 /**

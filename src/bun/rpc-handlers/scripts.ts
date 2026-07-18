@@ -11,7 +11,7 @@ import {
 	scriptStorageKey,
 } from "../../shared/types";
 import * as data from "../data";
-import * as pty from "../pty-server";
+import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { parsePackageScripts } from "../package-scripts";
 import { parseMakefile } from "../makefile";
 import { runScript as runScriptInTmux } from "../script-runner";
@@ -77,7 +77,7 @@ async function runScriptHandler(params: {
 		runner = isValidRunner(params.runner) ? params.runner : pkg.runner;
 	}
 
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	await runScriptInTmux({
 		taskId: task.id,
 		worktreePath: task.worktreePath,

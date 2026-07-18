@@ -13,7 +13,7 @@ import { isMac } from "./utils/platform";
  * lockstep with the handlers is a maintenance discipline — see AGENTS.md).
  *
  * Terminal/tmux prefix bindings (⌃B …) are NOT here — they are owned by tmux
- * (`src/bun/tmux-config.ts`) and shown on the modal's Terminal tab.
+ * (`src/bun/tmux/config.ts`) and shown on the modal's Terminal tab.
  */
 
 export type ShortcutCategory = "navigation" | "create" | "view" | "terminal" | "app";

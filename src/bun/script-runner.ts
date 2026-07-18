@@ -5,28 +5,29 @@
  * in tmux, or just run it again to open another pane).
  */
 import type { ScriptPlacement, ScriptRunner, ScriptSource } from "../shared/types";
-import * as pty from "./pty-server";
-import { spawn } from "./spawn";
+import { tmux, DEFAULT_TMUX_SOCKET, TmuxError, taskSessionName, type SplitOrientation } from "./tmux";
 import { resolveRunnerCommand } from "./package-scripts";
 import { resolveMakeCommand } from "./makefile";
 import { createLogger } from "./logger";
 
 const log = createLogger("script-runner");
 
-const taskSessionName = (taskId: string): string => `dev3-${taskId.slice(0, 8)}`;
+type ScriptPlacementSpec =
+	| { kind: "split"; orientation: SplitOrientation; before: boolean }
+	| { kind: "window" };
 
-function placementToTmuxArgs(placement: ScriptPlacement): { kind: "split" | "window"; args: string[] } {
+function placementSpec(placement: ScriptPlacement): ScriptPlacementSpec {
 	switch (placement) {
 		case "left":
-			return { kind: "split", args: ["split-window", "-h", "-b"] };
+			return { kind: "split", orientation: "horizontal", before: true };
 		case "right":
-			return { kind: "split", args: ["split-window", "-h"] };
+			return { kind: "split", orientation: "horizontal", before: false };
 		case "top":
-			return { kind: "split", args: ["split-window", "-v", "-b"] };
+			return { kind: "split", orientation: "vertical", before: true };
 		case "bottom":
-			return { kind: "split", args: ["split-window", "-v"] };
+			return { kind: "split", orientation: "vertical", before: false };
 		case "window":
-			return { kind: "window", args: ["new-window"] };
+			return { kind: "window" };
 	}
 }
 
@@ -42,7 +43,7 @@ interface RunScriptOptions {
 
 export async function runScript(opts: RunScriptOptions): Promise<void> {
 	const { taskId, worktreePath, scriptName, source, runner, placement } = opts;
-	const socket = opts.socket ?? pty.DEFAULT_TMUX_SOCKET;
+	const socket = opts.socket ?? DEFAULT_TMUX_SOCKET;
 	const session = taskSessionName(taskId);
 	const command = source === "make"
 		? resolveMakeCommand(scriptName)
@@ -53,55 +54,43 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 	// Single quotes around the inner script protect against the outer shell —
 	// `command` is built from a safe-name validator so it cannot contain quotes.
 	const wrapped = `bash -c '${command}; __EC=$?; printf "\\n\\033[2m[exited %s — press Enter to close]\\033[0m " "$__EC"; read'`;
-	const { kind, args } = placementToTmuxArgs(placement);
+	const spec = placementSpec(placement);
 
-	const tmuxArgs = kind === "split"
-		? pty.tmuxArgs(
-			socket,
-			...args,
-			"-t",
-			`${session}:`,
-			"-c",
-			worktreePath,
-			"-P",
-			"-F",
-			"#{pane_id}",
-			wrapped,
-		)
-		: pty.tmuxArgs(
-			socket,
-			...args,
-			"-t",
-			`${session}:`,
-			"-c",
-			worktreePath,
-			"-n",
-			label.slice(0, 20),
-			"-P",
-			"-F",
-			"#{pane_id}",
-			wrapped,
-		);
-
-	const proc = spawn(tmuxArgs, { stdout: "pipe", stderr: "pipe" });
-	const stdout = await new Response(proc.stdout).text();
-	const stderr = await new Response(proc.stderr).text();
-	const code = await proc.exited;
-	if (code !== 0) {
+	let paneId: string | null;
+	try {
+		if (spec.kind === "split") {
+			({ paneId } = await tmux.splitWindow({
+				target: `${session}:`,
+				orientation: spec.orientation,
+				before: spec.before,
+				cwd: worktreePath,
+				printPaneId: true,
+				command: wrapped,
+				socket,
+			}));
+		} else {
+			({ paneId } = await tmux.newWindow({
+				target: `${session}:`,
+				cwd: worktreePath,
+				name: label.slice(0, 20),
+				printPaneId: true,
+				command: wrapped,
+				socket,
+			}));
+		}
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
 		log.error("runScript tmux failed", {
 			taskId: taskId.slice(0, 8),
 			scriptName,
 			placement,
-			stderr: stderr.trim(),
+			stderr: err.stderr,
 		});
-		throw new Error(`tmux ${args[0]} failed: ${stderr.trim() || `exit ${code}`}`);
+		const subcommand = spec.kind === "split" ? "split-window" : "new-window";
+		throw new Error(`tmux ${subcommand} failed: ${err.stderr || `exit ${err.exitCode}`}`);
 	}
-	const paneId = stdout.trim();
 	if (paneId) {
-		spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", label), {
-			stdout: "pipe",
-			stderr: "pipe",
-		}).exited.catch(() => {});
+		tmux.selectPane(paneId, { socket, title: label }).catch(() => {});
 	}
 }
 

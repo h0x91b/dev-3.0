@@ -15,7 +15,29 @@ import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
 import { ensureArtifactTemplateEnv } from "../artifact-template";
-import { ALT_CLICK_PANE_FORMAT, altClickIneligibleReason, computeAltClickKeys, findAltClickPane, parseAltClickPanes } from "../tmux-alt-click";
+import {
+	tmux,
+	DEFAULT_TMUX_SOCKET,
+	TmuxError,
+	isTmuxSpawnError,
+	taskSessionName,
+	devServerSessionName,
+	devServerSessionForTaskSession,
+	parseDev3SessionName,
+	PANE_CWD_FORMAT,
+	PANE_ID_FORMAT,
+	PANE_IN_MODE_FORMAT,
+	PANE_START_COMMAND_FORMAT,
+	PANE_CURRENT_COMMAND_FORMAT,
+	PANE_SWITCHER_FORMAT,
+	WINDOW_SWITCHER_FORMAT,
+	SESSION_OVERVIEW_FORMAT,
+	ALT_CLICK_PANE_FORMAT,
+	altClickIneligibleReason,
+	computeAltClickKeys,
+	findAltClickPane,
+	validAltClickPanes,
+} from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { getPushMessage, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -33,13 +55,9 @@ async function waitForTaskTmuxSession(taskId: string, socket: string): Promise<v
 		}
 	}
 	throw new Error(
-		`tmux started but did not create session dev3-${taskId.slice(0, 8)}. ` +
+		`tmux started but did not create session ${taskSessionName(taskId)}. ` +
 			"Run `dev3 doctor` to verify the selected tmux binary, then retry.",
 	);
-}
-
-function devServerSessionName(taskId: string): string {
-	return `dev3-dev-${taskId.slice(0, 8)}`;
 }
 
 // True when THIS app process was launched from inside the given task's context.
@@ -61,42 +79,33 @@ const SELF_HOSTED_STOP_ACK_MS = 500;
 
 async function isDevServerRunning(taskId: string, socket: string): Promise<boolean> {
 	const devSession = devServerSessionName(taskId);
-	// spawnTmux so a launch-time tmux failure surfaces as a typed TmuxSpawnError
-	// (clear FDA-pointing message) instead of a raw `posix_spawn ENOENT`. This is
+	// A launch-time tmux failure surfaces as a typed TmuxSpawnError (clear
+	// FDA-pointing message) instead of a raw `posix_spawn ENOENT`. This is
 	// the first — and gating — tmux call in the status path, so catching it in
 	// buildDevServerStatus covers the whole read.
-	const check = pty.spawnTmux(socket, ["has-session", "-t", devSession], { stdout: "pipe", stderr: "pipe" });
-	const exitCode = await check.exited;
-	return exitCode === 0;
+	return tmux.hasSession(devSession, { socket });
 }
 
 async function findDevServerViewerPaneId(taskId: string, taskSession: string, devSession: string, socket: string): Promise<string | null> {
-	let viewerPaneId = devViewerPaneIds.get(taskId);
-	if (viewerPaneId) {
-		return viewerPaneId;
+	const cached = devViewerPaneIds.get(taskId);
+	if (cached) {
+		return cached;
 	}
 
-	const listProc = pty.spawnTmux(socket, [
-		"list-panes", "-t", taskSession,
-		"-F", "#{pane_id} #{pane_start_command}",
-	], { stdout: "pipe", stderr: "pipe" });
-	const listOutput = await new Response(listProc.stdout).text();
-	await listProc.exited;
-	for (const line of listOutput.trim().split("\n")) {
-		if (!line.includes(devSession)) continue;
-		viewerPaneId = line.split(" ")[0];
-		break;
+	try {
+		const rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, { target: taskSession, socket });
+		return rows.find((row) => row.startCommand.includes(devSession))?.paneId ?? null;
+	} catch (err) {
+		if (err instanceof TmuxError) return null;
+		throw err;
 	}
-
-	return viewerPaneId ?? null;
 }
 
 async function killDevServerViewerPane(taskId: string, taskSession: string, devSession: string, socket: string): Promise<void> {
 	const viewerPaneId = await findDevServerViewerPaneId(taskId, taskSession, devSession, socket);
 	if (!viewerPaneId) return;
 
-	const killPane = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", viewerPaneId), { stdout: "pipe", stderr: "pipe" });
-	await killPane.exited;
+	await tmux.killPane(viewerPaneId, { socket, bestEffort: true });
 	devViewerPaneIds.delete(taskId);
 	log.info("Killed dev server viewer pane", { taskId: taskId.slice(0, 8), viewerPaneId });
 }
@@ -206,7 +215,7 @@ async function findOrphanedPortHolders(
 
 export async function killDevServerSession(taskId: string, socket: string, worktreePath?: string | null): Promise<void> {
 	const devSession = devServerSessionName(taskId);
-	const taskSession = `dev3-${taskId.slice(0, 8)}`;
+	const taskSession = taskSessionName(taskId);
 	// Snapshot the process tree while the dev session still exists — afterwards
 	// its pane PIDs are unreachable via tmux.
 	const treePids = await collectDevServerTreePids(devSession, socket);
@@ -225,8 +234,7 @@ export async function killDevServerSession(taskId: string, socket: string, workt
 	}
 
 	await killDevServerViewerPane(taskId, taskSession, devSession, socket);
-	const kill = spawn(pty.tmuxArgs(socket, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
-	await kill.exited;
+	await tmux.killSession(devSession, { socket, bestEffort: true });
 	const leftovers = await reapDevServerTree([...treePids, ...orphanPids], devSession);
 
 	// "Stop returned" must mean "the next start can bind": wait for the pool
@@ -249,9 +257,9 @@ export async function killDevServerSession(taskId: string, socket: string, workt
 }
 
 async function buildDevServerStatus(task: Task, projectId: string, hasDevScript: boolean, socket?: string): Promise<DevServerStatus> {
-	const resolvedSocket = socket ?? task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-	const taskSessionName = `dev3-${task.id.slice(0, 8)}`;
-	const devSessionName = devServerSessionName(task.id);
+	const resolvedSocket = socket ?? task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+	const taskSession = taskSessionName(task.id);
+	const devSession = devServerSessionName(task.id);
 	// `assignedPorts` comes from the in-memory port pool — no tmux — so it stays
 	// available as "last-known state" even when tmux can't be reached.
 	const assignedPorts = portPool.getPortAssignments(task.id);
@@ -264,7 +272,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	try {
 		running = await isDevServerRunning(task.id, resolvedSocket);
 	} catch (err) {
-		if (!pty.isTmuxSpawnError(err)) throw err;
+		if (!isTmuxSpawnError(err)) throw err;
 		log.error("dev-server status degraded — tmux unreachable", {
 			taskId: task.id.slice(0, 8),
 			error: err.message,
@@ -276,8 +284,8 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 			hasDevScript,
 			worktreePath: task.worktreePath ?? null,
 			tmuxSocket: resolvedSocket,
-			taskSessionName,
-			devSessionName,
+			taskSessionName: taskSession,
+			devSessionName: devSession,
 			viewerPaneId: null,
 			panePids: [],
 			assignedPorts,
@@ -289,14 +297,14 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	}
 
 	const viewerPaneId = running
-		? await findDevServerViewerPaneId(task.id, taskSessionName, devSessionName, resolvedSocket)
+		? await findDevServerViewerPaneId(task.id, taskSession, devSession, resolvedSocket)
 		: null;
-	const panePids = running ? await getSessionPanePids(resolvedSocket, devSessionName) : [];
+	const panePids = running ? await getSessionPanePids(resolvedSocket, devSession) : [];
 	// One live lsof snapshot shared by the dev-port scan, the conflict check,
 	// and the whole-task-session fallback below. Skipped entirely when there is
 	// nothing to look at (stopped + no assigned ports).
 	const lsofOutput = running || assignedPorts.length > 0 ? await getLsofOutput() : "";
-	const devTreePids = running ? await collectTaskPids(resolvedSocket, devSessionName) : new Set<number>();
+	const devTreePids = running ? await collectTaskPids(resolvedSocket, devSession) : new Set<number>();
 	const devPorts = running && lsofOutput ? parseLsofOutput(lsofOutput, devTreePids) : [];
 	// An assigned pool port bound by a PID outside the dev-server tree is a
 	// conflict: either a foreign squatter, or (when stopped) a leftover that
@@ -307,7 +315,7 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 	const ports = running
 		? await (async () => {
 			const cached = getPortsForTask(task.id);
-			return cached.length > 0 ? cached : scanTaskPorts(resolvedSocket, taskSessionName, lsofOutput);
+			return cached.length > 0 ? cached : scanTaskPorts(resolvedSocket, taskSession, lsofOutput);
 		})()
 		: [];
 	const resourceUsage = running ? getResourceUsage(task.id) : undefined;
@@ -319,8 +327,8 @@ async function buildDevServerStatus(task: Task, projectId: string, hasDevScript:
 		hasDevScript,
 		worktreePath: task.worktreePath ?? null,
 		tmuxSocket: resolvedSocket,
-		taskSessionName,
-		devSessionName,
+		taskSessionName: taskSession,
+		devSessionName: devSession,
 		viewerPaneId,
 		panePids,
 		assignedPorts,
@@ -335,13 +343,11 @@ async function setTmuxSessionPortEnv(taskId: string, socket: string): Promise<vo
 	const ports = portPool.getPortAssignments(taskId);
 	if (ports.length === 0) return;
 
-	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(taskId);
 	const envVars = portPool.buildPortEnv(ports);
 
 	for (const [key, value] of Object.entries(envVars)) {
-		const args = pty.tmuxArgs(socket, "set-environment", "-t", tmuxSession, key, value);
-		const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
-		await proc.exited;
+		await tmux.setEnvironment(tmuxSession, key, value, { socket, bestEffort: true });
 	}
 
 	log.info("Port env vars set on tmux session", { taskId: taskId.slice(0, 8), vars: Object.keys(envVars) });
@@ -688,13 +694,12 @@ export async function launchTaskPty(
 		envKeys: Object.keys(env),
 	});
 	try {
-		const sessionSocket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const sessionSocket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		// For virtual ops, only add the split-right shell on a FRESH session — not
 		// when reconnecting to an existing one (recovery) — to avoid duplicate panes.
 		let sessionPreexisted = false;
 		if (project.kind === "virtual") {
-			const probe = spawn(pty.tmuxArgs(sessionSocket, "has-session", "-t", `dev3-${task.id.slice(0, 8)}`), { stdout: "ignore", stderr: "ignore" });
-			sessionPreexisted = (await probe.exited) === 0;
+			sessionPreexisted = await tmux.hasSession(taskSessionName(task.id), { socket: sessionSocket });
 		}
 		pty.createSession(task.id, project.id, worktreePath, wrapperCmd, env, sessionSocket);
 		// Bun.spawn returning only proves that the client process started. A broken
@@ -728,40 +733,44 @@ export async function launchTaskPty(
  * session to come up before splitting.
  */
 export async function addVirtualShellPane(task: Task, worktreePath: string, socket: string, userShell: string): Promise<void> {
-	const session = `dev3-${task.id.slice(0, 8)}`;
+	const session = taskSessionName(task.id);
 	try {
 		let ready = false;
 		for (let i = 0; i < 40; i++) {
-			const probe = spawn(pty.tmuxArgs(socket, "has-session", "-t", session), { stdout: "ignore", stderr: "ignore" });
-			if ((await probe.exited) === 0) { ready = true; break; }
+			if (await tmux.hasSession(session, { socket })) { ready = true; break; }
 			await new Promise((r) => setTimeout(r, 100));
 		}
 		if (!ready) {
 			log.warn("Virtual shell pane: session never came up, skipping split", { taskId: task.id.slice(0, 8) });
 			return;
 		}
-		const proc = spawn(pty.tmuxArgs(socket,
-			"split-window", "-h",
-			"-l", "40%",
-			"-P", "-F", "#{pane_id}",
-			"-e", `DEV3_TASK_ID=${task.id}`,
-			"-e", `DEV3_WORKTREE_ROOT=${worktreePath}`,
-			"-t", session,
-			"-c", worktreePath,
-			userShell,
-		), { stdout: "pipe", stderr: "pipe" });
-		const paneId = (await new Response(proc.stdout).text()).trim();
-		const exitCode = await proc.exited;
-		if (exitCode === 0 && paneId) {
-			spawn(pty.tmuxArgs(socket, "set-option", "-t", session, "pane-border-status", "top")).exited.catch(() => {});
+		let paneId: string | null = null;
+		try {
+			({ paneId } = await tmux.splitWindow({
+				target: session,
+				orientation: "horizontal",
+				size: "40%",
+				printPaneId: true,
+				env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath },
+				cwd: worktreePath,
+				command: userShell,
+				socket,
+			}));
+		} catch (err) {
+			if (!(err instanceof TmuxError)) throw err;
+			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode: err.exitCode });
+			return;
+		}
+		if (paneId) {
+			tmux.setOption(session, "pane-border-status", "top", { socket }).catch(() => {});
 			// `select-pane -t` sets a pane's title but ALSO makes it the active pane.
 			// Title the shell first and the agent (pane 0) LAST, awaited in order, so
 			// focus deterministically lands on the agent — not the freshly-split shell.
-			await spawn(pty.tmuxArgs(socket, "select-pane", "-t", paneId, "-T", "Shell")).exited.catch(() => {});
-			await spawn(pty.tmuxArgs(socket, "select-pane", "-t", `${session}.0`, "-T", "Agent")).exited.catch(() => {});
+			await tmux.selectPane(paneId, { socket, title: "Shell" }).catch(() => {});
+			await tmux.selectPane(`${session}.0`, { socket, title: "Agent" }).catch(() => {});
 			log.info("Virtual shell pane created", { taskId: task.id.slice(0, 8), paneId });
 		} else {
-			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode });
+			log.warn("Virtual shell pane split failed (non-fatal)", { taskId: task.id.slice(0, 8), exitCode: 0 });
 		}
 	} catch (err) {
 		log.warn("Virtual shell pane creation failed (non-fatal)", { taskId: task.id.slice(0, 8), error: String(err) });
@@ -792,7 +801,7 @@ export async function launchColumnAgent(
 	});
 
 	const socket = pty.getSessionSocket(task.id);
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(task.id);
 
 	const ctx: agents.TemplateContext = {
 		taskTitle: `${options.paneTitle}: ${task.title}`,
@@ -838,42 +847,35 @@ export async function launchColumnAgent(
 		const oldPaneId = (await Bun.file(paneFile).text()).trim();
 		if (oldPaneId) {
 			log.info("launchColumnAgent: killing old pane", { paneId: oldPaneId });
-			const killArgs = pty.tmuxArgs(socket, "kill-pane", "-t", oldPaneId);
-			const killProc = spawn(killArgs, { stdout: "pipe", stderr: "pipe" });
-			await killProc.exited;
+			await tmux.killPane(oldPaneId, { socket, bestEffort: true });
 		}
 	} catch {}
 
-	const splitArgs = pty.tmuxArgs(
-		socket, "split-window",
-		"-h", "-l", "40%",
-		"-P", "-F", "#{pane_id}",
-		"-e", `DEV3_TASK_ID=${task.id}`,
-		"-e", `DEV3_WORKTREE_ROOT=${worktreePath}`,
-		"-t", tmuxSession,
-		"-c", worktreePath,
-		`bash "${scriptPath}"`,
-	);
-	const proc = spawn(splitArgs, { stdout: "pipe", stderr: "pipe" });
-	const stdout = await new Response(proc.stdout).text();
-	const stderr = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-
-	if (exitCode !== 0) {
-		log.error("launchColumnAgent: tmux split-window failed", { exitCode, stderr: stderr.trim() });
-		throw new Error(`tmux split-window failed: ${stderr.trim() || "unknown error"}`);
+	let newPaneId: string | null;
+	try {
+		({ paneId: newPaneId } = await tmux.splitWindow({
+			target: tmuxSession,
+			orientation: "horizontal",
+			size: "40%",
+			printPaneId: true,
+			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: worktreePath },
+			cwd: worktreePath,
+			command: `bash "${scriptPath}"`,
+			socket,
+		}));
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		log.error("launchColumnAgent: tmux split-window failed", { exitCode: err.exitCode, stderr: err.stderr });
+		throw new Error(`tmux split-window failed: ${err.stderr || "unknown error"}`);
 	}
 
-	const newPaneId = stdout.trim();
 	if (newPaneId) {
 		await Bun.write(paneFile, newPaneId);
 		log.info("launchColumnAgent: pane created", { paneId: newPaneId });
 	}
 
 	try {
-		const focusArgs = pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.0`);
-		const focusProc = spawn(focusArgs, { stdout: "pipe", stderr: "pipe" });
-		await focusProc.exited;
+		await tmux.selectPane(`${tmuxSession}:.0`, { socket, bestEffort: true });
 	} catch {}
 
 	log.info("launchColumnAgent DONE", { taskId: task.id.slice(0, 8) });
@@ -896,7 +898,7 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 
 		const devSession = devServerSessionName(task.id);
 		const devScriptPath = dev3TaskTempPath(task.id, "dev.sh");
-		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
 		if (await isDevServerRunning(task.id, socket)) {
 			if (isSelfHostedByTask(task.id)) {
@@ -964,36 +966,34 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 			`# without a watching client — prevents escape sequence corruption in outer tmux.`,
 			`# Use the app-resolved binary: a PATH tmux of a different version cannot`,
 			`# talk to this server at all ("server exited unexpectedly").`,
-			`"${pty.getTmuxBinary()}" detach-client 2>/dev/null || true`,
+			`"${tmux.binaryPath()}" detach-client 2>/dev/null || true`,
 		].join("\n") + "\n";
 		await Bun.write(devScriptPath, wrappedScript);
 
-		const proc = spawn(pty.tmuxArgs(socket,
-			"new-session", "-d",
-			"-e", `DEV3_TASK_ID=${task.id}`,
-			"-e", `DEV3_WORKTREE_ROOT=${task.worktreePath}`,
-			"-s", devSession,
-			"-c", task.worktreePath,
-			`bash "${devScriptPath}"`,
-			// Client cwd must never be a mortal worktree — a tmux server started
-			// by this client keeps that cwd forever (see pty.tmuxClientCwd).
-		), { stdout: "pipe", stderr: "pipe", cwd: pty.tmuxClientCwd() });
-		const stderrOutput = await new Response(proc.stderr).text();
-		const exitCode = await proc.exited;
-
-		if (stderrOutput.trim()) {
-			log.warn("runDevServer tmux stderr", { taskId: task.id.slice(0, 8), stderr: stderrOutput.trim() });
-		}
-		if (exitCode !== 0) {
-			log.error("runDevServer tmux exited with non-zero code", { taskId: task.id.slice(0, 8), exitCode, stderr: stderrOutput.trim() });
-			throw new Error(`tmux new-session failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
+		try {
+			// Client cwd is pinned inside newSessionDetached — never a mortal
+			// worktree, or a tmux server started by this client keeps it forever.
+			const { stderr } = await tmux.newSessionDetached({
+				sessionName: devSession,
+				cwd: task.worktreePath,
+				env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
+				command: `bash "${devScriptPath}"`,
+				socket,
+			});
+			if (stderr.trim()) {
+				log.warn("runDevServer tmux stderr", { taskId: task.id.slice(0, 8), stderr: stderr.trim() });
+			}
+		} catch (err) {
+			if (!(err instanceof TmuxError)) throw err;
+			log.error("runDevServer tmux exited with non-zero code", { taskId: task.id.slice(0, 8), exitCode: err.exitCode, stderr: err.stderr });
+			throw new Error(`tmux new-session failed (exit ${err.exitCode}): ${err.stderr || "unknown error"}`);
 		}
 
-		const taskSession = `dev3-${task.id.slice(0, 8)}`;
+		const taskSession = taskSessionName(task.id);
 		// These shell snippets must use the app-resolved tmux binary, not bare
 		// `tmux` from PATH: a client of a different version cannot talk to the
 		// server it targets ("server exited unexpectedly").
-		const tmuxBin = pty.getTmuxBinary();
+		const tmuxBin = tmux.binaryPath();
 		const tmuxKill = socket
 			? `"${tmuxBin}" -L "${socket}" kill-session -t "${devSession}" 2>/dev/null`
 			: `"${tmuxBin}" kill-session -t "${devSession}" 2>/dev/null`;
@@ -1004,24 +1004,28 @@ export async function runDevServer(params: { taskId: string; projectId: string }
 		const attachCmd = socket
 			? `bash -c 'trap "${tmuxKill}" EXIT; trap "exit" HUP; while TMUX= "${tmuxBin}" -L "${socket}" has-session -t "${devSession}" 2>/dev/null; do TMUX= "${tmuxBin}" -L "${socket}" attach-session -t "${devSession}"; done'`
 			: `bash -c 'trap "${tmuxKill}" EXIT; trap "exit" HUP; while TMUX= "${tmuxBin}" has-session -t "${devSession}" 2>/dev/null; do TMUX= "${tmuxBin}" attach-session -t "${devSession}"; done'`;
-		const viewerProc = spawn(pty.tmuxArgs(socket,
-			"split-window", "-h",
-			"-e", `DEV3_TASK_ID=${task.id}`,
-			"-e", `DEV3_WORKTREE_ROOT=${task.worktreePath}`,
-			"-t", taskSession,
-			"-c", task.worktreePath,
-			"-l", "50%",
-			"-P", "-F", "#{pane_id}",
-			attachCmd,
-		), { stdout: "pipe", stderr: "pipe" });
-		const viewerOut = await new Response(viewerProc.stdout).text();
-		await viewerProc.exited;
-		const viewerPaneId = viewerOut.trim();
+		// The viewer split is best-effort: the dev server itself is already up,
+		// so a failed split (task session gone, pane too small) is not fatal.
+		let viewerPaneId: string | null = null;
+		try {
+			({ paneId: viewerPaneId } = await tmux.splitWindow({
+				target: taskSession,
+				orientation: "horizontal",
+				size: "50%",
+				printPaneId: true,
+				env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
+				cwd: task.worktreePath,
+				command: attachCmd,
+				socket,
+			}));
+		} catch (err) {
+			if (!(err instanceof TmuxError)) throw err;
+		}
 
 		if (viewerPaneId) {
 			devViewerPaneIds.set(task.id, viewerPaneId);
-			spawn(pty.tmuxArgs(socket, "select-pane", "-t", viewerPaneId, "-T", "Dev Server  (Ctrl+b Ctrl+b to control inner)")).exited.catch(() => {});
-			spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "top")).exited.catch(() => {});
+			tmux.selectPane(viewerPaneId, { socket, title: "Dev Server  (Ctrl+b Ctrl+b to control inner)" }).catch(() => {});
+			tmux.setOption(taskSession, "pane-border-status", "top", { socket }).catch(() => {});
 		}
 
 		log.info("← runDevServer done", { devSession, viewerPaneId });
@@ -1041,7 +1045,7 @@ async function checkDevServer(params: { taskId: string; projectId: string }): Pr
 	try {
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
-		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const running = await isDevServerRunning(task.id, socket);
 		log.info("← checkDevServer", { running });
 		return { running };
@@ -1056,8 +1060,8 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 		const project = await data.getProject(params.projectId);
 		const task = await data.getTask(project, params.taskId);
 		const resolved = await resolveOperationalProjectConfig(project, task.worktreePath ?? undefined);
-		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
-		const taskSession = `dev3-${task.id.slice(0, 8)}`;
+		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+		const taskSession = taskSessionName(task.id);
 
 		if (isSelfHostedByTask(task.id)) {
 			// Tearing the session down now would reap this very process before the
@@ -1070,14 +1074,14 @@ export async function stopDevServer(params: { taskId: string; projectId: string 
 			const status = await buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 			setTimeout(() => {
 				killDevServerSession(task.id, socket, task.worktreePath)
-					.then(() => spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited)
+					.then(() => tmux.setOption(taskSession, "pane-border-status", "off", { socket }))
 					.catch((err) => log.error("Deferred self-hosted dev-server teardown failed", { error: String(err) }));
 			}, SELF_HOSTED_STOP_ACK_MS);
 			return { ...status, running: false, viewerPaneId: null, panePids: [], devPorts: [], resourceUsage: undefined };
 		}
 
 		await killDevServerSession(task.id, socket, task.worktreePath);
-		spawn(pty.tmuxArgs(socket, "set-option", "-t", taskSession, "pane-border-status", "off")).exited.catch(() => {});
+		tmux.setOption(taskSession, "pane-border-status", "off", { socket }).catch(() => {});
 		log.info("← stopDevServer done");
 		return buildDevServerStatus(task, project.id, !!resolved.devScript.trim(), socket);
 	} catch (err) {
@@ -1145,50 +1149,48 @@ async function openFileBrowser(params: { taskId: string; projectId: string }): P
 		const task = await data.getTask(project, params.taskId);
 		if (!task.worktreePath) throw new Error("Task has no worktree");
 
-		const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const tmuxSession = taskSessionName(task.id);
+		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const existingPane = fileBrowserPaneIds.get(task.id);
 		if (existingPane) {
-			const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
-			await kill.exited;
+			await tmux.killPane(existingPane, { socket, bestEffort: true });
 			fileBrowserPaneIds.delete(task.id);
 			log.info("← openFileBrowser: toggled off (killed pane)", { taskId: task.id.slice(0, 8), paneId: existingPane });
 			return;
 		}
 
-		const listProc = spawn(pty.tmuxArgs(socket,
-			"list-panes", "-t", tmuxSession,
-			"-F", "#{pane_id} #{pane_current_command}",
-		), { stdout: "pipe", stderr: "pipe" });
-		const listOutput = await new Response(listProc.stdout).text();
-		await listProc.exited;
-		for (const line of listOutput.trim().split("\n")) {
-			if (!line.includes("yazi")) continue;
-			const paneId = line.split(" ")[0];
-			const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", paneId));
-			await kill.exited;
-			log.info("← openFileBrowser: toggled off (found running yazi)", { taskId: task.id.slice(0, 8), paneId });
+		// A failed pane listing (session gone mid-toggle) falls through to the
+		// split below, exactly like an empty listing did.
+		let paneRows: Array<{ paneId: string; currentCommand: string }> = [];
+		try {
+			paneRows = await tmux.listPanes(PANE_CURRENT_COMMAND_FORMAT, { target: tmuxSession, socket });
+		} catch (err) {
+			if (!(err instanceof TmuxError)) throw err;
+		}
+		for (const row of paneRows) {
+			if (!row.currentCommand.includes("yazi")) continue;
+			await tmux.killPane(row.paneId, { socket, bestEffort: true });
+			log.info("← openFileBrowser: toggled off (found running yazi)", { taskId: task.id.slice(0, 8), paneId: row.paneId });
 			return;
 		}
 
-		const proc = spawn(pty.tmuxArgs(socket,
-			"split-window", "-v",
-			"-t", tmuxSession,
-			"-c", task.worktreePath,
-			"-l", "30%",
-			"-P", "-F", "#{pane_id}",
-			"yazi",
-		), { stdout: "pipe", stderr: "pipe" });
-		const output = await new Response(proc.stdout).text();
-		const stderrOutput = await new Response(proc.stderr).text();
-		const exitCode = await proc.exited;
-
-		if (exitCode !== 0) {
-			log.error("openFileBrowser tmux failed", { taskId: task.id.slice(0, 8), exitCode, stderr: stderrOutput.trim() });
-			throw new Error(`tmux split-window failed: ${stderrOutput.trim() || "unknown error"}`);
+		let paneId: string | null;
+		try {
+			({ paneId } = await tmux.splitWindow({
+				target: tmuxSession,
+				orientation: "vertical",
+				size: "30%",
+				printPaneId: true,
+				cwd: task.worktreePath,
+				command: "yazi",
+				socket,
+			}));
+		} catch (err) {
+			if (!(err instanceof TmuxError)) throw err;
+			log.error("openFileBrowser tmux failed", { taskId: task.id.slice(0, 8), exitCode: err.exitCode, stderr: err.stderr });
+			throw new Error(`tmux split-window failed: ${err.stderr || "unknown error"}`);
 		}
 
-		const paneId = output.trim();
 		if (paneId) {
 			fileBrowserPaneIds.set(task.id, paneId);
 			log.info("← openFileBrowser done", { paneId });
@@ -1252,7 +1254,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 		const { task: foundTask, project: foundProject } = await findTaskAcrossProjects(params.taskId);
 
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
-			const socket = foundTask.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+			const socket = foundTask.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 			const tmuxAlive = await pty.tmuxSessionExists(params.taskId, socket);
 
 			if (tmuxAlive) {
@@ -1361,7 +1363,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 	// Resume extra panes (panes[1..]) via split-window.
 	// Wait for the tmux session to be ready before splitting.
 	if (panes.length > 1) {
-		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const maxWaitMs = 3000;
 		const pollMs = 100;
 		let waited = 0;
@@ -1496,7 +1498,7 @@ async function getProjectPtyUrl(params: { projectId: string }): Promise<string> 
 		if (!existsSync(project.path)) {
 			throw new Error(`Project path does not exist: ${project.path}`);
 		}
-		pty.createSession(sessionKey, params.projectId, project.path, getUserShell(), {}, pty.DEFAULT_TMUX_SOCKET, "project");
+		pty.createSession(sessionKey, params.projectId, project.path, getUserShell(), {}, DEFAULT_TMUX_SOCKET, "project");
 	}
 
 	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
@@ -1525,13 +1527,11 @@ async function getPortAllocations(params: { taskId: string }): Promise<number[]>
 async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 	log.debug("→ listTmuxSessions");
 
-	const format = "#{session_name}|#{pane_current_path}|#{session_windows}|#{session_created}";
-	const proc = spawn(pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "list-sessions", "-F", format), { stdout: "pipe", stderr: "pipe" });
-	const output = await new Response(proc.stdout).text();
-	const exitCode = await proc.exited;
-
-	if (exitCode !== 0) {
-		log.debug("← listTmuxSessions (no tmux server or error)", { exitCode });
+	let sessionRows: Array<{ name: string; windowCount: number; createdAt: number; cwd: string }>;
+	try {
+		sessionRows = await tmux.listSessions(SESSION_OVERVIEW_FORMAT);
+	} catch {
+		log.debug("← listTmuxSessions (no tmux server or error)");
 		return [];
 	}
 
@@ -1547,38 +1547,31 @@ async function listTmuxSessions(): Promise<TmuxSessionInfo[]> {
 		shortId: string;
 	}> = [];
 
-	for (const line of output.trim().split("\n")) {
-		if (!line) continue;
-		const [name, cwd, windowsStr, createdStr] = line.split("|");
-		if (!name.startsWith("dev3-")) continue;
-		if (name.startsWith("dev3-dev-")) continue;
+	for (const row of sessionRows) {
+		const parsed = parseDev3SessionName(row.name);
+		if (!parsed) continue;
+		if (parsed.kind === "dev-server") continue;
 		// Ignore a stale single home terminal session from an older app version
 		// (the home terminal was replaced by the Quick-shell operation).
-		if (name === "dev3-home") continue;
+		if (row.name === "dev3-home") continue;
 
-		const isCleanup = name.startsWith("dev3-cl-");
-		const isProjectTerminal = name.startsWith("dev3-pt-");
-		const shortId = isProjectTerminal
-			? name.slice(8)
-			: isCleanup
-				? name.slice(8)
-				: name.slice(5);
-		if (!shortId) continue;
+		const isCleanup = parsed.kind === "cleanup";
+		const isProjectTerminal = parsed.kind === "project-terminal";
 
 		rawSessions.push({
-			name,
-			cwd: cwd || "",
-			createdAt: parseInt(createdStr, 10) || 0,
-			windowCount: parseInt(windowsStr, 10) || 1,
+			name: row.name,
+			cwd: row.cwd || "",
+			createdAt: row.createdAt,
+			windowCount: row.windowCount || 1,
 			isCleanup,
 			isProjectTerminal,
-			shortId,
+			shortId: parsed.shortId,
 		});
 
 		if (isProjectTerminal) {
-			projectShortIds.add(shortId);
+			projectShortIds.add(parsed.shortId);
 		} else {
-			taskShortIds.add(shortId);
+			taskShortIds.add(parsed.shortId);
 		}
 	}
 
@@ -1665,27 +1658,22 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 	if (!params.sessionName.startsWith("dev3-")) {
 		throw new Error("Can only kill dev3-* sessions");
 	}
-	const proc = spawn(
-		pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "kill-session", "-t", params.sessionName),
-		{ stdout: "pipe", stderr: "pipe" },
-	);
-	const stderr = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-
-	if (exitCode !== 0) {
-		log.error("killTmuxSession failed", { sessionName: params.sessionName, stderr: stderr.trim() });
-		throw new Error(`Failed to kill session: ${stderr.trim()}`);
+	try {
+		await tmux.killSession(params.sessionName);
+	} catch (err) {
+		const stderr = err instanceof TmuxError ? err.stderr : String(err);
+		log.error("killTmuxSession failed", { sessionName: params.sessionName, stderr });
+		throw new Error(`Failed to kill session: ${stderr}`);
 	}
 
 	if (!params.sessionName.startsWith("dev3-dev-")) {
-		const devSession = `dev3-dev-${params.sessionName.slice("dev3-".length)}`;
+		const devSession = devServerSessionForTaskSession(params.sessionName);
 		// Same orphaned-children problem as the Stop button: snapshot the dev
 		// server's process tree before tearing the session down, then reap it
 		// with verification. (No full task ID here, so the port-ownership orphan
 		// sweep is skipped — the tree reap covers the common case.)
-		const treePids = await collectDevServerTreePids(devSession, pty.DEFAULT_TMUX_SOCKET);
-		const devKill = spawn(pty.tmuxArgs(pty.DEFAULT_TMUX_SOCKET, "kill-session", "-t", devSession), { stdout: "pipe", stderr: "pipe" });
-		await devKill.exited;
+		const treePids = await collectDevServerTreePids(devSession, DEFAULT_TMUX_SOCKET);
+		await tmux.killSession(devSession, { bestEffort: true });
 		await reapDevServerTree(treePids, devSession);
 		log.info("killTmuxSession: killed dev server session (best-effort)", { devSession });
 	}
@@ -1707,79 +1695,65 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	if (params.action === "killPane") {
 		if (!params.force) {
 			try {
-				const countProc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-				const countStdout = await new Response(countProc.stdout).text();
-				const countExit = await countProc.exited;
-				if (countExit === 0) {
-					const paneCount = countStdout.trim().split("\n").filter((l) => l.length > 0).length;
-					if (paneCount <= 1) {
-						log.info("tmuxAction killPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
-						return;
-					}
+				const paneCount = (await tmux.listPanes(PANE_ID_FORMAT, { target: tmuxSession, scope: "session", socket })).length;
+				if (paneCount <= 1) {
+					log.info("tmuxAction killPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
+					return;
 				}
 			} catch { /* best effort — if counting fails, fall through to the normal kill */ }
 		}
 
 		try {
-			const idProc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-			const idStdout = await new Response(idProc.stdout).text();
-			const idExit = await idProc.exited;
-			if (idExit === 0) {
-				killedPaneId = idStdout.trim() || null;
-			}
+			killedPaneId = await tmux.activePaneId(tmuxSession, { socket });
 		} catch { /* best effort */ }
 	}
 
-	let args: string[];
-	switch (params.action) {
-		case "splitH":
-			args = pty.tmuxArgs(socket, "split-window", "-v", "-c", pty.PANE_CWD_FORMAT, "-t", tmuxSession);
-			break;
-		case "splitV":
-			args = pty.tmuxArgs(socket, "split-window", "-h", "-c", pty.PANE_CWD_FORMAT, "-t", tmuxSession);
-			break;
-		case "zoom":
-			args = pty.tmuxArgs(socket, "resize-pane", "-Z", "-t", tmuxSession);
-			break;
-		case "killPane":
-			args = pty.tmuxArgs(socket, "kill-pane", "-t", tmuxSession);
-			break;
-		case "nextPane":
-			args = pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.+`);
-			break;
-		case "prevPane":
-			args = pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.-`);
-			break;
-		case "newWindow":
-			args = pty.tmuxArgs(socket, "new-window", "-c", pty.PANE_CWD_FORMAT, "-t", tmuxSession);
-			break;
-		case "nextLayout":
-			args = pty.tmuxArgs(socket, "next-layout", "-t", tmuxSession);
-			break;
-		case "layoutTiled":
-			args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "tiled");
-			break;
-		case "layoutEvenH":
-			args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-vertical");
-			break;
-		case "layoutEvenV":
-			args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "even-horizontal");
-			break;
-		case "layoutMainH":
-			args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "main-horizontal");
-			break;
-		case "layoutMainV":
-			args = pty.tmuxArgs(socket, "select-layout", "-t", tmuxSession, "main-vertical");
-			break;
-	}
-
-	const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
-	const stderr = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-
-	if (exitCode !== 0) {
-		log.error("tmuxAction failed", { action: params.action, exitCode, stderr: stderr.trim() });
-		throw new Error(`tmux ${params.action} failed: ${stderr.trim() || "unknown error"}`);
+	try {
+		switch (params.action) {
+			case "splitH":
+				await tmux.splitWindow({ target: tmuxSession, orientation: "vertical", cwd: PANE_CWD_FORMAT, socket });
+				break;
+			case "splitV":
+				await tmux.splitWindow({ target: tmuxSession, orientation: "horizontal", cwd: PANE_CWD_FORMAT, socket });
+				break;
+			case "zoom":
+				await tmux.toggleZoom(tmuxSession, { socket });
+				break;
+			case "killPane":
+				await tmux.killPane(tmuxSession, { socket });
+				break;
+			case "nextPane":
+				await tmux.selectPane(`${tmuxSession}:.+`, { socket });
+				break;
+			case "prevPane":
+				await tmux.selectPane(`${tmuxSession}:.-`, { socket });
+				break;
+			case "newWindow":
+				await tmux.newWindow({ target: tmuxSession, cwd: PANE_CWD_FORMAT, socket });
+				break;
+			case "nextLayout":
+				await tmux.nextLayout(tmuxSession, { socket });
+				break;
+			case "layoutTiled":
+				await tmux.selectLayout(tmuxSession, "tiled", { socket });
+				break;
+			case "layoutEvenH":
+				await tmux.selectLayout(tmuxSession, "even-vertical", { socket });
+				break;
+			case "layoutEvenV":
+				await tmux.selectLayout(tmuxSession, "even-horizontal", { socket });
+				break;
+			case "layoutMainH":
+				await tmux.selectLayout(tmuxSession, "main-horizontal", { socket });
+				break;
+			case "layoutMainV":
+				await tmux.selectLayout(tmuxSession, "main-vertical", { socket });
+				break;
+		}
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		log.error("tmuxAction failed", { action: params.action, exitCode: err.exitCode, stderr: err.stderr });
+		throw new Error(`tmux ${params.action} failed: ${err.stderr || "unknown error"}`);
 	}
 
 	// Remove killed pane from sessionState
@@ -1796,13 +1770,7 @@ async function tmuxPaneCount(params: { taskId: string }): Promise<{ count: numbe
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
 	try {
-		const proc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-		const stdout = await new Response(proc.stdout).text();
-		const exitCode = await proc.exited;
-		if (exitCode !== 0) {
-			return { count: 0 };
-		}
-		const count = stdout.trim().split("\n").filter((l) => l.length > 0).length;
+		const count = (await tmux.listPanes(PANE_ID_FORMAT, { target: tmuxSession, scope: "session", socket })).length;
 		return { count };
 	} catch {
 		return { count: 0 };
@@ -1834,25 +1802,20 @@ async function tmuxKillPane(params: { taskId: string; paneId: string; force?: bo
 
 	if (!params.force) {
 		try {
-			const countProc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-			const countStdout = await new Response(countProc.stdout).text();
-			const countExit = await countProc.exited;
-			if (countExit === 0) {
-				const paneCount = countStdout.trim().split("\n").filter((l) => l.length > 0).length;
-				if (paneCount <= 1) {
-					log.info("tmuxKillPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
-					return { killed: false };
-				}
+			const paneCount = (await tmux.listPanes(PANE_ID_FORMAT, { target: tmuxSession, scope: "session", socket })).length;
+			if (paneCount <= 1) {
+				log.info("tmuxKillPane refused — last pane in session", { taskId: params.taskId.slice(0, 8), paneCount });
+				return { killed: false };
 			}
 		} catch { /* best effort — if counting fails, fall through to the normal kill */ }
 	}
 
-	const proc = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", params.paneId), { stdout: "pipe", stderr: "pipe" });
-	const stderr = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-	if (exitCode !== 0) {
-		log.error("tmuxKillPane failed", { paneId: params.paneId, exitCode, stderr: stderr.trim() });
-		throw new Error(`tmux kill-pane failed: ${stderr.trim() || "unknown error"}`);
+	try {
+		await tmux.killPane(params.paneId, { socket });
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		log.error("tmuxKillPane failed", { paneId: params.paneId, exitCode: err.exitCode, stderr: err.stderr });
+		throw new Error(`tmux kill-pane failed: ${err.stderr || "unknown error"}`);
 	}
 
 	// kill-pane does NOT trigger tmux's pane-exited hook, so clean up sessionState here.
@@ -1872,19 +1835,6 @@ interface PaneLayoutInfo {
 	labels: string[];
 }
 
-// Field separator for list-panes output: pane_title can contain spaces, so a
-// space-delimited format is unparseable. \x1f (unit separator) never appears in
-// a command name, title, or hostname.
-const PANE_FIELD_SEP = "\x1f";
-const PANE_LAYOUT_FORMAT = [
-	"#{pane_id}",
-	"#{pane_active}",
-	"#{window_zoomed_flag}",
-	"#{pane_current_command}",
-	"#{host_short}",
-	"#{pane_title}",
-].join(PANE_FIELD_SEP);
-
 /**
  * Read the current window's pane layout (window-scoped, NOT `-s`): how many
  * panes, which one is active (by display order), whether the window is zoomed,
@@ -1898,39 +1848,25 @@ const PANE_LAYOUT_FORMAT = [
  */
 async function readPaneLayout(socket: string, tmuxSession: string): Promise<PaneLayoutInfo> {
 	try {
-		const proc = spawn(
-			pty.tmuxArgs(socket, "list-panes", "-t", tmuxSession, "-F", PANE_LAYOUT_FORMAT),
-			{ stdout: "pipe", stderr: "pipe" },
-		);
-		const stdout = await new Response(proc.stdout).text();
-		const exitCode = await proc.exited;
-		if (exitCode !== 0) return { count: 0, activeIndex: 0, zoomed: false, paneIds: [], labels: [] };
-
-		const lines = stdout.trim().split("\n").filter((l) => l.length > 0);
+		const rows = await tmux.listPanes(PANE_SWITCHER_FORMAT, { target: tmuxSession, socket });
 		const paneIds: string[] = [];
 		const labels: string[] = [];
 		let activeIndex = 0;
 		let zoomed = false;
-		lines.forEach((line, i) => {
-			const [paneId, active, zoom, cmd, hostShort, title] = line.split(PANE_FIELD_SEP);
-			paneIds.push(paneId);
-			const trimmedTitle = (title ?? "").trim();
-			const meaningfulTitle = trimmedTitle && trimmedTitle !== (hostShort ?? "").trim() ? trimmedTitle : "";
-			labels.push(meaningfulTitle || (cmd ?? "").trim() || "");
-			if (active === "1") {
+		rows.forEach((row, i) => {
+			paneIds.push(row.paneId);
+			const trimmedTitle = row.title.trim();
+			const meaningfulTitle = trimmedTitle && trimmedTitle !== row.hostShort.trim() ? trimmedTitle : "";
+			labels.push(meaningfulTitle || row.command.trim() || "");
+			if (row.active) {
 				activeIndex = i;
-				zoomed = zoom === "1";
+				zoomed = row.zoomed;
 			}
 		});
-		return { count: lines.length, activeIndex, zoomed, paneIds, labels };
+		return { count: rows.length, activeIndex, zoomed, paneIds, labels };
 	} catch {
 		return { count: 0, activeIndex: 0, zoomed: false, paneIds: [], labels: [] };
 	}
-}
-
-async function runTmuxQuiet(args: string[]): Promise<void> {
-	const proc = spawn(args, { stdout: "ignore", stderr: "ignore" });
-	await proc.exited;
 }
 
 /**
@@ -1960,18 +1896,18 @@ async function tmuxPaneNavigate(params: {
 	if (info.count > 1) {
 		let navigated = false;
 		if (params.step === "next") {
-			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.+`));
+			await tmux.selectPane(`${tmuxSession}:.+`, { socket, bestEffort: true });
 			navigated = true;
 		} else if (params.step === "prev") {
-			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", `${tmuxSession}:.-`));
+			await tmux.selectPane(`${tmuxSession}:.-`, { socket, bestEffort: true });
 			navigated = true;
 		} else if (typeof params.index === "number" && info.paneIds[params.index]) {
-			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", info.paneIds[params.index]));
+			await tmux.selectPane(info.paneIds[params.index], { socket, bestEffort: true });
 			navigated = true;
 		} else if (params.paneId && info.paneIds.includes(params.paneId)) {
 			// Jump-by-id (the pane-map sheet taps a specific box). Robust against
 			// any index/order drift between the map's layout and this read.
-			await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", params.paneId));
+			await tmux.selectPane(params.paneId, { socket, bestEffort: true });
 			navigated = true;
 		}
 		// Re-read after a move: select-pane changes the active pane AND auto-unzooms.
@@ -1981,7 +1917,7 @@ async function tmuxPaneNavigate(params: {
 	// Enforce zoom intent idempotently (single pane needs no zoom — it already fills the window).
 	let zoomed = info.zoomed;
 	if (info.count > 1 && typeof params.zoom === "boolean" && params.zoom !== info.zoomed) {
-		await runTmuxQuiet(pty.tmuxArgs(socket, "resize-pane", "-Z", "-t", tmuxSession));
+		await tmux.toggleZoom(tmuxSession, { socket, bestEffort: true });
 		zoomed = params.zoom;
 	}
 
@@ -2014,16 +1950,6 @@ interface WindowLayoutInfo {
 	labels: string[];
 }
 
-// Field separator for list-windows output: window_name can contain spaces, so a
-// space-delimited format is unparseable. \x1f (unit separator) never appears in
-// a window id or name.
-const WINDOW_FIELD_SEP = "\x1f";
-const WINDOW_LAYOUT_FORMAT = [
-	"#{window_id}",
-	"#{window_active}",
-	"#{window_name}",
-].join(WINDOW_FIELD_SEP);
-
 /**
  * Read a session's window layout: how many windows (separate workspaces in the
  * same tmux session), which one is active (by display order), each window's id,
@@ -2037,25 +1963,16 @@ const WINDOW_LAYOUT_FORMAT = [
  */
 async function readWindowLayout(socket: string, tmuxSession: string): Promise<WindowLayoutInfo> {
 	try {
-		const proc = spawn(
-			pty.tmuxArgs(socket, "list-windows", "-t", tmuxSession, "-F", WINDOW_LAYOUT_FORMAT),
-			{ stdout: "pipe", stderr: "pipe" },
-		);
-		const stdout = await new Response(proc.stdout).text();
-		const exitCode = await proc.exited;
-		if (exitCode !== 0) return { count: 0, activeIndex: 0, windowIds: [], labels: [] };
-
-		const lines = stdout.trim().split("\n").filter((l) => l.length > 0);
+		const rows = await tmux.listWindows(WINDOW_SWITCHER_FORMAT, { target: tmuxSession, socket });
 		const windowIds: string[] = [];
 		const labels: string[] = [];
 		let activeIndex = 0;
-		lines.forEach((line, i) => {
-			const [windowId, active, name] = line.split(WINDOW_FIELD_SEP);
-			windowIds.push(windowId);
-			labels.push((name ?? "").trim());
-			if (active === "1") activeIndex = i;
+		rows.forEach((row, i) => {
+			windowIds.push(row.windowId);
+			labels.push(row.name.trim());
+			if (row.active) activeIndex = i;
 		});
-		return { count: lines.length, activeIndex, windowIds, labels };
+		return { count: rows.length, activeIndex, windowIds, labels };
 	} catch {
 		return { count: 0, activeIndex: 0, windowIds: [], labels: [] };
 	}
@@ -2084,13 +2001,13 @@ async function tmuxWindowNavigate(params: {
 	if (info.count > 1) {
 		let navigated = false;
 		if (params.step === "next") {
-			await runTmuxQuiet(pty.tmuxArgs(socket, "select-window", "-t", `${tmuxSession}:+`));
+			await tmux.selectWindow(`${tmuxSession}:+`, { socket, bestEffort: true });
 			navigated = true;
 		} else if (params.step === "prev") {
-			await runTmuxQuiet(pty.tmuxArgs(socket, "select-window", "-t", `${tmuxSession}:-`));
+			await tmux.selectWindow(`${tmuxSession}:-`, { socket, bestEffort: true });
 			navigated = true;
 		} else if (typeof params.index === "number" && info.windowIds[params.index]) {
-			await runTmuxQuiet(pty.tmuxArgs(socket, "select-window", "-t", info.windowIds[params.index]));
+			await tmux.selectWindow(info.windowIds[params.index], { socket, bestEffort: true });
 			navigated = true;
 		}
 		if (navigated) info = await readWindowLayout(socket, tmuxSession);
@@ -2128,14 +2045,14 @@ async function tmuxAltClickMoveCursor(params: { taskId: string; col: number; row
 	if (x0 < 0 || y0 < 0) return { moved: false };
 
 	// Panes of the session's CURRENT window only (that's what the client shows).
-	const listProc = spawn(
-		pty.tmuxArgs(socket, "list-panes", "-t", tmuxSession, "-F", ALT_CLICK_PANE_FORMAT),
-		{ stdout: "pipe", stderr: "pipe" },
-	);
-	const listOut = await new Response(listProc.stdout).text();
-	if ((await listProc.exited) !== 0) return { moved: false };
+	let panes;
+	try {
+		panes = validAltClickPanes(await tmux.listPanes(ALT_CLICK_PANE_FORMAT, { target: tmuxSession, socket }));
+	} catch {
+		return { moved: false };
+	}
 
-	const pane = findAltClickPane(parseAltClickPanes(listOut), x0, y0);
+	const pane = findAltClickPane(panes, x0, y0);
 	if (!pane) return { moved: false };
 
 	const reason = altClickIneligibleReason(pane);
@@ -2147,12 +2064,17 @@ async function tmuxAltClickMoveCursor(params: { taskId: string; col: number; row
 	// Row text of the cursor line — clamps the target to end-of-input so a
 	// click in the blank area right of the text lands exactly at EOL.
 	let rowText = "";
-	const capProc = spawn(
-		pty.tmuxArgs(socket, "capture-pane", "-p", "-t", pane.paneId, "-S", String(pane.cursorY), "-E", String(pane.cursorY)),
-		{ stdout: "pipe", stderr: "pipe" },
-	);
-	const capOut = await new Response(capProc.stdout).text();
-	if ((await capProc.exited) === 0) rowText = capOut.replace(/\n$/, "");
+	try {
+		const capOut = await tmux.capturePane({
+			target: pane.paneId,
+			startLine: pane.cursorY,
+			endLine: pane.cursorY,
+			socket,
+		});
+		rowText = capOut.replace(/\n$/, "");
+	} catch {
+		// Capture failed — fall back to an empty row (clamps to column 0).
+	}
 
 	const plan = computeAltClickKeys(pane, x0, y0, rowText);
 	if (!plan) return { moved: false };
@@ -2161,41 +2083,25 @@ async function tmuxAltClickMoveCursor(params: { taskId: string; col: number; row
 	// select-pane binding). Skip when already active — select-pane would
 	// needlessly unzoom a zoomed window (see tmuxPaneNavigate gotcha).
 	if (!pane.active) {
-		await runTmuxQuiet(pty.tmuxArgs(socket, "select-pane", "-t", pane.paneId));
+		await tmux.selectPane(pane.paneId, { socket, bestEffort: true });
 	}
-	await runTmuxQuiet(
-		pty.tmuxArgs(socket, "send-keys", "-t", pane.paneId, ...Array<string>(plan.count).fill(plan.key)),
-	);
+	await tmux.sendKeys(pane.paneId, Array<string>(plan.count).fill(plan.key), { socket, bestEffort: true });
 	log.info("← tmuxAltClickMoveCursor", { taskId: params.taskId.slice(0, 8), pane: pane.paneId, key: plan.key, count: plan.count });
 	return { moved: true };
 }
 
 async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
-	const listProc = spawn(
-		pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id} #{pane_in_mode}"),
-		{ stdout: "pipe", stderr: "pipe" },
-	);
-	const listOutput = await new Response(listProc.stdout).text();
-	const listExit = await listProc.exited;
-	if (listExit !== 0) {
-		return 0;
-	}
-
-	const panesInMode: string[] = [];
-	for (const line of listOutput.trim().split("\n")) {
-		if (!line) continue;
-		const [paneId, inMode] = line.split(" ");
-		if (paneId && inMode === "1") {
-			panesInMode.push(paneId);
-		}
+	let panesInMode: string[];
+	try {
+		const rows = await tmux.listPanes(PANE_IN_MODE_FORMAT, { target: tmuxSession, scope: "session", socket });
+		panesInMode = rows.filter((row) => row.paneId && row.inMode).map((row) => row.paneId);
+	} catch (err) {
+		if (err instanceof TmuxError) return 0;
+		throw err;
 	}
 
 	for (const paneId of panesInMode) {
-		const cancelProc = spawn(
-			pty.tmuxArgs(socket, "send-keys", "-t", paneId, "-X", "cancel"),
-			{ stdout: "pipe", stderr: "pipe" },
-		);
-		await cancelProc.exited;
+		await tmux.exitCopyMode(paneId, { socket, bestEffort: true });
 	}
 
 	return panesInMode.length;
@@ -2301,21 +2207,23 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 	await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env));
 
 	const socket = pty.getSessionSocket(params.taskId);
-	const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
-	const args = pty.tmuxArgs(socket, "split-window", "-h", "-P", "-F", "#{pane_id}", "-e", `DEV3_TASK_ID=${task.id}`, "-e", `DEV3_WORKTREE_ROOT=${task.worktreePath}`, "-c", task.worktreePath, "-t", tmuxSession, `bash "${scriptPath}"`);
-	const proc = spawn(args, { stdout: "pipe", stderr: "pipe" });
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	const exitCode = await proc.exited;
-
-	if (exitCode !== 0) {
-		log.error("spawnAgentInTask failed", { exitCode, stderr: stderr.trim() });
-		throw new Error(`Failed to spawn agent: ${stderr.trim() || "unknown error"}`);
+	const tmuxSession = taskSessionName(params.taskId);
+	let newPaneId: string | null;
+	try {
+		({ paneId: newPaneId } = await tmux.splitWindow({
+			target: tmuxSession,
+			orientation: "horizontal",
+			printPaneId: true,
+			env: { DEV3_TASK_ID: task.id, DEV3_WORKTREE_ROOT: task.worktreePath },
+			cwd: task.worktreePath,
+			command: `bash "${scriptPath}"`,
+			socket,
+		}));
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		log.error("spawnAgentInTask failed", { exitCode: err.exitCode, stderr: err.stderr });
+		throw new Error(`Failed to spawn agent: ${err.stderr || "unknown error"}`);
 	}
-
-	const newPaneId = stdout.trim() || null;
 
 	// Append this pane to sessionState for recovery
 	const paneEntry = {
@@ -2396,7 +2304,7 @@ async function spawnSingleBugHunterPane(opts: {
 	agentId: string | null;
 	configId: string | null;
 	accountId?: string | null;
-	splitArgs: string[];
+	split: { orientation: "vertical" | "horizontal"; size: string; target: string };
 }): Promise<{ paneId: string | null; baseCmd: string }> {
 	const ctx: agents.TemplateContext = {
 		taskTitle: "",
@@ -2456,20 +2364,21 @@ async function spawnSingleBugHunterPane(opts: {
 	const scriptPath = dev3TaskTempPath(opts.task.id, `bughunt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.sh`);
 	await Bun.write(scriptPath, buildCmdScript(tmuxCmd, env));
 
-	const proc = spawn(
-		pty.tmuxArgs(opts.socket, "split-window", ...opts.splitArgs, "-P", "-F", "#{pane_id}", "-c", opts.worktreePath, `bash "${scriptPath}"`),
-		{ stdout: "pipe", stderr: "pipe" },
-	);
-	const [stdout, stderr] = await Promise.all([
-		new Response(proc.stdout).text(),
-		new Response(proc.stderr).text(),
-	]);
-	const exitCode = await proc.exited;
-	if (exitCode !== 0) {
-		throw new Error(`Failed to split pane: ${stderr.trim() || "unknown error"}`);
+	let newPaneId: string | null;
+	try {
+		({ paneId: newPaneId } = await tmux.splitWindow({
+			target: opts.split.target,
+			orientation: opts.split.orientation,
+			size: opts.split.size,
+			printPaneId: true,
+			cwd: opts.worktreePath,
+			command: `bash "${scriptPath}"`,
+			socket: opts.socket,
+		}));
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		throw new Error(`Failed to split pane: ${err.stderr || "unknown error"}`);
 	}
-
-	const newPaneId = stdout.trim() || null;
 
 	const paneEntry = {
 		paneId: newPaneId,
@@ -2507,7 +2416,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	}
 
 	const socket = pty.getSessionSocket(params.taskId);
-	const tmuxSession = `dev3-${params.taskId.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(params.taskId);
 
 	const paneIds: string[] = [];
 
@@ -2521,7 +2430,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 		agentId: params.agentId,
 		configId: params.configId,
 		accountId: params.accountId,
-		splitArgs: ["-h", "-l", "50%", "-t", tmuxSession],
+		split: { orientation: "horizontal", size: "50%", target: tmuxSession },
 	});
 	if (first.paneId) paneIds.push(first.paneId);
 	const resolvedBaseCmd = first.baseCmd;
@@ -2548,7 +2457,7 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 				agentId: params.agentId,
 				configId: params.configId,
 				accountId: params.accountId,
-				splitArgs: ["-v", "-l", `${percent}%`, "-t", target],
+				split: { orientation: "vertical", size: `${percent}%`, target },
 			});
 			if (paneId) paneIds.push(paneId);
 		} catch (err) {
@@ -2568,19 +2477,13 @@ async function spawnBugHuntersInTask(params: { taskId: string; projectId: string
 	const prompt = buildBugHunterPrompt(task, project, resolvedBaseCmd);
 	for (const paneId of paneIds) {
 		setTimeout(() => {
-			try {
-				const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", paneId, prompt), { stdout: "pipe", stderr: "pipe" });
-				pasteProc.exited.catch(() => {});
-			} catch (err) {
+			tmux.sendKeys(paneId, [prompt], { socket, bestEffort: true }).catch((err) => {
 				log.warn("send-keys paste for bug hunter pane failed", { paneId, error: String(err) });
-			}
+			});
 			setTimeout(() => {
-				try {
-					const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", paneId, "Enter"), { stdout: "pipe", stderr: "pipe" });
-					enterProc.exited.catch(() => {});
-				} catch (err) {
+				tmux.sendKeys(paneId, ["Enter"], { socket, bestEffort: true }).catch((err) => {
 					log.warn("send-keys Enter for bug hunter pane failed", { paneId, error: String(err) });
-				}
+				});
 			}, BUG_HUNTER_ENTER_DELAY_MS);
 		}, BUG_HUNTER_AUTOTYPE_DELAY_MS);
 	}
@@ -2612,7 +2515,7 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 		const panes = task.sessionState?.panes ?? [];
 		if (!panes.length) return;
 
-		const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const livePaneIds = new Set(await pty.listPaneIds(taskId, socket));
 
 		// Step 1: remove entries with a known paneId that is no longer alive

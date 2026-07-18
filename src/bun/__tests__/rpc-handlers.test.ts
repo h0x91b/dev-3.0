@@ -109,33 +109,21 @@ vi.mock("../pty-server", () => ({
 	getSessionType: vi.fn(() => null),
 	capturePane: vi.fn(),
 	applyTmuxTheme: vi.fn(),
-	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
-	// Forward to the shared spawn mock so existing `mockSpawn.mock.calls`
-	// assertions (has-session, list-panes) still observe dev-server tmux calls.
-	spawnTmux: vi.fn((_socket: string, args: string[], opts?: unknown) => mockSpawn(["tmux", "-L", _socket, ...args], opts)),
-	isTmuxSpawnError: (err: unknown) => (err as { name?: string })?.name === "TmuxSpawnError",
-	TmuxSpawnError: class TmuxSpawnError extends Error {
-		binary: string;
-		constructor(binary: string, cause: unknown) {
-			super(`tmux failed to spawn (${binary})`);
-			this.name = "TmuxSpawnError";
-			this.binary = binary;
-			(this as { cause?: unknown }).cause = cause;
-		}
-	},
-	setTmuxBinary: vi.fn(),
-	getTmuxBinary: vi.fn(() => "tmux"),
-	probeTmuxVersion: vi.fn(async () => "tmux 3.6a"),
-	selectTmuxBinary: vi.fn(async (preferred: string) => preferred),
-	updateTmuxShim: vi.fn(),
-	dereferenceTmuxShim: vi.fn((p: string) => (p === "/mock/dev3-home/bin/tmux" ? "/opt/homebrew/bin/tmux" : p)),
-	sanitizeTmuxShim: vi.fn(),
-	TMUX_SHIM_PATH: "/mock/dev3-home/bin/tmux",
-	TMUX_CONF_PATH: "/tmp/dev3-tmux.conf",
-	DEFAULT_TMUX_SOCKET: "dev3",
-	tmuxClientCwd: vi.fn(() => "/mock/dev3-home"),
-	PANE_CWD_FORMAT: "#{?pane_current_path,#{pane_current_path},#{session_path}}",
 }));
+
+// The tmux module stays REAL — its singleton is rebuilt over the shared spawn
+// mock so existing `mockSpawn.mock.calls` assertions (has-session, split-window,
+// new-session …) observe the exact argv the client builds. Only the binary
+// surface (selectBinary/probeVersion/dereferenceShim) is stubbed: those hit
+// disk/probe logic that settings-config tests control per-case.
+vi.mock("../tmux", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../tmux")>();
+	const client = new actual.TmuxClient({ spawn: ((...args: unknown[]) => mockSpawn(...args)) as never });
+	client.selectBinary = vi.fn(async (preferred: string) => preferred) as never;
+	client.probeVersion = vi.fn(async () => "tmux 3.6a") as never;
+	client.dereferenceShim = vi.fn((p: string) => (p === "/mock/dev3-home/bin/tmux" ? "/opt/homebrew/bin/tmux" : p)) as never;
+	return { ...actual, tmux: client };
+});
 
 vi.mock("../system-clipboard", () => ({
 	writeSystemClipboard: vi.fn(() => "pbcopy"),
@@ -242,7 +230,8 @@ vi.mock("../spawn", () => ({
 	spawnSync: (...args: any[]) => mockSpawnSync(...args),
 }));
 
-// Mock node:fs for existsSync and readdirSync
+// Mock node:fs for existsSync and readdirSync (the symlink members keep the
+// real tmux module's shim management away from the runner's ~/.dev3.0/bin)
 vi.mock("node:fs", () => ({
 	accessSync: vi.fn(() => undefined),
 	constants: { X_OK: 1 },
@@ -251,6 +240,11 @@ vi.mock("node:fs", () => ({
 	statSync: vi.fn(() => ({ isDirectory: () => true, isFile: () => true, mode: 0o755, size: 0 })),
 	mkdirSync: vi.fn(() => undefined),
 	writeFileSync: vi.fn(() => undefined),
+	lstatSync: vi.fn(() => { throw new Error("ENOENT"); }),
+	readlinkSync: vi.fn(() => { throw new Error("EINVAL"); }),
+	realpathSync: vi.fn((p: string) => p),
+	unlinkSync: vi.fn(() => undefined),
+	symlinkSync: vi.fn(() => undefined),
 }));
 
 const mockObjcGetClass = vi.fn(() => "NSApplication_ptr");
@@ -278,6 +272,7 @@ import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
 import * as pty from "../pty-server";
+import { tmux } from "../tmux";
 import * as systemClipboard from "../system-clipboard";
 import * as agents from "../agents";
 import * as updater from "../updater";
@@ -491,7 +486,7 @@ describe("runCleanupScript", () => {
 		// `-c` for all future panes). The script itself runs in the worktree via
 		// the `-c` flag asserted below.
 		expect(mockSpawn.mock.calls[0]?.[1]).toMatchObject({
-			cwd: "/mock/dev3-home",
+			cwd: "/tmp/test-dev3",
 			env: expect.objectContaining({
 				TERM: "xterm-256color",
 				DEV3_TASK_TITLE: "Ship it",
@@ -5248,7 +5243,7 @@ describe("handlers.checkSystemRequirements", () => {
 		const results = await handlers.checkSystemRequirements();
 		expect(results[1].installed).toBe(true);
 		expect(results[1].resolvedPath).toBe("/opt/homebrew/opt/tmux@3.6/bin/tmux");
-		expect(pty.selectTmuxBinary).toHaveBeenCalledWith(
+		expect(tmux.selectBinary).toHaveBeenCalledWith(
 			"/opt/homebrew/opt/tmux@3.6/bin/tmux",
 			expect.arrayContaining(["/opt/homebrew/bin/tmux"]),
 		);
@@ -5263,8 +5258,8 @@ describe("handlers.checkSystemRequirements", () => {
 		vi.mocked(existsSync).mockImplementation((p) => String(p) === SHIM); // valid shim; vendored keg not installed
 
 		await handlers.checkSystemRequirements();
-		expect(pty.dereferenceTmuxShim).toHaveBeenCalledWith(SHIM);
-		const fallbacks = vi.mocked(pty.selectTmuxBinary).mock.calls[0][1] as string[];
+		expect(tmux.dereferenceShim).toHaveBeenCalledWith(SHIM);
+		const fallbacks = vi.mocked(tmux.selectBinary).mock.calls[0][1] as string[];
 		expect(fallbacks).toContain("/opt/homebrew/bin/tmux");
 		expect(fallbacks).not.toContain(SHIM);
 	});
@@ -5281,7 +5276,7 @@ describe("handlers.checkSystemRequirements", () => {
 
 		expect(results[1].installed).toBe(false);
 		expect(results[1].customPathError).toBe(false);
-		expect(pty.selectTmuxBinary).not.toHaveBeenCalled();
+		expect(tmux.selectBinary).not.toHaveBeenCalled();
 	});
 });
 
@@ -5299,7 +5294,7 @@ describe("handlers.setCustomBinaryPath", () => {
 		vi.mocked(existsSync).mockReturnValue(true);
 		vi.mocked(statSync).mockReturnValue({ isFile: () => true, mode: 0o755 } as any);
 		vi.mocked(accessSync).mockImplementation(() => undefined);
-		vi.mocked(pty.probeTmuxVersion).mockResolvedValue("tmux 3.6a");
+		vi.mocked(tmux.probeVersion).mockResolvedValue("tmux 3.6a");
 	});
 
 	it("rejects a directory without persisting it", async () => {
@@ -5309,11 +5304,11 @@ describe("handlers.setCustomBinaryPath", () => {
 
 		expect(result).toEqual({ ok: false });
 		expect(saveSettings).not.toHaveBeenCalled();
-		expect(pty.probeTmuxVersion).not.toHaveBeenCalled();
+		expect(tmux.probeVersion).not.toHaveBeenCalled();
 	});
 
 	it("rejects an executable that is not tmux without persisting it", async () => {
-		vi.mocked(pty.probeTmuxVersion).mockResolvedValue(undefined);
+		vi.mocked(tmux.probeVersion).mockResolvedValue(undefined);
 
 		const result = await handlers.setCustomBinaryPath({ requirementId: "tmux", path: "/usr/bin/true" });
 
@@ -5325,7 +5320,7 @@ describe("handlers.setCustomBinaryPath", () => {
 		const result = await handlers.setCustomBinaryPath({ requirementId: "tmux", path: "  /opt/homebrew/bin/tmux  " });
 
 		expect(result).toEqual({ ok: true });
-		expect(pty.probeTmuxVersion).toHaveBeenCalledWith("/opt/homebrew/bin/tmux");
+		expect(tmux.probeVersion).toHaveBeenCalledWith("/opt/homebrew/bin/tmux");
 		expect(saveSettings).toHaveBeenCalledWith(expect.objectContaining({
 			customBinaryPaths: {
 				git: "/known/good/git",
@@ -5355,7 +5350,7 @@ describe("resolveTmuxBinaryAtStartup", () => {
 		const { resolveTmuxBinaryAtStartup } = await import("../rpc-handlers/settings-config");
 		const chosen = await resolveTmuxBinaryAtStartup();
 		expect(chosen).toBe("/opt/homebrew/opt/tmux@3.6/bin/tmux");
-		expect(pty.selectTmuxBinary).toHaveBeenCalled();
+		expect(tmux.selectBinary).toHaveBeenCalled();
 	});
 
 	it("ignores a saved home-directory path instead of recreating the shim to it", async () => {
@@ -5375,7 +5370,7 @@ describe("resolveTmuxBinaryAtStartup", () => {
 		const chosen = await resolveTmuxBinaryAtStartup();
 
 		expect(chosen).toBe(keg);
-		expect(pty.selectTmuxBinary).toHaveBeenCalledWith(keg, expect.not.arrayContaining([homeDirectory]));
+		expect(tmux.selectBinary).toHaveBeenCalledWith(keg, expect.not.arrayContaining([homeDirectory]));
 	});
 
 	it("returns undefined when tmux is not found anywhere", async () => {
@@ -5385,7 +5380,7 @@ describe("resolveTmuxBinaryAtStartup", () => {
 		const { resolveTmuxBinaryAtStartup } = await import("../rpc-handlers/settings-config");
 		const chosen = await resolveTmuxBinaryAtStartup();
 		expect(chosen).toBeUndefined();
-		expect(pty.selectTmuxBinary).not.toHaveBeenCalled();
+		expect(tmux.selectBinary).not.toHaveBeenCalled();
 	});
 });
 
@@ -6275,7 +6270,7 @@ describe("handlers.runDevServer", () => {
 			const proc = (stdout: string, code = 0) => ({ stdout, stderr: new Response(""), exited: Promise.resolve(code) });
 			if (args.includes("has-session")) return proc(""); // running
 			if (args.includes("list-panes") && args.includes("dev3-abcd1234")) {
-				return proc("%99 TMUX= tmux attach-session -t dev3-dev-abcd1234\n");
+				return proc("%99\tTMUX= tmux attach-session -t dev3-dev-abcd1234\n");
 			}
 			return proc("");
 		});
@@ -6320,10 +6315,11 @@ describe("handlers.getDevServerStatus", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
-		// isDevServerRunning's spawnTmux throws synchronously (Bun.spawn ENOENT) —
-		// e.g. macOS Full Disk Access lost mid-session.
-		vi.mocked(pty.spawnTmux).mockImplementationOnce(() => {
-			throw new pty.TmuxSpawnError("/opt/homebrew/bin/tmux", new Error("ENOENT: posix_spawn"));
+		// isDevServerRunning's tmux spawn throws synchronously (Bun.spawn ENOENT)
+		// — e.g. macOS Full Disk Access lost mid-session. The client wraps the
+		// raw throw into a typed TmuxSpawnError.
+		mockSpawn.mockImplementationOnce(() => {
+			throw new Error("ENOENT: posix_spawn '/opt/homebrew/bin/tmux'");
 		});
 
 		const status = await handlers.getDevServerStatus({ taskId: task.id, projectId: "proj-1" });
@@ -6532,7 +6528,7 @@ describe("handlers.listTmuxSessions", () => {
 		const project = makeProject({ id: "a1c9fe4e-full-uuid", name: "dev-3.0" });
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		mockSpawn.mockReturnValue({
-			stdout: "dev3-pt-a1c9fe4e|/tmp/project|1|1700000001",
+			stdout: "dev3-pt-a1c9fe4e\t1\t1700000001\t/tmp/project",
 			stderr: new Response(""),
 			exited: Promise.resolve(0),
 		});
@@ -6554,7 +6550,7 @@ describe("handlers.listTmuxSessions", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([]);
 		// stdout must be a plain string — new Response(Response) does not propagate the body
 		mockSpawn.mockReturnValue({
-			stdout: "dev3-abc12345|/tmp/wt|1|1700000001\ndev3-dev-abc12345|/tmp/wt|1|1700000002\ndev3-xyz99999|/tmp/wt|1|1700000000",
+			stdout: "dev3-abc12345\t1\t1700000001\t/tmp/wt\ndev3-dev-abc12345\t1\t1700000002\t/tmp/wt\ndev3-xyz99999\t1\t1700000000\t/tmp/wt",
 			stderr: new Response(""),
 			exited: Promise.resolve(0),
 		});
@@ -6576,7 +6572,7 @@ describe("handlers.listTmuxSessions", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		mockSpawn.mockReturnValue({
-			stdout: "dev3-abc12345|/tmp/wt|1|1700000001",
+			stdout: "dev3-abc12345\t1\t1700000001\t/tmp/wt",
 			stderr: new Response(""),
 			exited: Promise.resolve(0),
 		});
@@ -6596,7 +6592,7 @@ describe("handlers.listTmuxSessions", () => {
 		vi.mocked(data.loadProjects).mockResolvedValue([project]);
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		mockSpawn.mockReturnValue({
-			stdout: "dev3-abc12345|/tmp/wt|1|1700000001",
+			stdout: "dev3-abc12345\t1\t1700000001\t/tmp/wt",
 			stderr: new Response(""),
 			exited: Promise.resolve(0),
 		});
@@ -6627,7 +6623,7 @@ describe("handlers.tmuxAction", () => {
 		// bare #{pane_current_path} then expands to "" — tmux falls back to the
 		// split CLIENT's cwd, i.e. the app bundle dir, opening the pane there.
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-v", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-v", "-t", "dev3-abcd1234", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}"],
 			expect.any(Object),
 		);
 	});
@@ -6641,7 +6637,7 @@ describe("handlers.tmuxAction", () => {
 
 		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "split-window", "-h", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}", "-t", "dev3-abcd1234"],
+			["tmux", "-L", "dev3", "split-window", "-h", "-t", "dev3-abcd1234", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}"],
 			expect.any(Object),
 		);
 	});
@@ -6883,14 +6879,14 @@ describe("handlers.exitCopyModeAllPanes", () => {
 		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		setupSpawnRouter({
 			hasSession: 1, // dev-server not running
-			listTaskPanes: { exit: 0, out: "%0 1\n%1 0\n%2 1\n" },
+			listTaskPanes: { exit: 0, out: "%0\t1\n%1\t0\n%2\t1\n" },
 		});
 
 		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
 
 		expect(result).toEqual({ panesExited: 2 });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "list-panes", "-s", "-t", "dev3-abcd1234", "-F", "#{pane_id} #{pane_in_mode}"],
+			["tmux", "-L", "dev3", "list-panes", "-s", "-t", "dev3-abcd1234", "-F", "#{pane_id}\t#{pane_in_mode}"],
 			expect.any(Object),
 		);
 		expect(mockSpawn).toHaveBeenCalledWith(
@@ -6912,15 +6908,15 @@ describe("handlers.exitCopyModeAllPanes", () => {
 		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		setupSpawnRouter({
 			hasSession: 0, // dev-server IS running
-			listTaskPanes: { exit: 0, out: "%10 0\n" },
-			listDevPanes: { exit: 0, out: "%99 1\n" }, // dev-server pane in copy-mode
+			listTaskPanes: { exit: 0, out: "%10\t0\n" },
+			listDevPanes: { exit: 0, out: "%99\t1\n" }, // dev-server pane in copy-mode
 		});
 
 		const result = await handlers.exitCopyModeAllPanes({ taskId: "abcd1234-full-id" });
 
 		expect(result).toEqual({ panesExited: 1 });
 		expect(mockSpawn).toHaveBeenCalledWith(
-			["tmux", "-L", "dev3", "list-panes", "-s", "-t", "dev3-dev-abcd1234", "-F", "#{pane_id} #{pane_in_mode}"],
+			["tmux", "-L", "dev3", "list-panes", "-s", "-t", "dev3-dev-abcd1234", "-F", "#{pane_id}\t#{pane_in_mode}"],
 			expect.any(Object),
 		);
 		expect(mockSpawn).toHaveBeenCalledWith(
@@ -10134,7 +10130,7 @@ describe("handlers.getProjectPtyUrl — virtual board guard", () => {
 describe("handlers.tmuxPaneNavigate", () => {
 	const TASK_ID = "abcd1234-0000-0000-0000-000000000000";
 	const SESSION = "dev3-abcd1234";
-	const SEP = "\x1f";
+	const SEP = "\t";
 	const HOST = "mac";
 
 	// One list-panes row: id, active, zoom, current_command, host_short, title.
@@ -10225,7 +10221,7 @@ describe("handlers.tmuxPaneNavigate", () => {
 describe("handlers.tmuxWindowNavigate", () => {
 	const TASK_ID = "abcd1234-0000-0000-0000-000000000000";
 	const SESSION = "dev3-abcd1234";
-	const SEP = "\x1f";
+	const SEP = "\t";
 
 	// One list-windows row: window_id, window_active, window_name.
 	function row(id: string, active: string, name: string): string {

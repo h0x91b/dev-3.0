@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
 	type AltClickPane,
-	ALT_CLICK_PANE_FORMAT,
 	altClickIneligibleReason,
 	computeAltClickKeys,
 	findAltClickPane,
 	isShellCommand,
 	parseAltClickPanes,
-} from "../tmux-alt-click";
+} from "../alt-click";
+import { ALT_CLICK_PANE_FORMAT } from "../formats";
 
 function pane(over: Partial<AltClickPane> = {}): AltClickPane {
 	return {
@@ -50,7 +50,7 @@ describe("parseAltClickPanes", () => {
 	});
 
 	it("format asks for pane_current_command last (tab-safety)", () => {
-		expect(ALT_CLICK_PANE_FORMAT.endsWith("#{pane_current_command}")).toBe(true);
+		expect(ALT_CLICK_PANE_FORMAT.formatString.endsWith("#{pane_current_command}")).toBe(true);
 	});
 });
 

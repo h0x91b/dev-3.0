@@ -1,11 +1,11 @@
 import type { ResourceUsage } from "../shared/types";
 import { collectProcessInfo, collectDescendants, getAllSessionPanePids } from "./port-scanner";
+import { DEFAULT_TMUX_SOCKET, devServerSessionForTaskSession, parseDev3SessionName, TASK_SESSION_PREFIX } from "./tmux";
 import { createLogger } from "./logger";
 import { updateCaffeinateState } from "./caffeinate";
 
 const log = createLogger("resource-monitor");
 const POLL_INTERVAL_MS = 10_000;
-const TMUX_SOCKET = "dev3";
 
 type PushMessageFn = (name: string, payload: unknown) => void;
 
@@ -38,12 +38,7 @@ export function aggregateResources(
  * project-terminal sessions).
  */
 function filterTaskSessions(paneMap: Map<string, number[]>): string[] {
-	return [...paneMap.keys()].filter((name) =>
-		name.startsWith("dev3-") &&
-		!name.startsWith("dev3-cl-") &&
-		!name.startsWith("dev3-dev-") &&
-		!name.startsWith("dev3-pt-"),
-	);
+	return [...paneMap.keys()].filter((name) => parseDev3SessionName(name)?.kind === "task");
 }
 
 async function poll() {
@@ -53,9 +48,9 @@ async function poll() {
 		// One tmux call for all sessions AND all their pane PIDs — this poller
 		// used to spawn `tmux list-sessions` + 2 `list-panes` per session,
 		// synchronously, which stalled the main loop under load.
-		const paneMap = await getAllSessionPanePids(TMUX_SOCKET);
+		const paneMap = await getAllSessionPanePids(DEFAULT_TMUX_SOCKET);
 		const sessionNames = filterTaskSessions(paneMap);
-		const activeShortIds = new Set(sessionNames.map((n) => n.slice(5)));
+		const activeShortIds = new Set(sessionNames.map((n) => n.slice(TASK_SESSION_PREFIX.length)));
 
 		// Keep the machine awake while the app runs (per setting) or while
 		// remote access is active (forced on). Import the remote-access module
@@ -82,11 +77,11 @@ async function poll() {
 		const { tree, resources } = await collectProcessInfo();
 
 		for (const sessionName of sessionNames) {
-			const shortId = sessionName.slice(5);
+			const shortId = sessionName.slice(TASK_SESSION_PREFIX.length);
 			try {
 				// Pane PIDs from the shared map (main session + dev server session)
 				const panePids = [...(paneMap.get(sessionName) ?? [])];
-				panePids.push(...(paneMap.get(`dev3-dev-${shortId}`) ?? []));
+				panePids.push(...(paneMap.get(devServerSessionForTaskSession(sessionName)) ?? []));
 
 				if (panePids.length === 0) continue;
 

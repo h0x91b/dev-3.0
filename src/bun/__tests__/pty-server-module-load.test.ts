@@ -2,12 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 
 // Reproduces the v1.29.2 startup crash: on installs with a poisoned
 // (self-referential) ~/.dev3.0/bin/tmux shim, sanitizeTmuxShim() — which runs
-// at module load — enters its catch branch and calls `log.warn`, but the
-// module-level `const log = createLogger("pty")` was declared hundreds of
-// lines BELOW the call site. The TDZ access crashed module evaluation, so the
-// whole app died before showing a window — exactly on the machines the
-// self-heal was supposed to fix. This file loads the module in that poisoned
-// state; it must import cleanly and delete the broken shim.
+// at module load (now in src/bun/tmux/binary.ts, pulled in via pty-server) —
+// enters its catch branch and calls `log.warn`, but the module-level logger
+// was declared BELOW the call site. The TDZ access crashed module evaluation,
+// so the whole app died before showing a window — exactly on the machines the
+// self-heal was supposed to fix. This file loads the pty-server chain in that
+// poisoned state; it must import cleanly and delete the broken shim.
 
 vi.mock("../logger", () => ({
 	createLogger: () => ({
@@ -52,8 +52,9 @@ import { unlinkSync } from "node:fs";
 
 describe("pty-server module load with a poisoned tmux shim (v1.29.2 startup crash)", () => {
 	it("imports cleanly and removes the self-referential shim", async () => {
-		const mod = await import("../pty-server");
-		expect(mod.TMUX_SHIM_PATH.endsWith("/bin/tmux")).toBe(true);
-		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(mod.TMUX_SHIM_PATH);
+		await import("../pty-server");
+		const { TMUX_SHIM_PATH } = await import("../tmux/binary");
+		expect(TMUX_SHIM_PATH.endsWith("/bin/tmux")).toBe(true);
+		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
 	});
 });

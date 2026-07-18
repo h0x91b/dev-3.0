@@ -1,6 +1,6 @@
 import type { PortInfo } from "../shared/types";
 import { spawn } from "./spawn";
-import { tmuxArgs } from "./pty-server";
+import { tmux, TASK_SESSION_PREFIX, DEV_SERVER_SESSION_PREFIX, devServerSessionForTaskSession, taskSessionName, PANE_PID_FORMAT, ALL_PANE_PIDS_FORMAT } from "./tmux";
 import { createLogger } from "./logger";
 import { cleanupTaskTunnels } from "./port-tunnels";
 
@@ -93,30 +93,12 @@ export function collectProcessInfo(): Promise<ProcessInfoResult> {
  * Get pane PIDs for a tmux session.
  */
 export async function getSessionPanePids(socket: string, sessionName: string): Promise<number[]> {
-	const output = (await runText(tmuxArgs(socket, "list-panes", "-t", sessionName, "-F", "#{pane_pid}"))).trim();
-	if (!output) return [];
-	return output.split("\n").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
-}
-
-/** Parse `tmux list-panes -a -F '#{session_name}\t#{pane_pid}'` output. Exported for tests. */
-export function parseAllSessionPanePids(output: string): Map<string, number[]> {
-	const map = new Map<string, number[]>();
-	for (const line of output.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		const tabIdx = trimmed.lastIndexOf("\t");
-		if (tabIdx < 0) continue;
-		const session = trimmed.slice(0, tabIdx);
-		const pid = parseInt(trimmed.slice(tabIdx + 1), 10);
-		if (!session || isNaN(pid)) continue;
-		let pids = map.get(session);
-		if (!pids) {
-			pids = [];
-			map.set(session, pids);
-		}
-		pids.push(pid);
+	try {
+		const rows = await tmux.listPanes(PANE_PID_FORMAT, { target: sessionName, socket });
+		return rows.map((row) => row.panePid).filter((pid) => pid > 0);
+	} catch {
+		return [];
 	}
-	return map;
 }
 
 /**
@@ -125,8 +107,23 @@ export function parseAllSessionPanePids(output: string): Map<string, number[]> {
  * with N sessions that collapses 2N tmux spawns per cycle into 1.
  */
 export async function getAllSessionPanePids(socket: string): Promise<Map<string, number[]>> {
-	const output = await runText(tmuxArgs(socket, "list-panes", "-a", "-F", "#{session_name}\t#{pane_pid}"));
-	return parseAllSessionPanePids(output);
+	const map = new Map<string, number[]>();
+	let rows: Array<{ panePid: number; sessionName: string }>;
+	try {
+		rows = await tmux.listPanes(ALL_PANE_PIDS_FORMAT, { scope: "server", socket });
+	} catch {
+		return map;
+	}
+	for (const row of rows) {
+		if (!row.sessionName || row.panePid <= 0) continue;
+		let pids = map.get(row.sessionName);
+		if (!pids) {
+			pids = [];
+			map.set(row.sessionName, pids);
+		}
+		pids.push(row.panePid);
+	}
+	return map;
 }
 
 /**
@@ -299,8 +296,8 @@ export async function collectTaskPids(
 
 	// Dev server sessions (dev3-dev-XXXX) run in a separate tmux session
 	// that is not tracked as a PtySession. Include their PIDs too.
-	if (sessionName.startsWith("dev3-") && !sessionName.startsWith("dev3-dev-")) {
-		sessionNames.push(`dev3-dev-${sessionName.slice("dev3-".length)}`);
+	if (sessionName.startsWith(TASK_SESSION_PREFIX) && !sessionName.startsWith(DEV_SERVER_SESSION_PREFIX)) {
+		sessionNames.push(devServerSessionForTaskSession(sessionName));
 	}
 
 	const panePids: number[] = [];
@@ -389,7 +386,7 @@ async function poll() {
 		}
 
 		for (const { taskId, tmuxSocket } of sessions) {
-			const sessionName = `dev3-${taskId.slice(0, 8)}`;
+			const sessionName = taskSessionName(taskId);
 			try {
 				const ports = await scanTaskPorts(tmuxSocket, sessionName, lsofOutput, processTree, paneMaps.get(tmuxSocket));
 				const serialized = JSON.stringify(ports);

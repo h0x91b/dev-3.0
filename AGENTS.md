@@ -250,6 +250,10 @@ WKWebView does not expose native host file paths in drag-and-drop events. Droppe
 
 **NEVER use `Bun.spawn`/`Bun.spawnSync` directly** — always import `spawn`/`spawnSync` from `src/bun/spawn.ts`. macOS `.app` bundles inherit a minimal PATH; we patch `process.env.PATH` at startup (`shell-env.ts` → `index.ts`), but `Bun.spawn` without an explicit `env` option ignores the patch. The wrapper always passes `{ ...process.env, ...opts.env }` so every child process sees the full user PATH (homebrew, nvm, etc.).
 
+### tmux — always go through TmuxClient (MANDATORY)
+
+**Never spawn `tmux` directly — only via the `tmux` client singleton from `src/bun/tmux/`.** The module owns the binary/shim selection (a bare PATH `tmux` may be a different version than the server, which breaks every command — the v1.29.1 ELOOP incident, decision 105), the socket, all `-F` format declarations (`formats.ts`, TAB-separated, one parser), and `dev3-*` session naming (`session-names.ts` — never recompute names inline). A tmux subcommand the client doesn't cover means adding a typed method **plus its unit test** to `src/bun/tmux/client.ts` — not a raw spawn at the call site. Handler tests mock the `tmux` singleton (same pattern as mocking `rpc.ts`); the client's own tests inject a fake spawn. There is deliberately no automated guard for this rule — it is convention, enforced in review (decision 138).
+
 ### Agent skill injection
 
 The app auto-installs the **dev3 skill** into agent config dirs (`~/.claude/skills/dev3/`, `~/.codex/skills/dev3/`, …) on every startup. The generated `SKILL.md` files are overwritten on each launch — **never edit them directly**; the template is the `SKILL_CONTENT` constant in `src/bun/agent-skills.ts`. The skill's `allowed-tools` frontmatter controls auto-permitted tools (omitted = no restriction, user's normal permissions apply; `allowed-tools: Bash` = Bash only).
@@ -346,7 +350,7 @@ With the dev-server running and the project's Port Allocation ≥ 1, the dev app
 
 ### Coverage requirements
 
-Overall: **70% lines, 65% branches, 70% functions.** Critical modules need **85% lines, 80% branches**: `state.ts`, `src/shared/types.ts` (helpers), `src/mainview/i18n/`, `src/cli/`, `src/bun/data.ts`, `src/bun/git.ts`, `src/mainview/utils/`. Excluded (bootstrap/wrappers that only make sense in e2e): `src/bun/index.ts`, `updater.ts`, `shell-env.ts`, `spawn.ts`, `src/mainview/rpc.ts`, `main.tsx`.
+Overall: **70% lines, 65% branches, 70% functions.** Critical modules need **85% lines, 80% branches**: `state.ts`, `src/shared/types.ts` (helpers), `src/mainview/i18n/`, `src/cli/`, `src/bun/data.ts`, `src/bun/git.ts`, `src/bun/tmux/`, `src/mainview/utils/`. Excluded (bootstrap/wrappers that only make sense in e2e): `src/bun/index.ts`, `updater.ts`, `shell-env.ts`, `spawn.ts`, `src/mainview/rpc.ts`, `main.tsx`.
 
 ### What to test
 

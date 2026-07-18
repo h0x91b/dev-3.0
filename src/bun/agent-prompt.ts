@@ -1,6 +1,5 @@
 import type { PaneSessionEntry } from "../shared/types";
-import * as pty from "./pty-server";
-import { spawn } from "./spawn";
+import { tmux, PANE_ID_FORMAT } from "./tmux";
 import { createLogger } from "./logger";
 
 const log = createLogger("agent-prompt");
@@ -14,9 +13,7 @@ export const AGENT_PROMPT_ENTER_DELAY_MS = 800;
 /** Query tmux for the session's currently-active pane id, or null. */
 async function getActivePane(tmuxSession: string, socket: string): Promise<string | null> {
 	try {
-		const proc = spawn(pty.tmuxArgs(socket, "display-message", "-t", tmuxSession, "-p", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-		const stdout = await new Response(proc.stdout).text();
-		if ((await proc.exited) === 0) return stdout.trim() || null;
+		return await tmux.activePaneId(tmuxSession, { socket });
 	} catch { /* best effort */ }
 	return null;
 }
@@ -24,11 +21,8 @@ async function getActivePane(tmuxSession: string, socket: string): Promise<strin
 /** The live pane ids across every window of `tmuxSession`, in tmux's listing order. */
 async function listLivePaneIds(tmuxSession: string, socket: string): Promise<string[]> {
 	try {
-		const proc = spawn(pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id}"), { stdout: "pipe", stderr: "pipe" });
-		const stdout = await new Response(proc.stdout).text();
-		if ((await proc.exited) === 0) {
-			return stdout.split("\n").map((l) => l.trim()).filter(Boolean);
-		}
+		const rows = await tmux.listPanes(PANE_ID_FORMAT, { target: tmuxSession, scope: "session", socket });
+		return rows.map((row) => row.paneId).filter(Boolean);
 	} catch { /* best effort */ }
 	return [];
 }
@@ -88,21 +82,20 @@ export async function resolveAgentPromptTargetPane(
 }
 
 /** Type `text` into `pane`, then send Enter as a discrete keypress after a short delay. */
-function pasteThenEnter(socket: string, pane: string, text: string): boolean {
+async function pasteThenEnter(socket: string, pane: string, text: string): Promise<boolean> {
 	try {
-		const pasteProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, text), { stdout: "pipe", stderr: "pipe" });
-		pasteProc.exited.catch(() => {});
+		// bestEffort swallows non-zero tmux exits inside the client, so a rejection
+		// here means tmux itself failed to launch — nothing reached the pane. Report
+		// false (and skip Enter) so callers don't drop a queued message as delivered.
+		await tmux.sendKeys(pane, [text], { socket, bestEffort: true });
 	} catch (err) {
 		log.warn("send-keys paste failed", { paneId: pane, error: String(err) });
 		return false;
 	}
 	setTimeout(() => {
-		try {
-			const enterProc = spawn(pty.tmuxArgs(socket, "send-keys", "-t", pane, "Enter"), { stdout: "pipe", stderr: "pipe" });
-			enterProc.exited.catch(() => {});
-		} catch (err) {
+		tmux.sendKeys(pane, ["Enter"], { socket, bestEffort: true }).catch((err) => {
 			log.warn("send-keys Enter failed", { paneId: pane, error: String(err) });
-		}
+		});
 	}, AGENT_PROMPT_ENTER_DELAY_MS);
 	return true;
 }
