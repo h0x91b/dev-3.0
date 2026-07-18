@@ -30,6 +30,7 @@ import TaskScripts from "./task-info-panel/TaskScripts";
 import TaskGitActions from "./task-info-panel/TaskGitActions";
 import type { TaskBranchStatusMeta } from "./task-info-panel/TaskGitActions";
 import TaskGitActionsSheet from "./task-info-panel/TaskGitActionsSheet";
+import { useTaskBranchStatus } from "./task-info-panel/useTaskBranchStatus";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
 import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
 import {
@@ -212,6 +213,19 @@ function TaskInfoPanel({
 	) : null;
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const isTaskActive = ACTIVE_STATUSES.includes(task.status);
+	// Narrow viewport renders no TaskGitActions (the desktop git bar), which is
+	// what feeds `metadataBranchState` on desktop. Own one branch-status
+	// instance here instead: it drives the summary-bar diff badge, the merge
+	// completion prompt, and is handed to TaskGitActionsSheet so the sheet
+	// opens with status already loaded. Inert (`enabled: false`) on desktop.
+	const narrowGit = useTaskBranchStatus({
+		task,
+		project,
+		dispatch,
+		navigate,
+		isTaskActive,
+		enabled: narrow && project.kind !== "virtual",
+	});
 	const variantMembers = task.groupId
 		? tasks.filter((candidate) => candidate.groupId === task.groupId)
 		: [];
@@ -447,6 +461,12 @@ function TaskInfoPanel({
 		.filter(Boolean) as Label[];
 
 	function showDiffFilesPopover() {
+		// Hover pattern — dead on touch, and a tap fires mouseenter with no
+		// mouseleave, so on narrow the popover would stick over the freshly
+		// opened diff (Bible §12.3: hover popovers are disabled on touch).
+		if (narrow) {
+			return;
+		}
 		if (diffFilesHoverTimer.current) {
 			clearTimeout(diffFilesHoverTimer.current);
 		}
@@ -486,8 +506,8 @@ function TaskInfoPanel({
 		}
 		onOpenInlineDiff({
 			mode: "branch",
-			compareRef: metadataBranchState?.compareRef,
-			compareLabel: metadataBranchState?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`,
+			compareRef: branchMeta?.compareRef,
+			compareLabel: branchMeta?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`,
 			focusFile,
 		});
 	}
@@ -499,8 +519,17 @@ function TaskInfoPanel({
 		openBranchDiff(relativePath);
 	}
 
-	const metadataBranchStatus = metadataBranchState?.branchStatus ?? null;
-	const metadataPrInfo: TaskPRBadgeInfo | null = metadataBranchState?.prStatus
+	// On narrow the panel-level hook is the status source; on desktop it is the
+	// TaskGitActions render callback (`metadataBranchState`).
+	const branchMeta: TaskBranchStatusMeta | null = narrow
+		? {
+			branchStatus: narrowGit.branchStatus,
+			compareRef: narrowGit.compareRef || undefined,
+			compareLabel: narrowGit.displayRef,
+		}
+		: metadataBranchState;
+	const metadataBranchStatus = branchMeta?.branchStatus ?? null;
+	const metadataPrInfo: TaskPRBadgeInfo | null = branchMeta?.prStatus
 		?? (metadataBranchStatus?.prNumber != null
 			? {
 				number: metadataBranchStatus.prNumber,
@@ -976,7 +1005,10 @@ function TaskInfoPanel({
 				{diffFilesPopover}
 				{fileOpenInMenuPortal}
 				{statusDropdownPortal}
-				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
+				{/* Wide diff counters (e.g. "9 files +451 −297") must never clip off
+				    the right edge — the bar wraps instead of keeping a fixed height,
+				    so the badge always stays fully visible and tappable. */}
+				<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 min-h-[3.25rem] min-w-0" data-testid="task-summary-bar">
 					{variantSwitcher}
 					{statusDropdownButton}
 					{/* Priority sits with status (Context domain, §5.1); `sm` gives it a
@@ -1082,9 +1114,8 @@ function TaskInfoPanel({
 							<TaskGitActionsSheet
 								task={task}
 								project={project}
-								dispatch={dispatch}
-								navigate={navigate}
 								isTaskActive={isTaskActive}
+								git={narrowGit}
 								rowClassName={SHEET_ROW_CLASS}
 								onOpenInlineDiff={onOpenInlineDiff}
 								onAction={() => setActionsSheetOpen(false)}

@@ -873,6 +873,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["board", "terminal"],
 	},
+	{
+		id: "mobile-task-git",
+		titleKey: "tip.mobileTaskGit.title",
+		bodyKey: "tip.mobileTaskGit.body",
+		icon: "\u{F062C}", // nf-md-source_branch
+		score: 3,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
