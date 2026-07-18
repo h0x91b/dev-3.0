@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+    import Dev3Kit
     import SwiftTerm
     import UIKit
 
@@ -22,6 +23,10 @@
                     // Leave horizontal drags to the pane-swipe gesture.
                     scrollIsVertical = abs(translation.y) >= abs(translation.x)
                     scrollLastTranslationY = translation.y
+                    DiagnosticsLog.shared.record(
+                        category: "terminal",
+                        "scroll pan \(scrollIsVertical ? "vertical" : "horizontal")"
+                    )
                 }
                 guard scrollIsVertical else { return }
                 let deltaY = translation.y - scrollLastTranslationY
@@ -45,6 +50,10 @@
                 payload.append(contentsOf: event)
             }
             guard !payload.isEmpty else { return }
+            DiagnosticsLog.shared.record(
+                category: "terminal",
+                "wheel \(up ? "up" : "down") x\(abs(ticks)) at \(cell.col),\(cell.row)"
+            )
             terminalDelegate?.send(source: self, data: payload[...])
         }
 
@@ -57,6 +66,21 @@
             let col = cellWidth > 0 ? min(cols, max(1, Int(point.x / cellWidth) + 1)) : 1
             let row = cellHeight > 0 ? min(rows, max(1, Int(point.y / cellHeight) + 1)) : 1
             return (col, row)
+        }
+
+        /// Let the wheel-synthesis pan run alongside every other recognizer (taps,
+        /// long-press selection, pinch, the SwiftUI pane-swipe) so it is never
+        /// starved by gesture arbitration — the original recognize-with-pinch-only
+        /// rule let SwiftTerm's gestures block the scroll drag.
+        public func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            if gestureRecognizer === scrollPanGesture || otherGestureRecognizer === scrollPanGesture {
+                return true
+            }
+            return gestureRecognizer is UIPinchGestureRecognizer
+                || otherGestureRecognizer is UIPinchGestureRecognizer
         }
     }
 #endif

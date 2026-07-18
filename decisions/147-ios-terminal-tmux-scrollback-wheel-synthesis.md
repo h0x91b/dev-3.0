@@ -34,6 +34,14 @@ unscrollable buffer. Horizontal drags are left to the pane-swipe gesture (axis l
 The pure encoding/accumulation logic (`Dev3TerminalWheelScroll`, `Dev3TerminalScrollAccumulator`)
 is unit-tested; `allowMouseReporting` stays `false`, so taps and selection are unchanged.
 
+**Gesture arbitration (build-4 follow-up):** the first cut didn't scroll on device. The scroll
+pan was mutually exclusive with SwiftTerm's own recognizers (the `shouldRecognizeSimultaneouslyWith`
+rule allowed only pinch), so it was starved. Fix: the scroll pan now recognizes **simultaneously
+with every other recognizer**, and the built-in `UIScrollView.panGestureRecognizer` is disabled
+outright (`isScrollEnabled = false` alone was unreliable). The scroll path also records to
+`DiagnosticsLog` (`terminal` category: axis decision + each wheel tick) so on-device behavior is
+inspectable via the Diagnostics screen.
+
 ## Risks
 
 - A long-press-then-drag text selection and the scroll pan can both want the same drag;

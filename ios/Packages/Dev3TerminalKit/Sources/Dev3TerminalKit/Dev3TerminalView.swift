@@ -344,6 +344,7 @@
         var scrollLastTranslationY: CGFloat = 0
         var scrollAxisDecided = false
         var scrollIsVertical = false
+        weak var scrollPanGesture: UIPanGestureRecognizer?
         static let scrollAxisDecidePoints: CGFloat = 8
 
         override public init(frame: CGRect) {
@@ -433,6 +434,10 @@
             scroll.cancelsTouchesInView = false
             scroll.maximumNumberOfTouches = 1
             addGestureRecognizer(scroll)
+            scrollPanGesture = scroll
+            // Kill the built-in UIScrollView pan outright so it can't win the drag
+            // over our wheel-synthesis pan (isScrollEnabled alone proved unreliable).
+            panGestureRecognizer.isEnabled = false
         }
 
         @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
@@ -453,14 +458,6 @@
             let size = Dev3TerminalFontPreferenceStore.defaultSize
             setTerminalFontSize(size)
             (terminalDelegate as? Dev3TerminalView.Coordinator)?.persistFontSize(size)
-        }
-
-        public func gestureRecognizer(
-            _ gestureRecognizer: UIGestureRecognizer,
-            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-        ) -> Bool {
-            gestureRecognizer is UIPinchGestureRecognizer
-                || otherGestureRecognizer is UIPinchGestureRecognizer
         }
 
         @objc private func handleShiftKeyCommand(_ command: UIKeyCommand) {
