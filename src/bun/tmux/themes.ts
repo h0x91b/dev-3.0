@@ -1,9 +1,9 @@
 // Catppuccin tmux plugin — all files inlined as string constants so they
 // survive bun bundling without needing fs reads at runtime.
-// Source .conf files kept in src/bun/tmux-themes/ for reference.
+// Source .conf files kept in src/bun/tmux/themes-conf/ for reference.
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dev3TempPath } from "./temp-paths";
+import { dev3TempPath } from "../temp-paths";
 
 // ── Color palettes ──────────────────────────────────────────────────
 

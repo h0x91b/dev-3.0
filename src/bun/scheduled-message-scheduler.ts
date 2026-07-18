@@ -9,7 +9,7 @@ import {
 	MAX_SCHEDULED_MESSAGE_LENGTH,
 } from "../shared/types";
 import * as data from "./data";
-import * as pty from "./pty-server";
+import { DEFAULT_TMUX_SOCKET, taskSessionName } from "./tmux";
 import { sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
@@ -56,8 +56,8 @@ function messagePreview(text: string): string {
  * the caller then takes the drop-with-notice path.
  */
 async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<boolean> {
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const tmuxSession = taskSessionName(task.id);
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	if (message.target.kind === "pane") {
 		return sendPromptToPane(tmuxSession, socket, message.target.paneId, message.text);
 	}

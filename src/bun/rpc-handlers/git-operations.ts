@@ -14,8 +14,7 @@ import {
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
-import * as pty from "../pty-server";
-import { spawn } from "../spawn";
+import { tmux, DEFAULT_TMUX_SOCKET, TmuxError, taskSessionName, PANE_ID_FORMAT, PANE_START_COMMAND_FORMAT } from "../tmux";
 import { dev3TaskTempPath } from "../temp-paths";
 import { sendPromptToAgentPane } from "../agent-prompt";
 import {
@@ -190,53 +189,53 @@ async function dismissMergeCompletionPrompt(params: { taskId: string; projectId:
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
 	const existingPane = gitOpPaneIds.get(taskId);
 	if (existingPane) {
-		const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", existingPane));
-		await kill.exited;
+		await tmux.killPane(existingPane, { socket, bestEffort: true });
 		gitOpPaneIds.delete(taskId);
 		log.info("Killed existing git op pane (from map)", { taskId: taskId.slice(0, 8), paneId: existingPane });
 		return;
 	}
 
-	const listProc = spawn(pty.tmuxArgs(socket,
-		"list-panes", "-t", tmuxSession,
-		"-F", "#{pane_id} #{pane_start_command}",
-	), { stdout: "pipe", stderr: "pipe" });
-	const listOutput = await new Response(listProc.stdout).text();
-	await listProc.exited;
-	for (const line of listOutput.trim().split("\n")) {
-		if (!line.includes(`dev3-${taskId}-git-`)) continue;
-		const paneId = line.split(" ")[0];
-		const kill = spawn(pty.tmuxArgs(socket, "kill-pane", "-t", paneId));
-		await kill.exited;
-		log.info("Killed existing git op pane (from tmux scan)", { taskId: taskId.slice(0, 8), paneId });
+	// A failed listing behaves like an empty one — nothing to kill.
+	let rows: Array<{ paneId: string; startCommand: string }> = [];
+	try {
+		rows = await tmux.listPanes(PANE_START_COMMAND_FORMAT, { target: tmuxSession, socket });
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+	}
+	for (const row of rows) {
+		if (!row.startCommand.includes(`dev3-${taskId}-git-`)) continue;
+		await tmux.killPane(row.paneId, { socket, bestEffort: true });
+		log.info("Killed existing git op pane (from tmux scan)", { taskId: taskId.slice(0, 8), paneId: row.paneId });
 	}
 }
 
 async function openGitOpPane(tmuxSession: string, cwd: string, scriptPath: string, socket: string): Promise<string | null> {
-	const proc = spawn(pty.tmuxArgs(socket,
-		"split-window", "-v", "-l", "20%",
-		"-t", tmuxSession,
-		"-c", cwd,
-		"-P", "-F", "#{pane_id}",
-		`bash "${scriptPath}"`,
-	), { stdout: "pipe", stderr: "pipe" });
-	const output = await new Response(proc.stdout).text();
-	const stderrOutput = await new Response(proc.stderr).text();
-	const exitCode = await proc.exited;
-
-	if (stderrOutput.trim()) {
-		log.warn("openGitOpPane tmux stderr", { stderr: stderrOutput.trim() });
+	try {
+		const { paneId, stderr } = await tmux.splitWindow({
+			target: tmuxSession,
+			orientation: "vertical",
+			size: "20%",
+			printPaneId: true,
+			cwd,
+			command: `bash "${scriptPath}"`,
+			socket,
+		});
+		if (stderr.trim()) {
+			log.warn("openGitOpPane tmux stderr", { stderr: stderr.trim() });
+		}
+		return paneId;
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		if (err.stderr) {
+			log.warn("openGitOpPane tmux stderr", { stderr: err.stderr });
+		}
+		throw new Error(`tmux split-window failed (exit ${err.exitCode}): ${err.stderr || "unknown error"}`);
 	}
-	if (exitCode !== 0) {
-		throw new Error(`tmux split-window failed (exit ${exitCode}): ${stderrOutput.trim() || "unknown error"}`);
-	}
-
-	return output.trim() || null;
 }
 
 function monitorGitPane(paneId: string | null, taskId: string, projectId: string, operation: string, socket: string): void {
 	if (!paneId) return;
-	const tmuxSession = `dev3-${taskId.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(taskId);
 	const exitFilePath = dev3TaskTempPath(taskId, `git-${operation}.sh.exit`);
 
 	let interval: ReturnType<typeof setInterval> | undefined;
@@ -252,13 +251,16 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 	try {
 		interval = setInterval(async () => {
 			try {
-				const listProc = spawn(pty.tmuxArgs(socket,
-					"list-panes", "-t", tmuxSession, "-F", "#{pane_id}",
-				), { stdout: "pipe", stderr: "pipe" });
-				const output = await new Response(listProc.stdout).text();
-				await listProc.exited;
+				// A failed listing (session gone) counts as "no panes" so the
+				// completion event still fires, exactly like the empty output did.
+				let paneIds: string[] = [];
+				try {
+					paneIds = (await tmux.listPanes(PANE_ID_FORMAT, { target: tmuxSession, socket })).map((row) => row.paneId);
+				} catch (err) {
+					if (!(err instanceof TmuxError)) throw err;
+				}
 
-				const paneStillExists = output.trim().split("\n").includes(paneId);
+				const paneStillExists = paneIds.includes(paneId);
 
 				if (!paneStillExists) {
 					cleanup();
@@ -1073,9 +1075,9 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(task.id);
 	const scriptPath = dev3TaskTempPath(task.id, "git-rebase.sh");
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
 	// Fetch the ref we will actually rebase onto, not just baseBranch.
@@ -1136,9 +1138,9 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	const status = await git.getBranchStatus(task.worktreePath, rebaseCheckRef);
 	if (status.behind > 0) throw new Error("Branch is not rebased — rebase first");
 
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(task.id);
 	const scriptPath = dev3TaskTempPath(task.id, "git-merge.sh");
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
 	const escapedPath = project.path.replace(/'/g, "'\\''");
@@ -1221,9 +1223,9 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 
 	assertGitTask(project, task);
 
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(task.id);
 	const scriptPath = dev3TaskTempPath(task.id, "git-push.sh");
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 
 	const script = [
@@ -1269,8 +1271,8 @@ async function createPullRequest(params: { taskId: string; projectId: string; au
 
 	assertGitTask(project, task);
 
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const tmuxSession = taskSessionName(task.id);
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
 	const prompt = params.autoMerge ? CREATE_PR_AUTO_MERGE_AGENT_PROMPT : CREATE_PR_AGENT_PROMPT;
 	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, prompt, task.sessionState?.panes);
@@ -1298,8 +1300,8 @@ async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; c
 
 	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const tmuxSession = taskSessionName(task.id);
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 
 	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, rebaseConflictAgentPrompt(rebaseTarget), task.sessionState?.panes);
 	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
@@ -1313,9 +1315,9 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 
 	assertGitTask(project, task);
 
-	const tmuxSession = `dev3-${task.id.slice(0, 8)}`;
+	const tmuxSession = taskSessionName(task.id);
 	const scriptPath = dev3TaskTempPath(task.id, "git-openPR.sh");
-	const socket = task.tmuxSocket ?? pty.DEFAULT_TMUX_SOCKET;
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	await killExistingGitPane(task.id, tmuxSession, socket);
 	const githubEnvExports = await github.getGitHubShellExports(project);
 
