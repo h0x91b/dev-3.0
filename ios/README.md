@@ -137,7 +137,8 @@ These steps require the Apple Developer Program account owner or a teammate with
    TestFlight test information and Apple's TestFlight App Review before external testers can install.
 
 The initial `1.0.0 (1)` upload is **Ready to Test**, assigned to the **Internal** group, and the account
-owner has been invited as an internal tester.
+owner has been invited as an internal tester. It predates the QR-pairing fixes in decisions 145 and 146,
+so upload the next build from `7468daf6` or later before the release smoke test.
 
 ## Test and lint
 
@@ -164,8 +165,8 @@ The simulator selector deterministically picks the alphabetically first availabl
 newest installed iOS runtime. The `Dev3` Xcode scheme runs both app-target XCTest/Swift Testing suites
 and simulator UI coverage for manual pairing, validation, and the connected shell. The live runtime UI
 test skips unless its integration environment is configured. Camera scanning is device-only;
-Simulator deliberately points testers to the manual route. The current app-target CI baseline is 45
-tests discovered: 44 pass and the opt-in live integration test skips without its environment.
+Simulator deliberately points testers to the manual route. The current app-target CI baseline is 52
+tests discovered: 51 pass and the opt-in live integration test skips without its environment.
 
 ## Live pairing integration
 
