@@ -2663,17 +2663,329 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		recentCaretRef.current?.focus();
 	}
 
-	function renderToolbarButton(label: string, active: boolean, onClick: () => void) {
+	function renderToolbarButton(label: string, active: boolean, onClick: () => void, padClass = "py-0.5") {
 		return (
 			<button
 				onClick={onClick}
-				className={`px-2.5 py-0.5 rounded-md border text-[0.6875rem] font-semibold transition-colors ${
+				className={`px-2.5 ${padClass} rounded-md border text-[0.6875rem] font-semibold transition-colors ${
 					active
 						? "bg-accent text-white border-accent"
 						: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
 				}`}
 			>
 				{label}
+			</button>
+		);
+	}
+
+	// ---- Toolbar pieces shared between the desktop row and the narrow layout ----
+
+	const diffSubtitleLabel = currentRequest.mode === "uncommitted"
+		? t("infoPanel.diffWorkingTreeBase")
+		: currentRequest.mode === "recent"
+			? (payload && payload.recentCount === 0
+				? t("infoPanel.diffRecentNone")
+				: t.plural("infoPanel.diffRecentLabel", payload?.recentCount ?? recentCount))
+			: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || currentRequest.compareLabel || currentRequest.compareRef || "HEAD" });
+
+	function renderRecentCombo(padClass = "py-0.5") {
+		const recentActive = currentRequest.mode === "recent";
+		return (
+			<div className="relative inline-flex">
+				<div
+					className={`inline-flex items-stretch rounded-md border text-[0.6875rem] font-semibold transition-colors ${
+						recentActive
+							? "bg-accent text-white border-accent"
+							: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
+					}`}
+				>
+					<button
+						type="button"
+						onClick={() => switchDiffMode("recent")}
+						aria-pressed={recentActive}
+						className={`px-2.5 ${padClass} rounded-l-md`}
+						data-testid="diff-mode-recent"
+					>
+						{t.plural("infoPanel.diffRecentLabel", recentCount)}
+					</button>
+					<button
+						ref={recentCaretRef}
+						type="button"
+						onClick={() => setRecentMenuOpen((open) => !open)}
+						aria-label={t("infoPanel.diffRecentPresetsAria")}
+						aria-haspopup="menu"
+						aria-expanded={recentMenuOpen}
+						title={t("infoPanel.diffRecentPresetsAria")}
+						className={`flex items-center px-1.5 rounded-r-md border-l ${
+							recentActive ? "border-white/30" : "border-edge"
+						}`}
+						data-testid="diff-mode-recent-caret"
+					>
+						<span className="text-[0.7rem] leading-none">{"▾"}</span>
+					</button>
+				</div>
+				{recentMenuOpen && (
+					<div
+						ref={recentMenuRef}
+						role="menu"
+						aria-label={t("infoPanel.diffRecentPresetsAria")}
+						className="absolute right-0 top-full z-20 mt-1 min-w-[9rem] rounded-md border border-edge bg-elevated py-1 shadow-lg"
+						data-testid="diff-mode-recent-menu"
+					>
+						{RECENT_COUNT_PRESETS.map((preset) => {
+							const selected = recentActive && preset === recentCount;
+							return (
+								<button
+									key={preset}
+									type="button"
+									role="menuitemradio"
+									aria-checked={selected}
+									onClick={() => selectRecentCount(preset)}
+									className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[0.6875rem] font-medium transition-colors ${
+										selected ? "text-accent" : "text-fg-2 hover:bg-raised-hover"
+									}`}
+									data-testid={`diff-recent-preset-${preset}`}
+								>
+									<span>{t.plural("infoPanel.diffRecentLabel", preset)}</span>
+									{selected && (
+										<span aria-hidden="true" className="text-[0.75rem] leading-none">{"✓"}</span>
+									)}
+								</button>
+							);
+						})}
+					</div>
+				)}
+			</div>
+		);
+	}
+
+	function renderModeToggles(padClass = "py-0.5") {
+		return (
+			<>
+				{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"), padClass)}
+				{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"), padClass)}
+				{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"), padClass)}
+				{renderRecentCombo(padClass)}
+			</>
+		);
+	}
+
+	function renderTestsToggle() {
+		return (
+			<label
+				className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[0.6875rem] font-mono cursor-pointer transition-colors ${
+					includeTests
+						? "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
+						: "bg-accent/10 text-accent border-accent/30 hover:bg-accent/20"
+				}`}
+				title={hiddenTestCount > 0 || includeTests
+					? t("infoPanel.diffIncludeTestsTooltip")
+					: t("infoPanel.diffIncludeTestsTooltipNoTests")}
+				data-testid="diff-toolbar-include-tests"
+			>
+				<input
+					type="checkbox"
+					className="sr-only"
+					checked={includeTests}
+					onChange={(e) => setIncludeTests(e.target.checked)}
+					aria-label={t("infoPanel.diffIncludeTestsAria")}
+				/>
+				<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
+				<span
+					className="text-[0.85rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{"\u{F0668}"}
+				</span>
+			</label>
+		);
+	}
+
+	function renderInfoChips() {
+		if (!payload) return null;
+		const binaryCount = visibleSkippedFiles.filter((f) => f.reason === "binary").length;
+		const largeCount = visibleSkippedFiles.filter((f) => f.reason === "too-large").length;
+		return (
+			<>
+				{totalFileCount !== payload.summary.files && (
+					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+						{t("infoPanel.diffShownCount", {
+							shown: String(totalFileCount),
+							total: String(payload.summary.files),
+						})}
+					</span>
+				)}
+				{payload.fallbackReason === "no-upstream" && (
+					<span className="px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/25 text-[0.6875rem]">
+						{t("infoPanel.diffFallbackNoUpstream", { ref: payload.compareLabel })}
+					</span>
+				)}
+				{binaryCount > 0 && (
+					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+						{t.plural("infoPanel.diffBinaryCount", binaryCount)}
+					</span>
+				)}
+				{largeCount > 0 && (
+					<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
+						{t.plural("infoPanel.diffLargeCount", largeCount)}
+					</span>
+				)}
+			</>
+		);
+	}
+
+	function toggleSearchOpen() {
+		if (isSearchOpen) {
+			setIsSearchOpen(false);
+			setSearchQuery("");
+			setActiveSearchIndex(0);
+			return;
+		}
+		setIsSearchOpen(true);
+		window.requestAnimationFrame(() => {
+			const input = searchInputRef.current;
+			if (!input) {
+				return;
+			}
+			input.focus();
+			input.select();
+		});
+	}
+
+	function renderSearchToggle(narrowSize: boolean) {
+		return (
+			<button
+				type="button"
+				onClick={toggleSearchOpen}
+				aria-label={t("infoPanel.diffSearchOpen")}
+				title={`${t("infoPanel.diffSearchOpen")} (⌘F)`}
+				className={`inline-flex items-center justify-center rounded-md border text-[0.6875rem] font-semibold transition-colors ${
+					narrowSize ? "h-9 w-9 shrink-0" : "px-2.5 py-0.5"
+				} ${
+					isSearchOpen
+						? "border-accent bg-accent text-white"
+						: "border-edge bg-raised text-fg-2 hover:bg-elevated-hover"
+				}`}
+			>
+				<span
+					aria-hidden="true"
+					className="text-[0.8125rem] leading-none"
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{""}
+				</span>
+			</button>
+		);
+	}
+
+	function renderSearchBox(fullWidth: boolean) {
+		return (
+			<div
+				className={`items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1 ${
+					fullWidth ? "flex w-full" : "inline-flex min-w-[18rem] max-w-[32rem]"
+				}`}
+			>
+				<div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-base px-2 focus-within:border-accent/60 transition-colors">
+					<span
+						aria-hidden="true"
+						className="shrink-0 text-[0.8rem] leading-none text-fg-muted"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{""}
+					</span>
+					<input
+						ref={searchInputRef}
+						type="text"
+						value={searchQuery}
+						onChange={(event) => {
+							setSearchQuery(event.target.value);
+							setActiveSearchIndex(0);
+						}}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") {
+								event.preventDefault();
+								event.stopPropagation();
+								stepSearchMatch(event.shiftKey ? -1 : 1);
+								return;
+							}
+							if (event.key === "Escape") {
+								event.preventDefault();
+								event.stopPropagation();
+								if (searchQuery.trim()) {
+									setSearchQuery("");
+									setActiveSearchIndex(0);
+								} else {
+									setIsSearchOpen(false);
+								}
+							}
+						}}
+						placeholder={t("infoPanel.diffSearchPlaceholder")}
+						className="h-7 min-w-0 flex-1 bg-transparent text-xs font-medium text-fg outline-none placeholder:text-fg-muted"
+					/>
+				</div>
+				{searchStatusLabel && (
+					<span
+						className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-[0.6875rem] font-mono ${
+							searchMatches.length > 0
+								? "border-edge bg-base text-fg-2"
+								: "border-warning/25 bg-warning/10 text-warning"
+						}`}
+					>
+						{searchStatusLabel}
+					</span>
+				)}
+				<div className="inline-flex shrink-0 items-center gap-1">
+					<button
+						type="button"
+						onClick={() => stepSearchMatch(-1)}
+						disabled={searchMatches.length === 0}
+						aria-label={t("infoPanel.diffSearchPrev")}
+						title={t("infoPanel.diffSearchPrev")}
+						className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+					>
+						{"▲"}
+					</button>
+					<button
+						type="button"
+						onClick={() => stepSearchMatch(1)}
+						disabled={searchMatches.length === 0}
+						aria-label={t("infoPanel.diffSearchNext")}
+						title={t("infoPanel.diffSearchNext")}
+						className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+					>
+						{"▼"}
+					</button>
+				</div>
+				<button
+					type="button"
+					onClick={() => {
+						setIsSearchOpen(false);
+						setSearchQuery("");
+						setActiveSearchIndex(0);
+					}}
+					aria-label={t("infoPanel.diffSearchClose")}
+					title={t("infoPanel.diffSearchClose")}
+					className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover"
+				>
+					{"✕"}
+				</button>
+			</div>
+		);
+	}
+
+	function renderFilesSheetTrigger(narrowSize: boolean) {
+		if (totalFileCount === 0) return null;
+		return (
+			<button
+				type="button"
+				onClick={() => setFilesSheetOpen(true)}
+				data-testid="diff-files-sheet-trigger"
+				className={`inline-flex items-center gap-1.5 rounded-md border border-edge bg-raised text-fg-2 text-[0.6875rem] font-semibold hover:bg-elevated-hover transition-colors ${
+					narrowSize ? "h-9 shrink-0 px-2.5" : "px-2.5 py-1"
+				}`}
+			>
+				<span aria-hidden="true" className="text-[0.85rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
+				<span>{t("infoPanel.diffFiles")} ({totalFileCount})</span>
 			</button>
 		);
 	}
@@ -2695,6 +3007,53 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			data-inline-diff="true"
 		>
 			<div ref={toolbarRef} className="sticky top-0 z-20 border-b border-edge bg-base/95 backdrop-blur px-4 py-2" data-testid="inline-diff-toolbar">
+				{narrow ? (
+					<div className="flex flex-col gap-2">
+						{/* Row 1: nav + identity + entry points. The full "Back to Terminal"
+						    label and the summary chip would crush the title at phone width, so
+						    back collapses to an icon, the \u00b1stats fold into the subtitle, and
+						    the file count lives on the Files trigger. */}
+						<div className="flex items-center gap-2 min-w-0">
+							<button
+								onClick={requestClose}
+								aria-label={t("infoPanel.backToTerminal")}
+								title={t("infoPanel.backToTerminal")}
+								className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
+							>
+								<span className="text-[1.05rem] leading-none" aria-hidden="true">{"\u2190"}</span>
+							</button>
+							<div className="min-w-0 flex-1">
+								<div className="text-sm font-semibold leading-tight text-fg">{t("infoPanel.diffViewer")}</div>
+								<div className="truncate text-[0.6875rem] leading-tight text-fg-3" data-testid="diff-narrow-subtitle">
+									<span>{diffSubtitleLabel}</span>
+									{payload && (
+										<>
+											<span className="text-fg-muted">{" \u00b7 "}</span>
+											<span className="text-success">+{visibleSummary.insertions}</span>
+											{" "}
+											<span className="text-danger">{"\u2212"}{visibleSummary.deletions}</span>
+										</>
+									)}
+								</div>
+							</div>
+							{renderSearchToggle(true)}
+							{renderFilesSheetTrigger(true)}
+						</div>
+						{/* Row 2: mode switcher + filters + rare info chips (wraps). */}
+						<div className="flex flex-wrap items-center gap-1.5">
+							{renderModeToggles("py-1.5")}
+							{payload && renderTestsToggle()}
+							{renderInfoChips()}
+							<HelpSpot topicId="diff.modes" />
+						</div>
+						{/* Row 3: search gets its own full-width row while open. */}
+						{isSearchOpen && (
+							<div data-testid="diff-narrow-search-row">
+								{renderSearchBox(true)}
+							</div>
+						)}
+					</div>
+				) : (
 				<div className="flex flex-wrap items-center gap-2">
 					<button
 						onClick={requestClose}
@@ -2706,13 +3065,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					<div className="min-w-0 flex-1 pr-2">
 						<div className="text-sm font-semibold leading-tight text-fg">{t("infoPanel.diffViewer")}</div>
 						<div className="text-[0.6875rem] leading-tight text-fg-3">
-							{currentRequest.mode === "uncommitted"
-								? t("infoPanel.diffWorkingTreeBase")
-								: currentRequest.mode === "recent"
-									? (payload && payload.recentCount === 0
-										? t("infoPanel.diffRecentNone")
-										: t.plural("infoPanel.diffRecentLabel", payload?.recentCount ?? recentCount))
-									: t("infoPanel.diffComparedTo", { ref: payload?.compareLabel || currentRequest.compareLabel || currentRequest.compareRef || "HEAD" })}
+							{diffSubtitleLabel}
 						</div>
 					</div>
 					{payload && (
@@ -2734,283 +3087,20 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 									</span>
 								)}
 							</span>
-							<label
-								className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[0.6875rem] font-mono cursor-pointer transition-colors ${
-									includeTests
-										? "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
-										: "bg-accent/10 text-accent border-accent/30 hover:bg-accent/20"
-								}`}
-								title={hiddenTestCount > 0 || includeTests
-									? t("infoPanel.diffIncludeTestsTooltip")
-									: t("infoPanel.diffIncludeTestsTooltipNoTests")}
-								data-testid="diff-toolbar-include-tests"
-							>
-								<input
-									type="checkbox"
-									className="sr-only"
-									checked={includeTests}
-									onChange={(e) => setIncludeTests(e.target.checked)}
-									aria-label={t("infoPanel.diffIncludeTestsAria")}
-								/>
-								<span>{includeTests ? t("infoPanel.diffIncludeTests") : t("infoPanel.diffExcludeTests")}</span>
-								<span
-									className="text-[0.85rem] leading-none"
-									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-								>
-									{"\u{F0668}"}
-								</span>
-							</label>
-							{totalFileCount !== payload.summary.files && (
-								<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
-									{t("infoPanel.diffShownCount", {
-										shown: String(totalFileCount),
-										total: String(payload.summary.files),
-									})}
-								</span>
-							)}
-							{payload.fallbackReason === "no-upstream" && (
-								<span className="px-2 py-1 rounded-md bg-warning/10 text-warning border border-warning/25 text-[0.6875rem]">
-									{t("infoPanel.diffFallbackNoUpstream", { ref: payload.compareLabel })}
-								</span>
-							)}
-							{(() => {
-								const binaryCount = visibleSkippedFiles.filter((f) => f.reason === "binary").length;
-								const largeCount = visibleSkippedFiles.filter((f) => f.reason === "too-large").length;
-								return (
-									<>
-										{binaryCount > 0 && (
-											<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
-												{t.plural("infoPanel.diffBinaryCount", binaryCount)}
-											</span>
-										)}
-										{largeCount > 0 && (
-											<span className="px-2 py-1 rounded-md bg-raised text-fg-3 border border-edge text-[0.6875rem]">
-												{t.plural("infoPanel.diffLargeCount", largeCount)}
-											</span>
-										)}
-									</>
-								);
-							})()}
+							{renderTestsToggle()}
+							{renderInfoChips()}
 						</>
 					)}
-					{renderToolbarButton(t("infoPanel.diffBranch"), currentRequest.mode === "branch", () => switchDiffMode("branch"))}
-					{renderToolbarButton(t("infoPanel.uncommittedDiff"), currentRequest.mode === "uncommitted", () => switchDiffMode("uncommitted"))}
-					{renderToolbarButton(t("infoPanel.unpushedDiff"), currentRequest.mode === "unpushed", () => switchDiffMode("unpushed"))}
-					{(() => {
-						const recentActive = currentRequest.mode === "recent";
-						return (
-							<div className="relative inline-flex">
-								<div
-									className={`inline-flex items-stretch rounded-md border text-[0.6875rem] font-semibold transition-colors ${
-										recentActive
-											? "bg-accent text-white border-accent"
-											: "bg-raised text-fg-2 border-edge hover:bg-elevated-hover"
-									}`}
-								>
-									<button
-										type="button"
-										onClick={() => switchDiffMode("recent")}
-										aria-pressed={recentActive}
-										className="px-2.5 py-0.5 rounded-l-md"
-										data-testid="diff-mode-recent"
-									>
-										{t.plural("infoPanel.diffRecentLabel", recentCount)}
-									</button>
-									<button
-										ref={recentCaretRef}
-										type="button"
-										onClick={() => setRecentMenuOpen((open) => !open)}
-										aria-label={t("infoPanel.diffRecentPresetsAria")}
-										aria-haspopup="menu"
-										aria-expanded={recentMenuOpen}
-										title={t("infoPanel.diffRecentPresetsAria")}
-										className={`flex items-center px-1.5 rounded-r-md border-l ${
-											recentActive ? "border-white/30" : "border-edge"
-										}`}
-										data-testid="diff-mode-recent-caret"
-									>
-										<span className="text-[0.7rem] leading-none">{"▾"}</span>
-									</button>
-								</div>
-								{recentMenuOpen && (
-									<div
-										ref={recentMenuRef}
-										role="menu"
-										aria-label={t("infoPanel.diffRecentPresetsAria")}
-										className="absolute right-0 top-full z-20 mt-1 min-w-[9rem] rounded-md border border-edge bg-elevated py-1 shadow-lg"
-										data-testid="diff-mode-recent-menu"
-									>
-										{RECENT_COUNT_PRESETS.map((preset) => {
-											const selected = recentActive && preset === recentCount;
-											return (
-												<button
-													key={preset}
-													type="button"
-													role="menuitemradio"
-													aria-checked={selected}
-													onClick={() => selectRecentCount(preset)}
-													className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[0.6875rem] font-medium transition-colors ${
-														selected ? "text-accent" : "text-fg-2 hover:bg-raised-hover"
-													}`}
-													data-testid={`diff-recent-preset-${preset}`}
-												>
-													<span>{t.plural("infoPanel.diffRecentLabel", preset)}</span>
-													{selected && (
-														<span aria-hidden="true" className="text-[0.75rem] leading-none">{"✓"}</span>
-													)}
-												</button>
-											);
-										})}
-									</div>
-								)}
-							</div>
-						);
-					})()}
+					{renderModeToggles()}
 						<HelpSpot topicId="diff.modes" />
 					<div className="ml-auto flex items-center gap-2">
-						<button
-							type="button"
-							onClick={() => {
-								if (isSearchOpen) {
-									setIsSearchOpen(false);
-									setSearchQuery("");
-									setActiveSearchIndex(0);
-									return;
-								}
-								setIsSearchOpen(true);
-								window.requestAnimationFrame(() => {
-									const input = searchInputRef.current;
-									if (!input) {
-										return;
-									}
-									input.focus();
-									input.select();
-								});
-							}}
-							aria-label={t("infoPanel.diffSearchOpen")}
-							title={`${t("infoPanel.diffSearchOpen")} (⌘F)`}
-							className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-md border text-[0.6875rem] font-semibold transition-colors ${
-								isSearchOpen
-									? "border-accent bg-accent text-white"
-									: "border-edge bg-raised text-fg-2 hover:bg-elevated-hover"
-							}`}
-						>
-							<span
-								aria-hidden="true"
-								className="text-[0.8125rem] leading-none"
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							>
-								{"\uF002"}
-							</span>
-						</button>
-						{isSearchOpen && (
-							<div className="inline-flex min-w-[18rem] max-w-[32rem] items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1">
-								<div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-edge bg-base px-2 focus-within:border-accent/60 transition-colors">
-									<span
-										aria-hidden="true"
-										className="shrink-0 text-[0.8rem] leading-none text-fg-muted"
-										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-									>
-										{"\uF002"}
-									</span>
-									<input
-										ref={searchInputRef}
-										type="text"
-										value={searchQuery}
-										onChange={(event) => {
-											setSearchQuery(event.target.value);
-											setActiveSearchIndex(0);
-										}}
-										onKeyDown={(event) => {
-											if (event.key === "Enter") {
-												event.preventDefault();
-												event.stopPropagation();
-												stepSearchMatch(event.shiftKey ? -1 : 1);
-												return;
-											}
-											if (event.key === "Escape") {
-												event.preventDefault();
-												event.stopPropagation();
-												if (searchQuery.trim()) {
-													setSearchQuery("");
-													setActiveSearchIndex(0);
-												} else {
-													setIsSearchOpen(false);
-												}
-											}
-										}}
-										placeholder={t("infoPanel.diffSearchPlaceholder")}
-										className="h-7 min-w-0 flex-1 bg-transparent text-xs font-medium text-fg outline-none placeholder:text-fg-muted"
-									/>
-								</div>
-								{searchStatusLabel && (
-									<span
-										className={`inline-flex h-7 shrink-0 items-center rounded-md border px-2 text-[0.6875rem] font-mono ${
-											searchMatches.length > 0
-												? "border-edge bg-base text-fg-2"
-												: "border-warning/25 bg-warning/10 text-warning"
-										}`}
-									>
-										{searchStatusLabel}
-									</span>
-								)}
-								<div className="inline-flex shrink-0 items-center gap-1">
-									<button
-										type="button"
-										onClick={() => stepSearchMatch(-1)}
-										disabled={searchMatches.length === 0}
-										aria-label={t("infoPanel.diffSearchPrev")}
-										title={t("infoPanel.diffSearchPrev")}
-										className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-									>
-										{"\u25B2"}
-									</button>
-									<button
-										type="button"
-										onClick={() => stepSearchMatch(1)}
-										disabled={searchMatches.length === 0}
-										aria-label={t("infoPanel.diffSearchNext")}
-										title={t("infoPanel.diffSearchNext")}
-										className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-									>
-										{"\u25BC"}
-									</button>
-								</div>
-								<button
-									type="button"
-									onClick={() => {
-										setIsSearchOpen(false);
-										setSearchQuery("");
-										setActiveSearchIndex(0);
-									}}
-									aria-label={t("infoPanel.diffSearchClose")}
-									title={t("infoPanel.diffSearchClose")}
-									className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-edge bg-base text-fg-2 transition-colors hover:bg-elevated-hover"
-								>
-									{"\u2715"}
-								</button>
-							</div>
-						)}
-						{narrow ? (
-							totalFileCount > 0 && (
-								<button
-									type="button"
-									onClick={() => setFilesSheetOpen(true)}
-									data-testid="diff-files-sheet-trigger"
-									className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-edge bg-raised text-fg-2 text-[0.6875rem] font-semibold hover:bg-elevated-hover transition-colors"
-								>
-									<span aria-hidden="true" className="text-[0.85rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0645}"}</span>
-									<span>{t("infoPanel.diffFiles")} ({totalFileCount})</span>
-								</button>
-							)
-						) : (
-							<>
-								{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
-								{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
-							</>
-						)}
+						{renderSearchToggle(false)}
+						{isSearchOpen && renderSearchBox(false)}
+						{renderToolbarButton(t("infoPanel.diffUnified"), viewMode === "unified", () => setViewMode("unified"))}
+						{renderToolbarButton(t("infoPanel.diffSplit"), viewMode === "split", () => setViewMode("split"))}
 					</div>
 				</div>
+				)}
 			</div>
 
 			<div className="flex-1 min-h-0 flex overflow-hidden">

@@ -2651,6 +2651,77 @@ describe("TaskDiffViewer narrow viewport", () => {
 		await user.click(screen.getByTestId("diff-files-sheet-trigger"));
 		expect(await screen.findByTestId("diff-files-sheet")).toBeInTheDocument();
 	});
+
+	it("uses the structured narrow toolbar: icon back button, stats in the subtitle", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+
+		// Row 1: the back button collapses to an icon with an accessible name —
+		// the full "Back to Terminal" label would crush the title at 390px.
+		const back = screen.getByRole("button", { name: "Back to Terminal" });
+		expect(back).not.toHaveTextContent("Back to Terminal");
+
+		// Insertion/deletion stats fold into the subtitle line instead of a
+		// separate chip; the file count lives on the Files sheet trigger.
+		const subtitle = screen.getByTestId("diff-narrow-subtitle");
+		expect(subtitle).toHaveTextContent("+5");
+		expect(subtitle).toHaveTextContent("−1");
+		expect(screen.queryByTestId("diff-toolbar-summary")).not.toBeInTheDocument();
+		expect(screen.getByTestId("diff-files-sheet-trigger")).toHaveTextContent("Files (3)");
+	});
+
+	it("opens the search as a full-width row on narrow", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+
+		expect(screen.queryByTestId("diff-narrow-search-row")).not.toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Search diff" }));
+		expect(screen.getByTestId("diff-narrow-search-row")).toBeInTheDocument();
+		expect(screen.getByPlaceholderText("Search diff...")).toBeInTheDocument();
+	});
+
+	it("keeps all four mode toggles reachable on narrow", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+		expect(screen.getByRole("button", { name: "Branch" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Uncommitted" })).toBeInTheDocument();
+		expect(screen.getByRole("button", { name: "Unpushed" })).toBeInTheDocument();
+		expect(screen.getByTestId("diff-mode-recent")).toBeInTheDocument();
+	});
 });
 
 describe("TaskDiffViewer — recent commits mode", () => {
