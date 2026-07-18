@@ -34,6 +34,15 @@ unscrollable buffer. Horizontal drags are left to the pane-swipe gesture (axis l
 The pure encoding/accumulation logic (`Dev3TerminalWheelScroll`, `Dev3TerminalScrollAccumulator`)
 is unit-tested; `allowMouseReporting` stays `false`, so taps and selection are unchanged.
 
+**Status-line coordinate (build-5 follow-up):** the wheel still didn't scroll on device.
+Server-side byte capture proved the events arrived correctly but every one carried row =
+the bottom line (e.g. `\e[<64;26;38M`) — the tmux **status line**. tmux's default
+`WheelUpStatus`/`WheelDownStatus` bindings hijack a status-line wheel into
+`previous-window`/`next-window` ("no previous window"), so nothing scrolled. The
+touch→cell row estimate (`bounds.height / rows`) was pinning every event to that row. Fix:
+`scrollCell` now targets the **vertical middle** of the pane (`rows / 2`), never the touched
+row — the exact row is irrelevant to scrolling, and the middle is always pane content.
+
 **Gesture arbitration (build-4 follow-up):** the first cut didn't scroll on device. The scroll
 pan was mutually exclusive with SwiftTerm's own recognizers (the `shouldRecognizeSimultaneouslyWith`
 rule allowed only pinch), so it was starved. Fix: the scroll pan now recognizes **simultaneously

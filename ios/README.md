@@ -26,6 +26,22 @@ xcodebuild \
 
 `Dev3.xcodeproj` is generated and ignored. Change `project.yml`, then regenerate it.
 
+## Simulator quick-connect (DEBUG only)
+
+The Simulator's accessibility tree is not exposed to UI-automation tools, and its keyboard is awkward,
+so pairing by hand is painful. DEBUG builds (never Release/TestFlight) read launch **env vars** that
+skip pairing and jump straight to a screen under test — pair the sim once, iterate fast, no TestFlight:
+
+- `DEV3_AUTOPAIR_ORIGIN`, `DEV3_AUTOPAIR_TOKEN`, `DEV3_AUTOPAIR_INSTANCE`, `DEV3_AUTOPAIR_NAME` — seed a
+  paired server into the Keychain on launch so the app auto-connects. Mint a token against the shared
+  secret (`initSecret(); createSessionToken("ios")`) or exchange a `--static-code` server's code.
+- `DEV3_AUTOOPEN_PROJECT`, `DEV3_AUTOOPEN_TASK` — once connected and the task has loaded, open its
+  terminal automatically.
+
+Point `DEV3_AUTOPAIR_ORIGIN` at the **instance that owns the task's PTY session** (the running desktop /
+`bun run dev` server) — a *different* `dev3 remote` instance returns "Unknown session" for a task it did
+not spawn. Wiring lives in `App/Dev3App.swift` behind `#if DEBUG`.
+
 ## TestFlight archive and export
 
 The release script requires the Apple team, explicit bundle ID, marketing version, and a build number

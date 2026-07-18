@@ -62,9 +62,13 @@
             let cols = max(1, terminal.cols)
             let rows = max(1, terminal.rows)
             let cellWidth = bounds.width > 0 ? bounds.width / CGFloat(cols) : 0
-            let cellHeight = bounds.height > 0 ? bounds.height / CGFloat(rows) : 0
             let col = cellWidth > 0 ? min(cols, max(1, Int(point.x / cellWidth) + 1)) : 1
-            let row = cellHeight > 0 ? min(rows, max(1, Int(point.y / cellHeight) + 1)) : 1
+            // Always target the vertical middle of the pane, never the touched
+            // row. tmux's default WheelUp/DownStatus bindings hijack a wheel event
+            // that lands on the bottom status line (previous-window/next-window),
+            // and the touch→row estimate was pinning every event to that row. The
+            // exact row within the pane is irrelevant to scrolling it.
+            let row = max(1, rows / 2)
             return (col, row)
         }
 
