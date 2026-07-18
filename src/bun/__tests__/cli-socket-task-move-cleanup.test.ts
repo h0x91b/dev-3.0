@@ -76,6 +76,15 @@ vi.mock("node:fs", () => ({
 	readdirSync: vi.fn(() => []),
 	unlinkSync: vi.fn(),
 	mkdirSync: vi.fn(),
+	// Consumed by the tmux module (config writes + shim sanitation) pulled in
+	// through rpc-handlers/tmux-pty.
+	writeFileSync: vi.fn(),
+	lstatSync: vi.fn(() => { throw new Error("ENOENT"); }),
+	statSync: vi.fn(() => ({ isFile: () => true })),
+	readlinkSync: vi.fn(() => { throw new Error("EINVAL"); }),
+	realpathSync: vi.fn((p: string) => p),
+	symlinkSync: vi.fn(),
+	accessSync: vi.fn(),
 }));
 
 import * as data from "../data";

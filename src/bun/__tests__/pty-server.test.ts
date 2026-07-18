@@ -37,17 +37,14 @@ vi.mock("../spawn", () => ({
 
 // ---- Imports ----
 
-import { accessSync, existsSync, lstatSync, statSync, readlinkSync, realpathSync, unlinkSync, symlinkSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, spawnSync } from "../spawn";
 import { DEV3_HOME } from "../paths";
+import { TmuxSpawnError, TMUX_CONF_DARK_PATH } from "../tmux";
 import {
-	tmuxArgs,
-	spawnTmux,
-	TmuxSpawnError,
-	isTmuxSpawnError,
 	cwdExists,
 	createSession,
 	destroySession,
@@ -55,7 +52,6 @@ import {
 	hasDeadSession,
 	capturePane,
 	getTmuxLayout,
-	parseWindowLayout,
 	getSessionProjectId,
 	getSessionSocket,
 	getSessionTmuxName,
@@ -65,15 +61,7 @@ import {
 	setOnBell,
 	setOnOsc52Copy,
 	smallestClientSize,
-	TMUX_CONF_PATH,
 	_resetTmuxBinaryLoggedForTests,
-	selectTmuxBinary,
-	updateTmuxShim,
-	dereferenceTmuxShim,
-	sanitizeTmuxShim,
-	TMUX_SHIM_PATH,
-	getTmuxBinary,
-	setTmuxBinary,
 } from "../pty-server";
 
 // ---- Typed mock handles ----
@@ -132,66 +120,6 @@ afterEach(() => {
 // ================================================================
 
 describe("pty-server", () => {
-	// ------- tmuxArgs -------
-
-	describe("tmuxArgs", () => {
-		it("prepends -L socket when socket is provided", () => {
-			expect(tmuxArgs("my-socket", "new-session", "-s", "test")).toEqual([
-				"tmux", "-L", "my-socket", "new-session", "-s", "test",
-			]);
-		});
-
-		it("always includes -L with socket name", () => {
-			expect(tmuxArgs("dev3", "list-sessions")).toEqual(["tmux", "-L", "dev3", "list-sessions"]);
-		});
-
-		it("passes multiple args correctly", () => {
-			expect(tmuxArgs("sock", "kill-session", "-t", "dev3-abc")).toEqual([
-				"tmux", "-L", "sock", "kill-session", "-t", "dev3-abc",
-			]);
-		});
-	});
-
-	// ------- spawnTmux / TmuxSpawnError -------
-
-	describe("spawnTmux / TmuxSpawnError", () => {
-		it("spawns with the full tmux argv and returns the proc on success", () => {
-			const proc = spawnTmux("dev3", ["has-session", "-t", "dev3-dev-abc"], { stdout: "pipe", stderr: "pipe" });
-			expect(proc).toBeDefined();
-			expect(mockSpawn).toHaveBeenCalledWith(
-				["tmux", "-L", "dev3", "has-session", "-t", "dev3-dev-abc"],
-				{ stdout: "pipe", stderr: "pipe" },
-			);
-		});
-
-		it("translates a launch-time spawn failure into a TmuxSpawnError with an actionable message", () => {
-			mockSpawn.mockImplementationOnce(() => {
-				throw new Error("ENOENT: no such file or directory, posix_spawn '/opt/homebrew/bin/tmux'");
-			});
-
-			let caught: unknown;
-			try {
-				spawnTmux("dev3", ["list-sessions"]);
-			} catch (err) {
-				caught = err;
-			}
-
-			expect(isTmuxSpawnError(caught)).toBe(true);
-			expect(caught).toBeInstanceOf(TmuxSpawnError);
-			const message = (caught as Error).message;
-			expect(message).toContain("tmux failed to spawn");
-			expect(message).toContain("posix_spawn"); // preserves the raw cause
-			expect(message).toContain("Full Disk Access"); // points at the usual macOS fix
-			expect((caught as TmuxSpawnError).cause).toBeInstanceOf(Error);
-		});
-
-		it("isTmuxSpawnError is false for unrelated errors and non-errors", () => {
-			expect(isTmuxSpawnError(new Error("boom"))).toBe(false);
-			expect(isTmuxSpawnError(null)).toBe(false);
-			expect(isTmuxSpawnError(undefined)).toBe(false);
-		});
-	});
-
 	// ------- createSession -------
 
 	describe("createSession", () => {
@@ -282,7 +210,7 @@ describe("pty-server", () => {
 			expect(tmuxCall![0]).toContain("-L");
 			expect(tmuxCall![0]).toContain("my-socket");
 			expect(tmuxCall![0]).toContain("-f");
-			expect(tmuxCall![0]).toContain(TMUX_CONF_PATH);
+			expect(tmuxCall![0]).toContain(TMUX_CONF_DARK_PATH);
 		});
 
 		it("uses the user shell when tmuxCommand is empty", () => {
@@ -700,10 +628,11 @@ describe("pty-server", () => {
 		}
 
 		// Two side-by-side panes in a single window (a 200-col window split down
-		// the middle, with a 1-col divider at column 99). The window_layout (5th
-		// field) is the zoom-independent geometry source; the trailing field is the
-		// window_zoomed_flag (0 = not zoomed).
-		const WINDOWS = "0\tmain\t1\t2\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\t0\n";
+		// the middle, with a 1-col divider at column 99). Fields follow
+		// WINDOW_OVERVIEW_FORMAT: index, active, panes, zoomed, layout, name —
+		// window_layout is the zoom-independent geometry source, the free-text
+		// window name rides last (tail field).
+		const WINDOWS = "0\t1\t2\t0\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\tmain\n";
 		const PANES =
 			"0\t%1\t1\t0\t0\t99\t50\tclaude\tAgent\n" + "0\t%2\t0\t100\t0\t100\t50\tzsh\tShell\n";
 
@@ -792,7 +721,7 @@ describe("pty-server", () => {
 		});
 
 		it("reports a zoomed window via window_zoomed_flag", async () => {
-			mockLayoutSpawn({ windows: "0\tmain\t1\t2\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\t1\n" });
+			mockLayoutSpawn({ windows: "0\t1\t2\t1\tcf3a,200x50,0,0{99x50,0,0,1,100x50,100,0,2}\tmain\n" });
 			const layout = await getTmuxLayout("task-layout-zoom");
 			expect(layout.windows[0].zoomed).toBe(true);
 		});
@@ -813,33 +742,9 @@ describe("pty-server", () => {
 		});
 
 		it("falls back to per-pane geometry when window_layout is absent", async () => {
-			mockLayoutSpawn({ windows: "0\tmain\t1\t1\t\n", panes: "0\t%7\t1\t3\t4\t80\t20\tzsh\tShell\n" });
+			mockLayoutSpawn({ windows: "0\t1\t1\t0\t\tmain\n", panes: "0\t%7\t1\t3\t4\t80\t20\tzsh\tShell\n" });
 			const layout = await getTmuxLayout("task-layout-06");
 			expect(layout.panes[0]).toMatchObject({ paneId: "%7", left: 3, top: 4, width: 80, height: 20 });
-		});
-	});
-
-	describe("parseWindowLayout", () => {
-		it("extracts leaf geometry keyed by pane id, ignoring containers", () => {
-			const geom = parseWindowLayout("21be,200x50,0,0{100x50,0,0,0,99x50,101,0[99x25,101,0,1,99x24,101,26,2]}");
-			expect(geom.get("%0")).toEqual({ left: 0, top: 0, width: 100, height: 50 });
-			expect(geom.get("%1")).toEqual({ left: 101, top: 0, width: 99, height: 25 });
-			expect(geom.get("%2")).toEqual({ left: 101, top: 26, width: 99, height: 24 });
-			// The container cell (99x50,101,0) must not be mistaken for a pane.
-			expect(geom.size).toBe(3);
-		});
-
-		it("maps the trailing integer to pane id (not pane index) after a kill", () => {
-			// Non-contiguous ids: %0 and %2 survive; layout uses ids 0 and 2.
-			const geom = parseWindowLayout("4f3b,200x50,0,0{100x50,0,0,0,99x50,101,0,2}");
-			expect(geom.has("%0")).toBe(true);
-			expect(geom.has("%2")).toBe(true);
-			expect(geom.has("%1")).toBe(false);
-		});
-
-		it("returns an empty map for an empty/garbage layout", () => {
-			expect(parseWindowLayout("").size).toBe(0);
-			expect(parseWindowLayout("not-a-layout").size).toBe(0);
 		});
 	});
 
@@ -1091,7 +996,7 @@ describe("pty-server", () => {
 			expect(sourceCall).toBeDefined();
 			expect(sourceCall![0]).toContain("-L");
 			expect(sourceCall![0]).toContain("conf-socket");
-			expect(sourceCall![0]).toContain(TMUX_CONF_PATH);
+			expect(sourceCall![0]).toContain(TMUX_CONF_DARK_PATH);
 
 			vi.useRealTimers();
 		});
@@ -1319,57 +1224,6 @@ describe("pty-server", () => {
 		});
 	});
 
-	// ------- TMUX_CONF_PATH -------
-
-	describe("TMUX_CONF_PATH", () => {
-		it("uses the isolated test root for the default dark config", () => {
-			expect(TMUX_CONF_PATH).toBe(`${process.env.DEV3_TEST_ROOT}/dev3-tmux-dark.conf`);
-		});
-
-		/** Helper: reimport pty-server with mocked fs and find the dark config content. */
-		async function reimportAndGetDarkConfig(): Promise<string> {
-			vi.resetModules();
-			const writeFileSyncMock = vi.fn();
-			vi.doMock("node:fs", async (importOriginal) => {
-				const actual = await importOriginal<typeof import("node:fs")>();
-				return { ...actual, mkdirSync: vi.fn(), existsSync: vi.fn(() => true), writeFileSync: writeFileSyncMock };
-			});
-			vi.doMock("../logger", () => ({
-				createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-			}));
-			vi.doMock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
-			const mod = await import("../pty-server");
-			// Find the call that writes the dark config (TMUX_CONF_DARK_PATH)
-			const call = writeFileSyncMock.mock.calls.find(
-				(c: unknown[]) => typeof c[0] === "string" && c[0] === mod.TMUX_CONF_DARK_PATH,
-			);
-			return call?.[1] as string ?? "";
-		}
-
-		it("includes synchronized output (Sync) terminal features", async () => {
-			const config = await reimportAndGetDarkConfig();
-			expect(config).toContain("xterm-256color:Sync");
-			expect(config).toContain("tmux-256color:Sync");
-		});
-
-		it("includes extended-keys and focus-events settings", async () => {
-			const config = await reimportAndGetDarkConfig();
-			expect(config).toContain("extended-keys on");
-			expect(config).toContain("focus-events on");
-			expect(config).toContain("terminal-overrides");
-		});
-
-		it("sets history-limit to 250000", async () => {
-			const config = await reimportAndGetDarkConfig();
-			expect(config).toContain("history-limit 250000");
-		});
-
-		it("writes a backslash split binding with a literal double backslash", async () => {
-			const config = await reimportAndGetDarkConfig();
-			expect(config).toContain(String.raw`bind \\ split-window -h -c "#{?pane_current_path,#{pane_current_path},#{session_path}}"`);
-		});
-	});
-
 	// Multi-window / multi-client resize: the shared PTY must be sized to the
 	// SMALLEST viewer so two app windows of different sizes on the same task
 	// don't flip-flop the geometry (last-write-wins). Mirrors tmux multi-client.
@@ -1437,266 +1291,5 @@ describe("pty-server", () => {
 		it("returns false for a path that does not exist", async () => {
 			expect(await cwdExists(join(tmpdir(), "dev3-cwd-nope-zzzzzzzz"))).toBe(false);
 		});
-	});
-});
-
-// ---- tmux binary selection (pinned tmux@3.6 rollout) ----
-
-describe("selectTmuxBinary", () => {
-	const PREFERRED = "/opt/homebrew/opt/tmux@3.6/bin/tmux";
-	const PATH_TMUX = "/opt/homebrew/bin/tmux";
-
-	function probeResult(exitCode: number, stderr = "") {
-		return { exited: Promise.resolve(exitCode), stderr, stdout: "tmux 3.6a\n" } as any;
-	}
-
-	function mockVersionAndServer(serverExitCode: number, stderr = "") {
-		mockSpawn.mockImplementation(((args: string[]) =>
-			args[1] === "-V" ? probeResult(0) : probeResult(serverExitCode, stderr)) as any);
-	}
-
-	afterEach(() => {
-		setTmuxBinary("tmux");
-	});
-
-	it("keeps the preferred binary when no server is running", async () => {
-		mockVersionAndServer(1, "no server running on /tmp/tmux-501/dev3");
-		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
-		expect(chosen).toBe(PREFERRED);
-		expect(getTmuxBinary()).toBe(PREFERRED);
-		// One probe only — no fallback scanning when there is no server at all.
-		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("list-sessions"));
-		expect(probes).toHaveLength(1);
-	});
-
-	it("keeps the preferred binary when the running server accepts it", async () => {
-		mockSpawn.mockReturnValue(probeResult(0, ""));
-		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
-		expect(chosen).toBe(PREFERRED);
-		expect(getTmuxBinary()).toBe(PREFERRED);
-	});
-
-	it("falls back to a candidate that can talk to a version-mismatched server", async () => {
-		mockSpawn.mockImplementation(((args: string[]) =>
-			args[1] === "-V"
-				? probeResult(0)
-				: args[0] === PREFERRED
-				? probeResult(1, "server exited unexpectedly")
-				: probeResult(0, "")) as any);
-		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
-		expect(chosen).toBe(PATH_TMUX);
-		expect(getTmuxBinary()).toBe(PATH_TMUX);
-	});
-
-	it("keeps the preferred binary when every candidate is incompatible", async () => {
-		mockVersionAndServer(1, "server exited unexpectedly");
-		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX, "/usr/local/bin/tmux"]);
-		expect(chosen).toBe(PREFERRED);
-		expect(getTmuxBinary()).toBe(PREFERRED);
-	});
-
-	it("skips fallback candidates that do not exist on disk", async () => {
-		mockVersionAndServer(1, "server exited unexpectedly");
-		mockExistsSync.mockImplementation((path) => path === PREFERRED);
-		await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
-		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("list-sessions"));
-		expect(probes).toHaveLength(1); // only the preferred binary was probed
-	});
-
-	it("dereferences the PATH shim instead of committing it (ELOOP regression)", async () => {
-		// ~/.dev3.0/bin is first in PATH, so whichSync can hand us our own shim
-		// as "preferred". Committing it and then repointing the shim at it
-		// created a self-referential symlink that broke every tmux spawn.
-		mockSpawn.mockReturnValue(probeResult(0, ""));
-		mockExistsSync.mockReturnValue(true);
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
-		vi.mocked(readlinkSync).mockReturnValue(PATH_TMUX);
-		vi.mocked(realpathSync).mockReturnValue(PATH_TMUX);
-		const chosen = await selectTmuxBinary(TMUX_SHIM_PATH, [TMUX_SHIM_PATH]);
-		expect(chosen).toBe(PATH_TMUX);
-		expect(getTmuxBinary()).toBe(PATH_TMUX);
-		expect(vi.mocked(symlinkSync)).not.toHaveBeenCalledWith(TMUX_SHIM_PATH, TMUX_SHIM_PATH);
-	});
-
-	it("rejects a PATH shim that resolves to a directory and uses a real fallback", async () => {
-		const HOME_DIR = "/Users/tester";
-		mockVersionAndServer(1, "no server running on /tmp/tmux-501/dev3");
-		mockExistsSync.mockReturnValue(true);
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
-		vi.mocked(readlinkSync).mockReturnValue(HOME_DIR);
-		vi.mocked(realpathSync).mockReturnValue(HOME_DIR);
-		vi.mocked(statSync).mockImplementation(((path: string) => ({ isFile: () => path !== HOME_DIR })) as any);
-
-		const chosen = await selectTmuxBinary(TMUX_SHIM_PATH, [PATH_TMUX]);
-
-		expect(chosen).toBe(PATH_TMUX);
-		expect(getTmuxBinary()).toBe(PATH_TMUX);
-		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
-	});
-
-	it("rejects an executable that is not tmux and uses a real fallback", async () => {
-		const WRONG_BINARY = "/usr/bin/true";
-		mockExistsSync.mockReturnValue(true);
-		mockSpawn.mockImplementation(((args: string[]) => {
-			if (args[1] === "-V") {
-				return args[0] === WRONG_BINARY
-					? { exited: Promise.resolve(0), stdout: "true (GNU coreutils) 9.5\n", stderr: "" }
-					: { exited: Promise.resolve(0), stdout: "tmux 3.6a\n", stderr: "" };
-			}
-			return probeResult(1, "no server running on /tmp/tmux-501/dev3");
-		}) as any);
-
-		const chosen = await selectTmuxBinary(WRONG_BINARY, [PATH_TMUX]);
-
-		expect(chosen).toBe(PATH_TMUX);
-		expect(getTmuxBinary()).toBe(PATH_TMUX);
-	});
-
-	it("returns undefined instead of committing an executable that is not tmux", async () => {
-		mockSpawn.mockReturnValue({
-			exited: Promise.resolve(0),
-			stdout: "not tmux\n",
-			stderr: "",
-		} as any);
-
-		const chosen = await selectTmuxBinary("/usr/bin/true", ["/usr/bin/false"]);
-
-		expect(chosen).toBeUndefined();
-		expect(getTmuxBinary()).toBe("tmux");
-		expect(vi.mocked(symlinkSync)).not.toHaveBeenCalled();
-	});
-});
-
-describe("dereferenceTmuxShim", () => {
-	const PATH_TMUX = "/opt/homebrew/bin/tmux";
-
-	it("passes through non-shim paths untouched", () => {
-		expect(dereferenceTmuxShim(PATH_TMUX)).toBe(PATH_TMUX);
-	});
-
-	it("resolves the shim to its symlink target", () => {
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
-		vi.mocked(realpathSync).mockReturnValue(PATH_TMUX);
-		vi.mocked(readlinkSync).mockReturnValue(PATH_TMUX);
-		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBe(PATH_TMUX);
-	});
-
-	it("removes a broken/cyclic shim and returns undefined", () => {
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
-		vi.mocked(realpathSync).mockImplementation(() => { throw new Error("ELOOP"); });
-		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBeUndefined();
-		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
-	});
-
-	it("leaves a regular file at the shim path alone and uses it as-is", () => {
-		// The app only ever creates a symlink there — a regular file is the
-		// user's own binary and must never be deleted.
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
-		mockExistsSync.mockReturnValue(true);
-		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBe(TMUX_SHIM_PATH);
-		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
-	});
-
-	it("returns undefined for a missing shim path that is not a symlink", () => {
-		vi.mocked(lstatSync).mockImplementation(() => { throw new Error("ENOENT"); });
-		mockExistsSync.mockReturnValue(false);
-		expect(dereferenceTmuxShim(TMUX_SHIM_PATH)).toBeUndefined();
-		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
-	});
-});
-
-describe("sanitizeTmuxShim", () => {
-	it("removes the shim when the symlink cannot be resolved (ELOOP)", () => {
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
-		vi.mocked(realpathSync).mockImplementation(() => { throw new Error("ELOOP"); });
-		sanitizeTmuxShim();
-		expect(vi.mocked(unlinkSync)).toHaveBeenCalledWith(TMUX_SHIM_PATH);
-	});
-
-	it("keeps a healthy shim", () => {
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => true } as any);
-		vi.mocked(realpathSync).mockReturnValue("/opt/homebrew/bin/tmux");
-		sanitizeTmuxShim();
-		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
-	});
-
-	it("ignores a non-symlink file", () => {
-		vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => false } as any);
-		sanitizeTmuxShim();
-		expect(vi.mocked(unlinkSync)).not.toHaveBeenCalled();
-	});
-});
-
-describe("updateTmuxShim", () => {
-	const TARGET = "/opt/homebrew/opt/tmux@3.6/bin/tmux";
-	const SHIM = `${DEV3_HOME}/bin/tmux`;
-	const mockLstatSync = vi.mocked(lstatSync);
-	const mockReadlinkSync = vi.mocked(readlinkSync);
-	const mockUnlinkSync = vi.mocked(unlinkSync);
-	const mockSymlinkSync = vi.mocked(symlinkSync);
-
-	beforeEach(() => {
-		mockExistsSync.mockReturnValue(true);
-		vi.mocked(statSync).mockReturnValue({ isFile: () => true } as any);
-		vi.mocked(accessSync).mockImplementation(() => undefined);
-	});
-
-	it("does nothing for a bare binary name", () => {
-		updateTmuxShim("tmux");
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-	});
-
-	it("creates the symlink when missing", () => {
-		mockExistsSync.mockImplementation((path) => path === TARGET);
-		mockLstatSync.mockImplementation(() => { throw new Error("ENOENT"); });
-		updateTmuxShim(TARGET);
-		expect(mockSymlinkSync).toHaveBeenCalledWith(TARGET, SHIM);
-	});
-
-	it("refuses to create a shim for a directory", () => {
-		const directory = "/Users/tester";
-		mockExistsSync.mockReturnValue(true);
-		vi.mocked(statSync).mockReturnValue({ isFile: () => false } as any);
-
-		updateTmuxShim(directory);
-
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
-	});
-
-	it("leaves a pre-existing non-symlink file alone", () => {
-		mockExistsSync.mockReturnValue(true);
-		mockLstatSync.mockReturnValue({ isSymbolicLink: () => false } as any);
-		updateTmuxShim(TARGET);
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
-	});
-
-	it("repoints the symlink when it targets a different binary", () => {
-		mockExistsSync.mockReturnValue(true);
-		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
-		mockReadlinkSync.mockReturnValue("/old/path/tmux");
-		updateTmuxShim(TARGET);
-		expect(mockUnlinkSync).toHaveBeenCalledWith(SHIM);
-		expect(mockSymlinkSync).toHaveBeenCalledWith(TARGET, SHIM);
-	});
-
-	it("is a no-op when the symlink already points at the binary", () => {
-		mockExistsSync.mockReturnValue(true);
-		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
-		mockReadlinkSync.mockReturnValue(TARGET);
-		updateTmuxShim(TARGET);
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
-	});
-
-	it("refuses to point the shim at itself (ELOOP regression)", () => {
-		mockExistsSync.mockReturnValue(true);
-		mockLstatSync.mockReturnValue({ isSymbolicLink: () => true } as any);
-		mockReadlinkSync.mockReturnValue("/opt/homebrew/bin/tmux");
-		updateTmuxShim(SHIM);
-		expect(mockUnlinkSync).not.toHaveBeenCalled();
-		expect(mockSymlinkSync).not.toHaveBeenCalled();
 	});
 });

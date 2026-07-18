@@ -68,8 +68,10 @@ class TmuxFormatImpl<T> implements TmuxFormat<T> {
 
 	parse(stdout: string): T[] {
 		const rows: T[] = [];
-		for (const rawLine of stdout.split("\n")) {
-			const line = rawLine.trimEnd();
+		for (const line of stdout.split("\n")) {
+			// Only skip truly empty lines — trimming would eat the separator in
+			// front of an EMPTY trailing field (e.g. an unset pane title) and
+			// silently drop the whole row as "too few columns".
 			if (!line) continue;
 			const row = this.parseLine(line);
 			if (row !== null) rows.push(row);
