@@ -35,40 +35,6 @@ public protocol SessionConnectionControlling: Sendable {
     func disconnect() async
 }
 
-@MainActor
-public protocol SessionScheduling: AnyObject {
-    func schedule(
-        after delay: TimeInterval,
-        operation: @escaping @MainActor @Sendable () -> Void
-    ) -> UUID
-    func cancel(_ token: UUID)
-}
-
-@MainActor
-public final class MainActorSessionScheduler: SessionScheduling {
-    private var tasks: [UUID: Task<Void, Never>] = [:]
-
-    public init() {}
-
-    public func schedule(
-        after delay: TimeInterval,
-        operation: @escaping @MainActor @Sendable () -> Void
-    ) -> UUID {
-        let token = UUID()
-        tasks[token] = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            self?.tasks[token] = nil
-            operation()
-        }
-        return token
-    }
-
-    public func cancel(_ token: UUID) {
-        tasks.removeValue(forKey: token)?.cancel()
-    }
-}
-
 public enum SessionExpirationReason: Equatable, Sendable {
     case noSavedSession
     case exchangeAndRefreshRejected
@@ -228,9 +194,22 @@ private extension SessionClient {
     }
 
     private func authenticatePairing(_ credential: PairingCredential, displayName: String?) async {
+        DiagnosticsLog.shared.record(category: "session", "pairing \(credential.origin.host ?? "?")")
+        let instance: RemoteInstanceInfo
         do {
-            let instance = try await transport.fetchInstance(origin: credential.origin)
+            instance = try await transport.fetchInstance(origin: credential.origin)
+        } catch {
             guard !isDead else { return }
+            // Pairing requires GET /instance. Rather than retry it forever behind
+            // only a spinner (the "stuck on Opening dev3…" report), stop and tell
+            // the user exactly what is wrong so they can act.
+            onError?(Self.pairingInstanceFailureMessage(for: error))
+            expire(.invalidServerResponse)
+            return
+        }
+        guard !isDead else { return }
+
+        do {
             let fallback = try await pairingFallback(instance: instance, origin: credential.origin)
 
             guard !qrSpent else {
@@ -248,15 +227,11 @@ private extension SessionClient {
                 displayName: displayName,
                 fallback: fallback
             )
-        } catch let error as SessionHTTPError {
-            if case .unsupportedProtocol = error {
-                onError?(error.localizedDescription)
-                expire(.invalidServerResponse)
-            } else {
-                scheduleBootRetry()
-            }
         } catch {
-            scheduleBootRetry()
+            guard !isDead else { return }
+            // Network failure during the exchange itself — surface, don't loop.
+            onError?(Self.pairingUnreachableMessage)
+            expire(.invalidServerResponse)
         }
     }
 
@@ -331,9 +306,11 @@ private extension SessionClient {
             try await connection.connect()
             guard !isDead else { return }
             attempts = 0
+            DiagnosticsLog.shared.record(category: "session", "rpc socket connected")
             setState(.connected)
         } catch {
             guard !isDead else { return }
+            DiagnosticsLog.shared.record(category: "session", "rpc connect failed: \(error)")
             setState(.reconnecting)
             scheduleConnectionRetry()
         }
@@ -462,6 +439,7 @@ private extension SessionClient {
 
     private func expire(_ reason: SessionExpirationReason) {
         guard !isDead else { return }
+        DiagnosticsLog.shared.record(category: "session", "expired (\(reason))")
         cancelRetry()
         cancelRefresh()
         setState(.expired)
@@ -475,6 +453,7 @@ private extension SessionClient {
     private func setState(_ next: RemoteSessionState) {
         guard state != next else { return }
         state = next
+        DiagnosticsLog.shared.record(category: "session", "state → \(next.rawValue)")
         onStateChange?(next)
     }
 

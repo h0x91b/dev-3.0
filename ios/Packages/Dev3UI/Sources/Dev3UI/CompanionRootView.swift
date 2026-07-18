@@ -349,6 +349,15 @@ private struct ServerSettingsView: View {
             settingsAccessoryBuilder()
 
             Section {
+                NavigationLink {
+                    DiagnosticsView()
+                } label: {
+                    Label("Diagnostics", systemImage: "stethoscope")
+                }
+                .accessibilityIdentifier("settings.diagnostics")
+            }
+
+            Section {
                 Button("Pair another instance", action: onPairAnother)
                     .accessibilityIdentifier("settings.pairAnother")
             }

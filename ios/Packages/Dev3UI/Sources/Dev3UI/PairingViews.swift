@@ -31,6 +31,7 @@ struct PairingHomeView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsScanner = false
     @State private var showsManualEntry = false
+    @State private var showsDiagnostics = false
     @State private var localError: String?
 
     private var palette: Dev3ThemePalette {
@@ -60,6 +61,14 @@ struct PairingHomeView: View {
                         Button("Cancel", action: onCancel)
                     }
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showsDiagnostics = true
+                    } label: {
+                        Label("Diagnostics", systemImage: "stethoscope")
+                    }
+                    .accessibilityIdentifier("pairing.diagnostics")
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -71,6 +80,16 @@ struct PairingHomeView: View {
         }
         .sheet(isPresented: $showsManualEntry) {
             ManualPairingView(controller: controller)
+        }
+        .sheet(isPresented: $showsDiagnostics) {
+            NavigationStack {
+                DiagnosticsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showsDiagnostics = false }
+                        }
+                    }
+            }
         }
         .alert("Pairing unavailable", isPresented: localErrorBinding) {
             Button("OK", role: .cancel) {}

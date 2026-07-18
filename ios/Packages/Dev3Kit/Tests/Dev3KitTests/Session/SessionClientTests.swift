@@ -38,6 +38,23 @@ struct SessionClientTests {
         #expect(await harness.transport.refreshCallCount == 1)
     }
 
+    @Test("Pairing surfaces a clear error when /instance is unavailable instead of looping forever")
+    func pairingInstanceUnavailable() async throws {
+        let harness = try await SessionHarness(
+            pairing: true,
+            fetchInstanceError: .httpStatus(404)
+        )
+
+        harness.client.start()
+        await settle()
+
+        #expect(harness.client.state == .expired)
+        #expect(harness.expirations == [.invalidServerResponse])
+        #expect(await harness.transport.exchangeCallCount == 0)
+        #expect(await harness.connection.connectCallCount == 0)
+        #expect(harness.errors.contains { $0.contains("/instance") })
+    }
+
     @Test("A consumed QR without a stored credential expires instead of inventing a refresh")
     func consumedQrWithoutCredential() async throws {
         let harness = try await SessionHarness(
@@ -261,6 +278,7 @@ private final class SessionHarness {
     let client: SessionClient
     var states: [RemoteSessionState] = []
     var expirations: [SessionExpirationReason] = []
+    var errors: [String] = []
 
     init(
         pairing: Bool,
@@ -271,6 +289,7 @@ private final class SessionHarness {
         refresh: [Result<SessionAuthResponse, MockSessionError>] = [
             .success(SessionAuthResponse(statusCode: 200, sessionToken: "refreshed-session"))
         ],
+        fetchInstanceError: SessionHTTPError? = nil,
         connectionOutcomes: [Bool] = [true]
     ) async throws {
         let secureStore = SessionMemorySecureStore()
@@ -278,7 +297,11 @@ private final class SessionHarness {
         if let savedServer {
             _ = try await store.upsert(savedServer)
         }
-        transport = MockSessionHTTPTransport(exchange: exchange, refresh: refresh)
+        transport = MockSessionHTTPTransport(
+            exchange: exchange,
+            refresh: refresh,
+            fetchInstanceError: fetchInstanceError
+        )
         connection = MockSessionConnection(outcomes: connectionOutcomes)
         scheduler = TestSessionScheduler()
         let defaultServer = try PairedServer(
@@ -307,6 +330,7 @@ private final class SessionHarness {
         )
         client.onStateChange = { [weak self] in self?.states.append($0) }
         client.onExpired = { [weak self] in self?.expirations.append($0) }
+        client.onError = { [weak self] in self?.errors.append($0) }
     }
 }
 
@@ -319,19 +343,25 @@ private actor MockSessionHTTPTransport: SessionHTTPTransporting {
     )
     private var exchangeOutcomes: [Result<SessionAuthResponse, MockSessionError>]
     private var refreshOutcomes: [Result<SessionAuthResponse, MockSessionError>]
+    private let fetchInstanceError: SessionHTTPError?
     private(set) var exchangeCallCount = 0
     private(set) var refreshCallCount = 0
 
     init(
         exchange: [Result<SessionAuthResponse, MockSessionError>],
-        refresh: [Result<SessionAuthResponse, MockSessionError>]
+        refresh: [Result<SessionAuthResponse, MockSessionError>],
+        fetchInstanceError: SessionHTTPError? = nil
     ) {
         exchangeOutcomes = exchange
         refreshOutcomes = refresh
+        self.fetchInstanceError = fetchInstanceError
     }
 
     func fetchInstance(origin _: URL) async throws -> RemoteInstanceInfo {
-        instance
+        if let fetchInstanceError {
+            throw fetchInstanceError
+        }
+        return instance
     }
 
     func exchange(origin _: URL, token _: String) async throws -> SessionAuthResponse {

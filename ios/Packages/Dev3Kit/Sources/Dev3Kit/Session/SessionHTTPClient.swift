@@ -91,15 +91,26 @@ public struct SessionHTTPClient: SessionHTTPTransporting, Sendable {
         var request = try SessionRequestFactory.request(origin: origin, path: "/instance")
         request.httpMethod = "GET"
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        let response = try await loader.data(for: request)
-        guard response.statusCode == 200 else {
-            throw SessionHTTPError.httpStatus(response.statusCode)
+        log("→ GET /instance (\(origin.host ?? origin.absoluteString))")
+        do {
+            let response = try await loader.data(for: request)
+            guard response.statusCode == 200 else {
+                log("← GET /instance \(response.statusCode)")
+                throw SessionHTTPError.httpStatus(response.statusCode)
+            }
+            let instance = try decoder.decode(RemoteInstanceInfo.self, from: response.data)
+            guard instance.protocolVersion == Self.supportedProtocolVersion else {
+                log("← GET /instance unsupported protocol v\(instance.protocolVersion)")
+                throw SessionHTTPError.unsupportedProtocol(instance.protocolVersion)
+            }
+            log("← GET /instance 200 (protocol v\(instance.protocolVersion))")
+            return instance
+        } catch let error as SessionHTTPError {
+            throw error
+        } catch {
+            log("✗ GET /instance \(Self.describe(error))")
+            throw error
         }
-        let instance = try decoder.decode(RemoteInstanceInfo.self, from: response.data)
-        guard instance.protocolVersion == Self.supportedProtocolVersion else {
-            throw SessionHTTPError.unsupportedProtocol(instance.protocolVersion)
-        }
-        return instance
     }
 
     public func exchange(origin: URL, token: String) async throws -> SessionAuthResponse {
@@ -107,13 +118,42 @@ public struct SessionHTTPClient: SessionHTTPTransporting, Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(NativeExchangeBody(token: token, client: "ios"))
-        return try await authResponse(from: loader.data(for: request))
+        log("→ POST /auth/exchange (client=ios)")
+        do {
+            let data = try await loader.data(for: request)
+            let response = authResponse(from: data)
+            let cookie = response.sessionToken != nil ? " +cookie" : ""
+            log("← POST /auth/exchange \(response.statusCode)\(cookie)")
+            return response
+        } catch {
+            log("✗ POST /auth/exchange \(Self.describe(error))")
+            throw error
+        }
     }
 
     public func refresh(requestFactory: SessionRequestFactory) async throws -> SessionAuthResponse {
         var request = try await requestFactory.authenticatedRequest(path: "/auth/refresh")
         request.httpMethod = "POST"
-        return try await authResponse(from: loader.data(for: request))
+        do {
+            let data = try await loader.data(for: request)
+            let response = authResponse(from: data)
+            log("← POST /auth/refresh \(response.statusCode)")
+            return response
+        } catch {
+            log("✗ POST /auth/refresh \(Self.describe(error))")
+            throw error
+        }
+    }
+
+    private func log(_ message: String) {
+        DiagnosticsLog.shared.record(category: "http", message)
+    }
+
+    private static func describe(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            return "network error (\(urlError.code.rawValue): \(urlError.localizedDescription))"
+        }
+        return String(describing: error)
     }
 
     private func authResponse(from response: HTTPDataResponse) -> SessionAuthResponse {
