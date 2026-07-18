@@ -13,6 +13,59 @@ public enum Dev3TerminalPaneSwipeDecision: Equatable, Sendable {
     }
 }
 
+/// Translates a vertical drag into tmux scrollback ticks.
+///
+/// dev3 always runs the PTY inside tmux with `mouse on`, so SwiftTerm's own
+/// (alternate-screen) scrollback is empty — dragging scrolls nothing. tmux
+/// instead scrolls its history when the outer terminal forwards SGR mouse-wheel
+/// events, which is what these helpers synthesize. Wheel-up (finger dragged
+/// down, revealing older output) is button 64; wheel-down is 65.
+public enum Dev3TerminalWheelScroll {
+    public static let wheelUpButton = 64
+    public static let wheelDownButton = 65
+
+    /// One SGR 1006 wheel event tmux (mouse on) reads as a scroll tick.
+    public static func sequence(up: Bool, col: Int, row: Int) -> [UInt8] {
+        let button = up ? wheelUpButton : wheelDownButton
+        let clampedCol = max(1, col)
+        let clampedRow = max(1, row)
+        return Array("\u{1b}[<\(button);\(clampedCol);\(clampedRow)M".utf8)
+    }
+}
+
+/// Accumulates fractional drag distance and emits whole wheel ticks. Positive
+/// ticks are wheel-up (scroll back into history); negative are wheel-down.
+public struct Dev3TerminalScrollAccumulator {
+    /// Points of vertical drag per wheel tick. ~24pt keeps a phone-sized flick
+    /// to a handful of ticks rather than flooding tmux.
+    public static let defaultStepPoints: Double = 24
+
+    private let step: Double
+    private var residue: Double = 0
+
+    public init(step: Double = Dev3TerminalScrollAccumulator.defaultStepPoints) {
+        self.step = max(1, step)
+    }
+
+    public mutating func consume(deltaY: Double) -> Int {
+        residue += deltaY
+        var ticks = 0
+        while residue >= step {
+            ticks += 1
+            residue -= step
+        }
+        while residue <= -step {
+            ticks -= 1
+            residue += step
+        }
+        return ticks
+    }
+
+    public mutating func reset() {
+        residue = 0
+    }
+}
+
 public enum Dev3TerminalAccessoryKey: String, CaseIterable, Identifiable, Sendable {
     case escape = "Esc"
     case control = "Ctrl"

@@ -55,7 +55,9 @@ features, and the v2+ surfaces listed in [DESIGN.md](DESIGN.md).
   one, creating a second window, and returning. Panes are a one-at-a-time carousel: swipe horizontally,
   tap previous/next, or tap a pane dot. Windows use previous/next plus an indexed menu. Selection and
   zoom operate on the shared tmux session, and external changes can take up to the three-second poll
-  interval to appear. Native automated multi-pane UI coverage remains shallow.
+  interval to appear. Native automated multi-pane UI coverage remains shallow. Scrollback: a vertical
+  drag now scrolls tmux history — SwiftTerm's own scrollback is empty under tmux, so the drag is
+  synthesized into SGR wheel events that tmux (`mouse on`) reads (decision 147). Needs on-device QA.
 
 ## Selected v1 release gates
 
@@ -99,7 +101,7 @@ features, and the v2+ surfaces listed in [DESIGN.md](DESIGN.md).
 
 - Dev3Kit: 104 tests passing.
 - Dev3UI: 119 tests passing.
-- Dev3TerminalKit: 39 tests passing in isolation. The overflow/reset recovery test has twice failed
+- Dev3TerminalKit: 44 tests passing in isolation. The overflow/reset recovery test has twice failed
   under concurrent cold-build load and passed unchanged on immediate isolated reruns.
 - App CI: 52 tests discovered, with 51 passing and the opt-in live integration test skipped.
 - A concurrent all-suites stress run produced one non-repeating raw-input app-test failure; the full

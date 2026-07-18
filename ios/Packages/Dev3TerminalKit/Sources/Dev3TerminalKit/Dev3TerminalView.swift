@@ -340,6 +340,11 @@
 
         private var inputMode = Dev3TerminalInputMode.compose
         private var pinchStartSize = Dev3TerminalFontPreferenceStore.defaultSize
+        var scrollAccumulator = Dev3TerminalScrollAccumulator()
+        var scrollLastTranslationY: CGFloat = 0
+        var scrollAxisDecided = false
+        var scrollIsVertical = false
+        static let scrollAxisDecidePoints: CGFloat = 8
 
         override public init(frame: CGRect) {
             super.init(frame: frame)
@@ -410,6 +415,11 @@
             useBrightColors = true
             accessibilityIdentifier = "dev3.terminal"
 
+            // dev3 always runs inside tmux, so SwiftTerm's own scrollback is empty
+            // — disable native drag-scroll and forward vertical drags to tmux as
+            // SGR wheel events instead (see Dev3TerminalView+Scroll.swift).
+            isScrollEnabled = false
+
             let pinch = UIPinchGestureRecognizer(target: self, action: #selector(handlePinch))
             pinch.delegate = self
             addGestureRecognizer(pinch)
@@ -417,6 +427,12 @@
             let reset = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap))
             reset.numberOfTapsRequired = 2
             addGestureRecognizer(reset)
+
+            let scroll = UIPanGestureRecognizer(target: self, action: #selector(handleScrollPan))
+            scroll.delegate = self
+            scroll.cancelsTouchesInView = false
+            scroll.maximumNumberOfTouches = 1
+            addGestureRecognizer(scroll)
         }
 
         @objc private func handlePinch(_ gesture: UIPinchGestureRecognizer) {
