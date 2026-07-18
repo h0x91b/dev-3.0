@@ -2966,6 +2966,26 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			);
 		});
 
+		it("lets the summary bar wrap so a wide diff badge stays fully tappable", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				diffFiles: 9,
+				diffInsertions: 451,
+				diffDeletions: 297,
+				diffFileStats: [{ path: "src/a.ts", insertions: 451, deletions: 297 }],
+			});
+			await act(async () => {
+				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });
+			});
+			const bar = await screen.findByTestId("task-summary-bar");
+			// A fixed-height non-wrapping row clips the badge off-screen when the
+			// counters are wide; the bar must wrap instead.
+			const classes = bar.className.split(/\s+/);
+			expect(classes).toContain("flex-wrap");
+			expect(classes).not.toContain("h-[3.25rem]");
+			expect(screen.getByTestId("diff-summary-badge")).toBeInTheDocument();
+		});
+
 		it("does not arm the hover file-list popover on touch (tap fires mouseenter)", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,

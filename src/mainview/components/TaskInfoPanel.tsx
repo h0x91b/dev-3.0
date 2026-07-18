@@ -1005,7 +1005,10 @@ function TaskInfoPanel({
 				{diffFilesPopover}
 				{fileOpenInMenuPortal}
 				{statusDropdownPortal}
-				<div className="flex items-center gap-2 px-3 h-[3.25rem] min-w-0">
+				{/* Wide diff counters (e.g. "9 files +451 −297") must never clip off
+				    the right edge — the bar wraps instead of keeping a fixed height,
+				    so the badge always stays fully visible and tappable. */}
+				<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 min-h-[3.25rem] min-w-0" data-testid="task-summary-bar">
 					{variantSwitcher}
 					{statusDropdownButton}
 					{/* Priority sits with status (Context domain, §5.1); `sm` gives it a

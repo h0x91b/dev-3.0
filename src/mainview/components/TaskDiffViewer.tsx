@@ -193,6 +193,8 @@ interface TaskDiffFileSectionProps {
 	diffLib: DiffLibrary;
 	resolvedTheme: "dark" | "light";
 	viewMode: DiffViewMode;
+	/** Phone-width layout: file paths render as one truncating line. */
+	narrow: boolean;
 	searchQuery: string;
 	isCurrentPathMatch: boolean;
 	comments: InlineDiffCommentFileData;
@@ -1164,6 +1166,7 @@ function TaskDiffFileSection({
 	diffLib,
 	resolvedTheme,
 	viewMode,
+	narrow,
 	searchQuery,
 	isCurrentPathMatch,
 	comments,
@@ -1483,10 +1486,32 @@ function TaskDiffFileSection({
 						onClick={onToggleExpanded}
 						aria-expanded={expanded}
 						className="min-w-0 flex items-center text-left hover:text-fg transition-colors"
+						title={file.displayPath}
 					>
-						<span className={`font-mono text-sm break-words min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
-							{renderHighlightedText(file.displayPath, searchQuery, isCurrentPathMatch)}
-						</span>
+						{narrow ? (() => {
+							// One line, never a multi-row wrap: the directory part
+							// truncates away while the basename always stays visible
+							// (it is what identifies the file on a phone).
+							const slashIdx = file.displayPath.lastIndexOf("/");
+							const dirPart = slashIdx >= 0 ? file.displayPath.slice(0, slashIdx + 1) : "";
+							const basePart = slashIdx >= 0 ? file.displayPath.slice(slashIdx + 1) : file.displayPath;
+							return (
+								<span className={`min-w-0 flex w-full items-baseline font-mono text-sm ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
+									{dirPart && (
+										<span className="min-w-0 truncate opacity-70">
+											{renderHighlightedText(dirPart, searchQuery, false)}
+										</span>
+									)}
+									<span className="min-w-0 max-w-full shrink-0 truncate">
+										{renderHighlightedText(basePart, searchQuery, isCurrentPathMatch)}
+									</span>
+								</span>
+							);
+						})() : (
+							<span className={`font-mono text-sm break-words min-w-0 ${isRead ? "text-fg-muted line-through decoration-1" : "text-fg"}${isCurrentPathMatch ? " dev3-diff-search-current-hit" : ""}`}>
+								{renderHighlightedText(file.displayPath, searchQuery, isCurrentPathMatch)}
+							</span>
+						)}
 					</button>
 
 					<button
@@ -3039,14 +3064,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 							{renderSearchToggle(true)}
 							{renderFilesSheetTrigger(true)}
 						</div>
-						{/* Row 2: mode switcher + filters + rare info chips (wraps). */}
-						<div className="flex flex-wrap items-center gap-1.5">
-							{renderModeToggles("py-1.5")}
-							{payload && renderTestsToggle()}
-							{renderInfoChips()}
-							<HelpSpot topicId="diff.modes" />
-						</div>
-						{/* Row 3: search gets its own full-width row while open. */}
+						{/* Search gets its own full-width row while open. The mode/filter
+						    row is NOT pinned here — it renders at the top of the scroll
+						    region below, so it scrolls away and leaves the screen to the
+						    diff (the pinned part stays one slim row). */}
 						{isSearchOpen && (
 							<div data-testid="diff-narrow-search-row">
 								{renderSearchBox(true)}
@@ -3328,6 +3349,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				)}
 
 				<div ref={scrollRegionRef} className="flex-1 min-w-0 overflow-auto px-4 pt-1 pb-4" data-testid="inline-diff-scroll-region">
+				{narrow && (
+					<div className="flex flex-wrap items-center gap-1.5 pb-2 pt-1">
+						{renderModeToggles("py-1.5")}
+						{payload && renderTestsToggle()}
+						{renderInfoChips()}
+						<HelpSpot topicId="diff.modes" />
+					</div>
+				)}
 				{error && renderState(t("infoPanel.diffLoadFailed"), error)}
 
 				{!error && isBusy && showLoadingState && (
@@ -3380,6 +3409,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								diffLib={diffLib}
 								resolvedTheme={resolvedTheme}
 								viewMode={viewMode}
+								narrow={narrow}
 								searchQuery={searchQuery}
 								isCurrentPathMatch={currentSearchMatch?.kind === "path" && currentSearchMatch.fileId === file.id}
 								comments={inlineComments[file.id] ?? createEmptyInlineCommentFileData()}

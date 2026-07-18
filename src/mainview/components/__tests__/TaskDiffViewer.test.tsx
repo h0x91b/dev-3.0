@@ -2722,6 +2722,48 @@ describe("TaskDiffViewer narrow viewport", () => {
 		expect(screen.getByRole("button", { name: "Unpushed" })).toBeInTheDocument();
 		expect(screen.getByTestId("diff-mode-recent")).toBeInTheDocument();
 	});
+
+	it("scrolls the mode/filter row with the content instead of pinning it", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
+		const toolbar = screen.getByTestId("inline-diff-toolbar");
+		// The mode switcher lives at the top of the scroll region (scrolls away
+		// with the content); the pinned toolbar keeps only nav + search + files.
+		expect(within(scrollRegion).getByRole("button", { name: "Uncommitted" })).toBeInTheDocument();
+		expect(within(toolbar).queryByRole("button", { name: "Uncommitted" })).not.toBeInTheDocument();
+	});
+
+	it("renders file paths as one truncating line (dir + basename) on narrow", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+		});
+		// The directory part and the basename render as separate spans: the
+		// directory truncates while the file name itself always stays visible.
+		expect(screen.getAllByText("src/").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("app.ts").length).toBeGreaterThan(0);
+	});
 });
 
 describe("TaskDiffViewer — recent commits mode", () => {
