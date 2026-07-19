@@ -137,6 +137,8 @@ const dashboard = {
 	"remote.tunnelConnected": "Публичный туннель активен",
 	"remote.tunnelFailed": "Не удалось запустить туннель",
 	"remote.copyUrl": "Скопировать URL",
+	"remote.copyingUrl": "Копирование URL…",
+	"remote.urlCopied": "URL скопирован",
 	"remote.close": "Закрыть",
 	"remote.connected": "Подключено",
 	"remote.authFailed": "Сессия истекла",
