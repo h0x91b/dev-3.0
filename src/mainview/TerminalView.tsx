@@ -14,7 +14,6 @@ import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./termi
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
-import { writePreservingViewport } from "./utils/terminalViewport";
 import { submitPastedText } from "./terminal-submit";
 
 const DARK_TERMINAL_THEME = {
@@ -1047,7 +1046,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 					pendingWrite = "";
 					if (!batch) return;
 					try {
-						writePreservingViewport(batchTerm, batch);
+						batchTerm.write(batch);
 						// Drop any stale selection left floating over the
 						// just-repainted cells when the app owns the screen
 						// (alt-screen or primary+mouse-tracking); ghostty-web
