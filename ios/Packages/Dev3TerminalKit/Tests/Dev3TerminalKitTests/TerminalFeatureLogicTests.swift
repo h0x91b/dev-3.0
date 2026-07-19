@@ -70,3 +70,63 @@ func rawSubmitRevisionState() {
     #expect(state.consume(3) == 1)
     #expect(state.consume(0) == 1)
 }
+
+@Test("Pinch resize defers transient grids until the final dimensions")
+func pinchResizeGate() {
+    var gate = Dev3TerminalResizeGate()
+
+    #expect(gate.request(columns: 80, rows: 24) == Dev3TerminalGridSize(columns: 80, rows: 24))
+
+    gate.beginGesture()
+    #expect(gate.request(columns: 80, rows: 23) == nil)
+    #expect(gate.request(columns: 80, rows: 22) == nil)
+    #expect(gate.endGesture(columns: 80, rows: 21) == Dev3TerminalGridSize(columns: 80, rows: 21))
+    #expect(gate.request(columns: 80, rows: 21) == Dev3TerminalGridSize(columns: 80, rows: 21))
+}
+
+@Test("Resize gate ignores invalid grid dimensions")
+func pinchResizeGateRejectsInvalidDimensions() {
+    var gate = Dev3TerminalResizeGate()
+
+    #expect(gate.request(columns: 0, rows: 24) == nil)
+    gate.beginGesture()
+    #expect(gate.request(columns: 80, rows: 0) == nil)
+    #expect(gate.endGesture(columns: 0, rows: 0) == nil)
+}
+
+@Test("Explicit terminal navigation creates redraw revisions, polls do not")
+func terminalNavigationRefreshRevisions() {
+    var refresh = Dev3TerminalNavigationRefresh()
+
+    #expect(refresh.record(.observation) == nil)
+    #expect(refresh.revision == 0)
+    #expect(refresh.record(.paneSelection) == 1)
+    #expect(refresh.record(.windowSelection) == 2)
+    #expect(refresh.record(.paneSelection) == 3)
+}
+
+@Test("Resize accumulator keeps the latest valid grid across rapid zoom updates")
+func terminalResizeAccumulatorKeepsLatestGrid() {
+    var accumulator = Dev3TerminalResizeAccumulator()
+
+    #expect(accumulator.update(columns: 80, rows: 44) == Dev3TerminalGridSize(columns: 80, rows: 44))
+    #expect(accumulator.update(columns: 80, rows: 44) == nil)
+    #expect(accumulator.update(columns: 80, rows: 43) == Dev3TerminalGridSize(columns: 80, rows: 43))
+    #expect(accumulator.latest == Dev3TerminalGridSize(columns: 80, rows: 43))
+}
+
+@Test("Resize accumulator rejects invalid dimensions without dropping the latest grid")
+func terminalResizeAccumulatorRejectsInvalidDimensions() {
+    var accumulator = Dev3TerminalResizeAccumulator()
+
+    #expect(accumulator.update(columns: 80, rows: 44) != nil)
+    #expect(accumulator.update(columns: 0, rows: 0) == nil)
+    #expect(accumulator.latest == Dev3TerminalGridSize(columns: 80, rows: 44))
+}
+
+@Test("Explicit pane and window selection request a PTY refresh, polling does not")
+func terminalNavigationRefreshIntent() {
+    #expect(Dev3TerminalNavigationRefresh.shouldRefreshTerminal(for: .paneSelection))
+    #expect(Dev3TerminalNavigationRefresh.shouldRefreshTerminal(for: .windowSelection))
+    #expect(!Dev3TerminalNavigationRefresh.shouldRefreshTerminal(for: .observation))
+}

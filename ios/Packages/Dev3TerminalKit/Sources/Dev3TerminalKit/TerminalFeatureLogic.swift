@@ -66,6 +66,90 @@ public struct Dev3TerminalScrollAccumulator {
     }
 }
 
+/// Coalesces the grid dimensions emitted while SwiftTerm refits after a font
+/// change. A pinch can produce several rows/columns in one gesture; only the
+/// final valid grid should cross the remote tmux resize boundary.
+public struct Dev3TerminalResizeAccumulator: Sendable {
+    public private(set) var latest: Dev3TerminalGridSize?
+
+    public init() {}
+
+    @discardableResult
+    public mutating func update(columns: Int, rows: Int) -> Dev3TerminalGridSize? {
+        guard columns > 0, rows > 0 else { return nil }
+        let next = Dev3TerminalGridSize(
+            columns: max(2, columns),
+            rows: max(1, rows)
+        )
+        guard latest != next else { return nil }
+        latest = next
+        return next
+    }
+}
+
+public enum Dev3TerminalNavigationIntent: Sendable {
+    case observation
+    case paneSelection
+    case windowSelection
+}
+
+public struct Dev3TerminalNavigationRefresh: Equatable, Sendable {
+    public private(set) var revision: UInt64 = 0
+
+    public init() {}
+
+    public static func shouldRefreshTerminal(for intent: Dev3TerminalNavigationIntent) -> Bool {
+        switch intent {
+        case .observation:
+            false
+        case .paneSelection, .windowSelection:
+            true
+        }
+    }
+
+    @discardableResult
+    public mutating func record(_ intent: Dev3TerminalNavigationIntent) -> UInt64? {
+        guard Self.shouldRefreshTerminal(for: intent) else { return nil }
+        revision &+= 1
+        return revision
+    }
+}
+
+/// Keeps a pinch gesture local while the terminal grid settles on its final
+/// dimensions. SwiftTerm resizes its local buffer every time the font changes;
+/// sending each intermediate grid to a shared tmux PTY can briefly remove a
+/// visible row and race the redraw handshake.
+public struct Dev3TerminalResizeGate: Equatable, Sendable {
+    private var deferring = false
+    private var deferredSize: Dev3TerminalGridSize?
+
+    public init() {}
+
+    public mutating func beginGesture() {
+        deferring = true
+        deferredSize = nil
+    }
+
+    public mutating func request(columns: Int, rows: Int) -> Dev3TerminalGridSize? {
+        guard let size = Self.validSize(columns: columns, rows: rows) else { return nil }
+        guard deferring else { return size }
+        deferredSize = size
+        return nil
+    }
+
+    public mutating func endGesture(columns: Int, rows: Int) -> Dev3TerminalGridSize? {
+        let finalSize = Self.validSize(columns: columns, rows: rows) ?? deferredSize
+        deferring = false
+        deferredSize = nil
+        return finalSize
+    }
+
+    private static func validSize(columns: Int, rows: Int) -> Dev3TerminalGridSize? {
+        guard columns > 0, rows > 0 else { return nil }
+        return Dev3TerminalGridSize(columns: columns, rows: rows)
+    }
+}
+
 public enum Dev3TerminalAccessoryKey: String, CaseIterable, Identifiable, Sendable {
     case escape = "Esc"
     case control = "Ctrl"

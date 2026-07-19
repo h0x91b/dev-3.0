@@ -3,6 +3,8 @@ import Dev3TerminalKit
 import Foundation
 import Observation
 
+// swiftlint:disable file_length
+
 enum TerminalTaskPhase: Equatable, Sendable {
     case idle
     case connecting
@@ -65,6 +67,9 @@ final class TerminalTaskStore {
     private var recoveryTask: Task<Void, Never>?
     private var stateTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
+    private var navigationTask: Task<Void, Never>?
+    private var navigationRefresh = Dev3TerminalNavigationRefresh()
+    private(set) var terminalRefreshRevision: UInt64 = 0
     private var isAttached = false
     private var isAttachmentDesired = false
     private var isSceneActive = false
@@ -82,6 +87,7 @@ final class TerminalTaskStore {
         recoveryTask?.cancel()
         stateTask?.cancel()
         pollTask?.cancel()
+        navigationTask?.cancel()
     }
 
     var endpoint: Dev3TerminalEndpoint {
@@ -118,69 +124,40 @@ final class TerminalTaskStore {
         }
     }
 
-    func navigateWindow(step: TerminalPagerStep? = nil, index: Int? = nil) {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await apply(service.windowNavigation(step: step, index: index))
-                try await apply(service.paneNavigation(step: nil, index: nil, zoom: true))
-            } catch {
-                transientError = error.localizedDescription
-            }
-        }
-    }
-
-    func navigatePane(step: TerminalPagerStep? = nil, index: Int? = nil) {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await apply(service.paneNavigation(step: step, index: index, zoom: true))
-            } catch {
-                transientError = error.localizedDescription
-            }
-        }
-    }
-
-    func handlePaneSwipe(horizontal: Double, vertical: Double) {
-        switch Dev3TerminalPaneSwipeDecision.decide(
-            horizontal: horizontal,
-            vertical: vertical,
-            paneCount: panes.total
-        ) {
-        case .previous:
-            navigatePane(step: .previous)
-        case .next:
-            navigatePane(step: .next)
-        case .ignore:
-            break
-        }
-    }
-
     func performPaneAction(_ action: TerminalPaneAction) {
+        DiagnosticsLog.shared.record(
+            category: "terminal",
+            "pane action request action=\(action.rawValue)"
+        )
         isPaneSheetPresented = false
-        if action == .closePane {
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    if try await service.paneCount() <= 1 {
-                        confirmsLastPaneClose = true
-                    } else {
-                        try await runPaneAction(action, force: false)
-                    }
-                } catch {
-                    transientError = error.localizedDescription
+        let previousNavigation = navigationTask
+        let generation = lifecycleGeneration
+        navigationTask = Task { [weak self] in
+            await previousNavigation?.value
+            guard let self, ownsLifecycle(generation) else { return }
+            do {
+                if action == .closePane, try await service.paneCount() <= 1 {
+                    confirmsLastPaneClose = true
+                } else {
+                    try await runPaneAction(action, force: false)
                 }
+            } catch {
+                transientError = error.localizedDescription
             }
-            return
-        }
-        Task { [weak self] in
-            try await self?.runPaneAction(action, force: false)
         }
     }
 
     func closeLastPane() {
-        Task { [weak self] in
-            try await self?.runPaneAction(.closePane, force: true)
+        let previousNavigation = navigationTask
+        let generation = lifecycleGeneration
+        navigationTask = Task { [weak self] in
+            await previousNavigation?.value
+            guard let self, ownsLifecycle(generation) else { return }
+            do {
+                try await runPaneAction(.closePane, force: true)
+            } catch {
+                transientError = error.localizedDescription
+            }
         }
     }
 
@@ -339,19 +316,6 @@ final class TerminalTaskStore {
             && isAttachmentDesired
     }
 
-    private func runPaneAction(_ action: TerminalPaneAction, force: Bool) async throws {
-        do {
-            try await service.perform(action, force: force)
-            try await apply(service.paneNavigation(step: nil, index: nil, zoom: true))
-            if action == .newWindow {
-                try await apply(service.windowNavigation(step: nil, index: nil))
-            }
-        } catch {
-            transientError = error.localizedDescription
-            throw error
-        }
-    }
-
     private func send(_ data: Data) {
         Task { [weak self] in
             guard let self else { return }
@@ -360,6 +324,100 @@ final class TerminalTaskStore {
             } catch {
                 transientError = error.localizedDescription
             }
+        }
+    }
+}
+
+extension TerminalTaskStore {
+    func navigateWindow(step: TerminalPagerStep? = nil, index: Int? = nil) {
+        DiagnosticsLog.shared.record(
+            category: "terminal",
+            "window switch request target=\(navigationTarget(step: step, index: index))"
+        )
+        let previousNavigation = navigationTask
+        let generation = lifecycleGeneration
+        navigationTask = Task { [weak self] in
+            await previousNavigation?.value
+            guard let self, ownsLifecycle(generation) else { return }
+            do {
+                try await apply(service.windowNavigation(step: step, index: index))
+                guard ownsLifecycle(generation) else { return }
+                try await apply(service.paneNavigation(step: nil, index: nil, zoom: true))
+                guard ownsLifecycle(generation) else { return }
+                refreshTerminalAfterNavigation(.windowSelection)
+            } catch {
+                transientError = error.localizedDescription
+            }
+        }
+    }
+
+    func navigatePane(step: TerminalPagerStep? = nil, index: Int? = nil) {
+        DiagnosticsLog.shared.record(
+            category: "terminal",
+            "pane switch request target=\(navigationTarget(step: step, index: index))"
+        )
+        let previousNavigation = navigationTask
+        let generation = lifecycleGeneration
+        navigationTask = Task { [weak self] in
+            await previousNavigation?.value
+            guard let self, ownsLifecycle(generation) else { return }
+            do {
+                try await apply(service.paneNavigation(step: step, index: index, zoom: true))
+                guard ownsLifecycle(generation) else { return }
+                refreshTerminalAfterNavigation(.paneSelection)
+            } catch {
+                transientError = error.localizedDescription
+            }
+        }
+    }
+
+    func handlePaneSwipe(horizontal: Double, vertical: Double) {
+        switch Dev3TerminalPaneSwipeDecision.decide(
+            horizontal: horizontal,
+            vertical: vertical,
+            paneCount: panes.total
+        ) {
+        case .previous:
+            navigatePane(step: .previous)
+        case .next:
+            navigatePane(step: .next)
+        case .ignore:
+            break
+        }
+    }
+
+    private func refreshTerminalAfterNavigation(_ intent: Dev3TerminalNavigationIntent) {
+        guard let revision = navigationRefresh.record(intent) else { return }
+        terminalRefreshRevision = revision
+    }
+
+    private func navigationTarget(step: TerminalPagerStep?, index: Int?) -> String {
+        if let index {
+            return "index:\(index)"
+        }
+        switch step {
+        case .next:
+            return "next"
+        case .previous:
+            return "previous"
+        case nil:
+            return "current"
+        }
+    }
+
+    private func runPaneAction(_ action: TerminalPaneAction, force: Bool) async throws {
+        do {
+            try await service.perform(action, force: force)
+            try await apply(service.paneNavigation(step: nil, index: nil, zoom: true))
+            if action == .newWindow {
+                try await apply(service.windowNavigation(step: nil, index: nil))
+            }
+            if action != .closePane {
+                refreshTerminalAfterNavigation(.paneSelection)
+            }
+        } catch {
+            transientError = error.localizedDescription
+            throw error
         }
     }
 }
@@ -447,9 +505,11 @@ extension TerminalTaskStore {
         pendingAttach?.cancel()
         pendingRecovery?.cancel()
         pollTask?.cancel()
+        navigationTask?.cancel()
         attachTask = nil
         recoveryTask = nil
         pollTask = nil
+        navigationTask = nil
         isBusy = false
         detachTask = Task { [weak self, service] in
             await pendingAttach?.value
@@ -462,3 +522,5 @@ extension TerminalTaskStore {
         }
     }
 }
+
+// swiftlint:enable file_length

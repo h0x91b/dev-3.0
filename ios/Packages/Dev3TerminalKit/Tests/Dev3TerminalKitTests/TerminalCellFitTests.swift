@@ -44,6 +44,16 @@ func terminalMinimumFit() {
     )
 }
 
+@Test("Cell fit drops a partial bottom row after a zoom resize")
+func terminalPartialRowFit() {
+    #expect(
+        Dev3TerminalCellFit.grid(
+            viewport: Dev3TerminalViewport(width: 320, height: 100.9),
+            cell: Dev3TerminalCellSize(width: 8, height: 20)
+        ) == Dev3TerminalGridSize(columns: 40, rows: 5)
+    )
+}
+
 @Test("Cell fit rejects invalid metrics and exhausted viewports")
 func terminalInvalidFit() {
     let viewport = Dev3TerminalViewport(width: 320, height: 480)

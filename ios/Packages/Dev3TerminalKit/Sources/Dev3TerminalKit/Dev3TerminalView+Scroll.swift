@@ -10,6 +10,7 @@
         @objc func handleScrollPan(_ gesture: UIPanGestureRecognizer) {
             switch gesture.state {
             case .began:
+                finishScrollBurst()
                 scrollAccumulator.reset()
                 scrollLastTranslationY = 0
                 scrollAxisDecided = false
@@ -33,10 +34,18 @@
                 scrollLastTranslationY = translation.y
                 let ticks = scrollAccumulator.consume(deltaY: Double(deltaY))
                 guard ticks != 0 else { return }
+                if ticks > 0 {
+                    scrollBurstUpTicks += ticks
+                } else {
+                    scrollBurstDownTicks += abs(ticks)
+                }
                 emitWheel(ticks: ticks, at: gesture.location(in: self))
-            default:
+            case .ended, .cancelled, .failed:
+                finishScrollBurst()
                 scrollAccumulator.reset()
                 scrollAxisDecided = false
+            default:
+                break
             }
         }
 
@@ -50,11 +59,25 @@
                 payload.append(contentsOf: event)
             }
             guard !payload.isEmpty else { return }
+            terminalDelegate?.send(source: self, data: payload[...])
+        }
+
+        private func finishScrollBurst() {
+            let totalTicks = scrollBurstUpTicks + scrollBurstDownTicks
+            guard totalTicks > 0 else { return }
+            let direction = if scrollBurstUpTicks > 0, scrollBurstDownTicks > 0 {
+                "mixed"
+            } else if scrollBurstUpTicks > 0 {
+                "up"
+            } else {
+                "down"
+            }
             DiagnosticsLog.shared.record(
                 category: "terminal",
-                "wheel \(up ? "up" : "down") x\(abs(ticks)) at \(cell.col),\(cell.row)"
+                "scroll burst direction=\(direction) ticks=\(totalTicks)"
             )
-            terminalDelegate?.send(source: self, data: payload[...])
+            scrollBurstUpTicks = 0
+            scrollBurstDownTicks = 0
         }
 
         private func scrollCell(at point: CGPoint) -> (col: Int, row: Int) {

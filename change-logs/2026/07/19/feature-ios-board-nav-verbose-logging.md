@@ -1,1 +1,0 @@
-iOS companion: made Kanban column navigation discoverable by adding tappable previous/next chevrons to the board column header (alongside the existing swipe and page dots), and added a "Verbose logging" toggle in Settings that enables debug-level diagnostics entries (gestures and low-level events), persisted and off by default.

@@ -1,1 +1,0 @@
-Fixed a crash when sharing a review report or shared image from the iOS companion app on iPad. The share sheet's UIActivityViewController is now given a popover anchor, so it no longer raises a missing-popover-source exception at presentation time.

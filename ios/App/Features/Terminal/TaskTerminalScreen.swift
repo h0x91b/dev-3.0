@@ -136,6 +136,7 @@ private extension TaskTerminalScreen {
                 serverID: store.service.serverID,
                 inputMode: store.inputMode,
                 rawSubmitRevision: rawSubmitRevision,
+                terminalRefreshRevision: store.terminalRefreshRevision,
                 instanceResolvedTheme: instanceResolvedTheme,
                 onError: store.report
             )
@@ -443,6 +444,21 @@ private extension TaskTerminalScreen {
                 .buttonStyle(.bordered)
                 .tint(palette.textSecondary)
                 .frame(minHeight: 44)
+
+                Button {
+                    UIApplication.shared.sendAction(
+                        #selector(UIResponder.resignFirstResponder),
+                        to: nil,
+                        from: nil,
+                        for: nil
+                    )
+                } label: {
+                    Label("Hide keyboard", systemImage: "keyboard.chevron.compact.down")
+                }
+                .buttonStyle(.bordered)
+                .tint(palette.textSecondary)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("terminal.hideKeyboard")
 
                 Button {
                     withAnimation(reduceMotion ? nil : .snappy) {
