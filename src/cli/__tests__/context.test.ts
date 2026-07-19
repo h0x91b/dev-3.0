@@ -443,6 +443,14 @@ describe("expandShortId — prefix guards", () => {
 		// Context is authoritative — an in-worktree short prefix means "this task".
 		expect(expandShortId("aab", ctx)).toBe(TEST_TASK_ID);
 	});
+
+	it("passes a stable seq:<N> reference through verbatim (resolved server-side)", async () => {
+		const { expandShortId } = await import("../context");
+		expect(expandShortId("seq:1066", null)).toBe("seq:1066");
+		// Even with a context task set, a seq ref is never rewritten.
+		const ctx = { projectId: TEST_PROJECT_ID, taskId: TEST_TASK_ID, socketPath: "" };
+		expect(expandShortId("seq:5", ctx)).toBe("seq:5");
+	});
 });
 
 describe("expandShortProjectId — prefix guards", () => {

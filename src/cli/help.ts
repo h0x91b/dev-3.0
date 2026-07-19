@@ -34,7 +34,9 @@ export interface CommandHelp {
 
 const GLOBAL_OPTIONS = [
 	"--project <id>            Override project auto-detection",
-	"--task <id> / --task-id   Override the target task (else auto-detected from the worktree)",
+	"--task <id> / --task-id   Override the target task (else auto-detected from the worktree);",
+	"                          accepts a full id, an id prefix (≥8 chars), or seq:<N> (the stable",
+	"                          per-project number printed by `task create` and shown on cards)",
 	"-h, --help                Show help",
 	"-v, --version             Show CLI version",
 ];

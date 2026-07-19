@@ -666,18 +666,87 @@ describe("task.show", () => {
 		expect(resp.error).toContain("taskId is required");
 	});
 
-	it("uses getTask when projectId is given", async () => {
+	it("resolves within the project when projectId is given", async () => {
 		const project = makeProject();
 		const task = makeTask();
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 
 		const resp = await handleRequest(
 			makeRequest("task.show", { taskId: "task-abc12345", projectId: "proj-1" }),
 		);
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
-		expect(data.getTask).toHaveBeenCalledWith(project, "task-abc12345");
+	});
+
+	it("resolves a seq:<N> reference within the project", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 42 });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([makeTask({ id: "other-task-1111-2222-3333-444444444444", seq: 7 }), task]);
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "seq:42", projectId: "proj-1" }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual(task);
+	});
+
+	it("resolves a seq:<N> reference across projects", async () => {
+		const project = makeProject();
+		const task = makeTask({ seq: 42 });
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(makeRequest("task.show", { taskId: "seq:42" }));
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual(task);
+	});
+
+	it("rejects a seq:<N> reference that matches several variants of one group", async () => {
+		const project = makeProject();
+		const v1 = makeTask({ id: "aaaaaaaa-1111-2222-3333-444444444444", seq: 42, groupId: "g1", variantIndex: 1 });
+		const v2 = makeTask({ id: "bbbbbbbb-1111-2222-3333-444444444444", seq: 42, groupId: "g1", variantIndex: 2 });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([v1, v2]);
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "seq:42", projectId: "proj-1" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("matches 2 variant tasks");
+		expect(resp.error).toContain("aaaaaaaa");
+		expect(resp.error).toContain("bbbbbbbb");
+	});
+
+	it("rejects a seq:<N> reference that matches tasks in several projects", async () => {
+		const projectA = makeProject({ id: "proj-a", name: "Alpha", path: "/tmp/a" });
+		const projectB = makeProject({ id: "proj-b", name: "Beta", path: "/tmp/b" });
+		vi.mocked(data.loadProjects).mockResolvedValue([projectA, projectB]);
+		vi.mocked(data.loadVirtualProjects).mockResolvedValue([]);
+		vi.mocked(data.loadTasks).mockImplementation(async (p) => [
+			makeTask({ id: `${p.id}-task-1111-2222-3333-444444444444`, seq: 42, projectId: p.id }),
+		]);
+
+		const resp = await handleRequest(makeRequest("task.show", { taskId: "seq:42" }));
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("across projects");
+		expect(resp.error).toContain("--project");
+	});
+
+	it("suggests the stable seq handle when a task id does not resolve", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([]);
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "deadbeef-1111-2222-3333-444444444444", projectId: "proj-1" }),
+		);
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Task not found: deadbeef");
+		expect(resp.error).toContain("seq:<N>");
+		expect(resp.error).toContain("dev3 tasks list");
 	});
 
 	it("resolves task across projects when no projectId given", async () => {
@@ -1669,7 +1738,7 @@ describe("note.list", () => {
 		const project = makeProject();
 		const task = makeTask({ notes });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 
 		const resp = await handleRequest(
 			makeRequest("note.list", { taskId: task.id, projectId: "proj-1" }),
@@ -1682,7 +1751,7 @@ describe("note.list", () => {
 		const project = makeProject();
 		const task = makeTask({ notes: undefined });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 
 		const resp = await handleRequest(
 			makeRequest("note.list", { taskId: task.id, projectId: "proj-1" }),

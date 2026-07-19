@@ -459,6 +459,9 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
  * server's exact match would then mutate an arbitrary, wrong task. See decision 102.
  */
 export function expandShortId(id: string, context: CliContext | null): string {
+	// Stable `seq:<N>` reference — resolved server-side (seq survives launches,
+	// ids of tasks launched by older versions did not). Pass through verbatim.
+	if (/^seq:\d+$/.test(id)) return id;
 	// Already a full UUID
 	if (id.length >= 36) return id;
 	// Check if context task matches the prefix (context is authoritative — an

@@ -83,10 +83,73 @@ function cleanupStaleSockets(): void {
 	}
 }
 
+/**
+ * Parse a stable `seq:<N>` task reference. Seq is printed by `task create` and
+ * shown on every card; unlike the id it survives launches (all variants of one
+ * logical task share it), so it is the safe handle for stored references.
+ */
+function parseSeqRef(ref: string): number | null {
+	const match = /^seq:(\d+)$/.exec(ref);
+	return match ? Number(match[1]) : null;
+}
+
+/**
+ * Resolve a task reference — full id, ≥8-char id prefix, or `seq:<N>` — against
+ * one project's task list. Throws on ambiguity (a variant group shares one seq;
+ * a short prefix can match several ids), returns null when nothing matches.
+ */
+function findTaskByRef(tasks: Task[], ref: string): Task | null {
+	const seq = parseSeqRef(ref);
+	if (seq === null) return findByIdPrefix(tasks, ref, "task");
+	const matches = tasks.filter((t) => t.seq === seq);
+	if (matches.length > 1) {
+		const ids = matches.map((m) => m.id.slice(0, 8)).join(", ");
+		throw new Error(`Task ref "${ref}" matches ${matches.length} variant tasks (${ids}). Address one of them by id.`);
+	}
+	return matches[0] ?? null;
+}
+
+/**
+ * Actionable not-found error: ids minted before the stable-id fix were re-keyed
+ * when the task was launched with variants, so stored ids can dangle — point
+ * the caller at the stable seq handle instead of a bare failure.
+ */
+function taskNotFoundError(ref: string): Error {
+	return new Error(
+		`Task not found: ${ref}. If the task was launched by an older app version its id may have changed — ` +
+		"run `dev3 tasks list` to find it by seq, or address it as `--task seq:<N>`.",
+	);
+}
+
 async function resolveTaskAcrossProjects(taskId: string): Promise<{ project: Project; task: Task } | null> {
 	// Scan virtual ("Operations") boards too, so `dev3` commands run from inside
 	// an operation worktree (no explicit --project) can resolve their task.
 	const projects = [...await data.loadProjects(), ...await data.loadVirtualProjects()];
+
+	// Seq refs must collect matches across ALL projects instead of returning the
+	// first hit: every board counts 1..N, so cross-project collisions are routine
+	// and silently picking whichever project iterates first would mutate the
+	// wrong task. Id prefixes keep first-match-wins — UUIDs make cross-project
+	// collisions unrealistic, and the CLI already guards them (decision 102).
+	if (parseSeqRef(taskId) !== null) {
+		const matches: Array<{ project: Project; task: Task }> = [];
+		for (const project of projects) {
+			try {
+				const tasks = await data.loadTasks(project);
+				const task = findTaskByRef(tasks, taskId);
+				if (task) matches.push({ project, task });
+			} catch (err) {
+				// Re-throw ambiguity errors, skip broken task files
+				if (err instanceof Error && err.message.startsWith("Task ref")) throw err;
+			}
+		}
+		if (matches.length > 1) {
+			const shown = matches.map((m) => `${m.task.id.slice(0, 8)} (${m.project.name})`).join(", ");
+			throw new Error(`Task ref "${taskId}" matches ${matches.length} tasks across projects (${shown}). Pass --project to disambiguate.`);
+		}
+		return matches[0] ?? null;
+	}
+
 	for (const project of projects) {
 		try {
 			const tasks = await data.loadTasks(project);
@@ -107,13 +170,13 @@ async function resolveTaskFromParams(params: Record<string, unknown>): Promise<{
 	if (params.projectId) {
 		const project = await data.getProject(params.projectId as string);
 		const tasks = await data.loadTasks(project);
-		const task = findByIdPrefix(tasks, taskId, "task");
-		if (!task) throw new Error(`Task not found: ${taskId}`);
+		const task = findTaskByRef(tasks, taskId);
+		if (!task) throw taskNotFoundError(taskId);
 		return { project, task };
 	}
 
 	const found = await resolveTaskAcrossProjects(taskId);
-	if (!found) throw new Error(`Task not found: ${taskId}`);
+	if (!found) throw taskNotFoundError(taskId);
 	return found;
 }
 
@@ -247,11 +310,14 @@ const handlers: Record<string, Handler> = {
 
 		if (params.projectId) {
 			const project = await data.getProject(params.projectId as string);
-			return data.getTask(project, taskId);
+			const tasks = await data.loadTasks(project);
+			const task = findTaskByRef(tasks, taskId);
+			if (!task) throw taskNotFoundError(taskId);
+			return task;
 		}
 
 		const found = await resolveTaskAcrossProjects(taskId);
-		if (!found) throw new Error(`Task not found: ${taskId}`);
+		if (!found) throw taskNotFoundError(taskId);
 		return found.task;
 	},
 
@@ -294,12 +360,12 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = findByIdPrefix(tasks, taskId, "task");
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			const found = findTaskByRef(tasks, taskId);
+			if (!found) throw taskNotFoundError(taskId);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			if (!found) throw taskNotFoundError(taskId);
 			project = found.project;
 			task = found.task;
 		}
@@ -407,12 +473,12 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = findByIdPrefix(tasks, taskId, "task");
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			const found = findTaskByRef(tasks, taskId);
+			if (!found) throw taskNotFoundError(taskId);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			if (!found) throw taskNotFoundError(taskId);
 			project = found.project;
 			task = found.task;
 		}
@@ -445,10 +511,13 @@ const handlers: Record<string, Handler> = {
 
 		if (params.projectId) {
 			const project = await data.getProject(params.projectId as string);
-			task = await data.getTask(project, taskId);
+			const tasks = await data.loadTasks(project);
+			const found = findTaskByRef(tasks, taskId);
+			if (!found) throw taskNotFoundError(taskId);
+			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			if (!found) throw taskNotFoundError(taskId);
 			task = found.task;
 		}
 
@@ -467,12 +536,12 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = findByIdPrefix(tasks, taskId, "task");
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			const found = findTaskByRef(tasks, taskId);
+			if (!found) throw taskNotFoundError(taskId);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			if (!found) throw taskNotFoundError(taskId);
 			project = found.project;
 			task = found.task;
 		}
@@ -767,12 +836,12 @@ const handlers: Record<string, Handler> = {
 		if (params.projectId) {
 			project = await data.getProject(params.projectId as string);
 			const tasks = await data.loadTasks(project);
-			const found = findByIdPrefix(tasks, taskId, "task");
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			const found = findTaskByRef(tasks, taskId);
+			if (!found) throw taskNotFoundError(taskId);
 			task = found;
 		} else {
 			const found = await resolveTaskAcrossProjects(taskId);
-			if (!found) throw new Error(`Task not found: ${taskId}`);
+			if (!found) throw taskNotFoundError(taskId);
 			project = found.project;
 			task = found.task;
 		}

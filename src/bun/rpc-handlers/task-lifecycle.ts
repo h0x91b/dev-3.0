@@ -1084,7 +1084,49 @@ async function spawnVariants(params: {
 	const isMultiVariant = params.variants.length > 1;
 	const needsWorktree = isActive(params.targetStatus);
 
-	for (let i = 0; i < params.variants.length; i++) {
+	// Variant #1 transforms the source task IN PLACE (same id) instead of the
+	// old delete-and-recreate: the id printed by `dev3 task create` (and any
+	// stored reference to it — notes, vents, linked tasks) must stay resolvable
+	// after the task is launched. Only variants 2..N are genuinely new tasks.
+	// The mutator re-checks the status under the file lock so two concurrent
+	// launches cannot both transform the same source.
+	const firstVariant = params.variants[0];
+	const { task: transformedSource } = await data.updateTaskWith(project, sourceTask.id, (current) => {
+		if (current.status !== "todo") {
+			throw new Error(`Task must be in todo status to spawn variants (got ${current.status})`);
+		}
+		return {
+			updates: {
+				status: params.targetStatus,
+				groupId,
+				variantIndex: 1,
+				agentId: firstVariant.agentId,
+				configId: firstVariant.configId,
+				...(firstVariant.accountId !== undefined ? { accountId: firstVariant.accountId } : {}),
+				...(srcBranch ? { existingBranch: srcBranch } : {}),
+				worktreePath: null,
+				branchName: null,
+				customColumnId: null,
+				// A pending "Start in…" schedule is consumed by this launch — the
+				// scheduler must not re-fire it on the now-transformed task.
+				scheduledLaunch: null,
+				preparationError: null,
+				...(needsWorktree ? {
+					preparing: true,
+					preparingStage: INITIAL_PREPARING_STAGE,
+					preparingProgress: getPreparingStageProgress(INITIAL_PREPARING_STAGE),
+					preparingStartedAt: new Date().toISOString(),
+				} : {}),
+			},
+			result: null,
+		};
+	});
+	resultTasks.push(needsWorktree ? {
+		...transformedSource,
+		...preparingStageUpdates(INITIAL_PREPARING_STAGE),
+	} : transformedSource);
+
+	for (let i = 1; i < params.variants.length; i++) {
 		const variant = params.variants[i];
 
 		const task = await data.addTask(
@@ -1112,23 +1154,21 @@ async function spawnVariants(params: {
 				// so "Save and Run" does not silently revert to the description prefix.
 				customTitle: sourceTask.customTitle,
 				titleEditedByUser: sourceTask.titleEditedByUser,
-				// Carry the labels the user picked in the Create-Task modal — the
-				// source task is deleted below, so without this every label is lost.
+				// Sibling variants share the labels the user picked in the
+				// Create-Task modal (labels belong to the whole variant group).
 				labelIds: sourceTask.labelIds,
-				// Carry notes + overview for the same reason: a task can sit in To Do
-				// and accumulate notes/overview before being launched with variants;
-				// the source is deleted below, so without this that context is lost.
-				// (history is intentionally regenerated fresh per new task id.)
+				// Copy notes + overview accumulated while the task sat in To Do:
+				// each variant's agent reads its OWN task, so without the copy
+				// variants 2..N would launch blind to that pre-launch context.
 				notes: sourceTask.notes,
 				overview: sourceTask.overview,
 				userOverview: sourceTask.userOverview,
-				// Carry the priority the user picked in the Create-Task modal — the
-				// source task is deleted below, so without this "Create and Run"
-				// silently resets a P0 task back to the default P3.
+				// Priority belongs to the whole variant group — without the copy a
+				// P0 launch would spawn P3 siblings.
 				priority: sourceTask.priority,
 				// Virtual ("Operations") tasks: carry the chosen working folder onto
 				// each variant so the worktree-less launch path targets it instead
-				// of falling back to a managed dir (the source task is deleted below).
+				// of falling back to a managed dir.
 				...(sourceTask.opsWorkDir ? { opsWorkDir: sourceTask.opsWorkDir } : {}),
 			},
 		);
@@ -1138,8 +1178,6 @@ async function spawnVariants(params: {
 			...preparingStageUpdates(INITIAL_PREPARING_STAGE),
 		} : task);
 	}
-
-	await data.deleteTask(project, params.taskId);
 
 	for (const task of resultTasks) {
 		notifyWatchedTaskStatusChange(task, "todo", params.targetStatus, project.name);
@@ -1505,9 +1543,9 @@ async function cancelScheduledLaunch(params: { taskId: string; projectId: string
 /**
  * Fire a pending deferred launch NOW. Shared by the scheduler tick and the
  * `startScheduledLaunchNow` RPC. Delegates to spawnVariants (same validation,
- * same variant pipeline, deletes the source task), then broadcasts the
- * server-initiated changes: clients did not call an RPC, so they learn about
- * the consumed source via `taskRemoved` and about each variant via `taskUpdated`.
+ * same variant pipeline — the source task becomes variant #1 in place, keeping
+ * its id), then broadcasts the server-initiated changes: clients did not call
+ * an RPC, so they learn about every variant via `taskUpdated`.
  */
 export async function fireScheduledLaunch(project: Project, task: Task): Promise<Task[]> {
 	const sched = task.scheduledLaunch;
@@ -1518,7 +1556,6 @@ export async function fireScheduledLaunch(project: Project, task: Task): Promise
 		targetStatus: sched.targetStatus,
 		variants: sched.variants,
 	});
-	getPushMessage()?.("taskRemoved", { projectId: project.id, taskId: task.id });
 	for (const t of spawned) {
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
 	}

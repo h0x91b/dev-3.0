@@ -1148,17 +1148,6 @@ function App() {
 		return () => window.removeEventListener("rpc:globalSettingsUpdated", onGlobalSettingsUpdated);
 	}, []);
 
-	// Server-initiated deletion: a scheduled launch firing consumes its source
-	// todo task (the spawned variants arrive as ordinary taskUpdated pushes).
-	useEffect(() => {
-		function onTaskRemoved(e: Event) {
-			const { taskId } = (e as CustomEvent).detail;
-			dispatch({ type: "removeTask", taskId });
-		}
-		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
-		return () => window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
-	}, [dispatch]);
-
 	useEffect(() => {
 		function onProjectUpdated(e: Event) {
 			const { project } = (e as CustomEvent).detail;
