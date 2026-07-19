@@ -26,6 +26,7 @@ import { startRemoteDiscoveryAdvertisement, type RemoteDiscoveryAdvertisement } 
 import { getRemoteInstanceInfo } from "./remote-instance";
 import { loadSettingsSync } from "./settings";
 import { getCurrentUiTheme } from "./theme-state";
+import { prioritizeInterfaces } from "./network-interfaces";
 
 const log = createLogger("remote-access");
 
@@ -906,25 +907,8 @@ export function pushToBrowserClients(name: string, payload: any): void {
 
 // ── Access URL helpers ──────────────────────────────────────────────
 
-function getLocalIp(): string {
-	const interfaces = networkInterfaces();
-	for (const name of Object.keys(interfaces)) {
-		for (const iface of (interfaces[name] ?? [])) {
-			if (iface.family === "IPv4" && !iface.internal) {
-				return iface.address;
-			}
-		}
-	}
-	return "localhost";
-}
-
-/**
- * Every IPv4 the machine is reachable at, for the Remote Access modal's
- * interface picker: each non-internal interface address first, then loopback
- * `127.0.0.1` last (same-machine / SSH-forward). The browser can't enumerate
- * host interfaces, so this is computed here and shipped to the renderer.
- */
-export function getLocalInterfaces(): RemoteNetInterface[] {
+/** Raw non-internal IPv4 interfaces, in OS enumeration order (unranked). */
+function enumerateExternalIPv4(): RemoteNetInterface[] {
 	const out: RemoteNetInterface[] = [];
 	const interfaces = networkInterfaces();
 	for (const name of Object.keys(interfaces)) {
@@ -934,9 +918,29 @@ export function getLocalInterfaces(): RemoteNetInterface[] {
 			}
 		}
 	}
-	// Always offer loopback last — needed for the SSH-forward path.
-	out.push({ name: "loopback", address: "127.0.0.1", internal: true });
 	return out;
+}
+
+function getLocalIp(): string {
+	// Pick the most-reachable interface, not merely the first the OS reports —
+	// VPN (utun*) and VM-bridge (bridge*) addresses commonly enumerate first but
+	// are unreachable from a phone on the LAN. See ./network-interfaces.
+	const ranked = prioritizeInterfaces(enumerateExternalIPv4());
+	return ranked[0]?.address ?? "localhost";
+}
+
+/**
+ * Every IPv4 the machine is reachable at, for the Remote Access modal's
+ * interface picker: real LAN interfaces (en0…) first, VPN/bridge/link-local
+ * deprioritized below them, then loopback `127.0.0.1` last (same-machine /
+ * SSH-forward). The browser can't enumerate host interfaces, so this is
+ * computed here and shipped to the renderer.
+ */
+export function getLocalInterfaces(): RemoteNetInterface[] {
+	const out = enumerateExternalIPv4();
+	// Always offer loopback — the SSH-forward path. Ranked last (internal).
+	out.push({ name: "loopback", address: "127.0.0.1", internal: true });
+	return prioritizeInterfaces(out);
 }
 
 /**

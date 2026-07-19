@@ -14,6 +14,7 @@ import QRCode from "qrcode";
 import { networkInterfaces } from "node:os";
 import { createLogger } from "./logger";
 import { tunnelManager } from "./cloudflare-tunnel";
+import { prioritizeInterfaces } from "./network-interfaces";
 
 const log = createLogger("remote-console");
 
@@ -25,16 +26,19 @@ let qrConsumed = false;
 // ── LAN IP discovery ──────────────────────────────────────────────
 
 function getLocalIps(): string[] {
-	const out: string[] = [];
+	const out: { name: string; address: string }[] = [];
 	const ifaces = networkInterfaces();
 	for (const name of Object.keys(ifaces)) {
 		for (const addr of ifaces[name] ?? []) {
 			if (addr.family === "IPv4" && !addr.internal) {
-				out.push(addr.address);
+				out.push({ name, address: addr.address });
 			}
 		}
 	}
-	return out;
+	// Rank real LAN interfaces (en0…) above VPN/bridge/link-local so the banner's
+	// "LAN IPs" and the first-LAN URL point at a reachable address. See
+	// ./network-interfaces.
+	return prioritizeInterfaces(out).map((iface) => iface.address);
 }
 
 // ── Public API ────────────────────────────────────────────────────
