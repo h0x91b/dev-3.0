@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-19 — Remove the persistent browser active-task strip
+
+- **Rule:** Browser task workspaces keep the terminal full-width without a persistent `ActiveTasksStrip`; task switching uses the existing task-switcher overlay and breadcrumb → board navigation.
+- **Why:** The strip consumed vertical space and exposed a distracting horizontal scrollbar without being the canonical task-switching surface. Rejected replacing it with another permanent row; existing task-switching surfaces already cover the workflow.
+- **Status:** Implemented. Evidence: `ProjectView.tsx`, `TaskSwitcherOverlay.tsx`, `MobileBoardCarousel.tsx`.
+
 ## 2026-07-16 — Global Settings category navigation and registry
 
 - **Rule:** Global Settings uses seven left-nav **Settings categories** with one detail pane, localized title/description search, and a narrow list→detail drill-down with an in-app back affordance. The `settings-registry.ts` registry documents **Settings entries** (metadata, category, translations, anchors, storage disposition) and integrity tests; bespoke controls remain bespoke.

@@ -9,7 +9,6 @@ import SplitLayout from "./SplitLayout";
 import ActiveTasksSidebar from "./ActiveTasksSidebar";
 import { useState } from "react";
 import { useT } from "../i18n";
-import ActiveTasksStrip from "./ActiveTasksStrip";
 import TaskWorkspacePane from "./TaskWorkspacePane";
 import { useTaskInlineDiffState } from "./task-inline-diff";
 import { trackDiffView } from "../analytics";
@@ -140,10 +139,10 @@ function ProjectView({
 			</div>
 		);
 
-		// Narrow viewport (phone / narrow window): zoom the task workspace. There
-		// is no room for the active-tasks list — task switching happens via the
-		// breadcrumb back button → board carousel. Keep the task's own info panel.
-		if (isNarrow) {
+		// Browser and narrow viewports keep the terminal full-width. Task switching
+		// remains available through the breadcrumb/board and task-switcher overlay;
+		// do not add a persistent task strip above the terminal.
+		if (isNarrow || isBrowserMode) {
 			return (
 				<div className="flex-1 min-h-0 flex flex-col">
 					{activeTask && (
@@ -160,38 +159,6 @@ function ProjectView({
 							onOpenInlineDiff={inlineDiff.open}
 						/>
 					)}
-					<div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
-						{terminalPane}
-					</div>
-				</div>
-			);
-		}
-
-		// Browser mode: stack sidebar on top for full-width terminal
-		if (isBrowserMode) {
-			return (
-				<div className="flex-1 min-h-0 flex flex-col">
-					{activeTask && (
-						<TaskInfoPanel
-							task={activeTask}
-							project={project}
-							dispatch={dispatch}
-							navigate={navigate}
-							taskPorts={taskPorts}
-							tasks={tasks}
-							isTerminalFullscreen={isTerminalFullscreen}
-							onToggleTerminalFullscreen={onToggleTerminalFullscreen}
-							onOpenInlineDiff={inlineDiff.open}
-						/>
-					)}
-					<ActiveTasksStrip
-						project={project}
-						tasks={tasks}
-						activeTaskId={activeTaskId}
-						navigate={navigate}
-						agents={agents}
-						bellCounts={bellCounts}
-					/>
 					<div className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
 						{terminalPane}
 					</div>
