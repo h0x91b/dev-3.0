@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type MouseEvent as ReactMouseEvent, type MutableRefObject, type ReactElement, type ReactNode } from "react";
 import type { NavigationGuard } from "../navigation-guard";
 import type {
+	PRReviewThread,
 	Project,
 	Task,
 	TaskDiffFile,
@@ -8,9 +9,11 @@ import type {
 	TaskDiffMode,
 	TaskDiffResponse,
 	TaskDiffSkippedFile,
+	TaskPRCommentsPayload,
 } from "../../shared/types";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
+import { toast } from "../toast";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
@@ -20,6 +23,10 @@ import BottomSheet from "./BottomSheet";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { resolveAutoDiffViewMode, resolveDiffViewMode } from "./global-settings/utils";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
+import { extractReviewSnippet, getReviewFilePath, parseDiffHunkLines, type DiffSideKey } from "./diff-hunks";
+import { PrConversationBlock } from "./pr-review/PrConversationBlock";
+import { GithubThreadView, OutdatedThreadsGroup, type ThreadSendState } from "./pr-review/GithubThreadView";
+import { buildThreadFixPrompt, groupGithubThreadsByFile, isLineRenderedInDiff, locateThread, partitionThreadsForDiff } from "./pr-review/mapping";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
@@ -125,7 +132,7 @@ type DiffLibrary = {
 	generateDiffFile: (...args: any[]) => DiffInstance;
 };
 
-type InlineCommentSideKey = "oldFile" | "newFile";
+type InlineCommentSideKey = DiffSideKey;
 
 interface InlineDiffComment {
 	id: string;
@@ -161,6 +168,10 @@ interface InlineReviewExportEntry {
 	};
 	fileOrder: number;
 	createdAt: string;
+	/** Who authored the review: the user's own inline comment or a GitHub PR reviewer. */
+	origin: "local" | "github";
+	/** GitHub login of the thread's first commenter; null for local entries. */
+	author: string | null;
 }
 
 interface DiffSearchLineCandidate {
@@ -219,6 +230,19 @@ interface TaskDiffFileSectionProps {
 	onToggleRead: () => void;
 	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
 	sectionRef: (element: HTMLDivElement | null) => void;
+	/** GitHub review threads on this file (branch mode); the section partitions
+	 * them into inline anchors vs the outdated group once the diff is built. */
+	githubThreads?: PRReviewThread[];
+	githubExportSelection: Record<string, boolean>;
+	onToggleThreadExport: (threadId: string) => void;
+	onSendThreadToAgent: (thread: PRReviewThread) => void;
+	threadSendStates: Record<string, ThreadSendState>;
+}
+
+/** Per-line extend payload passed to the diff library: the local thread and/or GitHub threads. */
+interface ExtendLineData {
+	local?: InlineDiffCommentThread;
+	github?: PRReviewThread[];
 }
 
 type DiffTreeNode = DiffTreeFolderNode | DiffTreeFileNode;
@@ -270,10 +294,6 @@ function formatInlineCommentLineLabel(
 		: t("infoPanel.diffCommentLines", { side: sideLabel, start: String(lo), end: String(hi) });
 }
 
-function getReviewFilePath(file: TaskDiffFile): string {
-	return file.newPath ?? file.oldPath ?? file.displayPath;
-}
-
 function getCopiedFilePath(worktreePath: string | null | undefined, file: TaskDiffFile): string {
 	const filePath = getReviewFilePath(file);
 	if (!worktreePath) {
@@ -288,62 +308,6 @@ function getReviewCommentPreview(value: string, maxLength = 100): string {
 		return normalized;
 	}
 	return `${normalized.slice(0, maxLength)}...`;
-}
-
-function parseDiffHunkLines(hunk: string): Array<{
-	kind: "+" | "-" | " ";
-	text: string;
-	content: string;
-	oldLine: number | null;
-	newLine: number | null;
-}> {
-	const lines = hunk.split("\n");
-	const parsed: Array<{
-		kind: "+" | "-" | " ";
-		text: string;
-		content: string;
-		oldLine: number | null;
-		newLine: number | null;
-	}> = [];
-	let oldLine = 0;
-	let newLine = 0;
-	let inBody = false;
-
-	for (const line of lines) {
-		const header = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-		if (header) {
-			oldLine = Number(header[1]);
-			newLine = Number(header[2]);
-			inBody = true;
-			continue;
-		}
-		if (!inBody || line.startsWith("diff --git ") || line.startsWith("--- ") || line.startsWith("+++ ") || line.startsWith("\\")) {
-			continue;
-		}
-
-		const prefix = line[0];
-		if (prefix !== "+" && prefix !== "-" && prefix !== " ") {
-			continue;
-		}
-
-		const entry = {
-			kind: prefix,
-			text: line,
-			content: line.slice(1),
-			oldLine: prefix === "+" ? null : oldLine,
-			newLine: prefix === "-" ? null : newLine,
-		} as const;
-		parsed.push(entry);
-
-		if (prefix !== "+") {
-			oldLine += 1;
-		}
-		if (prefix !== "-") {
-			newLine += 1;
-		}
-	}
-
-	return parsed;
 }
 
 function collectDiffSearchCandidates(file: TaskDiffFile): DiffSearchLineCandidate[] {
@@ -490,89 +454,6 @@ function lineContainsQuery(container: HTMLElement, query: string): boolean {
 	return (container.textContent ?? "").toLocaleLowerCase().includes(needle);
 }
 
-function extractReviewSnippet(
-	file: TaskDiffFile,
-	side: InlineCommentSideKey,
-	startLine: number,
-	endLine: number,
-): { before: string | null; after: string | null } {
-	const lineKey = side === "oldFile" ? "oldLine" : "newLine";
-	for (const hunk of file.hunks ?? []) {
-		const lines = parseDiffHunkLines(hunk);
-		if (lines.length === 0) {
-			continue;
-		}
-
-		const targetIndexes = lines
-			.map((line, index) => ({ line, index }))
-			.filter(({ line }) => {
-				const lineNumber = line[lineKey];
-				return lineNumber !== null && lineNumber >= startLine && lineNumber <= endLine;
-			})
-			.map(({ index }) => index);
-
-		if (targetIndexes.length === 0) {
-			continue;
-		}
-
-		let from = targetIndexes[0];
-		let to = targetIndexes[targetIndexes.length - 1];
-		while (from > 0 && lines[from - 1]?.kind !== " ") {
-			from -= 1;
-		}
-		while (to < lines.length - 1 && lines[to + 1]?.kind !== " ") {
-			to += 1;
-		}
-
-		const block = lines.slice(from, to + 1).map((line, relativeIndex) => ({
-			...line,
-			relativeIndex,
-		}));
-		const targetRelativeIndex = targetIndexes[0] - from;
-		const targetLine = block[targetRelativeIndex];
-
-		if (!targetLine) {
-			continue;
-		}
-
-		if (targetLine.kind === " ") {
-			return {
-				before: targetLine.content,
-				after: targetLine.content,
-			};
-		}
-
-		const removedLines = block.filter((line) => line.kind === "-");
-		const addedLines = block.filter((line) => line.kind === "+");
-
-		if (targetLine.kind === "-") {
-			const removedIndex = removedLines.findIndex((line) => line.relativeIndex === targetRelativeIndex);
-			return {
-				before: targetLine.content,
-				after: removedIndex >= 0 && removedIndex < addedLines.length
-					? addedLines[removedIndex]?.content ?? null
-					: null,
-			};
-		}
-
-		const addedIndex = addedLines.findIndex((line) => line.relativeIndex === targetRelativeIndex);
-		return {
-			before: addedIndex >= 0 && addedIndex < removedLines.length
-				? removedLines[addedIndex]?.content ?? null
-				: null,
-			after: targetLine.content,
-		};
-	}
-
-	const fallbackLines = (side === "oldFile" ? file.oldContent : file.newContent).split("\n");
-	const selected = fallbackLines
-		.slice(Math.max(0, startLine - 1), endLine)
-		.find((line) => line.length > 0) ?? null;
-	return side === "oldFile"
-		? { before: selected, after: null }
-		: { before: null, after: selected };
-}
-
 function hasAnyInlineComments(state: InlineDiffCommentsState): boolean {
 	for (const fileData of Object.values(state)) {
 		for (const sideMap of [fileData.oldFile, fileData.newFile]) {
@@ -613,27 +494,83 @@ function buildInlineReviewExportEntries(
 						snippet: extractReviewSnippet(file, comment.side, comment.startLine, comment.endLine),
 						fileOrder: fileOrder.get(file.id) ?? Number.MAX_SAFE_INTEGER,
 						createdAt: comment.createdAt,
+						origin: "local",
+						author: null,
 					});
 				}
 			}
 		}
 	}
 
-	return result.sort((left, right) => (
+	return result.sort(compareReviewExportEntries);
+}
+
+function compareReviewExportEntries(left: InlineReviewExportEntry, right: InlineReviewExportEntry): number {
+	return (
 		left.fileOrder - right.fileOrder
 		|| left.startLine - right.startLine
 		|| left.createdAt.localeCompare(right.createdAt)
-	));
+	);
+}
+
+/**
+ * Export entries for the GitHub review threads the user opted into the batch
+ * export. Threads whose anchor no longer resolves against the current diff
+ * (outdated / file absent) still export — with the original path/line and no
+ * snippet — so the agent sees the reviewer's words either way.
+ */
+function buildGithubReviewExportEntries(
+	files: TaskDiffFile[],
+	threads: PRReviewThread[],
+	selection: Record<string, boolean>,
+): InlineReviewExportEntry[] {
+	const fileOrder = new Map(files.map((file, index) => [file.id, index]));
+	const result: InlineReviewExportEntry[] = [];
+
+	for (const thread of threads) {
+		if (!selection[thread.id]) {
+			continue;
+		}
+		const location = locateThread(files, thread);
+		const line = thread.line ?? thread.originalLine ?? 0;
+		const comment = thread.comments
+			.map((item) => (item.author ? `[${item.author}] ${item.body.trim()}` : item.body.trim()))
+			.join("\n\n");
+		result.push({
+			id: thread.id,
+			fileId: location?.file.id ?? thread.path,
+			filePath: thread.path,
+			side: thread.diffSide === "LEFT" ? "oldFile" : "newFile",
+			startLine: line,
+			endLine: line,
+			comment,
+			snippet: location
+				? extractReviewSnippet(location.file, location.side, location.line, location.line)
+				: { before: null, after: null },
+			fileOrder: location ? fileOrder.get(location.file.id) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER,
+			createdAt: thread.comments[0]?.createdAt ?? "",
+			origin: "github",
+			author: thread.comments[0]?.author ?? null,
+		});
+	}
+
+	return result.sort(compareReviewExportEntries);
 }
 
 function buildInlineReviewXml(entries: InlineReviewExportEntry[]): string {
 	const lines = ["<reviews>"];
+	let hasGithubEntries = false;
 
 	for (const entry of entries) {
 		const lineAttr = entry.startLine === entry.endLine
 			? String(entry.startLine)
 			: `"${entry.startLine}-${entry.endLine}"`;
-		lines.push("<review>");
+		if (entry.origin === "github") {
+			hasGithubEntries = true;
+			lines.push(`<review origin="github"${entry.author ? ` author="${entry.author}"` : ""}>`);
+		} else {
+			lines.push("<review>");
+		}
 		lines.push(`<file src="${entry.filePath}" line=${lineAttr}>`);
 		if (entry.snippet.before) {
 			lines.push(`-${entry.snippet.before}`);
@@ -648,7 +585,9 @@ function buildInlineReviewXml(entries: InlineReviewExportEntry[]): string {
 
 	lines.push("</reviews>");
 	lines.push("---");
-	lines.push("Above my comments about code changes, read them carefully and process all of them.");
+	lines.push(hasGithubEntries
+		? "Above are code review comments. Reviews marked origin=\"github\" come from GitHub PR reviewers; the rest are my own. Read them carefully and process all of them."
+		: "Above my comments about code changes, read them carefully and process all of them.");
 	return lines.join("\n");
 }
 
@@ -1185,9 +1124,15 @@ function TaskDiffFileSection({
 	onToggleRead,
 	registerCommentRef,
 	sectionRef,
+	githubThreads,
+	githubExportSelection,
+	onToggleThreadExport,
+	onSendThreadToAgent,
+	threadSendStates,
 }: TaskDiffFileSectionProps) {
 	const t = useT();
 	const fileStats = getFileDiffStats(file);
+	const [outdatedOpen, setOutdatedOpen] = useState(false);
 	const [activated, setActivated] = useState(eager);
 	const [diffFile, setDiffFile] = useState<DiffInstance | null>(null);
 	const [buildError, setBuildError] = useState<string | null>(null);
@@ -1454,6 +1399,42 @@ function TaskDiffFileSection({
 	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${getDiffFileContentHash(file)}`;
 	const copiedFilePath = getCopiedFilePath(worktreePath, file);
 
+	// The built diff instance is the only honest source of "is this line on
+	// screen" (the backend ships hunks: null — the library computes the diff
+	// itself), so the inline-vs-outdated partition waits for diffFile.
+	const githubPartition = useMemo(() => {
+		if (!githubThreads?.length || !diffFile) {
+			return null;
+		}
+		return partitionThreadsForDiff(githubThreads, (side, line) =>
+			isLineRenderedInDiff(diffFile, viewMode, diffLib.SplitSide, side, line));
+	}, [githubThreads, diffFile, viewMode, diffLib]);
+	// Threads on a file whose diff never finished building must not vanish:
+	// until the partition exists they all count as unanchored.
+	const githubOutdatedThreads = githubPartition?.outdated ?? githubThreads ?? [];
+
+	// The diff library takes one extend-data slot per side+line, so local
+	// comments and GitHub threads anchored to the same line merge into one
+	// payload and render stacked inside renderExtendLine.
+	const extendData = useMemo(() => {
+		const merged: { oldFile: Record<string, { data: ExtendLineData }>; newFile: Record<string, { data: ExtendLineData }> } = {
+			oldFile: {},
+			newFile: {},
+		};
+		for (const side of ["oldFile", "newFile"] as const) {
+			for (const [line, slot] of Object.entries(comments[side])) {
+				merged[side][line] = { data: { local: slot.data } };
+			}
+			const githubSide = githubPartition?.inline[side];
+			if (githubSide) {
+				for (const [line, threads] of Object.entries(githubSide)) {
+					merged[side][line] = { data: { ...merged[side][line]?.data, github: threads } };
+				}
+			}
+		}
+		return merged;
+	}, [comments, githubPartition]);
+
 	function handleCopyPath() {
 		navigator.clipboard.writeText(copiedFilePath).then(() => {
 			setCopiedPath(true);
@@ -1577,6 +1558,7 @@ function TaskDiffFileSection({
 				buildError ? (
 					<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
 				) : diffFile ? (
+					<>
 					<div ref={dragHostRef} className="dev3-diff-drag-host" onMouseDown={handleGutterMouseDown}>
 					<DiffView
 						key={diffRenderKey}
@@ -1586,7 +1568,7 @@ function TaskDiffFileSection({
 						diffViewWrap={false}
 						diffViewHighlight={true}
 						diffViewAddWidget
-						extendData={comments}
+						extendData={extendData}
 						onCreateUseWidgetHook={(hook: typeof widgetHookRef.current) => { widgetHookRef.current = hook; }}
 						renderWidgetLine={({ lineNumber, side, onClose }: { lineNumber: number; side: number; onClose: () => void }) => {
 							const sideKey = getInlineCommentSideKey(side, diffLib.SplitSide);
@@ -1617,24 +1599,50 @@ function TaskDiffFileSection({
 								/>
 							);
 						}}
-						renderExtendLine={({ data, lineNumber, side }: { data: InlineDiffCommentThread; lineNumber: number; side: number }) => (
-							<InlineCommentThreadView
-								thread={data}
-								side={getInlineCommentSideKey(side, diffLib.SplitSide)}
-								lineNumber={lineNumber}
-								registerCommentRef={registerCommentRef}
-								editingCommentId={editingCommentId}
-								editingCommentDraft={editingCommentDraft}
-								onEditDraftChange={onEditDraftChange}
-								onStartEdit={onStartEditComment}
-								onCancelEdit={onCancelEditComment}
-								onSaveEdit={onSaveEditComment}
-								onDeleteComment={onDeleteComment}
-							/>
+						renderExtendLine={({ data, lineNumber, side }: { data: ExtendLineData; lineNumber: number; side: number }) => (
+							<>
+								{data.github?.map((thread) => (
+									<GithubThreadView
+										key={thread.id}
+										thread={thread}
+										exportSelected={!!githubExportSelection[thread.id]}
+										onToggleExport={onToggleThreadExport}
+										onSendToAgent={onSendThreadToAgent}
+										sendState={threadSendStates[thread.id]}
+										registerRef={registerCommentRef}
+									/>
+								))}
+								{data.local && (
+									<InlineCommentThreadView
+										thread={data.local}
+										side={getInlineCommentSideKey(side, diffLib.SplitSide)}
+										lineNumber={lineNumber}
+										registerCommentRef={registerCommentRef}
+										editingCommentId={editingCommentId}
+										editingCommentDraft={editingCommentDraft}
+										onEditDraftChange={onEditDraftChange}
+										onStartEdit={onStartEditComment}
+										onCancelEdit={onCancelEditComment}
+										onSaveEdit={onSaveEditComment}
+										onDeleteComment={onDeleteComment}
+									/>
+								)}
+							</>
 						)}
 						className="diff-tailwindcss-wrapper"
 					/>
 					</div>
+					<OutdatedThreadsGroup
+						threads={githubOutdatedThreads}
+						open={outdatedOpen}
+						onToggle={() => setOutdatedOpen((current) => !current)}
+						exportSelection={githubExportSelection}
+						onToggleExport={onToggleThreadExport}
+						onSendToAgent={onSendThreadToAgent}
+						sendStates={threadSendStates}
+						registerRef={registerCommentRef}
+					/>
+					</>
 				) : (
 					<div className="p-4 space-y-3 animate-pulse">
 						<div className="h-4 w-36 rounded bg-elevated" />
@@ -1683,6 +1691,17 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 	const [editingCommentDraft, setEditingCommentDraft] = useState("");
+	// GitHub PR review layer (read-only). Fetched once per diff open when the
+	// task carries a sticky PR; the refresh button re-fetches with force. The
+	// export selection and send states are deliberately session-local — unlike
+	// local comments, the source of truth lives on GitHub.
+	const [prComments, setPrComments] = useState<TaskPRCommentsPayload | null>(null);
+	const [prCommentsError, setPrCommentsError] = useState<string | null>(null);
+	const [prCommentsRefreshing, setPrCommentsRefreshing] = useState(false);
+	const [showResolvedThreads, setShowResolvedThreads] = useState(false);
+	const [githubExportSelection, setGithubExportSelection] = useState<Record<string, boolean>>({});
+	const [threadSendStates, setThreadSendStates] = useState<Record<string, ThreadSendState>>({});
+	const prFetchSeqRef = useRef(0);
 	const [isSearchOpen, setIsSearchOpen] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
 	const [activeSearchIndex, setActiveSearchIndex] = useState(0);
@@ -1753,8 +1772,51 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return { files: visibleFiles.length + visibleSkippedFiles.length, insertions, deletions };
 	}, [payload, includeTests, visibleFiles, visibleSkippedFiles]);
 	const fileTree = payload ? buildDiffTree(visibleFiles, visibleSkippedFiles) : [];
-	const reviewExportEntries = payload ? buildInlineReviewExportEntries(visibleFiles, inlineComments) : [];
+	const reviewExportEntries = payload
+		? [
+			...buildInlineReviewExportEntries(visibleFiles, inlineComments),
+			...buildGithubReviewExportEntries(visibleFiles, prComments?.threads ?? [], githubExportSelection),
+		].sort(compareReviewExportEntries)
+		: [];
 	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
+
+	const fetchPrComments = useCallback((force: boolean) => {
+		if (task.prNumber == null) {
+			return;
+		}
+		const seq = ++prFetchSeqRef.current;
+		setPrCommentsRefreshing(true);
+		api.request.getTaskPrComments({ taskId: task.id, projectId: project.id, force })
+			.then((result) => {
+				if (prFetchSeqRef.current !== seq) return;
+				setPrComments(result);
+				setPrCommentsError(null);
+			})
+			.catch((err) => {
+				if (prFetchSeqRef.current !== seq) return;
+				setPrCommentsError(String(err));
+			})
+			.finally(() => {
+				if (prFetchSeqRef.current === seq) setPrCommentsRefreshing(false);
+			});
+	}, [project.id, task.id, task.prNumber]);
+
+	useEffect(() => {
+		setPrComments(null);
+		setPrCommentsError(null);
+		setGithubExportSelection({});
+		setThreadSendStates({});
+		fetchPrComments(false);
+	}, [fetchPrComments]);
+
+	// GitHub threads anchor onto PR-diff line numbers, which only the branch
+	// mode renders; other modes surface a "view in Branch diff" hint instead.
+	const githubThreadGroups = useMemo(() => {
+		if (!prComments || currentRequest.mode !== "branch") {
+			return null;
+		}
+		return groupGithubThreadsByFile(visibleFiles, prComments.threads, { showResolved: showResolvedThreads });
+	}, [prComments, currentRequest.mode, visibleFiles, showResolvedThreads]);
 	const searchMatches = useMemo(
 		() => (payload ? buildDiffSearchMatches(visibleFiles, searchQuery) : []),
 		[payload, searchQuery, visibleFiles],
@@ -2066,6 +2128,24 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				},
 			};
 		});
+	}
+
+	function toggleThreadExport(threadId: string) {
+		setGithubExportSelection((current) => ({ ...current, [threadId]: !current[threadId] }));
+	}
+
+	function sendThreadToAgent(thread: PRReviewThread) {
+		const prompt = buildThreadFixPrompt(thread, locateThread(visibleFiles, thread));
+		setThreadSendStates((current) => ({ ...current, [thread.id]: "sending" }));
+		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: prompt })
+			.then(() => {
+				setThreadSendStates((current) => ({ ...current, [thread.id]: "sent" }));
+				toast.success(t("infoPanel.prSendToAgentSuccess"));
+			})
+			.catch((err) => {
+				setThreadSendStates((current) => ({ ...current, [thread.id]: undefined }));
+				toast.error(t("infoPanel.prSendToAgentFailed", { error: String(err) }));
+			});
 	}
 
 	function handleCopyReviewXml() {
@@ -3229,8 +3309,20 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 																	: "border-edge bg-raised/65 cursor-pointer transition-colors hover:border-accent/30 hover:bg-accent/5 focus:outline-none focus:ring-1 focus:ring-accent/40"
 															}`}
 														>
-															<div className="text-xs font-semibold text-fg">
-																{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}
+															<div className="flex items-center gap-1.5 text-xs font-semibold text-fg">
+																<span>{t("infoPanel.diffReviewCommentItem", { number: String(index + 1) })}</span>
+																{entry.origin === "github" && (
+																	<span className="inline-flex items-center gap-1 rounded border border-edge bg-base px-1 py-px text-[0.625rem] font-semibold text-fg-3" data-testid="review-export-github-marker">
+																		<span
+																			aria-hidden="true"
+																			className="text-[0.7rem] leading-none"
+																			style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+																		>
+																			{""}
+																		</span>
+																		<span>{entry.author ?? "GitHub"}</span>
+																	</span>
+																)}
 															</div>
 
 															<div className="rounded-md border border-edge bg-base/75 px-2.5 py-2 text-sm leading-snug text-fg whitespace-normal break-words">
@@ -3399,6 +3491,27 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 					t("infoPanel.diffNoChangesBody"),
 				)}
 
+				{!error && !isBusy && payload && (
+					<PrConversationBlock
+						payload={prComments}
+						refreshing={prCommentsRefreshing}
+						error={prCommentsError}
+						onRefresh={() => fetchPrComments(true)}
+						showResolved={showResolvedThreads}
+						onToggleShowResolved={() => setShowResolvedThreads((current) => !current)}
+						unmappedThreads={githubThreadGroups?.unmapped ?? []}
+						threadActions={{
+							exportSelection: githubExportSelection,
+							onToggleExport: toggleThreadExport,
+							onSendToAgent: sendThreadToAgent,
+							sendStates: threadSendStates,
+							registerRef: registerCommentRef,
+						}}
+						diffMode={currentRequest.mode}
+						onSwitchToBranchDiff={() => switchDiffMode("branch")}
+					/>
+				)}
+
 				{!error && !isBusy && payload && diffLib && viewMode && visibleFiles.length > 0 && (
 					<div className="space-y-5">
 						{visibleFiles.map((file, index) => (
@@ -3430,6 +3543,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								sectionRef={(element) => {
 									sectionRefs.current[file.id] = element;
 								}}
+								githubThreads={githubThreadGroups?.byFile[file.id]}
+								githubExportSelection={githubExportSelection}
+								onToggleThreadExport={toggleThreadExport}
+								onSendThreadToAgent={sendThreadToAgent}
+								threadSendStates={threadSendStates}
 							/>
 						))}
 					</div>

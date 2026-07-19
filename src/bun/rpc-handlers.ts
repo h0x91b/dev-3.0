@@ -76,6 +76,7 @@ import { agentUsageHandlers } from "./rpc-handlers/agent-usage";
 import { automationsHandlers } from "./rpc-handlers/automations";
 import { pxpipeProxyHandlers } from "./rpc-handlers/pxpipe-proxy";
 import { agentAccountHandlers } from "./rpc-handlers/agent-accounts";
+import { prCommentsHandlers } from "./rpc-handlers/pr-comments";
 
 export const handlers = {
 	...appHandlers,
@@ -93,4 +94,5 @@ export const handlers = {
 	...automationsHandlers,
 	...pxpipeProxyHandlers,
 	...agentAccountHandlers,
+	...prCommentsHandlers,
 };

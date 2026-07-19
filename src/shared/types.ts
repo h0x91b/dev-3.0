@@ -1995,6 +1995,50 @@ export interface TaskPRBadgeInfo {
 	isDraft?: boolean | null;
 }
 
+// ---- PR review comments (read-only GitHub layer in the diff viewer) ----
+
+/** Which side of the PR diff a review thread anchors to (GitHub GraphQL `DiffSide`). */
+export type PRReviewThreadSide = "LEFT" | "RIGHT";
+
+/** One comment inside a review thread or the PR conversation. Body is GitHub-flavored markdown. */
+export interface PRReviewComment {
+	id: string;
+	/** GitHub login; null for ghost/deleted accounts. */
+	author: string | null;
+	/** True when the author is an app/bot account (login ends with `[bot]` or GraphQL __typename Bot). */
+	isBot: boolean;
+	body: string;
+	createdAt: string;
+	/** Deep link to this exact comment on GitHub. */
+	url: string;
+}
+
+/** An inline review thread on the PR diff, as reported by GraphQL `reviewThreads`. */
+export interface PRReviewThread {
+	id: string;
+	path: string;
+	/** Line in the current PR-head diff; null when GitHub can no longer anchor it. */
+	line: number | null;
+	/** Line in the diff the comment was originally made on. */
+	originalLine: number | null;
+	/** First line of a multi-line thread; null for single-line threads. */
+	startLine: number | null;
+	diffSide: PRReviewThreadSide;
+	isResolved: boolean;
+	isOutdated: boolean;
+	comments: PRReviewComment[];
+}
+
+/** Full read-only comment payload for a task's PR, fetched on diff open / manual refresh. */
+export interface TaskPRCommentsPayload {
+	prNumber: number;
+	prUrl: string;
+	fetchedAt: string;
+	threads: PRReviewThread[];
+	/** Top-level PR conversation comments (issue comments), oldest first. */
+	conversation: PRReviewComment[];
+}
+
 // ---- Listening ports ----
 
 export interface PortInfo {
@@ -2752,6 +2796,15 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; mode: TaskDiffMode; compareRef?: string; compareLabel?: string; count?: number };
 				response: TaskDiffResponse;
 			};
+			/**
+			 * Read-only comment payload for the task's PR (review threads + top-level
+			 * conversation), fetched via gh GraphQL and cached in-memory per task.
+			 * `force` bypasses the cache (manual refresh). `null` = task has no PR.
+			 */
+			getTaskPrComments: {
+				params: { taskId: string; projectId: string; force?: boolean };
+				response: TaskPRCommentsPayload | null;
+			};
 			rebaseTask: {
 				params: { taskId: string; projectId: string; compareRef?: string };
 				response: void;
@@ -2939,6 +2992,15 @@ export type AppRPCSchema = {
 			sendScheduledMessageNow: {
 				params: { taskId: string; projectId: string; messageId: string };
 				response: Task;
+			};
+			/**
+			 * Type `text` + Enter into the task's live agent pane right now, without
+			 * queueing (the diff viewer's per-thread "send to agent"). Throws when the
+			 * task has no live agent session.
+			 */
+			sendAgentMessageNow: {
+				params: { taskId: string; projectId: string; text: string };
+				response: void;
 			};
 			addTaskNote: {
 				params: { taskId: string; projectId: string; content: string; source?: NoteSource };
