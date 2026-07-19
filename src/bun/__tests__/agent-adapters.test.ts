@@ -148,25 +148,37 @@ describe("skillBody", () => {
 describe("launchArgs — Claude", () => {
 	it("fresh: model + system prompt + positional prompt", () => {
 		expect(launch("claude", cfg({ model: "sonnet" })))
-			.toBe("claude --model sonnet --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'");
+			.toBe("claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'");
 	});
 	it("resume with sessionId drops the prompt", () => {
 		expect(launch("claude", cfg({ model: "sonnet" }), { resume: true, sessionId: "sid" }))
-			.toBe("claude --resume sid --model sonnet --append-system-prompt <CLAUDE_BODY>");
+			.toBe("claude --resume sid --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY>");
 	});
 	it("skipModelForProvider omits --model", () => {
 		expect(launch("claude", cfg({ model: "claude-opus-4-8[1m]" }), { skipModelForProvider: true }))
-			.toBe("claude --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'");
+			.toBe("claude --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'");
 	});
 	it("skipSystemPrompt omits the body", () => {
 		expect(launch("claude", cfg({ model: "sonnet" }), { skipSystemPrompt: true }))
-			.toBe("claude --model sonnet -- 'Fix the login bug'");
+			.toBe("claude --model sonnet --allow-dangerously-skip-permissions -- 'Fix the login bug'");
 	});
 	it("statusline settings after the body, unless user passes --settings", () => {
 		expect(launch("claude", cfg({ model: "sonnet" }), { statuslineSettingsFile: "/tmp/s.json" }))
-			.toBe("claude --model sonnet --append-system-prompt <CLAUDE_BODY> --settings /tmp/s.json -- 'Fix the login bug'");
+			.toBe("claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> --settings /tmp/s.json -- 'Fix the login bug'");
 		expect(launch("claude", cfg({ model: "sonnet", additionalArgs: ["--settings", "x"] }), { statuslineSettingsFile: "/tmp/s.json" }))
-			.toBe("claude --model sonnet --append-system-prompt <CLAUDE_BODY> --settings x -- 'Fix the login bug'");
+			.toBe("claude --model sonnet --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> --settings x -- 'Fix the login bug'");
+	});
+	it("always adds --allow-dangerously-skip-permissions, but never duplicates a bypass flag", () => {
+		// Auto/Plan (no bypass flag) → adapter injects the allow flag.
+		expect(launch("claude", cfg({ model: "sonnet", permissionMode: "acceptEdits" })))
+			.toBe("claude --model sonnet --permission-mode acceptEdits --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'");
+		// Preset already carries the hard flag (via additionalArgs, appended after
+		// the system prompt) → adapter does NOT inject --allow- on top of it.
+		expect(launch("claude", cfg({ model: "sonnet", additionalArgs: ["--dangerously-skip-permissions"] })))
+			.toBe("claude --model sonnet --append-system-prompt <CLAUDE_BODY> --dangerously-skip-permissions -- 'Fix the login bug'");
+		// Preset already carries the allow flag → keep exactly one (no duplicate).
+		expect(launch("claude", cfg({ model: "sonnet", additionalArgs: ["--allow-dangerously-skip-permissions"] })))
+			.toBe("claude --model sonnet --append-system-prompt <CLAUDE_BODY> --allow-dangerously-skip-permissions -- 'Fix the login bug'");
 	});
 });
 
