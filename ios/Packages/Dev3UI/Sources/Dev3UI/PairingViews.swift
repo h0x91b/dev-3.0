@@ -317,14 +317,15 @@ private struct SavedInstanceRow: View {
                     .accessibilityLabel("Active")
             }
 
-            Button(role: .destructive) {
-                Task { await controller.delete(server) }
-            } label: {
+            PairedServerDeleteButton(
+                controller: controller,
+                server: server,
+                identifier: "pairing.delete.\(server.instanceId)"
+            ) {
                 Image(systemName: "trash")
                     .frame(width: 36, height: 36)
+                    .accessibilityHidden(true)
             }
-            .accessibilityLabel("Delete \(server.name)")
-            .accessibilityIdentifier("pairing.delete.\(server.instanceId)")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

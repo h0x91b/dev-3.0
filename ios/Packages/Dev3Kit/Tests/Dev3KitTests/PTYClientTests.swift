@@ -213,6 +213,30 @@ struct PTYClientTests {
         await client.disconnect()
     }
 
+    @Test("A fresh client never emits a leading disconnected state before connecting")
+    func noLeadingDisconnectedBeforeConnect() async throws {
+        let socket = FakePTYTransport()
+        let (client, _) = makePTYClient(transports: [socket])
+        let recorder = PTYStateRecorder()
+        let recording = recordStates(from: client.states, into: recorder)
+
+        // A brand-new client reports `.disconnected` as its snapshot, but must not
+        // seed the stream with it — otherwise a subscriber that attaches while the
+        // socket is still opening flashes the "Terminal disconnected" recovery card.
+        #expect(await client.stateSnapshot() == .disconnected)
+
+        try await client.connect(to: .task("task-fresh"))
+        await waitForPTY {
+            await recorder.snapshot().contains(.connected(.task("task-fresh")))
+        }
+
+        let states = await recorder.snapshot()
+        #expect(states.first == .connecting(.task("task-fresh")))
+        #expect(!states.contains(.disconnected))
+        recording.cancel()
+        await client.disconnect()
+    }
+
     @Test("Recoverable task resolution surfaces needs-resume without opening a socket")
     func needsResume() async throws {
         let (client, factory) = makePTYClient(transports: [])

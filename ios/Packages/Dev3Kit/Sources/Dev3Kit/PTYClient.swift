@@ -171,7 +171,13 @@ public actor PTYClient {
         let statePair = AsyncStream.makeStream(of: PTYConnectionState.self)
         states = statePair.stream
         stateContinuation = statePair.continuation
-        stateContinuation.yield(.disconnected)
+        // Intentionally do NOT emit `.disconnected` here. A fresh client that has
+        // never connected is *not yet* disconnected — emitting it seeds the buffered
+        // stream so a subscriber that attaches while the socket is still being opened
+        // renders the "Terminal disconnected" recovery card for a frame before the
+        // first real `.connecting` arrives. `stateSnapshot()` still reports
+        // `.disconnected` for callers that ask for the current state directly; the
+        // stream only carries genuine transitions once `connect()` runs.
     }
 
     public func stateSnapshot() -> PTYConnectionState {
