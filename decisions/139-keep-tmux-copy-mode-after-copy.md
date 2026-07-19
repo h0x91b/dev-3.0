@@ -10,7 +10,7 @@ Both tmux copy-mode tables default `MouseDragEnd1Pane` to `copy-pipe-and-cancel`
 
 ## Decision
 
-Override `MouseDragEnd1Pane` in both copy-mode tables in [`src/bun/tmux/config.ts`](../src/bun/tmux/config.ts) with `send-keys -X copy-selection`. `set-clipboard on` continues to deliver the copied text through OSC 52, while the viewport remains at the selected scrollback position.
+Override `MouseDragEnd1Pane` in both copy-mode tables in [`TMUX_CONFIG_FUNCTIONAL`](../src/bun/tmux/config.ts) with `send-keys -X copy-selection`. `set-clipboard on` continues to deliver the copied text through OSC 52, while the viewport remains at the selected scrollback position.
 
 ## Risks
 
