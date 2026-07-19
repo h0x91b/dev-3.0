@@ -1,0 +1,1 @@
+The mobile touch composer now has a paperclip attach button that opens the OS photo/file picker, uploads the selection into the worktree uploads dir, and inserts the path into the draft so you can add a caption before sending. Pasting an image from the phone clipboard into the composer now uploads it the same way instead of doing nothing.

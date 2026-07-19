@@ -5,6 +5,8 @@ import type { Project, Task } from "../../shared/types";
 import { ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction } from "../state";
 import { useT } from "../i18n";
+import { uploadDroppedFile } from "../utils/uploadDroppedFile";
+import { toast } from "../toast";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 
 interface TerminalComposerProps {
@@ -18,6 +20,12 @@ interface TerminalComposerProps {
 	task?: Task;
 	project?: Project;
 	dispatch?: Dispatch<AppAction>;
+	/**
+	 * Enables the attach button when no full `project` is available (the
+	 * project-level terminal passes only the id). Uploads land in the project's
+	 * worktree uploads dir via `uploadFileBase64`.
+	 */
+	projectId?: string;
 }
 
 /** Collapsed autogrow ceiling — roughly 4 lines of 16px text. */
@@ -38,16 +46,21 @@ const NERD_FONT = "'JetBrainsMono Nerd Font Mono'";
  * non-essential chrome (see index.css) so the terminal tail stays visible
  * above the keyboard.
  */
-function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerProps) {
+function TerminalComposer({ handle, task, project, dispatch, projectId }: TerminalComposerProps) {
 	const t = useT();
 	const [text, setText] = useState("");
 	const [expanded, setExpanded] = useState(false);
 	const [scheduleOpen, setScheduleOpen] = useState(false);
+	const [uploading, setUploading] = useState(false);
 	const taRef = useRef<HTMLTextAreaElement>(null);
+	const fileInputRef = useRef<HTMLInputElement>(null);
 	const focusedViewportHeightRef = useRef<number | null>(null);
 
 	// "Send later" is only reachable here when a live-agent task context exists.
 	const canScheduleLater = !!(task && project && dispatch && ACTIVE_STATUSES.includes(task.status) && task.worktreePath);
+
+	// Attachments need a project to resolve the worktree uploads dir.
+	const uploadProjectId = projectId ?? project?.id;
 
 	function autogrow() {
 		const ta = taRef.current;
@@ -60,12 +73,13 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 		ta.style.height = `${Math.min(ta.scrollHeight, MAX_COLLAPSED_HEIGHT_PX)}px`;
 	}
 
-	// Re-measure when the expanded state flips (the textarea element persists).
+	// Re-measure when the text changes (typing or programmatic path insertion)
+	// or the expanded state flips (the textarea element persists).
 	useEffect(() => {
 		autogrow();
 		// autogrow reads the latest `expanded` from the closure of this render.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [expanded]);
+	}, [text, expanded]);
 
 	// Never leave the chrome collapsed behind after unmount.
 	useEffect(() => () => {
@@ -114,6 +128,58 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 		return () => activeViewport.removeEventListener("resize", syncComposerChrome);
 	}, []);
 
+	/** Append uploaded worktree paths to the draft so the user can caption and send. */
+	function appendPaths(paths: string[]) {
+		if (!paths.length) return;
+		const joined = paths.join(" ");
+		setText((prev) => {
+			if (!prev) return `${joined} `;
+			return /[\s\n]$/.test(prev) ? `${prev}${joined} ` : `${prev} ${joined} `;
+		});
+	}
+
+	/** Upload picked/pasted files into the worktree uploads dir and insert their paths. */
+	async function attachFiles(files: File[]) {
+		if (!uploadProjectId || files.length === 0) return;
+		setUploading(true);
+		try {
+			const paths = await Promise.all(
+				files.map(async (f) => {
+					try {
+						const uploaded = await uploadDroppedFile(uploadProjectId, f);
+						return uploaded ? uploaded.replace(/ /g, "\\ ") : null;
+					} catch (err) {
+						toast.error(
+							t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }),
+							{ taskId: task?.id },
+						);
+						return null;
+					}
+				}),
+			);
+			appendPaths(paths.filter((p): p is string => Boolean(p)));
+		} finally {
+			setUploading(false);
+		}
+	}
+
+	function onFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
+		const files = Array.from(e.target.files ?? []);
+		// Reset so picking the same file again re-fires onChange.
+		e.target.value = "";
+		void attachFiles(files);
+	}
+
+	// Phone clipboards deliver screenshots as files on the paste event — the
+	// desktop interceptor in TerminalView never sees composer pastes, so handle
+	// them here. Plain-text pastes keep the default textarea behavior.
+	function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+		const files = Array.from(e.clipboardData?.files ?? []);
+		if (!files.length || !uploadProjectId) return;
+		e.preventDefault();
+		void attachFiles(files);
+	}
+
 	function deliver(submit: boolean) {
 		if (!text) return;
 		if (submit) handle.submit(text);
@@ -144,6 +210,38 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 
 	const buttons = (
 		<>
+			{uploadProjectId && (
+				<>
+					<input
+						ref={fileInputRef}
+						type="file"
+						multiple
+						className="hidden"
+						onChange={onFilesPicked}
+						data-testid="terminal-composer-file-input"
+					/>
+					{/* order-first pulls the paperclip left of the textarea in the
+					    collapsed bar (messenger convention); in the expanded editor the
+					    buttons row is a separate flex container where it is first anyway. */}
+					<button
+						type="button"
+						className={`${iconBtn} order-first bg-elevated text-fg-2 disabled:opacity-40`}
+						onMouseDown={keepFocus}
+						onClick={() => fileInputRef.current?.click()}
+						disabled={uploading}
+						aria-label={t("terminal.composerAttach")}
+						title={t("terminal.composerAttach")}
+					>
+						{uploading ? (
+							<div className="w-4 h-4 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+						) : (
+							<span className="text-[1.125rem] leading-none" style={{ fontFamily: NERD_FONT }}>
+								{"\u{F03E2}"}
+							</span>
+						)}
+					</button>
+				</>
+			)}
 			<button
 				type="button"
 				className={`${iconBtn} bg-elevated text-fg-2`}
@@ -209,6 +307,7 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 				autogrow();
 			}}
 			onKeyDown={onKeyDown}
+			onPaste={onPaste}
 			onFocus={handleFocus}
 			onBlur={handleBlur}
 			placeholder={t("terminal.composerPlaceholder")}

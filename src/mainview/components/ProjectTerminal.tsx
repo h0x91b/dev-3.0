@@ -140,7 +140,7 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
 			{touchInput && termHandle && (
 				<div className={rawMode ? "hidden" : "contents"}>
-					<TerminalComposer handle={termHandle} />
+					<TerminalComposer handle={termHandle} projectId={projectId} />
 				</div>
 			)}
 			{touchInput && termHandle && <ExtraKeyBar handle={termHandle} rawMode={rawMode} onToggleRaw={toggleRawMode} />}

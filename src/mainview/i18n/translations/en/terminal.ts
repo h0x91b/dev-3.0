@@ -201,6 +201,7 @@ const terminal = {
 	"terminal.composerExpand": "Expand editor",
 	"terminal.composerCollapse": "Collapse editor",
 	"terminal.composerScheduleLater": "Send later",
+	"terminal.composerAttach": "Attach files",
 	"terminal.rawKeyboard": "Direct keyboard input",
 } as const;
 

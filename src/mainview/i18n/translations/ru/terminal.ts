@@ -209,6 +209,7 @@ const terminal = {
 	"terminal.composerExpand": "Развернуть редактор",
 	"terminal.composerCollapse": "Свернуть редактор",
 	"terminal.composerScheduleLater": "Отправить позже",
+	"terminal.composerAttach": "Прикрепить файлы",
 	"terminal.rawKeyboard": "Прямой ввод с клавиатуры",
 };
 
