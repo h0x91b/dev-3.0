@@ -667,6 +667,85 @@ const BUG_HUNTER_OPENAI_YAML = `interface:
   default_prompt: "Use $dev3-bug-hunter to run a read-only bug hunt with a seeded exploration strategy in this codebase."
 `;
 
+// ---- ask-dev3 skill (feature router / user education) ----
+
+const ASK_DEV3_SKILL_DESCRIPTION =
+	"Ask how something is done in dev3 (dev-3.0). A router over dev3's features and workflows. Use when the user asks 'how do I…', 'can dev3…', or 'what is the right way to…' about tasks, variants, worktrees, diffs and review, PRs, dev servers, remote or mobile access, notifications, or any dev3 workflow. Find the situation that matches and teach the intended flow.";
+
+const ASK_DEV3_SKILL_CONTENT = `---
+name: ask-dev3
+description: "${ASK_DEV3_SKILL_DESCRIPTION}"
+user-invocable: true
+---
+
+# Ask dev3
+
+The user doesn't remember every dev3 feature, so they ask. Find the situation below that matches theirs and teach the intended flow — when and why, not just which button.
+
+A **flow** is a path through dev3's features. Most work travels one **main flow**, and a few **on-ramps** merge onto it. Everything else is standalone, or vocabulary that runs underneath.
+
+## The main flow: idea → shipped task
+
+1. **Capture the idea as a task.** Press ⌘N (or double-click a Kanban column). The description IS the agent's prompt — write it like a brief: goal, constraints, file pointers. Paste screenshots straight into it, add labels inline with \`#\`, pick a non-default base branch if needed.
+   - Too foggy to brief? Create a **Scratch task** — it starts an agent with no description; talk the idea out first, then the conversation becomes the task.
+2. **Branch — one attempt or several?** For ambiguous, risky, or design-heavy work, launch the task with **2–5 variants**: independent agents attack the same brief in parallel, each in its own worktree, blind to the others. Compare and keep the winner (⇧⌘[ / ⇧⌘] cycles variants). Routine work → one variant.
+3. **Launch — dev3 does the setup.** Starting a task creates a git worktree + branch + tmux session and boots the agent with your description. The project's \`setupScript\` installs deps, \`clonePaths\` copy-on-write-clones heavy dirs (node_modules in about a second), and each task gets its own ports so parallel dev servers never collide. (Project not configured yet? → \`/dev3-project-config\`.)
+4. **Don't babysit — let dev3 pull you back.** Hover a card for a live terminal preview. The agent pings you when it matters: attention badges when blocked, toasts and desktop notifications on milestones, the **User questions** column when it needs an answer. Subscribe to any task with watch notifications. Everything running across all projects sits on the **Operations board** (⌘0).
+5. **Review.** *Show Diff* on the card: hide test noise, see only what changed since your last look (snapshots), and leave inline comments — they export back to the agent as a fix list. Turn on **AI Review** so a machine pass (the AI review column) pre-chews the diff before your human pass.
+6. **Ship.** Push & create the PR from the task itself, enable auto-merge, and let the task auto-complete when the PR merges. Completing destroys the worktree — **notes survive** as project memory for future agents.
+
+## On-ramps
+
+A starting situation that generates work, then merges onto the main flow.
+
+- **A bug report arrived** → make it a task with the repro as the description; the fix flows through review and PR like any feature. Don't know where the bug lives? → **bug-hunter swarm**: a multi-variant task where each agent runs \`/dev3-bug-hunter\` with a seeded strategy, so different agents start from different corners of the codebase.
+- **"Review this PR"** → create a **PR review task**: dev3 checks the PR branch out into a worktree and the agent reviews the actual diff — runnable code, not a GitHub-tab skim.
+- **"Continue what we did in that task"** → past conversations are searchable: the agent runs \`dev3 conversations search\` and reads the old task's notes and transcript. This is why notes matter — they are weighted highest in search.
+- **New codebase** → add the project from a folder or clone it from a URL, then run \`/dev3-project-config\` to auto-detect setup/dev/cleanup scripts, ports, and clone paths.
+
+## Away from the keyboard
+
+- **dev3 remote** — the full app served to a browser through a secure tunnel; open it on your phone. Mobile has its own pane pager and message composer, and browser notifications keep pinging you there.
+- **Expose task ports** — share a task's running dev server through a public tunnel URL and click through it from any device.
+- Agents keep working while you are away; dev3 can prevent the machine from sleeping while tasks run.
+
+## Verifying work
+
+- **Dev server per task** — the Dev Server button (or \`dev3 dev-server start\`) runs the project's \`devScript\` inside the task's tmux with that task's ports; N tasks = N side-by-side dev servers.
+- **Ask for visual proof** — agents can push screenshots (\`dev3 show-image\`) and interactive HTML reports (\`dev3 show-artifact\`) straight into the app. Prefer pixels over prose.
+
+## Vocabulary underneath
+
+- **Task** — a Kanban card that is simultaneously the issue, the agent's prompt, and (once started) a worktree + terminal session.
+- **Variant** — one of N parallel attempts at the same task; each has its own agent, branch, and worktree; you keep one.
+- **Worktree** — the task's isolated git checkout under \`~/.dev3.0/worktrees/\`; destroyed when the task completes or is cancelled.
+- **Description vs overview vs notes** — the classic confusion. *Description* = the original brief, written by you: the agent's prompt. *Overview* = the agent-maintained sticky note: current state in one glance. *Notes* = durable findings that outlive the task and feed future agents.
+- **Statuses** — Todo → In progress → User questions → AI review → User review → Completed. Hooks move tasks automatically as the agent works; you normally drag cards only to start, review, or complete. Built-in columns can be renamed, custom columns added — and a custom column can even run its own agent when a task arrives.
+
+## Standalone
+
+Off the main flow entirely.
+
+- **Command palette** (⇧⌘P) and **go-to-project** (⌘K) — jump anywhere; ⌥Tab cycles recent tasks; \`/\` focuses search, which understands filter tokens; ⌘/ shows every shortcut.
+- **Stats** — productivity and token-cost dashboards across projects.
+- **Automations** — recurring scheduled agent runs on a cron.
+- **Multi-window** — a second window (⇧⌘N) for a second project on another monitor.
+- **\`dev3 doctor\`** — first stop when something environmental is off.
+
+## Sibling skills
+
+- **\`/dev3\`** — the task lifecycle protocol every managed agent follows (loaded automatically in worktrees).
+- **\`/dev3-project-config\`** — analyze a repo and write its \`.dev3/config.json\`.
+- **\`/dev3-tmux\`** — full tmux reference: panes, windows, capturing output.
+- **\`/dev3-bug-hunter\`** — seeded, review-only bug hunting; shines in multi-variant swarms.
+`;
+
+const ASK_DEV3_OPENAI_YAML = `interface:
+  display_name: "Ask dev3"
+  short_description: "Ask which dev3 feature or flow fits your situation"
+  default_prompt: "Use $ask-dev3 to learn how something is done in dev3 and which flow fits the situation."
+`;
+
 export function getProjectConfigSkillContent(): string {
 	return PROJECT_CONFIG_SKILL_BODY;
 }
@@ -677,6 +756,10 @@ export function getTmuxSkillContent(): string {
 
 export function getBugHunterSkillContent(): string {
 	return BUG_HUNTER_SKILL_CONTENT;
+}
+
+export function getAskDev3SkillContent(): string {
+	return ASK_DEV3_SKILL_CONTENT;
 }
 
 export function getClaudeSkillContent(): string {
@@ -724,6 +807,15 @@ const BUG_HUNTER_SKILL_DIRS = [
 	".config/opencode/skills/dev3-bug-hunter",
 ];
 
+const ASK_DEV3_SKILL_DIRS = [
+	".claude/skills/ask-dev3",
+	".cursor/skills/ask-dev3",
+	".agents/skills/ask-dev3",
+	".codex/skills/ask-dev3",
+	".opencode/skills/ask-dev3",
+	".config/opencode/skills/ask-dev3",
+];
+
 const SHARED_SKILL_OPENAI_CONFIGS = [
 	{
 		dir: ".agents/skills/dev3",
@@ -740,6 +832,10 @@ const SHARED_SKILL_OPENAI_CONFIGS = [
 	{
 		dir: ".agents/skills/dev3-bug-hunter",
 		content: BUG_HUNTER_OPENAI_YAML,
+	},
+	{
+		dir: ".agents/skills/ask-dev3",
+		content: ASK_DEV3_OPENAI_YAML,
 	},
 ];
 
@@ -1077,6 +1173,21 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 			log.info("Bug Hunter skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install Bug Hunter skill (non-fatal)", {
+				path: skillFile,
+				error: String(err),
+			});
+		}
+	}
+
+	for (const dir of ASK_DEV3_SKILL_DIRS) {
+		const skillDir = `${home}/${dir}`;
+		const skillFile = `${skillDir}/SKILL.md`;
+		try {
+			mkdirSync(skillDir, { recursive: true });
+			writeFileSync(skillFile, ASK_DEV3_SKILL_CONTENT, "utf-8");
+			log.info("ask-dev3 skill installed", { path: skillFile });
+		} catch (err) {
+			log.warn("Failed to install ask-dev3 skill (non-fatal)", {
 				path: skillFile,
 				error: String(err),
 			});

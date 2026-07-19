@@ -72,6 +72,10 @@ describe("installAgentSkills", () => {
 		expect(existsSync(join(tempHome, ".agents/skills/dev3-bug-hunter/agents/openai.yaml"))).toBe(
 			true,
 		);
+		expect(existsSync(join(tempHome, ".agents/skills/ask-dev3/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".claude/skills/ask-dev3/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".codex/skills/ask-dev3/SKILL.md"))).toBe(true);
+		expect(existsSync(join(tempHome, ".agents/skills/ask-dev3/agents/openai.yaml"))).toBe(true);
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3"))).toBe(false);
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3-project-config"))).toBe(false);
 		expect(existsSync(join(tempHome, ".gemini/skills/dev3-tmux"))).toBe(false);

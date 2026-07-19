@@ -1,0 +1,1 @@
+Added the ask-dev3 agent skill — a router over dev3's features and workflows, auto-installed into every supported agent's skill directory. When the user asks "how do I do X in dev3", the agent loads the skill's map (main flow, on-ramps, vocabulary, standalone features) and teaches the intended flow instead of guessing.
