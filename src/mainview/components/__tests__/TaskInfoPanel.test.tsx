@@ -1890,6 +1890,57 @@ describe("TaskInfoPanel", () => {
 			expect(await screen.findAllByLabelText("4 unresolved comments")).not.toHaveLength(0);
 		});
 
+		it("does not leak the previous task's pushed PR status after switching tasks", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				prNumber: 42,
+				prUrl: "https://github.com/test/repo/pull/42",
+			});
+
+			const dispatch = vi.fn();
+			const navigate = vi.fn();
+			let view!: ReturnType<typeof renderPanel>;
+			await act(async () => {
+				view = renderPanel(makeTask(), { dispatch, navigate });
+			});
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:taskPrStatus", {
+					detail: {
+						projectId: "p1",
+						taskId: "t1",
+						prNumber: 42,
+						prUrl: "https://github.com/test/repo/pull/42",
+						ciStatus: "pending",
+						reviewState: null,
+						unresolvedCount: 4,
+						mergeState: { mergeable: "MERGEABLE", status: "CLEAN" },
+						checks: [],
+						prTitle: "Status surface",
+						isDraft: false,
+					},
+				}));
+			});
+			expect(screen.getAllByText(/PR #42/).length).toBeGreaterThanOrEqual(1);
+
+			// Same panel instance re-rendered for another task without a PR — the
+			// pushed status from t1 must not keep rendering on t2.
+			mockedApi.request.getBranchStatus.mockResolvedValue(defaultBranchStatus);
+			await act(async () => {
+				view.rerender(
+					<I18nProvider>
+						<TaskInfoPanel
+							task={makeTask({ id: "t2", seq: 43, worktreePath: "/tmp/wt/t2", branchName: "dev3/task-t2" })}
+							project={project}
+							dispatch={dispatch}
+							navigate={navigate}
+						/>
+					</I18nProvider>,
+				);
+			});
+
+			expect(screen.queryByText(/PR #42/)).not.toBeInTheDocument();
+		});
+
 		it("refreshes rich PR status when opening a task with an existing PR", async () => {
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
