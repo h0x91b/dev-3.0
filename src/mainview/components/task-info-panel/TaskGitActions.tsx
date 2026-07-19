@@ -127,6 +127,15 @@ export default function TaskGitActions({
 		isTaskActive,
 	});
 
+	// Switching tasks reuses this component instance (no `key={task.id}`), and
+	// `rpc:taskPrStatus` pushes arrive only for the task being viewed — so a
+	// status pushed while viewing the previous task would keep rendering its PR
+	// badge on the next task forever (a task without its own PR never gets an
+	// overwriting push). Clear it eagerly on every task switch.
+	useEffect(() => {
+		setPushedPRStatus(null);
+	}, [task.id]);
+
 	useEffect(() => {
 		function onPrStatus(event: Event) {
 			const detail = (event as CustomEvent).detail as {

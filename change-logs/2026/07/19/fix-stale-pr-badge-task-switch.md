@@ -1,0 +1,1 @@
+Fixed the task header showing the previously viewed task's PR badge (number, unresolved comment count, CI/review popover) after switching tasks. The git bar component is reused across task switches and kept the last pushed PR status in memory, so a task without its own PR displayed the stale badge indefinitely; the pushed status is now cleared on every task switch.
