@@ -738,6 +738,17 @@ Off the main flow entirely.
 - **\`/dev3-project-config\`** — analyze a repo and write its \`.dev3/config.json\`.
 - **\`/dev3-tmux\`** — full tmux reference: panes, windows, capturing output.
 - **\`/dev3-bug-hunter\`** — seeded, review-only bug hunting; shines in multi-variant swarms.
+
+## When the map is not enough — read the source
+
+dev3 is open source: **https://github.com/h0x91b/dev-3.0**. If the answer isn't on this map, don't guess — go read:
+
+- **Decision records** — \`decisions/NNN-short-slug.md\` — the *why* behind non-obvious behavior, workarounds, and trade-offs. Best first stop for "why does dev3 do X this way?".
+- **Changelogs** — \`change-logs/YYYY/MM/DD/*.md\` — one plain-text entry per shipped change. Answers "when did X appear?" and "what changed recently?".
+- **Product & architecture docs** — \`concept.md\` (product concept + status tracker), \`AGENTS.md\` (architecture, RPC, data layout), \`docs/ux/\` (UX manifest), \`docs/agents/\` (issue tracker, triage, domain docs), \`docs/cli-exit-codes.md\`, \`agent-support-matrix.md\` (per-agent feature differences).
+- **Code** — \`src/bun/\` (main process + CLI backend), \`src/mainview/\` (React UI), \`src/cli/\` (the \`dev3\` CLI), \`src/shared/types.ts\` (the data model).
+
+How to reach it: if this machine has a local checkout (e.g. a \`dev-3.0\` project on the dev3 board — check \`git worktree list\` or the projects list), read files directly; otherwise fetch from GitHub (\`gh api\`, raw.githubusercontent.com, or a web fetch). Cite what you found — file and section — rather than paraphrasing from memory.
 `;
 
 const ASK_DEV3_OPENAI_YAML = `interface:
