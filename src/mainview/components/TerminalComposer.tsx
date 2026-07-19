@@ -1,11 +1,18 @@
-import { useEffect, useRef, useState, type Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { TerminalHandle } from "../TerminalView";
 import type { Project, Task } from "../../shared/types";
 import { ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction } from "../state";
 import { useT } from "../i18n";
+import { useAttachUpload } from "../hooks/useAttachUpload";
 import ScheduleMessageModal from "./ScheduleMessageModal";
+
+/** Imperative surface for the host (ExtraKeyBar attach routes paths into the draft). */
+export interface TerminalComposerApi {
+	/** Append ready-to-insert (already escaped) paths to the draft. */
+	appendPaths: (paths: string[]) => void;
+}
 
 interface TerminalComposerProps {
 	handle: TerminalHandle;
@@ -18,6 +25,14 @@ interface TerminalComposerProps {
 	task?: Task;
 	project?: Project;
 	dispatch?: Dispatch<AppAction>;
+	/**
+	 * Enables file-paste uploads when no full `project` is available (the
+	 * project-level terminal passes only the id). Uploads land in the project's
+	 * worktree uploads dir via `uploadFileBase64`.
+	 */
+	projectId?: string;
+	/** Populated with the composer's imperative API while mounted. */
+	apiRef?: RefObject<TerminalComposerApi | null>;
 }
 
 /** Collapsed autogrow ceiling — roughly 4 lines of 16px text. */
@@ -38,7 +53,7 @@ const NERD_FONT = "'JetBrainsMono Nerd Font Mono'";
  * non-essential chrome (see index.css) so the terminal tail stays visible
  * above the keyboard.
  */
-function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerProps) {
+function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }: TerminalComposerProps) {
 	const t = useT();
 	const [text, setText] = useState("");
 	const [expanded, setExpanded] = useState(false);
@@ -48,6 +63,10 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 
 	// "Send later" is only reachable here when a live-agent task context exists.
 	const canScheduleLater = !!(task && project && dispatch && ACTIVE_STATUSES.includes(task.status) && task.worktreePath);
+
+	// Attachments need a project to resolve the worktree uploads dir.
+	const uploadProjectId = projectId ?? project?.id;
+	const { uploading, attach } = useAttachUpload(uploadProjectId, task?.id);
 
 	function autogrow() {
 		const ta = taRef.current;
@@ -60,12 +79,13 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 		ta.style.height = `${Math.min(ta.scrollHeight, MAX_COLLAPSED_HEIGHT_PX)}px`;
 	}
 
-	// Re-measure when the expanded state flips (the textarea element persists).
+	// Re-measure when the text changes (typing or programmatic path insertion)
+	// or the expanded state flips (the textarea element persists).
 	useEffect(() => {
 		autogrow();
 		// autogrow reads the latest `expanded` from the closure of this render.
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [expanded]);
+	}, [text, expanded]);
 
 	// Never leave the chrome collapsed behind after unmount.
 	useEffect(() => () => {
@@ -114,6 +134,40 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 		return () => activeViewport.removeEventListener("resize", syncComposerChrome);
 	}, []);
 
+	/** Append ready-to-insert (already escaped) paths to the draft so the user can caption and send. */
+	function appendPaths(paths: string[]) {
+		if (!paths.length) return;
+		const joined = paths.join(" ");
+		setText((prev) => {
+			if (!prev) return `${joined} `;
+			return /[\s\n]$/.test(prev) ? `${prev}${joined} ` : `${prev} ${joined} `;
+		});
+	}
+
+	// Expose the draft API to the host — ExtraKeyBar's attach button lives a row
+	// below this component and routes uploaded paths here in compose mode.
+	useEffect(() => {
+		if (!apiRef) return;
+		apiRef.current = { appendPaths };
+		return () => {
+			apiRef.current = null;
+		};
+		// appendPaths is stable in behavior (setState updater only).
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [apiRef]);
+
+	// Phone clipboards deliver screenshots as files on the paste event — the
+	// desktop interceptor in TerminalView never sees composer pastes, so handle
+	// them here. Plain-text pastes keep the default textarea behavior.
+	function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+		const files = Array.from(e.clipboardData?.files ?? []);
+		if (!files.length || !uploadProjectId) return;
+		e.preventDefault();
+		void attach(files).then((paths) => {
+			appendPaths(paths.map((p) => p.replace(/ /g, "\\ ")));
+		});
+	}
+
 	function deliver(submit: boolean) {
 		if (!text) return;
 		if (submit) handle.submit(text);
@@ -144,6 +198,12 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 
 	const buttons = (
 		<>
+			{uploading && (
+				<div
+					className="flex-shrink-0 self-center w-4 h-4 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin"
+					data-testid="terminal-composer-uploading"
+				/>
+			)}
 			<button
 				type="button"
 				className={`${iconBtn} bg-elevated text-fg-2`}
@@ -209,6 +269,7 @@ function TerminalComposer({ handle, task, project, dispatch }: TerminalComposerP
 				autogrow();
 			}}
 			onKeyDown={onKeyDown}
+			onPaste={onPaste}
 			onFocus={handleFocus}
 			onBlur={handleBlur}
 			placeholder={t("terminal.composerPlaceholder")}

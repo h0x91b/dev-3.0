@@ -10,7 +10,7 @@ import type { TerminalHandle } from "../TerminalView";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskPreparingView from "./TaskPreparingView";
 import ExtraKeyBar from "./ExtraKeyBar";
-import TerminalComposer from "./TerminalComposer";
+import TerminalComposer, { type TerminalComposerApi } from "./TerminalComposer";
 import MobilePaneCarousel from "./MobilePaneCarousel";
 import MobileWindowCarousel from "./MobileWindowCarousel";
 import PaneZoomBadge from "./PaneZoomBadge";
@@ -44,6 +44,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// toggle on ExtraKeyBar flips to raw mode (direct typing) and back.
 	const touchInput = !isElectrobun && isTouchDevice;
 	const [rawMode, setRawMode] = useState(false);
+	const composerApiRef = useRef<TerminalComposerApi | null>(null);
 	// On a narrow viewport we keep the tmux window zoomed to one pane and offer a
 	// pager to move between panes (instead of a cramped multi-pane split).
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -315,6 +316,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		});
 	}
 
+	// ExtraKeyBar attach → compose mode drops paths into the composer draft
+	// (visible, captionable); raw mode pastes them straight onto the prompt.
+	function handleAttachPaths(paths: string[]) {
+		const escaped = paths.map((p) => p.replace(/ /g, "\\ "));
+		if (!rawMode && composerApiRef.current) composerApiRef.current.appendPaths(escaped);
+		else termHandle?.paste(`${escaped.join(" ")} `);
+	}
+
 	const terminalArea = ptyUrl ? (
 		<TerminalView
 			ptyUrl={ptyUrl}
@@ -356,10 +365,19 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
 			{touchInput && termHandle && (
 				<div className={rawMode ? "hidden" : "contents"}>
-					<TerminalComposer handle={termHandle} task={task} project={project} dispatch={dispatch} />
+					<TerminalComposer handle={termHandle} task={task} project={project} dispatch={dispatch} apiRef={composerApiRef} />
 				</div>
 			)}
-			{touchInput && termHandle && <ExtraKeyBar handle={termHandle} rawMode={rawMode} onToggleRaw={toggleRawMode} />}
+			{touchInput && termHandle && (
+				<ExtraKeyBar
+					handle={termHandle}
+					rawMode={rawMode}
+					onToggleRaw={toggleRawMode}
+					attachProjectId={projectId}
+					attachTaskId={taskId}
+					onAttachPaths={handleAttachPaths}
+				/>
+			)}
 		</div>
 	);
 }

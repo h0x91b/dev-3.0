@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { api } from "../rpc";
 import { isLargeTextPaste, uploadPastedText } from "../utils/uploadPastedText";
+import { useAttachUpload } from "./useAttachUpload";
 
 type PasteKind = "image" | "text" | null;
 
@@ -11,6 +12,7 @@ export function useClipboardPaste(
 	const [isPasting, setIsPasting] = useState(false);
 	const [pasteKind, setPasteKind] = useState<PasteKind>(null);
 	const mountedRef = useRef(true);
+	const { uploading: isUploadingFiles, attach } = useAttachUpload(projectId);
 
 	useEffect(() => {
 		mountedRef.current = true;
@@ -19,6 +21,21 @@ export function useClipboardPaste(
 
 	const handlePaste = useCallback(
 		(e: React.ClipboardEvent) => {
+			// Files travel inside the paste event itself (phone clipboards, browser
+			// mode) — upload them directly. The RPC fallback below reads the app
+			// host's clipboard, which in remote/browser mode is NOT the device the
+			// user pasted from.
+			const files = Array.from(e.clipboardData?.files ?? []);
+			if (files.length > 0 && projectId) {
+				e.preventDefault();
+				setPasteKind("image");
+				void attach(files).then((paths) => {
+					paths.forEach(onPathPasted);
+					if (mountedRef.current) setPasteKind(null);
+				});
+				return;
+			}
+
 			const items = e.clipboardData?.items;
 
 			let hasImage = false;
@@ -72,8 +89,8 @@ export function useClipboardPaste(
 				setPasteKind(null);
 			});
 		},
-		[projectId, onPathPasted],
+		[projectId, onPathPasted, attach],
 	);
 
-	return { handlePaste, isPasting, pasteKind };
+	return { handlePaste, isPasting: isPasting || isUploadingFiles, pasteKind };
 }

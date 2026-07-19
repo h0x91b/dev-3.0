@@ -203,7 +203,7 @@ const terminal = {
 	"fileDrop.uploadFailed": "Ошибка загрузки файла: {error}",
 
 	// Touch composer (mobile input mode)
-	"terminal.composerPlaceholder": "Введите промпт или команду…",
+	"terminal.composerPlaceholder": "Введите промпт…",
 	"terminal.composerSend": "Отправить сообщение",
 	"terminal.composerInsert": "Вставить без Enter",
 	"terminal.composerExpand": "Развернуть редактор",

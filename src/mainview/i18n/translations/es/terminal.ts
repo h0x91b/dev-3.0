@@ -195,7 +195,7 @@ const terminal = {
 	"fileDrop.uploadFailed": "Error al subir el archivo: {error}",
 
 	// Touch composer (mobile input mode)
-	"terminal.composerPlaceholder": "Escribe un prompt o comando…",
+	"terminal.composerPlaceholder": "Escribe un prompt…",
 	"terminal.composerSend": "Enviar mensaje",
 	"terminal.composerInsert": "Insertar sin Enter",
 	"terminal.composerExpand": "Expandir editor",
