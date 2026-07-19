@@ -2,6 +2,7 @@ import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, Tas
 export { extractRepoName } from "../shared/types";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { createLogger } from "./logger";
+import { CloneProgressParser } from "./clone-progress";
 import { reportCurrentPreparationStage } from "./preparation-runtime";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
@@ -1945,15 +1946,39 @@ export async function getTaskDiff(
 	};
 }
 
+/** How many output lines a clone progress update carries to the UI. */
+const CLONE_PROGRESS_LINES = 4;
+
 export async function cloneRepo(
 	url: string,
 	targetDir: string,
+	onProgress?: (lines: string[]) => void,
 ): Promise<{ ok: boolean; path: string; error?: string }> {
 	log.info("Cloning repository", { url, targetDir });
-	const result = await run(["git", "clone", url, targetDir], process.cwd());
-	if (!result.ok) {
-		log.error("Clone failed", { url, stderr: result.stderr });
-		return { ok: false, path: targetDir, error: result.stderr };
+	// `run()` buffers output until exit, so it can't surface live progress.
+	// `--progress` forces git to emit progress even though stderr is a pipe
+	// (it normally requires a TTY).
+	const proc = spawn(["git", "clone", "--progress", url, targetDir], {
+		cwd: process.cwd(),
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const parser = new CloneProgressParser();
+	const stdoutPromise = new Response(proc.stdout).text().catch(() => "");
+	const stderrPromise = (async () => {
+		const decoder = new TextDecoder();
+		for await (const chunk of proc.stderr as unknown as AsyncIterable<Uint8Array>) {
+			parser.feed(decoder.decode(chunk, { stream: true }));
+			onProgress?.(parser.lines(CLONE_PROGRESS_LINES));
+		}
+		parser.feed(decoder.decode());
+	})().catch(() => {});
+	const [code] = await Promise.all([proc.exited, stderrPromise, stdoutPromise]);
+	if (code !== 0) {
+		// The raw stderr is `\r`-rewrite spam; report the terminal-style tail.
+		const error = parser.lines(8).join("\n") || `git clone exited with code ${code}`;
+		log.error("Clone failed", { url, stderr: error });
+		return { ok: false, path: targetDir, error };
 	}
 	log.info("Repository cloned successfully", { url, targetDir });
 	return { ok: true, path: targetDir };

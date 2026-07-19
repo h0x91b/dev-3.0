@@ -2393,7 +2393,7 @@ export type AppRPCSchema = {
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
 			cloneAndAddProject: {
-				params: { url: string; baseDir: string; repoName?: string };
+				params: { url: string; baseDir: string; repoName?: string; progressId?: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
 			createDirectory: {
@@ -3241,6 +3241,12 @@ export type AppRPCSchema = {
 			 */
 			agentRateLimitsUpdated: AgentRateLimitsReport;
 			updateDownloadProgress: { status: string; progress?: number };
+			/**
+			 * Live `git clone` output for the Add Project modal — the last few
+			 * stderr lines, terminal-style (`\r` rewrites collapsed). Correlated
+			 * by the `progressId` the renderer passed to `cloneAndAddProject`.
+			 */
+			cloneProgress: { progressId: string; lines: string[] };
 			/** Emitted when a column-agent launch fails (custom columns have no automatic fallback). */
 			columnAgentFailed: { taskId: string; projectId: string; columnName: string; error: string };
 			/**

@@ -1317,8 +1317,51 @@ describe("handlers.cloneAndAddProject", () => {
 		expect(git.cloneRepo).toHaveBeenCalledWith(
 			"https://github.com/user/my-repo.git",
 			"/base/my-repo",
+			undefined,
 		);
 		expect(data.addProject).toHaveBeenCalledWith("/base/my-repo", "my-repo");
+	});
+
+	it("pushes sampled cloneProgress messages when progressId is provided", async () => {
+		vi.useFakeTimers();
+		try {
+			const project = makeProject({ path: "/base/my-repo", name: "my-repo" });
+			vi.mocked(existsSync).mockReturnValue(false);
+			let resolveClone!: (v: { ok: boolean; path: string }) => void;
+			vi.mocked(git.cloneRepo).mockImplementation((_url, _dir, onProgress) => {
+				onProgress?.(["Cloning into 'my-repo'...", "Receiving objects: 50% (5/10)"]);
+				return new Promise((resolve) => { resolveClone = resolve; });
+			});
+			vi.mocked(git.isGitRepo).mockResolvedValue(true);
+			vi.mocked(data.addProject).mockResolvedValue(project);
+			vi.mocked(git.getDefaultBranch).mockResolvedValue("main");
+			vi.mocked(data.updateProject).mockResolvedValue(project);
+
+			const push = vi.fn();
+			setPushMessage(push);
+
+			const promise = handlers.cloneAndAddProject({
+				url: "https://github.com/user/my-repo.git",
+				baseDir: "/base",
+				repoName: "my-repo",
+				progressId: "pid-1",
+			});
+
+			await vi.advanceTimersByTimeAsync(200);
+			expect(push).toHaveBeenCalledWith("cloneProgress", {
+				progressId: "pid-1",
+				lines: ["Cloning into 'my-repo'...", "Receiving objects: 50% (5/10)"],
+			});
+
+			// Unchanged output is not re-pushed on the next tick.
+			await vi.advanceTimersByTimeAsync(200);
+			expect(push).toHaveBeenCalledTimes(1);
+
+			resolveClone({ ok: true, path: "/base/my-repo" });
+			await expect(promise).resolves.toEqual({ ok: true, project });
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("returns error when clone fails", async () => {

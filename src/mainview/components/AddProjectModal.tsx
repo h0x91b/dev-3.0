@@ -28,7 +28,20 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 	const [browsing, setBrowsing] = useState(false);
 	const [initializing, setInitializing] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [cloneOutput, setCloneOutput] = useState<string[]>([]);
+	const cloneProgressIdRef = useRef<string | null>(null);
 	const urlInputRef = useRef<HTMLInputElement>(null);
+
+	useEffect(() => {
+		function onCloneProgress(e: Event) {
+			const detail = (e as CustomEvent).detail as { progressId: string; lines: string[] };
+			if (detail.progressId === cloneProgressIdRef.current) {
+				setCloneOutput(detail.lines);
+			}
+		}
+		window.addEventListener("rpc:cloneProgress", onCloneProgress);
+		return () => window.removeEventListener("rpc:cloneProgress", onCloneProgress);
+	}, []);
 
 	useEffect(() => {
 		api.request.getGlobalSettings().then((settings) => {
@@ -148,11 +161,15 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 		if (!gitUrl.trim() || !cloneBaseDir || cloning) return;
 		setCloning(true);
 		setError(null);
+		setCloneOutput([]);
+		const progressId = crypto.randomUUID();
+		cloneProgressIdRef.current = progressId;
 		try {
 			const result = await api.request.cloneAndAddProject({
 				url: gitUrl.trim(),
 				baseDir: cloneBaseDir,
 				repoName: repoName.trim() || undefined,
+				progressId,
 			});
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
@@ -164,6 +181,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 		} catch (err) {
 			setError(String(err));
 		}
+		cloneProgressIdRef.current = null;
 		setCloning(false);
 	}
 
@@ -368,6 +386,19 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 						{targetPath && (
 							<div className="text-fg-3 text-xs font-mono">
 								{t("addProject.targetPath")} {targetPath}
+							</div>
+						)}
+
+						{/* Live clone output (last lines of `git clone --progress`) */}
+						{cloning && (
+							<div
+								role="status"
+								aria-live="polite"
+								className="bg-raised border border-edge rounded-xl px-3 py-2 font-mono text-xs text-fg-3 leading-5 h-24 overflow-hidden"
+							>
+								{(cloneOutput.length > 0 ? cloneOutput : [t("addProject.cloning")]).map((line, i) => (
+									<div key={i} className="truncate">{line}</div>
+								))}
 							</div>
 						)}
 					</div>

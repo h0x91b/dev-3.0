@@ -17,7 +17,7 @@ import { DEV3_HOME } from "../paths";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
-import { getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground, setTerminalFocus } from "./shared";
+import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground, setTerminalFocus } from "./shared";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
 import { loadSharedArtifactContent, loadSharedArtifactDownload } from "../shared-artifacts";
 
@@ -309,7 +309,10 @@ async function addVirtualProject(params: { name: string }): Promise<{ ok: true; 
 	}
 }
 
-async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+/** How often clone output updates are pushed to the renderer. */
+const CLONE_PROGRESS_PUSH_INTERVAL_MS = 150;
+
+async function cloneAndAddProject(params: { url: string; baseDir: string; repoName?: string; progressId?: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
 	log.info("→ cloneAndAddProject", params);
 	try {
 		const name = params.repoName || extractRepoName(params.url);
@@ -324,9 +327,33 @@ async function cloneAndAddProject(params: { url: string; baseDir: string; repoNa
 			return { ok: false, error: `Directory already exists: ${targetDir}` };
 		}
 
-		const cloneResult = await git.cloneRepo(params.url, targetDir);
-		if (!cloneResult.ok) {
-			return { ok: false, error: `Clone failed: ${cloneResult.error}` };
+		// Git rewrites progress many times a second; sample on an interval
+		// instead of pushing every stderr chunk over the RPC bridge.
+		const pushMessage = getPushMessage();
+		const progressId = params.progressId;
+		let latestLines: string[] = [];
+		let sentKey = "";
+		const pushLatest = () => {
+			const key = latestLines.join("\n");
+			if (key === sentKey) return;
+			sentKey = key;
+			pushMessage!("cloneProgress", { progressId, lines: latestLines });
+		};
+		const progressTimer = progressId && pushMessage
+			? setInterval(pushLatest, CLONE_PROGRESS_PUSH_INTERVAL_MS)
+			: null;
+		try {
+			const cloneResult = await git.cloneRepo(
+				params.url,
+				targetDir,
+				progressTimer ? (lines) => { latestLines = lines; } : undefined,
+			);
+			if (progressTimer) pushLatest();
+			if (!cloneResult.ok) {
+				return { ok: false, error: `Clone failed: ${cloneResult.error}` };
+			}
+		} finally {
+			if (progressTimer) clearInterval(progressTimer);
 		}
 
 		return addProjectImpl({ path: targetDir, name });

@@ -219,6 +219,7 @@ describe("AddProjectModal", () => {
 			url: "https://github.com/user/my-repo.git",
 			baseDir: "/base",
 			repoName: undefined,
+			progressId: expect.any(String),
 		});
 		expect(dispatch).toHaveBeenCalledWith({
 			type: "addProject",
@@ -252,6 +253,76 @@ describe("AddProjectModal", () => {
 		await user.click(screen.getByText("Clone"));
 
 		expect(screen.getByText("fatal: repo not found")).toBeInTheDocument();
+	});
+
+	it("shows live clone output pushed via rpc:cloneProgress while cloning", async () => {
+		const user = userEvent.setup();
+
+		mockedApi.request.getGlobalSettings.mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			cloneBaseDirectory: "/base",
+		});
+		let resolveClone!: (v: any) => void;
+		mockedApi.request.cloneAndAddProject.mockImplementation(
+			() => new Promise((resolve) => { resolveClone = resolve; }),
+		);
+
+		renderModal();
+		await user.click(screen.getByText("Clone from URL"));
+		await user.type(
+			screen.getByPlaceholderText("https://github.com/user/repo.git"),
+			"https://github.com/user/my-repo.git",
+		);
+		await user.click(screen.getByText("Clone"));
+
+		// Placeholder until the first progress push arrives
+		expect(screen.getByRole("status")).toHaveTextContent("Cloning...");
+
+		const progressId = vi.mocked(mockedApi.request.cloneAndAddProject).mock.calls[0][0].progressId;
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:cloneProgress", {
+				detail: { progressId, lines: ["Cloning into 'my-repo'...", "Receiving objects: 42% (10/24)"] },
+			}));
+		});
+		expect(screen.getByText("Receiving objects: 42% (10/24)")).toBeInTheDocument();
+
+		await act(async () => { resolveClone({ ok: true, project: mockProject }); });
+	});
+
+	it("ignores rpc:cloneProgress events with a foreign progressId", async () => {
+		const user = userEvent.setup();
+
+		mockedApi.request.getGlobalSettings.mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			cloneBaseDirectory: "/base",
+		});
+		let resolveClone!: (v: any) => void;
+		mockedApi.request.cloneAndAddProject.mockImplementation(
+			() => new Promise((resolve) => { resolveClone = resolve; }),
+		);
+
+		renderModal();
+		await user.click(screen.getByText("Clone from URL"));
+		await user.type(
+			screen.getByPlaceholderText("https://github.com/user/repo.git"),
+			"https://github.com/user/my-repo.git",
+		);
+		await user.click(screen.getByText("Clone"));
+
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:cloneProgress", {
+				detail: { progressId: "someone-else", lines: ["should not appear"] },
+			}));
+		});
+		expect(screen.queryByText("should not appear")).not.toBeInTheDocument();
+
+		await act(async () => { resolveClone({ ok: true, project: mockProject }); });
 	});
 
 	it("calls onClose when Cancel is clicked", async () => {
