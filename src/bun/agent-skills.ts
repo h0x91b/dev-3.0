@@ -680,57 +680,69 @@ user-invocable: true
 
 # Ask dev3
 
-The user doesn't remember every dev3 feature, so they ask. Find the situation below that matches theirs and teach the intended flow — when and why, not just which button.
+The user doesn't remember every dev3 feature, so they ask. Find the situation below that matches theirs and teach the intended flow — the *when* and *why*, not just which button. dev3 is GUI-first: explain by screens and buttons, and reach for the \`dev3\` CLI only where it is genuinely the better path (scripting, or something with no UI).
+
+**How to answer.** Answer from this map first; it covers the common questions. If the map is thin, the question is a "why", or you risk being wrong, read the source (see the last section) rather than guessing. After teaching, **offer to do it** ("want me to set this up?") — but never force the action. For "something is broken", only point to where to look (\`dev3 doctor\`, logs, the relevant decision record) — do not launch into a deep diagnosis yourself; that is what \`/diagnosing-bugs\` is for.
 
 A **flow** is a path through dev3's features. Most work travels one **main flow**, and a few **on-ramps** merge onto it. Everything else is standalone, or vocabulary that runs underneath.
 
 ## The main flow: idea → shipped task
 
-1. **Capture the idea as a task.** Press ⌘N (or double-click a Kanban column). The description IS the agent's prompt — write it like a brief: goal, constraints, file pointers. Paste screenshots straight into it, add labels inline with \`#\`, pick a non-default base branch if needed.
-   - Too foggy to brief? Create a **Scratch task** — it starts an agent with no description; talk the idea out first, then the conversation becomes the task.
-2. **Branch — one attempt or several?** For ambiguous, risky, or design-heavy work, launch the task with **2–5 variants**: independent agents attack the same brief in parallel, each in its own worktree, blind to the others. Compare and keep the winner (⇧⌘[ / ⇧⌘] cycles variants). Routine work → one variant.
-3. **Launch — dev3 does the setup.** Starting a task creates a git worktree + branch + tmux session and boots the agent with your description. The project's \`setupScript\` installs deps, \`clonePaths\` copy-on-write-clones heavy dirs (node_modules in about a second), and each task gets its own ports so parallel dev servers never collide. (Project not configured yet? → \`/dev3-project-config\`.)
-4. **Don't babysit — let dev3 pull you back.** Hover a card for a live terminal preview. The agent pings you when it matters: attention badges when blocked, toasts and desktop notifications on milestones, the **User questions** column when it needs an answer. Subscribe to any task with watch notifications. Everything running across all projects sits on the **Operations board** (⌘0).
-5. **Review.** *Show Diff* on the card: hide test noise, see only what changed since your last look (snapshots), and leave inline comments — they export back to the agent as a fix list. Turn on **AI Review** so a machine pass (the AI review column) pre-chews the diff before your human pass.
-6. **Ship.** Push & create the PR from the task itself, enable auto-merge, and let the task auto-complete when the PR merges. Completing destroys the worktree — **notes survive** as project memory for future agents.
+1. **Start working on something → create a task.** Press ⌘N or double-click a Kanban column. The task card *is* the unit of work: the issue, the agent's prompt, and (once started) a worktree + terminal. Too foggy to brief? Create a **Scratch task** — it starts an agent with no description so you can talk the idea out first; the conversation then becomes the task.
+2. **What to put in the description → treat it as the agent's prompt.** The description is fed to the agent verbatim, so write it like a brief: the goal, the constraints, pointers to the files involved. Paste screenshots straight in, add labels inline with \`#\`, and pick a non-default base branch if the work should branch off something other than main.
+3. **One attempt or several → variants.** For ambiguous, risky, or design-heavy work, launch the task with **2–5 variants**: independent agents attack the same brief in parallel, each in its own worktree, blind to the others. Compare the results and keep the winner (⇧⌘[ / ⇧⌘] cycle between variants). Routine work → a single variant.
+4. **Launch — dev3 does the setup for you.** Starting a task creates a git worktree + branch + tmux session and boots the agent with your description. The project's \`setupScript\` installs deps, \`clonePaths\` copy-on-write-clone heavy dirs (node_modules in about a second), and each task gets its own ports so parallel dev servers never collide. (Project not configured yet? → \`/dev3-project-config\`.)
+5. **See what the agent is doing → don't babysit, glance.** Hover a card for a live terminal preview; the **Operations board** (⌘0) shows everything running across all projects at once.
+6. **How the agent reaches you → it pings, you don't poll.** It raises an attention badge when blocked, fires toasts / desktop notifications on milestones, and moves the task into the **User questions** column when it needs an answer. Subscribe to any task for watch notifications.
+7. **Review the changes → Show Diff.** On the card, *Show Diff* lets you hide test noise, see only what changed since your last look (snapshots), and leave inline comments — those export back to the agent as a fix list. Turn on **AI Review** so a machine pass (the AI review column) pre-chews the diff before your human pass.
+8. **Get it shipped → PR from the task.** Push & create the PR straight from the task, enable auto-merge, and let the task auto-complete when the PR merges.
+9. **What completing does → the worktree is destroyed, notes survive.** Finishing a task removes its worktree and branch checkout, but its **notes** persist as project memory that future agents find via search. So durable findings belong in notes, not just the chat.
 
 ## On-ramps
 
 A starting situation that generates work, then merges onto the main flow.
 
-- **A bug report arrived** → make it a task with the repro as the description; the fix flows through review and PR like any feature. Don't know where the bug lives? → **bug-hunter swarm**: a multi-variant task where each agent runs \`/dev3-bug-hunter\` with a seeded strategy, so different agents start from different corners of the codebase.
+- **A bug report arrived** → make it a task with the repro as the description; the fix then flows through review and PR like any feature. Don't know where the bug lives? → **bug-hunter swarm**: a multi-variant task where each agent runs \`/dev3-bug-hunter\` with a seeded strategy, so different agents start from different corners of the codebase.
 - **"Review this PR"** → create a **PR review task**: dev3 checks the PR branch out into a worktree and the agent reviews the actual diff — runnable code, not a GitHub-tab skim.
-- **"Continue what we did in that task"** → past conversations are searchable: the agent runs \`dev3 conversations search\` and reads the old task's notes and transcript. This is why notes matter — they are weighted highest in search.
-- **New codebase** → add the project from a folder or clone it from a URL, then run \`/dev3-project-config\` to auto-detect setup/dev/cleanup scripts, ports, and clone paths.
+- **"Continue what we did in that other task"** → past conversations are searchable: the agent runs \`dev3 conversations search\` and reads the old task's notes and transcript. This is *why* notes matter — they are weighted highest in that search.
+- **A new codebase** → add the project from a folder or clone it from a URL, then run \`/dev3-project-config\` to auto-detect its setup / dev / cleanup scripts, ports, and clone paths.
 
 ## Away from the keyboard
 
-- **dev3 remote** — the full app served to a browser through a secure tunnel; open it on your phone. Mobile has its own pane pager and message composer, and browser notifications keep pinging you there.
-- **Expose task ports** — share a task's running dev server through a public tunnel URL and click through it from any device.
-- Agents keep working while you are away; dev3 can prevent the machine from sleeping while tasks run.
+- **Work from your phone / remotely → dev3 remote.** The full app is served to a browser through a secure tunnel; open it anywhere. Mobile has its own pane pager and message composer, and browser notifications keep the agent's pings reaching you.
+- **Expose task ports** — share a task's running dev server through a public tunnel URL and click through it from any device. Agents keep working while you are away, and dev3 can keep the machine awake while tasks run.
 
 ## Verifying work
 
-- **Dev server per task** — the Dev Server button (or \`dev3 dev-server start\`) runs the project's \`devScript\` inside the task's tmux with that task's ports; N tasks = N side-by-side dev servers.
-- **Ask for visual proof** — agents can push screenshots (\`dev3 show-image\`) and interactive HTML reports (\`dev3 show-artifact\`) straight into the app. Prefer pixels over prose.
+- **Run the dev server → one per task.** The Dev Server button (or \`dev3 dev-server start\`) runs the project's \`devScript\` inside that task's tmux with that task's ports, so N tasks give you N side-by-side dev servers that never fight over a port.
+- **Get visual proof → ask for it.** Agents can push screenshots (\`dev3 show-image\`) and interactive HTML reports (\`dev3 show-artifact\`) straight into the app. Prefer pixels over prose when the change is visual.
 
 ## Vocabulary underneath
 
+Reach for these when the *word*, not the process, is the confusion.
+
 - **Task** — a Kanban card that is simultaneously the issue, the agent's prompt, and (once started) a worktree + terminal session.
-- **Variant** — one of N parallel attempts at the same task; each has its own agent, branch, and worktree; you keep one.
-- **Worktree** — the task's isolated git checkout under \`~/.dev3.0/worktrees/\`; destroyed when the task completes or is cancelled.
-- **Description vs overview vs notes** — the classic confusion. *Description* = the original brief, written by you: the agent's prompt. *Overview* = the agent-maintained sticky note: current state in one glance. *Notes* = durable findings that outlive the task and feed future agents.
-- **Statuses** — Todo → In progress → User questions → AI review → User review → Completed. Hooks move tasks automatically as the agent works; you normally drag cards only to start, review, or complete. Built-in columns can be renamed, custom columns added — and a custom column can even run its own agent when a task arrives.
+- **Variant** — one of N parallel attempts at the same task; each has its own agent, branch, and worktree; you keep one and discard the rest.
+- **Worktree** — the task's isolated git checkout under \`~/.dev3.0/worktrees/\`; created on launch, destroyed when the task completes or is cancelled.
+- **Description vs overview vs notes** — the classic mix-up. *Description* = the original brief you wrote: the agent's prompt, fixed. *Overview* = the agent-maintained sticky note: the current state in one glance. *Notes* = durable findings that outlive the task and feed future agents.
+- **Statuses & columns** — Todo → In progress → User questions → AI review → User review → Completed. Hooks move tasks automatically as the agent works; you normally drag a card by hand only to start, review, or complete it. Built-in columns can be renamed, custom columns added — and a custom column can even run its own agent when a task lands in it.
+
+## When something is broken
+
+Point, don't dig. Name where to look and stop — deep diagnosis is \`/diagnosing-bugs\`, not this skill.
+
+- Environment or setup acting up → \`dev3 doctor\` first.
+- "Why does dev3 behave this way?" → the relevant \`decisions/NNN-*.md\` record usually explains it.
+- Something crashed or misbehaved → the app logs, plus the decision record for that subsystem.
 
 ## Standalone
 
 Off the main flow entirely.
 
-- **Command palette** (⇧⌘P) and **go-to-project** (⌘K) — jump anywhere; ⌥Tab cycles recent tasks; \`/\` focuses search, which understands filter tokens; ⌘/ shows every shortcut.
+- **Move around fast** — command palette (⇧⌘P) and go-to-project (⌘K); ⌥Tab cycles recent tasks; \`/\` focuses search, which understands filter tokens; ⌘/ shows every shortcut.
 - **Stats** — productivity and token-cost dashboards across projects.
 - **Automations** — recurring scheduled agent runs on a cron.
 - **Multi-window** — a second window (⇧⌘N) for a second project on another monitor.
-- **\`dev3 doctor\`** — first stop when something environmental is off.
 
 ## Sibling skills
 

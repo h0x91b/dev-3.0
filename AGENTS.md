@@ -159,6 +159,10 @@ Rules:
 
 **The 1–5 coolness rubric lives on the `TipScore` type** in `src/mainview/tips.ts` — read it there when scoring, and keep it there when it changes. Append new tips at the end of `ALL_TIPS`. **Registry hygiene:** if a new tip supersedes/overlaps an older one, delete or merge the old one in the same commit (its `ALL_TIPS` entry + keys in all three locales).
 
+## The `ask-dev3` skill
+
+`ask-dev3` is the feature router that teaches users how things are done in dev3 (its content is the `ASK_DEV3_SKILL_CONTENT` constant in `src/bun/agent-skills.ts`, auto-installed into every agent's skill dir on startup). It is a **curated map, not a changelog** — most changes do not touch it. If a change introduces or alters a **feature that changes user-facing behavior or a non-obvious workflow** (a new flow, a renamed/moved surface a user story references, a changed default), **consider updating `ask-dev3` in the same commit** so the map does not drift. Skip it for internal refactors, bug fixes, and self-explaining UI. When in doubt, leave it — the user curates additions deliberately.
+
 ## Keyboard shortcuts
 
 **`src/mainview/keymap.ts` is the single source of truth for app-level keyboard shortcuts.** When you add or change one (a renderer `useGlobalShortcut` binding, a task-switcher key, or a native-menu accelerator users rely on), update its `keymap.ts` entry in the same commit — the registry renders the in-app Keyboard Shortcuts overlay (`KeyboardShortcutsModal`, Help → Keyboard Shortcuts / ⌘/ / ⇧⌘P), the README table, and the website, so an unregistered shortcut is invisible everywhere. `__tests__/keymap.test.ts` guards basic validity; keeping the registry in lockstep with handlers is your discipline. The registry **documents**, it does not dispatch — do not refactor the `App.tsx` handler chain to read from it. Terminal/tmux `⌃B` prefix bindings are not app-level; they live in `src/bun/tmux-config.ts` and render on the overlay's Terminal tab.
