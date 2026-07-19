@@ -154,6 +154,16 @@ export function buildCommandPreview(
 		}
 	}
 
+	// Mirror the launcher: claude always gets --allow-dangerously-skip-permissions
+	// (makes bypass available to toggle into, off by default) unless a bypass flag
+	// is already present in additionalArgs.
+	if (isClaude) {
+		const hasBypassFlag = config.additionalArgs?.some(
+			(a) => a === "--dangerously-skip-permissions" || a === "--allow-dangerously-skip-permissions",
+		);
+		if (!hasBypassFlag) parts.push("--allow-dangerously-skip-permissions");
+	}
+
 	if (config.effort && !isCursor && !isCodex) {
 		parts.push("--effort", config.effort);
 	}

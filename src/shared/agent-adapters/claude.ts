@@ -30,6 +30,17 @@ export const claudeAdapter: AgentAdapter = {
 		if (config?.permissionMode && config.permissionMode !== "default") {
 			args.push("--permission-mode", config.permissionMode);
 		}
+		// Always make the dangerous bypass mode *available* to toggle into
+		// (Shift+Tab) without enabling it by default — the switch capability
+		// belongs on every claude session regardless of the preset. Skip when a
+		// bypass flag is already present (either the hard --dangerously-skip-
+		// permissions used by Bypass/Default/Accept-Edits presets, or this same
+		// --allow- flag) so we never emit a duplicate. This is the single source
+		// for the allow flag; presets should not carry it explicitly.
+		const hasBypassFlag = config?.additionalArgs?.some(
+			(a) => a === "--dangerously-skip-permissions" || a === "--allow-dangerously-skip-permissions",
+		);
+		if (!hasBypassFlag) args.push("--allow-dangerously-skip-permissions");
 		if (config?.effort) args.push("--effort", config.effort);
 		if (config?.maxBudgetUsd != null && config.maxBudgetUsd > 0) {
 			args.push("--max-budget-usd", String(config.maxBudgetUsd));
