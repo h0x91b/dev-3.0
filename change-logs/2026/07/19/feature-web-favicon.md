@@ -1,0 +1,1 @@
+The web/remote interface now shows a favicon using the new dev3 app icon, so the browser tab and bookmarks display the dev3 logo instead of a blank globe. Added 16/32/256px PNG icons plus an apple-touch-icon, generated from the app iconset and served from the Vite public directory.

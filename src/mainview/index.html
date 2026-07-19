@@ -3,6 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1024, user-scalable=no, maximum-scale=1, interactive-widget=resizes-content" />
+    <!-- Favicon (new dev3 app icon). Absolute paths resolve against the served
+         root: Vite copies src/mainview/public/* to the dist root, and the
+         remote/web server (src/bun/remote-access-server.ts) serves dist at "/". -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>dev-3.0</title>
     <style>
       /* Pre-React boot fallback. Inline + theme-neutral on purpose: it must be
