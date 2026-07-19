@@ -39,8 +39,12 @@ struct TerminalRawInputTests {
 
         store.inputMode = .compose
         #expect(!store.sendAccessory(.enter))
-        try? await Task.sleep(for: .milliseconds(20))
-        #expect(await service.snapshot().sentData == [Data([0x0D])])
+        var sent = await service.snapshot().sentData
+        for _ in 0 ..< 100 where sent.isEmpty {
+            try? await Task.sleep(for: .milliseconds(20))
+            sent = await service.snapshot().sentData
+        }
+        #expect(sent == [Data([0x0D])])
     }
 }
 
