@@ -10,6 +10,7 @@ import {
 	type TaskDiffResponse,
 	type ScheduledMessageTarget,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
+	resolveTaskCompareBaseBranch,
 } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -920,7 +921,7 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 		return { ahead: 0, behind: 0, canRebase: false, insertions: 0, deletions: 0, unpushed: 0, mergedByContent: false, diffFiles: 0, diffInsertions: 0, diffDeletions: 0, diffFileStats: [], prNumber: null, prUrl: null, mergeCompletionFingerprint: null };
 	}
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const liveBranch = await git.getCurrentBranch(task.worktreePath);
 	const branchForPush = liveBranch ?? task.branchName ?? "";
 
@@ -1036,7 +1037,7 @@ async function getTaskDiff(params: {
 
 	assertGitTask(project, task);
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	// `uncommitted` needs no remote ref; `recent` is purely local — it diffs
 	// `HEAD~N..HEAD` and clamps against the already on-disk `origin/<base>`
 	// merge-base — so neither pays for a network fetch.
@@ -1073,7 +1074,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 
 	assertGitTask(project, task);
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
 	const tmuxSession = taskSessionName(task.id);
 	const scriptPath = dev3TaskTempPath(task.id, "git-rebase.sh");
@@ -1129,7 +1130,7 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	const branchForMerge = liveBranch ?? task.branchName;
 	if (!branchForMerge) throw new Error("Task has no branch");
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	await git.fetchOrigin(project.path, baseBranch);
 	// For task-specific base branches (not the project default), compare against the local branch —
 	// consistent with what the UI displays. For the project default, check against the remote.
@@ -1298,7 +1299,7 @@ async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; c
 
 	assertGitTask(project, task);
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const rebaseTarget = params.compareRef || `origin/${baseBranch}`;
 	const tmuxSession = taskSessionName(task.id);
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;

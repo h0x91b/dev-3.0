@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
-import type { GlobalSettings, Project, Task } from "../../shared/types";
-import { getPreparingStageProgress } from "../../shared/types";
+import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
+import { getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 
 // ---- Mocks ----
@@ -4314,6 +4314,101 @@ describe("handlers.cancelTaskPreparation", () => {
 // handlers.getBranchStatus
 // ================================================================
 
+describe("resolveTaskCompareBaseBranch", () => {
+	it("returns the stored base branch for a normal task", () => {
+		expect(
+			resolveTaskCompareBaseBranch(
+				{ baseBranch: "main", branchName: "dev3/feature" },
+				{ defaultBaseBranch: "main" },
+			),
+		).toBe("main");
+	});
+
+	it("keeps a custom base branch that differs from the task branch", () => {
+		expect(
+			resolveTaskCompareBaseBranch(
+				{ baseBranch: "develop", branchName: "feat/x" },
+				{ defaultBaseBranch: "main" },
+			),
+		).toBe("develop");
+	});
+
+	it("falls back to the project base when base collapses onto the task branch", () => {
+		// PR-review / existing-branch task: baseBranch === branchName.
+		expect(
+			resolveTaskCompareBaseBranch(
+				{ baseBranch: "codex/pr-head", branchName: "codex/pr-head" },
+				{ defaultBaseBranch: "main" },
+			),
+		).toBe("main");
+	});
+
+	it("defaults the project base to main when unset", () => {
+		expect(
+			resolveTaskCompareBaseBranch(
+				{ baseBranch: "feat/x", branchName: "feat/x" },
+				{ defaultBaseBranch: "" },
+			),
+		).toBe("main");
+	});
+});
+
+describe("handlers.getTaskDiff base branch resolution", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	const branchDiffResponse: TaskDiffResponse = {
+		mode: "branch",
+		compareRef: "origin/main",
+		compareLabel: "origin/main",
+		fallbackReason: null,
+		recentCount: null,
+		summary: { files: 0, insertions: 0, deletions: 0 },
+		files: [],
+		skippedFiles: [],
+	};
+
+	it("resolves a PR-review task's diff base to the project base, not the branch itself", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({
+			worktreePath: "/tmp/wt",
+			branchName: "codex/pr-head",
+			baseBranch: "codex/pr-head",
+			prNumber: 16484,
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getTaskDiff).mockResolvedValue(branchDiffResponse);
+
+		await handlers.getTaskDiff({ taskId: task.id, projectId: project.id, mode: "branch" });
+
+		// Fetch and diff against the real base — never the branch compared to itself.
+		expect(git.fetchOrigin).toHaveBeenCalledWith(project.path, "main");
+		expect(git.getTaskDiff).toHaveBeenCalledWith(
+			"/tmp/wt",
+			"branch",
+			expect.objectContaining({ baseBranch: "main" }),
+		);
+	});
+
+	it("leaves a normal task's diff base untouched", async () => {
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/feature", baseBranch: "main" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getTaskDiff).mockResolvedValue(branchDiffResponse);
+
+		await handlers.getTaskDiff({ taskId: task.id, projectId: project.id, mode: "branch" });
+
+		expect(git.getTaskDiff).toHaveBeenCalledWith(
+			"/tmp/wt",
+			"branch",
+			expect.objectContaining({ baseBranch: "main" }),
+		);
+	});
+});
+
 describe("handlers.getBranchStatus", () => {
 	beforeEach(() => vi.clearAllMocks());
 
@@ -4369,6 +4464,36 @@ describe("handlers.getBranchStatus", () => {
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.canRebase).toBe(false);
 		expect(git.canRebaseCleanly).not.toHaveBeenCalled();
+	});
+
+	it("compares a PR-review task (baseBranch === branchName) against the project base, not itself", async () => {
+		// PR-review / existing-branch tasks check out the PR head branch and
+		// deriveTaskBaseBranch stores that same branch as baseBranch. Comparing
+		// origin/<branch> against HEAD is trivially empty (the "No changes to show"
+		// diff bug + a false "Branch Merged" prompt) — it must fall back to the base.
+		const project = makeProject({ defaultBaseBranch: "main" });
+		const task = makeTask({
+			worktreePath: "/tmp/wt",
+			branchName: "codex/pr-head",
+			baseBranch: "codex/pr-head",
+			existingBranch: "origin/codex/pr-head",
+			prNumber: 16484,
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("codex/pr-head");
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 5, behind: 0 });
+		vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 3, insertions: 30, deletions: 10, fileStats: [] });
+		vi.mocked(github.runGitHub).mockResolvedValue({ ok: true, stdout: "[]", stderr: "", code: 0 });
+
+		await handlers.getBranchStatus({ taskId: task.id, projectId: project.id });
+
+		// The comparison ref must be the project base, never the branch against itself.
+		expect(git.getBranchStatus).toHaveBeenCalledWith("/tmp/wt", "origin/main");
+		expect(git.getBranchDiffStats).toHaveBeenCalledWith("/tmp/wt", "origin/main");
 	});
 
 	it("auto-syncs stored branchName when live branch differs", async () => {

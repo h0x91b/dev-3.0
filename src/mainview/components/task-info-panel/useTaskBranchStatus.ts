@@ -5,6 +5,7 @@ import {
 	type Project,
 	type Task,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
+	resolveTaskCompareBaseBranch,
 } from "../../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../../state";
 import { api } from "../../rpc";
@@ -61,7 +62,7 @@ export function useTaskBranchStatus({
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
 	const mergeDialogShownRef = useRef(false);
 
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
+	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const defaultCompareRef = getDefaultTaskCompareRef(baseBranch, project);
 	const [compareRef, setCompareRef] = useState(defaultCompareRef);
 
