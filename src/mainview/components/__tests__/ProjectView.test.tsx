@@ -13,7 +13,6 @@ vi.mock("../../rpc", () => ({
 vi.mock("../KanbanBoard", () => ({ default: () => <div data-testid="kanban" /> }));
 vi.mock("../TaskInfoPanel", () => ({ default: () => <div data-testid="info-panel" /> }));
 vi.mock("../ActiveTasksSidebar", () => ({ default: () => <div data-testid="sidebar" /> }));
-vi.mock("../ActiveTasksStrip", () => ({ default: () => <div data-testid="strip" /> }));
 vi.mock("../TaskWorkspacePane", () => ({ default: () => <div data-testid="workspace" /> }));
 vi.mock("../SplitLayout", () => ({
 	default: (props: { kanbanContent: React.ReactNode; terminalContent: React.ReactNode }) => (
@@ -126,12 +125,11 @@ describe("ProjectView narrow viewport (mobile zoom)", () => {
 		Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
 	});
 
-	it("zooms the task workspace and hides the active-tasks sidebar/strip", async () => {
+	it("zooms the task workspace and hides the active-tasks sidebar", async () => {
 		const task = { id: "t1", projectId: "p1", title: "T", status: "in-progress" } as unknown as Task;
 		renderView({ activeTaskId: "t1", tasks: [task] });
 		await waitFor(() => expect(screen.getByTestId("workspace")).toBeInTheDocument());
 		expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
-		expect(screen.queryByTestId("strip")).not.toBeInTheDocument();
 		expect(screen.getByTestId("info-panel")).toBeInTheDocument();
 	});
 });

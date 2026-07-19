@@ -2,7 +2,7 @@
 
 Status: Draft (initial)
 Source: Derived from repository audit
-Last updated: 2026-06-29
+Last updated: 2026-07-19
 Owner: Product UX Architecture
 
 Evidence notation: `Observed` (backed by code/docs), `Inferred` (likely rule from repeated patterns), `Proposed` (recommended, not yet consistent), `Unknown` (insufficient evidence).
@@ -361,7 +361,7 @@ Every surface from §5 gets an explicit narrow form. "—" = unchanged.
 | Terminal panes | tiled tmux panes | **pane carousel** — one zoomed pane + axis-arbitrated horizontal swipe over the terminal, a slim non-overlapping top dots strip, Arrow keys; keep-zoom via `tmuxPaneNavigate` (`MobilePaneCarousel.tsx`) | `Observed` |
 | Terminal windows | tmux windows (workspaces) | **window switcher** — a slim ‹ prev · named dropdown · next › bar ABOVE the pane bar, buttons + dropdown + Arrow-while-focused (no swipe; the terminal swipe is the pane carousel's). Renders only when window count > 1; via `tmuxWindowNavigate` (`MobileWindowCarousel.tsx`) | `Observed` |
 | Terminal text input (touch) | direct typing into the focused terminal | **docked composer** (gate = `!isElectrobun && isTouchDevice`, NOT width — an input-model switch): terminal tap never summons the OSK; an autogrow chat-style composer between the terminal and `ExtraKeyBar` owns text entry (Send = mode-2004-aware paste + Enter; Insert = paste only; expand state for long prompts; terminal tail stays visible); sticky `⌨` **raw** toggle on `ExtraKeyBar` restores direct typing + select-to-copy/TUI mouse; covers Quick Shell too. See `UX_DECISIONS.md` (2026-07-02) | `Proposed` |
-| Active tasks | `ActiveTasksSidebar` (split, 240px) | already a stacked **`ActiveTasksStrip`** (horizontal task carousel) in browser mode (`ProjectView` `isBrowserMode`) — formalise as the narrow task carousel; `SplitLayout` is never used <768 | `Observed` (strip) |
+| Active tasks | `ActiveTasksSidebar` (split, 240px) | no persistent task strip; use the existing task-switcher overlay and breadcrumb → board carousel to change tasks | `Observed` (strip removed 2026-07-19) |
 | Task inspector (`TaskInfoPanel`, 2×2 bars) | 2×2 quickbar grid | the 2×2 cannot fit — collapse to **one summary bar + a "task actions" bottom sheet** (the bars' actions become sheet sections); metadata grid already reflows | `Proposed` |
 | Diff viewer | 22rem files-aside + diff stream | **stack/one-at-a-time** — files-aside becomes a bottom-sheet file picker; the diff stream owns the screen (live-content: pager/explicit nav, no full-surface swipe) | `Proposed` |
 | Modal (`*Modal`) | fixed 26–35rem centered | **full-bleed sheet**: `max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)]` (or bottom-sheet for action-style modals) | `Proposed` |
