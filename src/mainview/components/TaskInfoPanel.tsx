@@ -512,6 +512,15 @@ function TaskInfoPanel({
 		});
 	}
 
+	const openUnresolvedInDiff = onOpenInlineDiff
+		? () => onOpenInlineDiff({
+			mode: "branch",
+			compareRef: branchMeta?.compareRef,
+			compareLabel: branchMeta?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`,
+			focusFirstUnresolvedThread: true,
+		})
+		: undefined;
+
 	function handleFileDiff(event: ReactMouseEvent<HTMLButtonElement>, relativePath: string) {
 		event.stopPropagation();
 		setDiffFilesHover(false);
@@ -834,7 +843,7 @@ function TaskInfoPanel({
 							{metadataPrInfo && (
 								<>
 									<span className="text-fg-3">{t("infoPanel.pullRequest")}</span>
-									<TaskPrStatusPopover prInfo={metadataPrInfo} projectId={project.id} taskId={task.id}>
+									<TaskPrStatusPopover prInfo={metadataPrInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
 										<button
 											type="button"
 											onClick={() => metadataPrInfo.url && window.open(metadataPrInfo.url, "_blank")}

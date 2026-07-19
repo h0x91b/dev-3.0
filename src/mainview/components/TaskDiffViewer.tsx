@@ -86,10 +86,11 @@ function writePreferredDiffMode(mode: TaskDiffMode): void {
 }
 
 function applyPreferredDiffMode(request: TaskInlineDiffRequest): TaskInlineDiffRequest {
-	// When the caller pinpoints a specific file (e.g. clicked from the branch-diff list),
-	// honor their intent — the file may not exist in another mode. Otherwise, use the
+	// When the caller pinpoints a specific file (e.g. clicked from the branch-diff list)
+	// or the first unresolved GitHub thread (which only anchors in branch mode), honor
+	// their intent — the target may not exist in another mode. Otherwise, use the
 	// user's last selection (or uncommitted as the new default).
-	if (request.focusFile) {
+	if (request.focusFile || request.focusFirstUnresolvedThread) {
 		return request;
 	}
 	const preferred = readPreferredDiffMode();
@@ -1817,6 +1818,14 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		}
 		return groupGithubThreadsByFile(visibleFiles, prComments.threads, { showResolved: showResolvedThreads });
 	}, [prComments, currentRequest.mode, visibleFiles, showResolvedThreads]);
+	// "N unresolved comments" in the PR status popover deep-links here: arm on
+	// every request that carries the flag, consume (below) once both the diff and
+	// the PR comment payload are in. Mode switches drop the flag, so a jump never
+	// replays after the user starts navigating on their own.
+	const threadFocusPendingRef = useRef(false);
+	useEffect(() => {
+		threadFocusPendingRef.current = !!currentRequest.focusFirstUnresolvedThread;
+	}, [currentRequest]);
 	const searchMatches = useMemo(
 		() => (payload ? buildDiffSearchMatches(visibleFiles, searchQuery) : []),
 		[payload, searchQuery, visibleFiles],
@@ -2192,6 +2201,25 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setActiveFileId(targetFile.id);
 		scrollToFile(targetFile.id, { behavior: "smooth", retries: 4 });
 	}, [currentRequest.focusFile, payload]);
+
+	// Consume the armed thread-focus flag: jump to the first unresolved GitHub
+	// thread in rendered-file order. Deliberately NOT consumed while either the
+	// diff or the PR comments are still loading — whichever arrives last triggers
+	// the jump. Threads on files outside the diff live in the Conversation block,
+	// which already sits at the top of the freshly opened viewer.
+	useEffect(() => {
+		if (!threadFocusPendingRef.current || !payload || !githubThreadGroups) {
+			return;
+		}
+		threadFocusPendingRef.current = false;
+		for (const file of visibleFiles) {
+			const firstUnresolved = githubThreadGroups.byFile[file.id]?.find((thread) => !thread.isResolved);
+			if (firstUnresolved) {
+				scrollToComment(firstUnresolved.id, file.id);
+				return;
+			}
+		}
+	}, [payload, githubThreadGroups, visibleFiles]);
 
 	useEffect(() => {
 		setCopiedReviewXml(false);

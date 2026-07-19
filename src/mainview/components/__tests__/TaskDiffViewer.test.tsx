@@ -3208,4 +3208,57 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 		await screen.findByTestId("github-thread");
 		expect(api.request.getTaskPrComments).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", force: true });
 	});
+
+	it("jumps to the first unresolved GitHub thread when opened with the deep-link flag", async () => {
+		const scrolledThreadIds: string[] = [];
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: vi.fn(function (this: HTMLElement) {
+				const threadId = this.getAttribute("data-thread-id");
+				if (threadId) scrolledThreadIds.push(threadId);
+			}),
+		});
+		vi.mocked(api.request.getTaskPrComments).mockResolvedValue(makePrPayload({
+			threads: [makeThread({ id: "th-resolved", isResolved: true }), makeThread({ id: "th-live", line: 2 })],
+		}) as never);
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={prTask}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFirstUnresolvedThread: true }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findByTestId("github-thread");
+		await waitFor(() => {
+			expect(scrolledThreadIds).toContain("th-live");
+		});
+	});
+
+	it("forces branch mode for the unresolved deep link even when another mode is preferred", async () => {
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+		localStorage.setItem("dev3-inline-diff-mode-v1", "uncommitted");
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={prTask}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFirstUnresolvedThread: true }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// The inline thread only renders in branch mode — the stored "uncommitted"
+		// preference must not win over the deep link.
+		await screen.findByTestId("github-thread");
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ mode: "branch" }),
+			);
+		});
+	});
 });

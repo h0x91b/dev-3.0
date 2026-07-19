@@ -14,6 +14,9 @@ interface TaskPrStatusPopoverProps {
 	prInfo: TaskPRBadgeInfo;
 	projectId: string;
 	taskId: string;
+	/** When provided, the "N unresolved comments" row becomes a deep link that
+	 * opens the diff review at the first unresolved GitHub thread. */
+	onShowUnresolved?: () => void;
 	children: ReactElement;
 }
 
@@ -143,7 +146,7 @@ function anchorRect(element: HTMLElement): RectLike {
 	};
 }
 
-export default function TaskPrStatusPopover({ prInfo, projectId, taskId, children }: TaskPrStatusPopoverProps) {
+export default function TaskPrStatusPopover({ prInfo, projectId, taskId, onShowUnresolved, children }: TaskPrStatusPopoverProps) {
 	const t = useT();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [open, setOpen] = useState(false);
@@ -327,10 +330,28 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 			)}
 
 			{prInfo.unresolvedCount != null && prInfo.unresolvedCount > 0 && (
-				<div className="mt-2 flex items-center gap-1.5 text-warning">
-					<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
-					<span>{t.plural("task.prUnresolvedComments", prInfo.unresolvedCount)}</span>
-				</div>
+				onShowUnresolved ? (
+					<button
+						type="button"
+						data-testid="pr-popover-unresolved"
+						onClick={() => {
+							hide();
+							setSheetOpen(false);
+							onShowUnresolved();
+						}}
+						title={t("task.prShowUnresolvedInDiff")}
+						aria-label={t("task.prShowUnresolvedInDiff")}
+						className="mt-2 flex items-center gap-1.5 rounded text-warning transition-colors hover:underline focus:outline-none focus:ring-1 focus:ring-accent"
+					>
+						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+						<span>{t.plural("task.prUnresolvedComments", prInfo.unresolvedCount)}</span>
+					</button>
+				) : (
+					<div className="mt-2 flex items-center gap-1.5 text-warning">
+						<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
+						<span>{t.plural("task.prUnresolvedComments", prInfo.unresolvedCount)}</span>
+					</div>
+				)
 			)}
 
 			{prInfo.mergeState?.mergeable === "CONFLICTING" && (
