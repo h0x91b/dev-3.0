@@ -6,7 +6,7 @@ import LabelChip from "./LabelChip";
 import PriorityBadge from "./PriorityBadge";
 import OpenInMenu from "./OpenInMenu";
 import { formatDate } from "./NoteItem";
-import { ACTIVE_STATUSES, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, getTaskTitle, resolveTaskCompareBaseBranch } from "../../shared/types";
 import InlineRename from "./InlineRename";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -507,7 +507,7 @@ function TaskInfoPanel({
 		onOpenInlineDiff({
 			mode: "branch",
 			compareRef: branchMeta?.compareRef,
-			compareLabel: branchMeta?.compareLabel ?? `origin/${task.baseBranch || project.defaultBaseBranch || "main"}`,
+			compareLabel: branchMeta?.compareLabel ?? `origin/${resolveTaskCompareBaseBranch(task, project)}`,
 			focusFile,
 		});
 	}

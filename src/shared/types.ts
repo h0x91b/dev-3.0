@@ -1628,6 +1628,33 @@ export function getTaskOverview(task: Task): string | null {
 	return task.userOverview?.trim() || task.overview?.trim() || null;
 }
 
+/**
+ * The branch a task's changes should be *compared against* — the base for the
+ * branch diff, ahead/behind status, and rebase/merge targets.
+ *
+ * Normally this is `task.baseBranch` (falling back to the project's default
+ * base). PR-review and other "existing branch" tasks are the exception: they
+ * check out an existing remote branch and `deriveTaskBaseBranch` (see
+ * `src/bun/data.ts`) stores that same branch as `baseBranch`, so
+ * `baseBranch === branchName`. Comparing a branch against itself is trivially
+ * empty — the "No changes to show" branch-diff bug, and a false "Branch Merged"
+ * prompt. When the stored base collapses onto the task's own branch, fall back
+ * to the project's real base branch so comparisons show the branch's actual
+ * changes. Mirrors the merge-completion poller's inline fallback in
+ * `src/bun/rpc-handlers/git-operations.ts`.
+ */
+export function resolveTaskCompareBaseBranch(
+	task: Pick<Task, "baseBranch" | "branchName">,
+	project: Pick<Project, "defaultBaseBranch">,
+): string {
+	const projectBase = project.defaultBaseBranch || "main";
+	const stored = task.baseBranch || projectBase;
+	if (task.branchName && stored === task.branchName) {
+		return projectBase;
+	}
+	return stored;
+}
+
 /** What changed in a {@link TaskHistoryEntry}. */
 export type TaskHistoryChange = "created" | "title" | "overview" | "both";
 
