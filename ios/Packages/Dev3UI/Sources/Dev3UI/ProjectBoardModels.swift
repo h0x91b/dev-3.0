@@ -85,6 +85,19 @@ public enum ProjectBoardProjection {
         }
     }
 
+    /// Column ID `offset` steps from `current` (e.g. -1 previous, +1 next), or
+    /// `nil` at the edges. Backs the board header's prev/next navigation buttons.
+    public static func adjacentColumnID(
+        _ columns: [ProjectBoardColumn],
+        from current: String,
+        offset: Int
+    ) -> String? {
+        guard let index = columns.firstIndex(where: { $0.id == current }) else { return nil }
+        let target = index + offset
+        guard columns.indices.contains(target) else { return nil }
+        return columns[target].id
+    }
+
     public static func preferredInitialColumnID(_ columns: [ProjectBoardColumn]) -> String? {
         if let questions = columns.first(where: { $0.status == .userQuestions && !$0.tasks.isEmpty }) {
             return questions.id

@@ -188,6 +188,7 @@ public struct ProjectBoardView: View {
 
     private func columnHeader(_ column: ProjectBoardColumn, index: Int) -> some View {
         HStack(spacing: 8) {
+            columnStepButton(from: column.id, offset: -1, systemImage: "chevron.left")
             Circle()
                 .fill(columnColor(column))
                 .frame(width: 10, height: 10)
@@ -206,10 +207,35 @@ public struct ProjectBoardView: View {
             Text("\(index + 1)/\(columns.count)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(palette.textMuted)
+            columnStepButton(from: column.id, offset: 1, systemImage: "chevron.right")
         }
         .padding(.horizontal, 14)
         .frame(minHeight: 48)
         .background(columnColor(column).opacity(0.08))
+    }
+
+    private func columnStepButton(
+        from currentID: String,
+        offset: Int,
+        systemImage: String
+    ) -> some View {
+        let targetID = ProjectBoardProjection.adjacentColumnID(columns, from: currentID, offset: offset)
+        let isPrevious = offset < 0
+        return Button {
+            if let targetID {
+                userSelection.wrappedValue = targetID
+            }
+        } label: {
+            Image(systemName: systemImage)
+                .font(.headline)
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(targetID == nil ? palette.textMuted.opacity(0.4) : palette.accent)
+        .disabled(targetID == nil)
+        .accessibilityLabel(isPrevious ? "Previous column" : "Next column")
+        .accessibilityIdentifier(isPrevious ? "board-column-prev" : "board-column-next")
     }
 
     private func labels(for task: Dev3Task) -> [Dev3Label] {

@@ -86,6 +86,21 @@ struct ProjectBoardModelsTests {
         #expect(ProjectBoardProjection.preferredInitialColumnID(withQuestion) == "user-questions")
     }
 
+    @Test("Adjacent column navigation steps within bounds and stops at the edges")
+    func adjacentColumnNavigation() throws {
+        let project = makeIAProject()
+        let columns = ProjectBoardProjection.columns(project: project, tasks: [])
+        let ids = columns.map(\.id)
+        let firstID = try #require(ids.first)
+        let lastID = try #require(ids.last)
+
+        #expect(ProjectBoardProjection.adjacentColumnID(columns, from: firstID, offset: 1) == ids[1])
+        #expect(ProjectBoardProjection.adjacentColumnID(columns, from: ids[1], offset: -1) == firstID)
+        #expect(ProjectBoardProjection.adjacentColumnID(columns, from: firstID, offset: -1) == nil)
+        #expect(ProjectBoardProjection.adjacentColumnID(columns, from: lastID, offset: 1) == nil)
+        #expect(ProjectBoardProjection.adjacentColumnID(columns, from: "missing", offset: 1) == nil)
+    }
+
     @Test("Top and bottom modes place moved and unmoved tasks exactly like web")
     func dropPositionOrdering() {
         let project = makeIAProject()

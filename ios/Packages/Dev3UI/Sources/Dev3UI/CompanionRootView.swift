@@ -348,6 +348,8 @@ private struct ServerSettingsView: View {
 
             settingsAccessoryBuilder()
 
+            VerboseLoggingSection()
+
             Section {
                 NavigationLink {
                     DiagnosticsView()
@@ -390,13 +392,14 @@ private struct ServerSettingsRow: View {
                     .foregroundStyle(.tint)
                     .accessibilityLabel("Active")
             }
-            Button(role: .destructive) {
-                Task { await controller.delete(server) }
-            } label: {
+            PairedServerDeleteButton(
+                controller: controller,
+                server: server,
+                identifier: "settings.delete.\(server.instanceId)"
+            ) {
                 Image(systemName: "trash")
+                    .accessibilityHidden(true)
             }
-            .accessibilityLabel("Delete \(server.name)")
-            .accessibilityIdentifier("settings.delete.\(server.instanceId)")
         }
     }
 }

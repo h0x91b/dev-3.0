@@ -190,6 +190,7 @@ struct CompanionAppRoot: View {
             TaskMediaHost(store: mediaCoordinator.mediaStore)
         }
         .onAppear {
+            VerboseLoggingPreference.applyToDiagnosticsLog()
             mediaCoordinator.start()
             startGlobalCoordination()
         }
