@@ -3211,13 +3211,6 @@ export type AppRPCSchema = {
 		};
 		messages: {
 			taskUpdated: { projectId: string; task: Task };
-			/**
-			 * Server-initiated task deletion (currently: a scheduled launch firing
-			 * consumes its source todo task, exactly like spawnVariants does for an
-			 * immediate launch). Client-initiated deletes don't need this — the
-			 * caller updates its own state from the RPC response.
-			 */
-			taskRemoved: { projectId: string; taskId: string };
 			projectUpdated: { project: Project };
 			taskSound: { status: "completed" | "cancelled"; taskId: string };
 			ptyDied: { taskId: string };
