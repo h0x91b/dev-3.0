@@ -83,6 +83,7 @@ const columns = {
 	// Images
 	"images.pasting": "Pegando imagen...",
 	"images.pasteFailed": "Error al pegar imagen",
+	"images.attachFiles": "Adjuntar archivos",
 	"images.loading": "Cargando...",
 	"images.loadFailed": "Error al cargar",
 	"images.openInPreview": "Abrir en Preview",

@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
 import ExtraKeyBar from "./ExtraKeyBar";
-import TerminalComposer from "./TerminalComposer";
+import TerminalComposer, { type TerminalComposerApi } from "./TerminalComposer";
 
 interface ProjectTerminalProps {
 	projectId: string;
@@ -21,6 +21,7 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 	const touchInput = !isElectrobun && navigator.maxTouchPoints > 0;
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [rawMode, setRawMode] = useState(false);
+	const composerApiRef = useRef<TerminalComposerApi | null>(null);
 
 	function toggleRawMode() {
 		setRawMode((prev) => {
@@ -29,6 +30,14 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 			else termHandle?.blur();
 			return next;
 		});
+	}
+
+	// ExtraKeyBar attach → compose mode drops paths into the composer draft;
+	// raw mode pastes them straight onto the prompt.
+	function handleAttachPaths(paths: string[]) {
+		const escaped = paths.map((p) => p.replace(/ /g, "\\ "));
+		if (!rawMode && composerApiRef.current) composerApiRef.current.appendPaths(escaped);
+		else termHandle?.paste(`${escaped.join(" ")} `);
 	}
 
 	const sessionKey = `project-${projectId}`;
@@ -140,10 +149,18 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
 			{touchInput && termHandle && (
 				<div className={rawMode ? "hidden" : "contents"}>
-					<TerminalComposer handle={termHandle} projectId={projectId} />
+					<TerminalComposer handle={termHandle} projectId={projectId} apiRef={composerApiRef} />
 				</div>
 			)}
-			{touchInput && termHandle && <ExtraKeyBar handle={termHandle} rawMode={rawMode} onToggleRaw={toggleRawMode} />}
+			{touchInput && termHandle && (
+				<ExtraKeyBar
+					handle={termHandle}
+					rawMode={rawMode}
+					onToggleRaw={toggleRawMode}
+					attachProjectId={projectId}
+					onAttachPaths={handleAttachPaths}
+				/>
+			)}
 		</div>
 	);
 }

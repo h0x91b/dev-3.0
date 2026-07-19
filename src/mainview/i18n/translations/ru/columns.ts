@@ -85,6 +85,7 @@ const columns = {
 	// Images
 	"images.pasting": "Вставка изображения...",
 	"images.pasteFailed": "Не удалось вставить изображение",
+	"images.attachFiles": "Прикрепить файлы",
 	"images.loading": "Загрузка...",
 	"images.loadFailed": "Ошибка загрузки",
 	"images.openInPreview": "Открыть в Preview",

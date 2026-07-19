@@ -1,9 +1,20 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ExtraKeyBar from "../ExtraKeyBar";
 import type { TerminalHandle } from "../../TerminalView";
 import { I18nProvider } from "../../i18n";
+import { uploadDroppedFile } from "../../utils/uploadDroppedFile";
+
+vi.mock("../../utils/uploadDroppedFile", () => ({
+	uploadDroppedFile: vi.fn(),
+}));
+
+vi.mock("../../toast", () => ({
+	toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
+}));
+
+const uploadDroppedFileMock = vi.mocked(uploadDroppedFile);
 
 function makeHandle(): TerminalHandle {
 	return {
@@ -15,7 +26,16 @@ function makeHandle(): TerminalHandle {
 	};
 }
 
-function renderBar(handle: TerminalHandle, props: { rawMode?: boolean; onToggleRaw?: () => void } = {}) {
+function renderBar(
+	handle: TerminalHandle,
+	props: {
+		rawMode?: boolean;
+		onToggleRaw?: () => void;
+		attachProjectId?: string;
+		attachTaskId?: string;
+		onAttachPaths?: (paths: string[]) => void;
+	} = {},
+) {
 	return render(
 		<I18nProvider>
 			<ExtraKeyBar handle={handle} {...props} />
@@ -23,7 +43,10 @@ function renderBar(handle: TerminalHandle, props: { rawMode?: boolean; onToggleR
 	);
 }
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	vi.clearAllMocks();
+});
 
 describe("ExtraKeyBar", () => {
 	it("sends Esc / Tab / Enter escape sequences", async () => {
@@ -76,5 +99,37 @@ describe("ExtraKeyBar", () => {
 
 		await userEvent.click(screen.getByRole("button", { name: "Esc" }));
 		expect(handle.focus).toHaveBeenCalled();
+	});
+
+	it("does NOT render the attach button without a project context", () => {
+		renderBar(makeHandle(), { onAttachPaths: () => {} });
+		expect(screen.queryByTestId("extra-key-attach")).toBeNull();
+	});
+
+	it("uploads picked files and reports raw paths to the host", async () => {
+		uploadDroppedFileMock.mockResolvedValue("/wt/uploads/upload-1-abcd-shot.png");
+		const onAttachPaths = vi.fn();
+		renderBar(makeHandle(), { attachProjectId: "proj-1", attachTaskId: "task-1", onAttachPaths });
+
+		expect(screen.getByTestId("extra-key-attach")).toBeEnabled();
+		const file = new File(["img"], "shot.png", { type: "image/png" });
+		await userEvent.upload(screen.getByTestId("extra-key-attach-input"), file);
+
+		await waitFor(() =>
+			expect(onAttachPaths).toHaveBeenCalledWith(["/wt/uploads/upload-1-abcd-shot.png"]),
+		);
+		expect(uploadDroppedFileMock).toHaveBeenCalledWith("proj-1", file);
+	});
+
+	it("does not call the host when every upload fails", async () => {
+		uploadDroppedFileMock.mockRejectedValue(new Error("boom"));
+		const onAttachPaths = vi.fn();
+		renderBar(makeHandle(), { attachProjectId: "proj-1", onAttachPaths });
+
+		const file = new File(["img"], "shot.png", { type: "image/png" });
+		await userEvent.upload(screen.getByTestId("extra-key-attach-input"), file);
+
+		await waitFor(() => expect(uploadDroppedFileMock).toHaveBeenCalled());
+		expect(onAttachPaths).not.toHaveBeenCalled();
 	});
 });

@@ -3,7 +3,7 @@ import { toast } from "../toast";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { DEFAULT_PRIORITY, isBuiltinOpsProject, orderProjectsForDisplay, titleFromDescription, type Project, type Task, type TaskPriority } from "../../shared/types";
 import type { AppAction } from "../state";
-import { api } from "../rpc";
+import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
 import { trackEvent } from "../analytics";
 import LabelChip from "./LabelChip";
@@ -11,6 +11,7 @@ import LabelPicker from "./LabelPicker";
 import PriorityBadge from "./PriorityBadge";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import { useClipboardPaste } from "../hooks/useClipboardPaste";
+import { useAttachUpload } from "../hooks/useAttachUpload";
 import { useFileDrop } from "../hooks/useFileDrop";
 import { useSkillAutocomplete } from "../hooks/useSkillAutocomplete";
 import { removeImagePath } from "../utils/imageAttachments";
@@ -141,6 +142,22 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor);
+
+	// Browser mode only: an explicit picker for devices without drag-and-drop
+	// (phones/tablets). The Electrobun webview keeps paste + DnD; a file input
+	// there would open an untested native chooser.
+	const attachInputRef = useRef<HTMLInputElement>(null);
+	const { uploading: attachUploading, attach } = useAttachUpload(project.id);
+	const showAttachButton = !isElectrobun;
+
+	function handleAttachPicked(e: React.ChangeEvent<HTMLInputElement>) {
+		const files = Array.from(e.target.files ?? []);
+		// Reset so picking the same file again re-fires onChange.
+		e.target.value = "";
+		void attach(files).then((paths) => {
+			paths.forEach(insertPathAtCursor);
+		});
+	}
 
 	const handleRemovePath = useCallback((path: string) => {
 		setDescription((prev) => removeImagePath(prev, path));
@@ -456,9 +473,43 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 
 				{/* Description textarea + drop zone */}
 				<div className="space-y-1.5">
-					<label className="text-fg-2 text-sm font-medium">
-						{t("createTask.descriptionLabel")}
-					</label>
+					<div className="flex items-center justify-between">
+						<label className="text-fg-2 text-sm font-medium">
+							{t("createTask.descriptionLabel")}
+						</label>
+						{showAttachButton && (
+							<>
+								<input
+									ref={attachInputRef}
+									type="file"
+									multiple
+									className="hidden"
+									onChange={handleAttachPicked}
+									data-testid="create-task-attach-input"
+								/>
+								<button
+									type="button"
+									onClick={() => attachInputRef.current?.click()}
+									disabled={attachUploading}
+									aria-label={t("images.attachFiles")}
+									title={t("images.attachFiles")}
+									className="flex items-center justify-center w-7 h-7 rounded-lg text-fg-3 hover:text-fg hover:bg-elevated transition-colors disabled:opacity-40"
+									data-testid="create-task-attach"
+								>
+									{attachUploading ? (
+										<div className="w-3.5 h-3.5 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+									) : (
+										<span
+											className="text-[1rem] leading-none"
+											style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										>
+											{"\u{F03E2}"}
+										</span>
+									)}
+								</button>
+							</>
+						)}
+					</div>
 
 					<div
 						className="relative"

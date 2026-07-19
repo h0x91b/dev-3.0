@@ -1,13 +1,18 @@
-import { useEffect, useRef, useState, type Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { TerminalHandle } from "../TerminalView";
 import type { Project, Task } from "../../shared/types";
 import { ACTIVE_STATUSES } from "../../shared/types";
 import type { AppAction } from "../state";
 import { useT } from "../i18n";
-import { uploadDroppedFile } from "../utils/uploadDroppedFile";
-import { toast } from "../toast";
+import { useAttachUpload } from "../hooks/useAttachUpload";
 import ScheduleMessageModal from "./ScheduleMessageModal";
+
+/** Imperative surface for the host (ExtraKeyBar attach routes paths into the draft). */
+export interface TerminalComposerApi {
+	/** Append ready-to-insert (already escaped) paths to the draft. */
+	appendPaths: (paths: string[]) => void;
+}
 
 interface TerminalComposerProps {
 	handle: TerminalHandle;
@@ -21,11 +26,13 @@ interface TerminalComposerProps {
 	project?: Project;
 	dispatch?: Dispatch<AppAction>;
 	/**
-	 * Enables the attach button when no full `project` is available (the
+	 * Enables file-paste uploads when no full `project` is available (the
 	 * project-level terminal passes only the id). Uploads land in the project's
 	 * worktree uploads dir via `uploadFileBase64`.
 	 */
 	projectId?: string;
+	/** Populated with the composer's imperative API while mounted. */
+	apiRef?: RefObject<TerminalComposerApi | null>;
 }
 
 /** Collapsed autogrow ceiling — roughly 4 lines of 16px text. */
@@ -46,14 +53,12 @@ const NERD_FONT = "'JetBrainsMono Nerd Font Mono'";
  * non-essential chrome (see index.css) so the terminal tail stays visible
  * above the keyboard.
  */
-function TerminalComposer({ handle, task, project, dispatch, projectId }: TerminalComposerProps) {
+function TerminalComposer({ handle, task, project, dispatch, projectId, apiRef }: TerminalComposerProps) {
 	const t = useT();
 	const [text, setText] = useState("");
 	const [expanded, setExpanded] = useState(false);
 	const [scheduleOpen, setScheduleOpen] = useState(false);
-	const [uploading, setUploading] = useState(false);
 	const taRef = useRef<HTMLTextAreaElement>(null);
-	const fileInputRef = useRef<HTMLInputElement>(null);
 	const focusedViewportHeightRef = useRef<number | null>(null);
 
 	// "Send later" is only reachable here when a live-agent task context exists.
@@ -61,6 +66,7 @@ function TerminalComposer({ handle, task, project, dispatch, projectId }: Termin
 
 	// Attachments need a project to resolve the worktree uploads dir.
 	const uploadProjectId = projectId ?? project?.id;
+	const { uploading, attach } = useAttachUpload(uploadProjectId, task?.id);
 
 	function autogrow() {
 		const ta = taRef.current;
@@ -128,7 +134,7 @@ function TerminalComposer({ handle, task, project, dispatch, projectId }: Termin
 		return () => activeViewport.removeEventListener("resize", syncComposerChrome);
 	}, []);
 
-	/** Append uploaded worktree paths to the draft so the user can caption and send. */
+	/** Append ready-to-insert (already escaped) paths to the draft so the user can caption and send. */
 	function appendPaths(paths: string[]) {
 		if (!paths.length) return;
 		const joined = paths.join(" ");
@@ -138,37 +144,17 @@ function TerminalComposer({ handle, task, project, dispatch, projectId }: Termin
 		});
 	}
 
-	/** Upload picked/pasted files into the worktree uploads dir and insert their paths. */
-	async function attachFiles(files: File[]) {
-		if (!uploadProjectId || files.length === 0) return;
-		setUploading(true);
-		try {
-			const paths = await Promise.all(
-				files.map(async (f) => {
-					try {
-						const uploaded = await uploadDroppedFile(uploadProjectId, f);
-						return uploaded ? uploaded.replace(/ /g, "\\ ") : null;
-					} catch (err) {
-						toast.error(
-							t("fileDrop.uploadFailed", { error: String(err instanceof Error ? err.message : err) }),
-							{ taskId: task?.id },
-						);
-						return null;
-					}
-				}),
-			);
-			appendPaths(paths.filter((p): p is string => Boolean(p)));
-		} finally {
-			setUploading(false);
-		}
-	}
-
-	function onFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
-		const files = Array.from(e.target.files ?? []);
-		// Reset so picking the same file again re-fires onChange.
-		e.target.value = "";
-		void attachFiles(files);
-	}
+	// Expose the draft API to the host — ExtraKeyBar's attach button lives a row
+	// below this component and routes uploaded paths here in compose mode.
+	useEffect(() => {
+		if (!apiRef) return;
+		apiRef.current = { appendPaths };
+		return () => {
+			apiRef.current = null;
+		};
+		// appendPaths is stable in behavior (setState updater only).
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [apiRef]);
 
 	// Phone clipboards deliver screenshots as files on the paste event — the
 	// desktop interceptor in TerminalView never sees composer pastes, so handle
@@ -177,7 +163,9 @@ function TerminalComposer({ handle, task, project, dispatch, projectId }: Termin
 		const files = Array.from(e.clipboardData?.files ?? []);
 		if (!files.length || !uploadProjectId) return;
 		e.preventDefault();
-		void attachFiles(files);
+		void attach(files).then((paths) => {
+			appendPaths(paths.map((p) => p.replace(/ /g, "\\ ")));
+		});
 	}
 
 	function deliver(submit: boolean) {
@@ -210,37 +198,11 @@ function TerminalComposer({ handle, task, project, dispatch, projectId }: Termin
 
 	const buttons = (
 		<>
-			{uploadProjectId && (
-				<>
-					<input
-						ref={fileInputRef}
-						type="file"
-						multiple
-						className="hidden"
-						onChange={onFilesPicked}
-						data-testid="terminal-composer-file-input"
-					/>
-					{/* order-first pulls the paperclip left of the textarea in the
-					    collapsed bar (messenger convention); in the expanded editor the
-					    buttons row is a separate flex container where it is first anyway. */}
-					<button
-						type="button"
-						className={`${iconBtn} order-first bg-elevated text-fg-2 disabled:opacity-40`}
-						onMouseDown={keepFocus}
-						onClick={() => fileInputRef.current?.click()}
-						disabled={uploading}
-						aria-label={t("terminal.composerAttach")}
-						title={t("terminal.composerAttach")}
-					>
-						{uploading ? (
-							<div className="w-4 h-4 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
-						) : (
-							<span className="text-[1.125rem] leading-none" style={{ fontFamily: NERD_FONT }}>
-								{"\u{F03E2}"}
-							</span>
-						)}
-					</button>
-				</>
+			{uploading && (
+				<div
+					className="flex-shrink-0 self-center w-4 h-4 border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin"
+					data-testid="terminal-composer-uploading"
+				/>
 			)}
 			<button
 				type="button"

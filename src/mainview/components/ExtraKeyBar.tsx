@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import type { TerminalHandle } from "../TerminalView";
 import { useT } from "../i18n";
+import { useAttachUpload } from "../hooks/useAttachUpload";
 
 interface ExtraKeyBarProps {
 	handle: TerminalHandle;
@@ -8,6 +9,12 @@ interface ExtraKeyBarProps {
 	rawMode?: boolean;
 	/** Present when the host supports the compose/raw switch — renders the ⌨ toggle. */
 	onToggleRaw?: () => void;
+	/** Project that owns the worktree uploads dir — enables the attach button. */
+	attachProjectId?: string;
+	/** Task context for upload-error toasts. */
+	attachTaskId?: string;
+	/** Receives raw uploaded paths; the host routes them (composer draft / PTY). */
+	onAttachPaths?: (paths: string[]) => void;
 }
 
 /**
@@ -22,9 +29,20 @@ interface ExtraKeyBarProps {
  * regardless of the CSS viewport used in browser mode.
  * 11vw ≈ 43px physical on a 390px-wide phone.
  */
-function ExtraKeyBar({ handle, rawMode, onToggleRaw }: ExtraKeyBarProps) {
+function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTaskId, onAttachPaths }: ExtraKeyBarProps) {
 	const t = useT();
 	const [ctrlActive, setCtrlActive] = useState(false);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const { uploading, attach } = useAttachUpload(attachProjectId, attachTaskId);
+
+	function onFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
+		const files = Array.from(e.target.files ?? []);
+		// Reset so picking the same file again re-fires onChange.
+		e.target.value = "";
+		void attach(files).then((paths) => {
+			if (paths.length) onAttachPaths?.(paths);
+		});
+	}
 
 	// Focus discipline: only re-focus the terminal in raw mode. In compose mode
 	// the composer textarea may hold focus (and the OSK) — stealing it here would
@@ -78,6 +96,35 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw }: ExtraKeyBarProps) {
 						data-testid="extra-key-raw-toggle"
 					>
 						<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F030C}"}</span>
+					</button>
+					<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
+				</>
+			)}
+
+			{attachProjectId && onAttachPaths && (
+				<>
+					<input
+						ref={fileInputRef}
+						type="file"
+						multiple
+						className="hidden"
+						onChange={onFilesPicked}
+						data-testid="extra-key-attach-input"
+					/>
+					<button
+						className={btnNormal}
+						onMouseDown={(e) => e.preventDefault()}
+						onClick={() => fileInputRef.current?.click()}
+						disabled={uploading}
+						aria-label={t("images.attachFiles")}
+						title={t("images.attachFiles")}
+						data-testid="extra-key-attach"
+					>
+						{uploading ? (
+							<div className="w-[4vw] h-[4vw] border-2 border-fg-muted/30 border-t-accent rounded-full animate-spin" />
+						) : (
+							<span style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F03E2}"}</span>
+						)}
 					</button>
 					<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
 				</>

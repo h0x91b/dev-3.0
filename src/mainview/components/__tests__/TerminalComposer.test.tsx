@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import TerminalComposer from "../TerminalComposer";
+import TerminalComposer, { type TerminalComposerApi } from "../TerminalComposer";
 import type { TerminalHandle } from "../../TerminalView";
 import { I18nProvider } from "../../i18n";
 import { uploadDroppedFile } from "../../utils/uploadDroppedFile";
@@ -174,57 +174,6 @@ describe("TerminalComposer", () => {
 		expect(screen.getByTestId("terminal-composer").className).not.toContain("absolute");
 	});
 
-	it("hides the attach button without a project context", () => {
-		const handle = makeHandle();
-		renderComposer(handle);
-
-		expect(screen.queryByRole("button", { name: /attach files/i })).toBeNull();
-	});
-
-	it("uploads a picked file and appends its worktree path to the draft", async () => {
-		uploadDroppedFileMock.mockResolvedValue("/wt/uploads/upload-1-abcd-shot.png");
-		const handle = makeHandle();
-		renderComposer(handle, "proj-1");
-
-		expect(screen.getByRole("button", { name: /attach files/i })).toBeEnabled();
-		const file = new File(["img"], "shot.png", { type: "image/png" });
-		await userEvent.upload(screen.getByTestId("terminal-composer-file-input"), file);
-
-		const input = screen.getByTestId("terminal-composer-input") as HTMLTextAreaElement;
-		await waitFor(() => expect(input.value).toBe("/wt/uploads/upload-1-abcd-shot.png "));
-		expect(uploadDroppedFileMock).toHaveBeenCalledWith("proj-1", file);
-	});
-
-	it("escapes spaces in uploaded paths and appends after existing draft text", async () => {
-		uploadDroppedFileMock.mockResolvedValue("/wt/uploads/upload-1-abcd-my shot.png");
-		const handle = makeHandle();
-		renderComposer(handle, "proj-1");
-
-		const input = screen.getByTestId("terminal-composer-input") as HTMLTextAreaElement;
-		await userEvent.type(input, "look at this");
-		const file = new File(["img"], "my shot.png", { type: "image/png" });
-		await userEvent.upload(screen.getByTestId("terminal-composer-file-input"), file);
-
-		await waitFor(() =>
-			expect(input.value).toBe("look at this /wt/uploads/upload-1-abcd-my\\ shot.png "),
-		);
-	});
-
-	it("shows an error toast and keeps the draft when the upload fails", async () => {
-		uploadDroppedFileMock.mockRejectedValue(new Error("File too large (max 100 MB)"));
-		const handle = makeHandle();
-		renderComposer(handle, "proj-1");
-
-		const input = screen.getByTestId("terminal-composer-input") as HTMLTextAreaElement;
-		await userEvent.type(input, "draft");
-		const file = new File(["img"], "huge.png", { type: "image/png" });
-		await userEvent.upload(screen.getByTestId("terminal-composer-file-input"), file);
-
-		await waitFor(() => expect(toast.error).toHaveBeenCalledOnce());
-		expect(String(vi.mocked(toast.error).mock.calls[0][0])).toContain("File too large");
-		expect(input.value).toBe("draft");
-	});
-
 	it("uploads files pasted into the textarea instead of inserting raw data", async () => {
 		uploadDroppedFileMock.mockResolvedValue("/wt/uploads/upload-2-beef-paste.png");
 		const handle = makeHandle();
@@ -237,6 +186,51 @@ describe("TerminalComposer", () => {
 
 		await waitFor(() => expect(input.value).toBe("/wt/uploads/upload-2-beef-paste.png "));
 		expect(uploadDroppedFileMock).toHaveBeenCalledWith("proj-1", file);
+	});
+
+	it("escapes spaces in pasted-file paths and appends after existing draft text", async () => {
+		uploadDroppedFileMock.mockResolvedValue("/wt/uploads/upload-1-abcd-my shot.png");
+		const handle = makeHandle();
+		renderComposer(handle, "proj-1");
+		const input = screen.getByTestId("terminal-composer-input") as HTMLTextAreaElement;
+
+		await userEvent.type(input, "look at this");
+		const file = new File(["img"], "my shot.png", { type: "image/png" });
+		fireEvent.paste(input, { clipboardData: { files: [file], getData: () => "" } });
+
+		await waitFor(() =>
+			expect(input.value).toBe("look at this /wt/uploads/upload-1-abcd-my\\ shot.png "),
+		);
+	});
+
+	it("shows an error toast and keeps the draft when a pasted-file upload fails", async () => {
+		uploadDroppedFileMock.mockRejectedValue(new Error("File too large (max 100 MB)"));
+		const handle = makeHandle();
+		renderComposer(handle, "proj-1");
+		const input = screen.getByTestId("terminal-composer-input") as HTMLTextAreaElement;
+
+		await userEvent.type(input, "draft");
+		const file = new File(["img"], "huge.png", { type: "image/png" });
+		fireEvent.paste(input, { clipboardData: { files: [file], getData: () => "" } });
+
+		await waitFor(() => expect(toast.error).toHaveBeenCalledOnce());
+		expect(String(vi.mocked(toast.error).mock.calls[0][0])).toContain("File too large");
+		expect(input.value).toBe("draft");
+	});
+
+	it("exposes appendPaths through apiRef for the host attach flow", async () => {
+		const handle = makeHandle();
+		const apiRef = { current: null as TerminalComposerApi | null };
+		render(
+			<I18nProvider>
+				<TerminalComposer handle={handle} projectId="proj-1" apiRef={apiRef} />
+			</I18nProvider>,
+		);
+		const input = screen.getByTestId("terminal-composer-input") as HTMLTextAreaElement;
+
+		expect(apiRef.current).not.toBeNull();
+		act(() => apiRef.current?.appendPaths(["/wt/uploads/a.png", "/wt/uploads/b.png"]));
+		expect(input.value).toBe("/wt/uploads/a.png /wt/uploads/b.png ");
 	});
 
 	it("sending from expanded mode collapses back to the bar", async () => {

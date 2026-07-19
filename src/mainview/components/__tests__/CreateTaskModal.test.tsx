@@ -24,6 +24,7 @@ vi.mock("../../rpc", () => ({
 			listAgentSkills: vi.fn(),
 		},
 	},
+	isElectrobun: false,
 }));
 
 vi.mock("../../analytics", () => ({
@@ -158,6 +159,22 @@ describe("CreateTaskModal", () => {
 	it("does not show Save & Start button when onCreateAndRun is omitted", () => {
 		renderModal();
 		expect(screen.queryByText("Save & Start")).not.toBeInTheDocument();
+	});
+
+	it("attach button uploads a picked file and inserts its path into the description", async () => {
+		renderModal();
+
+		expect(screen.getByTestId("create-task-attach")).toBeEnabled();
+		const file = new File(["img"], "shot.png", { type: "image/png" });
+		await userEvent.upload(screen.getByTestId("create-task-attach-input"), file);
+
+		await waitFor(() => {
+			const textarea = screen.getByPlaceholderText(/describe what needs/i) as HTMLTextAreaElement;
+			expect(textarea.value).toContain("/tmp/uploaded-drop.png");
+		});
+		expect(mockedApi.request.uploadFileBase64).toHaveBeenCalledWith(
+			expect.objectContaining({ projectId: "p1", filename: "shot.png" }),
+		);
 	});
 
 	it("defaults the project selector to the board that opened the modal", async () => {
