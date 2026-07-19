@@ -82,6 +82,27 @@ struct SessionHTTPClientTests {
         }
     }
 
+    @Test("The /instance pairing probe uses a short timeout so dead hosts fail fast")
+    func instanceProbeTimeout() async throws {
+        let supported = RemoteInstanceInfo(
+            instanceId: "instance-1",
+            name: "Development Mac",
+            appVersion: "1.36.0",
+            protocolVersion: 1
+        )
+        let loader = try QueueHTTPDataLoader(responses: [
+            HTTPDataResponse(data: JSONEncoder().encode(supported), statusCode: 200, headers: [:])
+        ])
+        let client = SessionHTTPClient(loader: loader)
+        let origin = try #require(URL(string: "http://10.0.0.5:4242"))
+
+        _ = try await client.fetchInstance(origin: origin)
+        let request = try #require(await loader.requests.first)
+
+        #expect(request.timeoutInterval == SessionHTTPClient.instanceProbeTimeout)
+        #expect(SessionHTTPClient.instanceProbeTimeout <= 5)
+    }
+
     @Test(
         "Set-Cookie parsing accepts only a nonempty dev3 session",
         arguments: [

@@ -79,6 +79,15 @@ public protocol SessionHTTPTransporting: Sendable {
 public struct SessionHTTPClient: SessionHTTPTransporting, Sendable {
     public static let supportedProtocolVersion = 1
 
+    /// Pairing probes a QR-supplied host that may be unreachable from the phone (a
+    /// VPN `utun`, a VM bridge address, a stale DHCP lease). URLSession's default 60s
+    /// request timeout stalls the whole pairing flow for a full minute per dead host,
+    /// so the `/instance` probe gets a short deadline. A timeout surfaces as a URLError
+    /// (not a `SessionHTTPError`), which `pairingInstanceFailureMessage(for:)` maps to
+    /// the reachability message — scenario (c) — exactly as intended. Only the probe is
+    /// shortened; authenticated requests keep URLSession's normal timeout.
+    static let instanceProbeTimeout: TimeInterval = 5
+
     private let loader: any HTTPDataLoading
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -91,6 +100,7 @@ public struct SessionHTTPClient: SessionHTTPTransporting, Sendable {
         var request = try SessionRequestFactory.request(origin: origin, path: "/instance")
         request.httpMethod = "GET"
         request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = Self.instanceProbeTimeout
         log("→ GET /instance (\(origin.host ?? origin.absoluteString))")
         do {
             let response = try await loader.data(for: request)
