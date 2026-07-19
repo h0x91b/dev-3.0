@@ -10,7 +10,7 @@ Upstream [issue #127](https://github.com/coder/ghostty-web/issues/127) and [PR #
 
 ## Decision
 
-Route batched PTY output in `TerminalView` through `writePreservingViewport()`. When the viewport is above the live bottom, the helper captures the viewport and scrollback length, writes the data, restores the viewport with the scrollback delta, and synchronizes Ghostty's smooth-scroll target when that private field is present.
+Route batched PTY output in [`TerminalView`](../src/mainview/TerminalView.tsx) through [`writePreservingViewport()`](../src/mainview/utils/terminalViewport.ts). When the viewport is above the live bottom, the helper captures the viewport and scrollback length, writes the data, restores the viewport with the scrollback delta, and synchronizes Ghostty's smooth-scroll target when that private field is present.
 
 ## Risks
 
