@@ -284,6 +284,7 @@ function App() {
 	const [tunnelWanted, setTunnelWanted] = useState(false);
 	const [tunnelStarting, setTunnelStarting] = useState(false);
 	const [cloudflaredCopied, setCloudflaredCopied] = useState(false);
+	const [remoteUrlCopyState, setRemoteUrlCopyState] = useState<"idle" | "copying" | "copied">("idle");
 	const applyRemoteQR = useCallback((next: RemoteAccessQRData) => {
 		setRemoteQR(next);
 		setRemoteAccessActive(isRemoteTunnelActive(next.tunnelState));
@@ -1767,7 +1768,10 @@ function App() {
 	const [qrConsumed, setQrConsumed] = useState(false);
 
 	useEffect(() => {
-		function onQrConsumed() { setQrConsumed(true); }
+		function onQrConsumed() {
+			setQrConsumed(true);
+			setRemoteUrlCopyState("idle");
+		}
 		window.addEventListener("rpc:qrTokenConsumed", onQrConsumed);
 		return () => window.removeEventListener("rpc:qrTokenConsumed", onQrConsumed);
 	}, []);
@@ -1778,6 +1782,7 @@ function App() {
 			const detail = (e as CustomEvent<RemoteAccessQRData>).detail;
 			if (!detail) return;
 			applyRemoteQR(detail);
+			setRemoteUrlCopyState("idle");
 			setQrConsumed(false); // Reset consumed state when opening fresh QR
 			// Sync tunnel checkbox with actual tunnel state
 			setTunnelWanted(detail?.tunnelState === "connected" || detail?.tunnelState === "starting");
@@ -1949,6 +1954,13 @@ function App() {
 	const createTaskProject = createTaskProjectId
 		? state.projects.find((project) => project.id === createTaskProjectId) ?? null
 		: null;
+	const remoteCopyLabel = qrConsumed
+		? "remote.copyUrl"
+		: remoteUrlCopyState === "copying"
+			? "remote.copyingUrl"
+			: remoteUrlCopyState === "copied"
+				? "remote.urlCopied"
+				: "remote.copyUrl";
 
 	return (
 		<div className="h-full w-full flex flex-col">
@@ -2137,7 +2149,11 @@ function App() {
 				<div
 					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
 					onMouseDown={(e) => {
-						if (e.target === e.currentTarget) { setRemoteQR(null); setTunnelStarting(false); }
+						if (e.target === e.currentTarget) {
+							setRemoteQR(null);
+							setRemoteUrlCopyState("idle");
+							setTunnelStarting(false);
+						}
 					}}
 				>
 					<div className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[28rem] p-6 space-y-4 text-center">
@@ -2303,16 +2319,48 @@ function App() {
 
 						<div className="flex items-center justify-center gap-2">
 							<button
-								onClick={() => {
-									if (!qrConsumed) navigator.clipboard.writeText(remoteQR.accessUrl).catch(() => {});
+								type="button"
+								onClick={async () => {
+									if (qrConsumed || remoteUrlCopyState === "copying") return;
+									setRemoteUrlCopyState("copying");
+									try {
+										await navigator.clipboard.writeText(remoteQR.accessUrl);
+										setRemoteUrlCopyState("copied");
+										setTimeout(() => setRemoteUrlCopyState("idle"), 2000);
+									} catch {
+										setRemoteUrlCopyState("idle");
+									}
 								}}
-								disabled={qrConsumed}
-								className={`px-4 py-2 text-sm rounded-lg transition-colors ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : "bg-accent text-white hover:bg-accent-hover"}`}
+								disabled={qrConsumed || remoteUrlCopyState === "copying"}
+								aria-label={t(remoteCopyLabel)}
+								className={`inline-flex min-w-[7.25rem] items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-all active:scale-[0.98] ${qrConsumed ? "bg-elevated text-fg-3 cursor-not-allowed" : remoteUrlCopyState === "copying" ? "bg-accent/80 text-white cursor-wait" : remoteUrlCopyState === "copied" ? "bg-success text-white hover:bg-success-hover" : "bg-accent text-white hover:bg-accent-hover"}`}
 							>
-								{t("remote.copyUrl")}
+								{remoteUrlCopyState === "copying" && (
+									<svg
+										className="w-3.5 h-3.5 animate-spin"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										aria-hidden="true"
+									>
+										<circle cx="12" cy="12" r="9" strokeWidth="3" opacity="0.25" />
+										<path d="M21 12a9 9 0 0 1-9 9" strokeWidth="3" strokeLinecap="round" />
+									</svg>
+								)}
+								{remoteUrlCopyState === "copied" && (
+									<span
+										aria-hidden="true"
+										className="leading-none"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\uF00C"}
+									</span>
+								)}
+								{t(remoteCopyLabel)}
 							</button>
 							<button
-								onClick={() => { setRemoteQR(null); setTunnelStarting(false); }}
+								type="button"
+								onClick={() => { setRemoteQR(null); setRemoteUrlCopyState("idle"); setTunnelStarting(false); }}
 								className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
 							>
 								{t("remote.close")}

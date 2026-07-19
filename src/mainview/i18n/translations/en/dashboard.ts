@@ -129,6 +129,8 @@ const dashboard = {
 	"remote.tunnelConnected": "Public tunnel active",
 	"remote.tunnelFailed": "Tunnel failed to start",
 	"remote.copyUrl": "Copy URL",
+	"remote.copyingUrl": "Copying URL…",
+	"remote.urlCopied": "URL copied",
 	"remote.close": "Close",
 	"remote.connected": "Connected",
 	"remote.authFailed": "Session Expired",

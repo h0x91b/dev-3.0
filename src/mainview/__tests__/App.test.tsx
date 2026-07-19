@@ -1326,6 +1326,30 @@ describe("App keyboard shortcuts", () => {
 	});
 
 	describe("QR modal consumed state", () => {
+		it("shows a success state after copying the QR URL", async () => {
+			await renderApp();
+			let resolveWrite!: () => void;
+			const writeText = vi.fn().mockImplementation(() => new Promise<void>((resolve) => { resolveWrite = resolve; }));
+			Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+			const qrData = {
+				qrDataUrl: "data:image/png;base64,test",
+				accessUrl: "http://192.168.0.1:1234/?token=test",
+				tunnelState: "idle",
+				cloudflaredInstalled: false,
+			};
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: qrData }));
+			await waitFor(() => expect(screen.getByRole("button", { name: "Copy URL" })).toBeInTheDocument());
+
+			await userEvent.click(screen.getByRole("button", { name: "Copy URL" }));
+			await waitFor(() => expect(screen.getByRole("button", { name: "Copying URL…" })).toBeInTheDocument());
+			expect(screen.getByRole("button", { name: "Copying URL…" })).toBeDisabled();
+
+			resolveWrite();
+			await waitFor(() => expect(screen.getByRole("button", { name: "URL copied" })).toBeInTheDocument());
+			expect(writeText).toHaveBeenCalledWith(qrData.accessUrl);
+		});
+
 		it("keeps the active tunnel indicator after the QR modal closes", async () => {
 			await renderApp();
 			const remoteButton = screen.getByLabelText("Open on your phone — scan QR code for remote access");
