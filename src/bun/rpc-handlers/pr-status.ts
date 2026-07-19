@@ -2,6 +2,21 @@ import type { PRCheckInfo, PRCIStatus, PRReviewDecision, PRReviewState } from ".
 export { summarizeMergeability } from "../../shared/pr-status";
 export type { PRMergeability, PRMergeabilityReason, PRMergeabilitySummary } from "../../shared/pr-status";
 
+/** Extract host/owner/repo from a GitHub pull-request URL; null when it isn't one. */
+export function parseGitHubPullRequestUrl(url: string): { host: string; owner: string; repo: string } | null {
+	try {
+		const parsed = new URL(url);
+		const parts = parsed.pathname.split("/").filter(Boolean);
+		const pullIndex = parts.indexOf("pull");
+		if (pullIndex < 2) return null;
+		const owner = parts[pullIndex - 2];
+		const repo = parts[pullIndex - 1]?.replace(/\.git$/, "");
+		return owner && repo && parsed.hostname ? { host: parsed.hostname, owner, repo } : null;
+	} catch {
+		return null;
+	}
+}
+
 // Dependency-free helpers for collapsing GitHub PR status/review data into the
 // app's CI + review signals. Kept side-effect-free (no electrobun/pty imports)
 // so they can be unit-tested in isolation, like git-poll-throttle.ts.

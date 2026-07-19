@@ -10,6 +10,8 @@ vi.mock("../../rpc", () => ({
 		request: {
 			getTaskDiff: vi.fn(),
 			getGlobalSettings: vi.fn(),
+			getTaskPrComments: vi.fn(),
+			sendAgentMessageNow: vi.fn(),
 		},
 	},
 }));
@@ -188,6 +190,38 @@ vi.mock("@git-diff-view/react", async () => {
 			initSyntax() {}
 			buildSplitDiffLines() {}
 			buildUnifiedDiffLines() {}
+
+		__lineIndexBySide(lineNumber: number, side: number): number {
+			const sideName = side === 0 ? "old" : "new";
+			let count = 0;
+			for (let i = 0; i < this.__mockLines.length; i++) {
+				if (this.__mockLines[i].side === sideName) {
+					count += 1;
+					if (count === lineNumber) return i;
+				}
+			}
+			return -1;
+		}
+
+		getUnifiedLineIndexByLineNumber(lineNumber: number, side: number) {
+			return this.__lineIndexBySide(lineNumber, side);
+		}
+
+		getUnifiedLine(_index: number) {
+			return { isHidden: false };
+		}
+
+		getSplitLineIndexByLineNumber(lineNumber: number, side: number) {
+			return this.__lineIndexBySide(lineNumber, side);
+		}
+
+		getSplitLeftLine(_index: number) {
+			return { isHidden: false };
+		}
+
+		getSplitRightLine(_index: number) {
+			return { isHidden: false };
+		}
 		},
 	};
 });
@@ -216,6 +250,37 @@ vi.mock("@git-diff-view/file", () => ({
 		initSyntax() {},
 		buildSplitDiffLines() {},
 		buildUnifiedDiffLines() {},
+		getUnifiedLineIndexByLineNumber(this: { __mockLines: Array<{ side: string }> }, lineNumber: number, side: number) {
+			const sideName = side === 0 ? "old" : "new";
+			let count = 0;
+			for (let i = 0; i < this.__mockLines.length; i++) {
+				if (this.__mockLines[i].side === sideName) {
+					count += 1;
+					if (count === lineNumber) return i;
+				}
+			}
+			return -1;
+		},
+		getUnifiedLine(_index: number) {
+			return { isHidden: false };
+		},
+		getSplitLineIndexByLineNumber(this: { __mockLines: Array<{ side: string }> }, lineNumber: number, side: number) {
+			const sideName = side === 0 ? "old" : "new";
+			let count = 0;
+			for (let i = 0; i < this.__mockLines.length; i++) {
+				if (this.__mockLines[i].side === sideName) {
+					count += 1;
+					if (count === lineNumber) return i;
+				}
+			}
+			return -1;
+		},
+		getSplitLeftLine(_index: number) {
+			return { isHidden: false };
+		},
+		getSplitRightLine(_index: number) {
+			return { isHidden: false };
+		},
 	}),
 }));
 
@@ -2935,5 +3000,265 @@ describe("TaskDiffViewer — recent commits mode", () => {
 		// Header reflects the honest "no commits" state, and the button stays enabled.
 		expect(screen.getByText("No commits on this branch yet")).toBeInTheDocument();
 		expect(screen.getByTestId("diff-mode-recent")).toBeEnabled();
+	});
+});
+
+describe("TaskDiffViewer — GitHub PR review layer", () => {
+	const prTask: Task = { ...task, prNumber: 42, prUrl: "https://github.com/acme/widget/pull/42" };
+
+	function makeThread(overrides: Record<string, unknown> = {}) {
+		return {
+			id: "th1",
+			path: "src/app.ts",
+			line: 1,
+			originalLine: 1,
+			startLine: null,
+			diffSide: "RIGHT" as const,
+			isResolved: false,
+			isOutdated: false,
+			comments: [
+				{
+					id: "c1",
+					author: "alice",
+					isBot: false,
+					body: "Rename **this** variable.",
+					createdAt: "2026-07-18T10:00:00Z",
+					url: "https://github.com/acme/widget/pull/42#discussion_r1",
+				},
+			],
+			...overrides,
+		};
+	}
+
+	function makePrPayload(overrides: Record<string, unknown> = {}) {
+		return {
+			prNumber: 42,
+			prUrl: "https://github.com/acme/widget/pull/42",
+			fetchedAt: "2026-07-19T08:00:00Z",
+			threads: [makeThread()],
+			conversation: [
+				{
+					id: "ic1",
+					author: "codex-bot[bot]",
+					isBot: true,
+					body: "LGTM but check the tests.",
+					createdAt: "2026-07-18T11:00:00Z",
+					url: "https://github.com/acme/widget/pull/42#issuecomment-1",
+				},
+			],
+			...overrides,
+		};
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(api.request.getTaskDiff).mockImplementation(async ({ mode }) => ({
+			...diffPayload,
+			mode,
+			compareRef: mode === "uncommitted" ? null : "origin/main",
+			compareLabel: mode === "uncommitted" ? "Working tree" : "origin/main",
+		}));
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+		} as never);
+		vi.mocked(api.request.getTaskPrComments).mockResolvedValue(makePrPayload() as never);
+		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValue(undefined as never);
+		localStorage.clear();
+		// Inline thread anchoring is branch-mode only; open the viewer there.
+		localStorage.setItem("dev3-inline-diff-mode-v1", "branch");
+		document.documentElement.dataset.theme = "dark";
+		Object.defineProperty(window.screen, "availWidth", {
+			configurable: true,
+			value: 2560,
+		});
+	});
+
+	function renderViewer(viewerTask: Task = prTask) {
+		return render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={viewerTask}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("skips the PR comments fetch entirely when the task has no PR", async () => {
+		renderViewer(task);
+		await screen.findAllByTestId("mock-diff");
+		expect(api.request.getTaskPrComments).not.toHaveBeenCalled();
+		expect(screen.queryByTestId("pr-conversation-block")).not.toBeInTheDocument();
+	});
+
+	it("renders the conversation block and anchors the thread inline in branch mode", async () => {
+		renderViewer();
+		const block = await screen.findByTestId("pr-conversation-block");
+		expect(within(block).getByText("1 unresolved")).toBeInTheDocument();
+		expect(api.request.getTaskPrComments).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", force: false });
+
+		const thread = await screen.findByTestId("github-thread");
+		expect(within(thread).getByText("alice")).toBeInTheDocument();
+		const markdown = within(thread).getByTestId("pr-comment-markdown");
+		expect(markdown.querySelector("strong")?.textContent).toBe("this");
+	});
+
+	it("hides resolved threads until Show resolved is toggled", async () => {
+		vi.mocked(api.request.getTaskPrComments).mockResolvedValue(makePrPayload({
+			threads: [makeThread(), makeThread({ id: "th2", line: 2, isResolved: true })],
+		}) as never);
+		const user = userEvent.setup();
+		renderViewer();
+
+		await screen.findByTestId("github-thread");
+		expect(screen.getAllByTestId("github-thread")).toHaveLength(1);
+
+		await user.click(screen.getByTestId("pr-show-resolved-toggle"));
+		await waitFor(() => {
+			expect(screen.getAllByTestId("github-thread")).toHaveLength(2);
+		});
+	});
+
+	it("collects outdated and off-diff threads into collapsed groups instead of dropping them", async () => {
+		vi.mocked(api.request.getTaskPrComments).mockResolvedValue(makePrPayload({
+			threads: [
+				makeThread({ id: "th-outdated", isOutdated: true }),
+				makeThread({ id: "th-gone", path: "gone/file.ts" }),
+			],
+		}) as never);
+		const user = userEvent.setup();
+		renderViewer();
+
+		const outdatedGroup = await screen.findByTestId("github-outdated-group");
+		expect(within(outdatedGroup).queryByTestId("github-thread")).not.toBeInTheDocument();
+		await user.click(within(outdatedGroup).getByRole("button", { name: /Outdated review threads/ }));
+		expect(within(outdatedGroup).getByTestId("github-thread")).toBeInTheDocument();
+
+		const unmappedGroup = screen.getByTestId("pr-unmapped-group");
+		await user.click(within(unmappedGroup).getByRole("button", { name: /Threads on files not in this diff/ }));
+		expect(within(unmappedGroup).getByText("gone/file.ts")).toBeInTheDocument();
+	});
+
+	it("exports a selected GitHub thread into the XML with an origin marker", async () => {
+		const user = userEvent.setup();
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+		renderViewer();
+
+		const thread = await screen.findByTestId("github-thread");
+		expect(screen.queryByTestId("review-export-github-marker")).not.toBeInTheDocument();
+
+		await user.click(within(thread).getByTestId("github-thread-export-toggle"));
+		expect(screen.getByTestId("review-export-github-marker")).toHaveTextContent("alice");
+
+		await user.click(screen.getByRole("button", { name: "Copy to Clipboard" }));
+		const xml = writeText.mock.calls[writeText.mock.calls.length - 1][0] as string;
+		expect(xml).toContain('<review origin="github" author="alice">');
+		expect(xml).toContain('<file src="src/app.ts" line=1>');
+		expect(xml).toContain("[alice] Rename **this** variable.");
+		expect(xml).toContain("come from GitHub PR reviewers");
+	});
+
+	it("sends a thread to the agent as a fix prompt with file, snippet, and bodies", async () => {
+		const user = userEvent.setup();
+		renderViewer();
+
+		const thread = await screen.findByTestId("github-thread");
+		await user.click(within(thread).getByTestId("github-thread-send"));
+
+		await waitFor(() => {
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledTimes(1);
+		});
+		const { text, taskId } = vi.mocked(api.request.sendAgentMessageNow).mock.calls[0][0];
+		expect(taskId).toBe("t1");
+		expect(text).toContain("File: src/app.ts, line 1");
+		expect(text).toContain('+const a = "two";');
+		expect(text).toContain("[alice] wrote:");
+		expect(text).toContain("Rename **this** variable.");
+		expect(within(thread).getByText("Sent")).toBeInTheDocument();
+	});
+
+	it("shows the mode hint outside branch mode and switches on click", async () => {
+		localStorage.setItem("dev3-inline-diff-mode-v1", "uncommitted");
+		const user = userEvent.setup();
+		renderViewer();
+
+		const hint = await screen.findByTestId("pr-threads-mode-hint");
+		expect(screen.queryByTestId("github-thread")).not.toBeInTheDocument();
+
+		await user.click(within(hint).getByRole("button", { name: "Open Branch diff" }));
+		await screen.findByTestId("github-thread");
+		expect(screen.queryByTestId("pr-threads-mode-hint")).not.toBeInTheDocument();
+	});
+
+	it("surfaces fetch failures with a retry that refetches with force", async () => {
+		vi.mocked(api.request.getTaskPrComments).mockRejectedValueOnce(new Error("gh exploded"));
+		const user = userEvent.setup();
+		renderViewer();
+
+		const error = await screen.findByTestId("pr-comments-error");
+		expect(error).toHaveTextContent("gh exploded");
+
+		await user.click(within(error).getByRole("button", { name: "Retry" }));
+		await screen.findByTestId("github-thread");
+		expect(api.request.getTaskPrComments).toHaveBeenLastCalledWith({ taskId: "t1", projectId: "p1", force: true });
+	});
+
+	it("jumps to the first unresolved GitHub thread when opened with the deep-link flag", async () => {
+		const scrolledThreadIds: string[] = [];
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+			configurable: true,
+			value: vi.fn(function (this: HTMLElement) {
+				const threadId = this.getAttribute("data-thread-id");
+				if (threadId) scrolledThreadIds.push(threadId);
+			}),
+		});
+		vi.mocked(api.request.getTaskPrComments).mockResolvedValue(makePrPayload({
+			threads: [makeThread({ id: "th-resolved", isResolved: true }), makeThread({ id: "th-live", line: 2 })],
+		}) as never);
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={prTask}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFirstUnresolvedThread: true }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await screen.findByTestId("github-thread");
+		await waitFor(() => {
+			expect(scrolledThreadIds).toContain("th-live");
+		});
+	});
+
+	it("forces branch mode for the unresolved deep link even when another mode is preferred", async () => {
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
+		localStorage.setItem("dev3-inline-diff-mode-v1", "uncommitted");
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={prTask}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main", focusFirstUnresolvedThread: true }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		// The inline thread only renders in branch mode — the stored "uncommitted"
+		// preference must not win over the deep link.
+		await screen.findByTestId("github-thread");
+		await waitFor(() => {
+			expect(vi.mocked(api.request.getTaskDiff)).toHaveBeenLastCalledWith(
+				expect.objectContaining({ mode: "branch" }),
+			);
+		});
 	});
 });

@@ -269,8 +269,17 @@ export default function TaskGitActions({
 		</span>
 	) : null;
 
+	const openUnresolvedInDiff = onOpenInlineDiff
+		? () => onOpenInlineDiff({
+			mode: "branch",
+			compareRef: compareRef || undefined,
+			compareLabel: displayRef,
+			focusFirstUnresolvedThread: true,
+		})
+		: undefined;
+
 	const prBadge = prInfo ? (
-		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id}>
+		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
 			<button
 				type="button"
 				onClick={(event) => {

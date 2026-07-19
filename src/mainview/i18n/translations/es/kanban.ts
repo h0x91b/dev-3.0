@@ -108,6 +108,7 @@ const kanban = {
 	"task.review.commented": "El PR tiene comentarios — haz clic para abrir el PR",
 	"task.prUnresolvedComments_one": "{count} comentario sin resolver",
 	"task.prUnresolvedComments_other": "{count} comentarios sin resolver",
+	"task.prShowUnresolvedInDiff": "Mostrar en el diff",
 	"task.prChecks": "Comprobaciones",
 	"task.prNoChecks": "No hay comprobaciones",
 	"task.prConflict": "Conflicto de fusión",

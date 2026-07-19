@@ -46,7 +46,7 @@ import {
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
 } from "./merge-prompt-suppression";
-import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, parseReviewDecision, reasonForSignal, rollupCiStatus } from "./pr-status";
+import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, parseGitHubPullRequestUrl, parseReviewDecision, reasonForSignal, rollupCiStatus } from "./pr-status";
 
 /**
  * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir
@@ -587,20 +587,6 @@ function prPollInterval(isActiveForeground: boolean, taskId: string): number {
 	return prPendingState.get(taskId)
 		? intervalForTask(isActiveForeground, ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS, BACKGROUND_PROJECT_PENDING_PR_INTERVAL_MS)
 		: intervalForTask(isActiveForeground, ACTIVE_PROJECT_PR_INTERVAL_MS, BACKGROUND_PROJECT_PR_INTERVAL_MS);
-}
-
-function parseGitHubPullRequestUrl(url: string): { host: string; owner: string; repo: string } | null {
-	try {
-		const parsed = new URL(url);
-		const parts = parsed.pathname.split("/").filter(Boolean);
-		const pullIndex = parts.indexOf("pull");
-		if (pullIndex < 2) return null;
-		const owner = parts[pullIndex - 2];
-		const repo = parts[pullIndex - 1]?.replace(/\.git$/, "");
-		return owner && repo && parsed.hostname ? { host: parsed.hostname, owner, repo } : null;
-	} catch {
-		return null;
-	}
 }
 
 const REVIEW_THREADS_QUERY = `

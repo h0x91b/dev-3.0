@@ -110,6 +110,7 @@ const kanban = {
 	"task.prUnresolvedComments_few": "{count} неразрешённых комментария",
 	"task.prUnresolvedComments_many": "{count} неразрешённых комментариев",
 	"task.prUnresolvedComments_other": "{count} неразрешённых комментария",
+	"task.prShowUnresolvedInDiff": "Показать в диффе",
 	"task.prChecks": "Проверки",
 	"task.prNoChecks": "Проверки не найдены",
 	"task.prConflict": "Конфликт слияния",

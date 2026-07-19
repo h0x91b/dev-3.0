@@ -10,6 +10,12 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** The strip consumed vertical space and exposed a distracting horizontal scrollbar without being the canonical task-switching surface. Rejected replacing it with another permanent row; existing task-switching surfaces already cover the workflow.
 - **Status:** Implemented. Evidence: `ProjectView.tsx`, `TaskSwitcherOverlay.tsx`, `MobileBoardCarousel.tsx`.
 
+## 2026-07-19 — GitHub PR review layer in the diff viewer is read-only
+
+- **Rule:** The diff viewer renders the task PR's review threads + top-level conversation read-only (inline via the local-comment widget mechanism, branch mode only; one "Conversation (N)" control strip at the top of the stream); every item links out to GitHub; per-thread `Send to agent` / opt-in XML export with an origin marker. **No GitHub writes from this surface — no reply/resolve/authoring.**
+- **Why:** Writing reviews from dev3 duplicates GitHub's own UI and adds auth/consistency risk for near-zero gain (grilling task 0fa9144c); the agent loop — not commenting — is the product's value. Rejected: reply/resolve buttons proxying `gh`.
+- **Status:** Implemented. Evidence: `TaskDiffViewer.tsx`, `ux-architecture.yaml (github_review_layer)`.
+
 ## 2026-07-16 — Global Settings category navigation and registry
 
 - **Rule:** Global Settings uses seven left-nav **Settings categories** with one detail pane, localized title/description search, and a narrow list→detail drill-down with an in-app back affordance. The `settings-registry.ts` registry documents **Settings entries** (metadata, category, translations, anchors, storage disposition) and integrity tests; bespoke controls remain bespoke.

@@ -266,9 +266,18 @@ ux_architecture:
     diff_review_viewer:
       purpose: "Full-screen read + inline-review of a task's diff; export comments as an XML review prompt for the agent."
       reached_from: ["inspector:show_diff", "inspector:diff_summary_badge"]
-      allowed: ["view_mode_toggle", "diff_mode_toggle", "file_tree_nav", "in_diff_search", "mark_read", "copy_file_path", "inline_comment", "review_export", "review_copy", "review_reset"]
-      forbidden: ["task_lifecycle_action", "git_mutation", "global_destination"]
+      allowed: ["view_mode_toggle", "diff_mode_toggle", "file_tree_nav", "in_diff_search", "mark_read", "copy_file_path", "inline_comment", "review_export", "review_copy", "review_reset", "github_review_layer_readonly", "pr_conversation_block", "send_thread_to_agent", "open_on_github_link"]
+      forbidden: ["task_lifecycle_action", "git_mutation", "global_destination", "github_write_action"]
       layout: "left Files aside (collapsible, 22rem: Review-export card + Files card) + right diff stream"
+      github_review_layer:
+        note: "Read-only rendering of the task PR's review threads + top-level conversation. NO writes to GitHub of any kind (no reply, no resolve, no authoring) — every thread/comment links out to GitHub instead. Data: one cached on-demand RPC (gh GraphQL), fetched on diff open / manual refresh; badge counts stay on the background poller."
+        conversation_block: "Collapsible 'Conversation (N)' strip at the top of the diff stream — the ONE control cluster of this layer: collapse, show-resolved toggle, refresh, fetched-at, PR link. Never in the toolbar, never in the inspector."
+        inline_threads: "GitHub threads render on their anchored lines via the same widget/extend API as local comments, visually distinct (GitHub glyph, author, timestamp, markdown body). Branch mode only; other modes show a slim 'N review threads -> Branch diff' hint (role link)."
+        outdated: "Threads that no longer map onto the rendered diff collapse into a per-file 'Outdated' group; threads on files absent from the diff collapse into a group inside the conversation block. Never silently dropped."
+        thread_actions:
+          send_to_agent:    { role: "secondary", note: "pushes the thread into the task terminal as a fix prompt; the surface primary stays review_copy" }
+          open_on_github:   { role: "link",      note: "external deep link to the exact comment" }
+          include_in_export: { role: "toggle",   note: "opt-in selection into the existing XML export; exported entries carry an origin marker (github vs local)" }
       review_export_card:
         note: "The one budgeted action cluster on this surface. One primary only."
         controls:

@@ -6,6 +6,9 @@ export interface TaskInlineDiffRequest {
 	compareRef?: string;
 	compareLabel?: string;
 	focusFile?: string;
+	/** Scroll to the first unresolved GitHub review thread once the branch diff
+	 * and the PR comment payload have both loaded (PR status popover deep link). */
+	focusFirstUnresolvedThread?: boolean;
 }
 
 export function useTaskInlineDiffState(taskId?: string) {
