@@ -1710,4 +1710,110 @@ describe("TaskCard", () => {
 			}
 		});
 	});
+
+	describe("PR status on narrow viewport (mobile)", () => {
+		const originalInnerWidth = window.innerWidth;
+		const originalMatchMedia = window.matchMedia;
+		const reviewTask = () =>
+			makeTask({ status: "review-by-colleague", worktreePath: "/tmp/wt", branchName: "feat/test" });
+
+		beforeEach(() => {
+			Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+			Object.defineProperty(window, "matchMedia", {
+				configurable: true,
+				value: (query: string) => ({
+					matches: true,
+					media: query,
+					onchange: null,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					addListener: vi.fn(),
+					removeListener: vi.fn(),
+					dispatchEvent: vi.fn(),
+				}),
+			});
+		});
+
+		afterEach(() => {
+			Object.defineProperty(window, "innerWidth", { configurable: true, value: originalInnerWidth });
+			Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+		});
+
+		it("tapping a PR badge opens a bottom sheet instead of the pull request", async () => {
+			const user = userEvent.setup();
+			const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+			renderCard(reviewTask(), {
+				prInfo: {
+					number: 12,
+					url: "https://example/pr/12",
+					checks: [{ name: "build", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://ci/build" }],
+				},
+			});
+			await user.click(screen.getByLabelText("Open PR #12"));
+			expect(openSpy).not.toHaveBeenCalled();
+			const sheet = await screen.findByTestId("pr-status-sheet");
+			expect(sheet).toHaveTextContent("Checks");
+			expect(sheet).toHaveTextContent("build");
+			expect(screen.queryByTestId("pr-status-popover")).not.toBeInTheDocument();
+			openSpy.mockRestore();
+		});
+
+		it("the sheet links to the pull request on GitHub", async () => {
+			const user = userEvent.setup();
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
+			});
+			await user.click(screen.getByLabelText(/CI failed/));
+			const link = await screen.findByRole("link", { name: "Open PR #12" });
+			expect(link).toHaveAttribute("href", "https://example/pr/12");
+		});
+
+		it("refreshes the PR status from the sheet", async () => {
+			const user = userEvent.setup();
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", checks: [] },
+			});
+			await user.click(screen.getByLabelText("Open PR #12"));
+			await user.click(await screen.findByRole("button", { name: "Refresh PR status" }));
+			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it("auto-refreshes the PR status two seconds after the sheet opens", async () => {
+			vi.useFakeTimers();
+			try {
+				renderCard(reviewTask(), {
+					prInfo: { number: 12, url: "https://example/pr/12", checks: [] },
+				});
+				act(() => {
+					fireEvent.click(screen.getByLabelText("Open PR #12"));
+				});
+				expect(screen.getByTestId("pr-status-sheet")).toBeInTheDocument();
+
+				await act(async () => {
+					vi.advanceTimersByTime(1999);
+				});
+				expect(mockedApi.request.refreshTaskPrStatus).not.toHaveBeenCalled();
+
+				await act(async () => {
+					vi.advanceTimersByTime(1);
+				});
+				expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledTimes(1);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("closes the sheet on backdrop tap", async () => {
+			const user = userEvent.setup();
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", checks: [] },
+			});
+			await user.click(screen.getByLabelText("Open PR #12"));
+			const sheet = await screen.findByTestId("pr-status-sheet");
+			fireEvent.mouseDown(sheet);
+			await waitFor(() => {
+				expect(screen.queryByTestId("pr-status-sheet")).not.toBeInTheDocument();
+			});
+		});
+	});
 });

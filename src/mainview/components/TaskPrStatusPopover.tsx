@@ -6,6 +6,9 @@ import { api } from "../rpc";
 import { useT } from "../i18n";
 import { toast } from "../toast";
 import { computeAnchoredPosition, type RectLike } from "../utils/popoverPosition";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
+import BottomSheet from "./BottomSheet";
 
 interface TaskPrStatusPopoverProps {
 	prInfo: TaskPRBadgeInfo;
@@ -142,7 +145,9 @@ function anchorRect(element: HTMLElement): RectLike {
 
 export default function TaskPrStatusPopover({ prInfo, projectId, taskId, children }: TaskPrStatusPopoverProps) {
 	const t = useT();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [open, setOpen] = useState(false);
+	const [sheetOpen, setSheetOpen] = useState(false);
 	const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
 	const triggerRef = useRef<HTMLSpanElement>(null);
@@ -261,6 +266,17 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 		setPosition({ top: next.top, left: next.left });
 	}, [open, prInfo]);
 
+	// Narrow (mobile): auto-refresh once shortly after the sheet opens, mirroring
+	// the desktop hover auto-refresh.
+	useEffect(() => {
+		if (!sheetOpen || autoRefreshAttemptedRef.current) return;
+		const timer = setTimeout(() => {
+			autoRefreshAttemptedRef.current = true;
+			void refresh();
+		}, AUTO_REFRESH_DELAY_MS);
+		return () => clearTimeout(timer);
+	}, [refresh, sheetOpen]);
+
 	const checks = sortedChecks(prInfo.checks ?? []);
 	const mergeability = summarizeMergeability(prInfo.mergeState);
 	const autoMergeLabel = prInfo.autoMergeEnabled === true
@@ -288,41 +304,38 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 			: prState === "CLOSED"
 				? { label: t("task.prStatusClosed"), className: "text-danger" }
 				: null;
-	const popover = open && createPortal(
-		<div
-			ref={popoverRef}
-			role="dialog"
-			aria-label={t("task.prStatusPopover", { number: String(prInfo.number) })}
-			data-testid="pr-status-popover"
-			className="fixed z-[1200] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-edge-active bg-overlay p-3 text-xs shadow-2xl"
-			style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}
-			onMouseEnter={handlePointerEnter}
-			onMouseLeave={handlePointerLeave}
-			onBlur={(event) => {
-				const nextTarget = event.relatedTarget as Node | null;
-				if (nextTarget && (popoverRef.current?.contains(nextTarget) || triggerRef.current?.contains(nextTarget))) return;
-				scheduleHide();
-			}}
-			onClick={(event) => event.stopPropagation()}
-		>
-			<div className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<div className="font-semibold text-fg">{t("task.prStatusPopover", { number: String(prInfo.number) })}</div>
-					{prInfo.prTitle && <div className="mt-0.5 truncate text-fg-3" title={prInfo.prTitle}>{prInfo.prTitle}</div>}
+
+	// Shared body between the desktop hover popover and the mobile bottom sheet.
+	// `sheet` relaxes the density: no header row (the sheet has its own title),
+	// no capped check list (the sheet itself scrolls), taller touch targets.
+	const statusBody = (sheet: boolean) => (
+		<>
+			{!sheet && (
+				<div className="flex items-start justify-between gap-3">
+					<div className="min-w-0">
+						<div className="font-semibold text-fg">{t("task.prStatusPopover", { number: String(prInfo.number) })}</div>
+						{prInfo.prTitle && <div className="mt-0.5 truncate text-fg-3" title={prInfo.prTitle}>{prInfo.prTitle}</div>}
+					</div>
+					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">{t("task.prDraft")}</span>}
 				</div>
-				{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">{t("task.prDraft")}</span>}
-			</div>
+			)}
+			{sheet && (prInfo.prTitle || prInfo.isDraft) && (
+				<div className="flex items-start justify-between gap-3">
+					{prInfo.prTitle && <div className="min-w-0 break-words text-fg-3">{prInfo.prTitle}</div>}
+					{prInfo.isDraft && <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 font-medium text-warning">{t("task.prDraft")}</span>}
+				</div>
+			)}
 
 			{prInfo.unresolvedCount != null && prInfo.unresolvedCount > 0 && (
 				<div className="mt-2 flex items-center gap-1.5 text-warning">
-					<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF086"}</span>
+					<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 					<span>{t.plural("task.prUnresolvedComments", prInfo.unresolvedCount)}</span>
 				</div>
 			)}
 
 			{prInfo.mergeState?.mergeable === "CONFLICTING" && (
 				<div className="mt-2 flex items-center gap-1.5 text-danger">
-					<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF071"}</span>
+					<span className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 					<span>{t("task.prConflict")}</span>
 				</div>
 			)}
@@ -362,7 +375,10 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 				{checks.length === 0 ? (
 					<div className="text-fg-muted">{t("task.prNoChecks")}</div>
 				) : (
-					<ul data-testid="pr-check-list" className={`${CHECK_LIST_MAX_HEIGHT_CLASS} space-y-1 overflow-y-auto pr-1`}>
+					<ul
+						data-testid="pr-check-list"
+						className={sheet ? "space-y-1" : `${CHECK_LIST_MAX_HEIGHT_CLASS} space-y-1 overflow-y-auto pr-1`}
+					>
 						{checks.map((check, index) => {
 							const state = checkState(check);
 							const name = check.name || t("task.prUnnamedCheck");
@@ -370,9 +386,10 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 								<span className="flex min-w-0 items-center gap-2">
 									<span className={"flex-shrink-0 leading-none " + checkClass(state)} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{checkGlyph(state)}</span>
 									<span className="min-w-0 flex-1 truncate text-fg-2">{name}</span>
-									<span className={"flex-shrink-0 text-[0.625rem] " + checkClass(state)}>{checkStatusLabel(state, t)}</span>
+									<span className={"flex-shrink-0 " + (sheet ? "text-xs " : "text-[0.625rem] ") + checkClass(state)}>{checkStatusLabel(state, t)}</span>
 								</span>
 							);
+							const rowPadding = sheet ? "px-1 py-2" : "px-1 py-1";
 							return (
 								<li key={name + "-" + index}>
 									{check.detailsUrl ? (
@@ -380,12 +397,12 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 											href={check.detailsUrl}
 											target="_blank"
 											rel="noreferrer"
-											className="block rounded px-1 py-1 hover:bg-elevated-hover focus:outline-none focus:ring-1 focus:ring-accent"
+											className={`block rounded ${rowPadding} hover:bg-elevated-hover focus:outline-none focus:ring-1 focus:ring-accent`}
 											aria-label={t("task.prCheckDetails", { name })}
 										>
 											{row}
 										</a>
-									) : <div className="px-1 py-1">{row}</div>}
+									) : <div className={rowPadding}>{row}</div>}
 								</li>
 							);
 						})}
@@ -398,11 +415,74 @@ export default function TaskPrStatusPopover({ prInfo, projectId, taskId, childre
 				onClick={() => void refresh()}
 				disabled={refreshing}
 				aria-label={t(refreshing ? "task.prRefreshing" : "task.prRefresh")}
-				className="mt-3 inline-flex items-center gap-1.5 rounded px-2 py-1 text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
+				className={`mt-3 inline-flex items-center gap-1.5 rounded text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50 ${sheet ? "px-2 py-2" : "px-2 py-1"}`}
 			>
-				<span className={refreshing ? "animate-spin" : ""} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF021"}</span>
+				<span className={refreshing ? "animate-spin" : ""} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{""}</span>
 				<span>{t(refreshing ? "task.prRefreshing" : "task.prRefresh")}</span>
 			</button>
+		</>
+	);
+
+	if (narrow) {
+		// Touch: the hover popover is unreachable and the badge's own click
+		// (window.open of the PR) steals the tap, so intercept taps on the
+		// trigger in the capture phase and show a bottom sheet instead. Clicks
+		// inside the portaled sheet bubble back through the React tree, so stop
+		// them here before they reach the task card's onClick.
+		return (
+			<span
+				ref={triggerRef}
+				className="inline-flex"
+				onClickCapture={(event) => {
+					if (!(event.target instanceof Node) || !triggerRef.current?.contains(event.target)) return;
+					event.preventDefault();
+					event.stopPropagation();
+					setSheetOpen(true);
+				}}
+				onClick={(event) => event.stopPropagation()}
+			>
+				{children}
+				<BottomSheet
+					open={sheetOpen}
+					onClose={() => setSheetOpen(false)}
+					title={t("task.prStatusPopover", { number: String(prInfo.number) })}
+					testId="pr-status-sheet"
+				>
+					<div className="text-sm">
+						{statusBody(true)}
+						<a
+							href={prInfo.url}
+							target="_blank"
+							rel="noreferrer"
+							className="mt-3 flex h-11 items-center justify-center gap-2 rounded-lg bg-elevated font-medium text-accent transition-colors hover:bg-elevated-hover"
+						>
+							<span aria-hidden className="leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F0401}"}</span>
+							<span>{t("task.openPR", { number: String(prInfo.number) })}</span>
+						</a>
+					</div>
+				</BottomSheet>
+			</span>
+		);
+	}
+
+	const popover = open && createPortal(
+		<div
+			ref={popoverRef}
+			role="dialog"
+			aria-label={t("task.prStatusPopover", { number: String(prInfo.number) })}
+			data-testid="pr-status-popover"
+			className="fixed z-[1200] w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-edge-active bg-overlay p-3 text-xs shadow-2xl"
+			style={{ top: position?.top ?? 0, left: position?.left ?? 0, visibility: position ? "visible" : "hidden" }}
+			onMouseEnter={handlePointerEnter}
+			onMouseLeave={handlePointerLeave}
+			onBlur={(event) => {
+				const nextTarget = event.relatedTarget as Node | null;
+				if (nextTarget && (popoverRef.current?.contains(nextTarget) || triggerRef.current?.contains(nextTarget))) return;
+				scheduleHide();
+			}}
+			onClick={(event) => event.stopPropagation()}
+		>
+			{statusBody(false)}
 		</div>,
 		document.body,
 	);

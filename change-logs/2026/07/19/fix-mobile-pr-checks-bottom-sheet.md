@@ -1,0 +1,1 @@
+On phones, tapping a PR/CI/review badge on a kanban card (or the PR row in the task inspector) now opens the PR status and checks in a full-width bottom sheet with an explicit "Open PR" link, instead of the tiny hover popover that also navigated away to GitHub. Desktop hover behavior is unchanged.
