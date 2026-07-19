@@ -11,6 +11,11 @@ public struct ProjectBoardView: View {
     private let actions: (Dev3Task) -> TaskCardActions
     private let onCreateTask: () -> Void
     private let onRefresh: () async -> Void
+    /// Computed once per view value, not per body access: the projection sorts
+    /// every column, and body re-derives it many times per render (pager, each
+    /// header's two step buttons) — repeated projection blew the scene-update
+    /// watchdog on device (decision 149).
+    private let columns: [ProjectBoardColumn]
 
     @State private var selectedColumnID: String
     @State private var hasUserNavigated = false
@@ -42,6 +47,7 @@ public struct ProjectBoardView: View {
             dropPosition: dropPosition,
             explicitlyCollapsedColumnIDs: explicitlyCollapsedColumnIDs
         )
+        self.columns = columns
         _selectedColumnID = State(
             initialValue: ProjectBoardProjection.preferredInitialColumnID(columns) ?? ""
         )
@@ -76,15 +82,6 @@ public struct ProjectBoardView: View {
 
     private var palette: Dev3ThemePalette {
         Dev3Theme.palette(for: colorScheme)
-    }
-
-    private var columns: [ProjectBoardColumn] {
-        ProjectBoardProjection.columns(
-            project: project,
-            tasks: tasks,
-            dropPosition: dropPosition,
-            explicitlyCollapsedColumnIDs: explicitlyCollapsedColumnIDs
-        )
     }
 
     private var preferredColumnID: String? {

@@ -22,9 +22,18 @@ enum TaskOrdering {
         }
     }
 
+    /// Parsing strategies are value types reused across every comparison:
+    /// the previous per-call ISO8601DateFormatter construction copied ICU
+    /// locale tables inside O(n log n) sort comparators and blocked the main
+    /// thread long enough to trip the iOS scene-update watchdog on large
+    /// boards — and its default options rejected the fractional seconds the
+    /// desktop always emits, so it never parsed anything (decision 149).
+    private static let isoFractional = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private static let isoPlain = Date.ISO8601FormatStyle()
+
     static func date(_ value: String?) -> Date? {
         guard let value else { return nil }
-        return ISO8601DateFormatter().date(from: value)
+        return (try? isoFractional.parse(value)) ?? (try? isoPlain.parse(value))
     }
 
     static func readinessPrecedes(_ lhs: Dev3Task, _ rhs: Dev3Task) -> Bool {

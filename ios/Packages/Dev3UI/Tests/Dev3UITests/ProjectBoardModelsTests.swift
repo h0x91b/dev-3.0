@@ -206,4 +206,26 @@ struct ProjectBoardModelsTests {
         let cancelled = columns.first { $0.id == "cancelled" }?.tasks.map(\.id)
         #expect(cancelled == ["cancelled-moved", "fallback-created"])
     }
+
+    @Test("Fractional-second timestamps, the desktop's production format, order by recency")
+    func fractionalSecondTimestampsParse() {
+        let project = makeIAProject(id: "project-1")
+        let tasks = [
+            makeIATask(
+                id: "older",
+                seq: 9,
+                status: .completed,
+                movedAt: "2026-07-19T10:42:27.830Z"
+            ),
+            makeIATask(
+                id: "newer",
+                seq: 1,
+                status: .completed,
+                movedAt: "2026-07-19T10:42:27.949Z"
+            )
+        ]
+        let columns = ProjectBoardProjection.columns(project: project, tasks: tasks)
+
+        #expect(columns.first { $0.id == "completed" }?.tasks.map(\.id) == ["newer", "older"])
+    }
 }
