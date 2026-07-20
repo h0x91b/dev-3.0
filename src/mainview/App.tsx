@@ -9,6 +9,7 @@ import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
 import type { AgentLaunchRequest, AppRPCSchema, CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel, getTaskTitle } from "../shared/types";
+import type { DeepLinkNav } from "../shared/deep-link";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
 import { isTypingContext } from "./utils/typing-context";
@@ -327,6 +328,9 @@ function App() {
 		return () => window.removeEventListener(HELP_LINK_ACTION_EVENT, onHelpLink);
 	}, []);
 	const [createTaskProjectId, setCreateTaskProjectId] = useState<string | null>(null);
+	// Prefill for the Create Task modal when opened from a `dev3://new-task` deep
+	// link. Consumed once by CreateTaskModal's initial description; cleared on close.
+	const [createTaskInitialText, setCreateTaskInitialText] = useState<string>("");
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; project: Project } | null>(null);
 	// Lightbox for images an agent surfaced via `dev3 show-image`, bound to a task.
 	const [imageViewer, setImageViewer] = useState<{ taskId: string; images: SharedImage[]; index: number } | null>(null);
@@ -573,6 +577,25 @@ function App() {
 			);
 		},
 		[navigate, state.route],
+	);
+
+	// Route an inbound `dev3://…` deep link (resolved by the backend) to the right
+	// surface: jump to a task, open a project board, or open the Create Task modal
+	// on a project prefilled with text. Reuses the same navigation the notification
+	// click and Cmd+1..9 paths use.
+	const handleDeepLink = useCallback(
+		(nav: DeepLinkNav) => {
+			if (nav.kind === "task") {
+				openTaskFromNotification(nav.taskId, nav.projectId);
+			} else if (nav.kind === "project") {
+				navigateToProject(nav.projectId);
+			} else {
+				navigateToProject(nav.projectId);
+				setCreateTaskInitialText(nav.text);
+				setCreateTaskProjectId(nav.projectId);
+			}
+		},
+		[navigateToProject, openTaskFromNotification],
 	);
 
 	const cycleVariant = useCallback((direction: -1 | 1): boolean => {
@@ -1622,6 +1645,14 @@ function App() {
 		return () => window.removeEventListener("rpc:openTaskFromNotification", onOpenTaskFromNotification);
 	}, [openTaskFromNotification]);
 
+	useEffect(() => {
+		function onOpenDeepLink(e: Event) {
+			handleDeepLink((e as CustomEvent).detail as DeepLinkNav);
+		}
+		window.addEventListener("rpc:openDeepLink", onOpenDeepLink);
+		return () => window.removeEventListener("rpc:openDeepLink", onOpenDeepLink);
+	}, [handleDeepLink]);
+
 	// If this window was reopened by a notification click while the app sat
 	// window-less in the dock, the click target is waiting in the backend — pull
 	// it on mount and navigate. Pulling (rather than bun pushing) avoids racing
@@ -1638,6 +1669,18 @@ function App() {
 		// Mount-only on purpose: the backend slot is consumed on first read, so
 		// re-running on `openTaskFromNotification` identity changes would only
 		// ever read null.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// Same cold-start pull for a `dev3://…` deep link that reopened this window.
+	useEffect(() => {
+		const pending = api.request.consumePendingDeepLinkNav?.();
+		if (!pending) return;
+		pending
+			.then((nav) => {
+				if (nav) handleDeepLink(nav);
+			})
+			.catch(() => {});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
@@ -2174,13 +2217,19 @@ function App() {
 					project={createTaskProject}
 					projects={state.projects}
 					dispatch={dispatch}
-					onClose={() => setCreateTaskProjectId(null)}
+					initialText={createTaskInitialText}
+					onClose={() => {
+						setCreateTaskProjectId(null);
+						setCreateTaskInitialText("");
+					}}
 					onCreateAndRun={(task, project) => {
 						setCreateTaskProjectId(null);
+						setCreateTaskInitialText("");
 						setLaunchModal({ task, targetStatus: "in-progress", project });
 					}}
 					onOpenAutomations={(project) => {
 						setCreateTaskProjectId(null);
+						setCreateTaskInitialText("");
 						navigate({ screen: "project-settings", projectId: project.id, tab: "automations" });
 					}}
 				/>

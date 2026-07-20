@@ -16,6 +16,9 @@ import { loadSettings, loadSettingsSync } from "./settings";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { initNativeNotifications } from "./native-notifications";
 import { markPendingNotificationNav } from "./notification-nav";
+import { markPendingDeepLinkNav } from "./deep-link-nav";
+import { resolveDeepLink } from "./deep-link";
+import { parseDeepLink } from "../shared/deep-link";
 import { createLogger, getLogPath } from "./logger";
 import { writeAppReadyMarker } from "./app-ready-marker";
 import {
@@ -744,6 +747,39 @@ function tryNavigateFromRecentNotification(source: string): void {
 	if (!recent) return;
 	sendToFocusedWindow("openTaskFromNotification", recent);
 }
+
+// Inbound `dev3://…` deep links (macOS only — Electrobun registers the scheme
+// via CFBundleURLTypes, requires the app to live in /Applications). We resolve
+// the target against on-disk data, then navigate exactly like a notification
+// click: push to the open window, or (window-less in the dock) stash it and let
+// the reopened renderer pull it on mount. See decisions/144.
+Electrobun.events.on("open-url", async (e: { data: { url: string } }) => {
+	const raw = e.data?.url ?? "";
+	log.info("[deep-link] open-url received", { url: raw });
+	const target = parseDeepLink(raw);
+	if (!target) {
+		log.warn("[deep-link] unrecognized URL — ignoring", { url: raw });
+		return;
+	}
+	let nav;
+	try {
+		nav = await resolveDeepLink(target);
+	} catch (err) {
+		log.error("[deep-link] resolution failed", { error: String(err), kind: target.kind });
+		return;
+	}
+	if (!nav) {
+		log.warn("[deep-link] target not found — ignoring", { kind: target.kind });
+		return;
+	}
+	if (getWindowCount() === 0) {
+		markPendingDeepLinkNav(nav);
+		void openMainWindow();
+		return;
+	}
+	focusFocusedWindow();
+	sendToFocusedWindow("openDeepLink", nav);
+});
 
 Electrobun.events.on("reopen", () => {
 	// With `exitOnLastWindowClosed: false` the app can sit window-less in the

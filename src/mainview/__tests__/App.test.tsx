@@ -1400,6 +1400,68 @@ describe("App keyboard shortcuts", () => {
 		});
 	});
 
+	describe("dev3:// deep links", () => {
+		const dlProjects = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			{ id: "p2", name: "Beta", path: "/b", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+
+		it("navigates to a task from an openDeepLink event", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(dlProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "task", taskId: "t2", projectId: "p2" },
+				}));
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t2");
+			});
+		});
+
+		it("opens a project board from an openDeepLink event", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(dlProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "project", projectId: "p2" },
+				}));
+			});
+
+			await waitFor(() => {
+				expect(screen.getByTestId("project-screen")).toHaveAttribute("data-project-id", "p2");
+			});
+		});
+
+		it("opens the Create Task modal prefilled from a new-task deep link", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(dlProjects);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:openDeepLink", {
+					detail: { kind: "new-task", projectId: "p2", text: "Prefilled body" },
+				}));
+			});
+
+			expect(await screen.findByText("New Task")).toBeInTheDocument();
+			const textarea = await screen.findByPlaceholderText(/describe what needs/i) as HTMLTextAreaElement;
+			expect(textarea.value).toBe("Prefilled body");
+		});
+	});
+
 	describe("Escape from project view", () => {
 		it("Escape from project screen goes back to dashboard", async () => {
 			vi.mocked(api.request.getProjects).mockResolvedValue([

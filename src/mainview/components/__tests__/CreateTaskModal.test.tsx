@@ -84,6 +84,7 @@ function renderModal(props: {
 	project?: Project;
 	projects?: Project[];
 	draftTask?: Task;
+	initialText?: string;
 } = {}) {
 	return render(
 		<I18nProvider>
@@ -91,6 +92,7 @@ function renderModal(props: {
 				project={props.project ?? mockProject}
 				projects={props.projects}
 				dispatch={props.dispatch ?? vi.fn()}
+				initialText={props.initialText}
 				onClose={props.onClose ?? vi.fn()}
 				onCreateAndRun={props.onCreateAndRun}
 				draftTask={props.draftTask}
@@ -139,6 +141,12 @@ describe("CreateTaskModal", () => {
 		renderModal();
 		const dialog = screen.getByRole("dialog");
 		expect(dialog.contains(document.activeElement)).toBe(true);
+	});
+
+	it("prefills the description from initialText (dev3://new-task deep link)", () => {
+		renderModal({ initialText: "Fix the login race" });
+		const textarea = screen.getByPlaceholderText(/describe what needs/i) as HTMLTextAreaElement;
+		expect(textarea.value).toBe("Fix the login race");
 	});
 
 	beforeEach(() => {

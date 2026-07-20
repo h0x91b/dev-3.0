@@ -193,6 +193,8 @@ const common = {
 	"openIn.cat.editor": "Редактор",
 	"openIn.cat.terminal": "Терминал",
 	"openIn.cat.custom": "Добавлено вами",
+	"openIn.copyDeepLink": "Скопировать deep-ссылку",
+	"openIn.deepLinkCopied": "Скопировано!",
 
 	// GitHub CLI warning banner
 	"ghWarning.titleNotInstalled": "GitHub CLI (gh) не установлен",

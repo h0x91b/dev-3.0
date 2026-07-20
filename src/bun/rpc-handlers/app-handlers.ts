@@ -11,6 +11,8 @@ import * as pty from "../pty-server";
 import { loadSettings, saveSettings } from "../settings";
 import { consumeQuitDialogPending, markQuitConfirmed } from "../quit-manager";
 import { consumePendingNotificationNav as consumeNotificationNavPending } from "../notification-nav";
+import { consumePendingDeepLinkNav as consumeDeepLinkNavPending } from "../deep-link-nav";
+import type { DeepLinkNav } from "../../shared/deep-link";
 import type { NotificationClickTarget } from "../native-notifications";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
@@ -69,6 +71,12 @@ async function consumePendingQuitDialog(): Promise<boolean> {
 // pull-on-mount rationale as consumePendingQuitDialog.
 async function consumePendingNotificationNav(): Promise<NotificationClickTarget | null> {
 	return consumeNotificationNavPending();
+}
+
+// A window reopened by a `dev3://…` deep link (app was window-less in the dock)
+// calls this on mount and navigates. Same pull-on-mount rationale as above.
+async function consumePendingDeepLinkNav(): Promise<DeepLinkNav | null> {
+	return consumeDeepLinkNavPending();
 }
 
 // Renderer-initiated new window (Cmd+Shift+N). Electrobun's native menu
@@ -993,6 +1001,7 @@ export const appHandlers = {
 	requestQuit,
 	consumePendingQuitDialog,
 	consumePendingNotificationNav,
+	consumePendingDeepLinkNav,
 	openNewWindow,
 	hideApp,
 	setWindowForeground,

@@ -77,6 +77,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	taskPreparationFailed: (payload) => window.dispatchEvent(new CustomEvent("rpc:taskPreparationFailed", { detail: payload })),
 	globalSettingsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:globalSettingsUpdated", { detail: payload })),
 	openTaskFromNotification: (payload) => window.dispatchEvent(new CustomEvent("rpc:openTaskFromNotification", { detail: payload })),
+	openDeepLink: (payload) => window.dispatchEvent(new CustomEvent("rpc:openDeepLink", { detail: payload })),
 	cliToast: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliToast", { detail: payload })),
 	cliAttention: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliAttention", { detail: payload })),
 	cliShowImage: (payload) => window.dispatchEvent(new CustomEvent("rpc:cliShowImage", { detail: payload })),

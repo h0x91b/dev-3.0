@@ -99,4 +99,26 @@ describe("OpenInMenu", () => {
 		expect(writeText).toHaveBeenCalledWith("/tmp/my-worktree");
 		expect(screen.getByText("Copied!")).toBeInTheDocument();
 	});
+
+	it("copies a dev3:// deep link when a task is present", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+
+		render(
+			<I18nProvider>
+				<OpenInMenu position={{ top: 100, left: 200 }} path="/tmp/wt" taskId="task-42" onClose={vi.fn()} />
+			</I18nProvider>,
+		);
+
+		await waitFor(() => expect(screen.getByText("Copy Deep Link")).toBeInTheDocument());
+		await userEvent.click(screen.getByText("Copy Deep Link"));
+
+		expect(writeText).toHaveBeenCalledWith("dev3://task/task-42");
+	});
+
+	it("hides Copy Deep Link when there is no task", async () => {
+		renderMenu();
+		await waitFor(() => expect(screen.getByText("Copy Path")).toBeInTheDocument());
+		expect(screen.queryByText("Copy Deep Link")).not.toBeInTheDocument();
+	});
 });

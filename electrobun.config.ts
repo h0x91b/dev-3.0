@@ -19,6 +19,11 @@ export default {
 		name: "dev-3.0",
 		identifier: "dev3.electrobun.dev",
 		version: "1.41.1",
+		// Inbound deep links: `dev3://task/<id>`, `dev3://project/<id>`,
+		// `dev3://new-task?project=<id>&text=<…>`. Electrobun writes CFBundleURLTypes
+		// into Info.plist; macOS only registers it when the app lives in
+		// /Applications. Handled in src/bun/index.ts (open-url). See decisions/144.
+		urlSchemes: ["dev3"],
 	},
 	runtime: {
 		// Standard macOS behavior: closing the last window does NOT quit the app —

@@ -4,6 +4,7 @@ import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
 import type { TaskPaneState, TaskPaneAction, TaskPaneBackendKind } from "./task-panes";
+import type { DeepLinkNav } from "./deep-link";
 
 // ---- Changelog ----
 
@@ -3493,6 +3494,15 @@ export type AppRPCSchema = {
 				params: void;
 				response: { taskId: string; projectId: string } | null;
 			};
+			/**
+			 * Read-and-clear a deep link (`dev3://…`) that arrived while the app sat
+			 * window-less in the dock. The reopened renderer pulls it on mount and
+			 * navigates — same pull-on-mount pattern as consumePendingNotificationNav.
+			 */
+			consumePendingDeepLinkNav: {
+				params: void;
+				response: DeepLinkNav | null;
+			};
 			openNewWindow: {
 				params: void;
 				response: void;
@@ -4024,6 +4034,13 @@ export type AppRPCSchema = {
 			 * The renderer navigates to the referenced task â implements click-to-open for native notifications.
 			 */
 			openTaskFromNotification: { taskId: string; projectId: string };
+			/**
+			 * Navigate from an inbound `dev3://…` deep link while a window is already
+			 * open: jump to a task, open a project board, or open the Create Task
+			 * modal prefilled with `text`. Cold-start (no window) uses the
+			 * consumePendingDeepLinkNav pull instead — see decisions/144.
+			 */
+			openDeepLink: DeepLinkNav;
 			/**
 			 * CLI-initiated in-app toast (`dev3 notify`). When `taskId`/`projectId`
 			 * are present the toast is clickable and navigates to that task.

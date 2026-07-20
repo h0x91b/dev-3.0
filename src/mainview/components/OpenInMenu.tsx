@@ -7,6 +7,7 @@ import { useAvailableApps } from "../hooks/useAvailableApps";
 import { OPEN_IN_APP_ICONS, OPEN_IN_APP_ICON_FALLBACK } from "./openInAppIcons";
 import { useT } from "../i18n";
 import { api } from "../rpc";
+import { buildTaskDeepLink } from "../../shared/deep-link";
 
 interface OpenInMenuProps {
 	/** Position of the menu (top-left corner) */
@@ -26,6 +27,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 	const [menuPos, setMenuPos] = useState(position);
 	const [visible, setVisible] = useState(false);
 	const [copied, setCopied] = useState(false);
+	const [deepLinkCopied, setDeepLinkCopied] = useState(false);
 
 	useEscapeKey(onClose);
 	// Close on click outside
@@ -126,6 +128,24 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 				</span>
 				{copied ? t("openIn.pathCopied") : t("openIn.copyPath")}
 			</button>
+			{taskId && (
+				<button
+					onClick={() => {
+						navigator.clipboard.writeText(buildTaskDeepLink(taskId));
+						setDeepLinkCopied(true);
+						setTimeout(() => { setDeepLinkCopied(false); onClose(); }, 800);
+					}}
+					className="w-full text-left px-3 py-2 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg flex items-center gap-2.5 transition-colors"
+				>
+					<span
+						className="w-4 text-center text-sm leading-none flex-shrink-0"
+						style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					>
+						{deepLinkCopied ? "\u{F012C}" : "\u{F0337}"}
+					</span>
+					{deepLinkCopied ? t("openIn.deepLinkCopied") : t("openIn.copyDeepLink")}
+				</button>
+			)}
 		</div>,
 		document.body,
 	);

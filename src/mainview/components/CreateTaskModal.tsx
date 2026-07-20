@@ -36,6 +36,8 @@ interface CreateTaskModalProps {
 	project: Project;
 	projects?: Project[];
 	dispatch: Dispatch<AppAction>;
+	/** Prefilled task description (e.g. from a `dev3://new-task?text=…` deep link). */
+	initialText?: string;
 	onClose: () => void;
 	onCreateAndRun?: (task: Task, project: Project) => void;
 	onOpenAutomations?: (project: Project) => void;
@@ -51,7 +53,7 @@ function sameLabelIds(left: string[], right: string[]): boolean {
 	return left.length === right.length && left.every((id) => right.includes(id));
 }
 
-function CreateTaskModal({ project: initialProject, projects, dispatch, onClose, onCreateAndRun, onOpenAutomations, draftTask }: CreateTaskModalProps) {
+function CreateTaskModal({ project: initialProject, projects, dispatch, initialText, onClose, onCreateAndRun, onOpenAutomations, draftTask }: CreateTaskModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const availableProjects = useMemo(() => {
@@ -67,7 +69,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 	const [selectedProjectId, setSelectedProjectId] = useState(initialProject.id);
 	const selectedProject = availableProjects.find((candidate) => candidate.id === selectedProjectId) ?? initialProject;
 	const project = selectedProject;
-	const [description, setDescription] = useState(draftTask?.description ?? "");
+	const [description, setDescription] = useState(draftTask?.description ?? initialText ?? "");
 	const [creating, setCreating] = useState(false);
 	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>(draftTask?.labelIds ?? []);
 	const [priority, setPriority] = useState<TaskPriority>(draftTask?.priority ?? DEFAULT_PRIORITY);
