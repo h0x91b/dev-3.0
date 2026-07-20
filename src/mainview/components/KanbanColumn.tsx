@@ -61,6 +61,7 @@ interface KanbanColumnProps {
 	onColumnDrop?: (side: "before" | "after") => void;
 	// PR numbers for task cards
 	taskPrMap?: Map<string, TaskPRBadgeInfo>;
+	onOpenUnresolvedComments?: (task: Task) => void;
 	// Feature discovery tip
 	tip?: Tip | null;
 	tipState?: TipState;
@@ -108,6 +109,7 @@ function KanbanColumn({
 	onSetMoving,
 	siblingMap,
 	taskPrMap,
+	onOpenUnresolvedComments,
 	isCustomColumn,
 	customColumnId,
 	colorOverride,
@@ -606,6 +608,7 @@ function KanbanColumn({
 							onSetMoving={onSetMoving}
 							siblingMap={siblingMap}
 							prInfo={taskPrMap?.get(task.id)}
+							onOpenUnresolvedComments={onOpenUnresolvedComments}
 						/>
 					</div>
 				))}

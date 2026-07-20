@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { Dispatch, MutableRefObject } from "react";
 import type { Project, SharedArtifact, Task } from "../../shared/types";
 import type { AppAction, Route } from "../state";
@@ -6,7 +6,7 @@ import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
 import TaskInfoPanel from "./TaskInfoPanel";
 import TaskWorkspacePane from "./TaskWorkspacePane";
-import { useTaskInlineDiffState } from "./task-inline-diff";
+import { createUnresolvedCommentsDiffRequest, useTaskInlineDiffState } from "./task-inline-diff";
 import { trackDiffView } from "../analytics";
 import { taskSeqLabel } from "../../shared/types";
 
@@ -24,6 +24,7 @@ interface TaskWorkspaceViewProps {
 	isTerminalFullscreen?: boolean;
 	onToggleTerminalFullscreen?: () => void;
 	skipCopyModeReset?: boolean;
+	openUnresolvedComments?: boolean;
 }
 
 function TaskWorkspaceView({
@@ -40,10 +41,12 @@ function TaskWorkspaceView({
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
 	skipCopyModeReset,
+	openUnresolvedComments,
 }: TaskWorkspaceViewProps) {
 	const task = tasks.find((item) => item.id === taskId);
 	const project = projects.find((item) => item.id === projectId);
 	const inlineDiff = useTaskInlineDiffState(taskId);
+	const unresolvedRouteKeyRef = useRef<string | null>(null);
 
 	// The fullscreen task view can be entered for a task whose project's tasks
 	// were never loaded into `currentProjectTasks` — e.g. quick-shell jumps
@@ -76,6 +79,18 @@ function TaskWorkspaceView({
 		trackDiffView(projectId, task ? taskSeqLabel(task) : taskId);
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per open
 	}, [inlineDiff.isOpen, projectId, taskId]);
+
+	useEffect(() => {
+		if (!openUnresolvedComments) {
+			unresolvedRouteKeyRef.current = null;
+			return;
+		}
+		if (!task || !project) return;
+		const routeKey = `${project.id}:${task.id}`;
+		if (unresolvedRouteKeyRef.current === routeKey) return;
+		unresolvedRouteKeyRef.current = routeKey;
+		inlineDiff.open(createUnresolvedCommentsDiffRequest(task, project));
+	}, [inlineDiff.open, openUnresolvedComments, project, task]);
 
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">

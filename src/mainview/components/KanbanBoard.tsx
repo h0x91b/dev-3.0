@@ -35,6 +35,7 @@ interface KanbanBoardProps {
 	taskResourceUsage?: Map<string, ResourceUsage>;
 	activeTaskId?: string;
 	disableGlobalFindShortcut?: boolean;
+	onOpenUnresolvedComments?: (task: Task) => void;
 }
 
 type PRIdentity = Pick<TaskPRBadgeInfo, "number" | "url">;
@@ -103,6 +104,7 @@ function KanbanBoard({
 	taskResourceUsage,
 	activeTaskId,
 	disableGlobalFindShortcut = false,
+	onOpenUnresolvedComments,
 }: KanbanBoardProps) {
 	const t = useT();
 	const isCarousel = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -615,6 +617,7 @@ function KanbanBoard({
 		siblingMap,
 		onSetMoving: handleSetMoving,
 		taskPrMap,
+		onOpenUnresolvedComments,
 	};
 
 	function renderColumnElement(slot: ColumnSlot, full: boolean) {

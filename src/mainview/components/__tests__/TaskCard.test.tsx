@@ -160,6 +160,7 @@ function renderCard(
 		isMoving?: boolean;
 		projectOverride?: Project;
 		prInfo?: TaskPRBadgeInfo;
+		onOpenUnresolvedComments?: (task: Task) => void;
 		siblingMap?: Map<string, Task[]>;
 	},
 ) {
@@ -179,6 +180,7 @@ function renderCard(
 				isActiveInSplit={opts?.isActiveInSplit}
 				isMoving={opts?.isMoving}
 				prInfo={opts?.prInfo}
+				onOpenUnresolvedComments={opts?.onOpenUnresolvedComments}
 				siblingMap={opts?.siblingMap}
 			/>
 		</I18nProvider>,
@@ -1549,6 +1551,23 @@ describe("TaskCard", () => {
 			expect(screen.getByRole("link", { name: "Open details for build" })).toHaveAttribute("href", "https://ci/build");
 			await userEvent.click(screen.getByRole("button", { name: "Refresh PR status" }));
 			expect(mockedApi.request.refreshTaskPrStatus).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+		});
+
+		it("deep-links unresolved comments through the board callback", async () => {
+			const onOpenUnresolvedComments = vi.fn();
+			renderCard(reviewTask(), {
+				prInfo: {
+					number: 12,
+					url: "https://example/pr/12",
+					unresolvedCount: 3,
+				},
+				onOpenUnresolvedComments,
+			});
+
+			await userEvent.hover(screen.getByLabelText("3 unresolved comments"));
+			await userEvent.click(await screen.findByTestId("pr-popover-unresolved"));
+
+			expect(onOpenUnresolvedComments).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }));
 		});
 
 		it("sorts failed checks first and shows merge conflicts in the popover", async () => {

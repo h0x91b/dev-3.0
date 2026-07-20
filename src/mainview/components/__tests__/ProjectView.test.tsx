@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
@@ -10,10 +11,22 @@ vi.mock("../../rpc", () => ({
 }));
 
 // Heavy children — stub so the test focuses on ProjectView's own layout logic.
-vi.mock("../KanbanBoard", () => ({ default: () => <div data-testid="kanban" /> }));
+vi.mock("../KanbanBoard", () => ({
+	default: ({ onOpenUnresolvedComments }: { onOpenUnresolvedComments?: (task: Task) => void }) => (
+		<div data-testid="kanban">
+			<button type="button" data-testid="open-unresolved-from-board" onClick={() => onOpenUnresolvedComments?.({ id: "t1" } as Task)} />
+		</div>
+	),
+}));
 vi.mock("../TaskInfoPanel", () => ({ default: () => <div data-testid="info-panel" /> }));
 vi.mock("../ActiveTasksSidebar", () => ({ default: () => <div data-testid="sidebar" /> }));
-vi.mock("../TaskWorkspacePane", () => ({ default: () => <div data-testid="workspace" /> }));
+vi.mock("../TaskWorkspacePane", () => ({
+	default: ({ inlineDiffRequest }: { inlineDiffRequest?: { focusFirstUnresolvedThread?: boolean } }) => (
+		<div data-testid="workspace">
+			{inlineDiffRequest?.focusFirstUnresolvedThread && <span data-testid="workspace-unresolved-diff" />}
+		</div>
+	),
+}));
 vi.mock("../SplitLayout", () => ({
 	default: (props: { kanbanContent: React.ReactNode; terminalContent: React.ReactNode }) => (
 		<div>
@@ -53,7 +66,10 @@ function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 }
 
 describe("ProjectView task-view layout", () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.removeItem("dev3-task-open-mode");
+	});
 
 	it("does not replace a pushed scheduled task with an older initial task snapshot", async () => {
 		let resolveTasks: (tasks: Task[]) => void;
@@ -95,6 +111,42 @@ describe("ProjectView task-view layout", () => {
 		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
 		expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
 		expect(screen.queryByText("Select a task to see its terminal")).not.toBeInTheDocument();
+	});
+
+	it("opens unresolved comments from Kanban in the configured split task route", async () => {
+		const navigate = vi.fn();
+		renderView({ navigate });
+
+		await userEvent.click(screen.getByTestId("open-unresolved-from-board"));
+
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "project",
+			projectId: "p1",
+			activeTaskId: "t1",
+			openUnresolvedComments: true,
+		});
+	});
+
+	it("uses the fullscreen task route when that open mode is configured", async () => {
+		localStorage.setItem("dev3-task-open-mode", "fullscreen");
+		const navigate = vi.fn();
+		renderView({ navigate });
+
+		await userEvent.click(screen.getByTestId("open-unresolved-from-board"));
+
+		expect(navigate).toHaveBeenCalledWith({
+			screen: "task",
+			projectId: "p1",
+			taskId: "t1",
+			openUnresolvedComments: true,
+		});
+	});
+
+	it("opens the inline diff when the split route carries the unresolved-comments flag", async () => {
+		const task = { id: "t1", projectId: "p1", title: "T", status: "in-progress", baseBranch: "main", branchName: "feature/t1" } as unknown as Task;
+		renderView({ activeTaskId: "t1", tasks: [task], openUnresolvedComments: true });
+
+		await waitFor(() => expect(screen.getByTestId("workspace-unresolved-diff")).toBeInTheDocument());
 	});
 });
 

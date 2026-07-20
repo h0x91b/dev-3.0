@@ -19,9 +19,9 @@ export const OPEN_SETTINGS_SECTION_EVENT = "dev3:openSettingsSection";
 
 export type Route =
 	| { screen: "dashboard" }
-	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean }
+	| { screen: "project"; projectId: string; activeTaskId?: string; taskView?: boolean; openUnresolvedComments?: boolean }
 	| { screen: "project-terminal"; projectId: string }
-	| { screen: "task"; projectId: string; taskId: string }
+	| { screen: "task"; projectId: string; taskId: string; openUnresolvedComments?: boolean }
 	| { screen: "project-settings"; projectId: string; tab?: "global" | "project" | "worktree" | "automations"; worktreeTaskId?: string }
 	| { screen: "settings"; section?: SettingsSectionId }
 	| { screen: "changelog" }

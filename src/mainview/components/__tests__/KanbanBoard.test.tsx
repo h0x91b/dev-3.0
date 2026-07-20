@@ -116,6 +116,7 @@ async function renderBoardWith(props: Partial<React.ComponentProps<typeof Kanban
 					navigate={props.navigate ?? vi.fn()}
 					bellCounts={props.bellCounts ?? new Map()}
 					taskPorts={props.taskPorts ?? new Map()}
+					onOpenUnresolvedComments={props.onOpenUnresolvedComments}
 				/>
 			</I18nProvider>,
 		);
@@ -207,6 +208,36 @@ describe("column ordering", () => {
 		} finally {
 			result.unmount();
 			vi.mocked(api.request.getProjectPRs).mockResolvedValue([]);
+		}
+	});
+
+	it("wires unresolved comments from a card to the board deep-link handler", async () => {
+		const onOpenUnresolvedComments = vi.fn();
+		const task = makeTask({
+			status: "review-by-colleague",
+			worktreePath: "/tmp/wt",
+			prStatusCache: {
+				number: 42,
+				url: "https://github.com/test/repo/pull/42",
+				autoMergeEnabled: null,
+				ciStatus: null,
+				reviewState: null,
+				reviewDecision: null,
+				unresolvedCount: 2,
+				mergeState: null,
+				checks: [],
+				prTitle: null,
+				isDraft: false,
+				cachedAt: "2026-07-15T12:00:00.000Z",
+			},
+		});
+		const result = await renderBoardWith({ tasks: [task], onOpenUnresolvedComments });
+		try {
+			await userEvent.hover(screen.getByLabelText("2 unresolved comments"));
+			await userEvent.click(await screen.findByTestId("pr-popover-unresolved"));
+			expect(onOpenUnresolvedComments).toHaveBeenCalledWith(expect.objectContaining({ id: "task-1" }));
+		} finally {
+			result.unmount();
 		}
 	});
 

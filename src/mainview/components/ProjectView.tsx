@@ -1,6 +1,6 @@
-import { useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject } from "react";
 import type { CodingAgent, PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
-import type { AppAction, Route } from "../state";
+import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api, isElectrobun } from "../rpc";
 import KanbanBoard from "./KanbanBoard";
@@ -10,7 +10,7 @@ import ActiveTasksSidebar from "./ActiveTasksSidebar";
 import { useState } from "react";
 import { useT } from "../i18n";
 import TaskWorkspacePane from "./TaskWorkspacePane";
-import { useTaskInlineDiffState } from "./task-inline-diff";
+import { createUnresolvedCommentsDiffRequest, useTaskInlineDiffState } from "./task-inline-diff";
 import { trackDiffView } from "../analytics";
 import { taskSeqLabel } from "../../shared/types";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
@@ -34,6 +34,7 @@ interface ProjectViewProps {
 	isTerminalFullscreen?: boolean;
 	onToggleTerminalFullscreen?: () => void;
 	skipCopyModeReset?: boolean;
+	openUnresolvedComments?: boolean;
 }
 
 function ProjectView({
@@ -54,6 +55,7 @@ function ProjectView({
 	isTerminalFullscreen,
 	onToggleTerminalFullscreen,
 	skipCopyModeReset,
+	openUnresolvedComments,
 }: ProjectViewProps) {
 	const t = useT();
 	const project = projects.find((p) => p.id === projectId);
@@ -61,6 +63,15 @@ function ProjectView({
 	const inlineDiff = useTaskInlineDiffState(activeTaskId);
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const taskUpdateEpochRef = useRef(0);
+	const unresolvedRouteKeyRef = useRef<string | null>(null);
+
+	const openUnresolvedFromBoard = useCallback((task: Task) => {
+		if (getTaskOpenMode() === "fullscreen") {
+			navigate({ screen: "task", projectId, taskId: task.id, openUnresolvedComments: true });
+		} else {
+			navigate({ screen: "project", projectId, activeTaskId: task.id, openUnresolvedComments: true });
+		}
+	}, [navigate, projectId]);
 
 	// A scheduled launch can push its new task while this view's initial fetch is
 	// in flight. Keep the live update instead of letting the older disk snapshot
@@ -103,6 +114,20 @@ function ProjectView({
 		trackDiffView(projectId, task ? taskSeqLabel(task) : activeTaskId);
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per open
 	}, [inlineDiff.isOpen, projectId, activeTaskId]);
+
+	useEffect(() => {
+		if (!openUnresolvedComments) {
+			unresolvedRouteKeyRef.current = null;
+			return;
+		}
+		if (!activeTaskId || !project) return;
+		const task = tasks.find((candidate) => candidate.id === activeTaskId);
+		if (!task) return;
+		const routeKey = `${project.id}:${task.id}`;
+		if (unresolvedRouteKeyRef.current === routeKey) return;
+		unresolvedRouteKeyRef.current = routeKey;
+		inlineDiff.open(createUnresolvedCommentsDiffRequest(task, project));
+	}, [activeTaskId, inlineDiff.open, openUnresolvedComments, project, tasks]);
 
 	if (!project) {
 		return (
@@ -215,6 +240,7 @@ function ProjectView({
 				bellReasons={bellReasons}
 				taskPorts={taskPorts}
 				taskResourceUsage={taskResourceUsage}
+				onOpenUnresolvedComments={openUnresolvedFromBoard}
 			/>
 		</div>
 	);
