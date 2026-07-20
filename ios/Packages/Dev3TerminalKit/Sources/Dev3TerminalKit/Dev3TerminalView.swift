@@ -372,19 +372,17 @@
             }
 
             func requestRemoteRedraw() {
+                // A pane/window switch triggers a server-side full repaint
+                // (see forceSessionRedraw in pty-server). Locally we only drop
+                // frames buffered *before* the switch so stale pre-switch bytes
+                // aren't fed on top of the incoming repaint. We must NOT reset
+                // the terminal here — a local wipe races the repaint and left the
+                // pane blank (the build-8 regression).
                 let currentFrameBuffer = frameBuffer
                 Task { @MainActor [weak self] in
                     await currentFrameBuffer.discardPending()
                     guard let self, let terminalView else { return }
-                    terminalView.getTerminal().resetToInitialState()
-                    interaction?.updateBracketedPaste(false)
-                    let terminal = terminalView.getTerminal()
-                    guard let size = resizeGate.request(
-                        columns: terminal.cols,
-                        rows: terminal.rows
-                    ) else { return }
                     terminalView.setNeedsDisplay(terminalView.bounds)
-                    scheduleResize(size)
                 }
             }
 

@@ -1970,6 +1970,11 @@ async function tmuxPaneNavigate(params: {
 	let info = await readPaneLayout(socket, tmuxSession);
 	if (info.count === 0) return { count: 0, activeIndex: 0, zoomed: false, labels: [] };
 
+	// Whether the active pane or its zoom actually changed this call. Read-only
+	// polls (e.g. PaneZoomBadge passing no step/index and a matching zoom) leave
+	// this false so we never force a needless repaint on the shared session.
+	let didChange = false;
+
 	// Navigate (only meaningful with more than one pane).
 	if (info.count > 1) {
 		let navigated = false;
@@ -1989,7 +1994,10 @@ async function tmuxPaneNavigate(params: {
 			navigated = true;
 		}
 		// Re-read after a move: select-pane changes the active pane AND auto-unzooms.
-		if (navigated) info = await readPaneLayout(socket, tmuxSession);
+		if (navigated) {
+			info = await readPaneLayout(socket, tmuxSession);
+			didChange = true;
+		}
 	}
 
 	// Enforce zoom intent idempotently (single pane needs no zoom — it already fills the window).
@@ -1997,7 +2005,12 @@ async function tmuxPaneNavigate(params: {
 	if (info.count > 1 && typeof params.zoom === "boolean" && params.zoom !== info.zoomed) {
 		await runTmuxQuiet(pty.tmuxArgs(socket, "resize-pane", "-Z", "-t", tmuxSession));
 		zoomed = params.zoom;
+		didChange = true;
 	}
+
+	// A pane/zoom switch can leave stale content from the old pane; force a full
+	// repaint so viewers see the new pane instead of stale or blank output.
+	if (didChange) pty.forceSessionRedraw(params.taskId);
 
 	log.info("← tmuxPaneNavigate", {
 		taskId: params.taskId.slice(0, 8),
@@ -2093,6 +2106,8 @@ async function tmuxWindowNavigate(params: {
 	let info = await readWindowLayout(socket, tmuxSession);
 	if (info.count === 0) return { count: 0, activeIndex: 0, labels: [] };
 
+	let didChange = false;
+
 	// Navigate (only meaningful with more than one window). `:+` / `:-` are the
 	// next / previous window and wrap around, mirroring the pane carousel.
 	if (info.count > 1) {
@@ -2107,8 +2122,14 @@ async function tmuxWindowNavigate(params: {
 			await runTmuxQuiet(pty.tmuxArgs(socket, "select-window", "-t", info.windowIds[params.index]));
 			navigated = true;
 		}
-		if (navigated) info = await readWindowLayout(socket, tmuxSession);
+		if (navigated) {
+			info = await readWindowLayout(socket, tmuxSession);
+			didChange = true;
+		}
 	}
+
+	// Switching windows can leave stale content on screen; force a full repaint.
+	if (didChange) pty.forceSessionRedraw(params.taskId);
 
 	log.info("← tmuxWindowNavigate", {
 		taskId: params.taskId.slice(0, 8),

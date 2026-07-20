@@ -1139,6 +1139,35 @@ function applyClientSizes(session: PtySession): void {
 	}
 }
 
+/**
+ * Force tmux to fully repaint a task's session for every connected viewer.
+ *
+ * tmux only redraws on a geometry change, so after a server-side pane/window
+ * switch the previously active pane's bytes can linger (stale) — and a client
+ * that clears its own screen to compensate races the repaint and can end up
+ * blank (the build-8 regression). Reuse the one-row jiggle from
+ * {@link applyClientSizes}: a full-screen redraw driven by absolute cursor
+ * positioning overwrites any stale content cleanly, so no client needs to wipe
+ * locally. No-op when the session has no terminal or no applied size yet.
+ */
+export function forceSessionRedraw(taskId: string): void {
+	const session = sessions.get(taskId);
+	if (!session) return;
+	const term = session.proc?.terminal as { resize(cols: number, rows: number): void } | undefined;
+	if (!term) return;
+	const cols = session.appliedCols;
+	const rows = session.appliedRows;
+	if (typeof cols !== "number" || typeof rows !== "number" || cols <= 0 || rows <= 0) return;
+	try {
+		term.resize(cols, Math.max(1, rows - 1));
+		setTimeout(() => {
+			try { term.resize(cols, rows); } catch { /* session may have ended */ }
+		}, 16);
+	} catch (err) {
+		log.debug("forceSessionRedraw failed", { taskId: taskId.slice(0, 8), error: String(err) });
+	}
+}
+
 /** Flush accumulated PTY data to all connected WebSocket clients in one batch. */
 function flushPendingData(session: PtySession): void {
 	session.batchTimer = null;

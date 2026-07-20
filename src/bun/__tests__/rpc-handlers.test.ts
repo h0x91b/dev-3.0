@@ -107,6 +107,7 @@ vi.mock("../pty-server", () => ({
 	getSessionSocket: vi.fn(() => "dev3"),
 	getSessionTmuxName: vi.fn((key: string) => `dev3-${key.slice(0, 8)}`),
 	getSessionType: vi.fn(() => null),
+	forceSessionRedraw: vi.fn(),
 	capturePane: vi.fn(),
 	applyTmuxTheme: vi.fn(),
 	tmuxArgs: vi.fn((_socket: string, ...args: string[]) => ["tmux", "-L", _socket, ...args]),
@@ -10166,6 +10167,24 @@ describe("handlers.tmuxPaneNavigate", () => {
 		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: false });
 		expect(res).toEqual({ count: 2, activeIndex: 0, zoomed: false, labels: ["claude", "bash"] });
 		expect(called("resize-pane -Z")).toBe(true);
+	});
+
+	it("forces a full session redraw after an actual pane switch", async () => {
+		vi.mocked(pty.forceSessionRedraw).mockClear();
+		mockLayouts([
+			lay(row("%1", "1", "0", "claude"), row("%2", "0", "0", "bash")),
+			lay(row("%1", "0", "0", "claude"), row("%2", "1", "0", "bash")),
+		]);
+		await handlers.tmuxPaneNavigate({ taskId: TASK_ID, step: "next", zoom: true });
+		expect(pty.forceSessionRedraw).toHaveBeenCalledWith(TASK_ID);
+	});
+
+	it("does not redraw on a read-only zoom poll (no pane or zoom change)", async () => {
+		vi.mocked(pty.forceSessionRedraw).mockClear();
+		// Already zoomed + zoom:true is the PaneZoomBadge poll pattern — a no-op.
+		mockLayouts([lay(row("%1", "1", "1", "claude"), row("%2", "0", "1", "bash"))]);
+		await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
+		expect(pty.forceSessionRedraw).not.toHaveBeenCalled();
 	});
 });
 
