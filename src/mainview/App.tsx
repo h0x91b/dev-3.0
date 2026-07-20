@@ -41,6 +41,7 @@ import AboutModal from "./components/AboutModal";
 import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
+import { createMergePromptAbort } from "./utils/mergePromptAbort";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
@@ -1381,18 +1382,29 @@ function App() {
 				subject?: TaskDialogSubject;
 			};
 			const fingerprint = ((e as CustomEvent).detail as { fingerprint?: string | null }).fingerprint ?? null;
-			const shouldComplete = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
-				try {
-					return await confirm({
-						title: t("app.branchMergedTitle"),
-						message: t("app.branchMergedMessage", { taskTitle, branchName }),
-						info: taskDialogInfoFromSubject(taskTitle, subject),
-					});
-				} catch (err) {
-					console.error("[App] confirm (branch-merged) failed:", err);
-					return false;
-				}
-			});
+			// Close this dialog if the prompt is resolved on another client/device
+			// (the backend broadcasts it to every connected client).
+			const abort = createMergePromptAbort(taskId);
+			let shouldComplete: boolean | null;
+			try {
+				shouldComplete = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
+					try {
+						return await confirm({
+							title: t("app.branchMergedTitle"),
+							message: t("app.branchMergedMessage", { taskTitle, branchName }),
+							info: taskDialogInfoFromSubject(taskTitle, subject),
+							signal: abort.signal,
+						});
+					} catch (err) {
+						console.error("[App] confirm (branch-merged) failed:", err);
+						return false;
+					}
+				});
+			} finally {
+				abort.cleanup();
+			}
+			// Resolved elsewhere: the dialog auto-closed, nothing left to do here.
+			if (abort.signal.aborted) return;
 			if (shouldComplete === null) return;
 			if (shouldComplete) {
 				// If the user is currently inside this task's view, leave it BEFORE the

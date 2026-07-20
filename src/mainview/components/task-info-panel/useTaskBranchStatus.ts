@@ -13,6 +13,7 @@ import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
 import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
+import { createMergePromptAbort } from "../../utils/mergePromptAbort";
 import { taskDialogInfo } from "../../utils/taskDialogInfo";
 import { startVisibilityAwarePoll } from "../../utils/poll";
 
@@ -139,6 +140,7 @@ export function useTaskBranchStatus({
 				return;
 			}
 
+			const abort = createMergePromptAbort(task.id);
 			const runPrompt = () =>
 				confirm({
 					title: t("app.branchMergedTitle"),
@@ -147,10 +149,17 @@ export function useTaskBranchStatus({
 						branchName: task.branchName || "",
 					}),
 					info: taskDialogInfo(task, project),
+					signal: abort.signal,
 				});
-			const shouldComplete = force
-				? await runPrompt()
-				: await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, runPrompt);
+			let shouldComplete: boolean | null;
+			try {
+				shouldComplete = force
+					? await runPrompt()
+					: await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, runPrompt);
+			} finally {
+				abort.cleanup();
+			}
+			if (abort.signal.aborted) return;
 			if (shouldComplete) {
 				completeTask();
 			} else if (shouldComplete === false) {
@@ -275,13 +284,21 @@ export function useTaskBranchStatus({
 				});
 				if (!promptState.shouldPrompt) return;
 
-				const shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
-					confirm({
-						title: t("infoPanel.mergeComplete"),
-						message: t("infoPanel.mergeCompleteMessage"),
-						info: taskDialogInfo(task, project),
-					}),
-				);
+				const abort = createMergePromptAbort(task.id);
+				let shouldComplete: boolean | null;
+				try {
+					shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
+						confirm({
+							title: t("infoPanel.mergeComplete"),
+							message: t("infoPanel.mergeCompleteMessage"),
+							info: taskDialogInfo(task, project),
+							signal: abort.signal,
+						}),
+					);
+				} finally {
+					abort.cleanup();
+				}
+				if (abort.signal.aborted) return;
 				if (shouldComplete) {
 					completeTask();
 				} else if (shouldComplete === false) {

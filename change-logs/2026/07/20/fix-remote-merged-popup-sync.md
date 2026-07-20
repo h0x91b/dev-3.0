@@ -1,0 +1,1 @@
+Fixed the "Branch Merged" completion popup lingering on the desktop app after it was accepted or declined from the remote browser. The dialog now closes on every connected client once the prompt is resolved anywhere — accepting broadcasts the task completion, and declining broadcasts a new merge-prompt-resolved event.

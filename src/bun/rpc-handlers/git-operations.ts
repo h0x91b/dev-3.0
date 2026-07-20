@@ -185,6 +185,14 @@ async function dismissMergeCompletionPrompt(params: { taskId: string; projectId:
 			precise: fingerprint.precise,
 		},
 	});
+	// Close a still-open "Branch Merged" dialog on other clients (second window
+	// or the remote browser served by this same app) that received the original
+	// broadcast prompt.
+	getPushMessage()?.("mergePromptResolved", {
+		taskId: task.id,
+		projectId: project.id,
+		fingerprint: fingerprint.fingerprint,
+	});
 	return updated;
 }
 

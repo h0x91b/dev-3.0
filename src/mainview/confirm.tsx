@@ -41,6 +41,14 @@ export interface ConfirmOptions {
 		/** Resolved task labels; shown as read-only chips below the body. */
 		labels?: Label[];
 	};
+	/**
+	 * Close the dialog externally, without a user choice — e.g. the underlying
+	 * task was resolved on another window or on the remote browser. When the
+	 * signal aborts, the dialog closes and the promise resolves `false`; callers
+	 * that must tell this apart from a real decline should check `signal.aborted`
+	 * after awaiting and skip their own resolution side effects.
+	 */
+	signal?: AbortSignal;
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -102,6 +110,19 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 
 	const confirmLabel = pending.confirmLabel ?? t("confirmDialog.confirm");
 	const cancelLabel = pending.cancelLabel ?? t("confirmDialog.cancel");
+
+	// Auto-close when the caller's signal aborts (task resolved elsewhere).
+	useEffect(() => {
+		const signal = pending.signal;
+		if (!signal) return;
+		if (signal.aborted) {
+			close(false);
+			return;
+		}
+		const onAbort = () => close(false);
+		signal.addEventListener("abort", onAbort);
+		return () => signal.removeEventListener("abort", onAbort);
+	}, [pending.signal, close]);
 
 	return (
 		<div
