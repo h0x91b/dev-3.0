@@ -243,6 +243,20 @@ describe("LaunchVariantsModal", () => {
 			expect(getSelectedText(getModelButtons()[0])).toBe("Default");
 			expect(getSelectedText(getModeButtons()[0])).toBe("Alpha");
 		});
+
+		it("ignores a global defaultConfigId that belongs to another provider (no empty Mode)", () => {
+			// Reproduces the broken preselect: settings resolution can leave
+			// defaultAgentId (Codex) paired with a defaultConfigId from a different
+			// provider (a Claude preset) after a stale builtin id is reset. The
+			// picker must fall back to the provider's own default instead of a
+			// dangling config that renders an empty Mode field.
+			const gs = makeGlobalSettings({ defaultAgentId: "builtin-codex", defaultConfigId: "claude-bypass-opus" });
+			renderModal(makeProject(), { globalSettings: gs });
+
+			expect(getSelectedText(getProviderButtons()[0])).toBe("Codex");
+			expect(getSelectedText(getModelButtons()[0])).toBe("GPT-5.5");
+			expect(getSelectedText(getModeButtons()[0])).toBe("Default (Heavy Bypass)");
+		});
 	});
 
 	describe("cascade dropdown population", () => {
