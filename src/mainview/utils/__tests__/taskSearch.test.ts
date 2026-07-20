@@ -44,7 +44,7 @@ function ctx(overrides: Partial<TaskQueryContext> = {}): TaskQueryContext {
 	};
 }
 
-describe("matchesTaskQuery — free text (fuzzy/identifier, unchanged behavior)", () => {
+describe("matchesTaskQuery — free text (substring/identifier)", () => {
 	it("returns true for empty query", () => {
 		expect(matchesTaskQuery(makeTask(), "", ctx())).toBe(true);
 	});
@@ -57,8 +57,15 @@ describe("matchesTaskQuery — free text (fuzzy/identifier, unchanged behavior)"
 		expect(matchesTaskQuery(makeTask({ title: "Fix auth bug" }), "auth", ctx())).toBe(true);
 	});
 
-	it("matches title by fuzzy subsequence (non-contiguous)", () => {
-		expect(matchesTaskQuery(makeTask({ title: "Fix authentication bug" }), "fxbug", ctx())).toBe(true);
+	it("does NOT match a non-contiguous subsequence (fuzzy is off for the filter)", () => {
+		// "fxbug" is a subsequence of "Fix authentication bug" but not a substring.
+		expect(matchesTaskQuery(makeTask({ title: "Fix authentication bug" }), "fxbug", ctx())).toBe(false);
+	});
+
+	it("ANDs whitespace-separated words across title + description (any order)", () => {
+		const t = makeTask({ title: "Fix login", description: "session expires early" });
+		expect(matchesTaskQuery(t, "login session", ctx())).toBe(true);
+		expect(matchesTaskQuery(t, "login absent", ctx())).toBe(false);
 	});
 
 	it("does not match unrelated title/description", () => {
@@ -75,6 +82,21 @@ describe("matchesTaskQuery — free text (fuzzy/identifier, unchanged behavior)"
 				ctx(),
 			),
 		).toBe(true);
+	});
+
+	it("regression: a numeric query does not match scattered digits in a long description", () => {
+		// Bug: fuzzy subsequence matching found "1","1","7","2" scattered across a
+		// long description, so "1172" matched nearly every task. Substring filtering
+		// must reject this and only match a literal occurrence (or the seq prefix).
+		const scattered = makeTask({
+			seq: 42,
+			title: "Unrelated task",
+			description: "Started at 10:15, revised 7 times, closes issue #2 by day 1.",
+		});
+		expect(matchesTaskQuery(scattered, "1172", ctx())).toBe(false);
+
+		const literal = makeTask({ seq: 42, title: "Port work", description: "Depends on task #1172 landing first." });
+		expect(matchesTaskQuery(literal, "1172", ctx())).toBe(true);
 	});
 
 	it("matches by seq prefix and with # prefix", () => {
