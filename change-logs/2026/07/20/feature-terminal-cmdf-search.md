@@ -1,0 +1,1 @@
+Press ⌘F (Ctrl+F on Linux) in any terminal to search its tmux scrollback: a floating bar opens over the pane, matches highlight natively in the terminal, Enter/↑ steps to older matches and Shift+Enter/↓ back to newer ones, with a live match counter. Esc closes the bar and returns the pane to live output.

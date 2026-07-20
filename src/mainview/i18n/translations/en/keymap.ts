@@ -44,6 +44,7 @@ const keymap = {
 	"keymap.shortcut.terminalFullscreen": "Toggle terminal immersive fullscreen (task terminal only)",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
 	"keymap.shortcut.openQuickShell": "Open Quick Shell",
+	"keymap.shortcut.terminalSearch": "Search in the focused terminal (tmux scrollback)",
 	"keymap.shortcut.quit": "Quit",
 	"keymap.shortcut.hide": "Hide app",
 } as const;

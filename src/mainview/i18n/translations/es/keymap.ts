@@ -41,6 +41,7 @@ const keymap = {
 	"keymap.shortcut.terminalFullscreen": "Alternar pantalla inmersiva del terminal (solo en terminal de tarea)",
 	"keymap.shortcut.toggleProjectTerminal": "Alternar terminal del proyecto",
 	"keymap.shortcut.openQuickShell": "Abrir Shell rápido",
+	"keymap.shortcut.terminalSearch": "Buscar en el terminal activo (historial de tmux)",
 	"keymap.shortcut.quit": "Salir",
 	"keymap.shortcut.hide": "Ocultar app",
 };

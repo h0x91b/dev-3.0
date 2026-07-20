@@ -216,6 +216,8 @@ const tips = {
 	"tip.cycleTaskVariants.body": "Pulsa Shift+Cmd+[ o ] (Ctrl en Linux) para moverte entre variantes activas sin salir del terminal.",
 	"tip.mobileTaskGit.title": "Git desde tu móvil",
 	"tip.mobileTaskGit.body": "En la vista móvil de la tarea, toca el menú \u22ee \u2014 rebase, push, crear PR o abrir el diff desde la sección Git.",
+	"tip.terminalSearch.title": "Busca en el terminal",
+	"tip.terminalSearch.body": "Pulsa \u2318F (Ctrl+F en Linux) en un terminal para buscar en el historial de tmux \u2014 las coincidencias se resaltan en el panel.",
 };
 
 export default tips;

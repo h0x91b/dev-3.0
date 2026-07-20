@@ -881,6 +881,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal"],
 	},
+	{
+		id: "terminal-search",
+		titleKey: "tip.terminalSearch.title",
+		bodyKey: "tip.terminalSearch.body",
+		icon: "\u{F0349}", // nf-md-magnify
+		score: 3,
+		contexts: ["terminal"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
