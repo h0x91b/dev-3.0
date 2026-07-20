@@ -15,8 +15,9 @@ import {
 	isBuiltinOpsProject,
 	orderProjectsForDisplay,
 	computeTaskTimeBreakdown,
+	buildTaskDialogSubject,
 } from "../../shared/types";
-import type { Project, TaskStatus, TaskTimeInput } from "../../shared/types";
+import type { Label, Project, Task, TaskStatus, TaskTimeInput } from "../../shared/types";
 
 // ---- hexToRgb ----
 
@@ -536,5 +537,97 @@ describe("computeTaskTimeBreakdown", () => {
 		};
 		const tb = computeTaskTimeBreakdown(task, NOW);
 		expect(tb.agentMs).toBe(60 * MIN);
+	});
+});
+
+// ---- buildTaskDialogSubject ----
+
+describe("buildTaskDialogSubject", () => {
+	const LABEL_BUG: Label = { id: "l-bug", name: "Bug", color: "#ef4444" };
+	const LABEL_FEAT: Label = { id: "l-feat", name: "Feature", color: "#84cc16" };
+
+	const makeTask = (overrides?: Partial<Task>): Task =>
+		({
+			id: "task-1",
+			seq: 42,
+			projectId: "p1",
+			title: "Fix the thing",
+			description: "raw request",
+			status: "review-by-user",
+			baseBranch: "main",
+			worktreePath: "/wt",
+			branchName: "fix/thing",
+			groupId: null,
+			variantIndex: null,
+			agentId: null,
+			configId: null,
+			createdAt: "",
+			updatedAt: "",
+			...overrides,
+		}) as Task;
+
+	const makeProject = (overrides?: Partial<Project>): Project =>
+		({
+			id: "p1",
+			name: "dev-3.0",
+			path: "/repo",
+			setupScript: "",
+			devScript: "",
+			cleanupScript: "",
+			defaultBaseBranch: "main",
+			createdAt: "",
+			...overrides,
+		}) as Project;
+
+	it("resolves seq, project name, priority, labels and overview", () => {
+		const task = makeTask({
+			priority: "P1",
+			labelIds: ["l-feat", "l-bug"],
+			overview: "agent overview",
+		});
+		const project = makeProject({ labels: [LABEL_BUG, LABEL_FEAT] });
+
+		expect(buildTaskDialogSubject(task, project)).toEqual({
+			seqLabel: "42",
+			projectName: "dev-3.0",
+			priority: "P1",
+			// preserves the task's stored label ORDER (feat before bug), not project order
+			labels: [LABEL_FEAT, LABEL_BUG],
+			overview: "agent overview",
+		});
+	});
+
+	it("adds the variant suffix to the seq label", () => {
+		const subject = buildTaskDialogSubject(makeTask({ variantIndex: 2 }), makeProject());
+		expect(subject.seqLabel).toBe("42-2");
+	});
+
+	it("falls back to the default priority for legacy tasks", () => {
+		const subject = buildTaskDialogSubject(makeTask({ priority: undefined }), makeProject());
+		expect(subject.priority).toBe("P3");
+	});
+
+	it("prefers the user overview over the agent overview", () => {
+		const subject = buildTaskDialogSubject(
+			makeTask({ overview: "agent", userOverview: "user wins" }),
+			makeProject(),
+		);
+		expect(subject.overview).toBe("user wins");
+	});
+
+	it("returns a null overview when neither overview is set", () => {
+		const subject = buildTaskDialogSubject(makeTask(), makeProject());
+		expect(subject.overview).toBeNull();
+	});
+
+	it("drops label ids that no longer exist on the project and yields [] when none", () => {
+		const withStale = buildTaskDialogSubject(
+			makeTask({ labelIds: ["l-bug", "l-ghost"] }),
+			makeProject({ labels: [LABEL_BUG] }),
+		);
+		expect(withStale.labels).toEqual([LABEL_BUG]);
+
+		const none = buildTaskDialogSubject(makeTask({ labelIds: [] }), makeProject());
+		expect(none.labels).toEqual([]);
 	});
 });

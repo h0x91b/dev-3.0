@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import type { Label, TaskPriority } from "../shared/types";
+import LabelChip from "./components/LabelChip";
+import PriorityBadge from "./components/PriorityBadge";
 import { useT } from "./i18n";
 import { useFocusTrap } from "./utils/useFocusTrap";
 
@@ -20,8 +23,24 @@ export interface ConfirmOptions {
 	 * message — an accent-tinted panel with a prominent title (e.g. the task
 	 * name) and an optional secondary line (e.g. the task overview). Use it
 	 * when the dialog is *about* a specific object the user must recognize.
+	 *
+	 * The optional metadata (`seqLabel`, `projectName`, `priority`, `labels`)
+	 * renders a compact identity row above the title so a session-destroying
+	 * prompt makes clear which project/task it targets — critical when the
+	 * dialog fires while the user is looking at a different project's board.
 	 */
-	info?: { title: string; body?: string };
+	info?: {
+		title: string;
+		body?: string;
+		/** Per-project task id, variant suffix included (e.g. `"1159"`, `"1159-1"`). */
+		seqLabel?: string;
+		/** Owning project's display name. */
+		projectName?: string;
+		/** Task importance band, shown as a static `P{n}` badge. */
+		priority?: TaskPriority;
+		/** Resolved task labels; shown as read-only chips below the body. */
+		labels?: Label[];
+	};
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -114,6 +133,23 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 				<h2 className="text-fg text-lg font-semibold">{pending.title}</h2>
 				{pending.info && (
 					<div className="rounded-xl bg-accent/10 border border-accent/30 px-4 py-3">
+						{/* Identity row: which project/task this prompt is about. */}
+						{(pending.info.seqLabel || pending.info.projectName || pending.info.priority) && (
+							<div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-2 text-fg-3 text-xs">
+								{pending.info.seqLabel && (
+									<span className="font-mono text-fg-2">{`#${pending.info.seqLabel}`}</span>
+								)}
+								{pending.info.projectName && (
+									<>
+										{pending.info.seqLabel && <span aria-hidden>·</span>}
+										<span className="truncate max-w-[12rem]">{pending.info.projectName}</span>
+									</>
+								)}
+								{pending.info.priority && (
+									<PriorityBadge priority={pending.info.priority} size="sm" className="ml-auto" />
+								)}
+							</div>
+						)}
 						<div className="flex items-start gap-2">
 							<span
 								className="text-accent text-[1.0625rem] leading-snug"
@@ -131,6 +167,13 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						{pending.info.body && (
 							<div className="text-fg-2 text-sm leading-relaxed mt-1.5 whitespace-pre-line">
 								{pending.info.body}
+							</div>
+						)}
+						{pending.info.labels && pending.info.labels.length > 0 && (
+							<div className="flex items-center flex-wrap gap-1 mt-2">
+								{pending.info.labels.map((label) => (
+									<LabelChip key={label.id} label={label} size="sm" />
+								))}
 							</div>
 						)}
 					</div>

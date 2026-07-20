@@ -19,6 +19,7 @@ const t = ((key: string) => key) as never;
 
 const baseTask = {
 	id: "t1",
+	seq: 1,
 	projectId: "p1",
 	status: "in-progress",
 	worktreePath: "/wt",
@@ -47,7 +48,17 @@ describe("confirmTaskCompletion", () => {
 
 		expect(mockedConfirm).toHaveBeenCalledWith(
 			expect.objectContaining({
-				info: { title: "Auto generated title", body: "Agent overview line" },
+				info: expect.objectContaining({ title: "Auto generated title", body: "Agent overview line" }),
+			}),
+		);
+	});
+
+	it("includes the project/seq/priority context in the info card", async () => {
+		await confirmTaskCompletion(baseTask, project, "completed", t);
+
+		expect(mockedConfirm).toHaveBeenCalledWith(
+			expect.objectContaining({
+				info: expect.objectContaining({ seqLabel: "1", projectName: "P", priority: "P3", labels: [] }),
 			}),
 		);
 	});
@@ -62,7 +73,7 @@ describe("confirmTaskCompletion", () => {
 
 		expect(mockedConfirm).toHaveBeenCalledWith(
 			expect.objectContaining({
-				info: { title: "Custom title", body: "User overview" },
+				info: expect.objectContaining({ title: "Custom title", body: "User overview" }),
 			}),
 		);
 	});
@@ -73,7 +84,7 @@ describe("confirmTaskCompletion", () => {
 
 		expect(mockedConfirm).toHaveBeenCalledWith(
 			expect.objectContaining({
-				info: { title: "Auto generated title", body: undefined },
+				info: expect.objectContaining({ title: "Auto generated title", body: undefined }),
 			}),
 		);
 	});

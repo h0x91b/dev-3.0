@@ -113,6 +113,44 @@ describe("confirm service", () => {
 		expect(await screen.findByText("Title only")).toBeInTheDocument();
 	});
 
+	it("renders the task identity row: seq, project, priority and labels", async () => {
+		renderHost();
+		act(() => {
+			void confirm({
+				title: "Agent asks",
+				message: "M",
+				info: {
+					title: "My important task",
+					body: "Almost done.",
+					seqLabel: "1159",
+					projectName: "dev-3.0",
+					priority: "P1",
+					labels: [
+						{ id: "l1", name: "Feature", color: "#84cc16" },
+						{ id: "l2", name: "Polish", color: "#64748b" },
+					],
+				},
+			});
+		});
+
+		expect(await screen.findByText("#1159")).toBeInTheDocument();
+		expect(screen.getByText("dev-3.0")).toBeInTheDocument();
+		expect(screen.getByText("P1")).toBeInTheDocument();
+		expect(screen.getByText("Feature")).toBeInTheDocument();
+		expect(screen.getByText("Polish")).toBeInTheDocument();
+	});
+
+	it("omits the identity row when only a title is given", async () => {
+		renderHost();
+		act(() => {
+			void confirm({ title: "Agent asks", message: "M", info: { title: "Just a title" } });
+		});
+
+		await screen.findByText("Just a title");
+		// No seq badge means no leading-# metadata line rendered.
+		expect(screen.queryByText(/^#/)).not.toBeInTheDocument();
+	});
+
 	it("traps focus inside the dialog (Tab does not escape)", async () => {
 		const user = userEvent.setup();
 		const outside = document.createElement("button");

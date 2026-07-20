@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Project, Task, CliRequest } from "../../shared/types";
+import type { Project, Task, CliRequest, TaskDialogSubject } from "../../shared/types";
 
 // ---- Mocks (same boundary set as cli-socket-handlers.test.ts) ----
 
@@ -172,13 +172,19 @@ describe("task.requestCompletion", () => {
 
 		const [event, payload] = pushFn.mock.calls[0] as [
 			string,
-			{ requestId: string; taskId: string; projectId: string; taskTitle: string; taskOverview?: string },
+			{ requestId: string; taskId: string; projectId: string; taskTitle: string; subject: TaskDialogSubject },
 		];
 		expect(event).toBe("agentCompletionRequested");
 		expect(payload.taskId).toBe(task.id);
 		expect(payload.projectId).toBe("proj-1");
 		expect(payload.taskTitle).toBe("Test task");
-		expect(payload.taskOverview).toBe("User overview wins");
+		// The read-only dialog subject carries the effective overview (user override
+		// wins over the agent one) plus project/seq/priority/label context.
+		expect(payload.subject.overview).toBe("User overview wins");
+		expect(payload.subject.projectName).toBe("Test Project");
+		expect(payload.subject.seqLabel).toBe("1");
+		expect(payload.subject.priority).toBe("P3");
+		expect(payload.subject.labels).toEqual([]);
 
 		resolveCompletionRequest(payload.requestId, true);
 

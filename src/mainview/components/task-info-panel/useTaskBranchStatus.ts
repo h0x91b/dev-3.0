@@ -13,6 +13,7 @@ import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
 import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
+import { taskDialogInfo } from "../../utils/taskDialogInfo";
 import { startVisibilityAwarePoll } from "../../utils/poll";
 
 interface UseTaskBranchStatusParams {
@@ -145,6 +146,7 @@ export function useTaskBranchStatus({
 						taskTitle: task.customTitle || task.title,
 						branchName: task.branchName || "",
 					}),
+					info: taskDialogInfo(task, project),
 				});
 			const shouldComplete = force
 				? await runPrompt()
@@ -277,6 +279,7 @@ export function useTaskBranchStatus({
 					confirm({
 						title: t("infoPanel.mergeComplete"),
 						message: t("infoPanel.mergeCompleteMessage"),
+						info: taskDialogInfo(task, project),
 					}),
 				);
 				if (shouldComplete) {
