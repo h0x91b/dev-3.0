@@ -11,6 +11,7 @@ import {
 	type ScheduledMessageTarget,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 	resolveTaskCompareBaseBranch,
+	buildTaskDialogSubject,
 } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -441,6 +442,7 @@ async function checkMergedBranches(): Promise<void> {
 					taskTitle: task.customTitle || task.title,
 					branchName,
 					fingerprint: fingerprint.fingerprint,
+					subject: buildTaskDialogSubject(task, project),
 				});
 			} catch (err) {
 				log.warn("Merge check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });

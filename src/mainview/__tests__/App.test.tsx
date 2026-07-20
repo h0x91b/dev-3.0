@@ -1789,5 +1789,44 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 			expect(api.request.moveTask).not.toHaveBeenCalled();
 		});
+
+		it("passes the task subject (project, seq, priority, labels, overview) into the confirm dialog", async () => {
+			vi.mocked(confirm).mockResolvedValue(false);
+			await renderApp();
+
+			await act(async () => {
+				window.dispatchEvent(
+					new CustomEvent("rpc:agentCompletionRequested", {
+						detail: {
+							requestId: "req-3",
+							taskId: "t1",
+							projectId: "p1",
+							taskTitle: "Ship the thing",
+							subject: {
+								seqLabel: "1159-1",
+								projectName: "dev-3.0",
+								priority: "P0",
+								labels: [{ id: "l1", name: "Feature", color: "#84cc16" }],
+								overview: "Almost done, wiring the dialog.",
+							},
+						},
+					}),
+				);
+			});
+
+			await waitFor(() => {
+				expect(api.request.respondToAgentCompletionRequest).toHaveBeenCalled();
+			});
+			const calls = vi.mocked(confirm).mock.calls;
+			const info = calls[calls.length - 1][0].info;
+			expect(info).toEqual({
+				title: "Ship the thing",
+				body: "Almost done, wiring the dialog.",
+				seqLabel: "1159-1",
+				projectName: "dev-3.0",
+				priority: "P0",
+				labels: [{ id: "l1", name: "Feature", color: "#84cc16" }],
+			});
+		});
 	});
 });

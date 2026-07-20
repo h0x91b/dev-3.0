@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdir, rm } from "node:fs/promises";
 import type { GlobalSettings, Project, Task, TaskDiffResponse } from "../../shared/types";
-import { getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
+import { buildTaskDialogSubject, getPreparingStageProgress, resolveTaskCompareBaseBranch } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
 
 // ---- Mocks ----
@@ -8710,6 +8710,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			taskTitle: task.title,
 			branchName: "dev3/task-test",
 			fingerprint: "v1:dev3/task-test:abc123",
+			subject: buildTaskDialogSubject(task, project),
 		});
 	});
 
@@ -8780,6 +8781,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			taskTitle: task.title,
 			branchName: "fix/deepseek-reasoning-dsml-recovery",
 			fingerprint: "v1:fix/deepseek-reasoning-dsml-recovery:abc123",
+			subject: buildTaskDialogSubject(task, project),
 		});
 	});
 
@@ -8835,6 +8837,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			taskTitle: task.title,
 			branchName: "dev3/task-test",
 			fingerprint: "v1:dev3/task-test:abc123",
+			subject: buildTaskDialogSubject(task, project),
 		});
 	});
 
@@ -8902,6 +8905,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			taskTitle: task.title,
 			branchName: "dev3/task-test",
 			fingerprint: "v1:dev3/task-test:def456",
+			subject: buildTaskDialogSubject(task, project),
 		});
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
 			mergeCompletionPrompt: {

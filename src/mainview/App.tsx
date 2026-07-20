@@ -5,7 +5,7 @@ import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNoti
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
@@ -75,6 +75,24 @@ type RemoteAccessQRData = {
 
 function isRemoteTunnelActive(tunnelState?: string): boolean {
 	return tunnelState === "starting" || tunnelState === "connected";
+}
+
+/**
+ * Build the `confirm()` info card for a task-lifecycle prompt (completion /
+ * branch-merged). `subject` carries the read-only context (project, seq,
+ * priority, labels, overview) resolved on the bun side; it may be absent when an
+ * older push omits it, in which case only the task title is shown.
+ */
+function taskDialogInfo(taskTitle: string, subject?: TaskDialogSubject) {
+	if (!subject) return { title: taskTitle };
+	return {
+		title: taskTitle,
+		body: subject.overview ?? undefined,
+		seqLabel: subject.seqLabel,
+		projectName: subject.projectName,
+		priority: subject.priority,
+		labels: subject.labels,
+	};
 }
 
 /**
@@ -1371,12 +1389,13 @@ function App() {
 	// Listen for branch merge detection — offer to complete the task
 	useEffect(() => {
 		async function onBranchMerged(e: Event) {
-			const { taskId, projectId, taskTitle, branchName } = (e as CustomEvent).detail as {
+			const { taskId, projectId, taskTitle, branchName, subject } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				taskTitle: string;
 				branchName: string;
 				fingerprint?: string | null;
+				subject?: TaskDialogSubject;
 			};
 			const fingerprint = ((e as CustomEvent).detail as { fingerprint?: string | null }).fingerprint ?? null;
 			const shouldComplete = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
@@ -1384,6 +1403,7 @@ function App() {
 					return await confirm({
 						title: t("app.branchMergedTitle"),
 						message: t("app.branchMergedMessage", { taskTitle, branchName }),
+						info: taskDialogInfo(taskTitle, subject),
 					});
 				} catch (err) {
 					console.error("[App] confirm (branch-merged) failed:", err);
@@ -1443,18 +1463,18 @@ function App() {
 	// socket waiting for the user's decision, so always respond, even on cancel.
 	useEffect(() => {
 		async function onAgentCompletionRequested(e: Event) {
-			const { requestId, taskId, taskTitle, taskOverview } = (e as CustomEvent).detail as {
+			const { requestId, taskId, taskTitle, subject } = (e as CustomEvent).detail as {
 				requestId: string;
 				taskId: string;
 				taskTitle: string;
-				taskOverview?: string;
+				subject?: TaskDialogSubject;
 			};
 			let approved = false;
 			try {
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
 					message: t("app.agentCompletionMessage"),
-					info: { title: taskTitle, body: taskOverview },
+					info: taskDialogInfo(taskTitle, subject),
 					confirmLabel: t("app.agentCompletionConfirm"),
 					cancelLabel: t("app.agentCompletionCancel"),
 					danger: true,

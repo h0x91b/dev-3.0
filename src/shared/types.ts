@@ -1636,6 +1636,46 @@ export function getTaskOverview(task: Task): string | null {
 }
 
 /**
+ * Read-only task context rendered in the completion-approval and branch-merged
+ * confirm dialogs so the user can recognize *which* project/task a
+ * session-destroying prompt is about. Built once on the bun side (where the full
+ * task + project are known) and shipped verbatim in the push message — the
+ * renderer never re-derives it, so a dialog firing while the user is on another
+ * project's board still shows the right project name and labels.
+ */
+export interface TaskDialogSubject {
+	/** Per-project sequential id, variant suffix included (e.g. `"1159"`, `"1159-1"`). */
+	seqLabel: string;
+	/** Owning project's display name. */
+	projectName: string;
+	/** Task importance band. */
+	priority: TaskPriority;
+	/** Resolved labels (id/name/color), in the task's stored order; empty if none. */
+	labels: Label[];
+	/** Effective overview (user override → agent), or null when neither is set. */
+	overview: string | null;
+}
+
+/**
+ * Build the {@link TaskDialogSubject} for a task from its project. Pure: resolves
+ * `task.labelIds` against `project.labels`, falls back to {@link DEFAULT_PRIORITY}
+ * for legacy tasks, and reuses {@link taskSeqLabel}/{@link getTaskOverview}.
+ */
+export function buildTaskDialogSubject(task: Task, project: Project): TaskDialogSubject {
+	const labelById = new Map((project.labels ?? []).map((l) => [l.id, l]));
+	const labels = (task.labelIds ?? [])
+		.map((id) => labelById.get(id))
+		.filter((l): l is Label => l != null);
+	return {
+		seqLabel: taskSeqLabel(task),
+		projectName: project.name,
+		priority: task.priority ?? DEFAULT_PRIORITY,
+		labels,
+		overview: getTaskOverview(task),
+	};
+}
+
+/**
  * The branch a task's changes should be *compared against* — the base for the
  * branch diff, ahead/behind status, and rebase/merge targets.
  *
@@ -3326,13 +3366,15 @@ export type AppRPCSchema = {
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string };
-			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null };
+			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null; subject: TaskDialogSubject };
 			/**
 			 * Emitted when an agent runs `dev3 task move --status completed`. The CLI
 			 * blocks on the user's decision; the renderer shows an AI-styled confirm
-			 * dialog and answers via `respondToAgentCompletionRequest`.
+			 * dialog and answers via `respondToAgentCompletionRequest`. `subject`
+			 * carries the read-only task context shown in the dialog (overview lives
+			 * on `subject.overview`).
 			 */
-			agentCompletionRequested: { requestId: string; taskId: string; projectId: string; taskTitle: string; taskOverview?: string };
+			agentCompletionRequested: { requestId: string; taskId: string; projectId: string; taskTitle: string; subject: TaskDialogSubject };
 			portsUpdated: { taskId: string; ports: PortInfo[] };
 			exposedPortsChanged: { taskId: string; ports: ExposedPort[] };
 			resourceUsageUpdated: { taskId: string; usage: ResourceUsage };

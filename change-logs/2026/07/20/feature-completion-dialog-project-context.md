@@ -1,0 +1,1 @@
+The task-completion approval and branch-merged confirm dialogs now show the full task context — task id, project name, priority, labels and overview — so you always know which project a session-destroying prompt belongs to, even when it fires while you are on another board.
