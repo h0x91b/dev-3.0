@@ -1526,8 +1526,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 	}, []);
 
-	// Intercept paste events containing images or large text blocks (clipboard → save to disk → inject path into PTY).
-	// Small text pastes are unaffected — the event propagates to ghostty-web as usual.
+	// Intercept ALL paste events: images / large text blocks are saved to disk and
+	// their path injected into the PTY; ordinary text goes through term.paste()
+	// (bracketed, CR-normalized) — never ghostty's raw container handler.
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
