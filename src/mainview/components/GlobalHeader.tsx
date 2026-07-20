@@ -85,6 +85,21 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 	const projectDropdownRef = useRef<HTMLDivElement>(null);
 	const countsCacheTimeRef = useRef<number>(0);
 
+	// Open Remote Access instantly: fetch only the local QR (never the blocking
+	// tunnel-start path) so the modal opens on the first click, then flag the
+	// renderer to bring the public tunnel up in the background. Awaiting a
+	// tunnel handshake here is what used to make the button need several clicks.
+	const openRemoteAccess = async () => {
+		try {
+			const result = await api.request.getRemoteAccessQR({ tunnel: false });
+			window.dispatchEvent(
+				new CustomEvent("rpc:showRemoteAccessQR", { detail: { ...result, autoStartTunnel: true } }),
+			);
+		} catch {
+			// Remote access server may not be running.
+		}
+	};
+
 	// Show toast with 5min countdown when updateVersion first appears
 	useEffect(() => {
 		if (updateVersion) {
@@ -328,14 +343,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{
 					key: "remote",
 					label: t("header.remoteAccessLabel"),
-					run: async () => {
-						try {
-							const result = await api.request.getRemoteAccessQR({});
-							window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
-						} catch {
-							// Remote access server may not be running.
-						}
-					},
+					run: () => { void openRemoteAccess(); },
 				},
 				...(route.screen !== "changelog" ? [{ key: "changelog", label: t("header.changelogLabel"), run: () => navigate({ screen: "changelog" }) }] : []),
 				{ key: "website", label: t("header.githubLabel"), run: () => window.open("https://h0x91b.github.io/dev-3.0/", "_blank") },
@@ -616,14 +624,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				{!isNarrow && (
 					<Tooltip content={t("header.remoteAccessTooltip")} detail={t("ttip.header.remoteAccess")}>
 						<button
-							onClick={async () => {
-								try {
-									const result = await api.request.getRemoteAccessQR({});
-									window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", { detail: result }));
-								} catch {
-									// Remote access server may not be running
-								}
-							}}
+							onClick={() => { void openRemoteAccess(); }}
 							className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${remoteAccessActive ? "text-accent bg-accent/15 hover:bg-accent/25 remote-access-active" : "text-fg-3 hover:text-fg hover:bg-elevated"}`}
 							aria-label={t("header.remoteAccessTooltip")}
 						>

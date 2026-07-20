@@ -757,8 +757,10 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 		sendToFocusedWindow("zoomReset");
 	} else if (e.data.action === "show-remote-qr") {
 		try {
-			const remoteAccess = await handlers.getRemoteAccessQR({});
-			sendToFocusedWindow("showRemoteAccessQR", remoteAccess);
+			// Fetch only the local QR (no blocking tunnel handshake) so the
+			// modal opens instantly; the renderer brings the tunnel up next.
+			const remoteAccess = await handlers.getRemoteAccessQR({ tunnel: false });
+			sendToFocusedWindow("showRemoteAccessQR", { ...remoteAccess, autoStartTunnel: true });
 		} catch (err) {
 			log.error("Failed to generate QR code", { error: String(err) });
 		}

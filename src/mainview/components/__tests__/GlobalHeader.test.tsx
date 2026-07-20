@@ -19,6 +19,14 @@ vi.mock("../../rpc", () => ({
 			getPreventSleepState: vi.fn().mockResolvedValue({ enabled: false, available: false, forcedByRemote: false }),
 			setPreventSleep: vi.fn(),
 			getAgentRateLimits: vi.fn().mockResolvedValue({ generatedAt: 0, snapshots: [] }),
+			getRemoteAccessQR: vi.fn().mockResolvedValue({
+				qrDataUrl: "data:image/png;base64,test",
+				accessUrl: "http://192.168.0.1:1234/?token=test",
+				tunnelState: "idle",
+				cloudflaredInstalled: true,
+				interfaces: [],
+				selectedHost: "192.168.0.1",
+			}),
 			listAgentAccounts: vi.fn().mockResolvedValue({
 				claude: { accounts: [], activeId: null, systemIdentity: null },
 				codex: { accounts: [], activeId: null, currentIdentity: null },
@@ -959,5 +967,32 @@ describe("GlobalHeader — narrow viewport action sheet", () => {
 		// Git pull + tmux manager now live in the sheet's controls strip.
 		expect(screen.getByTestId("git-pull-button")).toBeInTheDocument();
 		expect(screen.getByLabelText("tmux Sessions")).toBeInTheDocument();
+	});
+});
+
+describe("GlobalHeader — remote access button", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getTasks.mockResolvedValue([]);
+	});
+
+	it("opens instantly on the first click via a non-blocking local QR fetch", async () => {
+		const events: CustomEvent[] = [];
+		const listener = (e: Event) => events.push(e as CustomEvent);
+		window.addEventListener("rpc:showRemoteAccessQR", listener);
+		try {
+			renderHeader({ screen: "project", projectId: "p1" });
+			await userEvent.click(
+				screen.getByLabelText("Open on your phone — scan QR code for remote access"),
+			);
+
+			// The click must never trigger the blocking tunnel-start path
+			// (default tunnel:true) that made the button need several clicks.
+			expect(mockedApi.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: false });
+			await vi.waitFor(() => expect(events).toHaveLength(1));
+			expect(events[0].detail.autoStartTunnel).toBe(true);
+		} finally {
+			window.removeEventListener("rpc:showRemoteAccessQR", listener);
+		}
 	});
 });

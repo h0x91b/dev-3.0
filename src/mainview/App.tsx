@@ -1758,6 +1758,7 @@ function App() {
 
 	// QR token consumed — someone connected via the QR code
 	const [qrConsumed, setQrConsumed] = useState(false);
+	const [qrCountdown, setQrCountdown] = useState(25);
 
 	useEffect(() => {
 		function onQrConsumed() {
@@ -1768,28 +1769,50 @@ function App() {
 		return () => window.removeEventListener("rpc:qrTokenConsumed", onQrConsumed);
 	}, []);
 
-	// Listen for View > Remote Access QR Code menu item
+	// Bring the public Cloudflare tunnel up in the background while the modal is
+	// already open, driving the in-modal "starting…" state. Opening Remote Access
+	// must never block on this handshake — awaiting it froze the header button.
+	const startRemoteTunnel = useCallback(() => {
+		setTunnelWanted(true);
+		setRemoteAccessActive(true);
+		setTunnelStarting(true);
+		api.request.getRemoteAccessQR({ tunnel: true }).then((res) => {
+			applyRemoteQR(res);
+			setTunnelStarting(false);
+			setQrCountdown(25);
+		}).catch(() => {
+			setTunnelStarting(false);
+			setRemoteAccessActive(false);
+		});
+	}, [applyRemoteQR]);
+
+	// Listen for the Remote Access open request (header button, kebab, native menu)
 	useEffect(() => {
 		function onShowRemoteQR(e: Event) {
-			const detail = (e as CustomEvent<RemoteAccessQRData>).detail;
+			const detail = (e as CustomEvent<RemoteAccessQRData & { autoStartTunnel?: boolean }>).detail;
 			if (!detail) return;
 			applyRemoteQR(detail);
 			setRemoteUrlCopyState("idle");
 			setQrConsumed(false); // Reset consumed state when opening fresh QR
+			// A share-intent open auto-starts the public tunnel in the background
+			// rather than blocking the modal on the handshake.
+			if (detail.autoStartTunnel && detail.cloudflaredInstalled && detail.tunnelState === "idle") {
+				startRemoteTunnel();
+				return;
+			}
 			// Sync tunnel checkbox with actual tunnel state
-			setTunnelWanted(detail?.tunnelState === "connected" || detail?.tunnelState === "starting");
-			setTunnelStarting(detail?.tunnelState === "starting");
+			setTunnelWanted(detail.tunnelState === "connected" || detail.tunnelState === "starting");
+			setTunnelStarting(detail.tunnelState === "starting");
 		}
 		window.addEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
 		return () => window.removeEventListener("rpc:showRemoteAccessQR", onShowRemoteQR);
-	}, [applyRemoteQR]);
+	}, [applyRemoteQR, startRemoteTunnel]);
 
 	// Auto-refresh QR code every 25 seconds while modal is open (JWT tokens expire in 30s)
 	// After a QR is consumed, keep polling without visually rotating the token:
 	// a recovered Quick Tunnel gets a new hostname, and the open modal must
 	// reactivate with that new URL instead of staying green on a dead domain.
 	const qrModalOpen = remoteQR !== null;
-	const [qrCountdown, setQrCountdown] = useState(25);
 	const tunnelWantedRef = useRef(tunnelWanted);
 	tunnelWantedRef.current = tunnelWanted;
 	const qrConsumedRef = useRef(qrConsumed);
@@ -2216,16 +2239,7 @@ function App() {
 										const want = e.target.checked;
 										setTunnelWanted(want);
 										if (want && remoteQR.cloudflaredInstalled && remoteQR.tunnelState === "idle") {
-											setRemoteAccessActive(true);
-											setTunnelStarting(true);
-											api.request.getRemoteAccessQR({ tunnel: true }).then((res) => {
-												applyRemoteQR(res);
-												setTunnelStarting(false);
-												setQrCountdown(25);
-											}).catch(() => {
-												setTunnelStarting(false);
-												setRemoteAccessActive(false);
-											});
+											startRemoteTunnel();
 										} else if (!want && remoteQR.tunnelState === "connected") {
 											setRemoteAccessActive(false);
 											api.request.stopTunnel().then(() => {
