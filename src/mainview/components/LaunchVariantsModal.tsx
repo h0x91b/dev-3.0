@@ -70,8 +70,14 @@ function LaunchVariantsModal({
 			agentId = agent.id;
 		}
 
+		// Settings resolution can pair defaultAgentId with a defaultConfigId from a
+		// *different* provider (stale builtin id reset to the Claude default); using
+		// it verbatim renders an empty Mode. Guard it like Spawn/Bug Hunters.
+		const globalConfigMatchesAgent =
+			!!globalSettings.defaultConfigId &&
+			!!agent?.configurations.some((c) => c.id === globalSettings.defaultConfigId);
 		const configId =
-			globalSettings.defaultConfigId ??
+			(globalConfigMatchesAgent ? globalSettings.defaultConfigId : null) ??
 			agent?.defaultConfigId ??
 			agent?.configurations[0]?.id ??
 			null;
