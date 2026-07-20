@@ -41,6 +41,7 @@ import AboutModal from "./components/AboutModal";
 import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
 import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
+import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
 import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
@@ -75,24 +76,6 @@ type RemoteAccessQRData = {
 
 function isRemoteTunnelActive(tunnelState?: string): boolean {
 	return tunnelState === "starting" || tunnelState === "connected";
-}
-
-/**
- * Build the `confirm()` info card for a task-lifecycle prompt (completion /
- * branch-merged). `subject` carries the read-only context (project, seq,
- * priority, labels, overview) resolved on the bun side; it may be absent when an
- * older push omits it, in which case only the task title is shown.
- */
-function taskDialogInfo(taskTitle: string, subject?: TaskDialogSubject) {
-	if (!subject) return { title: taskTitle };
-	return {
-		title: taskTitle,
-		body: subject.overview ?? undefined,
-		seqLabel: subject.seqLabel,
-		projectName: subject.projectName,
-		priority: subject.priority,
-		labels: subject.labels,
-	};
 }
 
 /**
@@ -1403,7 +1386,7 @@ function App() {
 					return await confirm({
 						title: t("app.branchMergedTitle"),
 						message: t("app.branchMergedMessage", { taskTitle, branchName }),
-						info: taskDialogInfo(taskTitle, subject),
+						info: taskDialogInfoFromSubject(taskTitle, subject),
 					});
 				} catch (err) {
 					console.error("[App] confirm (branch-merged) failed:", err);
@@ -1474,7 +1457,7 @@ function App() {
 				approved = await confirm({
 					title: t("app.agentCompletionTitle"),
 					message: t("app.agentCompletionMessage"),
-					info: taskDialogInfo(taskTitle, subject),
+					info: taskDialogInfoFromSubject(taskTitle, subject),
 					confirmLabel: t("app.agentCompletionConfirm"),
 					cancelLabel: t("app.agentCompletionCancel"),
 					danger: true,

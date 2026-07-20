@@ -1,6 +1,6 @@
 import { api } from "../rpc";
 import { confirm } from "../confirm";
-import { getTaskOverview, getTaskTitle } from "../../shared/types";
+import { taskDialogInfo } from "./taskDialogInfo";
 import type { Task, Project, TaskStatus } from "../../shared/types";
 import type { TFunction } from "../i18n";
 
@@ -68,7 +68,7 @@ export async function confirmTaskCompletion(
 
 	return confirm({
 		title: t("task.warnCompletionTitle"),
-		info: { title: getTaskTitle(task), body: getTaskOverview(task) ?? undefined },
+		info: taskDialogInfo(task, project),
 		message,
 	});
 }
