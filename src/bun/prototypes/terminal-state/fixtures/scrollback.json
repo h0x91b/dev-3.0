@@ -1,0 +1,38 @@
+{
+	"fixtureVersion": 1,
+	"name": "scrollback",
+	"source": "synthetic",
+	"initial": {
+		"cols": 8,
+		"rows": 3,
+		"scrollback": 5
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "line1\r\nline2\r\nline3\r\nline4\r\nline5\r\nline6\r\nline7\r\nline8"
+		}
+	],
+	"expected": {
+		"dimensions": {
+			"cols": 8,
+			"rows": 3
+		},
+		"cursor": {
+			"x": 5,
+			"y": 2
+		},
+		"screen": [
+			{ "text": "line6", "wrapped": false },
+			{ "text": "line7", "wrapped": false },
+			{ "text": "line8", "wrapped": false }
+		],
+		"scrollback": [
+			{ "text": "line1", "wrapped": false },
+			{ "text": "line2", "wrapped": false },
+			{ "text": "line3", "wrapped": false },
+			{ "text": "line4", "wrapped": false },
+			{ "text": "line5", "wrapped": false }
+		]
+	}
+}

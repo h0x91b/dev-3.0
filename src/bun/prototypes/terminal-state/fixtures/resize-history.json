@@ -1,0 +1,45 @@
+{
+	"fixtureVersion": 1,
+	"name": "resize-history",
+	"source": "synthetic",
+	"initial": {
+		"cols": 10,
+		"rows": 3,
+		"scrollback": 20
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "1234567890ABC"
+		},
+		{
+			"type": "resize",
+			"cols": 6,
+			"rows": 4
+		},
+		{
+			"type": "resize",
+			"cols": 12,
+			"rows": 3
+		},
+		{
+			"type": "output",
+			"data": "D"
+		}
+	],
+	"expected": {
+		"dimensions": {
+			"cols": 12,
+			"rows": 3
+		},
+		"cursor": {
+			"x": 11,
+			"y": 0
+		},
+		"screen": [
+			{ "text": "1234567890AD", "wrapped": false },
+			{ "text": "C", "wrapped": true },
+			{ "text": "", "wrapped": false }
+		]
+	}
+}

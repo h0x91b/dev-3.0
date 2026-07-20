@@ -1,0 +1,28 @@
+{
+	"fixtureVersion": 1,
+	"name": "line-wrapping",
+	"source": "synthetic",
+	"initial": {
+		"cols": 5,
+		"rows": 4,
+		"scrollback": 20
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "abcdefghijXYZ"
+		}
+	],
+	"expected": {
+		"cursor": {
+			"x": 3,
+			"y": 2
+		},
+		"screen": [
+			{ "text": "abcde", "wrapped": false },
+			{ "text": "fghij", "wrapped": true },
+			{ "text": "XYZ", "wrapped": true },
+			{ "text": "", "wrapped": false }
+		]
+	}
+}
