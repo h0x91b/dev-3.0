@@ -47,7 +47,7 @@ vi.mock("@git-diff-view/react", async () => {
 			diffViewAddWidget?: boolean;
 			diffViewHighlight?: boolean;
 			renderWidgetLine?: (props: { lineNumber: number; side: number; onClose: () => void; diffFile: object }) => React.ReactNode;
-			renderExtendLine?: (props: { lineNumber: number; side: number; data: unknown; onUpdate: () => void; diffFile: object }) => React.ReactNode;
+			renderExtendLine?: (props: { lineNumber: number; side: number; data?: unknown; onUpdate: () => void; diffFile: object }) => React.ReactNode;
 			extendData?: {
 				oldFile?: Record<string, { data: unknown }>;
 				newFile?: Record<string, { data: unknown }>;
@@ -143,15 +143,28 @@ vi.mock("@git-diff-view/react", async () => {
 							</div>
 						)}
 						{threadEntries.map((entry) => (
-							<div key={entry.key} data-testid="mock-extend">
-								{renderExtendLine?.({
-									diffFile: {},
-									side: entry.side,
-									lineNumber: entry.lineNumber,
-									data: entry.data,
-									onUpdate: () => {},
-								})}
-							</div>
+							<React.Fragment key={entry.key}>
+								<div data-testid="mock-extend">
+									{renderExtendLine?.({
+										diffFile: {},
+										side: entry.side,
+										lineNumber: entry.lineNumber,
+										data: entry.data,
+										onUpdate: () => {},
+									})}
+								</div>
+								{diffViewMode === 3 && (
+									<div data-testid="mock-empty-extend-counterpart">
+										{renderExtendLine?.({
+											diffFile: {},
+											side: entry.side === SplitSide.old ? SplitSide.new : SplitSide.old,
+											lineNumber: entry.lineNumber,
+											data: undefined,
+											onUpdate: () => {},
+										})}
+									</div>
+								)}
+							</React.Fragment>
 						))}
 					</div>
 				</div>
@@ -1777,6 +1790,38 @@ describe("TaskDiffViewer", () => {
 		await user.click(within(screen.getByTestId("inline-comment-thread")).getByRole("button", { name: "Delete comment" }));
 		expect(screen.queryByText("Comment 1")).not.toBeInTheDocument();
 		expect(screen.queryByText("Rename this callback.")).not.toBeInTheDocument();
+	});
+
+	it("keeps split view open when a comment has no extension data on the opposite side", async () => {
+		const user = userEvent.setup();
+		vi.mocked(api.request.getGlobalSettings).mockResolvedValue({
+			defaultAgentId: "builtin-claude",
+			defaultConfigId: "claude-default",
+			taskDropPosition: "top",
+			updateChannel: "stable",
+			defaultDiffViewMode: "split",
+		});
+
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		const diffs = await screen.findAllByTestId("mock-diff");
+		expect(diffs[0]).toHaveTextContent("mode:3");
+		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.type(screen.getByPlaceholderText("Leave a comment on this line..."), "one-sided comment");
+		await user.click(screen.getByRole("button", { name: "Add comment" }));
+
+		expect(screen.getAllByText("one-sided comment").length).toBeGreaterThan(0);
+		expect(screen.getAllByTestId("mock-empty-extend-counterpart").length).toBeGreaterThan(0);
+		expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 	});
 
 	it("drag-selects a line range in the gutter and comments on the whole range", async () => {
