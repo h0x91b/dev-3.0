@@ -14,12 +14,15 @@ const {
 	mockOnDataDispose,
 	mockOnResizeDispose,
 	mockOnSelectionChangeDispose,
+	fitAddonHolder,
 } = vi.hoisted(() => {
 	const mockFocus = vi.fn();
 	const mockInput = vi.fn();
 	const mockOnDataDispose = vi.fn();
 	const mockOnResizeDispose = vi.fn();
 	const mockOnSelectionChangeDispose = vi.fn();
+	// Holds the last-constructed FitAddon so tests can drive proposeDimensions.
+	const fitAddonHolder: { current: null | { proposeDimensions: ReturnType<typeof vi.fn> } } = { current: null };
 	// Plain object — avoids document.createElement at hoist time
 	const mockCanvas = {
 		addEventListener: vi.fn(),
@@ -52,6 +55,7 @@ const {
 		write: vi.fn(),
 		writeln: vi.fn(),
 		reset: vi.fn(),
+		resize: vi.fn(),
 		dispose: vi.fn(),
 		cols: 80,
 		rows: 24,
@@ -66,6 +70,7 @@ const {
 		mockOnDataDispose,
 		mockOnResizeDispose,
 		mockOnSelectionChangeDispose,
+		fitAddonHolder,
 	};
 });
 
@@ -77,12 +82,14 @@ vi.mock("ghostty-web", () => ({
 	Terminal: vi.fn(function MockTerminal() { return mockTermInstance; }),
 	// eslint-disable-next-line prefer-arrow-callback
 	FitAddon: vi.fn(function MockFitAddon() {
-		return {
+		const inst = {
 			fit: vi.fn(),
 			observeResize: vi.fn(),
 			proposeDimensions: vi.fn(() => ({ cols: 80, rows: 24 })),
 			dispose: vi.fn(),
 		};
+		fitAddonHolder.current = inst;
+		return inst;
 	}),
 }));
 
@@ -254,6 +261,54 @@ describe("TerminalView – PTY reconnect", () => {
 		});
 
 		expect(webSockets).toHaveLength(2);
+	});
+});
+
+describe("TerminalView – resilient re-fit on late layout growth", () => {
+	it("resizes the terminal when the container grows after the initial fit", async () => {
+		await renderAndSetup();
+		const fit = fitAddonHolder.current!;
+		// The container settles taller AFTER the first fit — this is the browser
+		// first-load race that used to leave the terminal stuck at a small size
+		// (ghostty's observeResize drops the growth callback in fit()'s 50ms window).
+		// TerminalView swaps in its own proposeDimensions override at setup, so we
+		// reassign it here to drive the resilient re-fit deterministically.
+		fit.proposeDimensions = vi.fn(() => ({ cols: 80, rows: 50 }));
+		mockTermInstance.resize.mockClear();
+
+		vi.useFakeTimers();
+		try {
+			await act(async () => { fireResize?.(); });
+			await act(async () => { vi.advanceTimersByTime(150); });
+		} finally {
+			vi.useRealTimers();
+		}
+
+		// Applied via term.resize (no 50ms drop window) rather than fitAddon.fit,
+		// so a late growth is never swallowed.
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(80, 50);
+	});
+
+	it("re-fits only once per debounce window across a burst of resize events", async () => {
+		await renderAndSetup();
+		const fit = fitAddonHolder.current!;
+		fit.proposeDimensions = vi.fn(() => ({ cols: 80, rows: 42 }));
+		mockTermInstance.resize.mockClear();
+
+		vi.useFakeTimers();
+		try {
+			await act(async () => {
+				fireResize?.();
+				fireResize?.();
+				fireResize?.();
+			});
+			await act(async () => { vi.advanceTimersByTime(150); });
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(mockTermInstance.resize).toHaveBeenCalledTimes(1);
+		expect(mockTermInstance.resize).toHaveBeenCalledWith(80, 42);
 	});
 });
 
