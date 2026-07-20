@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-20 — Active-tasks split is gated by viewport width, not browser mode
+
+- **Rule:** The task workspace shows the standard `SplitLayout` + `ActiveTasksSidebar` on wide viewports (≥768px) in **both** desktop and remote/browser mode; only narrow (<768px, mobile) viewports drop it for a full-width terminal.
+- **Why:** The 2026-07-19 strip removal over-reached — folding all browser mode into the narrow branch also hid the sidebar on wide remote screens, where there is ample room for it (`SplitLayout` only breaks ~<600px). The persistent `ActiveTasksStrip` stays gone; this only restores the sidebar for wide browsers.
+- **Status:** Implemented. Evidence: `ProjectView.tsx` (`isNarrow`-only gate), `useNarrowViewport.ts`.
+
 ## 2026-07-19 — Remove the persistent browser active-task strip
 
 - **Rule:** Browser task workspaces keep the terminal full-width without a persistent `ActiveTasksStrip`; task switching uses the existing task-switcher overlay and breadcrumb → board navigation.
