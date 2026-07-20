@@ -2936,6 +2936,10 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: { panesExited: number };
 			};
+			anchorCopyModeScroll: {
+				params: { taskId: string };
+				response: { panesAnchored: number };
+			};
 			copyTerminalSelection: {
 				params: { taskId: string; text: string; mouseTracking: boolean };
 				response: { ok: boolean; tool: string | null };

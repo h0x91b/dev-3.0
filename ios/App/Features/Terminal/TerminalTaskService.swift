@@ -302,6 +302,11 @@ actor RPCTerminalTaskService: TerminalTaskServicing {
 
     func resize(columns: Int, rows: Int) async throws {
         try await connectionGate.perform {
+            // Pin the tmux copy-mode scroll position before the resize so a
+            // pinch-zoom does not snap the view toward the bottom (issue E).
+            // Best-effort: never block the resize on it, and it no-ops
+            // server-side when no pane is scrolled back.
+            try? await rpcClient.anchorCopyModeScroll(taskId: taskID)
             try await endpoint.resize(columns: columns, rows: rows)
         }
     }

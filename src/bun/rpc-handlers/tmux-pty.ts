@@ -2205,17 +2205,16 @@ async function tmuxAltClickMoveCursor(params: { taskId: string; col: number; row
 	return { moved: true };
 }
 
-async function exitCopyModeInSession(socket: string, tmuxSession: string): Promise<number> {
+/** Pane ids currently in copy-mode within a tmux session (empty on error). */
+async function copyModePaneIds(socket: string, tmuxSession: string): Promise<string[]> {
 	const listProc = spawn(
 		pty.tmuxArgs(socket, "list-panes", "-s", "-t", tmuxSession, "-F", "#{pane_id} #{pane_in_mode}"),
 		{ stdout: "pipe", stderr: "pipe" },
 	);
 	const listOutput = await new Response(listProc.stdout).text();
-	const listExit = await listProc.exited;
-	if (listExit !== 0) {
-		return 0;
+	if ((await listProc.exited) !== 0) {
+		return [];
 	}
-
 	const panesInMode: string[] = [];
 	for (const line of listOutput.trim().split("\n")) {
 		if (!line) continue;
@@ -2224,15 +2223,23 @@ async function exitCopyModeInSession(socket: string, tmuxSession: string): Promi
 			panesInMode.push(paneId);
 		}
 	}
+	return panesInMode;
+}
 
+/**
+ * Send a copy-mode `-X` command to every in-copy-mode pane of a session.
+ * Used to cancel copy-mode ("cancel") and to pin the scroll position across a
+ * resize ("top-line"). Returns the number of panes acted on.
+ */
+async function sendCopyModeVerbInSession(socket: string, tmuxSession: string, verb: string): Promise<number> {
+	const panesInMode = await copyModePaneIds(socket, tmuxSession);
 	for (const paneId of panesInMode) {
-		const cancelProc = spawn(
-			pty.tmuxArgs(socket, "send-keys", "-t", paneId, "-X", "cancel"),
+		const proc = spawn(
+			pty.tmuxArgs(socket, "send-keys", "-t", paneId, "-X", verb),
 			{ stdout: "pipe", stderr: "pipe" },
 		);
-		await cancelProc.exited;
+		await proc.exited;
 	}
-
 	return panesInMode.length;
 }
 
@@ -2253,13 +2260,43 @@ async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panes
 
 	let total = 0;
 	for (const session of sessions) {
-		total += await exitCopyModeInSession(socket, session);
+		total += await sendCopyModeVerbInSession(socket, session, "cancel");
 	}
 
 	if (total > 0) {
 		log.info("Exited copy-mode in panes", { taskId: params.taskId.slice(0, 8), count: total, sessions });
 	}
 	return { panesExited: total };
+}
+
+/**
+ * Pin the scroll position before a resize (issue E). A pinch-zoom sends a new
+ * grid size to the shared tmux client; the resulting SIGWINCH resets the
+ * copy-mode cursor to screen row 0, snapping the bottom-most visible line to the
+ * top ("the view jumps lower"). Moving the copy cursor to the current TOP
+ * visible line first (`send-keys -X top-line`) makes tmux's own cursor-line
+ * preservation keep that exact line pinned across the reflow — reflow-safe, no
+ * offset math. No-op for panes not in copy-mode (the `top-line` verb only runs
+ * against in-mode panes), so zooming at the live prompt is unaffected.
+ */
+async function anchorCopyModeScroll(params: { taskId: string }): Promise<{ panesAnchored: number }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const taskSession = pty.getSessionTmuxName(params.taskId);
+	const devSession = devServerSessionName(params.taskId);
+
+	const sessions: string[] = [];
+	if (await pty.tmuxSessionExists(params.taskId, socket)) {
+		sessions.push(taskSession);
+	}
+	if (await isDevServerRunning(params.taskId, socket)) {
+		sessions.push(devSession);
+	}
+
+	let total = 0;
+	for (const session of sessions) {
+		total += await sendCopyModeVerbInSession(socket, session, "top-line");
+	}
+	return { panesAnchored: total };
 }
 
 async function spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; accountId?: string | null }): Promise<void> {
@@ -2706,6 +2743,7 @@ export const tmuxPtyHandlers = {
 	tmuxWindowNavigate,
 	tmuxAltClickMoveCursor,
 	exitCopyModeAllPanes,
+	anchorCopyModeScroll,
 	spawnAgentInTask,
 	spawnBugHuntersInTask,
 	resumeTask,

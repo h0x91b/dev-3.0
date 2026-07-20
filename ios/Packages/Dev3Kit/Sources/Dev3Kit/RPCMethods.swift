@@ -521,6 +521,13 @@ public extension RPCClient {
         try await call("restartTask", params: TaskIDParams(taskId: taskId))
     }
 
+    /// Pins the tmux copy-mode scroll position before a resize so a pinch-zoom
+    /// does not snap the view toward the bottom (issue E). No-op server-side when
+    /// no pane is scrolled back.
+    func anchorCopyModeScroll(taskId: String) async throws {
+        try await callVoid("anchorCopyModeScroll", params: TaskIDParams(taskId: taskId))
+    }
+
     func tmuxAction(taskId: String, action: Dev3TmuxAction, force: Bool? = nil) async throws {
         try await callVoid(
             "tmuxAction",

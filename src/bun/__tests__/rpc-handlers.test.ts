@@ -10283,6 +10283,45 @@ describe("handlers.tmuxWindowNavigate", () => {
 	});
 });
 
+// ----------------------------------------------------------------------------
+// handlers.anchorCopyModeScroll (pin scroll position before a pinch-zoom resize)
+// ----------------------------------------------------------------------------
+describe("handlers.anchorCopyModeScroll", () => {
+	const TASK_ID = "abcd1234-0000-0000-0000-000000000000";
+	const calls = () => mockSpawn.mock.calls.map((c) => (c[0] as string[]).join(" "));
+
+	// Task session exists; dev-server session does not (has-session → exit 1).
+	function mockInModePanes(listOutput: string) {
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		mockSpawn.mockReset();
+		mockSpawn.mockImplementation((args: string[]) => {
+			const joined = args.join(" ");
+			if (joined.includes("has-session")) {
+				return { stdout: "", stderr: new Response(""), exited: Promise.resolve(1) };
+			}
+			if (joined.includes("list-panes")) {
+				return { stdout: listOutput, stderr: new Response(""), exited: Promise.resolve(0) };
+			}
+			return { stdout: "", stderr: new Response(""), exited: Promise.resolve(0) };
+		});
+	}
+
+	it("sends top-line only to panes currently in copy-mode", async () => {
+		mockInModePanes("%1 1\n%2 0\n");
+		const res = await handlers.anchorCopyModeScroll({ taskId: TASK_ID });
+		expect(res).toEqual({ panesAnchored: 1 });
+		expect(calls().some((a) => a.includes("send-keys") && a.includes("-X top-line") && a.includes("%1"))).toBe(true);
+		expect(calls().some((a) => a.includes("send-keys") && a.includes("%2"))).toBe(false);
+	});
+
+	it("no-ops when nothing is scrolled back (no pane in copy-mode)", async () => {
+		mockInModePanes("%1 0\n%2 0\n");
+		const res = await handlers.anchorCopyModeScroll({ taskId: TASK_ID });
+		expect(res).toEqual({ panesAnchored: 0 });
+		expect(calls().some((a) => a.includes("send-keys"))).toBe(false);
+	});
+});
+
 describe("handlers.getLastRoute / saveLastRoute — fresh-start (dev) mode", () => {
 	const ORIGINAL_FRESH = process.env.DEV3_FRESH_START;
 
