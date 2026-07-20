@@ -354,6 +354,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		let terminalInputBound = false;
 		let wasHidden = document.visibilityState === "hidden";
 		let layoutObserver: ResizeObserver | null = null;
+		let refitTimer: ReturnType<typeof setTimeout> | null = null;
 		let mouseCleanup: (() => void) | undefined;
 		let nativeSelectionClipboardCleanup: (() => void) | undefined;
 		const termSubs: Array<{ dispose(): void }> = [];
@@ -670,15 +671,44 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				}, { passive: true });
 			}
 
-			// Use ResizeObserver to detect when the container gets its final
-			// flex-computed dimensions. Unlike requestAnimationFrame heuristics,
-			// this fires exactly when layout is done — no timing guesses.
+			// Keep the terminal fitted to its container for its whole lifetime.
+			// We deliberately do NOT use ghostty's FitAddon.observeResize(): its
+			// ResizeObserver drops any callback landing inside the 50ms
+			// `_isResizing` window that every fit() opens, and on a browser
+			// first-load the container's final flex growth routinely lands in
+			// that window — leaving the terminal stuck at a transient small size
+			// until a remount (re-opening the task). We drive the fit ourselves
+			// and call term.resize directly, which carries no such drop window.
+			function refitToContainer() {
+				if (disposed || !fitAddon) return;
+				let dims: { cols: number; rows: number } | undefined;
+				try { dims = fitAddon.proposeDimensions(); } catch { return; /* disposed */ }
+				if (!dims) return;
+				try { term.resize(dims.cols, dims.rows); } catch { /* disposed */ }
+			}
+			let refitScheduled = false;
+			function scheduleRefit() {
+				if (refitScheduled) return;
+				refitScheduled = true;
+				refitTimer = setTimeout(() => {
+					refitTimer = null;
+					refitScheduled = false;
+					refitToContainer();
+				}, 100);
+			}
+
+			let didInitialFit = false;
 			layoutObserver = new ResizeObserver(() => {
 				const el = containerRef.current;
 				if (!el || disposed) return;
 				if (el.clientWidth > 0 && el.clientHeight > 0) {
-					layoutObserver?.disconnect();
-					layoutObserver = null;
+					if (didInitialFit) {
+						// A later size change (browser layout settling, window
+						// resize, zoom) — re-fit resiliently; never dropped.
+						scheduleRefit();
+						return;
+					}
+					didInitialFit = true;
 					console.log("[TerminalView] Container has dimensions, fitting terminal", {
 						width: el.clientWidth,
 						height: el.clientHeight,
@@ -688,7 +718,6 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 						if (disposed) return;
 						try {
 							fitAddon!.fit();
-							fitAddon!.observeResize();
 							// Touch compose mode: never grab focus on entry — opening a
 							// task must not summon the on-screen keyboard. The composer
 							// (or the ⌨ raw toggle) asks for the keyboard explicitly.
@@ -1237,6 +1266,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			window.removeEventListener("pageshow", reconnectPtyOnResume);
 			window.removeEventListener("online", reconnectPtyOnResume);
 			if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+			if (refitTimer !== null) clearTimeout(refitTimer);
 			// Cancel pending write batch to prevent writing to disposed terminal
 			if (writeRafId !== null) {
 				cancelAnimationFrame(writeRafId);
