@@ -2412,6 +2412,7 @@ function App() {
 				artifactViewer={null}
 				onCloseArtifactViewer={closeArtifactViewer}
 				skipCopyModeReset={skipTerminalCopyReset}
+				openUnresolvedComments={route.screen === "task" ? route.openUnresolvedComments : undefined}
 			/>
 		);
 	}
@@ -2448,6 +2449,7 @@ function App() {
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
+						openUnresolvedComments={route.openUnresolvedComments}
 					/>
 				);
 			case "project-terminal": {
@@ -2477,6 +2479,7 @@ function App() {
 						isTerminalFullscreen={terminalImmersiveVisible}
 						onToggleTerminalFullscreen={toggleTerminalImmersive}
 						skipCopyModeReset={skipTerminalCopyReset}
+						openUnresolvedComments={route.openUnresolvedComments}
 					/>
 				);
 			case "project-settings":

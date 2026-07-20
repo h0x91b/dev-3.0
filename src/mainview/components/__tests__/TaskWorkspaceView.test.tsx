@@ -52,9 +52,10 @@ vi.mock("../TaskTerminal", () => ({
 }));
 
 vi.mock("../TaskDiffViewer", () => ({
-	default: ({ onBack, request }: { onBack: () => void; request: { mode: string } }) => (
+	default: ({ onBack, request }: { onBack: () => void; request: { mode: string; focusFirstUnresolvedThread?: boolean; compareRef?: string; compareLabel?: string } }) => (
 		<div data-testid="diff-viewer">
 			<div>{request.mode}</div>
+			<div data-testid="diff-request" data-focus-unresolved={request.focusFirstUnresolvedThread ? "true" : "false"} data-compare-ref={request.compareRef ?? ""} data-compare-label={request.compareLabel ?? ""} />
 			<button onClick={onBack}>Back</button>
 		</div>
 	),
@@ -179,6 +180,24 @@ describe("TaskWorkspaceView", () => {
 
 		expect(screen.queryByTestId("diff-viewer")).not.toBeInTheDocument();
 		expect(screen.getByTestId("terminal-view")).toBeInTheDocument();
+	});
+
+	it("opens the branch diff at unresolved comments when deep-linked from Kanban", async () => {
+		renderWorkspace(
+			<TaskWorkspaceView
+				projectId="p1"
+				taskId="t1"
+				tasks={[task]}
+				projects={[project]}
+				navigate={vi.fn()}
+				dispatch={vi.fn()}
+				openUnresolvedComments
+			/>,
+		);
+
+		await waitFor(() => expect(screen.getByTestId("diff-viewer")).toBeInTheDocument());
+		expect(screen.getByTestId("diff-request")).toHaveAttribute("data-focus-unresolved", "true");
+		expect(screen.getByTestId("diff-request")).toHaveAttribute("data-compare-label", "origin/main");
 	});
 
 	it("shows a task artifact beside the terminal and closes it independently", async () => {

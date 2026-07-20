@@ -52,9 +52,11 @@ interface TaskCardProps {
 	onSetMoving?: (taskId: string, isMoving: boolean) => void;
 	siblingMap?: Map<string, Task[]>;
 	prInfo?: TaskPRBadgeInfo;
+	/** Opens the selected task's diff at its first unresolved review thread. */
+	onOpenUnresolvedComments?: (task: Task) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const [moving, setMoving] = useState(false);
@@ -406,8 +408,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 	const displayTitle = getTaskTitle(task);
 	const hasLongDescription = task.description !== displayTitle;
+	const openUnresolvedInDiff = onOpenUnresolvedComments
+		? () => onOpenUnresolvedComments(task)
+		: undefined;
 	const prBadge = prInfo ? (
-		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id}>
+		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
 			<button
 				type="button"
 				onClick={(e) => {
@@ -437,7 +442,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	};
 	const ciMeta = prInfo?.ciStatus ? CI_BADGE[prInfo.ciStatus] : null;
 	const ciBadge = ciMeta ? (
-		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id}>
+		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
 			<button
 				type="button"
 				onClick={(e) => {
@@ -454,7 +459,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	) : null;
 	const reviewMeta = prInfo?.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const reviewBadge = reviewMeta ? (
-		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id}>
+		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
 			<button
 				type="button"
 				onClick={(e) => {
@@ -470,7 +475,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	) : null;
 	const unresolvedCount = prInfo?.unresolvedCount ?? 0;
 	const commentBadge = prInfo && unresolvedCount > 0 ? (
-		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id}>
+		<TaskPrStatusPopover prInfo={prInfo} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
 			<button
 				type="button"
 				onClick={(e) => {
