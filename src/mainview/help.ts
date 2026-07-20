@@ -12,6 +12,12 @@ import type { TaskStatus } from "../shared/types";
  *
  * A zone participates in help mode by carrying `data-help-id="<topic id>"` on
  * its container element (mirrors the hint overlay's `data-hint-id`).
+ *
+ * Coverage law + correlation invariant (bible §5.4): every user-facing
+ * surface/section and every non-self-evident form field (`field.*` namespace)
+ * must have a topic reachable in help mode, shipped in the same commit as the
+ * UI. Every registry-backed HelpSpot auto-renders its `data-help-id`, and
+ * `__tests__/help.test.ts` fails on dangling ids and orphan topics.
  */
 
 /** Navigation-only actions a HelpCard link may trigger (read-only surface). */
@@ -86,7 +92,10 @@ export const HELP_TOPICS: HelpTopic[] = [
 	// ── Settings sections ──
 	{ id: "settings.agents", titleKey: "help.settings.agents.title", bodyKey: "help.settings.agents.body" },
 	{ id: "settings.appearance", titleKey: "help.settings.appearance.title", bodyKey: "help.settings.appearance.body" },
-	{ id: "settings.behavior", titleKey: "help.settings.behavior.title", bodyKey: "help.settings.behavior.body" },
+	{ id: "settings.tasks", titleKey: "help.settings.tasks.title", bodyKey: "help.settings.tasks.body" },
+	{ id: "settings.terminal", titleKey: "help.settings.terminal.title", bodyKey: "help.settings.terminal.body" },
+	{ id: "settings.accounts", titleKey: "help.settings.accounts.title", bodyKey: "help.settings.accounts.body" },
+	{ id: "settings.system", titleKey: "help.settings.system.title", bodyKey: "help.settings.system.body" },
 	{ id: "settings.workspace", titleKey: "help.settings.workspace.title", bodyKey: "help.settings.workspace.body" },
 	{ id: "settings.devtools", titleKey: "help.settings.devtools.title", bodyKey: "help.settings.devtools.body" },
 
@@ -97,6 +106,9 @@ export const HELP_TOPICS: HelpTopic[] = [
 	{ id: "modal.create-task", titleKey: "help.modal.createTask.title", bodyKey: "help.modal.createTask.body" },
 	{ id: "modal.launch-variants", titleKey: "help.modal.launchVariants.title", bodyKey: "help.modal.launchVariants.body" },
 
+	// ── Form fields ──
+	{ id: "field.task-branch", titleKey: "help.field.taskBranch.title", bodyKey: "help.field.taskBranch.body" },
+
 	// ── Header / sidebar ──
 	{
 		id: "header.utilities",
@@ -104,6 +116,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 		bodyKey: "help.header.utilities.body",
 		link: { labelKey: "help.ui.openShortcuts", action: "open-keyboard-shortcuts" },
 	},
+	{ id: "header.rateLimits", titleKey: "help.header.rateLimits.title", bodyKey: "help.header.rateLimits.body" },
 	{ id: "sidebar.active-tasks", titleKey: "help.sidebar.activeTasks.title", bodyKey: "help.sidebar.activeTasks.body" },
 ];
 

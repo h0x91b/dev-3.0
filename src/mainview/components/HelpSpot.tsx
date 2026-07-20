@@ -10,6 +10,13 @@ import HelpCard, { type HelpCardContent } from "./HelpCard";
  * quickbars, task cards or action toolbars (those zones are covered by help
  * mode instead — the `help-icon-creep` anti-pattern).
  *
+ * Correlation invariant (§5.4): every registry-backed HelpSpot renders
+ * `data-help-id={topicId}` on its button, so it is automatically a help-mode
+ * zone — inline help can never exist outside the (?) overlay. Tag the section
+ * container with the same id when a full-section outline reads better; the
+ * help-mode scan keeps the first visible DOM match, so a container wins over
+ * the icon.
+ *
  * Hover opens the HelpCard after a short intent delay; click pins it
  * (Escape / outside click closes). Keyboard: focus + Enter pins too.
  */
@@ -93,6 +100,7 @@ export default function HelpSpot({ topicId, content, placement = "bottom", class
 			<button
 				ref={buttonRef}
 				type="button"
+				data-help-id={topic ? topicId : undefined}
 				aria-label={t("help.ui.aboutSection")}
 				aria-expanded={open}
 				className={`inline-flex items-center justify-center w-4 h-4 rounded text-fg-muted hover:text-accent focus-visible:text-accent transition-colors text-[0.75rem] leading-none flex-shrink-0 ${className ?? ""}`}

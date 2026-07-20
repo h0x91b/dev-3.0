@@ -95,9 +95,18 @@ const help = {
 		"The coding agents you launch and their presets. Each configuration is a complete launch recipe — model, mode, flags; every task picks one at start. Drag to reorder the picker.",
 	"help.settings.appearance.title": "Appearance",
 	"help.settings.appearance.body": "Theme, language, zoom and scrolling — how the app looks and feels.",
-	"help.settings.behavior.title": "Behavior",
-	"help.settings.behavior.body":
-		"What happens around your tasks automatically: AI review after an agent finishes, peer review, feature tips, notifications and focus mode.",
+	"help.settings.tasks.title": "Tasks & Board",
+	"help.settings.tasks.body":
+		"Board and task behavior defaults: where a dropped card lands in its column, the task-completion sound, focus mode, watch-by-default, and feature tips.",
+	"help.settings.terminal.title": "Terminal",
+	"help.settings.terminal.body":
+		"How the terminal feels: the keyboard preset (Default or iTerm2-style), scroll speed, and zoom reset.",
+	"help.settings.accounts.title": "Agent accounts",
+	"help.settings.accounts.body":
+		"Sign in to multiple accounts per agent (Claude Code, Codex), switch which one is active, and manage API-key profiles.",
+	"help.settings.system.title": "System",
+	"help.settings.system.body":
+		"App-level machinery: the update channel, keeping the machine awake while agents work, quit confirmation, and browser notifications.",
 	"help.settings.workspace.title": "Workspace",
 	"help.settings.workspace.body":
 		"Where task worktrees live on disk, which external editors and apps power open-in, and your GitHub accounts.",
@@ -121,9 +130,17 @@ const help = {
 	"help.header.utilities.title": "App utilities",
 	"help.header.utilities.body":
 		"App-wide tools: the coffee cup keeps your machine awake while agents run, the terminal icon manages tmux sessions, and the commit badge pulls fresh commits from the main branch.",
+	"help.header.rateLimits.title": "Agent rate limits",
+	"help.header.rateLimits.body":
+		"Live account-wide usage of your agent's rate limit. The percent turns yellow at 80% and red at 95%, so you see a limit coming before it stalls your agents. Toggle it in Settings → Agents.",
 	"help.sidebar.activeTasks.title": "Active tasks",
 	"help.sidebar.activeTasks.body":
 		"Every task with a live agent, across all projects. Click to jump to it; hover for a live terminal preview.",
+
+	// ── Form fields ──
+	"help.field.taskBranch.title": "Why this branch?",
+	"help.field.taskBranch.body":
+		"New tasks start from the project's currently checked-out branch when it isn't the base branch — so small tasks stack onto a big feature you're building. Clear the field to fall back to the project's default base branch.",
 } as const;
 
 export default help;

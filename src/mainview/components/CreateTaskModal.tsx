@@ -436,7 +436,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 			onClick={handleRequestClose}
 		>
 			{/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-			<div ref={trapRef} role="dialog" aria-modal="true" tabIndex={-1} className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
+			<div ref={trapRef} role="dialog" aria-modal="true" tabIndex={-1} data-help-id="modal.create-task" className="relative bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6 space-y-5 outline-none" onClick={(e) => e.stopPropagation()}>
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-1.5">
 						<h2 className="text-fg text-lg font-semibold">

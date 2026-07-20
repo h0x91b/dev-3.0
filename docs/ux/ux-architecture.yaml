@@ -338,20 +338,23 @@ ux_architecture:
       forbidden: ["persistent_action", "primary_action"]
       evidence: ["src/mainview/components/ErrorToast.tsx"]
     inline_help:
-      purpose: "Explain what a section/zone is, why it exists, and what to do in it. One registry (src/mainview/help.ts — declare-as-data like keymap.ts/tips.ts), three layers: fast Tooltip primitive (replaces native title= on icon controls), HelpSpot (i) -> HelpCard in header-bearing sections, and a screen-wide help-mode overlay for dense/headerless zones."
+      purpose: "Explain what a section/zone/field is, why it exists, and what to do in it. One registry (src/mainview/help.ts — declare-as-data like keymap.ts/tips.ts), three layers: fast Tooltip primitive (replaces native title= on icon controls), HelpSpot (i) -> HelpCard in header-bearing sections, and a screen-wide help-mode overlay — the master surface. The UI is the product's only teaching channel (no tutorials): help coverage is owed, not earned."
       status: "observed"
+      doctrine:
+        coverage_law: "every surface/section and every non-self-evident form field (smart default, contextual prefill, hidden fallback, side effect) MUST have a registry topic reachable in help mode; field.* namespace for form fields; new user-facing UI ships its topic + data-help-id zone in the same commit (keymap.ts-style lockstep)"
+        correlation_invariant: "help mode shows a superset of all inline help: every registry-backed HelpSpot auto-renders data-help-id (automatically a zone); a data-help-id/topicId with no registry topic is a silent no-op and is forbidden; __tests__/help.test.ts guards both directions (every referenced id resolves; every topic is mounted)"
       layers:
         tooltip:
           role: "control-level 'what does this button do'"
           spec: "portal popover, shared positioning util, ~250ms hover-intent, instant re-show grace; progressive migration off native title= (densest surfaces first: inspector bars, GlobalHeader, TaskCard)"
         help_spot:
-          role: "section-level (i) -> HelpCard"
-          allowed_hosts: ["SettingsSection headings", "modal headers", "KanbanColumn header", "TaskDiffViewer toolbar", "stats section titles", "TaskInfoPanel chrome (panel-level topic only)"]
+          role: "section-level (i) -> HelpCard; renders data-help-id={topicId}, so every HelpSpot is automatically a help-mode zone"
+          allowed_hosts: ["SettingsSection headings", "modal headers", "KanbanColumn header", "TaskDiffViewer toolbar", "stats section titles", "TaskInfoPanel chrome (panel-level topic only)", "form-field labels — earned, only for surprising field behavior (e.g. contextual branch prefill); never a row of (i) on every field"]
           budget: "<= 1 HelpSpot per section header; icon role ghost; hover emphasis reuses accent (no new --info token)"
         help_mode:
-          role: "screen-wide 'Explain this screen' overlay"
-          mechanism: "zones tagged data-help-id (mirrors HintOverlay's data-hint-id) get an (i) badge + outline; hover/click opens the same HelpCard; Esc exits"
-          entry_points: ["application_menu.Help", "keyboard ⇧⌘/ (Cmd+Shift+/)", "command_palette ⇧⌘P entry", "header kebab on narrow (native menu absent in remote — touch-reachability rule)"]
+          role: "screen-wide 'Explain this screen' overlay — the MASTER surface: explains the current screen state (live DOM scan skips covered zones, so an open modal lights its own zones, per-field included)"
+          mechanism: "zones tagged data-help-id (mirrors HintOverlay's data-hint-id) get an (i) badge + outline; hover/click opens the same HelpCard; Esc exits; prefer tagging the section container in addition to the auto-tagged HelpSpot (first visible DOM match wins, so the container outline beats the icon)"
+          entry_points: ["global_header (?) button", "application_menu.Help", "keyboard ⇧⌘/ (Cmd+Shift+/)", "command_palette ⇧⌘P entry", "header kebab on narrow (native menu absent in remote — touch-reachability rule)"]
       help_card:
         content: ["topic title", "2-4 sentence body", "optional 'what you can do here' bullets", "optional shortcut chips crosslinked to keymap.ts ids", "optional nav link (e.g. Open Keyboard Shortcuts)"]
         allowed: ["read_only_content", "navigation_link"]
@@ -360,8 +363,8 @@ ux_architecture:
       registry:
         file: "src/mainview/help.ts (HELP_TOPICS: id, titleKey, bodyKey, bullets?, shortcutIds?, link?)"
         i18n_domain: "help.ts in en/ru/es"
-        rule: "help copy is never hardcoded in components; topics may crosslink tips instead of duplicating text"
-      evidence: ["docs/ux/PRODUCT_UX_BIBLE.md §5.4", "UX_DECISIONS 2026-07-03 (inline help)"]
+        rule: "help copy is never hardcoded in components; topics may crosslink tips instead of duplicating text; field.* namespace for form-field topics"
+      evidence: ["docs/ux/PRODUCT_UX_BIBLE.md §5.4", "UX_DECISIONS 2026-07-03 (inline help)", "UX_DECISIONS 2026-07-17 (coverage law + correlation invariant)"]
     keyboard_shortcuts_reference:
       purpose: "Read-only keymap reference overlay (Modal). ONE component with two tabs — App (renders from the keymap.ts registry) and Terminal (tmux) (folds in the tmux cheat sheet). onboarding/help + expert_shortcut content, same shell as TmuxCheatSheetModal."
       allowed: ["shortcut_reference", "tab_switch"]

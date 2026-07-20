@@ -16,6 +16,12 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** Writing reviews from dev3 duplicates GitHub's own UI and adds auth/consistency risk for near-zero gain (grilling task 0fa9144c); the agent loop — not commenting — is the product's value. Rejected: reply/resolve buttons proxying `gh`.
 - **Status:** Implemented. Evidence: `TaskDiffViewer.tsx`, `ux-architecture.yaml (github_review_layer)`.
 
+## 2026-07-17 — Help coverage is owed; help mode is the master surface (correlation invariant)
+
+- **Rule:** Every user-facing surface/section and every non-self-evident form field MUST have a `help.ts` topic reachable in help mode (`field.*` namespace), shipped in the same commit as the UI; every registry-backed `HelpSpot` auto-renders `data-help-id`, so inline help is always a subset of the (?) overlay; dangling ids and orphan topics are forbidden and `help.test.ts` guards both directions.
+- **Why:** The product has no tutorials — the UI is the only channel to convey author intent, so coverage cannot be "earned" like tips; the HelpSpot/zone sets had already drifted silently (dangling `header.rateLimits` zone; the 2026-07-16 settings re-org killed help for three categories unnoticed). Rejected: a permanent (i) per form field (chrome creep — help mode lights registered fields instead, zero permanent chrome).
+- **Status:** Implemented. Evidence: bible §5.4 (coverage law + correlation invariant), yaml `surfaces.inline_help.doctrine`, `HelpSpot.tsx`, `__tests__/help.test.ts`.
+
 ## 2026-07-16 — Global Settings category navigation and registry
 
 - **Rule:** Global Settings uses seven left-nav **Settings categories** with one detail pane, localized title/description search, and a narrow list→detail drill-down with an in-app back affordance. The `settings-registry.ts` registry documents **Settings entries** (metadata, category, translations, anchors, storage disposition) and integrity tests; bespoke controls remain bespoke.

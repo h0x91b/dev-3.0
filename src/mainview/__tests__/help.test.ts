@@ -1,3 +1,5 @@
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { HELP_TOPICS, helpTopic, statusHelpTopicId } from "../help";
 import { APP_SHORTCUTS } from "../keymap";
@@ -48,5 +50,46 @@ describe("HELP_TOPICS registry", () => {
 
 	it("helpTopic returns undefined for unknown ids", () => {
 		expect(helpTopic("nope.nothing")).toBeUndefined();
+	});
+});
+
+// Bible §5.4 correlation invariant: help mode is the master surface. A
+// dangling id is a SILENT no-op (HelpSpot renders nothing, help mode skips
+// the zone) and an orphan topic is dead copy — both directions must fail loud.
+describe("help coverage correlation (bible §5.4)", () => {
+	const SRC_ROOT = path.resolve(__dirname, "..");
+	const referenced = new Set<string>();
+
+	(function walk(dir: string) {
+		for (const name of readdirSync(dir)) {
+			if (name === "__tests__" || name === "assets" || name === "i18n") continue;
+			const full = path.join(dir, name);
+			if (statSync(full).isDirectory()) {
+				walk(full);
+				continue;
+			}
+			if (!/\.tsx?$/.test(name) || full === path.join(SRC_ROOT, "help.ts")) continue;
+			const src = readFileSync(full, "utf8");
+			// Literal zone tags and HelpSpot/section topic props. Dynamic ids
+			// (statusHelpTopicId) are deliberately not captured here, and the
+			// id-shape filter drops docstring placeholders like "<topic id>".
+			for (const m of src.matchAll(/(?:data-help-id|topicId|helpTopicId)="([^"]+)"/g)) {
+				if (/^[a-z0-9.-]+$/i.test(m[1])) referenced.add(m[1]);
+			}
+		}
+	})(SRC_ROOT);
+
+	it("every referenced help id resolves to a registry topic (no silent no-ops)", () => {
+		const dangling = [...referenced].filter((id) => !helpTopic(id));
+		expect(dangling, `dangling help ids (help mode skips them silently): ${dangling.join(", ")}`).toEqual([]);
+	});
+
+	it("every registry topic is mounted in a component (no dead copy)", () => {
+		const orphans = HELP_TOPICS.map((topic) => topic.id)
+			// board.column.* render dynamically via statusHelpTopicId — covered
+			// by the per-status test above.
+			.filter((id) => !id.startsWith("board.column."))
+			.filter((id) => !referenced.has(id));
+		expect(orphans, `orphan topics (no HelpSpot/zone references them): ${orphans.join(", ")}`).toEqual([]);
 	});
 });
