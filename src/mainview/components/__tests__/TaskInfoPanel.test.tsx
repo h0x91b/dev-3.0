@@ -2939,6 +2939,29 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			window.removeEventListener("dev3:openArtifactViewer", openArtifact);
 		});
 
+		it("opens the image viewer and closes the actions sheet", async () => {
+			const openImage = vi.fn();
+			window.addEventListener("dev3:openImageViewer", openImage);
+			await act(async () => {
+				renderPanel(makeTask({
+					sharedImages: [{
+						id: "image-1",
+						storedPath: "/tmp/shared-images/image-1/shot.png",
+						originalPath: "/tmp/shot.png",
+						name: "shot.png",
+						mime: "image/png",
+						bytes: 10,
+						createdAt: 1,
+					}],
+				}));
+			});
+			await userEvent.click(screen.getByTestId("task-actions-kebab"));
+			await userEvent.click(within(screen.getByTestId("task-actions-sheet")).getByText("Images"));
+			expect(openImage).toHaveBeenCalledOnce();
+			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
+			window.removeEventListener("dev3:openImageViewer", openImage);
+		});
+
 		it("closes the sheet on the close button", async () => {
 			await act(async () => {
 				renderPanel(makeTask({ title: "Mobile task" }));
