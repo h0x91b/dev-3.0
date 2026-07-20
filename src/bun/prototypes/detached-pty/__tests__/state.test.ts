@@ -82,6 +82,19 @@ describe("detached-pty state", () => {
 		expect(() => clearState()).not.toThrow();
 	});
 
+	it("clearState only removes metadata owned by the selected session", () => {
+		writeState(sample);
+		writeFileSync(logFile(), "selected session log");
+
+		expect(clearState("another-token")).toBe(false);
+		expect(readState()).toEqual(sample);
+		expect(existsSync(logFile())).toBe(true);
+
+		expect(clearState(sample.token)).toBe(true);
+		expect(readState()).toBeNull();
+		expect(existsSync(logFile())).toBe(false);
+	});
+
 	it("isProcessAlive: true for self, false for junk", () => {
 		expect(isProcessAlive(process.pid)).toBe(true);
 		expect(isProcessAlive(0)).toBe(false);

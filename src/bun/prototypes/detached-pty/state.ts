@@ -97,12 +97,13 @@ export function readState(): PtyProtoState | null {
 }
 
 /**
- * Remove ALL prototype metadata: the state file, the host log, and the
- * prototype directory itself (only if it is now empty — a non-recursive rmdir
- * so we never nuke an unexpected directory). Best-effort; safe to call twice.
+ * Remove the selected prototype session's metadata. When `expectedToken` is
+ * present, a stale stop cannot erase a newer session's record. The state file
+ * is removed last so another start cannot begin until cleanup is complete.
  */
-export function clearState(): void {
-	for (const f of [stateFile(), logFile()]) {
+export function clearState(expectedToken?: string): boolean {
+	if (expectedToken !== undefined && readState()?.token !== expectedToken) return false;
+	for (const f of [logFile(), stateFile()]) {
 		try {
 			if (existsSync(f)) unlinkSync(f);
 		} catch {
@@ -114,4 +115,5 @@ export function clearState(): void {
 	} catch {
 		// dir not empty or already gone — leave it
 	}
+	return true;
 }

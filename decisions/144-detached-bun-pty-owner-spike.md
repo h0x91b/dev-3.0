@@ -44,8 +44,9 @@ own shell tree and removes only its own files.
 
 ## Risks
 
-- Full process-tree kill on Windows is out of scope (Bun `proc.kill()` only) —
-  the POSIX ppid-walk is the tracer's proof.
+- The original spike left full Windows process-tree cleanup out of scope. The
+  additive follow-up in [decision 146](146-windows-job-object-containment.md)
+  closes that gap with pre-spawn Job Object inheritance and kill-on-close.
 - The `~/.dev3.0/pty-proto/` default path is additive; `clearState` unlinks only
   the two files it created and `rmdir`s the dir only if empty (non-recursive), so
   it can never touch other `~/.dev3.0` state or any tmux session.
