@@ -62,11 +62,15 @@ public final class TaskDiffStore {
     public private(set) var payload: Dev3TaskDiff?
     public private(set) var isConnected: Bool
     public private(set) var isLoading = false
+    /// True while a background refresh runs over already-visible cached content.
+    /// `phase` stays `.content` in this state so the screen never flashes empty.
+    public private(set) var isRefreshing = false
     public private(set) var errorMessage: String?
     public private(set) var readSignatures: Set<String> = []
 
     private let service: any TaskDiffServicing
     private let readPersistence: any TaskDiffReadPersisting
+    private let cache: TaskDiffCache
     private var requestGeneration = 0
     private var loadedReadState = false
 
@@ -79,7 +83,8 @@ public final class TaskDiffStore {
         initialSelection: TaskDiffModeSelection = .uncommitted,
         isConnected: Bool,
         service: any TaskDiffServicing,
-        readPersistence: any TaskDiffReadPersisting
+        readPersistence: any TaskDiffReadPersisting,
+        cache: TaskDiffCache = TaskDiffCache()
     ) {
         self.serverID = serverID
         self.projectID = projectID
@@ -90,6 +95,25 @@ public final class TaskDiffStore {
         self.isConnected = isConnected
         self.service = service
         self.readPersistence = readPersistence
+        self.cache = cache
+    }
+
+    /// The compare ref actually sent on the wire — only branch/unpushed carry one.
+    private var requestCompareRef: String? {
+        (selection.mode == .branch || selection.mode == .unpushed) ? normalizedCompareRef : nil
+    }
+
+    /// Cache key for the current selection, matching what `load()` requests so
+    /// cache hits line up with what was fetched.
+    private var cacheKey: TaskDiffCache.Key {
+        TaskDiffCache.Key(
+            serverID: serverID,
+            projectID: projectID,
+            taskID: taskID,
+            mode: selection.mode,
+            compareRef: requestCompareRef,
+            count: selection.count
+        )
     }
 
     public var phase: TaskDiffScreenPhase {
@@ -136,31 +160,37 @@ public final class TaskDiffStore {
         } else {
             requestGeneration += 1
             isLoading = false
+            isRefreshing = false
         }
     }
 
     public func load() async {
-        guard isConnected else { return }
-        if !loadedReadState {
-            let persisted = await readPersistence.readSignatures(serverID: serverID, taskID: taskID)
-            guard isConnected else { return }
-            readSignatures = persisted
-            loadedReadState = true
+        guard isConnected, await ensureReadStateLoaded() else { return }
+
+        let key = cacheKey
+        // Stale-while-revalidate: surface the cached payload immediately so a
+        // revisited mode — or a diff reopened from Review / Task Info → Changes —
+        // renders without a spinner while the fetch below refreshes it in place.
+        if payload == nil, let cached = cache.value(for: key) {
+            payload = cached
         }
 
         requestGeneration += 1
         let generation = requestGeneration
-        isLoading = true
+        if payload != nil {
+            isRefreshing = true
+        } else {
+            isLoading = true
+        }
         errorMessage = nil
         defer {
             if requestGeneration == generation {
                 isLoading = false
+                isRefreshing = false
             }
         }
         do {
-            let requestRef = selection.mode == .branch || selection.mode == .unpushed
-                ? normalizedCompareRef
-                : nil
+            let requestRef = requestCompareRef
             let result = try await service.taskDiff(TaskDiffFetchRequest(
                 taskID: taskID,
                 projectID: projectID,
@@ -169,19 +199,38 @@ public final class TaskDiffStore {
                 compareLabel: requestRef == nil ? nil : compareLabel,
                 count: selection.count
             ))
+            // Cache even if the user has since switched away, so returning is warm.
+            cache.set(result, for: key)
             guard requestGeneration == generation else { return }
             payload = result
         } catch is CancellationError {
             return
         } catch {
-            guard requestGeneration == generation else { return }
+            // Never replace already-visible cached content with an error banner.
+            guard requestGeneration == generation, payload == nil else { return }
             errorMessage = "Could not load the diff: \(error.localizedDescription)"
         }
+    }
+
+    /// Loads persisted read signatures once. Returns false if the connection
+    /// dropped while loading so the caller aborts instead of starting a request.
+    private func ensureReadStateLoaded() async -> Bool {
+        guard !loadedReadState else { return true }
+        let persisted = await readPersistence.readSignatures(serverID: serverID, taskID: taskID)
+        guard isConnected else { return false }
+        readSignatures = persisted
+        loadedReadState = true
+        return true
     }
 
     public func select(_ nextSelection: TaskDiffModeSelection) async {
         guard isConnected, selection != nextSelection else { return }
         selection = nextSelection
+        // On a cache miss, drop the previous mode's payload so the wrong mode's
+        // diff isn't shown while the new one loads; a hit is surfaced by load().
+        if cache.value(for: cacheKey) == nil {
+            payload = nil
+        }
         await load()
     }
 

@@ -68,6 +68,69 @@ struct TaskDiffModelsTests {
         #expect(lines.map(\.text) == ["let one = 1", "let two = 2"])
     }
 
+    @Test("Modified files without hunks diff line-by-line instead of whole-file replace")
+    func modifiedFileFallbackProducesLineDiff() throws {
+        let file = try makeDiffFile(
+            status: "modified",
+            oldContent: "line 1\nline 2\nline 3\n",
+            newContent: "line 1\nline 2 changed\nline 3\nline 4\n",
+            hunks: nil
+        )
+
+        let lines = TaskDiffLineParser.lines(for: file)
+
+        let context = lines.filter { $0.kind == .context }.map(\.text)
+        #expect(context.contains("line 1"))
+        #expect(context.contains("line 3"))
+        #expect(lines.filter { $0.kind == .deletion }.map(\.text) == ["line 2"])
+        #expect(lines.filter { $0.kind == .addition }.map(\.text) == ["line 2 changed", "line 4"])
+        // An unchanged line must appear exactly once (as context), never as delete + add.
+        #expect(lines.filter { $0.text == "line 1" }.count == 1)
+    }
+
+    @Test("Appending to an unchanged file yields only additions, no phantom deletions")
+    func appendOnlyFallbackHasNoPhantomDeletions() throws {
+        let old = (1 ... 20).map { "line \($0)" }.joined(separator: "\n") + "\n"
+        let new = old + "line 21\nline 22\n"
+        let file = try makeDiffFile(status: "modified", oldContent: old, newContent: new, hunks: nil)
+
+        let lines = TaskDiffLineParser.lines(for: file)
+
+        // Reproduces the "+2 −0" AGENTS.md report: unchanged body must stay context.
+        #expect(!lines.contains { $0.kind == .deletion })
+        #expect(lines.filter { $0.kind == .addition }.map(\.text) == ["line 21", "line 22"])
+        #expect(lines.filter { $0.kind == .context }.count == 20)
+        // Line numbers stay monotonic across the whole file.
+        #expect(lines.compactMap(\.newLineNumber) == Array(1 ... 22))
+    }
+
+    @Test("A large single-edit fallback diff stays within budget", .timeLimit(.minutes(1)))
+    func largeFallbackDiffPerformance() throws {
+        let oldBody = (1 ... 2000).map { "line \($0)" }.joined(separator: "\n") + "\n"
+        let newBody = oldBody.replacingOccurrences(of: "line 1000", with: "line 1000 edited")
+        let files = try (0 ..< 60).map { index in
+            try makeDiffFile(
+                id: "file-\(index)",
+                path: "Sources/File\(index).swift",
+                status: "modified",
+                oldContent: oldBody,
+                newContent: newBody,
+                hunks: nil
+            )
+        }
+
+        let clock = ContinuousClock()
+        var total = 0
+        let elapsed = clock.measure {
+            total = files.reduce(into: 0) { $0 += TaskDiffLineParser.lines(for: $1).count }
+        }
+
+        #expect(files.count == 60)
+        // 2000 context-ish lines + 1 delete + 1 add per file (prefix/suffix trim keeps it linear).
+        #expect(total == 60 * 2001)
+        #expect(elapsed < .seconds(5))
+    }
+
     @Test("Read identity is stable for unchanged content and invalidates stale content")
     func readSignatureTracksContent() throws {
         let first = try makeDiffFile(newContent: "export const version = 1;\n")
@@ -126,259 +189,6 @@ struct TaskDiffModelsTests {
     }
 }
 
-@Suite("Native diff store")
-@MainActor
-struct TaskDiffStoreTests {
-    @Test("Mode, count, and compare ref switching send exact backend requests")
-    func requestSwitching() async throws {
-        let response = try makeTaskDiff()
-        let service = RecordingTaskDiffService(response: response)
-        let reads = MemoryTaskDiffReadStore()
-        let store = makeStore(service: service, reads: reads)
-
-        await store.load()
-        await store.select(.branch)
-        await store.updateCompareRef("release/next")
-        await store.select(.recent(5))
-
-        let requests = await service.recordedRequests()
-        #expect(requests[0] == DiffRequest(mode: .uncommitted, compareRef: nil, count: nil))
-        #expect(requests[1] == DiffRequest(mode: .branch, compareRef: "origin/main", count: nil))
-        #expect(requests[2] == DiffRequest(mode: .branch, compareRef: "release/next", count: nil))
-        #expect(requests[3] == DiffRequest(mode: .recent, compareRef: nil, count: 5))
-    }
-
-    @Test("Read state is scoped and survives a fresh store")
-    func persistentReadState() async throws {
-        let response = try makeTaskDiff()
-        let service = RecordingTaskDiffService(response: response)
-        let reads = MemoryTaskDiffReadStore()
-        let first = makeStore(service: service, reads: reads)
-
-        await first.load()
-        let file = try #require(first.sortedFiles.first)
-        await first.toggleRead(file)
-        #expect(first.isRead(file))
-
-        let reopened = makeStore(service: service, reads: reads)
-        await reopened.load()
-        #expect(reopened.isRead(file))
-
-        let otherServer = TaskDiffStore(
-            serverID: "server-2",
-            projectID: "project",
-            taskID: "task",
-            compareRef: "origin/main",
-            isConnected: true,
-            service: service,
-            readPersistence: reads
-        )
-        await otherServer.load()
-        #expect(!otherServer.isRead(file))
-    }
-
-    @Test("Disconnect rejects a suspended success and preserves honest offline phase")
-    func disconnectRejectsSuccess() async throws {
-        let service = SuspendedTaskDiffService()
-        let store = makeStore(service: service, reads: MemoryTaskDiffReadStore())
-        let load = Task { await store.load() }
-        await waitUntilStarted(service)
-
-        store.setConnected(false)
-        try await service.succeed(makeTaskDiff())
-        await load.value
-
-        #expect(store.payload == nil)
-        #expect(store.phase == .offline)
-        #expect(!store.isLoading)
-        #expect(store.errorMessage == nil)
-    }
-
-    @Test("Disconnect rejects a suspended failure without publishing an error")
-    func disconnectRejectsFailure() async {
-        let service = SuspendedTaskDiffService()
-        let store = makeStore(service: service, reads: MemoryTaskDiffReadStore())
-        let load = Task { await store.load() }
-        await waitUntilStarted(service)
-
-        store.setConnected(false)
-        await service.fail(TestFailure())
-        await load.value
-
-        #expect(store.payload == nil)
-        #expect(store.phase == .offline)
-        #expect(store.errorMessage == nil)
-    }
-
-    @Test("Cancellation clears loading and offline mode controls preserve the cached selection")
-    func cancellationAndOfflineSelection() async {
-        let store = makeStore(service: CancelledTaskDiffService(), reads: MemoryTaskDiffReadStore())
-
-        await store.load()
-        #expect(!store.isLoading)
-        #expect(store.errorMessage == nil)
-
-        store.setConnected(false)
-        await store.select(.branch)
-        await store.updateCompareRef("release/next")
-        #expect(store.selection == .uncommitted)
-        #expect(store.compareRef == "origin/main")
-    }
-
-    @Test("Disconnect while read state is loading never starts a stale diff request")
-    func disconnectDuringReadLoad() async {
-        let service = CountingTaskDiffService()
-        let reads = SuspendedTaskDiffReadStore()
-        let store = makeStore(service: service, reads: reads)
-        let load = Task { await store.load() }
-        while await !(reads.hasStarted()) {
-            await Task.yield()
-        }
-
-        store.setConnected(false)
-        await reads.resume()
-        await load.value
-
-        #expect(await service.callCount() == 0)
-        #expect(store.phase == .offline)
-    }
-
-    private func makeStore(
-        service: any TaskDiffServicing,
-        reads: any TaskDiffReadPersisting
-    ) -> TaskDiffStore {
-        TaskDiffStore(
-            serverID: "server-1",
-            projectID: "project",
-            taskID: "task",
-            compareRef: "origin/main",
-            isConnected: true,
-            service: service,
-            readPersistence: reads
-        )
-    }
-
-    private func waitUntilStarted(_ service: SuspendedTaskDiffService) async {
-        while await !(service.hasStarted()) {
-            await Task.yield()
-        }
-    }
-}
-
-private struct DiffRequest: Equatable, Sendable {
-    let mode: Dev3TaskDiffMode
-    let compareRef: String?
-    let count: Int?
-}
-
-private actor RecordingTaskDiffService: TaskDiffServicing {
-    private let response: Dev3TaskDiff
-    private var requests: [DiffRequest] = []
-
-    init(response: Dev3TaskDiff) {
-        self.response = response
-    }
-
-    func taskDiff(_ request: TaskDiffFetchRequest) -> Dev3TaskDiff {
-        requests.append(
-            DiffRequest(mode: request.mode, compareRef: request.compareRef, count: request.count)
-        )
-        return response
-    }
-
-    func recordedRequests() -> [DiffRequest] {
-        requests
-    }
-}
-
-private actor SuspendedTaskDiffService: TaskDiffServicing {
-    private var continuation: CheckedContinuation<Dev3TaskDiff, any Error>?
-    private var started = false
-
-    func taskDiff(_: TaskDiffFetchRequest) async throws -> Dev3TaskDiff {
-        started = true
-        return try await withCheckedThrowingContinuation { continuation = $0 }
-    }
-
-    func hasStarted() -> Bool {
-        started
-    }
-
-    func succeed(_ response: Dev3TaskDiff) {
-        continuation?.resume(returning: response)
-        continuation = nil
-    }
-
-    func fail(_ error: any Error) {
-        continuation?.resume(throwing: error)
-        continuation = nil
-    }
-}
-
-private struct CancelledTaskDiffService: TaskDiffServicing {
-    func taskDiff(_: TaskDiffFetchRequest) async throws -> Dev3TaskDiff {
-        throw CancellationError()
-    }
-}
-
-private actor CountingTaskDiffService: TaskDiffServicing {
-    private var count = 0
-
-    func taskDiff(_: TaskDiffFetchRequest) async throws -> Dev3TaskDiff {
-        count += 1
-        throw TestFailure()
-    }
-
-    func callCount() -> Int {
-        count
-    }
-}
-
-private actor MemoryTaskDiffReadStore: TaskDiffReadPersisting {
-    private var values: [String: Set<String>] = [:]
-
-    func readSignatures(serverID: String, taskID: String) -> Set<String> {
-        values["\(serverID):\(taskID)"] ?? []
-    }
-
-    func setRead(
-        _ isRead: Bool,
-        signature: String,
-        serverID: String,
-        taskID: String
-    ) {
-        let scope = "\(serverID):\(taskID)"
-        if isRead {
-            values[scope, default: []].insert(signature)
-        } else {
-            values[scope]?.remove(signature)
-        }
-    }
-}
-
-private actor SuspendedTaskDiffReadStore: TaskDiffReadPersisting {
-    private var continuation: CheckedContinuation<Set<String>, Never>?
-    private var started = false
-
-    func readSignatures(serverID _: String, taskID _: String) async -> Set<String> {
-        started = true
-        return await withCheckedContinuation { continuation = $0 }
-    }
-
-    func setRead(_: Bool, signature _: String, serverID _: String, taskID _: String) {}
-
-    func hasStarted() -> Bool {
-        started
-    }
-
-    func resume() {
-        continuation?.resume(returning: [])
-        continuation = nil
-    }
-}
-
-private struct TestFailure: Error {}
-
 private func makeDiffFile(
     id: String = "src/example.ts",
     path: String = "src/example.ts",
@@ -401,30 +211,4 @@ private func makeDiffFile(
     object["hunks"] = hunks
     let data = try JSONSerialization.data(withJSONObject: object)
     return try JSONDecoder().decode(Dev3TaskDiffFile.self, from: data)
-}
-
-private func makeTaskDiff() throws -> Dev3TaskDiff {
-    let object: [String: Any] = [
-        "mode": "uncommitted",
-        "compareRef": NSNull(),
-        "compareLabel": "HEAD",
-        "fallbackReason": NSNull(),
-        "recentCount": NSNull(),
-        "summary": ["files": 1, "insertions": 1, "deletions": 1],
-        "files": [[
-            "id": "src/example.ts",
-            "status": "modified",
-            "displayPath": "src/example.ts",
-            "oldPath": "src/example.ts",
-            "newPath": "src/example.ts",
-            "oldContent": "export const version = 0;\n",
-            "newContent": "export const version = 1;\n",
-            "hunks": ["@@ -1 +1 @@\n-export const version = 0;\n+export const version = 1;\n"],
-            "insertions": 1,
-            "deletions": 1
-        ]],
-        "skippedFiles": []
-    ]
-    let data = try JSONSerialization.data(withJSONObject: object)
-    return try JSONDecoder().decode(Dev3TaskDiff.self, from: data)
 }

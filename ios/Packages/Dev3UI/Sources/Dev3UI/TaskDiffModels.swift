@@ -246,7 +246,6 @@ public enum TaskDiffLineParser {
         return result
     }
 
-    // swiftlint:disable:next function_body_length
     private static func fallbackLines(for file: Dev3TaskDiffFile) -> [TaskDiffLine] {
         let status = TaskDiffFileStatus(wireValue: file.status)
         if status == .deleted {
@@ -276,28 +275,122 @@ public enum TaskDiffLineParser {
                 }
         }
 
+        return lineDiff(old: contentLines(file.oldContent), new: contentLines(file.newContent))
+    }
+
+    /// Computes a line-level diff when the backend sends full file contents
+    /// without unified-diff hunks (`hunks == nil` for every file today). Trims
+    /// the common prefix and suffix — which handles append/prepend/single-region
+    /// edits cheaply and correctly — then runs an LCS over the differing middle
+    /// so unchanged interior lines stay `.context` instead of being rendered as a
+    /// deletion followed by an addition (the previous whole-file-replace bug).
+    static func lineDiff(old: [String], new: [String]) -> [TaskDiffLine] {
         var result: [TaskDiffLine] = []
-        for (index, line) in contentLines(file.oldContent).enumerated() {
+        var nextID = 0
+        var oldNumber = 1
+        var newNumber = 1
+        func append(_ kind: TaskDiffLineKind, oldNo: Int?, newNo: Int?, _ text: String) {
             result.append(
-                TaskDiffLine(
-                    id: result.count,
-                    kind: .deletion,
-                    oldLineNumber: index + 1,
-                    newLineNumber: nil,
-                    text: line
-                )
+                TaskDiffLine(id: nextID, kind: kind, oldLineNumber: oldNo, newLineNumber: newNo, text: text)
             )
+            nextID += 1
         }
-        for (index, line) in contentLines(file.newContent).enumerated() {
-            result.append(
-                TaskDiffLine(
-                    id: result.count,
-                    kind: .addition,
-                    oldLineNumber: nil,
-                    newLineNumber: index + 1,
-                    text: line
-                )
-            )
+
+        var prefix = 0
+        while prefix < old.count, prefix < new.count, old[prefix] == new[prefix] {
+            prefix += 1
+        }
+        var oldEnd = old.count
+        var newEnd = new.count
+        while oldEnd > prefix, newEnd > prefix, old[oldEnd - 1] == new[newEnd - 1] {
+            oldEnd -= 1
+            newEnd -= 1
+        }
+
+        for index in 0 ..< prefix {
+            append(.context, oldNo: oldNumber, newNo: newNumber, old[index])
+            oldNumber += 1
+            newNumber += 1
+        }
+        for entry in middleDiff(old: Array(old[prefix ..< oldEnd]), new: Array(new[prefix ..< newEnd])) {
+            switch entry.kind {
+            case .context:
+                append(.context, oldNo: oldNumber, newNo: newNumber, entry.text)
+                oldNumber += 1
+                newNumber += 1
+            case .deletion:
+                append(.deletion, oldNo: oldNumber, newNo: nil, entry.text)
+                oldNumber += 1
+            case .addition:
+                append(.addition, oldNo: nil, newNo: newNumber, entry.text)
+                newNumber += 1
+            case .hunkHeader, .note:
+                break
+            }
+        }
+        for index in newEnd ..< new.count {
+            append(.context, oldNo: oldNumber, newNo: newNumber, new[index])
+            oldNumber += 1
+            newNumber += 1
+        }
+        return result
+    }
+
+    private struct MiddleLine {
+        let kind: TaskDiffLineKind
+        let text: String
+    }
+
+    /// Caps the LCS table so a large, fully-rewritten region degrades to a plain
+    /// delete-then-add instead of blowing the review-screen time/memory budget.
+    private static let maxLCSCells = 1_000_000
+
+    private static func middleDiff(old: [String], new: [String]) -> [MiddleLine] {
+        if old.isEmpty {
+            return new.map { MiddleLine(kind: .addition, text: $0) }
+        }
+        if new.isEmpty {
+            return old.map { MiddleLine(kind: .deletion, text: $0) }
+        }
+        if old.count * new.count > maxLCSCells {
+            return old.map { MiddleLine(kind: .deletion, text: $0) }
+                + new.map { MiddleLine(kind: .addition, text: $0) }
+        }
+
+        let rows = old.count
+        let cols = new.count
+        var lcs = Array(repeating: Array(repeating: 0, count: cols + 1), count: rows + 1)
+        for row in stride(from: rows - 1, through: 0, by: -1) {
+            for col in stride(from: cols - 1, through: 0, by: -1) {
+                lcs[row][col] = old[row] == new[col]
+                    ? lcs[row + 1][col + 1] + 1
+                    : max(lcs[row + 1][col], lcs[row][col + 1])
+            }
+        }
+
+        var result: [MiddleLine] = []
+        var oldIndex = 0
+        var newIndex = 0
+        while oldIndex < rows, newIndex < cols {
+            if old[oldIndex] == new[newIndex] {
+                result.append(MiddleLine(kind: .context, text: old[oldIndex]))
+                oldIndex += 1
+                newIndex += 1
+            } else if lcs[oldIndex + 1][newIndex] >= lcs[oldIndex][newIndex + 1] {
+                result.append(MiddleLine(kind: .deletion, text: old[oldIndex]))
+                oldIndex += 1
+            } else {
+                result.append(MiddleLine(kind: .addition, text: new[newIndex]))
+                newIndex += 1
+            }
+        }
+        while oldIndex < rows {
+            result.append(MiddleLine(kind: .deletion, text: old[oldIndex]))
+            oldIndex += 1
+        }
+        while newIndex < cols {
+            result.append(MiddleLine(kind: .addition, text: new[newIndex]))
+            newIndex += 1
         }
         return result
     }

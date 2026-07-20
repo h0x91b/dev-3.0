@@ -79,7 +79,9 @@ enum NativeNotificationPolicy {
     static let taskIDKey = "dev3TaskID"
 
     static let backgroundDeliveryLimitation =
-        "Notifications need a live dev3 connection. iOS may pause them while the app is suspended."
+        "dev3 sends notifications straight from your Mac over a private live connection — " +
+        "no cloud in between, so nothing about your tasks leaves your own devices. They arrive " +
+        "while the app is open (or briefly after); iOS pauses them once it fully suspends the app."
 
     static func identifier(
         serverID: String,

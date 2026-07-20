@@ -16,7 +16,8 @@ enum TaskReviewDestinationFactory {
     static func make(
         appStore: AppStore,
         rpcClientProvider: @escaping @MainActor @Sendable () -> RPCClient?,
-        serverID: String
+        serverID: String,
+        diffCache: TaskDiffCache
     ) -> TaskReviewDestinationHooks {
         let readStore = LocalTaskDiffReadStore()
         return TaskReviewDestinationHooks(
@@ -31,7 +32,8 @@ enum TaskReviewDestinationFactory {
                     compareLabel: compareRef,
                     isConnected: appStore.isConnected,
                     service: service,
-                    readPersistence: readStore
+                    readPersistence: readStore,
+                    cache: diffCache
                 )
                 return AnyView(
                     TaskDiffDestinationHost(

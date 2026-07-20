@@ -63,6 +63,9 @@ struct CompanionAppRoot: View {
     @State private var taskCreationCoordinator: TaskCreationCoordinator
     @State private var globalPushObserverToken: UUID?
     @State private var completionRPCGeneration: UUID?
+    /// Shared across diff navigations so reopening a task's diff (from Review or
+    /// Task Info → Changes) renders instantly while refreshing in the background.
+    @State private var diffCache = TaskDiffCache()
 
     // swiftlint:disable:next function_body_length
     init(
@@ -476,7 +479,8 @@ struct CompanionAppRoot: View {
         let hooks = TaskReviewDestinationFactory.make(
             appStore: store,
             rpcClientProvider: { [weak runtime] in runtime?.rpcClient },
-            serverID: serverID
+            serverID: serverID,
+            diffCache: diffCache
         )
         switch destination {
         case .diff:
