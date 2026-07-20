@@ -55,19 +55,6 @@ describe("buildThemeConfig", () => {
 		expect(buildThemeConfig("mocha")).toContain("history-limit 250000");
 	});
 
-	it("keeps mouse copies in copy-mode at the current scroll position", () => {
-		const config = buildThemeConfig("mocha");
-		expect(config).toContain(
-			"bind -T copy-mode MouseDragEnd1Pane send-keys -X copy-selection",
-		);
-		expect(config).toContain(
-			"bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-selection",
-		);
-		expect(config).not.toContain(
-			"MouseDragEnd1Pane send-keys -X copy-pipe-and-cancel",
-		);
-	});
-
 	it("writes a backslash split binding with a literal double backslash", () => {
 		expect(buildThemeConfig("mocha")).toContain(
 			String.raw`bind \\ split-window -h -c "${PANE_CWD_FORMAT}"`,

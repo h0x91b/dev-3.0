@@ -122,11 +122,6 @@ set -g pane-border-lines double
 # Clipboard support
 set -s set-clipboard on
 
-# Copy mouse selections without leaving copy-mode. The default
-# copy-pipe-and-cancel binding returns the viewport to live output.
-bind -T copy-mode MouseDragEnd1Pane send-keys -X copy-selection
-bind -T copy-mode-vi MouseDragEnd1Pane send-keys -X copy-selection
-
 # Bell pass-through
 set -g visual-bell off
 set -g bell-action any
