@@ -1,6 +1,5 @@
 import type { Task } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
-import { fuzzyScore } from "./fuzzyMatch";
 
 /**
  * Token-DSL task search & filter engine.
@@ -177,9 +176,16 @@ export function parseTaskQuery(query: string): ParsedQuery {
 }
 
 /**
- * Free-text matcher (title/description fuzzy + seq/UUID/PR prefix). This is the
- * previous `matchesSearchQuery` behavior, now the internal free-text step of
- * `matchesTaskQuery`. All comparisons are case-insensitive.
+ * Free-text matcher (title/description substring + seq/UUID/PR prefix), the
+ * internal free-text step of `matchesTaskQuery`. All comparisons are
+ * case-insensitive.
+ *
+ * Text matching is a plain substring AND across whitespace-separated words over
+ * `title + description`: every word must literally occur somewhere in the task.
+ * Fuzzy subsequence matching is deliberately NOT used here — as a filter over
+ * long descriptions it matched almost any short/numeric query (a query like
+ * "1172" found its scattered digits in nearly every task). Fuzzy ranking still
+ * lives where it belongs, in the quick-switch palette (`fuzzyMatch.ts`).
  */
 function matchesFreeText(task: Task, freeText: string, prNumber?: number | null): boolean {
 	const q = freeText.trim().toLowerCase();
@@ -187,8 +193,9 @@ function matchesFreeText(task: Task, freeText: string, prNumber?: number | null)
 
 	const qNormalized = q.startsWith("#") ? q.slice(1) : q;
 
-	if (fuzzyScore(q, getTaskTitle(task)).matched) return true;
-	if (fuzzyScore(q, task.description).matched) return true;
+	const haystack = `${getTaskTitle(task)}\n${task.description ?? ""}`.toLowerCase();
+	const words = q.split(/\s+/).filter(Boolean);
+	if (words.length > 0 && words.every((w) => haystack.includes(w))) return true;
 
 	const seqStr = String(task.seq);
 	if (seqStr.startsWith(qNormalized)) return true;
