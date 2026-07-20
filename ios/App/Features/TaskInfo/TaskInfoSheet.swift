@@ -47,10 +47,10 @@ struct TaskInfoSheet: View {
             Form {
                 connectionSection
                 overviewSection
+                actionsSection
                 organizationSection
                 sourceControlSection
                 notesSection
-                actionsSection
             }
             .navigationTitle("Task info")
             .navigationBarTitleDisplayMode(.inline)

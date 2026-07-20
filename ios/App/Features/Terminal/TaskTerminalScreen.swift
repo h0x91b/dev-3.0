@@ -359,55 +359,55 @@ private extension TaskTerminalScreen {
 
     private var composer: some View {
         VStack(spacing: 8) {
-            HStack(alignment: .bottom, spacing: 8) {
-                TextEditor(text: $store.draft)
-                    .focused($composerFocused)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 44, maxHeight: store.isComposerExpanded ? 180 : 88)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(
-                        palette.surfaceRaised,
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(composerFocused ? palette.borderActive : palette.borderDefault)
-                    }
-                    .accessibilityLabel("Terminal message")
-                    .accessibilityIdentifier("terminal.composer")
-
-                VStack(spacing: 6) {
-                    Button {
-                        store.isComposerExpanded.toggle()
-                    } label: {
-                        Image(systemName: composerExpansionIcon)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(palette.textSecondary)
-                    .accessibilityLabel(store.isComposerExpanded ? "Collapse editor" : "Expand editor")
-
-                    Button("Send") { store.submitDraft() }
-                        .buttonStyle(.borderedProminent)
-                        .tint(palette.accent)
-                        .frame(minHeight: 44)
-                        .disabled(store.draft.isEmpty || store.isBusy)
-                        .accessibilityIdentifier("terminal.send")
+            TextEditor(text: $store.draft)
+                .focused($composerFocused)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .frame(minHeight: 44, maxHeight: store.isComposerExpanded ? 180 : 88)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    palette.surfaceRaised,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(composerFocused ? palette.borderActive : palette.borderDefault)
                 }
-            }
+                .accessibilityLabel("Terminal message")
+                .accessibilityIdentifier("terminal.composer")
 
-            HStack {
+            // Single compact action row reclaims the vertical space the old
+            // full-width "Insert / Compose mode" row wasted. The mode is already
+            // shown by the accessory bar's Raw/Compose toggle, so the redundant
+            // "Compose mode" label is dropped.
+            HStack(spacing: 8) {
+                Button {
+                    store.isComposerExpanded.toggle()
+                } label: {
+                    Image(systemName: composerExpansionIcon)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(palette.textSecondary)
+                .accessibilityLabel(store.isComposerExpanded ? "Collapse editor" : "Expand editor")
+
+                Spacer(minLength: 0)
+
                 Button("Insert") { store.insertDraft() }
                     .buttonStyle(.bordered)
                     .tint(palette.textSecondary)
+                    .frame(minHeight: 44)
                     .disabled(store.draft.isEmpty || store.isBusy)
                     .accessibilityIdentifier("terminal.insert")
-                Spacer()
-                Text("Compose mode")
-                    .font(.caption)
-                    .foregroundStyle(palette.textMuted)
+
+                Button("Send") { store.submitDraft() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(palette.accent)
+                    .frame(minHeight: 44)
+                    .disabled(store.draft.isEmpty || store.isBusy)
+                    .accessibilityIdentifier("terminal.send")
             }
         }
         .padding(10)
