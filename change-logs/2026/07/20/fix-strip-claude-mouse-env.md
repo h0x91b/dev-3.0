@@ -1,0 +1,1 @@
+Strip the user-global CLAUDE_CODE_DISABLE_MOUSE_CLICKS environment variable at startup so it never propagates into dev3's tmux panes. When set by users it disabled Claude Code's mouse handling and broke click/drag text selection (copy) inside managed terminals; dev3 now neutralizes it for every spawned process.

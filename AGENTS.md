@@ -56,6 +56,10 @@ The app runs as the **Electrobun desktop** shell **and** as a **headless remote 
 
 **All code-related content MUST be in English — no exceptions:** commit messages, changelog files (`change-logs/`), code comments and docstrings, decision records (`decisions/`), PR titles/descriptions, any text written inside source files. The user may communicate in Russian; everything written into the codebase or git history is English-only.
 
+## Code comments — self-documenting first
+
+**Aim for code that explains itself** (clear names, small functions) and add comments only where they earn their place. **Cap: a comment ≤ 3 lines.** The only exception is a genuinely weird, non-obvious use case (a workaround, a subtle invariant, a "why not the obvious thing") — those may go longer, and belong in a `decisions/NNN-*.md` record if substantial. Don't restate what the code already says, don't narrate obvious steps, don't leave changelog-style history in comments.
+
 ## Parallelism — TeamCreate over Agent tool (MANDATORY)
 
 When spawning agents for research, investigation, or parallel work — **use `TeamCreate`, not the `Agent` tool.** Team members run as independent peers with full tool access and are the correct delegation mechanism in this project. The only valid direct uses of `Agent`: a team member spawning a sub-agent for its own internal sub-task, or work so trivial (single file read, single grep) that a dedicated tool (`Read`, `Grep`, `Glob`) beats any delegation. If in doubt, use `TeamCreate`.
