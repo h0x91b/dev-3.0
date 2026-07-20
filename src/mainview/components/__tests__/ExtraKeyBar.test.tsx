@@ -59,6 +59,14 @@ describe("ExtraKeyBar", () => {
 		expect(handle.sendInput).toHaveBeenCalledWith("\r");
 	});
 
+	it("sends the back-tab sequence for Shift+Tab (Claude agent-mode cycling)", async () => {
+		const handle = makeHandle();
+		renderBar(handle);
+
+		await userEvent.click(screen.getByRole("button", { name: "⇧Tab" }));
+		expect(handle.sendInput).toHaveBeenCalledWith("\x1b[Z");
+	});
+
 	it("sticky Ctrl turns the next key into a control character", async () => {
 		const handle = makeHandle();
 		renderBar(handle);

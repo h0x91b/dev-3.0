@@ -20,7 +20,8 @@ interface ExtraKeyBarProps {
 /**
  * Extra key bar for mobile terminal access — provides keys
  * that are missing or hard to reach on mobile keyboards:
- * Esc, Tab, Ctrl (sticky modifier), arrows, and common shell chars.
+ * Esc, Tab, Shift+Tab (agent-mode cycling in Claude Code), Ctrl (sticky
+ * modifier), arrows, and common shell chars.
  * The leading ⌨ button (when the host wires onToggleRaw) switches between
  * compose mode (default — TerminalComposer owns text entry) and raw mode
  * (direct typing into the terminal).
@@ -133,6 +134,7 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b")}>Esc</button>
 			<button className={btnCtrl} onMouseDown={(e) => e.preventDefault()} onClick={toggleCtrl}>Ctrl</button>
 			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\t")}>Tab</button>
+			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[Z")}>{"⇧Tab"}</button>
 			<button className={btnNormal} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\r")}>Enter</button>
 
 			<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
