@@ -16,9 +16,14 @@
 
 Search runs entirely in tmux copy-mode: `TerminalSearchBar.tsx` (floating bar over `TerminalView`, opened by ⌘F/Ctrl+F when focus is inside the terminal) drives three RPCs in `rpc-handlers/tmux-pty.ts` — `tmuxSearchUpdate` (enter copy-mode → history-bottom → search-backward-text → read `SEARCH_STATE_FORMAT`), `tmuxSearchStep` (search-again/search-reverse), `tmuxSearchCancel` (exit copy-mode). tmux natively highlights all matches and scrolls the pane; the picture streams back through the PTY with zero renderer work. The first update resolves and pins the session's active pane id so the search survives tmux focus changes.
 
+## Scope — one pane, made visible
+
+tmux copy-mode is a per-pane mode, so search covers exactly the focused pane's scrollback — content in a sibling split or another window is not searched (native tmux `/`/`?` behave identically). Rather than fake a cross-pane search (would mean juggling copy-mode across panes or a self-drawn `capture-pane` result list — rejected as heavy duplication), we make the scope obvious: when the terminal is split (≥2 panes in the on-screen window) the searched pane gets an accent frame (`TerminalView` overlay via `utils/paneHighlight.ts`, the same cells→% mapping as `ClosePanePicker`, gated on the active window). The user clicks another pane and presses ⌘F to search it. Single-pane terminals get no frame (no ambiguity). The frame reuses the existing `tmuxLayout` RPC — no backend change.
+
 ## Risks
 
 - While in copy-mode the pane is frozen (standard tmux); closing the bar cancels copy-mode and resumes live output.
+- The frame goes stale if the user drags a split divider mid-search (layout is fetched on pane-resolve, not per keystroke); it's a hint only and search is unaffected. Split changes mid-search are rare.
 - Alt-screen TUIs (vim, Claude Code) have no scrollback — search covers the visible screen only, matching native tmux behavior.
 - macOS binds only ⌘F; Ctrl+F stays readline forward-char. Linux binds Ctrl+F (VS Code terminal convention), shadowing forward-char there.
 

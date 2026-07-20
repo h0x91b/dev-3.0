@@ -14,13 +14,13 @@ vi.mock("../../rpc", () => ({
 	},
 }));
 
-function renderBar(onClose = vi.fn()) {
+function renderBar(onClose = vi.fn(), onPaneResolved = vi.fn()) {
 	const view = render(
 		<I18nProvider>
-			<TerminalSearchBar taskId="task-1" onClose={onClose} />
+			<TerminalSearchBar taskId="task-1" onClose={onClose} onPaneResolved={onPaneResolved} />
 		</I18nProvider>,
 	);
-	return { view, onClose };
+	return { view, onClose, onPaneResolved };
 }
 
 describe("TerminalSearchBar", () => {
@@ -46,6 +46,12 @@ describe("TerminalSearchBar", () => {
 			}),
 		);
 		await screen.findByText("3");
+	});
+
+	it("reports the resolved pane id to onPaneResolved (for the pane highlight)", async () => {
+		const { onPaneResolved } = renderBar();
+		await userEvent.type(screen.getByLabelText("Search terminal…"), "needle");
+		await waitFor(() => expect(onPaneResolved).toHaveBeenCalledWith("%1"));
 	});
 
 	it("pins later updates to the pane resolved by the first one", async () => {

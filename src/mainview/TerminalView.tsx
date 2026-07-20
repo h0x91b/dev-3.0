@@ -16,6 +16,7 @@ import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
 import { isMac } from "./utils/platform";
+import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
 
 const DARK_TERMINAL_THEME = {
@@ -221,6 +222,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 	const wrapperRef = useRef<HTMLDivElement>(null);
 	const searchBarRef = useRef<TerminalSearchBarHandle | null>(null);
 	const [searchOpen, setSearchOpen] = useState(false);
+	// The pane the search resolved to, and its %-rect over the terminal canvas —
+	// drawn as a frame so a multi-pane layout shows WHICH pane is being searched.
+	const [searchPaneId, setSearchPaneId] = useState<string | null>(null);
+	const [searchPaneRect, setSearchPaneRect] = useState<PaneRectPct | null>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const wsRef = useRef<WebSocket | null>(null);
@@ -1381,8 +1386,32 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 
 	function closeSearch() {
 		setSearchOpen(false);
+		setSearchPaneId(null);
 		try { termRef.current?.focus(); } catch { /* disposed */ }
 	}
+
+	// Frame the searched pane. Fetch the tmux layout once the search resolves a
+	// pane (and again if it re-resolves), map that pane's cells to a %-rect over
+	// the canvas, and draw a frame — but only when its window has ≥2 panes, so a
+	// plain single-pane terminal never gets a redundant border. %-based, so app
+	// zoom / resize need no recompute (only a tmux split change would, which is
+	// rare mid-search).
+	useEffect(() => {
+		if (!searchOpen || !searchPaneId) {
+			setSearchPaneRect(null);
+			return;
+		}
+		let cancelled = false;
+		api.request
+			.tmuxLayout({ taskId })
+			.then((layout) => {
+				if (!cancelled) setSearchPaneRect(paneHighlightRect(layout, searchPaneId));
+			})
+			.catch(() => {
+				if (!cancelled) setSearchPaneRect(null);
+			});
+		return () => { cancelled = true; };
+	}, [searchOpen, searchPaneId, taskId]);
 
 	// When the page becomes visible again (e.g. user returns from another
 	// app or switches back to this tab), trigger a resize dance to force
@@ -1544,8 +1573,26 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				onDragOver={handleDragOver}
 				onDrop={handleDrop}
 			/>
+			{searchOpen && searchPaneRect && (
+				<div
+					className="pointer-events-none absolute z-20 rounded-sm border-2 border-accent bg-accent/5"
+					style={{
+						left: `${searchPaneRect.leftPct}%`,
+						top: `${searchPaneRect.topPct}%`,
+						width: `${searchPaneRect.widthPct}%`,
+						height: `${searchPaneRect.heightPct}%`,
+					}}
+					aria-hidden="true"
+					data-testid="terminal-search-pane-frame"
+				/>
+			)}
 			{searchOpen && (
-				<TerminalSearchBar ref={searchBarRef} taskId={taskId} onClose={closeSearch} />
+				<TerminalSearchBar
+					ref={searchBarRef}
+					taskId={taskId}
+					onClose={closeSearch}
+					onPaneResolved={setSearchPaneId}
+				/>
 			)}
 		</div>
 	);

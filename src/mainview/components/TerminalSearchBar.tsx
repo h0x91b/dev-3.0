@@ -12,6 +12,12 @@ interface TerminalSearchBarProps {
 	/** PTY session key — a task id or `project-<id>` (same key tmuxAction uses). */
 	taskId: string;
 	onClose: () => void;
+	/**
+	 * Called with the tmux pane id the search resolved to (or null when the pane
+	 * is gone). TerminalView uses it to frame that pane so a multi-pane layout
+	 * makes it obvious WHICH pane is being searched.
+	 */
+	onPaneResolved?: (paneId: string | null) => void;
 }
 
 const SEARCH_DEBOUNCE_MS = 150;
@@ -25,9 +31,13 @@ const SEARCH_DEBOUNCE_MS = 150;
  * recent output. See decision 141.
  */
 const TerminalSearchBar = forwardRef<TerminalSearchBarHandle, TerminalSearchBarProps>(
-	function TerminalSearchBar({ taskId, onClose }, ref) {
+	function TerminalSearchBar({ taskId, onClose, onPaneResolved }, ref) {
 		const t = useT();
 		const inputRef = useRef<HTMLInputElement>(null);
+		// Mirror the callback in a ref so runUpdate (called from the debounce
+		// effect) always sees the latest without re-running the effect.
+		const onPaneResolvedRef = useRef(onPaneResolved);
+		onPaneResolvedRef.current = onPaneResolved;
 		const [query, setQuery] = useState("");
 		// null = nothing searched yet (empty query) — the counter stays hidden.
 		const [matches, setMatches] = useState<number | null>(null);
@@ -65,6 +75,7 @@ const TerminalSearchBar = forwardRef<TerminalSearchBarHandle, TerminalSearchBarP
 				.then((res) => {
 					if (requestSeqRef.current !== seq) return;
 					paneIdRef.current = res.paneId;
+					onPaneResolvedRef.current?.(res.paneId);
 					setMatches(q ? res.matches : null);
 				})
 				.catch(() => {
