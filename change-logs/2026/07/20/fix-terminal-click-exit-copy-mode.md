@@ -1,1 +1,1 @@
-After selecting terminal scrollback, the next plain click now exits tmux copy mode and restores live terminal input without requiring Escape. The selection drag itself still preserves the scrollback viewport instead of jumping to the bottom.
+Terminal input now resumes without Escape after copying text: a plain terminal click exits retained tmux copy mode, and Back to Terminal restores focus after selecting text in Diff. Scrollback selection still preserves the viewport instead of jumping to live output.
