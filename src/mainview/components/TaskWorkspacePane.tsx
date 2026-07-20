@@ -70,6 +70,8 @@ function TaskWorkspacePane({
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [artifactWidth, setArtifactWidth] = useState(initialArtifactWidth);
 	const [artifactResizing, setArtifactResizing] = useState(false);
+	const workspaceRef = useRef<HTMLDivElement>(null);
+	const inlineDiffWasOpenRef = useRef(false);
 	const artifactPanelRef = useRef<HTMLDivElement>(null);
 	const resizeSessionRef = useRef<ArtifactResizeSession | null>(null);
 	const showArtifact = artifactViewer?.taskId === taskId && !inlineDiffRequest;
@@ -167,8 +169,23 @@ function TaskWorkspacePane({
 		});
 	}, [skipCopyModeReset, taskId, terminalVisible]);
 
+	// The diff is an in-place overlay, so closing it reveals the already-mounted
+	// terminal instead of remounting it. Restore DOM focus explicitly; otherwise
+	// keyboard shortcuts such as Cmd+V stay on <body> and never reach ghostty.
+	useEffect(() => {
+		if (inlineDiffRequest) {
+			inlineDiffWasOpenRef.current = true;
+			return;
+		}
+		if (!inlineDiffWasOpenRef.current) return;
+		inlineDiffWasOpenRef.current = false;
+		workspaceRef.current
+			?.querySelector<HTMLElement>('[data-terminal="true"]')
+			?.focus({ preventScroll: true });
+	}, [inlineDiffRequest]);
+
 	return (
-		<div className="h-full w-full relative overflow-hidden">
+		<div ref={workspaceRef} className="h-full w-full relative overflow-hidden">
 			{artifactResizing && (
 				<div data-testid="artifact-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize" />
 			)}

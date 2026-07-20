@@ -47,7 +47,7 @@ vi.mock("../TaskTerminal", () => ({
 				unmountLog.push(taskId);
 			};
 		}, [taskId]);
-		return <div data-testid="terminal-view">terminal:{taskId}</div>;
+		return <div data-testid="terminal-view" data-terminal="true" tabIndex={0}>terminal:{taskId}</div>;
 	},
 }));
 
@@ -198,6 +198,29 @@ describe("TaskWorkspaceView", () => {
 		await waitFor(() => expect(screen.getByTestId("diff-viewer")).toBeInTheDocument());
 		expect(screen.getByTestId("diff-request")).toHaveAttribute("data-focus-unresolved", "true");
 		expect(screen.getByTestId("diff-request")).toHaveAttribute("data-compare-label", "origin/main");
+	});
+
+	it("restores terminal focus after closing the inline diff", async () => {
+		const user = userEvent.setup();
+
+		renderWorkspace(
+			<TaskWorkspaceView
+				projectId="p1"
+				taskId="t1"
+				tasks={[task]}
+				projects={[project]}
+				navigate={vi.fn()}
+				dispatch={vi.fn()}
+			/>,
+		);
+
+		await user.click(screen.getByText("Open Inline Diff"));
+		document.body.focus();
+		expect(document.activeElement).toBe(document.body);
+
+		await user.click(screen.getByText("Back"));
+
+		expect(document.activeElement).toBe(screen.getByTestId("terminal-view"));
 	});
 
 	it("shows a task artifact beside the terminal and closes it independently", async () => {
