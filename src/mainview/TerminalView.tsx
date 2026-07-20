@@ -234,6 +234,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 	const touchComposeModeRef = useRef(touchComposeMode ?? false);
 	touchComposeModeRef.current = touchComposeMode ?? false;
 	const copyDiagnosticsRef = useRef<TerminalCopyDiagnostics | null>(null);
+	// Mouse-copy keeps tmux copy mode alive so the scrollback viewport does not
+	// jump to live output. Remember when that mode may be active so the next
+	// plain click can return to live input without requiring Escape.
+	const tmuxCopyModeMayBeActiveRef = useRef(false);
+	const mouseGestureDraggedRef = useRef(false);
 	const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(
 		() => (document.documentElement.dataset.theme as "dark" | "light") || "dark",
 	);
@@ -774,6 +779,8 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		function setupMouseTracking(term: Terminal): () => void {
 			const canvas = term.renderer!.getCanvas();
 			let trackedButton = -1;
+			let mouseDownX = 0;
+			let mouseDownY = 0;
 
 			function cellCoords(e: MouseEvent): [number, number] {
 				const rect = canvas.getBoundingClientRect();
@@ -829,6 +836,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 					// TEMP DIAGNOSTIC: flag mouse-mode interception because it may block normal selection copy.
 					copyDiagnosticsRef.current?.markMouseTrackingIntercept(e.button);
 					trackedButton = e.button;
+					mouseDownX = e.clientX;
+					mouseDownY = e.clientY;
+					mouseGestureDraggedRef.current = false;
 					const [col, row] = cellCoords(e);
 					sgrMouse(e.button | altBit(e), col, row, true);
 					e.preventDefault();
@@ -845,6 +855,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 					if (!term.hasMouseTracking()) return;
 					const [col, row] = cellCoords(e);
 					sgrMouse(btn | altBit(e), col, row, false);
+					if (btn === 0 && mouseGestureDraggedRef.current) {
+						tmuxCopyModeMayBeActiveRef.current = true;
+					}
 				} catch { /* disposed */ }
 			}
 
@@ -852,6 +865,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				if (disposed) return;
 				try {
 					if (!term.hasMouseTracking() || trackedButton < 0) return;
+					if (
+						Math.abs(e.clientX - mouseDownX) > 3 ||
+						Math.abs(e.clientY - mouseDownY) > 3
+					) {
+						mouseGestureDraggedRef.current = true;
+					}
 					const [col, row] = cellCoords(e);
 					sgrMouse((trackedButton | altBit(e)) + 32, col, row, true);
 					e.stopPropagation();
@@ -942,6 +961,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 					const lines = Math.trunc(scrollAccumulator / threshold);
 					if (lines !== 0) {
 						scrollAccumulator -= lines * threshold;
+						if (lines < 0) tmuxCopyModeMayBeActiveRef.current = true;
 						const code = lines < 0 ? 64 : 65;
 						const count = Math.abs(lines);
 						for (let i = 0; i < count; i++) {
@@ -1561,6 +1581,25 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		? LIGHT_TERMINAL_THEME.background
 		: DARK_TERMINAL_THEME.background;
 
+	function handleTerminalClick(event: React.MouseEvent<HTMLDivElement>) {
+		try { termRef.current?.focus(); } catch { /* disposed */ }
+		if (touchComposeModeRef.current) return;
+		if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+		// A browser may emit click after a drag. Keep the copy-mode viewport for
+		// that gesture; only the next distinct plain click means "resume input".
+		if (mouseGestureDraggedRef.current) {
+			mouseGestureDraggedRef.current = false;
+			return;
+		}
+		if (!tmuxCopyModeMayBeActiveRef.current) return;
+
+		tmuxCopyModeMayBeActiveRef.current = false;
+		api.request.exitCopyModeAllPanes({ taskId }).catch(() => {
+			// Best effort — the pane may already have returned to live input.
+		});
+	}
+
 	return (
 		<div ref={wrapperRef} className="relative w-full h-full min-h-0 overflow-hidden">
 			<div
@@ -1568,7 +1607,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				className="w-full h-full overflow-hidden"
 				data-terminal="true"
 				style={{ backgroundColor: termBg }}
-				onClick={() => { try { termRef.current?.focus(); } catch { /* disposed */ } }}
+				onClick={handleTerminalClick}
 				onContextMenu={(e) => e.preventDefault()}
 				onDragOver={handleDragOver}
 				onDrop={handleDrop}

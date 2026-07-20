@@ -1,4 +1,4 @@
-import { render, act, waitFor } from "@testing-library/react";
+import { render, act, fireEvent, waitFor } from "@testing-library/react";
 import TerminalView, { buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
@@ -93,6 +93,7 @@ vi.mock("../rpc", () => ({
 			uploadFileBase64: vi.fn(),
 			tmuxAction: vi.fn(),
 			tmuxAltClickMoveCursor: vi.fn().mockResolvedValue({ moved: true }),
+			exitCopyModeAllPanes: vi.fn().mockResolvedValue({ panesExited: 1 }),
 			logRendererEvent: vi.fn().mockResolvedValue(undefined),
 			copyTerminalSelection: vi.fn().mockResolvedValue({ ok: true, tool: "pbcopy" }),
 		},
@@ -386,6 +387,7 @@ describe("TerminalView – focus-on-type", () => {
 const mockedTmuxAction = vi.mocked(api.request.tmuxAction);
 const mockedUploadFileBase64 = vi.mocked(api.request.uploadFileBase64);
 const mockedCopyTerminalSelection = vi.mocked(api.request.copyTerminalSelection);
+const mockedExitCopyModeAllPanes = vi.mocked(api.request.exitCopyModeAllPanes);
 
 /** Focus a child element inside the terminal container so the keymap guard passes. */
 function focusInsideTerminal(): HTMLElement {
@@ -643,6 +645,68 @@ describe("TerminalView – selection clipboard bridge", () => {
 		});
 
 		expect(mockedCopyTerminalSelection).not.toHaveBeenCalled();
+	});
+});
+
+describe("TerminalView – tmux copy-mode focus recovery", () => {
+	afterEach(() => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+	});
+
+	it("exits retained copy mode when the user next clicks the terminal", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]') as HTMLElement;
+		const wheelHandler = mockTermInstance.attachCustomWheelEventHandler.mock.calls[0]?.[0] as
+			| ((event: WheelEvent) => boolean)
+			| undefined;
+
+		// Scrolling upward through a tmux-owned terminal enters copy mode.
+		act(() => {
+			wheelHandler?.({ deltaY: -100, clientX: 20, clientY: 20 } as WheelEvent);
+		});
+		mockedExitCopyModeAllPanes.mockClear();
+
+		fireEvent.click(terminal);
+
+		expect(mockFocus).toHaveBeenCalled();
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledWith({ taskId: "t1" });
+	});
+
+	it("keeps copy mode after a drag and exits it on the following plain click", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]') as HTMLElement;
+		const canvasListeners = mockTermInstance.renderer.getCanvas().addEventListener.mock.calls;
+		const mouseDown = canvasListeners.find((call: unknown[]) => call[0] === "mousedown")?.[1] as (event: MouseEvent) => void;
+		const mouseMove = canvasListeners.find((call: unknown[]) => call[0] === "mousemove")?.[1] as (event: MouseEvent) => void;
+		const event = (x: number, y: number) => ({
+			button: 0,
+			clientX: x,
+			clientY: y,
+			preventDefault: vi.fn(),
+			stopPropagation: vi.fn(),
+		}) as unknown as MouseEvent;
+
+		mockedExitCopyModeAllPanes.mockClear();
+		act(() => {
+			mouseDown(event(20, 20));
+			mouseMove(event(80, 40));
+			document.dispatchEvent(new MouseEvent("mouseup", { clientX: 80, clientY: 40 }));
+		});
+		// Browsers may emit click after a drag. That synthetic click must not
+		// cancel the copy mode that intentionally preserves the viewport.
+		fireEvent.click(terminal);
+		expect(mockedExitCopyModeAllPanes).not.toHaveBeenCalled();
+
+		act(() => {
+			mouseDown(event(40, 40));
+			document.dispatchEvent(new MouseEvent("mouseup", { clientX: 40, clientY: 40 }));
+		});
+		fireEvent.click(terminal);
+
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledTimes(1);
+		expect(mockedExitCopyModeAllPanes).toHaveBeenCalledWith({ taskId: "t1" });
 	});
 });
 

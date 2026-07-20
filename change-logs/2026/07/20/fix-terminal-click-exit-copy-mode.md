@@ -1,0 +1,1 @@
+After selecting terminal scrollback, the next plain click now exits tmux copy mode and restores live terminal input without requiring Escape. The selection drag itself still preserves the scrollback viewport instead of jumping to the bottom.
