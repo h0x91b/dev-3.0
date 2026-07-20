@@ -119,6 +119,72 @@ describe("shell environment bootstrap", () => {
 		expect(result.fullEnv).toEqual({ MY_TOKEN: "keep-me" });
 	});
 
+	it("never inherits neutralized third-party vars (CLAUDE_CODE_DISABLE_MOUSE_CLICKS) into fullEnv", async () => {
+		process.env.SHELL = "/bin/zsh";
+		spawnMock.mockReturnValue(fakeProc(nullEnv({
+			MY_TOKEN: "keep-me",
+			CLAUDE_CODE_DISABLE_MOUSE_CLICKS: "1",
+		})));
+
+		const { resolveShellEnv } = await import("../shell-env");
+		const result = await resolveShellEnv();
+
+		// The var breaks copy inside dev3's tmux panes — it must never ride into
+		// dev3 via the login shell.
+		expect(result.fullEnv).toEqual({ MY_TOKEN: "keep-me" });
+	});
+
+	describe("stripNeutralizedEnvVars", () => {
+		it("deletes CLAUDE_CODE_DISABLE_MOUSE_CLICKS in place and leaves other vars", async () => {
+			const { stripNeutralizedEnvVars } = await import("../shell-env");
+			const env: Record<string, string | undefined> = {
+				CLAUDE_CODE_DISABLE_MOUSE_CLICKS: "1",
+				KEEP: "yes",
+			};
+
+			stripNeutralizedEnvVars(env);
+
+			expect(env).toEqual({ KEEP: "yes" });
+			expect("CLAUDE_CODE_DISABLE_MOUSE_CLICKS" in env).toBe(false);
+		});
+
+		it("is a no-op when no neutralized var is present", async () => {
+			const { stripNeutralizedEnvVars } = await import("../shell-env");
+			const env: Record<string, string | undefined> = { KEEP: "yes" };
+
+			stripNeutralizedEnvVars(env);
+
+			expect(env).toEqual({ KEEP: "yes" });
+		});
+	});
+
+	describe("applyFullShellEnvToProcess", () => {
+		afterEach(() => {
+			delete process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS;
+		});
+
+		it("strips neutralized vars from process.env even when import is disabled", async () => {
+			process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS = "1";
+
+			const { applyFullShellEnvToProcess } = await import("../shell-env");
+			applyFullShellEnvToProcess({ fullEnv: { FOO: "bar" } }, false);
+
+			// importEnabled=false skips fullEnv injection, but neutralized vars are
+			// obliterated unconditionally.
+			expect(process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS).toBeUndefined();
+			expect(process.env.FOO).toBeUndefined();
+		});
+
+		it("strips neutralized vars from process.env even when shell resolution returned nothing", async () => {
+			process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS = "1";
+
+			const { applyFullShellEnvToProcess } = await import("../shell-env");
+			applyFullShellEnvToProcess({}, true);
+
+			expect(process.env.CLAUDE_CODE_DISABLE_MOUSE_CLICKS).toBeUndefined();
+		});
+	});
+
 	it("preserves multiline and '=' containing env values", async () => {
 		process.env.SHELL = "/bin/zsh";
 		spawnMock.mockReturnValue(fakeProc(nullEnv({

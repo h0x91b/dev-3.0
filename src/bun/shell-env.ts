@@ -159,8 +159,23 @@ export const SHELL_ENV_DENYLIST = new Set<string>([
 // dev3's own task wiring and the bun runtime's internals.
 const SHELL_ENV_DENIED_PREFIXES = ["DEV3_", "BUN_"];
 
+// User-global env vars unrelated to dev3 that break our managed terminals; we
+// strip them everywhere (login-shell inheritance + our own process.env).
+export const NEUTRALIZED_ENV_VARS = new Set<string>([
+	// Claude Code disables mouse handling when set, breaking click/drag copy in
+	// dev3's tmux panes (which run `mouse on`).
+	"CLAUDE_CODE_DISABLE_MOUSE_CLICKS",
+]);
+
+export function stripNeutralizedEnvVars(env: Record<string, string | undefined>): void {
+	for (const key of NEUTRALIZED_ENV_VARS) {
+		delete env[key];
+	}
+}
+
 function isDeniedEnvVar(key: string): boolean {
 	if (SHELL_ENV_DENYLIST.has(key)) return true;
+	if (NEUTRALIZED_ENV_VARS.has(key)) return true;
 	return SHELL_ENV_DENIED_PREFIXES.some((prefix) => key.startsWith(prefix));
 }
 
@@ -275,6 +290,10 @@ export async function resolveShellEnv(): Promise<ResolvedShellEnv> {
  * to avoid duplicating the injection loop and its logging.
  */
 export function applyFullShellEnvToProcess(shellEnv: ResolvedShellEnv, importEnabled: boolean): void {
+	// Strip hostile third-party vars unconditionally — they can also arrive from
+	// the launch terminal (e.g. `bun run dev`), not just the login shell.
+	stripNeutralizedEnvVars(process.env);
+
 	if (!shellEnv.fullEnv) return;
 	if (importEnabled) {
 		let injected = 0;
