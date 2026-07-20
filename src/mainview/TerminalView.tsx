@@ -154,6 +154,14 @@ export function buildCursorMoveSequence(
 	return (dCol > 0 ? "\x1b[C" : "\x1b[D").repeat(Math.abs(dCol));
 }
 
+// Normalize pasted line endings to lone CR, matching xterm.js. A real Enter is
+// CR (\r), so a paste carrying CRLF (Windows) or LF (Unix) must collapse to CR;
+// otherwise the stray bytes read as extra line breaks (or, on the raw paste
+// path, as a submit after the first line). Exported for unit testing.
+export function normalizePastedText(text: string): string {
+	return text.replace(/\r\n|\r|\n/g, "\r");
+}
+
 // ghostty-web 0.4.0 never invalidates the selection when the terminal content
 // changes. A selection goes stale whenever the app OWNS THE SCREEN and repaints
 // cells in place instead of scrolling the buffer — the highlight is anchored to
@@ -1518,8 +1526,9 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		return () => window.removeEventListener(ZOOM_CHANGED_EVENT, onZoomChanged);
 	}, []);
 
-	// Intercept paste events containing images or large text blocks (clipboard → save to disk → inject path into PTY).
-	// Small text pastes are unaffected — the event propagates to ghostty-web as usual.
+	// Intercept ALL paste events: images / large text blocks are saved to disk and
+	// their path injected into the PTY; ordinary text goes through term.paste()
+	// (bracketed, CR-normalized) — never ghostty's raw container handler.
 	useEffect(() => {
 		const container = containerRef.current;
 		if (!container) return;
@@ -1533,45 +1542,68 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		}
 
 		function onPaste(e: ClipboardEvent) {
-			const items = e.clipboardData?.items;
+			const clip = e.clipboardData;
+			const text = clip?.getData("text/plain") ?? "";
 
-			let hasImage = false;
-			if (items) {
-				for (let i = 0; i < items.length; i++) {
-					if (items[i].type.startsWith("image/")) {
-						hasImage = true;
-						break;
+			// Attachments (images / large text) need a project to upload into.
+			if (projectId) {
+				let hasImage = false;
+				const items = clip?.items;
+				if (items) {
+					for (let i = 0; i < items.length; i++) {
+						if (items[i].type.startsWith("image/")) {
+							hasImage = true;
+							break;
+						}
 					}
+				}
+
+				if (hasImage) {
+					e.preventDefault();
+					e.stopImmediatePropagation();
+					api.request.pasteClipboardImage({ projectId }).then((result) => {
+						if (result) sendPathToPty(result.path);
+					}).catch((err) => {
+						console.error("[TerminalView] Image paste failed:", err);
+					});
+					return;
+				}
+
+				// Large text paste → save to a .txt file and inject its path instead of
+				// streaming the whole block into the PTY.
+				if (isLargeTextPaste(text)) {
+					e.preventDefault();
+					e.stopImmediatePropagation();
+					uploadPastedText(projectId, text).then((path) => {
+						if (path) sendPathToPty(path);
+					}).catch((err) => {
+						console.error("[TerminalView] Large text paste failed:", err);
+					});
+					return;
 				}
 			}
 
-			// No project context (e.g. home terminal) — attachments are unsupported,
-			// let the default text paste behavior run.
-			if (!projectId) return;
-
-			if (hasImage) {
-				e.preventDefault();
-				e.stopPropagation();
-				api.request.pasteClipboardImage({ projectId }).then((result) => {
-					if (result) sendPathToPty(result.path);
-				}).catch((err) => {
-					console.error("[TerminalView] Image paste failed:", err);
-				});
-				return;
-			}
-
-			// Large text paste → save to a .txt file and inject its path instead of
-			// streaming the whole block into the PTY.
-			const text = e.clipboardData?.getData("text/plain") ?? "";
-			if (!isLargeTextPaste(text)) return;
-
+			// Ordinary text paste: route it through ghostty's bracketed paste
+			// explicitly. ghostty-web has TWO paste handlers — the textarea one wraps
+			// in DEC 2004, but the container one (hit when term.focus() puts focus on
+			// the contenteditable div, i.e. desktop/remote) sends the raw clipboard
+			// bytes. Raw CRLF/LF then submits after the first line. We register this
+			// listener before ghostty's, so stopImmediatePropagation() pre-empts both
+			// of its handlers and gives one deterministic, bracketed path.
+			if (!text) return;
+			// Check the terminal BEFORE swallowing the event: during PTY
+			// recreation termRef is briefly null while this listener is still
+			// attached. Suppressing then bailing would silently drop the paste —
+			// leave it for whatever handler is present instead.
+			const term = termRef.current;
+			if (!term) return;
 			e.preventDefault();
-			e.stopPropagation();
-			uploadPastedText(projectId, text).then((path) => {
-				if (path) sendPathToPty(path);
-			}).catch((err) => {
-				console.error("[TerminalView] Large text paste failed:", err);
-			});
+			e.stopImmediatePropagation();
+			try {
+				term.paste(normalizePastedText(text));
+			} catch {
+				// Terminal disposed mid-paste — nothing to do.
+			}
 		}
 
 		container.addEventListener("paste", onPaste, { capture: true });

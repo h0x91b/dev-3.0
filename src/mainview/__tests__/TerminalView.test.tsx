@@ -1,5 +1,5 @@
 import { render, act, fireEvent, waitFor } from "@testing-library/react";
-import TerminalView, { buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite } from "../TerminalView";
+import TerminalView, { buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import { KEYMAP_LS_KEY } from "../terminal-keymaps";
@@ -9,6 +9,7 @@ import { KEYMAP_LS_KEY } from "../terminal-keymaps";
 const {
 	mockFocus,
 	mockInput,
+	mockPaste,
 	mockTermInstance,
 	mockBufferActive,
 	mockOnDataDispose,
@@ -18,6 +19,7 @@ const {
 } = vi.hoisted(() => {
 	const mockFocus = vi.fn();
 	const mockInput = vi.fn();
+	const mockPaste = vi.fn();
 	const mockOnDataDispose = vi.fn();
 	const mockOnResizeDispose = vi.fn();
 	const mockOnSelectionChangeDispose = vi.fn();
@@ -36,6 +38,7 @@ const {
 		open: vi.fn(),
 		focus: mockFocus,
 		input: mockInput,
+		paste: mockPaste,
 		buffer: { active: mockBufferActive },
 		onData: vi.fn(() => ({ dispose: mockOnDataDispose })),
 		onResize: vi.fn(() => ({ dispose: mockOnResizeDispose })),
@@ -64,6 +67,7 @@ const {
 	return {
 		mockFocus,
 		mockInput,
+		mockPaste,
 		mockCanvas,
 		mockTermInstance,
 		mockBufferActive,
@@ -98,6 +102,7 @@ vi.mock("../rpc", () => ({
 	api: {
 		request: {
 			uploadFileBase64: vi.fn(),
+			pasteClipboardImage: vi.fn(),
 			tmuxAction: vi.fn(),
 			tmuxAltClickMoveCursor: vi.fn().mockResolvedValue({ moved: true }),
 			exitCopyModeAllPanes: vi.fn().mockResolvedValue({ panesExited: 1 }),
@@ -892,6 +897,150 @@ describe("TerminalView – disposal safety (no 'Terminal has been disposed' erro
 		}).not.toThrow();
 
 		mockFocus.mockReset();
+	});
+});
+
+// ── Paste routing — always bracketed, never raw CRLF (remote/Windows) ────────
+
+const mockedPasteClipboardImage = vi.mocked(api.request.pasteClipboardImage);
+
+function dispatchPaste(
+	target: Element,
+	text: string,
+	items: Array<{ type: string }> = [],
+) {
+	const event = new Event("paste", { bubbles: true, cancelable: true });
+	Object.defineProperty(event, "clipboardData", {
+		value: {
+			getData: (type: string) => (type === "text/plain" ? text : ""),
+			items,
+		},
+	});
+	const preventDefault = vi.spyOn(event, "preventDefault");
+	const stopImmediate = vi.spyOn(event, "stopImmediatePropagation");
+	act(() => {
+		target.dispatchEvent(event);
+	});
+	return { event, preventDefault, stopImmediate };
+}
+
+describe("TerminalView – paste routing", () => {
+	beforeEach(() => {
+		mockPaste.mockClear();
+		mockedPasteClipboardImage.mockReset();
+		mockedUploadFileBase64.mockReset();
+	});
+
+	it("routes a multi-line CRLF paste through bracketed term.paste with CR line endings", async () => {
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		const { preventDefault, stopImmediate } = dispatchPaste(terminal, "line1\r\nline2\r\nline3");
+
+		// Fix: single bracketed path, newlines collapsed to CR — never the raw
+		// container path that would submit after "line1".
+		expect(mockPaste).toHaveBeenCalledWith("line1\rline2\rline3");
+		expect(preventDefault).toHaveBeenCalled();
+		// Must pre-empt BOTH ghostty paste handlers on the same/child node.
+		expect(stopImmediate).toHaveBeenCalled();
+	});
+
+	it("normalizes lone LF newlines to CR too", async () => {
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "a\nb\nc");
+
+		expect(mockPaste).toHaveBeenCalledWith("a\rb\rc");
+	});
+
+	it("routes ordinary single-line text through term.paste", async () => {
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "hello world");
+
+		expect(mockPaste).toHaveBeenCalledWith("hello world");
+	});
+
+	it("ignores an empty text paste (no image, no text) without swallowing it", async () => {
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		const { preventDefault } = dispatchPaste(terminal, "");
+
+		expect(mockPaste).not.toHaveBeenCalled();
+		expect(preventDefault).not.toHaveBeenCalled();
+	});
+
+	it("does not swallow a paste while the terminal is still initializing (no term yet)", async () => {
+		// Never resolve fonts.load() → setup() never runs → termRef stays null,
+		// but the capture-phase paste listener is already attached on mount. This
+		// mirrors the brief PTY-recreation gap; the event must NOT be swallowed.
+		Object.defineProperty(document, "fonts", {
+			configurable: true,
+			value: { load: vi.fn().mockReturnValue(new Promise(() => {})) },
+		});
+
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" />
+				</I18nProvider>,
+			);
+		});
+		const terminal = result.container.querySelector('[data-terminal="true"]')!;
+
+		const { preventDefault } = dispatchPaste(terminal, "hello");
+
+		expect(mockPaste).not.toHaveBeenCalled();
+		expect(preventDefault).not.toHaveBeenCalled();
+	});
+
+	it("still diverts image pastes to the attachment uploader (not term.paste)", async () => {
+		mockedPasteClipboardImage.mockResolvedValue({ path: "/tmp/uploads/pic.png" } as any);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		dispatchPaste(terminal, "", [{ type: "image/png" }]);
+
+		await waitFor(() => {
+			expect(mockedPasteClipboardImage).toHaveBeenCalledWith({ projectId: "p1" });
+		});
+		expect(mockPaste).not.toHaveBeenCalled();
+	});
+
+	it("still diverts large text pastes to the .txt uploader (not term.paste)", async () => {
+		mockedUploadFileBase64.mockResolvedValue({ path: "/tmp/uploads/pasted-text.txt" } as any);
+		const { container } = await renderAndSetup();
+		const terminal = container.querySelector('[data-terminal="true"]')!;
+
+		const huge = "x".repeat(9000); // > LARGE_TEXT_PASTE_THRESHOLD (8192)
+		dispatchPaste(terminal, huge);
+
+		await waitFor(() => {
+			expect(mockedUploadFileBase64).toHaveBeenCalled();
+		});
+		expect(mockPaste).not.toHaveBeenCalled();
+	});
+});
+
+describe("normalizePastedText", () => {
+	it("collapses CRLF to a single CR", () => {
+		expect(normalizePastedText("a\r\nb")).toBe("a\rb");
+	});
+	it("converts lone LF to CR", () => {
+		expect(normalizePastedText("a\nb\nc")).toBe("a\rb\rc");
+	});
+	it("leaves lone CR untouched", () => {
+		expect(normalizePastedText("a\rb")).toBe("a\rb");
+	});
+	it("handles mixed and trailing newlines", () => {
+		expect(normalizePastedText("a\r\nb\nc\r")).toBe("a\rb\rc\r");
+	});
+	it("returns plain text unchanged", () => {
+		expect(normalizePastedText("no newlines here")).toBe("no newlines here");
 	});
 });
 
