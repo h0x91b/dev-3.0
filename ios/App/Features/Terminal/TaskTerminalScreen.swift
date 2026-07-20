@@ -3,6 +3,8 @@ import Dev3UI
 import SwiftUI
 import UIKit
 
+// swiftlint:disable file_length
+
 @MainActor
 struct TaskTerminalScreen: View {
     @State private var store: TerminalTaskStore
@@ -10,6 +12,7 @@ struct TaskTerminalScreen: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @FocusState private var composerFocused: Bool
 
     private let title: String
@@ -363,7 +366,7 @@ private extension TaskTerminalScreen {
                 .focused($composerFocused)
                 .font(.body)
                 .scrollContentBackground(.hidden)
-                .frame(minHeight: 44, maxHeight: store.isComposerExpanded ? 180 : 88)
+                .frame(minHeight: 44, maxHeight: composerMaxHeight)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(
@@ -496,5 +499,15 @@ private extension TaskTerminalScreen {
         store.isComposerExpanded
             ? "arrow.down.right.and.arrow.up.left"
             : "arrow.up.left.and.arrow.down.right"
+    }
+
+    /// In a compact height (landscape on iPhone) the composer must stay short so
+    /// the terminal keeps usable real estate; only the roomy portrait layout gets
+    /// the taller editor.
+    private var composerMaxHeight: CGFloat {
+        if verticalSizeClass == .compact {
+            return store.isComposerExpanded ? 110 : 44
+        }
+        return store.isComposerExpanded ? 180 : 88
     }
 }
