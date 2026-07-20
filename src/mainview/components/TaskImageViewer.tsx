@@ -3,6 +3,7 @@ import type { SharedImage } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import { toast } from "../toast";
+import { usePinchZoom } from "../hooks/usePinchZoom";
 
 interface TaskImageViewerProps {
 	images: SharedImage[];
@@ -59,6 +60,15 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 	}, [images.length]);
 
 	const current = images[index];
+	// Aspect-driven display mode: tall captures scroll vertically ("width"),
+	// everything else is centred + contained ("fit") and gets pinch-to-zoom.
+	const isTall = natural ? natural.h / natural.w >= TALL_RATIO : false;
+	const fit: "fit" | "width" = fitOverride ?? (isTall ? "width" : "fit");
+	const zoom = usePinchZoom(fit === "fit");
+	const setStage = useCallback((el: HTMLDivElement | null) => {
+		stageRef.current = el;
+		zoom.setNode(el);
+	}, [zoom.setNode]);
 
 	// Fetch one image's bytes as a data URL, once. Marks "__error__" on failure so
 	// the thumbnail/stage renders a placeholder instead of a perpetual spinner.
@@ -136,15 +146,14 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 		setCopied(false);
 		setNatural(null);
 		setFitOverride(null);
+		zoom.reset();
 		if (stageRef.current) stageRef.current.scrollTop = 0;
-	}, [index]);
+	}, [index, zoom.reset]);
 
 	if (!current) return null;
 
 	const currentUrl = urls[current.id];
 	const isError = currentUrl === "__error__";
-	const isTall = natural ? natural.h / natural.w >= TALL_RATIO : false;
-	const fit: "fit" | "width" = fitOverride ?? (isTall ? "width" : "fit");
 
 	const copyPath = async () => {
 		try {
@@ -237,7 +246,8 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 				{/* Stage */}
 				<div className="relative flex-1 min-h-0 bg-base">
 					<div
-						ref={stageRef}
+						ref={setStage}
+						style={{ touchAction: fit === "width" ? "pan-y" : "none" }}
 						className={`absolute inset-0 ${fit === "width" ? "overflow-y-auto overflow-x-hidden p-3" : "overflow-hidden p-4 flex items-center justify-center"}`}
 					>
 						{isError ? (
@@ -251,11 +261,11 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 								alt={current.name}
 								data-testid="viewer-main-image"
 								onLoad={(e) => setNatural({ w: e.currentTarget.naturalWidth || 1, h: e.currentTarget.naturalHeight || 1 })}
-								onClick={() => setFitOverride(fit === "width" ? "fit" : "width")}
-								className={`select-none cursor-zoom-in ${
+								style={fit === "fit" ? { transform: zoom.transform, transition: zoom.animated ? "transform 150ms ease-out" : "none" } : undefined}
+								className={`select-none ${
 									fit === "width"
 										? "block mx-auto w-full max-w-[1400px] h-auto"
-										: "w-full h-full object-contain"
+										: `w-full h-full object-contain will-change-transform ${zoom.zoomed ? "cursor-grab" : "cursor-zoom-in"}`
 								}`}
 								draggable={false}
 							/>

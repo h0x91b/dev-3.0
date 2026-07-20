@@ -138,6 +138,22 @@ describe("TaskImageViewer", () => {
 		expect(screen.getByTestId("viewer-caption")).toHaveTextContent("look at the header");
 	});
 
+	it("zooms the image in on ctrl-wheel (trackpad pinch) in fit mode", async () => {
+		renderViewer();
+		const image = await screen.findByTestId("viewer-main-image");
+		expect(image.style.transform).toContain("scale(1)");
+		const stage = image.parentElement as HTMLElement;
+		stage.getBoundingClientRect = () =>
+			({ left: 0, top: 0, width: 200, height: 100, right: 200, bottom: 100, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+		const wheel = new Event("wheel", { bubbles: true, cancelable: true });
+		Object.assign(wheel, { deltaY: -200, ctrlKey: true, clientX: 100, clientY: 50 });
+		fireEvent(stage, wheel);
+		await waitFor(() => {
+			const scale = Number(image.style.transform.match(/scale\(([\d.]+)\)/)?.[1] ?? "1");
+			expect(scale).toBeGreaterThan(1);
+		});
+	});
+
 	it("marks <html> while open so the terminal is hidden behind it", async () => {
 		const { unmount } = render(
 			<I18nProvider>
