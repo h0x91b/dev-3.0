@@ -153,18 +153,26 @@ export async function createWindowsJobContainment(sessionToken: string): Promise
 	return createWindowsJobWithApi(sessionToken, process.pid, await loadWindowsJobApi());
 }
 
-export function forceTerminateWindowsJobWithApi(sessionToken: string, api: WindowsJobApi): boolean {
-	const job = api.openJob(windowsJobName(sessionToken), JOB_OBJECT_TERMINATE);
-	if (job === NULL_HANDLE) {
-		api.dispose();
-		return false;
-	}
+function withWindowsJob<T>(
+	sessionToken: string,
+	access: number,
+	api: WindowsJobApi,
+	missing: T,
+	operation: (job: WindowsHandle) => T,
+): T {
+	let job = NULL_HANDLE;
 	try {
-		return api.terminateJob(job);
+		job = api.openJob(windowsJobName(sessionToken), access);
+		if (job === NULL_HANDLE) return missing;
+		return operation(job);
 	} finally {
-		api.closeHandle(job);
+		if (job !== NULL_HANDLE) api.closeHandle(job);
 		api.dispose();
 	}
+}
+
+export function forceTerminateWindowsJobWithApi(sessionToken: string, api: WindowsJobApi): boolean {
+	return withWindowsJob(sessionToken, JOB_OBJECT_TERMINATE, api, false, (job) => api.terminateJob(job));
 }
 
 export async function forceTerminateWindowsJob(sessionToken: string): Promise<boolean> {
@@ -173,14 +181,7 @@ export async function forceTerminateWindowsJob(sessionToken: string): Promise<bo
 }
 
 export function windowsJobExistsWithApi(sessionToken: string, api: WindowsJobApi): boolean {
-	const job = api.openJob(windowsJobName(sessionToken), JOB_OBJECT_QUERY);
-	if (job === NULL_HANDLE) {
-		api.dispose();
-		return false;
-	}
-	api.closeHandle(job);
-	api.dispose();
-	return true;
+	return withWindowsJob(sessionToken, JOB_OBJECT_QUERY, api, false, () => true);
 }
 
 export async function windowsJobExists(sessionToken: string): Promise<boolean> {
@@ -189,21 +190,15 @@ export async function windowsJobExists(sessionToken: string): Promise<boolean> {
 }
 
 export function isProcessInWindowsJobWithApi(sessionToken: string, pid: number, api: WindowsJobApi): boolean {
-	const job = api.openJob(windowsJobName(sessionToken), JOB_OBJECT_QUERY);
-	const processHandle = api.openProcess(pid, PROCESS_QUERY_LIMITED_INFORMATION);
-	if (job === NULL_HANDLE || processHandle === NULL_HANDLE) {
-		if (job !== NULL_HANDLE) api.closeHandle(job);
-		if (processHandle !== NULL_HANDLE) api.closeHandle(processHandle);
-		api.dispose();
-		return false;
-	}
-	try {
-		return api.isProcessInJob(processHandle, job);
-	} finally {
-		api.closeHandle(processHandle);
-		api.closeHandle(job);
-		api.dispose();
-	}
+	return withWindowsJob(sessionToken, JOB_OBJECT_QUERY, api, false, (job) => {
+		const processHandle = api.openProcess(pid, PROCESS_QUERY_LIMITED_INFORMATION);
+		if (processHandle === NULL_HANDLE) return false;
+		try {
+			return api.isProcessInJob(processHandle, job);
+		} finally {
+			api.closeHandle(processHandle);
+		}
+	});
 }
 
 export async function isProcessInWindowsJob(sessionToken: string, pid: number): Promise<boolean> {

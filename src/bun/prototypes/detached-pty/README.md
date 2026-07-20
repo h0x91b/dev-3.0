@@ -20,6 +20,7 @@ completely unaffected.
 | `launcher.ts` | `start()` spawns the host detached and waits for readiness, then returns without killing it; `stop()`/`status()` rediscover it from metadata. |
 | `client.ts`   | Short-lived attach handle; `discover()` reconnects a fresh process from metadata alone. |
 | `state.ts`    | Discovery metadata (`~/.dev3.0/pty-proto/state.json`, override via `DEV3_PTY_PROTO_DIR`). |
+| `windows-job.ts` | Windows Job Object creation, self-enrolment, scoped force-stop, and handle queries. |
 | `protocol.ts` | Wire protocol: binary frames = PTY bytes, text frames = JSON control. |
 | `cli.ts`      | Manual driver + the `__host` re-entry the launcher spawns. |
 

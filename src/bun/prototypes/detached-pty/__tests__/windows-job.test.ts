@@ -27,7 +27,7 @@ function makeApi(): WindowsJobApi {
 }
 
 describe("detached-pty Windows Job Object containment", () => {
-	it("enrols the host before spawn with kill-on-close and closes each handle once", () => {
+	it("enrols the host before spawn with kill-on-close", () => {
 		const api = makeApi();
 		const containment = createWindowsJobWithApi(TOKEN, 4242, api);
 
@@ -41,11 +41,19 @@ describe("detached-pty Windows Job Object containment", () => {
 		const limits = vi.mocked(api.setExtendedLimitInformation).mock.calls[0]?.[1];
 		expect(limits).toBeInstanceOf(BigUint64Array);
 		expect(new DataView(limits!.buffer).getUint32(16, true)).toBe(0x00002000);
+		containment.closeForTreeTermination();
+	});
+
+	it("closes the owning job and API exactly once", () => {
+		const api = makeApi();
+		const containment = createWindowsJobWithApi(TOKEN, 4242, api);
+		vi.mocked(api.closeHandle).mockClear();
+		vi.mocked(api.dispose).mockClear();
 
 		expect(containment.closeForTreeTermination()).toBe(true);
 		expect(containment.closeForTreeTermination()).toBe(false);
-		expect(api.closeHandle).toHaveBeenCalledTimes(2);
-		expect(api.closeHandle).toHaveBeenLastCalledWith(11n);
+		expect(api.closeHandle).toHaveBeenCalledOnce();
+		expect(api.closeHandle).toHaveBeenCalledWith(11n);
 		expect(api.dispose).toHaveBeenCalledOnce();
 	});
 

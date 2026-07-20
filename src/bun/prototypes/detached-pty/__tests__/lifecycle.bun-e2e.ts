@@ -20,6 +20,7 @@ import { start, stop } from "../launcher";
 import { PtyProtoClient } from "../client";
 import { isProcessAlive, logFile, readState, stateDir, stateFile } from "../state";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
+import { spawn } from "../../../spawn";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -94,7 +95,9 @@ async function run(): Promise<void> {
 	process.env.PATH = `${shimDir}${delimiter}${process.env.PATH ?? ""}`;
 
 	const testPid = process.pid;
-	const unrelated = Bun.spawn(
+	// Models a pre-existing production tmux process: the test owns this guard,
+	// while the native host must neither adopt it nor terminate it.
+	const tmuxGuard = spawn(
 		isWindows
 			? ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
 			: ["sleep", "300"],
@@ -110,11 +113,12 @@ async function run(): Promise<void> {
 		check(state.shellPid > 0 && isProcessAlive(state.shellPid), "host owns a real live shell process");
 		check(state.host === "127.0.0.1" && state.port > 0, "transport is loopback TCP on an ephemeral port");
 		check(state.token.length > 0, "transport is guarded by a per-run token");
-		check(isProcessAlive(unrelated.pid), "unrelated process is alive before native-session stop");
+		check(isProcessAlive(tmuxGuard.pid), "pre-existing tmux ownership guard is alive before native-session stop");
 		if (isWindows) {
 			check(await windowsJobExists(state.token), "Windows Job Object exists while the session is live");
 			check(await isProcessInWindowsJob(state.token, state.hostPid), "Windows Job Object owns the host before shell work");
 			check(await isProcessInWindowsJob(state.token, state.shellPid), "root shell inherited Windows Job Object ownership at spawn");
+			check(!(await isProcessInWindowsJob(state.token, tmuxGuard.pid)), "Windows Job Object excludes the tmux ownership guard");
 		}
 
 		const nonce = `state-${state.hostPid}-${state.shellPid}`;
@@ -192,7 +196,7 @@ async function run(): Promise<void> {
 		check(!isProcessAlive(recordedShellPid), "root shell terminated after stop");
 		check(!isProcessAlive(childPid), "child shell terminated after stop");
 		check(!isProcessAlive(grandchildPid), "grandchild terminated after stop");
-		check(isProcessAlive(unrelated.pid), "stop left an unrelated process untouched");
+		check(isProcessAlive(tmuxGuard.pid), "native stop did not terminate the pre-existing tmux ownership guard");
 		check(readState() === null, "all prototype metadata removed after stop");
 		check(!existsSync(stateFile()), "state.json removed from disk");
 		check(!existsSync(logFile()), "host.log removed from disk");
@@ -214,7 +218,7 @@ async function run(): Promise<void> {
 		check(!existsSync(sentinel), "tracer NEVER invoked tmux (PATH shim sentinel absent)");
 	} finally {
 		try {
-			unrelated.kill();
+			tmuxGuard.kill();
 		} catch {
 			// already gone
 		}

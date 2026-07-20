@@ -110,9 +110,9 @@ export async function status(): Promise<StatusResult> {
 }
 
 /**
- * Stop the host and its shell tree. Prefers a graceful in-band stop; falls back
- * to signalling the host PID. Resolves once metadata is gone and both the host
- * and shell PIDs are dead.
+ * Stop the host and its shell tree. Prefers a graceful in-band stop; Windows
+ * fallback opens only the token-named Job Object, while POSIX signals the host.
+ * Resolves once metadata is gone and both recorded PIDs are dead.
  */
 export async function stop(opts: { timeoutMs?: number } = {}): Promise<boolean> {
 	const state = readState();
