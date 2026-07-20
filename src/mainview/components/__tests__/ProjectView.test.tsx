@@ -5,9 +5,14 @@ import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import ProjectView from "../ProjectView";
 
+// Mutable so a test can flip to remote/browser mode; a getter proves the layout
+// no longer branches on it (regression guard for #992 over-hiding the sidebar).
+const rpcMock = vi.hoisted(() => ({ isElectrobun: true }));
 vi.mock("../../rpc", () => ({
 	api: { request: { getTasks: vi.fn().mockResolvedValue([]), getAgents: vi.fn().mockResolvedValue([]) } },
-	isElectrobun: true,
+	get isElectrobun() {
+		return rpcMock.isElectrobun;
+	},
 }));
 
 // Heavy children — stub so the test focuses on ProjectView's own layout logic.
@@ -68,6 +73,7 @@ function renderView(props: Partial<React.ComponentProps<typeof ProjectView>>) {
 describe("ProjectView task-view layout", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		rpcMock.isElectrobun = true;
 		localStorage.removeItem("dev3-task-open-mode");
 	});
 
@@ -104,6 +110,14 @@ describe("ProjectView task-view layout", () => {
 		renderView({ activeTaskId: "t1", tasks: [task] });
 		await waitFor(() => expect(screen.getByTestId("workspace")).toBeInTheDocument());
 		expect(screen.queryByText("Select a task to see its terminal")).not.toBeInTheDocument();
+	});
+
+	it("keeps the active-tasks sidebar in remote/browser mode on a wide viewport", async () => {
+		rpcMock.isElectrobun = false;
+		const task = { id: "t1", projectId: "p1", title: "T", status: "in-progress" } as unknown as Task;
+		renderView({ activeTaskId: "t1", tasks: [task] });
+		await waitFor(() => expect(screen.getByTestId("sidebar")).toBeInTheDocument());
+		expect(screen.getByTestId("workspace")).toBeInTheDocument();
 	});
 
 	it("renders only the Kanban board when neither activeTaskId nor taskView is set", async () => {
@@ -156,6 +170,7 @@ describe("ProjectView narrow viewport (mobile zoom)", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		rpcMock.isElectrobun = true;
 		Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
 		Object.defineProperty(window, "matchMedia", {
 			configurable: true,
@@ -183,5 +198,13 @@ describe("ProjectView narrow viewport (mobile zoom)", () => {
 		await waitFor(() => expect(screen.getByTestId("workspace")).toBeInTheDocument());
 		expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
 		expect(screen.getByTestId("info-panel")).toBeInTheDocument();
+	});
+
+	it("still hides the sidebar in remote/browser mode when the viewport is narrow", async () => {
+		rpcMock.isElectrobun = false;
+		const task = { id: "t1", projectId: "p1", title: "T", status: "in-progress" } as unknown as Task;
+		renderView({ activeTaskId: "t1", tasks: [task] });
+		await waitFor(() => expect(screen.getByTestId("workspace")).toBeInTheDocument());
+		expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
 	});
 });

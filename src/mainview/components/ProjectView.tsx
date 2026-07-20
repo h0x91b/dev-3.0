@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject } 
 import type { CodingAgent, PortInfo, Project, SharedArtifact, Task, ResourceUsage } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
-import { api, isElectrobun } from "../rpc";
+import { api } from "../rpc";
 import KanbanBoard from "./KanbanBoard";
 import TaskInfoPanel from "./TaskInfoPanel";
 import SplitLayout from "./SplitLayout";
@@ -139,7 +139,6 @@ function ProjectView({
 
 	if (activeTaskId || taskView) {
 		const activeTask = activeTaskId ? tasks.find((t) => t.id === activeTaskId) : undefined;
-		const isBrowserMode = !isElectrobun;
 
 		// Terminal pane: a selected task shows its workspace; otherwise (task-view
 		// reached via a project switch with no task picked yet) an empty placeholder.
@@ -164,10 +163,11 @@ function ProjectView({
 			</div>
 		);
 
-		// Browser and narrow viewports keep the terminal full-width. Task switching
-		// remains available through the breadcrumb/board and task-switcher overlay;
-		// do not add a persistent task strip above the terminal.
-		if (isNarrow || isBrowserMode) {
+		// Narrow (mobile) viewports keep the terminal full-width — there is no room
+		// for the active-tasks split. Task switching stays available via the
+		// breadcrumb/board carousel and the task-switcher overlay. Wide viewports
+		// (desktop and remote/browser alike) get the standard SplitLayout below.
+		if (isNarrow) {
 			return (
 				<div className="flex-1 min-h-0 flex flex-col">
 					{activeTask && (
