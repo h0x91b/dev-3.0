@@ -78,7 +78,14 @@ public actor Dev3TerminalFrameBuffer {
         pending.removeAll(keepingCapacity: false)
         let append = pendingAppend
         pendingAppend = nil
-        append?.continuation.resume(returning: false)
+        // Resume `true` (keep the producer alive), matching admitPendingAppend —
+        // NOT `false`. `false` is reserved for cancelAppend (genuine Task
+        // cancellation), where the consumer's `guard await append() else { return }`
+        // must exit the output loop. A discard is an intentional mid-stream drop
+        // (e.g. a pane-switch forced redraw): the in-flight chunk is dropped but
+        // the producer must keep consuming, otherwise the PTY output loop dies and
+        // the pane stays blank forever until the view is rebuilt.
+        append?.continuation.resume(returning: true)
     }
 
     public func statistics() -> Dev3TerminalFrameStatistics {

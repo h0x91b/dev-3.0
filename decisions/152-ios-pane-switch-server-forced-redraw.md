@@ -27,6 +27,19 @@ client no longer needs to wipe. `Dev3TerminalView.requestRemoteRedraw` now only
 `discardPending()`s pre-switch frames and `setNeedsDisplay`; the `resetToInitialState()`/same-size resize
 are removed.
 
+## The load-bearing root cause (frame-buffer consumer death)
+A cross-check found the deeper cause of the *permanent* blank: `Dev3TerminalFrameBuffer.discardPending()`
+resumed its suspended producer continuation with `false` — the **same** value `cancelAppend()` uses for
+genuine `Task` cancellation. The PTY-output loop is `guard await frameBuffer.append(data) else { return }`,
+so when a pane-switch's `requestRemoteRedraw()` called `discardPending()` while the output task was
+suspended mid-`append` (very likely once `forceSessionRedraw` guarantees a multi-64KB-chunk redraw on
+every switch), `append` returned `false` and the `for await` output loop **exited for good** — nothing
+re-creates it until the view is torn down, so the pane stayed blank forever. Fix: `discardPending()` now
+resumes `true` (keep consuming), matching `admitPendingAppend()`; `false` stays reserved for real
+cancellation. One line, plus a `TerminalFrameBufferTests` regression test. This is the fix that actually
+resolves the blank; the server-forced redraw + reset removal above make the switch deterministic and
+prevent the stale variant.
+
 ## Risks
 The forced repaint runs on the shared session, so a desktop viewer watching the same task sees a brief
 reflow when a mobile client switches panes — acceptable (it is already seeing the switch). Client and

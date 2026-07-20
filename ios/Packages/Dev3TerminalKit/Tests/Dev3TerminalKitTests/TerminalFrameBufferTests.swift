@@ -53,6 +53,31 @@ func floodBenchmark() async {
     #expect(await buffer.drainFrame() == chunk)
 }
 
+@Test("Discarding a pending frame keeps the producer alive", .timeLimit(.minutes(1)))
+func discardPendingKeepsProducerAlive() async {
+    let buffer = Dev3TerminalFrameBuffer()
+    #expect(await buffer.append(Data("first".utf8))) // fills `pending`
+
+    // A second chunk suspends waiting for the first to drain (backpressure).
+    let blocked = Task { await buffer.append(Data("second".utf8)) }
+    await eventuallyFrameBuffer("Only the first chunk is accepted while the second waits") {
+        await buffer.statistics().receivedChunks == 1
+    }
+    // Let the second append reach its suspension point and register as pending.
+    try? await Task.sleep(for: .milliseconds(20))
+
+    // A mid-stream discard (as a pane-switch forced redraw does). Before the fix
+    // this resumed the waiting producer with `false`, which made the PTY output
+    // loop's `guard await append() else { return }` exit for good — a pane blank
+    // forever. It must resume `true` so the producer keeps consuming.
+    await buffer.discardPending()
+    #expect(await blocked.value == true)
+
+    // The buffer is not poisoned: it still accepts and drains subsequent frames.
+    #expect(await buffer.append(Data("third".utf8)))
+    #expect(await buffer.drainFrame() == Data("third".utf8))
+}
+
 private func eventuallyFrameBuffer(
     _ failureMessage: String,
     condition: () async -> Bool
