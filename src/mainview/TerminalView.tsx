@@ -12,6 +12,7 @@ import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { getScrollThreshold } from "./scroll-speed";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
+import { writeClipboardText } from "./utils/clipboard-write";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
@@ -333,12 +334,19 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		function handleOsc52Clipboard(event: Event) {
 			const detail = (event as CustomEvent<{ taskId?: string; text?: string }>).detail;
 			if (detail?.taskId !== taskId || typeof detail.text !== "string") return;
+			const text = detail.text;
 			// TEMP DIAGNOSTIC: correlate OSC52 copy payloads with clipboard write results.
-			copyDiagnosticsRef.current?.markOsc52Copy(detail.text.length);
+			copyDiagnosticsRef.current?.markOsc52Copy(text.length);
 			logCopyEvent("info", "osc52 clipboard payload received", {
-				len: detail.text.length,
+				len: text.length,
 			});
-			navigator.clipboard?.writeText(detail.text).catch(() => {});
+			void writeClipboardText(text).then((method) => {
+				logCopyEvent(
+					method === "failed" ? "warn" : "info",
+					"osc52 clipboard write result",
+					{ method, len: text.length },
+				);
+			});
 		}
 
 		window.addEventListener("rpc:osc52Clipboard", handleOsc52Clipboard);
