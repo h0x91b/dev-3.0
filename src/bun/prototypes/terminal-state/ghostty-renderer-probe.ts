@@ -38,11 +38,27 @@ export interface RendererSemanticState {
 const wasmPath = fileURLToPath(
 	new URL("../../../../node_modules/ghostty-web/dist/ghostty-vt.wasm", import.meta.url),
 );
+const packagePath = fileURLToPath(
+	new URL("../../../../node_modules/ghostty-web/package.json", import.meta.url),
+);
+
+const GHOSTTY_VERSION = "0.4.0" as const;
+export const GHOSTTY_PARSER_ID = `ghostty-web@${GHOSTTY_VERSION}` as const;
+
+function assertGhosttyPackageVersion(): void {
+	const metadata = JSON.parse(readFileSync(packagePath, "utf8")) as { version?: unknown };
+	if (metadata.version !== GHOSTTY_VERSION) {
+		throw new Error(
+			`Terminal-state spike requires ${GHOSTTY_PARSER_ID}; installed ghostty-web is ${String(metadata.version)}`,
+		);
+	}
+}
 
 let wasmModulePromise: Promise<WebAssembly.Module> | undefined;
 
 async function loadGhostty(): Promise<Ghostty> {
 	wasmModulePromise ??= (async () => {
+		assertGhosttyPackageVersion();
 		const bytes = readFileSync(wasmPath);
 		const source = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
 		return WebAssembly.compile(source);

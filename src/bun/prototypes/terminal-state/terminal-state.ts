@@ -1,4 +1,5 @@
 import {
+	GHOSTTY_PARSER_ID,
 	GhosttyRendererProbe,
 	type RendererSemanticCell,
 	type RendererSemanticLine,
@@ -99,13 +100,12 @@ export interface TerminalSnapshotV1 {
 	format: "dev3-terminal-state-spike";
 	version: 1;
 	strategy: "event-journal";
-	parser: "ghostty-web@0.4.0";
+	parser: typeof GHOSTTY_PARSER_ID;
 	initial: TerminalDimensions;
 	events: TerminalSnapshotEvent[];
 }
 
 const SNAPSHOT_FORMAT = "dev3-terminal-state-spike";
-const SNAPSHOT_PARSER = "ghostty-web@0.4.0";
 
 class TerminalMetadataTracker {
 	readonly cursor: TerminalCursorState = {
@@ -265,7 +265,7 @@ export class HeadlessTerminalState {
 			format: SNAPSHOT_FORMAT,
 			version: 1,
 			strategy: "event-journal",
-			parser: SNAPSHOT_PARSER,
+			parser: GHOSTTY_PARSER_ID,
 			initial: { ...this.initial },
 			events: this.events.map((event) => ({ ...event })),
 		};
@@ -315,7 +315,7 @@ function isTerminalSnapshotV1(value: unknown): value is TerminalSnapshotV1 {
 		value.format === SNAPSHOT_FORMAT &&
 		value.version === 1 &&
 		value.strategy === "event-journal" &&
-		value.parser === SNAPSHOT_PARSER &&
+		value.parser === GHOSTTY_PARSER_ID &&
 		isDimensions(value.initial) &&
 		Array.isArray(value.events) &&
 		value.events.every(isSnapshotEvent)

@@ -54,6 +54,12 @@ strategies, and parser identities are rejected. Version 1 is experiment data,
 not a persistence promise; a bounded native snapshot must use a new version and
 define compatibility before it can enter user state.
 
+The spike asserts that the installed `ghostty-web` package is exactly 0.4.0
+before creating a core. The repository may retain its production-compatible
+semver range, but a lockfile upgrade cannot silently create state under a false
+parser identity; the isolated spike fails and requires an explicit format
+review.
+
 The semantic comparison covers the active buffer, hidden primary buffer,
 dimensions, cursor position and presentation, title, relevant modes, visible
 cells, resolved colors and attributes, wrap markers, and scrollback. Device

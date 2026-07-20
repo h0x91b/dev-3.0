@@ -21,7 +21,8 @@ costs are in `src/bun/prototypes/terminal-state/README.md`.
 
 Select Ghostty for parser compatibility and keep version 1 as an isolated,
 fail-closed event journal tagged `ghostty-web@0.4.0`; binary output is base64 and
-resize order is explicit. Do not persist or promote version 1: production work
+resize order is explicit, and creation asserts that the installed package still
+matches that identity. Do not persist or promote version 1: production work
 requires a bounded Ghostty-native export/import seam and a new format version
 with a stated compatibility window. Removal is deletion of the prototype
 directory and its two package scripts; no daemon, migration, user state, or tmux

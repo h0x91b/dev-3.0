@@ -1,1 +1,1 @@
-Add an isolated terminal-state spike using Ghostty headless parsing, versioned output/resize journals, golden replay fixtures, and bounded benchmark tooling. It remains outside production imports and does not change tmux-backed behavior.
+Add an isolated terminal-state spike using Ghostty headless parsing, versioned output/resize journals, golden replay fixtures, and bounded benchmark tooling. It remains outside production imports, fails closed if the installed parser drifts from the snapshot identity, and does not change tmux-backed behavior.
