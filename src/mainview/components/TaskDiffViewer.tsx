@@ -1600,9 +1600,9 @@ function TaskDiffFileSection({
 								/>
 							);
 						}}
-						renderExtendLine={({ data, lineNumber, side }: { data: ExtendLineData; lineNumber: number; side: number }) => (
+						renderExtendLine={({ data, lineNumber, side }: { data?: ExtendLineData; lineNumber: number; side: number }) => (
 							<>
-								{data.github?.map((thread) => (
+								{data?.github?.map((thread) => (
 									<GithubThreadView
 										key={thread.id}
 										thread={thread}
@@ -1613,7 +1613,7 @@ function TaskDiffFileSection({
 										registerRef={registerCommentRef}
 									/>
 								))}
-								{data.local && (
+								{data?.local && (
 									<InlineCommentThreadView
 										thread={data.local}
 										side={getInlineCommentSideKey(side, diffLib.SplitSide)}
