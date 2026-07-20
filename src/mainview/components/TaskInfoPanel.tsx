@@ -1090,9 +1090,12 @@ function TaskInfoPanel({
 							{(task.sharedImages?.length ?? 0) > 0 && (
 								<button
 									type="button"
-									onClick={() => window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
-										detail: { taskId: task.id, images: task.sharedImages, index: (task.sharedImages?.length ?? 1) - 1 },
-									}))}
+									onClick={() => {
+										setActionsSheetOpen(false);
+										window.dispatchEvent(new CustomEvent("dev3:openImageViewer", {
+											detail: { taskId: task.id, images: task.sharedImages, index: (task.sharedImages?.length ?? 1) - 1 },
+										}));
+									}}
 									className={SHEET_ROW_CLASS}
 								>
 									<ImagesIcon className="h-5 w-5 shrink-0 text-fg-3" />
