@@ -1591,10 +1591,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			// listener before ghostty's, so stopImmediatePropagation() pre-empts both
 			// of its handlers and gives one deterministic, bracketed path.
 			if (!text) return;
-			e.preventDefault();
-			e.stopImmediatePropagation();
+			// Check the terminal BEFORE swallowing the event: during PTY
+			// recreation termRef is briefly null while this listener is still
+			// attached. Suppressing then bailing would silently drop the paste —
+			// leave it for whatever handler is present instead.
 			const term = termRef.current;
 			if (!term) return;
+			e.preventDefault();
+			e.stopImmediatePropagation();
 			try {
 				term.paste(normalizePastedText(text));
 			} catch {

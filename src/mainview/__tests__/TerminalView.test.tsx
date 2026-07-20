@@ -973,6 +973,31 @@ describe("TerminalView – paste routing", () => {
 		expect(preventDefault).not.toHaveBeenCalled();
 	});
 
+	it("does not swallow a paste while the terminal is still initializing (no term yet)", async () => {
+		// Never resolve fonts.load() → setup() never runs → termRef stays null,
+		// but the capture-phase paste listener is already attached on mount. This
+		// mirrors the brief PTY-recreation gap; the event must NOT be swallowed.
+		Object.defineProperty(document, "fonts", {
+			configurable: true,
+			value: { load: vi.fn().mockReturnValue(new Promise(() => {})) },
+		});
+
+		let result!: ReturnType<typeof render>;
+		await act(async () => {
+			result = render(
+				<I18nProvider>
+					<TerminalView ptyUrl="ws://localhost:1234" taskId="t1" projectId="p1" />
+				</I18nProvider>,
+			);
+		});
+		const terminal = result.container.querySelector('[data-terminal="true"]')!;
+
+		const { preventDefault } = dispatchPaste(terminal, "hello");
+
+		expect(mockPaste).not.toHaveBeenCalled();
+		expect(preventDefault).not.toHaveBeenCalled();
+	});
+
 	it("still diverts image pastes to the attachment uploader (not term.paste)", async () => {
 		mockedPasteClipboardImage.mockResolvedValue({ path: "/tmp/uploads/pic.png" } as any);
 		const { container } = await renderAndSetup();
