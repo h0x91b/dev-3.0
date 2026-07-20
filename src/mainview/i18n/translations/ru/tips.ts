@@ -216,6 +216,8 @@ const tips = {
 	"tip.cycleTaskVariants.body": "Нажмите Shift+Cmd+[ или ] (Ctrl в Linux), чтобы переключаться между живыми вариантами прямо из терминала.",
 	"tip.mobileTaskGit.title": "Git с телефона",
 	"tip.mobileTaskGit.body": "В мобильном виде задачи нажмите меню \u22ee \u2014 rebase, push, создание PR и дифф в секции Git.",
+	"tip.terminalSearch.title": "Поиск по терминалу",
+	"tip.terminalSearch.body": "Нажмите \u2318F (Ctrl+F в Linux) в терминале, чтобы искать по истории tmux \u2014 совпадения подсвечиваются прямо в панели.",
 };
 
 export default tips;

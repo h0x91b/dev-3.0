@@ -163,6 +163,16 @@ export const PANE_IN_MODE_FORMAT = tmuxFormat()
 	.build();
 
 /**
+ * Copy-mode search state — the terminal ⌘F bar. `search_count` goes STALE
+ * after a miss (tmux keeps the previous hit's number), so consumers must
+ * gate on `present`: matches = present ? count : 0.
+ */
+export const SEARCH_STATE_FORMAT = tmuxFormat()
+	.flag("present", "search_present")
+	.number("count", "search_count")
+	.build();
+
+/**
  * Window overview for the layout snapshot (`getTmuxLayout`). `window_layout`
  * never contains a tab (its grammar is digits/`,x{}[]`), so only the
  * free-text window name needs the tail slot.

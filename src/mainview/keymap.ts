@@ -99,6 +99,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	// ── Terminal ──
 	{ id: "toggle-project-terminal", keys: { mac: "⌘`", other: "Ctrl+`" }, descKey: "keymap.shortcut.toggleProjectTerminal", category: "terminal" },
 	{ id: "open-quick-shell", keys: { mac: "⇧⌘`", other: "Ctrl+Shift+`" }, descKey: "keymap.shortcut.openQuickShell", category: "terminal" },
+	{ id: "terminal-search", keys: { mac: "⌘F", other: "Ctrl+F" }, descKey: "keymap.shortcut.terminalSearch", category: "terminal" },
 
 	// ── Application ──
 	{ id: "quit", keys: { mac: "⌘Q", other: "Ctrl+Q" }, descKey: "keymap.shortcut.quit", category: "app", scope: "desktop" },

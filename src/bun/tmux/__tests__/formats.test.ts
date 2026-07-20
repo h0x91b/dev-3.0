@@ -10,6 +10,7 @@ import {
 	PANE_SWITCHER_FORMAT,
 	ALT_CLICK_PANE_FORMAT,
 	STATUS_GEOMETRY_FORMAT,
+	SEARCH_STATE_FORMAT,
 } from "../formats";
 
 describe("tmuxFormat builder", () => {
@@ -91,6 +92,14 @@ describe("format declarations", () => {
 	it("ALT_CLICK_PANE_FORMAT asks for pane_current_command last (separator-safety)", () => {
 		expect(ALT_CLICK_PANE_FORMAT.formatString.endsWith("#{pane_current_command}")).toBe(true);
 		expect(ALT_CLICK_PANE_FORMAT.formatString.startsWith("#{pane_id}")).toBe(true);
+	});
+
+	it("SEARCH_STATE_FORMAT parses present as flag and count as number", () => {
+		expect(SEARCH_STATE_FORMAT.formatString).toBe("#{search_present}\t#{search_count}");
+		// After a miss tmux reports present=0 with a STALE count — the format
+		// still parses both; consumers gate the count on `present`.
+		expect(SEARCH_STATE_FORMAT.parse("1\t6\n")).toEqual([{ present: true, count: 6 }]);
+		expect(SEARCH_STATE_FORMAT.parse("0\t6\n")).toEqual([{ present: false, count: 6 }]);
 	});
 });
 

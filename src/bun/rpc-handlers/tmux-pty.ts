@@ -31,6 +31,7 @@ import {
 	PANE_CURRENT_COMMAND_FORMAT,
 	PANE_SWITCHER_FORMAT,
 	WINDOW_SWITCHER_FORMAT,
+	SEARCH_STATE_FORMAT,
 	SESSION_OVERVIEW_FORMAT,
 	ALT_CLICK_PANE_FORMAT,
 	altClickIneligibleReason,
@@ -2133,6 +2134,83 @@ async function exitCopyModeAllPanes(params: { taskId: string }): Promise<{ panes
 	return { panesExited: total };
 }
 
+// ── Terminal ⌘F search (tmux copy-mode search) ─────────────────────────
+//
+// The scrollback lives inside tmux (mouse-mode on → wheel scroll is SGR mouse,
+// ghostty's own buffer only holds the visible screen), so search runs in tmux
+// copy-mode: tmux highlights every match in the pane content and the picture
+// streams back through the PTY for free. See decision 141.
+
+const SEARCH_PANE_ID_RE = /^%\d+$/;
+
+async function searchMatchCount(paneId: string, socket: string): Promise<number> {
+	const state = await tmux.displayMessage(SEARCH_STATE_FORMAT, { target: paneId, socket });
+	// search_count is stale after a miss — search_present gates it (see formats.ts).
+	return state?.present ? state.count : 0;
+}
+
+/**
+ * Set (or clear) the search query in one pane. The first call resolves the
+ * session's active pane and returns its id; later calls pass that id back so
+ * the search stays pinned to one pane even if tmux focus moves. Every query
+ * re-anchors at history-bottom — plain `search-backward` searches up from the
+ * CURRENT cursor, so incremental typing would otherwise drift the match
+ * further up with each keystroke (verified live, decision 141).
+ * Returns `paneId: null` when the target pane is gone — the caller should
+ * re-resolve on the next update.
+ */
+async function tmuxSearchUpdate(params: { taskId: string; query: string; paneId?: string }): Promise<{ paneId: string | null; matches: number }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	const tmuxSession = pty.getSessionTmuxName(params.taskId);
+
+	if (params.paneId !== undefined && !SEARCH_PANE_ID_RE.test(params.paneId)) {
+		log.warn("tmuxSearchUpdate rejected — malformed pane id", { paneId: params.paneId });
+		return { paneId: null, matches: 0 };
+	}
+
+	let paneId = params.paneId ?? null;
+	try {
+		if (!paneId) paneId = await tmux.activePaneId(tmuxSession, { socket });
+		if (!paneId) return { paneId: null, matches: 0 };
+
+		if (!params.query) {
+			// Cleared query — drop the highlight and unfreeze the pane.
+			await tmux.exitCopyMode(paneId, { socket, bestEffort: true });
+			return { paneId, matches: 0 };
+		}
+
+		await tmux.enterCopyMode(paneId, { socket });
+		await tmux.copyModeHistoryBottom(paneId, { socket });
+		await tmux.copyModeSearchBackwardText(paneId, params.query, { socket });
+		return { paneId, matches: await searchMatchCount(paneId, socket) };
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		// Pane died mid-search — tell the frontend to re-resolve.
+		log.info("tmuxSearchUpdate target gone", { taskId: params.taskId.slice(0, 8), paneId, stderr: err.stderr });
+		return { paneId: null, matches: 0 };
+	}
+}
+
+/** Step to the next match: "older" walks up the history, "newer" back down. */
+async function tmuxSearchStep(params: { taskId: string; paneId: string; direction: "older" | "newer" }): Promise<{ matches: number }> {
+	const socket = pty.getSessionSocket(params.taskId);
+	if (!SEARCH_PANE_ID_RE.test(params.paneId)) return { matches: 0 };
+	try {
+		await tmux.copyModeSearchStep(params.paneId, params.direction, { socket });
+		return { matches: await searchMatchCount(params.paneId, socket) };
+	} catch (err) {
+		if (!(err instanceof TmuxError)) throw err;
+		return { matches: 0 };
+	}
+}
+
+/** Close the search: leave copy-mode so the pane resumes live output. */
+async function tmuxSearchCancel(params: { taskId: string; paneId: string }): Promise<void> {
+	const socket = pty.getSessionSocket(params.taskId);
+	if (!SEARCH_PANE_ID_RE.test(params.paneId)) return;
+	await tmux.exitCopyMode(params.paneId, { socket, bestEffort: true });
+}
+
 async function spawnAgentInTask(params: { taskId: string; projectId: string; agentId: string | null; configId: string | null; accountId?: string | null }): Promise<void> {
 	log.info("→ spawnAgentInTask", { taskId: params.taskId.slice(0, 8), agentId: params.agentId, configId: params.configId });
 
@@ -2574,6 +2652,9 @@ export const tmuxPtyHandlers = {
 	tmuxWindowNavigate,
 	tmuxAltClickMoveCursor,
 	exitCopyModeAllPanes,
+	tmuxSearchUpdate,
+	tmuxSearchStep,
+	tmuxSearchCancel,
 	spawnAgentInTask,
 	spawnBugHuntersInTask,
 	resumeTask,

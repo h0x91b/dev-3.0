@@ -3046,6 +3046,18 @@ export type AppRPCSchema = {
 				params: { taskId: string };
 				response: { panesExited: number };
 			};
+			tmuxSearchUpdate: {
+				params: { taskId: string; query: string; paneId?: string };
+				response: { paneId: string | null; matches: number };
+			};
+			tmuxSearchStep: {
+				params: { taskId: string; paneId: string; direction: "older" | "newer" };
+				response: { matches: number };
+			};
+			tmuxSearchCancel: {
+				params: { taskId: string; paneId: string };
+				response: void;
+			};
 			copyTerminalSelection: {
 				params: { taskId: string; text: string; mouseTracking: boolean };
 				response: { ok: boolean; tool: string | null };

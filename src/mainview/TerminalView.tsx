@@ -15,6 +15,9 @@ import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { isLargeTextPaste, uploadPastedText } from "./utils/uploadPastedText";
 import { createAnsiThemeFilter } from "./utils/ansi-theme-adapt";
 import { submitPastedText } from "./terminal-submit";
+import { isMac } from "./utils/platform";
+import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
+import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -216,6 +219,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 	const tRef = useRef(t);
 	tRef.current = t;
 	const containerRef = useRef<HTMLDivElement>(null);
+	const wrapperRef = useRef<HTMLDivElement>(null);
+	const searchBarRef = useRef<TerminalSearchBarHandle | null>(null);
+	const [searchOpen, setSearchOpen] = useState(false);
+	// The pane the search resolved to, and its %-rect over the terminal canvas —
+	// drawn as a frame so a multi-pane layout shows WHICH pane is being searched.
+	const [searchPaneId, setSearchPaneId] = useState<string | null>(null);
+	const [searchPaneRect, setSearchPaneRect] = useState<PaneRectPct | null>(null);
 	const termRef = useRef<Terminal | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
 	const wsRef = useRef<WebSocket | null>(null);
@@ -1352,6 +1362,57 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });
 	}, [taskId]);
 
+	// ⌘F (Ctrl+F elsewhere) — search the terminal via tmux copy-mode.
+	// Capture phase so ghostty can't swallow it; gated on focus being inside
+	// this terminal (or its search bar) so the browser's native find keeps
+	// working everywhere else in remote mode. Ctrl+F is deliberately NOT bound
+	// on macOS — it is readline forward-char and must reach the shell.
+	useEffect(() => {
+		function handleSearchShortcut(e: KeyboardEvent) {
+			const combo = isMac() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+			if (!combo || e.shiftKey || e.altKey || e.code !== "KeyF") return;
+			const wrapper = wrapperRef.current;
+			if (!wrapper) return;
+			if (!wrapper.contains(document.activeElement)) return;
+			e.preventDefault();
+			e.stopPropagation();
+			setSearchOpen(true);
+			// Already open → re-focus the input and select the query for retyping.
+			searchBarRef.current?.focusInput();
+		}
+		window.addEventListener("keydown", handleSearchShortcut, { capture: true });
+		return () => window.removeEventListener("keydown", handleSearchShortcut, { capture: true });
+	}, []);
+
+	function closeSearch() {
+		setSearchOpen(false);
+		setSearchPaneId(null);
+		try { termRef.current?.focus(); } catch { /* disposed */ }
+	}
+
+	// Frame the searched pane. Fetch the tmux layout once the search resolves a
+	// pane (and again if it re-resolves), map that pane's cells to a %-rect over
+	// the canvas, and draw a frame — but only when its window has ≥2 panes, so a
+	// plain single-pane terminal never gets a redundant border. %-based, so app
+	// zoom / resize need no recompute (only a tmux split change would, which is
+	// rare mid-search).
+	useEffect(() => {
+		if (!searchOpen || !searchPaneId) {
+			setSearchPaneRect(null);
+			return;
+		}
+		let cancelled = false;
+		api.request
+			.tmuxLayout({ taskId })
+			.then((layout) => {
+				if (!cancelled) setSearchPaneRect(paneHighlightRect(layout, searchPaneId));
+			})
+			.catch(() => {
+				if (!cancelled) setSearchPaneRect(null);
+			});
+		return () => { cancelled = true; };
+	}, [searchOpen, searchPaneId, taskId]);
+
 	// When the page becomes visible again (e.g. user returns from another
 	// app or switches back to this tab), trigger a resize dance to force
 	// tmux to fully redraw. This fixes display glitches (row offsets,
@@ -1501,16 +1562,39 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 		: DARK_TERMINAL_THEME.background;
 
 	return (
-		<div
-			ref={containerRef}
-			className="w-full h-full min-h-0 overflow-hidden"
-			data-terminal="true"
-			style={{ backgroundColor: termBg }}
-			onClick={() => { try { termRef.current?.focus(); } catch { /* disposed */ } }}
-			onContextMenu={(e) => e.preventDefault()}
-			onDragOver={handleDragOver}
-			onDrop={handleDrop}
-		/>
+		<div ref={wrapperRef} className="relative w-full h-full min-h-0 overflow-hidden">
+			<div
+				ref={containerRef}
+				className="w-full h-full overflow-hidden"
+				data-terminal="true"
+				style={{ backgroundColor: termBg }}
+				onClick={() => { try { termRef.current?.focus(); } catch { /* disposed */ } }}
+				onContextMenu={(e) => e.preventDefault()}
+				onDragOver={handleDragOver}
+				onDrop={handleDrop}
+			/>
+			{searchOpen && searchPaneRect && (
+				<div
+					className="pointer-events-none absolute z-20 rounded-sm border-2 border-accent bg-accent/5"
+					style={{
+						left: `${searchPaneRect.leftPct}%`,
+						top: `${searchPaneRect.topPct}%`,
+						width: `${searchPaneRect.widthPct}%`,
+						height: `${searchPaneRect.heightPct}%`,
+					}}
+					aria-hidden="true"
+					data-testid="terminal-search-pane-frame"
+				/>
+			)}
+			{searchOpen && (
+				<TerminalSearchBar
+					ref={searchBarRef}
+					taskId={taskId}
+					onClose={closeSearch}
+					onPaneResolved={setSearchPaneId}
+				/>
+			)}
+		</div>
 	);
 }
 

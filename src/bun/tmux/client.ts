@@ -392,6 +392,36 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["send-keys", "-t", target, "-X", "cancel"], opts);
 	}
 
+	// ── Copy-mode search (terminal ⌘F) ─────────────────────────────────
+
+	/** `copy-mode -t` — enter copy-mode in the target pane (no-op when already in it). */
+	enterCopyMode(target: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["copy-mode", "-t", target], opts);
+	}
+
+	/**
+	 * `send-keys -X history-bottom` — move the copy-mode cursor to the end of
+	 * history. Re-anchoring here before every search keeps incremental typing
+	 * from drifting the match upward call after call.
+	 */
+	copyModeHistoryBottom(target: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["send-keys", "-t", target, "-X", "history-bottom"], opts);
+	}
+
+	/** `send-keys -X search-backward-text <query>` — literal (non-regex) upward search. */
+	copyModeSearchBackwardText(target: string, query: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["send-keys", "-t", target, "-X", "search-backward-text", query], opts);
+	}
+
+	/**
+	 * `send-keys -X search-again|search-reverse` — step the last search.
+	 * "older" repeats it upward; "newer" walks back toward the history bottom.
+	 */
+	copyModeSearchStep(target: string, direction: "older" | "newer", opts?: CommandOpts): Promise<void> {
+		const command = direction === "older" ? "search-again" : "search-reverse";
+		return this.runCommand(opts?.socket, ["send-keys", "-t", target, "-X", command], opts);
+	}
+
 	// ── Options, hooks, environment, config ────────────────────────────
 
 	/** `set-option -t <target> <option> <value>`. */
