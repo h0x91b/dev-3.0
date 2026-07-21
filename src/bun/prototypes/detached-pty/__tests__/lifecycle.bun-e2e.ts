@@ -15,10 +15,13 @@
 
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { start, stop } from "../launcher";
 import { PtyProtoClient } from "../client";
-import { isProcessAlive, readState } from "../state";
+import { isProcessAlive, logFile, readState, stateDir, stateFile } from "../state";
+import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
+import { spawn } from "../../../spawn";
+import { powerShellReattachStateProbe, powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -28,6 +31,11 @@ function check(condition: boolean, msg: string): void {
 		failures++;
 		console.error(`  FAIL - ${msg}`);
 	}
+}
+
+function transcriptOnFailure(observed: unknown, label: string, text: string): void {
+	if (observed) return;
+	console.error(`       ${label} transcript tail: ${JSON.stringify(text.slice(-2000))}`);
 }
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -73,83 +81,194 @@ async function run(): Promise<void> {
 	const protoDir = join(root, "meta");
 	const shimDir = join(root, "shim");
 	const sentinel = join(root, "tmux-was-invoked");
+	const isWindows = process.platform === "win32";
+	const lineEnd = isWindows ? "\r" : "\n";
 	mkdirSync(shimDir, { recursive: true });
-	const shim = join(shimDir, "tmux");
-	writeFileSync(shim, `#!/bin/sh\necho called >> "${sentinel}"\nexit 0\n`);
-	chmodSync(shim, 0o755);
+	const shim = join(shimDir, isWindows ? "tmux.cmd" : "tmux");
+	writeFileSync(
+		shim,
+		isWindows ? `@echo off\r\necho called>>"${sentinel}"\r\nexit /b 0\r\n` : `#!/bin/sh\necho called >> "${sentinel}"\nexit 0\n`,
+	);
+	if (!isWindows) chmodSync(shim, 0o755);
 
 	// Isolate metadata, force a deterministic shell (no rc → no accidental tmux
 	// auto-launch, no job control → grandchildren share the shell's pgroup), and
 	// front-load the tmux shim on PATH for the host we're about to spawn.
 	process.env.DEV3_PTY_PROTO_DIR = protoDir;
-	process.env.DEV3_PTY_PROTO_CMD = JSON.stringify(["/bin/bash", "--norc", "--noprofile"]);
-	process.env.PATH = `${shimDir}:${process.env.PATH ?? ""}`;
+	process.env.DEV3_PTY_PROTO_CMD = JSON.stringify(
+		isWindows ? ["powershell.exe", "-NoLogo", "-NoProfile"] : ["/bin/bash", "--norc", "--noprofile"],
+	);
+	process.env.PATH = `${shimDir}${delimiter}${process.env.PATH ?? ""}`;
 
 	const testPid = process.pid;
-
-	// ── 1. start: a SEPARATE detached host owns one real shell ──
-	const state = await start({ timeoutMs: 15_000 });
-	check(state.hostPid > 0 && state.hostPid !== testPid, "launcher spawned a SEPARATE detached host process");
-	check(isProcessAlive(state.hostPid), "host is alive after start() returned (launcher did not kill it)");
-	check(state.shellPid > 0 && isProcessAlive(state.shellPid), "host owns a real live shell process");
-	check(state.host === "127.0.0.1" && state.port > 0, "transport is loopback TCP on an ephemeral port");
-	check(state.token.length > 0, "transport is guarded by a per-run token");
-
-	const nonce = `state-${state.hostPid}-${state.shellPid}`;
-
-	// ── 2. client 1: set observable shell state, spawn a grandchild, record PID ──
-	const c1 = new PtyProtoClient();
-	await c1.connect(state);
-	const s1 = makeSink(c1);
-	c1.input(`set +H\n`); // disable `!` history expansion so `$!` survives in an interactive shell
-	c1.input(`export PROTO_STATE=${nonce}\n`);
-	c1.input(`sleep 300 &\n`);
-	c1.input(`echo "SLEEPPID[$!]"\n`);
-	const sleepMatch = await s1.waitForMatch(/SLEEPPID\[(\d+)\]/);
-	check(sleepMatch !== null, "client 1 receives live shell output");
-	const sleepPid = Number(sleepMatch?.[1]);
-	check(Number.isInteger(sleepPid) && isProcessAlive(sleepPid), "shell spawned a live grandchild process");
-	const st1 = await c1.status();
-	check(st1.shellPid === state.shellPid, "status over the wire reports the recorded shell PID");
-	const recordedShellPid = st1.shellPid;
-	c1.close();
-
-	// ── 3. disconnect: host + shell survive with no client attached ──
-	await delay(250);
-	check(isProcessAlive(state.hostPid), "host survives client 1 disconnect");
-	check(isProcessAlive(recordedShellPid), "shell survives client 1 disconnect");
-
-	// ── 4. fresh client 2: rediscover endpoint + reattach to the SAME shell ──
-	const discovered = readState();
-	check(!!discovered && discovered.shellPid === recordedShellPid, "fresh client rediscovers the endpoint from metadata");
-	const c2 = await PtyProtoClient.discover();
-	const s2 = makeSink(c2);
-	const st2 = await c2.status();
-	check(st2.shellPid === recordedShellPid, "reattached client sees the UNCHANGED shell PID");
-	check(st2.hostPid === state.hostPid, "reattached client sees the UNCHANGED host PID");
-	c2.input(`echo "MARKER:$PROTO_STATE:$$"\n`);
-	check(
-		await s2.waitFor(`MARKER:${nonce}:${recordedShellPid}`),
-		"reattached client proves shell STATE (env var) AND PID are preserved across reconnect",
+	// Models a pre-existing production tmux process: the test owns this guard,
+	// while the native host must neither adopt it nor terminate it.
+	const tmuxGuard = spawn(
+		isWindows
+			? ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
+			: ["sleep", "300"],
+		{ stdin: "ignore", stdout: "ignore", stderr: "ignore" },
 	);
-	c2.close();
-
-	// ── 5. stop: terminate the whole shell tree + remove all metadata ──
-	const stopped = await stop({ timeoutMs: 8000 });
-	check(stopped, "stop() reports success");
-	check(!isProcessAlive(state.hostPid), "host process terminated after stop");
-	check(!isProcessAlive(recordedShellPid), "shell process terminated after stop");
-	check(!isProcessAlive(sleepPid), "shell process TREE terminated (grandchild reaped)");
-	check(readState() === null, "all prototype metadata removed after stop");
-	check(!existsSync(join(protoDir, "state.json")), "state.json file removed from disk");
-
-	// ── 6. the tracer never touched tmux ──
-	check(!existsSync(sentinel), "tracer NEVER invoked tmux (PATH shim sentinel absent)");
+	const sendLine = (client: PtyProtoClient, command: string): void => client.input(`${command}${lineEnd}`);
 
 	try {
-		rmSync(root, { recursive: true, force: true });
-	} catch {
-		// best-effort
+		// ── 1. start: a SEPARATE detached host owns one real shell ──
+		const state = await start({ timeoutMs: 15_000 });
+		check(state.hostPid > 0 && state.hostPid !== testPid, "launcher spawned a SEPARATE detached host process");
+		check(isProcessAlive(state.hostPid), "host is alive after start() returned (launcher did not kill it)");
+		check(state.shellPid > 0 && isProcessAlive(state.shellPid), "host owns a real live shell process");
+		check(state.host === "127.0.0.1" && state.port > 0, "transport is loopback TCP on an ephemeral port");
+		check(state.token.length > 0, "transport is guarded by a per-run token");
+		check(isProcessAlive(tmuxGuard.pid), "pre-existing tmux ownership guard is alive before native-session stop");
+		if (isWindows) {
+			check(await windowsJobExists(state.token), "Windows Job Object exists while the session is live");
+			check(await isProcessInWindowsJob(state.token, state.hostPid), "Windows Job Object owns the host before shell work");
+			check(await isProcessInWindowsJob(state.token, state.shellPid), "root shell inherited Windows Job Object ownership at spawn");
+			check(!(await isProcessInWindowsJob(state.token, tmuxGuard.pid)), "Windows Job Object excludes the tmux ownership guard");
+		}
+
+		const nonce = `state-${state.hostPid}-${state.shellPid}`;
+
+		// ── 2. client 1: set observable root-shell state and record PID ──
+		const c1 = new PtyProtoClient();
+		await c1.connect(state);
+		const s1 = makeSink(c1);
+		let rootObserved: string | RegExpExecArray | null;
+		let rootPidMatches: boolean;
+		if (isWindows) {
+			const probe = powerShellRootStateProbe(nonce, state.shellPid);
+			rootObserved = await sendUntilObserved({
+				send: () => sendLine(c1, probe.command),
+				observe: () => probe.observe(s1.text()),
+				attempts: 4,
+				attemptTimeoutMs: 1000,
+				pollIntervalMs: 30,
+			});
+			rootPidMatches = rootObserved !== null;
+		} else {
+			sendLine(c1, "set +H");
+			sendLine(c1, `export PROTO_STATE=${nonce}`);
+			sendLine(c1, `echo "ROOTPID[$$]"`);
+			const rootMatch = await s1.waitForMatch(/ROOTPID\[(\d+)\]/);
+			rootObserved = rootMatch;
+			rootPidMatches = Number(rootMatch?.[1]) === state.shellPid;
+		}
+		transcriptOnFailure(rootObserved, "root startup", s1.text());
+		check(rootObserved !== null, "client 1 receives live shell output");
+		check(rootPidMatches, "interactive root reports the recorded shell PID");
+		const st1 = await c1.status();
+		check(st1.shellPid === state.shellPid, "status over the wire reports the recorded shell PID");
+		const recordedShellPid = st1.shellPid;
+		c1.close();
+
+		// ── 3. disconnect: host + shell survive with no client attached ──
+		await delay(250);
+		check(isProcessAlive(state.hostPid), "host survives client 1 disconnect");
+		check(isProcessAlive(recordedShellPid), "shell survives client 1 disconnect");
+
+		// ── 4. fresh client 2: rediscover and create a child + grandchild ──
+		const discovered = readState();
+		check(!!discovered && discovered.shellPid === recordedShellPid, "fresh client rediscovers the endpoint from metadata");
+		const c2 = await PtyProtoClient.discover();
+		const s2 = makeSink(c2);
+		const st2 = await c2.status();
+		check(st2.shellPid === recordedShellPid, "reattached client sees the UNCHANGED shell PID");
+		check(st2.hostPid === state.hostPid, "reattached client sees the UNCHANGED host PID");
+		let markerSeen: string | boolean | null;
+		if (isWindows) {
+			const probe = powerShellReattachStateProbe(nonce, recordedShellPid);
+			markerSeen = await sendUntilObserved({
+				send: () => sendLine(c2, probe.command),
+				observe: () => probe.observe(s2.text()),
+				attempts: 4,
+				attemptTimeoutMs: 1000,
+				pollIntervalMs: 30,
+			});
+		} else {
+			const expectedMarker = `MARKER:${nonce}:${recordedShellPid}`;
+			sendLine(c2, `echo "MARKER:$PROTO_STATE:$$"`);
+			markerSeen = await s2.waitFor(expectedMarker);
+		}
+		transcriptOnFailure(markerSeen, "reattach marker", s2.text());
+		check(
+			Boolean(markerSeen),
+			"reattached client proves shell STATE (env var) AND PID are preserved across reconnect",
+		);
+
+		sendLine(c2, isWindows ? "powershell.exe -NoLogo -NoProfile" : "bash --norc --noprofile");
+		let childMatch: RegExpExecArray | null;
+		if (isWindows) {
+			childMatch = await sendUntilObserved({
+				send: () => sendLine(c2, `Write-Output "CHILDPID[$PID]"`),
+				observe: () => /CHILDPID\[(\d+)\]/.exec(s2.text()),
+				attempts: 6,
+				attemptTimeoutMs: 1000,
+				pollIntervalMs: 30,
+			});
+		} else {
+			sendLine(c2, "set +H");
+			sendLine(c2, `echo "CHILDPID[$$]"`);
+			childMatch = await s2.waitForMatch(/CHILDPID\[(\d+)\]/);
+		}
+		transcriptOnFailure(childMatch, "child startup", s2.text());
+		const childPid = Number(childMatch?.[1]);
+		check(Number.isInteger(childPid) && isProcessAlive(childPid), "root shell spawned a live child shell");
+		if (isWindows) {
+			sendLine(
+				c2,
+				`$grand = Start-Process -PassThru powershell.exe -ArgumentList @('-NoLogo','-NoProfile','-Command','Start-Sleep -Seconds 300'); Write-Output "GRANDPID[$($grand.Id)]"`,
+			);
+		} else {
+			sendLine(c2, "sleep 300 &");
+			sendLine(c2, `echo "GRANDPID[$!]"`);
+		}
+		const grandchildMatch = await s2.waitForMatch(/GRANDPID\[(\d+)\]/);
+		const grandchildPid = Number(grandchildMatch?.[1]);
+		check(Number.isInteger(grandchildPid) && isProcessAlive(grandchildPid), "child shell spawned a live grandchild");
+		if (isWindows) {
+			check(await isProcessInWindowsJob(state.token, childPid), "Windows Job Object owns the child shell");
+			check(await isProcessInWindowsJob(state.token, grandchildPid), "Windows Job Object owns the grandchild");
+		}
+		c2.close();
+
+		// ── 5. stop: graceful request, bounded wait, forceful owned-tree cleanup ──
+		const stopped = await stop({ timeoutMs: 8000 });
+		check(stopped, "stop() reports success");
+		check(!isProcessAlive(state.hostPid), "host process terminated after stop");
+		check(!isProcessAlive(recordedShellPid), "root shell terminated after stop");
+		check(!isProcessAlive(childPid), "child shell terminated after stop");
+		check(!isProcessAlive(grandchildPid), "grandchild terminated after stop");
+		check(isProcessAlive(tmuxGuard.pid), "native stop did not terminate the pre-existing tmux ownership guard");
+		check(readState() === null, "all prototype metadata removed after stop");
+		check(!existsSync(stateFile()), "state.json removed from disk");
+		check(!existsSync(logFile()), "host.log removed from disk");
+		check(!existsSync(stateDir()), "prototype metadata directory removed from disk");
+		if (isWindows) check(!(await windowsJobExists(state.token)), "Windows Job Object and its handles are gone");
+
+		const endpointProbe = new PtyProtoClient();
+		let endpointGone = false;
+		try {
+			await endpointProbe.connect(state, { timeoutMs: 750 });
+			endpointProbe.close();
+		} catch {
+			endpointGone = true;
+		}
+		check(endpointGone, "listening endpoint is gone after stop");
+		check(await stop({ timeoutMs: 1000 }), "repeated stop is idempotent");
+
+		// ── 6. the tracer never invoked or terminated tmux ──
+		check(!existsSync(sentinel), "tracer NEVER invoked tmux (PATH shim sentinel absent)");
+	} finally {
+		try {
+			tmuxGuard.kill();
+		} catch {
+			// already gone
+		}
+		try {
+			rmSync(root, { recursive: true, force: true });
+		} catch {
+			// best-effort
+		}
 	}
 }
 

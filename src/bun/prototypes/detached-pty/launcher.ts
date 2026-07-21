@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { clearState, isProcessAlive, logFile, readState, stateDir, type PtyProtoState } from "./state";
 import { PtyProtoClient } from "./client";
 import type { StatusReply } from "./protocol";
+import { forceTerminateWindowsJob } from "./windows-job";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -31,7 +32,7 @@ export async function start(opts: { timeoutMs?: number } = {}): Promise<PtyProto
 	if (existing && isProcessAlive(existing.hostPid)) {
 		throw new Error(`a detached-pty host is already running (pid ${existing.hostPid}, port ${existing.port})`);
 	}
-	if (existing) clearState(); // stale record from a dead host
+	if (existing) clearState(existing.token); // stale record from a dead host
 
 	mkdirSync(stateDir(), { recursive: true });
 	const logFd = openSync(logFile(), "a");
@@ -94,7 +95,7 @@ export async function status(): Promise<StatusResult> {
 	const state = readState();
 	if (!state) return { running: false };
 	if (!isProcessAlive(state.hostPid)) {
-		clearState();
+		clearState(state.token);
 		return { running: false };
 	}
 	try {
@@ -109,13 +110,30 @@ export async function status(): Promise<StatusResult> {
 }
 
 /**
- * Stop the host and its shell tree. Prefers a graceful in-band stop; falls back
- * to signalling the host PID. Resolves once metadata is gone and both the host
- * and shell PIDs are dead.
+ * Stop the host and its shell tree. Prefers a graceful in-band stop; Windows
+ * fallback opens only the token-named Job Object, while POSIX signals the host.
+ * Resolves once metadata is gone and both recorded PIDs are dead.
  */
 export async function stop(opts: { timeoutMs?: number } = {}): Promise<boolean> {
 	const state = readState();
-	if (!state) return false;
+	if (!state) return true;
+
+	const selectedStateIsGone = (): boolean => readState()?.token !== state.token;
+	const forceSelectedSession = async (hard = false): Promise<boolean> => {
+		if (process.platform === "win32") {
+			try {
+				return await forceTerminateWindowsJob(state.token);
+			} catch {
+				return false;
+			}
+		}
+		try {
+			if (isProcessAlive(state.hostPid)) process.kill(state.hostPid, hard ? "SIGKILL" : "SIGTERM");
+			return true;
+		} catch {
+			return false;
+		}
+	};
 
 	try {
 		const client = new PtyProtoClient();
@@ -123,27 +141,25 @@ export async function stop(opts: { timeoutMs?: number } = {}): Promise<boolean> 
 		await client.requestStop();
 		client.close();
 	} catch {
-		try {
-			if (isProcessAlive(state.hostPid)) process.kill(state.hostPid, "SIGTERM");
-		} catch {
-			// already gone
-		}
+		await forceSelectedSession();
 	}
 
 	const deadline = Date.now() + (opts.timeoutMs ?? 6000);
 	while (Date.now() < deadline) {
-		if (!readState() && !isProcessAlive(state.hostPid) && !isProcessAlive(state.shellPid)) {
+		if (selectedStateIsGone() && !isProcessAlive(state.hostPid) && !isProcessAlive(state.shellPid)) {
 			return true;
 		}
 		await delay(100);
 	}
 
-	// Last resort: hard-kill the host and clear metadata ourselves.
-	try {
-		if (isProcessAlive(state.hostPid)) process.kill(state.hostPid, "SIGKILL");
-	} catch {
-		// already gone
+	// Last resort: terminate only the selected Job Object (or POSIX host), then
+	// give OS handle/process cleanup one final bounded interval.
+	await forceSelectedSession(true);
+	const forceDeadline = Date.now() + 1500;
+	while (Date.now() < forceDeadline) {
+		if (!isProcessAlive(state.hostPid) && !isProcessAlive(state.shellPid)) break;
+		await delay(50);
 	}
-	clearState();
+	if (!isProcessAlive(state.hostPid) && !isProcessAlive(state.shellPid)) clearState(state.token);
 	return !isProcessAlive(state.hostPid) && !isProcessAlive(state.shellPid);
 }

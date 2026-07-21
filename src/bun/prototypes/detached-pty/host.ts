@@ -16,6 +16,7 @@ import { randomBytes } from "node:crypto";
 import { clearState, stateDir, writeState } from "./state";
 import { decodeControl, encodeControl, exitEvent, PROTOCOL_VERSION, stoppingEvent, type StatusReply } from "./protocol";
 import { mkdirSync } from "node:fs";
+import { createWindowsJobContainment } from "./windows-job";
 
 // A StatusReply needs live host state, so it is built inline rather than via a
 // static protocol factory.
@@ -47,6 +48,7 @@ export function resolveShellCommand(): string[] {
 			// fall through to default
 		}
 	}
+	if (process.platform === "win32") return ["powershell.exe", "-NoLogo", "-NoProfile"];
 	return [process.env.SHELL || "/bin/bash"];
 }
 
@@ -89,18 +91,10 @@ function collectDescendants(rootPid: number): number[] {
  * Kill the shell's whole process tree. Bun.Terminal makes the shell a session
  * leader (setsid for the PTY). We signal every descendant individually (covers
  * job-control children in separate process groups), then the shell's foreground
- * group, then the shell itself. On Windows there is no process group, so we just
- * terminate the subprocess (a full Windows tree-kill is out of scope for the spike).
+ * group, then the shell itself. Windows uses its pre-spawn Job Object boundary
+ * instead, so this fallback only owns the POSIX teardown path.
  */
 function killTree(shellPid: number, proc: { kill: (signal?: number | NodeJS.Signals) => void }, signal: NodeJS.Signals): void {
-	if (process.platform === "win32") {
-		try {
-			proc.kill();
-		} catch {
-			// already gone
-		}
-		return;
-	}
 	for (const pid of collectDescendants(shellPid)) {
 		try {
 			process.kill(pid, signal);
@@ -135,6 +129,9 @@ export async function runHost(opts: HostOptions = {}): Promise<void> {
 	const rows = opts.rows ?? 24;
 	const cmd = opts.cmd ?? resolveShellCommand();
 	const token = randomBytes(24).toString("hex");
+	// Self-enrol before Bun.spawn: Windows children inherit the non-breakaway job
+	// atomically at process creation, so the root shell cannot race assignment.
+	const windowsJob = await createWindowsJobContainment(token);
 	mkdirSync(stateDir(), { recursive: true });
 
 	const clients = new Set<{ send: (data: string | Uint8Array) => number; close: () => void }>();
@@ -251,6 +248,22 @@ export async function runHost(opts: HostOptions = {}): Promise<void> {
 		} catch {
 			// already stopped
 		}
+		if (windowsJob) {
+			// Ctrl-C interrupts a foreground command; `exit` then asks PowerShell to
+			// close normally. The fixed wait prevents ConPTY teardown deadlocks.
+			try {
+				proc.terminal?.write("\x03");
+				await delay(75);
+				proc.terminal?.write("exit\r");
+			} catch {
+				// terminal already closed
+			}
+			await Promise.race([proc.exited, delay(1500)]);
+			clearState(token);
+			windowsJob.closeForTreeTermination();
+			process.exit(exitCode);
+			return;
+		}
 		killTree(shellPid, proc, "SIGTERM");
 		const exitedGracefully = await Promise.race([
 			proc.exited.then(() => true),
@@ -265,7 +278,7 @@ export async function runHost(opts: HostOptions = {}): Promise<void> {
 		} catch {
 			// already closed
 		}
-		clearState();
+		clearState(token);
 		process.exit(exitCode);
 	}
 
