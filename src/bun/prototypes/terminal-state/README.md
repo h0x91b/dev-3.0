@@ -143,7 +143,11 @@ See `BENCHMARKS.md` for the recorded bounded measurements.
 - Hyperlink targets, shell integration metadata, images, sixel, input ordering,
   backpressure, checksums, compression, and snapshot privacy are not designed.
 - The real captures cover macOS Neovim and Windows PowerShell 5.1 ConPTY, but not
-  Linux PTYs, PowerShell 7, or a full-screen Windows TUI.
+  Linux PTYs. The remaining native-Windows matrix — cmd.exe, PowerShell 7, and the
+  Claude/Codex agent TUIs (STATE-004) — has runnable capture/replay/sanitize
+  tooling in `WINDOWS-MATRIX.md` (`run-windows-matrix.ps1`, `capture-session.ts`,
+  `terminal-query-responder.ts`, `verify-journal.ts`, `sanitize-journal.ts`);
+  results are pending execution on a native Windows host.
 
 Removal requires deleting `src/bun/prototypes/terminal-state/` and the two
 terminal-state package scripts. There is no daemon, migration, stored state,
