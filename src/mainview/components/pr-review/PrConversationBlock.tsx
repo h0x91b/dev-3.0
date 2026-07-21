@@ -61,16 +61,17 @@ export function PrConversationBlock({
 	const unresolvedCount = threads.filter((thread) => !thread.isResolved).length;
 	const resolvedCount = threads.length - unresolvedCount;
 	const unmappedCount = unmappedThreads.reduce((sum, group) => sum + group.threads.length, 0);
+	const toggleExpanded = () => setExpanded((current) => !current);
 
 	return (
 		<div className="mb-4 rounded-xl border border-edge bg-raised" data-testid="pr-conversation-block">
 			<div className="flex flex-wrap items-center gap-2 px-4 py-2.5">
 				<button
 					type="button"
-					onClick={() => setExpanded((current) => !current)}
+					onClick={toggleExpanded}
 					aria-expanded={expanded}
 					data-testid="pr-conversation-toggle"
-					className="flex min-w-0 items-center gap-2 text-left transition-colors hover:text-fg"
+					className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md text-left transition-colors hover:bg-raised-hover hover:text-fg"
 				>
 					<span aria-hidden="true" className="text-[1rem] leading-none text-fg-2" style={{ fontFamily: NERD_FONT }}>
 						{GITHUB_GLYPH}
@@ -78,21 +79,18 @@ export function PrConversationBlock({
 					<span className="text-xs font-semibold text-fg">{t("infoPanel.prConversationTitle")}</span>
 					<span className="rounded bg-base px-1.5 py-px font-mono text-[0.6875rem] text-fg-3">{conversation.length}</span>
 					<span aria-hidden="true" className="text-[0.8rem] text-fg-3">{expanded ? "▾" : "▸"}</span>
+					{unresolvedCount > 0 && (
+						<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[0.6875rem] font-semibold text-warning">
+							{t.plural("infoPanel.prUnresolvedCount", unresolvedCount)}
+						</span>
+					)}
+					<span className="flex-1" />
+					{payload && (
+						<span className="text-[0.6875rem] text-fg-muted" title={payload.fetchedAt}>
+							{t("infoPanel.prFetchedAt", { time: formatCommentTimestamp(payload.fetchedAt) })}
+						</span>
+					)}
 				</button>
-
-				{unresolvedCount > 0 && (
-					<span className="rounded border border-warning/30 bg-warning/10 px-1.5 py-px text-[0.6875rem] font-semibold text-warning">
-						{t.plural("infoPanel.prUnresolvedCount", unresolvedCount)}
-					</span>
-				)}
-
-				<span className="flex-1" />
-
-				{payload && (
-					<span className="text-[0.6875rem] text-fg-muted" title={payload.fetchedAt}>
-						{t("infoPanel.prFetchedAt", { time: formatCommentTimestamp(payload.fetchedAt) })}
-					</span>
-				)}
 
 				{resolvedCount > 0 && (
 					<button

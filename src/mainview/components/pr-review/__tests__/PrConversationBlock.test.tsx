@@ -87,8 +87,11 @@ describe("PrConversationBlock", () => {
 	it("shows the title, comment count, and unresolved badge", () => {
 		renderBlock();
 		const block = screen.getByTestId("pr-conversation-block");
-		expect(within(block).getByText("Conversation")).toBeInTheDocument();
-		expect(within(block).getByText("1 unresolved")).toBeInTheDocument();
+		const toggle = within(block).getByTestId("pr-conversation-toggle");
+		expect(within(toggle).getByText("Conversation")).toBeInTheDocument();
+		expect(within(toggle).getByText("1 unresolved")).toBeInTheDocument();
+		expect(within(toggle).getByText(/Updated/)).toBeInTheDocument();
+		expect(toggle).toHaveClass("flex-1");
 	});
 
 	it("expands to reveal sanitized markdown conversation comments with a GitHub link", async () => {
@@ -117,6 +120,7 @@ describe("PrConversationBlock", () => {
 		const { onRefresh } = renderBlock();
 		await user.click(screen.getByTestId("pr-comments-refresh"));
 		expect(onRefresh).toHaveBeenCalledTimes(1);
+		expect(screen.queryByTestId("pr-conversation-list")).not.toBeInTheDocument();
 	});
 
 	it("offers the show-resolved toggle only when resolved threads exist", () => {
@@ -131,6 +135,7 @@ describe("PrConversationBlock", () => {
 		});
 		await user.click(screen.getByTestId("pr-show-resolved-toggle"));
 		expect(onToggleShowResolved).toHaveBeenCalledTimes(1);
+		expect(screen.queryByTestId("pr-conversation-list")).not.toBeInTheDocument();
 	});
 
 	it("renders the error row with a retry action", async () => {
