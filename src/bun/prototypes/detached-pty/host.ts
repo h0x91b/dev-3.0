@@ -17,6 +17,8 @@ import { clearState, stateDir, writeState } from "./state";
 import { decodeControl, encodeControl, exitEvent, PROTOCOL_VERSION, stoppingEvent, type StatusReply } from "./protocol";
 import { mkdirSync } from "node:fs";
 import { createWindowsJobContainment } from "./windows-job";
+import { spawn, spawnSync } from "../../spawn";
+import { assertNativeTerminalRuntime, nativeTerminalSpawnError } from "../../../shared/native-terminal-runtime";
 
 // A StatusReply needs live host state, so it is built inline rather than via a
 // static protocol factory.
@@ -60,7 +62,7 @@ export function resolveShellCommand(): string[] {
  */
 function collectDescendants(rootPid: number): number[] {
 	try {
-		const res = Bun.spawnSync(["ps", "-eo", "pid=,ppid="]);
+		const res = spawnSync(["ps", "-eo", "pid=,ppid="]);
 		if (!res.success) return [];
 		const childrenByParent = new Map<number, number[]>();
 		for (const line of new TextDecoder().decode(res.stdout).split("\n")) {
@@ -128,6 +130,8 @@ export async function runHost(opts: HostOptions = {}): Promise<void> {
 	const cols = opts.cols ?? 80;
 	const rows = opts.rows ?? 24;
 	const cmd = opts.cmd ?? resolveShellCommand();
+	const bunVersion = Bun.version;
+	assertNativeTerminalRuntime({ platform: process.platform, bunVersion });
 	const token = randomBytes(24).toString("hex");
 	// Self-enrol before Bun.spawn: Windows children inherit the non-breakaway job
 	// atomically at process creation, so the root shell cannot race assignment.
@@ -140,25 +144,49 @@ export async function runHost(opts: HostOptions = {}): Promise<void> {
 	let shuttingDown = false;
 
 	// ── The one real shell, owned by THIS process (Bun.Terminal, no tmux) ──
-	const proc = Bun.spawn(cmd, {
-		terminal: {
-			cols,
-			rows,
-			data(_terminal, bytes) {
-				// Broadcast raw PTY output to every attached client. No client ⇒
-				// dropped (no screen snapshot / scrollback replay — out of scope).
-				for (const c of clients) {
-					try {
-						c.send(bytes);
-					} catch {
-						// dead client — dropped on next close event
+	const proc = (() => {
+		try {
+			return spawn(cmd, {
+				terminal: {
+					cols,
+					rows,
+					data(_terminal: unknown, bytes: Uint8Array) {
+						// Broadcast raw PTY output to every attached client. No client ⇒
+						// dropped (no screen snapshot / scrollback replay — out of scope).
+						for (const c of clients) {
+							try {
+								c.send(bytes);
+							} catch {
+								// dead client — dropped on next close event
+							}
+						}
 					}
-				}
-			},
-		},
-		cwd: opts.cwd ?? process.env.DEV3_PTY_PROTO_CWD ?? process.cwd(),
-		env: { ...process.env, TERM: "xterm-256color" },
-	});
+				},
+				cwd: opts.cwd ?? process.env.DEV3_PTY_PROTO_CWD ?? process.cwd(),
+				env: { ...process.env, TERM: "xterm-256color" },
+			});
+		} catch (cause) {
+			throw nativeTerminalSpawnError({
+				platform: process.platform,
+				bunVersion,
+				command: cmd[0] ?? "shell",
+				cause,
+			});
+		}
+	})();
+	if (!proc.terminal) {
+		try {
+			proc.kill();
+		} catch {
+			// process already exited
+		}
+		throw nativeTerminalSpawnError({
+			platform: process.platform,
+			bunVersion,
+			command: cmd[0] ?? "shell",
+			cause: new Error("Bun.spawn returned without a terminal handle"),
+		});
+	}
 
 	const startedAt = new Date().toISOString();
 	const shellPid = proc.pid;
