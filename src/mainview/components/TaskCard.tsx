@@ -31,6 +31,7 @@ import { PREPARING_STAGE_LABELS } from "./TaskPreparingView";
 import Tooltip from "./Tooltip";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
+import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/pr-status";
 
 interface TaskCardProps {
 	task: Task;
@@ -428,35 +429,50 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		</TaskPrStatusPopover>
 	) : null;
 
-	// CI + PR-review status badges. Every PR status badge opens the pull request;
-	// hovering any one of them opens the shared checks/conflict popover.
-	const CI_BADGE: Record<NonNullable<TaskPRBadgeInfo["ciStatus"]>, { glyph: string; cls: string; key: TranslationKey }> = {
-		success: { glyph: "", cls: "text-success bg-success/10 hover:bg-success/20", key: "task.ci.success" },
-		failure: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.ci.failure" },
-		pending: { glyph: "", cls: "text-warning bg-warning/10 hover:bg-warning/20", key: "task.ci.pending" },
+	// PR status badges. Every badge opens the pull request; hovering any one of
+	// them opens the shared checks/conflict popover.
+	//
+	// Mergeability replaces the old standalone CI badge — GitHub's merge-state
+	// already folds failing/blocking checks into one verdict, and the popover
+	// keeps the per-check breakdown for detail.
+	const MERGE_BADGE_REASON: Record<PRMergeabilityReason, TranslationKey> = {
+		conflict: "task.mergeBadge.conflict",
+		blocked: "task.mergeBadge.blocked",
+		behind: "task.mergeBadge.behind",
+		draft: "task.mergeBadge.draft",
+		unstable: "task.mergeBadge.unstable",
+		hooks: "task.mergeBadge.blocked",
 	};
+	const mergeability = prInfo ? summarizeMergeability(prInfo.mergeState) : null;
+	const mergeBadge = mergeability && mergeability.state !== "unknown" ? (() => {
+		const ok = mergeability.state === "mergeable";
+		const label = ok
+			? t("task.mergeBadge.mergeable")
+			: mergeability.reason
+				? t(MERGE_BADGE_REASON[mergeability.reason])
+				: t("task.mergeBadge.notMergeable");
+		return (
+			<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
+				<button
+					type="button"
+					onClick={(e) => {
+						e.stopPropagation();
+						window.open(prInfo!.url, "_blank");
+					}}
+					className={`inline-flex h-5 max-w-full flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${ok ? "text-success bg-success/10 hover:bg-success/20" : "text-danger bg-danger/10 hover:bg-danger/20"}`}
+					aria-label={t(ok ? "task.mergeBadge.mergeableAria" : "task.mergeBadge.notMergeableAria")}
+				>
+					<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ok ? "\u{F0623}" : "\uf05e"}</span>
+					<span className="truncate leading-none">{label}</span>
+				</button>
+			</TaskPrStatusPopover>
+		);
+	})() : null;
 	const REVIEW_BADGE: Record<NonNullable<TaskPRBadgeInfo["reviewState"]>, { glyph: string; cls: string; key: TranslationKey }> = {
 		approved: { glyph: "", cls: "text-success bg-success/10 hover:bg-success/20", key: "task.review.approved" },
 		changes_requested: { glyph: "", cls: "text-danger bg-danger/10 hover:bg-danger/20", key: "task.review.changesRequested" },
 		commented: { glyph: "", cls: "text-warning bg-warning/10 hover:bg-warning/20", key: "task.review.commented" },
 	};
-	const ciMeta = prInfo?.ciStatus ? CI_BADGE[prInfo.ciStatus] : null;
-	const ciBadge = ciMeta ? (
-		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
-			<button
-				type="button"
-				onClick={(e) => {
-					e.stopPropagation();
-					window.open(prInfo!.url, "_blank");
-				}}
-				className={`inline-flex h-5 flex-shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold leading-none transition-colors ${ciMeta.cls}`}
-				aria-label={t(ciMeta.key)}
-			>
-				<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{ciMeta.glyph}</span>
-				<span className="leading-none">CI</span>
-			</button>
-		</TaskPrStatusPopover>
-	) : null;
 	const reviewMeta = prInfo?.reviewState ? REVIEW_BADGE[prInfo.reviewState] : null;
 	const reviewBadge = reviewMeta ? (
 		<TaskPrStatusPopover prInfo={prInfo!} projectId={project.id} taskId={task.id} onShowUnresolved={openUnresolvedInDiff}>
@@ -905,9 +921,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				{/* Scheduled-message countdown chip (live-agent cards with a pending "Send later") */}
 				{!isTodo && <ScheduledMessagesChip task={task} project={project} dispatch={dispatch} placement="up" />}
 
-				{/* PR + CI/review badges for non-active cards */}
+				{/* PR + merge/review badges for non-active cards */}
 				{!isActive && prBadge}
-				{!isActive && ciBadge}
+				{!isActive && mergeBadge}
 				{!isActive && reviewBadge}
 				{!isActive && commentBadge}
 
@@ -997,10 +1013,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			{/* PR / CI / review status badges — their own row so they don't crowd the
 			    action row's Watch / + Variant controls (which previously squeezed them
 			    onto one overflowing line). */}
-			{isActive && (prBadge || ciBadge || reviewBadge || commentBadge) && (
+			{isActive && (prBadge || mergeBadge || reviewBadge || commentBadge) && (
 				<div data-testid="task-card-status-badges" className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
 					{prBadge}
-					{ciBadge}
+					{mergeBadge}
 					{reviewBadge}
 					{commentBadge}
 				</div>
