@@ -40,6 +40,22 @@ describe("platform feedback skill section (always present)", () => {
 });
 
 describe("dev3 skill content", () => {
+	it("exempts in-task bug hunters from mutating the originating task", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("## In-task Bug Hunter isolation");
+			expect(skill).toContain("This exception overrides the session-start checklist");
+			expect(skill).toContain(
+				"Do NOT change the existing task's title, description, overview, labels, priority, status, assigned agent, or configuration.",
+			);
+			expect(skill).toContain(
+				"The only allowed write to the existing task is `dev3 note add`",
+			);
+			expect(skill.indexOf("## In-task Bug Hunter isolation")).toBeLessThan(
+				skill.indexOf("## Session-start checklist"),
+			);
+		}
+	});
+
 	it("routes unqualified artifacts to the task-local dev3 starter", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## dev3 HTML artifacts");
@@ -296,6 +312,11 @@ describe("dev3 Bug Hunter skill content", () => {
 
 		expect(skill).toContain("This skill is review-only.");
 		expect(skill).toContain("Do NOT modify code, apply patches, create commits, or rewrite files.");
+		expect(skill).toContain("Do NOT run the dev3 session-start checklist");
+		expect(skill).toContain(
+			"Do NOT change the existing task's title, description, overview, labels, priority, status, assigned agent, or configuration.",
+		);
+		expect(skill).toContain("The only allowed write to the existing task is `dev3 note add`");
 		expect(skill).toContain(
 			"You MAY create dev3 tasks only after the user explicitly approves task creation for findings.",
 		);

@@ -454,9 +454,16 @@ This skill is review-only.
 - You MAY create dev3 tasks only after the user explicitly approves task creation for findings.
 - If a bug looks real but is not yet proven, say so plainly and describe the missing proof.
 
+When launched inside an existing dev3 task, that task belongs to the main agent:
+
+- Do NOT run the dev3 session-start checklist or rename the git branch.
+- Do NOT change the existing task's title, description, overview, labels, priority, status, assigned agent, or configuration.
+- The only allowed write to the existing task is \`dev3 note add\` when task mode below asks you to record confirmed findings.
+- Finish the Bug Hunter report and stop. The main agent owns every other task mutation and lifecycle transition.
+
 ## Prerequisite
 
-If your working directory is inside \`~/.dev3.0/worktrees/\`, invoke the \`/dev3\` skill before doing anything else unless it is already active in the session. For Codex shell commands, use \`shell="/bin/bash"\` and \`login=false\`.
+If your working directory is inside \`~/.dev3.0/worktrees/\`, invoke the \`/dev3\` skill before doing anything else unless it is already active in the session. Its in-task Bug Hunter isolation rule overrides its normal session-start checklist and lifecycle duties. For Codex shell commands, use \`shell="/bin/bash"\` and \`login=false\`.
 
 ## Step 1: Generate your seed
 

@@ -2354,6 +2354,9 @@ export function buildBugHunterPrompt(task: Task, project: Project, baseCmd = "")
 	const prefix = agents.skillInvocationPrefix(baseCmd);
 	return (
 		`${prefix}dev3-bug-hunter ` +
+		`You are a read-only helper inside a task owned by the main agent. ` +
+		`Do NOT run the dev3 session-start checklist, rename the branch, or change this task's title, description, overview, labels, priority, status, assigned agent, or configuration. ` +
+		`The only permitted dev3 write is \`dev3 note add\` for confirmed findings as instructed below; the main agent owns every other task mutation and lifecycle transition. ` +
 		`Scope is locked to THIS branch only — only the changes this branch introduced, never commits pulled in from origin. ` +
 		`First pin the fork point, then list only this branch's own changed files: ` +
 		`run \`BASE=$(git merge-base ${ref} HEAD); git diff --name-only "$BASE" HEAD\`. ` +

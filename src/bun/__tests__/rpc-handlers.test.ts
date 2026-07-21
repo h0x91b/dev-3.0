@@ -7625,6 +7625,9 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		for (const args of pasteCalls) {
 			const prompt = args[args.length - 1];
 			expect(prompt).toContain("/dev3-bug-hunter");
+			expect(prompt).toContain("read-only helper inside a task owned by the main agent");
+			expect(prompt).toContain("Do NOT run the dev3 session-start checklist");
+			expect(prompt).toContain("The only permitted dev3 write is `dev3 note add`");
 			expect(prompt).toContain("Scope is locked to THIS branch only");
 			// Must pin the fork point via merge-base, not diff against the ref
 			// directly — otherwise an un-rebased branch pulls in unrelated files
