@@ -80,6 +80,8 @@ so applications do not stall or render an error state.
 | `resize-history.json` | Shrink/grow history and post-resize output |
 | `real-nvim.json` | Captured Neovim 0.12.4 full-screen PTY stream |
 | `real-powershell.json` | Captured Windows PowerShell 5.1 ConPTY stream, title, colors, history, and cursor presentation |
+| `real-cmd.json` | Captured Windows cmd.exe ConPTY stream: title, truecolor, palette history, cursor style |
+| `real-pwsh7.json` | Captured Windows PowerShell 7 ConPTY stream with real UTF-8 glyphs (no 5.1 mojibake) |
 
 Every fixture is replayed into both a fresh headless state holder and a fresh
 Ghostty renderer probe. The latter compares state at detach and again after any
@@ -142,12 +144,12 @@ See `BENCHMARKS.md` for the recorded bounded measurements.
   the fixtures, not every OSC or private mode.
 - Hyperlink targets, shell integration metadata, images, sixel, input ordering,
   backpressure, checksums, compression, and snapshot privacy are not designed.
-- The real captures cover macOS Neovim and Windows PowerShell 5.1 ConPTY, but not
-  Linux PTYs. The remaining native-Windows matrix — cmd.exe, PowerShell 7, and the
-  Claude/Codex agent TUIs (STATE-004) — has runnable capture/replay/sanitize
-  tooling in `WINDOWS-MATRIX.md` (`run-windows-matrix.ps1`, `capture-session.ts`,
-  `terminal-query-responder.ts`, `verify-journal.ts`, `sanitize-journal.ts`);
-  results are pending execution on a native Windows host.
+- Real captures now cover macOS Neovim and Windows PowerShell 5.1, cmd.exe, and
+  PowerShell 7 (committed golden fixtures), plus metrics-only Claude and Codex
+  agent captures. The native-Windows matrix (STATE-004) was executed on Windows
+  10.0.19045 / Bun 1.3.14; see `WINDOWS-MATRIX.md` for the tooling, evidence, and
+  remaining production gaps (Claude clean-exit, per-agent query coverage,
+  metrics-only agents, unbounded journal). Linux PTYs are still not covered.
 
 Removal requires deleting `src/bun/prototypes/terminal-state/` and the two
 terminal-state package scripts. There is no daemon, migration, stored state,

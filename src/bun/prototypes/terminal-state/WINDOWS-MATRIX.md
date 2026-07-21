@@ -94,39 +94,65 @@ raw bytes never enter a stored fixture.
 
 ## Evidence record
 
-> Status: **PENDING native Windows run.** Filled from `share/` artifacts after the
-> matrix is executed on the target host. Failures are recorded as production gaps,
-> not normalized away.
+> Status: **DONE.** Executed on a native Windows host on 2026-07-22. All four
+> targets captured and passed the detach-boundary replay roundtrip; the spike
+> suite passed on Windows. Shell captures `real-cmd` / `real-pwsh7` are committed
+> as golden fixtures (byte-identical to the Windows capture, verified by SHA-256).
+> Agent captures are metrics-only by policy. Failures are recorded as production
+> gaps below, not normalized away.
 
 ### Environment
 
 | Field | Value |
 |---|---|
-| Windows caption / version / build | _pending_ |
-| Architecture | _pending_ |
-| Bun / Node | _pending_ |
-| cmd (`ver`) | _pending_ |
-| PowerShell 5.1 / pwsh 7 | _pending_ |
-| Claude / Codex versions | _pending_ |
+| Windows caption / version / build | Windows 10 Pro / 10.0.19045 / 19045 |
+| Architecture | AMD64 (x86_64) |
+| Bun / Node | 1.3.14 / v24.18.0 |
+| cmd (`ver`) | Microsoft Windows [Version 10.0.19045.6456] |
+| PowerShell 5.1 / pwsh 7 | 5.1.19041.6456 / PowerShell 7.6.3 |
+| Claude / Codex versions | 2.1.42 (Claude Code) / codex-cli 0.144.6 |
 
 ### Results
 
-| Target | Captured | Match @detach | Match after replay | Exit | Mode | Notes / gaps |
+| Target | Captured | Match @detach | Match after replay | Exit | Mode | Bytes / SHA-256 (prefix) |
 |---|---|---|---|---|---|---|
-| cmd.exe | _pending_ | _pending_ | _pending_ | _pending_ | fixture | |
-| pwsh 7 | _pending_ | _pending_ | _pending_ | _pending_ | fixture | |
-| Claude | _pending_ | _pending_ | _pending_ | _pending_ | metrics | |
-| Codex | _pending_ | _pending_ | _pending_ | _pending_ | metrics | |
+| cmd.exe | yes | yes | yes | 0 | fixture | 480 / `5aff0397` |
+| pwsh 7 | yes | yes | yes | 0 | fixture | 1243 / `96206580` |
+| Claude | yes | yes | yes | killed (null) | metrics | 4387 / `a87eebbb` |
+| Codex | yes | yes | yes | 0 | metrics | 1531 / `0c97750e` |
+
+Spike suite on Windows: **42 passed** (before the two new golden fixtures were
+added). With `real-cmd` + `real-pwsh7` the suite is **46 passed** on macOS, and
+those fixtures are deterministic byte-for-byte replays of the Windows captures.
 
 ### Capability coverage (from `*.verdict.json`)
 
 | Target | cursor | modes | wrapping | unicode | colors | alt-screen | final dims |
 |---|---|---|---|---|---|---|---|
-| cmd.exe | _pending_ | | | | | | |
-| pwsh 7 | _pending_ | | | | | | |
-| Claude | _pending_ | | | | | | |
-| Codex | _pending_ | | | | | | |
+| cmd.exe | yes | wraparound | no | no | yes | no | 100×30 |
+| pwsh 7 | yes | wraparound | no | yes | yes | no | 100×30 |
+| Claude | yes | bracketedPaste, focusEvents, wraparound | no | yes | yes | no | 120×40 |
+| Codex | yes | wraparound | no | no | yes | no | 120×40 |
+
+Claude and Codex exercised a real resize (100×30 → 120×40) plus a detach boundary
+and post-detach events; both replays matched at the boundary and after it.
 
 ### Production gaps observed
 
-- _pending native run_
+- **Claude clean exit unproven.** Claude did not quit on the scripted `Esc` +
+  `Ctrl+C` sequence within the grace window; it was killed (exitCode null). A
+  production teardown must send Claude's real quit affordance, not `Ctrl+C`.
+- **Query-handling is agent-specific.** Codex issued 2 startup queries (both
+  `OSC-color`, both answered by the static responder); Claude issued no queries
+  the responder recognizes (0 replies). A production responder needs per-agent
+  probe coverage, not a fixed set.
+- **Agents are metrics-only.** By the fail-closed privacy policy, Claude and
+  Codex are proven via SHA-256 + structural metrics, not stored transcripts;
+  their provenance contained a `windows-user-path` (redacted, as expected).
+- **conhost cursor visibility.** cmd's `?25l` (hide) was not retained in the
+  final ConPTY frame (cursor visible=true), though the bar cursor style survived.
+- **Journal is unbounded** (see `README.md`); a production seam still needs a
+  bounded Ghostty-native snapshot before this can leave the prototype.
+- **Codex CLI aliasing.** winget's `OpenAI.Codex` did not create a `codex` shim
+  on PATH for the running shell; the matrix was pointed at the package exe via
+  `-CodexCommand`. Not a spike defect, but a setup gap worth noting.

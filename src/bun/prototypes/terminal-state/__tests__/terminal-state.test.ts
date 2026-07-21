@@ -158,7 +158,14 @@ describe("terminal-state snapshot spike", () => {
 		replay.dispose();
 	});
 
-	for (const name of ["line-wrapping", "resize-history", "real-nvim", "real-powershell"]) {
+	for (const name of [
+		"line-wrapping",
+		"resize-history",
+		"real-nvim",
+		"real-powershell",
+		"real-cmd",
+		"real-pwsh7",
+	]) {
 		it(`restores the ${name} golden fixture`, async () => {
 			const fixture = loadFixture(name);
 			const source = await HeadlessTerminalState.create(fixture.initial);
@@ -178,6 +185,26 @@ describe("terminal-state snapshot spike", () => {
 				expect(sourceState.scrollback.length).toBeGreaterThan(0);
 				expect(lines.some((line) => line.text.includes("PowerShell 5.1.19041.6456"))).toBe(true);
 				expect(lines.some((line) => line.text.includes("history-24"))).toBe(true);
+				expect(
+					lines.some((line) => line.cells.some((cell) => cell.foreground === "rgb:50a0f0")),
+				).toBe(true);
+			}
+			if (name === "real-cmd") {
+				const lines = [...sourceState.scrollback, ...sourceState.screen];
+				expect(lines.some((line) => line.text.includes("cmd.exe deterministic probe"))).toBe(true);
+				expect(lines.some((line) => line.text.includes("history line 8"))).toBe(true);
+				expect(
+					lines.some((line) => line.cells.some((cell) => cell.foreground === "rgb:50a0f0")),
+				).toBe(true);
+				expect(sourceState.cursor.style).toBe("bar");
+			}
+			if (name === "real-pwsh7") {
+				const lines = [...sourceState.scrollback, ...sourceState.screen];
+				expect(lines.some((line) => line.text.includes("pwsh 7.6.3"))).toBe(true);
+				expect(lines.some((line) => line.text.includes("history-24"))).toBe(true);
+				// pwsh 7 renders UTF-8 correctly, unlike the PowerShell 5.1 mojibake capture.
+				expect(lines.some((line) => line.text.includes("界"))).toBe(true);
+				expect(lines.some((line) => line.cells.some((cell) => cell.width === 2))).toBe(true);
 				expect(
 					lines.some((line) => line.cells.some((cell) => cell.foreground === "rgb:50a0f0")),
 				).toBe(true);
