@@ -115,6 +115,13 @@ function ProjectView({
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- fire once per open
 	}, [inlineDiff.isOpen, projectId, activeTaskId]);
 
+	// The empty "select a task" pane is a dead end on narrow viewports — there is
+	// no split task list to pick from — so bounce straight back to the Kanban board.
+	const showingEmptyTaskPane = Boolean(taskView) && !activeTaskId;
+	useEffect(() => {
+		if (isNarrow && showingEmptyTaskPane) navigate({ screen: "project", projectId });
+	}, [isNarrow, showingEmptyTaskPane, navigate, projectId]);
+
 	useEffect(() => {
 		if (!openUnresolvedComments) {
 			unresolvedRouteKeyRef.current = null;
@@ -158,8 +165,18 @@ function ProjectView({
 				skipCopyModeReset={skipCopyModeReset}
 			/>
 		) : (
-			<div className="h-full w-full flex items-center justify-center bg-base px-6 text-center">
+			<div className="h-full w-full flex flex-col items-center justify-center gap-4 bg-base px-6 text-center">
 				<span className="text-fg-muted text-sm">{t("project.selectTaskForTerminal")}</span>
+				<button
+					type="button"
+					onClick={() => navigate({ screen: "project", projectId })}
+					className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-edge bg-raised text-fg-3 hover:text-fg hover:bg-raised-hover hover:border-edge-active transition-colors text-sm"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+					</svg>
+					<span>{t("project.backToKanban")}</span>
+				</button>
 			</div>
 		);
 

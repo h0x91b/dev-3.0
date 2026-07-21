@@ -348,6 +348,7 @@ const settings = {
 	// ProjectView
 	"project.notFound": "Project not found",
 	"project.selectTaskForTerminal": "Select a task to see its terminal",
+	"project.backToKanban": "Back to Kanban",
 
 	// Token-saving proxy (pxpipe) — experimental, opt-in
 	"settings.pxpipeSection": "Token-saving proxy (experimental)",
