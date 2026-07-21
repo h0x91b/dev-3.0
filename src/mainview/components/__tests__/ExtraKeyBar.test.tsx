@@ -75,6 +75,26 @@ describe("ExtraKeyBar", () => {
 		expect(handle.sendInput).toHaveBeenCalledWith("\x7f");
 	});
 
+	it("puts common controls before rarely used modifiers", () => {
+		renderBar(makeHandle());
+
+		const labels = screen.getAllByRole("button").map(
+			(button) => button.getAttribute("aria-label") ?? button.textContent?.trim(),
+		);
+		expect(labels.slice(0, 10)).toEqual([
+			"Esc",
+			"Enter",
+			"Backspace",
+			"▲",
+			"▼",
+			"◀",
+			"▶",
+			"Tab",
+			"⇧Tab",
+			"Ctrl",
+		]);
+	});
+
 	it("sticky Ctrl turns the next key into a control character", async () => {
 		const handle = makeHandle();
 		renderBar(handle);
