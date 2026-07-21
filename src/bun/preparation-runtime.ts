@@ -36,7 +36,7 @@ export class TaskPreparationCancelledError extends Error {
 	}
 }
 
-export function createTaskPreparation(taskId: string, label: string): { runId: string } {
+export function createTaskPreparation(taskId: string, label: string, requestedRunId?: string): { runId: string } {
 	const existing = activePreparations.get(taskId);
 	if (existing) {
 		log.warn("Replacing existing task preparation entry", {
@@ -48,7 +48,7 @@ export function createTaskPreparation(taskId: string, label: string): { runId: s
 
 	const entry: PreparationEntry = {
 		taskId,
-		runId: crypto.randomUUID(),
+		runId: requestedRunId ?? crypto.randomUUID(),
 		label,
 		startedAt: Date.now(),
 		cancelled: false,
@@ -87,6 +87,21 @@ export async function withTaskPreparation<T>(
 	const { runId } = createTaskPreparation(taskId, label);
 	try {
 		return await preparationContext.run({ taskId, runId, currentStage: null, reportStage }, () => fn(runId));
+	} finally {
+		finishTaskPreparation(taskId, runId);
+	}
+}
+
+export async function withTaskPreparationRunId<T>(
+	taskId: string,
+	label: string,
+	runId: string,
+	fn: () => Promise<T>,
+	reportStage?: (stage: PreparingStage) => Promise<void> | void,
+): Promise<T> {
+	createTaskPreparation(taskId, label, runId);
+	try {
+		return await preparationContext.run({ taskId, runId, currentStage: null, reportStage }, fn);
 	} finally {
 		finishTaskPreparation(taskId, runId);
 	}

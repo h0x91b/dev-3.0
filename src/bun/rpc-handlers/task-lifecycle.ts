@@ -25,10 +25,12 @@ import { loadSettings, loadSettingsSync, recordFavoriteUsages } from "../setting
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { buildScriptRunnerCommand, buildTaskLifecycleEnv, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
-import { clearMergeNotification, cleanupTaskGitState } from "./git-operations";
+import { cleanupTaskGitState } from "./git-operations";
+import { clearMergeNotification } from "../lifecycle/activities";
 import { resolveOperationalProjectConfig } from "./settings-config";
 import { cleanupTaskTmuxState, killDevServerSession, launchColumnAgent, launchTaskPty } from "./tmux-pty";
 import { dev3TaskTempPath } from "../temp-paths";
+import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
 
 function cleanupTaskState(taskId: string): void {
 	cleanupTaskTmuxState(taskId);
@@ -40,7 +42,7 @@ async function runCowClones(project: Project, worktreePath: string): Promise<voi
 	await clonePaths(project.path, worktreePath, project.clonePaths);
 }
 
-async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<void> {
+export async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<void> {
 	for (const task of tasks) {
 		try {
 			const updated = await data.updateTask(project, task.id, clearPreparingState());
@@ -223,7 +225,7 @@ async function measurePreparationStep<T>(
 	}
 }
 
-async function prepareTaskInBackground(
+export async function prepareTaskInBackground(
 	project: Project,
 	task: Task,
 	options: {
@@ -507,25 +509,12 @@ export async function handleBellAutoStatus(taskId: string): Promise<void> {
 			const tasks = await data.loadTasks(project);
 			const task = tasks.find((candidate) => candidate.id === taskId);
 			if (!task) continue;
-			if (task.status !== "in-progress") return;
-
-			log.info("Bell auto-transition: in-progress → user-questions", { taskId: taskId.slice(0, 8) });
-			const bellSettings = await loadSettings();
-			// Guard the write on still-in-progress INSIDE the lock: the snapshot
-			// check above is a TOCTOU window — a concurrent Stop-hook may move the
-			// task to review-by-ai/review-by-user between our read and this write.
-			// Without the guard, a late bell would drag an already-reviewed task
-			// back to user-questions. If the guard blocks, updateTask no-ops and we
-			// skip the push (the concurrent writer already pushed the real status).
-			const updated = await data.updateTask(
-				project,
-				task.id,
-				{ status: "user-questions" },
-				{ dropPosition: bellSettings.taskDropPosition, ifStatus: "in-progress" },
-			);
-			if (updated.status === "user-questions") {
-				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			}
+			log.info("Bell auto-transition requested", { taskId: taskId.slice(0, 8) });
+			await dispatchLifecycleEvent(project.id, task.id, {
+				type: "moveRequested",
+				target: { status: "user-questions" },
+				guards: { ifStatus: "in-progress" },
+			}, { project, task });
 			return;
 		}
 	} catch (err) {
@@ -739,14 +728,19 @@ async function createTask(params: { projectId: string; description: string; stat
 	const task = await data.addTask(project, description, status, Object.keys(extras).length ? extras : undefined);
 
 	if (isActive(status)) {
-		log.info("Created into active status, creating worktree + PTY", { taskId: task.id });
-		const wt = await activateTask(project, task);
-
-		const updated = await data.updateTask(project, task.id, {
-			worktreePath: wt.worktreePath,
-			branchName: wt.branchName,
-		});
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		log.info("Created into active status, preparing through lifecycle actor", { taskId: task.id });
+		const updated = await dispatchLifecycleEvent(project.id, task.id, {
+			type: "preparationRequested",
+			runId: crypto.randomUUID(),
+			origin: { status: task.status, customColumnId: task.customColumnId ?? null },
+					launch: {
+				label: "create",
+				agentId: task.agentId,
+				configId: task.configId,
+				existingBranch: task.existingBranch ?? undefined,
+			},
+			awaitCompletion: true,
+		}, { project, task });
 		log.info("← createTask (with worktree)", { taskId: task.id });
 		return updated;
 	}
@@ -804,7 +798,7 @@ export async function captureCompletedDiffStats(
 	}
 }
 
-export async function moveTask(params: {
+export async function legacyMoveTask(params: {
 	taskId: string;
 	projectId: string;
 	newStatus: TaskStatus;
@@ -957,7 +951,28 @@ export async function moveTask(params: {
 	return updated;
 }
 
-async function cancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {
+export async function moveTask(params: {
+	taskId: string;
+	projectId: string;
+	newStatus: TaskStatus;
+	force?: boolean;
+	ifStatus?: string;
+	ifStatusNot?: string;
+	clientPlayedSound?: boolean;
+}): Promise<Task> {
+	return dispatchLifecycleEvent(params.projectId, params.taskId, {
+		type: "moveRequested",
+		target: { status: params.newStatus, customColumnId: null },
+		guards: {
+			...(params.ifStatus ? { ifStatus: params.ifStatus } : {}),
+			...(params.ifStatusNot ? { ifStatusNot: params.ifStatusNot } : {}),
+		},
+		force: params.force,
+		clientPlayedSound: params.clientPlayedSound,
+	});
+}
+
+export async function legacyCancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {
 	log.info("→ cancelTaskPreparation", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -981,6 +996,21 @@ async function cancelTaskPreparation(params: { taskId: string; projectId: string
 		taskId: task.id.slice(0, 8),
 		killed: killList.length,
 	});
+	return updated;
+}
+
+async function cancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {
+	log.info("→ cancelTaskPreparation", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const runId = task.runtimeState?.runtime === "preparing" && task.runtimeState.runId
+		? task.runtimeState.runId
+		: `legacy-${task.id}`;
+	const updated = await dispatchLifecycleEvent(project.id, task.id, {
+		type: "preparationCancelled",
+		runId,
+	}, { project, task });
+	log.info("← cancelTaskPreparation done", { taskId: task.id.slice(0, 8) });
 	return updated;
 }
 
@@ -1060,6 +1090,7 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	}
 
 	await data.deleteTask(project, task.id);
+	removeLifecycleActor(task.id);
 	log.info("← deleteTask done");
 }
 
@@ -1083,6 +1114,7 @@ async function spawnVariants(params: {
 	const srcBranch = getSourceTaskBranch(sourceTask, project);
 	const isMultiVariant = params.variants.length > 1;
 	const needsWorktree = isActive(params.targetStatus);
+	const preparationRunIds = params.variants.map(() => crypto.randomUUID());
 
 	// Variant #1 transforms the source task IN PLACE (same id) instead of the
 	// old delete-and-recreate: the id printed by `dev3 task create` (and any
@@ -1116,6 +1148,12 @@ async function spawnVariants(params: {
 					preparingStage: INITIAL_PREPARING_STAGE,
 					preparingProgress: getPreparingStageProgress(INITIAL_PREPARING_STAGE),
 					preparingStartedAt: new Date().toISOString(),
+					runtimeState: {
+						runtime: "preparing",
+						stage: INITIAL_PREPARING_STAGE,
+						runId: preparationRunIds[0],
+						updatedAt: Date.now(),
+					},
 				} : {}),
 			},
 			result: null,
@@ -1124,6 +1162,12 @@ async function spawnVariants(params: {
 	resultTasks.push(needsWorktree ? {
 		...transformedSource,
 		...preparingStageUpdates(INITIAL_PREPARING_STAGE),
+		runtimeState: {
+			runtime: "preparing",
+			stage: INITIAL_PREPARING_STAGE,
+			runId: preparationRunIds[0],
+			updatedAt: Date.now(),
+		},
 	} : transformedSource);
 
 	for (let i = 1; i < params.variants.length; i++) {
@@ -1145,6 +1189,14 @@ async function spawnVariants(params: {
 				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
+				...(needsWorktree ? {
+					runtimeState: {
+						runtime: "preparing" as const,
+						stage: INITIAL_PREPARING_STAGE,
+						runId: preparationRunIds[i],
+						updatedAt: Date.now(),
+					},
+				} : {}),
 				watched: sourceTask.watched,
 				// Scratch tasks keep the `Scratch — HH:mm` placeholder as title
 				// on every variant, but the flag tells the launch path (see
@@ -1176,6 +1228,12 @@ async function spawnVariants(params: {
 		resultTasks.push(needsWorktree ? {
 			...task,
 			...preparingStageUpdates(INITIAL_PREPARING_STAGE),
+			runtimeState: {
+				runtime: "preparing",
+				stage: INITIAL_PREPARING_STAGE,
+				runId: preparationRunIds[i],
+				updatedAt: Date.now(),
+			},
 		} : task);
 	}
 
@@ -1190,27 +1248,29 @@ async function spawnVariants(params: {
 	log.info("← spawnVariants returning immediately", { count: resultTasks.length, groupId, needsWorktree });
 
 	if (needsWorktree) {
-		(async () => {
+		for (let i = 0; i < resultTasks.length; i++) {
+			const task = resultTasks[i];
+			const variant = params.variants[i];
+			const variantBranchName = (isMultiVariant && srcBranch)
+				? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
+				: undefined;
 			try {
-				for (let i = 0; i < resultTasks.length; i++) {
-					const task = resultTasks[i];
-					const variant = params.variants[i];
-					const variantBranchName = (isMultiVariant && srcBranch)
-						? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
-						: undefined;
-					await prepareTaskInBackground(project, task, {
-						label: "variant",
-						agentId: variant.agentId,
-						configId: variant.configId,
+				await dispatchLifecycleEvent(project.id, task.id, {
+						type: "preparationRequested",
+						runId: preparationRunIds[i],
+						origin: { status: task.status, customColumnId: task.customColumnId ?? null },
+						launch: {
+							label: "variant",
+							agentId: variant.agentId,
+							configId: variant.configId,
 						existingBranch: task.existingBranch ?? undefined,
 						variantBranchName,
-					});
-				}
-			} catch (err) {
-				log.error("Failed to start variant preparation", { projectId: project.id, error: String(err) });
-				await clearPreparingTasks(project, resultTasks);
+					},
+				}, { project, task });
+			} catch (error) {
+				log.error("Variant preparation dispatch failed", { taskId: task.id.slice(0, 8), error: String(error) });
 			}
-		})();
+		}
 	}
 
 	return resultTasks;
@@ -1245,6 +1305,7 @@ async function addAttempts(params: {
 	const targetStatus: TaskStatus = "in-progress";
 	const needsWorktree = isActive(targetStatus);
 	const srcBranch = getSourceTaskBranch(sourceTask, project);
+	const preparationRunIds = params.variants.map(() => crypto.randomUUID());
 
 	for (let i = 0; i < params.variants.length; i++) {
 		const variant = params.variants[i];
@@ -1269,6 +1330,14 @@ async function addAttempts(params: {
 				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
 				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
 				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
+				...(needsWorktree ? {
+					runtimeState: {
+						runtime: "preparing" as const,
+						stage: INITIAL_PREPARING_STAGE,
+						runId: preparationRunIds[i],
+						updatedAt: Date.now(),
+					},
+				} : {}),
 				watched: sourceTask.watched,
 				// Carry the scratch flag onto every added attempt — otherwise the
 				// launch path keeps the `Scratch — HH:mm` placeholder as the prompt
@@ -1294,6 +1363,12 @@ async function addAttempts(params: {
 		resultTasks.push(needsWorktree ? {
 			...task,
 			...preparingStageUpdates(INITIAL_PREPARING_STAGE),
+			runtimeState: {
+				runtime: "preparing",
+				stage: INITIAL_PREPARING_STAGE,
+				runId: preparationRunIds[i],
+				updatedAt: Date.now(),
+			},
 		} : task);
 	}
 
@@ -1306,23 +1381,25 @@ async function addAttempts(params: {
 	log.info("← addAttempts returning", { count: resultTasks.length, groupId, needsWorktree });
 
 	if (needsWorktree) {
-		(async () => {
+		for (let i = 0; i < resultTasks.length; i++) {
+			const task = resultTasks[i];
+			const variant = params.variants[i];
 			try {
-					for (let i = 0; i < resultTasks.length; i++) {
-						const task = resultTasks[i];
-						const variant = params.variants[i];
-						await prepareTaskInBackground(project, task, {
+				await dispatchLifecycleEvent(project.id, task.id, {
+						type: "preparationRequested",
+						runId: preparationRunIds[i],
+						origin: { status: task.status, customColumnId: task.customColumnId ?? null },
+					launch: {
 							label: "attempt",
 							agentId: variant.agentId,
 							configId: variant.configId,
-							existingBranch: task.existingBranch ?? srcBranch,
-						});
-					}
-			} catch (err) {
-				log.error("Failed to start attempt preparation", { projectId: project.id, error: String(err) });
-				await clearPreparingTasks(project, resultTasks);
+						existingBranch: task.existingBranch ?? srcBranch,
+					},
+				}, { project, task });
+			} catch (error) {
+				log.error("Attempt preparation dispatch failed", { taskId: task.id.slice(0, 8), error: String(error) });
 			}
-		})();
+		}
 	}
 
 	return [updatedSource, ...resultTasks];
@@ -1462,13 +1539,10 @@ async function openQuickShellInner(): Promise<Task> {
 	// agentId/configId unset makes launchTaskPty resolve the project/global default
 	// agent — i.e. the "default agent with default config".
 	const task = await data.addTask(project, scratchPlaceholder(), "todo", { scratch: true });
-	const wt = await activateTask(project, task);
-	const updated = await data.updateTask(project, task.id, {
-		status: "in-progress",
-		worktreePath: wt.worktreePath,
-		branchName: wt.branchName,
-	});
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	const updated = await dispatchLifecycleEvent(project.id, task.id, {
+		type: "moveRequested",
+		target: { status: "in-progress", customColumnId: null },
+	}, { project, task });
 	log.info("← openQuickShell (created scratch)", { taskId: task.id.slice(0, 8) });
 	return updated;
 }
@@ -1487,6 +1561,7 @@ export async function createAutomationTask(
 	automation: { id: string; name: string; prompt: string; agentId: string | null; configId: string | null },
 ): Promise<Task> {
 	const now = new Date();
+	const runId = crypto.randomUUID();
 	const task = await data.addTask(project, automation.prompt, "in-progress", {
 		agentId: automation.agentId,
 		configId: automation.configId,
@@ -1496,16 +1571,29 @@ export async function createAutomationTask(
 		preparingStage: INITIAL_PREPARING_STAGE,
 		preparingProgress: getPreparingStageProgress(INITIAL_PREPARING_STAGE),
 		preparingStartedAt: now.toISOString(),
+		runtimeState: {
+			runtime: "preparing",
+			stage: INITIAL_PREPARING_STAGE,
+			runId,
+			updatedAt: now.getTime(),
+		},
 	});
 	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
 	log.info("Automation task created, preparing in background", {
 		taskId: task.id.slice(0, 8),
 		automationId: automation.id.slice(0, 8),
 	});
-	void prepareTaskInBackground(project, task, {
-		label: "automation",
-		agentId: automation.agentId,
-		configId: automation.configId,
+	void dispatchLifecycleEvent(project.id, task.id, {
+		type: "preparationRequested",
+		runId,
+		origin: { status: task.status, customColumnId: task.customColumnId ?? null },
+		launch: {
+			label: "automation",
+			agentId: automation.agentId,
+			configId: automation.configId,
+		},
+	}, { project, task }).catch((error) => {
+		log.error("Automation task preparation dispatch failed", { taskId: task.id.slice(0, 8), error: String(error) });
 	});
 	return task;
 }

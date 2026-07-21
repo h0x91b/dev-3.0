@@ -43,7 +43,7 @@ export {
 	_resetPRPollerState,
 	checkOpenPRsForPromotion,
 	_setScheduleRandomForTest,
-} from "./rpc-handlers/git-operations";
+} from "./lifecycle/activities";
 export {
 	activateTask,
 	handleBellAutoStatus,

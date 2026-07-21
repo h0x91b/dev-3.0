@@ -1,4 +1,4 @@
-import type { PreparingStage, TaskStatus } from "../../shared/types";
+import type { PreparingStage, Task, TaskStatus } from "../../shared/types";
 
 export interface LifecycleColumn {
 	status: TaskStatus;
@@ -38,6 +38,14 @@ export interface MoveGuards {
 	ifStatusNot?: string;
 }
 
+export interface PreparationLaunch {
+	label: string;
+	agentId: string | null;
+	configId: string | null;
+	existingBranch?: string;
+	variantBranchName?: string;
+}
+
 export type LifecycleEvent =
 	| {
 		type: "moveRequested";
@@ -51,6 +59,8 @@ export type LifecycleEvent =
 		type: "preparationRequested";
 		runId: string;
 		origin?: LifecycleColumn;
+		launch: PreparationLaunch;
+		awaitCompletion?: boolean;
 	}
 	| {
 		type: "preparationStageChanged";
@@ -62,11 +72,16 @@ export type LifecycleEvent =
 		runId: string;
 		worktreePath: string;
 		branchName: string | null;
+		origin: LifecycleColumn;
+		target: LifecycleColumn;
+		mode: "activation" | "preparation";
 	}
 	| {
 		type: "preparationFailed";
 		runId: string;
 		error: string;
+		origin?: LifecycleColumn;
+		target?: LifecycleColumn;
 	}
 	| {
 		type: "preparationCancelled";
@@ -82,6 +97,11 @@ export type LifecycleEvent =
 		type: "prDetected";
 		openNonDraft: boolean;
 		payload: unknown;
+		persistence?: {
+			prNumber: number;
+			prUrl: string;
+			cache: NonNullable<Task["prStatusCache"]>;
+		};
 		signalReason?: string;
 	}
 	| {
@@ -96,4 +116,3 @@ export type LifecycleEvent =
 			tmuxAlive: boolean;
 		};
 	};
-

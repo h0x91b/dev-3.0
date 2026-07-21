@@ -1,5 +1,5 @@
 import type { CompletedDiffStats, TaskStatus } from "../../shared/types";
-import type { LifecycleColumn, LifecycleEvent, LifecycleRuntime } from "./events";
+import type { LifecycleColumn, LifecycleEvent, LifecycleRuntime, PreparationLaunch } from "./events";
 
 export const LIFECYCLE_PUSH_MESSAGES = [
 	"taskUpdated",
@@ -24,6 +24,7 @@ interface EffectPolicy {
 export type LifecycleEffect =
 	| ({ type: "clearMergeThrottle" } & EffectPolicy)
 	| ({ type: "clearTaskRuntime" } & EffectPolicy)
+	| ({ type: "cancelPreparationProcesses" } & EffectPolicy)
 	| ({ type: "releasePorts" } & EffectPolicy)
 	| ({ type: "persistRuntime"; runtime: LifecycleRuntime } & EffectPolicy)
 	| ({
@@ -32,15 +33,21 @@ export type LifecycleEffect =
 		origin: LifecycleColumn;
 		target: LifecycleColumn;
 		isReopen: boolean;
+		awaitCompletion: boolean;
+		successPatch: "activation" | "preparation";
+		launch?: PreparationLaunch;
 	} & EffectPolicy)
 	| ({ type: "destroyTaskPty" } & EffectPolicy)
 	| ({ type: "killDevServer" } & EffectPolicy)
-	| ({ type: "runCleanupScript"; toStatus: TaskStatus | "deleted" } & EffectPolicy)
+	| ({ type: "runCleanupScript"; toStatus: TaskStatus | "deleted"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({ type: "captureCompletedDiffStats" } & EffectPolicy)
-	| ({ type: "removeWorktree" } & EffectPolicy)
+	| ({ type: "removeWorktree"; allowDerivedPath?: boolean } & EffectPolicy)
 	| ({
 		type: "persistColumn";
 		column: LifecycleColumn;
+		patch: "status" | "statusOnly" | "custom" | "activation" | "preparation";
+		guards?: { ifStatus?: string; ifStatusNot?: string };
+		writeOptions?: "none";
 		runtime?: LifecycleRuntime;
 		worktreePath?: string;
 		branchName?: string | null;
@@ -64,4 +71,3 @@ export type LifecycleEffect =
 		view?: "current" | "shuttingDown";
 		payload?: unknown;
 	} & EffectPolicy);
-

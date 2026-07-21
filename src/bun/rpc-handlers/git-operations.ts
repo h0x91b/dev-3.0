@@ -1,17 +1,12 @@
 import {
 	type BranchStatus,
 	type PRInfo,
-	type PRMergeState,
-	type PRCIStatus,
 	type Project,
 	type Task,
-	type TaskPRStatusCache,
 	type TaskDiffMode,
 	type TaskDiffResponse,
 	type ScheduledMessageTarget,
-	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 	resolveTaskCompareBaseBranch,
-	buildTaskDialogSubject,
 } from "../../shared/types";
 import * as data from "../data";
 import * as git from "../git";
@@ -25,30 +20,18 @@ import {
 	sendScheduledMessageNow as sendScheduledMessageNowCore,
 } from "../scheduled-message-scheduler";
 import { Semaphore } from "../concurrency";
-import { loadSettings } from "../settings";
-import { getActiveContext, getPushMessage, isAppForeground, log, notifyWatchedTaskEvent, pushCliAttention } from "./shared";
+import { getPushMessage, log } from "./shared";
+import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
-	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
-	ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS,
-	ACTIVE_PROJECT_PR_INTERVAL_MS,
-	BACKGROUND_PROJECT_MERGE_INTERVAL_MS,
-	BACKGROUND_PROJECT_PENDING_PR_INTERVAL_MS,
-	BACKGROUND_PROJECT_PR_INTERVAL_MS,
-	MERGE_POLL_INTERVAL_MS,
-	PR_POLL_INTERVAL_MS,
-	intervalForTask,
-	isDue,
-	nextDueAfterRun,
-	pruneSchedule,
-	staggeredDue,
-	wasAsleep,
-} from "./git-poll-throttle";
-import {
-	type MergeCompletionFingerprint,
-	MERGE_PROMPT_RETRY_SUPPRESS_MS,
-	shouldSuppressMergePrompt,
-} from "./merge-prompt-suppression";
-import { computeSignalKey, countUnresolvedReviewThreads, mapReviewDecision, normalizeChecks, parseAutoMergeEnabled, parseGitHubPullRequestUrl, parseReviewDecision, reasonForSignal, rollupCiStatus } from "./pr-status";
+	PR_DETECTION_TIMEOUT_MS,
+	clearMergeNotification,
+	dismissMergeCompletionPrompt,
+	getMergeCompletionFingerprint,
+	persistProjectPrIdentities,
+	persistTaskPrIdentity,
+	prepareMergeCompletionPrompt,
+	refreshTaskPrStatus,
+} from "../lifecycle/activities";
 
 /**
  * Reject git-only RPCs for virtual (Operations) tasks. They have a working dir
@@ -65,160 +48,15 @@ function assertGitTask(project: Project, task: Task): asserts task is Task & { w
 	}
 }
 
-const gitOpPaneIds = new Map<string, string>();
-// promptKey -> reservedAt (ms). A reservation only mutes re-prompts for
-// MERGE_PROMPT_RETRY_SUPPRESS_MS: if the user never answers (app restart,
-// undelivered push), the prompt must come back instead of being lost forever.
-const mergeNotifiedPromptKeys = new Map<string, number>();
-const branchStatusInFlight = new Map<string, Promise<BranchStatus>>();
 // Bound concurrent heavy branch-status runs across all tasks (see getBranchStatus).
 const GIT_STATUS_MAX_CONCURRENCY = 4;
 const branchStatusSemaphore = new Semaphore(GIT_STATUS_MAX_CONCURRENCY);
-// Cap the PR-detection `gh` call: it holds a semaphore slot for its whole
-// duration, so a hung gh on a slow network must not stall branch-status globally.
-const PR_DETECTION_TIMEOUT_MS = 15_000;
-const prPromotedTasks = new Set<string>();
-// taskId -> last CI/review signal key we already raised attention for. Lets the
-// poller fire the bell / watched-notification only on a *transition* to a new
-// worthy state (e.g. CI flips to failure, a reviewer approves), not on every
-// 5-minute tick while the state is unchanged. See computeSignalKey().
-const prSignalState = new Map<string, string>();
-
-// taskId -> next time each poller may run its heavy git check for that task.
-// The scheduling math (intervals, jitter, wake re-spread) lives in
-// git-poll-throttle.ts (dependency-free + unit-tested).
-const mergeTaskNextDue = new Map<string, number>();
-const prTaskNextDue = new Map<string, number>();
-const prPendingState = new Map<string, boolean>();
-// Wall-clock of the previous tick, per poller, to detect host sleep gaps.
-let mergeLastTickAt = 0;
-let prLastTickAt = 0;
-// Injectable RNG so jitter is deterministic under test.
-let scheduleRandom: () => number = Math.random;
-
-export function _setScheduleRandomForTest(fn: () => number): void {
-	scheduleRandom = fn;
-}
-
-function mergePromptKey(taskId: string, fingerprint: string | null): string {
-	return `${taskId}:${fingerprint || "unknown"}`;
-}
-
-function isPromptKeyReserved(promptKey: string, nowMs: number): boolean {
-	const reservedAt = mergeNotifiedPromptKeys.get(promptKey);
-	if (reservedAt === undefined) return false;
-	if (nowMs - reservedAt > MERGE_PROMPT_RETRY_SUPPRESS_MS) {
-		mergeNotifiedPromptKeys.delete(promptKey);
-		return false;
-	}
-	return true;
-}
-
-async function getMergeCompletionFingerprint(task: Pick<Task, "id" | "worktreePath" | "branchName">, branchName: string | null): Promise<MergeCompletionFingerprint> {
-	const resolvedBranchName = branchName || task.branchName || task.id;
-	if (task.worktreePath) {
-		const headSha = await git.getHeadSha(task.worktreePath);
-		if (headSha) {
-			return {
-				fingerprint: `v1:${resolvedBranchName}:${headSha}`,
-				precise: true,
-			};
-		}
-	}
-	return {
-		fingerprint: `fallback:${resolvedBranchName}`,
-		precise: false,
-	};
-}
-
-async function reserveMergeCompletionPrompt(project: Project, task: Task, fingerprint: MergeCompletionFingerprint, now = new Date(), force = false): Promise<boolean> {
-	const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
-	const nowMs = now.getTime();
-	// A forced re-check (user clicked the git refresh button) deliberately
-	// ignores the in-memory reservation and any prior dismissal: an explicit
-	// click means "ask me again, regardless of what I answered before".
-	if (!force) {
-		if (isPromptKeyReserved(promptKey, nowMs)) return false;
-
-		if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) {
-			mergeNotifiedPromptKeys.set(promptKey, nowMs);
-			return false;
-		}
-	}
-
-	// Reserve the slot before awaiting so concurrent callers see the key immediately
-	// and cannot both pass the reservation check above.
-	mergeNotifiedPromptKeys.set(promptKey, nowMs);
-	await data.updateTask(project, task.id, {
-		mergeCompletionPrompt: {
-			fingerprint: fingerprint.fingerprint,
-			promptedAt: now.toISOString(),
-			dismissedAt: null,
-			precise: fingerprint.precise,
-		},
-	});
-	return true;
-}
-
-function reserveMergeCompletionNotice(task: Task, fingerprint: MergeCompletionFingerprint, now = new Date(), force = false): boolean {
-	const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
-	const nowMs = now.getTime();
-	if (!force && isPromptKeyReserved(promptKey, nowMs)) return false;
-	mergeNotifiedPromptKeys.set(promptKey, nowMs);
-	return true;
-}
-
-async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean }): Promise<{ shouldPrompt: boolean; fingerprint: string | null; shouldNotify?: boolean }> {
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const fingerprint = params.fingerprint
-		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
-		: await getMergeCompletionFingerprint(task, task.branchName);
-	const settings = await loadSettings();
-	const noticeOnly = task.manualCompletion === true || settings.suggestCompletingTasksAfterMerge === false;
-	if (noticeOnly) {
-		return {
-			shouldPrompt: false,
-			fingerprint: fingerprint.fingerprint,
-			shouldNotify: reserveMergeCompletionNotice(task, fingerprint, new Date(), params.force === true),
-		};
-	}
-	const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint, new Date(), params.force === true);
-	return { shouldPrompt, fingerprint: fingerprint.fingerprint };
-}
-
-async function dismissMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint: string | null }): Promise<Task> {
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const fingerprint = params.fingerprint
-		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
-		: await getMergeCompletionFingerprint(task, task.branchName);
-	const now = new Date().toISOString();
-	const existing = task.mergeCompletionPrompt;
-	const updated = await data.updateTask(project, task.id, {
-		mergeCompletionPrompt: {
-			fingerprint: fingerprint.fingerprint,
-			promptedAt: existing?.fingerprint === fingerprint.fingerprint ? existing.promptedAt : now,
-			dismissedAt: now,
-			precise: fingerprint.precise,
-		},
-	});
-	// Close a still-open "Branch Merged" dialog on other clients (second window
-	// or the remote browser served by this same app) that received the original
-	// broadcast prompt.
-	getPushMessage()?.("mergePromptResolved", {
-		taskId: task.id,
-		projectId: project.id,
-		fingerprint: fingerprint.fingerprint,
-	});
-	return updated;
-}
-
 async function killExistingGitPane(taskId: string, tmuxSession: string, socket: string): Promise<void> {
-	const existingPane = gitOpPaneIds.get(taskId);
+	const runtime = lifecycleActorRuntime(taskId);
+	const existingPane = runtime.gitOpPaneId;
 	if (existingPane) {
 		await tmux.killPane(existingPane, { socket, bestEffort: true });
-		gitOpPaneIds.delete(taskId);
+		delete runtime.gitOpPaneId;
 		log.info("Killed existing git op pane (from map)", { taskId: taskId.slice(0, 8), paneId: existingPane });
 		return;
 	}
@@ -292,7 +130,7 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 
 				if (!paneStillExists) {
 					cleanup();
-					gitOpPaneIds.delete(taskId);
+					delete lifecycleActorRuntime(taskId).gitOpPaneId;
 
 					let ok = false;
 					try {
@@ -314,633 +152,17 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 	}
 }
 
-let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
-
-export function startMergeDetectionPoller(): void {
-	stopMergeDetectionPoller();
-	const POLL_INTERVAL = MERGE_POLL_INTERVAL_MS;
-
-	mergePollerInterval = setInterval(async () => {
-		try {
-			await checkMergedBranches();
-		} catch (err) {
-			log.error("Merge detection poller error", { error: String(err) });
-		}
-	}, POLL_INTERVAL);
-
-	log.info("Merge detection poller started", { intervalMs: POLL_INTERVAL });
-}
-
-export function stopMergeDetectionPoller(): void {
-	if (!mergePollerInterval) return;
-	clearInterval(mergePollerInterval);
-	mergePollerInterval = null;
-	log.info("Merge detection poller stopped");
-}
-
-async function checkMergedBranches(): Promise<void> {
-	const pushMessage = getPushMessage();
-	if (!pushMessage) return;
-
-	const projects = await data.loadProjects();
-	const { projectId: activeProjectId } = getActiveContext();
-	const foreground = isAppForeground();
-	const now = Date.now();
-	const settings = await loadSettings();
-	const noticeOnlyBySetting = settings.suggestCompletingTasksAfterMerge === false;
-	// A tick far later than the base interval means the host was suspended
-	// (laptop sleep): re-spread overdue tasks instead of firing them all at once.
-	const wokeFromSleep = mergeLastTickAt !== 0 && wasAsleep(now - mergeLastTickAt, MERGE_POLL_INTERVAL_MS);
-	mergeLastTickAt = now;
-
-	if (mergeNotifiedPromptKeys.size > 0 || prPromotedTasks.size > 0) {
-		// Merge detection itself is git-only (below), but the orphan-state reap must
-		// see EVERY live task id — including virtual ones — or a deleted virtual
-		// task's stale key would linger in these maps forever (slow memory leak).
-		const allTaskIds = new Set<string>();
-		for (const project of [...projects, ...await data.loadVirtualProjects()]) {
-			const tasks = await data.loadTasks(project);
-			for (const task of tasks) allTaskIds.add(task.id);
-		}
-		for (const key of [...mergeNotifiedPromptKeys.keys()]) {
-			const taskId = key.slice(0, key.indexOf(":"));
-			if (!allTaskIds.has(taskId)) mergeNotifiedPromptKeys.delete(key);
-		}
-		for (const id of prPromotedTasks) {
-			if (!allTaskIds.has(id)) prPromotedTasks.delete(id);
-		}
-	}
-
-	const liveTaskIds = new Set<string>();
-	for (const project of projects) {
-		const tasks = await data.loadTasks(project);
-		const reviewTasks = tasks.filter(
-			(task) => MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status) && task.worktreePath,
-		);
-
-		if (reviewTasks.length === 0) continue;
-
-		const isActiveFg = foreground && project.id === activeProjectId;
-		const interval = intervalForTask(isActiveFg, ACTIVE_PROJECT_MERGE_INTERVAL_MS, BACKGROUND_PROJECT_MERGE_INTERVAL_MS);
-
-		// Decide which tasks are due this tick; schedule (or re-spread) the rest.
-		const dueTasks = reviewTasks.filter((task) => {
-			liveTaskIds.add(task.id);
-			let scheduled = mergeTaskNextDue.get(task.id);
-			if (scheduled === undefined) {
-				// First sight: the on-screen project checks now, everything else is
-				// spread across its interval so a batch never fires on one tick.
-				scheduled = isActiveFg ? now : staggeredDue(now, interval, scheduleRandom);
-				mergeTaskNextDue.set(task.id, scheduled);
-			}
-			if (wokeFromSleep) {
-				mergeTaskNextDue.set(task.id, staggeredDue(now, interval, scheduleRandom));
-				return false;
-			}
-			return isDue(scheduled, now);
-		});
-
-		if (dueTasks.length === 0) continue;
-
-		// Fetch only the base branches the due tasks actually compare against, so
-		// a project with nothing due this tick triggers no network at all.
-		const uniqueBaseBranches = [...new Set([
-			project.defaultBaseBranch || "main",
-			...dueTasks.map((t) => t.baseBranch || project.defaultBaseBranch || "main"),
-		])];
-		try {
-			await Promise.all(uniqueBaseBranches.map((b) => git.fetchOrigin(project.path, b)));
-		} catch {
-			continue;
-		}
-
-		for (const task of dueTasks) {
-			try {
-				const branchName = await git.getCurrentBranch(task.worktreePath!);
-				if (!branchName) continue;
-
-				// PR-review tasks check out an existing branch, and deriveTaskBaseBranch
-				// sets their baseBranch to that same branch. Comparing the branch against
-				// origin/<itself> is trivially "merged" and produced a false "Branch
-				// Merged" prompt. Fall back to the project's real base branch so we still
-				// detect when the reviewed PR actually lands there; if even that is the
-				// branch itself, there is no distinct base to merge into — skip.
-				let baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-				if (baseBranch === branchName) {
-					baseBranch = project.defaultBaseBranch || "main";
-					if (baseBranch === branchName) continue;
-				}
-				const ref = `origin/${baseBranch}`;
-
-				// Cheap suppression first: a prompt already reserved/dismissed for
-				// this exact head must not burn merge-tree/patch-id/gh calls on
-				// every 60s tick.
-				const fingerprint = await getMergeCompletionFingerprint(task, branchName);
-				const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
-				const nowMs = Date.now();
-				const noticeOnly = task.manualCompletion === true || noticeOnlyBySetting;
-				if (isPromptKeyReserved(promptKey, nowMs)) continue;
-				if (!noticeOnly && shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) continue;
-
-				// The popup claims "no changes left" — never prompt while the
-				// worktree has uncommitted changes. Skip WITHOUT reserving so a
-				// later clean tick prompts normally.
-				if (await git.isWorktreeDirty(task.worktreePath!)) continue;
-
-				const unpushed = await git.getUnpushedCount(task.worktreePath!, branchName);
-				let merged: boolean;
-				if (unpushed === -1) {
-					// origin/<branch> is gone: either never pushed, or pruned after
-					// the PR merged (delete_branch_on_merge). Content strategies are
-					// unsafe here (a never-pushed branch with zero commits would
-					// false-positive), but a merged PR whose head equals local HEAD
-					// is definitive.
-					merged = await git.isBranchMergedViaGitHubPR(task.worktreePath!, project);
-				} else {
-					merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
-				}
-				if (!merged) continue;
-
-				if (noticeOnly) {
-					if (!reserveMergeCompletionNotice(task, fingerprint)) continue;
-					log.info("Branch merge notice emitted", { taskId: task.id.slice(0, 8), branch: branchName });
-					pushMessage("branchMerged", {
-						taskId: task.id,
-						projectId: project.id,
-						taskTitle: task.customTitle || task.title,
-						branchName,
-						fingerprint: fingerprint.fingerprint,
-						subject: buildTaskDialogSubject(task, project),
-						shouldPrompt: false,
-						shouldNotify: true,
-					});
-					continue;
-				}
-
-				const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint);
-				if (!shouldPrompt) continue;
-
-				log.info("Branch merge detected", { taskId: task.id.slice(0, 8), branch: branchName });
-				pushMessage("branchMerged", {
-					taskId: task.id,
-					projectId: project.id,
-					taskTitle: task.customTitle || task.title,
-					branchName,
-					fingerprint: fingerprint.fingerprint,
-					subject: buildTaskDialogSubject(task, project),
-				});
-			} catch (err) {
-				log.warn("Merge check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
-			} finally {
-				// Reschedule regardless of outcome (merged, dirty, suppressed, error)
-				// so this task does not re-run until its next jittered slot.
-				mergeTaskNextDue.set(task.id, nextDueAfterRun(now, interval, scheduleRandom));
-			}
-		}
-	}
-	pruneSchedule(mergeTaskNextDue, liveTaskIds);
-}
-
-export function clearMergeNotification(taskId: string): void {
-	for (const key of [...mergeNotifiedPromptKeys.keys()]) {
-		if (key.startsWith(`${taskId}:`)) mergeNotifiedPromptKeys.delete(key);
-	}
-}
-
-export function _resetMergePollerState(): void {
-	mergeNotifiedPromptKeys.clear();
-	mergeTaskNextDue.clear();
-	mergeLastTickAt = 0;
-	scheduleRandom = Math.random;
-}
-
-let prPollerInterval: ReturnType<typeof setInterval> | null = null;
-
-export function startPRDetectionPoller(): void {
-	stopPRDetectionPoller();
-	const POLL_INTERVAL = PR_POLL_INTERVAL_MS;
-
-	prPollerInterval = setInterval(async () => {
-		try {
-			await checkOpenPRsForPromotion();
-		} catch (err) {
-			log.error("PR detection poller error", { error: String(err) });
-		}
-	}, POLL_INTERVAL);
-
-	log.info("PR detection poller started", { intervalMs: POLL_INTERVAL });
-}
-
-export function stopPRDetectionPoller(): void {
-	if (!prPollerInterval) return;
-	clearInterval(prPollerInterval);
-	prPollerInterval = null;
-	log.info("PR detection poller stopped");
-}
-
-export function _resetPRPollerState(): void {
-	prPromotedTasks.clear();
-	prSignalState.clear();
-	prTaskNextDue.clear();
-	prPendingState.clear();
-	prLastTickAt = 0;
-	scheduleRandom = Math.random;
-}
-
-interface GitHubPullRequestSummary {
-	number?: unknown;
-	isDraft?: unknown;
-	autoMergeRequest?: unknown;
-	url?: unknown;
-	title?: unknown;
-	state?: unknown;
-	mergeable?: unknown;
-	mergeStateStatus?: unknown;
-	statusCheckRollup?: unknown;
-	reviewDecision?: unknown;
-}
-
-const PR_STATUS_JSON_FIELDS = "number,isDraft,autoMergeRequest,url,statusCheckRollup,reviewDecision,mergeable,mergeStateStatus,state,title";
-
-interface PolledPRStatus {
-	found: boolean;
-	ciStatus: PRCIStatus | null;
-}
-
-type FreshPRStatus = Omit<TaskPRStatusCache, "cachedAt">;
-
-const REVIEW_STATUS_CANDIDATES = new Set<Task["status"]>(["review-by-user", "review-by-colleague"]);
-const TERMINAL_TASK_STATUSES = new Set<Task["status"]>(["completed", "cancelled"]);
-
-function isStickyPRTask(task: Task): boolean {
-	return task.prNumber != null && !TERMINAL_TASK_STATUSES.has(task.status);
-}
-
-async function persistTaskPrIdentity(project: Project, task: Task, prNumber: number, prUrl: string): Promise<void> {
-	if (task.prNumber === prNumber && task.prUrl === prUrl) return;
-	const updated = await data.updateTask(project, task.id, { prNumber, prUrl });
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-}
-
-function sameFreshPRStatus(cache: TaskPRStatusCache | null | undefined, next: FreshPRStatus): boolean {
-	return !!cache
-		&& cache.number === next.number
-		&& cache.url === next.url
-		&& cache.autoMergeEnabled === next.autoMergeEnabled
-		&& cache.ciStatus === next.ciStatus
-		&& cache.reviewState === next.reviewState
-		&& cache.reviewDecision === next.reviewDecision
-		&& cache.unresolvedCount === next.unresolvedCount
-		&& JSON.stringify(cache.mergeState) === JSON.stringify(next.mergeState)
-		&& JSON.stringify(cache.checks) === JSON.stringify(next.checks)
-		&& cache.prTitle === next.prTitle
-		&& cache.isDraft === next.isDraft;
-}
-
-/**
- * Keep the last successful rich PR response on the task so a later board load
- * can render it before GitHub answers. Cache persistence is best-effort: a
- * stale cache must never prevent the fresh response from reaching the UI.
- */
-async function persistTaskPrStatusCache(project: Project, task: Task, next: FreshPRStatus): Promise<void> {
-	if (task.prNumber === next.number && task.prUrl === next.url && sameFreshPRStatus(task.prStatusCache, next)) return;
-	try {
-		await data.updateTask(project, task.id, {
-			prNumber: next.number,
-			prUrl: next.url,
-			prStatusCache: { ...next, cachedAt: new Date().toISOString() },
-		});
-	} catch (error) {
-		log.warn("PR status cache persistence failed (non-fatal)", { taskId: task.id.slice(0, 8), error: String(error) });
-	}
-}
-
-async function persistProjectPrIdentities(project: Project, prs: PRInfo[]): Promise<void> {
-	let tasks: Task[];
-	try {
-		tasks = await data.loadTasks(project);
-	} catch (err) {
-		log.warn("getProjectPRs: failed to load tasks for sticky PR persistence", { error: String(err) });
-		return;
-	}
-
-	for (const pr of prs) {
-		const task = tasks.find((candidate) => candidate.branchName === pr.headRefName);
-		if (task) await persistTaskPrIdentity(project, task, pr.number, pr.url);
-	}
-}
-
-function prPollInterval(isActiveForeground: boolean, taskId: string): number {
-	return prPendingState.get(taskId)
-		? intervalForTask(isActiveForeground, ACTIVE_PROJECT_PENDING_PR_INTERVAL_MS, BACKGROUND_PROJECT_PENDING_PR_INTERVAL_MS)
-		: intervalForTask(isActiveForeground, ACTIVE_PROJECT_PR_INTERVAL_MS, BACKGROUND_PROJECT_PR_INTERVAL_MS);
-}
-
-const REVIEW_THREADS_QUERY = `
-query($owner: String!, $name: String!, $number: Int!, $after: String) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      reviewThreads(first: 100, after: $after) {
-        nodes { isResolved }
-        pageInfo { hasNextPage endCursor }
-      }
-    }
-  }
-}`;
-
-async function fetchUnresolvedReviewThreadCount(
-	project: Project,
-	worktreePath: string,
-	prUrl: string,
-	prNumber: number,
-): Promise<number | null> {
-	const repository = parseGitHubPullRequestUrl(prUrl);
-	if (!repository) return null;
-	const selectedHost = project.githubAuthHost?.trim().toLowerCase();
-	if (selectedHost && selectedHost !== repository.host.toLowerCase()) {
-		log.warn("PR review-thread lookup skipped because project and PR hosts differ", {
-			projectHost: selectedHost,
-			prHost: repository.host,
-			pr: prNumber,
-		});
-		return null;
-	}
-
-	let after: string | null = null;
-	let count = 0;
-	try {
-		for (let page = 0; page < 100; page++) {
-			const args = [
-				"api",
-				"graphql",
-				"--hostname",
-				repository.host,
-				"-f",
-				`query=${REVIEW_THREADS_QUERY}`,
-				"-F",
-				`owner=${repository.owner}`,
-				"-F",
-				`name=${repository.repo}`,
-				"-F",
-				`number=${prNumber}`,
-				"-F",
-				`after=${after ?? "null"}`,
-			];
-			const result = await github.runGitHub(project, worktreePath, args, { timeoutMs: PR_DETECTION_TIMEOUT_MS });
-			if (!result.ok || !result.stdout) return null;
-
-			const payload = JSON.parse(result.stdout) as {
-				data?: {
-					repository?: {
-						pullRequest?: {
-							reviewThreads?: {
-								nodes?: unknown;
-								pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
-							};
-						} | null;
-					};
-				};
-				errors?: unknown;
-			};
-			if (payload.errors) return null;
-			const threads = payload.data?.repository?.pullRequest?.reviewThreads;
-			if (!threads) return null;
-			count += countUnresolvedReviewThreads(threads.nodes);
-			if (!threads.pageInfo?.hasNextPage || !threads.pageInfo.endCursor) return count;
-			after = threads.pageInfo.endCursor;
-		}
-	} catch (err) {
-		log.warn("PR review-thread lookup failed (non-fatal)", { pr: prNumber, error: String(err) });
-	}
-	return null;
-}
-
-async function pollTaskPrStatus(project: Project, task: Task, pushMessage: NonNullable<ReturnType<typeof getPushMessage>>): Promise<PolledPRStatus | null> {
-	if (!task.worktreePath) return null;
-	const branchName = await git.getCurrentBranch(task.worktreePath);
-	if (!branchName) return null;
-
-	const unpushed = await git.getUnpushedCount(task.worktreePath, branchName);
-	if (unpushed === -1) return null;
-
-	const ghResult = await github.runGitHub(
-		project,
-		task.worktreePath,
-		[
-			"pr",
-			"list",
-			"--head",
-			branchName,
-			"--state",
-			"open",
-			"--json",
-			PR_STATUS_JSON_FIELDS,
-			"--limit",
-			"1",
-		],
-		{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
-	);
-	if (!ghResult.ok || !ghResult.stdout) return null;
-
-	let prs: GitHubPullRequestSummary[];
-	try {
-		prs = JSON.parse(ghResult.stdout);
-	} catch {
-		return null;
-	}
-	let pr = Array.isArray(prs) && prs.length > 0 ? prs[0] : null;
-	let isOpenPr = pr !== null;
-	if (!pr && task.prNumber != null) {
-		// An open-list lookup stops finding the PR after merge. Use the sticky
-		// number to fetch that exact PR so its URL and terminal state remain
-		// visible, even if the branch has since disappeared from GitHub.
-		const knownPrResult = await github.runGitHub(
-			project,
-			task.worktreePath,
-			["pr", "view", String(task.prNumber), "--json", PR_STATUS_JSON_FIELDS],
-			{ timeoutMs: PR_DETECTION_TIMEOUT_MS },
-		);
-		if (knownPrResult.ok && knownPrResult.stdout) {
-			try {
-				const parsed = JSON.parse(knownPrResult.stdout);
-				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-					pr = parsed as GitHubPullRequestSummary;
-					isOpenPr = typeof pr.state === "string" && pr.state.toUpperCase() === "OPEN";
-				}
-			} catch {
-				return null;
-			}
-		}
-	}
-	if (!pr) return { found: false, ciStatus: null };
-
-	const prNumber = typeof pr.number === "number" ? pr.number : task.prNumber ?? null;
-	const prUrl = typeof pr.url === "string" ? pr.url : task.prUrl ?? null;
-	if (prNumber === null) return null;
-
-	const ciStatus = rollupCiStatus(pr.statusCheckRollup);
-	const reviewDecision = parseReviewDecision(pr.reviewDecision);
-	const reviewState = mapReviewDecision(pr.reviewDecision);
-	const checks = normalizeChecks(pr.statusCheckRollup);
-	const unresolvedCount = prUrl
-		? await fetchUnresolvedReviewThreadCount(project, task.worktreePath, prUrl, prNumber)
-		: null;
-	const mergeState: PRMergeState = {
-		mergeable: typeof pr.mergeable === "string" ? pr.mergeable.toUpperCase() : null,
-		status: typeof pr.mergeStateStatus === "string" ? pr.mergeStateStatus.toUpperCase() : null,
-		state: typeof pr.state === "string" ? pr.state.toUpperCase() : null,
-	};
-	const prTitle = typeof pr.title === "string" ? pr.title : null;
-	const isDraft = typeof pr.isDraft === "boolean" ? pr.isDraft : null;
-	const autoMergeEnabled = parseAutoMergeEnabled(pr.autoMergeRequest);
-
-	if (prUrl) {
-		await persistTaskPrStatusCache(project, task, {
-			number: prNumber,
-			url: prUrl,
-			autoMergeEnabled,
-			ciStatus,
-			reviewState,
-			reviewDecision,
-			unresolvedCount,
-			mergeState,
-			checks,
-			prTitle,
-			isDraft,
-		});
-	}
-
-	pushMessage("taskPrStatus", {
-		projectId: project.id,
-		taskId: task.id,
-		prNumber,
-		prUrl,
-		autoMergeEnabled,
-		ciStatus,
-		reviewState,
-		reviewDecision,
-		unresolvedCount,
-		mergeState,
-		checks,
-		prTitle,
-		isDraft,
-	});
-
-	// Raise the bell / native notification only on a *transition* to a new
-	// worthy signal. Unresolved-thread changes deliberately stay passive.
-	const signalKey = computeSignalKey(ciStatus, reviewState);
-	if (signalKey && prSignalState.get(task.id) !== signalKey) {
-		prSignalState.set(task.id, signalKey);
-		const reason = reasonForSignal(ciStatus, reviewState);
-		pushCliAttention({ taskId: task.id, reason });
-		notifyWatchedTaskEvent(task, reason, project.name);
-	} else if (!signalKey) {
-		prSignalState.delete(task.id);
-	}
-
-	const isOpenNonDraft = isOpenPr && isDraft === false;
-	if (task.status === "review-by-user" && isOpenNonDraft && !prPromotedTasks.has(task.id)) {
-		prPromotedTasks.add(task.id);
-		log.info("Open PR detected — promoting to review-by-colleague", {
-			taskId: task.id.slice(0, 8),
-			branch: branchName,
-			pr: prNumber,
-		});
-		const updated = await data.updateTask(project, task.id, { status: "review-by-colleague" });
-		pushMessage("taskUpdated", { projectId: project.id, task: updated });
-	}
-
-	return { found: isOpenPr, ciStatus };
-}
-
-
-export async function checkOpenPRsForPromotion(): Promise<void> {
-	const pushMessage = getPushMessage();
-	if (!pushMessage) return;
-
-	if (prPromotedTasks.size > 500) {
-		log.warn("prPromotedTasks exceeded 500 entries, clearing", { size: prPromotedTasks.size });
-		prPromotedTasks.clear();
-	}
-
-	const projects = await data.loadProjects();
-	const { projectId: activeProjectId } = getActiveContext();
-	const foreground = isAppForeground();
-	const now = Date.now();
-	const wokeFromSleep = prLastTickAt !== 0 && wasAsleep(now - prLastTickAt, PR_POLL_INTERVAL_MS);
-	prLastTickAt = now;
-
-	const liveTaskIds = new Set<string>();
-	for (const project of projects) {
-		const tasks = await data.loadTasks(project);
-		// Detection remains limited to review statuses, but a task with a persisted
-		// PR identity stays sticky through every non-terminal status so CI/review
-		// state remains visible while an agent fixes reviewer feedback.
-		const candidates = tasks.filter(
-			(task) =>
-				!!task.worktreePath &&
-				(isStickyPRTask(task) || (project.peerReviewEnabled !== false && REVIEW_STATUS_CANDIDATES.has(task.status))),
-		);
-
-		if (candidates.length === 0) continue;
-
-		const isActiveFg = foreground && project.id === activeProjectId;
-		const dueTasks = candidates.filter((task) => {
-			liveTaskIds.add(task.id);
-			const interval = prPollInterval(isActiveFg, task.id);
-			let scheduled = prTaskNextDue.get(task.id);
-			if (scheduled === undefined) {
-				scheduled = isActiveFg ? now : staggeredDue(now, interval, scheduleRandom);
-				prTaskNextDue.set(task.id, scheduled);
-			}
-			if (wokeFromSleep) {
-				prTaskNextDue.set(task.id, staggeredDue(now, interval, scheduleRandom));
-				return false;
-			}
-			return isDue(scheduled, now);
-		});
-
-		if (dueTasks.length === 0) continue;
-
-		for (const task of dueTasks) {
-			try {
-				const result = await pollTaskPrStatus(project, task, pushMessage);
-				if (result) prPendingState.set(task.id, result.found && result.ciStatus === "pending");
-			} catch (err) {
-				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
-			} finally {
-				prTaskNextDue.set(task.id, nextDueAfterRun(now, prPollInterval(isActiveFg, task.id), scheduleRandom));
-			}
-		}
-	}
-	pruneSchedule(prTaskNextDue, liveTaskIds);
-	pruneSchedule(prPendingState, liveTaskIds);
-	// Drop signal state for tasks no longer being polled so a re-entry to a
-	// review status re-raises the signal fresh.
-	for (const id of prSignalState.keys()) {
-		if (!liveTaskIds.has(id)) prSignalState.delete(id);
-	}
-}
-
-async function refreshTaskPrStatus(params: { taskId: string; projectId: string }): Promise<void> {
-	const pushMessage = getPushMessage();
-	if (!pushMessage) return;
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	if (project.kind === "virtual" || !task.worktreePath || TERMINAL_TASK_STATUSES.has(task.status)) return;
-	const result = await pollTaskPrStatus(project, task, pushMessage);
-	if (result) prPendingState.set(task.id, result.found && result.ciStatus === "pending");
-	prTaskNextDue.delete(task.id);
-}
-
 export function cleanupTaskGitState(taskId: string): void {
-	gitOpPaneIds.delete(taskId);
+	const runtime = lifecycleActorRuntime(taskId);
+	delete runtime.gitOpPaneId;
 	clearMergeNotification(taskId);
-	prPromotedTasks.delete(taskId);
-	prSignalState.delete(taskId);
-	prPendingState.delete(taskId);
-	prTaskNextDue.delete(taskId);
-	branchStatusInFlight.delete(taskId);
+	delete runtime.mergeNextDue;
+	delete runtime.prPromoted;
+	delete runtime.prSignalKey;
+	delete runtime.prPending;
+	delete runtime.prNextDue;
+	runtime.branchStatusInFlight?.clear();
+	delete runtime.branchStatusInFlight;
 }
 
 async function getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }): Promise<BranchStatus> {
@@ -1038,7 +260,9 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 async function getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {
 	log.debug("→ getBranchStatus", params);
 	const dedupKey = `${params.taskId}:${params.compareRef ?? ""}`;
-	const existing = branchStatusInFlight.get(dedupKey);
+	const runtime = lifecycleActorRuntime(params.taskId);
+	const inFlight = runtime.branchStatusInFlight ??= new Map();
+	const existing = inFlight.get(dedupKey);
 	if (existing) {
 		log.debug("getBranchStatus: reusing in-flight request", { taskId: params.taskId });
 		return existing;
@@ -1048,11 +272,11 @@ async function getBranchStatus(params: { taskId: string; projectId: string; comp
 	// local git commands. A wave of panels polling at once (e.g. on wake) would
 	// otherwise fork dozens of git processes simultaneously and choke the machine.
 	const promise = branchStatusSemaphore.run(() => getBranchStatusImpl(params));
-	branchStatusInFlight.set(dedupKey, promise);
+	inFlight.set(dedupKey, promise);
 	try {
 		return await promise;
 	} finally {
-		branchStatusInFlight.delete(dedupKey);
+		inFlight.delete(dedupKey);
 	}
 }
 
@@ -1146,7 +370,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 	await Bun.write(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
+	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
 	monitorGitPane(paneId, task.id, params.projectId, "rebase", socket);
 
 	log.info("← rebaseTask (pane opened)", { paneId });
@@ -1244,7 +468,7 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 	await Bun.write(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, project.path, scriptPath, socket);
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
+	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
 	monitorGitPane(paneId, task.id, params.projectId, "merge", socket);
 
 	log.info("← mergeTask (pane opened)", { paneId });
@@ -1282,7 +506,7 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 	await Bun.write(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
+	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
 	monitorGitPane(paneId, task.id, params.projectId, "push", socket);
 
 	log.info("← pushTask (pane opened)", { paneId });
@@ -1376,7 +600,7 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 	await Bun.write(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
-	if (paneId) gitOpPaneIds.set(task.id, paneId);
+	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
 	monitorGitPane(paneId, task.id, params.projectId, "openPR", socket);
 
 	log.info("← openPullRequest (pane opened)", { paneId });

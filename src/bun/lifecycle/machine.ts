@@ -59,7 +59,9 @@ function resolvedTarget(state: LifecycleState, event: Extract<LifecycleEvent, { 
 	if (event.target.status) {
 		return {
 			status: event.target.status,
-			customColumnId: event.target.customColumnId ?? null,
+			customColumnId: event.target.customColumnId === undefined
+				? state.column.customColumnId
+				: event.target.customColumnId,
 		};
 	}
 
@@ -83,10 +85,10 @@ function preparationFailureEffects(
 		effect({ type: "destroyTaskPty" }),
 		effect({ type: "killDevServer" }),
 	];
-	if (state.facts.hasWorktree) {
-		effects.push(effect({ type: "runCleanupScript", toStatus: "todo" }));
+	if (state.facts.hasWorktree || state.runtime.phase === "preparing") {
+		effects.push(effect({ type: "runCleanupScript", toStatus: "todo", allowDerivedPath: true }));
 		if (state.facts.projectKind === "git") {
-			effects.push(effect({ type: "removeWorktree" }));
+			effects.push(effect({ type: "removeWorktree", allowDerivedPath: true }));
 		}
 	}
 	effects.push(
@@ -137,6 +139,9 @@ function moveTransition(
 					origin: state.column,
 					target,
 					isReopen: TERMINAL_STATUSES.has(oldStatus),
+					awaitCompletion: true,
+					successPatch: "activation",
+					launch: undefined,
 				}, "abort", failed),
 			],
 		};
@@ -188,7 +193,15 @@ function moveTransition(
 		next: { ...state, column: target, runtime: nextRuntime },
 		effects: [
 			effect({ type: "clearMergeThrottle" }),
-			effect({ type: "persistColumn", column: target, runtime: nextRuntime }, "abort"),
+			effect({
+				type: "persistColumn",
+				column: target,
+				patch: event.target.status
+					? (event.target.customColumnId === undefined ? "statusOnly" : "status")
+					: "custom",
+				guards: event.guards,
+				runtime: nextRuntime,
+			}, "abort"),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
 			effect({ type: "notifyStatusChange", from: oldStatus, to: target.status }),
 			effect({ type: "launchColumnAgent", column: target }),
@@ -276,29 +289,34 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 		case "moveRequested":
 			return moveTransition(state, event);
 		case "preparationRequested": {
-			if (state.runtime.phase === "preparing" && state.runtime.runId !== event.runId) {
-				return unchanged(state);
-			}
 			const runtime: LifecycleRuntime = {
 				phase: "preparing",
 				stage: "resolving-config",
 				runId: event.runId,
 				origin: event.origin ?? { status: "todo", customColumnId: null },
 			};
+			const alreadyReserved = state.runtime.phase === "preparing"
+				&& state.runtime.runId === event.runId;
 			return {
 				next: { ...state, runtime },
 				effects: [
-					effect({ type: "persistRuntime", runtime }, "abort", {
-						type: "preparationFailed",
-						runId: event.runId,
-						error: "Task preparation failed",
-					}),
+					...(!alreadyReserved ? [
+						effect({ type: "cancelPreparationProcesses" }),
+						effect({ type: "persistRuntime", runtime }, "abort", {
+							type: "preparationFailed",
+							runId: event.runId,
+							error: "Task preparation failed",
+						}),
+					] : []),
 					effect({
 						type: "prepareTask",
 						runId: event.runId,
 						origin: runtime.origin,
 						target: state.column,
 						isReopen: false,
+						awaitCompletion: event.awaitCompletion === true,
+						successPatch: "preparation",
+						launch: event.launch,
 					}, "abort", {
 						type: "preparationFailed",
 						runId: event.runId,
@@ -319,24 +337,29 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 			};
 		}
 		case "preparationSucceeded": {
-			if (state.runtime.phase !== "preparing" || state.runtime.runId !== event.runId) return unchanged(state);
+			const currentRunMatches = state.runtime.phase === "preparing" && state.runtime.runId === event.runId;
+			const sourceColumnMatches = state.column.status === event.origin.status
+				&& state.column.customColumnId === event.origin.customColumnId;
+			if (!currentRunMatches && !sourceColumnMatches) return unchanged(state);
 			const runtime = { phase: "running" } as const;
 			return {
-				next: {
+					next: {
 					...state,
+					column: event.target,
 					runtime,
 					facts: { ...state.facts, hasWorktree: true },
 				},
 				effects: [
 					effect({
 						type: "persistColumn",
-						column: state.column,
+						column: event.target,
+						patch: event.mode,
 						runtime,
 						worktreePath: event.worktreePath,
 						branchName: event.branchName,
 					}, "abort"),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),
-					effect({ type: "launchColumnAgent", column: state.column }),
+					effect({ type: "launchColumnAgent", column: event.target }),
 			],
 			};
 		}
@@ -353,13 +376,15 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 		}
 		case "preparationCancelled": {
 			if (state.runtime.phase !== "preparing" || state.runtime.runId !== event.runId) return unchanged(state);
+			const effects = preparationFailureEffects(state, null, false);
+			effects.unshift(effect({ type: "cancelPreparationProcesses" }));
 			return {
 				next: {
 					...state,
 					column: { status: "todo", customColumnId: null },
 					runtime: { phase: "idle" },
 				},
-				effects: preparationFailureEffects(state, null, false),
+				effects,
 			};
 		}
 		case "mergeDetected":
@@ -372,15 +397,16 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 			],
 			};
 		case "prDetected": {
+			if (!activitiesFor(state).includes("prWatch")) return unchanged(state);
 			const effects: LifecycleEffect[] = [
-				effect({ type: "persistPrStatus", payload: event.payload }),
+				effect({ type: "persistPrStatus", payload: event.persistence }),
 				effect({ type: "push", message: "taskPrStatus", payload: event.payload }),
 			];
 			if (event.signalReason) effects.push(effect({ type: "raisePrAttention", reason: event.signalReason }));
 			if (state.column.status === "review-by-user" && event.openNonDraft) {
 				const column = { status: "review-by-colleague", customColumnId: null } as const;
 				effects.push(
-					effect({ type: "persistColumn", column, runtime: state.runtime }, "abort"),
+					effect({ type: "persistColumn", column, patch: "statusOnly", writeOptions: "none" }, "abort"),
 					effect({ type: "push", message: "taskUpdated", view: "current" }),
 				);
 				return { next: { ...state, column }, effects };
@@ -393,7 +419,7 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 				return {
 					next: { ...state, column },
 					effects: [
-						effect({ type: "persistColumn", column, runtime: state.runtime }, "abort"),
+						effect({ type: "persistColumn", column, patch: "status", runtime: state.runtime }, "abort"),
 						effect({ type: "push", message: "taskUpdated", view: "current" }),
 					],
 				};

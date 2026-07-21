@@ -1135,6 +1135,17 @@ export interface CompletedDiffStats {
 	capturedAt: string;
 }
 
+/**
+ * Persisted lifecycle runtime hint. The actor verifies this against worktree and
+ * tmux reality at boot; it is never treated as authoritative on its own.
+ */
+export interface TaskRuntimeState {
+	runtime: "idle" | "preparing" | "running" | "tearing-down";
+	stage?: string;
+	runId?: string;
+	updatedAt: number;
+}
+
 export interface Task {
 	id: string;
 	seq: number;
@@ -1232,6 +1243,8 @@ export interface Task {
 	 * so launch feedback survives a missed push/toast; cleared by the next launch.
 	 */
 	preparationError?: string | null;
+	/** Additive lifecycle runtime hint; older app versions ignore this field. */
+	runtimeState?: TaskRuntimeState;
 	/**
 	 * True while a terminal move (→ completed/cancelled) is tearing the task down
 	 * server-side: destroying the tmux session, running the cleanup script, and

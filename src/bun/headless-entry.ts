@@ -30,6 +30,7 @@ import { startTunnel, stopTunnel, isCloudflaredAvailable, getTunnelUrl } from ".
 import { renderHeadlessBanner, startQrAutoRefresh, stopQrAutoRefresh, markQrConsumed, printExposedPortsLive } from "./remote-console";
 import { writeRemoteState, clearRemoteStateIfOwnedBy } from "./remote-state";
 import { BUILD_TIME, BUILD_VERSION } from "../shared/build-info.generated";
+import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
 
 const log = createLogger("headless");
 
@@ -321,6 +322,8 @@ if (!staticCode) {
 }
 
 // ── Background pollers ──
+await rehydrateTaskLifecycles();
+
 startMergeDetectionPoller();
 startPRDetectionPoller();
 
