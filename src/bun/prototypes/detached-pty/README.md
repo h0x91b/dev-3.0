@@ -139,8 +139,10 @@ Expected output:
 
 - `bun run test:proto-e2e` — real-runtime regression on Windows and POSIX. It
   proves start → reconnect → child + grandchild → stop, ownership isolation,
-  endpoint/handle/metadata cleanup, idempotence, and no tmux invocation. Expected
+  endpoint/handle/metadata cleanup, idempotence, and no tmux invocation. Windows
+  probes retry harmless commands while each PowerShell prompt starts. Expected
   final line: `ALL CHECKS PASSED`.
-- `__tests__/protocol.test.ts`, `__tests__/state.test.ts`, and
-  `__tests__/windows-job.test.ts` — vitest units for pure protocol/state logic and
-  the Win32 handle lifecycle; part of `bun run test`.
+- `__tests__/command-roundtrip.test.ts`, `__tests__/protocol.test.ts`,
+  `__tests__/state.test.ts`, and `__tests__/windows-job.test.ts` — vitest units
+  for startup command round trips, pure protocol/state logic, and the Win32
+  handle lifecycle; part of `bun run test`.

@@ -21,6 +21,7 @@ import { PtyProtoClient } from "../client";
 import { isProcessAlive, logFile, readState, stateDir, stateFile } from "../state";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
 import { spawn } from "../../../spawn";
+import { sendUntilObserved } from "./command-roundtrip";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -30,6 +31,11 @@ function check(condition: boolean, msg: string): void {
 		failures++;
 		console.error(`  FAIL - ${msg}`);
 	}
+}
+
+function transcriptOnFailure(observed: unknown, label: string, text: string): void {
+	if (observed) return;
+	console.error(`       ${label} transcript tail: ${JSON.stringify(text.slice(-2000))}`);
 }
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -127,15 +133,22 @@ async function run(): Promise<void> {
 		const c1 = new PtyProtoClient();
 		await c1.connect(state);
 		const s1 = makeSink(c1);
+		let rootMatch: RegExpExecArray | null;
 		if (isWindows) {
-			sendLine(c1, `$env:PROTO_STATE='${nonce}'`);
-			sendLine(c1, `Write-Output "ROOTPID[$PID]"`);
+			rootMatch = await sendUntilObserved({
+				send: () => sendLine(c1, `$env:PROTO_STATE='${nonce}'; Write-Output "ROOTPID[$PID]"`),
+				observe: () => /ROOTPID\[(\d+)\]/.exec(s1.text()),
+				attempts: 4,
+				attemptTimeoutMs: 1000,
+				pollIntervalMs: 30,
+			});
 		} else {
 			sendLine(c1, "set +H");
 			sendLine(c1, `export PROTO_STATE=${nonce}`);
 			sendLine(c1, `echo "ROOTPID[$$]"`);
+			rootMatch = await s1.waitForMatch(/ROOTPID\[(\d+)\]/);
 		}
-		const rootMatch = await s1.waitForMatch(/ROOTPID\[(\d+)\]/);
+		transcriptOnFailure(rootMatch, "root startup", s1.text());
 		check(rootMatch !== null, "client 1 receives live shell output");
 		check(Number(rootMatch?.[1]) === state.shellPid, "interactive root reports the recorded shell PID");
 		const st1 = await c1.status();
@@ -156,19 +169,42 @@ async function run(): Promise<void> {
 		const st2 = await c2.status();
 		check(st2.shellPid === recordedShellPid, "reattached client sees the UNCHANGED shell PID");
 		check(st2.hostPid === state.hostPid, "reattached client sees the UNCHANGED host PID");
-		sendLine(
-			c2,
-			isWindows ? `Write-Output "MARKER:$env:PROTO_STATE:$PID"` : `echo "MARKER:$PROTO_STATE:$$"`,
-		);
+		const expectedMarker = `MARKER:${nonce}:${recordedShellPid}`;
+		let markerSeen: string | boolean | null;
+		if (isWindows) {
+			markerSeen = await sendUntilObserved({
+				send: () => sendLine(c2, `Write-Output "MARKER:$env:PROTO_STATE:$PID"`),
+				observe: () => (s2.text().includes(expectedMarker) ? expectedMarker : null),
+				attempts: 4,
+				attemptTimeoutMs: 1000,
+				pollIntervalMs: 30,
+			});
+		} else {
+			sendLine(c2, `echo "MARKER:$PROTO_STATE:$$"`);
+			markerSeen = await s2.waitFor(expectedMarker);
+		}
+		transcriptOnFailure(markerSeen, "reattach marker", s2.text());
 		check(
-			await s2.waitFor(`MARKER:${nonce}:${recordedShellPid}`),
+			Boolean(markerSeen),
 			"reattached client proves shell STATE (env var) AND PID are preserved across reconnect",
 		);
 
 		sendLine(c2, isWindows ? "powershell.exe -NoLogo -NoProfile" : "bash --norc --noprofile");
-		if (!isWindows) sendLine(c2, "set +H");
-		sendLine(c2, isWindows ? `Write-Output "CHILDPID[$PID]"` : `echo "CHILDPID[$$]"`);
-		const childMatch = await s2.waitForMatch(/CHILDPID\[(\d+)\]/);
+		let childMatch: RegExpExecArray | null;
+		if (isWindows) {
+			childMatch = await sendUntilObserved({
+				send: () => sendLine(c2, `Write-Output "CHILDPID[$PID]"`),
+				observe: () => /CHILDPID\[(\d+)\]/.exec(s2.text()),
+				attempts: 6,
+				attemptTimeoutMs: 1000,
+				pollIntervalMs: 30,
+			});
+		} else {
+			sendLine(c2, "set +H");
+			sendLine(c2, `echo "CHILDPID[$$]"`);
+			childMatch = await s2.waitForMatch(/CHILDPID\[(\d+)\]/);
+		}
+		transcriptOnFailure(childMatch, "child startup", s2.text());
 		const childPid = Number(childMatch?.[1]);
 		check(Number.isInteger(childPid) && isProcessAlive(childPid), "root shell spawned a live child shell");
 		if (isWindows) {

@@ -1,1 +1,0 @@
-The isolated detached-PTY tracer now contains native Windows shells and all descendants in a kill-on-close Job Object. Stop gracefully requests exit, then forcefully removes the selected tree, endpoint, handles, and metadata without touching tmux.
