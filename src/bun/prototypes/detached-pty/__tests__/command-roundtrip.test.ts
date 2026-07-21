@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
+import { powerShellReattachStateProbe, powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
 
 describe("detached-pty command round trips", () => {
+	it("uses unambiguous delimiters around a scoped PowerShell environment variable", () => {
+		const probe = powerShellReattachStateProbe("state-100-200", 200);
+
+		expect(probe.command).toBe('Write-Output "MARKER[$env:PROTO_STATE][$PID]"');
+		expect(probe.observe("MARKER:200")).toBeNull();
+		expect(probe.observe("MARKER[state-100-200][200]")).toBe("MARKER[state-100-200][200]");
+	});
+
 	it("rejects a root acknowledgement when startup swallowed the state assignment", () => {
 		const probe = powerShellRootStateProbe("state-100-200", 200);
 

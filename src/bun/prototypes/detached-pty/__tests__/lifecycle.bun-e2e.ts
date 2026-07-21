@@ -21,7 +21,7 @@ import { PtyProtoClient } from "../client";
 import { isProcessAlive, logFile, readState, stateDir, stateFile } from "../state";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
 import { spawn } from "../../../spawn";
-import { powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
+import { powerShellReattachStateProbe, powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -174,17 +174,18 @@ async function run(): Promise<void> {
 		const st2 = await c2.status();
 		check(st2.shellPid === recordedShellPid, "reattached client sees the UNCHANGED shell PID");
 		check(st2.hostPid === state.hostPid, "reattached client sees the UNCHANGED host PID");
-		const expectedMarker = `MARKER:${nonce}:${recordedShellPid}`;
 		let markerSeen: string | boolean | null;
 		if (isWindows) {
+			const probe = powerShellReattachStateProbe(nonce, recordedShellPid);
 			markerSeen = await sendUntilObserved({
-				send: () => sendLine(c2, `Write-Output "MARKER:$env:PROTO_STATE:$PID"`),
-				observe: () => (s2.text().includes(expectedMarker) ? expectedMarker : null),
+				send: () => sendLine(c2, probe.command),
+				observe: () => probe.observe(s2.text()),
 				attempts: 4,
 				attemptTimeoutMs: 1000,
 				pollIntervalMs: 30,
 			});
 		} else {
+			const expectedMarker = `MARKER:${nonce}:${recordedShellPid}`;
 			sendLine(c2, `echo "MARKER:$PROTO_STATE:$$"`);
 			markerSeen = await s2.waitFor(expectedMarker);
 		}

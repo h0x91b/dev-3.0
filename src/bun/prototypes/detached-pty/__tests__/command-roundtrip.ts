@@ -19,6 +19,17 @@ export function powerShellRootStateProbe(state: string, shellPid: number): {
 	};
 }
 
+export function powerShellReattachStateProbe(state: string, shellPid: number): {
+	command: string;
+	observe: (text: string) => string | null;
+} {
+	const expected = `MARKER[${state}][${shellPid}]`;
+	return {
+		command: 'Write-Output "MARKER[$env:PROTO_STATE][$PID]"',
+		observe: (text) => (text.includes(expected) ? expected : null),
+	};
+}
+
 /** Retry an idempotent probe while a new interactive shell prompt starts. */
 export async function sendUntilObserved<T>(options: SendUntilObservedOptions<T>): Promise<T | null> {
 	for (let attempt = 0; attempt < options.attempts; attempt++) {
