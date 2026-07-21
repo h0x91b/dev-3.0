@@ -91,6 +91,23 @@ describe("saveSharedArtifact", () => {
 		expect(download.mime).toBe("text/html");
 	});
 
+	it("names the download from the title, sanitizing separators and illegal characters", () => {
+		const html = join(SRC_DIR, "index.html");
+		const image = join(SRC_DIR, "pic.png");
+		writeFileSync(html, '<!doctype html><img src="pic.png">');
+		writeFileSync(image, "PNGDATA");
+		const saved = saveSharedArtifact("/my/project", html, [image], 'Q4 Revenue / "Draft"');
+		expect(basename(saved.bundlePath!)).toBe("index.zip");
+		expect(loadSharedArtifactDownload(saved).fileName).toBe("Q4 Revenue Draft.zip");
+	});
+
+	it("falls back to the HTML basename when the title yields no usable stem", () => {
+		const html = join(SRC_DIR, "index.html");
+		writeFileSync(html, "<!doctype html><p>Hi</p>");
+		const saved = { ...saveSharedArtifact("/my/project", html, []), title: "///" };
+		expect(loadSharedArtifactDownload(saved).fileName).toBe("index.html");
+	});
+
 	it("loads copied images as data URLs and downloads the ZIP bundle", () => {
 		const html = join(SRC_DIR, "bundle.html");
 		const image = join(SRC_DIR, "bundle.png");
