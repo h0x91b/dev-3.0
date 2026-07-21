@@ -74,6 +74,12 @@ const help = {
 	"help.inspector.runtimeBar.title": "Runtime y accesos",
 	"help.inspector.runtimeBar.body":
 		"Lo que la tarea produce y cómo llegar a ello: abre el worktree en tu editor, ejecuta scripts del paquete, arranca o detén el servidor de desarrollo, inspecciona puertos e imágenes compartidas.",
+	"help.inspector.metadata.title": "Detalles de la tarea",
+	"help.inspector.metadata.body":
+		"La identidad de esta tarea: su descripción (el prompt del agente), la ruta del worktree en disco — cópiala para hacer cd allí tú mismo — y cuándo se creó y se tocó por última vez.",
+	"help.inspector.notes.title": "Notas",
+	"help.inspector.notes.body":
+		"Un bloc de notas duradero para esta tarea. Las notas sobreviven después de que la tarea se complete y su worktree se destruya, y los agentes futuros pueden buscarlas — anota aquí decisiones y hallazgos difíciles, no solo recordatorios.",
 
 	// ── Diff viewer ──
 	"help.diff.modes.title": "Modos de diff",
@@ -82,6 +88,12 @@ const help = {
 	"help.diff.review.title": "Revisión inline",
 	"help.diff.review.body":
 		"Arrastra por el margen de líneas para comentar un rango. Copy review convierte todos los comentarios en un prompt para el agente — pégalo en la terminal de la tarea. La revisión sobrevive reinicios durante 3 días.",
+	"help.diff.filesAside.title": "Archivos",
+	"help.diff.filesAside.body":
+		"Todos los archivos modificados con su progreso de lectura. Marca un archivo a medida que lo revisas — el contador se llena. Expande o colapsa todos los archivos, márcalos todos como leídos, o haz clic en uno para saltar a él en el diff.",
+	"help.diff.githubReview.title": "Conversación del PR",
+	"help.diff.githubReview.body":
+		"Cuando la tarea tiene un pull request, sus hilos de revisión de GitHub aparecen aquí y en línea sobre el código — solo lectura. Alterna los hilos resueltos, refresca, o abre cualquier comentario en GitHub. Envía un hilo al agente como prompt de corrección; esta superficie nunca escribe de vuelta en GitHub.",
 
 	// ── Settings sections ──
 	"help.settings.agents.title": "Agentes",
@@ -106,6 +118,26 @@ const help = {
 		"Dónde viven los worktrees de las tareas en disco, qué editores y aplicaciones externas alimentan open-in, y tus cuentas de GitHub.",
 	"help.settings.devtools.title": "Herramientas de desarrollo",
 	"help.settings.devtools.body": "Presets de teclado de la terminal y el estado de instalación del CLI dev3.",
+	"help.settings.rateLimits.title": "Seguimiento de límites",
+	"help.settings.rateLimits.body":
+		"Muestra el uso en vivo de los límites de Claude/Codex en la cabecera, para que veas venir un límite antes de que detenga a tus agentes. El porcentaje se vuelve amarillo cerca del tope; desactívalo si no quieres el indicador.",
+	"help.settings.pxpipe.title": "Proxy de ahorro de tokens",
+	"help.settings.pxpipe.body":
+		"Un proxy local experimental (pxpipe) que renderiza el contexto voluminoso como imágenes para recortar tokens de entrada — a menudo ~2× más barato, algo más lento. Desactivado por defecto; activarlo desbloquea el preset «Fable 5 (cost trick)».",
+
+	// ── Project settings (tabs) ──
+	"help.projectSettings.board.title": "Configuración del tablero",
+	"help.projectSettings.board.body":
+		"Configuración a nivel de tablero para este proyecto: las columnas Kanban personalizadas por las que pasan las tareas, y las etiquetas con las que puedes marcarlas.",
+	"help.projectSettings.project.title": "Configuración del proyecto",
+	"help.projectSettings.project.body":
+		"Ajustes a nivel de repositorio: los scripts de setup / dev / cleanup, la rama base por defecto, la cuenta de GitHub y si la revisión por IA se ejecuta automáticamente.",
+	"help.projectSettings.worktree.title": "Configuración del worktree",
+	"help.projectSettings.worktree.body":
+		"Cómo se construyen los worktrees de las tareas a partir de este repo — rutas de sparse-checkout y qué archivos extra se copian dentro — para que cada agente reciba exactamente el árbol de trabajo que necesita.",
+	"help.projectSettings.automations.title": "Automatizaciones",
+	"help.projectSettings.automations.body":
+		"Ejecuciones de agentes programadas para este proyecto. Crea, activa, ejecuta ahora o inspecciona el historial de ejecuciones de cada automatización; cada disparo cae como una tarea normal en el tablero.",
 
 	// ── Stats ──
 	"help.stats.overview.title": "Velocity Cockpit",
@@ -119,6 +151,37 @@ const help = {
 	"help.modal.launchVariants.title": "Variantes",
 	"help.modal.launchVariants.body":
 		"N variantes significa N agentes independientes resolviendo la misma tarea en paralelo, cada uno en su propio worktree y rama. Compara los resultados y quédate con el mejor — el resto se cancela.",
+	"help.modal.addProject.title": "Añadir un proyecto",
+	"help.modal.addProject.body":
+		"Apunta dev3 a un repo git local, clona uno remoto primero, o crea un tablero de Operaciones — un proyecto virtual cuyas tareas ejecutan agentes en carpetas gestionadas, sin git.",
+	"help.modal.spawnAgent.title": "Añadir un agente",
+	"help.modal.spawnAgent.body":
+		"Añade un segundo agente a la sesión existente de esta tarea — mismo worktree, misma terminal. Útil para pasar el relevo a otro modelo o correr un ayudante junto al agente principal.",
+	"help.modal.taskDetail.title": "Detalles de la tarea",
+	"help.modal.taskDetail.body":
+		"Edita todo sobre la tarea: título, descripción (el prompt del agente), etiquetas, prioridad y estado. Los cambios se aplican a todo el grupo de variantes.",
+	"help.modal.automation.title": "Automatización",
+	"help.modal.automation.body":
+		"Un horario que dispara un agente con una cadencia recurrente. Elige la cadencia, la zona horaria, el prompt y el agente — cada ejecución crea una tarea normal en el tablero.",
+	"help.modal.scheduleMessage.title": "Enviar más tarde",
+	"help.modal.scheduleMessage.body":
+		"Pon en cola un prompt único para que llegue al agente vivo (o a un panel tmux elegido) más tarde — un empujón, un seguimiento o un recordatorio sin vigilar la sesión.",
+	"help.modal.bugHunters.title": "Cazadores de bugs",
+	"help.modal.bugHunters.body":
+		"Suelta un enjambre de agentes paralelos sobre el código de esta tarea, cada uno cazando bugs desde un ángulo distinto en su propio worktree. Elige cuántos y qué agente; los hallazgos vuelven para que los tries.",
+
+	// ── Viewers & workspace ──
+	"help.viewer.images.title": "Imágenes compartidas",
+	"help.viewer.images.body":
+		"Capturas y renders que un agente compartió con `dev3 show-image`, las más nuevas primero. Recorre el historial, copia una imagen o revela el archivo original en disco.",
+	"help.viewer.artifact.title": "Artefacto",
+	"help.viewer.artifact.body":
+		"Un informe HTML interactivo que un agente construyó con `dev3 show-artifact`, aislado junto a la terminal. Cambia su tamaño, ponlo a pantalla completa, recorre artefactos pasados o descárgalo como HTML (o un ZIP cuando incluye imágenes).",
+
+	// ── Terminal ──
+	"help.terminal.quickShell.title": "Terminal del proyecto",
+	"help.terminal.quickShell.body":
+		"Una terminal a nivel de proyecto sin git worktree — para comandos rápidos que no son una tarea. Aquí nada se rastrea en el tablero ni se ata a una rama, a diferencia de una terminal de tarea.",
 
 	// ── Header / sidebar ──
 	"help.header.utilities.title": "Utilidades de la aplicación",
@@ -127,6 +190,9 @@ const help = {
 	"help.header.rateLimits.title": "Límites del agente",
 	"help.header.rateLimits.body":
 		"Uso en vivo, a nivel de cuenta, del límite de peticiones de tu agente. El porcentaje se vuelve amarillo al 80% y rojo al 95% — ves venir el límite antes de que detenga a tus agentes. Actívalo en Configuración → Agentes.",
+	"help.header.tmuxSessions.title": "Sesiones tmux",
+	"help.header.tmuxSessions.body":
+		"Todas las sesiones tmux que dev3 mantiene en todas las tareas. Copia un comando de attach para abrir una en tu propia terminal, o mata una sesión obsoleta para liberarla.",
 	"help.sidebar.activeTasks.title": "Tareas activas",
 	"help.sidebar.activeTasks.body":
 		"Todas las tareas con un agente vivo, en todos los proyectos. Haz clic para saltar; pasa el cursor para una vista previa en vivo de la terminal.",

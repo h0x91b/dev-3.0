@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-21 — Inline-help coverage floor is a positive manifest (REQUIRED_HELP_SURFACES)
+
+- **Rule:** `help.ts` exports `REQUIRED_HELP_SURFACES`, the curated list of canonical §5 surfaces/sections; `help.test.ts` asserts each resolves to a topic AND mounts a reachable zone, in addition to the existing dangling/orphan checks. Closing the pre-doctrine backlog wired ~20 new topics (viewers, config modals, project-settings tabs, two settings sub-sections, diff files/PR-conversation, inspector notes/metadata).
+- **Why:** The dangling/orphan checks only police *referenced* ids, so a surface with no help id at all was invisible — many pre-§5.4 surfaces carried zero help and read as "fine". A positive floor makes "help is owed" enforceable (keymap.ts-style lockstep). Rejected: a permanent (i) per field (creep — help mode covers dense/headerless zones) and enumerating every sub-zone (floor tracks surfaces, not sub-zones).
+- **Status:** Implemented. Evidence: `help.ts` (`REQUIRED_HELP_SURFACES`), `__tests__/help.test.ts`, bible §5.4 (coverage floor), yaml `surfaces.inline_help.doctrine.coverage_floor`.
+
 ## 2026-07-20 — Active-tasks split is gated by viewport width, not browser mode
 
 - **Rule:** The task workspace shows the standard `SplitLayout` + `ActiveTasksSidebar` on wide viewports (≥768px) in **both** desktop and remote/browser mode; only narrow (<768px, mobile) viewports drop it for a full-width terminal.

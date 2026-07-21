@@ -13,6 +13,7 @@ import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { getStatusLabel } from "../utils/statusLabel";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import { trackEvent, agentNameFromId } from "../analytics";
@@ -383,6 +384,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 								{getStatusLabel(task.status, t, project)}
 							</span>
 						</div>
+						<HelpSpot topicId="modal.task-detail" />
 					</div>
 					<button
 						onClick={onClose}

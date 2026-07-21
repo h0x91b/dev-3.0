@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { PRReviewThread, TaskPRCommentsPayload } from "../../../shared/types";
 import { useT } from "../../i18n";
+import HelpSpot from "../HelpSpot";
 import { CommentMarkdown } from "./markdown";
 import { formatCommentTimestamp, GithubThreadView, type ThreadSendState } from "./GithubThreadView";
 
@@ -91,6 +92,8 @@ export function PrConversationBlock({
 						</span>
 					)}
 				</button>
+
+				<HelpSpot topicId="diff.github-review" />
 
 				{resolvedCount > 0 && (
 					<button

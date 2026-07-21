@@ -80,6 +80,12 @@ const help = {
 	"help.inspector.runtimeBar.title": "Runtime & access",
 	"help.inspector.runtimeBar.body":
 		"What the task produces and how to reach it: open the worktree in your editor, run package scripts, start or stop the dev server, inspect ports and shared images.",
+	"help.inspector.metadata.title": "Task details",
+	"help.inspector.metadata.body":
+		"Identity of this task: its description (the agent's prompt), the worktree path on disk — copy it to cd there yourself — and when it was created and last touched.",
+	"help.inspector.notes.title": "Notes",
+	"help.inspector.notes.body":
+		"A durable scratchpad for this task. Notes survive after the task completes and its worktree is destroyed, and future agents can search them — so record decisions and hard-won findings here, not just reminders.",
 
 	// ── Diff viewer ──
 	"help.diff.modes.title": "Diff modes",
@@ -88,6 +94,12 @@ const help = {
 	"help.diff.review.title": "Inline review",
 	"help.diff.review.body":
 		"Drag across the line gutter to comment on a range. Copy review turns all comments into one prompt for the agent — paste it into the task terminal. The review survives restarts for 3 days.",
+	"help.diff.filesAside.title": "Files",
+	"help.diff.filesAside.body":
+		"Every changed file with its read progress. Tick a file off as you review it — the counter fills as you go. Expand or collapse all files, mark them all read, or click one to jump to it in the diff.",
+	"help.diff.githubReview.title": "PR conversation",
+	"help.diff.githubReview.body":
+		"When the task has a pull request, its GitHub review threads show here and inline on the code — read-only. Toggle resolved threads, refresh, or open any comment on GitHub. Send a thread to the agent as a fix prompt; this surface never writes back to GitHub.",
 
 	// ── Settings sections ──
 	"help.settings.agents.title": "Agents",
@@ -112,6 +124,26 @@ const help = {
 		"Where task worktrees live on disk, which external editors and apps power open-in, and your GitHub accounts.",
 	"help.settings.devtools.title": "Developer tools",
 	"help.settings.devtools.body": "Terminal keymap presets and the dev3 CLI installation status.",
+	"help.settings.rateLimits.title": "Rate-limit tracking",
+	"help.settings.rateLimits.body":
+		"Show live Claude/Codex rate-limit usage in the header, so you see a limit coming before it stalls your agents. The percent turns yellow near the cap; toggle it off if you don't want the indicator.",
+	"help.settings.pxpipe.title": "Token-saving proxy",
+	"help.settings.pxpipe.body":
+		"An experimental local proxy (pxpipe) that renders bulky context as images to cut input tokens — often ~2× cheaper, a little slower. Off by default; enabling it unlocks the \"Fable 5 (cost trick)\" preset.",
+
+	// ── Project settings (tabs) ──
+	"help.projectSettings.board.title": "Board configuration",
+	"help.projectSettings.board.body":
+		"Board-level setup for this project: the custom Kanban columns tasks can move through, and the labels you can tag tasks with.",
+	"help.projectSettings.project.title": "Project configuration",
+	"help.projectSettings.project.body":
+		"Repo-wide settings: the setup / dev / cleanup scripts, the default base branch, the GitHub account, and whether AI review runs automatically.",
+	"help.projectSettings.worktree.title": "Worktree configuration",
+	"help.projectSettings.worktree.body":
+		"How task worktrees are built from this repo — sparse-checkout paths and which extra files are copied in — so each agent gets exactly the working tree it needs.",
+	"help.projectSettings.automations.title": "Automations",
+	"help.projectSettings.automations.body":
+		"Scheduled agent runs for this project. Create, enable, run now, or inspect the run history of each automation; every fire lands as an ordinary task on the board.",
 
 	// ── Stats ──
 	"help.stats.overview.title": "Velocity Cockpit",
@@ -125,6 +157,37 @@ const help = {
 	"help.modal.launchVariants.title": "Variants",
 	"help.modal.launchVariants.body":
 		"N variants means N independent agents solving the same task in parallel, each in its own worktree and branch. Compare the results, keep the best one — the rest are cancelled.",
+	"help.modal.addProject.title": "Add a project",
+	"help.modal.addProject.body":
+		"Point dev3 at a local git repo, clone a remote first, or create an Operations board — a virtual project whose tasks run agents in managed folders, without git.",
+	"help.modal.spawnAgent.title": "Spawn an agent",
+	"help.modal.spawnAgent.body":
+		"Drop a second agent into this task's existing session — same worktree, same terminal. Useful to hand off to a different model or run a helper alongside the main agent.",
+	"help.modal.taskDetail.title": "Task details",
+	"help.modal.taskDetail.body":
+		"Edit everything about the task: title, description (the agent's prompt), labels, priority, and status. Changes apply across the whole variant group.",
+	"help.modal.automation.title": "Automation",
+	"help.modal.automation.body":
+		"A schedule that fires an agent on a recurring cadence. Pick the cadence, timezone, prompt, and agent — each run creates an ordinary task on the board.",
+	"help.modal.scheduleMessage.title": "Send later",
+	"help.modal.scheduleMessage.body":
+		"Queue a one-shot prompt to reach the live agent (or a chosen tmux pane) at a later time — a nudge, a follow-up, or a reminder without babysitting the session.",
+	"help.modal.bugHunters.title": "Bug hunters",
+	"help.modal.bugHunters.body":
+		"Unleash a swarm of parallel agents on this task's code, each hunting bugs from a different angle in its own worktree. Choose how many and which agent; findings come back for you to triage.",
+
+	// ── Viewers & workspace ──
+	"help.viewer.images.title": "Shared images",
+	"help.viewer.images.body":
+		"Screenshots and renders an agent surfaced with `dev3 show-image`, newest first. Step through the history, copy an image, or reveal the original file on disk.",
+	"help.viewer.artifact.title": "Artifact",
+	"help.viewer.artifact.body":
+		"An interactive HTML report an agent built with `dev3 show-artifact`, sandboxed beside the terminal. Resize it, go fullscreen, step through past artifacts, or download it as HTML (or a ZIP when it bundles images).",
+
+	// ── Terminal ──
+	"help.terminal.quickShell.title": "Project shell",
+	"help.terminal.quickShell.body":
+		"A project-level terminal with no git worktree — for quick commands that aren't a task. Nothing here is tracked on the board or tied to a branch, unlike a task terminal.",
 
 	// ── Header / sidebar ──
 	"help.header.utilities.title": "App utilities",
@@ -133,6 +196,9 @@ const help = {
 	"help.header.rateLimits.title": "Agent rate limits",
 	"help.header.rateLimits.body":
 		"Live account-wide usage of your agent's rate limit. The percent turns yellow at 80% and red at 95%, so you see a limit coming before it stalls your agents. Toggle it in Settings → Agents.",
+	"help.header.tmuxSessions.title": "tmux sessions",
+	"help.header.tmuxSessions.body":
+		"Every tmux session dev3 is running across all tasks. Copy an attach command to open one in your own terminal, or kill a stale session to free it up.",
 	"help.sidebar.activeTasks.title": "Active tasks",
 	"help.sidebar.activeTasks.body":
 		"Every task with a live agent, across all projects. Click to jump to it; hover for a live terminal preview.",

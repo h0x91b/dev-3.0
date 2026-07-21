@@ -1512,12 +1512,14 @@ function ProjectSettings({
 
 					{/* ======== Automations tab ======== */}
 					{activeTab === "automations" && (
-						<AutomationsPanel project={project} />
+						<div data-help-id="project-settings.automations">
+							<AutomationsPanel project={project} />
+						</div>
 					)}
 
 					{/* ======== Global tab ======== */}
 					{activeTab === "global" && (
-						<>
+						<div className="space-y-7" data-help-id="project-settings.board">
 							{/* Custom Columns */}
 							<div>
 								<label className="block text-fg text-sm font-semibold mb-2">
@@ -1600,14 +1602,14 @@ function ProjectSettings({
 									{t("labels.addLabel")}
 								</button>
 							</div>
-						</>
+						</div>
 					)}
 
 					{/* ======== Project tab ======== */}
 					{activeTab === "project" && (project.kind === "virtual" ? (
 						<p className="text-fg-muted text-sm italic">{t("projectSettings.virtualNoGitConfig")}</p>
 					) : (
-						<>
+						<div className="space-y-7" data-help-id="project-settings.project">
 							{configFileOverride && (
 								<div className="flex items-start gap-2.5 px-3 py-2.5 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
 									<span className="text-yellow-400 text-base flex-shrink-0 mt-0.5">&#9888;</span>
@@ -1738,12 +1740,12 @@ function ProjectSettings({
 									</div>
 								</div>
 							</div>
-						</>
+						</div>
 					))}
 
 					{/* ======== Worktree tab ======== */}
 					{activeTab === "worktree" && project.kind !== "virtual" && (
-						<>
+						<div className="space-y-7" data-help-id="project-settings.worktree">
 							{worktreeTasks.length === 0 ? (
 								<div className="flex flex-col items-center gap-3 py-8 text-center">
 									<span className="text-2xl leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF013"}</span>
@@ -1823,7 +1825,7 @@ function ProjectSettings({
 									)}
 								</>
 							)}
-						</>
+						</div>
 					)}
 
 				</div>

@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GlobalSettings, PxpipeProxyStatus } from "../../../../shared/types";
-import type { TFunction } from "../../../i18n";
+import { I18nProvider, type TFunction } from "../../../i18n";
 import PxpipeProxySettingsSection from "../PxpipeProxySettingsSection";
 
 vi.mock("../../../rpc", () => ({
@@ -38,11 +38,13 @@ function makeStatus(over: Partial<PxpipeProxyStatus> = {}): PxpipeProxyStatus {
 function renderSection(enabled: boolean) {
 	const onToggle = vi.fn();
 	render(
-		<PxpipeProxySettingsSection
-			t={t}
-			globalSettings={{ pxpipeProxyEnabled: enabled } as GlobalSettings}
-			onToggle={onToggle}
-		/>,
+		<I18nProvider>
+			<PxpipeProxySettingsSection
+				t={t}
+				globalSettings={{ pxpipeProxyEnabled: enabled } as GlobalSettings}
+				onToggle={onToggle}
+			/>
+		</I18nProvider>,
 	);
 	return { onToggle };
 }

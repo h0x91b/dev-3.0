@@ -10,6 +10,7 @@ import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { trackEvent } from "../analytics";
 import SchedulePicker from "./SchedulePicker";
 
@@ -133,7 +134,10 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 			>
 				{/* Header */}
 				<div className="px-6 py-4 border-b border-edge">
-					<h2 className="text-fg text-lg font-semibold">{t("scheduleMessage.title")}</h2>
+					<div className="flex items-center gap-1.5">
+						<h2 className="text-fg text-lg font-semibold">{t("scheduleMessage.title")}</h2>
+						<HelpSpot topicId="modal.schedule-message" />
+					</div>
 					<p className="text-fg-3 text-sm mt-1 truncate">{getTaskTitle(task)}</p>
 				</div>
 

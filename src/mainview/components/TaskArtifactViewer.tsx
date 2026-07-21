@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SharedArtifact } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
 
@@ -194,6 +195,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 					<div className="truncate text-sm font-medium text-fg">{current.title}</div>
 					<div className="truncate text-[0.6875rem] text-fg-muted">{current.name}</div>
 				</div>
+				<HelpSpot topicId="viewer.artifact" />
 				{artifacts.length > 1 && (
 					<>
 						<button type="button" className={iconButton} disabled={index === 0} onClick={() => go(-1)} aria-label={t("artifactViewer.previous")}><span style={{ fontFamily: ICON }}></span></button>

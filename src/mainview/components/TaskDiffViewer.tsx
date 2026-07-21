@@ -3454,8 +3454,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 
 									<div className="rounded-lg border border-edge bg-base px-3 py-2 space-y-1.5">
 									<div className="flex items-center justify-between gap-2 px-1">
-										<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
-											{t("infoPanel.diffFiles")}
+										<span className="flex items-center gap-1.5">
+											<span className="text-[0.6875rem] uppercase tracking-wider text-fg-muted font-semibold">
+												{t("infoPanel.diffFiles")}
+											</span>
+											<HelpSpot topicId="diff.files-aside" />
 										</span>
 										<span className="text-[0.6875rem] text-fg-3 font-mono">
 											{readCount}/{totalFileCount} {t("infoPanel.diffRead")}

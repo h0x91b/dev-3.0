@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { HELP_TOPICS, helpTopic, statusHelpTopicId } from "../help";
+import { HELP_TOPICS, REQUIRED_HELP_SURFACES, helpTopic, statusHelpTopicId } from "../help";
 import { APP_SHORTCUTS } from "../keymap";
 import en from "../i18n/translations/en";
 import ru from "../i18n/translations/ru";
@@ -91,5 +91,24 @@ describe("help coverage correlation (bible §5.4)", () => {
 			.filter((id) => !id.startsWith("board.column."))
 			.filter((id) => !referenced.has(id));
 		expect(orphans, `orphan topics (no HelpSpot/zone references them): ${orphans.join(", ")}`).toEqual([]);
+	});
+
+	// Coverage FLOOR (bible §5.4 "help coverage is owed, not earned"). The two
+	// checks above only police ids that are ALREADY referenced — a §5 surface
+	// with NO help id reads as "fine". This asserts the positive contract: every
+	// canonical surface in REQUIRED_HELP_SURFACES resolves to a topic AND mounts a
+	// reachable zone. New surfaces can't ship uncovered (keymap.ts-style lockstep).
+	it("every required §5 surface resolves to a topic and is reachable in help mode", () => {
+		const missing = REQUIRED_HELP_SURFACES.filter((id) => !helpTopic(id));
+		const unreachable = REQUIRED_HELP_SURFACES.filter((id) => helpTopic(id) && !referenced.has(id));
+		expect(missing, `required surfaces with no registry topic: ${missing.join(", ")}`).toEqual([]);
+		expect(
+			unreachable,
+			`required surfaces not reachable in help mode (no data-help-id / HelpSpot zone in any component): ${unreachable.join(", ")}`,
+		).toEqual([]);
+	});
+
+	it("REQUIRED_HELP_SURFACES has no duplicate ids", () => {
+		expect(new Set(REQUIRED_HELP_SURFACES).size).toBe(REQUIRED_HELP_SURFACES.length);
 	});
 });
