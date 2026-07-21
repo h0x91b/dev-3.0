@@ -44,13 +44,19 @@ comparison run offline through a real Ghostty core (`verify-journal.ts`).
 
 ## Run (one command, from PowerShell)
 
+Runs under Windows PowerShell 5.1 (`powershell`) or PowerShell 7 (`pwsh`):
+
 ```powershell
 cd <repo>
-pwsh -NoProfile -File src\bun\prototypes\terminal-state\run-windows-matrix.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File src\bun\prototypes\terminal-state\run-windows-matrix.ps1
 ```
 
 Useful switches: `-SkipAgents`, `-SkipSuite`, `-Cols 100 -Rows 30`,
 `-ClaudeCommand @("claude")`, `-CodexCommand @("codex")`.
+
+PowerShell 7 (`pwsh`) is itself a capture target. If it is not installed the
+matrix records it as a documented gap; to capture it, install it first with
+`winget install --id Microsoft.PowerShell` (or `choco install powershell-core`).
 
 The script prints a summary table and two paths: the **share** directory (paste
 its contents back) and the **raw** directory (keep local).

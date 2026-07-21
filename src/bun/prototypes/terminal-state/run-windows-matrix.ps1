@@ -8,13 +8,14 @@
     capture offline for a semantic roundtrip verdict, and sanitizes the results.
 
     Only shareable artifacts are written to <outdir>\share:
-      - <target>.metrics.json  (hash + structural metrics, always)
-      - <target>.fixture.json  (deterministic shell captures only, when clean)
-      - <target>.verdict.json  (replay match + capability coverage)
+      - <target>.metrics.json           (hash + structural metrics, always)
+      - <target>.sanitized-journal.json (deterministic shell captures only, when clean)
+      - <target>.verdict.json           (replay match + capability coverage)
       - environment.json, results.json, suite.txt, benchmark.txt
     Raw journals stay in <outdir>\raw and MUST NOT be shared.
 
-    Log into Claude and Codex before running so their interactive TUIs start.
+    Runs under Windows PowerShell 5.1 or PowerShell 7. Log into Claude and Codex
+    before running so their interactive TUIs start.
 
 .NOTES
     Nothing here is imported by production; it only exercises the prototype.
@@ -33,14 +34,22 @@ param(
 $ErrorActionPreference = "Stop"
 $ts = $PSScriptRoot
 $repoRoot = (Resolve-Path (Join-Path $ts "..\..\..\..")).Path
+$OutDir = [System.IO.Path]::GetFullPath($OutDir)
 $raw = Join-Path $OutDir "raw"
 $share = Join-Path $OutDir "share"
 New-Item -ItemType Directory -Force -Path $raw, $share | Out-Null
 
+# Windows PowerShell 5.1 `Set-Content -Encoding UTF8` writes a BOM that breaks
+# bun's JSON.parse of the spec files; always write BOM-less UTF-8.
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
+}
+
 function Get-ToolVersion {
-    param([string]$Command, [string[]]$Args = @("--version"))
+    param([string]$Command, [string[]]$VersionArgs = @("--version"))
     if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) { return "not found" }
-    try { return ((& $Command @Args 2>&1) | Out-String).Trim() } catch { return "error: $_" }
+    try { return ((& $Command @VersionArgs 2>&1) | Out-String).Trim() } catch { return "error: $_" }
 }
 
 if (-not (Get-Command bun -ErrorAction SilentlyContinue)) {
@@ -59,13 +68,13 @@ $environment = [ordered]@{
     bun            = Get-ToolVersion -Command "bun"
     node           = Get-ToolVersion -Command "node"
     cmd            = ((cmd /c ver) | Out-String).Trim()
-    powershell51   = Get-ToolVersion -Command "powershell" -Args @("-NoProfile", "-Command", '$PSVersionTable.PSVersion.ToString()')
-    pwsh7          = Get-ToolVersion -Command "pwsh" -Args @("--version")
+    powershell51   = Get-ToolVersion -Command "powershell" -VersionArgs @("-NoProfile", "-Command", '$PSVersionTable.PSVersion.ToString()')
+    pwsh7          = Get-ToolVersion -Command "pwsh" -VersionArgs @("--version")
     claude         = Get-ToolVersion -Command $ClaudeCommand[0]
     codex          = Get-ToolVersion -Command $CodexCommand[0]
     capturedAt     = $capturedAt
 }
-$environment | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $share "environment.json") -Encoding UTF8
+Write-Utf8NoBom -Path (Join-Path $share "environment.json") -Content ($environment | ConvertTo-Json -Depth 6)
 Write-Host "=== Environment ===" -ForegroundColor Cyan
 $environment.GetEnumerator() | ForEach-Object { Write-Host ("  {0,-14} {1}" -f $_.Key, $_.Value) }
 
@@ -97,7 +106,7 @@ function Invoke-Target {
     }
     $specPath = Join-Path $raw "$Target.spec.json"
     $journalPath = Join-Path $raw "$Target.journal.json"
-    $spec | ConvertTo-Json -Depth 12 | Set-Content -Path $specPath -Encoding UTF8
+    Write-Utf8NoBom -Path $specPath -Content ($spec | ConvertTo-Json -Depth 12)
 
     $entry = [ordered]@{ target = $Target; kind = $Kind; captured = $false; gap = $null }
     try {
@@ -110,7 +119,7 @@ function Invoke-Target {
 
     try {
         $verdictJson = (& bun (Join-Path $ts "verify-journal.ts") $journalPath 2>&1 | Out-String)
-        $verdictJson | Set-Content -Path (Join-Path $share "$Target.verdict.json") -Encoding UTF8
+        Write-Utf8NoBom -Path (Join-Path $share "$Target.verdict.json") -Content $verdictJson
         $verdict = $verdictJson | ConvertFrom-Json
         $entry.matchesAtDetach = $verdict.matchesAtDetach
         $entry.matchesAfterReplay = $verdict.matchesAfterReplay
@@ -122,7 +131,7 @@ function Invoke-Target {
     try {
         & bun (Join-Path $ts "sanitize-cli.ts") $journalPath $share
     } catch {
-        $entry.gap = (($entry.gap, "sanitize failed: $_") -ne $null -join "; ")
+        $entry.gap = (@($entry.gap, "sanitize failed: $_") | Where-Object { $_ }) -join "; "
     }
 
     $journal = Get-Content $journalPath -Raw | ConvertFrom-Json
@@ -188,9 +197,9 @@ if (-not $SkipSuite) {
     Write-Host "`n=== Spike suite ===" -ForegroundColor Cyan
     Push-Location $repoRoot
     try {
-        (& bun run test:terminal-state-spike 2>&1 | Out-String) | Set-Content -Path (Join-Path $share "suite.txt") -Encoding UTF8
+        Write-Utf8NoBom -Path (Join-Path $share "suite.txt") -Content (& bun run test:terminal-state-spike 2>&1 | Out-String)
         $suiteExit = $LASTEXITCODE
-        (& bun run benchmark:terminal-state-spike 2>&1 | Out-String) | Set-Content -Path (Join-Path $share "benchmark.txt") -Encoding UTF8
+        Write-Utf8NoBom -Path (Join-Path $share "benchmark.txt") -Content (& bun run benchmark:terminal-state-spike 2>&1 | Out-String)
     } finally { Pop-Location }
 }
 
@@ -200,7 +209,7 @@ $summary = [ordered]@{
     suiteExit   = $suiteExit
     generatedAt = (Get-Date -Format "s")
 }
-$summary | ConvertTo-Json -Depth 12 | Set-Content -Path (Join-Path $share "results.json") -Encoding UTF8
+Write-Utf8NoBom -Path (Join-Path $share "results.json") -Content ($summary | ConvertTo-Json -Depth 12)
 
 Write-Host "`n=== Matrix summary ===" -ForegroundColor Green
 $results | Format-Table target, kind, captured, matchesAtDetach, matchesAfterReplay, exitCode, gap -AutoSize
