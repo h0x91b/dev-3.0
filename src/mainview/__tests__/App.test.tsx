@@ -1506,6 +1506,59 @@ describe("App keyboard shortcuts", () => {
 			}
 		});
 
+		it("auto-starts the tunnel in the background after a fast open (no extra click)", async () => {
+			await renderApp();
+			vi.mocked(api.request.getRemoteAccessQR).mockClear();
+			vi.mocked(api.request.getRemoteAccessQR).mockResolvedValue({
+				qrDataUrl: "data:image/png;base64,tunnel",
+				accessUrl: "https://public.trycloudflare.com/?token=t",
+				tunnelState: "connected",
+				cloudflaredInstalled: true,
+				interfaces: [],
+				selectedHost: "",
+			});
+
+			// The button/menu open the modal immediately with the local QR and
+			// flag the tunnel to start in the background.
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,local",
+					accessUrl: "http://192.168.0.1:1234/?token=l",
+					tunnelState: "idle",
+					cloudflaredInstalled: true,
+					interfaces: [],
+					selectedHost: "192.168.0.1",
+					autoStartTunnel: true,
+				},
+			}));
+
+			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());
+			await waitFor(() => expect(api.request.getRemoteAccessQR).toHaveBeenCalledWith({ tunnel: true }));
+			expect(
+				screen.getByLabelText("Open on your phone — scan QR code for remote access").className,
+			).toContain("remote-access-active");
+		});
+
+		it("does not restart the tunnel when opened while already connected", async () => {
+			await renderApp();
+			vi.mocked(api.request.getRemoteAccessQR).mockClear();
+
+			window.dispatchEvent(new CustomEvent("rpc:showRemoteAccessQR", {
+				detail: {
+					qrDataUrl: "data:image/png;base64,live",
+					accessUrl: "https://public.trycloudflare.com/?token=c",
+					tunnelState: "connected",
+					cloudflaredInstalled: true,
+					interfaces: [],
+					selectedHost: "",
+					autoStartTunnel: true,
+				},
+			}));
+
+			await waitFor(() => expect(screen.getByText("Copy URL")).toBeInTheDocument());
+			expect(api.request.getRemoteAccessQR).not.toHaveBeenCalled();
+		});
+
 		it("shows auth failed screen when rpc:authFailed fires", async () => {
 			await renderApp();
 			window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail: { status: 401 } }));
