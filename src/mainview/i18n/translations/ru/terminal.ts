@@ -214,6 +214,7 @@ const terminal = {
 	"terminal.composerCollapse": "Свернуть редактор",
 	"terminal.composerScheduleLater": "Отправить позже",
 	"terminal.rawKeyboard": "Прямой ввод с клавиатуры",
+	"terminal.backspace": "Удалить слева",
 };
 
 export default terminal;

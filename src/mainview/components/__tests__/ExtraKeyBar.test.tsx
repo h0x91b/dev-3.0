@@ -67,6 +67,14 @@ describe("ExtraKeyBar", () => {
 		expect(handle.sendInput).toHaveBeenCalledWith("\x1b[Z");
 	});
 
+	it("sends DEL for Backspace", async () => {
+		const handle = makeHandle();
+		renderBar(handle);
+
+		await userEvent.click(screen.getByRole("button", { name: "Backspace" }));
+		expect(handle.sendInput).toHaveBeenCalledWith("\x7f");
+	});
+
 	it("sticky Ctrl turns the next key into a control character", async () => {
 		const handle = makeHandle();
 		renderBar(handle);

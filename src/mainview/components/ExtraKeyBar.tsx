@@ -139,6 +139,17 @@ function ExtraKeyBar({ handle, rawMode, onToggleRaw, attachProjectId, attachTask
 
 			<div className="w-[0.25vw] h-[7vw] bg-edge mx-[0.5vw]" />
 
+			<button
+				className={btnNormal}
+				onMouseDown={(e) => e.preventDefault()}
+				onClick={() => send("\x7f")}
+				aria-label={t("terminal.backspace")}
+				title={t("terminal.backspace")}
+				data-testid="extra-key-backspace"
+			>
+				{"⌫"}
+			</button>
+
 			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[A")}>{"▲"}</button>
 			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[B")}>{"▼"}</button>
 			<button className={btnArrow} onMouseDown={(e) => e.preventDefault()} onClick={() => send("\x1b[D")}>{"◀"}</button>
