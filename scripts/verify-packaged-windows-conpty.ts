@@ -12,7 +12,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, relative, resolve } from "node:path";
+import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
 import {
 	NATIVE_TERMINAL_HOST_READY_MARKER,
 	assertPackagedConptyRuntime,
@@ -84,6 +84,19 @@ function sha256(path: string): string {
 	return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function pathIsWithin(root: string, candidate: string): boolean {
+	const pathFromRoot = relative(resolve(root), resolve(candidate));
+	return pathFromRoot === "" || (!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot));
+}
+
+function tasklistImageForPid(output: string, pid: number): string | null {
+	for (const line of output.split(/\r?\n/)) {
+		const match = /^"([^"]+)","(\d+)"/.exec(line.trim());
+		if (match && Number(match[2]) === pid) return match[1];
+	}
+	return null;
+}
+
 function resolvePackageSource(buildDir: string, system32: string): PackageSource {
 	if (process.env.DEV3_VERIFY_UPDATE_ARCHIVE !== "1") {
 		return { root: buildDir, proofDir: buildDir, archivePath: null, cleanupDir: null };
@@ -138,6 +151,7 @@ if (!systemRoot) throw new Error("Packaged ConPTY verification cannot resolve Sy
 const system32 = join(systemRoot, "System32");
 const packageSource = resolvePackageSource(buildDir, system32);
 const cleanDir = mkdtempSync(join(tmpdir(), "dev3-packaged-conpty-"));
+const keepProofFiles = process.env.DEV3_KEEP_CONPTY_PROOF_FILES === "1";
 const sessionDir = join(cleanDir, "session");
 const cleanEnv: NodeJS.ProcessEnv = {
 	SystemRoot: systemRoot,
@@ -225,6 +239,9 @@ try {
 	mkdirSync(stagedDir, { recursive: true });
 	const stagedRuntime = resolve(stagedDir, "dev3-terminal-host.exe");
 	const stagedEntrypoint = resolve(stagedDir, "dev3-terminal-host.js");
+	if (pathIsWithin(packageSource.root, stagedRuntime) || pathIsWithin(packageSource.root, stagedEntrypoint)) {
+		throw new Error(`Terminal host staging must be outside the replaceable package root ${packageSource.root}.`);
+	}
 	copyFileSync(packagedAppRuntime, stagedRuntime);
 	copyFileSync(packagedEntrypoint, stagedEntrypoint);
 	if (sha256(stagedRuntime) !== runtimeHash || sha256(stagedEntrypoint) !== entrypointHash) {
@@ -270,30 +287,87 @@ try {
 	) {
 		throw new Error(`Detached packaged terminal host returned invalid state: ${JSON.stringify(state)}`);
 	}
-	const task = requireSuccess(
+	const reattachOutput = requireSuccess(
+		run(stagedRuntime, [stagedEntrypoint, "reattach"], cleanDir, hostEnv, 15_000),
+		"Detached packaged terminal host reattach",
+	);
+	const reattachedState = parseLastJson<NativeTerminalHostProofState>(
+		reattachOutput,
+		"Detached packaged terminal host reattach",
+	);
+	const reattachSamePids =
+		reattachedState.hostPid === state.hostPid && reattachedState.shellPid === state.shellPid;
+	if (
+		!reattachSamePids ||
+		reattachedState.marker !== state.marker ||
+		reattachedState.bunVersion !== state.bunVersion ||
+		!sameNativeTerminalPath(reattachedState.executable, state.executable) ||
+		!sameNativeTerminalPath(reattachedState.entrypoint, state.entrypoint)
+	) {
+		throw new Error(
+			`Detached terminal host reattach changed process identity: started ${JSON.stringify(state)}, ` +
+				`reattached ${JSON.stringify(reattachedState)}.`,
+		);
+	}
+
+	const hostTasklist = requireSuccess(
 		run(join(system32, "tasklist.exe"), ["/FI", `PID eq ${state.hostPid}`, "/FO", "CSV", "/NH"], cleanDir, hostEnv),
 		"Detached terminal host image-name probe",
 	);
-	if (!task.toLowerCase().includes('"dev3-terminal-host.exe"')) {
-		throw new Error(`Detached host is not running under the updater-safe image name: ${task}`);
+	const hostImageName = tasklistImageForPid(hostTasklist, state.hostPid);
+	if (hostImageName?.toLowerCase() !== "dev3-terminal-host.exe") {
+		throw new Error(`Detached host is not running under the updater-safe image name: ${hostTasklist}`);
+	}
+	const powershellTasklist = requireSuccess(
+		run(join(system32, "tasklist.exe"), ["/FI", `PID eq ${state.shellPid}`, "/FO", "CSV", "/NH"], cleanDir, hostEnv),
+		"PowerShell image-name probe",
+	);
+	const powershellImageName = tasklistImageForPid(powershellTasklist, state.shellPid);
+	if (powershellImageName?.toLowerCase() !== "powershell.exe") {
+		throw new Error(`Bun.Terminal child is not the expected PowerShell process: ${powershellTasklist}`);
 	}
 
-	requireSuccess(
+	const stopOutput = requireSuccess(
 		run(stagedRuntime, [stagedEntrypoint, "stop"], cleanDir, hostEnv, 15_000),
 		"Detached packaged terminal host stop",
 	);
+	const stopped = parseLastJson<{ stopped: boolean; hostPid: number; shellPid: number }>(
+		stopOutput,
+		"Detached packaged terminal host stop",
+	);
+	if (!stopped.stopped || stopped.hostPid !== state.hostPid || stopped.shellPid !== state.shellPid) {
+		throw new Error(`Detached terminal host returned invalid stop state: ${JSON.stringify(stopped)}`);
+	}
 	hostStopped = true;
+	const hostAfterStop = requireSuccess(
+		run(join(system32, "tasklist.exe"), ["/FI", `PID eq ${state.hostPid}`, "/FO", "CSV", "/NH"], cleanDir, hostEnv),
+		"Stopped terminal host process probe",
+	);
+	const powershellAfterStop = requireSuccess(
+		run(join(system32, "tasklist.exe"), ["/FI", `PID eq ${state.shellPid}`, "/FO", "CSV", "/NH"], cleanDir, hostEnv),
+		"Stopped PowerShell process probe",
+	);
+	if (tasklistImageForPid(hostAfterStop, state.hostPid) || tasklistImageForPid(powershellAfterStop, state.shellPid)) {
+		throw new Error(
+			`Detached terminal processes survived stop. Host: ${hostAfterStop}; PowerShell: ${powershellAfterStop}`,
+		);
+	}
 
 	const proof = {
 		marker: state.marker,
 		rawPty: true,
 		systemBunOnPath: false,
 		packageSource: packageSource.archivePath ? "update-archive" : "build-tree",
+		proofFilesRetained: keepProofFiles,
+		proofWorkspacePath: cleanDir,
+		extractedPackageRoot: packageSource.root,
+		archiveExtractionWorkspacePath: packageSource.cleanupDir,
 		updateArchivePath: packageSource.archivePath,
 		updateArchiveBytes: packageSource.archivePath ? statSync(packageSource.archivePath).size : null,
 		updateArchiveSha256: packageSource.archivePath ? sha256(packageSource.archivePath) : null,
 		electrobunAppBunVersion: appRuntimeVersion,
 		packagedBuildJsonBunVersion: buildJsonBunVersion,
+		runtimeMatchesBuildMetadata: buildJsonBunVersion === null || buildJsonBunVersion === appRuntimeVersion,
 		terminalHostBunVersion: state.bunVersion,
 		packagedRuntimeBytes: statSync(packagedAppRuntime).size,
 		packagedEntrypointBytes: statSync(packagedEntrypoint).size,
@@ -310,9 +384,18 @@ try {
 			: null,
 		stagedRuntimePath: stagedRuntime,
 		stagedEntrypointPath: stagedEntrypoint,
-		detachedHostImageName: "dev3-terminal-host.exe",
+		stagedOutsideInstallationDirectory: true,
+		detachedHostImageName: hostImageName,
+		detachedHostTasklist: hostTasklist,
+		powershellImageName,
+		powershellTasklist,
 		hostPid: state.hostPid,
 		powershellPid: state.shellPid,
+		reattachSamePids,
+		reattachedHostPid: reattachedState.hostPid,
+		reattachedPowershellPid: reattachedState.shellPid,
+		hostStopped: true,
+		powershellStopped: true,
 		ffiModuleAvailable: state.ffiModuleAvailable,
 	};
 	writeFileSync(join(packageSource.proofDir, "windows-conpty-package-proof.json"), `${JSON.stringify(proof, null, 2)}\n`);
@@ -333,6 +416,10 @@ try {
 			}
 		}
 	}
-	rmSync(cleanDir, { recursive: true, force: true });
-	if (packageSource.cleanupDir) rmSync(packageSource.cleanupDir, { recursive: true, force: true });
+	if (keepProofFiles) {
+		console.log(`[native-terminal-runtime] retained manual proof files under ${cleanDir}`);
+	} else {
+		rmSync(cleanDir, { recursive: true, force: true });
+		if (packageSource.cleanupDir) rmSync(packageSource.cleanupDir, { recursive: true, force: true });
+	}
 }

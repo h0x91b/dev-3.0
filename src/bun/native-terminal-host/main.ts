@@ -20,7 +20,7 @@ import {
 	type NativeTerminalHostProofState,
 } from "../../shared/native-terminal-runtime";
 import { extractPowerShellMarkerPid } from "./pty-proof";
-import { computeTerminalHostReentryArgs } from "./reentry";
+import { computeTerminalHostReentryArgs, requireLiveTerminalHostState } from "./reentry";
 import { resolvesWithin } from "./wait-with-timeout";
 
 const delay = (ms: number): Promise<void> => new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
@@ -273,6 +273,12 @@ async function stop(): Promise<void> {
 	throw new Error(`packaged terminal host did not stop cleanly (host ${state.hostPid}, shell ${state.shellPid})`);
 }
 
+function reattach(): void {
+	requireStateDir();
+	const state = requireLiveTerminalHostState(readState(), isProcessAlive);
+	process.stdout.write(`${JSON.stringify(state)}\n`);
+}
+
 async function main(): Promise<void> {
 	const command = process.argv[2];
 	if (command === "version") {
@@ -288,9 +294,10 @@ async function main(): Promise<void> {
 		return;
 	}
 	if (command === "start") return start();
+	if (command === "reattach") return reattach();
 	if (command === "stop") return stop();
 	if (command === "__host") return runHost();
-	throw new Error("usage: dev3-terminal-host version|start|stop");
+	throw new Error("usage: dev3-terminal-host version|start|reattach|stop");
 }
 
 void main().catch((error) => {

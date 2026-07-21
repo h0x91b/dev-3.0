@@ -31,7 +31,8 @@ to 1.3.14; [`build-windows-terminal-host.ts`](../scripts/build-windows-terminal-
 bundles the stable host entrypoint. The [`start()` and `runHost()`](../src/bun/native-terminal-host/main.ts)
 lifecycle stages through `dev3-terminal-host.exe`, while
 [`verify-packaged-windows-conpty.ts`](../scripts/verify-packaged-windows-conpty.ts)
-proves detached re-entry and raw PowerShell `Bun.Terminal` with no Bun on `PATH`.
+proves detached re-entry, same-PID reattach, clean stop, and raw PowerShell
+`Bun.Terminal` with no Bun on `PATH`.
 The packaged tracer runs that proof from its final Electrobun update archive;
 the package workflow also builds the same global Bun pin on macOS and Linux.
 

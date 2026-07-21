@@ -1,11 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NATIVE_TERMINAL_HOST_READY_MARKER, type NativeTerminalHostProofState } from "../../../shared/native-terminal-runtime";
 import { extractPowerShellMarkerPid } from "../pty-proof";
-import { computeTerminalHostReentryArgs } from "../reentry";
+import { computeTerminalHostReentryArgs, requireLiveTerminalHostState } from "../reentry";
 import { resolvesWithin } from "../wait-with-timeout";
 
 afterEach(() => vi.useRealTimers());
 
 describe("native terminal host detached re-entry", () => {
+	const state: NativeTerminalHostProofState = {
+		marker: NATIVE_TERMINAL_HOST_READY_MARKER,
+		bunVersion: "1.3.14",
+		hostPid: 101,
+		shellPid: 202,
+		executable: "C:\\staged\\dev3-terminal-host.exe",
+		entrypoint: "C:\\staged\\dev3-terminal-host.js",
+		ffiModuleAvailable: true,
+	};
+
 	it("re-enters a compiled host without forwarding Bun's virtual entrypoint", () => {
 		expect(
 			computeTerminalHostReentryArgs(
@@ -32,6 +43,19 @@ describe("native terminal host detached re-entry", () => {
 				"C:\\staged\\dev3-terminal-host.js",
 			),
 		).toEqual(["C:\\staged\\dev3-terminal-host.js", "__host"]);
+	});
+
+	it("reattaches to the same live host and PowerShell process", () => {
+		expect(requireLiveTerminalHostState(state, () => true)).toBe(state);
+	});
+
+	it("rejects reattach when either process has exited", () => {
+		expect(() => requireLiveTerminalHostState(state, (pid) => pid === state.hostPid)).toThrow(
+			"PowerShell 202 is no longer running",
+		);
+		expect(() => requireLiveTerminalHostState(state, (pid) => pid === state.shellPid)).toThrow(
+			"host 101 is no longer running",
+		);
 	});
 });
 
