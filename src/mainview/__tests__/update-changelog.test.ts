@@ -3,6 +3,8 @@ import type { ChangelogEntry } from "../../shared/types";
 import {
 	deriveShortTitle,
 	entryShortTitle,
+	entryPriority,
+	DEFAULT_CHANGELOG_PRIORITY,
 	buildUpdateChangelog,
 	changedKeysFromPaths,
 	changelogEntryKey,
@@ -67,6 +69,29 @@ describe("buildUpdateChangelog", () => {
 	it("derives short titles for feature entries without one", () => {
 		const window = [entry({ type: "feature", title: "one two three four five six seven eight" })];
 		expect(buildUpdateChangelog(window).features[0]).toBe("one two three four five six…");
+	});
+
+	it("orders features by priority prefix regardless of window order", () => {
+		const window: ChangelogEntry[] = [
+			entry({ type: "feature", slug: "03-c", short: "C" }),
+			entry({ type: "feature", slug: "00-a", short: "A" }),
+			entry({ type: "feature", slug: "plain", short: "Mid" }),
+			entry({ type: "feature", slug: "01-b", short: "B" }),
+		];
+		// Sorted by priority: 00 (A), 01 (B), 03 (C), then the unprefixed one mid-pack (50).
+		expect(buildUpdateChangelog(window).features).toEqual(["A", "B", "C", "Mid"]);
+	});
+});
+
+describe("entryPriority", () => {
+	it("parses a two-digit prefix (00 = most prominent)", () => {
+		expect(entryPriority({ slug: "00-add-dark-mode" })).toBe(0);
+		expect(entryPriority({ slug: "07-mobile-key" })).toBe(7);
+	});
+
+	it("falls back to the mid-pack default without a numeric prefix", () => {
+		expect(entryPriority({ slug: "add-dark-mode" })).toBe(DEFAULT_CHANGELOG_PRIORITY);
+		expect(entryPriority({ slug: "v2-thing" })).toBe(DEFAULT_CHANGELOG_PRIORITY);
 	});
 });
 

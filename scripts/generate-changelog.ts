@@ -7,6 +7,7 @@
 import { join } from "path";
 import { readdirSync, existsSync } from "fs";
 import type { ChangelogEntry } from "../src/shared/types";
+import { entryPriority } from "../src/shared/update-changelog";
 
 const changeLogsDir = join(import.meta.dir, "..", "change-logs");
 
@@ -82,7 +83,15 @@ if (existsSync(changeLogsDir)) {
 	}
 }
 
-entries.sort((a, b) => b.date.localeCompare(a.date));
+// Newest day first; within a day, most-prominent feature first (priority prefix),
+// then slug for a stable deterministic order (readdir order is not guaranteed).
+entries.sort((a, b) => {
+	const byDate = b.date.localeCompare(a.date);
+	if (byDate !== 0) return byDate;
+	const byPriority = entryPriority(a) - entryPriority(b);
+	if (byPriority !== 0) return byPriority;
+	return a.slug.localeCompare(b.slug);
+});
 
 const outPath = join(import.meta.dir, "..", "changelog.json");
 

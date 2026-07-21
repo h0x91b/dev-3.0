@@ -88,13 +88,31 @@ export function selectReleaseWindow(entries: ChangelogEntry[], changedKeys: Set<
 	return batch.length > 0 ? batch : entries.slice(0, 10);
 }
 
+/** Priority for entries with no `NN-` prefix in the slug — sits mid-pack. */
+export const DEFAULT_CHANGELOG_PRIORITY = 50;
+
+/**
+ * Popover ordering priority parsed from a `<type>-<NN>-<slug>` filename
+ * (`NN` = 00..99, 00 = most prominent). Entries without the numeric segment
+ * fall back to {@link DEFAULT_CHANGELOG_PRIORITY}. This is what lets a handful
+ * of hand-picked "sexy" features win the limited popover slots instead of
+ * whatever happens to sort first alphabetically.
+ */
+export function entryPriority(entry: Pick<ChangelogEntry, "slug">): number {
+	const m = entry.slug.match(/^(\d{1,2})(?:-|$)/);
+	return m ? parseInt(m[1], 10) : DEFAULT_CHANGELOG_PRIORITY;
+}
+
 /**
  * Build the compact "what's new" payload from a release window of changelog
- * entries (already scoped to the new version). Features-first; feature titles
- * are capped at {@link MAX_POPOVER_FEATURES}, counts reflect the whole window.
+ * entries (already scoped to the new version). Features-first, ordered by
+ * {@link entryPriority} (ties keep window order); feature titles are capped at
+ * {@link MAX_POPOVER_FEATURES}, counts reflect the whole window.
  */
 export function buildUpdateChangelog(windowEntries: ChangelogEntry[]): UpdateChangelog {
-	const features = windowEntries.filter((e) => e.type === "feature");
+	const features = windowEntries
+		.filter((e) => e.type === "feature")
+		.sort((a, b) => entryPriority(a) - entryPriority(b));
 	const fixes = windowEntries.filter((e) => e.type === "fix");
 	return {
 		features: features.slice(0, MAX_POPOVER_FEATURES).map(entryShortTitle),
