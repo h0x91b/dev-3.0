@@ -82,6 +82,40 @@ describe("TaskArtifactViewer", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
+	it("saves an artifact image to Downloads when the sandboxed iframe requests it", async () => {
+		const dataUrl = "data:image/png;base64,iVBORw0KGgo=";
+		vi.mocked(mockedApi.request.readArtifactContent).mockResolvedValueOnce({
+			html: '<img src="charts/chart.png">',
+			assets: [{ name: "charts/chart.png", mime: "image/png", dataUrl }],
+		});
+		const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:img");
+		const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+		let savedName = "";
+		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+			savedName = this.download;
+		});
+
+		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const frame = await screen.findByTitle("Artifact a") as HTMLIFrameElement;
+		await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain(dataUrl));
+
+		const foreign = new MessageEvent("message", { data: { type: "dev3-artifact-save-image", src: dataUrl, alt: "" } });
+		window.dispatchEvent(foreign);
+		expect(click).not.toHaveBeenCalled();
+
+		const event = new MessageEvent("message", { data: { type: "dev3-artifact-save-image", src: dataUrl, alt: "" } });
+		Object.defineProperty(event, "source", { value: frame.contentWindow });
+		window.dispatchEvent(event);
+
+		await waitFor(() => expect(click).toHaveBeenCalled());
+		expect(createObjectURL).toHaveBeenCalled();
+		expect(savedName).toBe("chart.png");
+
+		createObjectURL.mockRestore();
+		revokeObjectURL.mockRestore();
+		click.mockRestore();
+	});
+
 	it("requests ZIP download when the artifact has assets", async () => {
 		const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
 		const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
