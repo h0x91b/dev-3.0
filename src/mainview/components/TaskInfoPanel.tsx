@@ -857,7 +857,7 @@ function TaskInfoPanel({
 
 	const taskDetailsBody = (
 		<>
-						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+						<div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs" data-help-id="inspector.metadata">
 							<span className="text-fg-3">{t("infoPanel.title")}</span>
 							<InlineRename
 								taskId={task.id}

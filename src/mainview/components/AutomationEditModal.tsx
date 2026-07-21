@@ -6,6 +6,7 @@ import { formatRRule, parseRRule, type RRuleSpec } from "../../shared/rrule";
 import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useLocale, useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import Select from "./Select";
 import { useFocusTrap } from "../utils/useFocusTrap";
 
@@ -225,10 +226,11 @@ function AutomationEditModal({ project, automation, onClose, onSaved }: Automati
 				className="bg-overlay rounded-2xl shadow-2xl shadow-black/50 border border-edge-active w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto outline-none"
 				onClick={(e) => e.stopPropagation()}
 			>
-				<div className="px-6 py-4 border-b border-edge">
+				<div className="px-6 py-4 border-b border-edge flex items-center gap-1.5">
 					<h2 className="text-fg text-lg font-semibold">
 						{isCreate ? t("automations.modalCreateTitle") : t("automations.modalEditTitle")}
 					</h2>
+					<HelpSpot topicId="modal.automation" />
 				</div>
 
 				<div className="px-6 py-4 space-y-4">

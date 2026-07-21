@@ -4,6 +4,7 @@ import { extractRepoName } from "../../shared/types";
 import type { AppAction } from "../state";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { trackEvent } from "../analytics";
 import { openFolderPicker, openFolderPickerMulti } from "../folder-picker";
 import { toast } from "../toast";
@@ -221,9 +222,12 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 				tabIndex={-1}
 				className="bg-overlay border border-edge rounded-2xl shadow-2xl w-[32.5rem] p-6 space-y-5 outline-none"
 			>
-				<h2 className="text-fg text-lg font-semibold">
-					{t("addProject.title")}
-				</h2>
+				<div className="flex items-center gap-1.5">
+					<h2 className="text-fg text-lg font-semibold">
+						{t("addProject.title")}
+					</h2>
+					<HelpSpot topicId="modal.add-project" />
+				</div>
 
 				{/* Kind toggle: Git repository | Operations */}
 				<div className="flex gap-1 p-1 bg-raised rounded-xl">

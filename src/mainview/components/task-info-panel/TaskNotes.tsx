@@ -1,6 +1,7 @@
 import type { Dispatch } from "react";
 import { toast } from "../../toast";
 import { NoteItem } from "../NoteItem";
+import HelpSpot from "../HelpSpot";
 import type { Project, Task } from "../../../shared/types";
 import type { AppAction } from "../../state";
 import { api } from "../../rpc";
@@ -59,8 +60,11 @@ export default function TaskNotes({ task, project, dispatch }: TaskNotesProps) {
 	return (
 		<div className="mt-3 border-t border-edge pt-3">
 			<div className="flex items-center justify-between mb-2">
-				<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">
-					{t("notes.title")}
+				<span className="flex items-center gap-1.5">
+					<span className="text-xs text-fg-3 font-semibold uppercase tracking-wider">
+						{t("notes.title")}
+					</span>
+					<HelpSpot topicId="inspector.notes" />
 				</span>
 				<button
 					onClick={handleAddNote}

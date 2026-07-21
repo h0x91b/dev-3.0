@@ -92,6 +92,7 @@ export default function PxpipeProxySettingsSection({
 			<SettingsSection
 				title={t("settings.pxpipeSection")}
 				description={t("settings.pxpipeSectionDesc")}
+				helpTopicId="settings.pxpipe"
 			>
 				{/* Honesty callout — always visible, even when off. */}
 				<div className="rounded-xl border border-warning/30 bg-warning/10 p-3">

@@ -6,6 +6,7 @@ import type { Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { formatBytes } from "../utils/formatBytes";
 import { startVisibilityAwarePoll } from "../utils/poll";
 import Tooltip from "./Tooltip";
@@ -241,6 +242,7 @@ function TmuxSessionManager({ navigate }: TmuxSessionManagerProps) {
 								</span>
 							</span>
 							<div className="flex items-center gap-1">
+								<HelpSpot topicId="header.tmux-sessions" />
 								<Tooltip content={t("tmuxSessions.refresh")}>
 								<button
 									onClick={handleRefresh}

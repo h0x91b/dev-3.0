@@ -342,6 +342,7 @@ ux_architecture:
       status: "observed"
       doctrine:
         coverage_law: "every surface/section and every non-self-evident form field (smart default, contextual prefill, hidden fallback, side effect) MUST have a registry topic reachable in help mode; field.* namespace for form fields; new user-facing UI ships its topic + data-help-id zone in the same commit (keymap.ts-style lockstep)"
+        coverage_floor: "help.ts exports REQUIRED_HELP_SURFACES — the curated positive list of canonical §5 surfaces/sections; help.test.ts asserts each resolves to a topic AND mounts a reachable zone, so a surface with NO help id (invisible to the dangling/orphan checks) can no longer ship uncovered. Surfaces/sections only (not sub-zones); board.column.* stay on the per-status test; transient overlays, confirm/error/search modals, native menus, the immersive terminal, and Diagnostics (§5.5) are documented exclusions"
         correlation_invariant: "help mode shows a superset of all inline help: every registry-backed HelpSpot auto-renders data-help-id (automatically a zone); a data-help-id/topicId with no registry topic is a silent no-op and is forbidden; __tests__/help.test.ts guards both directions (every referenced id resolves; every topic is mounted)"
       layers:
         tooltip:

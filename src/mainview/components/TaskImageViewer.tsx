@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SharedImage } from "../../shared/types";
 import { api } from "../rpc";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
 import { usePinchZoom } from "../hooks/usePinchZoom";
 
@@ -192,6 +193,7 @@ export default function TaskImageViewer({ images, initialIndex, onClose, taskId 
 					<span className="flex-shrink-0 font-mono text-xs text-fg-3 tabular-nums">
 						{index + 1} / {images.length}
 					</span>
+					<HelpSpot topicId="viewer.images" />
 					{isTall && (
 						<button
 							type="button"

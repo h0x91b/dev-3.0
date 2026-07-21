@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, isElectrobun } from "../rpc";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import TerminalView from "../TerminalView";
 import type { TerminalHandle } from "../TerminalView";
 import ExtraKeyBar from "./ExtraKeyBar";
@@ -126,6 +127,7 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 					<kbd className="text-[0.625rem] text-fg-muted/60 font-mono px-1.5 py-0.5 rounded bg-elevated border border-edge">
 						{t("projectTerminal.shortcutHint")}
 					</kbd>
+					<HelpSpot topicId="terminal.quick-shell" />
 				</div>
 			</div>
 			<div className="flex-1 min-h-0 overflow-hidden">

@@ -4,6 +4,7 @@ import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import AgentConfigPicker from "./AgentConfigPicker";
 import { useFocusTrap } from "../utils/useFocusTrap";
@@ -116,8 +117,9 @@ function SpawnAgentModal({ task, project, onClose }: SpawnAgentModalProps) {
 				onClick={(e) => e.stopPropagation()}
 			>
 				{/* Header */}
-				<div className="px-6 py-4 border-b border-edge">
+				<div className="px-6 py-4 border-b border-edge flex items-center gap-1.5">
 					<h2 className="text-fg text-lg font-semibold">{t("spawnAgent.title")}</h2>
+					<HelpSpot topicId="modal.spawn-agent" />
 				</div>
 
 				{/* Content */}

@@ -14,7 +14,7 @@ export default function AgentRateLimitSettingsSection({
 	onToggle: (enabled: boolean) => void;
 }) {
 	return (
-		<SettingsSection title={t("settings.rateLimitTracking")}>
+		<SettingsSection title={t("settings.rateLimitTracking")} helpTopicId="settings.rate-limits">
 			<SettingsEntry anchor="rate-limit-tracking">
 				<div>
 					<p className="text-fg-3 text-sm mb-3">

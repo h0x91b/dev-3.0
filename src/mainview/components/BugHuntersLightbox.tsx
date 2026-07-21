@@ -4,6 +4,7 @@ import { api } from "../rpc";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useToggleFavorite } from "../hooks/useToggleFavorite";
 import { useT } from "../i18n";
+import HelpSpot from "./HelpSpot";
 import { trackAgentLaunched, trackEvent } from "../analytics";
 import AgentConfigPicker from "./AgentConfigPicker";
 
@@ -128,6 +129,7 @@ function BugHuntersLightbox({ task, project, onClose }: BugHuntersLightboxProps)
 						<h2 className="text-fg text-lg font-semibold">{t("bugHunters.title")}</h2>
 						<p className="text-fg-3 text-xs mt-0.5">{t("bugHunters.subtitle")}</p>
 					</div>
+					<HelpSpot topicId="modal.bug-hunters" />
 				</div>
 
 				{/* Content */}
