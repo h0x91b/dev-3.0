@@ -1,4 +1,4 @@
-import type { PreparingStage, Task, TaskStatus } from "../../shared/types";
+import type { AppRPCSchema, PreparingStage, Task, TaskStatus } from "../../shared/types";
 
 export interface LifecycleColumn {
 	status: TaskStatus;
@@ -25,6 +25,11 @@ export interface LifecycleFacts {
 	projectKind: "git" | "virtual";
 	hasPrIdentity: boolean;
 	peerReviewEnabled: boolean;
+	manualCompletion?: boolean;
+	mergeCompletionPrompt?: Task["mergeCompletionPrompt"];
+	mergePromptReservation?: { fingerprint: string; reservedAt: number };
+	prPromoted?: boolean;
+	prSignalKey?: string;
 }
 
 export interface LifecycleState {
@@ -46,22 +51,39 @@ export interface PreparationLaunch {
 	variantBranchName?: string;
 }
 
+export type LifecycleTaskPatch = Partial<Pick<
+	Task,
+	| "groupId"
+	| "variantIndex"
+	| "agentId"
+	| "configId"
+	| "accountId"
+	| "existingBranch"
+	| "worktreePath"
+	| "branchName"
+	| "scheduledLaunch"
+	| "preparationError"
+>>;
+
 export type LifecycleEvent =
 	| {
 		type: "moveRequested";
 		target: { status?: TaskStatus; customColumnId?: string | null };
+		cause?: "pr-promotion" | "column-agent-fallback";
+		enforceAllowedTransition?: boolean;
 		guards?: MoveGuards;
 		force?: boolean;
 		clientPlayedSound?: boolean;
+		launchColumnAgent?: boolean;
 		runId?: string;
+		taskPatch?: LifecycleTaskPatch;
+		preparation?: {
+			launch: PreparationLaunch;
+			awaitCompletion: boolean;
+			publishColumn: boolean;
+		};
 	}
-	| {
-		type: "preparationRequested";
-		runId: string;
-		origin?: LifecycleColumn;
-		launch: PreparationLaunch;
-		awaitCompletion?: boolean;
-	}
+	| { type: "deleteRequested" }
 	| {
 		type: "preparationStageChanged";
 		runId: string;
@@ -75,6 +97,7 @@ export type LifecycleEvent =
 		origin: LifecycleColumn;
 		target: LifecycleColumn;
 		mode: "activation" | "preparation";
+		columnReserved?: boolean;
 	}
 	| {
 		type: "preparationFailed";
@@ -82,6 +105,7 @@ export type LifecycleEvent =
 		error: string;
 		origin?: LifecycleColumn;
 		target?: LifecycleColumn;
+		compensating?: boolean;
 	}
 	| {
 		type: "preparationCancelled";
@@ -92,16 +116,38 @@ export type LifecycleEvent =
 		branchName: string;
 		fingerprint: string;
 		precise: boolean;
+		detectedAt: string;
+		suggestCompletion: boolean;
+	}
+	| {
+		type: "mergePromptPrepared";
+		fingerprint: string;
+		precise: boolean;
+		promptedAt: string;
+		suggestCompletion: boolean;
+		force?: boolean;
+	}
+	| {
+		type: "mergePromptDismissed";
+		fingerprint: string;
+		precise: boolean;
+		dismissedAt: string;
+	}
+	| {
+		type: "prIdentityDiscovered";
+		prNumber: number;
+		prUrl: string;
 	}
 	| {
 		type: "prDetected";
 		openNonDraft: boolean;
-		payload: unknown;
+		payload: AppRPCSchema["bun"]["messages"]["taskPrStatus"];
 		persistence?: {
 			prNumber: number;
 			prUrl: string;
 			cache: NonNullable<Task["prStatusCache"]>;
 		};
+		signalKey?: string | null;
 		signalReason?: string;
 	}
 	| {
@@ -114,5 +160,7 @@ export type LifecycleEvent =
 		reality: {
 			worktreeExists: boolean;
 			tmuxAlive: boolean;
+			worktreePath?: string | null;
+			branchName?: string | null;
 		};
 	};

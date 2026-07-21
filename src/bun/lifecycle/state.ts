@@ -65,6 +65,8 @@ export function lifecycleStateFromTask(project: Project, task: Task): LifecycleS
 			projectKind: project.kind === "virtual" ? "virtual" : "git",
 			hasPrIdentity: task.prNumber != null,
 			peerReviewEnabled: project.peerReviewEnabled !== false,
+			manualCompletion: task.manualCompletion === true,
+			mergeCompletionPrompt: task.mergeCompletionPrompt,
 		},
 	};
 }

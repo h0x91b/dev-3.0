@@ -24,7 +24,6 @@ import { getPushMessage, log } from "./shared";
 import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
 	PR_DETECTION_TIMEOUT_MS,
-	clearMergeNotification,
 	dismissMergeCompletionPrompt,
 	getMergeCompletionFingerprint,
 	persistProjectPrIdentities,
@@ -152,19 +151,6 @@ function monitorGitPane(paneId: string | null, taskId: string, projectId: string
 	}
 }
 
-export function cleanupTaskGitState(taskId: string): void {
-	const runtime = lifecycleActorRuntime(taskId);
-	delete runtime.gitOpPaneId;
-	clearMergeNotification(taskId);
-	delete runtime.mergeNextDue;
-	delete runtime.prPromoted;
-	delete runtime.prSignalKey;
-	delete runtime.prPending;
-	delete runtime.prNextDue;
-	runtime.branchStatusInFlight?.clear();
-	delete runtime.branchStatusInFlight;
-}
-
 async function getBranchStatusImpl(params: { taskId: string; projectId: string; compareRef?: string }): Promise<BranchStatus> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
@@ -261,7 +247,7 @@ async function getBranchStatus(params: { taskId: string; projectId: string; comp
 	log.debug("→ getBranchStatus", params);
 	const dedupKey = `${params.taskId}:${params.compareRef ?? ""}`;
 	const runtime = lifecycleActorRuntime(params.taskId);
-	const inFlight = runtime.branchStatusInFlight ??= new Map();
+	const inFlight = runtime.branchChecks ??= new Map();
 	const existing = inFlight.get(dedupKey);
 	if (existing) {
 		log.debug("getBranchStatus: reusing in-flight request", { taskId: params.taskId });

@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import type {
 	ColumnAgentConfig,
 	CompletedDiffStats,
+	CustomColumn,
+	AppRPCSchema,
 	PreparingStage,
 	Project,
 	Task,
@@ -18,7 +20,7 @@ import {
 import { clonePaths } from "../cow-clone";
 import * as data from "../data";
 import * as git from "../git";
-import { DEV3_HOME } from "../paths";
+import { DEV3_HOME, OPS_DIR } from "../paths";
 import * as portPool from "../port-pool";
 import {
 	assertTaskPreparationActive,
@@ -66,6 +68,10 @@ import type {
 export interface LifecycleExecutorHooks {
 	dispatchFollowUp: (projectId: string, taskId: string, event: LifecycleEvent, snapshot?: Task) => Promise<Task>;
 	processInline: (projectId: string, taskId: string, event: LifecycleEvent, snapshot?: Task) => Promise<Task>;
+	runDetached: (work: Promise<unknown>) => void;
+	reserveMergePrompt: (taskId: string, fingerprint: string, reservedAt: number) => void;
+	setPrPromoted: (taskId: string, promoted: boolean) => void;
+	setPrSignalKey: (taskId: string, signalKey: string | null) => void;
 	clearMergeThrottle: (taskId: string) => void;
 	clearTaskRuntime: (taskId: string) => void;
 }
@@ -86,6 +92,9 @@ export interface LifecycleEffectOutcome {
 	followUp?: LifecycleEvent;
 	stop?: boolean;
 }
+
+type BunMessagePayload<Name extends keyof AppRPCSchema["bun"]["messages"]> =
+	AppRPCSchema["bun"]["messages"][Name];
 
 function runtimeState(runtime: LifecycleRuntime): TaskRuntimeState {
 	if (runtime.phase === "preparing") {
@@ -138,6 +147,17 @@ function preparationRuntimeUpdates(runtime: LifecycleRuntime): Partial<Task> {
 	};
 }
 
+function taskAfterPersistedUpdate(current: Task, persisted: Task, updates: Partial<Task>): Task {
+	if (persisted.id !== current.id) {
+		throw new Error(`Lifecycle write returned the wrong task: ${persisted.id}`);
+	}
+	return {
+		...current,
+		...persisted,
+		...updates,
+	};
+}
+
 function isScratchPlaceholderDescription(description: string): boolean {
 	return /^Scratch — \d{2}:\d{2}$/.test(description.trim());
 }
@@ -146,6 +166,13 @@ function taskWithLaunchDescription(task: Task, forceBlank = false): Task {
 	return forceBlank || isScratchPlaceholderDescription(task.description)
 		? { ...task, description: "" }
 		: task;
+}
+
+function derivedPreparationPath(project: Project, task: Task): string {
+	if (project.kind === "virtual") {
+		return task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
+	}
+	return `${git.taskDir(project, task)}/worktree`;
 }
 
 async function runCowClones(project: Project, worktreePath: string): Promise<void> {
@@ -162,6 +189,7 @@ async function preparationStep<T>(
 ): Promise<T> {
 	assertTaskPreparationActive(task.id, runId);
 	await reportCurrentPreparationStage(stage);
+	assertTaskPreparationActive(task.id, runId);
 	const startedAt = performance.now();
 	log.info("Lifecycle preparation effect started", {
 		taskId: task.id.slice(0, 8),
@@ -352,13 +380,15 @@ export async function captureCompletedDiffStats(
 
 export function emitTaskSound(status: "completed" | "cancelled", taskId: string): void {
 	if (loadSettingsSync().playSoundOnTaskComplete === false) return;
-	getPushMessage()?.("taskSound", { status, taskId });
+	const payload: BunMessagePayload<"taskSound"> = { status, taskId };
+	getPushMessage()?.("taskSound", payload);
 }
 
 async function columnAgentConfig(
 	project: Project,
 	task: Task,
 	column: LifecycleColumn,
+	providedCustomColumn?: CustomColumn,
 ): Promise<{ config: ColumnAgentConfig; paneTitle: string; onExitCommand?: string } | null> {
 	if (!task.worktreePath) return null;
 	if (column.status === "review-by-ai" && column.customColumnId === null) {
@@ -376,7 +406,8 @@ async function columnAgentConfig(
 		};
 	}
 	if (!column.customColumnId) return null;
-	const customColumn = project.customColumns?.find((candidate) => candidate.id === column.customColumnId);
+	const customColumn = providedCustomColumn
+		?? project.customColumns?.find((candidate) => candidate.id === column.customColumnId);
 	if (!customColumn?.agentConfig) return null;
 	return {
 		config: customColumn.agentConfig,
@@ -384,27 +415,66 @@ async function columnAgentConfig(
 	};
 }
 
+export async function launchLifecycleColumnAgent(
+	project: Project,
+	task: Task,
+	column: LifecycleColumn,
+	customColumn?: CustomColumn,
+): Promise<Extract<LifecycleEvent, { type: "columnAgentFailed" }> | null> {
+	let columnName = column.status === "review-by-ai" && column.customColumnId === null
+		? "AI Review"
+		: customColumn?.name
+			?? project.customColumns?.find((candidate) => candidate.id === column.customColumnId)?.name
+			?? column.status;
+	try {
+		const configured = await columnAgentConfig(project, task, column, customColumn);
+		if (!configured) return null;
+		columnName = configured.paneTitle;
+		await launchColumnAgent(project, task, configured.config, {
+			paneTitle: configured.paneTitle,
+			onExitCommand: configured.onExitCommand,
+		});
+		return null;
+	} catch (error) {
+		return {
+			type: "columnAgentFailed",
+			columnName,
+			error: String(error),
+		};
+	}
+}
+
 async function launchColumnAgentEffect(
 	ctx: LifecycleExecutionContext,
 	column: LifecycleColumn,
 ): Promise<LifecycleEffectOutcome> {
-	const configured = await columnAgentConfig(ctx.project, ctx.task, column);
-	if (!configured) return {};
-	try {
-		await launchColumnAgent(ctx.project, ctx.task, configured.config, {
-			paneTitle: configured.paneTitle,
-			onExitCommand: configured.onExitCommand,
-		});
-		return {};
-	} catch (error) {
-		return {
-			followUp: {
-				type: "columnAgentFailed",
-				columnName: configured.paneTitle,
-				error: String(error),
-			},
-		};
-	}
+	const failure = await launchLifecycleColumnAgent(ctx.project, ctx.task, column);
+	return failure ? { followUp: failure } : {};
+}
+
+export async function activateTask(
+	project: Project,
+	task: Task,
+	opts?: { isReopen?: boolean },
+): Promise<{ worktreePath: string; branchName: string | null }> {
+	const runId = crypto.randomUUID();
+	return prepareTask(project, task, {
+		type: "prepareTask",
+		runId,
+		origin: { status: task.status, customColumnId: task.customColumnId ?? null },
+		target: { status: task.status, customColumnId: task.customColumnId ?? null },
+		isReopen: opts?.isReopen === true,
+		awaitCompletion: true,
+		columnReserved: false,
+		successPatch: "activation",
+		launch: {
+			label: "activation",
+			agentId: task.agentId,
+			configId: task.configId,
+			existingBranch: task.existingBranch ?? undefined,
+		},
+		onError: "abort",
+	}, async () => {});
 }
 
 async function killPreparationProcesses(taskId: string): Promise<void> {
@@ -420,51 +490,68 @@ async function killPreparationProcesses(taskId: string): Promise<void> {
 }
 
 function preparationFailurePayload(ctx: LifecycleExecutionContext, effect: Extract<LifecycleEffect, { type: "push" }>) {
-	const payload = effect.payload as { error?: string | null } | undefined;
-	return {
+	const payload: BunMessagePayload<"taskPreparationFailed"> = {
 		taskId: ctx.task.id,
 		projectId: ctx.project.id,
 		taskTitle: getTaskTitle(ctx.task),
-		error: payload?.error ?? "Task preparation failed",
+		error: effect.message === "taskPreparationFailed"
+			? effect.payload.error ?? "Task preparation failed"
+			: "Task preparation failed",
 	};
+	return payload;
 }
 
 function pushEffect(effect: Extract<LifecycleEffect, { type: "push" }>, ctx: LifecycleExecutionContext): void {
 	const push = getPushMessage();
 	if (!push) return;
 	switch (effect.message) {
-		case "taskUpdated":
-			push("taskUpdated", {
+		case "taskUpdated": {
+			const payload: BunMessagePayload<"taskUpdated"> = {
 				projectId: ctx.project.id,
 				task: effect.view === "shuttingDown" ? { ...ctx.task, shuttingDown: true } : ctx.task,
-			});
+			};
+			push("taskUpdated", payload);
 			return;
+		}
 		case "taskPreparationFailed":
 			push("taskPreparationFailed", preparationFailurePayload(ctx, effect));
 			return;
 		case "branchMerged": {
-			const finding = effect.payload as Extract<LifecycleEvent, { type: "mergeDetected" }>;
-			push("branchMerged", {
+			const { finding, noticeOnly } = effect.payload;
+			const payload: BunMessagePayload<"branchMerged"> = {
 				taskId: ctx.sourceTask.id,
 				projectId: ctx.project.id,
 				taskTitle: ctx.sourceTask.customTitle || ctx.sourceTask.title,
 				branchName: finding.branchName,
 				fingerprint: finding.fingerprint,
 				subject: buildTaskDialogSubject(ctx.sourceTask, ctx.project),
-			});
+				...(noticeOnly ? { shouldPrompt: false, shouldNotify: true } : {}),
+			};
+			push("branchMerged", payload);
 			return;
 		}
 		case "taskPrStatus":
-			push("taskPrStatus", effect.payload as never);
+			push("taskPrStatus", effect.payload);
 			return;
 		case "columnAgentFailed": {
-			const failure = effect.payload as Extract<LifecycleEvent, { type: "columnAgentFailed" }>;
-			push("columnAgentFailed", {
+			const failure = effect.payload;
+			const payload: BunMessagePayload<"columnAgentFailed"> = {
 				taskId: ctx.task.id,
 				projectId: ctx.project.id,
 				columnName: failure.columnName,
 				error: failure.error,
-			});
+			};
+			push("columnAgentFailed", payload);
+			return;
+		}
+		case "mergePromptResolved": {
+			const resolution = effect.payload;
+			const payload: BunMessagePayload<"mergePromptResolved"> = {
+				taskId: ctx.task.id,
+				projectId: ctx.project.id,
+				fingerprint: resolution.fingerprint,
+			};
+			push("mergePromptResolved", payload);
 			return;
 		}
 		default:
@@ -477,6 +564,17 @@ export async function executeLifecycleEffect(
 	ctx: LifecycleExecutionContext,
 ): Promise<LifecycleEffectOutcome> {
 	switch (effect.type) {
+		case "reject":
+			throw new Error(effect.message);
+		case "reserveMergePrompt":
+			ctx.hooks.reserveMergePrompt(ctx.task.id, effect.fingerprint, effect.reservedAt);
+			return {};
+		case "setPrPromoted":
+			ctx.hooks.setPrPromoted(ctx.task.id, effect.promoted);
+			return {};
+		case "setPrSignalKey":
+			ctx.hooks.setPrSignalKey(ctx.task.id, effect.signalKey);
+			return {};
 		case "clearMergeThrottle":
 			ctx.hooks.clearMergeThrottle(ctx.task.id);
 			return {};
@@ -490,87 +588,179 @@ export async function executeLifecycleEffect(
 		case "releasePorts":
 			portPool.releasePorts(ctx.task.id);
 			return {};
+		case "sendEvent":
+			return { followUp: effect.event };
 		case "persistRuntime":
-			if (effect.runtime.phase === "tearing-down") {
-				await data.updateTaskWith(ctx.project, ctx.task.id, () => ({
-					updates: { runtimeState: runtimeState(effect.runtime) },
-					result: null,
-				}));
+			if (effect.column || effect.taskPatch) {
+				const updates: Partial<Task> = {
+					...effect.taskPatch,
+					...preparationRuntimeUpdates(effect.runtime),
+					...(effect.column ? {
+						status: effect.column.status,
+						customColumnId: effect.column.customColumnId,
+					} : {}),
+				};
+				const previous = ctx.task;
+				const persisted = await data.updateTask(ctx.project, ctx.task.id, updates, {
+					dropPosition: ctx.dropPosition,
+					...(effect.expectedColumn ? { ifStatus: effect.expectedColumn.status } : {}),
+				});
+				if (persisted.id !== previous.id) throw new Error(`Lifecycle reservation returned the wrong task: ${persisted.id}`);
+				const persistedColumn = {
+					status: persisted.status,
+					customColumnId: persisted.customColumnId ?? null,
+				};
+				const reservationAccepted = !effect.column || (
+					persistedColumn.status === effect.column.status
+					&& persistedColumn.customColumnId === effect.column.customColumnId
+				);
+				if (!reservationAccepted) {
+					ctx.task = persisted;
+					ctx.stateTask = persisted;
+					return { stop: true };
+				}
+				ctx.task = taskAfterPersistedUpdate(previous, persisted, updates);
 			} else {
-				await data.updateTask(ctx.project, ctx.task.id, preparationRuntimeUpdates(effect.runtime));
+				const updates = preparationRuntimeUpdates(effect.runtime);
+				const persisted = await data.updateTask(
+					ctx.project,
+					ctx.task.id,
+					updates,
+				);
+				ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, updates);
 			}
-			ctx.stateTask = { ...ctx.task, ...preparationRuntimeUpdates(effect.runtime) };
+			ctx.stateTask = ctx.task;
+			return {};
+		case "persistTaskPatch":
+			{
+				const persisted = await data.updateTask(ctx.project, ctx.task.id, effect.taskPatch);
+				ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, effect.taskPatch);
+			}
+			ctx.stateTask = ctx.task;
 			return {};
 		case "prepareTask": {
+			const preparationTask = effect.columnReserved ? ctx.task : ctx.sourceTask;
 			const work = async (): Promise<LifecycleEvent> => {
-				try {
-					const prepared = await prepareTask(ctx.project, ctx.task, effect, async (stage) => {
-						const stageEvent: LifecycleEvent = {
-							type: "preparationStageChanged",
-							runId: effect.runId,
-							stage,
-						};
-						if (effect.awaitCompletion) {
-							await ctx.hooks.processInline(ctx.project.id, ctx.task.id, stageEvent, ctx.stateTask);
-						} else {
-							void ctx.hooks.dispatchFollowUp(ctx.project.id, ctx.task.id, stageEvent, ctx.stateTask).catch((error) => {
+				const prepared = await prepareTask(ctx.project, preparationTask, effect, async (stage) => {
+					const stageEvent: LifecycleEvent = {
+						type: "preparationStageChanged",
+						runId: effect.runId,
+						stage,
+					};
+					if (effect.awaitCompletion) {
+						const stagedTask = await ctx.hooks.processInline(
+							ctx.project.id,
+							ctx.task.id,
+							stageEvent,
+							ctx.stateTask,
+						);
+						ctx.task = stagedTask;
+						ctx.stateTask = stagedTask;
+					} else {
+						await ctx.hooks.dispatchFollowUp(ctx.project.id, ctx.task.id, stageEvent, ctx.stateTask)
+							.then((stagedTask) => {
+								ctx.task = stagedTask;
+								ctx.stateTask = stagedTask;
+							})
+							.catch((error) => {
 								log.warn("Preparation stage dispatch failed", { taskId: ctx.task.id.slice(0, 8), error: String(error) });
 							});
-						}
-					});
-					return {
-						type: "preparationSucceeded",
-						runId: effect.runId,
-						worktreePath: prepared.worktreePath,
-						branchName: prepared.branchName,
-						origin: effect.origin,
-						target: effect.target,
-						mode: effect.successPatch,
-					};
-				} catch (error) {
-					return {
-						type: "preparationFailed",
-						runId: effect.runId,
-						error: error instanceof Error ? error.message : String(error),
-						origin: effect.origin,
-						target: effect.target,
-					};
-				}
+					}
+				});
+				return {
+					type: "preparationSucceeded",
+					runId: effect.runId,
+					worktreePath: prepared.worktreePath,
+					branchName: prepared.branchName,
+					origin: effect.origin,
+					target: effect.target,
+					mode: effect.successPatch,
+					columnReserved: effect.columnReserved,
+				};
 			};
-			if (effect.awaitCompletion) return { followUp: await work() };
-			void work().then((event) => ctx.hooks.dispatchFollowUp(ctx.project.id, ctx.task.id, event, ctx.stateTask)).catch((error) => {
-				log.error("Detached preparation follow-up failed", { taskId: ctx.task.id.slice(0, 8), error: String(error) });
-			});
+			if (effect.awaitCompletion) {
+				try {
+					return { followUp: await work() };
+				} catch (error) {
+					const persistedRuntime = ctx.stateTask?.runtimeState;
+					if (
+						persistedRuntime
+						&& (persistedRuntime.runtime !== "preparing" || persistedRuntime.runId !== effect.runId)
+					) {
+						return { stop: true };
+					}
+					throw error;
+				}
+			}
+			ctx.hooks.runDetached(
+				work()
+					.then(
+						(event) => ctx.hooks.dispatchFollowUp(ctx.project.id, ctx.task.id, event, ctx.stateTask),
+						(error) => ctx.hooks.dispatchFollowUp(ctx.project.id, ctx.task.id, {
+							type: "preparationFailed",
+							runId: effect.runId,
+							error: error instanceof Error ? error.message : String(error),
+							origin: effect.origin,
+							target: effect.target,
+						}, ctx.stateTask),
+					)
+					.catch((error) => {
+						log.error("Detached preparation follow-up failed", { taskId: ctx.task.id.slice(0, 8), error: String(error) });
+					}),
+			);
 			return {};
 		}
 		case "destroyTaskPty":
-			pty.destroySession(ctx.task.id, ctx.task.tmuxSocket ?? undefined);
+			pty.destroySession(ctx.sourceTask.id, ctx.sourceTask.tmuxSocket ?? undefined);
 			return {};
 		case "killDevServer":
 			await killDevServerSession(
-				ctx.task.id,
-				ctx.task.tmuxSocket ?? DEFAULT_TMUX_SOCKET,
-				ctx.task.worktreePath,
+				ctx.sourceTask.id,
+				ctx.sourceTask.tmuxSocket ?? DEFAULT_TMUX_SOCKET,
+				ctx.sourceTask.worktreePath,
 			);
 			return {};
 		case "runCleanupScript":
-			await runCleanupScript(effect.allowDerivedPath && !ctx.task.worktreePath
-				? { ...ctx.task, worktreePath: `${git.taskDir(ctx.project, ctx.task)}/worktree` }
-				: ctx.task, ctx.project, {
-				fromStatus: ctx.task.status,
+			await runCleanupScript(effect.allowDerivedPath && !ctx.sourceTask.worktreePath
+				? { ...ctx.sourceTask, worktreePath: derivedPreparationPath(ctx.project, ctx.sourceTask) }
+				: ctx.sourceTask, ctx.project, {
+				fromStatus: ctx.sourceTask.status,
 				toStatus: effect.toStatus,
 			});
 			return {};
 		case "captureCompletedDiffStats":
-			ctx.completedDiffStats = await captureCompletedDiffStats(ctx.project, ctx.task);
+			ctx.completedDiffStats = await captureCompletedDiffStats(
+				ctx.project,
+				effect.allowDerivedPath && !ctx.sourceTask.worktreePath
+					? { ...ctx.sourceTask, worktreePath: derivedPreparationPath(ctx.project, ctx.sourceTask) }
+					: ctx.sourceTask,
+			);
 			return {};
 		case "removeWorktree":
 			await git.removeWorktree(
 				ctx.project,
-				effect.allowDerivedPath && !ctx.task.worktreePath
-					? { ...ctx.task, worktreePath: `${git.taskDir(ctx.project, ctx.task)}/worktree` }
-					: ctx.task,
+				effect.allowDerivedPath && !ctx.sourceTask.worktreePath
+					? { ...ctx.sourceTask, worktreePath: derivedPreparationPath(ctx.project, ctx.sourceTask) }
+					: ctx.sourceTask,
 			);
+			return {};
+		case "removeTaskWorkspace":
+			{
+				const worktreePath = ctx.sourceTask.worktreePath
+					?? (effect.allowDerivedPath ? derivedPreparationPath(ctx.project, ctx.sourceTask) : null);
+				if (ctx.project.kind === "virtual") {
+					if (worktreePath?.startsWith(`${OPS_DIR}/`)) {
+						await rm(worktreePath, { recursive: true, force: true });
+					}
+				} else {
+					await git.removeWorktree(ctx.project, worktreePath
+						? { ...ctx.sourceTask, worktreePath }
+						: ctx.sourceTask);
+				}
+			}
+			return {};
+		case "deleteTaskRecord":
+			await data.deleteTask(ctx.project, ctx.task.id);
 			return {};
 		case "persistColumn": {
 			let updates: Partial<Task>;
@@ -603,47 +793,51 @@ export async function executeLifecycleEffect(
 					updates = { status: effect.column.status };
 					break;
 			}
-			ctx.task = effect.patch === "preparation" || effect.writeOptions === "none"
+			if (effect.runtime) {
+				updates = { ...updates, ...preparationRuntimeUpdates(effect.runtime) };
+			}
+			const persisted = effect.patch === "preparation" || effect.writeOptions === "none"
 				? await data.updateTask(ctx.project, ctx.task.id, updates)
 				: await data.updateTask(ctx.project, ctx.task.id, updates, {
 					dropPosition: ctx.dropPosition,
 					...(effect.guards?.ifStatus ? { ifStatus: effect.guards.ifStatus } : {}),
 					...(effect.guards?.ifStatusNot ? { ifStatusNot: effect.guards.ifStatusNot } : {}),
 				});
-			const accepted = ctx.task.status === effect.column.status
-				&& (ctx.task.customColumnId ?? null) === effect.column.customColumnId;
-			if (!accepted) return { stop: true };
-			if (effect.runtime) {
-				const runtimeUpdates = preparationRuntimeUpdates(effect.runtime);
-				await data.updateTask(
-					ctx.project,
-					ctx.task.id,
-					runtimeUpdates,
-				);
+			const accepted = persisted.status === effect.column.status
+				&& (persisted.customColumnId ?? null) === effect.column.customColumnId;
+			if (!accepted) {
+				ctx.task = persisted;
+				ctx.stateTask = persisted;
+				return { stop: true };
 			}
+			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, updates);
+			ctx.stateTask = ctx.task;
 			return {};
 		}
 		case "persistTerminalTask": {
-			ctx.task = await data.updateTask(ctx.project, ctx.task.id, {
+			const taskUpdates: Partial<Task> = {
 				status: effect.status,
 				customColumnId: null,
 				...(ctx.project.kind === "virtual" ? {} : { worktreePath: null, branchName: null }),
 				...(ctx.completedDiffStats ? { completedDiffStats: ctx.completedDiffStats } : {}),
-			}, { dropPosition: ctx.dropPosition });
-			const terminalRuntimeUpdates: Partial<Task> = {
 				runtimeState: runtimeState({ phase: "idle" }),
 				...clearedPreparationFields(),
 			};
-			await data.updateTask(ctx.project, ctx.task.id, terminalRuntimeUpdates);
+			const persisted = await data.updateTask(
+				ctx.project,
+				ctx.task.id,
+				taskUpdates,
+				{ dropPosition: ctx.dropPosition },
+			);
+			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, taskUpdates);
+			ctx.stateTask = ctx.task;
 			return {};
 		}
 		case "persistPreparationStage": {
-			ctx.task = await data.updateTask(ctx.project, ctx.task.id, {
+			const stageUpdates: Partial<Task> = {
 				preparing: true,
 				preparingStage: effect.stage as PreparingStage,
 				preparingProgress: getPreparingStageProgress(effect.stage as PreparingStage),
-			});
-			const stageRuntimeUpdates: Partial<Task> = {
 				runtimeState: {
 					runtime: "preparing",
 					stage: effect.stage,
@@ -651,34 +845,56 @@ export async function executeLifecycleEffect(
 					updatedAt: Date.now(),
 				},
 			};
-			await data.updateTask(ctx.project, ctx.task.id, stageRuntimeUpdates);
+			const persisted = await data.updateTask(ctx.project, ctx.task.id, stageUpdates);
+			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, stageUpdates);
+			ctx.stateTask = ctx.task;
 			return {};
 		}
 		case "persistPreparationFailure": {
-			ctx.task = await data.updateTask(ctx.project, ctx.task.id, {
+			const failureUpdates: Partial<Task> = {
 				status: "todo",
 				...clearedPreparationFields(),
 				worktreePath: null,
 				branchName: null,
 				customColumnId: null,
 				preparationError: effect.error,
-			});
-			const failureRuntimeUpdates: Partial<Task> = {
 				runtimeState: runtimeState({ phase: "idle" }),
 			};
-			await data.updateTask(ctx.project, ctx.task.id, failureRuntimeUpdates);
+			const persisted = await data.updateTask(ctx.project, ctx.task.id, failureUpdates);
+			ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, failureUpdates);
+			ctx.stateTask = ctx.task;
 			return {};
 		}
 		case "persistMergePrompt":
+			{
+				const updates: Partial<Task> = {
+					mergeCompletionPrompt: {
+						fingerprint: effect.fingerprint,
+						promptedAt: effect.promptedAt ?? new Date().toISOString(),
+						dismissedAt: null,
+						precise: effect.precise,
+					},
+				};
+				const persisted = await data.updateTask(ctx.project, ctx.task.id, updates);
+				ctx.task = taskAfterPersistedUpdate(ctx.task, persisted, updates);
+				ctx.stateTask = ctx.task;
+			}
+			return {};
+		case "persistMergeDismissal": {
+			const existing = ctx.task.mergeCompletionPrompt;
 			ctx.task = await data.updateTask(ctx.project, ctx.task.id, {
 				mergeCompletionPrompt: {
 					fingerprint: effect.fingerprint,
-					promptedAt: new Date().toISOString(),
-					dismissedAt: null,
+					promptedAt: existing?.fingerprint === effect.fingerprint
+						? existing.promptedAt
+						: effect.dismissedAt,
+					dismissedAt: effect.dismissedAt,
 					precise: effect.precise,
 				},
 			});
+			ctx.stateTask = ctx.task;
 			return {};
+		}
 		case "persistPrStatus": {
 			const payload = effect.payload as {
 				prNumber?: number;
@@ -692,6 +908,7 @@ export async function executeLifecycleEffect(
 					...(payload.prUrl !== undefined ? { prUrl: payload.prUrl } : {}),
 					...(payload.cache !== undefined ? { prStatusCache: payload.cache } : {}),
 				});
+				ctx.stateTask = ctx.task;
 			}
 			return {};
 		}

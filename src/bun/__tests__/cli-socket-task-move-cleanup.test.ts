@@ -163,14 +163,15 @@ describe("task.move destructive cleanup", () => {
 			}),
 		);
 
-		expect(resp.ok).toBe(true);
-		expect(mockMoveTask).toHaveBeenCalledWith({
-			taskId: task.id,
-			projectId: project.id,
-			newStatus: "completed",
-			ifStatus: undefined,
-			ifStatusNot: undefined,
-		});
+			expect(resp.ok).toBe(true);
+			expect(mockMoveTask).toHaveBeenCalledWith({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: "completed",
+				ifStatus: undefined,
+				ifStatusNot: undefined,
+				enforceAllowedTransition: true,
+			});
 		expect(mockCleanupTaskState).toHaveBeenCalledWith(task.id);
 		expect(mockReleasePorts).toHaveBeenCalledWith(task.id);
 		expect(mockKillDevServerSession).toHaveBeenCalledWith(task.id, task.tmuxSocket);

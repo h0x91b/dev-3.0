@@ -70,4 +70,21 @@ describe("TaskActorRegistry", () => {
 		second.resolve("second-done");
 		expect(await secondResult).toBe("second-done");
 	});
+
+	it("rejects queued work when an actor is removed", async () => {
+		const first = deferred<string>();
+		const actors = new TaskActorRegistry<string, string>(async (_taskId, event) => {
+			if (event === "first") return first.promise;
+			return event;
+		});
+
+		const firstResult = actors.dispatch("task-1", "first");
+		const queuedResult = actors.dispatch("task-1", "queued");
+		await Promise.resolve();
+		actors.delete("task-1");
+
+		await expect(queuedResult).rejects.toThrow("Task actor removed");
+		first.resolve("first-done");
+		expect(await firstResult).toBe("first-done");
+	});
 });

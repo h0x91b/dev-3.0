@@ -360,6 +360,32 @@ describe("addTask — autoVariantIndex allocation", () => {
 	});
 });
 
+describe("additive task fields", () => {
+	it("preserves runtimeState and unknown fields across ordinary updates", async () => {
+		seedTasks([{
+			...makeRawTask({ id: "a", seq: 1 }),
+			runtimeState: {
+				runtime: "preparing",
+				stage: "creating-worktree",
+				runId: "run-1",
+				updatedAt: 123,
+			},
+			futureFieldFromNewerVersion: { enabled: true },
+		}]);
+
+		await updateTask(testProject, "a", { title: "Updated title" });
+
+		const saved = readSavedTasks()[0] as Task & { futureFieldFromNewerVersion?: { enabled: boolean } };
+		expect(saved.runtimeState).toEqual({
+			runtime: "preparing",
+			stage: "creating-worktree",
+			runId: "run-1",
+			updatedAt: 123,
+		});
+		expect(saved.futureFieldFromNewerVersion).toEqual({ enabled: true });
+	});
+});
+
 describe("tasks.json hourly backups", () => {
 	it("captures the previous tasks.json once per hour before overwriting it", async () => {
 		vi.useFakeTimers();

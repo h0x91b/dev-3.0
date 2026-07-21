@@ -1,491 +1,11 @@
-import { existsSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
-import type { ColumnAgentConfig, CustomColumn, LaunchVariant, PreparingStage, Project, Task, TaskPriority, CompletedDiffStats, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, DEFAULT_REVIEW_PROMPT, getPreparingStageProgress, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../../shared/types";
+import type { LaunchVariant, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
+import { ACTIVE_STATUSES, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
-import * as git from "../git";
-import * as pty from "../pty-server";
-import { tmux, DEFAULT_TMUX_SOCKET, activeTmuxConfigPath, cleanupSessionName } from "../tmux";
-import * as portPool from "../port-pool";
-import * as repoConfig from "../repo-config";
-import { clonePaths } from "../cow-clone";
 import { resolveCompletionRequest } from "../completion-requests";
-import { DEV3_HOME, OPS_DIR } from "../paths";
-import {
-	assertTaskPreparationActive,
-	forgetTaskPreparation,
-	getTaskPreparationSnapshot,
-	isTaskPreparationActive,
-	markTaskPreparationCancelled,
-	reportCurrentPreparationStage,
-	TaskPreparationCancelledError,
-	withTaskPreparation,
-} from "../preparation-runtime";
-import { loadSettings, loadSettingsSync, recordFavoriteUsages } from "../settings";
-import { getUserShell } from "../shell-env";
-import { spawn } from "../spawn";
-import { buildScriptRunnerCommand, buildTaskLifecycleEnv, getPushMessage, isActive, log, notifyWatchedTaskStatusChange } from "./shared";
-import { cleanupTaskGitState } from "./git-operations";
-import { clearMergeNotification } from "../lifecycle/activities";
-import { resolveOperationalProjectConfig } from "./settings-config";
-import { cleanupTaskTmuxState, killDevServerSession, launchColumnAgent, launchTaskPty } from "./tmux-pty";
-import { dev3TaskTempPath } from "../temp-paths";
+import { recordFavoriteUsages } from "../settings";
+import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
-
-function cleanupTaskState(taskId: string): void {
-	cleanupTaskTmuxState(taskId);
-	cleanupTaskGitState(taskId);
-}
-
-async function runCowClones(project: Project, worktreePath: string): Promise<void> {
-	if (!project.clonePaths?.length) return;
-	await clonePaths(project.path, worktreePath, project.clonePaths);
-}
-
-export async function clearPreparingTasks(project: Project, tasks: Task[]): Promise<void> {
-	for (const task of tasks) {
-		try {
-			const updated = await data.updateTask(project, task.id, clearPreparingState());
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		} catch {
-			// Best effort — do not crash background preparation cleanup.
-		}
-	}
-}
-
-function preparingResetUpdates(preparationError: string | null = null): Partial<Task> {
-	return {
-		status: "todo",
-		preparing: false,
-		preparingStage: null,
-		preparingProgress: null,
-		preparingStartedAt: null,
-		worktreePath: null,
-		branchName: null,
-		customColumnId: null,
-		preparationError,
-	};
-}
-
-const INITIAL_PREPARING_STAGE: PreparingStage = "resolving-config";
-
-function clearPreparingState(): Pick<Task, "preparing" | "preparingStage" | "preparingProgress" | "preparingStartedAt"> {
-	return {
-		preparing: false,
-		preparingStage: null,
-		preparingProgress: null,
-		preparingStartedAt: null,
-	};
-}
-
-function preparingStageUpdates(stage: PreparingStage): Pick<Task, "preparing" | "preparingStage" | "preparingProgress"> {
-	return {
-		preparing: true,
-		preparingStage: stage,
-		preparingProgress: getPreparingStageProgress(stage),
-	};
-}
-
-async function pushPreparingStage(project: Project, taskId: string, stage: PreparingStage): Promise<void> {
-	const updated = await data.updateTask(project, taskId, preparingStageUpdates(stage));
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-}
-
-async function killTrackedPreparationProcesses(taskId: string, pids: number[]): Promise<void> {
-	for (const pid of pids) {
-		try {
-			log.warn("Killing preparation process", {
-				taskId: taskId.slice(0, 8),
-				pid,
-				signal: "SIGKILL",
-			});
-			const proc = spawn(["kill", "-9", String(pid)], { stdout: "pipe", stderr: "pipe" });
-			const code = await proc.exited;
-			if (code !== 0) {
-				log.warn("kill -9 exited non-zero for preparation process", {
-					taskId: taskId.slice(0, 8),
-					pid,
-					code,
-				});
-			}
-		} catch (err) {
-			log.warn("kill -9 failed for preparation process", {
-				taskId: taskId.slice(0, 8),
-				pid,
-				error: String(err),
-			});
-		}
-	}
-}
-
-async function revertPreparingTaskToTodo(project: Project, task: Task, preparationError: string | null = null): Promise<Task> {
-	cleanupTaskState(task.id);
-	portPool.releasePorts(task.id);
-
-	try {
-		pty.destroySession(task.id, task.tmuxSocket ?? undefined);
-	} catch (err) {
-		log.warn("destroySession failed while cancelling preparation", {
-			taskId: task.id.slice(0, 8),
-			error: String(err),
-		});
-	}
-
-	killDevServerSession(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
-		log.warn("killDevServerSession failed while cancelling preparation", {
-			taskId: task.id.slice(0, 8),
-			error: String(err),
-		});
-	});
-
-	// Virtual (Operations) tasks have no git worktree — the work dir is a managed
-	// temp folder (or a user-chosen one we must never force-remove). Skip the git
-	// worktree teardown entirely; only git projects own a removable worktree.
-	if (project.kind !== "virtual") {
-		const cleanupTask: Task = {
-			...task,
-			worktreePath: task.worktreePath ?? `${git.taskDir(project, task)}/worktree`,
-		};
-
-		// Preparation may already have run the setup script (e.g. brought up a
-		// per-worktree dev container), so give the cleanup hook a chance to tear
-		// that down before the worktree disappears. Best-effort: the worktree may
-		// be half-created and runCleanupScript skips it when missing.
-		try {
-			await runCleanupScript(cleanupTask, project, {
-				fromStatus: task.status,
-				toStatus: "todo",
-			});
-		} catch (err) {
-			log.warn("Cleanup script failed while cancelling preparation", {
-				taskId: task.id.slice(0, 8),
-				error: String(err),
-			});
-		}
-
-		try {
-			await git.removeWorktree(project, cleanupTask);
-		} catch (err) {
-			log.warn("removeWorktree failed while cancelling preparation", {
-				taskId: task.id.slice(0, 8),
-				worktreePath: cleanupTask.worktreePath,
-				error: String(err),
-			});
-		}
-	}
-
-	const updated = await data.updateTask(project, task.id, preparingResetUpdates(preparationError));
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	return updated;
-}
-
-async function measurePreparationStep<T>(
-	task: Task,
-	runId: string,
-	step: string,
-	fn: () => Promise<T>,
-	stage?: PreparingStage,
-	extra?: Record<string, unknown>,
-): Promise<T> {
-	assertTaskPreparationActive(task.id, runId);
-	if (stage) {
-		await reportCurrentPreparationStage(stage);
-	}
-	const startedAt = performance.now();
-	log.info("Preparing step started", {
-		taskId: task.id.slice(0, 8),
-		runId,
-		step,
-		...(extra ?? {}),
-	});
-	try {
-		const result = await fn();
-		const durationMs = Math.round(performance.now() - startedAt);
-		log.info("Preparing step finished", {
-			taskId: task.id.slice(0, 8),
-			runId,
-			step,
-			durationMs,
-			...(extra ?? {}),
-		});
-		assertTaskPreparationActive(task.id, runId);
-		return result;
-	} catch (err) {
-		const durationMs = Math.round(performance.now() - startedAt);
-		const logFn = err instanceof TaskPreparationCancelledError ? log.warn : log.error;
-		logFn("Preparing step failed", {
-			taskId: task.id.slice(0, 8),
-			runId,
-			step,
-			durationMs,
-			error: String(err),
-			...(extra ?? {}),
-		});
-		throw err;
-	}
-}
-
-export async function prepareTaskInBackground(
-	project: Project,
-	task: Task,
-	options: {
-		label: string;
-		agentId: string | null;
-		configId: string | null;
-		existingBranch?: string;
-		variantBranchName?: string;
-	},
-): Promise<void> {
-	await withTaskPreparation(task.id, options.label, async (runId) => {
-		try {
-			// Virtual ("Operations") projects have no git repo: skip the entire
-			// worktree / sparse / CoW pipeline and launch the agent + split shell
-			// in a managed (or user-chosen) folder. Reuses the same preparation
-			// stage + cancellation machinery so the card progress bar and the
-			// revert-on-failure path keep working.
-			if (project.kind === "virtual") {
-				const workDir = task.opsWorkDir?.trim() || git.virtualWorkDir(project, task);
-				await measurePreparationStep(
-					task,
-					runId,
-					"createOpsWorkDir",
-					() => mkdir(workDir, { recursive: true }),
-					"creating-worktree",
-					{ opsWorkDir: task.opsWorkDir ?? null },
-				);
-				const taskForVirtualLaunch = taskWithLaunchDescription(task);
-				await measurePreparationStep(
-					task,
-					runId,
-					"launchTaskPty",
-					() => launchTaskPty(project, taskForVirtualLaunch, workDir, options.agentId, options.configId, true),
-					"launching-pty",
-				);
-
-				assertTaskPreparationActive(task.id, runId);
-				const updatedVirtual = await data.updateTask(project, task.id, {
-					worktreePath: workDir,
-					branchName: null,
-					...clearPreparingState(),
-				});
-
-				if (!isTaskPreparationActive(task.id, runId)) {
-					log.warn("Preparation completed after cancellation; reverting task", {
-						taskId: task.id.slice(0, 8),
-						runId,
-					});
-					await revertPreparingTaskToTodo(project, task);
-					return;
-				}
-
-				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updatedVirtual });
-				log.info("Virtual task preparation ready", {
-					taskId: task.id.slice(0, 8),
-					runId,
-					worktreePath: workDir,
-				});
-				return;
-			}
-
-			const resolvedProject = await measurePreparationStep(
-				task,
-				runId,
-				"resolveProjectConfig",
-				() => repoConfig.resolveProjectConfig(project),
-				"resolving-config",
-			);
-			const wt = await measurePreparationStep(
-				task,
-				runId,
-				"createWorktree",
-				() => git.createWorktree(
-					resolvedProject,
-					task,
-					options.existingBranch ?? undefined,
-					options.variantBranchName,
-				),
-				"creating-worktree",
-				{
-					existingBranch: options.existingBranch ?? null,
-					variantBranchName: options.variantBranchName ?? null,
-				},
-			);
-			const resolved = await measurePreparationStep(
-				task,
-				runId,
-				"resolveOperationalProjectConfig",
-				() => resolveOperationalProjectConfig(resolvedProject, wt.worktreePath),
-				"resolving-config",
-				{ worktreePath: wt.worktreePath },
-			);
-
-			if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
-				await measurePreparationStep(
-					task,
-					runId,
-					"applySparseCheckout",
-					() => git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths!),
-					"applying-sparse-checkout",
-					{ pathCount: resolved.sparseCheckoutPaths.length },
-				);
-			} else {
-				log.info("Preparing step skipped", {
-					taskId: task.id.slice(0, 8),
-					runId,
-					step: "applySparseCheckout",
-					enabled: resolved.sparseCheckoutEnabled,
-					pathCount: resolved.sparseCheckoutPaths?.length ?? 0,
-				});
-			}
-
-			await measurePreparationStep(
-				task,
-				runId,
-				"runCowClones",
-				() => runCowClones(resolved, wt.worktreePath),
-				"cloning-shared-paths",
-			);
-			// Fresh scratch tasks carry a placeholder `description` used only to
-			// derive the card title. Blank that placeholder, but preserve a real
-			// description if the scratch task was edited before launching variants.
-			const taskForLaunch = taskWithLaunchDescription(task);
-			await measurePreparationStep(
-				task,
-				runId,
-				"launchTaskPty",
-				() => launchTaskPty(
-					resolved,
-					taskForLaunch,
-					wt.worktreePath,
-					options.agentId,
-					options.configId,
-					true,
-					false,
-					{ branchName: wt.branchName },
-				),
-				"launching-pty",
-			);
-
-			assertTaskPreparationActive(task.id, runId);
-			const updated = await data.updateTask(project, task.id, {
-				worktreePath: wt.worktreePath,
-				branchName: wt.branchName,
-				...clearPreparingState(),
-			});
-
-			if (!isTaskPreparationActive(task.id, runId)) {
-				log.warn("Preparation completed after cancellation; reverting task", {
-					taskId: task.id.slice(0, 8),
-					runId,
-				});
-				await revertPreparingTaskToTodo(project, task);
-				return;
-			}
-
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			log.info("Task preparation ready", {
-				taskId: task.id.slice(0, 8),
-				runId,
-				worktreePath: wt.worktreePath,
-			});
-		} catch (err) {
-			if (err instanceof TaskPreparationCancelledError) {
-				log.warn("Task preparation stopped after cancellation", {
-					taskId: task.id.slice(0, 8),
-					runId,
-					label: options.label,
-				});
-				return;
-			}
-
-			log.error("Failed to prepare task", {
-				taskId: task.id,
-				runId,
-				label: options.label,
-				error: String(err),
-			});
-			try {
-				if (isTaskPreparationActive(task.id, runId)) {
-					// Don't strand the task in its active column with no worktree and no
-					// PTY — that surfaces as a misleading "[session ended]" terminal and
-					// survives app restarts. Move it back to todo (cleaning up any
-					// half-created worktree) so it is recoverable, and surface the real
-					// preparation error to the renderer as a toast.
-					const preparationError = err instanceof Error ? err.message : String(err);
-					const reverted = await revertPreparingTaskToTodo(project, task, preparationError);
-					getPushMessage()?.("taskPreparationFailed", {
-						taskId: task.id,
-						projectId: project.id,
-						taskTitle: getTaskTitle(reverted),
-						error: preparationError,
-					});
-				}
-			} catch (revertErr) {
-				log.error("Failed to revert task after preparation failure", {
-					taskId: task.id.slice(0, 8),
-					runId,
-					error: String(revertErr),
-				});
-			}
-		}
-	}, (stage) => pushPreparingStage(project, task.id, stage));
-}
-
-export async function activateTask(
-	project: Project,
-	task: Task,
-	opts?: { isReopen?: boolean },
-): Promise<{ worktreePath: string; branchName: string | null }> {
-	const isReopen = opts?.isReopen ?? false;
-	if (project.kind === "virtual") {
-		return activateVirtualTask(project, task, isReopen);
-	}
-	const preResolved = await repoConfig.resolveProjectConfig(project);
-	const wt = await git.createWorktree(preResolved, task, task.existingBranch ?? undefined);
-	const resolved = await resolveOperationalProjectConfig(project, wt.worktreePath);
-	if (resolved.sparseCheckoutEnabled && resolved.sparseCheckoutPaths?.length) {
-		log.info("activateTask: applying sparse checkout", { worktreePath: wt.worktreePath, paths: resolved.sparseCheckoutPaths });
-		await git.applySparseCheckout(wt.worktreePath, resolved.sparseCheckoutPaths);
-	} else {
-		log.info("activateTask: sparse checkout disabled or no paths", { enabled: resolved.sparseCheckoutEnabled, pathCount: resolved.sparseCheckoutPaths?.length ?? 0 });
-	}
-	await runCowClones(resolved, wt.worktreePath);
-	// Blank the description so the agent starts in a clean session instead of
-	// being handed a prompt, in two cases:
-	//   - reopen (completed/cancelled → active): don't replay the original prompt.
-	//     Original intent: commit a2b87778 ("Skip task prompt when reopening …").
-	//   - untouched scratch tasks: `description` is only the generated
-	//     `Scratch — HH:mm` placeholder used for the card title. An edited scratch
-	//     task may contain a real instruction, which must survive launch.
-	const taskForLaunch = taskWithLaunchDescription(task, isReopen);
-	await launchTaskPty(resolved, taskForLaunch, wt.worktreePath, task.agentId, task.configId, true, isReopen, { branchName: wt.branchName });
-	return { worktreePath: wt.worktreePath, branchName: wt.branchName };
-}
-
-/**
- * Activate a virtual ("Operations") task: create/resolve the working dir, then
- * launch the agent + a split-right shell (handled in launchTaskPty). No git
- * worktree, branch, sparse-checkout, cow-clones, or config merge.
- *
- * Working dir is the user-chosen fixed folder (`task.opsWorkDir`) if set,
- * otherwise a managed temp dir under `~/.dev3.0/ops/<slug>/<taskId>/work`.
- * `worktreePath` is reused to hold it (Runtime affordances key off it); the git
- * domain is hidden in the UI by `kind` guards.
- */
-async function activateVirtualTask(
-	project: Project,
-	task: Task,
-	isReopen: boolean,
-): Promise<{ worktreePath: string; branchName: null }> {
-	const fixed = task.opsWorkDir?.trim();
-	const workDir = fixed || git.virtualWorkDir(project, task);
-	await mkdir(workDir, { recursive: true });
-	log.info("Activating virtual task", { taskId: task.id.slice(0, 8), workDir, fixed: !!fixed });
-	// Reopen or untouched scratch placeholder → blank prompt so the agent idles.
-	const taskForLaunch = taskWithLaunchDescription(task, isReopen);
-	await launchTaskPty(project, taskForLaunch, workDir, task.agentId, task.configId, true, isReopen);
-	return { worktreePath: workDir, branchName: null };
-}
+import { clearMergeNotification } from "../lifecycle/activities";
 
 function scratchPlaceholder(now: Date = new Date()): string {
 	const hh = String(now.getHours()).padStart(2, "0");
@@ -495,11 +15,6 @@ function scratchPlaceholder(now: Date = new Date()): string {
 
 function isScratchPlaceholderDescription(description: string): boolean {
 	return /^Scratch — \d{2}:\d{2}$/.test(description.trim());
-}
-
-function taskWithLaunchDescription(task: Task, forceBlank = false): Task {
-	const hasScratchPlaceholder = isScratchPlaceholderDescription(task.description);
-	return forceBlank || hasScratchPlaceholder ? { ...task, description: "" } : task;
 }
 
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
@@ -536,152 +51,6 @@ export async function isTaskInProgress(taskId: string): Promise<boolean> {
 	return false;
 }
 
-const DEFAULT_CLEANUP_SCRIPT = 'echo "Task finished"';
-
-type CleanupTransition = {
-	fromStatus: TaskStatus;
-	// Beyond board statuses, the cleanup hook also fires when the worktree is
-	// destroyed outside a column move: "deleted" (task deleted while active)
-	// and "todo" (task preparation cancelled, task reverted to To Do).
-	toStatus: TaskStatus | "deleted";
-};
-
-function buildCleanupScriptEnv(
-	task: Task,
-	project: Project,
-	transition: CleanupTransition,
-): Record<string, string> {
-	return {
-		TERM: "xterm-256color",
-		HOME: process.env.HOME || "/",
-		...buildTaskLifecycleEnv(project, task, task.worktreePath || ""),
-		DEV3_TASK_STATUS: transition.toStatus,
-		DEV3_TASK_FROM_STATUS: transition.fromStatus,
-		DEV3_TASK_TO_STATUS: transition.toStatus,
-	};
-}
-
-export async function runCleanupScript(
-	task: Task,
-	project: Project,
-	transition: CleanupTransition,
-): Promise<void> {
-	if (!task.worktreePath) return;
-
-	// Use existsSync, not Bun.file(...).exists(): the latter always returns
-	// false for directories.
-	if (!existsSync(task.worktreePath)) {
-		log.warn("Skipping cleanup script — worktree directory missing", {
-			worktreePath: task.worktreePath,
-			taskId: task.id,
-		});
-		return;
-	}
-
-	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath);
-	const script = resolved.cleanupScript?.trim() || DEFAULT_CLEANUP_SCRIPT;
-	const scriptPath = dev3TaskTempPath(task.id, "cleanup.sh");
-	const sessionName = cleanupSessionName(task.id);
-	const userShell = getUserShell();
-
-	await Bun.write(scriptPath, `#!/bin/bash\n${script}\n`);
-
-	log.info("Starting cleanup tmux session", { session: sessionName, worktreePath: task.worktreePath });
-
-	const cleanupSocket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-	// Env vars ride on `-e KEY=VAL` so they land in session-environment
-	// atomically. Without this, the tmux server's global env (from whichever
-	// task started the server) leaks in — DEV3_TASK_ID from task A would
-	// run task B's cleanup script against the wrong worktree/container.
-	// The client process cwd is pinned inside spawnAttachedSession — NOT the
-	// worktree: if this client is the one that starts the tmux server, the
-	// server would daemonize with a cwd this very cleanup is about to delete —
-	// poisoning `-c` for all future panes (tmux 3.7). The script still runs in
-	// the worktree via the `cwd` (`-c`) option.
-	const cleanupEnv = buildCleanupScriptEnv(task, project, transition);
-	const proc = tmux.spawnAttachedSession({
-		socket: cleanupSocket,
-		configFile: activeTmuxConfigPath(),
-		sessionName,
-		cwd: task.worktreePath,
-		envFlags: cleanupEnv,
-		command: buildScriptRunnerCommand(scriptPath, { shellPath: userShell }),
-		terminal: { cols: 220, rows: 50, data: () => {} },
-		processEnv: cleanupEnv,
-	});
-
-	await proc.exited;
-
-	log.info("Cleanup session finished", { session: sessionName });
-}
-
-export function emitTaskSound(status: "completed" | "cancelled", taskId: string): void {
-	const settings = loadSettingsSync();
-	if (settings.playSoundOnTaskComplete === false) return;
-	getPushMessage()?.("taskSound", { status, taskId });
-}
-
-export async function triggerColumnAgentIfNeeded(
-	newStatus: TaskStatus,
-	project: Project,
-	task: Task,
-	options?: { customColumn?: CustomColumn },
-): Promise<void> {
-	if (!task.worktreePath) return;
-
-	let agentConfig: ColumnAgentConfig | undefined;
-	let paneTitle = "";
-	let onExitCommand: string | undefined;
-
-	if (newStatus === "review-by-ai") {
-		const resolved = await repoConfig.resolveProjectConfig(project, task.worktreePath);
-		if (resolved.builtinColumnAgents && !resolved.builtinColumnAgents["review-by-ai"]) {
-			return;
-		}
-		const config = resolved.builtinColumnAgents?.["review-by-ai"];
-		agentConfig = {
-			agentId: config?.agentId || "builtin-claude",
-			configId: config?.configId || "claude-bypass-sonnet",
-			prompt: config?.prompt || DEFAULT_REVIEW_PROMPT,
-		};
-		paneTitle = "AI Review";
-		onExitCommand = `${DEV3_HOME}/bin/dev3 task move ${task.id} --status review-by-user --if-status review-by-ai`;
-	} else if (options?.customColumn?.agentConfig) {
-		agentConfig = options.customColumn.agentConfig;
-		paneTitle = options.customColumn.name;
-	}
-
-	if (!agentConfig) return;
-
-	try {
-		await launchColumnAgent(project, task, agentConfig, { paneTitle, onExitCommand });
-	} catch (err) {
-		log.error("launchColumnAgent failed", {
-			taskId: task.id,
-			status: newStatus,
-			error: String(err),
-		});
-		if (newStatus === "review-by-ai") {
-			try {
-				const fallback = await data.updateTask(project, task.id, { status: "review-by-user" });
-				getPushMessage()?.("taskUpdated", { projectId: project.id, task: fallback });
-			} catch (fallbackErr) {
-				log.error("Failed to fall back to review-by-user", { taskId: task.id, error: String(fallbackErr) });
-			}
-			return;
-		}
-		// Custom columns (and any other non-built-in status) have no automatic
-		// fallback — the task would otherwise sit silently with no running agent.
-		// Surface the failure to the user so they can re-launch or fix the config.
-		getPushMessage()?.("columnAgentFailed", {
-			taskId: task.id,
-			projectId: project.id,
-			columnName: paneTitle || String(newStatus),
-			error: String(err),
-		});
-	}
-}
-
 async function getTasks(params: { projectId: string }): Promise<Task[]> {
 	log.info("→ getTasks", params);
 	const project = await data.getProject(params.projectId);
@@ -715,7 +84,7 @@ async function createTask(params: { projectId: string; description: string; stat
 	// Scratch tasks always start in "todo" with a placeholder title so the
 	// Launch Variants modal can open and let the user pick the agent before
 	// anything is actually spawned. The `scratch: true` flag is persisted so
-	// that when spawnVariants / prepareTaskInBackground eventually launch the
+	// that when spawnVariants and the lifecycle actor eventually launch the
 	// agent, the prompt is blanked (the placeholder is NOT sent to the agent).
 	const status = isScratch ? "todo" : (params.status || "todo");
 	const description = isScratch ? scratchPlaceholder() : params.description;
@@ -725,21 +94,25 @@ async function createTask(params: { projectId: string; description: string; stat
 		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 		...(params.priority ? { priority: params.priority } : {}),
 	};
-	const task = await data.addTask(project, description, status, Object.keys(extras).length ? extras : undefined);
+	const initialStatus = isActive(status) ? "todo" : status;
+	const createdTask = await data.addTask(project, description, initialStatus, Object.keys(extras).length ? extras : undefined);
+	const task = isActive(status) ? { ...createdTask, status: "todo" as const } : createdTask;
 
 	if (isActive(status)) {
 		log.info("Created into active status, preparing through lifecycle actor", { taskId: task.id });
 		const updated = await dispatchLifecycleEvent(project.id, task.id, {
-			type: "preparationRequested",
-			runId: crypto.randomUUID(),
-			origin: { status: task.status, customColumnId: task.customColumnId ?? null },
-					launch: {
-				label: "create",
-				agentId: task.agentId,
-				configId: task.configId,
-				existingBranch: task.existingBranch ?? undefined,
+			type: "moveRequested",
+			target: { status, customColumnId: null },
+			preparation: {
+				launch: {
+					label: "create",
+					agentId: task.agentId,
+					configId: task.configId,
+					existingBranch: task.existingBranch ?? undefined,
+				},
+				awaitCompletion: true,
+				publishColumn: false,
 			},
-			awaitCompletion: true,
 		}, { project, task });
 		log.info("← createTask (with worktree)", { taskId: task.id });
 		return updated;
@@ -762,241 +135,33 @@ function getSourceTaskBranch(task: Task, project: Project): string | undefined {
 	return undefined;
 }
 
-/**
- * Best-effort capture of a task's git-diff stats at completion time, BEFORE the
- * worktree is destroyed, so the Productivity dashboard can sum "lines changed"
- * after the worktree is gone. Compares against `origin/<base>` (three-dot, the
- * same ref the diff viewer's "branch" mode uses — survives squash-merge because
- * the diff is measured from the merge-base); falls back to the local base branch
- * when the origin ref is missing (local-only repo). Never throws.
- */
-export async function captureCompletedDiffStats(
-	project: Project,
-	task: Task,
-): Promise<CompletedDiffStats | undefined> {
-	if (project.kind === "virtual" || !task.worktreePath) return undefined;
-	const baseBranch = task.baseBranch || project.defaultBaseBranch || "main";
-	try {
-		let stats = await git.getBranchDiffStats(task.worktreePath, `origin/${baseBranch}`);
-		if (stats.files === 0 && stats.insertions === 0 && stats.deletions === 0) {
-			// Fallback for local-only repos with no `origin/<base>` ref.
-			const local = await git.getBranchDiffStats(task.worktreePath, baseBranch);
-			if (local.files > 0 || local.insertions > 0 || local.deletions > 0) stats = local;
-		}
-		return {
-			files: stats.files,
-			insertions: stats.insertions,
-			deletions: stats.deletions,
-			capturedAt: new Date().toISOString(),
-		};
-	} catch (err) {
-		log.warn("captureCompletedDiffStats failed (best-effort)", {
-			taskId: task.id.slice(0, 8),
-			error: String(err),
-		});
-		return undefined;
-	}
-}
-
-export async function legacyMoveTask(params: {
-	taskId: string;
-	projectId: string;
-	newStatus: TaskStatus;
-	force?: boolean;
-	ifStatus?: string;
-	ifStatusNot?: string;
-	clientPlayedSound?: boolean;
-}): Promise<Task> {
-	log.info("→ moveTask", params);
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const oldStatus = task.status;
-	const newStatus = params.newStatus;
-	const settings = await loadSettings();
-	const guardOpts = {
-		...(params.ifStatus ? { ifStatus: params.ifStatus } : {}),
-		...(params.ifStatusNot ? { ifStatusNot: params.ifStatusNot } : {}),
-	};
-	const dropOpts = { dropPosition: settings.taskDropPosition, ...guardOpts } as const;
-
-	// Pre-check the move guard once, up front, before ANY side effect (worktree
-	// teardown, PTY kill, cleanup script, port release, merge-notification clear).
-	// A blocked guarded move would otherwise run all of that and only then have
-	// the in-lock updateTask no-op, leaving the task in its old status pointing at
-	// a destroyed worktree. The authoritative check still runs inside the lock.
-	if (isStatusGuardBlocked(oldStatus, guardOpts)) {
-		log.info("Move guard blocked; skipping move and all side effects", { taskId: task.id, oldStatus, newStatus });
-		return task;
-	}
-
-	log.info(`Moving task ${oldStatus} → ${newStatus}`, { taskId: task.id, force: !!params.force });
-
-	clearMergeNotification(task.id);
-
-	if (!isActive(oldStatus) && isActive(newStatus)) {
-		const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
-		log.info("Transition: inactive → active, creating worktree + PTY", { isReopen });
-		const wt = await activateTask(project, task, { isReopen });
-
-		const updated = await data.updateTask(project, task.id, {
-			status: newStatus,
-			worktreePath: wt.worktreePath,
-			branchName: wt.branchName,
-			customColumnId: null,
-		}, dropOpts);
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		notifyWatchedTaskStatusChange(updated, oldStatus, newStatus, project.name);
-		log.info("← moveTask done (worktree created)", { taskId: task.id });
-		return updated;
-	}
-
-	if (newStatus === "completed" || newStatus === "cancelled") {
-		cleanupTaskState(task.id);
-		portPool.releasePorts(task.id);
-		// When a UI renderer initiates the move it plays the sound optimistically
-		// and sets `clientPlayedSound`, so we must NOT also push `taskSound`: that
-		// push broadcasts to every connected renderer (a desktop window AND a remote
-		// browser on the same machine), which would play a second time. CLI /
-		// branch-merge / agent-approval completions never set it, so the push is the
-		// only sound and still fires.
-		if (!params.clientPlayedSound) {
-			emitTaskSound(newStatus as "completed" | "cancelled", task.id);
-		}
-		// Captured before the worktree is removed (below); persisted on the task
-		// so the Productivity dashboard can sum "lines changed" historically.
-		let completedDiffStats: CompletedDiffStats | undefined;
-		if (params.force) {
-			log.info("Force mode: skipping PTY/cleanup/worktree", { taskId: task.id });
-		} else if (isActive(oldStatus) || task.worktreePath) {
-			log.info("Transition → terminal, cleaning up PTY + worktree", {
-				oldStatus,
-				hasWorktree: !!task.worktreePath,
-			});
-			// Announce the "shutting down" window BEFORE the slow teardown below
-			// (destroySession → cleanup script → removeWorktree can take many
-			// seconds). This decorates a transient, NEVER-persisted `shuttingDown`
-			// flag onto the pushed snapshot so every renderer (board + remote
-			// browser) shows the muted card state and blocks opening. The terminal
-			// `taskUpdated` push below replaces the task wholesale and clears it.
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: { ...task, shuttingDown: true } });
-			try {
-				pty.destroySession(task.id, task.tmuxSocket ?? undefined);
-			} catch (err) {
-				log.error("destroySession failed, continuing with task move", {
-					taskId: task.id,
-					error: String(err),
-				});
-			}
-
-			killDevServerSession(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
-				log.warn("killDevServerSession on task move failed (best-effort)", {
-					taskId: task.id.slice(0, 8), error: String(err),
-				});
-			});
-
-			try {
-				log.info("Running cleanup script before removing worktree", { taskId: task.id });
-				await runCleanupScript(task, project, {
-					fromStatus: oldStatus,
-					toStatus: newStatus,
-				});
-			} catch (err) {
-				log.error("Cleanup script failed, continuing with task move", {
-					taskId: task.id,
-					error: String(err),
-				});
-			}
-
-			// Capture diff stats while the worktree (and branch) still exist.
-			completedDiffStats = await captureCompletedDiffStats(project, task);
-
-			// Virtual ops keep their working dir as history — removed only on task
-			// delete. Git tasks tear down the worktree here.
-			if (project.kind !== "virtual") {
-				try {
-					await git.removeWorktree(project, task);
-				} catch (err) {
-					log.error("removeWorktree failed, continuing with task move", {
-						taskId: task.id,
-						error: String(err),
-					});
-				}
-			}
-		}
-
-		const updated = await data.updateTask(project, task.id, {
-			status: newStatus,
-			// Keep worktreePath for virtual ops so the history dir stays referenced
-			// (and deleteTask can clean it up). Git tasks clear it (worktree gone).
-			...(project.kind === "virtual" ? {} : { worktreePath: null, branchName: null }),
-			...(completedDiffStats ? { completedDiffStats } : {}),
-			customColumnId: null,
-		}, dropOpts);
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		notifyWatchedTaskStatusChange(updated, oldStatus, newStatus, project.name);
-		log.info("← moveTask done (worktree destroyed)", { taskId: task.id });
-		return updated;
-	}
-
-	const updated = await data.updateTask(project, task.id, {
-		status: newStatus,
-		customColumnId: null,
-	}, dropOpts);
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	notifyWatchedTaskStatusChange(updated, oldStatus, newStatus, project.name);
-
-	await triggerColumnAgentIfNeeded(newStatus, project, updated);
-
-	log.info("← moveTask done (status only)", { taskId: task.id });
-	return updated;
-}
-
 export async function moveTask(params: {
 	taskId: string;
 	projectId: string;
-	newStatus: TaskStatus;
+	newStatus?: TaskStatus;
+	customColumnId?: string | null;
 	force?: boolean;
 	ifStatus?: string;
 	ifStatusNot?: string;
 	clientPlayedSound?: boolean;
+	enforceAllowedTransition?: boolean;
 }): Promise<Task> {
+	if (params.newStatus === undefined && params.customColumnId === undefined) {
+		throw new Error("A lifecycle move requires a status or custom column");
+	}
 	return dispatchLifecycleEvent(params.projectId, params.taskId, {
 		type: "moveRequested",
-		target: { status: params.newStatus, customColumnId: null },
+		target: params.newStatus !== undefined
+			? { status: params.newStatus, customColumnId: params.customColumnId ?? null }
+			: { customColumnId: params.customColumnId },
 		guards: {
 			...(params.ifStatus ? { ifStatus: params.ifStatus } : {}),
 			...(params.ifStatusNot ? { ifStatusNot: params.ifStatusNot } : {}),
 		},
 		force: params.force,
 		clientPlayedSound: params.clientPlayedSound,
+		enforceAllowedTransition: params.enforceAllowedTransition,
 	});
-}
-
-export async function legacyCancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {
-	log.info("→ cancelTaskPreparation", params);
-	const project = await data.getProject(params.projectId);
-	const task = await data.getTask(project, params.taskId);
-	const snapshot = getTaskPreparationSnapshot(task.id);
-
-	if (task.preparing !== true && !snapshot) {
-		log.info("cancelTaskPreparation skipped — task is not preparing", {
-			taskId: task.id.slice(0, 8),
-		});
-		return task;
-	}
-
-	const { runId, pids } = markTaskPreparationCancelled(task.id);
-	const killList = pids.length > 0 ? pids : (snapshot?.pids ?? []);
-	await killTrackedPreparationProcesses(task.id, killList);
-	const updated = await revertPreparingTaskToTodo(project, task);
-	if (runId) {
-		forgetTaskPreparation(task.id, runId);
-	}
-	log.info("← cancelTaskPreparation done", {
-		taskId: task.id.slice(0, 8),
-		killed: killList.length,
-	});
-	return updated;
 }
 
 async function cancelTaskPreparation(params: { taskId: string; projectId: string }): Promise<Task> {
@@ -1040,56 +205,7 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	log.info("→ deleteTask", params);
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
-	cleanupTaskState(task.id);
-	portPool.releasePorts(task.id);
-
-	try {
-		pty.destroySession(task.id, task.tmuxSocket ?? undefined);
-	} catch (err) {
-		log.warn("destroySession failed in deleteTask (best-effort)", { taskId: task.id.slice(0, 8), error: String(err) });
-	}
-
-	if (isActive(task.status) || task.worktreePath) {
-		killDevServerSession(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET, task.worktreePath).catch((err) => {
-			log.warn("killDevServerSession on task delete failed (best-effort)", {
-				taskId: task.id.slice(0, 8), error: String(err),
-			});
-		});
-
-		// Deleting an active task destroys its worktree/work dir just like moving
-		// it to completed/cancelled does — run the same teardown hook so
-		// per-worktree resources (dev containers, exports, caches) don't leak.
-		try {
-			await runCleanupScript(task, project, {
-				fromStatus: task.status,
-				toStatus: "deleted",
-			});
-		} catch (err) {
-			log.error("Cleanup script failed, continuing with task delete", {
-				taskId: task.id,
-				error: String(err),
-			});
-		}
-
-		if (project.kind === "virtual") {
-			// SAFETY: only ever remove a MANAGED dir (under ~/.dev3.0/ops/). A
-			// user-chosen fixed folder (e.g. ~ or ~/Downloads) is NEVER auto-removed.
-			const dir = task.worktreePath;
-			if (dir && dir.startsWith(`${OPS_DIR}/`)) {
-				log.info("Removing managed virtual work dir on delete", { dir });
-				await rm(dir, { recursive: true, force: true }).catch((err) => {
-					log.warn("Failed to remove virtual work dir (best-effort)", { dir, error: String(err) });
-				});
-			} else {
-				log.info("Virtual task uses a fixed folder; not removing on delete", { dir });
-			}
-		} else {
-			log.info("Task has worktree, cleaning up", { status: task.status, worktreePath: task.worktreePath });
-			await git.removeWorktree(project, task);
-		}
-	}
-
-	await data.deleteTask(project, task.id);
+	await dispatchLifecycleEvent(project.id, task.id, { type: "deleteRequested" }, { project, task });
 	removeLifecycleActor(task.id);
 	log.info("← deleteTask done");
 }
@@ -1114,61 +230,46 @@ async function spawnVariants(params: {
 	const srcBranch = getSourceTaskBranch(sourceTask, project);
 	const isMultiVariant = params.variants.length > 1;
 	const needsWorktree = isActive(params.targetStatus);
-	const preparationRunIds = params.variants.map(() => crypto.randomUUID());
 
-	// Variant #1 transforms the source task IN PLACE (same id) instead of the
-	// old delete-and-recreate: the id printed by `dev3 task create` (and any
-	// stored reference to it — notes, vents, linked tasks) must stay resolvable
-	// after the task is launched. Only variants 2..N are genuinely new tasks.
-	// The mutator re-checks the status under the file lock so two concurrent
-	// launches cannot both transform the same source.
 	const firstVariant = params.variants[0];
-	const { task: transformedSource } = await data.updateTaskWith(project, sourceTask.id, (current) => {
-		if (current.status !== "todo") {
-			throw new Error(`Task must be in todo status to spawn variants (got ${current.status})`);
-		}
-		return {
-			updates: {
-				status: params.targetStatus,
-				groupId,
-				variantIndex: 1,
-				agentId: firstVariant.agentId,
-				configId: firstVariant.configId,
-				...(firstVariant.accountId !== undefined ? { accountId: firstVariant.accountId } : {}),
-				...(srcBranch ? { existingBranch: srcBranch } : {}),
-				worktreePath: null,
-				branchName: null,
-				customColumnId: null,
-				// A pending "Start in…" schedule is consumed by this launch — the
-				// scheduler must not re-fire it on the now-transformed task.
-				scheduledLaunch: null,
-				preparationError: null,
-				...(needsWorktree ? {
-					preparing: true,
-					preparingStage: INITIAL_PREPARING_STAGE,
-					preparingProgress: getPreparingStageProgress(INITIAL_PREPARING_STAGE),
-					preparingStartedAt: new Date().toISOString(),
-					runtimeState: {
-						runtime: "preparing",
-						stage: INITIAL_PREPARING_STAGE,
-						runId: preparationRunIds[0],
-						updatedAt: Date.now(),
-					},
-				} : {}),
-			},
-			result: null,
-		};
-	});
-	resultTasks.push(needsWorktree ? {
-		...transformedSource,
-		...preparingStageUpdates(INITIAL_PREPARING_STAGE),
-		runtimeState: {
-			runtime: "preparing",
-			stage: INITIAL_PREPARING_STAGE,
-			runId: preparationRunIds[0],
-			updatedAt: Date.now(),
+	if (!firstVariant) throw new Error("At least one variant is required");
+	const sourceRunId = crypto.randomUUID();
+	const launchedSource = await dispatchLifecycleEvent(project.id, sourceTask.id, {
+		type: "moveRequested",
+		runId: sourceRunId,
+		target: { status: params.targetStatus, customColumnId: null },
+		taskPatch: {
+			groupId,
+			variantIndex: 1,
+			agentId: firstVariant.agentId,
+			configId: firstVariant.configId,
+			accountId: firstVariant.accountId,
+			existingBranch: srcBranch,
+			worktreePath: null,
+			branchName: null,
+			scheduledLaunch: null,
+			preparationError: null,
 		},
-	} : transformedSource);
+		...(needsWorktree ? {
+			preparation: {
+				launch: {
+					label: "variant",
+					agentId: firstVariant.agentId,
+					configId: firstVariant.configId,
+					existingBranch: srcBranch,
+					variantBranchName: isMultiVariant && srcBranch
+						? `${srcBranch.replace(/^origin\//, "")}-v1`
+						: undefined,
+				},
+				awaitCompletion: false,
+				publishColumn: true,
+			},
+		} : {}),
+	}, { project, task: sourceTask });
+	if (needsWorktree && launchedSource.runtimeState?.runId !== sourceRunId) {
+		throw new Error(`Task must be in todo status to spawn variants (got ${launchedSource.status})`);
+	}
+	resultTasks.push(launchedSource);
 
 	for (let i = 1; i < params.variants.length; i++) {
 		const variant = params.variants[i];
@@ -1176,7 +277,7 @@ async function spawnVariants(params: {
 		const task = await data.addTask(
 			project,
 			sourceTask.description,
-			params.targetStatus,
+			"todo",
 			{
 				groupId,
 				variantIndex: i + 1,
@@ -1185,22 +286,10 @@ async function spawnVariants(params: {
 				accountId: variant.accountId,
 				seq: sharedSeq,
 				existingBranch: srcBranch,
-				preparing: needsWorktree,
-				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
-				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
-				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
-				...(needsWorktree ? {
-					runtimeState: {
-						runtime: "preparing" as const,
-						stage: INITIAL_PREPARING_STAGE,
-						runId: preparationRunIds[i],
-						updatedAt: Date.now(),
-					},
-				} : {}),
 				watched: sourceTask.watched,
 				// Scratch tasks keep the `Scratch — HH:mm` placeholder as title
 				// on every variant, but the flag tells the launch path (see
-				// prepareTaskInBackground → launchTaskPty) to blank the prompt.
+				// lifecycle preparation → launchTaskPty) to blank the prompt.
 				scratch: sourceTask.scratch,
 				// Issue #583 — carry the user-edited title onto every variant
 				// so "Save and Run" does not silently revert to the description prefix.
@@ -1225,20 +314,47 @@ async function spawnVariants(params: {
 			},
 		);
 
-		resultTasks.push(needsWorktree ? {
+		const pendingTask: Task = {
 			...task,
-			...preparingStageUpdates(INITIAL_PREPARING_STAGE),
-			runtimeState: {
-				runtime: "preparing",
-				stage: INITIAL_PREPARING_STAGE,
-				runId: preparationRunIds[i],
-				updatedAt: Date.now(),
+			status: "todo",
+			worktreePath: null,
+			branchName: null,
+			preparing: false,
+			preparingStage: null,
+			preparingProgress: null,
+			preparingStartedAt: null,
+			runtimeState: undefined,
+		};
+		const variantBranchName = (isMultiVariant && srcBranch)
+			? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
+			: undefined;
+		resultTasks.push(await dispatchLifecycleEvent(project.id, pendingTask.id, {
+			type: "moveRequested",
+			target: { status: params.targetStatus, customColumnId: null },
+			taskPatch: {
+				groupId,
+				variantIndex: i + 1,
+				agentId: variant.agentId,
+				configId: variant.configId,
+				accountId: variant.accountId,
+				existingBranch: srcBranch,
+				scheduledLaunch: null,
+				preparationError: null,
 			},
-		} : task);
-	}
-
-	for (const task of resultTasks) {
-		notifyWatchedTaskStatusChange(task, "todo", params.targetStatus, project.name);
+			...(needsWorktree ? {
+				preparation: {
+					launch: {
+						label: "variant",
+						agentId: variant.agentId,
+						configId: variant.configId,
+						existingBranch: srcBranch,
+						variantBranchName,
+					},
+					awaitCompletion: false,
+					publishColumn: true,
+				},
+			} : {}),
+		}, { project, task: pendingTask }));
 	}
 
 	// Bump favorite usage counters for any launched combo the user has starred
@@ -1246,32 +362,6 @@ async function spawnVariants(params: {
 	void recordFavoriteUsages(params.variants);
 
 	log.info("← spawnVariants returning immediately", { count: resultTasks.length, groupId, needsWorktree });
-
-	if (needsWorktree) {
-		for (let i = 0; i < resultTasks.length; i++) {
-			const task = resultTasks[i];
-			const variant = params.variants[i];
-			const variantBranchName = (isMultiVariant && srcBranch)
-				? `${srcBranch.replace(/^origin\//, "")}-v${i + 1}`
-				: undefined;
-			try {
-				await dispatchLifecycleEvent(project.id, task.id, {
-						type: "preparationRequested",
-						runId: preparationRunIds[i],
-						origin: { status: task.status, customColumnId: task.customColumnId ?? null },
-						launch: {
-							label: "variant",
-							agentId: variant.agentId,
-							configId: variant.configId,
-						existingBranch: task.existingBranch ?? undefined,
-						variantBranchName,
-					},
-				}, { project, task });
-			} catch (error) {
-				log.error("Variant preparation dispatch failed", { taskId: task.id.slice(0, 8), error: String(error) });
-			}
-		}
-	}
 
 	return resultTasks;
 }
@@ -1305,7 +395,6 @@ async function addAttempts(params: {
 	const targetStatus: TaskStatus = "in-progress";
 	const needsWorktree = isActive(targetStatus);
 	const srcBranch = getSourceTaskBranch(sourceTask, project);
-	const preparationRunIds = params.variants.map(() => crypto.randomUUID());
 
 	for (let i = 0; i < params.variants.length; i++) {
 		const variant = params.variants[i];
@@ -1313,7 +402,7 @@ async function addAttempts(params: {
 		const task = await data.addTask(
 			project,
 			sourceTask.description,
-			targetStatus,
+			"todo",
 			{
 				groupId,
 				// Allocate the variant index atomically inside addTask's file lock
@@ -1326,18 +415,6 @@ async function addAttempts(params: {
 				accountId: variant.accountId,
 				seq: sharedSeq,
 				existingBranch: srcBranch,
-				preparing: needsWorktree,
-				preparingStage: needsWorktree ? INITIAL_PREPARING_STAGE : null,
-				preparingProgress: needsWorktree ? getPreparingStageProgress(INITIAL_PREPARING_STAGE) : null,
-				preparingStartedAt: needsWorktree ? new Date().toISOString() : null,
-				...(needsWorktree ? {
-					runtimeState: {
-						runtime: "preparing" as const,
-						stage: INITIAL_PREPARING_STAGE,
-						runId: preparationRunIds[i],
-						updatedAt: Date.now(),
-					},
-				} : {}),
 				watched: sourceTask.watched,
 				// Carry the scratch flag onto every added attempt — otherwise the
 				// launch path keeps the `Scratch — HH:mm` placeholder as the prompt
@@ -1356,20 +433,22 @@ async function addAttempts(params: {
 				// NOTE: notes/overview are intentionally NOT copied here — addAttempts
 				// keeps the source task (returns it alongside the new attempts), so its
 				// notes are not lost; copying them would duplicate them across siblings.
-				// (spawnVariants DOES copy them because it deletes the source.)
+				// spawnVariants copies them because every initial variant needs the
+				// pre-launch context on its own task record.
 			},
 		);
 
-		resultTasks.push(needsWorktree ? {
+		resultTasks.push({
 			...task,
-			...preparingStageUpdates(INITIAL_PREPARING_STAGE),
-			runtimeState: {
-				runtime: "preparing",
-				stage: INITIAL_PREPARING_STAGE,
-				runId: preparationRunIds[i],
-				updatedAt: Date.now(),
-			},
-		} : task);
+			status: "todo",
+			worktreePath: null,
+			branchName: null,
+			preparing: false,
+			preparingStage: null,
+			preparingProgress: null,
+			preparingStartedAt: null,
+			runtimeState: undefined,
+		});
 	}
 
 	const updatedSource = await data.getTask(project, sourceTask.id);
@@ -1380,29 +459,36 @@ async function addAttempts(params: {
 
 	log.info("← addAttempts returning", { count: resultTasks.length, groupId, needsWorktree });
 
-	if (needsWorktree) {
-		for (let i = 0; i < resultTasks.length; i++) {
-			const task = resultTasks[i];
-			const variant = params.variants[i];
-			try {
-				await dispatchLifecycleEvent(project.id, task.id, {
-						type: "preparationRequested",
-						runId: preparationRunIds[i],
-						origin: { status: task.status, customColumnId: task.customColumnId ?? null },
-					launch: {
-							label: "attempt",
-							agentId: variant.agentId,
-							configId: variant.configId,
-						existingBranch: task.existingBranch ?? srcBranch,
-					},
-				}, { project, task });
-			} catch (error) {
-				log.error("Attempt preparation dispatch failed", { taskId: task.id.slice(0, 8), error: String(error) });
-			}
-		}
-	}
+	if (!needsWorktree) return [updatedSource, ...resultTasks];
 
-	return [updatedSource, ...resultTasks];
+	const launched = await Promise.all(resultTasks.map((task, i) => {
+		const variant = params.variants[i];
+		return dispatchLifecycleEvent(project.id, task.id, {
+			type: "moveRequested",
+			target: { status: targetStatus, customColumnId: null },
+			taskPatch: {
+				groupId: task.groupId,
+				variantIndex: task.variantIndex,
+				agentId: variant.agentId,
+				configId: variant.configId,
+				accountId: variant.accountId,
+				existingBranch: task.existingBranch ?? srcBranch,
+				preparationError: null,
+			},
+			preparation: {
+				launch: {
+					label: "attempt",
+					agentId: variant.agentId,
+					configId: variant.configId,
+					existingBranch: task.existingBranch ?? srcBranch,
+				},
+				awaitCompletion: false,
+				publishColumn: true,
+			},
+		}, { project, task });
+	}));
+
+	return [updatedSource, ...launched];
 }
 
 async function editTask(params: { taskId: string; projectId: string; description: string }): Promise<Task> {
@@ -1553,56 +639,46 @@ async function openQuickShellInner(): Promise<Task> {
  * date, agent = the automation's choice. Preparation (worktree + PTY) runs in
  * the background — same pipeline as Launch Variants — so the scheduler tick
  * returns fast and the board card shows live progress. Works for git AND
- * virtual (Operations) projects, since prepareTaskInBackground branches on
- * project.kind itself.
+ * virtual (Operations) projects; the lifecycle preparation effect selects the
+ * project-specific workspace path.
  */
 export async function createAutomationTask(
 	project: Project,
 	automation: { id: string; name: string; prompt: string; agentId: string | null; configId: string | null },
 ): Promise<Task> {
 	const now = new Date();
-	const runId = crypto.randomUUID();
-	const task = await data.addTask(project, automation.prompt, "in-progress", {
+	const createdTask = await data.addTask(project, automation.prompt, "todo", {
 		agentId: automation.agentId,
 		configId: automation.configId,
 		automationId: automation.id,
 		customTitle: `${automation.name} · ${now.toISOString().slice(0, 10)}`,
-		preparing: true,
-		preparingStage: INITIAL_PREPARING_STAGE,
-		preparingProgress: getPreparingStageProgress(INITIAL_PREPARING_STAGE),
-		preparingStartedAt: now.toISOString(),
-		runtimeState: {
-			runtime: "preparing",
-			stage: INITIAL_PREPARING_STAGE,
-			runId,
-			updatedAt: now.getTime(),
-		},
 	});
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task });
+	const task = { ...createdTask, status: "todo" as const };
 	log.info("Automation task created, preparing in background", {
 		taskId: task.id.slice(0, 8),
 		automationId: automation.id.slice(0, 8),
 	});
-	void dispatchLifecycleEvent(project.id, task.id, {
-		type: "preparationRequested",
-		runId,
-		origin: { status: task.status, customColumnId: task.customColumnId ?? null },
-		launch: {
-			label: "automation",
-			agentId: automation.agentId,
-			configId: automation.configId,
+	return dispatchLifecycleEvent(project.id, task.id, {
+		type: "moveRequested",
+		target: { status: "in-progress", customColumnId: null },
+		preparation: {
+			launch: {
+				label: "automation",
+				agentId: automation.agentId,
+				configId: automation.configId,
+			},
+			awaitCompletion: false,
+			publishColumn: true,
 		},
-	}, { project, task }).catch((error) => {
-		log.error("Automation task preparation dispatch failed", { taskId: task.id.slice(0, 8), error: String(error) });
-	});
-	return task;
+	}, { project, task });
 }
 
 /**
  * "Start in…" — persist a deferred launch on a todo task. Nothing spawns yet:
  * the scheduled-launch scheduler (or "Start now") fires the stored variants
  * later via {@link fireScheduledLaunch}, which reuses the exact spawnVariants
- * pipeline of an immediate launch.
+ * pipeline of an immediate launch. Lifecycle actors publish every task update,
+ * including launches fired by the scheduler.
  */
 async function scheduleTaskLaunch(params: {
 	taskId: string;
@@ -1650,8 +726,8 @@ async function cancelScheduledLaunch(params: { taskId: string; projectId: string
  * Fire a pending deferred launch NOW. Shared by the scheduler tick and the
  * `startScheduledLaunchNow` RPC. Delegates to spawnVariants (same validation,
  * same variant pipeline — the source task becomes variant #1 in place, keeping
- * its id), then broadcasts the server-initiated changes: clients did not call
- * an RPC, so they learn about every variant via `taskUpdated`.
+ * its id). The lifecycle actor broadcasts the server-initiated changes through
+ * its declared `taskUpdated` effects.
  */
 export async function fireScheduledLaunch(project: Project, task: Task): Promise<Task[]> {
 	const sched = task.scheduledLaunch;
@@ -1662,9 +738,6 @@ export async function fireScheduledLaunch(project: Project, task: Task): Promise
 		targetStatus: sched.targetStatus,
 		variants: sched.variants,
 	});
-	for (const t of spawned) {
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: t });
-	}
 	log.info("Scheduled launch fired", {
 		taskId: task.id.slice(0, 8),
 		scheduledFor: sched.at,

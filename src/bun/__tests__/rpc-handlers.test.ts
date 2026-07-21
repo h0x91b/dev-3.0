@@ -326,6 +326,11 @@ const {
 	runCleanupScript,
 	portableReadKey,
 } = await import("../rpc-handlers");
+const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
+
+beforeEach(async () => {
+	await _resetLifecycleActorsForTest();
+});
 
 // ---- Test helpers ----
 
@@ -362,6 +367,21 @@ function makeTask(overrides?: Partial<Task>): Task {
 		updatedAt: new Date().toISOString(),
 		...overrides,
 	};
+}
+
+function mockTaskWrites(...tasks: Task[]): void {
+	const tasksById = new Map(tasks.map((task) => [task.id, { ...task }]));
+	vi.mocked(data.getTask).mockImplementation(async (_project, taskId) => {
+		const task = tasksById.get(taskId);
+		if (!task) throw new Error(`Task not found: ${taskId}`);
+		return { ...task };
+	});
+	vi.mocked(data.updateTask).mockImplementation(async (_project, taskId, updates) => {
+		const current = tasksById.get(taskId) ?? makeTask({ id: taskId });
+		const updated = { ...current, ...updates, updatedAt: new Date().toISOString() } as Task;
+		tasksById.set(taskId, updated);
+		return updated;
+	});
 }
 
 // ---- Tests ----
@@ -406,7 +426,12 @@ describe("handleBellAutoStatus", () => {
 
 		await handleBellAutoStatus("task-1");
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" }, { dropPosition: "top", ifStatus: "in-progress" });
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			"task-1",
+			expect.objectContaining({ status: "user-questions", runtimeState: expect.objectContaining({ runtime: "running" }) }),
+			{ dropPosition: "top", ifStatus: "in-progress" },
+		);
 		expect(push).toHaveBeenCalledWith("taskUpdated", {
 			projectId: "proj-1",
 			task: expect.objectContaining({ status: "user-questions" }),
@@ -429,7 +454,12 @@ describe("handleBellAutoStatus", () => {
 
 		await handleBellAutoStatus("task-1");
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "user-questions" }, { dropPosition: "top", ifStatus: "in-progress" });
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			"task-1",
+			expect.objectContaining({ status: "user-questions", runtimeState: expect.objectContaining({ runtime: "running" }) }),
+			{ dropPosition: "top", ifStatus: "in-progress" },
+		);
 		expect(push).not.toHaveBeenCalled();
 	});
 
@@ -1755,8 +1785,12 @@ describe("handlers.createTask", () => {
 			description: "Active task",
 			status: "in-progress",
 		});
-		expect(result).toEqual(updatedTask);
-		expect(git.createWorktree).toHaveBeenCalledWith(project, task, undefined);
+		expect(result).toMatchObject(updatedTask);
+		expect(git.createWorktree).toHaveBeenCalledWith(
+			project,
+			expect.objectContaining({ id: task.id, status: "todo" }),
+			undefined,
+		);
 		expect(pty.createSession).toHaveBeenCalled();
 	});
 
@@ -1768,6 +1802,25 @@ describe("handlers.createTask", () => {
 
 		await handlers.createTask({ projectId: "proj-1", description: "task" });
 		expect(data.addTask).toHaveBeenCalledWith(project, "task", "todo", undefined);
+	});
+
+	it("creates a terminal task directly without replaying completion effects", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "completed", worktreePath: null, branchName: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(task);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		const result = await handlers.createTask({
+			projectId: "proj-1",
+			description: "Already done",
+			status: "completed",
+		});
+
+		expect(result).toBe(task);
+		expect(data.addTask).toHaveBeenCalledWith(project, "Already done", "completed", undefined);
+		expect(push).not.toHaveBeenCalledWith("taskSound", expect.anything());
 	});
 
 	it("passes existingBranch to addTask and createWorktree", async () => {
@@ -1785,8 +1838,12 @@ describe("handlers.createTask", () => {
 			status: "in-progress",
 			existingBranch: "feature/login",
 		});
-		expect(data.addTask).toHaveBeenCalledWith(project, "Continue login work", "in-progress", { existingBranch: "feature/login" });
-		expect(git.createWorktree).toHaveBeenCalledWith(project, task, "feature/login");
+		expect(data.addTask).toHaveBeenCalledWith(project, "Continue login work", "todo", { existingBranch: "feature/login" });
+		expect(git.createWorktree).toHaveBeenCalledWith(
+			project,
+			expect.objectContaining({ id: task.id, status: "todo", existingBranch: "feature/login" }),
+			"feature/login",
+		);
 	});
 
 	it("does not pass existingBranch when not provided", async () => {
@@ -2027,17 +2084,39 @@ describe("handlers.moveTask", () => {
 	it("todo → in-progress: creates worktree + PTY", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo", worktreePath: null });
-		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
-		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		mockTaskWrites(task);
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "in-progress" });
 		expect(result.status).toBe("in-progress");
 		expect(git.createWorktree).toHaveBeenCalled();
 		expect(pty.createSession).toHaveBeenCalled();
+	});
+
+	it("aborts preparation before worktree creation when stage persistence fails", async () => {
+		const project = makeProject();
+		let stored = makeTask({ status: "todo", worktreePath: null });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockImplementation(async () => ({ ...stored }));
+		vi.mocked(data.updateTask).mockImplementation(async (_project, _taskId, updates) => {
+			if (updates.status === undefined && updates.preparingStage === "resolving-config") {
+				throw new Error("stage write failed");
+			}
+			stored = { ...stored, ...updates, updatedAt: new Date().toISOString() };
+			return { ...stored };
+		});
+
+		const result = await handlers.moveTask({
+			taskId: stored.id,
+			projectId: project.id,
+			newStatus: "in-progress",
+		});
+
+		expect(result.status).toBe("todo");
+		expect(git.createWorktree).not.toHaveBeenCalled();
 	});
 
 	it("blocked guard (todo, --if-status-not todo): does NOT create worktree, returns unchanged task", async () => {
@@ -2092,12 +2171,10 @@ describe("handlers.moveTask", () => {
 	it("passing guard (todo, --if-status-not completed): still creates worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "todo", worktreePath: null });
-		const updatedTask = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/t" });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
-		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		mockTaskWrites(task);
 
 		const result = await handlers.moveTask({
 			taskId: "task-1",
@@ -2214,7 +2291,7 @@ describe("handlers.moveTask", () => {
 		}
 	});
 
-	it("in-progress → completed: emits renderer sound before cleanup finishes", async () => {
+	it("in-progress → completed: emits renderer sound after teardown finishes", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt" });
 		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
@@ -2229,7 +2306,9 @@ describe("handlers.moveTask", () => {
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 
-		expect(push.mock.invocationCallOrder[0]).toBeLessThan(
+		const soundIndex = push.mock.calls.findIndex((call) => call[0] === "taskSound");
+		expect(soundIndex).toBeGreaterThanOrEqual(0);
+		expect(push.mock.invocationCallOrder[soundIndex]).toBeGreaterThan(
 			vi.mocked(git.removeWorktree).mock.invocationCallOrder[0],
 		);
 		expect(push).toHaveBeenCalledWith("taskSound", { status: "completed", taskId: task.id });
@@ -2297,11 +2376,10 @@ describe("handlers.moveTask", () => {
 	it("in-progress → completed: kills dev server session", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", id: "abcd1234-0000-0000-0000-000000000000" });
-		const updatedTask = makeTask({ status: "completed", worktreePath: null, branchName: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		mockTaskWrites(task);
 		vi.mocked(existsSync).mockReturnValue(true);
 		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
 
@@ -2316,11 +2394,10 @@ describe("handlers.moveTask", () => {
 	it("in-progress → cancelled: kills dev server session", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress", id: "abcd1234-0000-0000-0000-000000000000" });
-		const updatedTask = makeTask({ status: "cancelled", worktreePath: null, branchName: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(updatedTask);
+		mockTaskWrites(task);
 		vi.mocked(existsSync).mockReturnValue(true);
 		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
 
@@ -2359,7 +2436,16 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("review-by-user");
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { status: "review-by-user", customColumnId: null }, { dropPosition: "top" });
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			"task-1",
+			expect.objectContaining({
+				status: "review-by-user",
+				customColumnId: null,
+				runtimeState: expect.objectContaining({ runtime: "running" }),
+			}),
+			{ dropPosition: "top" },
+		);
 	});
 
 	it("should NOT throw when worktree directory is missing (completed)", async () => {
@@ -2429,12 +2515,13 @@ describe("handlers.moveTask", () => {
 		expect(result.status).toBe("completed");
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
 			status: "completed",
 			worktreePath: null,
 			branchName: null,
 			customColumnId: null,
-		}, { dropPosition: "top" });
+			runtimeState: expect.objectContaining({ runtime: "idle" }),
+		}), { dropPosition: "top" });
 	});
 
 	it("todo → completed (without worktree): just updates status", async () => {
@@ -2584,7 +2671,7 @@ describe("virtual task lifecycle", () => {
 		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates } as Task));
+		mockTaskWrites(task);
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
 
@@ -2600,7 +2687,7 @@ describe("virtual task lifecycle", () => {
 		const task = makeTask({ projectId: "vp1", status: "todo", worktreePath: null, opsWorkDir: "/Users/me/Downloads" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...task, ...updates } as Task));
+		mockTaskWrites(task);
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "in-progress" });
 
@@ -2614,12 +2701,12 @@ describe("virtual task lifecycle", () => {
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
 		vi.mocked(pty.destroySession).mockImplementation(() => {});
-		vi.mocked(data.updateTask).mockResolvedValue(task);
+		mockTaskWrites(task);
 
 		await handlers.moveTask({ taskId: "task-1", projectId: "vp1", newStatus: "completed" });
 
 		expect(git.removeWorktree).not.toHaveBeenCalled();
-		const updateArgs = vi.mocked(data.updateTask).mock.calls[0]?.[2] as Record<string, unknown>;
+		const updateArgs = vi.mocked(data.updateTask).mock.calls.find((call) => call[2].status === "completed")?.[2] as Record<string, unknown>;
 		expect(updateArgs.status).toBe("completed");
 		expect("worktreePath" in updateArgs).toBe(false);
 	});
@@ -3031,7 +3118,7 @@ describe("handlers.spawnVariants", () => {
 		mockTransformSource(sourceTask);
 		vi.mocked(data.addTask).mockResolvedValue(secondVariant);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v" });
-		vi.mocked(data.updateTask).mockResolvedValue(makeTask({ status: "in-progress", worktreePath: "/tmp/vwt" }));
+		mockTaskWrites(sourceTask, secondVariant);
 
 		const result = await handlers.spawnVariants({
 			taskId: "task-1",
@@ -3061,12 +3148,9 @@ describe("handlers.spawnVariants", () => {
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
-		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
-			// Simulate a concurrent transform having won the race.
-			const { updates, result } = await mutator({ ...sourceTask, status: "in-progress" });
-			return { task: { ...sourceTask, ...updates } as Task, result };
-		});
+		vi.mocked(data.getTask)
+			.mockResolvedValueOnce(sourceTask)
+			.mockResolvedValueOnce({ ...sourceTask, status: "in-progress" });
 
 		await expect(
 			handlers.spawnVariants({
@@ -3147,15 +3231,14 @@ describe("handlers.spawnVariants", () => {
 	it("spawns variants into active status with worktree + PTY", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
-		const variantTask = makeTask({ id: "variant-2", status: "in-progress", preparing: true });
-		const updatedVariant = makeTask({ id: "variant-2", status: "in-progress", worktreePath: "/tmp/vwt" });
+		const variantTask = makeTask({ id: "variant-2", status: "todo" });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		mockTransformSource(sourceTask);
 		vi.mocked(data.addTask).mockResolvedValue(variantTask);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
-		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+		mockTaskWrites(sourceTask, variantTask);
 
 		const result = await handlers.spawnVariants({
 			taskId: "task-1",
@@ -3251,15 +3334,14 @@ describe("handlers.spawnVariants", () => {
 	it("creates per-variant branches when spawning multiple variants with existingBranch", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5, existingBranch: "feature/login" });
-		const variantTask = makeTask({ id: "variant-2", status: "in-progress", existingBranch: "feature/login", preparing: true });
-		const updatedVariant = makeTask({ id: "variant-2", status: "in-progress", worktreePath: "/tmp/vwt" });
+		const variantTask = makeTask({ id: "variant-2", status: "todo", existingBranch: "feature/login" });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		mockTransformSource(sourceTask);
 		vi.mocked(data.addTask).mockResolvedValue(variantTask);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "feature/login-v1" });
-		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+		mockTaskWrites(sourceTask, variantTask);
 
 		const result = await handlers.spawnVariants({
 			taskId: "task-1",
@@ -3284,10 +3366,8 @@ describe("handlers.spawnVariants", () => {
 		expect(addTaskCalls).toHaveLength(1);
 		expect(addTaskCalls[0][3]).toEqual(expect.objectContaining({
 			existingBranch: "feature/login",
-			preparing: true,
-			preparingStage: "resolving-config",
-			preparingProgress: getPreparingStageProgress("resolving-config"),
 		}));
+		expect(addTaskCalls[0][3]).not.toHaveProperty("preparing");
 
 		// Wait for background worktree creation
 		await vi.waitFor(() => {
@@ -3345,12 +3425,11 @@ describe("handlers.spawnVariants", () => {
 	it("reverts variant to todo and notifies when project config resolution fails before setup starts", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
-		const revertedVariant = makeTask({ status: "todo", preparing: false, preparingStage: null, preparingProgress: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		mockTransformSource(sourceTask);
-		vi.mocked(data.updateTask).mockResolvedValue(revertedVariant);
+		mockTaskWrites(sourceTask);
 		vi.mocked(repoConfig.resolveProjectConfig).mockImplementation(async (candidate) => {
 			// Background preparation from an earlier test may still be draining. Tie
 			// this failure to this test's project object so it cannot consume a shared
@@ -3389,13 +3468,12 @@ describe("handlers.spawnVariants", () => {
 	it("reverts variant to todo and cleans up the worktree when PTY launch fails after the worktree is created", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5 });
-		const revertedVariant = makeTask({ status: "todo", preparing: false, preparingStage: null, preparingProgress: null });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		mockTransformSource(sourceTask);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
-		vi.mocked(data.updateTask).mockResolvedValue(revertedVariant);
+		mockTaskWrites(sourceTask);
 		vi.mocked(pty.createSession).mockImplementationOnce(() => {
 			throw new Error("pty boom");
 		});
@@ -3468,13 +3546,11 @@ describe("handlers.spawnVariants", () => {
 	it("blanks the placeholder prompt when launching a scratch variant", async () => {
 		const project = makeProject();
 		const sourceTask = makeTask({ status: "todo", seq: 5, scratch: true, description: "Scratch — 14:52" });
-		const updatedVariant = makeTask({ status: "in-progress", worktreePath: "/tmp/vwt", scratch: true });
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 		mockTransformSource(sourceTask);
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/vwt", branchName: "dev3/v1" });
-		vi.mocked(data.updateTask).mockResolvedValue(updatedVariant);
+		mockTaskWrites(sourceTask);
 
 		await handlers.spawnVariants({
 			taskId: "task-1",
@@ -3690,9 +3766,8 @@ describe("handlers.spawnVariants", () => {
 			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
 			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5 });
 			vi.mocked(data.getProject).mockResolvedValue(project);
-			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 			mockTransformSource(sourceTask);
-			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...sourceTask, ...updates } as Task));
+			mockTaskWrites(sourceTask);
 
 			await handlers.spawnVariants({
 				taskId: "src",
@@ -3706,7 +3781,7 @@ describe("handlers.spawnVariants", () => {
 			let updateArgs: Record<string, unknown> | undefined;
 			await vi.waitFor(() => {
 				updateArgs = vi.mocked(data.updateTask).mock.calls.find(
-					(c) => c[1] === "src" && "worktreePath" in (c[2] as object),
+					(c) => c[1] === "src" && typeof (c[2] as Record<string, unknown>).worktreePath === "string",
 				)?.[2] as Record<string, unknown>;
 				expect(updateArgs).toBeDefined();
 			});
@@ -3724,9 +3799,8 @@ describe("handlers.spawnVariants", () => {
 			const project = makeProject({ id: "vp-fail", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
 			const sourceTask = makeTask({ id: "src-fail", projectId: project.id, status: "todo" });
 			vi.mocked(data.getProject).mockResolvedValue(project);
-			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 			mockTransformSource(sourceTask);
-			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...sourceTask, ...updates } as Task));
+			mockTaskWrites(sourceTask);
 			vi.mocked(pty.createSession).mockImplementation((taskId) => {
 				if (taskId === sourceTask.id) throw new Error("operations tmux boom");
 			});
@@ -3756,12 +3830,12 @@ describe("handlers.spawnVariants", () => {
 		it("carries the chosen opsWorkDir from the source task onto each variant", async () => {
 			const project = makeProject({ id: "vp1", kind: "virtual", path: "/tmp/test-dev3/ops/operations" });
 			const sourceTask = makeTask({ id: "src", projectId: "vp1", status: "todo", seq: 5, opsWorkDir: "/Users/me/Downloads" });
-			const secondVariant = makeTask({ id: "variant-2", projectId: "vp1", status: "in-progress", opsWorkDir: "/Users/me/Downloads", preparing: true });
+			const secondVariant = makeTask({ id: "variant-2", projectId: "vp1", status: "todo", opsWorkDir: "/Users/me/Downloads" });
 			vi.mocked(data.getProject).mockResolvedValue(project);
 			vi.mocked(data.getTask).mockResolvedValue(sourceTask);
 			mockTransformSource(sourceTask);
 			vi.mocked(data.addTask).mockResolvedValue(secondVariant);
-			vi.mocked(data.updateTask).mockImplementation(async (_p, _id, updates) => ({ ...secondVariant, ...updates } as Task));
+			mockTaskWrites(sourceTask, secondVariant);
 
 			await handlers.spawnVariants({
 				taskId: "src",
@@ -3839,12 +3913,9 @@ describe("handlers.addAttempts", () => {
 		expect(data.addTask).toHaveBeenCalledWith(
 			project,
 			sourceTask.description,
-			"in-progress",
+			"todo",
 			expect.objectContaining({
 				existingBranch: "feature/login",
-				preparing: true,
-				preparingStage: "resolving-config",
-				preparingProgress: getPreparingStageProgress("resolving-config"),
 			}),
 		);
 
@@ -3852,7 +3923,9 @@ describe("handlers.addAttempts", () => {
 			expect(git.createWorktree).toHaveBeenCalledWith(
 				project,
 				expect.objectContaining({
-					...attemptTask,
+					id: attemptTask.id,
+					status: "in-progress",
+					existingBranch: "feature/login",
 					preparingStage: "resolving-config",
 					preparingProgress: getPreparingStageProgress("resolving-config"),
 				}),
@@ -3905,7 +3978,7 @@ describe("handlers.addAttempts", () => {
 		expect(data.addTask).toHaveBeenCalledWith(
 			project,
 			sourceTask.description,
-			"in-progress",
+			"todo",
 			expect.objectContaining({ labelIds: ["lbl-1", "lbl-2"] }),
 		);
 	});
@@ -3953,7 +4026,7 @@ describe("handlers.addAttempts", () => {
 		expect(data.addTask).toHaveBeenCalledWith(
 			project,
 			sourceTask.description,
-			"in-progress",
+			"todo",
 			expect.objectContaining({ priority: "P0" }),
 		);
 	});
@@ -3996,7 +4069,7 @@ describe("handlers.addAttempts", () => {
 		expect(data.addTask).toHaveBeenCalledWith(
 			project,
 			sourceTask.description,
-			"in-progress",
+			"todo",
 			expect.objectContaining({ scratch: true }),
 		);
 
@@ -4050,7 +4123,7 @@ describe("handlers.addAttempts", () => {
 		expect(data.addTask).toHaveBeenCalledWith(
 			project,
 			sourceTask.description,
-			"in-progress",
+			"todo",
 			expect.objectContaining({
 				existingBranch: "feature/login",
 			}),
@@ -4060,7 +4133,9 @@ describe("handlers.addAttempts", () => {
 			expect(git.createWorktree).toHaveBeenCalledWith(
 				project,
 				expect.objectContaining({
-					...attemptTask,
+					id: attemptTask.id,
+					status: "in-progress",
+					existingBranch: "feature/login",
 					preparingStage: "resolving-config",
 					preparingProgress: getPreparingStageProgress("resolving-config"),
 				}),
@@ -4111,7 +4186,7 @@ describe("handlers.addAttempts", () => {
 		expect(data.addTask).toHaveBeenCalledWith(
 			project,
 			sourceTask.description,
-			"in-progress",
+			"todo",
 			expect.objectContaining({ customTitle: "User-set title", titleEditedByUser: true }),
 		);
 	});
@@ -4121,28 +4196,17 @@ describe("handlers.addAttempts", () => {
 		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });
 		const attemptTask = makeTask({
 			id: "attempt-2",
-			status: "in-progress",
-			groupId: "group-1",
-			variantIndex: 2,
-			preparing: true,
-		});
-		const revertedAttempt = makeTask({
-			id: "attempt-2",
 			status: "todo",
 			groupId: "group-1",
 			variantIndex: 2,
-			preparing: false,
-			preparingStage: null,
-			preparingProgress: null,
 		});
-
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask)
 			.mockResolvedValueOnce(sourceTask)
 			.mockResolvedValueOnce(sourceTask);
 		vi.mocked(data.loadTasks).mockResolvedValue([sourceTask]);
 		vi.mocked(data.addTask).mockResolvedValue(attemptTask);
-		vi.mocked(data.updateTask).mockResolvedValue(revertedAttempt);
+		mockTaskWrites(sourceTask, attemptTask);
 		vi.mocked(repoConfig.resolveProjectConfig).mockImplementation(async (candidate) => {
 			if (candidate === project) throw new Error("bad repo config");
 			return candidate;
@@ -4187,17 +4251,15 @@ describe("handlers.addAttempts", () => {
 		const sourceTask = makeTask({ status: "in-progress", seq: 5, groupId: "group-1", variantIndex: 1 });
 		const firstAttempt = makeTask({
 			id: "attempt-2",
-			status: "in-progress",
+			status: "todo",
 			groupId: "group-1",
 			variantIndex: 2,
-			preparing: true,
 		});
 		const secondAttempt = makeTask({
 			id: "attempt-3",
-			status: "in-progress",
+			status: "todo",
 			groupId: "group-1",
 			variantIndex: 3,
-			preparing: true,
 		});
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
@@ -4211,10 +4273,7 @@ describe("handlers.addAttempts", () => {
 		vi.mocked(git.createWorktree)
 			.mockRejectedValueOnce(new Error("wt boom"))
 			.mockResolvedValueOnce({ worktreePath: "/tmp/attempt-3", branchName: "dev3/a3" });
-		vi.mocked(data.updateTask).mockImplementation(async (_p, id, updates) => {
-			if (id === "attempt-2") return { ...firstAttempt, ...updates } as typeof firstAttempt;
-			return { ...secondAttempt, ...updates } as typeof secondAttempt;
-		});
+		mockTaskWrites(sourceTask, firstAttempt, secondAttempt);
 
 		await handlers.addAttempts({
 			taskId: "task-1",
@@ -4235,14 +4294,16 @@ describe("handlers.addAttempts", () => {
 			expect.objectContaining({ status: "todo", preparing: false, worktreePath: null, branchName: null }),
 		);
 		// Succeeded attempt → stays in-progress with its worktree.
-		expect(data.updateTask).toHaveBeenCalledWith(project, "attempt-3", {
-			worktreePath: "/tmp/attempt-3",
-			branchName: "dev3/a3",
-			preparing: false,
-			preparingStage: null,
-			preparingProgress: null,
-			preparingStartedAt: null,
-		});
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			"attempt-3",
+			expect.objectContaining({
+				status: "in-progress",
+				worktreePath: "/tmp/attempt-3",
+				branchName: "dev3/a3",
+			}),
+			{ dropPosition: "top" },
+		);
 	});
 });
 
@@ -4280,7 +4341,7 @@ describe("handlers.cancelTaskPreparation", () => {
 		});
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(revertedTask);
+		mockTaskWrites(task);
 		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
 		vi.mocked(git.taskDir).mockReturnValue("/tmp/test-dev3/worktrees/tmp-test-project/variant-1");
 
@@ -4289,10 +4350,22 @@ describe("handlers.cancelTaskPreparation", () => {
 			projectId: project.id,
 		});
 
-		expect(result).toEqual(revertedTask);
+		expect(result).toEqual(expect.objectContaining({
+			id: revertedTask.id,
+			status: "todo",
+			worktreePath: null,
+			branchName: null,
+			customColumnId: null,
+			preparing: false,
+			preparationError: null,
+			preparingStage: null,
+			preparingProgress: null,
+			preparingStartedAt: null,
+			runtimeState: expect.objectContaining({ runtime: "idle" }),
+		}));
 		expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "111"], expect.anything());
 		expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "222"], expect.anything());
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
 			status: "todo",
 			preparing: false,
 			preparingStage: null,
@@ -4302,7 +4375,8 @@ describe("handlers.cancelTaskPreparation", () => {
 			branchName: null,
 			customColumnId: null,
 			preparationError: null,
-		});
+			runtimeState: expect.objectContaining({ runtime: "idle" }),
+		}));
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, expect.objectContaining({
 			id: task.id,
 			worktreePath: "/tmp/test-dev3/worktrees/tmp-test-project/variant-1/worktree",
@@ -7348,6 +7422,9 @@ describe("handlers.destroyProjectTerminal", () => {
 describe("handlers.openQuickShell", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.getTask).mockReset();
+		vi.mocked(data.updateTask).mockReset();
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
 		mockSpawn.mockReturnValue({ exited: Promise.resolve(0) });
 	});
@@ -7357,7 +7434,8 @@ describe("handlers.openQuickShell", () => {
 		const created = makeTask({ id: "qs1", projectId: "ops1", status: "todo", worktreePath: null, scratch: true });
 		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
 		vi.mocked(data.addTask).mockResolvedValue(created);
-		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, u) => ({ ...created, ...u } as Task));
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		mockTaskWrites(created);
 
 		const result = await handlers.openQuickShell({});
 
@@ -7380,7 +7458,8 @@ describe("handlers.openQuickShell", () => {
 		vi.mocked(data.ensureBuiltinOperationsBoard).mockResolvedValue(project);
 		vi.mocked(data.loadTasks).mockResolvedValue([existing]);
 		vi.mocked(data.addTask).mockResolvedValue(created);
-		vi.mocked(data.updateTask).mockImplementation(async (_p, _id, u) => ({ ...created, ...u } as Task));
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		mockTaskWrites(created);
 
 		const result = await handlers.openQuickShell({});
 
@@ -8129,6 +8208,7 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mockSpawn.mockReturnValue({ stderr: new Response(""), stdout: new Response(""), exited: Promise.resolve(0) });
+		vi.mocked(git.createWorktree).mockReset();
 		vi.mocked(git.createWorktree).mockResolvedValue({ worktreePath: "/tmp/new-wt", branchName: "dev3/resumed" } as any);
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
 	});
@@ -8137,15 +8217,21 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		const col = { id: "col-aaa", name: "Alpha", color: "#ff0000", llmInstruction: "" };
 		const project = makeProject({ customColumns: [col] });
 		const task = makeTask({ status: "in-progress", customColumnId: null });
-		const updated = { ...task, customColumnId: "col-aaa" };
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		mockTaskWrites(task);
 
 		const result = await handlers.moveTaskToCustomColumn({ taskId: "task-1", projectId: "proj-1", customColumnId: "col-aaa" });
 
 		expect(git.createWorktree).not.toHaveBeenCalled();
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: "col-aaa" }, { dropPosition: "top" });
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			"task-1",
+			expect.objectContaining({
+				customColumnId: "col-aaa",
+				runtimeState: expect.objectContaining({ runtime: "running" }),
+			}),
+			{ dropPosition: "top" },
+		);
 		expect(result.customColumnId).toBe("col-aaa");
 	});
 
@@ -8153,20 +8239,19 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		const col = { id: "col-aaa", name: "Alpha", color: "#ff0000", llmInstruction: "" };
 		const project = makeProject({ customColumns: [col] });
 		const task = makeTask({ status: "completed", worktreePath: null, branchName: null, customColumnId: null });
-		const updated = makeTask({ status: "in-progress", worktreePath: "/tmp/new-wt", branchName: "dev3/resumed", customColumnId: "col-aaa" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		mockTaskWrites(task);
 
 		const result = await handlers.moveTaskToCustomColumn({ taskId: "task-1", projectId: "proj-1", customColumnId: "col-aaa" });
 
 		expect(git.createWorktree).toHaveBeenCalledWith(project, task, undefined);
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", {
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
 			status: "in-progress",
 			worktreePath: "/tmp/new-wt",
 			branchName: "dev3/resumed",
 			customColumnId: "col-aaa",
-		}, { dropPosition: "top" });
+			runtimeState: expect.objectContaining({ runtime: "running" }),
+		}), { dropPosition: "top" });
 		expect(result.status).toBe("in-progress");
 		expect(result.customColumnId).toBe("col-aaa");
 	});
@@ -8175,10 +8260,8 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 		const col = { id: "col-aaa", name: "Alpha", color: "#ff0000", llmInstruction: "" };
 		const project = makeProject({ customColumns: [col] });
 		const task = makeTask({ status: "cancelled", worktreePath: null, branchName: null, customColumnId: null });
-		const updated = makeTask({ status: "in-progress", customColumnId: "col-aaa" });
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		mockTaskWrites(task);
 
 		await handlers.moveTaskToCustomColumn({ taskId: "task-1", projectId: "proj-1", customColumnId: "col-aaa" });
 
@@ -8210,7 +8293,15 @@ describe("moveTaskToCustomColumn — resume logic", () => {
 
 		const result = await handlers.moveTaskToCustomColumn({ taskId: "task-1", projectId: "proj-1", customColumnId: null });
 
-		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { customColumnId: null }, { dropPosition: "top" });
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			"task-1",
+			expect.objectContaining({
+				customColumnId: null,
+				runtimeState: expect.objectContaining({ runtime: "running" }),
+			}),
+			{ dropPosition: "top" },
+		);
 		expect(result.customColumnId).toBeNull();
 	});
 });
@@ -8239,6 +8330,11 @@ describe("checkOpenPRsForPromotion", () => {
 		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/my-feature");
 		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId, updates) => ({
+			...task,
+			...updates,
+			id: taskId,
+		} as Task));
 		return { project, task };
 	}
 
@@ -8325,7 +8421,7 @@ describe("checkOpenPRsForPromotion", () => {
 		await checkOpenPRsForPromotion();
 		expect(data.updateTask).toHaveBeenCalledTimes(1);
 
-		// Reset mocks but keep prPromotedTasks state
+		// Reset mocks but keep the actor's promotion state.
 		vi.mocked(data.updateTask).mockClear();
 		vi.mocked(push).mockClear();
 
@@ -8692,7 +8788,9 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		// clearAllMocks does not reset implementations left by earlier describe
 		// blocks (e.g. isWorktreeDirty -> true), so pin a clean worktree here.
 		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
-		vi.mocked(data.updateTask).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => makeTask(patch));
+		vi.mocked(data.updateTask).mockImplementation(async (_project: Project, taskId: string, patch: Partial<Task>) => (
+			makeTask({ ...patch, id: taskId })
+		));
 		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
 	});
 
@@ -9841,8 +9939,12 @@ describe("triggerColumnAgentIfNeeded", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.mocked(data.getProject).mockReset();
+		vi.mocked(data.getTask).mockReset();
+		vi.mocked(data.updateTask).mockReset();
 		mockSpawn.mockReturnValue(makeProcMock());
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode("") });
+		vi.mocked(repoConfig.resolveProjectConfig).mockImplementation(async (project) => project);
 		vi.mocked(agents.resolveCommandForAgent).mockResolvedValue({
 			command: "claude 'review prompt'",
 			agent: { id: "builtin-claude", name: "Claude", baseCommand: "claude", configurations: [], defaultConfigId: "" } as any,
@@ -9973,6 +10075,42 @@ describe("triggerColumnAgentIfNeeded", () => {
 		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
 
 		expect(agents.resolveCommandForAgent).not.toHaveBeenCalled();
+	});
+
+	it("keeps review-agent launch failure best-effort when its fallback move cannot persist", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+		vi.mocked(agents.resolveCommandForAgent).mockRejectedValueOnce(new Error("agent unavailable"));
+		vi.mocked(data.updateTask).mockRejectedValueOnce(new Error("task write failed"));
+
+		await expect(triggerColumnAgentIfNeeded("review-by-ai", project, task)).resolves.toBeUndefined();
+
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			task.id,
+			expect.objectContaining({
+				status: "review-by-user",
+				customColumnId: null,
+				runtimeState: expect.objectContaining({ runtime: "running" }),
+			}),
+			{ dropPosition: "top", ifStatus: "review-by-ai" },
+		);
+	});
+
+	it("falls back to review-by-user when review-agent configuration cannot resolve", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-ai", worktreePath: "/tmp/wt" });
+		vi.mocked(repoConfig.resolveProjectConfig).mockRejectedValueOnce(new Error("invalid review config"));
+		mockTaskWrites(task);
+
+		await triggerColumnAgentIfNeeded("review-by-ai", project, task);
+
+		expect(data.updateTask).toHaveBeenCalledWith(
+			project,
+			task.id,
+			expect.objectContaining({ status: "review-by-user", customColumnId: null }),
+			{ dropPosition: "top", ifStatus: "review-by-ai" },
+		);
 	});
 
 	it("notifies the user via pushMessage when a custom-column agent fails to launch", async () => {

@@ -9,6 +9,7 @@ import type {
 import * as data from "../data";
 import * as git from "../git";
 import * as github from "../github";
+import { loadSettings } from "../settings";
 import { getActiveContext, getPushMessage, isAppForeground, log } from "../rpc-handlers/shared";
 import {
 	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
@@ -29,7 +30,7 @@ import {
 	type MergeCompletionFingerprint,
 	MERGE_PROMPT_RETRY_SUPPRESS_MS,
 	shouldSuppressMergePrompt,
-} from "../rpc-handlers/merge-prompt-suppression";
+} from "./merge-prompt";
 import {
 	computeSignalKey,
 	countUnresolvedReviewThreads,
@@ -42,6 +43,7 @@ import {
 	rollupCiStatus,
 } from "../rpc-handlers/pr-status";
 import {
+	dispatchLifecycleEvent,
 	dispatchLifecycleFinding,
 	forEachLifecycleActorRuntime,
 	lifecycleActorRuntime,
@@ -90,57 +92,38 @@ export async function getMergeCompletionFingerprint(task: Pick<Task, "id" | "wor
 	};
 }
 
-function reserveMergePromptSlot(
-	task: Task,
-	fingerprint: MergeCompletionFingerprint,
-	now = new Date(),
-	force = false,
-): boolean {
-	const nowMs = now.getTime();
-	// A forced re-check (user clicked the git refresh button) deliberately
-	// ignores the in-memory reservation and any prior dismissal: an explicit
-	// click means "ask me again, regardless of what I answered before".
-	if (!force) {
-		if (isPromptReserved(task.id, fingerprint.fingerprint, nowMs)) return false;
-
-		if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) {
-			lifecycleActorRuntime(task.id).mergePromptReservation = {
-				fingerprint: fingerprint.fingerprint,
-				reservedAt: nowMs,
-			};
-			return false;
-		}
-	}
-
-	// Reserve the slot before awaiting so concurrent callers see the key immediately
-	// and cannot both pass the reservation check above.
-	lifecycleActorRuntime(task.id).mergePromptReservation = {
-		fingerprint: fingerprint.fingerprint,
-		reservedAt: nowMs,
-	};
-	return true;
-}
-
-async function reserveMergeCompletionPrompt(project: Project, task: Task, fingerprint: MergeCompletionFingerprint, now = new Date(), force = false): Promise<boolean> {
-	if (!reserveMergePromptSlot(task, fingerprint, now, force)) return false;
-	await data.updateTask(project, task.id, {
-		mergeCompletionPrompt: {
-			fingerprint: fingerprint.fingerprint,
-			promptedAt: now.toISOString(),
-			dismissedAt: null,
-			precise: fingerprint.precise,
-		},
-	});
-	return true;
-}
-
-export async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean }): Promise<{ shouldPrompt: boolean; fingerprint: string | null }> {
+export async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean }): Promise<{ shouldPrompt: boolean; fingerprint: string | null; shouldNotify?: boolean }> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
+	const settings = await loadSettings();
+	const suggestCompletion = settings.suggestCompletingTasksAfterMerge !== false;
 	const fingerprint = params.fingerprint
 		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
 		: await getMergeCompletionFingerprint(task, task.branchName);
-	const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint, new Date(), params.force === true);
+	const promptedAt = new Date().toISOString();
+	const previousReservation = lifecycleActorRuntime(task.id).mergePromptReservation;
+	const updated = await dispatchLifecycleEvent(project.id, task.id, {
+		type: "mergePromptPrepared",
+		fingerprint: fingerprint.fingerprint,
+		precise: fingerprint.precise,
+		promptedAt,
+		suggestCompletion,
+		force: params.force === true,
+	});
+	const noticeOnly = updated.manualCompletion === true || !suggestCompletion;
+	if (noticeOnly) {
+		const reservation = lifecycleActorRuntime(task.id).mergePromptReservation;
+		return {
+			shouldPrompt: false,
+			fingerprint: fingerprint.fingerprint,
+			shouldNotify: reservation !== previousReservation
+				&& reservation?.fingerprint === fingerprint.fingerprint
+				&& reservation.reservedAt === Date.parse(promptedAt),
+		};
+	}
+	const shouldPrompt = updated.mergeCompletionPrompt?.fingerprint === fingerprint.fingerprint
+		&& updated.mergeCompletionPrompt.promptedAt === promptedAt
+		&& updated.mergeCompletionPrompt.dismissedAt == null;
 	return { shouldPrompt, fingerprint: fingerprint.fingerprint };
 }
 
@@ -150,25 +133,12 @@ export async function dismissMergeCompletionPrompt(params: { taskId: string; pro
 	const fingerprint = params.fingerprint
 		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
 		: await getMergeCompletionFingerprint(task, task.branchName);
-	const now = new Date().toISOString();
-	const existing = task.mergeCompletionPrompt;
-	const updated = await data.updateTask(project, task.id, {
-		mergeCompletionPrompt: {
-			fingerprint: fingerprint.fingerprint,
-			promptedAt: existing?.fingerprint === fingerprint.fingerprint ? existing.promptedAt : now,
-			dismissedAt: now,
-			precise: fingerprint.precise,
-		},
-	});
-	// Close a still-open "Branch Merged" dialog on other clients (second window
-	// or the remote browser served by this same app) that received the original
-	// broadcast prompt.
-	getPushMessage()?.("mergePromptResolved", {
-		taskId: task.id,
-		projectId: project.id,
+	return dispatchLifecycleEvent(project.id, task.id, {
+		type: "mergePromptDismissed",
 		fingerprint: fingerprint.fingerprint,
+		precise: fingerprint.precise,
+		dismissedAt: new Date().toISOString(),
 	});
-	return updated;
 }
 
 let mergePollerInterval: ReturnType<typeof setInterval> | null = null;
@@ -203,6 +173,8 @@ async function checkMergedBranches(): Promise<void> {
 	const { projectId: activeProjectId } = getActiveContext();
 	const foreground = isAppForeground();
 	const now = Date.now();
+	const settings = await loadSettings();
+	const suggestCompletion = settings.suggestCompletingTasksAfterMerge !== false;
 	// A tick far later than the base interval means the host was suspended
 	// (laptop sleep): re-spread overdue tasks instead of firing them all at once.
 	const wokeFromSleep = mergeLastTickAt !== 0 && wasAsleep(now - mergeLastTickAt, MERGE_POLL_INTERVAL_MS);
@@ -275,8 +247,9 @@ async function checkMergedBranches(): Promise<void> {
 				// every 60s tick.
 				const fingerprint = await getMergeCompletionFingerprint(task, branchName);
 				const nowMs = Date.now();
+				const noticeOnly = task.manualCompletion === true || !suggestCompletion;
 				if (isPromptReserved(task.id, fingerprint.fingerprint, nowMs)) continue;
-				if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) continue;
+				if (!noticeOnly && shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) continue;
 
 				// The popup claims "no changes left" — never prompt while the
 				// worktree has uncommitted changes. Skip WITHOUT reserving so a
@@ -297,15 +270,14 @@ async function checkMergedBranches(): Promise<void> {
 				}
 				if (!merged) continue;
 
-				const shouldPrompt = reserveMergePromptSlot(task, fingerprint);
-				if (!shouldPrompt) continue;
-
 				log.info("Branch merge detected", { taskId: task.id.slice(0, 8), branch: branchName });
 				await dispatchLifecycleFinding(project, task, {
 					type: "mergeDetected",
 					branchName,
 					fingerprint: fingerprint.fingerprint,
 					precise: fingerprint.precise,
+					detectedAt: new Date().toISOString(),
+					suggestCompletion,
 				});
 			} catch (err) {
 				log.warn("Merge check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
@@ -395,8 +367,11 @@ const TERMINAL_TASK_STATUSES = new Set<Task["status"]>(["completed", "cancelled"
 
 export async function persistTaskPrIdentity(project: Project, task: Task, prNumber: number, prUrl: string): Promise<void> {
 	if (task.prNumber === prNumber && task.prUrl === prUrl) return;
-	const updated = await data.updateTask(project, task.id, { prNumber, prUrl });
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	await dispatchLifecycleEvent(project.id, task.id, {
+		type: "prIdentityDiscovered",
+		prNumber,
+		prUrl,
+	});
 }
 
 export async function persistProjectPrIdentities(project: Project, prs: PRInfo[]): Promise<void> {
@@ -610,18 +585,9 @@ async function pollTaskPrStatus(project: Project, task: Task): Promise<PolledPRS
 	// Raise the bell / native notification only on a *transition* to a new
 	// worthy signal. Unresolved-thread changes deliberately stay passive.
 	const signalKey = computeSignalKey(ciStatus, reviewState);
-	const runtime = lifecycleActorRuntime(task.id);
-	let signalReason: string | undefined;
-	if (signalKey && runtime.prSignalKey !== signalKey) {
-		runtime.prSignalKey = signalKey;
-		signalReason = reasonForSignal(ciStatus, reviewState);
-	} else if (!signalKey) {
-		delete runtime.prSignalKey;
-	}
-
-	const isOpenNonDraft = isOpenPr && isDraft === false && !runtime.prPromoted;
+	const signalReason = signalKey ? reasonForSignal(ciStatus, reviewState) : undefined;
+	const isOpenNonDraft = isOpenPr && isDraft === false;
 	if (isOpenNonDraft && task.status === "review-by-user") {
-		runtime.prPromoted = true;
 		log.info("Open PR detected — promoting to review-by-colleague", {
 			taskId: task.id.slice(0, 8),
 			branch: branchName,
@@ -639,6 +605,7 @@ async function pollTaskPrStatus(project: Project, task: Task): Promise<PolledPRS
 				cache: { ...freshStatus, cachedAt: new Date().toISOString() },
 			},
 		} : {}),
+		signalKey,
 		...(signalReason ? { signalReason } : {}),
 	});
 

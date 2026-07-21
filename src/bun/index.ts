@@ -390,7 +390,7 @@ await startRemoteAccessServer({
 // sync I/O, GC pauses, runaway regex).
 startLoopMonitor();
 
-// Start background merge detection poller
+// Reconcile persisted lifecycle hints before background activity starts.
 await rehydrateTaskLifecycles();
 
 // Start background merge detection poller

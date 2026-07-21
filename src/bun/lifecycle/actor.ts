@@ -7,6 +7,7 @@ type MailboxItem<Event, Result> = {
 class TaskActor<Event, Result, Runtime> {
 	private readonly mailbox: Array<MailboxItem<Event, Result>> = [];
 	private draining = false;
+	private disposed = false;
 
 	constructor(
 		readonly taskId: string,
@@ -15,17 +16,24 @@ class TaskActor<Event, Result, Runtime> {
 	) {}
 
 	dispatch(event: Event): Promise<Result> {
+		if (this.disposed) return Promise.reject(new Error(`Task actor removed: ${this.taskId}`));
 		return new Promise<Result>((resolve, reject) => {
 			this.mailbox.push({ event, resolve, reject });
 			void this.drain();
 		});
 	}
 
+	dispose(): void {
+		this.disposed = true;
+		const queued = this.mailbox.splice(this.draining ? 1 : 0);
+		for (const item of queued) item.reject(new Error(`Task actor removed: ${this.taskId}`));
+	}
+
 	private async drain(): Promise<void> {
 		if (this.draining) return;
 		this.draining = true;
 		try {
-			while (this.mailbox.length > 0) {
+			while (!this.disposed && this.mailbox.length > 0) {
 				const item = this.mailbox[0];
 				try {
 					item.resolve(await this.process(this.taskId, item.event));
@@ -39,7 +47,7 @@ class TaskActor<Event, Result, Runtime> {
 			this.draining = false;
 			// An enqueue can land after the loop sees an empty mailbox but before
 			// `draining` is cleared. Give that event the drain it could not start.
-			if (this.mailbox.length > 0) void this.drain();
+			if (!this.disposed && this.mailbox.length > 0) void this.drain();
 		}
 	}
 }
@@ -73,11 +81,17 @@ export class TaskActorRegistry<Event, Result, Runtime = Record<string, unknown>>
 		for (const [taskId, actor] of this.actors) visitor(actor.runtime, taskId);
 	}
 
+	peekRuntime(taskId: string): Runtime | undefined {
+		return this.actors.get(taskId)?.runtime;
+	}
+
 	delete(taskId: string): void {
+		this.actors.get(taskId)?.dispose();
 		this.actors.delete(taskId);
 	}
 
 	clear(): void {
+		for (const actor of this.actors.values()) actor.dispose();
 		this.actors.clear();
 	}
 }

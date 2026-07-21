@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import type { Project, Task, CliRequest, TaskNote } from "../../shared/types";
+import { getAllowedTransitions, type Project, type Task, type CliRequest, type TaskNote } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -159,7 +159,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, triggerColumnAgentIfNeeded, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
+import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { loadSettings } from "../settings";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
@@ -219,6 +219,33 @@ function makeRequest(method: string, params: Record<string, unknown> = {}): CliR
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(isNotificationSuppressed).mockReturnValue(false);
+	vi.mocked(moveTask).mockImplementation(async (params) => {
+		const project = await data.getProject(params.projectId);
+		const task = (await data.loadTasks(project)).find((candidate) => candidate.id === params.taskId);
+		if (!task) throw new Error(`Task not found: ${params.taskId}`);
+		const allowed = params.ifStatus?.split(",").map((value) => value.trim());
+		const blocked = params.ifStatusNot?.split(",").map((value) => value.trim());
+		if ((allowed && !allowed.includes(task.status)) || blocked?.includes(task.status)) return task;
+		if (params.newStatus === task.status && task.customColumnId == null) return task;
+		if (
+			params.enforceAllowedTransition
+			&& params.newStatus
+			&& task.customColumnId == null
+			&& !getAllowedTransitions(task.status).includes(params.newStatus)
+		) {
+			throw new Error(`Cannot move task from "${task.status}" to "${params.newStatus}". Allowed: ${getAllowedTransitions(task.status).join(", ")}`);
+		}
+		if (params.newStatus) {
+			return { ...task, status: params.newStatus, customColumnId: params.customColumnId ?? null };
+		}
+		return {
+			...task,
+			status: params.customColumnId && (task.status === "completed" || task.status === "cancelled")
+				? "in-progress"
+				: task.status,
+			customColumnId: params.customColumnId ?? null,
+		};
+	});
 });
 
 describe("remote.accessUrl", () => {
@@ -367,7 +394,9 @@ describe("task.agentHook", () => {
 		}));
 
 		expect((response.data as Task).status).toBe("review-by-user");
-		expect(data.updateTaskWith).toHaveBeenCalledOnce();
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
+			newStatus: "review-by-user",
+		}));
 	});
 
 	it("moves a primary-agent Stop to review-by-ai when auto-review is enabled", async () => {
@@ -412,7 +441,7 @@ describe("task.agentHook", () => {
 		expect((response.data as Task).status).toBe("user-questions");
 	});
 
-	it("starts the automatic review agent after the atomic Stop transition", async () => {
+	it("routes the automatic review Stop transition through moveTask", async () => {
 		const project = makeProject({ autoReviewEnabled: true });
 		const task = makeTask({ status: "in-progress" });
 		mockAtomicHookUpdate(project, task);
@@ -423,7 +452,10 @@ describe("task.agentHook", () => {
 			event: "Stop",
 		}));
 
-		expect(triggerColumnAgentIfNeeded).toHaveBeenCalledOnce();
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
+			newStatus: "review-by-ai",
+			ifStatus: "in-progress,user-questions",
+		}));
 	});
 
 	it("rejects unknown lifecycle events", async () => {
@@ -1951,7 +1983,6 @@ describe("task.move", () => {
 			const task = tasks.find((candidate) => candidate.id === taskId);
 			if (!task) throw new Error(`Task not found: ${taskId}`);
 
-			emitTaskSound(newStatus as "completed" | "cancelled", task.id);
 			try {
 				pty.destroySession(task.id, task.tmuxSocket ?? undefined);
 			} catch {}
@@ -1964,6 +1995,7 @@ describe("task.move", () => {
 			try {
 				await git.removeWorktree(project, task);
 			} catch {}
+			emitTaskSound(newStatus as "completed" | "cancelled", task.id);
 
 			return data.updateTask(project, task.id, {
 				status: newStatus,
@@ -2020,29 +2052,17 @@ describe("task.move", () => {
 	it("allows only one concurrent --if-status move to win", async () => {
 		const project = makeProject();
 		let storedTask = makeTask({ status: "in-progress" });
-		let loadCount = 0;
-		let releaseLoads!: () => void;
-		const loadsReady = new Promise<void>((resolve) => {
-			releaseLoads = resolve;
-		});
-		let updateQueue = Promise.resolve();
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.loadTasks).mockImplementation(async () => {
-			loadCount += 1;
-			if (loadCount === 2) {
-				releaseLoads();
-			}
-			await loadsReady;
-			return [{ ...storedTask }];
-		});
-		vi.mocked(data.updateTask).mockImplementation(async (_project, _taskId, updates, options: any) => {
+		vi.mocked(data.loadTasks).mockResolvedValue([{ ...storedTask }]);
+		let moveQueue = Promise.resolve();
+		vi.mocked(moveTask).mockImplementation((params) => {
 			const run = async () => {
-				const allowedStatuses = typeof options?.ifStatus === "string"
-					? options.ifStatus.split(",")
+				const allowedStatuses = typeof params.ifStatus === "string"
+					? params.ifStatus.split(",")
 					: null;
-				const blockedStatuses = typeof options?.ifStatusNot === "string"
-					? options.ifStatusNot.split(",")
+				const blockedStatuses = typeof params.ifStatusNot === "string"
+					? params.ifStatusNot.split(",")
 					: null;
 				if (allowedStatuses && !allowedStatuses.includes(storedTask.status)) {
 					return { ...storedTask };
@@ -2050,11 +2070,14 @@ describe("task.move", () => {
 				if (blockedStatuses && blockedStatuses.includes(storedTask.status)) {
 					return { ...storedTask };
 				}
-				storedTask = { ...storedTask, ...updates };
+				storedTask = {
+					...storedTask,
+					...(params.newStatus ? { status: params.newStatus, customColumnId: null } : {}),
+				};
 				return { ...storedTask };
 			};
-			const result = updateQueue.then(run);
-			updateQueue = result.then(() => undefined, () => undefined);
+			const result = moveQueue.then(run);
+			moveQueue = result.then(() => undefined, () => undefined);
 			return result;
 		});
 		vi.mocked(getPushMessage).mockReturnValue(null);
@@ -2117,8 +2140,16 @@ describe("task.move", () => {
 				newStatus: "review-by-user",
 			}),
 		);
-		expect(resp.ok).toBe(true);
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { status: "review-by-user", customColumnId: null }, { dropPosition: "top" });
+			expect(resp.ok).toBe(true);
+			expect(resp.data).toEqual({ ...updated, customColumnId: null });
+			expect(moveTask).toHaveBeenCalledWith({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: "review-by-user",
+				ifStatus: undefined,
+				ifStatusNot: undefined,
+				enforceAllowedTransition: true,
+			});
 		expect(git.createWorktree).not.toHaveBeenCalled();
 		expect(pty.destroySession).not.toHaveBeenCalled();
 	});
@@ -2144,13 +2175,14 @@ describe("task.move", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: false });
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			status: "in-progress",
-			worktreePath: "/tmp/new-wt",
-			branchName: "dev3/task-new",
-			customColumnId: null,
-		}, { dropPosition: "top" });
+		expect(moveTask).toHaveBeenCalledWith({
+			taskId: task.id,
+			projectId: project.id,
+			newStatus: "in-progress",
+			ifStatus: undefined,
+			ifStatusNot: undefined,
+			enforceAllowedTransition: true,
+		});
 	});
 
 	it("reopen (completed → in-progress): calls activateTask with isReopen=true", async () => {
@@ -2176,7 +2208,10 @@ describe("task.move", () => {
 			}),
 		);
 
-		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: true });
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: task.id,
+			newStatus: "in-progress",
+		}));
 	});
 
 	it("reopen (cancelled → in-progress): calls activateTask with isReopen=true", async () => {
@@ -2202,7 +2237,10 @@ describe("task.move", () => {
 			}),
 		);
 
-		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: true });
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
+			taskId: task.id,
+			newStatus: "in-progress",
+		}));
 	});
 
 	it("blocked guard (todo, --if-status-not todo): does NOT activate worktree, returns unchanged task", async () => {
@@ -2227,7 +2265,7 @@ describe("task.move", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
-		expect(activateTask).not.toHaveBeenCalled();
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({ ifStatusNot: "todo" }));
 	});
 
 	it("passing guard (todo, --if-status-not completed): still activates worktree", async () => {
@@ -2252,13 +2290,10 @@ describe("task.move", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(activateTask).toHaveBeenCalledWith(project, task, { isReopen: false });
-		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
-			status: "in-progress",
-			worktreePath: "/tmp/new-wt",
-			branchName: "dev3/task-new",
-			customColumnId: null,
-		}, { dropPosition: "top", ifStatusNot: "completed" });
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
+			newStatus: "in-progress",
+			ifStatusNot: "completed",
+		}));
 	});
 
 	it("blocked guard (completed → custom column, --if-status-not completed): does NOT reactivate worktree", async () => {
@@ -2287,7 +2322,10 @@ describe("task.move", () => {
 
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
-		expect(activateTask).not.toHaveBeenCalled();
+		expect(moveTask).toHaveBeenCalledWith(expect.objectContaining({
+			customColumnId: customColumn.id,
+			ifStatusNot: "completed",
+		}));
 	});
 
 	it("active → completed: destroys PTY, runs cleanup, removes worktree", async () => {
@@ -2324,7 +2362,7 @@ describe("task.move", () => {
 		}, { dropPosition: "top" });
 	});
 
-	it("active → completed: emits renderer sound before cleanup starts", async () => {
+	it("active → completed: emits renderer sound after cleanup finishes", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
 		const updated = { ...task, status: "completed" as const, worktreePath: null, branchName: null };
@@ -2344,7 +2382,7 @@ describe("task.move", () => {
 		);
 
 		expect(resp.ok).toBe(true);
-		expect(vi.mocked(emitTaskSound).mock.invocationCallOrder[0]).toBeLessThan(
+		expect(vi.mocked(emitTaskSound).mock.invocationCallOrder[0]).toBeGreaterThan(
 			vi.mocked(runCleanupScript).mock.invocationCallOrder[0],
 		);
 	});

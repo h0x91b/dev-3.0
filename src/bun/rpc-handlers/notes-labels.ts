@@ -148,8 +148,11 @@ async function deleteCustomColumn(params: { projectId: string; columnId: string 
 	const tasks = await data.loadTasks(project);
 	const affectedTasks = tasks.filter((task) => task.customColumnId === params.columnId);
 	for (const task of affectedTasks) {
-		const updated = await data.updateTask(project, task.id, { customColumnId: null });
-		getPushMessage()?.("taskUpdated", { projectId: params.projectId, task: updated });
+		await dispatchLifecycleEvent(project.id, task.id, {
+			type: "moveRequested",
+			target: { customColumnId: null },
+			launchColumnAgent: false,
+		}, { project, task });
 	}
 	getPushMessage()?.("projectUpdated", { project: updatedProject });
 	log.info("← deleteCustomColumn done", { removed_from_tasks: affectedTasks.length });
