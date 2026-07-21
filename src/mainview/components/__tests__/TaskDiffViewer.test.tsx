@@ -1709,6 +1709,7 @@ describe("TaskDiffViewer", () => {
 		const longComment = 'Watch this branch edge case with "Show diff" label in the Russian locale. '.repeat(4).trim();
 		const truncatedPreview = `${longComment.slice(0, 100)}...`;
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+		vi.mocked(api.request.sendAgentMessageNow).mockResolvedValue(undefined as never);
 
 		render(
 			<I18nProvider>
@@ -1722,6 +1723,7 @@ describe("TaskDiffViewer", () => {
 		);
 
 		const diffs = await screen.findAllByTestId("mock-diff");
+		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeDisabled();
 		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
 		expect(screen.getByTestId("mock-widget").querySelector(".dev3-inline-comment--composer")).not.toBeNull();
 
@@ -1740,6 +1742,17 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByText(truncatedPreview)).toBeInTheDocument();
 		expect(screen.getByTestId("review-export-list")).toHaveClass("max-h-64", "overflow-y-auto");
 		expect(screen.getByRole("button", { name: "Copy to Clipboard" })).toHaveClass("w-full");
+		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeEnabled();
+
+		await user.click(screen.getByRole("button", { name: "Send to Agent" }));
+		await waitFor(() => {
+			expect(api.request.sendAgentMessageNow).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				text: expect.stringContaining(`<comment>${longComment}</comment>`),
+			});
+		});
+		expect(screen.getByRole("button", { name: "Sent" })).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: "Comment 1" }));
 		await waitFor(() => {

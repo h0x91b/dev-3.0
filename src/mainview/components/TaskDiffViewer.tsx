@@ -1690,6 +1690,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	// setInlineComments causes a second render that writes it back.
 	const [inlineComments, setInlineComments] = useState<InlineDiffCommentsState>(() => readStoredReview(task.id));
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
+	const [reviewSendState, setReviewSendState] = useState<"sending" | "sent" | undefined>();
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 	const [editingCommentDraft, setEditingCommentDraft] = useState("");
 	// GitHub PR review layer (read-only). Fetched once per diff open when the
@@ -1780,6 +1781,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		].sort(compareReviewExportEntries)
 		: [];
 	const reviewExportXml = buildInlineReviewXml(reviewExportEntries);
+	useEffect(() => {
+		setReviewSendState(undefined);
+	}, [reviewExportXml]);
 
 	const fetchPrComments = useCallback((force: boolean) => {
 		if (task.prNumber == null) {
@@ -2163,6 +2167,23 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			setCopiedReviewXml(true);
 			window.setTimeout(() => setCopiedReviewXml(false), 1500);
 		}).catch(() => {});
+	}
+
+	function handleSendReviewToAgent() {
+		if (reviewExportEntries.length === 0) {
+			return;
+		}
+		const snapshot = reviewExportXml;
+		setReviewSendState("sending");
+		api.request.sendAgentMessageNow({ taskId: task.id, projectId: project.id, text: snapshot })
+			.then(() => {
+				setReviewSendState("sent");
+				toast.success(t("infoPanel.diffReviewExportSendSuccess"));
+			})
+			.catch((err) => {
+				setReviewSendState(undefined);
+				toast.error(t("infoPanel.diffReviewExportSendFailed", { error: String(err) }));
+			});
 	}
 
 	function handleResetReview() {
@@ -3365,24 +3386,53 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 												{t("infoPanel.diffReviewExportHint")}
 											</div>
 										)}
-										<button
-											onClick={handleCopyReviewXml}
-											disabled={reviewExportEntries.length === 0}
-											className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
-												copiedReviewXml
-													? "border-success/40 bg-success/15 text-success"
-													: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
-											}`}
-										>
-											<span
-												aria-hidden="true"
-												className="text-[0.95rem] leading-none"
-												style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+										<div className="grid grid-cols-2 gap-2">
+											<button
+												type="button"
+												onClick={handleCopyReviewXml}
+												disabled={reviewExportEntries.length === 0}
+												className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
+													copiedReviewXml
+														? "border-success/40 bg-success/15 text-success"
+														: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+												}`}
 											>
-												{"\u{F0198}"}
-											</span>
-											<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
-										</button>
+												<span
+													aria-hidden="true"
+													className="text-[0.95rem] leading-none"
+													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+												>
+													{"\u{F0198}"}
+												</span>
+												<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
+											</button>
+											<button
+												type="button"
+												onClick={handleSendReviewToAgent}
+												disabled={reviewExportEntries.length === 0 || reviewSendState === "sending"}
+												data-testid="review-send-button"
+												className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
+													reviewSendState === "sent"
+														? "border-success/40 bg-success/10 text-success"
+														: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+												}`}
+											>
+												<span
+													aria-hidden="true"
+													className="text-[0.95rem] leading-none"
+													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+												>
+													{"\uf120"}
+												</span>
+												<span>
+													{reviewSendState === "sending"
+														? t("infoPanel.diffReviewExportSendSending")
+														: reviewSendState === "sent"
+															? t("infoPanel.diffReviewExportSendSent")
+															: t("infoPanel.diffReviewExportSend")}
+												</span>
+											</button>
+										</div>
 										{reviewExportEntries.length > 0 && (
 											<button
 												type="button"
