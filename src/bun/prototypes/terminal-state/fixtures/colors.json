@@ -1,0 +1,46 @@
+{
+	"fixtureVersion": 1,
+	"name": "colors",
+	"source": "synthetic",
+	"initial": {
+		"cols": 20,
+		"rows": 3,
+		"scrollback": 20
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "\u001b[38;2;12;34;56;48;2;90;80;70;1;4mRGB\u001b[0m \u001b[38;5;196mP\u001b[0m"
+		}
+	],
+	"expected": {
+		"cursor": {
+			"x": 5,
+			"y": 0
+		}
+	},
+	"expectedCells": [
+		{
+			"row": 0,
+			"col": 0,
+			"cell": {
+				"text": "R",
+				"width": 1,
+				"foreground": "rgb:0c2238",
+				"background": "rgb:5a5046",
+				"attributes": ["bold", "underline"]
+			}
+		},
+		{
+			"row": 0,
+			"col": 4,
+			"cell": {
+				"text": "P",
+				"width": 1,
+				"foreground": "rgb:ff0000",
+				"background": "rgb:000000",
+				"attributes": []
+			}
+		}
+	]
+}

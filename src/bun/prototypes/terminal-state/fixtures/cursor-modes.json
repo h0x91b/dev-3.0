@@ -1,0 +1,38 @@
+{
+	"fixtureVersion": 1,
+	"name": "cursor-modes",
+	"source": "synthetic",
+	"initial": {
+		"cols": 16,
+		"rows": 4,
+		"scrollback": 20
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "mode probe\u001b[2;5H\u001b[?25l\u001b[6 q\u001b[?1h\u001b[?2004h\u001b[4h\u001b[?7l\u001b[?1004h\u001b[?1002h"
+		}
+	],
+	"expected": {
+		"activeBuffer": "normal",
+		"cursor": {
+			"x": 4,
+			"y": 1,
+			"visible": false,
+			"style": "bar",
+			"blink": false
+		},
+		"modes": {
+			"applicationCursorKeys": true,
+			"applicationKeypad": false,
+			"bracketedPaste": true,
+			"focusEvents": true,
+			"insert": true,
+			"mouseTracking": "drag",
+			"origin": false,
+			"reverseWraparound": false,
+			"synchronizedOutput": false,
+			"wraparound": false
+		}
+	}
+}

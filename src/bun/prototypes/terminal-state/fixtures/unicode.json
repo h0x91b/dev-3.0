@@ -1,0 +1,63 @@
+{
+	"fixtureVersion": 1,
+	"name": "unicode",
+	"source": "synthetic",
+	"initial": {
+		"cols": 30,
+		"rows": 3,
+		"scrollback": 20
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "wide:界 combining:é emoji:🙂"
+		}
+	],
+	"expected": {
+		"unicodeVersion": "ghostty-vt",
+		"cursor": {
+			"x": 28,
+			"y": 0
+		},
+		"screen": [
+			{ "text": "wide:界 combining:é emoji:🙂", "wrapped": false },
+			{ "text": "", "wrapped": false },
+			{ "text": "", "wrapped": false }
+		]
+	},
+	"expectedCells": [
+		{
+			"row": 0,
+			"col": 5,
+			"cell": {
+				"text": "界",
+				"width": 2,
+				"foreground": "rgb:cccccc",
+				"background": "rgb:000000",
+				"attributes": []
+			}
+		},
+		{
+			"row": 0,
+			"col": 18,
+			"cell": {
+				"text": "é",
+				"width": 1,
+				"foreground": "rgb:cccccc",
+				"background": "rgb:000000",
+				"attributes": []
+			}
+		},
+		{
+			"row": 0,
+			"col": 26,
+			"cell": {
+				"text": "🙂",
+				"width": 2,
+				"foreground": "rgb:cccccc",
+				"background": "rgb:000000",
+				"attributes": []
+			}
+		}
+	]
+}

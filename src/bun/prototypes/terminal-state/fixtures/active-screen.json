@@ -1,0 +1,31 @@
+{
+	"fixtureVersion": 1,
+	"name": "active-screen",
+	"source": "synthetic",
+	"initial": {
+		"cols": 12,
+		"rows": 4,
+		"scrollback": 20
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "\u001b]0;active demo\u0007\u001b[2J\u001b[Halpha\r\nbeta"
+		}
+	],
+	"expected": {
+		"activeBuffer": "normal",
+		"title": "active demo",
+		"cursor": {
+			"x": 4,
+			"y": 1
+		},
+		"screen": [
+			{ "text": "alpha", "wrapped": false },
+			{ "text": "beta", "wrapped": false },
+			{ "text": "", "wrapped": false },
+			{ "text": "", "wrapped": false }
+		],
+		"scrollback": []
+	}
+}

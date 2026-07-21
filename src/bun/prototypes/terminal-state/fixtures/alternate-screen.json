@@ -1,0 +1,48 @@
+{
+	"fixtureVersion": 1,
+	"name": "alternate-screen",
+	"source": "synthetic",
+	"initial": {
+		"cols": 14,
+		"rows": 4,
+		"scrollback": 20
+	},
+	"events": [
+		{
+			"type": "output",
+			"data": "primary one\r\nprimary two\u001b[?1049h\u001b[H\u001b[2JALT screen\r\nstatus"
+		}
+	],
+	"expected": {
+		"activeBuffer": "alternate",
+		"cursor": {
+			"x": 6,
+			"y": 1
+		},
+		"screen": [
+			{ "text": "ALT screen", "wrapped": false },
+			{ "text": "status", "wrapped": false },
+			{ "text": "", "wrapped": false },
+			{ "text": "", "wrapped": false }
+		]
+	},
+	"afterReplay": [
+		{
+			"type": "output",
+			"data": "\u001b[?1049l"
+		}
+	],
+	"expectedAfterReplay": {
+		"activeBuffer": "normal",
+		"cursor": {
+			"x": 11,
+			"y": 1
+		},
+		"screen": [
+			{ "text": "primary one", "wrapped": false },
+			{ "text": "primary two", "wrapped": false },
+			{ "text": "", "wrapped": false },
+			{ "text": "", "wrapped": false }
+		]
+	}
+}

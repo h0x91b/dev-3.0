@@ -1,0 +1,35 @@
+{
+	"fixtureVersion": 1,
+	"name": "real-powershell",
+	"source": "captured",
+	"initial": {
+		"cols": 100,
+		"rows": 30,
+		"scrollback": 1000
+	},
+	"events": [
+		{
+			"type": "output",
+			"encoding": "base64",
+			"data": "G1syShtbbRtbSBtdMDtXaW5kb3dzIFBvd2VyU2hlbGwHG1s/MjVoG10wO1Bvd2VyU2hlbGwgdGVybWluYWwtc3RhdGUgcHJvYmUHG1syNWwbW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLG1tIG1s/MjVoG1sxbRtbMzg7Mjs4MDsxNjA7MjQwbVBvd2VyU2hlbGwgNS4xLjE5MDQxLjY0NTYbW20gICAgICAgIA0Kd2lkZT3Qt+KAotCKIGNvbWJpbmluZz1l0JzQgyBlbW9qaT3RgNGf4oSi4oCaDQobWzYgcRtbMzg7MjswOzA7OTVtaGlzdG9yeS0wMRtbMzg7MjswOzA7MTM1bQ0KaGlzdG9yeS0wMhtbMzg7MjswOzA7MTc1bQ0KaGlzdG9yeS0wMxtbMzg7MjswOzA7MjE1bQ0KaGlzdG9yeS0wNBtbMzg7MjswOzA7MjU1bQ0KaGlzdG9yeS0wNRtbMzg7MjswOzk1OzBtDQpoaXN0b3J5LTA2G1szODsyOzA7OTU7OTVtDQpoaXN0b3J5LTA3G1szODsyOzA7OTU7MTM1bQ0KaGlzdG9yeS0wOBtbMzg7MjswOzk1OzE3NW0NCmhpc3RvcnktMDkbWzM4OzI7MDs5NTsyMTVtDQpoaXN0b3J5LTEwG1szODsyOzA7OTU7MjU1bQ0KaGlzdG9yeS0xMRtbMzg7MjswOzEzNTswbQ0KaGlzdG9yeS0xMhtbMzg7MjswOzEzNTs5NW0NCmhpc3RvcnktMTMbWzM4OzI7MDsxMzU7MTM1bQ0KaGlzdG9yeS0xNBtbMzg7MjswOzEzNTsxNzVtDQpoaXN0b3J5LTE1G1szODsyOzA7MTM1OzIxNW0NCmhpc3RvcnktMTYbWzM4OzI7MDsxMzU7MjU1bQ0KaGlzdG9yeS0xNxtbMzg7MjswOzE3NTswbQ0KaGlzdG9yeS0xOBtbMzg7MjswOzE3NTs5NW0NCmhpc3RvcnktMTkbWzM4OzI7MDsxNzU7MTM1bQ0KaGlzdG9yeS0yMBtbMzg7MjswOzE3NTsxNzVtDQpoaXN0b3J5LTIxG1szODsyOzA7MTc1OzIxNW0NCmhpc3RvcnktMjIbWzM4OzI7MDsxNzU7MjU1bQ0KaGlzdG9yeS0yMxtbMzg7MjswOzIxNTswbQ0KaGlzdG9yeS0yNBtbPzI1bA=="
+		}
+	],
+	"expected": {
+		"activeBuffer": "normal",
+		"title": "PowerShell terminal-state probe",
+		"dimensions": {
+			"cols": 100,
+			"rows": 30
+		},
+		"cursor": {
+			"visible": false,
+			"style": "bar",
+			"blink": false
+		}
+	},
+	"provenance": {
+		"command": "powershell.exe -NoLogo -NoProfile -File .\\src\\bun\\prototypes\\terminal-state\\powershell-probe.ps1",
+		"platform": "Windows x64; Windows PowerShell 5.1.19041.6456 Desktop; Bun 1.3.14",
+		"capturedAt": "2026-07-21"
+	}
+}
