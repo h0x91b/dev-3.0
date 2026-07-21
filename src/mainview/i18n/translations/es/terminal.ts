@@ -206,6 +206,7 @@ const terminal = {
 	"terminal.composerCollapse": "Contraer editor",
 	"terminal.composerScheduleLater": "Enviar más tarde",
 	"terminal.rawKeyboard": "Entrada directa de teclado",
+	"terminal.backspace": "Retroceso",
 };
 
 export default terminal;
