@@ -21,6 +21,64 @@ export function entryShortTitle(entry: ChangelogEntry): string {
 	return authored && authored.length > 0 ? authored : deriveShortTitle(entry.title);
 }
 
+/** Stable identity key for an entry: `date|type|slug`. */
+export function changelogEntryKey(e: Pick<ChangelogEntry, "date" | "type" | "slug">): string {
+	return `${e.date}|${e.type}|${e.slug}`;
+}
+
+/**
+ * `change-logs/2026/07/21/feature-foo.md` → `2026-07-21|feature|foo` (matches
+ * {@link changelogEntryKey}), or `null` for non-entry paths (README, malformed).
+ * Accepts a leading path prefix so raw `git diff`/`ls-files` output works.
+ */
+export function changelogKeyFromPath(path: string): string | null {
+	const m = path.match(/change-logs\/(\d{4})\/(\d{2})\/(\d{2})\/([^/]+)\.md$/);
+	if (!m) return null;
+	const basename = m[4];
+	if (basename === "README") return null;
+	const dashIdx = basename.indexOf("-");
+	if (dashIdx === -1) return null;
+	return changelogEntryKey({ date: `${m[1]}-${m[2]}-${m[3]}`, type: basename.slice(0, dashIdx), slug: basename.slice(dashIdx + 1) });
+}
+
+/**
+ * Previous release tag = newest `v*` tag (creator-date desc, merged into HEAD)
+ * that is NOT already pointing at HEAD. Takes the raw stdout of
+ * `git tag --sort=-creatordate --merged HEAD` and `git tag --points-at HEAD`.
+ */
+export function resolvePrevTag(tagsMergedDesc: string, tagsPointingAtHead: string): string | null {
+	const pointsAt = new Set(tagsPointingAtHead.split("\n").filter(Boolean));
+	return tagsMergedDesc.split("\n").find((t) => /^v/.test(t) && !pointsAt.has(t)) ?? null;
+}
+
+/** Map raw git path lines (diff / ls-files output) to the set of entry keys. */
+export function changedKeysFromPaths(paths: string[]): Set<string> {
+	const keys = new Set<string>();
+	for (const p of paths) {
+		const key = changelogKeyFromPath(p);
+		if (key) keys.add(key);
+	}
+	return keys;
+}
+
+/**
+ * Scope all changelog entries (newest-first) to one release window: the entries
+ * whose identity key is in {@link changedKeys} (files changed since the previous
+ * release, from git). Falls back to the most-recent day's batch — then the
+ * newest 10 — when the changed set matches nothing (shallow checkout, no tags).
+ * Single source of truth shared by the release build and the in-app simulator.
+ */
+export function selectReleaseWindow(entries: ChangelogEntry[], changedKeys: Set<string>): ChangelogEntry[] {
+	if (changedKeys.size > 0) {
+		const windowEntries = entries.filter((e) => changedKeys.has(changelogEntryKey(e)));
+		if (windowEntries.length > 0) return windowEntries;
+	}
+	if (entries.length === 0) return [];
+	const newestDate = entries[0].date;
+	const batch = entries.filter((e) => e.date === newestDate);
+	return batch.length > 0 ? batch : entries.slice(0, 10);
+}
+
 /**
  * Build the compact "what's new" payload from a release window of changelog
  * entries (already scoped to the new version). Features-first; feature titles

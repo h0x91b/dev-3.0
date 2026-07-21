@@ -1,4 +1,5 @@
 import type { TFunction } from "../../i18n";
+import UpdatePopoverSimulator from "../UpdatePopoverSimulator";
 import SettingsEntry from "./SettingsEntry";
 import SettingsSection from "./SettingsSection";
 
@@ -39,6 +40,7 @@ export default function DeveloperToolsSection({
 			<p className="text-fg-muted text-xs mt-1">
 				{t("settings.installDev3CliDesc")}
 			</p>
+			<UpdatePopoverSimulator t={t} />
 		</SettingsSection>
 		</SettingsEntry>
 	);

@@ -27,6 +27,25 @@ const updates = {
 	"update.fixCount_one": "{count} fix",
 	"update.fixCount_other": "{count} fixes",
 
+	// Update-popover simulator (dev-only, Settings → Developer Tools)
+	"updateSim.title": "Next-release update popover",
+	"updateSim.subtitle":
+		"Preview of the \"what's new\" popover the next release will show, from your local change-logs (uncommitted included).",
+	"updateSim.refresh": "Refresh",
+	"updateSim.loading": "Computing window…",
+	"updateSim.unavailable": "Not available — this build has no change-logs directory or isn't a git checkout.",
+	"updateSim.previewNote": "Preview only — Restart is disabled here.",
+	"updateSim.diagnostics": "Diagnostics",
+	"updateSim.prevTag": "Since tag",
+	"updateSim.noTag": "no tag",
+	"updateSim.fallbackBadge": "fallback window",
+	"updateSim.totalEntries": "{count} total entries",
+	"updateSim.includesUncommitted": "Window counts committed + uncommitted + untracked change-logs since the tag.",
+	"updateSim.windowFiles": "Entries in window ({count})",
+	"updateSim.emptyWindow": "No entries in the window.",
+	"updateSim.rawPayload": "Raw payload",
+	"updateSim.close": "Close",
+
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Intel build on Apple Silicon",
 	"rosetta.body":

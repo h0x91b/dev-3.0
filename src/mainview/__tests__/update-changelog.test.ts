@@ -4,6 +4,11 @@ import {
 	deriveShortTitle,
 	entryShortTitle,
 	buildUpdateChangelog,
+	changedKeysFromPaths,
+	changelogEntryKey,
+	changelogKeyFromPath,
+	resolvePrevTag,
+	selectReleaseWindow,
 	MAX_POPOVER_FEATURES,
 } from "../../shared/update-changelog";
 
@@ -60,5 +65,78 @@ describe("buildUpdateChangelog", () => {
 	it("derives short titles for feature entries without one", () => {
 		const window = [entry({ type: "feature", title: "one two three four five six seven eight" })];
 		expect(buildUpdateChangelog(window).features[0]).toBe("one two three four five six…");
+	});
+});
+
+describe("changelogKeyFromPath / changelogEntryKey", () => {
+	it("parses a changelog file path into the entry identity key", () => {
+		expect(changelogKeyFromPath("change-logs/2026/07/21/feature-foo-bar.md")).toBe("2026-07-21|feature|foo-bar");
+	});
+
+	it("accepts a leading prefix (raw git output) and matches changelogEntryKey", () => {
+		const key = changelogKeyFromPath("a/b/change-logs/2026/07/21/fix-x.md");
+		expect(key).toBe(changelogEntryKey({ date: "2026-07-21", type: "fix", slug: "x" }));
+	});
+
+	it("returns null for README, non-changelog, and dashless paths", () => {
+		expect(changelogKeyFromPath("change-logs/2026/07/21/README.md")).toBeNull();
+		expect(changelogKeyFromPath("src/foo.ts")).toBeNull();
+		expect(changelogKeyFromPath("change-logs/2026/07/21/nodash.md")).toBeNull();
+	});
+});
+
+describe("selectReleaseWindow", () => {
+	const entries: ChangelogEntry[] = [
+		entry({ date: "2026-07-21", type: "feature", slug: "new" }),
+		entry({ date: "2026-07-21", type: "fix", slug: "old-touched" }),
+		entry({ date: "2026-07-01", type: "feature", slug: "shipped" }),
+	];
+
+	it("returns only entries whose key is in the changed set", () => {
+		const changed = new Set(["2026-07-21|feature|new", "2026-07-21|fix|old-touched"]);
+		const window = selectReleaseWindow(entries, changed);
+		expect(window.map((e) => e.slug)).toEqual(["new", "old-touched"]);
+	});
+
+	it("falls back to the newest-day batch when the changed set is empty", () => {
+		const window = selectReleaseWindow(entries, new Set());
+		expect(window.map((e) => e.slug)).toEqual(["new", "old-touched"]);
+	});
+
+	it("falls back when the changed set matches nothing", () => {
+		const window = selectReleaseWindow(entries, new Set(["2020-01-01|feature|ghost"]));
+		expect(window.map((e) => e.slug)).toEqual(["new", "old-touched"]);
+	});
+
+	it("returns [] for no entries", () => {
+		expect(selectReleaseWindow([], new Set())).toEqual([]);
+	});
+});
+
+describe("resolvePrevTag", () => {
+	it("picks the newest v* tag not pointing at HEAD", () => {
+		expect(resolvePrevTag("v1.5.0\nv1.4.0\nv1.3.0", "")).toBe("v1.5.0");
+	});
+
+	it("skips tags that point at HEAD (the release being cut)", () => {
+		expect(resolvePrevTag("v2.0.0\nv1.9.0", "v2.0.0")).toBe("v1.9.0");
+	});
+
+	it("ignores non-v tags and returns null when none qualify", () => {
+		expect(resolvePrevTag("nightly\nlatest", "")).toBeNull();
+		expect(resolvePrevTag("", "")).toBeNull();
+	});
+});
+
+describe("changedKeysFromPaths", () => {
+	it("keeps only changelog entry paths and dedupes to keys", () => {
+		const keys = changedKeysFromPaths([
+			"change-logs/2026/07/21/feature-a.md",
+			"change-logs/2026/07/21/feature-a.md",
+			"src/foo.ts",
+			"change-logs/2026/07/21/README.md",
+			"",
+		]);
+		expect([...keys]).toEqual(["2026-07-21|feature|a"]);
 	});
 });

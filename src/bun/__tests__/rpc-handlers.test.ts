@@ -10856,3 +10856,16 @@ describe("handlers.getLastRoute / saveLastRoute — fresh-start (dev) mode", () 
 		expect(data.saveLastRoute).not.toHaveBeenCalled();
 	});
 });
+
+describe("handlers.previewUpdatePopover", () => {
+	// Under vitest `import.meta.dir` is empty, so the repo-root walk finds no
+	// change-logs dir — the handler must degrade to a safe unavailable result
+	// rather than throw. The git-window computation itself is unit-tested via the
+	// shared resolvePrevTag / changedKeysFromPaths / selectReleaseWindow helpers.
+	it("degrades to a safe unavailable result when no repo root is resolvable", async () => {
+		const res = await handlers.previewUpdatePopover();
+		expect(res.available).toBe(false);
+		expect(res.changelog).toBeNull();
+		expect(res.diagnostics.includesUncommitted).toBe(true);
+	});
+});

@@ -31,6 +31,25 @@ const updates = {
 	"update.fixCount_many": "{count} исправлений",
 	"update.fixCount_other": "{count} исправлений",
 
+	// Update-popover simulator (dev-only, Settings → Developer Tools)
+	"updateSim.title": "Попап обновления следующего релиза",
+	"updateSim.subtitle":
+		"Превью попапа «что нового» для следующего релиза по локальным change-logs (включая незакоммиченные).",
+	"updateSim.refresh": "Обновить",
+	"updateSim.loading": "Считаю окно…",
+	"updateSim.unavailable": "Недоступно — в этой сборке нет папки change-logs или это не git-репозиторий.",
+	"updateSim.previewNote": "Только превью — Restart здесь отключён.",
+	"updateSim.diagnostics": "Диагностика",
+	"updateSim.prevTag": "С тега",
+	"updateSim.noTag": "нет тега",
+	"updateSim.fallbackBadge": "запасное окно",
+	"updateSim.totalEntries": "всего записей: {count}",
+	"updateSim.includesUncommitted": "Окно учитывает закоммиченные + незакоммиченные + неотслеживаемые change-logs с тега.",
+	"updateSim.windowFiles": "Записи в окне ({count})",
+	"updateSim.emptyWindow": "В окне нет записей.",
+	"updateSim.rawPayload": "Сырой payload",
+	"updateSim.close": "Закрыть",
+
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Intel-сборка на Apple Silicon",
 	"rosetta.body":

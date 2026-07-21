@@ -44,6 +44,8 @@ const settings = {
 	"settings.devTools": "Developer Tools",
 	"settings.installDev3Cli": "Install dev3 CLI",
 	"settings.installDev3CliDesc": "Symlink the dev3 CLI from this app instance to ~/.dev3.0/bin/dev3",
+	"settings.previewUpdatePopover": "Preview update popover",
+	"settings.previewUpdatePopoverDesc": "Simulate the next release's \"what's new\" update popover from your local change-logs.",
 	"settings.agents": "Coding Agents",
 	"settings.addAgent": "Add Agent",
 	"settings.agentName": "Name",

@@ -44,6 +44,8 @@ const settings = {
 	"settings.devTools": "Herramientas de desarrollo",
 	"settings.installDev3Cli": "Instalar dev3 CLI",
 	"settings.installDev3CliDesc": "Crear symlink del CLI de esta instancia en ~/.dev3.0/bin/dev3",
+	"settings.previewUpdatePopover": "Previsualizar popover de actualización",
+	"settings.previewUpdatePopoverDesc": "Simula el popover «novedades» de la próxima versión a partir de tus change-logs locales.",
 	"settings.agents": "Agentes de código",
 	"settings.addAgent": "Agregar agente",
 	"settings.agentName": "Nombre",

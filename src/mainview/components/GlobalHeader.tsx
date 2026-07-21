@@ -11,6 +11,7 @@ import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
+import UpdateReadyPopover from "./UpdateReadyPopover";
 import PreventSleepToggle from "./PreventSleepToggle";
 import RateLimitIndicator from "./RateLimitIndicator";
 import BottomSheet from "./BottomSheet";
@@ -541,59 +542,17 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							</button>
 					</Tooltip>
 						{showUpdateDropdown && (
-							<div className="absolute right-0 top-full mt-1.5 w-72 bg-overlay border border-edge rounded-xl shadow-2xl z-50 p-4 space-y-3">
-								<div className="flex items-center gap-2">
-									<UpdateReadyIcon className="w-5 h-5 text-accent flex-shrink-0" />
-									<div>
-										<div className="text-fg text-sm font-semibold">
-											{t("update.readyTitle", { version: updateVersion })}
-										</div>
-										<div className="text-fg-3 text-xs mt-0.5">
-											{t("update.sessionsNote")}
-										</div>
-									</div>
-								</div>
-								{updateChangelog && updateChangelog.features.length > 0 && (
-									<div className="border-t border-edge pt-2.5 space-y-1.5">
-										<div className="text-fg-3 text-[0.625rem] font-semibold uppercase tracking-wider">
-											{t("update.whatsNewVersion", { version: updateVersion ?? "" })}
-										</div>
-										<div className="space-y-1">
-											{updateChangelog.features.map((feature, i) => (
-												<div key={i} className="flex items-start gap-1.5 min-w-0">
-													<span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
-													<span className="text-fg text-xs leading-snug truncate">{feature}</span>
-												</div>
-											))}
-										</div>
-										{(() => {
-											const moreFeat = Math.max(0, updateChangelog.featureCount - updateChangelog.features.length);
-											const parts: string[] = [];
-											if (moreFeat > 0) parts.push(t.plural("update.moreFeatures", moreFeat));
-											if (updateChangelog.fixCount > 0) parts.push(t.plural("update.fixCount", updateChangelog.fixCount));
-											return parts.length > 0 ? (
-												<div className="text-fg-muted text-[0.6875rem]">{parts.join(" · ")}</div>
-											) : null;
-										})()}
-										<button
-											type="button"
-											onClick={() => {
-												setShowUpdateDropdown(false);
-												navigate({ screen: "changelog" });
-											}}
-											className="text-accent text-xs font-medium hover:underline cursor-pointer"
-										>
-											{t("update.seeAllChanges")} →
-										</button>
-									</div>
-								)}
-								<button
-									onClick={handleRestart}
-									disabled={restarting}
-									className="w-full px-3 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
-								>
-									{restarting ? t("update.restarting") : t("update.restartBtn")}
-								</button>
+							<div className="absolute right-0 top-full mt-1.5 z-50">
+								<UpdateReadyPopover
+									version={updateVersion}
+									changelog={updateChangelog}
+									restarting={restarting}
+									onRestart={handleRestart}
+									onSeeAllChanges={() => {
+										setShowUpdateDropdown(false);
+										navigate({ screen: "changelog" });
+									}}
+								/>
 							</div>
 						)}
 					</div>
