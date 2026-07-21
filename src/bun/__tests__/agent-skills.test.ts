@@ -111,11 +111,15 @@ describe("dev3 skill content", () => {
 		expect(getGenericSkillContent()).toContain("attach it to the current task immediately.");
 	});
 
-	it("gates completion on a pull request merged into main", () => {
+	it("gates completion on preserved work or an explicit user request", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
-			expect(skill).toContain("Never move a task to `completed`, and never request the completion approval");
-			expect(skill).toContain("pull request has been merged into `main`");
-			expect(skill).toContain("A local commit, passing tests, or an open/unmerged pull request is not sufficient");
+			expect(skill).toContain("Never move a task to `completed`, and never request completion approval");
+			expect(skill).toContain("safely preserved in the destination the task requires");
+			expect(skill).toContain("commonly a pull request merged into `main`");
+			expect(skill).toContain("external file, task note, shared artifact");
+			expect(skill).toContain("the user explicitly asks to complete the task");
+			expect(skill).toContain("A local commit, passing tests, or an open/unmerged pull request is not enough by itself");
+			expect(skill).toContain("If the required destination is unclear or the work is not safely preserved");
 		}
 	});
 

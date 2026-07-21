@@ -99,7 +99,7 @@ const SKILL_COMPLETION_REQUEST = `
 - **Declined** → exit code 6; the session stays alive — continue working or ask what to change.
 - **Timeout** → the dialog may still be open; a later approval completes the task and destroys the session.
 
-**Merge gate (mandatory):** Never move a task to \`completed\`, and never request the completion approval, until the changes are in a pull request and that pull request has been merged into \`main\`. A local commit, passing tests, or an open/unmerged pull request is not sufficient; keep the task open for review. \`cancelled\` remains fully forbidden via CLI.
+**Preservation gate (mandatory):** Never move a task to \`completed\`, and never request completion approval, while the task's work exists only in a disposable worktree. Completion is allowed when either the result is safely preserved in the destination the task requires — commonly a pull request merged into \`main\`, but it may be an external file, task note, shared artifact, or another explicit destination — or the user explicitly asks to complete the task. A local commit, passing tests, or an open/unmerged pull request is not enough by itself. If the required destination is unclear or the work is not safely preserved, keep the task open and ask the user. \`cancelled\` remains fully forbidden via CLI.
 `;
 
 const SKILL_MANUAL_COMPLETION = `
