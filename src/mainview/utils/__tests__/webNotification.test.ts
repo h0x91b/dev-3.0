@@ -14,6 +14,7 @@ import {
 	webNotificationsSupported,
 	canShowWebNotification,
 	showWebNotificationOrToast,
+	shouldShowRemoteWebNotification,
 	setWebNotificationsSuppressed,
 	BROWSER_NOTIFICATIONS_PREF_KEY,
 	type WebNotificationDetail,
@@ -50,6 +51,7 @@ function uninstallNotification() {
 const baseDetail: WebNotificationDetail = {
 	taskId: "task-1",
 	projectId: "proj-1",
+	kind: "status-change",
 	title: "#42 Fix bug",
 	body: "In Progress → Review",
 	level: "info",
@@ -181,5 +183,19 @@ describe("showWebNotificationOrToast", () => {
 		expect(FakeNotification.instances).toHaveLength(1);
 		FakeNotification.instances[0].onclick?.();
 		expect(onOpen).toHaveBeenCalledWith("task-1", "proj-1");
+	});
+});
+
+describe("shouldShowRemoteWebNotification", () => {
+	it("keeps status changes on narrow remote viewports", () => {
+		expect(shouldShowRemoteWebNotification({ kind: "status-change" }, true)).toBe(true);
+	});
+
+	it("suppresses status changes on wide remote viewports", () => {
+		expect(shouldShowRemoteWebNotification({ kind: "status-change" }, false)).toBe(false);
+	});
+
+	it("keeps non-status notifications on every viewport", () => {
+		expect(shouldShowRemoteWebNotification({ kind: "event" }, false)).toBe(true);
 	});
 });
