@@ -1,4 +1,4 @@
-name: Windows ConPTY package
+name: Packaged Bun runtime
 
 on:
   pull_request:
@@ -10,6 +10,7 @@ on:
       - "scripts/fixtures/windows-conpty-package/**"
       - "scripts/build-windows-terminal-host.ts"
       - "scripts/verify-packaged-windows-conpty.ts"
+      - "scripts/verify-windows-conpty-update-archive.ts"
       - "src/bun/native-terminal-host/**"
       - "src/shared/native-terminal-runtime.ts"
       - "src/bun/prototypes/detached-pty/**"
@@ -19,8 +20,11 @@ permissions:
   contents: read
 
 jobs:
-  package-smoke:
-    runs-on: windows-latest
+  package-runtime:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -34,19 +38,17 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Bundle terminal host entrypoint
+        if: runner.os == 'Windows'
         run: bun run build:native
 
-      - name: Build and verify packaged ConPTY tracer
-        shell: pwsh
-        run: |
-          Push-Location scripts/fixtures/windows-conpty-package
-          bun ../../../node_modules/electrobun/bin/electrobun.cjs build --env=canary
-          Pop-Location
+      - name: Build packaged runtime tracer
+        working-directory: scripts/fixtures/windows-conpty-package
+        run: bun ../../../node_modules/electrobun/bin/electrobun.cjs build --env=canary
 
       - name: Upload package and proof
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v5
         with:
           name: windows-conpty-package
           path: |
             scripts/fixtures/windows-conpty-package/artifacts/
-            scripts/fixtures/windows-conpty-package/build/**/windows-conpty-package-proof.json

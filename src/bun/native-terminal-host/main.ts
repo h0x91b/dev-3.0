@@ -10,11 +10,14 @@ import {
 	unlinkSync,
 	writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { spawn } from "../spawn";
 import {
+	NATIVE_TERMINAL_HOST_READY_MARKER,
 	assertNativeTerminalRuntime,
 	nativeTerminalSpawnError,
+	sameNativeTerminalPath,
+	type NativeTerminalHostProofState,
 } from "../../shared/native-terminal-runtime";
 import { extractPowerShellMarkerPid } from "./pty-proof";
 import { computeTerminalHostReentryArgs } from "./reentry";
@@ -26,35 +29,21 @@ const stateFile = (): string => join(stateDir(), "state.json");
 const stopFile = (): string => join(stateDir(), "stop");
 const logFile = (): string => join(stateDir(), "host.log");
 
-function samePath(left: string, right: string): boolean {
-	return resolve(left).toLowerCase() === resolve(right).toLowerCase();
-}
-
-interface HostState {
-	marker: "DEV3_PACKAGED_DETACHED_HOST_OK";
-	bunVersion: string;
-	hostPid: number;
-	shellPid: number;
-	executable: string;
-	entrypoint: string;
-	ffiModuleAvailable: boolean;
-}
-
 function requireStateDir(): string {
 	const dir = stateDir();
 	if (!dir) throw new Error("DEV3_TERMINAL_HOST_PROOF_DIR is required for the packaged host tracer.");
 	return dir;
 }
 
-function readState(): HostState | null {
+function readState(): NativeTerminalHostProofState | null {
 	try {
-		return JSON.parse(readFileSync(stateFile(), "utf8")) as HostState;
+		return JSON.parse(readFileSync(stateFile(), "utf8")) as NativeTerminalHostProofState;
 	} catch {
 		return null;
 	}
 }
 
-function writeState(state: HostState): void {
+function writeState(state: NativeTerminalHostProofState): void {
 	const temp = `${stateFile()}.${process.pid}.tmp`;
 	writeFileSync(temp, `${JSON.stringify(state)}\n`);
 	renameSync(temp, stateFile());
@@ -97,11 +86,11 @@ async function runHost(): Promise<void> {
 	requireStateDir();
 	assertNativeTerminalRuntime({ platform: process.platform, bunVersion: Bun.version });
 	const expectedExecutable = process.env.DEV3_EXPECT_HOST_EXECUTABLE;
-	if (expectedExecutable && !samePath(process.execPath, expectedExecutable)) {
+	if (expectedExecutable && !sameNativeTerminalPath(process.execPath, expectedExecutable)) {
 		throw new Error(`Detached host re-entered ${process.execPath}; expected ${expectedExecutable}.`);
 	}
 	const stagedEntrypoint = process.env.DEV3_TERMINAL_HOST_ENTRYPOINT;
-	if (stagedEntrypoint && !samePath(process.argv[1], stagedEntrypoint)) {
+	if (stagedEntrypoint && !sameNativeTerminalPath(process.argv[1], stagedEntrypoint)) {
 		throw new Error(`Detached host re-entered ${process.argv[1]}; expected ${stagedEntrypoint}.`);
 	}
 
@@ -178,7 +167,7 @@ async function runHost(): Promise<void> {
 	}
 
 	writeState({
-		marker: "DEV3_PACKAGED_DETACHED_HOST_OK",
+		marker: NATIVE_TERMINAL_HOST_READY_MARKER,
 		bunVersion: Bun.version,
 		hostPid: process.pid,
 		shellPid: powershellPid,

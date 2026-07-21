@@ -12,8 +12,8 @@ describe("packaged native-terminal runtime", () => {
 		expect(assertPackagedConptyRuntime("1.4.0")).toBe("1.4.0");
 	});
 
-	it("rejects a missing, malformed, or older packaged Bun with a clear build fix", () => {
-		for (const version of [undefined, "not-semver", "1.3.13"]) {
+	it("rejects a missing, malformed, prerelease, or older packaged Bun with a clear build fix", () => {
+		for (const version of [undefined, "not-semver", "1.3.13", "1.3.14-beta.1", "1.3.14-canary.7"]) {
 			expect(() => assertPackagedConptyRuntime(version)).toThrow(
 				`Set Electrobun build.bunVersion to Bun >= ${MINIMUM_WINDOWS_CONPTY_BUN_VERSION}`,
 			);

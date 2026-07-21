@@ -12,9 +12,10 @@ export default {
 		bun: {
 			entrypoint: "src/bun/index.ts",
 		},
-		copy: {
-			"../../../dist/native/dev3-terminal-host.js": "native/dev3-terminal-host.js",
-		},
+		copy:
+			process.platform === "win32"
+				? { "../../../dist/native/dev3-terminal-host.js": "native/dev3-terminal-host.js" }
+				: {},
 		win: {
 			bundleCEF: false,
 		},
@@ -24,6 +25,6 @@ export default {
 		generatePatch: false,
 	},
 	scripts: {
-		postBuild: "../../verify-packaged-windows-conpty.ts",
+		postPackage: "../../verify-windows-conpty-update-archive.ts",
 	},
 } satisfies ElectrobunConfig;

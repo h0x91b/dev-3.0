@@ -12,8 +12,14 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
-import { assertPackagedConptyRuntime } from "../src/shared/native-terminal-runtime";
+import { delimiter, join, relative, resolve } from "node:path";
+import {
+	NATIVE_TERMINAL_HOST_READY_MARKER,
+	assertPackagedConptyRuntime,
+	sameNativeTerminalPath,
+	type NativeTerminalHostIdentity,
+	type NativeTerminalHostProofState,
+} from "../src/shared/native-terminal-runtime";
 
 if (process.platform !== "win32") {
 	console.log("[native-terminal-runtime] packaged ConPTY proof skipped outside Windows");
@@ -27,21 +33,11 @@ interface CommandResult {
 	error?: Error;
 }
 
-interface HostVersion {
-	bunVersion: string;
-	executable: string;
-	entrypoint: string;
-	carrier: "bun-runtime-script" | "compiled";
-}
-
-interface HostState {
-	marker: "DEV3_PACKAGED_DETACHED_HOST_OK";
-	bunVersion: string;
-	hostPid: number;
-	shellPid: number;
-	executable: string;
-	entrypoint: string;
-	ffiModuleAvailable: boolean;
+interface PackageSource {
+	root: string;
+	proofDir: string;
+	archivePath: string | null;
+	cleanupDir: string | null;
 }
 
 function findFiles(root: string, name: string): string[] {
@@ -88,33 +84,59 @@ function sha256(path: string): string {
 	return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function samePath(left: string, right: string): boolean {
-	return resolve(left).toLowerCase() === resolve(right).toLowerCase();
+function resolvePackageSource(buildDir: string, system32: string): PackageSource {
+	if (process.env.DEV3_VERIFY_UPDATE_ARCHIVE !== "1") {
+		return { root: buildDir, proofDir: buildDir, archivePath: null, cleanupDir: null };
+	}
+
+	const artifactDir = process.env.ELECTROBUN_ARTIFACT_DIR;
+	const buildEnvironment = process.env.ELECTROBUN_BUILD_ENV;
+	const targetOS = process.env.ELECTROBUN_OS;
+	const targetArch = process.env.ELECTROBUN_ARCH;
+	const appName = process.env.ELECTROBUN_APP_NAME;
+	if (!artifactDir || !buildEnvironment || targetOS !== "win" || !targetArch || !appName) {
+		throw new Error(
+			"Final Electrobun archive proof requires ELECTROBUN_ARTIFACT_DIR, ELECTROBUN_BUILD_ENV, " +
+				"ELECTROBUN_OS=win, ELECTROBUN_ARCH, and ELECTROBUN_APP_NAME.",
+		);
+	}
+	const archivePath = resolve(artifactDir, `${buildEnvironment}-${targetOS}-${targetArch}-${appName}.tar.zst`);
+	if (!existsSync(archivePath)) {
+		throw new Error(`Electrobun did not emit the expected Windows update archive: ${archivePath}`);
+	}
+
+	const zstdPath = resolve(import.meta.dir, `../node_modules/electrobun/dist-win-${targetArch}/zig-zstd.exe`);
+	const tarPath = join(system32, "tar.exe");
+	if (!existsSync(zstdPath)) throw new Error(`Electrobun archive verifier cannot find zig-zstd at ${zstdPath}.`);
+	if (!existsSync(tarPath)) throw new Error(`Electrobun archive verifier cannot find Windows tar at ${tarPath}.`);
+
+	const cleanupDir = mkdtempSync(join(tmpdir(), "dev3-conpty-archive-"));
+	const unpackedDir = join(cleanupDir, "unpacked");
+	mkdirSync(unpackedDir, { recursive: true });
+	try {
+		requireSuccess(
+			run(zstdPath, ["decompress", "-i", archivePath, "-o", "package.tar"], cleanupDir, process.env, 120_000),
+			"Electrobun update archive decompression",
+		);
+		requireSuccess(
+			run(tarPath, ["-xf", "package.tar", "-C", "unpacked"], cleanupDir, process.env, 120_000),
+			"Electrobun update archive extraction",
+		);
+		return { root: unpackedDir, proofDir: artifactDir, archivePath, cleanupDir };
+	} catch (error) {
+		rmSync(cleanupDir, { recursive: true, force: true });
+		throw error;
+	}
 }
 
 const buildDir = process.env.ELECTROBUN_BUILD_DIR;
 if (!buildDir || !existsSync(buildDir)) {
-	throw new Error(`Electrobun postBuild did not provide a valid ELECTROBUN_BUILD_DIR (${buildDir ?? "missing"}).`);
+	throw new Error(`Electrobun did not provide a valid ELECTROBUN_BUILD_DIR (${buildDir ?? "missing"}).`);
 }
-
-const appRuntimes = findFiles(buildDir, "bun.exe");
-if (appRuntimes.length !== 1) {
-	throw new Error(`Expected exactly one Electrobun app runtime under ${buildDir}; found ${appRuntimes.length} bun.exe files.`);
-}
-const packagedAppRuntime = resolve(appRuntimes[0]);
-
-const terminalEntrypoints = findFiles(buildDir, "dev3-terminal-host.js");
-if (terminalEntrypoints.length !== 1) {
-	throw new Error(
-		`Expected exactly one packaged dev3-terminal-host.js under ${buildDir}; found ${terminalEntrypoints.length}. ` +
-			"Run bun run build:native before Electrobun packaging.",
-	);
-}
-const packagedEntrypoint = resolve(terminalEntrypoints[0]);
-
 const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
 if (!systemRoot) throw new Error("Packaged ConPTY verification cannot resolve SystemRoot.");
 const system32 = join(systemRoot, "System32");
+const packageSource = resolvePackageSource(buildDir, system32);
 const cleanDir = mkdtempSync(join(tmpdir(), "dev3-packaged-conpty-"));
 const sessionDir = join(cleanDir, "session");
 const cleanEnv: NodeJS.ProcessEnv = {
@@ -131,6 +153,23 @@ const cleanEnv: NodeJS.ProcessEnv = {
 
 let hostStopped = false;
 try {
+	const appRuntimes = findFiles(packageSource.root, "bun.exe");
+	if (appRuntimes.length !== 1) {
+		throw new Error(
+			`Expected exactly one Electrobun app runtime under ${packageSource.root}; found ${appRuntimes.length} bun.exe files.`,
+		);
+	}
+	const packagedAppRuntime = resolve(appRuntimes[0]);
+
+	const terminalEntrypoints = findFiles(packageSource.root, "dev3-terminal-host.js");
+	if (terminalEntrypoints.length !== 1) {
+		throw new Error(
+			`Expected exactly one packaged dev3-terminal-host.js under ${packageSource.root}; found ${terminalEntrypoints.length}. ` +
+				"Run bun run build:native before Electrobun packaging.",
+		);
+	}
+	const packagedEntrypoint = resolve(terminalEntrypoints[0]);
+
 	const where = run(join(system32, "where.exe"), ["bun.exe"], cleanDir, cleanEnv);
 	if (where.error) throw new Error(`Could not inspect sanitized PATH: ${where.error.message}`);
 	if (where.status === 0) {
@@ -144,14 +183,19 @@ try {
 			"Electrobun app runtime version probe",
 		),
 	);
-	const buildConfigs = findFiles(buildDir, "build.json");
-	if (buildConfigs.length !== 1) {
-		throw new Error(`Expected exactly one packaged build.json under ${buildDir}; found ${buildConfigs.length}.`);
-	}
-	const configuredAppVersion = String(JSON.parse(readFileSync(buildConfigs[0], "utf8")).bunVersion ?? "");
-	if (appRuntimeVersion !== configuredAppVersion) {
+	const buildConfigs = findFiles(packageSource.root, "build.json");
+	if (buildConfigs.length > 1 || (packageSource.archivePath !== null && buildConfigs.length !== 1)) {
 		throw new Error(
-			`Electrobun copied Bun ${appRuntimeVersion}, but packaged build.json declares ${configuredAppVersion || "no version"}.`,
+			`Expected ${packageSource.archivePath ? "exactly one" : "at most one"} packaged build.json ` +
+				`under ${packageSource.root}; found ${buildConfigs.length}.`,
+		);
+	}
+	const buildJsonBunVersion = buildConfigs[0]
+		? String(JSON.parse(readFileSync(buildConfigs[0], "utf8")).bunVersion ?? "")
+		: null;
+	if (buildJsonBunVersion !== null && appRuntimeVersion !== buildJsonBunVersion) {
+		throw new Error(
+			`Electrobun copied Bun ${appRuntimeVersion}, but packaged build.json declares ${buildJsonBunVersion || "no version"}.`,
 		);
 	}
 
@@ -159,14 +203,17 @@ try {
 		run(packagedAppRuntime, [packagedEntrypoint, "version"], cleanDir, cleanEnv),
 		"Packaged terminal host version probe",
 	);
-	const packagedVersion = parseLastJson<HostVersion>(packagedVersionOutput, "Packaged terminal host version probe");
+	const packagedVersion = parseLastJson<NativeTerminalHostIdentity>(
+		packagedVersionOutput,
+		"Packaged terminal host version probe",
+	);
 	if (assertPackagedConptyRuntime(packagedVersion.bunVersion) !== appRuntimeVersion) {
 		throw new Error(`Packaged terminal host reports Bun ${packagedVersion.bunVersion}; expected ${appRuntimeVersion}.`);
 	}
 	if (
 		packagedVersion.carrier !== "bun-runtime-script" ||
-		!samePath(packagedVersion.executable, packagedAppRuntime) ||
-		!samePath(packagedVersion.entrypoint, packagedEntrypoint)
+		!sameNativeTerminalPath(packagedVersion.executable, packagedAppRuntime) ||
+		!sameNativeTerminalPath(packagedVersion.entrypoint, packagedEntrypoint)
 	) {
 		throw new Error(`Packaged terminal host identity mismatch: ${JSON.stringify(packagedVersion)}`);
 	}
@@ -194,12 +241,12 @@ try {
 		run(stagedRuntime, [stagedEntrypoint, "version"], cleanDir, hostEnv),
 		"Staged terminal host version probe",
 	);
-	const stagedVersion = parseLastJson<HostVersion>(stagedVersionOutput, "Staged terminal host version probe");
+	const stagedVersion = parseLastJson<NativeTerminalHostIdentity>(stagedVersionOutput, "Staged terminal host version probe");
 	if (
 		stagedVersion.bunVersion !== appRuntimeVersion ||
 		stagedVersion.carrier !== "bun-runtime-script" ||
-		!samePath(stagedVersion.executable, stagedRuntime) ||
-		!samePath(stagedVersion.entrypoint, stagedEntrypoint)
+		!sameNativeTerminalPath(stagedVersion.executable, stagedRuntime) ||
+		!sameNativeTerminalPath(stagedVersion.entrypoint, stagedEntrypoint)
 	) {
 		throw new Error(
 			`Staged terminal host identity mismatch: expected ${stagedRuntime} with Bun ${appRuntimeVersion}, ` +
@@ -211,15 +258,15 @@ try {
 		run(stagedRuntime, [stagedEntrypoint, "start"], cleanDir, hostEnv, 25_000),
 		"Detached packaged terminal host re-entry",
 	);
-	const state = parseLastJson<HostState>(startOutput, "Detached packaged terminal host re-entry");
+	const state = parseLastJson<NativeTerminalHostProofState>(startOutput, "Detached packaged terminal host re-entry");
 	if (
-		state.marker !== "DEV3_PACKAGED_DETACHED_HOST_OK" ||
+		state.marker !== NATIVE_TERMINAL_HOST_READY_MARKER ||
 		state.bunVersion !== appRuntimeVersion ||
 		state.hostPid <= 0 ||
 		state.shellPid <= 0 ||
 		state.hostPid === state.shellPid ||
-		!samePath(state.executable, stagedRuntime) ||
-		!samePath(state.entrypoint, stagedEntrypoint)
+		!sameNativeTerminalPath(state.executable, stagedRuntime) ||
+		!sameNativeTerminalPath(state.entrypoint, stagedEntrypoint)
 	) {
 		throw new Error(`Detached packaged terminal host returned invalid state: ${JSON.stringify(state)}`);
 	}
@@ -241,7 +288,12 @@ try {
 		marker: state.marker,
 		rawPty: true,
 		systemBunOnPath: false,
+		packageSource: packageSource.archivePath ? "update-archive" : "build-tree",
+		updateArchivePath: packageSource.archivePath,
+		updateArchiveBytes: packageSource.archivePath ? statSync(packageSource.archivePath).size : null,
+		updateArchiveSha256: packageSource.archivePath ? sha256(packageSource.archivePath) : null,
 		electrobunAppBunVersion: appRuntimeVersion,
+		packagedBuildJsonBunVersion: buildJsonBunVersion,
 		terminalHostBunVersion: state.bunVersion,
 		packagedRuntimeBytes: statSync(packagedAppRuntime).size,
 		packagedEntrypointBytes: statSync(packagedEntrypoint).size,
@@ -250,6 +302,12 @@ try {
 		hostArtifactId,
 		packagedRuntimePath: packagedAppRuntime,
 		packagedEntrypointPath: packagedEntrypoint,
+		packagedRuntimeArchiveEntry: packageSource.archivePath
+			? relative(packageSource.root, packagedAppRuntime)
+			: null,
+		packagedEntrypointArchiveEntry: packageSource.archivePath
+			? relative(packageSource.root, packagedEntrypoint)
+			: null,
 		stagedRuntimePath: stagedRuntime,
 		stagedEntrypointPath: stagedEntrypoint,
 		detachedHostImageName: "dev3-terminal-host.exe",
@@ -257,7 +315,7 @@ try {
 		powershellPid: state.shellPid,
 		ffiModuleAvailable: state.ffiModuleAvailable,
 	};
-	writeFileSync(join(buildDir, "windows-conpty-package-proof.json"), `${JSON.stringify(proof, null, 2)}\n`);
+	writeFileSync(join(packageSource.proofDir, "windows-conpty-package-proof.json"), `${JSON.stringify(proof, null, 2)}\n`);
 	console.log(`[native-terminal-runtime] ${JSON.stringify(proof)}`);
 	console.log("[native-terminal-runtime] verified packaged detached re-entry with no Bun available on PATH");
 } finally {
@@ -276,4 +334,5 @@ try {
 		}
 	}
 	rmSync(cleanDir, { recursive: true, force: true });
+	if (packageSource.cleanupDir) rmSync(packageSource.cleanupDir, { recursive: true, force: true });
 }

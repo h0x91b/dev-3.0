@@ -1,4 +1,28 @@
+import { resolve } from "node:path";
+
 export const MINIMUM_WINDOWS_CONPTY_BUN_VERSION = "1.3.14";
+export const NATIVE_TERMINAL_HOST_READY_MARKER = "DEV3_PACKAGED_DETACHED_HOST_OK" as const;
+
+export interface NativeTerminalHostIdentity {
+	bunVersion: string;
+	executable: string;
+	entrypoint: string;
+	carrier: "bun-runtime-script" | "compiled";
+}
+
+export interface NativeTerminalHostProofState {
+	marker: typeof NATIVE_TERMINAL_HOST_READY_MARKER;
+	bunVersion: string;
+	hostPid: number;
+	shellPid: number;
+	executable: string;
+	entrypoint: string;
+	ffiModuleAvailable: boolean;
+}
+
+export function sameNativeTerminalPath(left: string, right: string): boolean {
+	return resolve(left).toLowerCase() === resolve(right).toLowerCase();
+}
 
 interface RuntimeDetails {
 	platform: NodeJS.Platform;
@@ -10,21 +34,29 @@ interface SpawnFailureDetails extends RuntimeDetails {
 	cause: unknown;
 }
 
-function parseVersion(version: unknown): [number, number, number] | null {
+interface ParsedVersion {
+	core: [number, number, number];
+	prerelease: string | null;
+}
+
+function parseVersion(version: unknown): ParsedVersion | null {
 	if (typeof version !== "string") return null;
-	const match = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim());
+	const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version.trim());
 	if (!match) return null;
-	return [Number(match[1]), Number(match[2]), Number(match[3])];
+	return {
+		core: [Number(match[1]), Number(match[2]), Number(match[3])],
+		prerelease: match[4] ?? null,
+	};
 }
 
 function versionAtLeast(version: unknown, minimum: string): version is string {
 	const parsed = parseVersion(version);
 	const floor = parseVersion(minimum);
 	if (!parsed || !floor) return false;
-	for (let index = 0; index < parsed.length; index++) {
-		if (parsed[index] !== floor[index]) return parsed[index] > floor[index];
+	for (let index = 0; index < parsed.core.length; index++) {
+		if (parsed.core[index] !== floor.core[index]) return parsed.core[index] > floor.core[index];
 	}
-	return true;
+	return floor.prerelease !== null || parsed.prerelease === null;
 }
 
 function displayVersion(version: unknown): string {
