@@ -2305,7 +2305,7 @@ describe("TaskInfoPanel", () => {
 				renderPanel(task, { dispatch });
 			});
 
-			const toggle = screen.getAllByRole("button", { name: "Manual completion — merge detection only shows a notice" })[0];
+			const toggle = screen.getAllByRole("button", { name: "I’ll complete it myself — stop completion prompts after merges" })[0];
 			await act(async () => {
 				fireEvent.click(toggle);
 			});
@@ -2319,7 +2319,17 @@ describe("TaskInfoPanel", () => {
 			expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
 		});
 
-		it("persists Manual completion from the merge popup", async () => {
+		it("keeps completion ownership legible in the compact task bar", async () => {
+			mockMatchMedia(true);
+
+			await act(async () => {
+				renderPanel(makeTask({ manualCompletion: true }));
+			});
+
+			expect(screen.getByText("I decide")).toBeInTheDocument();
+		});
+
+		it("persists self-managed completion from the merge popup", async () => {
 			const task = makeTask({ status: "review-by-user" });
 			mockedApi.request.getBranchStatus.mockResolvedValue({
 				...defaultBranchStatus,
@@ -2341,7 +2351,8 @@ describe("TaskInfoPanel", () => {
 			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.objectContaining({
 				confirmLabel: "Complete task",
 				cancelLabel: "Not now",
-				alternativeAction: { label: "Manual completion", value: "manual" },
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				dismissOnBackdrop: false,
 			}));
 		});
 

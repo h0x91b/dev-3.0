@@ -36,6 +36,7 @@ import { IncludeTestsIcon } from "./task-info-panel/GitIcons";
 import {
 	WatchingIcon,
 	WatchIcon,
+	CompletionOwnerIcon,
 	FindBugsIcon,
 	AddAgentIcon,
 	WorktreeSettingsIcon,
@@ -734,10 +735,10 @@ function TaskInfoPanel({
 						: "text-fg-3 hover:text-fg hover:bg-elevated"
 				}`}
 			>
-				<span className="text-[0.95rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF024"}</span>
-				{!compact && (
+				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={task.manualCompletion} />
+				{(!compact || task.manualCompletion) && (
 					<span className="text-[0.6875rem] font-medium">
-						{task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}
+						{compact ? t("task.manualCompletionShort") : task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}
 					</span>
 				)}
 			</button>
@@ -1113,7 +1114,7 @@ function TaskInfoPanel({
 								aria-pressed={task.manualCompletion === true}
 								className={`${SHEET_ROW_CLASS} ${task.manualCompletion ? "border-accent/30 bg-accent/10" : ""}`}
 							>
-								<span className={`text-lg leading-none ${task.manualCompletion ? "text-accent" : "text-fg-3"}`} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF024"}</span>
+				<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${task.manualCompletion ? "text-accent" : "text-fg-3"}`} active={task.manualCompletion} />
 								<span className="flex-1 text-sm font-medium">{task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}</span>
 							</button>
 

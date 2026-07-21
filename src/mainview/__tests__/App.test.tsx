@@ -1752,9 +1752,20 @@ describe("App keyboard shortcuts", () => {
 			});
 			expect(api.request.moveTask).not.toHaveBeenCalled();
 			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({
+				title: "The branch is in the base branch",
+				message: "The merge is complete. Is the task complete too?",
 				confirmLabel: "Complete task",
 				cancelLabel: "Not now",
-				alternativeAction: { label: "Manual completion", value: "manual" },
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				outcomeCards: {
+					kicker: "Branch merged",
+					statusLabel: "Merged",
+					statusValue: "feat/whatever",
+					confirmDescription: "Move the task to Completed now.",
+					cancelDescription: "Keep it open and ask again after the next merge.",
+					alternativeDescription: "Keep it open and stop asking after merges.",
+				},
+				dismissOnBackdrop: false,
 			}));
 		});
 
@@ -1823,7 +1834,7 @@ describe("App keyboard shortcuts", () => {
 			expect(await screen.findByText('Branch of task "Some task" was merged.')).toBeInTheDocument();
 		});
 
-		it("shows when an agent changes the manual-completion policy", async () => {
+		it("shows when an agent changes the merge-prompt policy", async () => {
 			await renderApp();
 			await act(async () => {
 				window.dispatchEvent(new CustomEvent("rpc:manualCompletionChanged", {
@@ -1831,7 +1842,7 @@ describe("App keyboard shortcuts", () => {
 				}));
 			});
 
-			expect(await screen.findByText("Agent enabled manual completion for this task.")).toBeInTheDocument();
+			expect(await screen.findByText("Agent turned off completion prompts for this task.")).toBeInTheDocument();
 		});
 
 		it("does not navigate when user is on a different task's screen", async () => {

@@ -36,7 +36,7 @@ export const tooltips = {
 	"ttip.task.watch":
 		"This changes only this task. To watch every new task automatically, turn on Watch tasks by default in Settings → Behavior.",
 	"ttip.task.manualCompletion":
-		"Keeps merge detection from suggesting completion. Turn it off when the final merge really finishes the task.",
+		"Keeps the task open and makes completion your decision. Turn it off when the final merge should trigger the usual suggestion.",
 	"ttip.task.siblings":
 		"Open the sibling overview to compare variant titles and statuses, then jump to any live variant.",
 	"ttip.task.ports":

@@ -71,13 +71,51 @@ describe("confirm service", () => {
 				message: "Choose what to do",
 				confirmLabel: "Complete task",
 				cancelLabel: "Not now",
-				alternativeAction: { label: "Manual completion", value: "manual" },
+				alternativeAction: { label: "Keep open", value: "keep" },
 			});
 		});
 
-		expect(await screen.findByRole("button", { name: "Manual completion" })).toBeInTheDocument();
-		await user.click(screen.getByRole("button", { name: "Manual completion" }));
-		await expect(result!).resolves.toBe("manual");
+		expect(await screen.findByRole("button", { name: "Keep open" })).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Keep open" }));
+		await expect(result!).resolves.toBe("keep");
+	});
+
+	it("renders outcome cards and ignores backdrop clicks when dismissal is disabled", async () => {
+		const user = userEvent.setup();
+		renderHost();
+		let result: Promise<boolean | string>;
+		act(() => {
+			result = confirm({
+				title: "The branch is in the base branch",
+				message: "The merge is complete. Is the task complete too?",
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				outcomeCards: {
+					kicker: "Branch merged",
+					statusLabel: "Merged",
+					statusValue: "feat/manual-completion",
+					confirmDescription: "Move the task to Completed now.",
+					cancelDescription: "Keep it open and ask again after the next merge.",
+					alternativeDescription: "Keep it open and stop asking after merges.",
+				},
+				dismissOnBackdrop: false,
+			});
+		});
+
+		expect(await screen.findByText("Branch merged")).toBeInTheDocument();
+		expect(screen.getByText("Merged")).toBeInTheDocument();
+		expect(screen.getByText("feat/manual-completion")).toBeInTheDocument();
+		expect(screen.getByText("Move the task to Completed now.")).toBeInTheDocument();
+		expect(screen.getByText("Keep it open and ask again after the next merge.")).toBeInTheDocument();
+		expect(screen.getByText("Keep it open and stop asking after merges.")).toBeInTheDocument();
+
+		const dialog = screen.getByRole("dialog");
+		await user.click(dialog.parentElement!);
+		expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: "Not now" }));
+		await expect(result!).resolves.toBe(false);
 	});
 
 	it("shows the AI agent badge for agent-initiated confirms", async () => {

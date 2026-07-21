@@ -1405,6 +1405,15 @@ function App() {
 							confirmLabel: t("app.branchMergedComplete"),
 							cancelLabel: t("app.branchMergedNotNow"),
 							alternativeAction: { label: t("app.branchMergedManualCompletion"), value: "manual" },
+							outcomeCards: {
+								kicker: t("app.branchMergedKicker"),
+								statusLabel: t("app.branchMergedStatus"),
+								statusValue: branchName,
+								confirmDescription: t("app.branchMergedCompleteDescription"),
+								cancelDescription: t("app.branchMergedNotNowDescription"),
+								alternativeDescription: t("app.branchMergedManualDescription"),
+							},
+							dismissOnBackdrop: false,
 							info: taskDialogInfoFromSubject(taskTitle, subject),
 							signal: abort.signal,
 						});

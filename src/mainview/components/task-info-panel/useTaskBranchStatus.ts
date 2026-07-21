@@ -153,6 +153,15 @@ export function useTaskBranchStatus({
 					confirmLabel: t("app.branchMergedComplete"),
 					cancelLabel: t("app.branchMergedNotNow"),
 					alternativeAction: { label: t("app.branchMergedManualCompletion"), value: "manual" },
+					outcomeCards: {
+						kicker: t("app.branchMergedKicker"),
+						statusLabel: t("app.branchMergedStatus"),
+						statusValue: task.branchName || "",
+						confirmDescription: t("app.branchMergedCompleteDescription"),
+						cancelDescription: t("app.branchMergedNotNowDescription"),
+						alternativeDescription: t("app.branchMergedManualDescription"),
+					},
+					dismissOnBackdrop: false,
 					info: taskDialogInfo(task, project),
 					signal: abort.signal,
 				});
@@ -306,11 +315,23 @@ export function useTaskBranchStatus({
 				try {
 					choice = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
 						confirm({
-							title: t("infoPanel.mergeComplete"),
-							message: t("infoPanel.mergeCompleteMessage"),
+							title: t("app.branchMergedTitle"),
+							message: t("app.branchMergedMessage", {
+								taskTitle: task.customTitle || task.title,
+								branchName: task.branchName || "",
+							}),
 							confirmLabel: t("app.branchMergedComplete"),
 							cancelLabel: t("app.branchMergedNotNow"),
 							alternativeAction: { label: t("app.branchMergedManualCompletion"), value: "manual" },
+							outcomeCards: {
+								kicker: t("app.branchMergedKicker"),
+								statusLabel: t("app.branchMergedStatus"),
+								statusValue: task.branchName || "",
+								confirmDescription: t("app.branchMergedCompleteDescription"),
+								cancelDescription: t("app.branchMergedNotNowDescription"),
+								alternativeDescription: t("app.branchMergedManualDescription"),
+							},
+							dismissOnBackdrop: false,
 							info: taskDialogInfo(task, project),
 							signal: abort.signal,
 						}),
