@@ -62,12 +62,15 @@ if (existsSync(changeLogsDir)) {
 						firstSentence.length > 120
 							? firstSentence.slice(0, 117) + "..."
 							: firstSentence;
+					// Full text, kept only when there's more than the truncated teaser.
+					const body = cleanContent && cleanContent !== title ? cleanContent : undefined;
 
 					entries.push({
 						date: `${year}-${month}-${day}`,
 						type,
 						slug,
 						title: title || slug,
+						...(body && { body }),
 						...(short && { short }),
 						...(suggestedBy && { suggestedBy }),
 						...(issueUrl && { issueUrl }),

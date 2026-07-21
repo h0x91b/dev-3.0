@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import Changelog from "../Changelog";
 import { I18nProvider } from "../../i18n";
 import type { ChangelogEntry } from "../../../shared/types";
@@ -36,19 +37,68 @@ describe("Changelog", () => {
 
 		mockedApi.request.getChangelogs.mockResolvedValue(entries);
 
-		renderChangelog();
+		const { container } = renderChangelog();
 
-		// Wait for entries to load
 		await screen.findByText("Fix on 26th");
 
-		// Get all date headings — they should be in descending order
-		const headings = screen.getAllByRole("heading", { level: 3 });
-		const headingTexts = headings.map((h) => h.textContent);
+		// Each date group is a <section>; its left column carries the formatted date.
+		const sections = container.querySelectorAll("section");
+		expect(sections).toHaveLength(3);
+		const dateTexts = [...sections].map((s) => s.textContent ?? "");
+		expect(dateTexts[0]).toContain("26");
+		expect(dateTexts[1]).toContain("25");
+		expect(dateTexts[2]).toContain("24");
+	});
 
-		// Verify order: Feb 26 → Feb 25 → Feb 24 (descending)
-		expect(headingTexts).toHaveLength(3);
-		expect(headingTexts[0]).toContain("26");
-		expect(headingTexts[1]).toContain("25");
-		expect(headingTexts[2]).toContain("24");
+	it("expands an entry with a body to reveal the full text", async () => {
+		const user = userEvent.setup();
+		const entries: ChangelogEntry[] = [
+			{
+				date: "2026-02-26",
+				type: "feature",
+				slug: "f",
+				title: "Short teaser",
+				body: "Short teaser. And the full detailed body text here.",
+			},
+		];
+		mockedApi.request.getChangelogs.mockResolvedValue(entries);
+		renderChangelog();
+
+		await screen.findByText("Short teaser");
+		expect(screen.queryByText(/full detailed body/)).not.toBeInTheDocument();
+
+		await user.click(screen.getByRole("button", { name: /Short teaser/ }));
+		expect(screen.getByText(/full detailed body/)).toBeInTheDocument();
+
+		// Collapses again on second click.
+		await user.click(screen.getByRole("button", { name: /Short teaser/ }));
+		expect(screen.queryByText(/full detailed body/)).not.toBeInTheDocument();
+	});
+
+	it("does not make an entry without a body clickable", async () => {
+		const entries: ChangelogEntry[] = [
+			{ date: "2026-02-26", type: "fix", slug: "x", title: "Just a one-liner" },
+		];
+		mockedApi.request.getChangelogs.mockResolvedValue(entries);
+		renderChangelog();
+
+		await screen.findByText("Just a one-liner");
+		expect(screen.queryByRole("button", { name: /Just a one-liner/ })).not.toBeInTheDocument();
+	});
+
+	it("filters entries by type", async () => {
+		const user = userEvent.setup();
+		const entries: ChangelogEntry[] = [
+			{ date: "2026-02-26", type: "feature", slug: "a", title: "A feature entry" },
+			{ date: "2026-02-26", type: "fix", slug: "b", title: "A fix entry" },
+		];
+		mockedApi.request.getChangelogs.mockResolvedValue(entries);
+		renderChangelog();
+
+		await screen.findByText("A feature entry");
+		// Filter chips render for each present type; click the "fix" filter.
+		await user.click(screen.getByRole("button", { name: "fix" }));
+		expect(screen.queryByText("A feature entry")).not.toBeInTheDocument();
+		expect(screen.getByText("A fix entry")).toBeInTheDocument();
 	});
 });

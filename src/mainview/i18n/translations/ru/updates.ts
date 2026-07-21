@@ -69,6 +69,12 @@ const updates = {
 	"changelog.chore": "служебное",
 	"changelog.filterLabel": "Фильтр:",
 	"changelog.clearFilter": "сбросить",
+	"changelog.subtitle": "Всё, что мы выпустили, — свежее сверху.",
+	"changelog.entries_one": "{count} запись",
+	"changelog.entries_few": "{count} записи",
+	"changelog.entries_many": "{count} записей",
+	"changelog.entries_other": "{count} записей",
+	"changelog.expandHint": "Нажмите, чтобы прочитать полностью",
 };
 
 export default updates;

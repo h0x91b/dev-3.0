@@ -65,6 +65,10 @@ const updates = {
 	"changelog.chore": "chore",
 	"changelog.filterLabel": "Filter:",
 	"changelog.clearFilter": "clear",
+	"changelog.subtitle": "Everything we've shipped, newest first.",
+	"changelog.entries_one": "{count} entry",
+	"changelog.entries_other": "{count} entries",
+	"changelog.expandHint": "Click to read the full note",
 } as const;
 
 export default updates;

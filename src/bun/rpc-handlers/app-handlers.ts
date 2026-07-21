@@ -589,12 +589,14 @@ async function getChangelogs(): Promise<ChangelogEntry[]> {
 					const title = firstSentence.length > 120
 						? firstSentence.slice(0, 117) + "..."
 						: firstSentence;
+					const body = cleanContent && cleanContent !== title ? cleanContent : undefined;
 
 					entries.push({
 						date: `${year}-${month}-${day}`,
 						type,
 						slug,
 						title: title || slug,
+						...(body && { body }),
 						...(short && { short }),
 						...(suggestedBy && { suggestedBy }),
 						...(issueUrl && { issueUrl }),
