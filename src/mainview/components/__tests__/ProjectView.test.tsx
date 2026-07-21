@@ -105,6 +105,16 @@ describe("ProjectView task-view layout", () => {
 		expect(screen.queryByTestId("workspace")).not.toBeInTheDocument();
 	});
 
+	it("navigates back to the Kanban board from the empty-pane button (wide viewport)", async () => {
+		const navigate = vi.fn();
+		renderView({ taskView: true, navigate });
+		await waitFor(() => expect(screen.getByText("Back to Kanban")).toBeInTheDocument());
+
+		await userEvent.click(screen.getByText("Back to Kanban"));
+
+		expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" });
+	});
+
 	it("renders the task workspace (no placeholder) when a task is active", async () => {
 		const task = { id: "t1", projectId: "p1", title: "T", status: "in-progress" } as unknown as Task;
 		renderView({ activeTaskId: "t1", tasks: [task] });
@@ -206,5 +216,11 @@ describe("ProjectView narrow viewport (mobile zoom)", () => {
 		renderView({ activeTaskId: "t1", tasks: [task] });
 		await waitFor(() => expect(screen.getByTestId("workspace")).toBeInTheDocument());
 		expect(screen.queryByTestId("sidebar")).not.toBeInTheDocument();
+	});
+
+	it("redirects the useless empty task pane back to Kanban", async () => {
+		const navigate = vi.fn();
+		renderView({ taskView: true, navigate });
+		await waitFor(() => expect(navigate).toHaveBeenCalledWith({ screen: "project", projectId: "p1" }));
 	});
 });
