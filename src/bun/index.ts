@@ -28,6 +28,7 @@ import electrobunConfig from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
 
 const log = createLogger("main");
 
@@ -388,6 +389,9 @@ await startRemoteAccessServer({
 // Silent during normal operation — only fires on stalls (e.g. accidental
 // sync I/O, GC pauses, runaway regex).
 startLoopMonitor();
+
+// Reconcile persisted lifecycle hints before background activity starts.
+await rehydrateTaskLifecycles();
 
 // Start background merge detection poller
 startMergeDetectionPoller();

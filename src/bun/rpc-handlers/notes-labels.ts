@@ -1,9 +1,8 @@
 import type { ColumnAgentConfig, CustomColumn, Label, NoteSource, Project, Task, TaskNote, TaskStatus } from "../../shared/types";
 import { LABEL_COLORS } from "../../shared/types";
 import * as data from "../data";
-import { loadSettings } from "../settings";
 import { getPushMessage, log } from "./shared";
-import { activateTask, triggerColumnAgentIfNeeded } from "./task-lifecycle";
+import { dispatchLifecycleEvent } from "../lifecycle/service";
 
 async function createLabel(params: { projectId: string; name: string; color?: string }): Promise<Label> {
 	log.info("→ createLabel", { projectId: params.projectId, name: params.name });
@@ -149,8 +148,11 @@ async function deleteCustomColumn(params: { projectId: string; columnId: string 
 	const tasks = await data.loadTasks(project);
 	const affectedTasks = tasks.filter((task) => task.customColumnId === params.columnId);
 	for (const task of affectedTasks) {
-		const updated = await data.updateTask(project, task.id, { customColumnId: null });
-		getPushMessage()?.("taskUpdated", { projectId: params.projectId, task: updated });
+		await dispatchLifecycleEvent(project.id, task.id, {
+			type: "moveRequested",
+			target: { customColumnId: null },
+			launchColumnAgent: false,
+		}, { project, task });
 	}
 	getPushMessage()?.("projectUpdated", { project: updatedProject });
 	log.info("← deleteCustomColumn done", { removed_from_tasks: affectedTasks.length });
@@ -159,42 +161,14 @@ async function deleteCustomColumn(params: { projectId: string; columnId: string 
 async function moveTaskToCustomColumn(params: { taskId: string; projectId: string; customColumnId: string | null }): Promise<Task> {
 	log.info("→ moveTaskToCustomColumn", params);
 	const project = await data.getProject(params.projectId);
-	let column: CustomColumn | undefined;
 	if (params.customColumnId !== null) {
-		column = (project.customColumns ?? []).find((candidate) => candidate.id === params.customColumnId);
+		const column = (project.customColumns ?? []).find((candidate) => candidate.id === params.customColumnId);
 		if (!column) throw new Error(`Custom column not found: ${params.customColumnId}`);
 	}
-	const task = await data.getTask(project, params.taskId);
-
-	if (params.customColumnId !== null && (task.status === "completed" || task.status === "cancelled")) {
-		log.info("Reopening task into custom column, creating worktree + PTY", { taskId: task.id });
-		const settings = await loadSettings();
-		const wt = await activateTask(project, task, { isReopen: true });
-		const updated = await data.updateTask(project, task.id, {
-			status: "in-progress",
-			worktreePath: wt.worktreePath,
-			branchName: wt.branchName,
-			customColumnId: params.customColumnId,
-		}, { dropPosition: settings.taskDropPosition });
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-		if (column?.agentConfig && updated.worktreePath) {
-			await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn: column });
-		}
-		log.info("← moveTaskToCustomColumn done (reopened)", { taskId: params.taskId });
-		return updated;
-	}
-
-	const settings = await loadSettings();
-	const updated = await data.updateTask(
-		project,
-		params.taskId,
-		{ customColumnId: params.customColumnId },
-		{ dropPosition: settings.taskDropPosition },
-	);
-	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-	if (column?.agentConfig && updated.worktreePath) {
-		await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn: column });
-	}
+	const updated = await dispatchLifecycleEvent(project.id, params.taskId, {
+		type: "moveRequested",
+		target: { customColumnId: params.customColumnId },
+	});
 	log.info("← moveTaskToCustomColumn done", { taskId: params.taskId, customColumnId: params.customColumnId });
 	return updated;
 }

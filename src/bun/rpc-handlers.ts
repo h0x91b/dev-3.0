@@ -43,16 +43,14 @@ export {
 	_resetPRPollerState,
 	checkOpenPRsForPromotion,
 	_setScheduleRandomForTest,
-} from "./rpc-handlers/git-operations";
+} from "./lifecycle/activities";
 export {
-	activateTask,
 	handleBellAutoStatus,
 	isTaskInProgress,
 	moveTask,
-	runCleanupScript,
-	emitTaskSound,
-	triggerColumnAgentIfNeeded,
 } from "./rpc-handlers/task-lifecycle";
+export { activateTask, runCleanupScript, emitTaskSound } from "./lifecycle/executor";
+export { triggerColumnAgentIfNeeded } from "./lifecycle/service";
 export { resolveOperationalProjectConfig } from "./rpc-handlers/settings-config";
 export {
 	launchTaskPty,

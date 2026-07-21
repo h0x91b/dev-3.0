@@ -2,14 +2,14 @@ import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "n
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { socketMetaPathFor, type SocketMeta } from "../shared/socket-meta";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getAllowedTransitions, getTaskTitle, isStatusGuardBlocked, normalizePriority, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
 import { SharedArtifactError, deleteSharedArtifactFiles, pruneSharedArtifacts, saveSharedArtifact } from "./shared-artifacts";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
-import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
+import { getPushMessage, getPushMessageLocal, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -794,51 +794,39 @@ const handlers: Record<string, Handler> = {
 		const resumeKey = sessionId ? `${task.id}:${sessionId}` : null;
 		const rememberedResumeStatus = getCodexApprovalResumeStatus(resumeKey);
 
-		const settings = await loadSettings();
-		const { task: updated, result } = await data.updateTaskWith(
-			project,
-			task.id,
-			(current) => {
-				const target = getCodexHookTargetStatus(
-					event,
-					current.status,
-					project.autoReviewEnabled === true,
-					rememberedResumeStatus,
-				);
-				const changed = target !== null && (
-					current.status !== target || current.customColumnId != null
-				);
-				return {
-					updates: changed ? { status: target, customColumnId: null } : {},
-					result: {
-						changed,
-						oldStatus: current.status,
-						target,
-						resumeStatus: event === "PermissionRequest"
-							&& (current.status === "in-progress" || current.status === "review-by-ai")
-							? current.status
-							: null,
-						clearResumeStatus: rememberedResumeStatus !== undefined
-							&& current.status === "user-questions"
-							&& target === rememberedResumeStatus,
-					},
-				};
-			},
-			{ dropPosition: settings.taskDropPosition },
+		const target = getCodexHookTargetStatus(
+			event,
+			task.status,
+			project.autoReviewEnabled === true,
+			rememberedResumeStatus,
 		);
-		if (resumeKey && result.resumeStatus) {
+		const resumeStatus = event === "PermissionRequest"
+			&& (task.status === "in-progress" || task.status === "review-by-ai")
+			? task.status
+			: null;
+		const clearResumeStatus = rememberedResumeStatus !== undefined
+			&& task.status === "user-questions"
+			&& target === rememberedResumeStatus;
+		let updated = task;
+		let moveAccepted = false;
+		if (target !== null && (task.status !== target || task.customColumnId != null)) {
+			updated = await moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: target,
+				ifStatus: event === "Stop" && task.status === "in-progress"
+					? "in-progress,user-questions"
+					: task.status,
+			});
+			moveAccepted = updated.status === target && updated.customColumnId == null;
+		}
+		if (resumeKey && resumeStatus && moveAccepted) {
 			codexApprovalResumeStatuses.set(resumeKey, {
-				status: result.resumeStatus,
+				status: resumeStatus,
 				expiresAt: Date.now() + CODEX_APPROVAL_RESUME_TTL_MS,
 			});
-		} else if (resumeKey && result.clearResumeStatus) {
+		} else if (resumeKey && clearResumeStatus && moveAccepted) {
 			codexApprovalResumeStatuses.delete(resumeKey);
-		}
-
-		if (result.changed && result.target) {
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			notifyWatchedTaskStatusChange(updated, result.oldStatus, result.target, project.name);
-			await triggerColumnAgentIfNeeded(result.target, project, updated);
 		}
 
 		// Record the Codex session id for this pane (targeted per-pane recovery).
@@ -874,54 +862,17 @@ const handlers: Record<string, Handler> = {
 
 		const ifStatus = params.ifStatus as string | undefined;
 		const ifStatusNot = params.ifStatusNot as string | undefined;
-		const guardOpts = {
-			...(ifStatus ? { ifStatus } : {}),
-			...(ifStatusNot ? { ifStatusNot } : {}),
-		};
-
 		// Check if this is a custom column ID
 		const customColumns = project.customColumns ?? [];
 		const customColumn = findByIdPrefix(customColumns, newStatus, "custom column");
 		if (customColumn) {
-			// Moving from completed/cancelled into a custom column resumes the task
-			if (task.status === "completed" || task.status === "cancelled") {
-				// Pre-check the guard before activateTask so a blocked move does not
-				// leak a worktree/PTY. The authoritative check still runs inside the lock.
-				if (isStatusGuardBlocked(task.status, guardOpts)) {
-					return task;
-				}
-				const settings = await loadSettings();
-				const wt = await activateTask(project, task, { isReopen: true });
-				const updated = await data.updateTask(project, task.id, {
-					status: "in-progress",
-					worktreePath: wt.worktreePath,
-					branchName: wt.branchName,
-					customColumnId: customColumn.id,
-				}, { dropPosition: settings.taskDropPosition, ...guardOpts });
-				if (updated.status === "in-progress" && updated.customColumnId === customColumn.id) {
-					getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-				}
-				// Trigger column agent if configured
-				if (customColumn.agentConfig && updated.worktreePath && updated.customColumnId === customColumn.id) {
-					await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn });
-				}
-				return updated;
-			}
-			const settings = await loadSettings();
-			const updated = await data.updateTask(
-				project,
-				task.id,
-				{ customColumnId: customColumn.id },
-				{ dropPosition: settings.taskDropPosition, ...guardOpts },
-			);
-			if (updated.customColumnId === customColumn.id) {
-				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			}
-			// Trigger column agent if configured
-			if (customColumn.agentConfig && updated.worktreePath && updated.customColumnId === customColumn.id) {
-				await triggerColumnAgentIfNeeded(updated.status, project, updated, { customColumn });
-			}
-			return updated;
+			return moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				customColumnId: customColumn.id,
+				ifStatus,
+				ifStatusNot,
+			});
 		}
 
 		// Validate as a built-in status
@@ -933,66 +884,14 @@ const handlers: Record<string, Handler> = {
 			throw new Error(`Invalid status: "${newStatus}". Valid built-in statuses: ${ALL_STATUSES.join(", ")}${validCustomIds}`);
 		}
 
-		if (task.status === builtinStatus && !task.customColumnId) {
-			return task;
-		}
-
-		// If moving from a custom column to a built-in status, allow any transition from the task's current status
-		const oldStatus = task.status;
-		if (!task.customColumnId) {
-			const allowed = getAllowedTransitions(oldStatus);
-			if (!allowed.includes(builtinStatus)) {
-				throw new Error(
-					`Cannot move task from "${oldStatus}" to "${builtinStatus}". Allowed: ${allowed.join(", ")}`,
-				);
-			}
-		}
-		const settings = await loadSettings();
-		const moveOpts = { dropPosition: settings.taskDropPosition, ...guardOpts } as const;
-
-		// inactive → active: create worktree + PTY
-		if (!isActive(oldStatus) && isActive(builtinStatus)) {
-			// Pre-check the guard before activateTask so a blocked move does not
-			// leak a worktree/PTY. The authoritative check still runs inside the lock.
-			if (isStatusGuardBlocked(oldStatus, guardOpts)) {
-				return task;
-			}
-			const isReopen = oldStatus === "completed" || oldStatus === "cancelled";
-			const wt = await activateTask(project, task, { isReopen });
-
-			const updated = await data.updateTask(project, task.id, {
-				status: builtinStatus,
-				worktreePath: wt.worktreePath,
-				branchName: wt.branchName,
-				customColumnId: null,
-			}, moveOpts);
-			if (updated.status === builtinStatus && !updated.customColumnId) {
-				getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-				notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
-			}
-			return updated;
-		}
-
-		if (isActive(oldStatus) && (builtinStatus === "completed" || builtinStatus === "cancelled")) {
-			return moveTask({
-				taskId: task.id,
-				projectId: project.id,
-				newStatus: builtinStatus,
-				ifStatus,
-				ifStatusNot,
-			});
-		}
-
-		// active → active or status-only change
-		const updated = await data.updateTask(project, task.id, { status: builtinStatus, customColumnId: null }, moveOpts);
-		if (updated.status === builtinStatus && !updated.customColumnId) {
-			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
-			notifyWatchedTaskStatusChange(updated, oldStatus, builtinStatus, project.name);
-
-			await triggerColumnAgentIfNeeded(builtinStatus, project, updated);
-		}
-
-		return updated;
+		return moveTask({
+			taskId: task.id,
+			projectId: project.id,
+			newStatus: builtinStatus,
+			ifStatus,
+			ifStatusNot,
+			enforceAllowedTransition: true,
+		});
 	},
 
 	// Agent-initiated request to complete a task. Blocks until the user

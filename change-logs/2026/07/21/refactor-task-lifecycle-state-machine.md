@@ -1,0 +1,1 @@
+Centralized task activation, preparation, column moves, teardown, and git watchers behind a per-task lifecycle state machine with declared effects and crash recovery. Runtime hints are persisted additively and reconciled with worktree and tmux reality at startup.
