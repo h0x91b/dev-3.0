@@ -113,6 +113,10 @@ gh auth switch --user h0x91b 2>/dev/null || true
 
 **PRs are squash-merged.** Always pass the strategy flag: `gh pr merge --auto --squash <branch>` — a bare `gh pr merge --auto` fails non-interactively.
 
+### Task completion
+
+**Preservation gate (mandatory):** Never move a task to `completed`, and never request completion approval, while the task's work exists only in a disposable worktree. Completion is allowed when either the result is safely preserved in the destination the task requires — commonly a pull request merged into `main`, but it may be an external file, task note, shared artifact, or another explicit destination — or the user explicitly asks to complete the task. A local commit, passing tests, or an open/unmerged pull request is not enough by itself. If the required destination is unclear or the work is not safely preserved, keep the task open and ask the user.
+
 ## Changelog policy
 
 **Every code change gets a changelog entry file** (avoids merge conflicts between parallel agents).

@@ -54,6 +54,8 @@ export interface OfferMergeCompletionParams {
 	 * completes the live task through `moveTaskToStatus`).
 	 */
 	onComplete: () => void;
+	/** Opens the task subject from the dialog and intentionally follows the Not now path. */
+	onOpenTask?: () => void;
 }
 
 /**
@@ -103,7 +105,7 @@ function resolveContext(context: MergeCompletionContext) {
 export async function offerMergeCompletion(
 	params: OfferMergeCompletionParams,
 ): Promise<OfferMergeCompletionOutcome> {
-	const { context, t, reserve = false, force = false, onComplete } = params;
+	const { context, t, reserve = false, force = false, onComplete, onOpenTask } = params;
 	const { taskId, projectId, taskTitle, branchName, info } = resolveContext(context);
 
 	let fingerprint = params.fingerprint;
@@ -130,7 +132,7 @@ export async function offerMergeCompletion(
 	const runPrompt = () =>
 		confirm({
 			...buildMergeCompletionDialogOptions(t, branchName),
-			info,
+			info: onOpenTask ? { ...info, onClick: onOpenTask } : info,
 			signal: abort.signal,
 		});
 

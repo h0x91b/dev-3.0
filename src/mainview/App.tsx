@@ -1402,6 +1402,7 @@ function App() {
 				fingerprint: fingerprint ?? null,
 				shouldPrompt,
 				shouldNotify,
+				onOpenTask: () => openTaskFromNotification(taskId, projectId),
 				onComplete: () => {
 					// If the user is currently inside this task's view, leave it BEFORE
 					// the worktree is destroyed (otherwise TaskTerminal reacts to
@@ -1444,7 +1445,7 @@ function App() {
 		}
 		window.addEventListener("rpc:branchMerged", onBranchMerged);
 		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
-	}, [dispatch, navigate, t]);
+	}, [dispatch, navigate, openTaskFromNotification, t]);
 
 	// Agent-initiated changes are intentionally visible because they change how
 	// future merge events behave; user toggles in the inspector stay silent.
