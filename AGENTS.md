@@ -113,6 +113,10 @@ gh auth switch --user h0x91b 2>/dev/null || true
 
 **PRs are squash-merged.** Always pass the strategy flag: `gh pr merge --auto --squash <branch>` — a bare `gh pr merge --auto` fails non-interactively.
 
+### Task completion
+
+**Never move a task to `completed`, and never request completion approval, until the changes are in a pull request and that pull request is merged into `main`.** A local commit, passing tests, or an open/unmerged pull request is not sufficient; keep the task open for review.
+
 ## Changelog policy
 
 **Every code change gets a changelog entry file** (avoids merge conflicts between parallel agents).

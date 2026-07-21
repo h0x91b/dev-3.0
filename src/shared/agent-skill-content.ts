@@ -99,7 +99,7 @@ const SKILL_COMPLETION_REQUEST = `
 - **Declined** → exit code 6; the session stays alive — continue working or ask what to change.
 - **Timeout** → the dialog may still be open; a later approval completes the task and destroys the session.
 
-Request completion only when the work is truly done (committed, tested, nothing pending). \`cancelled\` remains fully forbidden via CLI.
+**Merge gate (mandatory):** Never move a task to \`completed\`, and never request the completion approval, until the changes are in a pull request and that pull request has been merged into \`main\`. A local commit, passing tests, or an open/unmerged pull request is not sufficient; keep the task open for review. \`cancelled\` remains fully forbidden via CLI.
 `;
 
 const SKILL_MANUAL_COMPLETION = `

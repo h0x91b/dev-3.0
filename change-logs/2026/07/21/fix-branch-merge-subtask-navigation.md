@@ -1,1 +1,1 @@
-The task shown in the branch-merged completion prompt is now clickable. Opening it postpones the prompt and navigates to that task.
+The task shown in the branch-merged completion prompt is now clickable. Opening it postpones the prompt and navigates to that task. The dev3 agent protocol also keeps tasks open until their changes are in a pull request merged into main.

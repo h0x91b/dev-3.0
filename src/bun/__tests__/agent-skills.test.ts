@@ -111,6 +111,14 @@ describe("dev3 skill content", () => {
 		expect(getGenericSkillContent()).toContain("attach it to the current task immediately.");
 	});
 
+	it("gates completion on a pull request merged into main", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain("Never move a task to `completed`, and never request the completion approval");
+			expect(skill).toContain("pull request has been merged into `main`");
+			expect(skill).toContain("A local commit, passing tests, or an open/unmerged pull request is not sufficient");
+		}
+	});
+
 	it("adds conservative dev-server control guidance across agent variants", () => {
 		expect(getCodexSkillContent()).toContain("## Dev Server Control");
 		expect(getCodexSkillContent()).toContain("`dev3 dev-server status` is low-risk");
