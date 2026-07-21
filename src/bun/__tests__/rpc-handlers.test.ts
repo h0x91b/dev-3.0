@@ -7657,6 +7657,51 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		}
 	});
 
+	it("preserves the task assignment while attributing the hunter pane", async () => {
+		const project = makeProject();
+		let persistedTask = makeTask({
+			id: "abcd1234-full-id",
+			worktreePath: "/tmp/wt",
+			agentId: "primary-agent",
+			configId: "primary-config",
+		});
+		(data.getProject as any).mockResolvedValue(project);
+		(data.getTask as any).mockImplementation(async () => persistedTask);
+		(data.updateTask as any).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => {
+			persistedTask = { ...persistedTask, ...patch };
+			return persistedTask;
+		});
+		(agents.resolveCommandForAgent as any).mockResolvedValue({
+			command: "claude",
+			extraEnv: {},
+			agent: { id: "hunter-agent", baseCommand: "claude" },
+			config: { id: "hunter-config" },
+		});
+		makeSplitMock(["%10"]);
+
+		await handlers.spawnBugHuntersInTask({
+			taskId: persistedTask.id,
+			projectId: project.id,
+			agentId: "hunter-agent",
+			configId: "hunter-config",
+			count: 1,
+		});
+
+		expect(persistedTask).toMatchObject({
+			agentId: "primary-agent",
+			configId: "primary-config",
+			sessionState: {
+				panes: [
+					expect.objectContaining({
+						paneId: "%10",
+						agentId: "hunter-agent",
+						configId: "hunter-config",
+					}),
+				],
+			},
+		});
+	});
+
 	it("pastes the `$dev3-bug-hunter` prefix for Codex agents", async () => {
 		const project = makeProject();
 		const task = makeTask({ id: "abcd1234-full-id", worktreePath: "/tmp/wt" });
