@@ -1340,3 +1340,16 @@ describe("task (unknown subcommand)", () => {
 		).rejects.toThrow("EXIT_3");
 	});
 });
+
+describe("task list (alias for tasks list)", () => {
+	it("forwards `task list` to the plural tasks.list command", async () => {
+		mockSend.mockResolvedValue(okResp([FAKE_TASK]));
+		await handleTask("list", args([], {}), SOCKET, CTX);
+		expect(mockSend).toHaveBeenCalledWith(
+			SOCKET,
+			"tasks.list",
+			expect.objectContaining({ projectId: "proj-001" }),
+		);
+		expect(stdoutOutput).toContain("Fix the login bug");
+	});
+});

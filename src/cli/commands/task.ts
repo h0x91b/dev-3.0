@@ -8,6 +8,7 @@ import type { ParsedArgs } from "../args";
 import { expandShortId, resolveProjectId, type CliContext } from "../context";
 import { rejectUnknownFlags } from "../flag-validation";
 import { readStdin } from "../stdin";
+import { handleTasks } from "./tasks";
 
 // Statuses that destroy the worktree + terminal are not directly reachable via
 // CLI. `completed` is special-cased: it becomes a blocking approval request the
@@ -355,6 +356,10 @@ export async function handleTask(
 			return updateTask(args, socketPath, context);
 		case "move":
 			return moveTask(args, socketPath, context);
+		case "list":
+			// Alias: the enumerate command lives under the plural `tasks list`.
+			// `task list` is a natural mistype, so forward it transparently.
+			return handleTasks(subcommand, args, socketPath, context);
 		default:
 			exitUsage(
 				`Unknown subcommand: task ${subcommand || "(none)"}` +
