@@ -9,12 +9,9 @@ import {
 } from "../../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../../state";
 import { api } from "../../rpc";
-import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
-import { buildMergeCompletionDialogOptions, runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
-import { createMergePromptAbort } from "../../utils/mergePromptAbort";
-import { taskDialogInfo } from "../../utils/taskDialogInfo";
+import { offerMergeCompletion } from "../../utils/offerMergeCompletion";
 import { startVisibilityAwarePoll } from "../../utils/poll";
 
 interface UseTaskBranchStatusParams {
@@ -126,53 +123,22 @@ export function useTaskBranchStatus({
 			if (!force && status.mergeCompletionFingerprint && mergeDialogShownRef.current === status.mergeCompletionFingerprint) {
 				return;
 			}
+			// Remember this merged head so the 15s poll does not re-offer it every
+			// tick; the primitive re-reserves server-side, this is the client
+			// fast-path guard. Set before the prompt so it also covers notice-only
+			// and suppressed outcomes.
+			if (!force && status.mergeCompletionFingerprint) {
+				mergeDialogShownRef.current = status.mergeCompletionFingerprint;
+			}
 
-			const promptState = await api.request.prepareMergeCompletionPrompt({
-				taskId: task.id,
-				projectId: project.id,
+			await offerMergeCompletion({
+				context: { task, project },
+				t,
 				fingerprint: status.mergeCompletionFingerprint,
+				reserve: true,
 				force,
+				onComplete: completeTask,
 			});
-			if (!force && promptState.fingerprint) mergeDialogShownRef.current = promptState.fingerprint;
-			if (promptState.shouldNotify) {
-				toast.info(t("app.branchMergedToast", { taskTitle: task.customTitle || task.title }), { taskId: task.id });
-				return;
-			}
-			if (!promptState.shouldPrompt) {
-				return;
-			}
-
-			const abort = createMergePromptAbort(task.id);
-			const runPrompt = () =>
-				confirm({
-					...buildMergeCompletionDialogOptions(t, task.branchName || ""),
-					info: taskDialogInfo(task, project),
-					signal: abort.signal,
-				});
-			let choice: boolean | string | null;
-			try {
-				choice = force
-					? await runPrompt()
-					: await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, runPrompt);
-			} finally {
-				abort.cleanup();
-			}
-			if (abort.signal.aborted) return;
-			if (choice === "manual") {
-				try {
-					await api.request.setTaskManualCompletion({ taskId: task.id, projectId: project.id, manualCompletion: true });
-				} catch (err) {
-					toast.error(t("task.manualCompletionChangeFailed", { error: String(err) }), { taskId: task.id });
-				}
-			} else if (choice === true) {
-				completeTask();
-			} else if (choice === false) {
-				await api.request.dismissMergeCompletionPrompt({
-					taskId: task.id,
-					projectId: project.id,
-					fingerprint: promptState.fingerprint,
-				});
-			}
 		},
 		[
 			baseBranch,
@@ -282,47 +248,16 @@ export function useTaskBranchStatus({
 				if (refreshedStatus && (refreshedStatus.insertions > 0 || refreshedStatus.deletions > 0)) {
 					return;
 				}
-				const promptState = await api.request.prepareMergeCompletionPrompt({
-					taskId: task.id,
-					projectId: project.id,
+				if (refreshedStatus?.mergeCompletionFingerprint) {
+					mergeDialogShownRef.current = refreshedStatus.mergeCompletionFingerprint;
+				}
+				await offerMergeCompletion({
+					context: { task, project },
+					t,
 					fingerprint: refreshedStatus?.mergeCompletionFingerprint,
+					reserve: true,
+					onComplete: completeTask,
 				});
-				if (promptState.fingerprint) mergeDialogShownRef.current = promptState.fingerprint;
-				if (promptState.shouldNotify) {
-					toast.info(t("app.branchMergedToast", { taskTitle: task.customTitle || task.title }), { taskId: task.id });
-					return;
-				}
-				if (!promptState.shouldPrompt) return;
-
-				const abort = createMergePromptAbort(task.id);
-				let choice: boolean | string | null;
-				try {
-					choice = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
-						confirm({
-							...buildMergeCompletionDialogOptions(t, task.branchName || ""),
-							info: taskDialogInfo(task, project),
-							signal: abort.signal,
-						}),
-					);
-				} finally {
-					abort.cleanup();
-				}
-				if (abort.signal.aborted) return;
-				if (choice === "manual") {
-					try {
-						await api.request.setTaskManualCompletion({ taskId: task.id, projectId: project.id, manualCompletion: true });
-					} catch (err) {
-						toast.error(t("task.manualCompletionChangeFailed", { error: String(err) }), { taskId: task.id });
-					}
-				} else if (choice === true) {
-					completeTask();
-				} else if (choice === false) {
-					await api.request.dismissMergeCompletionPrompt({
-						taskId: task.id,
-						projectId: project.id,
-						fingerprint: promptState.fingerprint,
-					});
-				}
 			}
 		}
 

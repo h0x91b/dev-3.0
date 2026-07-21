@@ -17,7 +17,6 @@ const common = {
 	"app.branchMergedManualDescription": "Оставить открытой и больше не спрашивать после merge.",
 	"app.manualCompletionAgentEnabled": "Агент отключил вопросы о завершении для этой задачи.",
 	"app.manualCompletionAgentDisabled": "Агент снова включил предложения о завершении после merge.",
-	"app.manualCompletionChangeFailed": "Не удалось изменить вопросы о завершении: {error}",
 	"app.agentCompletionTitle": "Агент просит завершить задачу",
 	"app.agentCompletionMessage": "ИИ-агент, работающий над этой задачей, сообщает, что полностью закончил, и просит перевести задачу в «Завершено».\n\nПодтверждение уничтожит worktree и терминальную сессию.",
 	"app.agentCompletionConfirm": "Завершить задачу",
