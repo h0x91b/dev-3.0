@@ -1,7 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import UpdatePopoverSimulator from "../UpdatePopoverSimulator";
-import { I18nProvider, useT } from "../../i18n";
+import { render, screen } from "@testing-library/react";
+import UpdatePopoverSimulatorModal from "../UpdatePopoverSimulatorModal";
+import { I18nProvider } from "../../i18n";
 import type { UpdatePopoverPreview } from "../../../shared/types";
 
 const getAppVersion = vi.fn();
@@ -11,15 +10,10 @@ vi.mock("../../rpc", () => ({
 	api: { request: { getAppVersion: (...a: unknown[]) => getAppVersion(...a), previewUpdatePopover: (...a: unknown[]) => previewUpdatePopover(...a) } },
 }));
 
-function Harness() {
-	const t = useT();
-	return <UpdatePopoverSimulator t={t} />;
-}
-
-function renderSim() {
+function renderModal() {
 	return render(
 		<I18nProvider>
-			<Harness />
+			<UpdatePopoverSimulatorModal onClose={() => {}} />
 		</I18nProvider>,
 	);
 }
@@ -27,36 +21,26 @@ function renderSim() {
 const PREVIEW: UpdatePopoverPreview = {
 	available: true,
 	changelog: { features: ["Dark mode toggle", "Swipe to dismiss"], featureCount: 3, fixCount: 4 },
-	diagnostics: { prevTag: "v1.2.3", usedFallback: false, windowFiles: ["feature-dark-mode", "fix-toast", "refactor-cleanup"], totalEntries: 42, includesUncommitted: true, mergedPRs: 12 },
+	diagnostics: {
+		prevTag: "v1.2.3",
+		usedFallback: false,
+		windowFiles: ["feature-dark-mode", "fix-toast", "refactor-cleanup"],
+		totalEntries: 42,
+		includesUncommitted: true,
+		mergedPRs: 12,
+	},
 };
 
 beforeEach(() => {
 	getAppVersion.mockReset();
 	previewUpdatePopover.mockReset();
-});
-
-describe("UpdatePopoverSimulator gate", () => {
-	it("renders nothing on non-dev builds", async () => {
-		getAppVersion.mockResolvedValue({ version: "1.2.4", channel: "stable", buildChannel: "stable" });
-		renderSim();
-		await waitFor(() => expect(getAppVersion).toHaveBeenCalled());
-		expect(screen.queryByText("Preview update popover")).toBeNull();
-	});
-
-	it("shows the trigger button on the dev build channel", async () => {
-		getAppVersion.mockResolvedValue({ version: "1.2.4", channel: "dev", buildChannel: "dev" });
-		renderSim();
-		expect(await screen.findByText("Preview update popover")).toBeTruthy();
-	});
+	getAppVersion.mockResolvedValue({ version: "1.2.4", channel: "dev", buildChannel: "dev" });
 });
 
 describe("UpdatePopoverSimulatorModal", () => {
 	it("renders the popover 1:1 with a disabled Restart and shows diagnostics", async () => {
-		getAppVersion.mockResolvedValue({ version: "1.2.4", channel: "dev", buildChannel: "dev" });
 		previewUpdatePopover.mockResolvedValue(PREVIEW);
-		renderSim();
-
-		await userEvent.click(await screen.findByText("Preview update popover"));
+		renderModal();
 
 		// Popover feature titles + rollup.
 		expect(await screen.findByText("Dark mode toggle")).toBeTruthy();
@@ -78,16 +62,14 @@ describe("UpdatePopoverSimulatorModal", () => {
 	});
 
 	it("shows the unavailable state when the preview is not available", async () => {
-		getAppVersion.mockResolvedValue({ version: "1.2.4", channel: "dev", buildChannel: "dev" });
 		previewUpdatePopover.mockResolvedValue({
 			available: false,
 			reason: "no-change-logs-dir",
 			changelog: null,
 			diagnostics: { prevTag: null, usedFallback: false, windowFiles: [], totalEntries: 0, includesUncommitted: true, mergedPRs: 0 },
 		} satisfies UpdatePopoverPreview);
-		renderSim();
+		renderModal();
 
-		await userEvent.click(await screen.findByText("Preview update popover"));
 		expect(await screen.findByText(/Not available/)).toBeTruthy();
 		expect(screen.getByText("no-change-logs-dir")).toBeTruthy();
 	});

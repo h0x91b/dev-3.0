@@ -348,6 +348,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "help-keyboard-shortcuts":
 			window.dispatchEvent(new CustomEvent("menu:show-keyboard-shortcuts"));
 			return;
+		case "update-popover-preview":
+			window.dispatchEvent(new CustomEvent("menu:show-update-popover-preview"));
+			return;
 		case "help-explain-screen":
 			window.dispatchEvent(new CustomEvent("menu:enter-help-mode"));
 			return;
@@ -381,7 +384,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"about", "hard-refresh",
 	// View / navigation
 	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",
-	"go-back", "go-forward", "gauge-demo", "viewport-lab",
+	"go-back", "go-forward", "gauge-demo", "viewport-lab", "update-popover-preview",
 	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
 	// Project
 	"project-settings", "project-pull-main", "project-create-pr",

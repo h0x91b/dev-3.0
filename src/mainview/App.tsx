@@ -35,6 +35,7 @@ import { setToastSuppressed, ToastHost, toast, type ToastEntry } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
 import KeyboardShortcutsModal, { type ShortcutsTab } from "./components/KeyboardShortcutsModal";
+import UpdatePopoverSimulatorModal from "./components/UpdatePopoverSimulatorModal";
 import RemoteAccessExposedPorts from "./components/RemoteAccessExposedPorts";
 import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
@@ -202,17 +203,22 @@ function App() {
 		open: false,
 		tab: "app",
 	});
+	// Dev-only update-popover simulator (View → Debug → Update Popover Preview).
+	const [updatePreviewOpen, setUpdatePreviewOpen] = useState(false);
 	useEffect(() => {
 		function onShowTmux() { setShortcutsModal({ open: true, tab: "terminal" }); }
 		function onShowKeyboard() { setShortcutsModal({ open: true, tab: "app" }); }
 		function onEnterHelpMode() { setHelpMode(true); }
+		function onShowUpdatePreview() { setUpdatePreviewOpen(true); }
 		window.addEventListener("menu:show-tmux-cheat-sheet", onShowTmux);
 		window.addEventListener("menu:show-keyboard-shortcuts", onShowKeyboard);
 		window.addEventListener("menu:enter-help-mode", onEnterHelpMode);
+		window.addEventListener("menu:show-update-popover-preview", onShowUpdatePreview);
 		return () => {
 			window.removeEventListener("menu:show-tmux-cheat-sheet", onShowTmux);
 			window.removeEventListener("menu:show-keyboard-shortcuts", onShowKeyboard);
 			window.removeEventListener("menu:enter-help-mode", onEnterHelpMode);
+			window.removeEventListener("menu:show-update-popover-preview", onShowUpdatePreview);
 		};
 	}, []);
 
@@ -2412,6 +2418,7 @@ function App() {
 				onTabChange={(tab) => setShortcutsModal((s) => ({ ...s, tab }))}
 				onClose={() => setShortcutsModal((s) => ({ ...s, open: false }))}
 			/>
+			{updatePreviewOpen && <UpdatePopoverSimulatorModal onClose={() => setUpdatePreviewOpen(false)} />}
 			<ConfirmHost />
 			{imageViewer && (
 				<TaskImageViewer

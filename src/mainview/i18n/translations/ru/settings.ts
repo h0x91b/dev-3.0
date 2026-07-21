@@ -44,8 +44,6 @@ const settings = {
 	"settings.devTools": "Инструменты разработчика",
 	"settings.installDev3Cli": "Установить dev3 CLI",
 	"settings.installDev3CliDesc": "Создать симлинк на CLI из этого инстанса в ~/.dev3.0/bin/dev3",
-	"settings.previewUpdatePopover": "Превью попапа обновления",
-	"settings.previewUpdatePopoverDesc": "Симуляция попапа «что нового» для следующего релиза по локальным change-logs.",
 	"settings.agents": "Кодинг-агенты",
 	"settings.addAgent": "Добавить агента",
 	"settings.agentName": "Название",
