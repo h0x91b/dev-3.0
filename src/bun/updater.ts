@@ -2,6 +2,7 @@ import { Updater } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { isNewerVersion } from "../shared/version";
 import { markQuitConfirmed } from "./quit-manager";
+import type { UpdateChangelog } from "../shared/types";
 
 const log = createLogger("updater");
 
@@ -29,11 +30,13 @@ function withUpdaterLock<T>(fn: () => Promise<T>): Promise<T> {
 interface UpdateJson {
 	version: string;
 	hash: string;
+	changelog?: UpdateChangelog | null;
 }
 
 interface UpdateCheckResult {
 	updateAvailable: boolean;
 	version: string;
+	changelog?: UpdateChangelog;
 	error?: string;
 }
 
@@ -88,6 +91,7 @@ export async function checkForUpdateWithChannel(channel: string): Promise<Update
 		return {
 			updateAvailable,
 			version: remote.version || "unknown",
+			...(remote.changelog ? { changelog: remote.changelog } : {}),
 		};
 	} catch (err) {
 		const msg = `Failed to check for updates: ${err}`;
@@ -271,7 +275,7 @@ async function doApplyUpdate(): Promise<void> {
 
 export function startAutoCheck(
 	getChannel: () => Promise<string>,
-	onUpdate: (version: string) => void,
+	onUpdate: (version: string, changelog?: UpdateChangelog) => void,
 	onProgress?: (status: string, progress?: number) => void,
 ): void {
 	const doCheck = async () => {
@@ -289,7 +293,7 @@ export function startAutoCheck(
 
 			if (result.updateAvailable) {
 				log.info("Auto-check found update", { version: result.version });
-				onUpdate(result.version);
+				onUpdate(result.version, result.changelog);
 			} else {
 				onProgress?.("idle");
 			}

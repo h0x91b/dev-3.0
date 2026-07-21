@@ -20,6 +20,12 @@ const updates = {
 	"update.upToDateVersion": "Tienes la última versión — v{version}",
 	"update.checkFailedDetail": "Error al buscar actualizaciones: {error}",
 	"update.applyFailed": "No se pudo aplicar la actualización: {error}",
+	"update.whatsNewVersion": "Novedades en v{version}",
+	"update.seeAllChanges": "Ver todos los cambios",
+	"update.moreFeatures_one": "+{count} novedad más",
+	"update.moreFeatures_other": "+{count} novedades más",
+	"update.fixCount_one": "{count} corrección",
+	"update.fixCount_other": "{count} correcciones",
 
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Versión Intel en Apple Silicon",
@@ -59,6 +65,10 @@ const updates = {
 	"changelog.chore": "chore",
 	"changelog.filterLabel": "Filtrar:",
 	"changelog.clearFilter": "limpiar",
+	"changelog.subtitle": "Todo lo que hemos lanzado, lo más reciente primero.",
+	"changelog.entries_one": "{count} entrada",
+	"changelog.entries_other": "{count} entradas",
+	"changelog.expandHint": "Haz clic para leer la nota completa",
 };
 
 export default updates;

@@ -5,7 +5,7 @@ import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNoti
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
-import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus } from "../shared/types";
+import type { CodingAgent, GlobalSettings as GlobalSettingsType, Project, RemoteNetInterface, RequirementCheckResult, RosettaWarningInfo, SharedArtifact, SharedImage, Task, TaskDialogSubject, TaskStatus, UpdateChangelog } from "../shared/types";
 import { orderProjectsForDisplay, taskSeqLabel } from "../shared/types";
 import { useGlobalShortcut } from "./hooks/useGlobalShortcut";
 import { isRemote } from "./utils/platform";
@@ -275,6 +275,8 @@ function App() {
 
 	// Silent update indicator
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+	// "What's new" summary for the ready update (features-first), shown in the header popover
+	const [updateChangelog, setUpdateChangelog] = useState<UpdateChangelog | null>(null);
 	// Download progress: null = idle, "checking" | "downloading" | "error"
 	const [updateDownloadStatus, setUpdateDownloadStatus] = useState<string | null>(null);
 	const updateStatusShownAtRef = useRef<number>(0);
@@ -1500,8 +1502,9 @@ function App() {
 	// Listen for silent update ready notification
 	useEffect(() => {
 		function onUpdateAvailable(e: Event) {
-			const { version } = (e as CustomEvent).detail;
+			const { version, changelog } = (e as CustomEvent).detail as { version: string; changelog?: UpdateChangelog };
 			setUpdateVersion(version);
+			setUpdateChangelog(changelog ?? null);
 			setUpdateDownloadStatus(null); // clear download indicator once ready
 		}
 		window.addEventListener("rpc:updateAvailable", onUpdateAvailable);
@@ -2006,6 +2009,7 @@ function App() {
 						canGoBack={state.historyIndex > 0}
 						canGoForward={state.historyIndex < state.routeHistory.length - 1}
 						updateVersion={updateVersion}
+						updateChangelog={updateChangelog}
 						updateDownloadStatus={updateDownloadStatus}
 						remoteAccessActive={remoteAccessActive}
 					/>

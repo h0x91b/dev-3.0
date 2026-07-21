@@ -47,20 +47,31 @@ if (existsSync(changeLogsDir)) {
 						}
 					}
 
-					// Strip the "Suggested by" line before extracting title
-					const cleanContent = content.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "").trim();
+					// Optional "Short: …" line — the ≤6-word title for the update popover
+					const shortMatch = content.match(/^Short:\s*(.+)$/im);
+					const short = shortMatch ? shortMatch[1].trim() : undefined;
+
+					// Strip the "Short:" and "Suggested by" lines before extracting the title
+					const cleanContent = content
+						.replace(/^Short:\s*.+$/im, "")
+						.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "")
+						.trim();
 					const firstSentence =
 						cleanContent.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
 					const title =
 						firstSentence.length > 120
 							? firstSentence.slice(0, 117) + "..."
 							: firstSentence;
+					// Full text, kept only when there's more than the truncated teaser.
+					const body = cleanContent && cleanContent !== title ? cleanContent : undefined;
 
 					entries.push({
 						date: `${year}-${month}-${day}`,
 						type,
 						slug,
 						title: title || slug,
+						...(body && { body }),
+						...(short && { short }),
 						...(suggestedBy && { suggestedBy }),
 						...(issueUrl && { issueUrl }),
 						...(issueRef && { issueRef }),

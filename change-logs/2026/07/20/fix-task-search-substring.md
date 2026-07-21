@@ -1,1 +1,3 @@
+Short: Sharper task search matching
+
 Fixed the Kanban filter bar and Active Tasks sidebar matching almost every task for short or numeric queries. Free-text search now requires each typed word to literally occur in a task's title or description (substring, any order) instead of a loose fuzzy subsequence, so a query like "1172" finds the task you meant rather than everything with those digits scattered around.

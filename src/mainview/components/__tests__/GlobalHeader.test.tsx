@@ -2,7 +2,7 @@ import { render, screen, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import GlobalHeader from "../GlobalHeader";
 import { I18nProvider } from "../../i18n";
-import type { Project, Task } from "../../../shared/types";
+import type { Project, Task, UpdateChangelog } from "../../../shared/types";
 import type { Route } from "../../state";
 
 vi.mock("../../rpc", () => ({
@@ -128,6 +128,7 @@ function renderHeader(
 	tasks: Task[] = [],
 	extra?: {
 		updateVersion?: string | null;
+		updateChangelog?: UpdateChangelog | null;
 		updateDownloadStatus?: string | null;
 		remoteAccessActive?: boolean;
 		goBack?: () => void;
@@ -148,6 +149,7 @@ function renderHeader(
 				canGoBack={extra?.canGoBack ?? false}
 				canGoForward={extra?.canGoForward ?? false}
 				updateVersion={extra?.updateVersion}
+				updateChangelog={extra?.updateChangelog}
 				updateDownloadStatus={extra?.updateDownloadStatus}
 				remoteAccessActive={extra?.remoteAccessActive ?? false}
 			/>
@@ -374,6 +376,51 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		);
 		expect(screen.queryByText("Downloading...")).not.toBeInTheDocument();
 		expect(screen.queryByText("Checking...")).not.toBeInTheDocument();
+	});
+
+	it("renders the what's-new changelog section in the update dropdown", async () => {
+		const user = userEvent.setup();
+		const changelog: UpdateChangelog = {
+			features: ["Terminal scrollback search", "PR review threads in diff"],
+			featureCount: 5,
+			fixCount: 4,
+		};
+		renderHeader({ screen: "dashboard" }, [project1, project2], vi.fn(), [], {
+			updateVersion: "1.38.0",
+			updateChangelog: changelog,
+		});
+
+		await user.click(screen.getByRole("button", { name: /Version 1\.38\.0 is ready/i }));
+
+		expect(screen.getByText("What's new in v1.38.0")).toBeInTheDocument();
+		expect(screen.getByText("Terminal scrollback search")).toBeInTheDocument();
+		expect(screen.getByText("PR review threads in diff")).toBeInTheDocument();
+		// 5 total features, 2 shown → "+3 more features · 4 fixes"
+		expect(screen.getByText("+3 more features · 4 fixes")).toBeInTheDocument();
+	});
+
+	it("navigates to the changelog screen from 'See all changes'", async () => {
+		const user = userEvent.setup();
+		const navigate = vi.fn();
+		renderHeader({ screen: "dashboard" }, [project1, project2], navigate, [], {
+			updateVersion: "1.38.0",
+			updateChangelog: { features: ["A feature"], featureCount: 1, fixCount: 0 },
+		});
+
+		await user.click(screen.getByRole("button", { name: /Version 1\.38\.0 is ready/i }));
+		await user.click(screen.getByText(/See all changes/));
+		expect(navigate).toHaveBeenCalledWith({ screen: "changelog" });
+	});
+
+	it("omits the what's-new section when no changelog is provided", async () => {
+		const user = userEvent.setup();
+		renderHeader({ screen: "dashboard" }, [project1, project2], vi.fn(), [], {
+			updateVersion: "1.38.0",
+		});
+		await user.click(screen.getByRole("button", { name: /Version 1\.38\.0 is ready/i }));
+		expect(screen.queryByText("What's new in v1.38.0")).not.toBeInTheDocument();
+		// The dropdown still opened — its restart button (exact, no countdown suffix) is present.
+		expect(screen.getByText("Restart to Update")).toBeInTheDocument();
 	});
 
 	it("toggles dropdown open/close on repeated chevron clicks", async () => {

@@ -727,7 +727,7 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 				sendUpdateProgress("downloading", 0);
 				const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 				if (dlResult.ok) {
-					broadcastToAllWindows("updateAvailable", { version: result.version });
+					broadcastToAllWindows("updateAvailable", { version: result.version, changelog: result.changelog });
 				} else {
 					sendUpdateProgress("error");
 					sendToFocusedWindow("updateCheckOutcome", { status: "error", detail: dlResult.error || "Download failed" });
@@ -784,14 +784,14 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 
 startAutoCheck(
 	() => loadSettings().then((s) => s.updateChannel),
-	async (version) => {
+	async (version, changelog) => {
 		log.info("Auto-check found update, downloading silently...", { version });
 		const settings = await loadSettings();
 		sendUpdateProgress("downloading", 0);
 		const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 		if (dlResult.ok) {
 			log.info("Auto-download complete, notifying renderer", { version });
-			broadcastToAllWindows("updateAvailable", { version });
+			broadcastToAllWindows("updateAvailable", { version, changelog });
 		} else {
 			log.error("Auto-download failed", { error: dlResult.error });
 			sendUpdateProgress("error");

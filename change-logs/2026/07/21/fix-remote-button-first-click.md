@@ -1,1 +1,3 @@
+Short: Remote button opens on first click
+
 Fixed the header Remote (QR) button needing several clicks to open. It now shows the QR modal instantly on the first click and brings the public Cloudflare tunnel up in the background, instead of blocking the open on the tunnel handshake (which could freeze the button for up to ~35s when cloudflared was installed).

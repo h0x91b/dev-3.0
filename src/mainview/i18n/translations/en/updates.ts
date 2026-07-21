@@ -20,6 +20,12 @@ const updates = {
 	"update.upToDateVersion": "You're up to date — v{version}",
 	"update.checkFailedDetail": "Update check failed: {error}",
 	"update.applyFailed": "Couldn't apply the update: {error}",
+	"update.whatsNewVersion": "What's new in v{version}",
+	"update.seeAllChanges": "See all changes",
+	"update.moreFeatures_one": "+{count} more feature",
+	"update.moreFeatures_other": "+{count} more features",
+	"update.fixCount_one": "{count} fix",
+	"update.fixCount_other": "{count} fixes",
 
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Intel build on Apple Silicon",
@@ -59,6 +65,10 @@ const updates = {
 	"changelog.chore": "chore",
 	"changelog.filterLabel": "Filter:",
 	"changelog.clearFilter": "clear",
+	"changelog.subtitle": "Everything we've shipped, newest first.",
+	"changelog.entries_one": "{count} entry",
+	"changelog.entries_other": "{count} entries",
+	"changelog.expandHint": "Click to read the full note",
 } as const;
 
 export default updates;

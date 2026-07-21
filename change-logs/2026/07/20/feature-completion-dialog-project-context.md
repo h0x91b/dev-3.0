@@ -1,1 +1,3 @@
+Short: Task context in confirm dialogs
+
 Every task completion / branch-merged confirm dialog now shows the full task context — task id, project name, priority, labels and overview — so you always know which project a session-destroying prompt belongs to, even when it fires while you are on another board. This covers the agent completion request, the branch-merged prompt (both the background poller and the info-panel merge check), and the manual complete/cancel warning, all sharing one context card.

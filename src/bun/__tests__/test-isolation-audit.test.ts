@@ -51,6 +51,9 @@ describe("test isolation audit", () => {
 	it("routes production scratch files through the test-aware temp helper", () => {
 		const failures = filesUnder(join(REPO_ROOT, "src/bun"))
 			.filter((path) => !path.includes("/__tests__/"))
+			// changelog-bundled.ts is generated changelog DATA (entry bodies), not source —
+			// an entry may legitimately mention a "/tmp/dev3-…" path as documentation.
+			.filter((path) => !path.endsWith("changelog-bundled.ts"))
 			.filter((path) => /\/tmp\/dev3-/.test(readFileSync(path, "utf8")))
 			.map((path) => relative(REPO_ROOT, path));
 

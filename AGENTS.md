@@ -126,6 +126,7 @@ gh auth switch --user h0x91b 2>/dev/null || true
 Rules:
 - Include the changelog file in the same commit as the code change.
 - Slug must be unique and descriptive enough that parallel agents don't collide.
+- **`Short:` line (mandatory for `feature-` entries):** first line `Short: <≤6 words, no trailing period>`, then a blank line, then the content. It feeds the update-ready popover's "what's new" preview (features lead it); the full first sentence still drives the Changelog screen. `fix-` entries add one when user-visible; otherwise a crude fallback is derived. See `change-logs/README.md`.
 - **One worktree = one changelog file** — a single task produces exactly one entry for the whole session, not one per commit or per feature; if the task evolves, update/append the existing file.
 - **Credit community contributors:** if the change originated from a GitHub issue by an external user, end the file with a blank line then `Suggested by @username (h0x91b/dev-3.0#N)` — parsed into `suggestedBy`/`issueRef`/`issueUrl` and shown in the changelog UI as a linked credit. Example: `Suggested by @roiros (h0x91b/dev-3.0#191)`.
 - Full format spec: `change-logs/README.md`.
