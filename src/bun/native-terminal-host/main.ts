@@ -19,7 +19,7 @@ import {
 	sameNativeTerminalPath,
 	type NativeTerminalHostProofState,
 } from "../../shared/native-terminal-runtime";
-import { extractPowerShellMarkerPid } from "./pty-proof";
+import { extractPowerShellMarkerPid, powerShellStartupArgs } from "./pty-proof";
 import { computeTerminalHostReentryArgs, requireLiveTerminalHostState } from "./reentry";
 import { resolvesWithin } from "./wait-with-timeout";
 
@@ -117,7 +117,7 @@ async function runHost(): Promise<void> {
 	const decoder = new TextDecoder();
 	const proc = (() => {
 		try {
-			return spawn([powershell, "-NoLogo", "-NoProfile"], {
+			return spawn([powershell, ...powerShellStartupArgs(marker)], {
 				cwd: process.cwd(),
 				env: { ...process.env, TERM: "xterm-256color" },
 				terminal: {
@@ -153,7 +153,6 @@ async function runHost(): Promise<void> {
 		});
 	}
 
-	proc.terminal.write(`Write-Output \"${marker}:$PID\"\r`);
 	const startup = await resolvesWithin(markerSeen, 10_000);
 	const powershellPid = extractPowerShellMarkerPid(output, marker);
 	captureStartup = false;

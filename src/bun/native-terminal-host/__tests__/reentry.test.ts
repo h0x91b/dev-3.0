@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NATIVE_TERMINAL_HOST_READY_MARKER, type NativeTerminalHostProofState } from "../../../shared/native-terminal-runtime";
-import { extractPowerShellMarkerPid } from "../pty-proof";
+import { extractPowerShellMarkerPid, powerShellStartupArgs } from "../pty-proof";
 import { computeTerminalHostReentryArgs, requireLiveTerminalHostState } from "../reentry";
 import { resolvesWithin } from "../wait-with-timeout";
 
@@ -60,6 +60,17 @@ describe("native terminal host detached re-entry", () => {
 });
 
 describe("PowerShell PTY readiness marker", () => {
+	it("emits the marker from the startup command before interactive input", () => {
+		const marker = "DEV3_HOST_POWERSHELL_abc";
+		expect(powerShellStartupArgs(marker)).toEqual([
+			"-NoLogo",
+			"-NoProfile",
+			"-NoExit",
+			"-Command",
+			`Write-Output "${marker}:$PID"`,
+		]);
+	});
+
 	it("ignores the echoed command until PowerShell expands its PID", () => {
 		const marker = "DEV3_HOST_POWERSHELL_abc";
 		expect(extractPowerShellMarkerPid(`Write-Output \"${marker}:$PID\"`, marker)).toBeNull();
