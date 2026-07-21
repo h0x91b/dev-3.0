@@ -79,6 +79,7 @@ so applications do not stall or render an error state.
 | `line-wrapping.json` | Soft wrapping and wrap markers |
 | `resize-history.json` | Shrink/grow history and post-resize output |
 | `real-nvim.json` | Captured Neovim 0.12.4 full-screen PTY stream |
+| `real-powershell.json` | Captured Windows PowerShell 5.1 ConPTY stream, title, colors, history, and cursor presentation |
 
 Every fixture is replayed into both a fresh headless state holder and a fresh
 Ghostty renderer probe. The latter compares state at detach and again after any
@@ -100,12 +101,21 @@ On Windows, Bun 1.3.14 returned a negative Ghostty WASM allocation pointer durin
 live ingestion even though the same parser passed under Node; keeping the parser
 out of raw capture avoids coupling PTY collection to that runtime-specific bug.
 
-An official PowerShell 7.6.3 macOS arm64 archive was downloaded for the second
-capture, but the execution environment's security policy prohibited extracting
-or running the downloaded binary and explicitly prohibited retries or alternate
-execution routes. `powershell-probe.ps1` is the deterministic stream generator
-to use when an already-approved `pwsh` is available; no PowerShell fixture is
-claimed by this spike.
+`real-powershell.json` was captured from Windows x64 at 100×30 with Bun 1.3.14
+and Windows PowerShell 5.1.19041.6456 Desktop using:
+
+```powershell
+$psExe = (Get-Process -Id $PID).Path
+bun src/bun/prototypes/terminal-state/capture-pty.ts 800 100 30 "$PWD" `
+  "$psExe" -NoLogo -NoProfile -File `
+  ".\src\bun\prototypes\terminal-state\powershell-probe.ps1"
+```
+
+Windows PowerShell 5.1 decoded the UTF-8-without-BOM script literals through its
+legacy source encoding, so the captured Unicode labels are mojibake. The fixture
+is retained byte-for-byte because it still validates real ConPTY output, ANSI
+colors, scrollback, title, cursor presentation, and reconnect replay. The
+synthetic `unicode.json` stream remains the Unicode fidelity fixture.
 
 ## Run
 
@@ -127,8 +137,8 @@ See `BENCHMARKS.md` for the recorded bounded measurements.
   the fixtures, not every OSC or private mode.
 - Hyperlink targets, shell integration metadata, images, sixel, input ordering,
   backpressure, checksums, compression, and snapshot privacy are not designed.
-- The real TUI is macOS Neovim. PowerShell and Windows ConPTY remain unverified
-  until the response-free Windows raw capture is checked in and replayed.
+- The real captures cover macOS Neovim and Windows PowerShell 5.1 ConPTY, but not
+  Linux PTYs, PowerShell 7, or a full-screen Windows TUI.
 
 Removal requires deleting `src/bun/prototypes/terminal-state/` and the two
 terminal-state package scripts. There is no daemon, migration, stored state,

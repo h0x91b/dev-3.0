@@ -143,6 +143,7 @@ const benchmarks = [
 	fixtureCase("active-screen"),
 	fixtureCase("resize-history"),
 	boundedHistoryCase(),
+	fixtureCase("real-powershell"),
 	fixtureCase("real-nvim"),
 ];
 const cases = [];

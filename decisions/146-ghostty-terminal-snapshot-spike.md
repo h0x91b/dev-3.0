@@ -14,8 +14,10 @@ remaining disposable.
 no state export/import; an ordered byte/resize journal therefore gives exact but
 unbounded replay. Xterm headless plus serialize and grapheme addons produced a
 compact ANSI snapshot, but differential replay changed Ghostty's shrink/grow
-history, so matching ordinary cells was insufficient; the full comparison and
-costs are in `src/bun/prototypes/terminal-state/README.md`.
+history, so matching ordinary cells was insufficient. Captured macOS Neovim and
+Windows PowerShell 5.1 streams both replayed into fresh Ghostty cores with
+semantic equivalence; the full comparison and costs are in
+`src/bun/prototypes/terminal-state/README.md`.
 
 ## Decision
 
@@ -35,9 +37,11 @@ memory is inflated because the probe isolates each raw terminal in a separate
 WASM instance after shared-instance create/free churn corrupted grapheme reads.
 Windows Bun 1.3.14 also returned a negative allocation pointer when Ghostty ran
 inside the PTY capture callback, so raw capture no longer instantiates the
-parser; terminal-query responses are an explicit TUI-only option. Metadata
-coverage is intentionally incomplete, and the spike omits transport ordering,
-backpressure, privacy, compression, integrity, images, and rich shell metadata.
+parser; terminal-query responses are an explicit TUI-only option. The real
+PowerShell 5.1 capture also reflects its legacy decoding of UTF-8 script literals,
+so Unicode fidelity remains a separate synthetic assertion. Metadata coverage is
+intentionally incomplete, and the spike omits transport ordering, backpressure,
+privacy, compression, integrity, images, and rich shell metadata.
 
 ## Alternatives considered
 

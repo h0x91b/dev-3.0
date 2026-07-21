@@ -25,6 +25,7 @@ describe("terminal-state renderer replay", () => {
 		"line-wrapping",
 		"resize-history",
 		"real-nvim",
+		"real-powershell",
 	]) {
 		it(`replays the ${name} snapshot into a fresh Ghostty renderer core`, async () => {
 			const fixture = loadFixture(name);

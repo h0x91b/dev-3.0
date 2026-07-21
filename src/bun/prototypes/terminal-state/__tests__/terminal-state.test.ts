@@ -158,7 +158,7 @@ describe("terminal-state snapshot spike", () => {
 		replay.dispose();
 	});
 
-	for (const name of ["line-wrapping", "resize-history", "real-nvim"]) {
+	for (const name of ["line-wrapping", "resize-history", "real-nvim", "real-powershell"]) {
 		it(`restores the ${name} golden fixture`, async () => {
 			const fixture = loadFixture(name);
 			const source = await HeadlessTerminalState.create(fixture.initial);
@@ -167,6 +167,20 @@ describe("terminal-state snapshot spike", () => {
 			expect(sourceState).toMatchObject(fixture.expected);
 			if (name === "real-nvim") {
 				expect(sourceState.screen.some((line) => line.text.includes("NVIM v0.12.4"))).toBe(true);
+			}
+			if (name === "real-powershell") {
+				const event = fixture.events[0];
+				if (event?.type !== "output") throw new Error("PowerShell fixture needs captured output");
+				const captured = decodeCaptureOutput(event);
+				if (typeof captured === "string") throw new Error("PowerShell fixture must retain raw bytes");
+				expect(captured.byteLength).toBe(1051);
+				const lines = [...sourceState.scrollback, ...sourceState.screen];
+				expect(sourceState.scrollback.length).toBeGreaterThan(0);
+				expect(lines.some((line) => line.text.includes("PowerShell 5.1.19041.6456"))).toBe(true);
+				expect(lines.some((line) => line.text.includes("history-24"))).toBe(true);
+				expect(
+					lines.some((line) => line.cells.some((cell) => cell.foreground === "rgb:50a0f0")),
+				).toBe(true);
 			}
 
 			const replay = await replayTerminalSnapshot(source.snapshot());
