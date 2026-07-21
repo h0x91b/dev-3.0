@@ -99,6 +99,7 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 	fields.push(["Updated:", formatDate(task.updatedAt)]);
 	if (task.movedAt) fields.push(["Moved:", formatDate(task.movedAt)]);
 	if (task.notes && task.notes.length > 0) fields.push(["Notes:", String(task.notes.length)]);
+	if (task.manualCompletion === true) fields.push(["Manual completion:", "on"]);
 
 	printDetail(fields);
 
@@ -176,10 +177,10 @@ async function createTask(args: ParsedArgs, socketPath: string, context: CliCont
 }
 
 async function updateTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "force"]);
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "title", "description", "priority", "manual-completion", "force"]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
-		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4]");
+		exitUsage("Usage: dev3 task update <id|--task id|--task-id id|--id id> [--title '...'] [--description '...'] [--priority P0..P4] [--manual-completion on|off]");
 	}
 
 	const params: Record<string, unknown> = { taskId };
@@ -208,12 +209,20 @@ async function updateTask(args: ParsedArgs, socketPath: string, context: CliCont
 		if (!normalized) exitUsage(`--priority must be one of P0, P1, P2, P3, P4 (got "${rawPriority}")`);
 		params.priority = normalized;
 	}
+	const rawManualCompletion = args.flags["manual-completion"];
+	if (rawManualCompletion !== undefined) {
+		const normalized = rawManualCompletion.trim().toLowerCase();
+		if (normalized !== "on" && normalized !== "off") {
+			exitUsage(`--manual-completion must be on or off (got "${rawManualCompletion}")`);
+		}
+		params.manualCompletion = normalized === "on";
+	}
 	if (args.flags.force === "true") {
 		params.force = true;
 	}
 
-	if (params.title === undefined && params.description === undefined && params.priority === undefined) {
-		exitUsage("Provide --title, --description, or --priority to update");
+	if (params.title === undefined && params.description === undefined && params.priority === undefined && rawManualCompletion === undefined) {
+		exitUsage("Provide --title, --description, --priority, or --manual-completion to update");
 	}
 
 	const resp = await sendRequest(socketPath, "task.update", params);

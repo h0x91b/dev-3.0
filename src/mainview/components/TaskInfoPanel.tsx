@@ -389,6 +389,20 @@ function TaskInfoPanel({
 		}
 	}
 
+	async function handleToggleManualCompletion(event: ReactMouseEvent<HTMLButtonElement>) {
+		event.stopPropagation();
+		try {
+			const updated = await api.request.setTaskManualCompletion({
+				taskId: task.id,
+				projectId: project.id,
+				manualCompletion: task.manualCompletion !== true,
+			});
+			dispatch({ type: "updateTask", task: updated });
+		} catch (err) {
+			toast.error(t("task.manualCompletionChangeFailed", { error: String(err) }), { taskId: task.id });
+		}
+	}
+
 	async function handleSetPriority(priority: Task["priority"]) {
 		if (!priority) return;
 		try {
@@ -702,6 +716,31 @@ function TaskInfoPanel({
 				</span>
 			)}
 		</button>
+		</Tooltip>
+	);
+
+	const manualCompletionToggleButton = (
+		<Tooltip
+			content={task.manualCompletion ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
+			detail={t("ttip.task.manualCompletion")}
+		>
+			<button
+				onClick={handleToggleManualCompletion}
+				aria-label={task.manualCompletion ? t("task.manualCompletionEnabledTooltip") : t("task.manualCompletionTooltip")}
+				aria-pressed={task.manualCompletion === true}
+				className={`task-anim flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors flex-shrink-0 ${
+					task.manualCompletion
+						? "text-accent bg-accent/10 border border-accent/25"
+						: "text-fg-3 hover:text-fg hover:bg-elevated"
+				}`}
+			>
+				<span className="text-[0.95rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF024"}</span>
+				{!compact && (
+					<span className="text-[0.6875rem] font-medium">
+						{task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}
+					</span>
+				)}
+			</button>
 		</Tooltip>
 	);
 
@@ -1068,6 +1107,15 @@ function TaskInfoPanel({
 									: <WatchIcon className="h-5 w-5 shrink-0 text-fg-3" />}
 								<span className="flex-1 text-sm font-medium">{task.watched ? t("task.watching") : t("task.watch")}</span>
 							</button>
+							<button
+								type="button"
+								onClick={handleToggleManualCompletion}
+								aria-pressed={task.manualCompletion === true}
+								className={`${SHEET_ROW_CLASS} ${task.manualCompletion ? "border-accent/30 bg-accent/10" : ""}`}
+							>
+								<span className={`text-lg leading-none ${task.manualCompletion ? "text-accent" : "text-fg-3"}`} style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\uF024"}</span>
+								<span className="flex-1 text-sm font-medium">{task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}</span>
+							</button>
 
 							{isTaskActive && task.worktreePath && (
 								<button type="button" onClick={() => setSpawnModalOpen(true)} className={SHEET_ROW_CLASS}>
@@ -1170,6 +1218,7 @@ function TaskInfoPanel({
 					<div className="flex items-center gap-1.5 min-w-0">
 						{variantSwitcher}
 						{watchToggleButton}
+						{manualCompletionToggleButton}
 						{priorityBadge}
 						{statusDropdownButton}
 						{statusDropdownPortal}
@@ -1246,6 +1295,7 @@ function TaskInfoPanel({
 							<div className="flex items-center gap-1.5 min-w-0" data-help-id="inspector.context-bar">
 								{variantSwitcher}
 								{watchToggleButton}
+								{manualCompletionToggleButton}
 								{priorityBadge}
 								{statusDropdownButton}
 								{statusDropdownPortal}

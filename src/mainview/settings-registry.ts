@@ -151,6 +151,15 @@ export const SETTINGS_ENTRIES = [
 		storage: "global",
 	},
 	{
+		id: "suggest-completing-after-merge",
+		category: "tasks",
+		titleKey: "settings.suggestCompletingTasksAfterMerge",
+		descriptionKey: "settings.suggestCompletingTasksAfterMergeDesc",
+		anchor: "suggest-completing-after-merge",
+		globalField: "suggestCompletingTasksAfterMerge",
+		storage: "global",
+	},
+	{
 		id: "task-complete-sound",
 		category: "tasks",
 		titleKey: "settings.taskCompleteSound",
@@ -358,6 +367,7 @@ export const GLOBAL_SETTINGS_FIELDS = [
 	"focusMode",
 	"agentRateLimitTracking",
 	"watchByDefault",
+	"suggestCompletingTasksAfterMerge",
 	"agentsLayoutRevision",
 	"pxpipeProxyEnabled",
 	"favorites",

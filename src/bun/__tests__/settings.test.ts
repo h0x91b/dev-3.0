@@ -158,6 +158,7 @@ describe("saveSettings", () => {
 			focusMode: true,
 			agentRateLimitTracking: false,
 			watchByDefault: true,
+			suggestCompletingTasksAfterMerge: false,
 			agentsLayoutRevision: 1,
 			pxpipeProxyEnabled: true,
 			favorites: [{ agentId: "builtin-codex", configId: "codex-default", uses: 3, lastUsedAt: 123 }],

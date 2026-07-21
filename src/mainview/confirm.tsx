@@ -5,6 +5,11 @@ import PriorityBadge from "./components/PriorityBadge";
 import { useT } from "./i18n";
 import { useFocusTrap } from "./utils/useFocusTrap";
 
+export interface ConfirmAlternativeAction {
+	label: string;
+	value: string;
+}
+
 export interface ConfirmOptions {
 	title: string;
 	message: string;
@@ -49,11 +54,13 @@ export interface ConfirmOptions {
 	 * after awaiting and skip their own resolution side effects.
 	 */
 	signal?: AbortSignal;
+	/** Optional neutral action that resolves with a string value. */
+	alternativeAction?: ConfirmAlternativeAction;
 }
 
 interface PendingConfirm extends ConfirmOptions {
 	id: number;
-	resolve: (value: boolean) => void;
+	resolve: (value: boolean | string) => void;
 }
 
 let listener: ((req: PendingConfirm | null) => void) | null = null;
@@ -70,7 +77,9 @@ let counter = 0;
  * Requires `<ConfirmHost />` to be mounted once (in `App.tsx`). If it is not
  * mounted, the promise resolves `false` (fail-closed) instead of blocking.
  */
-export function confirm(options: ConfirmOptions): Promise<boolean> {
+export function confirm(options: ConfirmOptions & { alternativeAction: ConfirmAlternativeAction }): Promise<boolean | string>;
+export function confirm(options: ConfirmOptions): Promise<boolean>;
+export function confirm(options: ConfirmOptions): Promise<boolean | string> {
 	return new Promise((resolve) => {
 		if (!listener) {
 			resolve(false);
@@ -92,7 +101,7 @@ export function ConfirmHost() {
 
 	if (!pending) return null;
 
-	const close = (result: boolean) => {
+	const close = (result: boolean | string) => {
 		pending.resolve(result);
 		setPending(null);
 	};
@@ -104,7 +113,7 @@ export function ConfirmHost() {
 	return <ConfirmDialog key={pending.id} pending={pending} close={close} />;
 }
 
-function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (result: boolean) => void }) {
+function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (result: boolean | string) => void }) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
@@ -136,7 +145,9 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 				role="dialog"
 				aria-modal="true"
 				tabIndex={-1}
-				className={`bg-overlay border rounded-2xl shadow-2xl w-[26.25rem] p-6 space-y-4 outline-none ${
+				className={`bg-overlay border rounded-2xl shadow-2xl max-w-[calc(100vw-2rem)] p-6 space-y-4 outline-none ${
+					pending.alternativeAction ? "w-[30rem]" : "w-[26.25rem]"
+				} ${
 					pending.agentInitiated ? "border-accent/40" : "border-edge"
 				}`}
 			>
@@ -200,22 +211,31 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 					</div>
 				)}
 				<p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>
-				<div className="flex justify-end gap-2 pt-1">
+				<div className="flex flex-wrap justify-end gap-2 pt-1">
 					<button
 						type="button"
 						autoFocus={pending.agentInitiated}
 						onClick={() => close(false)}
-						className="px-4 py-2 text-sm rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+						className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
 					>
 						{cancelLabel}
 					</button>
+					{pending.alternativeAction && (
+						<button
+							type="button"
+							onClick={() => close(pending.alternativeAction!.value)}
+							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+						>
+							{pending.alternativeAction.label}
+						</button>
+					)}
 					<button
 						type="button"
 						onClick={() => close(true)}
 						className={
 							pending.danger
-								? "px-4 py-2 text-sm rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
-								: "px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+								? "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
+								: "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
 						}
 					>
 						{confirmLabel}

@@ -61,6 +61,25 @@ describe("confirm service", () => {
 		expect(screen.getByRole("button", { name: "No" })).toBeInTheDocument();
 	});
 
+	it("renders and resolves a neutral alternative action", async () => {
+		const user = userEvent.setup();
+		renderHost();
+		let result: Promise<boolean | string>;
+		act(() => {
+			result = confirm({
+				title: "Branch Merged",
+				message: "Choose what to do",
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "Manual completion", value: "manual" },
+			});
+		});
+
+		expect(await screen.findByRole("button", { name: "Manual completion" })).toBeInTheDocument();
+		await user.click(screen.getByRole("button", { name: "Manual completion" }));
+		await expect(result!).resolves.toBe("manual");
+	});
+
 	it("shows the AI agent badge for agent-initiated confirms", async () => {
 		renderHost();
 		act(() => {

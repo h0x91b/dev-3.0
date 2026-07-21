@@ -285,6 +285,13 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 		[persistSettingChange],
 	);
 
+	const handleSuggestCompletingTasksAfterMergeToggle = useCallback(
+		(enabled: boolean) => {
+			persistSettingChange({ suggestCompletingTasksAfterMerge: enabled });
+		},
+		[persistSettingChange],
+	);
+
 	const handleTipsDisabledToggle = useCallback(
 		(disabled: boolean) => {
 			persistSettingChange({ tipsDisabled: disabled });
@@ -553,6 +560,7 @@ function GlobalSettings({ section }: { section?: SettingsSectionId } = {}) {
 						onDefaultDiffViewModeChange={handleDefaultDiffViewModeChange}
 						onSoundToggle={handleSoundToggle}
 						onWatchByDefaultToggle={handleWatchByDefaultToggle}
+						onSuggestCompletingTasksAfterMergeToggle={handleSuggestCompletingTasksAfterMergeToggle}
 						onFocusModeToggle={handleFocusModeToggle}
 						onTaskDropPositionChange={handleTaskDropPositionChange}
 						onTaskOpenModeChange={handleTaskOpenModeChange}

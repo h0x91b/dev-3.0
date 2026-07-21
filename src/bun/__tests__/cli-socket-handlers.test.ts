@@ -104,6 +104,7 @@ vi.mock("../rpc-handlers", () => {
 		pushCliShowImage: vi.fn(),
 		pushCliShowArtifact: vi.fn(),
 		setFocusMode: vi.fn(),
+		clearMergeNotification: vi.fn(),
 		queueTerminalFocusToast: vi.fn(),
 	};
 });
@@ -158,7 +159,7 @@ vi.mock("node:fs", () => ({
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
-import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, triggerColumnAgentIfNeeded, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode } from "../rpc-handlers";
+import { activateTask, moveTask, runCleanupScript, emitTaskSound, getPushMessage, triggerColumnAgentIfNeeded, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "../rpc-handlers";
 import { loadSettings } from "../settings";
 import { runDevServer, stopDevServer, restartDevServer, getDevServerStatus } from "../rpc-handlers/tmux-pty";
 import { flushAndEnd } from "../socket-backpressure";
@@ -1360,6 +1361,55 @@ describe("task.update", () => {
 		);
 		expect(resp.ok).toBe(true);
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { customTitle: "Updated" });
+	});
+
+	it("updates manual completion and emits an agent-only change event", async () => {
+		const project = makeProject();
+		const task = makeTask({ manualCompletion: false });
+		const updated = { ...task, manualCompletion: true, mergeCompletionPrompt: null };
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(makeRequest("task.update", {
+			taskId: task.id,
+			projectId: project.id,
+			manualCompletion: true,
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			manualCompletion: true,
+			mergeCompletionPrompt: null,
+		});
+		expect(clearMergeNotification).toHaveBeenCalledWith(task.id);
+		expect(pushFn).toHaveBeenCalledWith("manualCompletionChanged", {
+			taskId: task.id,
+			projectId: project.id,
+			manualCompletion: true,
+		});
+	});
+
+	it("accepts a manual-completion update when the value is already set", async () => {
+		const project = makeProject();
+		const task = makeTask({ manualCompletion: true });
+		const pushFn = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(getPushMessage).mockReturnValue(pushFn);
+
+		const resp = await handleRequest(makeRequest("task.update", {
+			taskId: task.id,
+			projectId: project.id,
+			manualCompletion: true,
+		}));
+
+		expect(resp.ok).toBe(true);
+		expect(resp.data).toEqual({ task, titlePreserved: false });
+		expect(data.updateTask).not.toHaveBeenCalled();
+		expect(pushFn).not.toHaveBeenCalled();
 	});
 
 	it("auto-generates title from description", async () => {

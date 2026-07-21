@@ -469,6 +469,25 @@ describe("task update", () => {
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", { taskId: "aaaaaaaa", priority: "P3" });
 	});
 
+	it("accepts --manual-completion on|off as a standalone update", async () => {
+		mockSend.mockResolvedValue(okResp({ task: { ...FAKE_TASK, manualCompletion: true }, titlePreserved: false }));
+
+		await handleTask("update", args(["aaaaaaaa"], { "manual-completion": "on" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.update", {
+			taskId: "aaaaaaaa",
+			manualCompletion: true,
+		});
+	});
+
+	it("rejects an invalid --manual-completion value before sending", async () => {
+		await expect(
+			handleTask("update", args(["aaaaaaaa"], { "manual-completion": "sometimes" }), SOCKET, null),
+		).rejects.toThrow("EXIT_3");
+		expect(stderrOutput).toContain("--manual-completion");
+		expect(mockSend).not.toHaveBeenCalled();
+	});
+
 	it("rejects an invalid --priority value before sending", async () => {
 		await expect(
 			handleTask("update", args(["aaaaaaaa"], { priority: "urgent" }), SOCKET, null),

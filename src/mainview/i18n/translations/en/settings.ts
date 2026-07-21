@@ -136,6 +136,8 @@ const settings = {
 	"settings.taskCompleteSoundDesc": "Play a sound when a task is completed or cancelled",
 	"settings.watchByDefault": "Watch tasks by default",
 	"settings.watchByDefaultDesc": "Preselect Watch when launching a task. You can override it for each task.",
+	"settings.suggestCompletingTasksAfterMerge": "Suggest completing tasks after merge",
+	"settings.suggestCompletingTasksAfterMergeDesc": "When off, a merged branch shows an informational toast instead of asking to complete the task.",
 	"settings.taskOpenMode": "Task Open Mode",
 	"settings.taskOpenModeDesc": "How active tasks open when you click on them. Also affects Cmd+1..9: Split keeps the task view, Full screen switches to the board.",
 	"settings.taskOpenModeSplit": "Split view (sidebar + terminal)",

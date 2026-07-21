@@ -42,6 +42,7 @@ vi.mock("../rpc", () => ({
 			moveTask: vi.fn().mockResolvedValue({}),
 			openQuickShell: vi.fn().mockResolvedValue({ id: "op-task-1", projectId: "ops-proj" }),
 			dismissMergeCompletionPrompt: vi.fn().mockResolvedValue(undefined),
+			setTaskManualCompletion: vi.fn().mockResolvedValue(undefined),
 			listAgentSkills: vi.fn().mockResolvedValue([]),
 			respondToAgentCompletionRequest: vi.fn().mockResolvedValue(undefined),
 			getRemoteAccessQR: vi.fn().mockResolvedValue({
@@ -1734,6 +1735,70 @@ describe("App keyboard shortcuts", () => {
 			expect(screen.getByTestId("task-screen")).toBeInTheDocument();
 			expect(screen.queryByTestId("project-screen")).not.toBeInTheDocument();
 			expect(api.request.moveTask).not.toHaveBeenCalled();
+		});
+
+		it("offers manual completion and persists it without completing the task", async () => {
+			vi.mocked(confirm).mockResolvedValue("manual" as never);
+			await renderApp();
+
+			await fireBranchMerged("t1", "p1", "fp-manual-1");
+
+			await waitFor(() => {
+				expect(api.request.setTaskManualCompletion).toHaveBeenCalledWith({
+					taskId: "t1",
+					projectId: "p1",
+					manualCompletion: true,
+				});
+			});
+			expect(api.request.moveTask).not.toHaveBeenCalled();
+			expect(confirm).toHaveBeenCalledWith(expect.objectContaining({
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "Manual completion", value: "manual" },
+			}));
+		});
+
+		it("re-asks on the next merge after Not now", async () => {
+			vi.mocked(confirm).mockResolvedValue(false);
+			await renderApp();
+
+			await fireBranchMerged("t1", "p1", "fp-not-now-1");
+			await waitFor(() => expect(api.request.dismissMergeCompletionPrompt).toHaveBeenCalledTimes(1));
+
+			await fireBranchMerged("t1", "p1", "fp-not-now-2");
+			await waitFor(() => expect(api.request.dismissMergeCompletionPrompt).toHaveBeenCalledTimes(2));
+			expect(confirm).toHaveBeenCalledTimes(2);
+		});
+
+		it("shows a notice instead of a popup when merge prompting is disabled", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", {
+					detail: {
+						taskId: "t1",
+						projectId: "p1",
+						taskTitle: "Some task",
+						branchName: "feat/whatever",
+						fingerprint: "fp-notice-1",
+						shouldPrompt: false,
+						shouldNotify: true,
+					},
+				}));
+			});
+
+			expect(confirm).not.toHaveBeenCalled();
+			expect(await screen.findByText('Branch of task "Some task" was merged.')).toBeInTheDocument();
+		});
+
+		it("shows when an agent changes the manual-completion policy", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:manualCompletionChanged", {
+					detail: { taskId: "t1", projectId: "p1", manualCompletion: true },
+				}));
+			});
+
+			expect(await screen.findByText("Agent enabled manual completion for this task.")).toBeInTheDocument();
 		});
 
 		it("does not navigate when user is on a different task's screen", async () => {
