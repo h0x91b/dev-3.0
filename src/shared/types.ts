@@ -3368,6 +3368,15 @@ export type AppRPCSchema = {
 			updateAvailable: { version: string };
 			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null; subject: TaskDialogSubject };
 			/**
+			 * A branch-merged completion prompt was resolved by declining it
+			 * (`dismissMergeCompletionPrompt`). Lets other connected clients — a
+			 * second window, or a remote browser served by the same app — close
+			 * their still-open "Branch Merged" dialog. The accept path needs no
+			 * dedicated event: it is covered by the `taskUpdated` push that moves
+			 * the task to `completed` and drops its worktree.
+			 */
+			mergePromptResolved: { taskId: string; projectId: string; fingerprint: string | null };
+			/**
 			 * Emitted when an agent runs `dev3 task move --status completed`. The CLI
 			 * blocks on the user's decision; the renderer shows an AI-styled confirm
 			 * dialog and answers via `respondToAgentCompletionRequest`. `subject`

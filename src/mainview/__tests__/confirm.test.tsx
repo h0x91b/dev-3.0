@@ -178,4 +178,37 @@ describe("confirm service", () => {
 		// No ConfirmHost rendered → fail-closed.
 		await expect(confirm({ title: "T", message: "M" })).resolves.toBe(false);
 	});
+
+	it("closes and resolves false when the abort signal fires", async () => {
+		renderHost();
+		const controller = new AbortController();
+
+		let result: Promise<boolean>;
+		act(() => {
+			result = confirm({ title: "Branch Merged", message: "Complete?", signal: controller.signal });
+		});
+
+		expect(await screen.findByText("Branch Merged")).toBeInTheDocument();
+
+		act(() => {
+			controller.abort();
+		});
+
+		await expect(result!).resolves.toBe(false);
+		expect(screen.queryByText("Branch Merged")).not.toBeInTheDocument();
+	});
+
+	it("closes immediately when the signal is already aborted", async () => {
+		renderHost();
+		const controller = new AbortController();
+		controller.abort();
+
+		let result: Promise<boolean>;
+		act(() => {
+			result = confirm({ title: "Already resolved", message: "x", signal: controller.signal });
+		});
+
+		await expect(result!).resolves.toBe(false);
+		expect(screen.queryByText("Already resolved")).not.toBeInTheDocument();
+	});
 });

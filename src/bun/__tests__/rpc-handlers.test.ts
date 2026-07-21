@@ -9310,6 +9310,39 @@ describe("prepareMergeCompletionPrompt (force re-check)", () => {
 	});
 });
 
+describe("dismissMergeCompletionPrompt broadcast", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMergePollerState();
+	});
+
+	afterEach(() => {
+		_resetMergePollerState();
+	});
+
+	it("broadcasts mergePromptResolved so other clients close their open dialog", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "review-by-user", branchName: "dev3/task-test" });
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockImplementation(async (_p: Project, _id: string, patch: Partial<Task>) => makeTask(patch));
+		setPushMessage(push);
+
+		await handlers.dismissMergeCompletionPrompt({
+			taskId: task.id,
+			projectId: project.id,
+			fingerprint: "v1:dev3/task-test:abc123",
+		});
+
+		expect(push).toHaveBeenCalledWith("mergePromptResolved", {
+			taskId: task.id,
+			projectId: project.id,
+			fingerprint: "v1:dev3/task-test:abc123",
+		});
+	});
+});
+
 describe("startPRDetectionPoller / stopPRDetectionPoller", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
