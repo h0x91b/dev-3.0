@@ -1503,17 +1503,25 @@ describe("TaskCard", () => {
 		const reviewTask = () =>
 			makeTask({ status: "review-by-colleague", worktreePath: "/tmp/wt", branchName: "feat/test" });
 
-		it("shows no CI/review badge when prInfo carries no status", () => {
+		it("shows no merge/review badge when prInfo carries no status", () => {
 			renderCard(reviewTask(), { prInfo: { number: 12, url: "https://example/pr/12" } });
-			expect(screen.queryByLabelText(/CI failed/)).not.toBeInTheDocument();
+			expect(screen.queryByLabelText(/mergeable/i)).not.toBeInTheDocument();
 			expect(screen.queryByLabelText(/PR approved/)).not.toBeInTheDocument();
 		});
 
-		it("renders a CI-failed badge with tooltip", () => {
+		it("renders a mergeable badge with tooltip", () => {
 			renderCard(reviewTask(), {
-				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
+				prInfo: { number: 12, url: "https://example/pr/12", mergeState: { mergeable: "MERGEABLE", status: "CLEAN" } },
 			});
-			expect(screen.getByLabelText(/CI failed/)).toBeInTheDocument();
+			expect(screen.getByLabelText(/^PR is mergeable/)).toBeInTheDocument();
+		});
+
+		it("renders a not-mergeable badge for a conflicting PR", () => {
+			renderCard(reviewTask(), {
+				prInfo: { number: 12, url: "https://example/pr/12", mergeState: { mergeable: "CONFLICTING", status: "DIRTY" } },
+			});
+			expect(screen.getByLabelText(/not mergeable/i)).toBeInTheDocument();
+			expect(screen.getByText("Conflicts")).toBeInTheDocument();
 		});
 
 		it("renders a review-approved badge with tooltip", () => {
@@ -1527,9 +1535,9 @@ describe("TaskCard", () => {
 			const user = userEvent.setup();
 			const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 			renderCard(reviewTask(), {
-				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
+				prInfo: { number: 12, url: "https://example/pr/12", mergeState: { mergeable: "MERGEABLE", status: "CLEAN" } },
 			});
-			await user.click(screen.getByLabelText(/CI failed/));
+			await user.click(screen.getByLabelText(/^PR is mergeable/));
 			expect(openSpy).toHaveBeenCalledWith("https://example/pr/12", "_blank");
 			openSpy.mockRestore();
 		});
@@ -1780,9 +1788,9 @@ describe("TaskCard", () => {
 		it("the sheet links to the pull request on GitHub", async () => {
 			const user = userEvent.setup();
 			renderCard(reviewTask(), {
-				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: "failure", reviewState: null },
+				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: null, reviewState: "approved" },
 			});
-			await user.click(screen.getByLabelText(/CI failed/));
+			await user.click(screen.getByLabelText(/PR approved/));
 			const link = await screen.findByRole("link", { name: "Open PR #12" });
 			expect(link).toHaveAttribute("href", "https://example/pr/12");
 		});
