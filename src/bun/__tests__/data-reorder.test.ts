@@ -819,7 +819,7 @@ describe("same-status move — backward compatibility", () => {
 		"updatedAt", "movedAt", "columnOrder", "tmuxSocket", "labelIds", "existingBranch",
 		"notes", "customColumnId", "history", "preparing", "preparingStage",
 		"preparingProgress", "preparingStartedAt", "watched", "sessionState",
-		"mergeCompletionPrompt", "manualCompletion", "scratch", "scriptLastRunAt", "scriptLastPlacement",
+		"mergeCompletionPrompt", "manualCompletion", "scratch", "scriptLastRunAt", "scriptLastPlacement", "relations",
 	]);
 
 	it("introduces no new task fields when moving builtin -> custom column", async () => {

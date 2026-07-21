@@ -603,6 +603,7 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 		const tasks = JSON.parse(await readFile(file, "utf8")) as Task[];
 		// Backfill fields for tasks created before they existed
 		let backfilledPriority = false;
+		let backfilledRelations = false;
 		for (const task of tasks) {
 			if ((task as any).description === undefined) {
 				task.description = task.title;
@@ -625,7 +626,11 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 			if ((task as any).customColumnId === undefined) task.customColumnId = null;
 			if ((task as any).overview === undefined) task.overview = null;
 			if ((task as any).userOverview === undefined) task.userOverview = null;
-				if ((task as any).history === undefined) task.history = [];
+			if ((task as any).relations === undefined) {
+				task.relations = [];
+				backfilledRelations = true;
+			}
+			if ((task as any).history === undefined) task.history = [];
 		}
 
 		// Backfill seq for tasks created before seq existed
@@ -656,11 +661,11 @@ async function rawLoadTasks(project: Project, options?: { strict?: boolean; pers
 			}
 		}
 
-		// Persist the priority backfill so the field lands on disk once (content-only,
-		// same in-place pattern as the seq migration). Only on mutator reads
-		// (persistMigrations) — pure cached reads never rewrite the file.
-		if (backfilledPriority && options?.persistMigrations) {
-			log.info("Backfilled priority for tasks", { projectId: project.id });
+		// Persist content-only backfills together so one mutator read causes one write.
+		// Pure cached reads never rewrite the file.
+		if (options?.persistMigrations && (backfilledPriority || backfilledRelations)) {
+			if (backfilledPriority) log.info("Backfilled priority for tasks", { projectId: project.id });
+			if (backfilledRelations) log.info("Backfilled relations for tasks", { projectId: project.id });
 			await rawSaveTasks(project, tasks);
 		}
 
@@ -808,6 +813,7 @@ export async function addTask(
 		userOverview?: string | null;
 		automationId?: string | null;
 		priority?: TaskPriority;
+		relations?: Task["relations"];
 	},
 ): Promise<Task> {
 	const file = tasksFile(project);
@@ -851,6 +857,7 @@ export async function addTask(
 			statusEnteredAt: now,
 			tmuxSocket: "dev3",
 			labelIds: extras?.labelIds ?? [],
+			relations: extras?.relations ?? [],
 			...(extras?.existingBranch ? { existingBranch: extras.existingBranch } : {}),
 			...(extras?.preparing ? { preparing: true } : {}),
 			...(extras?.preparingStage ? { preparingStage: extras.preparingStage } : {}),
