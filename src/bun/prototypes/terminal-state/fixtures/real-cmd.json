@@ -1,0 +1,47 @@
+{
+  "fixtureVersion": 1,
+  "name": "real-cmd",
+  "source": "captured",
+  "initial": {
+    "cols": 100,
+    "rows": 30,
+    "scrollback": 1000
+  },
+  "events": [
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "G1syShtbbRtbSBtdMDtDOlxXaW5kb3dzXHN5c3RlbTMyXGNtZC5leGUgLSBwcm9tcHQgICRFIAcbWz8yNWg="
+    },
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "DQobXTA7Y21kIHRlcm1pbmFsLXN0YXRlIHByb2JlBw=="
+    },
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "G1syNWwbWzYgcRtbSBtbSxtbMW0bWzM4OzI7ODA7MTYwOzI0MG0NCmNtZC5leGUgZGV0ZXJtaW5pc3RpYyBwcm9iZRtbbRtbSxtbMzFtDQpoaXN0b3J5IGxpbmUgMRtbbRtbSxtbMzJtDQpoaXN0b3J5IGxpbmUgMhtbbRtbSxtbMzNtDQpoaXN0b3J5IGxpbmUgMxtbbRtbSxtbMzRtDQpoaXN0b3J5IGxpbmUgNBtbbRtbSxtbMzVtDQpoaXN0b3J5IGxpbmUgNRtbbRtbSxtbMzZtDQpoaXN0b3J5IGxpbmUgNhtbbRtbSw0KaGlzdG9yeSBsaW5lIDcbW0sbWzkwbQ0KaGlzdG9yeSBsaW5lIDgbW20bW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLG1sxMDBD"
+    }
+  ],
+  "expected": {
+    "activeBuffer": "normal",
+    "title": "cmd terminal-state probe",
+    "dimensions": {
+      "cols": 100,
+      "rows": 30
+    },
+    "cursor": {
+      "x": 99,
+      "y": 29,
+      "visible": true,
+      "style": "bar",
+      "blink": false
+    }
+  },
+  "provenance": {
+    "command": "cmd /d /c cmd-probe.bat",
+    "platform": "Windows 10.0.19045 AMD64; Bun 1.3.14",
+    "capturedAt": "2026-07-22"
+  }
+}

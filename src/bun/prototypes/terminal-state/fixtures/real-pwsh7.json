@@ -1,0 +1,57 @@
+{
+  "fixtureVersion": 1,
+  "name": "real-pwsh7",
+  "source": "captured",
+  "initial": {
+    "cols": 100,
+    "rows": 30,
+    "scrollback": 1000
+  },
+  "events": [
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "G1syShtbbRtbSBtdMDtDOlxQcm9ncmFtIEZpbGVzXFdpbmRvd3NBcHBzXE1pY3Jvc29mdC5Qb3dlclNoZWxsXzcuNi4zLjBfeDY0X184d2VreWIzZDhiYndlXHB3c2guZXhlBxtbPzI1aA=="
+    },
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "G10wO3B3c2ggdGVybWluYWwtc3RhdGUgcHJvYmUH"
+    },
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "G1syNWwbW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLDQobW0sNChtbSw0KG1tLG1tIG1s/MjVo"
+    },
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "G1sxbRtbMzg7Mjs4MDsxNjA7MjQwbXB3c2ggNy42LjMNCg=="
+    },
+    {
+      "type": "output",
+      "encoding": "base64",
+      "data": "G1s2IHEbW213aWRlPeeVjCBjb21iaW5pbmc9w6kgZW1vamk98J+ZghtbMzg7MjswOzA7OTVtDQpoaXN0b3J5LTAxG1ttG1sxOFgbWzM4OzI7MDswOzEzNW0NCmhpc3RvcnktMDIbW20bWzE4WBtbMzg7MjswOzA7MTc1bQ0KaGlzdG9yeS0wMxtbbRtbMThYG1szODsyOzA7MDsyMTVtDQpoaXN0b3J5LTA0G1ttG1sxOFgbWzM4OzI7MDswOzI1NW0NCmhpc3RvcnktMDUbW20bWzE4WBtbMzg7MjswOzk1OzBtDQpoaXN0b3J5LTA2G1ttG1sxOFgbWzM4OzI7MDs5NTs5NW0NCmhpc3RvcnktMDcbW20bWzE4WBtbMzg7MjswOzk1OzEzNW0NCmhpc3RvcnktMDgbW20bWzE4WBtbMzg7MjswOzk1OzE3NW0NCmhpc3RvcnktMDkbW20bWzE4WBtbMzg7MjswOzk1OzIxNW0NCmhpc3RvcnktMTAbW20bWzE4WBtbMzg7MjswOzk1OzI1NW0NCmhpc3RvcnktMTEbW20bWzE4WBtbMzg7MjswOzEzNTswbQ0KaGlzdG9yeS0xMhtbbRtbMThYG1szODsyOzA7MTM1Ozk1bQ0KaGlzdG9yeS0xMxtbbRtbMThYG1szODsyOzA7MTM1OzEzNW0NCmhpc3RvcnktMTQbW20bWzE4WBtbMzg7MjswOzEzNTsxNzVtDQpoaXN0b3J5LTE1G1ttG1sxOFgbWzM4OzI7MDsxMzU7MjE1bQ0KaGlzdG9yeS0xNhtbbRtbMThYG1szODsyOzA7MTM1OzI1NW0NCmhpc3RvcnktMTcbW20bWzE4WBtbMzg7MjswOzE3NTswbQ0KaGlzdG9yeS0xOBtbbRtbMThYG1szODsyOzA7MTc1Ozk1bQ0KaGlzdG9yeS0xORtbbRtbMThYG1szODsyOzA7MTc1OzEzNW0NCmhpc3RvcnktMjAbW20bWzE4WBtbMzg7MjswOzE3NTsxNzVtDQpoaXN0b3J5LTIxG1ttG1sxOFgbWzM4OzI7MDsxNzU7MjE1bQ0KaGlzdG9yeS0yMhtbbRtbMThYG1szODsyOzA7MTc1OzI1NW0NCmhpc3RvcnktMjMbW20bWzE4WBtbMzg7MjswOzIxNTswbQ0KaGlzdG9yeS0yNBtbbRtbMThYG1s/MjVsG1sxOEM="
+    }
+  ],
+  "expected": {
+    "activeBuffer": "normal",
+    "title": "pwsh terminal-state probe",
+    "dimensions": {
+      "cols": 100,
+      "rows": 30
+    },
+    "cursor": {
+      "x": 28,
+      "y": 25,
+      "visible": false,
+      "style": "bar",
+      "blink": false
+    }
+  },
+  "provenance": {
+    "command": "pwsh -NoLogo -NoProfile -File pwsh-probe.ps1",
+    "platform": "Windows 10.0.19045 AMD64; Bun 1.3.14",
+    "capturedAt": "2026-07-22"
+  }
+}
