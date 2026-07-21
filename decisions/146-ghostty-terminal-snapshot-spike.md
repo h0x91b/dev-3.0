@@ -16,7 +16,8 @@ unbounded replay. Xterm headless plus serialize and grapheme addons produced a
 compact ANSI snapshot, but differential replay changed Ghostty's shrink/grow
 history, so matching ordinary cells was insufficient. Captured macOS Neovim and
 Windows PowerShell 5.1 streams both replayed into fresh Ghostty cores with
-semantic equivalence; the full comparison and costs are in
+semantic equivalence. The native Windows run passed all 24 spike tests and
+produced byte-identical snapshot sizes; the full comparison and costs are in
 `src/bun/prototypes/terminal-state/README.md`.
 
 ## Decision
@@ -39,9 +40,15 @@ Windows Bun 1.3.14 also returned a negative allocation pointer when Ghostty ran
 inside the PTY capture callback, so raw capture no longer instantiates the
 parser; terminal-query responses are an explicit TUI-only option. The real
 PowerShell 5.1 capture also reflects its legacy decoding of UTF-8 script literals,
-so Unicode fidelity remains a separate synthetic assertion. Metadata coverage is
-intentionally incomplete, and the spike omits transport ordering, backpressure,
-privacy, compression, integrity, images, and rich shell metadata.
+so Unicode fidelity remains a separate synthetic assertion; metadata coverage is
+also incomplete and omits transport ordering, backpressure, privacy, compression,
+integrity, images, and rich shell metadata.
+
+Fresh isolated WASM replay has material platform variance: PowerShell replay p95
+was 2.140 ms on macOS and 21.969 ms on Windows, while the bounded-history p95 was
+12.693 ms and 42.720 ms respectively, so a production native seam needs explicit
+Windows budgets and must revisit the one-WASM-instance-per-client probe constraint
+before capacity planning.
 
 ## Alternatives considered
 

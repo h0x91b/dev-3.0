@@ -117,6 +117,11 @@ is retained byte-for-byte because it still validates real ConPTY output, ANSI
 colors, scrollback, title, cursor presentation, and reconnect replay. The
 synthetic `unicode.json` stream remains the Unicode fidelity fixture.
 
+The 24-test spike suite and benchmark were then rerun natively on Windows 10
+x86_64. All semantic replay assertions passed, snapshot sizes matched macOS
+byte-for-byte, and the platform-specific replay and memory costs are recorded in
+`BENCHMARKS.md`.
+
 ## Run
 
 ```bash
