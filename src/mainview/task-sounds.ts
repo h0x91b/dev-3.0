@@ -64,6 +64,7 @@ export function playTaskSoundFromPush(status: TaskSoundStatus): void {
 
 let unlockHandlersInstalled = false;
 let playbackUnlocked = false;
+let templatesPrimed = false;
 
 function canPlayImmediately(): boolean {
 	if (playbackUnlocked) return true;
@@ -82,6 +83,44 @@ function getAudioTemplate(status: TaskSoundStatus): HTMLAudioElement {
 	return audio;
 }
 
+// Chrome on desktop rejects a delayed, programmatic `.play()` on an <audio>
+// element that was never activated by a user gesture. In remote mode the sound
+// arrives via the backend `taskSound` push, which lands SECONDS after the user's
+// "Approve" click (the backend tears the worktree down first), so the click's
+// transient activation has long expired by the time `.play()` runs. Priming each
+// element — a muted play/pause performed SYNCHRONOUSLY inside the first user
+// gesture — marks it as user-activated, so every later push-driven play is
+// honored. Mobile Chrome unlocks media stickily after a single gesture and never
+// needed this, which is why the bug only showed on desktop browsers.
+function primeTemplates(): void {
+	if (templatesPrimed) return;
+	templatesPrimed = true;
+
+	for (const status of Object.keys(SOUND_DEFS) as TaskSoundStatus[]) {
+		const audio = getAudioTemplate(status);
+		audio.muted = true;
+
+		let started: Promise<void> | undefined;
+		try {
+			started = audio.play() as Promise<void> | undefined;
+		} catch {
+			templatesPrimed = false;
+		}
+
+		Promise.resolve(started)
+			.then(() => {
+				audio.pause();
+				audio.currentTime = 0;
+			})
+			.catch(() => {
+				templatesPrimed = false;
+			})
+			.finally(() => {
+				audio.muted = false;
+			});
+	}
+}
+
 function flushPendingQueue(): void {
 	if (!canPlayImmediately()) return;
 	playbackUnlocked = true;
@@ -98,8 +137,11 @@ function installUnlockHandlers(): void {
 	unlockHandlersInstalled = true;
 
 	const unlock = () => {
+		// Prime inside the gesture even when nothing is queued yet — the pending
+		// completion push almost always arrives *after* the last user gesture.
+		primeTemplates();
 		flushPendingQueue();
-		if (pendingQueue.length === 0) {
+		if (templatesPrimed && pendingQueue.length === 0) {
 			for (const eventName of SOUND_UNLOCK_EVENTS) {
 				window.removeEventListener(eventName, unlock);
 			}
@@ -129,9 +171,18 @@ export async function playTaskSound(status: TaskSoundStatus): Promise<void> {
 
 	playbackUnlocked = true;
 
-	const template = getAudioTemplate(status);
-	const audio = template.cloneNode() as HTMLAudioElement;
+	// Reuse the primed template rather than a fresh clone: only the primed element
+	// carries the user-activation that lets a delayed play through on desktop
+	// Chrome. A clone would be un-activated and rejected. Completion sounds never
+	// realistically overlap, so restarting `currentTime` is fine.
+	const audio = getAudioTemplate(status);
+	audio.muted = false;
 	audio.volume = SOUND_DEFS[status].volume;
+	try {
+		audio.currentTime = 0;
+	} catch {
+		// Some engines throw on currentTime before metadata loads — harmless here.
+	}
 
 	try {
 		await audio.play();
@@ -139,6 +190,7 @@ export async function playTaskSound(status: TaskSoundStatus): Promise<void> {
 		console.warn("[task-sounds] playback failed", { status, error: String(err) });
 		pendingQueue.push(status);
 		playbackUnlocked = false;
+		templatesPrimed = false;
 		installUnlockHandlers();
 	}
 }
