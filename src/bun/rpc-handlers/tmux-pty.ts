@@ -2473,8 +2473,6 @@ async function spawnSingleBugHunterPane(opts: {
 		const freshTask = await data.getTask(opts.project, opts.task.id);
 		const existingPanes = freshTask.sessionState?.panes ?? [];
 		const updated = await data.updateTask(opts.project, opts.task.id, {
-			agentId: launchedAgentId,
-			configId: launchedConfigId,
 			sessionState: { panes: [...existingPanes, paneEntry] },
 		});
 		getPushMessage()?.("taskUpdated", { projectId: opts.project.id, task: updated });
