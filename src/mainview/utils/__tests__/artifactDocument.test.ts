@@ -25,4 +25,16 @@ describe("composeArtifactDocument", () => {
 		const output = composeArtifactDocument('<html><head></head><body><img src="https://example.com/x.png"></body></html>', []);
 		expect(output).toContain('src="https://example.com/x.png"');
 	});
+
+	it("injects the save-image context menu with the localized label when provided", () => {
+		const output = composeArtifactDocument('<html><head></head><body><img src="chart.png"></body></html>', [], "Save image");
+		expect(output).toContain("data-dev3-artifact-menu");
+		expect(output).toContain("dev3-artifact-save-image");
+		expect(output).toContain('"Save image"');
+	});
+
+	it("omits the save-image menu when no label is provided", () => {
+		const output = composeArtifactDocument('<html><head></head><body><img src="chart.png"></body></html>', []);
+		expect(output).not.toContain("data-dev3-artifact-menu");
+	});
 });

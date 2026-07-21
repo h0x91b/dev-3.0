@@ -32,6 +32,42 @@ function downloadBase64(base64: string, mime: string, fileName: string): void {
 	setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+interface ArtifactAsset {
+	name: string;
+	mime: string;
+	dataUrl: string;
+}
+
+const EXT_BY_MIME: Record<string, string> = {
+	"image/png": "png",
+	"image/jpeg": "jpg",
+	"image/gif": "gif",
+	"image/webp": "webp",
+	"image/bmp": "bmp",
+	"image/svg+xml": "svg",
+};
+
+function parseDataUrl(src: string): { mime: string; base64: string } | null {
+	const match = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(src);
+	if (!match) return null;
+	const mime = match[1] || "application/octet-stream";
+	if (match[2]) return { mime, base64: match[3] };
+	try {
+		return { mime, base64: btoa(decodeURIComponent(match[3])) };
+	} catch {
+		return null;
+	}
+}
+
+/** Prefer the copied asset's original file name; otherwise derive one from alt + mime. */
+function imageFileName(src: string, alt: string, mime: string, assets: ArtifactAsset[]): string {
+	const known = assets.find((asset) => asset.dataUrl === src);
+	if (known?.name) return known.name.split("/").pop() || known.name;
+	const ext = EXT_BY_MIME[mime] || "png";
+	const base = (alt || "image").trim().replace(/[^\w.-]+/g, "_").slice(0, 60) || "image";
+	return /\.[a-z0-9]+$/i.test(base) ? base : `${base}.${ext}`;
+}
+
 export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, taskId }: TaskArtifactViewerProps) {
 	const t = useT();
 	const [index, setIndex] = useState(() => Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
@@ -42,6 +78,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>("follow");
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const viewerRef = useRef<HTMLElement>(null);
+	const assetsRef = useRef<ArtifactAsset[]>([]);
 	const current = artifacts[index];
 
 	useEffect(() => {
@@ -53,13 +90,34 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		let cancelled = false;
 		setSrcDoc(null);
 		setError(false);
+		assetsRef.current = [];
 		api.request.readArtifactContent({ artifact: current })
 			.then((payload) => {
-				if (!cancelled) setSrcDoc(composeArtifactDocument(payload.html, payload.assets));
+				if (cancelled) return;
+				assetsRef.current = payload.assets;
+				setSrcDoc(composeArtifactDocument(payload.html, payload.assets, t("artifactViewer.saveImage")));
 			})
 			.catch(() => { if (!cancelled) setError(true); });
 		return () => { cancelled = true; };
-	}, [current]);
+	}, [current, t]);
+
+	useEffect(() => {
+		function onMessage(event: MessageEvent) {
+			if (event.source !== frameRef.current?.contentWindow) return;
+			const data = event.data as { type?: string; src?: string; alt?: string } | null;
+			if (!data || data.type !== "dev3-artifact-save-image" || typeof data.src !== "string") return;
+			const parsed = parseDataUrl(data.src);
+			if (!parsed) { toast.error(t("artifactViewer.imageSaveFailed"), { taskId }); return; }
+			try {
+				downloadBase64(parsed.base64, parsed.mime, imageFileName(data.src, data.alt ?? "", parsed.mime, assetsRef.current));
+				toast.success(t("artifactViewer.imageSaved"), { taskId });
+			} catch {
+				toast.error(t("artifactViewer.imageSaveFailed"), { taskId });
+			}
+		}
+		window.addEventListener("message", onMessage);
+		return () => window.removeEventListener("message", onMessage);
+	}, [t, taskId]);
 
 	const sendTheme = useCallback(() => {
 		const theme = themeMode === "follow" ? currentTheme() : themeMode;
