@@ -2325,6 +2325,19 @@ function App() {
 								</div>
 							)}
 
+							{tunnelWanted && remoteQR.tunnelState === "connected" && (
+								<div className="flex items-start gap-2 rounded-lg bg-warning/10 border border-warning/20 px-2.5 py-2 text-left">
+									<span
+										aria-hidden="true"
+										className="text-warning text-sm leading-none mt-px shrink-0"
+										style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+									>
+										{"\uF071"}
+									</span>
+									<p className="text-warning/90 text-xs leading-snug">{t("remote.tunnelPropagationHint")}</p>
+								</div>
+							)}
+
 							{tunnelWanted && remoteQR.tunnelState === "failed" && (
 								<div className="flex items-center gap-2">
 									<div className="w-2 h-2 rounded-full bg-danger" />
