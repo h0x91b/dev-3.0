@@ -63,3 +63,53 @@ describe("completion sound playback", () => {
 		expect(playSpy).toHaveBeenCalledTimes(2);
 	});
 });
+
+// Desktop Chrome rejects a delayed, programmatic `.play()` on a never-activated
+// <audio> element — and the remote `taskSound` push lands seconds after the
+// user's "Approve" click. Priming each element inside the first user gesture
+// (play/pause) marks it user-activated so the later push-driven play is honored.
+// Fresh module instances (resetModules + dynamic import) isolate this global
+// unlock/prime state from the shared-state tests above.
+describe("audio unlock priming (remote desktop browsers)", () => {
+	it("primes both sound templates on the first user gesture", async () => {
+		vi.resetModules();
+		const playSpy = vi
+			.spyOn(window.HTMLMediaElement.prototype, "play")
+			.mockResolvedValue(undefined as unknown as void);
+		const pauseSpy = vi
+			.spyOn(window.HTMLMediaElement.prototype, "pause")
+			.mockImplementation(() => {});
+		try {
+			const mod = await import("../task-sounds");
+			mod.initTaskSoundPlayback();
+			expect(playSpy).not.toHaveBeenCalled();
+
+			window.dispatchEvent(new Event("pointerdown"));
+
+			// `>=` (not exact): `window` is shared across the static import above and
+			// this fresh dynamic instance, so a leaked unlock listener may also fire.
+			expect(playSpy.mock.calls.length).toBeGreaterThanOrEqual(Object.keys(mod.SOUND_DEFS).length);
+			await Promise.resolve();
+			expect(pauseSpy).toHaveBeenCalled();
+		} finally {
+			playSpy.mockRestore();
+			pauseSpy.mockRestore();
+		}
+	});
+
+	it("reuses one <audio> element per status instead of cloning", async () => {
+		vi.resetModules();
+		const playSpy = vi
+			.spyOn(window.HTMLMediaElement.prototype, "play")
+			.mockResolvedValue(undefined as unknown as void);
+		try {
+			const mod = await import("../task-sounds");
+			mod.playTaskSoundFromPush("completed");
+			mod.playTaskSoundFromPush("completed");
+			expect(playSpy).toHaveBeenCalledTimes(2);
+			expect(playSpy.mock.instances[0]).toBe(playSpy.mock.instances[1]);
+		} finally {
+			playSpy.mockRestore();
+		}
+	});
+});
