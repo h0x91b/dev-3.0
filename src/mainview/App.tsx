@@ -40,7 +40,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
-import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
+import { buildMergeCompletionDialogOptions, runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import { createMergePromptAbort } from "./utils/mergePromptAbort";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
@@ -1400,20 +1400,7 @@ function App() {
 				choice = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
 					try {
 						return await confirm({
-							title: t("app.branchMergedTitle"),
-							message: t("app.branchMergedMessage", { taskTitle, branchName }),
-							confirmLabel: t("app.branchMergedComplete"),
-							cancelLabel: t("app.branchMergedNotNow"),
-							alternativeAction: { label: t("app.branchMergedManualCompletion"), value: "manual" },
-							outcomeCards: {
-								kicker: t("app.branchMergedKicker"),
-								statusLabel: t("app.branchMergedStatus"),
-								statusValue: branchName,
-								confirmDescription: t("app.branchMergedCompleteDescription"),
-								cancelDescription: t("app.branchMergedNotNowDescription"),
-								alternativeDescription: t("app.branchMergedManualDescription"),
-							},
-							dismissOnBackdrop: false,
+							...buildMergeCompletionDialogOptions(t, branchName),
 							info: taskDialogInfoFromSubject(taskTitle, subject),
 							signal: abort.signal,
 						});

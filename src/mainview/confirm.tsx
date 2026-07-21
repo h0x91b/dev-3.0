@@ -271,34 +271,34 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 					</div>
 				) : (
 					<div className="flex flex-wrap justify-end gap-2 pt-1">
-					<button
-						type="button"
-						autoFocus={pending.agentInitiated}
-						onClick={() => close(false)}
-						className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
-					>
-						{cancelLabel}
-					</button>
-					{pending.alternativeAction && (
 						<button
 							type="button"
-							onClick={() => close(pending.alternativeAction!.value)}
-							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							autoFocus={pending.agentInitiated}
+							onClick={() => close(false)}
+							className="px-4 py-2 text-sm whitespace-nowrap rounded-lg text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
 						>
-							{pending.alternativeAction.label}
+							{cancelLabel}
 						</button>
-					)}
-					<button
-						type="button"
-						onClick={() => close(true)}
-						className={
-							pending.danger
-								? "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
-								: "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
-						}
-					>
-						{confirmLabel}
-					</button>
+						{pending.alternativeAction && (
+							<button
+								type="button"
+								onClick={() => close(pending.alternativeAction!.value)}
+								className="px-4 py-2 text-sm whitespace-nowrap rounded-lg border border-edge text-fg-2 hover:text-fg hover:bg-elevated transition-colors"
+							>
+								{pending.alternativeAction.label}
+							</button>
+						)}
+						<button
+							type="button"
+							onClick={() => close(true)}
+							className={
+								pending.danger
+									? "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
+									: "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
+							}
+						>
+							{confirmLabel}
+						</button>
 					</div>
 				)}
 			</div>

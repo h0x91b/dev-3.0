@@ -12,7 +12,7 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
-import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
+import { buildMergeCompletionDialogOptions, runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
 import { createMergePromptAbort } from "../../utils/mergePromptAbort";
 import { taskDialogInfo } from "../../utils/taskDialogInfo";
 import { startVisibilityAwarePoll } from "../../utils/poll";
@@ -145,23 +145,7 @@ export function useTaskBranchStatus({
 			const abort = createMergePromptAbort(task.id);
 			const runPrompt = () =>
 				confirm({
-					title: t("app.branchMergedTitle"),
-					message: t("app.branchMergedMessage", {
-						taskTitle: task.customTitle || task.title,
-						branchName: task.branchName || "",
-					}),
-					confirmLabel: t("app.branchMergedComplete"),
-					cancelLabel: t("app.branchMergedNotNow"),
-					alternativeAction: { label: t("app.branchMergedManualCompletion"), value: "manual" },
-					outcomeCards: {
-						kicker: t("app.branchMergedKicker"),
-						statusLabel: t("app.branchMergedStatus"),
-						statusValue: task.branchName || "",
-						confirmDescription: t("app.branchMergedCompleteDescription"),
-						cancelDescription: t("app.branchMergedNotNowDescription"),
-						alternativeDescription: t("app.branchMergedManualDescription"),
-					},
-					dismissOnBackdrop: false,
+					...buildMergeCompletionDialogOptions(t, task.branchName || ""),
 					info: taskDialogInfo(task, project),
 					signal: abort.signal,
 				});
@@ -315,23 +299,7 @@ export function useTaskBranchStatus({
 				try {
 					choice = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
 						confirm({
-							title: t("app.branchMergedTitle"),
-							message: t("app.branchMergedMessage", {
-								taskTitle: task.customTitle || task.title,
-								branchName: task.branchName || "",
-							}),
-							confirmLabel: t("app.branchMergedComplete"),
-							cancelLabel: t("app.branchMergedNotNow"),
-							alternativeAction: { label: t("app.branchMergedManualCompletion"), value: "manual" },
-							outcomeCards: {
-								kicker: t("app.branchMergedKicker"),
-								statusLabel: t("app.branchMergedStatus"),
-								statusValue: task.branchName || "",
-								confirmDescription: t("app.branchMergedCompleteDescription"),
-								cancelDescription: t("app.branchMergedNotNowDescription"),
-								alternativeDescription: t("app.branchMergedManualDescription"),
-							},
-							dismissOnBackdrop: false,
+							...buildMergeCompletionDialogOptions(t, task.branchName || ""),
 							info: taskDialogInfo(task, project),
 							signal: abort.signal,
 						}),

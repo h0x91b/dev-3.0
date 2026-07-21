@@ -1114,7 +1114,7 @@ function TaskInfoPanel({
 								aria-pressed={task.manualCompletion === true}
 								className={`${SHEET_ROW_CLASS} ${task.manualCompletion ? "border-accent/30 bg-accent/10" : ""}`}
 							>
-				<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${task.manualCompletion ? "text-accent" : "text-fg-3"}`} active={task.manualCompletion} />
+								<CompletionOwnerIcon className={`h-5 w-5 shrink-0 ${task.manualCompletion ? "text-accent" : "text-fg-3"}`} active={task.manualCompletion} />
 								<span className="flex-1 text-sm font-medium">{task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}</span>
 							</button>
 
