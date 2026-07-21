@@ -38,6 +38,12 @@ echo "OUTPUT_DIR: ${OUTPUT_DIR}"
 
 mkdir -p "$OUTPUT_DIR"
 
+# Compact "what's new" payload embedded into update.json for the update popover.
+# build-update-changelog.ts prints `null` on any failure, so this is never fatal
+# and an absent changelog just omits the popover's what's-new section.
+CHANGELOG_JSON=$(bun scripts/build-update-changelog.ts 2>/dev/null || echo 'null')
+echo "Update changelog payload: ${CHANGELOG_JSON}"
+
 # Helper: create DMG with /Applications symlink (macOS only)
 create_dmg() {
   local APP_PATH="$1"
@@ -127,7 +133,7 @@ if [ -n "$EBUN_TAR_ZST" ]; then
   echo "Bundle hash: $HASH, version: $VERSION"
 
   # Create update.json with platform prefix
-  echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\"}" \
+  echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"changelog\":${CHANGELOG_JSON}}" \
     > "${OUTPUT_DIR}/${PLATFORM_PREFIX}-update.json"
 
   # macOS: create DMG
@@ -183,7 +189,7 @@ VERSION=$(bun -e "const j=await Bun.file('${VERSION_JSON}').json();console.log(j
 echo "Bundle hash: $HASH, version: $VERSION"
 
 # Create update.json
-echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\"}" \
+echo "{\"version\":\"${VERSION}\",\"hash\":\"${HASH}\",\"os\":\"${OS}\",\"arch\":\"${ARCH}\",\"changelog\":${CHANGELOG_JSON}}" \
   > "${OUTPUT_DIR}/${PLATFORM_PREFIX}-update.json"
 
 # macOS: create DMG from recovered .app (with /Applications symlink)

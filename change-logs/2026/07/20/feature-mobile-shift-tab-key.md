@@ -1,1 +1,3 @@
+Short: Mobile terminal ⇧Tab button
+
 Added a ⇧Tab button to the mobile terminal extra key bar, next to Tab. It sends the back-tab escape sequence (ESC [ Z), which lets you cycle Claude Code's agent/permission mode from a phone where Shift+Tab cannot be typed.

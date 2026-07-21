@@ -20,6 +20,16 @@ const updates = {
 	"update.upToDateVersion": "У вас последняя версия — v{version}",
 	"update.checkFailedDetail": "Не удалось проверить обновления: {error}",
 	"update.applyFailed": "Не удалось применить обновление: {error}",
+	"update.whatsNewVersion": "Что нового в v{version}",
+	"update.seeAllChanges": "Все изменения",
+	"update.moreFeatures_one": "+ ещё {count} фича",
+	"update.moreFeatures_few": "+ ещё {count} фичи",
+	"update.moreFeatures_many": "+ ещё {count} фич",
+	"update.moreFeatures_other": "+ ещё {count} фич",
+	"update.fixCount_one": "{count} исправление",
+	"update.fixCount_few": "{count} исправления",
+	"update.fixCount_many": "{count} исправлений",
+	"update.fixCount_other": "{count} исправлений",
 
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Intel-сборка на Apple Silicon",

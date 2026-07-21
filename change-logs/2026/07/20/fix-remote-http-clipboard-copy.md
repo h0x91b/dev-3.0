@@ -1,1 +1,3 @@
+Short: Terminal copy over plain HTTP
+
 Terminal copy now works in remote mode served over plain http: when the browser hides the async clipboard API (insecure context), the OSC 52 payload is written through a legacy execCommand fallback instead of being silently dropped. Also explicitly pinned the default tmux mouse-copy binding so already-running tmux servers pick up the #991 revert on config re-source instead of keeping the stale sticky copy-mode binding.

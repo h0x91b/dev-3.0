@@ -1,5 +1,5 @@
 import { Fragment, useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
-import type { Project, Task } from "../../shared/types";
+import type { Project, Task, UpdateChangelog } from "../../shared/types";
 import { getTaskTitle, taskSeqLabel, ACTIVE_STATUSES, isBuiltinOpsProject, orderProjectsForDisplay } from "../../shared/types";
 import type { Route } from "../state";
 import { useT } from "../i18n";
@@ -50,6 +50,7 @@ interface GlobalHeaderProps {
 	canGoBack: boolean;
 	canGoForward: boolean;
 	updateVersion?: string | null;
+	updateChangelog?: UpdateChangelog | null;
 	updateDownloadStatus?: string | null;
 	remoteAccessActive: boolean;
 }
@@ -65,7 +66,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
 	const t = useT();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -552,6 +553,40 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 										</div>
 									</div>
 								</div>
+								{updateChangelog && updateChangelog.features.length > 0 && (
+									<div className="border-t border-edge pt-2.5 space-y-1.5">
+										<div className="text-fg-3 text-[0.625rem] font-semibold uppercase tracking-wider">
+											{t("update.whatsNewVersion", { version: updateVersion ?? "" })}
+										</div>
+										<div className="space-y-1">
+											{updateChangelog.features.map((feature, i) => (
+												<div key={i} className="flex items-start gap-1.5 min-w-0">
+													<span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
+													<span className="text-fg text-xs leading-snug truncate">{feature}</span>
+												</div>
+											))}
+										</div>
+										{(() => {
+											const moreFeat = Math.max(0, updateChangelog.featureCount - updateChangelog.features.length);
+											const parts: string[] = [];
+											if (moreFeat > 0) parts.push(t.plural("update.moreFeatures", moreFeat));
+											if (updateChangelog.fixCount > 0) parts.push(t.plural("update.fixCount", updateChangelog.fixCount));
+											return parts.length > 0 ? (
+												<div className="text-fg-muted text-[0.6875rem]">{parts.join(" · ")}</div>
+											) : null;
+										})()}
+										<button
+											type="button"
+											onClick={() => {
+												setShowUpdateDropdown(false);
+												navigate({ screen: "changelog" });
+											}}
+											className="text-accent text-xs font-medium hover:underline cursor-pointer"
+										>
+											{t("update.seeAllChanges")} →
+										</button>
+									</div>
+								)}
 								<button
 									onClick={handleRestart}
 									disabled={restarting}

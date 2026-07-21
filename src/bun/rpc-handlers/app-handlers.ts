@@ -578,7 +578,13 @@ async function getChangelogs(): Promise<ChangelogEntry[]> {
 						}
 					}
 
-					const cleanContent = content.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "").trim();
+					const shortMatch = content.match(/^Short:\s*(.+)$/im);
+					const short = shortMatch ? shortMatch[1].trim() : undefined;
+
+					const cleanContent = content
+						.replace(/^Short:\s*.+$/im, "")
+						.replace(/\n*Suggested by @\S+\s+\([^)]+\)\s*$/, "")
+						.trim();
 					const firstSentence = cleanContent.split(/\.(?:\s|$)/)[0]?.trim() ?? slug;
 					const title = firstSentence.length > 120
 						? firstSentence.slice(0, 117) + "..."
@@ -589,6 +595,7 @@ async function getChangelogs(): Promise<ChangelogEntry[]> {
 						type,
 						slug,
 						title: title || slug,
+						...(short && { short }),
 						...(suggestedBy && { suggestedBy }),
 						...(issueUrl && { issueUrl }),
 						...(issueRef && { issueRef }),
