@@ -383,6 +383,26 @@ button {
 	to { width: 0%; }
 }
 
+/* ---- Toast swipe-to-dismiss ----
+   Horizontal drag/fling to discard (touch + mouse via Pointer Events).
+   `pan-y` keeps vertical scroll to the page and claims horizontal for us;
+   the transition animates the snap-back / commit, disabled while dragging so
+   the toast tracks the finger 1:1. */
+.toast-swipe {
+	touch-action: pan-y;
+	transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.toast-swipe[data-dragging="true"] {
+	transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.toast-swipe {
+		transition: none;
+	}
+}
+
 /* ---- Tip card rotation progress bar (drives auto-rotate via animationend) ---- */
 
 @keyframes tip-progress {
