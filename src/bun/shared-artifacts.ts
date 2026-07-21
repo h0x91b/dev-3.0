@@ -212,6 +212,27 @@ export function loadSharedArtifactContent(artifact: SharedArtifact): {
 	return { html, assets };
 }
 
+/** Strip control, separator and Windows-illegal characters so a title is a safe download stem. */
+function sanitizeDownloadStem(raw: string): string {
+	return (raw ?? "")
+		.replace(/[\0-\x1f\x7f]/g, " ")
+		.replace(/[<>:"/\\|?*]/g, " ")
+		.replace(/\s+/g, " ")
+		.trim()
+		.replace(/^\.+/, "")
+		.replace(/[.\s]+$/, "")
+		.slice(0, 100)
+		.trim();
+}
+
+/** Human-friendly download name from the artifact title, not the stored HTML basename. */
+export function sharedArtifactDownloadName(artifact: SharedArtifact): string {
+	const ext = artifact.bundlePath ? ".zip" : ".html";
+	const fromTitle = sanitizeDownloadStem(artifact.title);
+	const fallback = basename(artifact.name || artifact.storedPath).replace(/\.html$/i, "");
+	return `${fromTitle || fallback || "artifact"}${ext}`;
+}
+
 /** Read the portable download: ZIP when assets exist, otherwise the HTML. */
 export function loadSharedArtifactDownload(artifact: SharedArtifact): {
 	fileName: string;
@@ -221,7 +242,7 @@ export function loadSharedArtifactDownload(artifact: SharedArtifact): {
 	assertStoredArtifactRecord(artifact);
 	const path = artifact.bundlePath ?? artifact.storedPath;
 	return {
-		fileName: basename(path),
+		fileName: sharedArtifactDownloadName(artifact),
 		mime: artifact.bundlePath ? "application/zip" : "text/html",
 		base64: readFileSync(path).toString("base64"),
 	};
