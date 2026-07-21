@@ -1,0 +1,1 @@
+Wide remote clients no longer show watched-task status-change notifications; narrow remote viewports still receive them for mobile workflows. Other remote notifications and desktop-native notifications are unchanged.
