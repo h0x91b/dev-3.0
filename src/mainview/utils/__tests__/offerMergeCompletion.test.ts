@@ -138,6 +138,23 @@ describe("offerMergeCompletion", () => {
 		);
 	});
 
+	it("returns dismissed without throwing when the dismiss RPC fails", async () => {
+		mockedConfirm.mockResolvedValue(false);
+		mockedDismiss.mockRejectedValue(new Error("net down"));
+		const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		const outcome = await offerMergeCompletion({
+			context: wireContext,
+			t,
+			fingerprint: "fp-1",
+			onComplete: vi.fn(),
+		});
+
+		expect(outcome).toBe("dismissed");
+		expect(consoleError).toHaveBeenCalled();
+		consoleError.mockRestore();
+	});
+
 	it("builds the info card from the wire subject", async () => {
 		mockedConfirm.mockResolvedValue(false);
 		const subject: TaskDialogSubject = {

@@ -158,6 +158,12 @@ export async function offerMergeCompletion(
 		onComplete();
 		return "completed";
 	}
-	await api.request.dismissMergeCompletionPrompt({ taskId, projectId, fingerprint: fingerprint ?? null });
+	// Best-effort suppression bookkeeping: a failed dismiss must not surface as
+	// an unhandled rejection in the push/event listeners that call this.
+	try {
+		await api.request.dismissMergeCompletionPrompt({ taskId, projectId, fingerprint: fingerprint ?? null });
+	} catch (err) {
+		console.error("dismissMergeCompletionPrompt failed:", err);
+	}
 	return "dismissed";
 }
