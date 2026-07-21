@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const MINIMUM_WINDOWS_CONPTY_BUN_VERSION = "1.3.14";
@@ -21,7 +22,15 @@ export interface NativeTerminalHostProofState {
 }
 
 export function sameNativeTerminalPath(left: string, right: string): boolean {
-	return resolve(left).toLowerCase() === resolve(right).toLowerCase();
+	if (resolve(left).toLowerCase() === resolve(right).toLowerCase()) return true;
+
+	try {
+		const leftStat = statSync(left, { bigint: true });
+		const rightStat = statSync(right, { bigint: true });
+		return leftStat.ino !== 0n && leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+	} catch {
+		return false;
+	}
 }
 
 interface RuntimeDetails {
