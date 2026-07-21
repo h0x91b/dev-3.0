@@ -304,6 +304,34 @@ describe("GlobalSettings", () => {
 		});
 	});
 
+	describe("merge completion suggestions", () => {
+		function getMergeSuggestionSwitch() {
+			return screen.getByRole("switch", { name: "Suggest completing tasks after merge" });
+		}
+
+		it("is on by default", async () => {
+			setupMocks();
+			renderGlobalSettings("tasks");
+			await waitForLoad();
+
+			expect(getMergeSuggestionSwitch()).toHaveAttribute("aria-checked", "true");
+		});
+
+		it("saves the global opt-out", async () => {
+			setupMocks();
+			const user = userEvent.setup();
+			renderGlobalSettings("tasks");
+			await waitForLoad();
+
+			await user.click(getMergeSuggestionSwitch());
+
+			expect(mockedApi.request.saveGlobalSettings).toHaveBeenCalledWith(
+				expect.objectContaining({ suggestCompletingTasksAfterMerge: false }),
+			);
+			expect(getMergeSuggestionSwitch()).toHaveAttribute("aria-checked", "false");
+		});
+	});
+
 	describe("default diff view mode", () => {
 		it("selects auto by default", async () => {
 			setupMocks();

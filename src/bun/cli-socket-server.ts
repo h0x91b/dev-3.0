@@ -9,7 +9,7 @@ import { SharedArtifactError, deleteSharedArtifactFiles, pruneSharedArtifacts, s
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
-import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode } from "./rpc-handlers";
+import { isActive, activateTask, getPushMessage, getPushMessageLocal, moveTask, triggerColumnAgentIfNeeded, notifyWatchedTaskStatusChange, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
 import { getTmuxLayout } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
@@ -416,15 +416,41 @@ const handlers: Record<string, Handler> = {
 				updates.title = titleFromDescription(description);
 			}
 		}
+		let manualCompletion: boolean | undefined;
+		if (params.manualCompletion !== undefined) {
+			if (typeof params.manualCompletion !== "boolean") {
+				throw new Error("manualCompletion must be a boolean");
+			}
+			manualCompletion = params.manualCompletion;
+			if (task.manualCompletion !== manualCompletion) {
+				updates.manualCompletion = manualCompletion;
+				updates.mergeCompletionPrompt = null;
+			}
+		}
 
-		if (Object.keys(updates).length === 0 && priority === undefined && !titlePreserved) {
-			throw new Error("Nothing to update. Provide --title, --description, or --priority.");
+		if (
+			Object.keys(updates).length === 0
+			&& priority === undefined
+			&& !titlePreserved
+			&& params.manualCompletion === undefined
+		) {
+			throw new Error("Nothing to update. Provide --title, --description, --priority, or --manual-completion.");
 		}
 
 		let updated = task;
 		if (Object.keys(updates).length > 0) {
 			updated = await data.updateTask(project, task.id, updates);
+			if (manualCompletion !== undefined && task.manualCompletion !== manualCompletion) {
+				clearMergeNotification(task.id);
+			}
 			getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+			if (manualCompletion !== undefined && task.manualCompletion !== manualCompletion) {
+				getPushMessage()?.("manualCompletionChanged", {
+					taskId: updated.id,
+					projectId: project.id,
+					manualCompletion,
+				});
+			}
 		}
 		if (priority !== undefined) {
 			const changed = await data.setTaskPriority(project, task.id, priority);

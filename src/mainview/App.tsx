@@ -40,7 +40,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
-import { runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
+import { buildMergeCompletionDialogOptions, runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
 import { createMergePromptAbort } from "./utils/mergePromptAbort";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
@@ -1375,25 +1375,32 @@ function App() {
 	// Listen for branch merge detection — offer to complete the task
 	useEffect(() => {
 		async function onBranchMerged(e: Event) {
-			const { taskId, projectId, taskTitle, branchName, subject } = (e as CustomEvent).detail as {
+			const { taskId, projectId, taskTitle, branchName, subject, shouldPrompt, shouldNotify } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				taskTitle: string;
 				branchName: string;
 				fingerprint?: string | null;
 				subject?: TaskDialogSubject;
+				shouldPrompt?: boolean;
+				shouldNotify?: boolean;
 			};
 			const fingerprint = ((e as CustomEvent).detail as { fingerprint?: string | null }).fingerprint ?? null;
+			if (shouldPrompt === false) {
+				if (shouldNotify) {
+					toast.info(t("app.branchMergedToast", { taskTitle }), { taskId });
+				}
+				return;
+			}
 			// Close this dialog if the prompt is resolved on another client/device
 			// (the backend broadcasts it to every connected client).
 			const abort = createMergePromptAbort(taskId);
-			let shouldComplete: boolean | null;
+			let choice: boolean | string | null;
 			try {
-				shouldComplete = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
+				choice = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
 					try {
 						return await confirm({
-							title: t("app.branchMergedTitle"),
-							message: t("app.branchMergedMessage", { taskTitle, branchName }),
+							...buildMergeCompletionDialogOptions(t, branchName),
 							info: taskDialogInfoFromSubject(taskTitle, subject),
 							signal: abort.signal,
 						});
@@ -1407,8 +1414,14 @@ function App() {
 			}
 			// Resolved elsewhere: the dialog auto-closed, nothing left to do here.
 			if (abort.signal.aborted) return;
-			if (shouldComplete === null) return;
-			if (shouldComplete) {
+			if (choice === null) return;
+			if (choice === "manual") {
+				api.request.setTaskManualCompletion({ taskId, projectId, manualCompletion: true }).catch((err) => {
+					toast.error(t("app.manualCompletionChangeFailed", { error: String(err) }), { taskId });
+				});
+				return;
+			}
+			if (choice === true) {
 				// If the user is currently inside this task's view, leave it BEFORE the
 				// worktree is destroyed (otherwise TaskTerminal reacts to ptyDied /
 				// missing worktree and shows the "session ended / restart session"
@@ -1444,7 +1457,7 @@ function App() {
 						force: true,
 					}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
 				});
-			} else {
+			} else if (choice === false) {
 				api.request.dismissMergeCompletionPrompt({
 					taskId,
 					projectId,
@@ -1455,6 +1468,24 @@ function App() {
 		window.addEventListener("rpc:branchMerged", onBranchMerged);
 		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
 	}, [dispatch, navigate, t]);
+
+	// Agent-initiated changes are intentionally visible because they change how
+	// future merge events behave; user toggles in the inspector stay silent.
+	useEffect(() => {
+		function onManualCompletionChanged(e: Event) {
+			const { taskId, projectId, manualCompletion } = (e as CustomEvent).detail as {
+				taskId: string;
+				projectId: string;
+				manualCompletion: boolean;
+			};
+			toast.info(
+				t(manualCompletion ? "app.manualCompletionAgentEnabled" : "app.manualCompletionAgentDisabled"),
+				{ taskId, onClick: () => openTaskFromNotification(taskId, projectId) },
+			);
+		}
+		window.addEventListener("rpc:manualCompletionChanged", onManualCompletionChanged);
+		return () => window.removeEventListener("rpc:manualCompletionChanged", onManualCompletionChanged);
+	}, [openTaskFromNotification, t]);
 
 	// Listen for agent-initiated completion requests — the CLI is blocked on a
 	// socket waiting for the user's decision, so always respond, even on cancel.

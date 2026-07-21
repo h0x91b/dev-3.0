@@ -25,6 +25,7 @@ import {
 	sendScheduledMessageNow as sendScheduledMessageNowCore,
 } from "../scheduled-message-scheduler";
 import { Semaphore } from "../concurrency";
+import { loadSettings } from "../settings";
 import { getActiveContext, getPushMessage, isAppForeground, log, notifyWatchedTaskEvent, pushCliAttention } from "./shared";
 import {
 	ACTIVE_PROJECT_MERGE_INTERVAL_MS,
@@ -159,12 +160,29 @@ async function reserveMergeCompletionPrompt(project: Project, task: Task, finger
 	return true;
 }
 
-async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean }): Promise<{ shouldPrompt: boolean; fingerprint: string | null }> {
+function reserveMergeCompletionNotice(task: Task, fingerprint: MergeCompletionFingerprint, now = new Date(), force = false): boolean {
+	const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
+	const nowMs = now.getTime();
+	if (!force && isPromptKeyReserved(promptKey, nowMs)) return false;
+	mergeNotifiedPromptKeys.set(promptKey, nowMs);
+	return true;
+}
+
+async function prepareMergeCompletionPrompt(params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean }): Promise<{ shouldPrompt: boolean; fingerprint: string | null; shouldNotify?: boolean }> {
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	const fingerprint = params.fingerprint
 		? { fingerprint: params.fingerprint, precise: params.fingerprint.startsWith("v1:") }
 		: await getMergeCompletionFingerprint(task, task.branchName);
+	const settings = await loadSettings();
+	const noticeOnly = task.manualCompletion === true || settings.suggestCompletingTasksAfterMerge === false;
+	if (noticeOnly) {
+		return {
+			shouldPrompt: false,
+			fingerprint: fingerprint.fingerprint,
+			shouldNotify: reserveMergeCompletionNotice(task, fingerprint, new Date(), params.force === true),
+		};
+	}
 	const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint, new Date(), params.force === true);
 	return { shouldPrompt, fingerprint: fingerprint.fingerprint };
 }
@@ -328,6 +346,8 @@ async function checkMergedBranches(): Promise<void> {
 	const { projectId: activeProjectId } = getActiveContext();
 	const foreground = isAppForeground();
 	const now = Date.now();
+	const settings = await loadSettings();
+	const noticeOnlyBySetting = settings.suggestCompletingTasksAfterMerge === false;
 	// A tick far later than the base interval means the host was suspended
 	// (laptop sleep): re-spread overdue tasks instead of firing them all at once.
 	const wokeFromSleep = mergeLastTickAt !== 0 && wasAsleep(now - mergeLastTickAt, MERGE_POLL_INTERVAL_MS);
@@ -418,8 +438,9 @@ async function checkMergedBranches(): Promise<void> {
 				const fingerprint = await getMergeCompletionFingerprint(task, branchName);
 				const promptKey = mergePromptKey(task.id, fingerprint.fingerprint);
 				const nowMs = Date.now();
+				const noticeOnly = task.manualCompletion === true || noticeOnlyBySetting;
 				if (isPromptKeyReserved(promptKey, nowMs)) continue;
-				if (shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) continue;
+				if (!noticeOnly && shouldSuppressMergePrompt(task.mergeCompletionPrompt, fingerprint, nowMs)) continue;
 
 				// The popup claims "no changes left" — never prompt while the
 				// worktree has uncommitted changes. Skip WITHOUT reserving so a
@@ -439,6 +460,22 @@ async function checkMergedBranches(): Promise<void> {
 					merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
 				}
 				if (!merged) continue;
+
+				if (noticeOnly) {
+					if (!reserveMergeCompletionNotice(task, fingerprint)) continue;
+					log.info("Branch merge notice emitted", { taskId: task.id.slice(0, 8), branch: branchName });
+					pushMessage("branchMerged", {
+						taskId: task.id,
+						projectId: project.id,
+						taskTitle: task.customTitle || task.title,
+						branchName,
+						fingerprint: fingerprint.fingerprint,
+						subject: buildTaskDialogSubject(task, project),
+						shouldPrompt: false,
+						shouldNotify: true,
+					});
+					continue;
+				}
 
 				const shouldPrompt = await reserveMergeCompletionPrompt(project, task, fingerprint);
 				if (!shouldPrompt) continue;

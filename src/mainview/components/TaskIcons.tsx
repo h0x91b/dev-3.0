@@ -62,6 +62,27 @@ export function WatchIcon({ className }: TaskIconProps) {
 	);
 }
 
+// Completion owner: a person claims the final decision; the check appears on
+// hover and remains visible while completion prompts are disabled.
+export function CompletionOwnerIcon({ className, active = false }: TaskIconProps & { active?: boolean }) {
+	return (
+		<svg {...svgBase(className)}>
+			<g className="th-owner-person">
+				<circle cx="9" cy="7" r="2.8" />
+				<path d="M3.8 19c.5-4 2.2-6 5.2-6 2.2 0 3.8 1.1 4.7 3.2" />
+			</g>
+			<g className="th-owner-badge">
+				<circle cx="17.2" cy="16.8" r="4" />
+				<path
+					d="m15.3 16.8 1.25 1.25 2.45-2.7"
+					pathLength={1}
+					className={`th-owner-check${active ? "" : " th-owner-check-idle"}`}
+				/>
+			</g>
+		</svg>
+	);
+}
+
 // 03 — Find bugs: the lens focuses in, the caught bug squirms under it.
 export function FindBugsIcon({ className }: TaskIconProps) {
 	return (

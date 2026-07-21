@@ -78,13 +78,14 @@ const COMMANDS: CommandHelp[] = [
 			},
 			{
 				name: "update",
-				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4]',
-				summary: "Update a task's title, description, and/or priority.",
+				usage: 'dev3 task update [<id>] [--title "..."] [--description "..." | --description -] [--priority P0..P4] [--manual-completion on|off]',
+				summary: "Update a task's title, description, priority, or completion policy.",
 				details: [
 					"--title <text>        New title (cannot be empty).",
 					'--description <text>  New description ("" clears it); use - to read it from stdin.',
 					"--priority <P0..P4>   Set importance (P0 highest … P4 lowest); applies to the whole variant group.",
 					"                      Only set priority when the user asks — never on your own initiative.",
+					"--manual-completion on|off  Control whether merge detection suggests completing this task.",
 					"--force               Overwrite a user-edited title (diagnostics only — avoid).",
 				],
 			},

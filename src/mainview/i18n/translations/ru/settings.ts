@@ -136,6 +136,8 @@ const settings = {
 	"settings.taskCompleteSoundDesc": "Воспроизводить звук при завершении или отмене задачи",
 	"settings.watchByDefault": "Следить за задачами по умолчанию",
 	"settings.watchByDefaultDesc": "Предварительно включает «Следить» при запуске задачи. Для каждой задачи это можно изменить отдельно.",
+	"settings.suggestCompletingTasksAfterMerge": "Предлагать завершить задачу после merge",
+	"settings.suggestCompletingTasksAfterMergeDesc": "Если выключено, после merge показывается информационное уведомление вместо вопроса о завершении задачи.",
 	"settings.taskOpenMode": "Режим открытия задачи",
 	"settings.taskOpenModeDesc": "Как открываются активные задачи при нажатии на них. Также влияет на Cmd+1..9: «Разделённый вид» сохраняет вид задачи, «Полный экран» переключает на доску.",
 	"settings.taskOpenModeSplit": "Разделённый вид (боковая панель + терминал)",

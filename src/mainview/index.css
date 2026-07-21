@@ -1196,6 +1196,27 @@ svg .th-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 }
 .task-anim:hover .th-bell-nudge { transform-origin: 12px 4.5px; animation: th-bell-nudge 2.4s ease-in-out infinite; }
 
+/* -- Completion owner: the person steps forward and signs off. -- */
+@keyframes th-owner-person {
+	0%, 15%, 100% { transform: translateY(0); }
+	38%, 62% { transform: translateY(-.7px); }
+}
+@keyframes th-owner-badge {
+	0%, 18%, 100% { transform: scale(1); }
+	42% { transform: scale(1.12); }
+	62% { transform: scale(.97); }
+}
+@keyframes th-owner-check {
+	0%, 15% { stroke-dashoffset: 1; }
+	58%, 100% { stroke-dashoffset: 0; }
+}
+.th-owner-check { stroke-dasharray: 1; stroke-dashoffset: 0; }
+.th-owner-check-idle { opacity: 0; }
+.task-anim:hover .th-owner-person { animation: th-owner-person 2.4s ease-in-out infinite; }
+.task-anim:hover .th-owner-badge { transform-origin: 17.2px 16.8px; animation: th-owner-badge 2.4s ease-in-out infinite; }
+.task-anim:hover .th-owner-check { animation: th-owner-check 2.4s ease-in-out infinite; }
+.task-anim:hover .th-owner-check-idle { opacity: 1; }
+
 /* -- Find bugs: the lens focuses in, the caught bug squirms -- */
 @keyframes th-fb-lens {
 	0%, 15% { transform: scale(1); }

@@ -33,6 +33,8 @@ export const tooltips = {
 	"ttip.task.delete": "Elimina definitivamente esta tarea cancelada del tablero.",
 	"ttip.task.watch":
 		"Esto solo cambia esta tarea. Para observar automáticamente todas las tareas nuevas, activa Observar tareas de forma predeterminada en Ajustes → Comportamiento.",
+	"ttip.task.manualCompletion":
+		"Mantiene la tarea abierta y deja la decisión en tus manos. Desactívala cuando la fusión final deba mostrar la sugerencia habitual.",
 	"ttip.task.siblings":
 		"Abre el resumen de variantes para comparar títulos y estados, y cambia a cualquier variante activa.",
 	"ttip.task.ports":

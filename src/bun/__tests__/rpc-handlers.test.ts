@@ -8648,6 +8648,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		// blocks (e.g. isWorktreeDirty -> true), so pin a clean worktree here.
 		vi.mocked(git.isWorktreeDirty).mockResolvedValue(false);
 		vi.mocked(data.updateTask).mockImplementation(async (_project: Project, _taskId: string, patch: Partial<Task>) => makeTask(patch));
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
 	});
 
 	afterEach(() => {
@@ -8715,6 +8716,45 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 			fingerprint: "v1:dev3/task-test:abc123",
 			subject: buildTaskDialogSubject(task, project),
 		});
+	});
+
+	it.each([
+		["manual task flag", { manualCompletion: true }, undefined],
+		["global setting", {}, { suggestCompletingTasksAfterMerge: false }],
+	])("emits a notice-only merge event for %s", async (_name, taskOverrides, settingsOverride) => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			...taskOverrides,
+		});
+		const push = vi.fn();
+		if (settingsOverride) {
+			vi.mocked(loadSettings).mockResolvedValue({
+				updateChannel: "stable",
+				taskDropPosition: "top",
+				...settingsOverride,
+			} as GlobalSettings);
+		}
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(0);
+		vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
+			taskId: task.id,
+			shouldPrompt: false,
+			shouldNotify: true,
+		}));
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("compares PR-review tasks against the project base branch, not the reviewed branch itself", async () => {
@@ -9244,6 +9284,7 @@ describe("prepareMergeCompletionPrompt (force re-check)", () => {
 		vi.clearAllMocks();
 		_resetMergePollerState();
 		project = makeProject();
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "top" } as any);
 		vi.mocked(data.getProject).mockResolvedValue(project);
 		vi.mocked(data.updateTask).mockImplementation(async (_p: Project, _id: string, patch: Partial<Task>) => makeTask(patch));
 	});
@@ -9311,6 +9352,41 @@ describe("prepareMergeCompletionPrompt (force re-check)", () => {
 		});
 		expect(forced.shouldPrompt).toBe(true);
 	});
+
+	it("returns a notice-only decision for a manually completed task", async () => {
+		vi.mocked(data.getTask).mockResolvedValue(makeTask({ manualCompletion: true }));
+		const first = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+		});
+		const second = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+		});
+
+		expect(first).toEqual({ shouldPrompt: false, shouldNotify: true, fingerprint: FINGERPRINT });
+		expect(second).toEqual({ shouldPrompt: false, shouldNotify: false, fingerprint: FINGERPRINT });
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("returns a notice-only decision when the global suggestion is off", async () => {
+		vi.mocked(loadSettings).mockResolvedValue({
+			updateChannel: "stable",
+			taskDropPosition: "top",
+			suggestCompletingTasksAfterMerge: false,
+		} as GlobalSettings);
+		vi.mocked(data.getTask).mockResolvedValue(makeTask());
+
+		const result = await handlers.prepareMergeCompletionPrompt({
+			taskId: "task-1",
+			projectId: "proj-1",
+			fingerprint: FINGERPRINT,
+		});
+
+		expect(result).toEqual({ shouldPrompt: false, shouldNotify: true, fingerprint: FINGERPRINT });
+	});
 });
 
 describe("dismissMergeCompletionPrompt broadcast", () => {
@@ -9343,6 +9419,38 @@ describe("dismissMergeCompletionPrompt broadcast", () => {
 			projectId: project.id,
 			fingerprint: "v1:dev3/task-test:abc123",
 		});
+	});
+});
+
+describe("setTaskManualCompletion", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		_resetMergePollerState();
+	});
+
+	it("persists the task policy and broadcasts the task update", async () => {
+		const project = makeProject();
+		const task = makeTask({ manualCompletion: false });
+		const updated = { ...task, manualCompletion: true, mergeCompletionPrompt: null };
+		const push = vi.fn();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(updated);
+		setPushMessage(push);
+
+		const result = await handlers.setTaskManualCompletion({
+			taskId: task.id,
+			projectId: project.id,
+			manualCompletion: true,
+		});
+
+		expect(result).toEqual(updated);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, {
+			manualCompletion: true,
+			mergeCompletionPrompt: null,
+		});
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: project.id, task: updated });
+		expect(push).not.toHaveBeenCalledWith("manualCompletionChanged", expect.anything());
 	});
 });
 

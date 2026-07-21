@@ -12,7 +12,7 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { useT } from "../../i18n";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
-import { runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
+import { buildMergeCompletionDialogOptions, runMergeCompletionPromptOnce } from "../../utils/mergeCompletionPrompt";
 import { createMergePromptAbort } from "../../utils/mergePromptAbort";
 import { taskDialogInfo } from "../../utils/taskDialogInfo";
 import { startVisibilityAwarePoll } from "../../utils/poll";
@@ -62,7 +62,7 @@ export function useTaskBranchStatus({
 	const [pushing, setPushing] = useState(false);
 	const [creatingPR, setCreatingPR] = useState(false);
 	const [refreshingStatus, setRefreshingStatus] = useState(false);
-	const mergeDialogShownRef = useRef(false);
+	const mergeDialogShownRef = useRef<string | null>(null);
 
 	const baseBranch = resolveTaskCompareBaseBranch(task, project);
 	const defaultCompareRef = getDefaultTaskCompareRef(baseBranch, project);
@@ -123,7 +123,7 @@ export function useTaskBranchStatus({
 				return;
 			}
 
-			if (!force && mergeDialogShownRef.current) {
+			if (!force && status.mergeCompletionFingerprint && mergeDialogShownRef.current === status.mergeCompletionFingerprint) {
 				return;
 			}
 
@@ -133,8 +133,10 @@ export function useTaskBranchStatus({
 				fingerprint: status.mergeCompletionFingerprint,
 				force,
 			});
-			if (!force) {
-				mergeDialogShownRef.current = true;
+			if (!force && promptState.fingerprint) mergeDialogShownRef.current = promptState.fingerprint;
+			if (promptState.shouldNotify) {
+				toast.info(t("app.branchMergedToast", { taskTitle: task.customTitle || task.title }), { taskId: task.id });
+				return;
 			}
 			if (!promptState.shouldPrompt) {
 				return;
@@ -143,26 +145,28 @@ export function useTaskBranchStatus({
 			const abort = createMergePromptAbort(task.id);
 			const runPrompt = () =>
 				confirm({
-					title: t("app.branchMergedTitle"),
-					message: t("app.branchMergedMessage", {
-						taskTitle: task.customTitle || task.title,
-						branchName: task.branchName || "",
-					}),
+					...buildMergeCompletionDialogOptions(t, task.branchName || ""),
 					info: taskDialogInfo(task, project),
 					signal: abort.signal,
 				});
-			let shouldComplete: boolean | null;
+			let choice: boolean | string | null;
 			try {
-				shouldComplete = force
+				choice = force
 					? await runPrompt()
 					: await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, runPrompt);
 			} finally {
 				abort.cleanup();
 			}
 			if (abort.signal.aborted) return;
-			if (shouldComplete) {
+			if (choice === "manual") {
+				try {
+					await api.request.setTaskManualCompletion({ taskId: task.id, projectId: project.id, manualCompletion: true });
+				} catch (err) {
+					toast.error(t("task.manualCompletionChangeFailed", { error: String(err) }), { taskId: task.id });
+				}
+			} else if (choice === true) {
 				completeTask();
-			} else if (shouldComplete === false) {
+			} else if (choice === false) {
 				await api.request.dismissMergeCompletionPrompt({
 					taskId: task.id,
 					projectId: project.id,
@@ -178,6 +182,7 @@ export function useTaskBranchStatus({
 			task.branchName,
 			task.customTitle,
 			task.id,
+			task.manualCompletion,
 			task.status,
 			task.title,
 			t,
@@ -190,7 +195,7 @@ export function useTaskBranchStatus({
 			return;
 		}
 
-		mergeDialogShownRef.current = false;
+		mergeDialogShownRef.current = null;
 		let cancelled = false;
 
 		const fetchStatus = async () => {
@@ -282,15 +287,19 @@ export function useTaskBranchStatus({
 					projectId: project.id,
 					fingerprint: refreshedStatus?.mergeCompletionFingerprint,
 				});
+				if (promptState.fingerprint) mergeDialogShownRef.current = promptState.fingerprint;
+				if (promptState.shouldNotify) {
+					toast.info(t("app.branchMergedToast", { taskTitle: task.customTitle || task.title }), { taskId: task.id });
+					return;
+				}
 				if (!promptState.shouldPrompt) return;
 
 				const abort = createMergePromptAbort(task.id);
-				let shouldComplete: boolean | null;
+				let choice: boolean | string | null;
 				try {
-					shouldComplete = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
+					choice = await runMergeCompletionPromptOnce(task.id, promptState.fingerprint, () =>
 						confirm({
-							title: t("infoPanel.mergeComplete"),
-							message: t("infoPanel.mergeCompleteMessage"),
+							...buildMergeCompletionDialogOptions(t, task.branchName || ""),
 							info: taskDialogInfo(task, project),
 							signal: abort.signal,
 						}),
@@ -299,9 +308,15 @@ export function useTaskBranchStatus({
 					abort.cleanup();
 				}
 				if (abort.signal.aborted) return;
-				if (shouldComplete) {
+				if (choice === "manual") {
+					try {
+						await api.request.setTaskManualCompletion({ taskId: task.id, projectId: project.id, manualCompletion: true });
+					} catch (err) {
+						toast.error(t("task.manualCompletionChangeFailed", { error: String(err) }), { taskId: task.id });
+					}
+				} else if (choice === true) {
 					completeTask();
-				} else if (shouldComplete === false) {
+				} else if (choice === false) {
 					await api.request.dismissMergeCompletionPrompt({
 						taskId: task.id,
 						projectId: project.id,
@@ -313,7 +328,7 @@ export function useTaskBranchStatus({
 
 		window.addEventListener("rpc:gitOpCompleted", onGitOpCompleted);
 		return () => window.removeEventListener("rpc:gitOpCompleted", onGitOpCompleted);
-	}, [compareRef, completeTask, enabled, handleCreatePR, project.id, task.id, task.status, t]);
+	}, [compareRef, completeTask, enabled, handleCreatePR, project.id, task.customTitle, task.id, task.manualCompletion, task.status, task.title, t]);
 
 	const handleRefreshStatus = useCallback(async () => {
 		if (refreshingStatus || !isTaskActive || !task.worktreePath) {

@@ -14,6 +14,7 @@ interface BehaviorSettingsSectionProps {
 	onDefaultDiffViewModeChange: (mode: "split" | "unified" | "auto") => void;
 	onSoundToggle: (enabled: boolean) => void;
 	onWatchByDefaultToggle: (enabled: boolean) => void;
+	onSuggestCompletingTasksAfterMergeToggle: (enabled: boolean) => void;
 	onFocusModeToggle: (enabled: boolean) => void;
 	onTaskDropPositionChange: (position: "top" | "bottom") => void;
 	onTaskOpenModeChange: (mode: "split" | "fullscreen") => void;
@@ -28,6 +29,7 @@ export default function BehaviorSettingsSection({
 	onDefaultDiffViewModeChange,
 	onSoundToggle,
 	onWatchByDefaultToggle,
+	onSuggestCompletingTasksAfterMergeToggle,
 	onFocusModeToggle,
 	onTaskDropPositionChange,
 	onTaskOpenModeChange,
@@ -134,6 +136,26 @@ export default function BehaviorSettingsSection({
 					offLabel={t("settings.off")}
 					onToggle={() =>
 						onWatchByDefaultToggle(globalSettings.watchByDefault !== true)
+					}
+				/>
+			</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="suggest-completing-after-merge">
+			<div>
+				<label className="block text-fg text-sm font-semibold mb-2">
+					{t("settings.suggestCompletingTasksAfterMerge")}
+				</label>
+				<p className="text-fg-3 text-sm mb-3">
+					{t("settings.suggestCompletingTasksAfterMergeDesc")}
+				</p>
+				<SettingsToggle
+					checked={globalSettings.suggestCompletingTasksAfterMerge !== false}
+					ariaLabel={t("settings.suggestCompletingTasksAfterMerge")}
+					onLabel={t("settings.on")}
+					offLabel={t("settings.off")}
+					onToggle={() =>
+						onSuggestCompletingTasksAfterMergeToggle(globalSettings.suggestCompletingTasksAfterMerge === false)
 					}
 				/>
 			</div>

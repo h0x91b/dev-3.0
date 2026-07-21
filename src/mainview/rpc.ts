@@ -60,6 +60,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	terminalBell: (payload) => window.dispatchEvent(new CustomEvent("rpc:terminalBell", { detail: payload })),
 	gitOpCompleted: (payload) => window.dispatchEvent(new CustomEvent("rpc:gitOpCompleted", { detail: payload })),
 	branchMerged: (payload) => window.dispatchEvent(new CustomEvent("rpc:branchMerged", { detail: payload })),
+	manualCompletionChanged: (payload) => window.dispatchEvent(new CustomEvent("rpc:manualCompletionChanged", { detail: payload })),
 	mergePromptResolved: (payload) => window.dispatchEvent(new CustomEvent("rpc:mergePromptResolved", { detail: payload })),
 	agentCompletionRequested: (payload) => window.dispatchEvent(new CustomEvent("rpc:agentCompletionRequested", { detail: payload })),
 	updateAvailable: (payload) => window.dispatchEvent(new CustomEvent("rpc:updateAvailable", { detail: payload })),

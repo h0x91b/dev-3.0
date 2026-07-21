@@ -1401,6 +1401,24 @@ async function toggleTaskWatch(params: { taskId: string; projectId: string; watc
 	return updated;
 }
 
+async function setTaskManualCompletion(params: { taskId: string; projectId: string; manualCompletion: boolean }): Promise<Task> {
+	log.info("→ setTaskManualCompletion", { taskId: params.taskId, manualCompletion: params.manualCompletion });
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	const changed = task.manualCompletion !== params.manualCompletion;
+	if (!changed) return task;
+	// Changing the completion policy starts a fresh merge-decision cycle. This
+	// keeps an earlier Not now answer from hiding the newly enabled prompt.
+	const updated = await data.updateTask(project, task.id, {
+		manualCompletion: params.manualCompletion,
+		mergeCompletionPrompt: null,
+	});
+	clearMergeNotification(task.id);
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← setTaskManualCompletion done", { taskId: task.id });
+	return updated;
+}
+
 async function respondToAgentCompletionRequest(params: { requestId: string; approved: boolean }): Promise<void> {
 	const known = resolveCompletionRequest(params.requestId, params.approved);
 	if (!known) {
@@ -1591,6 +1609,7 @@ export const taskLifecycleHandlers = {
 	setUserOverview,
 	clearUserOverview,
 	toggleTaskWatch,
+	setTaskManualCompletion,
 	scheduleTaskLaunch,
 	cancelScheduledLaunch,
 	startScheduledLaunchNow,

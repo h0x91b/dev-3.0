@@ -23,6 +23,7 @@ vi.mock("../../rpc", () => ({
 			refreshTaskPrStatus: vi.fn().mockResolvedValue(undefined),
 			prepareMergeCompletionPrompt: vi.fn(),
 			dismissMergeCompletionPrompt: vi.fn(),
+			setTaskManualCompletion: vi.fn(),
 			rebaseTask: vi.fn(),
 			rebaseTaskViaAgent: vi.fn(),
 			mergeTask: vi.fn(),
@@ -225,6 +226,7 @@ describe("TaskInfoPanel", () => {
 			fingerprint: "v1:dev3/task-t1:abc123",
 		});
 		mockedApi.request.dismissMergeCompletionPrompt.mockResolvedValue(makeTask());
+		mockedApi.request.setTaskManualCompletion.mockResolvedValue(makeTask({ manualCompletion: true }));
 		// Default: getResolvedProject returns the project as-is
 		mockedApi.request.getResolvedProject.mockResolvedValue(project);
 	});
@@ -2293,6 +2295,91 @@ describe("TaskInfoPanel", () => {
 	});
 
 	describe("post-merge auto-complete", () => {
+		it("toggles manual completion from the task context bar", async () => {
+			const task = makeTask({ manualCompletion: false });
+			const updated = makeTask({ manualCompletion: true });
+			mockedApi.request.setTaskManualCompletion.mockResolvedValue(updated);
+			const dispatch = vi.fn();
+
+			await act(async () => {
+				renderPanel(task, { dispatch });
+			});
+
+			const toggle = screen.getAllByRole("button", { name: "I’ll complete it myself — stop completion prompts after merges" })[0];
+			await act(async () => {
+				fireEvent.click(toggle);
+			});
+
+			expect(mockedApi.request.setTaskManualCompletion).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				manualCompletion: true,
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updated });
+			expect(vi.mocked(toast.info)).not.toHaveBeenCalled();
+		});
+
+		it("keeps completion ownership legible in the compact task bar", async () => {
+			mockMatchMedia(true);
+
+			await act(async () => {
+				renderPanel(makeTask({ manualCompletion: true }));
+			});
+
+			expect(screen.getByText("I decide")).toBeInTheDocument();
+		});
+
+		it("persists self-managed completion from the merge popup", async () => {
+			const task = makeTask({ status: "review-by-user" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+				mergeCompletionFingerprint: "v1:dev3/task-t1:manual",
+			});
+			vi.mocked(confirm).mockResolvedValue("manual" as never);
+
+			await act(async () => {
+				renderPanel(task);
+			});
+
+			await waitFor(() => expect(mockedApi.request.setTaskManualCompletion).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				manualCompletion: true,
+			}));
+			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();
+			expect(vi.mocked(confirm)).toHaveBeenCalledWith(expect.objectContaining({
+				confirmLabel: "Complete task",
+				cancelLabel: "Not now",
+				alternativeAction: { label: "I’ll complete it myself", value: "manual" },
+				dismissOnBackdrop: false,
+			}));
+		});
+
+		it("shows a merge notice when the backend suppresses the popup", async () => {
+			const task = makeTask({ status: "review-by-user" });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				mergedByContent: true,
+				mergeCompletionFingerprint: "v1:dev3/task-t1:notice",
+			});
+			mockedApi.request.prepareMergeCompletionPrompt.mockResolvedValue({
+				shouldPrompt: false,
+				shouldNotify: true,
+				fingerprint: "v1:dev3/task-t1:notice",
+			});
+
+			await act(async () => {
+				renderPanel(task);
+			});
+
+			await waitFor(() => expect(vi.mocked(toast.info)).toHaveBeenCalledWith(
+				'Branch of task "Test task" was merged.',
+				expect.objectContaining({ taskId: "t1" }),
+			));
+			expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+		});
+
 		it("does not offer auto-complete for merged AI Review tasks", async () => {
 			const dispatch = vi.fn();
 			const navigate = vi.fn();

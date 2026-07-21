@@ -691,6 +691,8 @@ export interface GlobalSettings {
 	 * reused as the default for the next launch. Undefined â default to unwatched.
 	 */
 	watchByDefault?: boolean;
+	/** When false, merged branches show a notice instead of a completion prompt. */
+	suggestCompletingTasksAfterMerge?: boolean;
 	/**
 	 * One-time migration marker: when this is behind the app's current
 	 * revision, built-in agent presets get their configuration order
@@ -1224,6 +1226,8 @@ export interface Task {
 	shuttingDown?: boolean;
 	/** When true, native macOS notifications fire on status changes. */
 	watched?: boolean;
+	/** When true, merge detection reports the merge without suggesting completion. */
+	manualCompletion?: boolean;
 	/** Persisted agent session state for recovery after tmux/app crash. */
 	sessionState?: TaskSessionState | null;
 	/**
@@ -2768,7 +2772,7 @@ export type AppRPCSchema = {
 			};
 			prepareMergeCompletionPrompt: {
 				params: { taskId: string; projectId: string; fingerprint?: string | null; force?: boolean };
-				response: { shouldPrompt: boolean; fingerprint: string | null };
+				response: { shouldPrompt: boolean; fingerprint: string | null; shouldNotify?: boolean };
 			};
 			dismissMergeCompletionPrompt: {
 				params: { taskId: string; projectId: string; fingerprint: string | null };
@@ -3001,6 +3005,10 @@ export type AppRPCSchema = {
 			};
 			toggleTaskWatch: {
 				params: { taskId: string; projectId: string; watched: boolean };
+				response: Task;
+			};
+			setTaskManualCompletion: {
+				params: { taskId: string; projectId: string; manualCompletion: boolean };
 				response: Task;
 			};
 			/** Persist a deferred launch on a todo task ("Start in…"). */
@@ -3380,7 +3388,8 @@ export type AppRPCSchema = {
 			terminalBell: { taskId: string };
 			gitOpCompleted: { taskId: string; projectId: string; operation: string; ok: boolean };
 			updateAvailable: { version: string; changelog?: UpdateChangelog };
-			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null; subject: TaskDialogSubject };
+			branchMerged: { taskId: string; projectId: string; taskTitle: string; branchName: string; fingerprint: string | null; subject: TaskDialogSubject; shouldPrompt?: boolean; shouldNotify?: boolean };
+			manualCompletionChanged: { taskId: string; projectId: string; manualCompletion: boolean };
 			/**
 			 * A branch-merged completion prompt was resolved by declining it
 			 * (`dismissMergeCompletionPrompt`). Lets other connected clients — a

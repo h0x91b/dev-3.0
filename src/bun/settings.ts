@@ -92,6 +92,8 @@ export async function loadSettings(): Promise<GlobalSettings> {
 			// Boolean preference — both true (watch) and false (don't watch) are
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
+			// Default-on toggle — only an explicit false is a stored opt-out.
+			suggestCompletingTasksAfterMerge: data.suggestCompletingTasksAfterMerge === false ? false : undefined,
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
@@ -196,6 +198,8 @@ export function loadSettingsSync(): GlobalSettings {
 			// Boolean preference — both true (watch) and false (don't watch) are
 			// meaningful stored choices, so preserve either; only undefined drops.
 			watchByDefault: typeof data.watchByDefault === "boolean" ? data.watchByDefault : undefined,
+			// Default-on toggle — only an explicit false is a stored opt-out.
+			suggestCompletingTasksAfterMerge: data.suggestCompletingTasksAfterMerge === false ? false : undefined,
 			agentsLayoutRevision: typeof data.agentsLayoutRevision === "number" ? data.agentsLayoutRevision : undefined,
 			// Default-off experimental toggle — only an explicit true is a stored opt-in.
 			pxpipeProxyEnabled: data.pxpipeProxyEnabled === true ? true : undefined,
