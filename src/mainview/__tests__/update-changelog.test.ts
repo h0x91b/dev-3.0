@@ -7,6 +7,7 @@ import {
 	changedKeysFromPaths,
 	changelogEntryKey,
 	changelogKeyFromPath,
+	countMergedPrs,
 	resolvePrevTag,
 	selectReleaseWindow,
 	MAX_POPOVER_FEATURES,
@@ -46,15 +47,16 @@ describe("entryShortTitle", () => {
 
 describe("buildUpdateChangelog", () => {
 	it("puts features first, caps the shown list, and counts the whole window", () => {
+		const featureTotal = MAX_POPOVER_FEATURES + 2;
 		const window: ChangelogEntry[] = [
-			...Array.from({ length: 7 }, (_, i) => entry({ type: "feature", slug: `f${i}`, short: `Feature ${i}` })),
+			...Array.from({ length: featureTotal }, (_, i) => entry({ type: "feature", slug: `f${i}`, short: `Feature ${i}` })),
 			...Array.from({ length: 3 }, (_, i) => entry({ type: "fix", slug: `x${i}`, short: `Fix ${i}` })),
 			entry({ type: "chore", slug: "c", short: "Chore" }),
 		];
 		const result = buildUpdateChangelog(window);
 		expect(result.features).toHaveLength(MAX_POPOVER_FEATURES);
 		expect(result.features[0]).toBe("Feature 0");
-		expect(result.featureCount).toBe(7);
+		expect(result.featureCount).toBe(featureTotal);
 		expect(result.fixCount).toBe(3);
 	});
 
@@ -125,6 +127,23 @@ describe("resolvePrevTag", () => {
 	it("ignores non-v tags and returns null when none qualify", () => {
 		expect(resolvePrevTag("nightly\nlatest", "")).toBeNull();
 		expect(resolvePrevTag("", "")).toBeNull();
+	});
+});
+
+describe("countMergedPrs", () => {
+	it("counts commit subjects with a (#N) squash-merge marker", () => {
+		expect(
+			countMergedPrs([
+				"Fix full-width PR conversation toggle (#1034)",
+				"Add swipe-to-dismiss gesture (#1033)",
+				"WIP local commit without a PR",
+				"",
+			]),
+		).toBe(2);
+	});
+
+	it("returns 0 for no PR-marked subjects", () => {
+		expect(countMergedPrs(["direct push", ""])).toBe(0);
 	});
 });
 

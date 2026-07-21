@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
 import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
 import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
-import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
+import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMergedPrs, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -626,7 +626,7 @@ async function previewUpdatePopover(): Promise<UpdatePopoverPreview> {
 		available: false,
 		reason,
 		changelog: null,
-		diagnostics: { prevTag: null, usedFallback: false, windowFiles: [], totalEntries: 0, includesUncommitted: true },
+		diagnostics: { prevTag: null, usedFallback: false, windowFiles: [], totalEntries: 0, includesUncommitted: true, mergedPRs: 0 },
 	});
 
 	let root = import.meta.dir ?? "";
@@ -666,9 +666,14 @@ async function previewUpdatePopover(): Promise<UpdatePopoverPreview> {
 	}
 	const changedKeys = changedKeysFromPaths(changedPaths);
 
+	// Squash-merged PRs shipped since the tag — a fun "how much landed" number.
+	const mergedPRs = prevTag
+		? countMergedPrs((gitOut(["log", `${prevTag}..HEAD`, "--pretty=%s"]) ?? "").split("\n"))
+		: 0;
+
 	const usedFallback = entries.filter((e) => changedKeys.has(changelogEntryKey(e))).length === 0;
 	const windowEntries = selectReleaseWindow(entries, changedKeys);
-	log.info("<- previewUpdatePopover", { prevTag, window: windowEntries.length, usedFallback });
+	log.info("<- previewUpdatePopover", { prevTag, window: windowEntries.length, usedFallback, mergedPRs });
 	return {
 		available: true,
 		changelog: buildUpdateChangelog(windowEntries),
@@ -678,6 +683,7 @@ async function previewUpdatePopover(): Promise<UpdatePopoverPreview> {
 			windowFiles: windowEntries.map((e) => `${e.type}-${e.slug}`),
 			totalEntries: entries.length,
 			includesUncommitted: true,
+			mergedPRs,
 		},
 	};
 }

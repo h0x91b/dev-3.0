@@ -42,6 +42,19 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 
 	const diag = preview?.diagnostics;
 
+	// Window can hold refactor/docs/chore entries that never surface in the
+	// popover (features + fixes only), so the window count is >= what the popover
+	// shows. Break it down by type so the difference is never a mystery.
+	const typeCounts = (diag?.windowFiles ?? []).reduce<Record<string, number>>((acc, f) => {
+		const type = f.split("-")[0] || "other";
+		acc[type] = (acc[type] ?? 0) + 1;
+		return acc;
+	}, {});
+	const typeBreakdown = Object.entries(typeCounts)
+		.sort((a, b) => b[1] - a[1])
+		.map(([type, n]) => `${n} ${type}`)
+		.join(" · ");
+
 	return (
 		<div
 			className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
@@ -110,8 +123,16 @@ export default function UpdatePopoverSimulatorModal({ onClose }: { onClose: () =
 										</span>
 									)}
 									<span className="text-fg-muted">{t("updateSim.totalEntries", { count: String(diag?.totalEntries ?? 0) })}</span>
+									{diag && diag.mergedPRs > 0 && (
+										<span className="text-fg-muted">{t("updateSim.mergedPRs", { count: String(diag.mergedPRs) })}</span>
+									)}
 								</div>
 								<p className="text-fg-muted text-[0.6875rem]">{t("updateSim.includesUncommitted")}</p>
+								{typeBreakdown && (
+									<p className="text-fg-2 text-[0.6875rem]">
+										{typeBreakdown} <span className="text-fg-muted">— {t("updateSim.popoverShowsNote")}</span>
+									</p>
+								)}
 
 								<div className="text-fg-3 text-xs font-medium pt-1">
 									{t("updateSim.windowFiles", { count: String(diag?.windowFiles.length ?? 0) })}

@@ -1,7 +1,7 @@
 import type { ChangelogEntry, UpdateChangelog } from "./types";
 
 /** How many feature titles the update popover shows before the "+N more" rollup. */
-export const MAX_POPOVER_FEATURES = 5;
+export const MAX_POPOVER_FEATURES = 7;
 
 /**
  * Fallback short title for entries without an authored `short:` line. Recent
@@ -49,6 +49,15 @@ export function changelogKeyFromPath(path: string): string | null {
 export function resolvePrevTag(tagsMergedDesc: string, tagsPointingAtHead: string): string | null {
 	const pointsAt = new Set(tagsPointingAtHead.split("\n").filter(Boolean));
 	return tagsMergedDesc.split("\n").find((t) => /^v/.test(t) && !pointsAt.has(t)) ?? null;
+}
+
+/**
+ * Count squash-merged PRs from a list of commit subjects (`git log --pretty=%s`).
+ * PRs squash-merge with a trailing `(#123)` in the subject, so that marker is the
+ * signal — direct pushes without a PR number are not counted.
+ */
+export function countMergedPrs(subjects: string[]): number {
+	return subjects.filter((s) => /\(#\d+\)/.test(s)).length;
 }
 
 /** Map raw git path lines (diff / ls-files output) to the set of entry keys. */

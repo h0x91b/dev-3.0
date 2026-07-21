@@ -9,6 +9,13 @@
 html {
 	touch-action: manipulation;
 }
+
+/* Text selection — themed accent tint instead of the harsh default browser
+   highlight. Tokens resolve per theme, so it adapts to dark/light automatically. */
+::selection {
+	background-color: rgb(var(--accent) / 0.35);
+	color: rgb(var(--text-primary));
+}
 .browser-mode textarea, .browser-mode input[type="text"], .browser-mode input:not([type]) {
 	font-size: 16px !important;
 }

@@ -27,7 +27,7 @@ function renderSim() {
 const PREVIEW: UpdatePopoverPreview = {
 	available: true,
 	changelog: { features: ["Dark mode toggle", "Swipe to dismiss"], featureCount: 3, fixCount: 4 },
-	diagnostics: { prevTag: "v1.2.3", usedFallback: false, windowFiles: ["feature-dark-mode", "fix-toast"], totalEntries: 42, includesUncommitted: true },
+	diagnostics: { prevTag: "v1.2.3", usedFallback: false, windowFiles: ["feature-dark-mode", "fix-toast", "refactor-cleanup"], totalEntries: 42, includesUncommitted: true, mergedPRs: 12 },
 };
 
 beforeEach(() => {
@@ -68,10 +68,13 @@ describe("UpdatePopoverSimulatorModal", () => {
 		const restart = screen.getByRole("button", { name: "Restart to Update" });
 		expect((restart as HTMLButtonElement).disabled).toBe(true);
 
-		// Diagnostics: tag, window files, totals.
+		// Diagnostics: tag, window files, totals, merged PRs, type breakdown.
 		expect(screen.getByText("v1.2.3")).toBeTruthy();
 		expect(screen.getByText("feature-dark-mode")).toBeTruthy();
 		expect(screen.getByText(/42 total entries/)).toBeTruthy();
+		expect(screen.getByText(/12 PRs merged since the tag/)).toBeTruthy();
+		// Window has 3 entries (feature+fix+refactor) but only 2 show in the popover.
+		expect(screen.getByText(/only feature & fix show in the popover/)).toBeTruthy();
 	});
 
 	it("shows the unavailable state when the preview is not available", async () => {
@@ -80,7 +83,7 @@ describe("UpdatePopoverSimulatorModal", () => {
 			available: false,
 			reason: "no-change-logs-dir",
 			changelog: null,
-			diagnostics: { prevTag: null, usedFallback: false, windowFiles: [], totalEntries: 0, includesUncommitted: true },
+			diagnostics: { prevTag: null, usedFallback: false, windowFiles: [], totalEntries: 0, includesUncommitted: true, mergedPRs: 0 },
 		} satisfies UpdatePopoverPreview);
 		renderSim();
 

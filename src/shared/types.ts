@@ -46,6 +46,7 @@ export interface UpdatePopoverPreview {
 		windowFiles: string[]; // "<type>-<slug>" of each entry in the window
 		totalEntries: number; // total parsed changelog entries (whole history)
 		includesUncommitted: boolean; // window counts working-tree + untracked files, not just committed
+		mergedPRs: number; // squash-merged PRs (commits with a "(#N)" subject) since prevTag
 	};
 }
 

@@ -41,6 +41,8 @@ const updates = {
 	"updateSim.fallbackBadge": "ventana de reserva",
 	"updateSim.totalEntries": "{count} entradas en total",
 	"updateSim.includesUncommitted": "La ventana cuenta change-logs confirmados + sin confirmar + sin seguimiento desde el tag.",
+	"updateSim.popoverShowsNote": "solo feature y fix aparecen en el popover",
+	"updateSim.mergedPRs": "{count} PRs fusionados desde el tag",
 	"updateSim.windowFiles": "Entradas en la ventana ({count})",
 	"updateSim.emptyWindow": "No hay entradas en la ventana.",
 	"updateSim.rawPayload": "Payload sin procesar",

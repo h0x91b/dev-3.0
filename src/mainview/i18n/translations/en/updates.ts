@@ -41,6 +41,8 @@ const updates = {
 	"updateSim.fallbackBadge": "fallback window",
 	"updateSim.totalEntries": "{count} total entries",
 	"updateSim.includesUncommitted": "Window counts committed + uncommitted + untracked change-logs since the tag.",
+	"updateSim.popoverShowsNote": "only feature & fix show in the popover",
+	"updateSim.mergedPRs": "{count} PRs merged since the tag",
 	"updateSim.windowFiles": "Entries in window ({count})",
 	"updateSim.emptyWindow": "No entries in the window.",
 	"updateSim.rawPayload": "Raw payload",

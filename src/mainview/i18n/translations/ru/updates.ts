@@ -45,6 +45,8 @@ const updates = {
 	"updateSim.fallbackBadge": "запасное окно",
 	"updateSim.totalEntries": "всего записей: {count}",
 	"updateSim.includesUncommitted": "Окно учитывает закоммиченные + незакоммиченные + неотслеживаемые change-logs с тега.",
+	"updateSim.popoverShowsNote": "в поповер идут только feature и fix",
+	"updateSim.mergedPRs": "смёржено PR с тега: {count}",
 	"updateSim.windowFiles": "Записи в окне ({count})",
 	"updateSim.emptyWindow": "В окне нет записей.",
 	"updateSim.rawPayload": "Сырой payload",
