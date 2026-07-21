@@ -19,7 +19,7 @@ import {
 	sameNativeTerminalPath,
 	type NativeTerminalHostProofState,
 } from "../../shared/native-terminal-runtime";
-import { extractPowerShellMarkerPid, powerShellStartupArgs } from "./pty-proof";
+import { powerShellInteractiveArgs } from "./pty-proof";
 import { computeTerminalHostReentryArgs, requireLiveTerminalHostState } from "./reentry";
 import { resolvesWithin } from "./wait-with-timeout";
 
@@ -107,17 +107,16 @@ async function runHost(): Promise<void> {
 	const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
 	if (!existsSync(powershell)) throw new Error(`Packaged terminal host cannot find PowerShell at ${powershell}.`);
 
-	const marker = `DEV3_HOST_POWERSHELL_${crypto.randomUUID().replaceAll("-", "")}`;
 	let output = "";
 	let captureStartup = true;
-	let observeMarker: (() => void) | null = null;
-	const markerSeen = new Promise<void>((resolveMarker) => {
-		observeMarker = resolveMarker;
+	let observePtyOutput: (() => void) | null = null;
+	const ptyOutputSeen = new Promise<void>((resolveOutput) => {
+		observePtyOutput = resolveOutput;
 	});
 	const decoder = new TextDecoder();
 	const proc = (() => {
 		try {
-			return spawn([powershell, ...powerShellStartupArgs(marker)], {
+			return spawn([powershell, ...powerShellInteractiveArgs()], {
 				cwd: process.cwd(),
 				env: { ...process.env, TERM: "xterm-256color" },
 				terminal: {
@@ -126,7 +125,7 @@ async function runHost(): Promise<void> {
 					data(_terminal: unknown, bytes: Uint8Array) {
 						if (!captureStartup) return;
 						output = `${output}${decoder.decode(bytes, { stream: true })}`.slice(-8000);
-						if (extractPowerShellMarkerPid(output, marker) !== null) observeMarker?.();
+						if (bytes.length > 0) observePtyOutput?.();
 					},
 				},
 			});
@@ -153,14 +152,13 @@ async function runHost(): Promise<void> {
 		});
 	}
 
-	const startup = await resolvesWithin(markerSeen, 10_000);
-	const powershellPid = extractPowerShellMarkerPid(output, marker);
+	const startup = await resolvesWithin(ptyOutputSeen, 10_000);
+	const powershellPid = proc.pid;
 	captureStartup = false;
-	if (!startup || powershellPid !== proc.pid) {
+	if (!startup) {
 		proc.kill();
 		throw new Error(
-			`Packaged Bun ${Bun.version} did not start the expected PowerShell through Bun.Terminal ` +
-				`(spawned ${proc.pid}, observed ${powershellPid ?? "no PID"}). ` +
+			`Packaged Bun ${Bun.version} started PowerShell ${proc.pid} but received no Bun.Terminal output. ` +
 				`Transcript: ${JSON.stringify(output.slice(-2000))}`,
 		);
 	}
