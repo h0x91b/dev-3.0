@@ -46,6 +46,17 @@ function Write-Utf8NoBom {
     [System.IO.File]::WriteAllText($Path, $Content, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+# Capture a native command's merged output. `bun run` writes to stderr, which
+# ErrorActionPreference=Stop would turn into a terminating NativeCommandError
+# once merged with 2>&1; relax it locally so capture keeps working.
+function Invoke-NativeText {
+    param([scriptblock]$ScriptBlock)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { return (& $ScriptBlock 2>&1 | Out-String) }
+    finally { $ErrorActionPreference = $previous }
+}
+
 function Get-ToolVersion {
     param([string]$Command, [string[]]$VersionArgs = @("--version"))
     if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) { return "not found" }
@@ -118,7 +129,7 @@ function Invoke-Target {
     }
 
     try {
-        $verdictJson = (& bun (Join-Path $ts "verify-journal.ts") $journalPath 2>&1 | Out-String)
+        $verdictJson = Invoke-NativeText { & bun (Join-Path $ts "verify-journal.ts") $journalPath }
         Write-Utf8NoBom -Path (Join-Path $share "$Target.verdict.json") -Content $verdictJson
         $verdict = $verdictJson | ConvertFrom-Json
         $entry.matchesAtDetach = $verdict.matchesAtDetach
@@ -197,9 +208,12 @@ if (-not $SkipSuite) {
     Write-Host "`n=== Spike suite ===" -ForegroundColor Cyan
     Push-Location $repoRoot
     try {
-        Write-Utf8NoBom -Path (Join-Path $share "suite.txt") -Content (& bun run test:terminal-state-spike 2>&1 | Out-String)
+        $suiteText = Invoke-NativeText { & bun run test:terminal-state-spike }
         $suiteExit = $LASTEXITCODE
-        Write-Utf8NoBom -Path (Join-Path $share "benchmark.txt") -Content (& bun run benchmark:terminal-state-spike 2>&1 | Out-String)
+        Write-Utf8NoBom -Path (Join-Path $share "suite.txt") -Content $suiteText
+        Write-Utf8NoBom -Path (Join-Path $share "benchmark.txt") -Content (Invoke-NativeText { & bun run benchmark:terminal-state-spike })
+    } catch {
+        Write-Host "suite/benchmark error: $_" -ForegroundColor Yellow
     } finally { Pop-Location }
 }
 
