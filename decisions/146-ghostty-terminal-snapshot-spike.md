@@ -33,10 +33,11 @@ cleanup exists.
 Journal bytes and replay latency grow with session lifetime, while per-client
 memory is inflated because the probe isolates each raw terminal in a separate
 WASM instance after shared-instance create/free churn corrupted grapheme reads.
-Metadata coverage is intentionally incomplete, and PowerShell/Windows ConPTY
-could not be exercised because policy prohibited running the downloaded
-PowerShell binary. The spike also omits transport ordering, backpressure,
-privacy, compression, integrity, images, and rich shell metadata.
+Windows Bun 1.3.14 also returned a negative allocation pointer when Ghostty ran
+inside the PTY capture callback, so raw capture no longer instantiates the
+parser; terminal-query responses are an explicit TUI-only option. Metadata
+coverage is intentionally incomplete, and the spike omits transport ordering,
+backpressure, privacy, compression, integrity, images, and rich shell metadata.
 
 ## Alternatives considered
 

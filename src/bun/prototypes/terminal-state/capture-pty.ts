@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { spawn } from "../../spawn";
-import { GhosttyRendererProbe } from "./ghostty-renderer-probe";
+import type { GhosttyRendererProbe } from "./ghostty-renderer-probe";
 
 export interface PtyFrameCaptureOptions {
 	command: string[];
@@ -9,6 +9,7 @@ export interface PtyFrameCaptureOptions {
 	cols: number;
 	rows: number;
 	settleMs: number;
+	respondToTerminalQueries?: boolean;
 }
 
 function delay(ms: number): Promise<void> {
@@ -17,11 +18,15 @@ function delay(ms: number): Promise<void> {
 
 export async function capturePtyFrame(options: PtyFrameCaptureOptions): Promise<Uint8Array> {
 	const chunks: Uint8Array[] = [];
-	const emulator = await GhosttyRendererProbe.create({
-		cols: options.cols,
-		rows: options.rows,
-		scrollback: 1000,
-	});
+	let emulator: GhosttyRendererProbe | undefined;
+	if (options.respondToTerminalQueries) {
+		const { GhosttyRendererProbe } = await import("./ghostty-renderer-probe");
+		emulator = await GhosttyRendererProbe.create({
+			cols: options.cols,
+			rows: options.rows,
+			scrollback: 1000,
+		});
+	}
 	let child: ReturnType<typeof spawn> | undefined;
 	child = spawn(options.command, {
 		cwd: options.cwd,
@@ -31,8 +36,10 @@ export async function capturePtyFrame(options: PtyFrameCaptureOptions): Promise<
 			rows: options.rows,
 			data(_terminal: unknown, bytes: Uint8Array) {
 				chunks.push(bytes.slice());
-				emulator.ingest(bytes);
-				for (const response of emulator.readResponses()) child?.terminal?.write(response);
+				if (emulator) {
+					emulator.ingest(bytes);
+					for (const response of emulator.readResponses()) child?.terminal?.write(response);
+				}
 			},
 		},
 	});
@@ -42,12 +49,15 @@ export async function capturePtyFrame(options: PtyFrameCaptureOptions): Promise<
 	const frame = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
 	if (runningChild.exitCode === null) runningChild.kill("SIGTERM");
 	await runningChild.exited;
-	emulator.dispose();
+	emulator?.dispose();
 	return Uint8Array.from(frame);
 }
 
 async function main(): Promise<void> {
-	const [settleMsValue, colsValue, rowsValue, cwd, ...command] = Bun.argv.slice(2);
+	const args = Bun.argv.slice(2);
+	const respondToTerminalQueries = args[0] === "--terminal-responses";
+	if (respondToTerminalQueries) args.shift();
+	const [settleMsValue, colsValue, rowsValue, cwd, ...command] = args;
 	const settleMs = Number(settleMsValue);
 	const cols = Number(colsValue);
 	const rows = Number(rowsValue);
@@ -61,9 +71,18 @@ async function main(): Promise<void> {
 		!cwd ||
 		command.length === 0
 	) {
-		throw new Error("Usage: capture-pty.ts <settle-ms> <cols> <rows> <cwd> <command...>");
+		throw new Error(
+			"Usage: capture-pty.ts [--terminal-responses] <settle-ms> <cols> <rows> <cwd> <command...>",
+		);
 	}
-	const bytes = await capturePtyFrame({ command, cwd, cols, rows, settleMs });
+	const bytes = await capturePtyFrame({
+		command,
+		cwd,
+		cols,
+		rows,
+		settleMs,
+		respondToTerminalQueries,
+	});
 	console.log(Buffer.from(bytes).toString("base64"));
 }
 

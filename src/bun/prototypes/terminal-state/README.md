@@ -90,8 +90,15 @@ post-reconnect events.
 
 ```bash
 bun src/bun/prototypes/terminal-state/capture-pty.ts \
-  700 80 24 /tmp nvim --clean --cmd 'set noswapfile'
+  --terminal-responses 700 80 24 /tmp nvim --clean --cmd 'set noswapfile'
 ```
+
+Raw PTY capture is the default and does not load Ghostty. The
+`--terminal-responses` flag is reserved for applications such as Neovim that
+issue DSR queries and need emulator replies while rendering their initial frame.
+On Windows, Bun 1.3.14 returned a negative Ghostty WASM allocation pointer during
+live ingestion even though the same parser passed under Node; keeping the parser
+out of raw capture avoids coupling PTY collection to that runtime-specific bug.
 
 An official PowerShell 7.6.3 macOS arm64 archive was downloaded for the second
 capture, but the execution environment's security policy prohibited extracting
@@ -121,7 +128,7 @@ See `BENCHMARKS.md` for the recorded bounded measurements.
 - Hyperlink targets, shell integration metadata, images, sixel, input ordering,
   backpressure, checksums, compression, and snapshot privacy are not designed.
 - The real TUI is macOS Neovim. PowerShell and Windows ConPTY remain unverified
-  because of the execution-policy block described above.
+  until the response-free Windows raw capture is checked in and replayed.
 
 Removal requires deleting `src/bun/prototypes/terminal-state/` and the two
 terminal-state package scripts. There is no daemon, migration, stored state,
