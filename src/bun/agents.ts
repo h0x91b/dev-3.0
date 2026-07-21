@@ -503,14 +503,17 @@ export function getDefaultEnvForAgent(agent: CodingAgent, config?: AgentConfigur
 	return {};
 }
 
-/** Attach the statusLine-wrapper settings file to CommandOptions when
- *  rate-limit tracking is enabled (only affects Claude-based commands). */
+/** Attach the dev3-managed Claude settings file to CommandOptions. The file
+ *  always suppresses the one-time bypass-permission confirmation
+ *  (skipDangerousModePermissionPrompt), so it is injected regardless of
+ *  rate-limit tracking; the statusLine wrapper is included only when tracking is
+ *  on. Only Claude's adapter reads the option — other agents ignore it. */
 function applyStatusLineOption(
 	options: CommandOptions | undefined,
 	settings: { agentRateLimitTracking?: boolean },
 ): CommandOptions | undefined {
-	if (settings.agentRateLimitTracking === false) return options;
-	const settingsFile = ensureClaudeStatusLineSettings();
+	const includeStatusLine = settings.agentRateLimitTracking !== false;
+	const settingsFile = ensureClaudeStatusLineSettings(includeStatusLine);
 	if (!settingsFile) return options;
 	return { ...options, statuslineSettingsFile: settingsFile };
 }

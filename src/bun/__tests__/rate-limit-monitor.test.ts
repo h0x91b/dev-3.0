@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { findLatestCodexRollout, readClaudeSnapshot, readCodexSnapshot } from "../rate-limit-monitor";
+import { buildClaudeManagedSettings, findLatestCodexRollout, readClaudeSnapshot, readCodexSnapshot } from "../rate-limit-monitor";
 
 let tmp: string;
 
@@ -12,6 +12,20 @@ beforeEach(() => {
 
 afterEach(() => {
 	rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("buildClaudeManagedSettings", () => {
+	it("always suppresses the dangerous-mode permission prompt", () => {
+		expect(buildClaudeManagedSettings("/bin/dev3", false)).toEqual({
+			skipDangerousModePermissionPrompt: true,
+		});
+	});
+
+	it("keeps the skip flag and adds the statusLine wrapper when tracking is on", () => {
+		const s = buildClaudeManagedSettings("/bin/dev3", true);
+		expect(s.skipDangerousModePermissionPrompt).toBe(true);
+		expect(s.statusLine).toEqual({ type: "command", command: '"/bin/dev3" statusline' });
+	});
 });
 
 describe("readClaudeSnapshot", () => {
