@@ -1,6 +1,18 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { setToastSuppressed, ToastHost, toast } from "../toast";
+
+function toastCard(): Element {
+	const card = screen.getByRole("alert").querySelector("[data-toast-card]");
+	if (!card) throw new Error("toast card not found");
+	return card;
+}
+
+function swipe(el: Element, dx: number): void {
+	fireEvent.pointerDown(el, { pointerId: 1, clientX: 0 });
+	fireEvent.pointerMove(el, { pointerId: 1, clientX: dx });
+	fireEvent.pointerUp(el, { pointerId: 1, clientX: dx });
+}
 
 function setRendererActivity(visible: boolean, focused: boolean): void {
 	Object.defineProperty(document, "visibilityState", {
@@ -105,6 +117,71 @@ describe("toast service", () => {
 
 		await user.click(screen.getByRole("button", { name: "Dismiss" }));
 		expect(screen.queryByText("Closable")).not.toBeInTheDocument();
+	});
+
+	it("dismisses a toast on a rightward swipe past the threshold", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Swipe me away");
+		});
+		act(() => {
+			swipe(toastCard(), 200);
+		});
+		expect(screen.queryByText("Swipe me away")).not.toBeInTheDocument();
+	});
+
+	it("keeps a toast when the swipe stays below the dismiss threshold", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Not far enough", { durationMs: 60_000 });
+		});
+		act(() => {
+			swipe(toastCard(), 20);
+		});
+		expect(screen.getByText("Not far enough")).toBeInTheDocument();
+		expect((toastCard() as HTMLElement).style.transform).toBe("translateX(0px)");
+	});
+
+	it("ignores a leftward drag (right-anchored toast only flings right)", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Stay put", { durationMs: 60_000 });
+		});
+		act(() => {
+			swipe(toastCard(), -200);
+		});
+		expect(screen.getByText("Stay put")).toBeInTheDocument();
+	});
+
+	it("suppresses the click that follows a drag on a clickable toast", () => {
+		const onClick = vi.fn();
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Open task", { onClick, durationMs: 60_000 });
+		});
+		const alert = screen.getByRole("alert");
+		const card = alert.querySelector("[data-toast-card]") as Element;
+		act(() => {
+			fireEvent.pointerDown(card, { pointerId: 1, clientX: 0 });
+			fireEvent.pointerMove(card, { pointerId: 1, clientX: 30 });
+			fireEvent.pointerUp(card, { pointerId: 1, clientX: 30 });
+		});
+		// The browser fires a click after the drag ends — it must be swallowed.
+		fireEvent.click(within(alert).getByRole("button", { name: "Open task" }));
+		expect(onClick).not.toHaveBeenCalled();
+		expect(screen.getByText("Open task")).toBeInTheDocument();
+	});
+
+	it("still runs a clickable toast's action on a plain click (no drag)", async () => {
+		const user = userEvent.setup();
+		const onClick = vi.fn();
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Go there", { onClick, durationMs: 60_000 });
+		});
+		await user.click(within(screen.getByRole("alert")).getByRole("button", { name: "Go there" }));
+		expect(onClick).toHaveBeenCalledOnce();
+		expect(screen.queryByText("Go there")).not.toBeInTheDocument();
 	});
 
 	it("auto-dismisses after the given duration", () => {

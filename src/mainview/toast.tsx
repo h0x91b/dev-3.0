@@ -276,85 +276,197 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 
 	return (
 		<div className="fixed top-14 right-4 z-[55] flex flex-col gap-2.5 pointer-events-none">
-			{toasts.map(({ entry, paused }) => {
-				const v = VARIANT[entry.variant];
-				return (
-					<div
-						key={entry.id}
-						className="pointer-events-auto animate-slide-in-right"
-						role="alert"
-						data-toast-id={entry.id}
-						onMouseEnter={() => setInteraction(entry.id, "hovered", true)}
-						onMouseLeave={() => setInteraction(entry.id, "hovered", false)}
-						onFocusCapture={() => setInteraction(entry.id, "focused", true)}
-						onBlurCapture={(event) => {
-							const nextFocus = event.relatedTarget;
-							if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus)) {
-								setInteraction(entry.id, "focused", false);
-							}
+			{toasts.map(({ entry, paused }) => (
+				<ToastCard
+					key={entry.id}
+					entry={entry}
+					paused={paused}
+					onDismiss={removeToast}
+					onInteraction={setInteraction}
+				/>
+			))}
+		</div>
+	);
+}
+
+/** Movement before a press counts as a swipe, not a tap. */
+const SWIPE_DECIDE_PX = 8;
+/** Minimum rightward distance that dismisses (adaptive floor for narrow toasts). */
+const SWIPE_COMMIT_MIN_PX = 72;
+/** …or this fraction of the toast's own width, whichever is larger. */
+const SWIPE_COMMIT_FRACTION = 0.35;
+
+interface ToastCardProps {
+	entry: ToastEntry;
+	paused: boolean;
+	onDismiss: (id: number) => void;
+	onInteraction: (id: number, kind: "hovered" | "focused", value: boolean) => void;
+}
+
+/**
+ * A single toast. Swipe it right (touch or mouse drag, via Pointer Events) to
+ * dismiss — the toast slides in from the right, so flinging it back off the
+ * right edge is the natural discard gesture. The visible X button and click
+ * navigation still work; a completed drag suppresses the click that follows it.
+ */
+function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) {
+	const v = VARIANT[entry.variant];
+	const [dragX, setDragX] = useState(0);
+	const [dragging, setDragging] = useState(false);
+	const pointerIdRef = useRef<number | null>(null);
+	const startXRef = useRef(0);
+	const dragXRef = useRef(0);
+	const widthRef = useRef(0);
+	const draggedRef = useRef(false);
+
+	function beginSwipe(e: React.PointerEvent) {
+		if (pointerIdRef.current !== null) return; // ignore additional pointers (multi-touch)
+		pointerIdRef.current = e.pointerId;
+		startXRef.current = e.clientX;
+		widthRef.current = e.currentTarget.getBoundingClientRect().width || 0;
+		draggedRef.current = false;
+		dragXRef.current = 0;
+		setDragging(true);
+		try {
+			e.currentTarget.setPointerCapture(e.pointerId);
+		} catch {
+			// Pointer capture is a best-effort enhancement (absent in happy-dom).
+		}
+	}
+
+	function updateSwipe(e: React.PointerEvent) {
+		if (pointerIdRef.current !== e.pointerId) return;
+		const dx = e.clientX - startXRef.current;
+		if (Math.abs(dx) > SWIPE_DECIDE_PX) draggedRef.current = true;
+		const next = dx > 0 ? dx : 0; // right-anchored toast: only follow rightward
+		dragXRef.current = next;
+		setDragX(next);
+	}
+
+	function endSwipe(e: React.PointerEvent) {
+		if (pointerIdRef.current !== e.pointerId) return;
+		const commit = Math.max(SWIPE_COMMIT_MIN_PX, widthRef.current * SWIPE_COMMIT_FRACTION);
+		const dismiss = dragXRef.current >= commit;
+		try {
+			e.currentTarget.releasePointerCapture(e.pointerId);
+		} catch {
+			// no-op
+		}
+		pointerIdRef.current = null;
+		setDragging(false);
+		if (dismiss) {
+			onDismiss(entry.id);
+		} else {
+			dragXRef.current = 0;
+			setDragX(0);
+		}
+	}
+
+	function cancelSwipe(e: React.PointerEvent) {
+		if (pointerIdRef.current !== e.pointerId) return;
+		pointerIdRef.current = null;
+		draggedRef.current = false;
+		setDragging(false);
+		dragXRef.current = 0;
+		setDragX(0);
+	}
+
+	// A completed drag must not also fire the toast's click/dismiss actions.
+	function suppressIfDragged(): boolean {
+		if (draggedRef.current) {
+			draggedRef.current = false;
+			return true;
+		}
+		return false;
+	}
+
+	const width = widthRef.current > 0 ? widthRef.current : 400;
+	const opacity = 1 - Math.min(0.85, dragX / width);
+
+	return (
+		<div
+			className="pointer-events-auto animate-slide-in-right"
+			role="alert"
+			data-toast-id={entry.id}
+			onMouseEnter={() => onInteraction(entry.id, "hovered", true)}
+			onMouseLeave={() => onInteraction(entry.id, "hovered", false)}
+			onFocusCapture={() => onInteraction(entry.id, "focused", true)}
+			onBlurCapture={(event) => {
+				const nextFocus = event.relatedTarget;
+				if (!(nextFocus instanceof Node) || !event.currentTarget.contains(nextFocus)) {
+					onInteraction(entry.id, "focused", false);
+				}
+			}}
+		>
+			<div
+				data-toast-card
+				data-dragging={dragging ? "true" : "false"}
+				className={`toast-swipe relative overflow-hidden bg-overlay border ${v.border} rounded-xl shadow-2xl w-[26rem] max-w-[calc(100vw-2rem)] flex items-start gap-3 p-4`}
+				style={{ transform: `translateX(${dragX}px)`, opacity }}
+				onPointerDown={beginSwipe}
+				onPointerMove={updateSwipe}
+				onPointerUp={endSwipe}
+				onPointerCancel={cancelSwipe}
+			>
+				<span
+					className={`${v.text} text-2xl leading-none mt-0.5 flex-shrink-0`}
+					style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+				>
+					{v.icon}
+				</span>
+				{entry.onClick ? (
+					<button
+						type="button"
+						onClick={() => {
+							if (suppressIfDragged()) return;
+							entry.onClick?.();
+							onDismiss(entry.id);
 						}}
+						className="flex-1 min-w-0 text-left pr-1 cursor-pointer group"
 					>
-						<div
-							className={`relative overflow-hidden bg-overlay border ${v.border} rounded-xl shadow-2xl w-[26rem] max-w-[calc(100vw-2rem)] flex items-start gap-3 p-4`}
-						>
-							<span
-								className={`${v.text} text-2xl leading-none mt-0.5 flex-shrink-0`}
-								style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
-							>
-								{v.icon}
-							</span>
-							{entry.onClick ? (
-								<button
-									type="button"
-									onClick={() => {
-										entry.onClick?.();
-										removeToast(entry.id);
-									}}
-									className="flex-1 min-w-0 text-left pr-1 cursor-pointer group"
-								>
-									{entry.context && (
-										<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
-											{entry.context}
-										</div>
-									)}
-									<div className="text-fg text-sm leading-relaxed break-words group-hover:underline">
-										{entry.message}
-									</div>
-								</button>
-							) : (
-								<div className="flex-1 min-w-0 pr-1">
-									{entry.context && (
-										<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
-											{entry.context}
-										</div>
-									)}
-									<div className="text-fg text-sm leading-relaxed break-words">
-										{entry.message}
-									</div>
-								</div>
-							)}
-							<button
-								type="button"
-								onClick={() => removeToast(entry.id)}
-								aria-label="Dismiss"
-								className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
-							>
-								<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-									<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-								</svg>
-							</button>
-							<div
-								data-toast-progress
-								className={`absolute bottom-0 left-0 h-0.5 ${v.bar} opacity-50`}
-								style={{
-									animation: `toast-shrink ${entry.durationMs}ms linear forwards`,
-									animationPlayState: paused ? "paused" : "running",
-								}}
-							/>
+						{entry.context && (
+							<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
+								{entry.context}
+							</div>
+						)}
+						<div className="text-fg text-sm leading-relaxed break-words group-hover:underline">
+							{entry.message}
+						</div>
+					</button>
+				) : (
+					<div className="flex-1 min-w-0 pr-1">
+						{entry.context && (
+							<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
+								{entry.context}
+							</div>
+						)}
+						<div className="text-fg text-sm leading-relaxed break-words">
+							{entry.message}
 						</div>
 					</div>
-				);
-			})}
+				)}
+				<button
+					type="button"
+					onClick={() => {
+						if (suppressIfDragged()) return;
+						onDismiss(entry.id);
+					}}
+					aria-label="Dismiss"
+					className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
+				>
+					<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+				<div
+					data-toast-progress
+					className={`absolute bottom-0 left-0 h-0.5 ${v.bar} opacity-50`}
+					style={{
+						animation: `toast-shrink ${entry.durationMs}ms linear forwards`,
+						animationPlayState: paused ? "paused" : "running",
+					}}
+				/>
+			</div>
 		</div>
 	);
 }
