@@ -48,9 +48,12 @@ describe("UpdatePopoverSimulatorModal", () => {
 		expect(screen.getByText(/\+1 more feature/)).toBeTruthy();
 		expect(screen.getByText(/4 fixes/)).toBeTruthy();
 
-		// Restart is disabled in preview so it never quits the app.
-		const restart = screen.getByRole("button", { name: "Restart to Update" });
+		// Preview mimics the toast layout: a static-countdown Restart + a Postpone,
+		// both disabled so the simulator never quits the app.
+		const restart = screen.getByRole("button", { name: /Restart to Update \(205s\)/ });
 		expect((restart as HTMLButtonElement).disabled).toBe(true);
+		const postpone = screen.getByRole("button", { name: "Postpone" });
+		expect((postpone as HTMLButtonElement).disabled).toBe(true);
 
 		// Diagnostics: tag, window files, totals, merged PRs, type breakdown.
 		expect(screen.getByText("v1.2.3")).toBeTruthy();
