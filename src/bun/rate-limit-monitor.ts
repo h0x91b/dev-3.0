@@ -47,7 +47,9 @@ export const CLAUDE_RATE_LIMIT_DUMP_PATH = join(RATE_LIMITS_DIR, "claude.json");
 /** Per-managed-account Claude dumps. The legacy global dump remains the system
  * login fallback and is also written for compatibility with older builds. */
 export const CLAUDE_ACCOUNT_RATE_LIMITS_DIR = join(RATE_LIMITS_DIR, "claude");
-/** The static settings file injected via `claude --settings <path>`. */
+/** The dev3-managed settings file injected via `claude --settings <path>`. It
+ * always suppresses the one-time bypass-permission confirmation and optionally
+ * routes statusLine through `dev3 statusline` (see buildClaudeManagedSettings). */
 export const CLAUDE_STATUSLINE_SETTINGS_PATH = join(RATE_LIMITS_DIR, "claude-statusline-settings.json");
 
 type PushMessageFn = (name: string, payload: unknown) => void;
@@ -61,17 +63,32 @@ const codexLiveAttemptedAt = new Map<string, number>();
 const codexLiveRequests = new Map<string, Promise<AgentRateLimitSnapshot | null>>();
 
 /**
- * Write (once) the settings file whose statusLine routes through
- * `dev3 statusline`, and return its path. Returns null when writing fails —
- * callers then simply skip `--settings` injection.
+ * Build the dev3-managed Claude settings object injected via `claude --settings`.
+ * `skipDangerousModePermissionPrompt` is ALWAYS present: dev3 launches every
+ * Claude session with a dangerous-bypass flag available (`--allow-dangerously-
+ * skip-permissions` or a preset's `--dangerously-skip-permissions`), which would
+ * otherwise trigger a one-time confirmation prompt on startup. When rate-limit
+ * tracking is on, statusLine is also routed through `dev3 statusline`.
  */
-export function ensureClaudeStatusLineSettings(): string | null {
+export function buildClaudeManagedSettings(dev3Bin: string, includeStatusLine: boolean): Record<string, unknown> {
+	const settings: Record<string, unknown> = { skipDangerousModePermissionPrompt: true };
+	if (includeStatusLine) {
+		settings.statusLine = { type: "command", command: `"${dev3Bin}" statusline` };
+	}
+	return settings;
+}
+
+/**
+ * Write (once) the dev3-managed Claude settings file and return its path. Always
+ * carries skipDangerousModePermissionPrompt; includes the statusLine wrapper only
+ * when rate-limit tracking is on. Returns null when writing fails — callers then
+ * simply skip `--settings` injection.
+ */
+export function ensureClaudeStatusLineSettings(includeStatusLine = true): string | null {
 	try {
 		mkdirSync(RATE_LIMITS_DIR, { recursive: true });
 		const dev3Bin = join(homedir(), ".dev3.0", "bin", "dev3");
-		const desired = JSON.stringify({
-			statusLine: { type: "command", command: `"${dev3Bin}" statusline` },
-		});
+		const desired = JSON.stringify(buildClaudeManagedSettings(dev3Bin, includeStatusLine));
 		let current = "";
 		try {
 			current = readFileSync(CLAUDE_STATUSLINE_SETTINGS_PATH, "utf-8");
@@ -81,7 +98,7 @@ export function ensureClaudeStatusLineSettings(): string | null {
 		if (current !== desired) writeFileSync(CLAUDE_STATUSLINE_SETTINGS_PATH, desired);
 		return CLAUDE_STATUSLINE_SETTINGS_PATH;
 	} catch (err) {
-		log.warn("Failed to write statusline settings file", { error: String(err) });
+		log.warn("Failed to write claude managed settings file", { error: String(err) });
 		return null;
 	}
 }
