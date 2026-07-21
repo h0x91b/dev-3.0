@@ -21,7 +21,7 @@ import { PtyProtoClient } from "../client";
 import { isProcessAlive, logFile, readState, stateDir, stateFile } from "../state";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
 import { spawn } from "../../../spawn";
-import { sendUntilObserved } from "./command-roundtrip";
+import { powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -133,24 +133,29 @@ async function run(): Promise<void> {
 		const c1 = new PtyProtoClient();
 		await c1.connect(state);
 		const s1 = makeSink(c1);
-		let rootMatch: RegExpExecArray | null;
+		let rootObserved: string | RegExpExecArray | null;
+		let rootPidMatches: boolean;
 		if (isWindows) {
-			rootMatch = await sendUntilObserved({
-				send: () => sendLine(c1, `$env:PROTO_STATE='${nonce}'; Write-Output "ROOTPID[$PID]"`),
-				observe: () => /ROOTPID\[(\d+)\]/.exec(s1.text()),
+			const probe = powerShellRootStateProbe(nonce, state.shellPid);
+			rootObserved = await sendUntilObserved({
+				send: () => sendLine(c1, probe.command),
+				observe: () => probe.observe(s1.text()),
 				attempts: 4,
 				attemptTimeoutMs: 1000,
 				pollIntervalMs: 30,
 			});
+			rootPidMatches = rootObserved !== null;
 		} else {
 			sendLine(c1, "set +H");
 			sendLine(c1, `export PROTO_STATE=${nonce}`);
 			sendLine(c1, `echo "ROOTPID[$$]"`);
-			rootMatch = await s1.waitForMatch(/ROOTPID\[(\d+)\]/);
+			const rootMatch = await s1.waitForMatch(/ROOTPID\[(\d+)\]/);
+			rootObserved = rootMatch;
+			rootPidMatches = Number(rootMatch?.[1]) === state.shellPid;
 		}
-		transcriptOnFailure(rootMatch, "root startup", s1.text());
-		check(rootMatch !== null, "client 1 receives live shell output");
-		check(Number(rootMatch?.[1]) === state.shellPid, "interactive root reports the recorded shell PID");
+		transcriptOnFailure(rootObserved, "root startup", s1.text());
+		check(rootObserved !== null, "client 1 receives live shell output");
+		check(rootPidMatches, "interactive root reports the recorded shell PID");
 		const st1 = await c1.status();
 		check(st1.shellPid === state.shellPid, "status over the wire reports the recorded shell PID");
 		const recordedShellPid = st1.shellPid;

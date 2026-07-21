@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { sendUntilObserved } from "./command-roundtrip";
+import { powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
 
 describe("detached-pty command round trips", () => {
+	it("rejects a root acknowledgement when startup swallowed the state assignment", () => {
+		const probe = powerShellRootStateProbe("state-100-200", 200);
+
+		expect(probe.observe("ROOTSTATE[][200]")).toBeNull();
+		expect(probe.observe("ROOTSTATE[state-100-200][200]")).toBe("ROOTSTATE[state-100-200][200]");
+	});
+
 	it("does not repeat a command once its output is observed", async () => {
 		let sends = 0;
 		const observed = await sendUntilObserved({
