@@ -1,9 +1,12 @@
+import { Buffer } from "node:buffer";
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export function powerShellStartupArgs(marker: string): string[] {
-	return ["-NoLogo", "-NoProfile", "-NoExit", "-Command", `Write-Output "${marker}:$PID"`];
+	const command = `Write-Output "${marker}:$PID"`;
+	return ["-NoLogo", "-NoProfile", "-NoExit", "-EncodedCommand", Buffer.from(command, "utf16le").toString("base64")];
 }
 
 export function extractPowerShellMarkerPid(output: string, marker: string): number | null {
