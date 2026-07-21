@@ -54,6 +54,8 @@ export interface ConfirmOptions {
 		priority?: TaskPriority;
 		/** Resolved task labels; shown as read-only chips below the body. */
 		labels?: Label[];
+		/** Optional action for opening the subject task; resolves the dialog as "Not now". */
+		onClick?: () => void;
 	};
 	/**
 	 * Close the dialog externally, without a user choice — e.g. the underlying
@@ -218,9 +220,23 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 							{/* `text-base` is unusable here: the project defines a `base` color
 							    token, so Tailwind also emits text-base as a COLOR utility that
 							    overrides text-accent. Use an arbitrary font-size instead. */}
-							<div className={`${pending.outcomeCards ? "text-fg" : "text-accent"} text-[1.0625rem] font-semibold leading-snug`}>
-								{pending.info.title}
-							</div>
+							{pending.info.onClick ? (
+								<button
+									type="button"
+									onClick={() => {
+										close(false);
+										pending.info?.onClick?.();
+									}}
+									aria-label={pending.info.title}
+									className={`${pending.outcomeCards ? "text-fg" : "text-accent"} min-w-0 rounded-sm text-left text-[1.0625rem] font-semibold leading-snug underline-offset-2 hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60`}
+								>
+									{pending.info.title}
+								</button>
+							) : (
+								<div className={`${pending.outcomeCards ? "text-fg" : "text-accent"} text-[1.0625rem] font-semibold leading-snug`}>
+									{pending.info.title}
+								</div>
+							)}
 						</div>
 						{pending.info.body && (
 							<div className="text-fg-2 text-sm leading-relaxed mt-1.5 whitespace-pre-line">

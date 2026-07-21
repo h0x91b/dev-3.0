@@ -1,5 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 import { ConfirmHost, confirm } from "../confirm";
 import { I18nProvider } from "../i18n";
 
@@ -159,6 +160,26 @@ describe("confirm service", () => {
 
 		expect(await screen.findByText("My important task")).toBeInTheDocument();
 		expect(screen.getByText("Implementing the thing; almost done.")).toBeInTheDocument();
+	});
+
+	it("opens an actionable info subject as a cancelled prompt", async () => {
+		const user = userEvent.setup();
+		const onOpen = vi.fn();
+		renderHost();
+		let result: Promise<boolean>;
+		act(() => {
+			result = confirm({
+				title: "Branch merged",
+				message: "Choose what to do",
+				info: { title: "Subtask to inspect", onClick: onOpen },
+			});
+		});
+
+		await user.click(await screen.findByRole("button", { name: "Subtask to inspect" }));
+
+		await expect(result!).resolves.toBe(false);
+		expect(onOpen).toHaveBeenCalledTimes(1);
+		expect(screen.queryByText("Branch merged")).not.toBeInTheDocument();
 	});
 
 	it("renders the info card without a body when body is omitted", async () => {

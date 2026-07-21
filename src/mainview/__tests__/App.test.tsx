@@ -1798,6 +1798,7 @@ describe("App keyboard shortcuts", () => {
 					projectName: "Alpha",
 					priority: "P2",
 					labels: [],
+					onClick: expect.any(Function),
 				},
 			})));
 		});
