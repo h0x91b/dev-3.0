@@ -40,8 +40,7 @@ import { ConfirmHost, confirm } from "./confirm";
 import AboutModal from "./components/AboutModal";
 import RosettaWarningModal from "./components/RosettaWarningModal";
 import { initTaskSoundPlayback, playTaskSoundFromPush, setTaskCompletionSoundEnabled } from "./task-sounds";
-import { buildMergeCompletionDialogOptions, runMergeCompletionPromptOnce } from "./utils/mergeCompletionPrompt";
-import { createMergePromptAbort } from "./utils/mergePromptAbort";
+import { offerMergeCompletion } from "./utils/offerMergeCompletion";
 import { taskDialogInfoFromSubject } from "./utils/taskDialogInfo";
 import { getRecentProjectIds, orderByRecency, recordProjectJump } from "./utils/recentProjects";
 import type { NavigationGuard } from "./navigation-guard";
@@ -1375,7 +1374,7 @@ function App() {
 	// Listen for branch merge detection — offer to complete the task
 	useEffect(() => {
 		async function onBranchMerged(e: Event) {
-			const { taskId, projectId, taskTitle, branchName, subject, shouldPrompt, shouldNotify } = (e as CustomEvent).detail as {
+			const { taskId, projectId, taskTitle, branchName, fingerprint, subject, shouldPrompt, shouldNotify } = (e as CustomEvent).detail as {
 				taskId: string;
 				projectId: string;
 				taskTitle: string;
@@ -1385,85 +1384,55 @@ function App() {
 				shouldPrompt?: boolean;
 				shouldNotify?: boolean;
 			};
-			const fingerprint = ((e as CustomEvent).detail as { fingerprint?: string | null }).fingerprint ?? null;
-			if (shouldPrompt === false) {
-				if (shouldNotify) {
-					toast.info(t("app.branchMergedToast", { taskTitle }), { taskId });
-				}
-				return;
-			}
-			// Close this dialog if the prompt is resolved on another client/device
-			// (the backend broadcasts it to every connected client).
-			const abort = createMergePromptAbort(taskId);
-			let choice: boolean | string | null;
-			try {
-				choice = await runMergeCompletionPromptOnce(taskId, fingerprint, async () => {
-					try {
-						return await confirm({
-							...buildMergeCompletionDialogOptions(t, branchName),
-							info: taskDialogInfoFromSubject(taskTitle, subject),
-							signal: abort.signal,
-						});
-					} catch (err) {
-						console.error("[App] confirm (branch-merged) failed:", err);
-						return false;
-					}
-				});
-			} finally {
-				abort.cleanup();
-			}
-			// Resolved elsewhere: the dialog auto-closed, nothing left to do here.
-			if (abort.signal.aborted) return;
-			if (choice === null) return;
-			if (choice === "manual") {
-				api.request.setTaskManualCompletion({ taskId, projectId, manualCompletion: true }).catch((err) => {
-					toast.error(t("app.manualCompletionChangeFailed", { error: String(err) }), { taskId });
-				});
-				return;
-			}
-			if (choice === true) {
-				// If the user is currently inside this task's view, leave it BEFORE the
-				// worktree is destroyed (otherwise TaskTerminal reacts to ptyDied /
-				// missing worktree and shows the "session ended / restart session"
-				// screen). routeAfterTaskClosed sends the user back to their configured
-				// home surface: fullscreen open-mode → the board, split open-mode → the
-				// split task view (task deselected). A Kanban board is left untouched.
-				const openMode = getTaskOpenMode();
-				const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
-				if (dest) navigate(dest);
-				dispatch({
-					type: "updateTask",
-					task: {
-						id: taskId,
-						projectId,
-						status: "completed",
-						worktreePath: null,
-						branchName: null,
-						movedAt: new Date().toISOString(),
-						columnOrder: undefined,
-					} as any,
-				});
-				dispatch({ type: "clearBell", taskId });
-				trackEvent("task_moved", { from_status: "review-by-user", to_status: "completed" });
-				api.request.moveTask({
-					taskId,
-					projectId,
-					newStatus: "completed",
-				}).catch(() => {
+			// Reservation + shouldPrompt/shouldNotify were decided server-side in the
+			// poller before pushing, so this path does not re-reserve. The shared
+			// primitive owns the dialog copy, context card, notify/suppress gate,
+			// cross-client abort, once-guard de-dup, manual opt-out and dismiss.
+			await offerMergeCompletion({
+				context: { taskId, projectId, taskTitle, branchName, subject },
+				t,
+				fingerprint: fingerprint ?? null,
+				shouldPrompt,
+				shouldNotify,
+				onComplete: () => {
+					// If the user is currently inside this task's view, leave it BEFORE
+					// the worktree is destroyed (otherwise TaskTerminal reacts to
+					// ptyDied / missing worktree and shows the "session ended / restart
+					// session" screen). routeAfterTaskClosed sends the user back to their
+					// configured home surface: fullscreen open-mode → the board, split
+					// open-mode → the split task view (task deselected). A Kanban board is
+					// left untouched.
+					const openMode = getTaskOpenMode();
+					const dest = routeAfterTaskClosed(routeRef.current, taskId, openMode);
+					if (dest) navigate(dest);
+					dispatch({
+						type: "updateTask",
+						task: {
+							id: taskId,
+							projectId,
+							status: "completed",
+							worktreePath: null,
+							branchName: null,
+							movedAt: new Date().toISOString(),
+							columnOrder: undefined,
+						} as any,
+					});
+					dispatch({ type: "clearBell", taskId });
+					trackEvent("task_moved", { from_status: "review-by-user", to_status: "completed" });
 					api.request.moveTask({
 						taskId,
 						projectId,
 						newStatus: "completed",
-						force: true,
-					}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
-				});
-			} else if (choice === false) {
-				api.request.dismissMergeCompletionPrompt({
-					taskId,
-					projectId,
-					fingerprint,
-				}).catch((err) => console.error("dismissMergeCompletionPrompt failed:", err));
-			}
+					}).catch(() => {
+						api.request.moveTask({
+							taskId,
+							projectId,
+							newStatus: "completed",
+							force: true,
+						}).catch((err) => console.error("moveTask (branch-merged) failed:", err));
+					});
+				},
+			});
 		}
 		window.addEventListener("rpc:branchMerged", onBranchMerged);
 		return () => window.removeEventListener("rpc:branchMerged", onBranchMerged);
