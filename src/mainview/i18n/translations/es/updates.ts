@@ -27,6 +27,27 @@ const updates = {
 	"update.fixCount_one": "{count} corrección",
 	"update.fixCount_other": "{count} correcciones",
 
+	// Update-popover simulator (dev-only, Settings → Developer Tools)
+	"updateSim.title": "Popover de actualización de la próxima versión",
+	"updateSim.subtitle":
+		"Vista previa del popover «novedades» que mostrará la próxima versión, desde tus change-logs locales (incluye sin confirmar).",
+	"updateSim.refresh": "Actualizar",
+	"updateSim.loading": "Calculando ventana…",
+	"updateSim.unavailable": "No disponible — esta compilación no tiene carpeta change-logs o no es un checkout de git.",
+	"updateSim.previewNote": "Solo vista previa — Reiniciar está desactivado aquí.",
+	"updateSim.diagnostics": "Diagnóstico",
+	"updateSim.prevTag": "Desde el tag",
+	"updateSim.noTag": "sin tag",
+	"updateSim.fallbackBadge": "ventana de reserva",
+	"updateSim.totalEntries": "{count} entradas en total",
+	"updateSim.includesUncommitted": "La ventana cuenta change-logs confirmados + sin confirmar + sin seguimiento desde el tag.",
+	"updateSim.popoverShowsNote": "solo feature y fix aparecen en el popover",
+	"updateSim.mergedPRs": "{count} PRs fusionados desde el tag",
+	"updateSim.windowFiles": "Entradas en la ventana ({count})",
+	"updateSim.emptyWindow": "No hay entradas en la ventana.",
+	"updateSim.rawPayload": "Payload sin procesar",
+	"updateSim.close": "Cerrar",
+
 	// Rosetta warning (Intel build on Apple Silicon)
 	"rosetta.title": "Versión Intel en Apple Silicon",
 	"rosetta.body":

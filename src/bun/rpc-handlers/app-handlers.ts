@@ -2,8 +2,9 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "nod
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 import { PATHS, Utils } from "../electrobun-platform";
-import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, SharedArtifact, TipState } from "../../shared/types";
+import type { AgentSkillInfo, ChangelogEntry, ExternalApp, FolderEntry, FolderListing, Project, SharedArtifact, TipState, UpdatePopoverPreview } from "../../shared/types";
 import { DEFAULT_EXTERNAL_APPS, STUCK_PREPARATION_FETCH_THRESHOLD_MS, extractRepoName } from "../../shared/types";
+import { buildUpdateChangelog, changedKeysFromPaths, changelogEntryKey, countMergedPrs, resolvePrevTag, selectReleaseWindow } from "../../shared/update-changelog";
 import * as data from "../data";
 import * as git from "../git";
 import * as pty from "../pty-server";
@@ -15,7 +16,7 @@ import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
-import { spawn } from "../spawn";
+import { spawn, spawnSync } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
 import { getPushMessage, getUploadedImageExtension, hideAppNative, log, logRendererError, logRendererEvent, setActiveContext, setAppForeground, setTerminalFocus } from "./shared";
 import { applyMenuContext, type MenuContext } from "../../shared/application-menu";
@@ -612,6 +613,81 @@ async function getChangelogs(): Promise<ChangelogEntry[]> {
 	return entries;
 }
 
+/**
+ * Dev-only simulator for the update-ready popover. Reruns the exact release-time
+ * window logic (`selectReleaseWindow` + `buildUpdateChangelog`) against the local
+ * `change-logs/` dir + git tags, so a developer can preview the next release's
+ * "what's new" before shipping. Unlike the release build it counts UNCOMMITTED
+ * work too (`git diff <tag>` + untracked), letting the dev preview before commit.
+ */
+async function previewUpdatePopover(): Promise<UpdatePopoverPreview> {
+	log.info("-> previewUpdatePopover");
+	const unavailable = (reason: string): UpdatePopoverPreview => ({
+		available: false,
+		reason,
+		changelog: null,
+		diagnostics: { prevTag: null, usedFallback: false, windowFiles: [], totalEntries: 0, includesUncommitted: true, mergedPRs: 0 },
+	});
+
+	let root = import.meta.dir ?? "";
+	for (let i = 0; i < 20 && root; i++) {
+		if (existsSync(join(root, "vite.config.ts"))) break;
+		const parent = dirname(root);
+		if (parent === root) break;
+		root = parent;
+	}
+	if (!root || !existsSync(join(root, "change-logs"))) return unavailable("no-change-logs-dir");
+
+	const gitOut = (args: string[]): string | null => {
+		try {
+			const proc = spawnSync(["git", ...args], { cwd: root, stdout: "pipe", stderr: "ignore" });
+			if (proc.exitCode !== 0) return null;
+			return proc.stdout.toString().trim();
+		} catch {
+			return null;
+		}
+	};
+	if (gitOut(["rev-parse", "--is-inside-work-tree"]) !== "true") return unavailable("not-a-git-repo");
+
+	const entries = await getChangelogs();
+
+	const prevTag = resolvePrevTag(
+		gitOut(["tag", "--sort=-creatordate", "--merged", "HEAD"]) ?? "",
+		gitOut(["tag", "--points-at", "HEAD"]) ?? "",
+	);
+
+	// Changed changelog files since prevTag INCLUDING uncommitted work: `git diff
+	// <tag>` (no HEAD) covers committed + staged + unstaged tracked files;
+	// ls-files --others adds brand-new files not yet `git add`ed.
+	const changedPaths: string[] = [];
+	if (prevTag) {
+		changedPaths.push(...(gitOut(["diff", "--name-only", prevTag, "--", "change-logs"]) ?? "").split("\n"));
+		changedPaths.push(...(gitOut(["ls-files", "--others", "--exclude-standard", "--", "change-logs"]) ?? "").split("\n"));
+	}
+	const changedKeys = changedKeysFromPaths(changedPaths);
+
+	// Squash-merged PRs shipped since the tag — a fun "how much landed" number.
+	const mergedPRs = prevTag
+		? countMergedPrs((gitOut(["log", `${prevTag}..HEAD`, "--pretty=%s"]) ?? "").split("\n"))
+		: 0;
+
+	const usedFallback = entries.filter((e) => changedKeys.has(changelogEntryKey(e))).length === 0;
+	const windowEntries = selectReleaseWindow(entries, changedKeys);
+	log.info("<- previewUpdatePopover", { prevTag, window: windowEntries.length, usedFallback, mergedPRs });
+	return {
+		available: true,
+		changelog: buildUpdateChangelog(windowEntries),
+		diagnostics: {
+			prevTag,
+			usedFallback,
+			windowFiles: windowEntries.map((e) => `${e.type}-${e.slug}`),
+			totalEntries: entries.length,
+			includesUncommitted: true,
+			mergedPRs,
+		},
+	};
+}
+
 function sanitizeUploadedFilename(filename?: string): string | null {
 	if (!filename) return null;
 	const baseName = filename.split(/[/\\]/).pop()?.trim() ?? "";
@@ -930,6 +1006,7 @@ export const appHandlers = {
 	removeProject,
 	detectClonePaths,
 	getChangelogs,
+	previewUpdatePopover,
 	pasteClipboardImage,
 	uploadFileBase64,
 	uploadImageBase64,

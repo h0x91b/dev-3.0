@@ -117,7 +117,7 @@ gh auth switch --user h0x91b 2>/dev/null || true
 
 **Every code change gets a changelog entry file** (avoids merge conflicts between parallel agents).
 
-**Path:** `change-logs/YYYY/MM/DD/<type>-<short-slug>.md` — type prefixes: `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`.
+**Path:** `change-logs/YYYY/MM/DD/<type>-[<NN>-]<short-slug>.md` — type prefixes: `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`. An optional two-digit `NN` right after the type ranks features in the update popover (`00` = most prominent) — see the popover-priority rule below.
 
 **The `YYYY/MM/DD` is the expected PR merge date, not the start date.** If the task spans days, move (rename) the entry before opening/merging the PR so it matches the actual merge day (with auto-merge, normally the day you open the PR) — the changelog UI groups by ship date.
 
@@ -127,6 +127,7 @@ Rules:
 - Include the changelog file in the same commit as the code change.
 - Slug must be unique and descriptive enough that parallel agents don't collide.
 - **`Short:` line (mandatory for `feature-` entries):** first line `Short: <≤6 words, no trailing period>`, then a blank line, then the content. It feeds the update-ready popover's "what's new" preview (features lead it); the full first sentence still drives the Changelog screen. `fix-` entries add one when user-visible; otherwise a crude fallback is derived. See `change-logs/README.md`.
+- **Popover priority (`<type>-<NN>-<slug>`, optional):** the update popover has room for only the top `MAX_POPOVER_FEATURES` features and rolls the rest into "+N more". Insert a two-digit `NN` right after the type to control which ones win those slots — `00` = most prominent (demo-reel "wow"), higher = lower; omit it and the entry sits mid-pack (priority 50). Numbering only reorders **features** (the slotted list); `fix-`/others merely contribute a count, so numbering them is optional. Type is still parsed from the first dash, so `feature-00-foo` stays type `feature`. Rank honestly (reuse the tips coolness rubric) and push dev-only/internal features to a high number so they never eat a user-facing slot.
 - **One worktree = one changelog file** — a single task produces exactly one entry for the whole session, not one per commit or per feature; if the task evolves, update/append the existing file.
 - **Credit community contributors:** if the change originated from a GitHub issue by an external user, end the file with a blank line then `Suggested by @username (h0x91b/dev-3.0#N)` — parsed into `suggestedBy`/`issueRef`/`issueUrl` and shown in the changelog UI as a linked credit. Example: `Suggested by @roiros (h0x91b/dev-3.0#191)`.
 - Full format spec: `change-logs/README.md`.

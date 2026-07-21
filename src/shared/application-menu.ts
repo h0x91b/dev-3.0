@@ -87,6 +87,7 @@ export const MENU_ACTIONS = {
 	openLogsDirectory: "open-logs-directory",
 	gaugeDemo: "gauge-demo",
 	viewportLab: "viewport-lab",
+	updatePopoverPreview: "update-popover-preview",
 
 	// ── Terminal — pane ──
 	termSplitH: "term-split-h",
@@ -667,6 +668,7 @@ function viewMenu(): ApplicationMenuItemConfig {
 				submenu: [
 					item({ label: "Gauge Demo", action: MENU_ACTIONS.gaugeDemo }),
 					item({ label: "Viewport Lab", action: MENU_ACTIONS.viewportLab }),
+					item({ label: "Update Popover Preview", action: MENU_ACTIONS.updatePopoverPreview }),
 				],
 			},
 		],
