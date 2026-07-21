@@ -47,6 +47,9 @@ The Job Object bridge uses `bun:ffi` only inside this prototype and only on
 Windows. The detached host self-enrolment removes the root-assignment race without
 reimplementing Bun's ConPTY spawn in a helper. See
 [`decisions/146-windows-job-object-containment.md`](../../../../decisions/146-windows-job-object-containment.md).
+The minimum runtime contract lives outside this removable prototype in
+`src/shared/native-terminal-runtime.ts`; both packaging and the tracer consume
+that stable boundary.
 
 ## Try it
 
@@ -59,6 +62,52 @@ bun src/bun/prototypes/detached-pty/cli.ts stop
 ```
 
 `stop` is idempotent: repeating it after cleanup prints `stopped` and exits 0.
+
+## Packaged Windows ConPTY proof
+
+The production Electrobun config pins `build.bunVersion` to 1.3.14. That setting
+is global: macOS and Linux packages move to the same Bun version, while the
+Windows `postBuild` proof inspects the actual `bun.exe` copied into the app tree
+before Electrobun creates the self-extractor and updater payload.
+
+The proof bundles `src/bun/native-terminal-host/main.ts`, then copies the
+packaged runtime and entrypoint to a versioned temporary directory outside the
+package. It renames the runtime to `dev3-terminal-host.exe`, removes Bun from
+`PATH`, and invokes that staged executable by absolute path. The staged process
+must re-enter itself detached, start absolute-path Windows PowerShell 5.1 through
+raw `Bun.Terminal`, report distinct host and shell PIDs, and stop cleanly.
+
+The external, renamed executable is part of the delivery contract. Electrobun
+1.18.1's updater waits for every process named `bun.exe` or `Bun Helper` before
+replacing the app, so a persistent host using the installed name would block an
+in-app update. Future production discovery must stage under an additive,
+immutable data path keyed by the host artifact/protocol and Bun versions, let an
+older live host keep its files, and negotiate versions rather than adopting or
+migrating it silently.
+
+The isolated packaging fixture exercises the same hooks without requiring the
+rest of the Windows app to be release-ready:
+
+```powershell
+Push-Location scripts/fixtures/windows-conpty-package
+bun ../../../node_modules/electrobun/bin/electrobun.cjs build --env=canary
+Pop-Location
+```
+
+Expected build output includes a JSON line with
+`"marker":"DEV3_PACKAGED_DETACHED_HOST_OK"`, both actual Bun versions, package
+and staged paths plus hashes, distinct positive host/PowerShell PIDs, and
+`"systemBunOnPath":false`. The canary installer and updater payload are left
+under `scripts/fixtures/windows-conpty-package/artifacts/`; the `Windows ConPTY
+package` workflow runs this exact proof on native Windows. See
+[decision 150](../../../../decisions/150-package-conpty-capable-bun.md).
+
+This is deliberately a raw-PTY package proof. It does not feed terminal bytes
+through ghostty-web or claim renderer readiness; Bun 1.3.14 has a separate
+Windows callback/parser failure where ghostty-web can return a negative WASM
+allocation pointer. The proof reports whether `bun:ffi` is importable, showing
+that the carrier can support the prototype's Job Object bridge, but production
+containment may still use a signed native helper.
 
 ## Native Windows PowerShell reproduction
 

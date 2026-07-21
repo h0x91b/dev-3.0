@@ -1,4 +1,5 @@
 import type { ElectrobunConfig } from "electrobun";
+import { MINIMUM_WINDOWS_CONPTY_BUN_VERSION } from "./src/shared/native-terminal-runtime";
 
 export default {
 	app: {
@@ -18,6 +19,8 @@ export default {
 		baseUrl: "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0",
 	},
 	build: {
+		// This is global across Electrobun platforms; decision 150 records why.
+		bunVersion: MINIMUM_WINDOWS_CONPTY_BUN_VERSION,
 		mac: {
 			bundleCEF: false,
 			icons: "icon.iconset",
@@ -56,5 +59,8 @@ export default {
 			bundleCEF: false,
 			icon: "icon.iconset/icon_256x256.png",
 		},
+	},
+	scripts: {
+		postBuild: "./scripts/verify-packaged-windows-conpty.ts",
 	},
 } satisfies ElectrobunConfig;

@@ -1,0 +1,1 @@
+Pinned the packaged Electrobun runtime to Bun 1.3.14 on every platform and added a native Windows package proof that stages the bundled runtime under an updater-safe host name, re-enters it detached, and starts PowerShell through raw Bun.Terminal with no system Bun. The isolated tracer now reports actionable runtime incompatibilities; production tmux behavior remains unchanged.
