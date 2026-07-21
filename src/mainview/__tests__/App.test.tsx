@@ -1758,6 +1758,39 @@ describe("App keyboard shortcuts", () => {
 			}));
 		});
 
+		it("passes the full task context to the merge popup", async () => {
+			await renderApp();
+			await act(async () => {
+				window.dispatchEvent(new CustomEvent("rpc:branchMerged", {
+					detail: {
+						taskId: "t1",
+						projectId: "p1",
+						taskTitle: "Some task",
+						branchName: "feat/whatever",
+						fingerprint: "fp-rich-context-1",
+						subject: {
+							seqLabel: "1004",
+							projectName: "Alpha",
+							priority: "P2",
+							labels: [],
+							overview: "Branch merged; waiting for rollout verification.",
+						},
+					},
+				}));
+			});
+
+			await waitFor(() => expect(confirm).toHaveBeenCalledWith(expect.objectContaining({
+				info: {
+					title: "Some task",
+					body: "Branch merged; waiting for rollout verification.",
+					seqLabel: "1004",
+					projectName: "Alpha",
+					priority: "P2",
+					labels: [],
+				},
+			})));
+		});
+
 		it("re-asks on the next merge after Not now", async () => {
 			vi.mocked(confirm).mockResolvedValue(false);
 			await renderApp();
