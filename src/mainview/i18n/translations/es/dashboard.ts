@@ -115,6 +115,7 @@ const dashboard = {
 	"rateLimits.monthlyUsage": "{used} / {limit} usados · {remaining}% restantes",
 	"rateLimits.captured": "capturado hace {time}",
 	"rateLimits.capturedNow": "capturado ahora mismo",
+	"rateLimits.noRecentData": "sin datos de uso recientes",
 
 	// Remote Access QR Modal
 	"remote.title": "Acceso remoto",

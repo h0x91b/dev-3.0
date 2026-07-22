@@ -9,10 +9,19 @@ import type {
 } from "../../shared/agent-accounts";
 import { shortCodexWorkspaceId } from "../../shared/agent-accounts";
 import type { CodingAgent } from "../../shared/types";
+import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared/rate-limits";
+import {
+	RATE_LIMIT_DANGER_PERCENT,
+	RATE_LIMIT_WARN_PERCENT,
+	isUnlimitedRateLimitSnapshot,
+	worstSnapshotWindow,
+} from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 import { useEscapeKey } from "../hooks/useEscapeKey";
+import Tooltip from "./Tooltip";
+import { AccountCard, resolveAccount, type AccountLine } from "./rate-limit-ui";
 
 /** Fired on window after any account mutation (switch from this popover,
  *  add/remove/switch in Settings → Agent Accounts), so every mounted listener
@@ -52,6 +61,86 @@ function useAgentAccountsState(enabled: boolean): AgentAccountsState | null {
 	return enabled ? state : null;
 }
 
+/** Rate-limit report, fetched lazily (popover open) + refreshed by push. */
+function useAgentRateLimits(enabled: boolean): AgentRateLimitsReport | null {
+	const [report, setReport] = useState<AgentRateLimitsReport | null>(null);
+	useEffect(() => {
+		if (!enabled) return;
+		// Promise.resolve wrapper also absorbs a synchronously-missing RPC method
+		// (plain-object api mocks in tests); rows just render without usage.
+		Promise.resolve()
+			.then(() => api.request.getAgentRateLimits())
+			.then(setReport)
+			.catch(() => {});
+		function onUpdate(e: Event) {
+			setReport((e as CustomEvent).detail as AgentRateLimitsReport);
+		}
+		window.addEventListener("rpc:agentRateLimitsUpdated", onUpdate);
+		return () => window.removeEventListener("rpc:agentRateLimitsUpdated", onUpdate);
+	}, [enabled]);
+	return enabled ? report : null;
+}
+
+/** One row's rate-limit reading, joined from the report by source + account. */
+interface RowUsage {
+	/** null = OAuth account with no reading in the 7-day activity window. */
+	snap: AgentRateLimitSnapshot | null;
+	/** Identity line for the tooltip card header. */
+	account: AccountLine | null;
+	state: "used" | "unlimited" | "none";
+	/** Rounded worst-window percent; 0 for unlimited/none. */
+	percent: number;
+}
+
+function ringSeverityText(percent: number): string {
+	if (percent >= RATE_LIMIT_DANGER_PERCENT) return "text-danger";
+	if (percent >= RATE_LIMIT_WARN_PERCENT) return "text-warning";
+	return "text-accent";
+}
+
+/**
+ * Circular usage gauge that doubles as the row's selection mark (variant B of
+ * the picker design exploration): the arc shows the worst rate-limit window,
+ * a full success ring means unlimited, a bare track means no recent reading,
+ * and the filled center dot preserves the radio "selected" semantics.
+ */
+function UsageRing({ usage, isActive }: { usage: RowUsage | null; isActive: boolean }) {
+	const t = useT();
+	const radius = 6;
+	const circumference = 2 * Math.PI * radius;
+	const state = usage?.state ?? "none";
+	const percent = usage?.percent ?? 0;
+	const arc =
+		state === "unlimited" ? circumference : state === "used" ? (Math.max(0, Math.min(100, percent)) / 100) * circumference : 0;
+	const colorClass = state === "unlimited" ? "text-success" : ringSeverityText(percent);
+	const label =
+		state === "unlimited"
+			? t("rateLimits.unlimited")
+			: state === "used"
+				? t("rateLimits.percentUsed", { percent })
+				: t("rateLimits.noRecentData");
+	return (
+		<svg viewBox="0 0 16 16" role="img" aria-label={label} className="mt-0.5 h-4 w-4 shrink-0">
+			<circle cx="8" cy="8" r={radius} fill="none" strokeWidth="2" className="text-fg/15" stroke="currentColor" />
+			{arc > 0 && (
+				<circle
+					cx="8"
+					cy="8"
+					r={radius}
+					fill="none"
+					strokeWidth="2"
+					strokeLinecap="round"
+					strokeDasharray={`${arc} ${circumference}`}
+					transform="rotate(-90 8 8)"
+					className={colorClass}
+					stroke="currentColor"
+				/>
+			)}
+			{isActive && <circle cx="8" cy="8" r="3" className="text-accent" fill="currentColor" />}
+		</svg>
+	);
+}
+
 function identityBadge(identity: AgentAccountIdentity | null): string | null {
 	return identity?.planLabel ?? null;
 }
@@ -73,6 +162,9 @@ interface PopoverRow {
 	workspaceLabel: string | null;
 	isApi: boolean;
 	isActive: boolean;
+	/** Rate-limit reading for this account; null while the report is loading
+	 *  or for API profiles (no OAuth limit windows). */
+	usage: RowUsage | null;
 	/** null = row is informational only (codex unmanaged login). */
 	onSelect: (() => void) | null;
 }
@@ -97,6 +189,8 @@ function SwitcherPopover({
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [pos, setPos] = useState({ top: anchor.top, left: anchor.left });
 	const [visible, setVisible] = useState(false);
+	const t = useT();
+	const now = Date.now();
 
 	useEscapeKey(onClose);
 	useEffect(() => {
@@ -140,49 +234,80 @@ function SwitcherPopover({
 				<div className="text-fg-2 text-xs font-semibold uppercase tracking-wider">{title}</div>
 				<p className="text-fg-muted text-[0.6875rem] leading-snug mt-1">{subtitle}</p>
 			</div>
-			{rows.map((row) => (
-				<button
-					key={row.key}
-					type="button"
-					disabled={busy || !row.onSelect || row.isActive}
-					onClick={row.onSelect ?? undefined}
-					className={`w-full text-left px-3 py-2 flex items-start gap-2 transition-colors ${
-						row.onSelect && !row.isActive ? "hover:bg-elevated-hover cursor-pointer" : "cursor-default"
-					} disabled:opacity-100`}
-				>
-					<span
-						aria-hidden
-						className={`w-3 h-3 mt-1 rounded-full border-2 shrink-0 ${
-							row.isActive ? "border-accent bg-accent" : "border-fg-muted/50"
-						}`}
-					/>
-					<span className="min-w-0 flex-1">
-						<span className="flex items-center gap-2 min-w-0">
-							<span className="text-fg text-sm truncate flex-1">{row.label}</span>
-							{row.isApi ? (
-								<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
-							) : null}
-							{row.planLabel ? (
-								<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">
-									{row.planLabel}
+			{rows.map((row) => {
+				const selectable = !!row.onSelect && !row.isActive;
+				// Rows stay enabled even when informational/selected so the usage
+				// tooltip keeps working (disabled subtrees swallow hover events);
+				// non-selectable rows simply have no onClick.
+				const button = (
+					<button
+						type="button"
+						disabled={busy}
+						onClick={selectable ? (row.onSelect ?? undefined) : undefined}
+						aria-current={row.isActive || undefined}
+						className={`w-full text-left px-3 py-2 flex items-start gap-2 transition-colors ${
+							selectable ? "hover:bg-elevated-hover cursor-pointer" : "cursor-default"
+						} disabled:opacity-100`}
+					>
+						<UsageRing usage={row.usage} isActive={row.isActive} />
+						<span className="min-w-0 flex-1">
+							<span className="flex items-center gap-2 min-w-0">
+								<span className="text-fg text-sm truncate flex-1">{row.label}</span>
+								{row.isApi ? (
+									<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
+								) : null}
+								{row.planLabel ? (
+									<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">
+										{row.planLabel}
+									</span>
+								) : null}
+								{row.usage?.state === "used" ? (
+									<span
+										className={`shrink-0 text-[0.6875rem] font-semibold tabular-nums ${ringSeverityText(row.usage.percent)}`}
+									>
+										{row.usage.percent}%
+									</span>
+								) : row.usage?.state === "unlimited" ? (
+									<span className="shrink-0 text-[0.6875rem] font-semibold text-success">∞</span>
+								) : row.usage ? (
+									<span className="shrink-0 text-[0.6875rem] text-fg-muted">—</span>
+								) : null}
+							</span>
+							{(row.sub && row.sub !== row.label && !row.label.includes(row.sub)) || row.workspaceLabel ? (
+								<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
+									{row.sub && row.sub !== row.label && !row.label.includes(row.sub) ? (
+										<span className="text-fg-muted text-xs font-mono truncate max-w-full">{row.sub}</span>
+									) : null}
+									{row.workspaceLabel ? (
+										<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full">
+											{row.workspaceLabel}
+										</span>
+									) : null}
 								</span>
 							) : null}
 						</span>
-						{(row.sub && row.sub !== row.label && !row.label.includes(row.sub)) || row.workspaceLabel ? (
-							<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
-								{row.sub && row.sub !== row.label && !row.label.includes(row.sub) ? (
-									<span className="text-fg-muted text-xs font-mono truncate max-w-full">{row.sub}</span>
-								) : null}
-								{row.workspaceLabel ? (
-									<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full">
-										{row.workspaceLabel}
-									</span>
-								) : null}
-							</span>
-						) : null}
+					</button>
+				);
+				return row.usage?.snap ? (
+					<Tooltip
+						key={row.key}
+						layer="popover"
+						placement="right"
+						content={t("rateLimits.tooltipTitle")}
+						detail={
+							<div className="flex w-[19rem] max-w-[calc(100vw-3rem)] flex-col">
+								<AccountCard snap={row.usage.snap} account={row.usage.account} now={now} />
+							</div>
+						}
+					>
+						{button}
+					</Tooltip>
+				) : (
+					<span key={row.key} className="block">
+						{button}
 					</span>
-				</button>
-			))}
+				);
+			})}
 			<div className="border-t border-edge mt-1 pt-1.5 px-3 pb-1">
 				<p className="text-fg-muted text-[0.6875rem] leading-snug">{hint}</p>
 			</div>
@@ -222,6 +347,8 @@ export default function AgentAccountIndicator({
 	const state = useAgentAccountsState(kind !== null);
 	const [anchor, setAnchor] = useState<DOMRect | null>(null);
 	const [busy, setBusy] = useState(false);
+	// Usage rings only matter while the popover is open — fetch lazily then.
+	const report = useAgentRateLimits(anchor !== null);
 	const buttonRef = useRef<HTMLButtonElement>(null);
 	const isLocal = !!onSelect;
 
@@ -271,6 +398,19 @@ export default function AgentAccountIndicator({
 		return workspace ? t("settings.accountsWorkspace", { id: workspace }) : null;
 	};
 
+	// Join the rate-limit report to a row's account: null accountId = the
+	// provider's system login. API profiles have no OAuth limit windows.
+	const usageFor = (accountId: string | null, isApi = false): RowUsage | null => {
+		if (!report || isApi) return null;
+		const snap = report.snapshots.find((s) => s.source === kind && (s.accountId ?? null) === accountId) ?? null;
+		if (!snap) return { snap: null, account: null, state: "none", percent: 0 };
+		const account = resolveAccount(kind, state, accountId);
+		if (isUnlimitedRateLimitSnapshot(snap)) return { snap, account, state: "unlimited", percent: 0 };
+		const worst = worstSnapshotWindow(snap);
+		if (!worst) return { snap, account, state: "none", percent: 0 };
+		return { snap, account, state: "used", percent: Math.round(worst.usedPercent) };
+	};
+
 	const rows: PopoverRow[] = [];
 	// System-login row: selectable for BOTH kinds in local mode (codex now has a
 	// real system-login fallback); in the global switcher it stays claude-only
@@ -284,6 +424,7 @@ export default function AgentAccountIndicator({
 			workspaceLabel: workspaceLabel(fallbackIdentity),
 			isApi: false,
 			isActive: effectiveSelectedId === null,
+			usage: usageFor(null),
 			onSelect: isLocal
 				? () => handleSelectLocal(null)
 				: () => handleSelectGlobal("claude", null),
@@ -297,6 +438,7 @@ export default function AgentAccountIndicator({
 			workspaceLabel: workspaceLabel(state.codex.currentIdentity),
 			isApi: false,
 			isActive: true,
+			usage: usageFor(null),
 			onSelect: null,
 		});
 	}
@@ -309,6 +451,7 @@ export default function AgentAccountIndicator({
 			workspaceLabel: workspaceLabel(account.identity),
 			isApi: account.auth === "api",
 			isActive: account.id === effectiveSelectedId,
+			usage: usageFor(account.id, account.auth === "api"),
 			onSelect: isLocal
 				? () => handleSelectLocal(account.id)
 				: () => handleSelectGlobal(kind, account.id),
