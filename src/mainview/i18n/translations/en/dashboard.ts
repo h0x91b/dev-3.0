@@ -110,6 +110,7 @@ const dashboard = {
 	"rateLimits.percentUsed": "{percent}% used",
 	"rateLimits.resetsIn": "resets in {time}",
 	"rateLimits.credits": "credits: {balance}",
+	"rateLimits.unlimited": "∞ unlimited",
 	"rateLimits.monthlyLabel": "monthly credits",
 	"rateLimits.monthlyUsage": "{used} / {limit} used · {remaining}% left",
 	"rateLimits.stale": "Data from {time} ago — refreshes while an agent session is active",

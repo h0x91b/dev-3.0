@@ -110,6 +110,7 @@ const dashboard = {
 	"rateLimits.percentUsed": "{percent}% usado",
 	"rateLimits.resetsIn": "se restablece en {time}",
 	"rateLimits.credits": "créditos: {balance}",
+	"rateLimits.unlimited": "∞ ilimitado",
 	"rateLimits.monthlyLabel": "créditos mensuales",
 	"rateLimits.monthlyUsage": "{used} / {limit} usados · {remaining}% restantes",
 	"rateLimits.stale": "Datos de hace {time} — se actualizan mientras hay una sesión de agente activa",
