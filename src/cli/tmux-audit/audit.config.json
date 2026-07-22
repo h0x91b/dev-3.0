@@ -1,0 +1,1139 @@
+{
+	"description": "Manifest for the remaining-tmux-dependency audit (roadmap INT-008 / Seq 1251). Hand-maintained: boundary + taxonomy + classification rules + per-file overrides. The full inventory (inventory.json) and summary (inventory.md) are generated from this file by generate.ts; the deterministic check re-derives from it.",
+	"boundary": {
+		"note": "git-tracked files only. Detection is the literal token `tmux` (case-insensitive), a complete file-level signal here (verified: no tmux grammar exists without it outside the adapter tests, which the grammar signal still catches).",
+		"excludeDirs": [
+			"node_modules/",
+			"dist/",
+			"build/",
+			"views/",
+			"vendor-docs/",
+			"src/cli/tmux-audit/"
+		],
+		"historicalDirs": [
+			"change-logs/",
+			"decisions/"
+		],
+		"historicalNote": "Append-only ship history (changelogs) and immutable ADRs are counted as known references but never inventoried or checked, because they are not edited to remove tmux.",
+		"excludeExtensions": [
+			".png",
+			".jpg",
+			".jpeg",
+			".gif",
+			".webp",
+			".ico",
+			".icns",
+			".woff",
+			".woff2",
+			".ttf",
+			".otf",
+			".svg",
+			".mp4",
+			".pdf",
+			".zip",
+			".gz",
+			".lock"
+		],
+		"excludePaths": [
+			"src/bun/changelog-bundled.ts",
+			"src/shared/build-info.generated.ts"
+		]
+	},
+	"categories": {
+		"terminal-ownership": "Owns tmux sessions/server lifecycle, config, themes, and adapter core.",
+		"pane-layout": "Panes, windows, splits, layout, zoom, focus, and the tmux prefix cheat sheet.",
+		"capture-state": "capture-pane, scrollback, copy-mode, search, and terminal state parsing.",
+		"process-resource": "Reads the tmux process/pane tree for port and resource attribution.",
+		"agent-control": "Agent-facing tmux grammar (send-keys to agent panes, prompts, skill content).",
+		"cli-rpc-ui": "CLI commands, RPC handlers, menus, and UI wiring that speak tmux.",
+		"packaging-update": "Bundled tmux binary, shim, staging, signing, CI, container, and app-bundle copy.",
+		"compatibility": "Backward-compatible data, session naming, and backend-identity contracts.",
+		"test-only": "Tests, e2e, and fixtures; removed with the production code they cover.",
+		"documentation": "Live docs, user-facing copy, and agent instructions naming tmux."
+	},
+	"roadmap": {
+		"INT-001": "Task, project, and variant terminals.",
+		"INT-002": "Agent control plane.",
+		"INT-003": "Task lifecycle cleanup.",
+		"INT-004": "Project scripts and dev servers.",
+		"INT-005": "CLI lifecycle.",
+		"INT-006": "Remote/browser transport.",
+		"INT-007": "Process tools.",
+		"LAY-003": "Connect logical pane IDs to native host panes.",
+		"LAY-004": "Reproduce product layout behavior.",
+		"LAY-006": "Preserve keyboard and accessibility behavior.",
+		"LAY-007": "Verify desktop, browser, and narrow/mobile rendering.",
+		"STATE-008": "Restore required terminal features.",
+		"MIG-003": "Backend identity as backward-compatible data.",
+		"MIG-006": "Keep tmux failure isolation (native replacement asserts non-use).",
+		"RUN-005": "Minimum-runtime gate and diagnostics.",
+		"RUN-006": "Package, sign, and update the host.",
+		"CUT-005": "Remove tmux implementation and distribution.",
+		"CUT-006": "Prove deletion mechanically (no user-facing tmux copy)."
+	},
+	"depths": {
+		"deep-internal": "Inside the tmux adapter (src/bun/tmux/**) — owns tmux vocabulary by design.",
+		"caller": "Production code outside the adapter that calls it or otherwise depends on tmux.",
+		"surface": "Docs, user-facing copy, CSS, packaging scripts, CI, and config that name tmux but are not TS callers.",
+		"test": "Tests, e2e, and fixtures.",
+		"isolation": "Native replacement / spike that references tmux only to assert it does NOT use it."
+	},
+	"dependencyKinds": {
+		"active": "Removing tmux forces a behavior/output change here.",
+		"reference": "Only a mention (comment, doc, copy, log key); deletable as cleanup."
+	},
+	"rules": [
+		{
+			"match": "^src/mainview/i18n/translations/(en|es|ru)/",
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Localized user-facing copy naming tmux (sessions, cheat sheet, action buttons, tooltips).",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		{
+			"match": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		}
+	],
+	"overrides": {
+		"src/bun/tmux/client.ts": {
+			"category": "terminal-ownership",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "TmuxClient + `tmux` singleton: typed subcommands (new/has/kill/attach-session, split-window, select-pane, send-keys, capture-pane, copy-mode, list-panes).",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/tmux/binary.ts": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "tmux binary selection, PATH-shim dereference/sanitize, version probe (bundled/vendored/PATH resolution).",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"src/bun/tmux/config.ts": {
+			"category": "terminal-ownership",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "Bundled tmux.conf generator, client-cwd policy, active-theme config path, socket defaults.",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/tmux/formats.ts": {
+			"category": "capture-state",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "Typed `-F` format declarations and the single tmux output parser (pane/window/search/session rows).",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/tmux/session-names.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-003",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "dev3 session naming scheme + reverse parser (task/project/dev-server/cleanup prefixes).",
+			"deletionPrerequisite": "No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004)."
+		},
+		"src/bun/tmux/themes.ts": {
+			"category": "terminal-ownership",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "Catppuccin tmux plugin payload (light/dark option strings).",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/tmux/alt-click.ts": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-006",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "Pure Alt/Option-click cursor-move gesture logic (select-pane + copy-mode key computation).",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/bun/tmux/errors.ts": {
+			"category": "terminal-ownership",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "TmuxError / TmuxSpawnError types and guards.",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/tmux/constants.ts": {
+			"category": "compatibility",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "DEFAULT_TMUX_SOCKET and adapter constants.",
+			"deletionPrerequisite": "No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004)."
+		},
+		"src/bun/tmux/index.ts": {
+			"category": "terminal-ownership",
+			"roadmapItem": "CUT-005",
+			"depth": "deep-internal",
+			"dependencyKind": "active",
+			"consumer": "Public barrel: the sole allowed import surface of the tmux adapter.",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/tmux/themes-conf/catppuccin-latte.conf": {
+			"category": "terminal-ownership",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Bundled tmux theme config (light).",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/tmux/themes-conf/catppuccin-mocha.conf": {
+			"category": "terminal-ownership",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Bundled tmux theme config (dark).",
+			"deletionPrerequisite": "Native backend is the proven default on all platforms (CUT-003) and no supported session needs tmux (CUT-004/CUT-005)."
+		},
+		"src/bun/pty-server.ts": {
+			"category": "terminal-ownership",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Primary terminal owner outside the adapter: create/attach/kill sessions, configure tmux, apply theme, compute session name, capture panes.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/lifecycle/executor.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-003",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Lifecycle effects: cleanupTaskTmuxState, tmux socket + active config path during task teardown.",
+			"deletionPrerequisite": "Native lifecycle owns task terminal trees end-to-end (INT-003) with no tmux session to reconcile."
+		},
+		"src/bun/lifecycle/rehydrate.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-003",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Boot recovery: tmuxSessionExists / tmuxAlive probes against the socket.",
+			"deletionPrerequisite": "Native lifecycle owns task terminal trees end-to-end (INT-003) with no tmux session to reconcile."
+		},
+		"src/bun/lifecycle/machine.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-003",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Lifecycle state machine consumes a tmuxAlive activity signal.",
+			"deletionPrerequisite": "Native lifecycle owns task terminal trees end-to-end (INT-003) with no tmux session to reconcile."
+		},
+		"src/bun/lifecycle/events.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-003",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Lifecycle event type carries a tmuxAlive field.",
+			"deletionPrerequisite": "Native lifecycle owns task terminal trees end-to-end (INT-003) with no tmux session to reconcile."
+		},
+		"src/bun/headless-entry.ts": {
+			"category": "packaging-update",
+			"roadmapItem": "RUN-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Headless boot resolves the tmux binary at startup (resolveTmuxBinaryAtStartup).",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"src/bun/index.ts": {
+			"category": "packaging-update",
+			"roadmapItem": "RUN-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "App boot resolves/sanitizes the tmux binary + shim at startup.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"src/bun/makefile.ts": {
+			"category": "terminal-ownership",
+			"roadmapItem": "INT-004",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: command string is injected into the tmux-wrapped `bash -c` invocation.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/data.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-003",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Seed/default `tmuxSocket: \"dev3\"` on task data.",
+			"deletionPrerequisite": "No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004)."
+		},
+		"src/bun/agent-prompt.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Sends prompts to the agent pane: send-keys, select-pane, TMUX_AGENT_PANE_OPTION targeting.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/bun/agent-skills.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Generates agent SKILL.md instructing tmux grammar (send-keys/capture-pane/list-panes) + installs skill dir.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/bun/scheduled-message-scheduler.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Delivers scheduled prompts to a task pane via taskSessionName + socket.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/shared/agent-skill-content.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Shared skill-content template embedding tmux grammar for agents.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/bun/agent-accounts.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comments on the long-lived tmux server env and credential-leak boundary.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/bun/logger.ts": {
+			"category": "agent-control",
+			"roadmapItem": "CUT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Log-scrub key names tmuxCmd/tmuxCommand.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"src/bun/port-scanner.ts": {
+			"category": "process-resource",
+			"roadmapItem": "INT-007",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Reads pane PIDs per session (list-panes) to attribute listening ports.",
+			"deletionPrerequisite": "Process/port tooling reads ownership from the native host, not tmux panes (INT-007/PROC-007)."
+		},
+		"src/bun/resource-monitor.ts": {
+			"category": "process-resource",
+			"roadmapItem": "INT-007",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "One list-panes -a call maps every session's pane PIDs for CPU/mem polling.",
+			"deletionPrerequisite": "Process/port tooling reads ownership from the native host, not tmux panes (INT-007/PROC-007)."
+		},
+		"src/bun/caffeinate.ts": {
+			"category": "process-resource",
+			"roadmapItem": "INT-007",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: keep-awake gated on an active agent tmux session.",
+			"deletionPrerequisite": "Process/port tooling reads ownership from the native host, not tmux panes (INT-007/PROC-007)."
+		},
+		"src/bun/script-runner.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Runs setup/dev/cleanup scripts inside a tmux window (split-window, socket).",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/rpc-handlers/scripts.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Scripts RPC delegates to runScriptInTmux with the task socket.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/rpc-handlers/tmux-pty.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "The tmux RPC surface: create/attach/split/focus/resize/capture/copy-mode/send-keys, dev-server lifecycle.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/rpc-handlers/git-operations.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Git-diff pane management: split-window, listPanes, killPane in the task session.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/rpc-handlers/settings-config.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Settings RPC: select/commit tmux binary, apply/set tmux theme.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"src/bun/rpc-handlers/shared-pure.ts": {
+			"category": "packaging-update",
+			"roadmapItem": "RUN-006",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Pure bundled-tmux candidate paths + vendored search-path resolution.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"src/bun/rpc-handlers/shared.ts": {
+			"category": "packaging-update",
+			"roadmapItem": "RUN-006",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Shared bundled-tmux candidate + install-tmux helpers.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"src/bun/rpc-handlers.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Barrel re-exporting tmuxPtyHandlers, bundledTmuxCandidates, tmuxSearchPaths.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/cli-socket-server.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "CLI socket server: getTmuxLayout, dev-server passthrough, $TMUX_PANE pane matching.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/shell-env.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-004",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comments: writes shell rc so the CLI is reachable inside tmux panes/login shells.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/bun/agents.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-003",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: session resume after tmux death / app restart.",
+			"deletionPrerequisite": "Native lifecycle owns task terminal trees end-to-end (INT-003) with no tmux session to reconcile."
+		},
+		"src/bun/temp-paths.ts": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: temp dir holds tmux configuration / plugin state.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"src/bun/system-clipboard.ts": {
+			"category": "capture-state",
+			"roadmapItem": "STATE-008",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: OSC 52 copy payloads arrive from inner apps (vim, tmux).",
+			"deletionPrerequisite": "Native capture/search/copy features restored (STATE-008) and routed through the backend contract."
+		},
+		"src/bun/vents.ts": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: tmux integration listed as a platform-feedback topic.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"src/cli/commands/doctor.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "doctor checks tmux binary/shim/setting/version and prints repair hints.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/cli/commands/dev-server.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "dev-server CLI resolves the task tmux socket and surfaces tmux errors.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/cli/commands/ui-control.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "ui-control prints tmux layout / pane info sections.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/cli/commands/codex-hook.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Codex hook resolves the caller's $TMUX_PANE to bind the agent pane.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/cli/commands/vents.ts": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "vents help lists tmux integration as a feedback topic.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"src/cli/context.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comments: worktree/task detection fallback references the task tmux pane.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/cli/help.ts": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "CLI help text naming tmux.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"src/cli/main.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "CLI router mentions tmux command routing.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/cli/socket-client.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Socket client comment referencing tmux.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/shared/types.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-003",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Terminal contract types: Task.tmuxSocket, tmuxAction, kill/listTmuxSessions RPC, tmuxAltClickMoveCursor, tmux-derived fields.",
+			"deletionPrerequisite": "No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004)."
+		},
+		"src/shared/application-menu.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Native menu items dispatch tmux actions (capture-pane, copy-mode, new-session).",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/shared/agent-adapters/types.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-003",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Adapter type comment: resume after tmux-death.",
+			"deletionPrerequisite": "Native lifecycle owns task terminal trees end-to-end (INT-003) with no tmux session to reconcile."
+		},
+		"src/shared/agent-accounts.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment referencing the tmux server env.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/shared/socket-meta.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Socket metadata comment referencing tmux.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/TerminalView.tsx": {
+			"category": "capture-state",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Terminal surface: copy-mode search state, alt-click cursor move, tmux layout, scroll reporting.",
+			"deletionPrerequisite": "Native capture/search/copy features restored (STATE-008) and routed through the backend contract."
+		},
+		"src/mainview/components/TmuxSessionManager.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "UI to list/kill tmux sessions.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/components/task-info-panel/TaskTmuxControls.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Task tmux control bar: pane/window navigate, kill, zoom action buttons.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/ClosePanePicker.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Close-pane picker: reads tmux layout, kills a chosen pane.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/close-pane-picker.ts": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Close-pane-picker controller wiring to TaskTmuxControls.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/PaneMapSheet.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Pane map sheet renders tmux layout / pane / window info.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/PaneZoomBadge.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Zoom badge tied to tmux pane navigate / TaskTmuxControls.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/MobilePaneCarousel.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-007",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Mobile pane carousel: tmux pane count / navigate actions.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/MobileWindowCarousel.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-007",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Mobile window carousel: tmux window navigate.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/utils/paneHighlight.ts": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Pane highlight helper keyed on tmux layout.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/TerminalSearchBar.tsx": {
+			"category": "capture-state",
+			"roadmapItem": "STATE-008",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Terminal search bar drives tmux copy-mode search (update/step/cancel).",
+			"deletionPrerequisite": "Native capture/search/copy features restored (STATE-008) and routed through the backend contract."
+		},
+		"src/mainview/scroll-speed.ts": {
+			"category": "capture-state",
+			"roadmapItem": "STATE-008",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: accumulates pixels into one tmux scroll-wheel event.",
+			"deletionPrerequisite": "Native capture/search/copy features restored (STATE-008) and routed through the backend contract."
+		},
+		"src/mainview/terminal-keymaps.ts": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-006",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "tmux-native keymap entries mapping keys to tmux actions.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/shift-key-sequences.ts": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: ESC+CR newline sequence recognized through tmux.",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/mainview/components/KeyboardShortcutsModal.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-006",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Keyboard-shortcuts overlay builds the tmux prefix cheat-sheet sections.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/App.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "App wiring: show-tmux-cheat-sheet, copy-mode, session bootstrap.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/menuRouter.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Menu router: tmux_action_map, setTmuxTheme, show-tmux-cheat-sheet.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/commands.ts": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-006",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Command palette entry: tmux cheat sheet.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/keymap.ts": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-006",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Keymap registry entries for tmux/terminal shortcuts.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/help.ts": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Help index references tmux sessions.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"src/mainview/rpc.ts": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Comment: ensure the tmux session exists server-side.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/main.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Applies persisted tmux theme on boot.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/tips.ts": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Feature tips naming the tmux session manager / action buttons.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"src/mainview/components/GlobalHeader.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Header opens the TmuxSessionManager.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/components/GlobalSettings.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-005",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Settings toggle for tmux theme.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/components/TaskInfoPanel.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Embeds TaskTmuxControls in the task info panel.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/components/TaskTerminal.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Task terminal wrapper referencing tmux session.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/components/TaskWorkspacePane.tsx": {
+			"category": "capture-state",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Workspace pane comment referencing copy-mode.",
+			"deletionPrerequisite": "Native capture/search/copy features restored (STATE-008) and routed through the backend contract."
+		},
+		"src/mainview/components/TaskWorkspaceView.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-001",
+			"depth": "caller",
+			"dependencyKind": "reference",
+			"consumer": "Workspace view referencing tmux.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/components/task-info-panel/TaskDevServer.tsx": {
+			"category": "cli-rpc-ui",
+			"roadmapItem": "INT-004",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Dev-server panel checks has-session for the dev server.",
+			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		"src/mainview/components/ScheduleMessageModal.tsx": {
+			"category": "agent-control",
+			"roadmapItem": "INT-002",
+			"depth": "caller",
+			"dependencyKind": "active",
+			"consumer": "Schedule-message modal picks a target tmux pane (layout/paneInfo).",
+			"deletionPrerequisite": "Agent control plane speaks backend-neutral commands (INT-002); legacy tmux grammar retired."
+		},
+		"src/mainview/components/TmuxIcons.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Animated tmux control icon set.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/HeaderIcons.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Header icon references the tmux icon set.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/components/TaskIcons.tsx": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Task icon references the tmux icon set.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		"src/mainview/index.css": {
+			"category": "pane-layout",
+			"roadmapItem": "LAY-004",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "CSS for tmux control icons/animations.",
+			"deletionPrerequisite": "Native pane/layout host drives windows/panes (LAY-003/LAY-004) and product commands replace tmux prefix (LAY-006)."
+		},
+		".github/workflows/release.yml": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "CI builds/bundles the pinned tmux binary and wires the brew keg.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"scripts/build-bundled-tmux.sh": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Builds the self-contained bundled tmux binary from source.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"scripts/stage-bundled-tmux.sh": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Stages the bundled tmux binary into the CLI build.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"scripts/create-cli-tarball.sh": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Includes the bundled tmux binary in the CLI tarball.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"scripts/sign-cli-binaries.sh": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Signs the staged bundled tmux binary.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"electrobun.config.ts": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Copies the bundled tmux dir into the app bundle.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"package.json": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Build script stages bundled tmux; test config excludes the live tmux client suite.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"docker/Dockerfile": {
+			"category": "packaging-update",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "active",
+			"consumer": "Installs tmux into the remote container image.",
+			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		"docker/README.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Docker docs mention the tmux dependency.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"README.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "README documents tmux install / version matrix.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"AGENTS.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Agent guide: TmuxClient rule, shim handling, tmux config invariants.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"CLAUDE.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Symlink to AGENTS.md (identical content).",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"concept.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Concept doc references the tmux-based terminal model.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"agent-support-matrix.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Agent matrix references $TMUX_PANE.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/agents/domain.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Domain doc mentions tmux.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/ai-install.txt": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "AI install doc names the tmux dependency.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/index.html": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Landing page copy references tmux.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/llms.txt": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "llms.txt references tmux.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/og-card.html": {
+			"category": "documentation",
+			"roadmapItem": "CUT-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "OG card copy references tmux.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/ux/PRODUCT_UX_BIBLE.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "UX bible names tmux surfaces (controls, cheat sheet, pane/window navigate).",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/ux/UX_DECISIONS.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "UX decisions reference tmux controls / alt-click / kill-pane.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/ux/ux-architecture.yaml": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "UX manifest maps tmux surfaces (session manager, controls, zoom mutation).",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"docs/ux/feature-plans/agent-favorites.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Feature plan references tmux-pty.",
+			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
+		},
+		"src/bun/native-terminal-registry/host.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native host: 'tmux-backed' marker/sentinel proving isolation from tmux.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/registry.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native registry mentions tmux only to keep sessions distinct.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/paths.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native paths comment contrasting with tmux.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/README.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Native registry README contrasts with the tmux backend.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/LIVE-PARSER-MATRIX.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Live-parser matrix references tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/MULTI-CLIENT-WINDOWS.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Multi-client doc references tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/WINDOWS-SHELL-MATRIX.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Windows shell matrix references tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/prototypes/detached-pty/host.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Detached-PTY spike host: tmux-backed sentinel proving isolation.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/prototypes/detached-pty/state.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Detached-PTY spike state referencing tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/prototypes/detached-pty/README.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Detached-PTY spike README references tmux-removal context.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/prototypes/terminal-state/README.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Terminal-state spike README references tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/prototypes/terminal-state/WINDOWS-MATRIX.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Terminal-state spike matrix references tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"docs/technical-feasibility/native-pane-layout-lab/README.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Native pane-layout feasibility README references tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		}
+	}
+}
