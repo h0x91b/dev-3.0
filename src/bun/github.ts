@@ -79,7 +79,7 @@ async function runGh(
 	args: string[],
 	options?: { cwd?: string; env?: Record<string, string>; timeoutMs?: number },
 ): Promise<GitHubCommandResult> {
-	log.debug(`gh ${args.join(" ")}`, { cwd: options?.cwd });
+	log.debug("Executing GitHub CLI command", { cwd: options?.cwd, command: ["gh", ...args] });
 	const proc = spawn(["gh", ...args], {
 		cwd: options?.cwd,
 		stdout: "pipe",
@@ -110,7 +110,10 @@ async function runGh(
 		// Kill the hung process so it can't keep holding resources (e.g. a
 		// branch-status semaphore slot) after we've given up on it.
 		proc.kill();
-		log.warn(`gh ${args.join(" ")} timed out`, { timeoutMs: options?.timeoutMs });
+		log.warn("GitHub CLI command timed out", {
+			command: ["gh", ...args],
+			timeoutMs: options?.timeoutMs,
+		});
 		return { code: GH_TIMEOUT_EXIT_CODE, ok: false, stdout: "", stderr: `gh timed out after ${options?.timeoutMs}ms` };
 	}
 	const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);

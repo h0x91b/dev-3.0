@@ -71,7 +71,7 @@ export async function run(
 	opts?: { timeoutMs?: number; env?: Record<string, string> },
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
 	const finalCmd = withGitFilenameEncoding(cmd);
-	log.debug(`exec: ${finalCmd.join(" ")}`, { cwd });
+	log.debug("Executing git command", { cwd, command: finalCmd });
 	const proc = spawn(finalCmd, {
 		cwd,
 		stdout: "pipe",
@@ -110,7 +110,9 @@ export async function run(
 	const failure = outcome.timedOut ? `timed out after ${opts?.timeoutMs}ms` : stderr.trim();
 	const result = { ok: outcome.code === 0, stdout: stdout.trim(), stderr: failure };
 	if (!result.ok) {
-		log.warn(`Command failed (exit ${outcome.code}): ${finalCmd.join(" ")}`, {
+		log.warn("Git command failed", {
+			command: finalCmd,
+			exitCode: outcome.code,
 			stderr: result.stderr,
 		});
 	}
@@ -285,7 +287,7 @@ async function runGitStdinBinary(
 	stdin: string,
 ): Promise<{ code: number; stdout: Uint8Array }> {
 	const finalCmd = withGitFilenameEncoding(cmd);
-	log.debug(`exec(stdin): ${finalCmd.join(" ")}`, { cwd });
+	log.debug("Executing git command with stdin", { cwd, command: finalCmd });
 	const proc = spawn(finalCmd, {
 		cwd,
 		stdin: new Blob([stdin]),

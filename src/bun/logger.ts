@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { DEV3_HOME } from "./paths";
 
@@ -20,6 +20,152 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
+
+/** Keep today's file plus the previous 13 calendar days. */
+export const LOG_RETENTION_DAYS = 14;
+
+const REDACTED = "[redacted]";
+const LOG_FILE_RE = /^(\d{4})-(\d{2})-(\d{2})\.log$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// These values can contain the task prompt, agent instructions, credentials,
+// or command arguments. Keep the key names broad because many RPC handlers log
+// their params object directly.
+const COMMAND_KEYS = new Set([
+	"command",
+	"cmd",
+	"args",
+	"argv",
+	"agentcmd",
+	"agentcommand",
+	"tmuxcmd",
+	"tmuxcommand",
+	"installcmd",
+	"resolvedcommand",
+	"resumecommand",
+	"resumecmd",
+	"shellcommand",
+	"wrappedcommand",
+	"installcommand",
+]);
+const PAYLOAD_KEYS = new Set([
+	"description",
+	"taskdescription",
+	"prompt",
+	"taskprompt",
+	"title",
+	"tasktitle",
+	"customtitle",
+	"overview",
+	"useroverview",
+	"content",
+	"body",
+	"url",
+	"baseurl",
+	"token",
+	"secret",
+	"password",
+	"authorization",
+	"cookie",
+	"env",
+	"extraenv",
+	"envtext",
+	"input",
+]);
+
+function normalizeKey(key: string): string {
+	return key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
+function stringLength(value: unknown): number | undefined {
+	if (typeof value === "string" || Array.isArray(value)) return value.length;
+	return undefined;
+}
+
+function redactedPayload(value: unknown): Record<string, unknown> {
+	const length = stringLength(value);
+	return length === undefined
+		? { redacted: true }
+		: { redacted: true, length };
+}
+
+function executableName(value: unknown): string {
+	if (typeof value !== "string") return "unknown";
+	const trimmed = value.trim();
+	if (!trimmed) return "unknown";
+	const first = trimmed.match(/^(?:'([^']+)'|"([^"]+)"|(\S+))/);
+	const token = first?.[1] ?? first?.[2] ?? first?.[3] ?? trimmed;
+	return token.split(/[\\/]/).pop() || "unknown";
+}
+
+interface CommandSummary {
+	redacted: true;
+	executable: string;
+	argumentCount: number;
+}
+
+/** Preserve command shape for diagnostics without retaining any arguments. */
+function summarizeCommand(command: unknown): CommandSummary {
+	if (Array.isArray(command)) {
+		return {
+			redacted: true,
+			executable: executableName(command[0]),
+			argumentCount: Math.max(0, command.length - 1),
+		};
+	}
+	if (typeof command === "string") {
+		const trimmed = command.trim();
+		return {
+			redacted: true,
+			executable: executableName(trimmed),
+			argumentCount: trimmed ? Math.max(0, trimmed.split(/\s+/).length - 1) : 0,
+		};
+	}
+	return { redacted: true, executable: "unknown", argumentCount: 0 };
+}
+
+type SeenObjects = WeakSet<object>;
+
+function sanitizeLogValue(value: unknown, key: string | undefined, seen: SeenObjects): unknown {
+	const normalized = key ? normalizeKey(key) : "";
+	if (COMMAND_KEYS.has(normalized)) return summarizeCommand(value);
+	if (PAYLOAD_KEYS.has(normalized)) return redactedPayload(value);
+
+	if (value === null || value === undefined) return value;
+	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+	if (typeof value === "bigint") return `${value}n`;
+	if (typeof value === "function" || typeof value === "symbol") return REDACTED;
+	if (typeof value !== "object") return REDACTED;
+	if (seen.has(value)) return "[circular]";
+	seen.add(value);
+
+	if (Array.isArray(value)) {
+		return value.map((item) => sanitizeLogValue(item, undefined, seen));
+	}
+
+	const result: Record<string, unknown> = {};
+	for (const [childKey, childValue] of Object.entries(value)) {
+		try {
+			result[childKey] = sanitizeLogValue(childValue, childKey, seen);
+		} catch {
+			result[childKey] = REDACTED;
+		}
+	}
+	return result;
+}
+
+/** Return a JSON-safe log payload with prompt-like values removed. */
+function sanitizeLogExtra(extra?: Record<string, unknown>): Record<string, unknown> | undefined {
+	if (!extra) return undefined;
+	try {
+		const safe = sanitizeLogValue(extra, undefined, new WeakSet<object>());
+		return safe && typeof safe === "object" && !Array.isArray(safe)
+			? safe as Record<string, unknown>
+			: { value: safe };
+	} catch {
+		return { redacted: true };
+	}
+}
 
 /**
  * Resolve the initial minimum log level.
@@ -78,6 +224,7 @@ let minLevel: LogLevel = resolveLogLevel(process.env);
 let logDir: string | null = null;
 let currentLogFile: string | null = null;
 let currentLogDate: string | null = null;
+let lastPrunedLogDate: string | null = null;
 
 // Track which directories have been created so we only mkdir once per dir.
 const ensuredDirs = new Set<string>();
@@ -120,11 +267,78 @@ function ensureDir(filePath: string): void {
 	ensuredDirs.add(dir);
 }
 
+type LogDirectoryEntry = {
+	name: string;
+	isDirectory(): boolean;
+	isFile(): boolean;
+};
+
+function readLogDirectory(path: string): LogDirectoryEntry[] {
+	return readdirSync(path, { withFileTypes: true }) as unknown as LogDirectoryEntry[];
+}
+
+function parseLogDay(fileName: string): number | null {
+	const match = LOG_FILE_RE.exec(fileName);
+	if (!match) return null;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	const date = new Date(Date.UTC(year, month - 1, day));
+	if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+	return date.getTime();
+}
+
+/** Delete dated diagnostic files outside the retention window, best-effort. */
+export function pruneLogFiles(now: Date = new Date(), root: string = getLogDir()): number {
+	const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+	const cutoff = today - (LOG_RETENTION_DAYS - 1) * DAY_MS;
+	let removed = 0;
+
+	try {
+		for (const yearEntry of readLogDirectory(root)) {
+			if (!yearEntry.isDirectory()) continue;
+			const yearDir = `${root}/${yearEntry.name}`;
+			for (const monthEntry of readLogDirectory(yearDir)) {
+				if (!monthEntry.isDirectory()) continue;
+				const monthDir = `${yearDir}/${monthEntry.name}`;
+				for (const fileEntry of readLogDirectory(monthDir)) {
+					if (!fileEntry.isFile()) continue;
+					const fileDay = parseLogDay(fileEntry.name);
+					if (!fileDay || fileDay >= cutoff) continue;
+					try {
+						unlinkSync(`${monthDir}/${fileEntry.name}`);
+						removed += 1;
+					} catch {
+						// A concurrent writer or a permission change must not affect logging.
+					}
+				}
+			}
+		}
+	} catch {
+		// Missing, unreadable, or partially removed log directories are harmless.
+	}
+
+	return removed;
+}
+
+function pruneLogFilesIfNeeded(): void {
+	const today = dateStr();
+	if (lastPrunedLogDate === today) return;
+	lastPrunedLogDate = today;
+	try {
+		pruneLogFiles();
+	} catch {
+		// pruneLogFiles is already defensive; keep this guard for unusual fs mocks.
+	}
+}
+
 function appendToFile(line: string): void {
 	const filePath = getLogFile();
+	let wrote = false;
 	try {
 		ensureDir(filePath);
 		appendFileSync(filePath, line + "\n");
+		wrote = true;
 	} catch {
 		// The log directory may have been removed out from under us after we
 		// cached it in `ensuredDirs` — e.g. a tmp dir wiped between tests, or a
@@ -136,10 +350,20 @@ function appendToFile(line: string): void {
 			ensuredDirs.delete(dir);
 			ensureDir(filePath);
 			appendFileSync(filePath, line + "\n");
+			wrote = true;
 		} catch (retryErr) {
 			// Last resort — don't let file logging break the app.
 			console.error("[logger] Failed to write log file:", retryErr);
 		}
+	}
+	if (wrote) pruneLogFilesIfNeeded();
+}
+
+function stringifyExtra(extra?: Record<string, unknown>): string {
+	try {
+		return JSON.stringify(extra) ?? "{}";
+	} catch {
+		return JSON.stringify({ redacted: true });
 	}
 }
 
@@ -154,7 +378,7 @@ function formatForConsole(
 	const t = timeStr();
 	let line = `${DIM}${t}${RESET} ${color}${lvl}${RESET} ${DIM}[${tag}]${RESET} ${msg}`;
 	if (extra && Object.keys(extra).length > 0) {
-		line += ` ${DIM}${JSON.stringify(extra)}${RESET}`;
+		line += ` ${DIM}${stringifyExtra(extra)}${RESET}`;
 	}
 	return line;
 }
@@ -173,7 +397,7 @@ function formatForFile(
 	// process.
 	let line = `${t} ${lvl} [${process.pid}:${tag}] ${msg}`;
 	if (extra && Object.keys(extra).length > 0) {
-		line += ` ${JSON.stringify(extra)}`;
+		line += ` ${stringifyExtra(extra)}`;
 	}
 	return line;
 }
@@ -185,9 +409,10 @@ function log(
 	extra?: Record<string, unknown>,
 ): void {
 	if (LEVEL_ORDER[level] < LEVEL_ORDER[minLevel]) return;
+	const safeExtra = sanitizeLogExtra(extra);
 
-	const consoleLine = formatForConsole(level, tag, msg, extra);
-	const fileLine = formatForFile(level, tag, msg, extra);
+	const consoleLine = formatForConsole(level, tag, msg, safeExtra);
+	const fileLine = formatForFile(level, tag, msg, safeExtra);
 
 	// Console output
 	switch (level) {

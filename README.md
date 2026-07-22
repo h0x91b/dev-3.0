@@ -227,6 +227,8 @@ This installs the `dev3` CLI. Three ways to use it:
 - **Desktop GUI** — `dev3 gui` launches the full Electrobun desktop app. On the first run it lazily downloads the bundle (~88 MB) into `~/.dev3.0/gui/` and registers an XDG menu entry. If your distro is missing GTK/WebKit libraries it prints the exact `apt`/`dnf`/`pacman` command for you to copy.
 - **CLI tooling** — `dev3 task …`, `dev3 current`, `dev3 note add …` etc. when you want to script the Kanban board from a terminal.
 
+Local diagnostic logs are retained for 14 days and redact prompt-bearing payloads and command arguments. See [Local diagnostic logs](docs/diagnostic-logs.md) for the retention and payload policy.
+
 #### Pre-built CLI tarball (no Homebrew)
 
 If you don't want Homebrew at all (e.g. running inside a minimal container), grab the CLI tarball directly:
