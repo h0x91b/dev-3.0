@@ -357,6 +357,8 @@ export function analyticsLocationForRoute(route: Route, taskLabel?: string): Ana
 			return { screen: "gauge-demo", title: "Gauge Demo", path: "/app/gauge-demo" };
 		case "viewport-lab":
 			return { screen: "viewport-lab", title: "Viewport Lab", path: "/app/viewport-lab" };
+		case "native-pane-layout-lab":
+			return { screen: "native-pane-layout-lab", title: "Native Pane Layout Lab", path: "/app/native-pane-layout-lab" };
 		default:
 			// Resilient fallback for any future route: never break telemetry over a
 			// missing case — just log a generic /app hit.

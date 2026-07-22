@@ -296,6 +296,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 		segments.push({ label: t("header.changelog") });
 	} else if (route.screen === "gauge-demo") {
 		segments.push({ label: t("gaugeDemo.title") });
+	} else if (route.screen === "native-pane-layout-lab") {
+		segments.push({ label: t("nativePaneLab.title") });
 	}
 
 	const currentProjectId = "projectId" in route ? route.projectId : null;

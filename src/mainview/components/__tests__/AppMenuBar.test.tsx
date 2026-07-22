@@ -44,6 +44,7 @@ describe("buildBrowserMenu", () => {
 	it("includes a browser-runnable item (New Task) and excludes roadmap items (Rename Task)", () => {
 		const menu = buildBrowserMenu(FULL);
 		expect(findItem(menu, "New Task")).toBeTruthy();
+		expect(findItem(menu, "Native Pane Layout Lab")).toBeTruthy();
 		// "Rename Task…" is on the roadmap (NOT_YET_IMPLEMENTED) → never listed.
 		expect(findItem(menu, "Rename Task…")).toBeUndefined();
 	});

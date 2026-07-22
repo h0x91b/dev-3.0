@@ -27,7 +27,8 @@ export type Route =
 	| { screen: "changelog" }
 	| { screen: "stats" }
 	| { screen: "gauge-demo" }
-	| { screen: "viewport-lab" };
+	| { screen: "viewport-lab" }
+	| { screen: "native-pane-layout-lab" };
 
 // ---- State ----
 

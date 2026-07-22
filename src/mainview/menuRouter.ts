@@ -104,6 +104,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "viewport-lab":
 			navigate(ctx, { screen: "viewport-lab" });
 			return;
+		case "native-pane-layout-lab":
+			navigate(ctx, { screen: "native-pane-layout-lab" });
+			return;
 
 		// ── Help: external links (bun uses Utils.openExternal; browser uses window.open) ──
 		case "help-documentation":
@@ -384,7 +387,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"about", "hard-refresh",
 	// View / navigation
 	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",
-	"go-back", "go-forward", "gauge-demo", "viewport-lab", "update-popover-preview",
+	"go-back", "go-forward", "gauge-demo", "viewport-lab", "native-pane-layout-lab", "update-popover-preview",
 	"open-new-task", "open-add-project", "open-project-switch", "open-command-palette",
 	// Project
 	"project-settings", "project-pull-main", "project-create-pr",
