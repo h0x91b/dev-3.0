@@ -42,6 +42,14 @@ function unchanged(state: LifecycleState): TransitionResult {
 	return { next: state, effects: [] };
 }
 
+function teardownFailureEvent(runId: string): LifecycleEvent {
+	return {
+		type: "teardownFailed",
+		runId,
+		error: "Task teardown failed",
+	};
+}
+
 function resolvedTarget(state: LifecycleState, event: Extract<LifecycleEvent, { type: "moveRequested" }>): LifecycleColumn {
 	if (event.target.status) {
 		return {
@@ -233,6 +241,7 @@ function moveTransition(
 	if (event.target.status !== undefined && TERMINAL_STATUSES.has(target.status)) {
 		const terminalStatus = target.status as "completed" | "cancelled";
 		const runId = event.runId ?? "pending-run";
+		const teardownFailed = teardownFailureEvent(runId);
 		const runtime: LifecycleRuntime = {
 			phase: "tearing-down",
 			targetStatus: terminalStatus,
@@ -246,7 +255,10 @@ function moveTransition(
 			effect({ type: "releasePorts" }),
 			effect({ type: "persistRuntime", runtime }, "abort"),
 		];
-		if (!event.force && (ACTIVE_STATUSES.has(oldStatus) || state.facts.hasWorktree)) {
+		// A forced retry after failed removal must resume cleanup. Bypassing it
+		// would clear the only path and branch metadata available for recovery.
+		const skipCleanup = event.force && state.runtime.phase !== "tearing-down";
+		if (!skipCleanup && (ACTIVE_STATUSES.has(oldStatus) || state.facts.hasWorktree)) {
 			const allowDerivedPath = state.runtime.phase === "preparing";
 			effects.push(
 				effect({ type: "push", message: "taskUpdated", view: "shuttingDown" }),
@@ -256,7 +268,7 @@ function moveTransition(
 				effect({ type: "captureCompletedDiffStats", allowDerivedPath }),
 			);
 			if (state.facts.projectKind === "git") {
-				effects.push(effect({ type: "removeWorktree", allowDerivedPath }));
+				effects.push(effect({ type: "removeWorktree", allowDerivedPath }, "abort", teardownFailed));
 			}
 		}
 		effects.push(
@@ -352,6 +364,7 @@ function bootTransition(
 	}
 
 	const terminalStatus = state.runtime.targetStatus;
+	const teardownFailed = teardownFailureEvent(state.runtime.runId);
 	const next: LifecycleState = {
 		...state,
 		column: { status: terminalStatus, customColumnId: null },
@@ -375,7 +388,7 @@ function bootTransition(
 			effect({ type: "runCleanupScript", toStatus: terminalStatus, allowDerivedPath: true }),
 			effect({ type: "captureCompletedDiffStats", allowDerivedPath: true }),
 			...(state.facts.projectKind === "git"
-				? [effect({ type: "removeWorktree", allowDerivedPath: true })]
+				? [effect({ type: "removeWorktree", allowDerivedPath: true }, "abort", teardownFailed)]
 				: []),
 			effect({ type: "persistTerminalTask", status: terminalStatus }, "abort"),
 			effect({ type: "push", message: "taskUpdated", view: "current" }),
@@ -492,6 +505,16 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					runtime: { phase: "idle" },
 				},
 				effects,
+			};
+		}
+		case "teardownFailed": {
+			if (state.runtime.phase !== "tearing-down" || state.runtime.runId !== event.runId) return unchanged(state);
+			return {
+				next: state,
+				effects: [
+					effect({ type: "push", message: "taskUpdated", view: "current" }),
+					effect({ type: "reject", message: event.error }, "abort"),
+				],
 			};
 		}
 		case "mergeDetected": {

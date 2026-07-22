@@ -112,6 +112,11 @@ export type LifecycleEvent =
 		runId: string;
 	}
 	| {
+		type: "teardownFailed";
+		runId: string;
+		error: string;
+	}
+	| {
 		type: "mergeDetected";
 		branchName: string;
 		fingerprint: string;

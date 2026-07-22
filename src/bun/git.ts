@@ -2202,17 +2202,18 @@ export async function removeWorktree(
 		const removeArgs = lockedInitializing
 			? ["git", "worktree", "remove", "--force", "--force", targetPath]
 			: ["git", "worktree", "remove", "--force", targetPath];
-		const removed = await run(
+		const removeResult = await run(
 			removeArgs,
 			project.path,
 		);
-		if (!removed.ok) {
-			log.warn("Worktree removal failed; preserving its branch", {
+		if (!removeResult.ok) {
+			const detail = removeResult.stderr.trim() || "git worktree remove exited unsuccessfully";
+			log.error("Failed to remove worktree", {
 				path: targetPath,
 				taskId: task.id,
-				error: removed.stderr,
+				stderr: removeResult.stderr,
 			});
-			return;
+			throw new Error(`Failed to remove worktree at ${targetPath}: ${detail}`);
 		}
 	} else {
 		log.info("Worktree directory already missing, pruning git metadata", {

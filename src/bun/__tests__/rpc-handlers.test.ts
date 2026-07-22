@@ -2260,7 +2260,7 @@ describe("handlers.moveTask", () => {
 		vi.mocked(existsSync).mockReturnValue(true);
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
-		expect(result.status).toBe("completed");
+		expect(result).toMatchObject({ status: "completed", worktreePath: null, branchName: null });
 		expect(pty.destroySession).toHaveBeenCalledWith("task-1", undefined);
 		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 	});
@@ -2373,9 +2373,125 @@ describe("handlers.moveTask", () => {
 		vi.mocked(existsSync).mockReturnValue(true);
 
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "cancelled" });
-		expect(result.status).toBe("cancelled");
+		expect(result).toMatchObject({ status: "cancelled", worktreePath: null, branchName: null });
 		expect(pty.destroySession).toHaveBeenCalled();
+		expect(git.removeWorktree).toHaveBeenCalledWith(project, task);
 	});
+
+	it.each(["completed", "cancelled"] as const)(
+		"rejects %s when Git removal fails",
+		async (targetStatus) => {
+			const project = makeProject({ cleanupScript: "" });
+			const task = makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/locked-worktree",
+				branchName: "dev3/task-locked",
+			});
+
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			mockTaskWrites(task);
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
+
+			await expect(handlers.moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: targetStatus,
+			})).rejects.toThrow("Failed to remove worktree: locked");
+		},
+	);
+
+	it.each(["completed", "cancelled"] as const)(
+		"retains cleanup metadata when Git removal fails during %s",
+		async (targetStatus) => {
+			const project = makeProject({ cleanupScript: "" });
+			const task = makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/locked-worktree",
+				branchName: "dev3/task-locked",
+			});
+
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			mockTaskWrites(task);
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
+			await handlers.moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: targetStatus,
+			}).catch(() => undefined);
+
+			await expect(data.getTask(project, task.id)).resolves.toMatchObject({
+				status: "in-progress",
+				worktreePath: task.worktreePath,
+				branchName: task.branchName,
+				runtimeState: {
+					runtime: "tearing-down",
+					stage: targetStatus,
+				},
+			});
+		},
+	);
+
+	it("broadcasts retained cleanup metadata after Git removal fails", async () => {
+		const project = makeProject({ cleanupScript: "" });
+		const task = makeTask({
+			status: "in-progress",
+			worktreePath: "/tmp/locked-worktree",
+			branchName: "dev3/task-locked",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		mockTaskWrites(task);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
+		setPushMessage(push);
+		await handlers.moveTask({
+			taskId: task.id,
+			projectId: project.id,
+			newStatus: "completed",
+		}).catch(() => undefined);
+
+		expect(push).toHaveBeenLastCalledWith("taskUpdated", {
+			projectId: project.id,
+			task: expect.objectContaining({
+				status: "in-progress",
+				worktreePath: task.worktreePath,
+				branchName: task.branchName,
+			}),
+		});
+	});
+
+	it.each(["completed", "cancelled"] as const)(
+		"does not bypass failed Git removal during a forced %s retry",
+		async (targetStatus) => {
+			const project = makeProject({ cleanupScript: "" });
+			const task = makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/locked-worktree",
+				branchName: "dev3/task-locked",
+				runtimeState: {
+					runtime: "tearing-down",
+					stage: targetStatus,
+					runId: "failed-run",
+					updatedAt: Date.now(),
+				},
+			});
+
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			mockTaskWrites(task);
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
+
+			await expect(handlers.moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: targetStatus,
+				force: true,
+			})).rejects.toThrow("Failed to remove worktree: locked");
+		},
+	);
 
 	it("in-progress → completed: kills dev server session", async () => {
 		const project = makeProject();
@@ -2463,20 +2579,6 @@ describe("handlers.moveTask", () => {
 		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
 		expect(result.status).toBe("completed");
 		expect(result.worktreePath).toBeNull();
-	});
-
-	it("should tolerate removeWorktree failure when branch is already deleted", async () => {
-		const project = makeProject({ cleanupScript: "" });
-		const task = makeTask({ status: "in-progress", worktreePath: "/tmp/existing-worktree" });
-		vi.mocked(data.getProject).mockResolvedValue(project);
-		vi.mocked(data.getTask).mockResolvedValue(task);
-		vi.mocked(data.updateTask).mockResolvedValue({ ...task, status: "completed", worktreePath: null, branchName: null });
-		vi.mocked(existsSync).mockReturnValue(true);
-		vi.mocked(git.removeWorktree).mockRejectedValue(new Error("branch not found"));
-
-		const result = await handlers.moveTask({ taskId: "task-1", projectId: "proj-1", newStatus: "completed" });
-		expect(result.status).toBe("completed");
-		expect(data.updateTask).toHaveBeenCalled();
 	});
 
 	it("should not throw when worktreePath is null and moving to completed", async () => {
