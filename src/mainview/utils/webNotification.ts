@@ -110,9 +110,10 @@ export function showWebNotificationOrToast(
 
 	if (canShowWebNotification()) {
 		try {
+			// Chrome can replace same-tag notifications from another tab without
+			// delivering the click to the page that created the visible notification.
 			const n = new Notification(detail.title, {
 				body: detail.body,
-				tag: detail.taskId || undefined,
 			});
 			n.onclick = () => {
 				try {
