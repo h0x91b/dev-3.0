@@ -1,0 +1,1 @@
+Reworked the AI install guide (ai-install.txt) so `brew trust` is described as a required step on Homebrew 6.0+ — it gates non-official taps and won't load the dev3 cask / tmux@3.6 formula until the tap is trusted — instead of framing it as an optional legacy command to skip.

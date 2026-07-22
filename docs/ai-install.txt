@@ -18,9 +18,11 @@ Requires Homebrew (https://brew.sh). If `brew` is missing, ask the user to insta
 
 ```sh
 brew tap h0x91b/dev3
-brew trust h0x91b/dev3   # newer Homebrew refuses untrusted third-party taps; skip if `brew trust` doesn't exist
+brew trust h0x91b/dev3   # required on Homebrew 6.0+ (see note below)
 brew install --cask dev3
 ```
+
+`brew trust` is **required** on Homebrew 6.0+ — it refuses to load a non-official tap's formulae/casks until the tap is trusted, and trusting the tap covers everything in it (the `dev3` cask and its `tmux@3.6` formula dependency). Homebrew < 6.0 has no such command: run it anyway, and skip this line only if it errors as an unknown command.
 
 This installs the app plus its dependencies (`git`, `tmux`, `cloudflared`) automatically. Then launch it:
 
@@ -39,7 +41,7 @@ brew tap h0x91b/dev3 && brew trust h0x91b/dev3 && brew install h0x91b/dev3/dev3
 dev3 remote
 ```
 
-(On older Homebrew without `brew trust`, drop that step from the chain.)
+`brew trust` is **required** on Homebrew 6.0+ — it gates non-official taps and won't load the `dev3` formula / its `tmux@3.6` dependency until the tap is trusted. Homebrew < 6.0 has no such command: if `brew trust` errors as unknown, drop `brew trust h0x91b/dev3 &&` from the chain and re-run.
 
 `dev3 remote` prints an access URL + QR code — the user opens it in any browser (even a phone) and gets the full UI. A Cloudflare quick tunnel is started by default so no SSH forwarding is needed; pass `--no-tunnel` for local-only.
 
