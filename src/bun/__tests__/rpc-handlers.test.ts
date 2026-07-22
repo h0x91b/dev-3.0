@@ -4400,6 +4400,64 @@ describe("handlers.cancelTaskPreparation", () => {
 			worktreePath: "/tmp/test-dev3/worktrees/tmp-test-project/variant-1/worktree",
 		}));
 	});
+
+	it("continues best-effort cleanup when a killed preparation process never reports exit", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask({
+			id: "variant-stuck",
+			status: "in-progress",
+			preparing: true,
+			baseBranch: "main",
+			worktreePath: null,
+			branchName: null,
+		});
+		let finishGit!: (code: number) => void;
+		const gitExited = new Promise<number>((resolve) => { finishGit = resolve; });
+		const { runId } = createTaskPreparation(task.id, "test");
+		registerPreparationSpawn(task.id, 333, ["git", "worktree", "add"], gitExited);
+
+		mockSpawn.mockReturnValue({
+			pid: 999,
+			stdout: new Response(""),
+			stderr: new Response(""),
+			exited: Promise.resolve(0),
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockTaskWrites(task);
+		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
+		vi.mocked(git.taskDir).mockReturnValue("/tmp/test-dev3/worktrees/tmp-test-project/variant-stuck");
+
+		try {
+			const cancellation = handlers.cancelTaskPreparation({
+				taskId: task.id,
+				projectId: project.id,
+			});
+
+			await vi.waitFor(() => {
+				expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "333"], expect.anything());
+			});
+			finishTaskPreparation(task.id, runId);
+			await Promise.resolve();
+			expect(git.removeWorktree).not.toHaveBeenCalled();
+
+			await vi.advanceTimersByTimeAsync(10_000);
+			const result = await cancellation;
+
+			expect(result.status).toBe("todo");
+			expect(git.removeWorktree).toHaveBeenCalledWith(project, expect.objectContaining({
+				id: task.id,
+				worktreePath: "/tmp/test-dev3/worktrees/tmp-test-project/variant-stuck/worktree",
+			}));
+		} finally {
+			finishTaskPreparation(task.id, runId);
+			finishGit(137);
+			await gitExited;
+			await Promise.resolve();
+			vi.useRealTimers();
+		}
+	});
 });
 
 // ================================================================

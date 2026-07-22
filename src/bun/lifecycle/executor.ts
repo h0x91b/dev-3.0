@@ -96,6 +96,8 @@ export interface LifecycleEffectOutcome {
 type BunMessagePayload<Name extends keyof AppRPCSchema["bun"]["messages"]> =
 	AppRPCSchema["bun"]["messages"][Name];
 
+const PREPARATION_CANCELLATION_EXIT_GRACE_MS = 10_000;
+
 function runtimeState(runtime: LifecycleRuntime): TaskRuntimeState {
 	if (runtime.phase === "preparing") {
 		return {
@@ -492,7 +494,21 @@ async function killPreparationProcesses(taskId: string): Promise<void> {
 			log.warn("Failed to kill preparation process", { taskId: taskId.slice(0, 8), pid, error: String(error) });
 		}
 	}
-	await (reentrant ? trackedProcessesExited : settled);
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const exited = await Promise.race([
+		(reentrant ? trackedProcessesExited : settled).then(() => true),
+		new Promise<false>((resolve) => {
+			timeoutId = setTimeout(() => resolve(false), PREPARATION_CANCELLATION_EXIT_GRACE_MS);
+		}),
+	]);
+	if (timeoutId) clearTimeout(timeoutId);
+	if (!exited) {
+		log.warn("Preparation cancellation did not settle within exit grace period", {
+			taskId: taskId.slice(0, 8),
+			processCount: pids.length,
+			exitWaitMs: PREPARATION_CANCELLATION_EXIT_GRACE_MS,
+		});
+	}
 }
 
 function preparationFailurePayload(ctx: LifecycleExecutionContext, effect: Extract<LifecycleEffect, { type: "push" }>) {
