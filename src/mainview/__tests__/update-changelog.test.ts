@@ -6,6 +6,8 @@ import {
 	entryPriority,
 	DEFAULT_CHANGELOG_PRIORITY,
 	buildUpdateChangelog,
+	buildReleaseNotesSections,
+	renderReleaseNotesMarkdown,
 	changedKeysFromPaths,
 	changelogEntryKey,
 	changelogKeyFromPath,
@@ -182,5 +184,48 @@ describe("changedKeysFromPaths", () => {
 			"",
 		]);
 		expect([...keys]).toEqual(["2026-07-21|feature|a"]);
+	});
+});
+
+describe("buildReleaseNotesSections", () => {
+	it("orders sections Features → Fixes → Refactors with priority-sorted features and full titles", () => {
+		const window: ChangelogEntry[] = [
+			entry({ type: "fix", slug: "x1", title: "Fixed a crash" }),
+			entry({ type: "refactor", slug: "r1", title: "Refactored the reducer" }),
+			entry({ type: "feature", slug: "05-late", title: "Late feature" }),
+			entry({ type: "feature", slug: "00-early", title: "Early feature" }),
+			entry({ type: "chore", slug: "c1", title: "Bumped a dep" }),
+		];
+		expect(buildReleaseNotesSections(window)).toEqual([
+			{ heading: "Features", titles: ["Early feature", "Late feature"] },
+			{ heading: "Fixes", titles: ["Fixed a crash"] },
+			{ heading: "Refactors", titles: ["Refactored the reducer"] },
+		]);
+	});
+
+	it("omits empty sections and ignores non-feature/fix/refactor types", () => {
+		const window: ChangelogEntry[] = [
+			entry({ type: "feature", slug: "f", title: "Only feature" }),
+			entry({ type: "docs", slug: "d", title: "Docs tweak" }),
+		];
+		expect(buildReleaseNotesSections(window)).toEqual([{ heading: "Features", titles: ["Only feature"] }]);
+	});
+});
+
+describe("renderReleaseNotesMarkdown", () => {
+	it("renders a versioned heading with per-section bullet lists", () => {
+		const sections = buildReleaseNotesSections([
+			entry({ type: "feature", slug: "f", title: "New thing" }),
+			entry({ type: "fix", slug: "x", title: "Fixed thing" }),
+		]);
+		expect(renderReleaseNotesMarkdown(sections, "v1.2.3")).toBe(
+			["## What's new in v1.2.3", "", "### Features", "", "- New thing", "", "### Fixes", "", "- Fixed thing", ""].join(
+				"\n",
+			),
+		);
+	});
+
+	it("returns an empty string when there is nothing to show", () => {
+		expect(renderReleaseNotesMarkdown([], "v1.2.3")).toBe("");
 	});
 });
