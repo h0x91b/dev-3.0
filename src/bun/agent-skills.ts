@@ -753,6 +753,7 @@ Point, don't dig. Name where to look and stop — deep diagnosis is \`/diagnosin
 
 Off the main flow entirely.
 
+- **Focus on one task → focus mode (⇧⌘F).** With many tasks running in parallel, focus is the scarcest resource. Press ⇧⌘F (or F11, or the button above the board on the right) and the current task's terminal zooms to the full window while all notifications are muted — just you and the tmux, nothing else pulling at you. Press it again to surface back to the board.
 - **Move around fast** — command palette (⇧⌘P) and go-to-project (⌘K); ⌥Tab cycles recent tasks; \`/\` focuses search, which understands filter tokens; ⌘/ shows every shortcut.
 - **Stats** — productivity and token-cost dashboards across projects.
 - **Automations** — recurring scheduled agent runs on a cron.
