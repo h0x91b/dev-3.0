@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveOriginalStatusLine } from "../commands/statusline";
+import { claudeDumpFilePaths, resolveOriginalStatusLine } from "../commands/statusline";
 
 let tmp: string;
 let projectDir: string;
@@ -70,5 +70,19 @@ describe("resolveOriginalStatusLine", () => {
 	it("works with a null projectDir (user settings only)", () => {
 		writeSettings(home, { type: "command", command: "echo user" });
 		expect(resolveOriginalStatusLine(null, home)).toEqual({ command: "echo user" });
+	});
+});
+
+describe("claudeDumpFilePaths", () => {
+	const base = "/base";
+
+	it("writes the system login (no managed id) to the shared claude.json", () => {
+		expect(claudeDumpFilePaths(null, base)).toEqual([join(base, "claude.json")]);
+	});
+
+	it("writes a managed account to its own per-account file only (never claude.json)", () => {
+		const paths = claudeDumpFilePaths("acc-123", base);
+		expect(paths).toEqual([join(base, "claude", "acc-123.json")]);
+		expect(paths).not.toContain(join(base, "claude.json"));
 	});
 });

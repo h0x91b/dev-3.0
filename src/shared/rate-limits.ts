@@ -67,8 +67,11 @@ export const RATE_LIMIT_WARN_PERCENT = 80;
 /** Usage percentage at which the indicator/segment escalates to danger. */
 export const RATE_LIMIT_DANGER_PERCENT = 95;
 
-/** Account activity remains visible for one day after its last local signal. */
-export const RATE_LIMIT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Account activity remains visible for a week after its last local signal —
+ *  Claude/Codex limit windows run up to 7 days, so every account used within
+ *  that span stays in the panel (the per-account "captured" note flags stale
+ *  readings). */
+export const RATE_LIMIT_ACTIVITY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function rateLimitActivityAt(snapshot: AgentRateLimitSnapshot): number {
 	return snapshot.activeAt ?? snapshot.capturedAt;

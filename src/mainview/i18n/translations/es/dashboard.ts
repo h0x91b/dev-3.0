@@ -113,7 +113,8 @@ const dashboard = {
 	"rateLimits.unlimited": "∞ ilimitado",
 	"rateLimits.monthlyLabel": "créditos mensuales",
 	"rateLimits.monthlyUsage": "{used} / {limit} usados · {remaining}% restantes",
-	"rateLimits.stale": "Datos de hace {time} — se actualizan mientras hay una sesión de agente activa",
+	"rateLimits.captured": "capturado hace {time}",
+	"rateLimits.capturedNow": "capturado ahora mismo",
 
 	// Remote Access QR Modal
 	"remote.title": "Acceso remoto",

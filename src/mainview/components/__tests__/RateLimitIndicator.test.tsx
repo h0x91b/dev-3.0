@@ -214,6 +214,38 @@ describe("RateLimitIndicator", () => {
 		expect((fill as HTMLElement).className).toContain("bg-accent");
 	});
 
+	it("shows a per-account 'captured just now' note for a fresh reading", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		expect(await screen.findByText("captured just now")).toBeTruthy();
+	});
+
+	it("flags a stale reading with its age and the warning tint", async () => {
+		const now = Date.now();
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "claude",
+					accountId: "old",
+					capturedAt: now - 20 * 60_000,
+					activeAt: now - 20 * 60_000,
+					windows: [{ id: "seven_day", usedPercent: 30, resetsAt: now + 86_400_000, windowMinutes: 10080 }],
+					creditsBalance: null,
+					monthlyCredits: null,
+					planType: null,
+				},
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		const note = await screen.findByText("captured 20m ago");
+		expect(note.className).toContain("text-warning");
+	});
+
 	it("stacks one pill bar per account with its own severity color", async () => {
 		const now = Date.now();
 		const snapshot = (source: "claude" | "codex", accountId: string, percent: number, activeAt: number) => ({

@@ -121,7 +121,8 @@ const dashboard = {
 	"rateLimits.unlimited": "∞ безлимит",
 	"rateLimits.monthlyLabel": "месячные кредиты",
 	"rateLimits.monthlyUsage": "использовано {used} / {limit} · осталось {remaining}%",
-	"rateLimits.stale": "Данные {time} назад — обновляются, пока активна сессия агента",
+	"rateLimits.captured": "снято {time} назад",
+	"rateLimits.capturedNow": "снято только что",
 
 	// Remote Access QR Modal
 	"remote.title": "Удалённый доступ",
