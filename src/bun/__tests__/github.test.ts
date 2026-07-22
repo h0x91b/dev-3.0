@@ -344,6 +344,109 @@ describe("github", () => {
 		expect(lines).toContain('export GITHUB_TOKEN="$__DEV3_GH_TOKEN"');
 	});
 
+	it("reads the token from the environment for a GH_TOKEN-backed account (no gh auth token spawn)", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		const spawnedTokenCmds: string[] = [];
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc(JSON.stringify({
+					hosts: {
+						"github.com": [
+							{ login: "h0x91b-wix", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
+						],
+					},
+				}));
+			}
+			if (cmd[1] === "auth" && cmd[2] === "token") {
+				spawnedTokenCmds.push(cmd.join(" "));
+				return fakeProc("stored-token\n");
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const original = process.env.GH_TOKEN;
+		process.env.GH_TOKEN = "env-injected-token";
+		try {
+			const { getGitHubAuthEnv } = await import("../github");
+			await expect(getGitHubAuthEnv({ githubAuthHost: "github.com", githubAuthLogin: "h0x91b-wix" }))
+				.resolves.toEqual({ GH_TOKEN: "env-injected-token", GITHUB_TOKEN: "env-injected-token" });
+			// Env-backed accounts must never invoke `gh auth token --user`.
+			expect(spawnedTokenCmds).toEqual([]);
+		} finally {
+			if (original === undefined) delete process.env.GH_TOKEN;
+			else process.env.GH_TOKEN = original;
+		}
+	});
+
+	it("throws a clear error when a GH_TOKEN-backed account's variable is empty", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		spawnMock.mockImplementation((cmd: string[]) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc(JSON.stringify({
+					hosts: {
+						"github.com": [
+							{ login: "h0x91b-wix", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
+						],
+					},
+				}));
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const original = process.env.GH_TOKEN;
+		delete process.env.GH_TOKEN;
+		try {
+			const { getGitHubAuthEnv } = await import("../github");
+			await expect(getGitHubAuthEnv({ githubAuthHost: "github.com", githubAuthLogin: "h0x91b-wix" }))
+				.rejects.toThrow(/authenticated via GH_TOKEN/);
+		} finally {
+			if (original !== undefined) process.env.GH_TOKEN = original;
+		}
+	});
+
+	it("neutralizes ambient token env vars when resolving a stored account's token", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		let tokenEnv: Record<string, string> | undefined;
+		spawnMock.mockImplementation((cmd: string[], opts?: { env?: Record<string, string> }) => {
+			if (cmd.join(" ") === "gh auth status --json hosts") {
+				return fakeProc(JSON.stringify({
+					hosts: {
+						"github.com": [
+							{ login: "h0x91b", host: "github.com", active: true, state: "success", tokenSource: "keyring" },
+						],
+					},
+				}));
+			}
+			if (cmd[1] === "auth" && cmd[2] === "token") {
+				tokenEnv = opts?.env;
+				return fakeProc("stored-token\n");
+			}
+			throw new Error(`Unexpected command: ${cmd.join(" ")}`);
+		});
+
+		const { getGitHubAuthEnv } = await import("../github");
+		await getGitHubAuthEnv({ githubAuthHost: "github.com", githubAuthLogin: "h0x91b" });
+		expect(tokenEnv).toMatchObject({ GH_TOKEN: "", GITHUB_TOKEN: "", GH_ENTERPRISE_TOKEN: "", GITHUB_ENTERPRISE_TOKEN: "" });
+	});
+
+	it("builds shell exports from the ambient env var for a GH_TOKEN-backed account", async () => {
+		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+		spawnMock.mockReturnValue(fakeProc(JSON.stringify({
+			hosts: {
+				"github.com": [
+					{ login: "h0x91b-wix", host: "github.com", active: true, state: "success", tokenSource: "GH_TOKEN" },
+				],
+			},
+		})));
+
+		const { getGitHubShellExports } = await import("../github");
+		const lines = await getGitHubShellExports({ githubAuthHost: null, githubAuthLogin: null });
+		const script = lines.join("\n");
+		expect(script).toContain('__DEV3_GH_TOKEN="$GH_TOKEN"');
+		expect(script).not.toContain("gh auth token");
+		expect(lines).toContain('export GH_TOKEN="$__DEV3_GH_TOKEN"');
+	});
+
 	it("drains stdout before awaiting exit (no pipe-buffer deadlock)", async () => {
 		whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
 		const encoder = new TextEncoder();

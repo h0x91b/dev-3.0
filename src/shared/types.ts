@@ -883,6 +883,15 @@ export interface GitHubAccount {
 	login: string;
 	host: string;
 	active: boolean;
+	/**
+	 * Where gh keeps this account's token, verbatim from `gh auth status --json`:
+	 * an env var name (`GH_TOKEN`/`GITHUB_TOKEN`/`GH_ENTERPRISE_TOKEN`/
+	 * `GITHUB_ENTERPRISE_TOKEN`), `keyring`, or a `hosts.yml` path. Undefined for
+	 * old gh (plain-text status parsing). Env-backed accounts have no stored
+	 * credential, so their token must be read from the environment — never via
+	 * `gh auth token --user`, which errors "no oauth token found …" (decision 157).
+	 */
+	tokenSource?: string;
 }
 
 export interface GitHubCliStatus {
