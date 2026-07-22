@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleRemote, printAccessForState, computeDetachedChildArgs, awaitTunnelReady, REMOTE_TUNNEL_WAIT } from "../commands/remote";
+import { handleRemote, printAccessForState, computeDetachedChildArgs, awaitTunnelReady, isTunnelLive, REMOTE_TUNNEL_WAIT } from "../commands/remote";
 import type { ParsedArgs } from "../args";
 
 /**
@@ -86,10 +86,16 @@ beforeEach(() => {
 	mockAcquireLock.mockReset();
 	mockAcquireLock.mockReturnValue(7); // default: lock granted
 	mockReleaseLock.mockReset();
-	// Shrink the tunnel-wait so tests never poll the real 30s / 4s-settle.
+	// Shrink the tunnel-wait so tests never poll the real timers.
 	REMOTE_TUNNEL_WAIT.pollIntervalMs = 1;
 	REMOTE_TUNNEL_WAIT.connectTimeoutMs = 20;
+	REMOTE_TUNNEL_WAIT.probeIntervalMs = 1;
+	REMOTE_TUNNEL_WAIT.probeTimeoutMs = 20;
 	REMOTE_TUNNEL_WAIT.settleMs = 0;
+	// startDetached's tunnel wait probes the URL over HTTP once cloudflared
+	// reports it. Stub fetch so the reachability probe resolves instantly
+	// (200 = live) instead of hitting the network from a unit test.
+	vi.stubGlobal("fetch", vi.fn(async () => ({ status: 200 }) as Response));
 });
 
 afterEach(() => {
@@ -97,6 +103,7 @@ afterEach(() => {
 	stderrSpy.mockRestore();
 	stdoutSpy.mockRestore();
 	vi.clearAllMocks();
+	vi.unstubAllGlobals();
 });
 
 describe("dev3 remote --port validation", () => {
@@ -526,30 +533,70 @@ describe("dev3 remote --detach (lifecycle)", () => {
 });
 
 describe("awaitTunnelReady", () => {
-	const fastTimings = { pollIntervalMs: 1, connectTimeoutMs: 200, settleMs: 0 };
+	const fastTimings = { pollIntervalMs: 1, connectTimeoutMs: 200, probeIntervalMs: 1, probeTimeoutMs: 200, settleMs: 0 };
+	const liveProbe = async () => true; // edge reachable on the first probe
+	const cloudflareData = { url: "https://x.trycloudflare.com/?t", tunnelUrl: "https://x.trycloudflare.com", port: 1, staticCode: null };
 
-	it("resolves true once the server reports a tunnel URL", async () => {
+	it("resolves true once the hostname is reported AND the edge is reachable", async () => {
 		mockSendRequest
 			.mockResolvedValueOnce({ id: "1", ok: true, data: { url: "http://lan/?t", tunnelUrl: null, port: 1, staticCode: null } })
-			.mockResolvedValue({ id: "2", ok: true, data: { url: "https://x.trycloudflare.com/?t", tunnelUrl: "https://x.trycloudflare.com", port: 1, staticCode: null } });
-		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings)).resolves.toBe(true);
+			.mockResolvedValue({ id: "2", ok: true, data: cloudflareData });
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings, liveProbe)).resolves.toBe(true);
 	});
 
-	it("resolves false when the tunnel never comes up within the timeout", async () => {
+	it("resolves false when the hostname never appears within the timeout", async () => {
 		mockSendRequest.mockResolvedValue({ id: "x", ok: true, data: { url: "http://lan/?t", tunnelUrl: null, port: 1, staticCode: null } });
-		await expect(awaitTunnelReady("/tmp/x.sock", { pollIntervalMs: 1, connectTimeoutMs: 10, settleMs: 0 })).resolves.toBe(false);
+		await expect(
+			awaitTunnelReady("/tmp/x.sock", { ...fastTimings, connectTimeoutMs: 10 }, liveProbe),
+		).resolves.toBe(false);
+	});
+
+	it("resolves false when the hostname appears but the edge never becomes reachable", async () => {
+		// Phase 1 succeeds (hostname reported) but the probe never passes — the
+		// DNS_PROBE_FINISHED_NXDOMAIN case: cloudflared announced but the edge
+		// isn't routing yet. We must NOT report the link as ready.
+		mockSendRequest.mockResolvedValue({ id: "x", ok: true, data: cloudflareData });
+		const neverLive = async () => false;
+		await expect(
+			awaitTunnelReady("/tmp/x.sock", { ...fastTimings, probeTimeoutMs: 5 }, neverLive),
+		).resolves.toBe(false);
+	});
+
+	it("keeps probing until the edge becomes reachable", async () => {
+		mockSendRequest.mockResolvedValue({ id: "x", ok: true, data: cloudflareData });
+		let calls = 0;
+		const liveOnThirdProbe = async () => ++calls >= 3;
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings, liveOnThirdProbe)).resolves.toBe(true);
+		expect(calls).toBeGreaterThanOrEqual(3);
 	});
 
 	it("keeps waiting through APP_NOT_RUNNING (socket still booting)", async () => {
 		mockSendRequest
 			.mockRejectedValueOnce(new Error("APP_NOT_RUNNING"))
-			.mockResolvedValue({ id: "2", ok: true, data: { url: "https://x.trycloudflare.com/?t", tunnelUrl: "https://x.trycloudflare.com", port: 1, staticCode: null } });
-		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings)).resolves.toBe(true);
+			.mockResolvedValue({ id: "2", ok: true, data: cloudflareData });
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings, liveProbe)).resolves.toBe(true);
 	});
 
 	it("rethrows non-APP_NOT_RUNNING socket errors", async () => {
 		mockSendRequest.mockRejectedValue(new Error("EPIPE broken socket"));
-		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings)).rejects.toThrow("EPIPE");
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings, liveProbe)).rejects.toThrow("EPIPE");
+	});
+});
+
+describe("isTunnelLive", () => {
+	it("treats a real HTTP status (reached our origin) as live", async () => {
+		vi.stubGlobal("fetch", vi.fn(async () => ({ status: 200 }) as Response));
+		await expect(isTunnelLive("https://x.trycloudflare.com")).resolves.toBe(true);
+	});
+
+	it("treats a Cloudflare 530 (tunnel not registered) as NOT live", async () => {
+		vi.stubGlobal("fetch", vi.fn(async () => ({ status: 530 }) as Response));
+		await expect(isTunnelLive("https://x.trycloudflare.com")).resolves.toBe(false);
+	});
+
+	it("treats a thrown fetch (NXDOMAIN / connection refused) as NOT live", async () => {
+		vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("getaddrinfo ENOTFOUND"); }));
+		await expect(isTunnelLive("https://x.trycloudflare.com")).resolves.toBe(false);
 	});
 });
 
