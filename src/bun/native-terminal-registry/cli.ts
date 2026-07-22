@@ -44,31 +44,59 @@ async function attach(sessionId: string): Promise<void> {
 		process.exit(1);
 	}
 	const client = new NativeSessionClient();
-	await client.connect(record, token);
-	// Replay the persisted journal tail so a fresh attach shows recent output.
-	for (const chunk of NativeSessionClient.replayJournal(sessionId)) process.stdout.write(chunk);
 	client.onOutput((bytes) => process.stdout.write(bytes));
+	await client.connect(record, token);
 
 	const stdin = process.stdin;
 	stdin.setRawMode?.(true);
 	stdin.resume();
-	process.stdout.write("[attached — press Ctrl-] to detach]\r\n");
+	client.onError((error) => {
+		process.stdout.write(`\r\n[${error.code}${error.message ? `: ${error.message}` : ""}]\r\n`);
+	});
+	process.stdout.write(`[attached as ${client.getRole() ?? "observer"} — Ctrl-\\ claims/releases writer; Ctrl-] detaches]\r\n`);
+
+	const pushSize = (): void => {
+		if (client.getRole() === "writer") client.resize(process.stdout.columns || 80, process.stdout.rows || 24);
+	};
 
 	const detach = (): void => {
+		process.stdout.off("resize", pushSize);
 		client.close();
 		stdin.setRawMode?.(false);
 		process.stdout.write("\r\n[detached]\r\n");
 		process.exit(0);
+	};
+	let ownershipChangePending = false;
+	const toggleOwnership = async (): Promise<void> => {
+		if (ownershipChangePending) return;
+		ownershipChangePending = true;
+		try {
+			if (client.getRole() === "writer") {
+				await client.releaseWriter();
+				process.stdout.write("\r\n[writer ownership released]\r\n");
+			} else {
+				await client.claimWriter();
+				process.stdout.write("\r\n[writer ownership claimed]\r\n");
+				pushSize();
+			}
+		} catch {
+			// The host's compact conflict error is printed by onError.
+		} finally {
+			ownershipChangePending = false;
+		}
 	};
 	stdin.on("data", (d: Buffer) => {
 		if (d.length === 1 && d[0] === 0x1d) {
 			detach(); // Ctrl-]
 			return;
 		}
+		if (d.length === 1 && d[0] === 0x1c) {
+			void toggleOwnership(); // Ctrl-\
+			return;
+		}
 		client.input(new Uint8Array(d));
 	});
 
-	const pushSize = (): void => client.resize(process.stdout.columns || 80, process.stdout.rows || 24);
 	pushSize();
 	process.stdout.on("resize", pushSize);
 }

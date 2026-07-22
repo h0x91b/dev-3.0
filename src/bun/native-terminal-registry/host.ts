@@ -31,6 +31,7 @@ import {
 	exceedsControlFrameLimit,
 	exitEvent,
 	NATIVE_SESSION_PROTOCOL_VERSION,
+	ownershipReply,
 	stoppingEvent,
 	welcomeMessage,
 	type StatusReply,
@@ -44,6 +45,7 @@ import {
 	type NativeSessionRecord,
 } from "./record";
 import { createWindowsJobContainment } from "./windows-job";
+import { WriterOwnership } from "./writer-ownership";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -206,7 +208,10 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	const windowsJob = await createWindowsJobContainment(token);
 	mkdirSync(sessionDir(sessionId), { recursive: true, mode: 0o700 });
 
-	const clients = new Set<{ send: (data: string | Uint8Array) => number; close: () => void }>();
+	type ClientData = { helloDone: boolean };
+	type HostClient = Bun.ServerWebSocket<ClientData>;
+	const clients = new Set<HostClient>();
+	const writerOwnership = new WriterOwnership<HostClient>();
 	const journal = new JournalWriter(journalFile(sessionId));
 	journal.start();
 	let currentCols = config.cols;
@@ -260,6 +265,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 						tap?.recordOutput(bytes);
 						pipeline?.onOutput(bytes);
 						for (const c of clients) {
+							if (!c.data.helloDone) continue;
 							try {
 								c.send(bytes);
 							} catch {
@@ -296,7 +302,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	const shellStartSignature = readProcessStartSignature(shellPid);
 
 	// One v1 hello must complete per connection before input/commands are honoured.
-	const server = Bun.serve<{ helloDone: boolean }>({
+	const server = Bun.serve<ClientData>({
 		port: config.port ?? 0,
 		hostname: "127.0.0.1",
 		fetch(req, srv) {
@@ -314,6 +320,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			},
 			close(ws) {
 				clients.delete(ws);
+				writerOwnership.detach(ws);
 				// Detach boundary: make the reconstructable state current on disk.
 				pipeline?.flush();
 			},
@@ -332,7 +339,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 		},
 	});
 
-	function handleFrame(ws: Bun.ServerWebSocket<{ helloDone: boolean }>, message: string | Uint8Array): void {
+	function handleFrame(ws: HostClient, message: string | Uint8Array): void {
 		if (typeof message === "string") {
 			if (exceedsControlFrameLimit(message)) {
 				ws.send(encodeControl(errorMessage("bad-request", undefined, "control frame too large")));
@@ -346,7 +353,10 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					return;
 				}
 				ws.data.helloDone = true;
-				ws.send(encodeControl(welcomeMessage(verdict.id, sessionId)));
+				const role = writerOwnership.attach(ws);
+				ws.send(encodeControl(welcomeMessage(verdict.id, sessionId, role)));
+				// Same synchronous turn: replay ends before later PTY callbacks fan out live bytes.
+				for (const bytes of journal.replay()) ws.send(bytes);
 				return;
 			}
 			const dupHello = decodeHello(message);
@@ -357,6 +367,10 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			const msg = decodeControl(message);
 			if (!msg) return; // drop unparseable / forward-additive control quietly
 			if (msg.type === "resize") {
+				if (!writerOwnership.canMutatePty(ws)) {
+					ws.send(encodeControl(errorMessage("conflict", undefined, "observer cannot resize the PTY")));
+					return;
+				}
 				currentCols = msg.cols;
 				currentRows = msg.rows;
 				try {
@@ -369,7 +383,20 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				pipeline?.onResize(msg.cols, msg.rows);
 				persist();
 			} else if (msg.type === "status") {
-				ws.send(encodeControl(currentStatus(msg.id)));
+				ws.send(encodeControl(currentStatus(ws, msg.id)));
+			} else if (msg.type === "ownership" && "action" in msg) {
+				const result = writerOwnership.request(ws, msg.action);
+				if (!result.ok) {
+					const message =
+						result.reason === "writer-active"
+							? "another client is already the writer"
+							: result.reason === "not-writer"
+								? "only the writer can release ownership"
+								: "client has not completed attach";
+					ws.send(encodeControl(errorMessage("conflict", msg.id, message)));
+					return;
+				}
+				ws.send(encodeControl(ownershipReply(msg.id, result.role, result.writerAttached)));
 			} else if (msg.type === "stop") {
 				for (const c of clients) {
 					try {
@@ -383,10 +410,14 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			return;
 		}
 		if (!ws.data.helloDone) return; // ignore PTY input before the handshake completes
+		if (!writerOwnership.canMutatePty(ws)) {
+			ws.send(encodeControl(errorMessage("conflict", undefined, "observer cannot send PTY input")));
+			return;
+		}
 		proc.terminal?.write(message);
 	}
 
-	function currentStatus(id: number): StatusReply {
+	function currentStatus(ws: HostClient, id: number): StatusReply {
 		return {
 			v: NATIVE_SESSION_PROTOCOL_VERSION,
 			type: "status",
@@ -399,6 +430,8 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			rows: currentRows,
 			alive: proc.terminal ? !proc.terminal.closed : false,
 			startedAt,
+			clientRole: writerOwnership.roleOf(ws) ?? "observer",
+			writerAttached: writerOwnership.hasWriter(),
 		};
 	}
 
