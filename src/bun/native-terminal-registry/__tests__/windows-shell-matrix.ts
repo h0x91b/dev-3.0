@@ -69,6 +69,7 @@ interface RequiredShellVerdict {
 const REQUIRED_SHELLS: RequiredWindowsShell[] = ["windows-powershell-5.1", "powershell-7", "cmd"];
 const PROBE_ARGS = ["argument with spaces", 'quote"value', "meta & | < > ^ ! ( ) ;", "plain-tail"];
 const UNICODE_ENV = "Живой ✓ 日本語 שלום";
+const OUTPUT_DEADLINE_MS = 10_000;
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 
 function readJson<T>(path: string): T {
@@ -79,41 +80,18 @@ function sameWindowsPath(left: string, right: string): boolean {
 	return resolve(left).toLowerCase() === resolve(right).toLowerCase();
 }
 
-function makeSink(client: NativeSessionClient): {
-	waitForText: (text: string) => Promise<boolean>;
-	waitForMatch: (pattern: RegExp) => Promise<RegExpExecArray>;
-} {
-	let output = "";
-	const decoder = new TextDecoder();
-	const textWaiters: Array<{ text: string; resolve: (found: boolean) => void }> = [];
-	const matchWaiters: Array<{ pattern: RegExp; resolve: (match: RegExpExecArray) => void }> = [];
-	client.onOutput((bytes) => {
-		output += decoder.decode(bytes, { stream: true });
-		for (let index = textWaiters.length - 1; index >= 0; index--) {
-			const waiter = textWaiters[index];
-			if (!output.includes(waiter.text)) continue;
-			textWaiters.splice(index, 1);
-			waiter.resolve(true);
-		}
-		for (let index = matchWaiters.length - 1; index >= 0; index--) {
-			const waiter = matchWaiters[index];
-			const match = waiter.pattern.exec(output);
-			if (!match) continue;
-			matchWaiters.splice(index, 1);
-			waiter.resolve(match);
-		}
+function waitForText(client: NativeSessionClient, text: string): Promise<boolean> {
+	return client.waitForTextOutput((output) => (output.includes(text) ? true : undefined), {
+		timeoutMs: OUTPUT_DEADLINE_MS,
+		description: JSON.stringify(text),
 	});
-	return {
-		waitForText(text) {
-			if (output.includes(text)) return Promise.resolve(true);
-			return new Promise((resolveText) => textWaiters.push({ text, resolve: resolveText }));
-		},
-		waitForMatch(pattern) {
-			const match = pattern.exec(output);
-			if (match) return Promise.resolve(match);
-			return new Promise((resolveMatch) => matchWaiters.push({ pattern, resolve: resolveMatch }));
-		},
-	};
+}
+
+function waitForMatch(client: NativeSessionClient, pattern: RegExp): Promise<RegExpExecArray> {
+	return client.waitForTextOutput((output) => pattern.exec(output) ?? undefined, {
+		timeoutMs: OUTPUT_DEADLINE_MS,
+		description: String(pattern),
+	});
 }
 
 function addCheck(checks: Check[], id: string, passed: boolean, detail: string): void {
@@ -210,32 +188,35 @@ async function proveLifecycle(
 		addCheck(checks, "launch-command", JSON.stringify(record.shell.command) === JSON.stringify(shellCommand(launch)), "recorded command equals executable plus argv entries");
 		const client = new NativeSessionClient();
 		await client.connect(record, readToken(sessionId) ?? "", { timeoutMs: 8000 });
-		const sink = makeSink(client);
+		const probeReady = waitForText(client, "ARGV-PROBE-WROTE");
 		adapter.sendArgvProbe(client, launch);
-		addCheck(checks, "probe-ready", await sink.waitForText("ARGV-PROBE-WROTE"), "attached argv probe wrote evidence");
+		addCheck(checks, "probe-ready", await probeReady, "attached argv probe wrote evidence");
 		const evidence = readJson<ProbeEvidence>(evidencePath);
 		addCheck(checks, "cwd", sameWindowsPath(evidence.cwd, launch.cwd), "shell observed the Unicode cwd with spaces");
 		addCheck(checks, "environment", evidence.environment === UNICODE_ENV, "shell observed the exact Unicode environment value");
 		addCheck(checks, "argv", JSON.stringify(evidence.arguments) === JSON.stringify(PROBE_ARGS), "shell received spaces, quotes, and metacharacters as exact argv entries");
 		addCheck(checks, "root-pid", evidence.parentPid === record.shell.pid, "argv probe was launched directly by the recorded root shell PID");
 		const state = `state-${shell.replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
+		const stateSet = waitForText(client, `STATE-SET[${state}]`);
 		adapter.setState(client, state);
-		addCheck(checks, "state-set", await sink.waitForText(`STATE-SET[${state}]`), "interactive shell state was set before detach");
+		addCheck(checks, "state-set", await stateSet, "interactive shell state was set before detach");
 
 		const childScript = join(fixtureDir, "windows-owned-child-probe.ts");
+		const childPid = waitForMatch(client, /TREEPID\[(\d+)\]/);
 		sendLine(client, adapter.childProbeCommand(childScript));
-		const childMatch = await sink.waitForMatch(/TREEPID\[(\d+)\]/);
+		const childMatch = await childPid;
 		ownedChildPid = Number(childMatch[1]);
 		addCheck(checks, "owned-child", ownedChildPid > 0 && isProcessAlive(ownedChildPid), "a descendant process is alive inside the session ownership boundary");
 		const beforeDetach = await client.status();
-		client.close();
+		await client.disconnect({ timeoutMs: 3000 });
+		addCheck(checks, "detach-complete", true, "original client observed WebSocket close before reattach");
 
 		const reattached = await NativeSessionClient.discover(sessionId, { timeoutMs: 8000 });
-		const reattachSink = makeSink(reattached);
 		const afterDetach = await reattached.status();
 		addCheck(checks, "same-pid", afterDetach.shellPid === beforeDetach.shellPid && afterDetach.shellPid === record.shell.pid, "fresh client reattached to the same shell PID");
+		const stateRetained = waitForText(reattached, `STATE[${state}]`);
 		adapter.readState(reattached);
-		addCheck(checks, "same-state", await reattachSink.waitForText(`STATE[${state}]`), "fresh client observed state retained by the same shell");
+		addCheck(checks, "same-state", await stateRetained, "fresh client observed state retained by the same shell");
 		reattached.close();
 
 		const stopped = await stop(sessionId, { timeoutMs: 10_000 });

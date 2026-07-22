@@ -283,7 +283,7 @@ async function run(): Promise<void> {
 		await s1.waitFor(`ALPHAMARK:${nonce}`);
 		const st1 = await c1.status();
 		check(st1.sessionId === "alpha" && st1.shellPid === alpha.record.shell.pid, "alpha status carries the session id + recorded shell PID");
-		c1.close();
+		await c1.disconnect({ timeoutMs: 3000 });
 
 		// ── 3. attach bravo: distinct journal marker ──
 		const recBravo = readRecord("bravo");
@@ -292,7 +292,7 @@ async function run(): Promise<void> {
 		const sB = makeSink(cB);
 		send(cB, isWindows ? `Write-Output "BRAVOMARK:${nonce}"` : `echo "BRAVOMARK:${nonce}"`);
 		await sB.waitFor(`BRAVOMARK:${nonce}`);
-		cB.close();
+		await cB.disconnect({ timeoutMs: 3000 });
 
 		// ── 4. disconnect survival + INDEPENDENT journals ──
 		await delay(400); // let the journal debounce flush
