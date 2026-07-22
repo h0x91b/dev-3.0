@@ -10,11 +10,11 @@ import type { SVGProps } from "react";
  * (the hosting button) is hovered, or while the Remote Access tunnel is active for
  * the QR icon, pure-CSS keyframes in index.css act out the operation the icon
  * triggers — chevrons lunge with a ghost echo, the home
- * prompt types itself, steam rises off the coffee, the lock shackle snaps shut,
+ * prompt types itself, the sleep z's drift upward, the awake eye blinks,
+ * the lock shackle snaps shut,
  * the quick-shell bolt double-flashes, the terminal cursor blinks, the pull /
  * update arrows drop into and launch out of the cloud, the check draws itself,
  * the alert triangle quakes, QR marks scan in sequence, the gauge needle revs,
- * sand drips through the rate-limit hourglass,
  * the octocat bows, the bug twitches its antennae, changelog lines write
  * themselves, kebab dots wave, the wrench ratchets, slider knobs seek a new mix.
  * Idle rendering is pixel-identical to the static icon.
@@ -78,14 +78,24 @@ export function DropdownIcon({ className }: HeaderIconProps) {
 	);
 }
 
-// 05 — No Sleep (coffee, idle): fresh steam curls rise off the cup.
-export function CoffeeIcon({ className }: HeaderIconProps) {
+// 05 — No Sleep (off, sleep allowed): calm z's; on hover they drift upward.
+export function SleepZzzIcon({ className }: HeaderIconProps) {
 	return (
 		<svg {...svgBase(className)}>
-			<path d="M5.5 9.5H16v5.5a4 4 0 0 1-4 4H9.5a4 4 0 0 1-4-4z" />
-			<path d="M16 10.5h1.25a2.5 2.5 0 0 1 0 5H16" />
-			<path d="M9 6.5c0-1 .7-1 .7-2" className="hdr hdr-steam1" />
-			<path d="M12.6 6.5c0-1 .7-1 .7-2" className="hdr hdr-steam2" />
+			<path d="M4 12h6.5l-6.5 8h6.5" className="hdr hdr-z1" />
+			<path d="M14 4h6l-6 8h6" className="hdr hdr-z2" />
+		</svg>
+	);
+}
+
+// 05b — No Sleep (on, machine kept awake): open eye; on hover it blinks.
+export function AwakeEyeIcon({ className }: HeaderIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<g className="hdr hdr-eye">
+				<path d="M2.8 12S6.5 5.8 12 5.8 21.2 12 21.2 12 17.5 18.2 12 18.2 2.8 12 2.8 12Z" />
+				<circle cx="12" cy="12" r="3.1" className="hdr hdr-eye-pupil" />
+			</g>
 		</svg>
 	);
 }
@@ -268,23 +278,6 @@ export function SlidersIcon({ className }: HeaderIconProps) {
 			<circle cx="6" cy="15.5" r="2" fill="currentColor" stroke="none" className="hdr hdr-sl1" />
 			<circle cx="12" cy="8" r="2" fill="currentColor" stroke="none" className="hdr hdr-sl2" />
 			<circle cx="18" cy="13" r="2" fill="currentColor" stroke="none" className="hdr hdr-sl3" />
-		</svg>
-	);
-}
-
-// 21 — Rate limit: hourglass; sand pours down, then the glass flips over.
-// The outline is 180°-symmetric, so the end-of-cycle flip lands pixel-identical.
-export function RateLimitIcon({ className }: HeaderIconProps) {
-	return (
-		<svg {...svgBase(className)}>
-			<g className="hdr hdr-hg-body">
-				<path d="M6 3h12" />
-				<path d="M6 21h12" />
-				<path d="M16.5 3v3.172a2 2 0 0 1-.586 1.414L12 12 8.086 7.586A2 2 0 0 1 7.5 6.172V3" />
-				<path d="M16.5 21v-3.172a2 2 0 0 0-.586-1.414L12 12l-3.914 4.414a2 2 0 0 0-.586 1.414V21" />
-				<path d="M12 12.9v1" strokeWidth={2.2} className="hdr hdr-hg-drop" />
-				<path d="M12 12.9v1" strokeWidth={2.2} className="hdr hdr-hg-drop-ghost" opacity="0" />
-			</g>
 		</svg>
 	);
 }

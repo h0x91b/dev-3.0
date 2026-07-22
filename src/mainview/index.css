@@ -946,14 +946,31 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .header-anim:hover .hdr-dd { animation: hdr-dd 2.4s ease-in-out infinite; }
 .header-anim:hover .hdr-dd-ghost { animation: hdr-dd-ghost 2.4s ease-in-out infinite; }
 
-/* -- Coffee: steam rises off the fresh cup -- */
-@keyframes hdr-steam {
-	0%, 10% { transform: translateY(0); opacity: .25; }
-	45% { opacity: 1; }
-	85%, 100% { transform: translateY(-2.8px); opacity: 0; }
+/* -- Sleep z's: the z's drift upward one after another, like a snore -- */
+@keyframes hdr-zfloat {
+	0%, 12% { transform: translateY(0); opacity: 1; }
+	45% { transform: translateY(-2.2px); opacity: .35; }
+	70% { transform: translateY(0); opacity: 1; }
+	100% { transform: translateY(0); opacity: 1; }
 }
-.header-anim:hover .hdr-steam1 { animation: hdr-steam 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-steam2 { animation: hdr-steam 2.4s ease-in-out .5s infinite; }
+.header-anim:hover .hdr-z1 { animation: hdr-zfloat 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-z2 { animation: hdr-zfloat 2.4s ease-in-out .45s infinite; }
+
+/* -- Awake eye: a quick double blink, then the pupil re-dilates -- */
+@keyframes hdr-eye-blink {
+	0%, 18% { transform: scaleY(1); }
+	26% { transform: scaleY(.12); }
+	34% { transform: scaleY(1); }
+	42% { transform: scaleY(.12); }
+	50%, 100% { transform: scaleY(1); }
+}
+@keyframes hdr-eye-pupil {
+	0%, 50% { transform: scale(1); }
+	62% { transform: scale(.72); }
+	78%, 100% { transform: scale(1); }
+}
+.header-anim:hover .hdr-eye { transform-origin: 12px 12px; animation: hdr-eye-blink 2.4s ease-in-out infinite; }
+.header-anim:hover .hdr-eye-pupil { transform-origin: 12px 12px; animation: hdr-eye-pupil 2.4s ease-in-out infinite; }
 
 /* -- Lock: the shackle tugs but snaps shut, the keyhole blinks "no" -- */
 @keyframes hdr-shackle {
@@ -1072,29 +1089,6 @@ svg .hdr-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 	92%, 100% { transform: rotate(0deg); }
 }
 .header-anim:hover .hdr-needle { transform-origin: 12px 14px; animation: hdr-needle 2.6s ease-in-out infinite; }
-
-/* -- Rate-limit hourglass: sand pours down, then the glass flips over.
-   The outline is 180°-symmetric so the flip lands pixel-identical. -- */
-@keyframes hdr-hg-drop {
-	0%, 8% { transform: translateY(0); opacity: 1; }
-	38% { transform: translateY(5.6px); opacity: 1; }
-	46%, 100% { transform: translateY(6.4px); opacity: 0; }
-}
-@keyframes hdr-hg-drop-ghost {
-	0%, 22% { transform: translateY(0); opacity: 0; }
-	30% { opacity: .8; }
-	52% { transform: translateY(5.6px); opacity: .8; }
-	60%, 100% { transform: translateY(6.4px); opacity: 0; }
-}
-@keyframes hdr-hg-flip {
-	0%, 62% { transform: rotate(0deg); }
-	84% { transform: rotate(189deg); }
-	92% { transform: rotate(176deg); }
-	100% { transform: rotate(180deg); }
-}
-.header-anim:hover .hdr-hg-drop { animation: hdr-hg-drop 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-hg-drop-ghost { animation: hdr-hg-drop-ghost 2.4s ease-in-out infinite; }
-.header-anim:hover .hdr-hg-body { transform-origin: 12px 12px; animation: hdr-hg-flip 2.4s ease-in-out infinite; }
 
 /* -- GitHub: the octocat takes a polite bow -- */
 @keyframes hdr-gh {

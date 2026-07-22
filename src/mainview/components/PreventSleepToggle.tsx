@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
-import { CoffeeIcon, LockIcon } from "./HeaderIcons";
+import { AwakeEyeIcon, LockIcon, SleepZzzIcon } from "./HeaderIcons";
 import Tooltip from "./Tooltip";
 
 interface SleepState {
@@ -15,8 +15,10 @@ interface SleepState {
  * Default on. While remote access is active it is forced on and locked,
  * since the machine must stay reachable. Hidden when no sleep-inhibit tool
  * (caffeinate / systemd-inhibit) is available on the host.
+ * Icon-only: grey z's = sleep allowed, awake-orange eye = kept awake
+ * (plus a mini lock badge while remote access forces it on).
  */
-function PreventSleepToggle({ compact = false }: { compact?: boolean }) {
+function PreventSleepToggle() {
 	const t = useT();
 	const [state, setState] = useState<SleepState | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -68,18 +70,25 @@ function PreventSleepToggle({ compact = false }: { compact?: boolean }) {
 			onClick={toggle}
 			aria-disabled={locked}
 			aria-pressed={active}
-			className={`header-anim flex items-center gap-1 transition-colors px-1.5 py-1 rounded-lg ${
+			aria-label={t("caffeine.label")}
+			className={`header-anim flex items-center transition-colors px-1.5 py-1 rounded-lg ${
 				active
 					? "text-awake bg-awake/15 border border-awake/30 hover:bg-awake/25"
 					: "text-fg-3 hover:text-fg hover:bg-elevated border border-transparent"
 			} ${locked ? "cursor-default" : ""}`}
 		>
-			{locked ? (
-				<LockIcon className="w-[1.125rem] h-[1.125rem]" />
-			) : (
-				<CoffeeIcon className="w-[1.125rem] h-[1.125rem]" />
-			)}
-			{!compact && <span className="text-[0.6875rem] font-medium">{t("caffeine.label")}</span>}
+			<span className="relative flex">
+				{active ? (
+					<AwakeEyeIcon className="w-[1.125rem] h-[1.125rem]" />
+				) : (
+					<SleepZzzIcon className="w-[1.125rem] h-[1.125rem]" />
+				)}
+				{locked && (
+					<span className="absolute -right-1.5 -bottom-1 rounded bg-raised border border-edge p-px">
+						<LockIcon className="w-2 h-2" />
+					</span>
+				)}
+			</span>
 		</button>
 		</Tooltip>
 	);

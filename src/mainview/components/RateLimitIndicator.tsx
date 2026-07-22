@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { api } from "../rpc";
 import { useT } from "../i18n";
 import Tooltip from "./Tooltip";
-import { RateLimitIcon } from "./HeaderIcons";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
 import {
 	RATE_LIMIT_DANGER_PERCENT,
@@ -114,40 +113,38 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				data-help-id="header.rateLimits"
 				className={`header-anim flex cursor-pointer select-none items-center gap-1.5 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
 			>
-				<RateLimitIcon className="w-[1.125rem] h-[1.125rem]" />
+				{/* One mini bar per recently active account, top-to-bottom in the
+				    same order as the tooltip cards. Unlimited accounts render a
+				    full success bar (matching the ∞ chip) instead of a fake 0%.
+				    In compact mode the bars ARE the whole pill. */}
+				<span aria-hidden="true" className="flex w-7 shrink-0 flex-col gap-[0.0625rem]">
+					{pillSnapshots.map((snap) => {
+						const snapUnlimited = isUnlimitedRateLimitSnapshot(snap);
+						const snapPercent = snapUnlimited ? 100 : Math.round(worstSnapshotWindow(snap)?.usedPercent ?? 0);
+						const clamped = Math.max(0, Math.min(100, snapPercent));
+						return (
+							<span
+								key={`${snap.source}:${snap.accountId ?? "system"}`}
+								className={`relative block w-full overflow-hidden rounded-full bg-fg/15 ${pillSnapshots.length > 1 ? "h-[0.125rem]" : "h-[0.1875rem]"}`}
+							>
+								<span
+									className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ${snapUnlimited ? "bg-success" : severityFill(snapPercent)}`}
+									style={{ width: `${clamped}%`, minWidth: clamped > 0 ? "0.125rem" : undefined }}
+								/>
+							</span>
+						);
+					})}
+				</span>
 				{!compact && (
-					<>
-						{/* One mini bar per recently active account, top-to-bottom in the
-						    same order as the tooltip cards. Unlimited accounts render a
-						    full success bar (matching the ∞ chip) instead of a fake 0%. */}
-						<span aria-hidden="true" className="flex w-7 shrink-0 flex-col gap-[0.0625rem]">
-							{pillSnapshots.map((snap) => {
-								const snapUnlimited = isUnlimitedRateLimitSnapshot(snap);
-								const snapPercent = snapUnlimited ? 100 : Math.round(worstSnapshotWindow(snap)?.usedPercent ?? 0);
-								const clamped = Math.max(0, Math.min(100, snapPercent));
-								return (
-									<span
-										key={`${snap.source}:${snap.accountId ?? "system"}`}
-										className={`relative block w-full overflow-hidden rounded-full bg-fg/15 ${pillSnapshots.length > 1 ? "h-[0.125rem]" : "h-[0.1875rem]"}`}
-									>
-										<span
-											className={`absolute inset-y-0 left-0 rounded-full transition-[width] duration-500 ${snapUnlimited ? "bg-success" : severityFill(snapPercent)}`}
-											style={{ width: `${clamped}%`, minWidth: clamped > 0 ? "0.125rem" : undefined }}
-										/>
-									</span>
-								);
-							})}
-						</span>
-						<span className="text-[0.6875rem] font-medium tabular-nums">
-							{unlimited ? (
-								t("rateLimits.unlimited")
-							) : (
-								<>
-									{percent}%<span className="ml-0.5 text-[0.5625rem] font-normal opacity-70">{t("rateLimits.used")}</span>
-								</>
-							)}
-						</span>
-					</>
+					<span className="text-[0.6875rem] font-medium tabular-nums">
+						{unlimited ? (
+							t("rateLimits.unlimited")
+						) : (
+							<>
+								{percent}%<span className="ml-0.5 text-[0.5625rem] font-normal opacity-70">{t("rateLimits.used")}</span>
+							</>
+						)}
+					</span>
 				)}
 			</div>
 		</Tooltip>

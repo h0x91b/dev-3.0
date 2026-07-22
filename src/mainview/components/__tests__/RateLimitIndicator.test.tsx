@@ -76,6 +76,19 @@ describe("RateLimitIndicator", () => {
 		expect(screen.getByRole("status").className).toContain("text-fg-3");
 	});
 
+	it("compact mode keeps the mini bars but drops the percent text", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		render(
+			<I18nProvider>
+				<RateLimitIndicator compact />
+			</I18nProvider>,
+		);
+		await act(async () => {});
+		const pill = screen.getByRole("status");
+		expect(pill.querySelector("[aria-hidden='true']")).toBeTruthy();
+		expect(screen.queryByText("42%")).toBeNull();
+	});
+
 	it("ignores a more-used window from an older account", async () => {
 		const now = Date.now();
 		mockedGet.mockResolvedValue({

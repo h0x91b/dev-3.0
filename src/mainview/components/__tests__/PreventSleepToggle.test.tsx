@@ -60,4 +60,22 @@ describe("PreventSleepToggle", () => {
 		await userEvent.click(button);
 		expect(mockedApi.request.setPreventSleep).not.toHaveBeenCalled();
 	});
+
+	it("is icon-only: no text label, but an accessible name", async () => {
+		mockedApi.request.getPreventSleepState.mockResolvedValue({ enabled: true, available: true, forcedByRemote: false });
+		renderToggle();
+
+		const button = await screen.findByRole("button");
+		expect(button.textContent).toBe("");
+		expect(button).toHaveAttribute("aria-label", "No Sleep");
+	});
+
+	it("adds a lock badge next to the eye while forced by remote access", async () => {
+		mockedApi.request.getPreventSleepState.mockResolvedValue({ enabled: true, available: true, forcedByRemote: true });
+		renderToggle();
+
+		const button = await screen.findByRole("button");
+		// eye icon + mini lock badge
+		expect(button.querySelectorAll("svg")).toHaveLength(2);
+	});
 });
