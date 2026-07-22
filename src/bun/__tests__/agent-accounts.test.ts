@@ -275,14 +275,34 @@ describe("codex accounts", () => {
 	});
 
 	it("prepareCodexLogin scaffolds a fresh CODEX_HOME and hands a scoped login command", async () => {
-		const { accountId, loginCommand } = await prepareCodexLogin(paths);
-		expect(accountId).toBeTruthy();
-		const dir = codexAccountDir(accountId, paths);
-		expect(loginCommand).toBe(`CODEX_HOME='${dir}' codex login`);
-		expect(existsSync(dir)).toBe(true);
-		// Not registered until verified — the user's ~/.codex is untouched.
-		const state = await listAgentAccounts(paths);
-		expect(state.codex.accounts).toHaveLength(0);
+		const prevHeadless = process.env.DEV3_HEADLESS;
+		delete process.env.DEV3_HEADLESS; // desktop: browser OAuth is fine, no --device-auth
+		try {
+			const { accountId, loginCommand } = await prepareCodexLogin(paths);
+			expect(accountId).toBeTruthy();
+			const dir = codexAccountDir(accountId, paths);
+			expect(loginCommand).toBe(`CODEX_HOME='${dir}' codex login`);
+			expect(existsSync(dir)).toBe(true);
+			// Not registered until verified — the user's ~/.codex is untouched.
+			const state = await listAgentAccounts(paths);
+			expect(state.codex.accounts).toHaveLength(0);
+		} finally {
+			if (prevHeadless === undefined) delete process.env.DEV3_HEADLESS;
+			else process.env.DEV3_HEADLESS = prevHeadless;
+		}
+	});
+
+	it("prepareCodexLogin appends --device-auth on a headless/remote box (no local browser)", async () => {
+		const prevHeadless = process.env.DEV3_HEADLESS;
+		process.env.DEV3_HEADLESS = "1";
+		try {
+			const { accountId, loginCommand } = await prepareCodexLogin(paths);
+			const dir = codexAccountDir(accountId, paths);
+			expect(loginCommand).toBe(`CODEX_HOME='${dir}' codex login --device-auth`);
+		} finally {
+			if (prevHeadless === undefined) delete process.env.DEV3_HEADLESS;
+			else process.env.DEV3_HEADLESS = prevHeadless;
+		}
 	});
 
 	it("completeCodexLogin verifies the scoped dir and registers it as the default", async () => {
