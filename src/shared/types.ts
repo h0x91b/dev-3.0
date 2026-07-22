@@ -3594,7 +3594,7 @@ export type AppRPCSchema = {
 			 * Result of a manual "Check for Updates" menu action, surfaced as a toast.
 			 * `available` updates flow through `updateAvailable` instead (header plaque).
 			 */
-			updateCheckOutcome: { status: "none" | "error"; version?: string; detail?: string };
+			updateCheckOutcome: { status: "none" | "error" | "dev"; version?: string; detail?: string };
 		};
 	}>;
 };

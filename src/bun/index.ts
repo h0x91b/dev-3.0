@@ -724,7 +724,10 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 			sendUpdateProgress("checking");
 			const result = await checkForUpdateWithChannel(settings.updateChannel);
 
-			if (result.error) {
+			if (result.devBuild) {
+				sendUpdateProgress("idle");
+				sendToFocusedWindow("updateCheckOutcome", { status: "dev" });
+			} else if (result.error) {
 				sendUpdateProgress("idle");
 				sendToFocusedWindow("updateCheckOutcome", { status: "error", detail: result.error });
 			} else if (result.updateAvailable) {

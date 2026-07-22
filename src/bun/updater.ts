@@ -38,6 +38,8 @@ interface UpdateCheckResult {
 	version: string;
 	changelog?: UpdateChangelog;
 	error?: string;
+	/** True when running a from-source "dev" build, where updates are disabled. */
+	devBuild?: boolean;
 }
 
 function getPlatformPrefix(): string {
@@ -57,6 +59,15 @@ export async function getLocalVersion(): Promise<{ version: string; hash: string
 
 export async function checkForUpdateWithChannel(channel: string): Promise<UpdateCheckResult> {
 	const local = await getLocalVersion();
+
+	// Dev/source builds have updates disabled in Electrobun's updater; a download
+	// there dereferences its uninitialized state and throws (see
+	// doDownloadUpdateForChannel). Report the dev build instead of checking.
+	if (local.channel === "dev") {
+		log.info("Skipping update check on dev channel");
+		return { updateAvailable: false, version: local.version, devBuild: true };
+	}
+
 	const platformPrefix = getPlatformPrefix();
 
 	// Construct URL for the selected channel's update.json
@@ -112,6 +123,16 @@ async function doDownloadUpdateForChannel(
 	onProgress?: (status: string, progress?: number) => void,
 ): Promise<{ ok: boolean; error?: string }> {
 	const local = await getLocalVersion();
+
+	// Crash-proof floor for dev/source builds. Electrobun's checkForUpdate()
+	// early-returns on the "dev" channel without initializing its module-level
+	// updateInfo, so the subsequent downloadUpdate() writes `updateInfo.error`
+	// on undefined and throws a TypeError. Never reach that call on dev.
+	if (local.channel === "dev") {
+		const msg = "Updates are disabled on dev builds (running from source)";
+		log.info(msg);
+		return { ok: false, error: msg };
+	}
 
 	// If selected channel matches the build-time channel, use built-in updater
 	if (channel === local.channel) {

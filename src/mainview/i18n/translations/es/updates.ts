@@ -19,6 +19,7 @@ const updates = {
 	"update.downloading": "Descargando...",
 	"update.upToDateVersion": "Tienes la última versión — v{version}",
 	"update.checkFailedDetail": "Error al buscar actualizaciones: {error}",
+	"update.devBuildNotice": "Esta es una compilación dev — las actualizaciones están deshabilitadas. Vuelve a compilar desde el código fuente para actualizar.",
 	"update.applyFailed": "No se pudo aplicar la actualización: {error}",
 	"update.whatsNewVersion": "Novedades en v{version}",
 	"update.seeAllChanges": "Ver todos los cambios",

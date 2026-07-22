@@ -1535,11 +1535,13 @@ function App() {
 	useEffect(() => {
 		function onUpdateCheckOutcome(e: Event) {
 			const { status, version, detail } = (e as CustomEvent).detail as {
-				status: "none" | "error";
+				status: "none" | "error" | "dev";
 				version?: string;
 				detail?: string;
 			};
-			if (status === "none") {
+			if (status === "dev") {
+				toast.info(t("update.devBuildNotice"));
+			} else if (status === "none") {
 				toast.info(t("update.upToDateVersion", { version: version ?? "" }));
 			} else {
 				toast.error(t("update.checkFailedDetail", { error: detail ?? "" }));

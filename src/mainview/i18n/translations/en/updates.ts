@@ -19,6 +19,7 @@ const updates = {
 	"update.downloading": "Downloading...",
 	"update.upToDateVersion": "You're up to date — v{version}",
 	"update.checkFailedDetail": "Update check failed: {error}",
+	"update.devBuildNotice": "This is a dev build — updates are disabled. Rebuild from source to update.",
 	"update.applyFailed": "Couldn't apply the update: {error}",
 	"update.whatsNewVersion": "What's new in v{version}",
 	"update.seeAllChanges": "See all changes",
