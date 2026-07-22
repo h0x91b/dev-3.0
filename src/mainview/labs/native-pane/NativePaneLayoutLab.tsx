@@ -120,7 +120,7 @@ function FakeTerminalPane({
 			data-stream-id={session.streamId}
 			data-active={active ? "true" : "false"}
 			onClick={onActivate}
-			className={`min-h-0 min-w-0 h-full flex flex-col overflow-hidden rounded-lg border bg-base shadow-sm transition-colors ${
+			className={`min-h-0 min-w-0 h-full w-full flex flex-col overflow-hidden rounded-lg border bg-base shadow-sm transition-colors ${
 				active ? "border-accent ring-1 ring-accent/40" : "border-edge hover:border-edge-active"
 			}`}
 		>
@@ -301,11 +301,11 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 				<button type="button" onClick={() => navigate({ screen: "dashboard" })} className="text-sm text-fg-3 hover:text-fg">
 					{"← "}{t("nativePaneLab.back")}
 				</button>
-				<div className="min-w-0 flex-1">
+				<div className="min-w-[12rem] flex-1">
 					<h1 className="text-lg font-bold text-fg">{t("nativePaneLab.title")}</h1>
 					<p className="text-xs text-fg-3 truncate">{t("nativePaneLab.subtitle")}</p>
 				</div>
-				<span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent">
+				<span className="shrink-0 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent">
 					{t("nativePaneLab.fakeOnly")}
 				</span>
 			</header>

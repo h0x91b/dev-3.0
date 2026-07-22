@@ -128,6 +128,7 @@ describe("NativePaneLayoutLab", () => {
 		const lab = screen.getByTestId("native-pane-layout-lab");
 		expect(lab).toHaveAttribute("data-layout-mode", "narrow");
 		expect(screen.getAllByTestId(/^fake-pane-/)).toHaveLength(1);
+		expect(screen.getByTestId("fake-pane-pane-1")).toHaveClass("w-full");
 		expect(screen.getByText("Pane 1 of 6")).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: "Next pane" }));
