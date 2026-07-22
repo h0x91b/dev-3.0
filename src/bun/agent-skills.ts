@@ -721,6 +721,16 @@ A starting situation that generates work, then merges onto the main flow.
 - **Reports and richer results → dev3 artifacts.** An artifact is an HTML page shown right inside dev3's UI — it can embed screenshots, tables from CSVs, charts, anything dynamic. Perfect for reports and for validating what the agent did: often you don't even need to launch the dev server yourself — the agent has already screenshotted everything and presents the finished result as one page. To activate it, just tell the agent to *"use a dev3 artifact"*.
 - **Artifacts travel well — the ZIP → PDF trick.** Downloading an artifact gives you the HTML page, and when it references images or other files — a ZIP with everything bundled. A proven workflow for analytics-style reports: view the report in dev3, download it, open the HTML in a browser, print → save as PDF — and send that PDF to people.
 
+## The terminal is tmux — talk to it in panes and windows
+
+Every agent running in dev3 knows perfectly well it lives inside a tmux session, so you can speak to it in tmux terms and it will both look and act:
+
+- **"Look at the pane on the right — there's an error."** Typical case: the dev server runs in a pane next to the agent (or you launched something yourself) and an error shows up. Tell the main agent to look at that pane — it reads the output and keeps working with what it saw.
+- **"Open a pane below / a new window and run X there."** The agent can create panes and whole tmux windows (tmux has windows — they're the tabs), run any command inside them, and keep long-running things visible right next to itself.
+- **"Move it, shrink it, make it bigger."** Rearranging windows, resizing panes, renaming tabs — just ask; the agent manages the layout too.
+
+The full mechanics live in \`/dev3-tmux\` — the agent reaches for it on its own when needed.
+
 ## Vocabulary underneath
 
 Reach for these when the *word*, not the process, is the confusion.
