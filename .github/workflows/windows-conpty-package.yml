@@ -43,6 +43,11 @@ jobs:
       - name: Native-session registry lifecycle E2E
         run: bun run test:native-registry-e2e
 
+      # Seq 1236 force-kills only the recorded host while journal/parser writes
+      # are active, then proves owned-tree death and token-matched recovery.
+      - name: Native-session host crash recovery E2E
+        run: bun run test:native-crash-e2e
+
       # Seq 1228 live-parser proof. Gates ONLY the deferred path; `callback`
       # mode is printed as evidence and is EXPECTED to fail on Windows
       # Bun 1.3.14 (the preserved seq 1185 reproduction, decision 146).

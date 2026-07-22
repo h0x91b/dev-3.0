@@ -21,6 +21,7 @@
 		"test:pane-e2e": "bun --preload ./src/bun/__tests__/pane-exit-e2e-preload.ts src/bun/__tests__/pane-exit-e2e.ts",
 		"test:proto-e2e": "bun src/bun/prototypes/detached-pty/__tests__/lifecycle.bun-e2e.ts",
 		"test:native-registry-e2e": "bun src/bun/native-terminal-registry/__tests__/lifecycle.bun-e2e.ts",
+		"test:native-crash-e2e": "bun src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts",
 		"test:native-live-parser-e2e": "bun src/bun/native-terminal-registry/__tests__/live-parser.bun-e2e.ts",
 		"test:terminal-state-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/terminal-state/__tests__",
 		"benchmark:terminal-state-spike": "bun src/bun/prototypes/terminal-state/benchmark.ts",

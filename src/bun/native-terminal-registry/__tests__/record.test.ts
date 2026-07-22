@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { NATIVE_SESSIONS_DIR_ENV, recordFile, sessionDir, tokenFile } from "../paths";
+import { journalFile, NATIVE_SESSIONS_DIR_ENV, parserStateFile, recordFile, sessionDir, tokenFile } from "../paths";
 import {
 	NATIVE_SESSION_SCHEMA_VERSION,
 	parseRecord,
@@ -102,10 +102,23 @@ describe("native-session record (on disk)", () => {
 		expect(existsSync(sessionDir("alpha"))).toBe(false);
 	});
 
-	it("removeSessionState with a null guard removes state that has no token", () => {
+	it("removes only atomic temp files owned by the recorded crashed host", () => {
 		writeRecordAtomic(sample());
-		expect(removeSessionState("alpha", null)).toBe(true);
-		expect(readRecord("alpha")).toBeNull();
+		writeToken("alpha", "tok-A");
+		const targets = [recordFile("alpha"), tokenFile("alpha"), journalFile("alpha"), parserStateFile("alpha")];
+		for (const target of targets) writeFileSync(`${target}.4242.tmp`, "partial");
+		const foreignTemp = `${journalFile("alpha")}.9999.tmp`;
+		writeFileSync(foreignTemp, "leave-me");
+
+		expect(removeSessionState("alpha", "tok-A")).toBe(true);
+		for (const target of targets) expect(existsSync(`${target}.4242.tmp`)).toBe(false);
+		expect(existsSync(foreignTemp)).toBe(true);
+	});
+
+	it("removeSessionState fails closed when no expected token is available", () => {
+		writeRecordAtomic(sample());
+		expect(removeSessionState("alpha", null)).toBe(false);
+		expect(readRecord("alpha")).not.toBeNull();
 	});
 
 	it("ignores a corrupt record on read", () => {

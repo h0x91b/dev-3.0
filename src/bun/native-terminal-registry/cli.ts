@@ -8,6 +8,7 @@
  *   bun src/bun/native-terminal-registry/cli.ts status <id>         # discover + query one
  *   bun src/bun/native-terminal-registry/cli.ts attach <id>         # interactive attach (Ctrl-] detaches)
  *   bun src/bun/native-terminal-registry/cli.ts parser-state <id>   # reconstructed semantic screen (seq 1228)
+ *   bun src/bun/native-terminal-registry/cli.ts cleanup-stale       # remove token-matched dead records
  *   bun src/bun/native-terminal-registry/cli.ts stop <id>           # stop one session's tree
  *   bun src/bun/native-terminal-registry/cli.ts __host <id>         # internal: the detached host
  */
@@ -16,7 +17,7 @@ import { NativeSessionClient } from "./client";
 import { resolveHostConfig, runHost } from "./host";
 import { readParserState } from "./parser-state";
 import { readRecord, readToken } from "./record";
-import { list, start, status, stop } from "./registry";
+import { cleanupStale, list, start, status, stop } from "./registry";
 
 function requireId(): string {
 	const id = positionalArgs()[1];
@@ -134,6 +135,16 @@ async function main(): Promise<void> {
 			process.exit(0);
 			break;
 		}
+		case "cleanup-stale": {
+			const result = await cleanupStale();
+			for (const sessionId of result.removed) process.stdout.write(`removed sessionId=${sessionId}\n`);
+			for (const session of result.kept) {
+				process.stdout.write(`kept sessionId=${session.sessionId} state=${session.state}\n`);
+			}
+			if (result.removed.length === 0 && result.kept.length === 0) process.stdout.write("no native sessions\n");
+			process.exit(0);
+			break;
+		}
 		case "stop": {
 			const ok = await stop(requireId());
 			process.stdout.write(ok ? "stopped\n" : "nothing to stop (or failed)\n");
@@ -142,7 +153,7 @@ async function main(): Promise<void> {
 		}
 		default:
 			process.stdout.write(
-				"usage: cli.ts start [--live-parser] [--state-tap]|list|status|attach|parser-state|stop <sessionId>\n",
+				"usage: cli.ts start [--live-parser] [--state-tap]|list|status|attach|parser-state|cleanup-stale|stop <sessionId>\n",
 			);
 			process.exit(2);
 	}

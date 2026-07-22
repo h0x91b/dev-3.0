@@ -168,7 +168,9 @@ export async function start(
 					return { status: "already-running", record: existing };
 				}
 				// Not ours anymore (dead/reused) — drop only our token-matched state.
-				removeSessionState(sessionId, token);
+				if (!removeSessionState(sessionId, token)) {
+					throw new Error(`cannot safely replace stale native session ${sessionId}: cleanup token is missing or changed`);
+				}
 				mkdirSync(sessionDir(sessionId), { recursive: true, mode: 0o700 });
 			}
 
@@ -269,8 +271,7 @@ export async function stop(
 
 	// Not (or no longer) ours: never signal the PID — just drop token-matched state.
 	if (verdict !== "owned") {
-		removeSessionState(sessionId, token);
-		return true;
+		return removeSessionState(sessionId, token);
 	}
 
 	const forceOwnedTree = async (hard = false): Promise<void> => {

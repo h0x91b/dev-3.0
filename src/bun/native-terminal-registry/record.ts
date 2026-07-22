@@ -167,7 +167,18 @@ export function readToken(sessionId: string): string | null {
  * token guard rejects the removal.
  */
 export function removeSessionState(sessionId: string, expectedToken: string | null): boolean {
-	if (expectedToken !== null && readToken(sessionId) !== expectedToken) return false;
+	if (expectedToken === null || readToken(sessionId) !== expectedToken) return false;
+	const record = readRecord(sessionId);
+	const atomicFiles = [journalFile(sessionId), parserStateFile(sessionId), tokenFile(sessionId), recordFile(sessionId)];
+	if (record && Number.isInteger(record.host.pid) && record.host.pid > 0) {
+		for (const file of atomicFiles) {
+			try {
+				unlinkSync(`${file}.${record.host.pid}.tmp`);
+			} catch {
+				// absent, already published, or not owned by this recorded host
+			}
+		}
+	}
 	const files = [
 		journalFile(sessionId),
 		parserStateFile(sessionId),
