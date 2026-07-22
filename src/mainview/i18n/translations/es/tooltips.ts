@@ -96,8 +96,12 @@ export const tooltips = {
 	"ttip.scripts.run": "Ejecuta un script de package.json o un target de Makefile de este worktree en un panel tmux — ves la salida en vivo.",
 	"ttip.devServer":
 		"Arranca el dev script del proyecto en su propia ventana tmux, en los puertos asignados a esta tarea — las tareas paralelas nunca pelean por un puerto.",
+	"ttip.devServerRemoteWarning":
+		"Modo remoto: el dev server está pensado para uso local y aquí sigue siendo experimental — puede no arrancar o comportarse raro a través del túnel. Úsalo bajo tu propio riesgo mientras lo pulimos.",
 	"ttip.sharedImages": "Capturas, imágenes de QA y diagramas que el agente compartió contigo en esta tarea. Clic para verlos.",
 	"ttip.sharedArtifacts": "Informes HTML interactivos compartidos por el agente para esta tarea. Haz clic para abrirlos.",
 	"ttip.ports.copyUrl": "Copia la URL pública del túnel para este puerto — compártela o ábrela en otro dispositivo.",
 	"ttip.ports.section": "Puertos que escucha esta tarea: ábrelos en el navegador o expónlos a través del túnel remoto.",
+	"ttip.ports.remoteWarning":
+		"Beta en remoto: los túneles de puertos todavía fallan a través del transporte del navegador — exponer o alcanzar un puerto puede fallar o cortarse. Úsalo bajo tu propio riesgo mientras lo pulimos.",
 };

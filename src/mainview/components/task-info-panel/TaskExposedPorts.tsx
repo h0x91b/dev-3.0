@@ -5,6 +5,7 @@ import { api } from "../../rpc";
 import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useTaskAllocatedPorts } from "./useTaskAllocatedPorts";
+import RemoteBetaWarning from "./RemoteBetaWarning";
 import Tooltip from "../Tooltip";
 import { PortsIcon } from "../TaskIcons";
 
@@ -145,7 +146,15 @@ export default function TaskExposedPorts({ task, rowClassName }: TaskExposedPort
 
 	return (
 		<>
-			<Tooltip content={t("tunnel.exposedPortsSection")} detail={t("ttip.ports.section")}>
+			<Tooltip
+				content={t("tunnel.exposedPortsSection")}
+				detail={
+					<>
+						{t("ttip.ports.section")}
+						<RemoteBetaWarning text={t("ttip.ports.remoteWarning")} />
+					</>
+				}
+			>
 			<button
 				ref={btnRef}
 				onClick={openMenu}
