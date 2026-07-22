@@ -64,6 +64,8 @@ describe("NativePaneLayoutLab", () => {
 		expect(screen.getAllByTestId(/^fake-pane-/)).toHaveLength(2);
 		await user.click(screen.getByRole("button", { name: "6 panes" }));
 		expect(screen.getAllByTestId(/^fake-pane-/)).toHaveLength(6);
+		expect(document.querySelector("main")).toHaveClass("flex");
+		expect(document.querySelector('[data-split-id="split-1"]')).toHaveClass("h-full");
 
 		const paneOne = screen.getByTestId("fake-pane-pane-1");
 		const paneTwo = screen.getByTestId("fake-pane-pane-2");

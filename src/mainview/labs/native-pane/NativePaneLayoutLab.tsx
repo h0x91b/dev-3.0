@@ -251,7 +251,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 				key={node.id}
 				data-split-id={node.id}
 				data-split-ratio={String(node.ratio)}
-				className={`min-h-0 min-w-0 flex-1 flex gap-1 ${node.orientation === "horizontal" ? "flex-row" : "flex-col"}`}
+				className={`h-full min-h-0 min-w-0 flex-1 flex gap-1 ${node.orientation === "horizontal" ? "flex-row" : "flex-col"}`}
 			>
 				<div className="min-h-0 min-w-0" style={{ flexBasis: 0, flexGrow: node.ratio }}>
 					{renderNode(node.first)}
@@ -402,7 +402,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 				</nav>
 			)}
 
-			<main className={`flex-1 min-h-0 p-2 ${narrow ? "min-h-[24rem]" : ""}`}>
+			<main className={`flex flex-1 min-h-0 p-2 ${narrow ? "min-h-[24rem]" : ""}`}>
 				{tree.zoomedPaneId
 					? renderPane(tree.zoomedPaneId)
 					: narrow
