@@ -204,7 +204,26 @@ function AccountCard({
 			{snap.creditsBalance != null && !unlimited && (
 				<span className="text-fg-3">{t("rateLimits.credits", { balance: snap.creditsBalance })}</span>
 			)}
+			<CapturedNote capturedAt={snap.capturedAt} now={now} />
 		</div>
+	);
+}
+
+/**
+ * Per-card provenance line: how long ago this account's rate-limit reading was
+ * captured. Data is only refreshed while a session for that account is active,
+ * so anything beyond a few minutes may be stale — flagged in the warning tint
+ * once past STALE_AFTER_MS so a reading from days ago never reads as live.
+ */
+function CapturedNote({ capturedAt, now }: { capturedAt: number; now: number }) {
+	const t = useT();
+	const age = Math.max(0, now - capturedAt);
+	const stale = age > STALE_AFTER_MS;
+	const label = age < 60_000 ? t("rateLimits.capturedNow") : t("rateLimits.captured", { time: formatAge(age) });
+	return (
+		<span className={`flex items-center gap-1 text-[0.625rem] ${stale ? "text-warning" : "text-fg-muted"}`}>
+			{label}
+		</span>
 	);
 }
 
@@ -260,13 +279,6 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const danger = percent >= RATE_LIMIT_DANGER_PERCENT;
 	const warn = !danger && percent >= RATE_LIMIT_WARN_PERCENT;
 
-	let staleCapturedAt: number | null = null;
-	for (const snap of report.snapshots) {
-		if (now - snap.capturedAt > STALE_AFTER_MS && (staleCapturedAt == null || snap.capturedAt < staleCapturedAt)) {
-			staleCapturedAt = snap.capturedAt;
-		}
-	}
-
 	const latestReset = formatResetDelta(latestWindow?.resetsAt ?? null, now);
 	const latestLabel = latestWindow
 		? latestWindow.id === "monthly_credits"
@@ -299,9 +311,6 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 							now={now}
 						/>
 					))}
-					{staleCapturedAt != null && (
-						<span className="text-fg-muted">{t("rateLimits.stale", { time: formatAge(now - staleCapturedAt) })}</span>
-					)}
 				</div>
 			}
 		>

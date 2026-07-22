@@ -97,19 +97,32 @@ function managedAccountId(): string | null {
 	return value && SAFE_ACCOUNT_ID.test(value) ? value : null;
 }
 
+/**
+ * Where a statusLine dump for `accountId` is written. A managed account writes
+ * ONLY its own per-account file; the system login (no managed id) writes the
+ * shared claude.json. Keeping them apart stops a managed session from clobbering
+ * the system login's slot in claude.json — the cause of accounts vanishing from
+ * the rate-limit panel the moment another account ran.
+ */
+export function claudeDumpFilePaths(
+	accountId: string | null,
+	baseDir: string = RATE_LIMITS_DIR,
+): string[] {
+	if (accountId) return [join(baseDir, "claude", `${accountId}.json`)];
+	return [join(baseDir, "claude.json")];
+}
+
 function dumpPayload(raw: string): void {
 	try {
 		const accountId = managedAccountId();
 		const capturedAt = Date.now();
 		const serialized = JSON.stringify({ capturedAt, accountId, payload: JSON.parse(raw) });
-		mkdirSync(dirname(CLAUDE_RATE_LIMIT_DUMP_PATH), { recursive: true });
-		// Single small write; the monitor tolerates a torn read by keeping the
-		// previous snapshot (deliberately no tmp+rename — see the on-disk layout
-		// invariants about renames under ~/.dev3.0/).
-		writeFileSync(CLAUDE_RATE_LIMIT_DUMP_PATH, serialized);
-		if (accountId) {
-			mkdirSync(CLAUDE_ACCOUNT_RATE_LIMITS_DIR, { recursive: true });
-			writeFileSync(join(CLAUDE_ACCOUNT_RATE_LIMITS_DIR, `${accountId}.json`), serialized);
+		for (const target of claudeDumpFilePaths(accountId)) {
+			// Single small write; the monitor tolerates a torn read by keeping the
+			// previous snapshot (deliberately no tmp+rename — see the on-disk layout
+			// invariants about renames under ~/.dev3.0/).
+			mkdirSync(dirname(target), { recursive: true });
+			writeFileSync(target, serialized);
 		}
 	} catch {
 		// disk/parse trouble must never break the visible statusLine
