@@ -1,18 +1,23 @@
 /**
- * Attach CLIENT for the native-session registry (seq 1214).
+ * Attach CLIENT for the native-session registry (seq 1214/1216).
  *
  * A short-lived handle over one session host's loopback-TCP WebSocket. Any
- * number of these come and go while the host + shell stay alive. `discover()`
- * reconnects a brand-new, unrelated process from the on-disk record + private
- * token alone — modelling a fresh client reattaching to a live session.
+ * number of these come and go while the host + shell stay alive. `connect()`
+ * performs the v1 `hello` handshake and resolves only once the host answers
+ * `welcome`; a version/session mismatch rejects with the host's explicit error.
+ * `discover()` reconnects a brand-new, unrelated process from the on-disk record
+ * + private token alone — modelling a fresh client reattaching to a live session.
  */
 
 import {
 	decodeControl,
+	decodeError,
 	encodeControl,
+	helloMessage,
 	resizeMessage,
 	statusRequest,
 	stopRequest,
+	type ErrorMessage,
 	type StatusReply,
 } from "./protocol";
 import { readJournalTail } from "./journal-read";
@@ -21,11 +26,20 @@ import { readRecord, readToken } from "./record";
 
 const encoder = new TextEncoder();
 
+interface Pending<T> {
+	resolve: (value: T) => void;
+	reject: (err: Error) => void;
+	timer: ReturnType<typeof setTimeout>;
+}
+
 export class NativeSessionClient {
 	private ws: WebSocket | null = null;
+	private nextId = 1;
+	private helloId = 0;
 	private readonly outputCbs: Array<(bytes: Uint8Array) => void> = [];
-	private readonly statusResolvers: Array<(s: StatusReply) => void> = [];
+	private readonly statusPending = new Map<number, Pending<StatusReply>>();
 	private readonly stopResolvers: Array<() => void> = [];
+	private helloPending: Pending<void> | null = null;
 
 	onOutput(cb: (bytes: Uint8Array) => void): void {
 		this.outputCbs.push(cb);
@@ -37,11 +51,10 @@ export class NativeSessionClient {
 		ws.binaryType = "arraybuffer";
 		this.ws = ws;
 		ws.addEventListener("message", (ev) => this.onMessage(ev));
-		ws.addEventListener("close", () => {
-			for (const r of this.stopResolvers.splice(0)) r();
-		});
+		ws.addEventListener("close", () => this.onClose());
+		const timeoutMs = opts.timeoutMs ?? 5000;
 		await new Promise<void>((resolve, reject) => {
-			const to = setTimeout(() => reject(new Error("connect timeout")), opts.timeoutMs ?? 5000);
+			const to = setTimeout(() => reject(new Error("connect timeout")), timeoutMs);
 			ws.addEventListener(
 				"open",
 				() => {
@@ -58,6 +71,25 @@ export class NativeSessionClient {
 				},
 				{ once: true },
 			);
+		});
+		await this.performHello(record.sessionId, timeoutMs);
+	}
+
+	private performHello(sessionId: string, timeoutMs: number): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			const ws = this.ws;
+			if (!ws) {
+				reject(new Error("not connected"));
+				return;
+			}
+			const id = this.nextId++;
+			this.helloId = id; // the welcome (or error) is matched against this id in onMessage
+			const timer = setTimeout(() => {
+				this.helloPending = null;
+				reject(new Error("hello timeout"));
+			}, timeoutMs);
+			this.helloPending = { resolve: () => resolve(), reject, timer };
+			ws.send(encodeControl(helloMessage(sessionId, id)));
 		});
 	}
 
@@ -77,15 +109,37 @@ export class NativeSessionClient {
 		return readJournalTail(sessionId);
 	}
 
+	private onClose(): void {
+		if (this.helloPending) {
+			clearTimeout(this.helloPending.timer);
+			const pending = this.helloPending;
+			this.helloPending = null;
+			pending.reject(new Error("connection closed before welcome"));
+		}
+		for (const r of this.stopResolvers.splice(0)) r();
+	}
+
 	private onMessage(ev: MessageEvent): void {
 		const data = ev.data;
 		if (typeof data === "string") {
+			if (this.helloPending) {
+				this.resolveHandshake(data);
+				return;
+			}
 			const msg = decodeControl(data);
 			if (!msg) return;
 			if (msg.type === "status") {
-				for (const r of this.statusResolvers.splice(0)) r(msg as StatusReply);
+				const reply = msg as StatusReply;
+				const pending = this.statusPending.get(reply.id);
+				if (pending) {
+					clearTimeout(pending.timer);
+					this.statusPending.delete(reply.id);
+					pending.resolve(reply);
+				}
 			} else if (msg.type === "stopping") {
 				for (const r of this.stopResolvers.splice(0)) r();
+			} else if (msg.type === "error") {
+				this.rejectPendingByError(msg as ErrorMessage);
 			}
 			return;
 		}
@@ -97,6 +151,33 @@ export class NativeSessionClient {
 		}
 		if (!bytes) return;
 		for (const cb of this.outputCbs) cb(bytes);
+	}
+
+	private resolveHandshake(text: string): void {
+		const pending = this.helloPending;
+		if (!pending) return;
+		const welcome = decodeControl(text);
+		if (welcome && welcome.type === "welcome" && welcome.id === this.helloId) {
+			clearTimeout(pending.timer);
+			this.helloPending = null;
+			pending.resolve();
+			return;
+		}
+		const err = decodeError(text); // version-agnostic: readable even to a mismatched client
+		if (err) {
+			clearTimeout(pending.timer);
+			this.helloPending = null;
+			pending.reject(new Error(`native session refused hello: ${err.code}${err.message ? ` (${err.message})` : ""}`));
+		}
+	}
+
+	private rejectPendingByError(err: ErrorMessage): void {
+		if (err.id === undefined) return;
+		const pending = this.statusPending.get(err.id);
+		if (!pending) return;
+		clearTimeout(pending.timer);
+		this.statusPending.delete(err.id);
+		pending.reject(new Error(`native session error: ${err.code}`));
 	}
 
 	/** Keystrokes go as a BINARY frame (host reads binary as PTY input, text as JSON control). */
@@ -119,12 +200,13 @@ export class NativeSessionClient {
 				reject(new Error("not connected"));
 				return;
 			}
-			const to = setTimeout(() => reject(new Error("status timeout")), opts.timeoutMs ?? 3000);
-			this.statusResolvers.push((s) => {
-				clearTimeout(to);
-				resolve(s);
-			});
-			this.ws.send(encodeControl(statusRequest()));
+			const id = this.nextId++;
+			const timer = setTimeout(() => {
+				this.statusPending.delete(id);
+				reject(new Error("status timeout"));
+			}, opts.timeoutMs ?? 3000);
+			this.statusPending.set(id, { resolve, reject, timer });
+			this.ws.send(encodeControl(statusRequest(id)));
 		});
 	}
 
