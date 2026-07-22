@@ -9,8 +9,12 @@ vi.mock("../tmux", () => ({
 		activePaneId: vi.fn(),
 		listPanes: vi.fn(),
 		sendKeys: vi.fn(),
+		showOption: vi.fn(),
+		setPaneOption: vi.fn(),
 	},
 	PANE_ID_FORMAT: { sentinel: "pane-id-format" },
+	TMUX_AGENT_PANE_OPTION: "@dev3_agent",
+	TMUX_LAST_AGENT_PANE_OPTION: "@dev3_last_agent_pane",
 }));
 vi.mock("../logger", () => ({
 	createLogger: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -37,6 +41,8 @@ beforeEach(() => {
 	vi.mocked(tmux.activePaneId).mockResolvedValue("%1");
 	vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }] as never);
 	vi.mocked(tmux.sendKeys).mockResolvedValue(undefined);
+	vi.mocked(tmux.showOption).mockResolvedValue(""); // no last-focused agent recorded
+	vi.mocked(tmux.setPaneOption).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -74,6 +80,53 @@ describe("sendPromptToAgentPane — delivery", () => {
 
 		await expect(sendPromptToAgentPane(SESSION, SOCKET, "check CI", [agentPane("%9")])).resolves.toBe(false);
 		expect(tmux.sendKeys).not.toHaveBeenCalled();
+	});
+});
+
+describe("sendPromptToAgentPane — target resolution", () => {
+	const TWO_AGENTS = [agentPane("%1"), agentPane("%2")];
+
+	beforeEach(() => {
+		// Two live agent panes; tmux's active pane is %1.
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%2" }] as never);
+		vi.mocked(tmux.activePaneId).mockResolvedValue("%1");
+	});
+
+	it("routes to the last-focused agent pane the hook recorded, not the active pane", async () => {
+		vi.mocked(tmux.showOption).mockResolvedValue("%2");
+		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
+		expect(tmux.sendKeys).toHaveBeenCalledWith("%2", ["ping"], { socket: SOCKET, bestEffort: true });
+	});
+
+	it("ignores a recorded last-focused pane that is no longer live and falls back to the active pane", async () => {
+		vi.mocked(tmux.showOption).mockResolvedValue("%9"); // dead / unknown
+		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
+		expect(tmux.sendKeys).toHaveBeenCalledWith("%1", ["ping"], { socket: SOCKET, bestEffort: true });
+	});
+
+	it("ignores a recorded pane that is live but not a registered agent pane", async () => {
+		// %3 is a live shell split, not in the agent registry.
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%1" }, { paneId: "%2" }, { paneId: "%3" }] as never);
+		vi.mocked(tmux.showOption).mockResolvedValue("%3");
+		vi.mocked(tmux.activePaneId).mockResolvedValue("%3");
+		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
+		// No last-focused agent → ≥2 agents → active pane (%3, the focused shell).
+		expect(tmux.sendKeys).toHaveBeenCalledWith("%3", ["ping"], { socket: SOCKET, bestEffort: true });
+	});
+
+	it("marks live agent panes with the focus-hook option (self-heal)", async () => {
+		vi.mocked(tmux.showOption).mockResolvedValue("");
+		await sendPromptToAgentPane(SESSION, SOCKET, "ping", TWO_AGENTS);
+		expect(tmux.setPaneOption).toHaveBeenCalledWith("%1", "@dev3_agent", "1", { socket: SOCKET, bestEffort: true });
+		expect(tmux.setPaneOption).toHaveBeenCalledWith("%2", "@dev3_agent", "1", { socket: SOCKET, bestEffort: true });
+	});
+
+	it("targets the single live agent unconditionally when nothing is recorded", async () => {
+		vi.mocked(tmux.listPanes).mockResolvedValue([{ paneId: "%2" }, { paneId: "%5" }] as never);
+		vi.mocked(tmux.activePaneId).mockResolvedValue("%5"); // a focused shell
+		vi.mocked(tmux.showOption).mockResolvedValue("");
+		await sendPromptToAgentPane(SESSION, SOCKET, "ping", [agentPane("%2")]);
+		expect(tmux.sendKeys).toHaveBeenCalledWith("%2", ["ping"], { socket: SOCKET, bestEffort: true });
 	});
 });
 
