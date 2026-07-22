@@ -27,8 +27,23 @@ import {
 	parseTunnelUrl,
 	resolveTunnelProtocol,
 	tunnelManager,
+	TUNNEL_EDGE_READY,
 	_resetState,
 } from "../cloudflare-tunnel";
+
+// The edge-readiness gate polls cloudflared's /ready over the real timeout in
+// production; shrink it for every test so a start without a mocked /ready falls
+// through to the best-effort "connected" quickly instead of hanging.
+const REAL_EDGE_READY = { ...TUNNEL_EDGE_READY };
+beforeEach(() => {
+	TUNNEL_EDGE_READY.timeoutMs = 15;
+	TUNNEL_EDGE_READY.pollMs = 1;
+});
+afterEach(() => {
+	TUNNEL_EDGE_READY.timeoutMs = REAL_EDGE_READY.timeoutMs;
+	TUNNEL_EDGE_READY.pollMs = REAL_EDGE_READY.pollMs;
+	vi.unstubAllGlobals();
+});
 
 // ================================================================
 // resolveTunnelProtocol — QUIC/UDP-7844-blocked networks need http2
@@ -201,6 +216,37 @@ describe("startTunnel", () => {
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["cloudflared", "tunnel", "--protocol", "http2", "--url", "http://localhost:8080"],
 			{ stdout: "ignore", stderr: "pipe" },
+		);
+	});
+
+	it("waits for cloudflared /ready before marking the tunnel connected", async () => {
+		const fetchMock = vi.fn(async () => ({ ok: true }) as Response);
+		vi.stubGlobal("fetch", fetchMock);
+		setupSpawnMock([
+			"INF Starting metrics server on 127.0.0.1:20241/metrics",
+			"INF |  https://ready-abc.trycloudflare.com",
+		]);
+
+		const url = await startTunnel(8080);
+		expect(url).toBe("https://ready-abc.trycloudflare.com");
+		expect(getTunnelState()).toBe("connected");
+		// Gated on cloudflared's local /ready endpoint, not an external round-trip.
+		expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:20241/ready", expect.anything());
+	});
+
+	it("publishes the URL best-effort (with a warning) if /ready never turns green", async () => {
+		vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("ECONNREFUSED"); }));
+		setupSpawnMock([
+			"INF Starting metrics server on 127.0.0.1:20241/metrics",
+			"INF |  https://slow-edge.trycloudflare.com",
+		]);
+
+		const url = await startTunnel(8080);
+		expect(url).toBe("https://slow-edge.trycloudflare.com");
+		expect(getTunnelState()).toBe("connected"); // best-effort fallback, not stuck
+		expect(loggerMocks.warn).toHaveBeenCalledWith(
+			"Tunnel /ready not confirmed within timeout; publishing URL best-effort",
+			expect.objectContaining({ url: "https://slow-edge.trycloudflare.com" }),
 		);
 	});
 

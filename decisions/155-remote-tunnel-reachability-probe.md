@@ -10,7 +10,11 @@ For a fresh quick-tunnel hostname there are two independent gates before a brows
 
 ## Decision
 
-`awaitTunnelReady` (`src/cli/commands/remote.ts`) is now two phases: (1) poll the CLI socket until `cloudflared` reports the hostname; (2) actively `isTunnelLive(url)` — a HEAD `fetch` with `redirect: manual` — every `probeIntervalMs` until it returns a status outside 520-530, printing progress dots. Only then do we print the link (plus a 1s settle). `REMOTE_TUNNEL_WAIT` gained `probeIntervalMs`/`probeTimeoutMs`. Also removed a duplicated `awaitTunnelReady` call in `startDetached` left over from a concurrent-edit race. `isTunnelLive`/the probe are injectable so unit tests need no network.
+Two layers, because the CLI and the desktop app reach the tunnel differently:
+
+1. **Backend gate (both surfaces)** — `startEntry` in `src/bun/cloudflare-tunnel.ts` no longer flips a tunnel to `connected` the instant the hostname is parsed. It first `waitForEdgeReady(entry)`, polling cloudflared's own `/ready` metrics endpoint (already parsed into `entry.metricsReadyUrl`; returns 200 only with a live edge connection) until green or `TUNNEL_EDGE_READY.timeoutMs`. On timeout it publishes best-effort and logs a warning (the health monitor recovers a genuinely dead edge). This fixes the header **Remote Access** button for free: `getRemoteAccessQR({tunnel:true})` awaits `startTunnel`, so the modal keeps its "Starting tunnel…" state until the URL is routable, and `dev3 remote`'s `remote.accessUrl` only reports `tunnelUrl` once gated.
+
+2. **CLI end-to-end probe** — `awaitTunnelReady` (`src/cli/commands/remote.ts`) additionally polls the socket for the hostname, then `isTunnelLive(url)` (a HEAD `fetch`, `redirect: manual`, status outside 520-530) with progress dots — an independent confirmation from the box's own network before printing the link (plus a 1s settle). `REMOTE_TUNNEL_WAIT` gained `probeIntervalMs`/`probeTimeoutMs`; a duplicated `awaitTunnelReady` call in `startDetached` (concurrent-edit leftover) was removed. `isTunnelLive`/the probe are injectable so unit tests need no network.
 
 ## Risks
 

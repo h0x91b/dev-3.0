@@ -55,6 +55,14 @@ const HEALTH_CHECK_INTERVAL_MS = 10_000;
 const HEALTH_CHECK_TIMEOUT_MS = 3_000;
 const HEALTH_FAILURE_LIMIT = 3;
 
+// cloudflared prints the `*.trycloudflare.com` hostname a few seconds (usually
+// 2-3, sometimes ~10) before Cloudflare's edge actually routes it. Publishing
+// the URL at announcement time lets a browser connect too early and cache a
+// DNS_PROBE_FINISHED_NXDOMAIN, which then hangs long after the tunnel is live.
+// We gate "connected" on cloudflared's own /ready endpoint (200 only with a
+// live edge connection). Tunable so tests don't wait the real timeout.
+export const TUNNEL_EDGE_READY = { timeoutMs: 25_000, pollMs: 500 };
+
 const tunnels = new Map<string, TunnelEntry>();
 
 export function isCloudflaredAvailable(): boolean {
@@ -176,6 +184,34 @@ function monitorStderr(entry: TunnelEntry, stderr: ReadableStream): Promise<stri
 	return urlPromise;
 }
 
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Poll cloudflared's local /ready endpoint until it reports a live edge
+ * connection (HTTP 200) — the authoritative "the hostname is now routable"
+ * signal, checked locally (no external DNS round-trip). Returns false on
+ * timeout or if the process died mid-wait; the caller then publishes the URL
+ * best-effort and the health monitor recovers a genuinely dead edge.
+ */
+async function waitForEdgeReady(entry: TunnelEntry, timeoutMs: number, pollMs: number): Promise<boolean> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		if (entry.process === null) return false; // process exited during the wait
+		if (entry.metricsReadyUrl) {
+			try {
+				const resp = await fetch(entry.metricsReadyUrl, { signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS) });
+				if (resp.ok) return true;
+			} catch {
+				// Edge connection not up yet (connection refused / timeout) — keep polling.
+			}
+		}
+		await delay(pollMs);
+	}
+	return false;
+}
+
 async function waitForUrl(urlPromise: Promise<string | null>, timeoutMs: number): Promise<string | null> {
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
@@ -252,9 +288,18 @@ async function startEntry(opts: StartTunnelOptions): Promise<TunnelEntry> {
 
 		const url = await waitForUrl(monitorStderr(entry, proc.stderr!), URL_WAIT_TIMEOUT_MS);
 		if (url) {
+			// Wait until the edge actually routes the hostname before publishing it,
+			// so a browser scanning the QR / opening the link never hits NXDOMAIN.
+			const edgeReady = await waitForEdgeReady(entry, TUNNEL_EDGE_READY.timeoutMs, TUNNEL_EDGE_READY.pollMs);
+			// Bail if the tunnel was stopped or its process died during the wait —
+			// never resurrect a dead entry into "connected".
+			if (tunnels.get(opts.id) !== entry || entry.process === null) return entry;
 			entry.url = url;
 			entry.state = "connected";
-			log.info("Tunnel connected", { id: opts.id, url });
+			log.info("Tunnel connected", { id: opts.id, url, edgeReady });
+			if (!edgeReady) {
+				log.warn("Tunnel /ready not confirmed within timeout; publishing URL best-effort", { id: opts.id, url });
+			}
 			startHealthMonitor(entry);
 			return entry;
 		}
