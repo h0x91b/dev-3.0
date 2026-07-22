@@ -560,7 +560,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 
 				{/* Prevent-sleep toggle — keeps the machine awake while dev-3.0 runs.
 				    Folded into the kebab bottom sheet on narrow. */}
-				{!isNarrow && <PreventSleepToggle compact={compact} />}
+				{!isNarrow && <PreventSleepToggle />}
 
 				{/* Ambient agent rate-limit indicator — hidden until any limit data exists
 				    (folded into the kebab bottom sheet on narrow). */}
@@ -623,7 +623,6 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 							aria-label={t("header.remoteAccessTooltip")}
 						>
 							<RemoteQRIcon className="w-[1.125rem] h-[1.125rem]" />
-							{!compact && <span className="text-[0.6875rem] font-medium">Remote</span>}
 						</button>
 				</Tooltip>
 				)}
@@ -784,7 +783,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 					    state / popovers / modals keep working (those overlays layer above
 					    the sheet — see the z-index in TmuxSessionManager / GitPullErrorModal). */}
 					<div className="flex flex-wrap items-center gap-1.5 pb-3 mb-1 border-b border-edge/60">
-						<PreventSleepToggle compact={false} />
+						<PreventSleepToggle />
 						<RateLimitIndicator compact={false} />
 						{currentProjectId && !isVirtualProject && (
 							<GitPullButton projectId={currentProjectId} compact={false} />
