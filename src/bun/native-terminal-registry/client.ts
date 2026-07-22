@@ -14,15 +14,19 @@ import {
 	decodeError,
 	encodeControl,
 	helloMessage,
+	ownershipRequest,
 	resizeMessage,
 	statusRequest,
 	stopRequest,
 	type ErrorMessage,
+	type OwnershipReply,
 	type StatusReply,
 } from "./protocol";
+import { DEFAULT_JOURNAL_MAX_BYTES } from "./journal";
 import { readJournalTail } from "./journal-read";
 import type { NativeSessionRecord } from "./record";
 import { readRecord, readToken } from "./record";
+import type { ClientRole, WriterAction } from "./writer-ownership";
 
 const encoder = new TextEncoder();
 
@@ -37,12 +41,32 @@ export class NativeSessionClient {
 	private nextId = 1;
 	private helloId = 0;
 	private readonly outputCbs: Array<(bytes: Uint8Array) => void> = [];
+	private readonly errorCbs: Array<(error: ErrorMessage) => void> = [];
+	private readonly disconnectCbs: Array<() => void> = [];
+	private readonly bufferedOutput: Uint8Array[] = [];
+	private bufferedOutputBytes = 0;
 	private readonly statusPending = new Map<number, Pending<StatusReply>>();
+	private readonly ownershipPending = new Map<number, Pending<OwnershipReply>>();
 	private readonly stopResolvers: Array<() => void> = [];
 	private helloPending: Pending<void> | null = null;
+	private currentRole: ClientRole | null = null;
 
 	onOutput(cb: (bytes: Uint8Array) => void): void {
 		this.outputCbs.push(cb);
+		for (const bytes of this.bufferedOutput.splice(0)) cb(bytes);
+		this.bufferedOutputBytes = 0;
+	}
+
+	onError(cb: (error: ErrorMessage) => void): void {
+		this.errorCbs.push(cb);
+	}
+
+	onDisconnect(cb: () => void): void {
+		this.disconnectCbs.push(cb);
+	}
+
+	getRole(): ClientRole | null {
+		return this.currentRole;
 	}
 
 	async connect(record: NativeSessionRecord, token: string, opts: { timeoutMs?: number } = {}): Promise<void> {
@@ -110,13 +134,25 @@ export class NativeSessionClient {
 	}
 
 	private onClose(): void {
+		this.currentRole = null;
 		if (this.helloPending) {
 			clearTimeout(this.helloPending.timer);
 			const pending = this.helloPending;
 			this.helloPending = null;
 			pending.reject(new Error("connection closed before welcome"));
 		}
+		for (const [id, pending] of this.statusPending) {
+			clearTimeout(pending.timer);
+			pending.reject(new Error("connection closed before status reply"));
+			this.statusPending.delete(id);
+		}
+		for (const [id, pending] of this.ownershipPending) {
+			clearTimeout(pending.timer);
+			pending.reject(new Error("connection closed before ownership reply"));
+			this.ownershipPending.delete(id);
+		}
 		for (const r of this.stopResolvers.splice(0)) r();
+		for (const cb of this.disconnectCbs.splice(0)) cb();
 	}
 
 	private onMessage(ev: MessageEvent): void {
@@ -136,10 +172,21 @@ export class NativeSessionClient {
 					this.statusPending.delete(reply.id);
 					pending.resolve(reply);
 				}
+			} else if (msg.type === "ownership" && "role" in msg) {
+				const reply = msg as OwnershipReply;
+				const pending = this.ownershipPending.get(reply.id);
+				if (pending) {
+					clearTimeout(pending.timer);
+					this.ownershipPending.delete(reply.id);
+					this.currentRole = reply.role;
+					pending.resolve(reply);
+				}
 			} else if (msg.type === "stopping") {
 				for (const r of this.stopResolvers.splice(0)) r();
 			} else if (msg.type === "error") {
-				this.rejectPendingByError(msg as ErrorMessage);
+				const error = msg as ErrorMessage;
+				for (const cb of this.errorCbs) cb(error);
+				this.rejectPendingByError(error);
 			}
 			return;
 		}
@@ -150,6 +197,15 @@ export class NativeSessionClient {
 			bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 		}
 		if (!bytes) return;
+		if (this.outputCbs.length === 0) {
+			const copy = bytes.slice();
+			this.bufferedOutput.push(copy);
+			this.bufferedOutputBytes += copy.byteLength;
+			while (this.bufferedOutput.length > 1 && this.bufferedOutputBytes > DEFAULT_JOURNAL_MAX_BYTES) {
+				this.bufferedOutputBytes -= this.bufferedOutput.shift()!.byteLength;
+			}
+			return;
+		}
 		for (const cb of this.outputCbs) cb(bytes);
 	}
 
@@ -160,6 +216,7 @@ export class NativeSessionClient {
 		if (welcome && welcome.type === "welcome" && welcome.id === this.helloId) {
 			clearTimeout(pending.timer);
 			this.helloPending = null;
+			this.currentRole = welcome.role ?? "writer";
 			pending.resolve();
 			return;
 		}
@@ -173,11 +230,12 @@ export class NativeSessionClient {
 
 	private rejectPendingByError(err: ErrorMessage): void {
 		if (err.id === undefined) return;
-		const pending = this.statusPending.get(err.id);
+		const pending = this.statusPending.get(err.id) ?? this.ownershipPending.get(err.id);
 		if (!pending) return;
 		clearTimeout(pending.timer);
 		this.statusPending.delete(err.id);
-		pending.reject(new Error(`native session error: ${err.code}`));
+		this.ownershipPending.delete(err.id);
+		pending.reject(new Error(`native session error: ${err.code}${err.message ? ` (${err.message})` : ""}`));
 	}
 
 	/** Keystrokes go as a BINARY frame (host reads binary as PTY input, text as JSON control). */
@@ -210,6 +268,30 @@ export class NativeSessionClient {
 		});
 	}
 
+	private requestOwnership(action: WriterAction, opts: { timeoutMs?: number } = {}): Promise<OwnershipReply> {
+		return new Promise((resolve, reject) => {
+			if (!this.ws) {
+				reject(new Error("not connected"));
+				return;
+			}
+			const id = this.nextId++;
+			const timer = setTimeout(() => {
+				this.ownershipPending.delete(id);
+				reject(new Error(`ownership ${action} timeout`));
+			}, opts.timeoutMs ?? 3000);
+			this.ownershipPending.set(id, { resolve, reject, timer });
+			this.ws.send(encodeControl(ownershipRequest(id, action)));
+		});
+	}
+
+	claimWriter(opts: { timeoutMs?: number } = {}): Promise<OwnershipReply> {
+		return this.requestOwnership("claim", opts);
+	}
+
+	releaseWriter(opts: { timeoutMs?: number } = {}): Promise<OwnershipReply> {
+		return this.requestOwnership("release", opts);
+	}
+
 	requestStop(opts: { timeoutMs?: number } = {}): Promise<void> {
 		return new Promise((resolve) => {
 			if (!this.ws) {
@@ -233,5 +315,6 @@ export class NativeSessionClient {
 			// already closed
 		}
 		this.ws = null;
+		this.currentRole = null;
 	}
 }

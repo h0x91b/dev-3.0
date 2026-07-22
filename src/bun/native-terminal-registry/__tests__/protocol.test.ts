@@ -10,6 +10,8 @@ import {
 	helloMessage,
 	MAX_CONTROL_FRAME_BYTES,
 	NATIVE_SESSION_PROTOCOL_VERSION,
+	ownershipReply,
+	ownershipRequest,
 	resizeMessage,
 	statusRequest,
 	stoppingEvent,
@@ -24,8 +26,10 @@ describe("native-session protocol v1", () => {
 		for (const msg of [
 			resizeMessage(120, 40),
 			statusRequest(7),
+			ownershipRequest(8, "claim"),
+			ownershipReply(8, "writer", true),
 			stopRequest(),
-			welcomeMessage(1, "alpha"),
+			welcomeMessage(1, "alpha", "writer"),
 			errorMessage("version-mismatch", 1, "nope"),
 			stoppingEvent(),
 		]) {
@@ -40,6 +44,9 @@ describe("native-session protocol v1", () => {
 		expect(decodeControl(JSON.stringify({ v: V + 1, type: "status", id: 1 }))).toBeNull();
 		expect(decodeControl(JSON.stringify({ v: V, type: "nope" }))).toBeNull();
 		expect(decodeControl(JSON.stringify({ v: V, type: "resize", cols: "x", rows: 1 }))).toBeNull();
+		expect(
+			decodeControl(JSON.stringify({ v: V, type: "welcome", id: 1, sessionId: "alpha", protocolVersion: V, role: "owner" })),
+		).toBeNull();
 	});
 
 	it("requires an id on a status frame (it is a correlated request/response)", () => {

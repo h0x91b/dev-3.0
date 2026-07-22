@@ -22,6 +22,7 @@ of older dev3 versions on the same machine — are completely unaffected.
 | `record.ts` | Versioned registry record, atomic write/read, token privacy, token-matched removal. |
 | `process-identity.ts` / `-native.ts` | Liveness probe + POSIX start-signature (the reused-PID defence). |
 | `ownership.ts` | Passive `owned`/`dead`/`reused` verdict — never attaches, never signals. |
+| `writer-ownership.ts` | Ephemeral one-writer/many-observer state and atomic claim/release. |
 | `windows-job.ts` | Token-named Job Object containment (registry namespace). |
 | `protocol.ts` | Wire protocol: binary frames = PTY bytes, text frames = JSON control. |
 | `journal.ts` / `journal-read.ts` | Bounded, atomic, independent per-session output journal. |
@@ -69,6 +70,10 @@ touched, renamed, moved, or rewritten.
   partial temp file is never published or accepted as current state.
 - **Token privacy.** The bearer token lives only in the 0600 `token` file;
   `list`/`status` output and every serialised record are token-free.
+- **One writer, many observers.** The first authenticated client writes and
+  resizes; later clients receive output and reconstructed state only. A writer
+  release/disconnect leaves a vacant slot while observers remain, and one
+  explicit atomic claim wins it. No writer lease is persisted or auto-promoted.
 
 ## Protocol v1 (frozen)
 
@@ -79,16 +84,26 @@ the version `v`; `NATIVE_SESSION_PROTOCOL_VERSION = 1`.
 
 - **Token = the only auth.** The per-session bearer token is presented as the
   `?token=` query param and checked at WebSocket upgrade; a mismatch is HTTP 401
-  (`unauthorized`). No accounts, login, roles, refresh, or encryption — loopback
-  TCP simply lacks the tmux Unix-socket filesystem permission it replaces.
+  (`unauthorized`). No accounts, login, authorization roles, refresh, or
+  encryption — loopback TCP simply lacks the tmux Unix-socket filesystem
+  permission it replaces.
 - **Hello handshake.** The client's first frame is `hello{v, sessionId, id}`,
   parsed *version-agnostically* so the host can answer a foreign version. The host
-  replies `welcome{id, sessionId, protocolVersion}` (accept) or one explicit
+  replies `welcome{id, sessionId, protocolVersion, role}` (accept) or one explicit
   `error{code, id?}` and closes only that socket — the host, shell, and other
   clients stay alive.
-- **Request `id` only on correlated pairs.** `hello→welcome` and `status→status`
-  carry an `id` so a reply is never confused with an unsolicited event. `resize`
-  and `stop` are fire-and-forget; `stopping` and `exit` are unsolicited events.
+- **Request `id` only on correlated pairs.** `hello→welcome`, `status→status`,
+  and `ownership→ownership` carry an `id`. `resize` and `stop` remain
+  fire-and-forget; `stopping` and `exit` are unsolicited events.
+- **Writer ownership is coordination, not authorization.** The host admits every
+  token-bearing client, fans the same PTY output to all of them, and accepts PTY
+  input/resize only from the current writer. `ownership{action:"claim"|"release"}`
+  is a host-local compare-and-set; a competing claim gets `conflict` and stays
+  connected.
+- **Atomic replay→live boundary.** An accepted hello queues the authoritative
+  in-memory journal tail before later PTY callbacks can fan out live bytes to
+  that socket. The client buffers this bounded replay until its output listener
+  attaches, so it never races the journal's debounced disk flush.
 - **One compact error shape.** `error{v, type:"error", code, id?, message?}` with
   codes `bad-request | unauthorized | version-mismatch | not-found | conflict |
   internal-error` — the full set this transport currently emits, nothing
@@ -109,10 +124,12 @@ client gets exactly one `version-mismatch` error. See
 | client→host | `hello{sessionId, id}` | request |
 | client→host | `resize{cols, rows}` | — |
 | client→host | `status{id}` | request |
+| client→host | `ownership{id, action:"claim"|"release"}` | request |
 | client→host | `stop` | — |
-| host→client | `welcome{id, sessionId, protocolVersion}` | echoes hello |
+| host→client | `welcome{id, sessionId, protocolVersion, role}` | echoes hello |
 | host→client | `error{code, id?, message?}` | echoes request when answering one |
-| host→client | `status{id, sessionId, paneId, hostPid, shellPid, cols, rows, alive, startedAt}` | echoes request |
+| host→client | `status{id, sessionId, paneId, hostPid, shellPid, cols, rows, alive, startedAt, clientRole, writerAttached}` | echoes request |
+| host→client | `ownership{id, role, writerAttached}` | echoes ownership |
 | host→client | `stopping` | event |
 | host→client | `exit{code}` | event |
 
@@ -170,11 +187,14 @@ changed, unknown-schema, and unrelated state remain untouched.
 bun src/bun/native-terminal-registry/cli.ts start alpha
 bun src/bun/native-terminal-registry/cli.ts start bravo
 bun src/bun/native-terminal-registry/cli.ts list
-bun src/bun/native-terminal-registry/cli.ts attach alpha   # type; Ctrl-] to detach — shell keeps running
-bun src/bun/native-terminal-registry/cli.ts attach alpha   # reattach: same shell, state + journal intact
+bun src/bun/native-terminal-registry/cli.ts attach alpha   # first client = writer; Ctrl-\\ release/claim, Ctrl-] detach
+bun src/bun/native-terminal-registry/cli.ts attach alpha   # second client = observer; sees the same output + journal
 bun src/bun/native-terminal-registry/cli.ts cleanup-stale  # remove token-matched dead session state
 bun src/bun/native-terminal-registry/cli.ts stop alpha     # stops ONLY alpha; bravo keeps running
 ```
+
+For the visible two-window Windows takeover and resize exercise, follow
+[`MULTI-CLIENT-WINDOWS.md`](MULTI-CLIENT-WINDOWS.md).
 
 ## Tests
 
@@ -183,6 +203,10 @@ bun src/bun/native-terminal-registry/cli.ts stop alpha     # stops ONLY alpha; b
   survival + fresh reattach (host/shell/state/independent journal), duplicate
   start → already-running, isolated stop, passive stale/reused cleanup, token
   privacy, and that tmux is never invoked. Expected final line: `ALL CHECKS PASSED`.
+- `bun run test:native-multi-client-e2e` — real-runtime two-client lifecycle on
+  native Windows, macOS, and Linux: equal output/reconstruction, one writer,
+  observer conflicts, one-winner claim race, disconnect/reconnect, writer-only
+  resize, restart-cleared ownership, and the tmux sentinel.
 - `bun run test:native-live-parser-e2e` — the seq 1228 live-parser proof: DSR
   write-back exactly once, detach-boundary reconstruction equal to a
   ground-truth replay, explicit bounded overflow, contained parser faults, and
@@ -199,4 +223,8 @@ bun src/bun/native-terminal-registry/cli.ts stop alpha     # stops ONLY alpha; b
   Win32 handle lifecycle, and import-graph/tmux isolation; part of `bun run test`.
 
 See [decision 151](../../../decisions/151-native-session-registry.md) for the
-record format, lifecycle invariants, and future protocol-negotiation boundaries.
+record format and lifecycle boundaries, and
+[decision 158](../../../decisions/158-native-client-writer-ownership.md) for the
+multi-client ownership semantics. See
+[decision 159](../../../decisions/159-native-host-crash-recovery.md) for abrupt
+host recovery and its platform-specific containment guarantees.

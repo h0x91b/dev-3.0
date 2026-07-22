@@ -48,6 +48,11 @@ jobs:
       - name: Native-session host crash recovery E2E
         run: bun run test:native-crash-e2e
 
+      # Seq 1237 writer/observer proof. The same real-runtime lifecycle runs on
+      # native Windows and POSIX: concurrent attach, claim races, reconnect, and resize.
+      - name: Native-session two-client lifecycle E2E
+        run: bun run test:native-multi-client-e2e
+
       # Seq 1228 live-parser proof. Gates ONLY the deferred path; `callback`
       # mode is printed as evidence and is EXPECTED to fail on Windows
       # Bun 1.3.14 (the preserved seq 1185 reproduction, decision 146).

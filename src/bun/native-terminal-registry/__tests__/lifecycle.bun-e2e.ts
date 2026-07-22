@@ -119,7 +119,8 @@ function rawFirstFrameProbe(
 			ws.send(firstFrame);
 		});
 		ws.addEventListener("message", (ev) => {
-			const parsed = typeof ev.data === "string" ? (JSON.parse(ev.data) as Record<string, unknown>) : null;
+			if (typeof ev.data !== "string") return; // attach replay is binary PTY output, not a control reply
+			const parsed = JSON.parse(ev.data) as Record<string, unknown>;
 			if (secondFrame !== undefined && !sentSecond) {
 				reply = parsed;
 				sentSecond = true;
