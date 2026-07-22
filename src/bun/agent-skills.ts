@@ -728,6 +728,7 @@ Every agent running in dev3 knows perfectly well it lives inside a tmux session,
 - **"Look at the pane on the right — there's an error."** Typical case: the dev server runs in a pane next to the agent (or you launched something yourself) and an error shows up. Tell the main agent to look at that pane — it reads the output and keeps working with what it saw.
 - **"Open a pane below / a new window and run X there."** The agent can create panes and whole tmux windows (tmux has windows — they're the tabs), run any command inside them, and keep long-running things visible right next to itself.
 - **"Move it, shrink it, make it bigger."** Rearranging windows, resizing panes, renaming tabs — just ask; the agent manages the layout too.
+- **Paste and drop files straight into any terminal.** Hit ⌘V / Ctrl+V with an image in the clipboard — it's uploaded automatically and its file path lands in the terminal, ready for the agent. Drag & drop any file onto the terminal — same story: uploaded, full path typed into stdin. Even a huge pasted text block is saved as a file with its path injected, instead of flooding the terminal.
 
 The full mechanics live in \`/dev3-tmux\` — the agent reaches for it on its own when needed.
 
