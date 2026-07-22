@@ -60,6 +60,52 @@ touched, renamed, moved, or rewritten.
 - **Token privacy.** The bearer token lives only in the 0600 `token` file;
   `list`/`status` output and every serialised record are token-free.
 
+## Protocol v1 (frozen)
+
+A deliberately small **local** protocol over one loopback WebSocket — not an RPC
+framework, not capability negotiation. Two channels: BINARY frames = raw PTY
+bytes; TEXT frames = the JSON control messages below. Every control frame carries
+the version `v`; `NATIVE_SESSION_PROTOCOL_VERSION = 1`.
+
+- **Token = the only auth.** The per-session bearer token is presented as the
+  `?token=` query param and checked at WebSocket upgrade; a mismatch is HTTP 401
+  (`unauthorized`). No accounts, login, roles, refresh, or encryption — loopback
+  TCP simply lacks the tmux Unix-socket filesystem permission it replaces.
+- **Hello handshake.** The client's first frame is `hello{v, sessionId, id}`,
+  parsed *version-agnostically* so the host can answer a foreign version. The host
+  replies `welcome{id, sessionId, protocolVersion}` (accept) or one explicit
+  `error{code, id?}` and closes only that socket — the host, shell, and other
+  clients stay alive.
+- **Request `id` only on correlated pairs.** `hello→welcome` and `status→status`
+  carry an `id` so a reply is never confused with an unsolicited event. `resize`
+  and `stop` are fire-and-forget; `stopping` and `exit` are unsolicited events.
+- **One compact error shape.** `error{v, type:"error", code, id?, message?}` with
+  codes `bad-request | unauthorized | version-mismatch | not-found | conflict |
+  internal-error` — the full set this transport currently emits, nothing
+  speculative.
+- **Robust rejection.** A malformed frame, an oversized TEXT frame
+  (`> MAX_CONTROL_FRAME_BYTES`), an invalid token, or an unsupported hello version
+  is rejected without crashing, changing registry state, killing the host, or
+  killing the shell. Additive unknown fields on a known type are ignored.
+
+**Rule for a future breaking change:** bump `NATIVE_SESSION_PROTOCOL_VERSION` and
+handle the new number explicitly — never negotiate a major/minor in-band, add
+capability discovery, or silently reinterpret a foreign version. A mismatched
+client gets exactly one `version-mismatch` error. See
+[decision 154](../../../decisions/154-native-session-protocol-v1.md).
+
+| Direction | Frame | `id`? |
+|-----------|-------|-------|
+| client→host | `hello{sessionId, id}` | request |
+| client→host | `resize{cols, rows}` | — |
+| client→host | `status{id}` | request |
+| client→host | `stop` | — |
+| host→client | `welcome{id, sessionId, protocolVersion}` | echoes hello |
+| host→client | `error{code, id?, message?}` | echoes request when answering one |
+| host→client | `status{id, sessionId, paneId, hostPid, shellPid, cols, rows, alive, startedAt}` | echoes request |
+| host→client | `stopping` | event |
+| host→client | `exit{code}` | event |
+
 ## Try it
 
 ```bash

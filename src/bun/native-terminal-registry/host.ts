@@ -21,10 +21,15 @@ import { readProcessStartSignature } from "./process-identity-native";
 import { JournalWriter } from "./journal";
 import {
 	decodeControl,
+	decodeHello,
 	encodeControl,
+	errorMessage,
+	evaluateHello,
+	exceedsControlFrameLimit,
 	exitEvent,
 	NATIVE_SESSION_PROTOCOL_VERSION,
 	stoppingEvent,
+	welcomeMessage,
 	type StatusReply,
 } from "./protocol";
 import {
@@ -248,15 +253,17 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	const hostStartSignature = readProcessStartSignature(process.pid);
 	const shellStartSignature = readProcessStartSignature(shellPid);
 
-	const server = Bun.serve({
+	// One v1 hello must complete per connection before input/commands are honoured.
+	const server = Bun.serve<{ helloDone: boolean }>({
 		port: config.port ?? 0,
 		hostname: "127.0.0.1",
 		fetch(req, srv) {
 			const url = new URL(req.url);
+			// Token gate = the ErrorCode "unauthorized", surfaced as HTTP 401 before upgrade.
 			if (url.searchParams.get("token") !== token) {
 				return new Response("unauthorized", { status: 401 });
 			}
-			if (srv.upgrade(req)) return undefined;
+			if (srv.upgrade(req, { data: { helloDone: false } })) return undefined;
 			return new Response("dev3 native-session host", { status: 200 });
 		},
 		websocket: {
@@ -267,41 +274,76 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				clients.delete(ws);
 			},
 			message(ws, message) {
-				if (typeof message !== "string") {
-					proc.terminal?.write(message);
-					return;
-				}
-				const msg = decodeControl(message);
-				if (!msg) return;
-				if (msg.type === "resize") {
-					currentCols = msg.cols;
-					currentRows = msg.rows;
+				try {
+					handleFrame(ws, message);
+				} catch (err) {
+					// A bad frame must never crash the host, change registry state, or kill the shell.
 					try {
-						proc.terminal?.resize(msg.cols, msg.rows);
+						ws.send(encodeControl(errorMessage("internal-error", undefined, err instanceof Error ? err.message : String(err))));
 					} catch {
-						// terminal already closed
+						// dead client
 					}
-					persist();
-				} else if (msg.type === "status") {
-					ws.send(encodeControl(currentStatus()));
-				} else if (msg.type === "stop") {
-					for (const c of clients) {
-						try {
-							c.send(encodeControl(stoppingEvent()));
-						} catch {
-							// dead client
-						}
-					}
-					void shutdown(0);
 				}
 			},
 		},
 	});
 
-	function currentStatus(): StatusReply {
+	function handleFrame(ws: Bun.ServerWebSocket<{ helloDone: boolean }>, message: string | Uint8Array): void {
+		if (typeof message === "string") {
+			if (exceedsControlFrameLimit(message)) {
+				ws.send(encodeControl(errorMessage("bad-request", undefined, "control frame too large")));
+				return;
+			}
+			if (!ws.data.helloDone) {
+				const verdict = evaluateHello(message, sessionId);
+				if (!verdict.ok) {
+					ws.send(encodeControl(verdict.error));
+					ws.close(); // close ONLY this socket — host, shell, and other clients stay alive
+					return;
+				}
+				ws.data.helloDone = true;
+				ws.send(encodeControl(welcomeMessage(verdict.id, sessionId)));
+				return;
+			}
+			const dupHello = decodeHello(message);
+			if (dupHello) {
+				ws.send(encodeControl(errorMessage("conflict", dupHello.id, "hello already completed")));
+				return;
+			}
+			const msg = decodeControl(message);
+			if (!msg) return; // drop unparseable / forward-additive control quietly
+			if (msg.type === "resize") {
+				currentCols = msg.cols;
+				currentRows = msg.rows;
+				try {
+					proc.terminal?.resize(msg.cols, msg.rows);
+				} catch {
+					// terminal already closed
+				}
+				persist();
+			} else if (msg.type === "status") {
+				ws.send(encodeControl(currentStatus(msg.id)));
+			} else if (msg.type === "stop") {
+				for (const c of clients) {
+					try {
+						c.send(encodeControl(stoppingEvent()));
+					} catch {
+						// dead client
+					}
+				}
+				void shutdown(0);
+			}
+			return;
+		}
+		if (!ws.data.helloDone) return; // ignore PTY input before the handshake completes
+		proc.terminal?.write(message);
+	}
+
+	function currentStatus(id: number): StatusReply {
 		return {
 			v: NATIVE_SESSION_PROTOCOL_VERSION,
 			type: "status",
+			id,
 			sessionId,
 			paneId,
 			hostPid: process.pid,

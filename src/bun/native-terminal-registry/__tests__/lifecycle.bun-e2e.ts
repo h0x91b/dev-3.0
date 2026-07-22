@@ -26,6 +26,7 @@ import { spawn, spawnSync } from "../../spawn";
 import { NativeSessionClient } from "../client";
 import { recordFile, tokenFile } from "../paths";
 import { isProcessAlive } from "../process-identity";
+import { MAX_CONTROL_FRAME_BYTES } from "../protocol";
 import {
 	NATIVE_SESSION_SCHEMA_VERSION,
 	readRecord,
@@ -80,6 +81,65 @@ function makeSink(client: NativeSessionClient): {
 			return null;
 		},
 	};
+}
+
+/**
+ * Open a raw WebSocket (bypassing NativeSessionClient) with `token`, send one
+ * text `firstFrame`, and report the first control reply + whether the host closed
+ * the socket. When `secondFrame` is given, send it after the first reply and
+ * capture a second reply too. Models a hostile/mismatched client probing v1.
+ */
+function rawFirstFrameProbe(
+	record: NativeSessionRecord,
+	token: string,
+	firstFrame: string,
+	secondFrame?: string,
+): Promise<{ reply: Record<string, unknown> | null; second: Record<string, unknown> | null; opened: boolean; closed: boolean }> {
+	const url = `ws://${record.endpoint.address}:${record.endpoint.port}/?token=${encodeURIComponent(token)}`;
+	const ws = new WebSocket(url);
+	return new Promise((resolve) => {
+		let reply: Record<string, unknown> | null = null;
+		let second: Record<string, unknown> | null = null;
+		let opened = false;
+		let settled = false;
+		let sentSecond = false;
+		const finish = (closed: boolean): void => {
+			if (settled) return;
+			settled = true;
+			try {
+				ws.close();
+			} catch {
+				// already closed
+			}
+			resolve({ reply, second, opened, closed });
+		};
+		const to = setTimeout(() => finish(false), 2500);
+		ws.addEventListener("open", () => {
+			opened = true;
+			ws.send(firstFrame);
+		});
+		ws.addEventListener("message", (ev) => {
+			const parsed = typeof ev.data === "string" ? (JSON.parse(ev.data) as Record<string, unknown>) : null;
+			if (secondFrame !== undefined && !sentSecond) {
+				reply = parsed;
+				sentSecond = true;
+				ws.send(secondFrame);
+				return;
+			}
+			if (secondFrame !== undefined) second = parsed;
+			else reply = parsed;
+			clearTimeout(to);
+			finish(false);
+		});
+		ws.addEventListener("close", () => {
+			clearTimeout(to);
+			finish(true);
+		});
+		ws.addEventListener("error", () => {
+			clearTimeout(to);
+			finish(true);
+		});
+	});
 }
 
 const cliEntry = fileURLToPath(new URL("../cli.ts", import.meta.url));
@@ -261,6 +321,41 @@ async function run(): Promise<void> {
 		const dup = await start("alpha", { timeoutMs: 5000 });
 		check(dup.status === "already-running", "duplicate start of a live id returns already-running");
 		check(dup.record.shell.pid === alpha.record.shell.pid, "duplicate start did NOT spawn a second shell");
+
+		// v1 handshake rejects hostile first frames WITHOUT killing the live session.
+		const alphaToken = readFileSync(tokenFile("alpha"), "utf8").trim();
+
+		const mismatch = await rawFirstFrameProbe(alpha.record, alphaToken, JSON.stringify({ v: 999, type: "hello", sessionId: "alpha", id: 1 }));
+		check(mismatch.reply?.type === "error" && mismatch.reply?.code === "version-mismatch", "foreign-version hello gets one explicit version-mismatch error");
+
+		const notHello = await rawFirstFrameProbe(alpha.record, alphaToken, JSON.stringify({ v: 1, type: "status", id: 1 }));
+		check(notHello.reply?.type === "error" && notHello.reply?.code === "bad-request", "a non-hello first frame is rejected as bad-request");
+
+		const oversized = await rawFirstFrameProbe(
+			alpha.record,
+			alphaToken,
+			JSON.stringify({ v: 1, type: "hello", sessionId: "alpha", id: 1, pad: "x".repeat(MAX_CONTROL_FRAME_BYTES + 16) }),
+		);
+		check(oversized.reply?.type === "error" && oversized.reply?.code === "bad-request", "an oversized control frame is rejected without parsing");
+
+		const badToken = await rawFirstFrameProbe(alpha.record, "wrong-token-000000000000000000000000", JSON.stringify({ v: 1, type: "hello", sessionId: "alpha", id: 1 }));
+		check(!badToken.opened && badToken.closed, "an invalid token is rejected at upgrade (HTTP 401), never upgraded to a socket");
+
+		check(isProcessAlive(alpha.record.host.pid) && isProcessAlive(alpha.record.shell.pid), "alpha host + shell stay alive through every rejected handshake");
+
+		const goodHello = await rawFirstFrameProbe(alpha.record, alphaToken, JSON.stringify({ v: 1, type: "hello", sessionId: "alpha", id: 42 }));
+		check(goodHello.reply?.type === "welcome" && goodHello.reply?.id === 42, "a valid v1 hello is still welcomed after the rejected handshakes");
+
+		const dupHello = await rawFirstFrameProbe(
+			alpha.record,
+			alphaToken,
+			JSON.stringify({ v: 1, type: "hello", sessionId: "alpha", id: 7 }),
+			JSON.stringify({ v: 1, type: "hello", sessionId: "alpha", id: 8 }),
+		);
+		check(
+			dupHello.reply?.type === "welcome" && dupHello.second?.type === "error" && dupHello.second?.code === "conflict" && dupHello.second?.id === 8,
+			"a second hello on an established connection gets conflict",
+		);
 
 		// ── 7. stop alpha only; bravo + guard untouched ──
 		const stoppedAlpha = await stop("alpha", { timeoutMs: 8000 });
