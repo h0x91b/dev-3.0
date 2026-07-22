@@ -25,6 +25,12 @@ of older dev3 versions on the same machine — are completely unaffected.
 | `windows-job.ts` | Token-named Job Object containment (registry namespace). |
 | `protocol.ts` | Wire protocol: binary frames = PTY bytes, text frames = JSON control. |
 | `journal.ts` / `journal-read.ts` | Bounded, independent per-session output journal. |
+| `parser-queue.ts` | Byte-capped callback-side event queue with explicit overflow accounting (seq 1228). |
+| `ghostty-live.ts` | Registry-local Ghostty core: ingest, replies, semantic inspection (seq 1228). |
+| `live-parser.ts` | Deferred parsing pipeline — the ONLY place Ghostty runs (seq 1228). |
+| `parser-state.ts` | Bounded, versioned, fail-closed semantic snapshot = the reconstruction path (seq 1228). |
+| `stream-tap.ts` | Env-gated ordered ground-truth tap for proof runs (seq 1228). |
+| `regression-probe.ts` | Runnable seq 1185 repro: Ghostty inside vs outside the terminal callback. |
 | `host.ts` | Detached process owning ONE `Bun.Terminal` shell; publishes record + token + journal. |
 | `client.ts` | Short-lived attach handle; `discover(id)` reconnects a fresh process from disk. |
 | `registry.ts` | `start`/`list`/`status`/`stop`/`cleanupStale`; per-session lock; injectable effects. |
@@ -106,6 +112,34 @@ client gets exactly one `version-mismatch` error. See
 | host→client | `stopping` | event |
 | host→client | `exit{code}` | event |
 
+## Live parser (seq 1228)
+
+Opt-in proof stage: `start <id> --live-parser` (env
+`DEV3_NATIVE_SESSION_LIVE_PARSER=1`) makes the host maintain a real Ghostty
+screen while the shell runs. Three hard boundaries, recorded in
+[decision 155](../../../decisions/155-live-parser-outside-terminal-callback.md):
+
+- **Callback boundary.** The `Bun.Terminal` data callback only journals, fans
+  out, and enqueues into the byte-capped `ParserEventQueue`. Ghostty runs
+  exclusively in the pipeline's deferred event-loop drain — never inside the
+  callback, where Windows Bun 1.3.14 returns a negative WASM allocation pointer
+  (seq 1185; `regression-probe.ts` keeps the repro runnable).
+- **Parser-response loop.** Replies Ghostty generates for terminal queries
+  (DSR/DA/mode) are written back to the SAME PTY, exactly once per query, so
+  interactive TUIs (Neovim, agents) keep operating. Replies are input, the
+  parser only sees output — no feedback loop.
+- **Bounded memory, explicit verdicts.** Queue caps + fixed-scrollback core +
+  capped snapshot; the first dropped chunk parks the parser in an explicit
+  `overflowed` verdict, any parser error in `failed` — the host, shell, raw
+  byte path, and protocol v1 always survive. `parser-state <id>` prints the
+  bounded `parser-state.json` snapshot a fresh client reconstructs from after
+  detach; `--state-tap` adds the unbounded ordered ground-truth tap for proof
+  runs only.
+
+Proofs: `bun run test:native-live-parser-e2e` (also in the Windows/macOS/Ubuntu
+CI job), `regression-probe.ts both`, and the real-TUI matrix in
+[`LIVE-PARSER-MATRIX.md`](LIVE-PARSER-MATRIX.md) with latency/memory budgets.
+
 ## Try it
 
 ```bash
@@ -124,6 +158,10 @@ bun src/bun/native-terminal-registry/cli.ts stop alpha     # stops ONLY alpha; b
   survival + fresh reattach (host/shell/state/independent journal), duplicate
   start → already-running, isolated stop, passive stale/reused cleanup, token
   privacy, and that tmux is never invoked. Expected final line: `ALL CHECKS PASSED`.
+- `bun run test:native-live-parser-e2e` — the seq 1228 live-parser proof: DSR
+  write-back exactly once, detach-boundary reconstruction equal to a
+  ground-truth replay, explicit bounded overflow, contained parser faults, and
+  the tmux sentinel. Expected final line: `ALL CHECKS PASSED`.
 - `__tests__/*.test.ts` — vitest units for paths, record serialization, locking,
   stale detection, PID identity, ownership-safe cleanup, journal, protocol, the
   Win32 handle lifecycle, and import-graph/tmux isolation; part of `bun run test`.
