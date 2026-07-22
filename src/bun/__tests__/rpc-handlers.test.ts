@@ -8862,9 +8862,9 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 	});
 
 	it.each([
-		["manual task flag", { manualCompletion: true }, undefined],
-		["global setting", {}, { suggestCompletingTasksAfterMerge: false }],
-	])("emits a notice-only merge event for %s", async (_name, taskOverrides, settingsOverride) => {
+		["manual task flag", { manualCompletion: true }, undefined, false],
+		["global setting", {}, { suggestCompletingTasksAfterMerge: false }, true],
+	])("emits the expected notice-only merge event for %s", async (_name, taskOverrides, settingsOverride, shouldNotify) => {
 		const project = makeProject();
 		const task = makeTask({
 			status: "review-by-user",
@@ -8895,7 +8895,7 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
 			taskId: task.id,
 			shouldPrompt: false,
-			shouldNotify: true,
+			shouldNotify,
 		}));
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});
@@ -9509,7 +9509,7 @@ describe("prepareMergeCompletionPrompt (force re-check)", () => {
 			fingerprint: FINGERPRINT,
 		});
 
-		expect(first).toEqual({ shouldPrompt: false, shouldNotify: true, fingerprint: FINGERPRINT });
+		expect(first).toEqual({ shouldPrompt: false, shouldNotify: false, fingerprint: FINGERPRINT });
 		expect(second).toEqual({ shouldPrompt: false, shouldNotify: false, fingerprint: FINGERPRINT });
 		expect(data.updateTask).not.toHaveBeenCalled();
 	});

@@ -31,6 +31,7 @@ type LifecyclePushEffect = (
 		payload: {
 			finding: Extract<LifecycleEvent, { type: "mergeDetected" }>;
 			noticeOnly: boolean;
+			shouldNotify: boolean;
 		};
 	}
 	| {

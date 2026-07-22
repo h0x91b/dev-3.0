@@ -1,0 +1,1 @@
+Tasks marked “I’ll complete it myself” no longer show a merge notification when their branch is detected as merged. The global setting that disables completion suggestions still shows its informational merge toast.

@@ -90,7 +90,7 @@ describe("task lifecycle transition table", () => {
 		expect(result.effects).toEqual([]);
 	});
 
-	it("emits a notice without persisting a merge prompt when completion is manual", () => {
+	it("reserves without persisting a merge prompt when completion is manual", () => {
 		const current = state("review-by-user", {
 			facts: {
 				hasWorktree: true,
@@ -114,7 +114,24 @@ describe("task lifecycle transition table", () => {
 		expect(result.effects[1]).toMatchObject({
 			type: "push",
 			message: "branchMerged",
-			payload: { noticeOnly: true },
+			payload: { noticeOnly: true, shouldNotify: false },
+		});
+	});
+
+	it("keeps the informational notice when global merge suggestions are disabled", () => {
+		const result = transition(state("review-by-user"), {
+			type: "mergeDetected",
+			branchName: "refactor/lifecycle",
+			fingerprint: "v1:refactor/lifecycle:abc123",
+			precise: true,
+			detectedAt: "2026-07-21T12:00:00.000Z",
+			suggestCompletion: false,
+		});
+
+		expect(result.effects[1]).toMatchObject({
+			type: "push",
+			message: "branchMerged",
+			payload: { noticeOnly: true, shouldNotify: true },
 		});
 	});
 
