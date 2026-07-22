@@ -25,13 +25,18 @@ function windowsArg(value: string): string {
 	return `${quoted}${"\\".repeat(backslashes * 2)}"`;
 }
 
-export function powershellArgvProbeCommand(args: string[]): string {
-	assertSingleLineArgs(args);
-	return `& $env:DEV3_BUN_EXE $env:DEV3_ARG_PROBE ${args.map(powershellLiteral).join(" ")}`;
+export function powershellArgvProbeCommand(executable: string, probePath: string, args: string[]): string {
+	assertSingleLineArgs([executable, probePath, ...args]);
+	const argumentLine = [probePath, ...args].map(windowsArg).join(" ");
+	return `$probe = Start-Process -FilePath ${powershellLiteral(executable)} -ArgumentList ${powershellLiteral(argumentLine)} -NoNewWindow -Wait -PassThru; if ($probe.ExitCode -ne 0) { throw "argv probe exited $($probe.ExitCode)" }`;
+}
+
+function cmdBatchArg(value: string): string {
+	return `"${value.replaceAll("%", "%%").replaceAll('"', '""')}"`;
 }
 
 export function cmdArgvProbeBatch(args: string[]): string {
 	assertSingleLineArgs(args);
-	const quotedArgs = args.map((arg) => windowsArg(arg.replaceAll("%", "%%"))).join(" ");
+	const quotedArgs = args.map(cmdBatchArg).join(" ");
 	return `@echo off\r\nsetlocal DisableDelayedExpansion\r\n"%DEV3_BUN_EXE%" "%DEV3_ARG_PROBE%" ${quotedArgs}\r\nendlocal\r\n`;
 }

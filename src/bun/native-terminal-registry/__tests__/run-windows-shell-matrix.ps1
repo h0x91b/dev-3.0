@@ -15,9 +15,20 @@ if (-not $OutDir) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 $OutDir = (Resolve-Path $OutDir).Path
 
-$bun = Get-Command bun -CommandType Application -ErrorAction SilentlyContinue
-if (-not $bun) { throw "bun is required on PATH" }
-$bunVersion = (& $bun.Source --version).Trim()
+function Get-ApplicationPath {
+	param([Parameter(Mandatory = $true)][string]$Name)
+	$path = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue |
+		Where-Object { $_.Source -and (Test-Path -LiteralPath $_.Source -PathType Leaf) } |
+		Select-Object -First 1 -ExpandProperty Source
+	if ($path -and (Test-Path -LiteralPath $path -PathType Leaf)) {
+		return [string]((Resolve-Path -LiteralPath $path).Path)
+	}
+	return ""
+}
+
+$bunPath = Get-ApplicationPath -Name "bun"
+if (-not $bunPath) { throw "bun is required on PATH" }
+$bunVersion = ((& $bunPath --version) | Select-Object -First 1).ToString().Trim()
 if ($bunVersion -ne "1.3.14") { throw "Bun 1.3.14 is required; detected $bunVersion" }
 
 function Get-ApplicationDetection {
@@ -25,8 +36,8 @@ function Get-ApplicationDetection {
 		[string]$Path,
 		[string]$Version
 	)
-	if ($Path -and (Test-Path $Path -PathType Leaf)) {
-		return [ordered]@{ detected = $true; path = (Resolve-Path $Path).Path; version = $Version }
+	if ($Path -and (Test-Path -LiteralPath $Path -PathType Leaf)) {
+		return [ordered]@{ detected = $true; path = (Resolve-Path -LiteralPath $Path).Path; version = $Version }
 	}
 	return [ordered]@{ detected = $false; reason = "requested executable not found" }
 }
@@ -36,10 +47,9 @@ $ps51Version = if (Test-Path $ps51Path) {
 	((& $ps51Path -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
 } else { "" }
 
-$pwsh = Get-Command pwsh.exe -CommandType Application -ErrorAction SilentlyContinue
-$pwshPath = if ($pwsh) { $pwsh.Source } else { "" }
-$pwshVersion = if ($pwsh) {
-	((& $pwsh.Source -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
+$pwshPath = Get-ApplicationPath -Name "pwsh.exe"
+$pwshVersion = if ($pwshPath) {
+	((& $pwshPath -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
 } else { "" }
 
 $cmdPath = $env:ComSpec
@@ -54,9 +64,9 @@ $gitBashCandidates = @(
 if (${env:ProgramFiles(x86)}) {
 	$gitBashCandidates += Join-Path ${env:ProgramFiles(x86)} "Git\bin\bash.exe"
 }
-$git = Get-Command git.exe -CommandType Application -ErrorAction SilentlyContinue
-if ($git) {
-	$gitRoot = Split-Path (Split-Path $git.Source -Parent) -Parent
+$gitPath = Get-ApplicationPath -Name "git.exe"
+if ($gitPath) {
+	$gitRoot = Split-Path (Split-Path $gitPath -Parent) -Parent
 	$gitBashCandidates += Join-Path $gitRoot "bin\bash.exe"
 }
 $gitBashPath = $gitBashCandidates | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1
@@ -67,11 +77,13 @@ $gitBash = if ($gitBashPath) {
 	[ordered]@{ detected = $false; reason = "Git Bash not installed; optional target skipped" }
 }
 
-$wslCommand = Get-Command wsl.exe -CommandType Application -ErrorAction SilentlyContinue
-$wsl = if ($wslCommand) {
-	$distros = @(& $wslCommand.Source -l -q 2>$null | Where-Object { $_.Trim() })
+$wslPath = Get-ApplicationPath -Name "wsl.exe"
+$wsl = if ($wslPath) {
+	$distros = @(& $wslPath -l -q 2>$null |
+		ForEach-Object { ([string]$_).Replace([char]0, "").Trim() } |
+		Where-Object { $_ })
 	$label = if ($distros.Count -gt 0) { ($distros -join ", ") } else { "no registered distributions" }
-	[ordered]@{ detected = $true; path = $wslCommand.Source; version = $label; reason = "optional target detected but intentionally skipped" }
+	[ordered]@{ detected = $true; path = $wslPath; version = $label; reason = "optional target detected but intentionally skipped" }
 } else {
 	[ordered]@{ detected = $false; reason = "wsl.exe not installed; optional target skipped" }
 }
@@ -97,7 +109,7 @@ Write-Host "Bun:" $bunVersion
 Write-Host "Output:" $OutDir
 $previousErrorAction = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-& $bun.Source $matrix $configPath 2>&1 | Tee-Object -FilePath (Join-Path $OutDir "windows-shell-matrix.txt")
+& $bunPath $matrix $configPath 2>&1 | Tee-Object -FilePath (Join-Path $OutDir "windows-shell-matrix.txt")
 $matrixExit = $LASTEXITCODE
 $ErrorActionPreference = $previousErrorAction
 

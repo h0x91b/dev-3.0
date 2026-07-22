@@ -136,8 +136,15 @@ interface InteractiveShellAdapter {
 }
 
 const powershellAdapter: InteractiveShellAdapter = {
-	sendArgvProbe(client) {
-		sendLine(client, powershellArgvProbeCommand(PROBE_ARGS));
+	sendArgvProbe(client, launch) {
+		sendLine(
+			client,
+			powershellArgvProbeCommand(
+				launch.env.DEV3_BUN_EXE,
+				launch.env.DEV3_ARG_PROBE,
+				PROBE_ARGS,
+			),
+		);
 	},
 	setState(client, state) {
 		sendLine(client, `$env:DEV3_SHELL_MATRIX_STATE=${powershellLiteral(state)}; Write-Output "STATE-SET[$env:DEV3_SHELL_MATRIX_STATE]"`);
@@ -194,7 +201,14 @@ async function proveLifecycle(
 		const evidence = readJson<ProbeEvidence>(evidencePath);
 		addCheck(checks, "cwd", sameWindowsPath(evidence.cwd, launch.cwd), "shell observed the Unicode cwd with spaces");
 		addCheck(checks, "environment", evidence.environment === UNICODE_ENV, "shell observed the exact Unicode environment value");
-		addCheck(checks, "argv", JSON.stringify(evidence.arguments) === JSON.stringify(PROBE_ARGS), "shell received spaces, quotes, and metacharacters as exact argv entries");
+		const observedArguments = JSON.stringify(evidence.arguments);
+		const expectedArguments = JSON.stringify(PROBE_ARGS);
+		addCheck(
+			checks,
+			"argv",
+			observedArguments === expectedArguments,
+			`expected ${expectedArguments}; observed ${observedArguments}`,
+		);
 		addCheck(checks, "root-pid", evidence.parentPid === record.shell.pid, "argv probe was launched directly by the recorded root shell PID");
 		const state = `state-${shell.replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
 		const stateSet = waitForText(client, `STATE-SET[${state}]`);

@@ -4,15 +4,21 @@ import { cmdArgvProbeBatch, powershellArgvProbeCommand } from "../shell-probe";
 const args = ["argument with spaces", 'quote"value', "meta & | < > ^ ! % ( ) ;", "plain-tail"];
 
 describe("Windows interactive shell argv probes", () => {
-	it("quotes PowerShell arguments as literal values", () => {
-		expect(powershellArgvProbeCommand(args)).toBe(
-			`& $env:DEV3_BUN_EXE $env:DEV3_ARG_PROBE 'argument with spaces' 'quote"value' 'meta & | < > ^ ! % ( ) ;' 'plain-tail'`,
+	it("uses one Windows-quoted argument line for PowerShell 5.1 and 7", () => {
+		expect(
+			powershellArgvProbeCommand(
+				String.raw`C:\Program Files\Bun\bun.exe`,
+				String.raw`D:\repo path\windows-shell-argv-probe.ts`,
+				args,
+			),
+		).toBe(
+			String.raw`$probe = Start-Process -FilePath 'C:\Program Files\Bun\bun.exe' -ArgumentList '"D:\repo path\windows-shell-argv-probe.ts" "argument with spaces" "quote\"value" "meta & | < > ^ ! % ( ) ;" "plain-tail"' -NoNewWindow -Wait -PassThru; if ($probe.ExitCode -ne 0) { throw "argv probe exited $($probe.ExitCode)" }`,
 		);
 	});
 
-	it("quotes cmd batch arguments for cmd parsing followed by Windows argv parsing", () => {
+	it("keeps cmd quoting balanced around embedded quotes and metacharacters", () => {
 		expect(cmdArgvProbeBatch(args)).toBe(
-			'@echo off\r\nsetlocal DisableDelayedExpansion\r\n"%DEV3_BUN_EXE%" "%DEV3_ARG_PROBE%" "argument with spaces" "quote\\"value" "meta & | < > ^ ! %% ( ) ;" "plain-tail"\r\nendlocal\r\n',
+			'@echo off\r\nsetlocal DisableDelayedExpansion\r\n"%DEV3_BUN_EXE%" "%DEV3_ARG_PROBE%" "argument with spaces" "quote""value" "meta & | < > ^ ! %% ( ) ;" "plain-tail"\r\nendlocal\r\n',
 		);
 	});
 });
