@@ -97,6 +97,21 @@ describe("artifact template provisioning", () => {
 		);
 	});
 
+	it("ensureArtifactTemplateEnv degrades to an empty env instead of throwing when provisioning fails", () => {
+		// A missing/broken artifact starter must never block launching a task — the
+		// starter is only needed when the agent builds a dev3 HTML artifact. Force a
+		// provisioning failure (worktree nested under a regular file → mkdir ENOTDIR)
+		// and assert the launch env comes back empty rather than throwing. Regression
+		// for the "Bundled dev3 artifact template not found" launch blocker on brew.
+		const root = tempDir("dev3-artifact-degrade-");
+		const filePath = join(root, "not-a-dir");
+		writeFileSync(filePath, "i am a file");
+		const worktreePath = join(filePath, "container", "worktree");
+
+		expect(() => ensureArtifactTemplateEnv(project("/repo"), task(), worktreePath)).not.toThrow();
+		expect(ensureArtifactTemplateEnv(project("/repo"), task(), worktreePath)).toEqual({});
+	});
+
 	it("fails loudly when the bundled starter is incomplete", () => {
 		const root = tempDir("dev3-artifact-missing-");
 		const sourceDir = join(root, "bundle");
