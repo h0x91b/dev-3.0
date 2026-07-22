@@ -3,9 +3,13 @@ import userEvent from "@testing-library/user-event";
 import App from "../App";
 import { I18nProvider } from "../i18n";
 
+const rpcTransport = vi.hoisted(() => ({ isElectrobun: true }));
+
 vi.mock("../rpc", () => ({
 	// These App tests assert the desktop layout; keep the browser menu bar unmounted.
-	isElectrobun: true,
+	get isElectrobun() {
+		return rpcTransport.isElectrobun;
+	},
 	getRpcConnectionState: vi.fn(() => "connected"),
 	reconnectRpc: vi.fn(),
 	api: {
@@ -172,12 +176,27 @@ async function renderApp() {
 	);
 }
 
+class FakeWebNotification {
+	static permission: NotificationPermission = "granted";
+	static instances: FakeWebNotification[] = [];
+	onclick: (() => void) | null = null;
+	close = vi.fn();
+
+	constructor(
+		public title: string,
+		public options?: NotificationOptions,
+	) {
+		FakeWebNotification.instances.push(this);
+	}
+}
+
 describe("App keyboard shortcuts", () => {
 	beforeEach(() => {
 		// These assert the DESKTOP keymap (⌘Q, ⌘N, zoom, ⌘1–9). happy-dom looks like
 		// a browser to `isRemote()`, where those combos are dropped/aliased, so fake
 		// the Electrobun webview flag. Safe here because rpc is mocked (above).
 		(window as Window & { __electrobunWebviewId?: number }).__electrobunWebviewId = 1;
+		rpcTransport.isElectrobun = true;
 		vi.clearAllMocks();
 		vi.mocked(api.request.checkSystemRequirements).mockResolvedValue([]);
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);
@@ -556,6 +575,46 @@ describe("App keyboard shortcuts", () => {
 
 			await waitFor(() => expect(screen.getByTestId("task-screen")).toHaveAttribute("data-immersive", "false"));
 			expect(screen.queryByTestId("terminal-immersive-chrome")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("remote web notifications", () => {
+		afterEach(() => {
+			delete (window as unknown as { Notification?: unknown }).Notification;
+		});
+
+		it("opens the task when a Chrome notification is clicked", async () => {
+			rpcTransport.isElectrobun = false;
+			Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+			FakeWebNotification.permission = "granted";
+			FakeWebNotification.instances = [];
+			(window as unknown as { Notification: unknown }).Notification = FakeWebNotification;
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:webNotification", {
+					detail: {
+						taskId: "t-web",
+						projectId: "p1",
+						kind: "event",
+						title: "#7 Task update",
+						body: "Agent finished",
+						level: "info",
+					},
+				}));
+			});
+
+			expect(FakeWebNotification.instances).toHaveLength(1);
+			expect(FakeWebNotification.instances[0].options?.tag).toBeUndefined();
+			act(() => FakeWebNotification.instances[0].onclick?.());
+
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-web"));
 		});
 	});
 
