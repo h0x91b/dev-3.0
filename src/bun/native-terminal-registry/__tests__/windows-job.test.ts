@@ -3,6 +3,7 @@ import {
 	createWindowsJobWithApi,
 	forceTerminateWindowsJobWithApi,
 	isProcessInWindowsJobWithApi,
+	isValidSessionToken,
 	windowsJobExistsWithApi,
 	windowsJobName,
 	type WindowsJobApi,
@@ -30,6 +31,13 @@ describe("native-session Windows Job Object containment", () => {
 	it("names jobs in a registry-specific namespace and rejects bad tokens", () => {
 		expect(windowsJobName(TOKEN)).toBe(`Local\\dev3-native-sess-${TOKEN}`);
 		expect(() => windowsJobName("short")).toThrow("invalid native-session token");
+	});
+
+	it("validates the 48-hex session token format", () => {
+		expect(isValidSessionToken(TOKEN)).toBe(true);
+		for (const bad of ["", "short", "ghost-tok", "z".repeat(48), "a".repeat(47), "a".repeat(49)]) {
+			expect(isValidSessionToken(bad)).toBe(false);
+		}
 	});
 
 	it("enrols the host before spawn with kill-on-close", () => {

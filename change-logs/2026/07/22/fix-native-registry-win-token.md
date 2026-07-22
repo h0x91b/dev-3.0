@@ -1,0 +1,1 @@
+Harden the native-session registry ownership check so a missing or malformed per-session token on Windows returns a "reused" verdict instead of throwing and aborting the whole list/cleanup sweep. Caught by the newly CI-wired Windows lifecycle E2E; dev-internal, no product behavior changes.

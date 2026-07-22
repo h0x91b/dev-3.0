@@ -18,7 +18,7 @@
 import { isProcessAlive, startSignaturesMatch } from "./process-identity";
 import { readProcessStartSignature } from "./process-identity-native";
 import type { NativeSessionRecord } from "./record";
-import { isProcessInWindowsJob } from "./windows-job";
+import { isProcessInWindowsJob, isValidSessionToken } from "./windows-job";
 
 export type OwnershipVerdict = "owned" | "dead" | "reused";
 
@@ -48,7 +48,10 @@ export async function classifyOwnership(
 	if (!probes.isAlive(record.host.pid) || !probes.isAlive(record.shell.pid)) return "dead";
 
 	if (record.ownership.evidenceKind === "windows-job") {
-		if (!token) return "reused";
+		// A missing OR malformed token cannot open the ownership Job Object — treat
+		// the session as unverifiable (reused), never throw and abort the whole
+		// list/cleanup sweep on one corrupt token.
+		if (!token || !isValidSessionToken(token)) return "reused";
 		const hostOwned = await probes.isInJob(token, record.host.pid);
 		const shellOwned = await probes.isInJob(token, record.shell.pid);
 		return hostOwned && shellOwned ? "owned" : "reused";
