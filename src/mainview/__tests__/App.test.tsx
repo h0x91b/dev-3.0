@@ -134,6 +134,9 @@ vi.mock("../components/RequirementsCheck", () => ({
 vi.mock("../components/gauges/GaugeDemo", () => ({
 	default: () => <div data-testid="gauge-demo-screen" />,
 }));
+vi.mock("../labs/native-pane/NativePaneLayoutLab", () => ({
+	default: () => <div data-testid="native-pane-layout-lab-screen" />,
+}));
 vi.mock("../components/ProjectTerminal", () => ({
 	default: () => <div data-testid="project-terminal-screen" />,
 }));
@@ -183,6 +186,14 @@ describe("App keyboard shortcuts", () => {
 		vi.mocked(api.request.getProjects).mockResolvedValue([]);
 		vi.mocked(api.request.getLastRoute).mockResolvedValue({ route: null });
 		vi.mocked(api.request.listTmuxSessions).mockResolvedValue([]);
+	});
+
+	it("opens the native pane layout lab from the debug menu action", async () => {
+		await renderApp();
+		act(() => {
+			window.dispatchEvent(new CustomEvent("rpc:menuAction", { detail: { action: "native-pane-layout-lab" } }));
+		});
+		expect(await screen.findByTestId("native-pane-layout-lab-screen")).toBeInTheDocument();
 	});
 
 	// Quit is gated in the bun `before-quit` handler now (covers menu Quit, dock

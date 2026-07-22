@@ -13,6 +13,7 @@ export interface FakeTerminalStressOptions {
 export interface FakeTerminalStressResult {
 	parameters: Required<FakeTerminalStressOptions>;
 	elapsedMs: number;
+	aborted: boolean;
 	cpu: { userMs: number; systemMs: number; totalMs: number } | null;
 	memory: { beforeBytes: number | null; peakBytes: number | null; afterBytes: number | null; deltaBytes: number | null };
 	events: { output: number; input: number; resize: number; checksum: number };
@@ -39,8 +40,26 @@ function nowMs(): number {
 	return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
+function waitForDuration(durationMs: number, signal?: AbortSignal): Promise<boolean> {
+	if (signal?.aborted) return Promise.resolve(true);
+	return new Promise((resolve) => {
+		let settled = false;
+		const finish = (aborted: boolean) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			signal?.removeEventListener("abort", onAbort);
+			resolve(aborted);
+		};
+		const timer = setTimeout(() => finish(false), durationMs);
+		const onAbort = () => finish(true);
+		signal?.addEventListener("abort", onAbort, { once: true });
+	});
+}
+
 export async function runFakeTerminalStress(
 	options: FakeTerminalStressOptions = {},
+	signal?: AbortSignal,
 ): Promise<FakeTerminalStressResult> {
 	const parameters: Required<FakeTerminalStressOptions> = {
 		paneCount: Math.max(1, Math.floor(options.paneCount ?? 6)),
@@ -89,7 +108,7 @@ export async function runFakeTerminalStress(
 		? process.cpuUsage()
 		: null;
 	const startedAt = nowMs();
-	await new Promise<void>((resolve) => setTimeout(resolve, parameters.durationMs));
+	const aborted = await waitForDuration(parameters.durationMs, signal);
 	const elapsedMs = nowMs() - startedAt;
 	const cpuRaw = cpuStart && typeof process !== "undefined" && typeof process.cpuUsage === "function"
 		? process.cpuUsage(cpuStart)
@@ -111,6 +130,7 @@ export async function runFakeTerminalStress(
 	return {
 		parameters,
 		elapsedMs,
+		aborted,
 		cpu: cpuRaw ? {
 			userMs: cpuRaw.user / 1_000,
 			systemMs: cpuRaw.system / 1_000,

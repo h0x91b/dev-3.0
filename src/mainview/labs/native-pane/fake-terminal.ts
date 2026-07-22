@@ -58,7 +58,7 @@ export class FakeTerminalSession {
 		private readonly counters: RegistryCounters,
 	) {
 		this.streamId = `fake-terminal:${paneId}`;
-		this.outputLines = [`[${paneId}] fake stream ready`];
+		this.outputLines = [`[${paneId}] #0000 · 00/04`];
 	}
 
 	get running(): boolean {
@@ -116,8 +116,8 @@ export class FakeTerminalSession {
 	emitScriptedOutput(): void {
 		if (this.disposed) return;
 		this.outputSequence += 1;
-		const phase = ["compile", "test", "review", "idle"][this.outputSequence % 4];
-		this.emitOutput(`[${this.paneId}] ${String(this.outputSequence).padStart(4, "0")} ${phase}`);
+		const phase = String(this.outputSequence % 4).padStart(2, "0");
+		this.emitOutput(`[${this.paneId}] #${String(this.outputSequence).padStart(4, "0")} · ${phase}/04`);
 	}
 
 	writeInput(data: string): void {

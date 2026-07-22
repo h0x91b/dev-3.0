@@ -25,7 +25,7 @@ beforeEach(() => {
 
 describe("BROWSER_HANDLED_ACTIONS", () => {
 	it("contains actions the router executes in the browser", () => {
-		for (const a of ["open-new-task", "task-move-todo", "term-split-h", "about", "help-github", "gauge-demo", "view-dashboard"]) {
+		for (const a of ["open-new-task", "task-move-todo", "term-split-h", "about", "help-github", "gauge-demo", "native-pane-layout-lab", "view-dashboard"]) {
 			expect(BROWSER_HANDLED_ACTIONS.has(a)).toBe(true);
 		}
 	});
@@ -49,6 +49,12 @@ describe("handleMenuAction — browser-only actions", () => {
 		const ctx = makeCtx();
 		await handleMenuAction("gauge-demo", ctx);
 		expect(ctx.dispatch).toHaveBeenCalledWith({ type: "navigate", route: { screen: "gauge-demo" } });
+	});
+
+	it("navigates to the native pane layout lab", async () => {
+		const ctx = makeCtx();
+		await handleMenuAction("native-pane-layout-lab", ctx);
+		expect(ctx.dispatch).toHaveBeenCalledWith({ type: "navigate", route: { screen: "native-pane-layout-lab" } });
 	});
 
 	it("fetches the version and shows the About dialog for about", async () => {

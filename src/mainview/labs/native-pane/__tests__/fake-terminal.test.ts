@@ -128,4 +128,31 @@ describe("FakeTerminalRegistry", () => {
 		expect(result.cleanupPassed).toBe(true);
 		expect(vi.getTimerCount()).toBe(0);
 	});
+
+	it("aborts a running stress case and releases every timer immediately", async () => {
+		const controller = new AbortController();
+		const resultPromise = runFakeTerminalStress({
+			paneCount: 6,
+			durationMs: 10_000,
+			outputIntervalMs: 10,
+			resizeIntervalMs: 15,
+		}, controller.signal);
+		expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+		controller.abort();
+		await vi.runAllTimersAsync();
+		const result = await resultPromise;
+
+		expect(result.aborted).toBe(true);
+		expect(result.cleanupPassed).toBe(true);
+		expect(result.afterCleanup).toMatchObject({
+			activeSessions: 0,
+			runningTimers: 0,
+			outputSubscriptions: 0,
+			inputSubscriptions: 0,
+			resizeSubscriptions: 0,
+			disposedSessions: 6,
+		});
+		expect(vi.getTimerCount()).toBe(0);
+	});
 });

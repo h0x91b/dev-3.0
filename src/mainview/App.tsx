@@ -32,6 +32,7 @@ import Changelog from "./components/Changelog";
 import GaugeDemo from "./components/gauges/GaugeDemo";
 import ProductivityStatsView from "./components/ProductivityStatsView";
 import ViewportLab from "./components/ViewportLab";
+import NativePaneLayoutLab from "./labs/native-pane/NativePaneLayoutLab";
 import { setToastSuppressed, ToastHost, toast, type ToastEntry } from "./toast";
 import StuckPreparationPopover from "./components/StuckPreparationPopover";
 import FolderPickerHost from "./components/FolderPickerModal";
@@ -2575,6 +2576,8 @@ function App() {
 				return <GaugeDemo navigate={navigate} />;
 			case "viewport-lab":
 				return <ViewportLab navigate={navigate} />;
+			case "native-pane-layout-lab":
+				return <NativePaneLayoutLab navigate={navigate} />;
 			default:
 				return null;
 		}
