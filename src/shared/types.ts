@@ -1522,9 +1522,6 @@ export const MAX_SHARED_IMAGE_BYTES = 25 * 1024 * 1024;
 /** Max images accepted in a single `dev3 show-image` invocation. */
 export const MAX_SHARED_IMAGES_PER_CALL = 20;
 
-/** Per-task cap on retained HTML artifacts; oldest directories are pruned. */
-export const MAX_SHARED_ARTIFACTS_PER_TASK = 20;
-
 /** Maximum accepted HTML source size for `dev3 show-artifact` (bytes). */
 export const MAX_SHARED_ARTIFACT_HTML_BYTES = 5 * 1024 * 1024;
 

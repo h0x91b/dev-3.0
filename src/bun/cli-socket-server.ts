@@ -2,10 +2,10 @@ import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "n
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { socketMetaPathFor, type SocketMeta } from "../shared/socket-meta";
-import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_ARTIFACTS_PER_TASK, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, normalizePriority, titleFromDescription } from "../shared/types";
+import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
-import { SharedArtifactError, deleteSharedArtifactFiles, pruneSharedArtifacts, saveSharedArtifact } from "./shared-artifacts";
+import { SharedArtifactError, saveSharedArtifact } from "./shared-artifacts";
 import { addAutomation, deleteAutomation, loadAutomations, updateAutomation } from "./automations-data";
 import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
@@ -1114,11 +1114,9 @@ const handlers: Record<string, Handler> = {
 			throw new Error(`Failed to store artifact: ${error instanceof Error ? error.message : String(error)}`);
 		}
 
-		const { task: updated, result: dropped } = await data.updateTaskWith<SharedArtifact[]>(project, task.id, (current) => {
-			const pruned = pruneSharedArtifacts(current.sharedArtifacts, [incoming], MAX_SHARED_ARTIFACTS_PER_TASK);
-			return { updates: { sharedArtifacts: pruned.kept }, result: pruned.dropped };
+		const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
+			return { updates: { sharedArtifacts: [...(current.sharedArtifacts ?? []), incoming] }, result: undefined };
 		});
-		if (dropped.length > 0) deleteSharedArtifactFiles(dropped);
 		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
 
 		const payload = {

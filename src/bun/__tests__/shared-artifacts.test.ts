@@ -15,11 +15,9 @@ const SRC_DIR = mkdtempSync(join(tmpdir(), "dev3-artifact-src-"));
 
 import {
 	SharedArtifactError,
-	deleteSharedArtifactFiles,
 	injectArtifactThemeContract,
 	loadSharedArtifactContent,
 	loadSharedArtifactDownload,
-	pruneSharedArtifacts,
 	saveSharedArtifact,
 } from "../shared-artifacts";
 
@@ -149,20 +147,6 @@ describe("saveSharedArtifact", () => {
 		writeFileSync(html, '<!doctype html><img src="../outside.png">');
 		writeFileSync(image, "PNGDATA");
 		expect(() => saveSharedArtifact("/my/project", html, [image])).toThrow(/inside the HTML directory/);
-	});
-});
-
-describe("pruneSharedArtifacts / deleteSharedArtifactFiles", () => {
-	it("keeps newest records and removes an artifact directory recursively", () => {
-		const { kept, dropped } = pruneSharedArtifacts([artifact("a"), artifact("b")], [artifact("c")], 2);
-		expect(kept.map((item) => item.id)).toEqual(["b", "c"]);
-		expect(dropped.map((item) => item.id)).toEqual(["a"]);
-
-		const dir = dirname(dropped[0].storedPath);
-		mkdirSync(dir, { recursive: true });
-		writeFileSync(dropped[0].storedPath, "x");
-		deleteSharedArtifactFiles(dropped);
-		expect(existsSync(dir)).toBe(false);
 	});
 });
 

@@ -17,11 +17,9 @@ import {
 	SHARED_IMAGE_EXTS,
 } from "../shared/types";
 import { DEV3_HOME } from "./paths";
-import { createLogger } from "./logger";
 import { createStoreZip } from "./zip-store";
 import { projectSlug } from "./git";
 
-const log = createLogger("shared-artifacts");
 const IMAGE_EXTS = new Set(SHARED_IMAGE_EXTS);
 const MAX_TOTAL_ASSET_BYTES = 100 * 1024 * 1024;
 const MIME_BY_EXT: Record<string, string> = {
@@ -98,7 +96,6 @@ export function saveSharedArtifact(
 	if (imagePaths.length > MAX_SHARED_ARTIFACT_IMAGES) {
 		throw new SharedArtifactError(`Too many artifact images (max ${MAX_SHARED_ARTIFACT_IMAGES})`);
 	}
-
 	const seenNames = new Set<string>();
 	let totalAssetBytes = 0;
 	const validatedAssets = imagePaths.map((path) => {
@@ -157,26 +154,6 @@ export function saveSharedArtifact(
 		rmSync(dir, { recursive: true, force: true });
 		if (error instanceof SharedArtifactError) throw error;
 		throw new SharedArtifactError(error instanceof Error ? error.message : String(error));
-	}
-}
-
-export function pruneSharedArtifacts(
-	existing: SharedArtifact[] | undefined,
-	incoming: SharedArtifact[],
-	cap: number,
-): { kept: SharedArtifact[]; dropped: SharedArtifact[] } {
-	const all = [...(existing ?? []), ...incoming];
-	if (all.length <= cap) return { kept: all, dropped: [] };
-	return { kept: all.slice(all.length - cap), dropped: all.slice(0, all.length - cap) };
-}
-
-export function deleteSharedArtifactFiles(artifacts: SharedArtifact[]): void {
-	for (const artifact of artifacts) {
-		try {
-			rmSync(dirname(artifact.storedPath), { recursive: true, force: true });
-		} catch (error) {
-			log.debug("Failed to delete pruned artifact", { path: artifact.storedPath, error: String(error) });
-		}
 	}
 }
 
