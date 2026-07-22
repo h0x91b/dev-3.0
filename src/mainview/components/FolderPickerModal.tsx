@@ -419,7 +419,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 					{/* Main */}
 					<main className="flex-1 min-w-0 flex flex-col">
 						{/* Breadcrumbs */}
-						<div className="px-4 py-2 border-b border-edge flex items-center gap-0.5 overflow-x-auto text-xs flex-shrink-0">
+						<div className="px-4 py-2 border-b border-edge flex items-center gap-0.5 overflow-x-auto text-xs flex-shrink-0 streamer-private">
 							{breadcrumbs.map((crumb, idx) => (
 								<div key={crumb.path} className="flex items-center gap-0.5 flex-shrink-0">
 									{idx > 0 && <span className="text-fg-muted px-0.5 select-none">/</span>}
@@ -452,7 +452,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 									spellCheck={false}
 									autoCorrect="off"
 									autoCapitalize="off"
-									className="w-full px-3 py-1.5 bg-raised border border-edge rounded-lg text-fg text-[13px] font-mono outline-none focus:border-accent/50 transition-colors"
+									className="w-full px-3 py-1.5 bg-raised border border-edge rounded-lg text-fg text-[13px] font-mono outline-none focus:border-accent/50 transition-colors streamer-private"
 								/>
 							</form>
 							<label className="relative flex items-center">

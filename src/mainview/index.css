@@ -287,6 +287,22 @@ body, #root {
 		0 2px 8px -2px rgb(var(--col-rgb) / 0.14);
 }
 
+/* ---- Streamer mode (privacy masking) ----
+   `data-streamer="on"` on <html> (streamer-mode.tsx) blurs identity-bearing
+   values: emails, account labels, org names, home-dir paths, tunnel URLs.
+   Blur radius is em-relative so it scales with the text it hides. */
+[data-streamer="on"] .streamer-private {
+	filter: blur(0.45em);
+	opacity: 0.8;
+}
+
+/* Media variant: QR codes / images need a strong fixed radius — an em-based
+   blur on a 224px QR would survive error correction and stay scannable. */
+[data-streamer="on"] .streamer-private-media {
+	filter: blur(1.75rem);
+	opacity: 0.75;
+}
+
 /* ---- Custom scrollbars ---- */
 
 ::-webkit-scrollbar {

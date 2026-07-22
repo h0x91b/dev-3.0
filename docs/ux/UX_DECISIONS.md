@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-23 — Streamer mode: privacy masking is a CSS class contract
+
+- **Rule:** Identity-bearing display values (emails, account labels, orgs, home-dir paths, tunnel URLs, QR) must carry `streamer-private`/`streamer-private-media`; `data-streamer="on"` on `<html>` blurs them. Toggle = Settings → Appearance (`local` storage) + `⇧⌘P` palette command; no header button, no hover-to-reveal.
+- **Why:** CSS-only masking makes coverage one class per value with zero re-render; text replacement was rejected (per-surface logic, silent misses). Bible §10 row; `decisions/161-streamer-mode-css-blur-masking.md`.
+- **Status:** Observed. Evidence: `src/mainview/streamer-mode.tsx`, `index.css`.
+
 ## 2026-07-21 — Inline-help coverage floor is a positive manifest (REQUIRED_HELP_SURFACES)
 
 - **Rule:** `help.ts` exports `REQUIRED_HELP_SURFACES`, the curated list of canonical §5 surfaces/sections; `help.test.ts` asserts each resolves to a topic AND mounts a reachable zone, in addition to the existing dangling/orphan checks. Closing the pre-doctrine backlog wired ~20 new topics (viewers, config modals, project-settings tabs, two settings sub-sections, diff files/PR-conversation, inspector notes/metadata).

@@ -218,6 +218,8 @@ const tips = {
 	"tip.mobileTaskGit.body": "In the mobile task view, tap the \u22ee menu \u2014 rebase, push, create a PR, or open the diff from the Git section.",
 	"tip.terminalSearch.title": "Search the terminal",
 	"tip.terminalSearch.body": "Press \u2318F (Ctrl+F on Linux) in a terminal to search its tmux scrollback \u2014 matches highlight right in the pane.",
+	"tip.streamerMode.title": "Record without leaking identity",
+	"tip.streamerMode.body": "Streamer mode (Settings → Appearance, or ⇧⌘P) blurs emails, account names, paths, and tunnel URLs for screencasts.",
 } as const;
 
 export default tips;

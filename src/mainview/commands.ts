@@ -62,6 +62,7 @@ export const ALL_COMMANDS: PaletteCommand[] = [
 	{ id: "set-locale-en", labelKey: "command.localeEn", category: "app", scope: "always" },
 	{ id: "set-locale-ru", labelKey: "command.localeRu", category: "app", scope: "always" },
 	{ id: "set-locale-es", labelKey: "command.localeEs", category: "app", scope: "always" },
+	{ id: "toggle-streamer-mode", labelKey: "command.toggleStreamerMode", category: "app", scope: "always" },
 
 	// ── Git ──
 	{ id: "project-pull-main", labelKey: "command.pullMain", category: "git", scope: "project" },

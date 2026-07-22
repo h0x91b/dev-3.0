@@ -174,8 +174,8 @@ export function AccountCard({
 		<div className="flex flex-col gap-1.5 rounded-md border border-edge bg-raised/65 px-2.5 py-2">
 			<div className="flex items-center gap-1.5">
 				<span className="text-fg-2 font-medium shrink-0">{SOURCE_NAMES[snap.source] ?? snap.source}</span>
-				{displayName && <span className="min-w-0 truncate text-fg-3">{displayName}</span>}
-				{showOrg && <span className="text-fg-muted whitespace-nowrap shrink-0">· {account?.organization}</span>}
+				{displayName && <span className="min-w-0 truncate text-fg-3 streamer-private">{displayName}</span>}
+				{showOrg && <span className="text-fg-muted whitespace-nowrap shrink-0 streamer-private">· {account?.organization}</span>}
 				{account?.planLabel && (
 					<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">{account.planLabel}</span>
 				)}

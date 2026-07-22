@@ -28,6 +28,19 @@ describe("handleMenuAction — palette openers", () => {
 	});
 });
 
+describe("handleMenuAction — toggle-streamer-mode", () => {
+	it("flips streamer mode on and off (html attribute + persistence)", async () => {
+		localStorage.removeItem("dev3-streamer-mode");
+		delete document.documentElement.dataset.streamer;
+		await handleMenuAction("toggle-streamer-mode", ctx);
+		expect(document.documentElement.dataset.streamer).toBe("on");
+		expect(localStorage.getItem("dev3-streamer-mode")).toBe("on");
+		await handleMenuAction("toggle-streamer-mode", ctx);
+		expect(document.documentElement.dataset.streamer).toBeUndefined();
+		expect(localStorage.getItem("dev3-streamer-mode")).toBe("off");
+	});
+});
+
 describe("handleMenuAction — term-close-pane", () => {
 	const taskCtx = {
 		state: { route: { screen: "task", projectId: "p1", taskId: "task-42" } } as unknown as AppState,

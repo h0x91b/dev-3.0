@@ -126,6 +126,8 @@ const settings = {
 	"settings.zoom": "Zoom",
 	"settings.zoomDesc": "Scale the entire UI",
 	"settings.zoomReset": "Reset",
+	"settings.streamerMode": "Streamer mode",
+	"settings.streamerModeDesc": "Blur emails, account names, organizations, file paths, and tunnel URLs — for screen recordings and screenshots. Terminal content is not masked.",
 	"settings.scrollSpeed": "Terminal scroll speed",
 	"settings.scrollSpeedDesc": "Adjust how fast the terminal scrolls with the mouse wheel",
 	"settings.terminalKeymap": "Terminal Keymap",

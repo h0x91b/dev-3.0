@@ -115,6 +115,14 @@ export const SETTINGS_ENTRIES = [
 		storage: "local",
 	},
 	{
+		id: "streamer-mode",
+		category: "appearance",
+		titleKey: "settings.streamerMode",
+		descriptionKey: "settings.streamerModeDesc",
+		anchor: "streamer-mode",
+		storage: "local",
+	},
+	{
 		id: "task-drop-position",
 		category: "tasks",
 		titleKey: "settings.taskDropPosition",

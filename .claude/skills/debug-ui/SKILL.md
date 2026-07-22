@@ -36,8 +36,10 @@ until curl -sf "http://localhost:$PORT/?token=$CODE" >/dev/null; do sleep 2; don
 # 3. Drive it. Every agent-browser call inherits AGENT_BROWSER_SESSION, so it all runs in
 #    this task's own session. (Load /agent-browser for the full command set.) The screenshot
 #    path is task-scoped too, so parallel agents never overwrite each other's PNG.
+#    `&streamer=on` is MANDATORY: it enables streamer mode (privacy masking), so screenshots
+#    can't leak the developer's real emails/accounts/paths/tunnel URLs (see Gotchas).
 agent-browser set viewport 1440 900
-agent-browser open "http://localhost:$PORT/?token=$CODE"
+agent-browser open "http://localhost:$PORT/?token=$CODE&streamer=on"
 agent-browser wait --load networkidle
 agent-browser screenshot "/tmp/dev3-ui-${DEV3_TASK_ID%%-*}.png"   # then Read it back to look
 agent-browser errors                          # confirm no console errors
@@ -78,6 +80,14 @@ above (see [decision 093](../../../decisions/093-dev-remote-port-from-pool.md)).
 - **No `DEV3_PORT0`?** (portCount 0, or an older worktree where it was never allocated) — run
   your own fixed-port server instead:
   `dev3 remote --no-detach --no-tunnel --static-code $CODE --port 47823` → `:47823/?token=$CODE`.
+- **Every screenshot in streamer mode — no exceptions by default.** The app shows the
+  developer's REAL identity (account emails, orgs, home-dir paths, tunnel URLs, QR codes), and
+  a QA screenshot easily ends up in a PR/issue/recording. `&streamer=on` in the URL forces the
+  privacy masking on for the whole session (it persists in this session's localStorage;
+  `&streamer=off` forces it back off). The masking is CSS blur on `.streamer-private` elements
+  — see `src/mainview/streamer-mode.tsx` and decision 161. Only capture unmasked when the task
+  is explicitly about those values (e.g. testing the accounts UI itself), and say so when
+  presenting the image.
 - **No native dialogs** in browser mode. If a confirm/file-picker flow silently no-ops, that's
   an app bug, not a tooling problem — report it.
 - **Show images to the user AFTER you stop this dev-server, not while it runs.**

@@ -430,7 +430,7 @@ function ActivityOverview({ projects, navigate, bellCounts, onRemoveProject, onO
 										{project.kind === "virtual" ? (
 											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate">{t("ops.tileSubtitle")}</div>
 										) : (
-											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate font-mono">{project.path}</div>
+											<div className="hidden md:block text-fg-3 text-xs mt-0.5 truncate font-mono streamer-private">{project.path}</div>
 										)}
 									</div>
 								</button>

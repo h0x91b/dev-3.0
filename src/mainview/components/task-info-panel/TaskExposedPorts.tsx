@@ -58,7 +58,7 @@ function CopyUrlRow({ url }: { url: string }) {
 			onClick={handleClick}
 			className="flex items-center gap-1.5 text-xs text-accent hover:text-accent-hover w-full text-left rounded px-1 -mx-1 hover:bg-accent/10 transition-colors"
 		>
-			<span className="truncate flex-1">{copied ? t("tunnel.copied") : url}</span>
+			<span className="truncate flex-1 streamer-private">{copied ? t("tunnel.copied") : url}</span>
 			<span
 				className="text-xs leading-none flex-shrink-0"
 				style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}

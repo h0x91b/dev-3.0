@@ -12,6 +12,7 @@ import { initAutoFullscreen } from "./fullscreen";
 import { bootstrapZoom } from "./zoom";
 import { bootstrapScrollSpeed } from "./scroll-speed";
 import { getInitialThemeState, getWindowInjectedThemeState } from "./theme-bootstrap";
+import { initStreamerMode } from "./streamer-mode";
 import RootErrorBoundary from "./components/RootErrorBoundary";
 import MobilePortraitGate from "./components/MobilePortraitGate";
 import { recordError, recordRejection } from "./diagnostics";
@@ -76,6 +77,9 @@ systemThemeMq.addEventListener("change", applySavedTheme);
 
 // Apply saved zoom before React mounts (see zoom.ts for implementation)
 bootstrapZoom();
+
+// Apply saved streamer mode (privacy masking) before React mounts
+initStreamerMode();
 
 // Mobile remote mode: enter fullscreen on the first tap after load (browser
 // chrome wastes a big share of a phone screen). Desktop/Electrobun only get

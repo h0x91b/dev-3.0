@@ -207,6 +207,9 @@ const help = {
 	"help.field.taskBranch.title": "Why this branch?",
 	"help.field.taskBranch.body":
 		"New tasks start from the project's currently checked-out branch when it isn't the base branch — so small tasks stack onto a big feature you're building. Clear the field to fall back to the project's default base branch.",
+	"help.field.streamerMode.title": "Hide private info on stream",
+	"help.field.streamerMode.body":
+		"When on, identity-bearing values — account emails and names, organizations, home-folder paths, tunnel URLs, and the remote-access QR code — are blurred across the UI. Terminal content is NOT masked: panes print whatever agents output. Toggle it quickly from the ⇧⌘P command palette.",
 } as const;
 
 export default help;

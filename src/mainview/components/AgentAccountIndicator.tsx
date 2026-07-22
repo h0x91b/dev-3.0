@@ -267,7 +267,7 @@ function SwitcherPopover({
 					/>
 					<span className="min-w-0 flex-1">
 						<span className="flex items-center gap-2 min-w-0">
-							<span className="text-fg text-sm truncate flex-1">{row.label}</span>
+							<span className="text-fg text-sm truncate flex-1 streamer-private">{row.label}</span>
 							{row.isApi ? (
 								<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
 							) : null}
@@ -280,10 +280,10 @@ function SwitcherPopover({
 						{(row.sub && row.sub !== row.label && !row.label.includes(row.sub)) || row.workspaceLabel ? (
 							<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
 								{row.sub && row.sub !== row.label && !row.label.includes(row.sub) ? (
-									<span className="text-fg-muted text-xs font-mono truncate max-w-full">{row.sub}</span>
+									<span className="text-fg-muted text-xs font-mono truncate max-w-full streamer-private">{row.sub}</span>
 								) : null}
 								{row.workspaceLabel ? (
-									<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full">
+									<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full streamer-private">
 										{row.workspaceLabel}
 									</span>
 								) : null}
@@ -457,7 +457,7 @@ export default function AgentAccountIndicator({
 				>
 					{"\u{F0004}"}
 				</span>
-				<span className="truncate">{activeLabel}</span>
+				<span className="truncate streamer-private">{activeLabel}</span>
 				{selectedAccount?.auth === "api" ? (
 					<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
 				) : null}
