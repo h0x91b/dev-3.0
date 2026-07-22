@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../i18n";
@@ -55,6 +56,16 @@ afterEach(() => {
 });
 
 describe("NativePaneLayoutLab", () => {
+	it("does not start fake sessions during an uncommitted render", () => {
+		const registry = new FakeTerminalRegistry({ outputIntervalMs: 60_000 });
+		renderToString(
+			<I18nProvider>
+				<NativePaneLayoutLab navigate={vi.fn()} registry={registry} />
+			</I18nProvider>,
+		);
+		expect(registry.diagnostics()).toMatchObject({ activeSessions: 0, runningTimers: 0 });
+	});
+
 	it("renders 1, 2, and 6 independent fake terminal streams with stable remount identity", async () => {
 		const user = userEvent.setup();
 		const { registry, unmount } = renderLab();

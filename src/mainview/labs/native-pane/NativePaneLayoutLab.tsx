@@ -171,6 +171,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 	const [tree, setTree] = useState<SplitTree>(() => buildLabTree(1));
 	const [savedSnapshot, setSavedSnapshot] = useState(() => serializeSplitTree(buildLabTree(1)));
 	const [viewEpoch, setViewEpoch] = useState(0);
+	const [, setRegistryRevision] = useState(0);
 	const [stressRunning, setStressRunning] = useState(false);
 	const [stressResult, setStressResult] = useState<FakeTerminalStressResult | null>(null);
 	const mountedRef = useRef(true);
@@ -189,6 +190,7 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 
 	useEffect(() => {
 		registry.reconcile(paneIds);
+		setRegistryRevision((value) => value + 1);
 	}, [registry, paneKey]);
 
 	useEffect(() => {
@@ -234,15 +236,19 @@ export default function NativePaneLayoutLab({ navigate, registry: injectedRegist
 		}
 	};
 
-	const renderPane = (paneId: string): ReactNode => (
-		<FakeTerminalPane
-			key={`${paneId}:${viewEpoch}`}
-			session={registry.ensure(paneId)}
-			active={tree.activePaneId === paneId}
-			onActivate={() => setTree((current) => activatePane(current, paneId))}
-			t={t}
-		/>
-	);
+	const renderPane = (paneId: string): ReactNode => {
+		const session = registry.get(paneId);
+		if (!session) return null;
+		return (
+			<FakeTerminalPane
+				key={`${paneId}:${viewEpoch}`}
+				session={session}
+				active={tree.activePaneId === paneId}
+				onActivate={() => setTree((current) => activatePane(current, paneId))}
+				t={t}
+			/>
+		);
+	};
 
 	const renderNode = (node: SplitNode): ReactNode => {
 		if (node.type === "pane") return renderPane(node.id);
