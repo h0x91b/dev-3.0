@@ -5,6 +5,52 @@ import { UpdateReadyIcon } from "./HeaderIcons";
 /** Static placeholder countdown shown in the simulator (no real timer runs). */
 const PREVIEW_COUNTDOWN_SECONDS = 205;
 
+interface UpdateWhatsNewProps {
+	version: string;
+	changelog?: UpdateChangelog | null;
+	onSeeAllChanges: () => void;
+	/** Extra classes for the root (e.g. top margin when embedded in the toast). */
+	className?: string;
+}
+
+/**
+ * The "what's new" section — version-scoped feature list + a "+N more · M fixes"
+ * rollup + a link to the full Changelog screen. Shared by the header dropdown
+ * popover and the auto-shown update toast so both surface the same preview.
+ * Renders nothing when the incoming update carries no feature titles.
+ */
+export function UpdateWhatsNew({ version, changelog, onSeeAllChanges, className }: UpdateWhatsNewProps) {
+	const t = useT();
+	if (!changelog || changelog.features.length === 0) return null;
+	const moreFeat = Math.max(0, changelog.featureCount - changelog.features.length);
+	const parts: string[] = [];
+	if (moreFeat > 0) parts.push(t.plural("update.moreFeatures", moreFeat));
+	if (changelog.fixCount > 0) parts.push(t.plural("update.fixCount", changelog.fixCount));
+	return (
+		<div className={`border-t border-edge pt-2.5 space-y-1.5${className ? ` ${className}` : ""}`}>
+			<div className="text-fg-3 text-[0.625rem] font-semibold uppercase tracking-wider">
+				{t("update.whatsNewVersion", { version })}
+			</div>
+			<div className="space-y-1">
+				{changelog.features.map((feature, i) => (
+					<div key={i} className="flex items-start gap-1.5 min-w-0">
+						<span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
+						<span className="text-fg text-xs leading-snug truncate">{feature}</span>
+					</div>
+				))}
+			</div>
+			{parts.length > 0 && <div className="text-fg-muted text-[0.6875rem]">{parts.join(" · ")}</div>}
+			<button
+				type="button"
+				onClick={onSeeAllChanges}
+				className="text-accent text-xs font-medium hover:underline cursor-pointer"
+			>
+				{t("update.seeAllChanges")} →
+			</button>
+		</div>
+	);
+}
+
 interface UpdateReadyPopoverProps {
 	version: string;
 	changelog?: UpdateChangelog | null;
@@ -39,35 +85,7 @@ export default function UpdateReadyPopover({
 					<div className="text-fg-3 text-xs mt-0.5">{t("update.sessionsNote")}</div>
 				</div>
 			</div>
-			{changelog && changelog.features.length > 0 && (
-				<div className="border-t border-edge pt-2.5 space-y-1.5">
-					<div className="text-fg-3 text-[0.625rem] font-semibold uppercase tracking-wider">
-						{t("update.whatsNewVersion", { version })}
-					</div>
-					<div className="space-y-1">
-						{changelog.features.map((feature, i) => (
-							<div key={i} className="flex items-start gap-1.5 min-w-0">
-								<span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-accent flex-shrink-0" />
-								<span className="text-fg text-xs leading-snug truncate">{feature}</span>
-							</div>
-						))}
-					</div>
-					{(() => {
-						const moreFeat = Math.max(0, changelog.featureCount - changelog.features.length);
-						const parts: string[] = [];
-						if (moreFeat > 0) parts.push(t.plural("update.moreFeatures", moreFeat));
-						if (changelog.fixCount > 0) parts.push(t.plural("update.fixCount", changelog.fixCount));
-						return parts.length > 0 ? <div className="text-fg-muted text-[0.6875rem]">{parts.join(" · ")}</div> : null;
-					})()}
-					<button
-						type="button"
-						onClick={onSeeAllChanges}
-						className="text-accent text-xs font-medium hover:underline cursor-pointer"
-					>
-						{t("update.seeAllChanges")} →
-					</button>
-				</div>
-			)}
+			<UpdateWhatsNew version={version} changelog={changelog} onSeeAllChanges={onSeeAllChanges} />
 			{preview ? (
 				// Preview mimics the auto-shown toast layout (restart-with-countdown +
 				// Postpone) so the simulator looks like the real update prompt. The

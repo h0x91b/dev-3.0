@@ -11,7 +11,7 @@ import { toast } from "../toast";
 import TmuxSessionManager from "./TmuxSessionManager";
 import InlineRename from "./InlineRename";
 import GitPullButton from "./GitPullButton";
-import UpdateReadyPopover from "./UpdateReadyPopover";
+import UpdateReadyPopover, { UpdateWhatsNew } from "./UpdateReadyPopover";
 import PreventSleepToggle from "./PreventSleepToggle";
 import RateLimitIndicator from "./RateLimitIndicator";
 import BottomSheet from "./BottomSheet";
@@ -819,6 +819,15 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 						<div className="text-fg-3 text-xs mt-1">
 							{t("update.sessionsNote")}
 						</div>
+						<UpdateWhatsNew
+							version={updateVersion}
+							changelog={updateChangelog}
+							className="mt-2.5"
+							onSeeAllChanges={() => {
+								dismissToast();
+								navigate({ screen: "changelog" });
+							}}
+						/>
 						<div className="flex items-center gap-2 mt-2.5">
 							<button
 								onClick={() => { dismissToast(); handleRestart(); }}
