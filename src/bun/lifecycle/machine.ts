@@ -42,6 +42,14 @@ function unchanged(state: LifecycleState): TransitionResult {
 	return { next: state, effects: [] };
 }
 
+function teardownFailureEvent(runId: string): LifecycleEvent {
+	return {
+		type: "teardownFailed",
+		runId,
+		error: "Task teardown failed",
+	};
+}
+
 function resolvedTarget(state: LifecycleState, event: Extract<LifecycleEvent, { type: "moveRequested" }>): LifecycleColumn {
 	if (event.target.status) {
 		return {
@@ -233,11 +241,7 @@ function moveTransition(
 	if (event.target.status !== undefined && TERMINAL_STATUSES.has(target.status)) {
 		const terminalStatus = target.status as "completed" | "cancelled";
 		const runId = event.runId ?? "pending-run";
-		const teardownFailed: LifecycleEvent = {
-			type: "teardownFailed",
-			runId,
-			error: "Task teardown failed",
-		};
+		const teardownFailed = teardownFailureEvent(runId);
 		const runtime: LifecycleRuntime = {
 			phase: "tearing-down",
 			targetStatus: terminalStatus,
@@ -251,6 +255,8 @@ function moveTransition(
 			effect({ type: "releasePorts" }),
 			effect({ type: "persistRuntime", runtime }, "abort"),
 		];
+		// A forced retry after failed removal must resume cleanup. Bypassing it
+		// would clear the only path and branch metadata available for recovery.
 		const skipCleanup = event.force && state.runtime.phase !== "tearing-down";
 		if (!skipCleanup && (ACTIVE_STATUSES.has(oldStatus) || state.facts.hasWorktree)) {
 			const allowDerivedPath = state.runtime.phase === "preparing";
@@ -358,11 +364,7 @@ function bootTransition(
 	}
 
 	const terminalStatus = state.runtime.targetStatus;
-	const teardownFailed: LifecycleEvent = {
-		type: "teardownFailed",
-		runId: state.runtime.runId,
-		error: "Task teardown failed",
-	};
+	const teardownFailed = teardownFailureEvent(state.runtime.runId);
 	const next: LifecycleState = {
 		...state,
 		column: { status: terminalStatus, customColumnId: null },

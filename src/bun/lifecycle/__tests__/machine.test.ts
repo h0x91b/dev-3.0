@@ -365,6 +365,85 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
+	it.each(["completed", "cancelled"] as const)(
+		"aborts worktree removal during %s teardown with a recovery event",
+		(targetStatus) => {
+			const result = transition(state("in-progress"), {
+				type: "moveRequested",
+				target: { status: targetStatus, customColumnId: null },
+				runId: "teardown-run",
+			});
+
+			expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
+				type: "removeWorktree",
+				onError: "abort",
+				compensatingEvent: {
+					type: "teardownFailed",
+					runId: "teardown-run",
+				},
+			});
+		},
+	);
+
+	it("retries worktree removal for a forced interrupted teardown", () => {
+		const result = transition(state("in-progress", {
+			runtime: {
+				phase: "tearing-down",
+				targetStatus: "completed",
+				runId: "failed-run",
+			},
+		}), {
+			type: "moveRequested",
+			target: { status: "completed", customColumnId: null },
+			runId: "retry-run",
+			force: true,
+		});
+
+		expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
+			type: "removeWorktree",
+			onError: "abort",
+			compensatingEvent: { type: "teardownFailed", runId: "retry-run" },
+		});
+	});
+
+	it("publishes recovery state before rejecting a matching teardown failure", () => {
+		const current = state("in-progress", {
+			runtime: {
+				phase: "tearing-down",
+				targetStatus: "completed",
+				runId: "failed-run",
+			},
+		});
+
+		expect(transition(current, {
+			type: "teardownFailed",
+			runId: "failed-run",
+			error: "Git removal failed",
+		})).toEqual({
+			next: current,
+			effects: [
+				{ type: "push", message: "taskUpdated", view: "current", onError: "continue" },
+				{ type: "reject", message: "Git removal failed", onError: "abort" },
+			],
+		});
+	});
+
+	it("ignores a stale teardown failure event", () => {
+		const current = state("in-progress", {
+			runtime: {
+				phase: "tearing-down",
+				targetStatus: "completed",
+				runId: "current-run",
+			},
+		});
+
+		expect(transition(current, {
+			type: "teardownFailed",
+			runId: "stale-run",
+			error: "Git removal failed",
+		})).toEqual({ next: current, effects: [] });
+	});
+
 	it("allows teardown effects to derive a worktree path during preparation", () => {
 		const current = state("in-progress", {
 			runtime: {
@@ -704,5 +783,25 @@ describe("boot runtime reconciliation", () => {
 			"persistTerminalTask",
 			"push",
 		]);
+	});
+
+	it("aborts boot recovery when worktree removal fails", () => {
+		const current = state("in-progress", {
+			runtime: {
+				phase: "tearing-down",
+				targetStatus: "cancelled",
+				runId: "teardown-crash",
+			},
+		});
+		const result = transition(current, {
+			type: "bootObserved",
+			reality: { worktreeExists: true, tmuxAlive: false },
+		});
+
+		expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
+			type: "removeWorktree",
+			onError: "abort",
+			compensatingEvent: { type: "teardownFailed", runId: "teardown-crash" },
+		});
 	});
 });

@@ -2379,7 +2379,7 @@ describe("handlers.moveTask", () => {
 	});
 
 	it.each(["completed", "cancelled"] as const)(
-		"retains cleanup metadata when Git removal fails during %s, including the forced retry",
+		"rejects %s when Git removal fails",
 		async (targetStatus) => {
 			const project = makeProject({ cleanupScript: "" });
 			const task = makeTask({
@@ -2387,28 +2387,39 @@ describe("handlers.moveTask", () => {
 				worktreePath: "/tmp/locked-worktree",
 				branchName: "dev3/task-locked",
 			});
-			const push = vi.fn();
 
 			vi.mocked(data.getProject).mockResolvedValue(project);
 			mockTaskWrites(task);
 			vi.mocked(existsSync).mockReturnValue(true);
-			setPushMessage(push);
-			const removalError = new Error("Failed to remove worktree: locked");
-			vi.mocked(git.removeWorktree)
-				.mockRejectedValueOnce(removalError)
-				.mockRejectedValueOnce(removalError);
+			vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
 
 			await expect(handlers.moveTask({
 				taskId: task.id,
 				projectId: project.id,
 				newStatus: targetStatus,
 			})).rejects.toThrow("Failed to remove worktree: locked");
-			await expect(handlers.moveTask({
+		},
+	);
+
+	it.each(["completed", "cancelled"] as const)(
+		"retains cleanup metadata when Git removal fails during %s",
+		async (targetStatus) => {
+			const project = makeProject({ cleanupScript: "" });
+			const task = makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/locked-worktree",
+				branchName: "dev3/task-locked",
+			});
+
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			mockTaskWrites(task);
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
+			await handlers.moveTask({
 				taskId: task.id,
 				projectId: project.id,
 				newStatus: targetStatus,
-				force: true,
-			})).rejects.toThrow("Failed to remove worktree: locked");
+			}).catch(() => undefined);
 
 			await expect(data.getTask(project, task.id)).resolves.toMatchObject({
 				status: "in-progress",
@@ -2419,14 +2430,66 @@ describe("handlers.moveTask", () => {
 					stage: targetStatus,
 				},
 			});
-			expect(push).toHaveBeenLastCalledWith("taskUpdated", {
-				projectId: project.id,
-				task: expect.objectContaining({
-					status: "in-progress",
-					worktreePath: task.worktreePath,
-					branchName: task.branchName,
-				}),
+		},
+	);
+
+	it("broadcasts retained cleanup metadata after Git removal fails", async () => {
+		const project = makeProject({ cleanupScript: "" });
+		const task = makeTask({
+			status: "in-progress",
+			worktreePath: "/tmp/locked-worktree",
+			branchName: "dev3/task-locked",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		mockTaskWrites(task);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
+		setPushMessage(push);
+		await handlers.moveTask({
+			taskId: task.id,
+			projectId: project.id,
+			newStatus: "completed",
+		}).catch(() => undefined);
+
+		expect(push).toHaveBeenLastCalledWith("taskUpdated", {
+			projectId: project.id,
+			task: expect.objectContaining({
+				status: "in-progress",
+				worktreePath: task.worktreePath,
+				branchName: task.branchName,
+			}),
+		});
+	});
+
+	it.each(["completed", "cancelled"] as const)(
+		"does not bypass failed Git removal during a forced %s retry",
+		async (targetStatus) => {
+			const project = makeProject({ cleanupScript: "" });
+			const task = makeTask({
+				status: "in-progress",
+				worktreePath: "/tmp/locked-worktree",
+				branchName: "dev3/task-locked",
+				runtimeState: {
+					runtime: "tearing-down",
+					stage: targetStatus,
+					runId: "failed-run",
+					updatedAt: Date.now(),
+				},
 			});
+
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			mockTaskWrites(task);
+			vi.mocked(existsSync).mockReturnValue(true);
+			vi.mocked(git.removeWorktree).mockRejectedValueOnce(new Error("Failed to remove worktree: locked"));
+
+			await expect(handlers.moveTask({
+				taskId: task.id,
+				projectId: project.id,
+				newStatus: targetStatus,
+				force: true,
+			})).rejects.toThrow("Failed to remove worktree: locked");
 		},
 	);
 
