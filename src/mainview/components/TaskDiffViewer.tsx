@@ -16,6 +16,7 @@ import { confirm } from "../confirm";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
+import Tooltip from "./Tooltip";
 import { useResolvedTheme } from "../hooks/useResolvedTheme";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { formatBytes } from "../utils/formatBytes";
@@ -3387,51 +3388,61 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 											</div>
 										)}
 										<div className="grid grid-cols-2 gap-2">
-											<button
-												type="button"
-												onClick={handleCopyReviewXml}
-												disabled={reviewExportEntries.length === 0}
-												className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
-													copiedReviewXml
-														? "border-success/40 bg-success/15 text-success"
-														: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
-												}`}
+											<Tooltip
+												content={t("infoPanel.diffReviewExportCopyTooltipTitle")}
+												detail={t("infoPanel.diffReviewExportCopyTooltip")}
 											>
-												<span
-													aria-hidden="true"
-													className="text-[0.95rem] leading-none"
-													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+												<button
+													type="button"
+													onClick={handleCopyReviewXml}
+													disabled={reviewExportEntries.length === 0}
+													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
+														copiedReviewXml
+															? "border-success/40 bg-success/15 text-success"
+															: "border-accent bg-accent text-white hover:bg-accent-hover disabled:cursor-not-allowed disabled:border-edge disabled:bg-base disabled:text-fg-muted"
+													}`}
 												>
-													{"\u{F0198}"}
-												</span>
-												<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
-											</button>
-											<button
-												type="button"
-												onClick={handleSendReviewToAgent}
-												disabled={reviewExportEntries.length === 0 || reviewSendState === "sending"}
-												data-testid="review-send-button"
-												className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
-													reviewSendState === "sent"
-														? "border-success/40 bg-success/10 text-success"
-														: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
-												}`}
+													<span
+														aria-hidden="true"
+														className="text-[0.95rem] leading-none"
+														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+													>
+														{"\u{F0198}"}
+													</span>
+													<span>{copiedReviewXml ? t("infoPanel.diffReviewExportCopied") : t("infoPanel.diffReviewExportCopy")}</span>
+												</button>
+											</Tooltip>
+											<Tooltip
+												content={t("infoPanel.diffReviewExportSendTooltipTitle")}
+												detail={t("infoPanel.diffReviewExportSendTooltip")}
 											>
-												<span
-													aria-hidden="true"
-													className="text-[0.95rem] leading-none"
-													style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+												<button
+													type="button"
+													onClick={handleSendReviewToAgent}
+													disabled={reviewExportEntries.length === 0 || reviewSendState === "sending"}
+													data-testid="review-send-button"
+													className={`inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border px-3 text-xs font-semibold transition-colors ${
+														reviewSendState === "sent"
+															? "border-success/40 bg-success/10 text-success"
+															: "border-edge bg-base text-fg-2 hover:bg-elevated-hover disabled:cursor-not-allowed disabled:text-fg-muted"
+													}`}
 												>
-													{"\uf120"}
-												</span>
-												<span>
-													{reviewSendState === "sending"
-														? t("infoPanel.diffReviewExportSendSending")
-														: reviewSendState === "sent"
-															? t("infoPanel.diffReviewExportSendSent")
-															: t("infoPanel.diffReviewExportSend")}
-												</span>
-											</button>
+													<span
+														aria-hidden="true"
+														className="text-[0.95rem] leading-none"
+														style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+													>
+														{"\uf120"}
+													</span>
+													<span>
+														{reviewSendState === "sending"
+															? t("infoPanel.diffReviewExportSendSending")
+															: reviewSendState === "sent"
+																? t("infoPanel.diffReviewExportSendSent")
+																: t("infoPanel.diffReviewExportSend")}
+													</span>
+												</button>
+											</Tooltip>
 										</div>
 										{reviewExportEntries.length > 0 && (
 											<button

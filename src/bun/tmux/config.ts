@@ -43,6 +43,21 @@ export function tmuxClientCwd(): string {
  */
 export const PANE_CWD_FORMAT = "#{?pane_current_path,#{pane_current_path},#{session_path}}";
 
+/**
+ * Pane-scoped user option (value "1") marking a pane as an AI-agent pane. The app
+ * sets it on every agent pane; the focus hook below reads it to remember which
+ * agent pane the user last focused. `pane_current_command` is useless for this —
+ * an agent constantly spawns children — so the marker is the reliable signal.
+ */
+export const TMUX_AGENT_PANE_OPTION = "@dev3_agent";
+
+/**
+ * Session-scoped user option holding the pane id of the last agent pane the user
+ * focused. Written by the `after-select-pane` hook, read at hand-off time to route
+ * a message to the agent the user was last working in (see resolveAgentPromptTargetPane).
+ */
+export const TMUX_LAST_AGENT_PANE_OPTION = "@dev3_last_agent_pane";
+
 export const TMUX_CONF_DARK_PATH = dev3TempPath("dev3-tmux-dark.conf");
 export const TMUX_CONF_LIGHT_PATH = dev3TempPath("dev3-tmux-light.conf");
 
@@ -115,6 +130,14 @@ bind -n M-Left select-pane -L
 bind -n M-Right select-pane -R
 bind -n M-Up select-pane -U
 bind -n M-Down select-pane -D
+
+# Remember the last AGENT pane the user focused, per session. Fires on every
+# pane selection (mouse, Alt+arrow, programmatic). The conditional keeps the
+# previous value when the newly-focused pane is not an agent pane, so focusing a
+# shell / dev-server split never misroutes a hand-off. Read at send time by
+# resolveAgentPromptTargetPane. Session-scoped: the dev3 tmux server hosts many
+# task sessions, so a global option would let tasks clobber each other's value.
+set-hook -g after-select-pane 'set -F ${TMUX_LAST_AGENT_PANE_OPTION} "#{?${TMUX_AGENT_PANE_OPTION},#{pane_id},#{${TMUX_LAST_AGENT_PANE_OPTION}}}"'
 
 # Pane border style
 set -g pane-border-lines double

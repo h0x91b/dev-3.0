@@ -1,5 +1,5 @@
 import type { PaneSessionEntry } from "../shared/types";
-import { tmux, PANE_ID_FORMAT } from "./tmux";
+import { tmux, PANE_ID_FORMAT, TMUX_AGENT_PANE_OPTION, TMUX_LAST_AGENT_PANE_OPTION } from "./tmux";
 import { createLogger } from "./logger";
 
 const log = createLogger("agent-prompt");
@@ -33,6 +33,32 @@ export async function isPaneLive(tmuxSession: string, socket: string, paneId: st
 }
 
 /**
+ * Tag `paneId` as an agent pane so the `after-select-pane` tmux hook records it
+ * when focused (see {@link resolveAgentPromptTargetPane}). Best-effort: a failure
+ * only means that pane can't be tracked yet, degrading to the focus heuristic.
+ */
+export async function markAgentPane(socket: string, paneId: string): Promise<void> {
+	try {
+		await tmux.setPaneOption(paneId, TMUX_AGENT_PANE_OPTION, "1", { socket, bestEffort: true });
+	} catch (err) {
+		log.debug("markAgentPane failed", { paneId, error: String(err) });
+	}
+}
+
+/** Mark several agent panes concurrently (best-effort). */
+async function markAgentPanes(socket: string, paneIds: string[]): Promise<void> {
+	await Promise.all(paneIds.map((id) => markAgentPane(socket, id)));
+}
+
+/** The pane id the focus hook recorded as the last-focused agent pane, or null. */
+async function getLastFocusedAgentPane(tmuxSession: string, socket: string): Promise<string | null> {
+	try {
+		return (await tmux.showOption(tmuxSession, TMUX_LAST_AGENT_PANE_OPTION, { socket })) || null;
+	} catch { /* best effort — the session may be gone */ }
+	return null;
+}
+
+/**
  * Resolve the pane a hand-off prompt should be typed into.
  *
  * `agentPanes` is the task's recorded agent-pane registry (`sessionState.panes`),
@@ -40,15 +66,16 @@ export async function isPaneLive(tmuxSession: string, socket: string, paneId: st
  * is useless here because an agent constantly spawns child processes (a live
  * Claude pane reports `zsh`/`node` at random moments). Routing rules (issue #609):
  *
- *  - Exactly ONE live agent pane → target it unconditionally, even if a
- *    non-agent pane (a shell, a dev server) is currently focused. There is no
- *    ambiguity about where the agent lives, so focus must not misroute the prompt.
+ *  - LAST-FOCUSED live agent pane → target it. The `after-select-pane` tmux hook
+ *    records the last agent pane the user focused (per session), so a hand-off
+ *    follows the agent they were actually working in — and, crucially, is NOT
+ *    hijacked when a shell / dev-server split is the pane currently in focus.
+ *  - Exactly ONE live agent pane → target it unconditionally.
  *  - Exactly ONE unresolved main-agent entry → target tmux's first pane. This
  *    covers legacy tasks and the brief Codex pre-hook interval, when pane[0]'s
  *    ID has not been persisted yet but a shell split may be focused.
- *  - TWO OR MORE live agent panes, including a main pane whose id was not
- *    persisted → ambiguous; respect the user's focus and use the session's
- *    active pane.
+ *  - TWO OR MORE live agent panes with nothing recorded yet → respect the user's
+ *    focus and use the session's active pane.
  *  - ZERO known agent panes (legacy tasks with no sessionState) → fall back to
  *    the active pane, preserving the historical behavior.
  *
@@ -70,6 +97,19 @@ export async function resolveAgentPromptTargetPane(
 		const orderedLivePaneIds = await listLivePaneIds(tmuxSession, socket);
 		const livePaneIds = new Set(orderedLivePaneIds);
 		const liveAgentPanes = [...new Set(registeredIds.filter((id) => livePaneIds.has(id)))];
+
+		// Self-heal: ensure every live agent pane carries the focus-hook marker,
+		// regardless of which launch/resume path created it. Fire-and-forget so it
+		// never delays delivery; it only makes the hook track this pane from the
+		// next focus onward.
+		void markAgentPanes(socket, liveAgentPanes);
+
+		// Prefer the agent pane the user focused most recently. Requires the pane to
+		// still be live AND a known agent pane, so a stale/dead recorded id or a
+		// last-focused non-agent split never wins.
+		const lastFocused = await getLastFocusedAgentPane(tmuxSession, socket);
+		if (lastFocused && liveAgentPanes.includes(lastFocused)) return lastFocused;
+
 		if (liveAgentPanes.length === 1 && !hasUnresolvedAgentPane) return liveAgentPanes[0] ?? null;
 		// Legacy main panes and a newly launched Codex pane can briefly have no
 		// recorded pane ID. Their session-state entry is pane[0], and tmux lists

@@ -93,7 +93,7 @@ const help = {
 		"Uncommitted shows what the agent has not committed yet. Branch shows the whole branch against its base. Unpushed shows commits that have not left for origin. Recent commits shows just the last commit — click the ▾ to view the last 2, 3, 5, or 10 — clamped to this branch's own commits.",
 	"help.diff.review.title": "Inline review",
 	"help.diff.review.body":
-		"Drag across the line gutter to comment on a range. Copy review turns all comments into one prompt for the agent — paste it into the task terminal. The review survives restarts for 3 days.",
+		"Drag across the line gutter to comment on a range. Copy puts the whole review on your clipboard as one prompt; Send types it straight into the agent — the one you last focused when several are running, otherwise the focused pane. The review survives restarts for 3 days.",
 	"help.diff.filesAside.title": "Files",
 	"help.diff.filesAside.body":
 		"Every changed file with its read progress. Tick a file off as you review it — the counter fills as you go. Expand or collapse all files, mark them all read, or click one to jump to it in the diff.",

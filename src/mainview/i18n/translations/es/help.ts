@@ -87,7 +87,7 @@ const help = {
 		"Uncommitted muestra lo que el agente aún no ha confirmado. Branch muestra toda la rama contra su base. Unpushed muestra los commits que no han salido hacia origin. Recent commits muestra solo el último commit; pulsa ▾ para ver los últimos 2, 3, 5 o 10, acotado a los commits propios de esta rama.",
 	"help.diff.review.title": "Revisión inline",
 	"help.diff.review.body":
-		"Arrastra por el margen de líneas para comentar un rango. Copy review convierte todos los comentarios en un prompt para el agente — pégalo en la terminal de la tarea. La revisión sobrevive reinicios durante 3 días.",
+		"Arrastra por el margen de líneas para comentar un rango. Copy pone toda la revisión en el portapapeles como un prompt; Send la escribe directamente en el agente — el que enfocaste por última vez si hay varios, si no el panel activo. La revisión sobrevive reinicios durante 3 días.",
 	"help.diff.filesAside.title": "Archivos",
 	"help.diff.filesAside.body":
 		"Todos los archivos modificados con su progreso de lectura. Marca un archivo a medida que lo revisas — el contador se llena. Expande o colapsa todos los archivos, márcalos todos como leídos, o haz clic en uno para saltar a él en el diff.",

@@ -320,6 +320,7 @@ describe("command methods build the documented argv", () => {
 		["copyModeSearchStep older", (c) => c.copyModeSearchStep("%4", "older"), ["send-keys", "-t", "%4", "-X", "search-again"]],
 		["copyModeSearchStep newer", (c) => c.copyModeSearchStep("%4", "newer"), ["send-keys", "-t", "%4", "-X", "search-reverse"]],
 		["setOption", (c) => c.setOption("dev3-a", "pane-border-status", "top"), ["set-option", "-t", "dev3-a", "pane-border-status", "top"]],
+		["setPaneOption", (c) => c.setPaneOption("%1", "@dev3_agent", "1"), ["set-option", "-p", "-t", "%1", "@dev3_agent", "1"]],
 		["setWindowHook", (c) => c.setWindowHook("dev3-a", "pane-exited", "run-shell x"), ["set-hook", "-wt", "dev3-a", "pane-exited", "run-shell x"]],
 		["setEnvironment", (c) => c.setEnvironment("dev3-a", "K", "v"), ["set-environment", "-t", "dev3-a", "K", "v"]],
 		["removeEnvironment", (c) => c.removeEnvironment("dev3-a", "K"), ["set-environment", "-r", "-t", "dev3-a", "K"]],
@@ -333,6 +334,21 @@ describe("command methods build the documented argv", () => {
 			expect(argvOf(spawnFn)).toEqual(["tmux", "-L", "dev3", ...expected]);
 		});
 	}
+});
+
+describe("showOption", () => {
+	it("reads one value with -v -q and trims the trailing newline", async () => {
+		const { client, spawnFn } = makeClient({ stdout: "%3\n" });
+		expect(await client.showOption("dev3-a", "@dev3_last_agent_pane")).toBe("%3");
+		expect(argvOf(spawnFn)).toEqual([
+			"tmux", "-L", "dev3", "show-options", "-v", "-q", "-t", "dev3-a", "@dev3_last_agent_pane",
+		]);
+	});
+
+	it("returns an empty string when the option is unset", async () => {
+		const { client } = makeClient({ stdout: "" });
+		expect(await client.showOption("dev3-a", "@dev3_last_agent_pane")).toBe("");
+	});
 });
 
 describe("capturePane", () => {

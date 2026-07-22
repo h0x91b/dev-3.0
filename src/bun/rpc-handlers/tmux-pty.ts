@@ -39,6 +39,7 @@ import {
 	findAltClickPane,
 	validAltClickPanes,
 } from "../tmux";
+import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
 import { getPushMessage, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -374,6 +375,7 @@ async function persistInitialAgentPaneId(
 			await data.updateTask(project, task.id, {
 				sessionState: { panes: [{ ...paneEntry, paneId: paneIds[0] }] },
 			});
+			void markAgentPane(socket, paneIds[0]);
 			log.info("Persisted initial agent pane ID", {
 				taskId: task.id.slice(0, 8),
 				paneId: paneIds[0],
@@ -2302,6 +2304,8 @@ async function spawnAgentInTask(params: { taskId: string; projectId: string; age
 		log.error("spawnAgentInTask failed", { exitCode: err.exitCode, stderr: err.stderr });
 		throw new Error(`Failed to spawn agent: ${err.stderr || "unknown error"}`);
 	}
+
+	if (newPaneId) void markAgentPane(socket, newPaneId);
 
 	// Append this pane to sessionState for recovery
 	const paneEntry = {

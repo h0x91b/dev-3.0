@@ -429,6 +429,20 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["set-option", "-t", target, option, value], opts);
 	}
 
+	/** `set-option -p -t <paneId> <option> <value>` — a pane-scoped (user) option. */
+	setPaneOption(paneId: string, option: string, value: string, opts?: CommandOpts): Promise<void> {
+		return this.runCommand(opts?.socket, ["set-option", "-p", "-t", paneId, option, value], opts);
+	}
+
+	/**
+	 * `show-options -v -q -t <target> <option>` — the option's value (trimmed), or
+	 * "" when unset (`-q` stays quiet on a missing option, `-v` prints value only).
+	 */
+	async showOption(target: string, option: string, opts?: SocketOpt): Promise<string> {
+		const { stdout } = await this.runChecked(opts?.socket, ["show-options", "-v", "-q", "-t", target, option]);
+		return stdout.trim();
+	}
+
 	/** `set-hook -wt <target> <hook> <command>` — window-scoped hook. */
 	setWindowHook(target: string, hook: string, command: string, opts?: CommandOpts): Promise<void> {
 		return this.runCommand(opts?.socket, ["set-hook", "-wt", target, hook, command], opts);
