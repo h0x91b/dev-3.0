@@ -7,9 +7,9 @@
  * purely from on-disk records + private tokens.
  *
  * Guarantees enforced here:
- *  • Concurrent start of one id is serialised by a per-session file lock — the
- *    loser observes the winner's live record and returns already-running instead
- *    of spawning a second shell.
+ *  • Start and stale cleanup of one id share a per-session file lock — a start
+ *    loser observes the winner's live record instead of spawning another shell,
+ *    and cleanup cannot erase a concurrent replacement.
  *  • Stale/dead records are detected passively (ownership.ts) and cleaned up
  *    ONLY when token-matched — never by attaching to or killing an unverified PID.
  *  • Stop tears down exactly one session through its own ownership boundary
@@ -22,7 +22,7 @@
  */
 
 import { spawn as spawnChild } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readdirSync, readFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { withFileLock } from "../file-lock";
 import { NativeSessionClient } from "./client";
@@ -34,6 +34,8 @@ import type { StatusReply } from "./protocol";
 import { forceTerminateWindowsJob } from "./windows-job";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const CLEANUP_LOCK_TIMEOUT_MS = 5000;
+const CLEANUP_LOCK_STALE_THRESHOLD_MS = 60 * 60_000;
 
 export interface HostSpawnOptions {
 	cmd?: string[];
@@ -215,7 +217,9 @@ export async function start(
 
 function listSessionIds(): string[] {
 	try {
-		return readdirSync(sessionsRootDir()).filter(isValidSessionId);
+		return readdirSync(sessionsRootDir(), { withFileTypes: true })
+			.filter((entry) => entry.isDirectory() && isValidSessionId(entry.name))
+			.map((entry) => entry.name);
 	} catch {
 		return [];
 	}
@@ -331,16 +335,37 @@ export async function cleanupStale(deps: RegistryDeps = defaultDeps): Promise<Cl
 	const removed: string[] = [];
 	const kept: SessionListing[] = [];
 	for (const sessionId of listSessionIds()) {
-		const record = readRecord(sessionId);
-		if (!record) continue; // corrupt / unknown-schema — never delete another version's state
-		const token = readToken(sessionId);
-		const verdict = await deps.classify(record, token);
-		if (verdict === "owned") {
-			kept.push({ sessionId, record, state: "running" });
-			continue;
+		if (!readRecord(sessionId)) continue; // avoid locking unreadable or foreign state
+		let removedState = false;
+		await withFileLock(
+			recordFile(sessionId),
+			async () => {
+				const record = readRecord(sessionId);
+				if (!record) return; // corrupt / unknown-schema — never delete another version's state
+				const token = readToken(sessionId);
+				const verdict = await deps.classify(record, token);
+				if (verdict === "owned") {
+					kept.push({ sessionId, record, state: "running" });
+					return;
+				}
+				if (removeSessionState(sessionId, token)) {
+					removed.push(sessionId);
+					removedState = true;
+				} else kept.push({ sessionId, record, state: verdict });
+			},
+			{
+				timeout: CLEANUP_LOCK_TIMEOUT_MS,
+				// Fail closed instead of breaking a plausible long-running start lock.
+				staleThreshold: CLEANUP_LOCK_STALE_THRESHOLD_MS,
+			},
+		);
+		if (removedState) {
+			try {
+				rmdirSync(sessionDir(sessionId));
+			} catch {
+				// A concurrent start or an unknown sibling now owns the directory.
+			}
 		}
-		if (removeSessionState(sessionId, token)) removed.push(sessionId);
-		else kept.push({ sessionId, record, state: verdict });
 	}
 	return { removed, kept };
 }

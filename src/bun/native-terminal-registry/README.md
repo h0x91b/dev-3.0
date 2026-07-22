@@ -57,9 +57,10 @@ touched, renamed, moved, or rewritten.
 - **Ownership over PID.** A live PID alone never proves ownership. POSIX pins the
   recorded host/shell to `ps -o lstart`; Windows to token-named Job Object
   membership. A reused PID is classified `reused` and never signalled.
-- **Serialised start.** Concurrent `start` of one id is serialised by a
-  per-session file lock; the loser observes the winner's live record and returns
-  `already-running` — never a second shell.
+- **Serialised state replacement.** Concurrent `start` and `cleanupStale`
+  operations for one id share a per-session file lock. A start loser observes
+  the winner's live record, while cleanup cannot erase a replacement between
+  classification and token-matched deletion.
 - **Token-matched cleanup.** `stop`/`cleanupStale` remove only state whose
   on-disk token matches, and never attach to or kill an unverified PID. An
   unknown-schema record (newer dev3) is left untouched.
@@ -159,9 +160,9 @@ complete temp file plus atomic rename. Parser-state reads validate every nested
 health, counter, and semantic-state field; interrupted temp files are ignored.
 `list` and `status` still classify the session from process ownership, so a last
 good parser snapshot never makes a dead host look healthy. `cleanup-stale`
-deletes only state whose current token matches and only temp files named for the
-recorded crashed host PID; missing, changed, unknown-schema, and unrelated state
-remain untouched.
+shares `start`'s per-session lock, then deletes only state whose current token
+matches and only temp files named for the recorded crashed host PID; missing,
+changed, unknown-schema, and unrelated state remain untouched.
 
 ## Try it
 

@@ -15,16 +15,18 @@ an abrupt host exit closes it and hangs up the attached interactive shell tree.
 
 ## Decision
 
-`crash-recovery.bun-e2e.ts` force-kills the recorded host during journal/parser
-activity and proves bounded host, shell, child, and grandchild death while two
-external sentinels survive. Windows relies on Job Object kill-on-close; POSIX
-relies on PTY hangup for the terminal-owned tree, preserving platform-native
-primitives rather than inventing one portable process abstraction.
+The [`run()` crash proof](../src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts)
+force-kills the recorded host during journal/parser activity and proves bounded
+owned-tree death while external sentinels survive. Windows relies on Job Object
+kill-on-close; POSIX relies on PTY hangup for the terminal-owned tree, preserving
+platform-native primitives rather than inventing one process abstraction.
 
-Registry, token, journal, and parser snapshots publish by temp-file rename, and
-parser reads validate their full structure. `cleanup-stale` removes exact-token
-state plus only the recorded host PID's temp files; list/status report the dead
-record until cleanup, after which the stable ID can start exactly one new host.
+[`JournalWriter.flush()`](../src/bun/native-terminal-registry/journal.ts) and
+[`writeParserStateAtomic()`](../src/bun/native-terminal-registry/parser-state.ts)
+publish complete snapshots by temp-file rename, while `readParserState()` rejects
+malformed nested state. [`cleanupStale()` and `start()`](../src/bun/native-terminal-registry/registry.ts)
+share the per-session lock, so exact-token removal cannot erase a concurrent
+same-ID replacement; list/status expose the dead record until cleanup succeeds.
 
 ## Risks
 

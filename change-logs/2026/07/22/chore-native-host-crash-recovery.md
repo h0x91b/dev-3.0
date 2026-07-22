@@ -1,1 +1,1 @@
-The isolated native-session harness now proves deterministic host-crash cleanup, fail-closed journal and parser persistence, token-matched stale recovery, and same-ID restart across the pinned Windows, macOS, and Linux Bun 1.3.14 matrix without invoking tmux.
+The isolated native-session harness now proves deterministic host-crash cleanup, fail-closed journal and parser persistence, lock-serialized token-matched recovery, and same-ID restart across the pinned Windows, macOS, and Linux Bun 1.3.14 matrix without invoking tmux.

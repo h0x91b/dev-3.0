@@ -173,6 +173,53 @@ describe("native-session registry", () => {
 		expect(readRecord("raced")).toEqual(replacement);
 	});
 
+	it("cleanup removes its empty session directory and ignores registry-root files", async () => {
+		const rootSentinel = join(root, "root-sentinel");
+		writeFileSync(rootSentinel, "unrelated\n");
+		writeToken("dead-dir", "old-token");
+		writeRecordAtomic(fakeRecord("dead-dir", 2_000_000_000));
+
+		const result = await cleanupStale(deps(async () => "dead"));
+
+		expect({
+			removed: result.removed,
+			sessionDirExists: existsSync(sessionDir("dead-dir")),
+			rootSentinelExists: existsSync(rootSentinel),
+		}).toEqual({ removed: ["dead-dir"], sessionDirExists: false, rootSentinelExists: true });
+	});
+
+	it("serialises stale cleanup against a same-id replacement start", async () => {
+		writeToken("locked-race", "old-token");
+		writeRecordAtomic(fakeRecord("locked-race", 2_000_000_000));
+		let releaseClassification: () => void = () => {};
+		const classificationBlocked = new Promise<void>((resolve) => {
+			releaseClassification = resolve;
+		});
+		let classificationEntered: () => void = () => {};
+		const entered = new Promise<void>((resolve) => {
+			classificationEntered = resolve;
+		});
+		const cleanupPromise = cleanupStale(
+			deps(async () => {
+				classificationEntered();
+				await classificationBlocked;
+				return "dead";
+			}),
+		);
+		await entered;
+		const startPromise = start("locked-race", { timeoutMs: 3000 }, deps(async () => "dead"));
+		for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+		const startedBeforeCleanupReleased = launchCalls > 0;
+		releaseClassification();
+		const [cleanup, replacement] = await Promise.all([cleanupPromise, startPromise]);
+
+		expect({ startedBeforeCleanupReleased, removed: cleanup.removed, replacement: replacement.status }).toEqual({
+			startedBeforeCleanupReleased: false,
+			removed: ["locked-race"],
+			replacement: "started",
+		});
+	});
+
 	it("stop of a non-owned session drops state without signalling the PID", async () => {
 		writeToken("z", "tz");
 		writeRecordAtomic(fakeRecord("z", process.pid));
