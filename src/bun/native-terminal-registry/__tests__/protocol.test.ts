@@ -44,6 +44,9 @@ describe("native-session protocol v1", () => {
 		expect(decodeControl(JSON.stringify({ v: V + 1, type: "status", id: 1 }))).toBeNull();
 		expect(decodeControl(JSON.stringify({ v: V, type: "nope" }))).toBeNull();
 		expect(decodeControl(JSON.stringify({ v: V, type: "resize", cols: "x", rows: 1 }))).toBeNull();
+		expect(
+			decodeControl(JSON.stringify({ v: V, type: "welcome", id: 1, sessionId: "alpha", protocolVersion: V, role: "owner" })),
+		).toBeNull();
 	});
 
 	it("requires an id on a status frame (it is a correlated request/response)", () => {

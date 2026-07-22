@@ -106,6 +106,11 @@ export class JournalWriter {
 		this.dirty = true;
 	}
 
+	/** Snapshot the authoritative in-memory tail for an atomic attach replay. */
+	replay(): Uint8Array[] {
+		return parseJournal(this.frames.join("")).map((frame) => frame.data);
+	}
+
 	flush(): void {
 		if (!this.dirty) return;
 		try {

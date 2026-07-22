@@ -236,6 +236,7 @@ export function decodeControl(text: string): ControlMessage | null {
 			return null;
 		case "welcome":
 			if (typeof obj.id !== "number") return null;
+			if (obj.role !== undefined && obj.role !== "writer" && obj.role !== "observer") return null;
 			return obj as unknown as WelcomeMessage;
 		case "error":
 			return decodeError(text);

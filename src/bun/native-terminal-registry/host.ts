@@ -265,6 +265,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 						tap?.recordOutput(bytes);
 						pipeline?.onOutput(bytes);
 						for (const c of clients) {
+							if (!c.data.helloDone) continue;
 							try {
 								c.send(bytes);
 							} catch {
@@ -354,6 +355,8 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				ws.data.helloDone = true;
 				const role = writerOwnership.attach(ws);
 				ws.send(encodeControl(welcomeMessage(verdict.id, sessionId, role)));
+				// Same synchronous turn: replay ends before later PTY callbacks fan out live bytes.
+				for (const bytes of journal.replay()) ws.send(bytes);
 				return;
 			}
 			const dupHello = decodeHello(message);

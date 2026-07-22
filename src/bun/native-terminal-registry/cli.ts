@@ -44,10 +44,8 @@ async function attach(sessionId: string): Promise<void> {
 		process.exit(1);
 	}
 	const client = new NativeSessionClient();
-	await client.connect(record, token);
-	// Replay the persisted journal tail so a fresh attach shows recent output.
-	for (const chunk of NativeSessionClient.replayJournal(sessionId)) process.stdout.write(chunk);
 	client.onOutput((bytes) => process.stdout.write(bytes));
+	await client.connect(record, token);
 
 	const stdin = process.stdin;
 	stdin.setRawMode?.(true);

@@ -96,6 +96,10 @@ the version `v`; `NATIVE_SESSION_PROTOCOL_VERSION = 1`.
   input/resize only from the current writer. `ownership{action:"claim"|"release"}`
   is a host-local compare-and-set; a competing claim gets `conflict` and stays
   connected.
+- **Atomic replay→live boundary.** An accepted hello queues the authoritative
+  in-memory journal tail before later PTY callbacks can fan out live bytes to
+  that socket. The client buffers this bounded replay until its output listener
+  attaches, so it never races the journal's debounced disk flush.
 - **One compact error shape.** `error{v, type:"error", code, id?, message?}` with
   codes `bad-request | unauthorized | version-mismatch | not-found | conflict |
   internal-error` — the full set this transport currently emits, nothing
@@ -188,5 +192,5 @@ For the visible two-window Windows takeover and resize exercise, follow
 
 See [decision 151](../../../decisions/151-native-session-registry.md) for the
 record format and lifecycle boundaries, and
-[decision 156](../../../decisions/156-native-client-writer-ownership.md) for the
+[decision 158](../../../decisions/158-native-client-writer-ownership.md) for the
 multi-client ownership semantics.

@@ -64,4 +64,11 @@ describe("native-session journal frames", () => {
 			rmSync(dir, { recursive: true, force: true });
 		}
 	});
+
+	it("replays the current in-memory tail before a disk flush", () => {
+		const writer = new JournalWriter("unused");
+		writer.record(enc("before-attach\n"), "2026-07-20T00:00:00.000Z");
+
+		expect(writer.replay().map(dec)).toEqual(["before-attach\n"]);
+	});
 });

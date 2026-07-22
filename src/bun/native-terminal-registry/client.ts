@@ -22,6 +22,7 @@ import {
 	type OwnershipReply,
 	type StatusReply,
 } from "./protocol";
+import { DEFAULT_JOURNAL_MAX_BYTES } from "./journal";
 import { readJournalTail } from "./journal-read";
 import type { NativeSessionRecord } from "./record";
 import { readRecord, readToken } from "./record";
@@ -41,6 +42,9 @@ export class NativeSessionClient {
 	private helloId = 0;
 	private readonly outputCbs: Array<(bytes: Uint8Array) => void> = [];
 	private readonly errorCbs: Array<(error: ErrorMessage) => void> = [];
+	private readonly disconnectCbs: Array<() => void> = [];
+	private readonly bufferedOutput: Uint8Array[] = [];
+	private bufferedOutputBytes = 0;
 	private readonly statusPending = new Map<number, Pending<StatusReply>>();
 	private readonly ownershipPending = new Map<number, Pending<OwnershipReply>>();
 	private readonly stopResolvers: Array<() => void> = [];
@@ -49,10 +53,16 @@ export class NativeSessionClient {
 
 	onOutput(cb: (bytes: Uint8Array) => void): void {
 		this.outputCbs.push(cb);
+		for (const bytes of this.bufferedOutput.splice(0)) cb(bytes);
+		this.bufferedOutputBytes = 0;
 	}
 
 	onError(cb: (error: ErrorMessage) => void): void {
 		this.errorCbs.push(cb);
+	}
+
+	onDisconnect(cb: () => void): void {
+		this.disconnectCbs.push(cb);
 	}
 
 	getRole(): ClientRole | null {
@@ -142,6 +152,7 @@ export class NativeSessionClient {
 			this.ownershipPending.delete(id);
 		}
 		for (const r of this.stopResolvers.splice(0)) r();
+		for (const cb of this.disconnectCbs.splice(0)) cb();
 	}
 
 	private onMessage(ev: MessageEvent): void {
@@ -186,6 +197,15 @@ export class NativeSessionClient {
 			bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 		}
 		if (!bytes) return;
+		if (this.outputCbs.length === 0) {
+			const copy = bytes.slice();
+			this.bufferedOutput.push(copy);
+			this.bufferedOutputBytes += copy.byteLength;
+			while (this.bufferedOutput.length > 1 && this.bufferedOutputBytes > DEFAULT_JOURNAL_MAX_BYTES) {
+				this.bufferedOutputBytes -= this.bufferedOutput.shift()!.byteLength;
+			}
+			return;
+		}
 		for (const cb of this.outputCbs) cb(bytes);
 	}
 

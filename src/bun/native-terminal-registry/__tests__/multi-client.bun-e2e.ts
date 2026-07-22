@@ -7,7 +7,7 @@ import { delimiter, join } from "node:path";
 import { NativeSessionClient } from "../client";
 import { recordFile, tokenFile } from "../paths";
 import { isProcessAlive } from "../process-identity";
-import type { ErrorMessage, StatusReply } from "../protocol";
+import type { ErrorMessage } from "../protocol";
 import { readRecord } from "../record";
 import { start, stop } from "../registry";
 
@@ -20,48 +20,59 @@ function check(condition: boolean, message: string): void {
 	}
 }
 
-const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const isWindows = process.platform === "win32";
 const lineEnd = isWindows ? "\r" : "\n";
 
 function makeSink(client: NativeSessionClient): {
 	text: () => string;
-	waitFor: (text: string, timeoutMs?: number) => Promise<boolean>;
+	waitFor: (text: string) => Promise<boolean>;
 } {
 	let output = "";
+	const waiters: Array<{ text: string; resolve: (matched: boolean) => void }> = [];
 	const decoder = new TextDecoder();
 	client.onOutput((bytes) => {
 		output += decoder.decode(bytes, { stream: true });
+		for (let index = waiters.length - 1; index >= 0; index--) {
+			const waiter = waiters[index]!;
+			if (!output.includes(waiter.text)) continue;
+			waiters.splice(index, 1);
+			waiter.resolve(true);
+		}
 	});
 	return {
 		text: () => output,
-		async waitFor(text, timeoutMs = 5000) {
-			const deadline = Date.now() + timeoutMs;
-			while (Date.now() < deadline) {
-				if (output.includes(text)) return true;
-				await delay(25);
-			}
-			return false;
+		waitFor(text) {
+			if (output.includes(text)) return Promise.resolve(true);
+			return new Promise((resolve) => waiters.push({ text, resolve }));
 		},
 	};
 }
 
 function makeErrorSink(client: NativeSessionClient): {
 	all: () => ErrorMessage[];
-	waitFor: (code: ErrorMessage["code"], after?: number, timeoutMs?: number) => Promise<ErrorMessage | null>;
+	waitFor: (code: ErrorMessage["code"], after?: number) => Promise<ErrorMessage>;
 } {
 	const errors: ErrorMessage[] = [];
-	client.onError((error) => errors.push(error));
+	const waiters: Array<{
+		code: ErrorMessage["code"];
+		after: number;
+		resolve: (error: ErrorMessage) => void;
+	}> = [];
+	client.onError((error) => {
+		errors.push(error);
+		for (let index = waiters.length - 1; index >= 0; index--) {
+			const waiter = waiters[index]!;
+			if (errors.length <= waiter.after || error.code !== waiter.code) continue;
+			waiters.splice(index, 1);
+			waiter.resolve(error);
+		}
+	});
 	return {
 		all: () => errors,
-		async waitFor(code, after = 0, timeoutMs = 3000) {
-			const deadline = Date.now() + timeoutMs;
-			while (Date.now() < deadline) {
-				const match = errors.slice(after).find((error) => error.code === code);
-				if (match) return match;
-				await delay(20);
-			}
-			return null;
+		waitFor(code, after = 0) {
+			const match = errors.slice(after).find((error) => error.code === code);
+			if (match) return Promise.resolve(match);
+			return new Promise((resolve) => waiters.push({ code, after, resolve }));
 		},
 	};
 }
@@ -75,6 +86,12 @@ function outputCommand(...lines: string[]): string {
 	return `printf '%s\\n' ${lines.map((line) => `'${line}'`).join(" ")}`;
 }
 
+function historyCommand(nonce: string): string {
+	const prefixes = ["HISTORY-START-", "HISTORY-BODY-", "HISTORY-END-"];
+	if (isWindows) return prefixes.map((prefix) => `Write-Output ("${prefix}" + "${nonce}")`).join("; ");
+	return prefixes.map((prefix) => `printf '%s%s\\n' '${prefix}' '${nonce}'`).join("; ");
+}
+
 function segment(text: string, start: string, end: string): string | null {
 	const from = text.indexOf(start);
 	if (from < 0) return null;
@@ -83,22 +100,14 @@ function segment(text: string, start: string, end: string): string | null {
 	return text.slice(from, through + end.length);
 }
 
-async function waitForStatus(
-	client: NativeSessionClient,
-	predicate: (status: StatusReply) => boolean,
-	timeoutMs = 4000,
-): Promise<StatusReply | null> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		try {
-			const status = await client.status({ timeoutMs: 500 });
-			if (predicate(status)) return status;
-		} catch {
-			// retry while the host processes a preceding close/resize
-		}
-		await delay(30);
-	}
-	return null;
+function occurrences(text: string, needle: string): number {
+	return text.split(needle).length - 1;
+}
+
+function disconnect(client: NativeSessionClient): Promise<void> {
+	const disconnected = new Promise<void>((resolve) => client.onDisconnect(resolve));
+	client.close();
+	return disconnected;
 }
 
 async function run(): Promise<void> {
@@ -127,11 +136,30 @@ async function run(): Promise<void> {
 	try {
 		const started = await start(sessionId, { timeoutMs: 15_000 });
 		const token = readFileSync(tokenFile(sessionId), "utf8").trim();
+		const seed = new NativeSessionClient();
+		const seedSink = makeSink(seed);
+		await seed.connect(started.record, token);
+		const historyStart = `HISTORY-START-${nonce}`;
+		const historyEnd = `HISTORY-END-${nonce}`;
+		send(seed, historyCommand(nonce));
+		await seedSink.waitFor(historyEnd);
+		const expectedHistoryOccurrences = occurrences(seedSink.text(), historyEnd);
+		await disconnect(seed);
+
 		const clients = [new NativeSessionClient(), new NativeSessionClient()];
 		const sinks = clients.map(makeSink);
 		const errorSinks = clients.map(makeErrorSink);
 
 		await Promise.all(clients.map((client) => client.connect(started.record, token)));
+		await Promise.all(sinks.map((sink) => sink.waitFor(historyEnd)));
+		check(
+			sinks.every((sink) => occurrences(sink.text(), historyEnd) === expectedHistoryOccurrences),
+			"both fresh clients reconstruct every pre-attach PTY byte exactly once",
+		);
+		check(
+			segment(sinks[0]!.text(), historyStart, historyEnd) === segment(sinks[1]!.text(), historyStart, historyEnd),
+			"both fresh clients receive the same reconstructed state before live output",
+		);
 		const writerIndex = clients.findIndex((client) => client.getRole() === "writer");
 		const observerIndex = clients.findIndex((client) => client.getRole() === "observer");
 		check(writerIndex >= 0 && observerIndex >= 0 && writerIndex !== observerIndex, "two concurrent attaches produce one writer and one observer");
@@ -153,24 +181,14 @@ async function run(): Promise<void> {
 			"the shared incremental output segment is byte-equivalent for both clients",
 		);
 
-		await delay(400);
-		const replayA = NativeSessionClient.replayJournal(sessionId).map((chunk) => Buffer.from(chunk).toString("base64"));
-		const replayB = NativeSessionClient.replayJournal(sessionId).map((chunk) => Buffer.from(chunk).toString("base64"));
-		check(JSON.stringify(replayA) === JSON.stringify(replayB), "both clients reconstruct the same persisted output state");
-		check(
-			NativeSessionClient.replayJournal(sessionId)
-				.map((chunk) => new TextDecoder().decode(chunk))
-				.join("")
-				.includes(syncBody),
-			"reconstructed output contains the shared live marker",
-		);
-
 		const rejectedMarker = `OBSERVER-INPUT-${nonce}`;
 		const beforeInputErrors = observerErrors.all().length;
 		send(observer, outputCommand(rejectedMarker));
 		const inputConflict = await observerErrors.waitFor("conflict", beforeInputErrors);
-		await delay(200);
-		check(inputConflict?.message?.includes("PTY input") === true, "observer binary input receives the compact conflict error");
+		const inputBarrier = `INPUT-BARRIER-${nonce}`;
+		send(writer, outputCommand(inputBarrier));
+		await Promise.all([writerSink.waitFor(inputBarrier), observerSink.waitFor(inputBarrier)]);
+		check(inputConflict.message?.includes("PTY input") === true, "observer binary input receives the compact conflict error");
 		check(!writerSink.text().includes(rejectedMarker) && !observerSink.text().includes(rejectedMarker), "rejected observer input never reaches the PTY");
 		check(
 			(await observer.status()).alive && (await writer.status()).alive && isProcessAlive(started.record.shell.pid),
@@ -183,15 +201,18 @@ async function run(): Promise<void> {
 		const beforeResizeErrors = observerErrors.all().length;
 		observer.resize(observerCols, observerRows);
 		const resizeConflict = await observerErrors.waitFor("conflict", beforeResizeErrors);
-		const unchanged = await waitForStatus(writer, (status) => status.cols === beforeResize.cols && status.rows === beforeResize.rows);
-		check(resizeConflict?.message?.includes("resize") === true, "observer resize receives conflict without closing either client");
-		check(unchanged !== null, "observer viewport changes leave the shared PTY dimensions unchanged");
+		const unchanged = await writer.status();
+		check(resizeConflict.message?.includes("resize") === true, "observer resize receives conflict without closing either client");
+		check(
+			unchanged.cols === beforeResize.cols && unchanged.rows === beforeResize.rows,
+			"observer viewport changes leave the shared PTY dimensions unchanged",
+		);
 
 		const writerCols = beforeResize.cols + 3;
 		const writerRows = beforeResize.rows + 2;
 		writer.resize(writerCols, writerRows);
-		const resized = await waitForStatus(writer, (status) => status.cols === writerCols && status.rows === writerRows);
-		check(resized !== null, "the current writer controls the PTY dimensions");
+		const resized = await writer.status();
+		check(resized.cols === writerCols && resized.rows === writerRows, "the current writer controls the PTY dimensions");
 
 		const released = await writer.releaseWriter();
 		check(released.role === "observer" && !released.writerAttached, "writer release leaves one explicit vacant writer slot");
@@ -211,8 +232,9 @@ async function run(): Promise<void> {
 		const takeoverCols = writerCols + 4;
 		const takeoverRows = writerRows + 3;
 		takeover.resize(takeoverCols, takeoverRows);
+		const takeoverSize = await takeover.status();
 		check(
-			(await waitForStatus(takeover, (status) => status.cols === takeoverCols && status.rows === takeoverRows)) !== null,
+			takeoverSize.cols === takeoverCols && takeoverSize.rows === takeoverRows,
 			"resize control follows the claim winner",
 		);
 
@@ -223,12 +245,13 @@ async function run(): Promise<void> {
 			"the claim winner writes once and both clients observe the takeover output",
 		);
 
-		takeover.close();
-		const vacant = await waitForStatus(
-			remainingObserver,
-			(status) => status.writerAttached === false && status.cols === takeoverCols && status.rows === takeoverRows,
-		);
+		await disconnect(takeover);
+		const vacant = await remainingObserver.status();
 		check(vacant?.clientRole === "observer", "writer disconnect leaves observers attached with no hidden replacement writer");
+		check(
+			vacant.writerAttached === false && vacant.cols === takeoverCols && vacant.rows === takeoverRows,
+			"writer disconnect preserves the last valid PTY dimensions",
+		);
 
 		const reconnect = new NativeSessionClient();
 		const reconnectSink = makeSink(reconnect);
@@ -243,13 +266,11 @@ async function run(): Promise<void> {
 			"reconnected writer and standing observer both receive output",
 		);
 
-		reconnect.close();
-		remainingObserver.close();
-		await delay(100);
+		await Promise.all([disconnect(reconnect), disconnect(remainingObserver)]);
 		const sole = new NativeSessionClient();
 		await sole.connect(started.record, token);
 		check(sole.getRole() === "writer", "a later sole client preserves existing single-client writer behavior");
-		sole.close();
+		await disconnect(sole);
 
 		check(await stop(sessionId, { timeoutMs: 8000 }), "first host stops cleanly after the multi-client lifecycle");
 		const restarted = await start(sessionId, { timeoutMs: 15_000 });
@@ -257,7 +278,7 @@ async function run(): Promise<void> {
 		const afterRestart = new NativeSessionClient();
 		await afterRestart.connect(restarted.record, readFileSync(tokenFile(sessionId), "utf8").trim());
 		check(afterRestart.getRole() === "writer", "host restart carries no stale writer lease");
-		afterRestart.close();
+		await disconnect(afterRestart);
 
 		const persisted = JSON.parse(readFileSync(recordFile(sessionId), "utf8")) as Record<string, unknown>;
 		check(
