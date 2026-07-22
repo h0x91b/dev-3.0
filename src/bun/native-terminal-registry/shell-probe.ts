@@ -32,7 +32,14 @@ export function powershellArgvProbeCommand(executable: string, probePath: string
 }
 
 function cmdBatchArg(value: string): string {
-	return `"${value.replaceAll("%", "%%").replaceAll('"', '""')}"`;
+	const segments = value.replaceAll("%", "%%").split('"');
+	return segments
+		.map((segment) => {
+			const trailingBackslashes = segment.match(/\\+$/)?.[0] ?? "";
+			const escapedSegment = `${segment.slice(0, segment.length - trailingBackslashes.length)}${trailingBackslashes.repeat(2)}`;
+			return `"${escapedSegment}"`;
+		})
+		.join(String.raw`\^"`);
 }
 
 export function cmdArgvProbeBatch(args: string[]): string {

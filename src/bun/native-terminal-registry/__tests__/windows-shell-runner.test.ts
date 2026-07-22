@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const runner = readFileSync(fileURLToPath(new URL("./run-windows-shell-matrix.ps1", import.meta.url)), "utf8");
+const ownedChildProbe = readFileSync(fileURLToPath(new URL("./windows-owned-child-probe.ts", import.meta.url)), "utf8");
 
 describe("native Windows shell matrix runner", () => {
 	it("collapses duplicate PATH applications to one scalar executable path", () => {
@@ -14,5 +15,15 @@ describe("native Windows shell matrix runner", () => {
 
 	it("uses the PowerShell 5.1 string overload when removing WSL NUL padding", () => {
 		expect(runner).toContain('.Replace(([char]0).ToString(), [string]::Empty)');
+	});
+
+	it("resolves a PowerShell 7 execution alias to the physical process executable", () => {
+		expect(runner).toContain("$pwshCommand = Get-ApplicationPath -Name \"pwsh.exe\"");
+		expect(runner).toContain("(Get-Process -Id $PID).Path");
+		expect(runner).toContain("Get-ApplicationDetection -Path $pwshPath");
+	});
+
+	it("detaches the owned descendant so it survives its short-lived launcher", () => {
+		expect(ownedChildProbe).toContain("detached: true");
 	});
 });

@@ -9,6 +9,7 @@ const child = spawn(
 		'Bun.serve({ port: 0, fetch() { return new Response("alive"); } }); await new Promise(() => {});',
 	],
 	{
+		detached: true,
 		stdin: "ignore",
 		stdout: "ignore",
 		stderr: "ignore",

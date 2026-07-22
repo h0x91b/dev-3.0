@@ -47,7 +47,15 @@ $ps51Version = if (Test-Path $ps51Path) {
 	((& $ps51Path -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
 } else { "" }
 
-$pwshPath = Get-ApplicationPath -Name "pwsh.exe"
+$pwshCommand = Get-ApplicationPath -Name "pwsh.exe"
+$pwshPath = if ($pwshCommand) {
+	$reportedPath = & $pwshCommand -NoLogo -NoProfile -Command '(Get-Process -Id $PID).Path' 2>$null |
+		Where-Object { $_ } |
+		Select-Object -First 1
+	if ($reportedPath -and (Test-Path -LiteralPath ([string]$reportedPath) -PathType Leaf)) {
+		[string]((Resolve-Path -LiteralPath ([string]$reportedPath)).Path)
+	} else { "" }
+} else { "" }
 $pwshVersion = if ($pwshPath) {
 	((& $pwshPath -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
 } else { "" }

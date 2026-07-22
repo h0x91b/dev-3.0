@@ -18,7 +18,11 @@ describe("Windows interactive shell argv probes", () => {
 
 	it("keeps cmd quoting balanced around embedded quotes and metacharacters", () => {
 		expect(cmdArgvProbeBatch(args)).toBe(
-			'@echo off\r\nsetlocal DisableDelayedExpansion\r\n"%DEV3_BUN_EXE%" "%DEV3_ARG_PROBE%" "argument with spaces" "quote""value" "meta & | < > ^ ! %% ( ) ;" "plain-tail"\r\nendlocal\r\n',
+			String.raw`@echo off
+setlocal DisableDelayedExpansion
+"%DEV3_BUN_EXE%" "%DEV3_ARG_PROBE%" "argument with spaces" "quote"\^""value" "meta & | < > ^ ! %% ( ) ;" "plain-tail"
+endlocal
+`.replaceAll("\n", "\r\n"),
 		);
 	});
 });

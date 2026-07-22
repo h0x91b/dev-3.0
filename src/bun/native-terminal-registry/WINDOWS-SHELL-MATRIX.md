@@ -10,7 +10,7 @@ prove that production terminal flows and tmux remain untouched.
 | Target | Requirement | Executable selection | Native verdict |
 |---|---|---|---|
 | Windows PowerShell 5.1 | required | `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` | `SUPPORTED` only after every lifecycle check passes |
-| PowerShell 7 | required | exact `Get-Command pwsh.exe` result | `SUPPORTED` only after every lifecycle check passes |
+| PowerShell 7 | required | physical process path reported by the selected `pwsh.exe` | `SUPPORTED` only after every lifecycle check passes |
 | cmd.exe | required | exact `%ComSpec%` path | `SUPPORTED` only after every lifecycle check passes |
 | Git Bash | optional | known Git installation paths | `DETECTED / SKIPPED` or `NOT DETECTED / SKIPPED` |
 | WSL | optional | `Get-Command wsl.exe` plus distro report | `DETECTED / SKIPPED` or `NOT DETECTED / SKIPPED` |

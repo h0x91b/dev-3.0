@@ -15,6 +15,8 @@ intermediate shell command string is unnecessary. The documented
 and [cmd interactive mode](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd)
 keep the root process alive; a separate attached probe tests shell-specific
 argument quoting after launch instead of smuggling a command through argv.
+Native evidence also showed that `Get-Command pwsh.exe` may return a WindowsApps
+execution alias and that cmd consumes doubled embedded quotes before child argv parsing.
 
 ## Decision
 
@@ -23,6 +25,8 @@ The [`shell-launch.ts` functions](../src/bun/native-terminal-registry/shell-laun
 own `{ executable, argv, cwd, env }` across host re-entry. `resolveShellLaunchSpec`
 resolves only the requested executable, while `windowsShellLaunchSpec` rejects
 unknown shell kinds and `shellExitVerdict` retains the exact numeric exit code.
+The Windows runner resolves the selected pwsh process's physical path, and the
+cmd probe uses balanced quoted segments around caret-escaped literal quotes.
 
 ## Risks
 
