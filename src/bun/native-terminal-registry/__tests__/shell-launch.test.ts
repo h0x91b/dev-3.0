@@ -12,117 +12,143 @@ import {
 	windowsShellLaunchSpec,
 } from "../shell-launch";
 
+const powershellLaunch = {
+	executable: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+	argv: ["-NoLogo", "-NoProfile", "argument with spaces", 'quote"value', "meta&|<>^!"],
+	cwd: "C:\\work trees\\Пример 日本語",
+	env: { DEV3_UNICODE_VALUE: "Живой ✓ שלום" },
+};
+
+function requiredWindowsLaunch(shell: RequiredWindowsShell, executable: string) {
+	return windowsShellLaunchSpec(shell, {
+		executable,
+		cwd: "C:\\proof dir\\Живой 日本語",
+		env: { DEV3_UNICODE_VALUE: "✓" },
+	});
+}
+
 describe("native-session shell launch specification", () => {
 	it("keeps executable, argv, cwd, and environment as separate values", () => {
-		const launch = defineShellLaunchSpec({
-			executable: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-			argv: ["-NoLogo", "-NoProfile", "argument with spaces", 'quote"value', "meta&|<>^!"],
-			cwd: "C:\\work trees\\Пример 日本語",
-			env: { DEV3_UNICODE_VALUE: "Живой ✓ שלום" },
-		});
-
-		expect(launch).toEqual({
-			executable: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-			argv: ["-NoLogo", "-NoProfile", "argument with spaces", 'quote"value', "meta&|<>^!"],
-			cwd: "C:\\work trees\\Пример 日本語",
-			env: { DEV3_UNICODE_VALUE: "Живой ✓ שלום" },
-		});
-		expect(shellCommand(launch)).toEqual([
-			"C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-			"-NoLogo",
-			"-NoProfile",
-			"argument with spaces",
-			'quote"value',
-			"meta&|<>^!",
-		]);
+		expect(defineShellLaunchSpec(powershellLaunch)).toEqual(powershellLaunch);
 	});
 
-	it("round-trips the descriptor across host re-entry and rejects malformed input without a fallback", () => {
-		const launch = defineShellLaunchSpec({
-			executable: "C:\\Windows\\System32\\cmd.exe",
-			argv: ["/D", "/Q"],
-			cwd: "C:\\work trees\\тест",
-			env: { DEV3_UNICODE_VALUE: "日本語 ✓" },
-		});
+	it("builds a process argv array without constructing a command string", () => {
+		expect(shellCommand(powershellLaunch)).toEqual([powershellLaunch.executable, ...powershellLaunch.argv]);
+	});
 
-		expect(decodeShellLaunchSpec(encodeShellLaunchSpec(launch))).toEqual(launch);
+	it("round-trips the complete descriptor across host re-entry", () => {
+		expect(decodeShellLaunchSpec(encodeShellLaunchSpec(powershellLaunch))).toEqual(powershellLaunch);
+	});
+
+	it("rejects malformed descriptor JSON without a fallback", () => {
 		expect(() => decodeShellLaunchSpec("not-json")).toThrow("invalid shell launch specification");
+	});
+
+	it("rejects an incomplete descriptor without a fallback", () => {
 		expect(() => decodeShellLaunchSpec(JSON.stringify({ executable: "cmd.exe", argv: [] }))).toThrow(
 			"invalid shell launch specification",
 		);
+	});
+
+	it("rejects an empty executable", () => {
 		expect(() =>
 			defineShellLaunchSpec({ executable: "", argv: [], cwd: "C:\\", env: {} }),
 		).toThrow("invalid shell launch specification");
 	});
 
-	it("distinguishes a missing requested executable from an exact non-zero shell exit", () => {
-		const launch = defineShellLaunchSpec({
-			executable: "pwsh.exe",
-			argv: ["-NoLogo", "-NoProfile"],
-			cwd: "C:\\work",
-			env: {},
-		});
-		const resolved = resolveShellLaunchSpec(launch, () => "C:\\Program Files\\PowerShell\\7\\pwsh.exe");
-		expect(resolved.executable).toBe("C:\\Program Files\\PowerShell\\7\\pwsh.exe");
-		expect(resolved.argv).toEqual(launch.argv);
+	it("resolves only the requested executable while preserving launch fields", () => {
+		const requested = { ...powershellLaunch, executable: "pwsh.exe" };
+		expect(
+			resolveShellLaunchSpec(requested, () => "C:\\Program Files\\PowerShell\\7\\pwsh.exe"),
+		).toEqual(powershellLaunch);
+	});
 
-		let missing: unknown;
+	it("reports a typed executable-not-found failure before launch", () => {
+		let failure: unknown;
 		try {
-			resolveShellLaunchSpec(launch, () => null);
+			resolveShellLaunchSpec({ ...powershellLaunch, executable: "pwsh.exe" }, () => null);
 		} catch (error) {
-			missing = error;
+			failure = error;
 		}
-		expect(missing).toBeInstanceOf(ShellExecutableNotFoundError);
-		expect(missing).toMatchObject({ code: "executable-not-found", executable: "pwsh.exe" });
+		expect(failure).toMatchObject({
+			name: ShellExecutableNotFoundError.name,
+			code: "executable-not-found",
+			executable: "pwsh.exe",
+		});
+	});
+
+	it("classifies an exact non-zero shell exit", () => {
 		expect(shellExitVerdict(37)).toEqual({ kind: "shell-command-failed", code: 37 });
+	});
+
+	it("classifies an exact zero shell exit", () => {
 		expect(shellExitVerdict(0)).toEqual({ kind: "success", code: 0 });
+	});
+
+	it("classifies termination without an exit code", () => {
 		expect(shellExitVerdict(null)).toEqual({ kind: "terminated-without-exit-code", code: null });
 	});
 
-	it("maps every required Windows shell to one explicit executable and argv", () => {
-		const cases: Array<[RequiredWindowsShell, string, string[]]> = [
-			[
+	it("maps Windows PowerShell 5.1 to its explicit argv", () => {
+		expect(
+			requiredWindowsLaunch(
 				"windows-powershell-5.1",
 				"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-				["-NoLogo", "-NoProfile", "-NoExit"],
-			],
-			[
-				"powershell-7",
-				"C:\\Program Files\\PowerShell\\7\\pwsh.exe",
-				["-NoLogo", "-NoProfile", "-NoExit"],
-			],
-			[
-				"cmd",
-				"C:\\Windows\\System32\\cmd.exe",
-				["/D", "/Q", "/V:OFF"],
-			],
-		];
-
-		for (const [shell, executable, expectedArgv] of cases) {
-			const launch = windowsShellLaunchSpec(shell, {
-				executable,
-				cwd: "C:\\proof dir\\Живой 日本語",
-				env: { DEV3_UNICODE_VALUE: "✓" },
-			});
-			expect(launch.executable).toBe(executable);
-			expect(launch.argv).toEqual(expectedArgv);
-		}
+			),
+		).toEqual({
+			executable: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+			argv: ["-NoLogo", "-NoProfile", "-NoExit"],
+			cwd: "C:\\proof dir\\Живой 日本語",
+			env: { DEV3_UNICODE_VALUE: "✓" },
+		});
 	});
 
-	it("selects the registry default explicitly and never substitutes another Windows shell", () => {
-		const launch = defaultNativeShellLaunchSpec({
-			platform: "win32",
-			cwd: "C:\\work",
-			env: { SystemRoot: "C:\\Windows" },
+	it("maps PowerShell 7 to its explicit argv", () => {
+		expect(requiredWindowsLaunch("powershell-7", "C:\\Program Files\\PowerShell\\7\\pwsh.exe")).toEqual({
+			executable: "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+			argv: ["-NoLogo", "-NoProfile", "-NoExit"],
+			cwd: "C:\\proof dir\\Живой 日本語",
+			env: { DEV3_UNICODE_VALUE: "✓" },
 		});
-		expect(launch).toEqual({
+	});
+
+	it("maps cmd.exe to its explicit argv", () => {
+		expect(requiredWindowsLaunch("cmd", "C:\\Windows\\System32\\cmd.exe")).toEqual({
+			executable: "C:\\Windows\\System32\\cmd.exe",
+			argv: ["/D", "/Q", "/V:OFF"],
+			cwd: "C:\\proof dir\\Живой 日本語",
+			env: { DEV3_UNICODE_VALUE: "✓" },
+		});
+	});
+
+	it("rejects an unknown Windows shell instead of using PowerShell arguments", () => {
+		expect(() =>
+			windowsShellLaunchSpec("git-bash" as RequiredWindowsShell, {
+				executable: "C:\\Program Files\\Git\\bin\\bash.exe",
+				cwd: "C:\\proof dir",
+				env: {},
+			}),
+		).toThrow("unsupported Windows shell: git-bash");
+	});
+
+	it("selects Windows PowerShell 5.1 as the explicit Windows registry default", () => {
+		expect(
+			defaultNativeShellLaunchSpec({
+				platform: "win32",
+				cwd: "C:\\work",
+				env: { SystemRoot: "C:\\Windows" },
+			}),
+		).toEqual({
 			executable: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
 			argv: ["-NoLogo", "-NoProfile", "-NoExit"],
 			cwd: "C:\\work",
 			env: {},
 		});
-		expect(() => defaultNativeShellLaunchSpec({ platform: "win32", cwd: "C:\\work", env: {} })).toThrow(
-			"SystemRoot is required",
-		);
+	});
+
+	it("does not substitute another Windows shell when SystemRoot is missing", () => {
+		expect(() =>
+			defaultNativeShellLaunchSpec({ platform: "win32", cwd: "C:\\work", env: {} }),
+		).toThrow("SystemRoot is required");
 	});
 });

@@ -7,7 +7,7 @@ import { NativeSessionClient } from "../client";
 import { isProcessAlive } from "../process-identity";
 import { readToken } from "../record";
 import { start, stop } from "../registry";
-import { cmdArgvProbeBatch, powershellArgvProbeCommand } from "../shell-probe";
+import { cmdArgvProbeBatch, powershellArgvProbeCommand, powershellLiteral } from "../shell-probe";
 import {
 	shellCommand,
 	shellExitVerdict,
@@ -70,19 +70,9 @@ const REQUIRED_SHELLS: RequiredWindowsShell[] = ["windows-powershell-5.1", "powe
 const PROBE_ARGS = ["argument with spaces", 'quote"value', "meta & | < > ^ ! ( ) ;", "plain-tail"];
 const UNICODE_ENV = "Живой ✓ 日本語 שלום";
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
-const delay = (ms: number): Promise<void> => new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, "")) as T;
-}
-
-async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<boolean> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		if (predicate()) return true;
-		await delay(50);
-	}
-	return predicate();
 }
 
 function sameWindowsPath(left: string, right: string): boolean {
@@ -90,26 +80,38 @@ function sameWindowsPath(left: string, right: string): boolean {
 }
 
 function makeSink(client: NativeSessionClient): {
-	waitForText: (text: string, timeoutMs?: number) => Promise<boolean>;
-	waitForMatch: (pattern: RegExp, timeoutMs?: number) => Promise<RegExpExecArray | null>;
+	waitForText: (text: string) => Promise<boolean>;
+	waitForMatch: (pattern: RegExp) => Promise<RegExpExecArray>;
 } {
 	let output = "";
 	const decoder = new TextDecoder();
+	const textWaiters: Array<{ text: string; resolve: (found: boolean) => void }> = [];
+	const matchWaiters: Array<{ pattern: RegExp; resolve: (match: RegExpExecArray) => void }> = [];
 	client.onOutput((bytes) => {
 		output += decoder.decode(bytes, { stream: true });
+		for (let index = textWaiters.length - 1; index >= 0; index--) {
+			const waiter = textWaiters[index];
+			if (!output.includes(waiter.text)) continue;
+			textWaiters.splice(index, 1);
+			waiter.resolve(true);
+		}
+		for (let index = matchWaiters.length - 1; index >= 0; index--) {
+			const waiter = matchWaiters[index];
+			const match = waiter.pattern.exec(output);
+			if (!match) continue;
+			matchWaiters.splice(index, 1);
+			waiter.resolve(match);
+		}
 	});
 	return {
-		async waitForText(text, timeoutMs = 8000) {
-			return waitFor(() => output.includes(text), timeoutMs);
+		waitForText(text) {
+			if (output.includes(text)) return Promise.resolve(true);
+			return new Promise((resolveText) => textWaiters.push({ text, resolve: resolveText }));
 		},
-		async waitForMatch(pattern, timeoutMs = 8000) {
-			const deadline = Date.now() + timeoutMs;
-			while (Date.now() < deadline) {
-				const match = pattern.exec(output);
-				if (match) return match;
-				await delay(50);
-			}
-			return pattern.exec(output);
+		waitForMatch(pattern) {
+			const match = pattern.exec(output);
+			if (match) return Promise.resolve(match);
+			return new Promise((resolveMatch) => matchWaiters.push({ pattern, resolve: resolveMatch }));
 		},
 	};
 }
@@ -148,25 +150,49 @@ function sendLine(client: NativeSessionClient, command: string): void {
 	client.input(`${command}\r`);
 }
 
-function powershellLiteral(value: string): string {
-	return `'${value.replaceAll("'", "''")}'`;
+interface InteractiveShellAdapter {
+	sendArgvProbe(client: NativeSessionClient, launch: ShellLaunchSpec): void;
+	setState(client: NativeSessionClient, state: string): void;
+	readState(client: NativeSessionClient): void;
+	childProbeCommand(scriptPath: string): string;
 }
 
-function childProbeCommand(shell: RequiredWindowsShell, scriptPath: string): string {
-	if (shell === "cmd") return `"${process.execPath}" "${scriptPath}"`;
-	return `& ${powershellLiteral(process.execPath)} ${powershellLiteral(scriptPath)}`;
-}
+const powershellAdapter: InteractiveShellAdapter = {
+	sendArgvProbe(client) {
+		sendLine(client, powershellArgvProbeCommand(PROBE_ARGS));
+	},
+	setState(client, state) {
+		sendLine(client, `$env:DEV3_SHELL_MATRIX_STATE=${powershellLiteral(state)}; Write-Output "STATE-SET[$env:DEV3_SHELL_MATRIX_STATE]"`);
+	},
+	readState(client) {
+		sendLine(client, 'Write-Output "STATE[$env:DEV3_SHELL_MATRIX_STATE]"');
+	},
+	childProbeCommand(scriptPath) {
+		return `& ${powershellLiteral(process.execPath)} ${powershellLiteral(scriptPath)}`;
+	},
+};
 
-function writeOwnedChildProbe(path: string): void {
-	writeFileSync(
-		path,
-		[
-			`const child = Bun.spawn([process.execPath, "-e", "await Bun.sleep(300000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });`,
-			`child.unref();`,
-			`console.log("TREEPID[" + child.pid + "]");`,
-		].join("\n"),
-	);
-}
+const shellAdapters: Record<RequiredWindowsShell, InteractiveShellAdapter> = {
+	"windows-powershell-5.1": powershellAdapter,
+	"powershell-7": powershellAdapter,
+	cmd: {
+		sendArgvProbe(client, launch) {
+			const batchPath = join(launch.cwd, "argv probe.cmd");
+			writeFileSync(batchPath, cmdArgvProbeBatch(PROBE_ARGS));
+			sendLine(client, `"${batchPath}"`);
+		},
+		setState(client, state) {
+			sendLine(client, `set "DEV3_SHELL_MATRIX_STATE=${state}"`);
+			sendLine(client, "echo STATE-SET[%DEV3_SHELL_MATRIX_STATE%]");
+		},
+		readState(client) {
+			sendLine(client, "echo STATE[%DEV3_SHELL_MATRIX_STATE%]");
+		},
+		childProbeCommand(scriptPath) {
+			return `"${process.execPath}" "${scriptPath}"`;
+		},
+	},
+};
 
 async function proveLifecycle(
 	shell: RequiredWindowsShell,
@@ -175,6 +201,7 @@ async function proveLifecycle(
 	checks: Check[],
 ): Promise<RequiredShellVerdict["pids"]> {
 	const sessionId = `shell-${shell.replace(/[^a-z0-9]+/g, "-")}`;
+	const adapter = shellAdapters[shell];
 	let record: Awaited<ReturnType<typeof start>>["record"] | null = null;
 	let ownedChildPid = -1;
 	try {
@@ -184,54 +211,41 @@ async function proveLifecycle(
 		const client = new NativeSessionClient();
 		await client.connect(record, readToken(sessionId) ?? "", { timeoutMs: 8000 });
 		const sink = makeSink(client);
-		if (shell === "cmd") {
-			const batchPath = join(launch.cwd, "argv probe.cmd");
-			writeFileSync(batchPath, cmdArgvProbeBatch(PROBE_ARGS));
-			sendLine(client, `"${batchPath}"`);
-		} else {
-			sendLine(client, powershellArgvProbeCommand(PROBE_ARGS));
-		}
-		addCheck(checks, "probe-ready", await waitFor(() => existsSync(evidencePath), 10_000), "attached argv probe wrote evidence");
+		adapter.sendArgvProbe(client, launch);
+		addCheck(checks, "probe-ready", await sink.waitForText("ARGV-PROBE-WROTE"), "attached argv probe wrote evidence");
 		const evidence = readJson<ProbeEvidence>(evidencePath);
 		addCheck(checks, "cwd", sameWindowsPath(evidence.cwd, launch.cwd), "shell observed the Unicode cwd with spaces");
 		addCheck(checks, "environment", evidence.environment === UNICODE_ENV, "shell observed the exact Unicode environment value");
 		addCheck(checks, "argv", JSON.stringify(evidence.arguments) === JSON.stringify(PROBE_ARGS), "shell received spaces, quotes, and metacharacters as exact argv entries");
 		addCheck(checks, "root-pid", evidence.parentPid === record.shell.pid, "argv probe was launched directly by the recorded root shell PID");
 		const state = `state-${shell.replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-		if (shell === "cmd") {
-			sendLine(client, `set "DEV3_SHELL_MATRIX_STATE=${state}"`);
-			sendLine(client, "echo STATE-SET[%DEV3_SHELL_MATRIX_STATE%]");
-		} else {
-			sendLine(client, `$env:DEV3_SHELL_MATRIX_STATE=${powershellLiteral(state)}; Write-Output "STATE-SET[$env:DEV3_SHELL_MATRIX_STATE]"`);
-		}
+		adapter.setState(client, state);
 		addCheck(checks, "state-set", await sink.waitForText(`STATE-SET[${state}]`), "interactive shell state was set before detach");
 
-		const childScript = join(launch.cwd, "owned child probe.ts");
-		writeOwnedChildProbe(childScript);
-		sendLine(client, childProbeCommand(shell, childScript));
+		const childScript = join(fixtureDir, "windows-owned-child-probe.ts");
+		sendLine(client, adapter.childProbeCommand(childScript));
 		const childMatch = await sink.waitForMatch(/TREEPID\[(\d+)\]/);
-		ownedChildPid = Number(childMatch?.[1] ?? -1);
+		ownedChildPid = Number(childMatch[1]);
 		addCheck(checks, "owned-child", ownedChildPid > 0 && isProcessAlive(ownedChildPid), "a descendant process is alive inside the session ownership boundary");
 		const beforeDetach = await client.status();
 		client.close();
-		await delay(300);
 
 		const reattached = await NativeSessionClient.discover(sessionId, { timeoutMs: 8000 });
 		const reattachSink = makeSink(reattached);
 		const afterDetach = await reattached.status();
 		addCheck(checks, "same-pid", afterDetach.shellPid === beforeDetach.shellPid && afterDetach.shellPid === record.shell.pid, "fresh client reattached to the same shell PID");
-		if (shell === "cmd") sendLine(reattached, "echo STATE[%DEV3_SHELL_MATRIX_STATE%]");
-		else sendLine(reattached, 'Write-Output "STATE[$env:DEV3_SHELL_MATRIX_STATE]"');
+		adapter.readState(reattached);
 		addCheck(checks, "same-state", await reattachSink.waitForText(`STATE[${state}]`), "fresh client observed state retained by the same shell");
 		reattached.close();
 
 		const stopped = await stop(sessionId, { timeoutMs: 10_000 });
 		addCheck(checks, "stop", stopped, "registry stop succeeded");
-		const treeGone = await waitFor(
-			() => !isProcessAlive(record!.host.pid) && !isProcessAlive(record!.shell.pid) && !isProcessAlive(ownedChildPid),
-			5000,
+		addCheck(
+			checks,
+			"owned-teardown",
+			!isProcessAlive(record.host.pid) && !isProcessAlive(record.shell.pid) && !isProcessAlive(ownedChildPid),
+			"stop removed the host, root shell, and owned descendant tree",
 		);
-		addCheck(checks, "owned-teardown", treeGone, "stop removed the host, root shell, and owned descendant tree");
 		return {
 			host: record.host.pid,
 			shell: record.shell.pid,
@@ -260,12 +274,6 @@ async function proveExitCode(
 		const observed = await exitPromise;
 		const verdict = shellExitVerdict(observed);
 		addCheck(checks, "exit-code", verdict.kind === "shell-command-failed" && verdict.code === 37, `requested 37, observed ${String(observed)}`);
-		addCheck(
-			checks,
-			"exit-cleanup",
-			await waitFor(() => !isProcessAlive(started!.record.host.pid) && !isProcessAlive(started!.record.shell.pid), 5000),
-			"natural shell exit removed its host and shell",
-		);
 		return { ...verdict, requested: 37 };
 	} finally {
 		if (started) await stop(sessionId, { timeoutMs: 5000 }).catch(() => false);

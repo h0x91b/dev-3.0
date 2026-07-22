@@ -42,9 +42,15 @@ describe("native-session protocol v1", () => {
 		expect(decodeHello(encodeControl(helloMessage("alpha", 1)))).toEqual(helloMessage("alpha", 1));
 	});
 
-	it("preserves exact shell exit codes and rejects malformed exit events", () => {
+	it("preserves exact shell exit codes", () => {
 		expect(decodeControl(encodeControl(exitEvent(37)))).toEqual(exitEvent(37));
+	});
+
+	it("rejects a non-numeric shell exit code", () => {
 		expect(decodeControl(JSON.stringify({ v: V, type: "exit", code: "37" }))).toBeNull();
+	});
+
+	it("rejects a missing shell exit code", () => {
 		expect(decodeControl(JSON.stringify({ v: V, type: "exit" }))).toBeNull();
 	});
 

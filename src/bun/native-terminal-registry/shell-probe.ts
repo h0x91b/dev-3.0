@@ -2,7 +2,7 @@ function assertSingleLineArgs(args: string[]): void {
 	if (args.some((arg) => /[\0\r\n]/.test(arg))) throw new Error("shell probe arguments must be single-line strings");
 }
 
-function powershellLiteral(value: string): string {
+export function powershellLiteral(value: string): string {
 	return `'${value.replaceAll("'", "''")}'`;
 }
 

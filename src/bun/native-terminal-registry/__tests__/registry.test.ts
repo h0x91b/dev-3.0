@@ -84,25 +84,30 @@ describe("native-session registry", () => {
 
 	it("passes one resolved launch descriptor to the detached host launcher", async () => {
 		let observed: ShellLaunchSpec | undefined;
-		const d = deps(async () => "dead");
-		const baseLaunch = d.launchHost;
-		d.launchHost = (sessionId, options, logFd) => {
+		const registryDeps = deps(async () => "dead");
+		const baseLaunch = registryDeps.launchHost;
+		registryDeps.launchHost = (sessionId, options, logFd) => {
 			observed = options.launch;
 			return baseLaunch(sessionId, options, logFd);
 		};
 
-		await start("explicit", { launch, timeoutMs: 3000 }, d);
+		await start("explicit", { launch, timeoutMs: 3000 }, registryDeps);
 		expect(observed).toEqual(launch);
 	});
 
 	it("reports executable-not-found before launching a detached host", async () => {
-		const d = deps(async () => "dead");
-		d.resolveLaunch = (spec) => resolveShellLaunchSpec(spec, () => null);
-
-		await expect(start("missing", { launch, timeoutMs: 3000 }, d)).rejects.toBeInstanceOf(
-			ShellExecutableNotFoundError,
-		);
-		expect(launchCalls).toBe(0);
+		const registryDeps = deps(async () => "dead");
+		registryDeps.resolveLaunch = (spec) => resolveShellLaunchSpec(spec, () => null);
+		let failure: unknown;
+		try {
+			await start("missing", { launch, timeoutMs: 3000 }, registryDeps);
+		} catch (error) {
+			failure = error;
+		}
+		expect({ failure, launchCalls }).toMatchObject({
+			failure: { name: ShellExecutableNotFoundError.name, code: "executable-not-found" },
+			launchCalls: 0,
+		});
 	});
 
 	it("returns already-running for a live session without launching a second host", async () => {
@@ -116,11 +121,11 @@ describe("native-session registry", () => {
 	it("serialises concurrent starts of one id: exactly one wins, losers get already-running", async () => {
 		const classify = async (_r: NativeSessionRecord, t: string | null): Promise<OwnershipVerdict> =>
 			t ? "owned" : "dead";
-		const d = deps(classify);
+		const registryDeps = deps(classify);
 		const results = await Promise.all([
-			start("beta", { launch, timeoutMs: 5000 }, d),
-			start("beta", { launch, timeoutMs: 5000 }, d),
-			start("beta", { launch, timeoutMs: 5000 }, d),
+			start("beta", { launch, timeoutMs: 5000 }, registryDeps),
+			start("beta", { launch, timeoutMs: 5000 }, registryDeps),
+			start("beta", { launch, timeoutMs: 5000 }, registryDeps),
 		]);
 		expect(results.filter((r) => r.status === "started")).toHaveLength(1);
 		expect(results.filter((r) => r.status === "already-running")).toHaveLength(2);

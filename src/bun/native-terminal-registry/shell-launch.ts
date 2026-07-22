@@ -95,10 +95,16 @@ export function windowsShellLaunchSpec(
 	options: WindowsShellLaunchOptions,
 ): ShellLaunchSpec {
 	let argv: string[];
-	if (shell === "cmd") {
-		argv = ["/D", "/Q", "/V:OFF"];
-	} else {
-		argv = ["-NoLogo", "-NoProfile", "-NoExit"];
+	switch (shell) {
+		case "cmd":
+			argv = ["/D", "/Q", "/V:OFF"];
+			break;
+		case "windows-powershell-5.1":
+		case "powershell-7":
+			argv = ["-NoLogo", "-NoProfile", "-NoExit"];
+			break;
+		default:
+			throw new Error(`unsupported Windows shell: ${String(shell)}`);
 	}
 	return defineShellLaunchSpec({
 		executable: options.executable,

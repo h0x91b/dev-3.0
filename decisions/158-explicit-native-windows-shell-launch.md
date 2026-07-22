@@ -18,10 +18,11 @@ argument quoting after launch instead of smuggling a command through argv.
 
 ## Decision
 
-`shell-launch.ts` defines `{ executable, argv, cwd, env }`, validates and encodes
-it for host re-entry, and resolves the requested executable before launching.
-Missing executables use a typed `executable-not-found` error; protocol exit events
-retain the shell's exact numeric code and classify non-zero values separately.
+The [`shell-launch.ts` functions](../src/bun/native-terminal-registry/shell-launch.ts)
+`defineShellLaunchSpec`, `encodeShellLaunchSpec`, and `decodeShellLaunchSpec`
+own `{ executable, argv, cwd, env }` across host re-entry. `resolveShellLaunchSpec`
+resolves only the requested executable, while `windowsShellLaunchSpec` rejects
+unknown shell kinds and `shellExitVerdict` retains the exact numeric exit code.
 
 ## Risks
 

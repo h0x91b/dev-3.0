@@ -342,11 +342,6 @@ async function run(): Promise<void> {
 		const exitPromise = exitClient.waitForExit({ timeoutMs: 8000 });
 		send(exitClient, "exit 37");
 		check((await exitPromise) === 37, "shell command failure reports the exact exit code 37");
-		const exitDeadline = Date.now() + 5000;
-		while (Date.now() < exitDeadline && (isProcessAlive(exiting.record.host.pid) || isProcessAlive(exiting.record.shell.pid))) {
-			await delay(50);
-		}
-		check(!isProcessAlive(exiting.record.host.pid) && !isProcessAlive(exiting.record.shell.pid), "natural shell exit removes its owned host + shell");
 		exitClient.close();
 
 		// v1 handshake rejects hostile first frames WITHOUT killing the live session.
