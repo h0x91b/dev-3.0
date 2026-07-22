@@ -3,26 +3,37 @@
  * Manual driver + host re-entry for the native-session registry (seq 1214).
  * NOT wired into the production `dev3` CLI (src/cli/main.ts) — a dev-only driver.
  *
- *   bun src/bun/native-terminal-registry/cli.ts start <id>    # launch detached host
- *   bun src/bun/native-terminal-registry/cli.ts list          # discover all sessions
- *   bun src/bun/native-terminal-registry/cli.ts status <id>   # discover + query one
- *   bun src/bun/native-terminal-registry/cli.ts attach <id>   # interactive attach (Ctrl-] detaches)
- *   bun src/bun/native-terminal-registry/cli.ts stop <id>     # stop one session's tree
- *   bun src/bun/native-terminal-registry/cli.ts __host <id>   # internal: the detached host
+ *   bun src/bun/native-terminal-registry/cli.ts start <id> [--live-parser] [--state-tap]
+ *   bun src/bun/native-terminal-registry/cli.ts list                # discover all sessions
+ *   bun src/bun/native-terminal-registry/cli.ts status <id>         # discover + query one
+ *   bun src/bun/native-terminal-registry/cli.ts attach <id>         # interactive attach (Ctrl-] detaches)
+ *   bun src/bun/native-terminal-registry/cli.ts parser-state <id>   # reconstructed semantic screen (seq 1228)
+ *   bun src/bun/native-terminal-registry/cli.ts stop <id>           # stop one session's tree
+ *   bun src/bun/native-terminal-registry/cli.ts __host <id>         # internal: the detached host
  */
 
 import { NativeSessionClient } from "./client";
 import { resolveHostConfig, runHost } from "./host";
+import { readParserState } from "./parser-state";
 import { readRecord, readToken } from "./record";
 import { list, start, status, stop } from "./registry";
 
 function requireId(): string {
-	const id = process.argv[3];
+	const id = positionalArgs()[1];
 	if (!id) {
 		process.stderr.write("usage: cli.ts <command> <sessionId>\n");
 		process.exit(2);
 	}
 	return id;
+}
+
+/** argv after the runtime/script entries, with `--flags` filtered out. */
+function positionalArgs(): string[] {
+	return process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
+}
+
+function hasFlag(flag: string): boolean {
+	return process.argv.includes(flag);
 }
 
 async function attach(sessionId: string): Promise<void> {
@@ -63,16 +74,19 @@ async function attach(sessionId: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
-	const cmd = process.argv[2];
+	const cmd = positionalArgs()[0];
 	switch (cmd) {
 		case "__host": {
-			process.env.DEV3_NATIVE_SESSION_ID = process.argv[3] ?? process.env.DEV3_NATIVE_SESSION_ID;
+			process.env.DEV3_NATIVE_SESSION_ID = positionalArgs()[1] ?? process.env.DEV3_NATIVE_SESSION_ID;
 			await runHost(resolveHostConfig()); // stays alive via WebSocket + PTY handles
 			break;
 		}
 		case "start": {
 			const id = requireId();
-			const result = await start(id);
+			const result = await start(id, {
+				liveParser: hasFlag("--live-parser"),
+				stateTap: hasFlag("--state-tap"),
+			});
 			const r = result.record;
 			process.stdout.write(
 				`${result.status} sessionId=${r.sessionId} paneId=${r.paneId}\n` +
@@ -109,6 +123,17 @@ async function main(): Promise<void> {
 		case "attach":
 			await attach(requireId());
 			break;
+		case "parser-state": {
+			// Fresh-client reconstruction path: read the bounded semantic snapshot.
+			const state = readParserState(requireId());
+			if (!state) {
+				process.stderr.write("no parser state (was the session started with --live-parser?)\n");
+				process.exit(1);
+			}
+			process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
+			process.exit(0);
+			break;
+		}
 		case "stop": {
 			const ok = await stop(requireId());
 			process.stdout.write(ok ? "stopped\n" : "nothing to stop (or failed)\n");
@@ -116,7 +141,9 @@ async function main(): Promise<void> {
 			break;
 		}
 		default:
-			process.stdout.write("usage: cli.ts start|list|status|attach|stop <sessionId>\n");
+			process.stdout.write(
+				"usage: cli.ts start [--live-parser] [--state-tap]|list|status|attach|parser-state|stop <sessionId>\n",
+			);
 			process.exit(2);
 	}
 }

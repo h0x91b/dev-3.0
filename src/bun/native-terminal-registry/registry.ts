@@ -40,6 +40,10 @@ export interface HostSpawnOptions {
 	cols?: number;
 	rows?: number;
 	cwd?: string;
+	/** Opt-in live-parser proof stage (seq 1228); default off keeps the host lean. */
+	liveParser?: boolean;
+	/** Opt-in unbounded ground-truth stream tap — proof runs only. */
+	stateTap?: boolean;
 }
 
 export interface StartOptions extends HostSpawnOptions {
@@ -111,6 +115,8 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 			...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),
 			...(opts.rows ? { DEV3_NATIVE_SESSION_ROWS: String(opts.rows) } : {}),
 			...(opts.cwd ? { DEV3_NATIVE_SESSION_CWD: opts.cwd } : {}),
+			...(opts.liveParser ? { DEV3_NATIVE_SESSION_LIVE_PARSER: "1" } : {}),
+			...(opts.stateTap ? { DEV3_NATIVE_SESSION_STATE_TAP: "1" } : {}),
 		},
 	});
 	let exited = false;
@@ -169,7 +175,14 @@ export async function start(
 			const logFd = openSync(logFile(sessionId), "a");
 			const launch = deps.launchHost(
 				sessionId,
-				{ cmd: opts.cmd, cols: opts.cols, rows: opts.rows, cwd: opts.cwd },
+				{
+					cmd: opts.cmd,
+					cols: opts.cols,
+					rows: opts.rows,
+					cwd: opts.cwd,
+					liveParser: opts.liveParser,
+					stateTap: opts.stateTap,
+				},
 				logFd,
 			);
 			try {

@@ -65,3 +65,13 @@ export function logFile(id: string): string {
 export function journalFile(id: string): string {
 	return join(sessionDir(id), "journal.ndjson");
 }
+
+/** Live-parser semantic snapshot (seq 1228) — bounded, atomic, additive. */
+export function parserStateFile(id: string): string {
+	return join(sessionDir(id), "parser-state.json");
+}
+
+/** Ordered ground-truth stream tap (seq 1228) — proof runs only, env-gated. */
+export function streamTapFile(id: string): string {
+	return join(sessionDir(id), "stream-tap.ndjson");
+}
