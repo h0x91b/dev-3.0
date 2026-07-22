@@ -13,15 +13,15 @@ import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../shared
 import {
 	RATE_LIMIT_DANGER_PERCENT,
 	RATE_LIMIT_WARN_PERCENT,
+	formatResetDelta,
 	isUnlimitedRateLimitSnapshot,
-	worstSnapshotWindow,
+	windowLabel,
 } from "../../shared/rate-limits";
 import { api } from "../rpc";
 import { toast } from "../toast";
 import { useT } from "../i18n";
 import { useEscapeKey } from "../hooks/useEscapeKey";
-import Tooltip from "./Tooltip";
-import { AccountCard, resolveAccount, type AccountLine } from "./rate-limit-ui";
+import { CapturedNote, UsageBar } from "./rate-limit-ui";
 
 /** Fired on window after any account mutation (switch from this popover,
  *  add/remove/switch in Settings → Agent Accounts), so every mounted listener
@@ -85,60 +85,76 @@ function useAgentRateLimits(enabled: boolean): AgentRateLimitsReport | null {
 interface RowUsage {
 	/** null = OAuth account with no reading in the 7-day activity window. */
 	snap: AgentRateLimitSnapshot | null;
-	/** Identity line for the tooltip card header. */
-	account: AccountLine | null;
 	state: "used" | "unlimited" | "none";
-	/** Rounded worst-window percent; 0 for unlimited/none. */
-	percent: number;
 }
 
-function ringSeverityText(percent: number): string {
+function usageSeverityText(percent: number): string {
 	if (percent >= RATE_LIMIT_DANGER_PERCENT) return "text-danger";
 	if (percent >= RATE_LIMIT_WARN_PERCENT) return "text-warning";
 	return "text-accent";
 }
 
 /**
- * Circular usage gauge that doubles as the row's selection mark (variant B of
- * the picker design exploration): the arc shows the worst rate-limit window,
- * a full success ring means unlimited, a bare track means no recent reading,
- * and the filled center dot preserves the radio "selected" semantics.
+ * Compact per-account quota block under a picker row (variant C of the design
+ * exploration — mini quota cards): one "label · bar · % · reset" line per limit
+ * window plus the captured note; an unlimited chip or a no-data note otherwise.
  */
-function UsageRing({ usage, isActive }: { usage: RowUsage | null; isActive: boolean }) {
+function RowQuota({ usage, now }: { usage: RowUsage; now: number }) {
 	const t = useT();
-	const radius = 6;
-	const circumference = 2 * Math.PI * radius;
-	const state = usage?.state ?? "none";
-	const percent = usage?.percent ?? 0;
-	const arc =
-		state === "unlimited" ? circumference : state === "used" ? (Math.max(0, Math.min(100, percent)) / 100) * circumference : 0;
-	const colorClass = state === "unlimited" ? "text-success" : ringSeverityText(percent);
-	const label =
-		state === "unlimited"
-			? t("rateLimits.unlimited")
-			: state === "used"
-				? t("rateLimits.percentUsed", { percent })
-				: t("rateLimits.noRecentData");
-	return (
-		<svg viewBox="0 0 16 16" role="img" aria-label={label} className="mt-0.5 h-4 w-4 shrink-0">
-			<circle cx="8" cy="8" r={radius} fill="none" strokeWidth="2" className="text-fg/15" stroke="currentColor" />
-			{arc > 0 && (
-				<circle
-					cx="8"
-					cy="8"
-					r={radius}
-					fill="none"
-					strokeWidth="2"
-					strokeLinecap="round"
-					strokeDasharray={`${arc} ${circumference}`}
-					transform="rotate(-90 8 8)"
-					className={colorClass}
-					stroke="currentColor"
-				/>
-			)}
-			{isActive && <circle cx="8" cy="8" r="3" className="text-accent" fill="currentColor" />}
-		</svg>
-	);
+	if (usage.state === "unlimited" && usage.snap) {
+		return (
+			<>
+				<span className="mt-1.5 flex">
+					<span className="text-success text-[0.625rem] px-1 py-px bg-success/10 rounded font-medium">
+						{t("rateLimits.unlimited")}
+					</span>
+				</span>
+				<span className="mt-1 block">
+					<CapturedNote capturedAt={usage.snap.capturedAt} now={now} />
+				</span>
+			</>
+		);
+	}
+	if (usage.state === "used" && usage.snap) {
+		const monthly = usage.snap.monthlyCredits;
+		// Same de-dup as AccountCard: the monthly_credits window mirrors
+		// snap.monthlyCredits, which gets its own line below.
+		const lines = usage.snap.windows
+			.filter((win) => !(win.id === "monthly_credits" && monthly))
+			.map((win) => ({ key: win.id, label: windowLabel(win), usedPercent: win.usedPercent, resetsAt: win.resetsAt }));
+		if (monthly) {
+			lines.push({
+				key: "monthly",
+				label: t("rateLimits.monthlyLabel"),
+				usedPercent: Math.max(0, 100 - monthly.remainingPercent),
+				resetsAt: monthly.resetsAt,
+			});
+		}
+		return (
+			<>
+				{lines.map((line) => {
+					const percent = Math.round(line.usedPercent);
+					const reset = formatResetDelta(line.resetsAt, now);
+					return (
+						<span key={line.key} className="mt-1.5 flex items-center gap-1.5">
+							<span className="min-w-[1.125rem] shrink-0 text-[0.625rem] text-fg-muted tabular-nums whitespace-nowrap">
+								{line.label}
+							</span>
+							<UsageBar percent={line.usedPercent} className="h-1 min-w-0 flex-1" />
+							<span className="shrink-0 text-[0.625rem] tabular-nums">
+								<span className={`font-semibold ${usageSeverityText(percent)}`}>{percent}%</span>
+								{reset && <span className="text-fg-muted"> · {reset}</span>}
+							</span>
+						</span>
+					);
+				})}
+				<span className="mt-1 block">
+					<CapturedNote capturedAt={usage.snap.capturedAt} now={now} />
+				</span>
+			</>
+		);
+	}
+	return <span className="mt-1.5 block text-[0.625rem] text-fg-muted">{t("rateLimits.noRecentData")}</span>;
 }
 
 function identityBadge(identity: AgentAccountIdentity | null): string | null {
@@ -189,7 +205,6 @@ function SwitcherPopover({
 	const menuRef = useRef<HTMLDivElement>(null);
 	const [pos, setPos] = useState({ top: anchor.top, left: anchor.left });
 	const [visible, setVisible] = useState(false);
-	const t = useT();
 	const now = Date.now();
 
 	useEscapeKey(onClose);
@@ -234,80 +249,50 @@ function SwitcherPopover({
 				<div className="text-fg-2 text-xs font-semibold uppercase tracking-wider">{title}</div>
 				<p className="text-fg-muted text-[0.6875rem] leading-snug mt-1">{subtitle}</p>
 			</div>
-			{rows.map((row) => {
-				const selectable = !!row.onSelect && !row.isActive;
-				// Rows stay enabled even when informational/selected so the usage
-				// tooltip keeps working (disabled subtrees swallow hover events);
-				// non-selectable rows simply have no onClick.
-				const button = (
-					<button
-						type="button"
-						disabled={busy}
-						onClick={selectable ? (row.onSelect ?? undefined) : undefined}
-						aria-current={row.isActive || undefined}
-						className={`w-full text-left px-3 py-2 flex items-start gap-2 transition-colors ${
-							selectable ? "hover:bg-elevated-hover cursor-pointer" : "cursor-default"
-						} disabled:opacity-100`}
-					>
-						<UsageRing usage={row.usage} isActive={row.isActive} />
-						<span className="min-w-0 flex-1">
-							<span className="flex items-center gap-2 min-w-0">
-								<span className="text-fg text-sm truncate flex-1">{row.label}</span>
-								{row.isApi ? (
-									<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
-								) : null}
-								{row.planLabel ? (
-									<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">
-										{row.planLabel}
-									</span>
-								) : null}
-								{row.usage?.state === "used" ? (
-									<span
-										className={`shrink-0 text-[0.6875rem] font-semibold tabular-nums ${ringSeverityText(row.usage.percent)}`}
-									>
-										{row.usage.percent}%
-									</span>
-								) : row.usage?.state === "unlimited" ? (
-									<span className="shrink-0 text-[0.6875rem] font-semibold text-success">∞</span>
-								) : row.usage ? (
-									<span className="shrink-0 text-[0.6875rem] text-fg-muted">—</span>
-								) : null}
-							</span>
-							{(row.sub && row.sub !== row.label && !row.label.includes(row.sub)) || row.workspaceLabel ? (
-								<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
-									{row.sub && row.sub !== row.label && !row.label.includes(row.sub) ? (
-										<span className="text-fg-muted text-xs font-mono truncate max-w-full">{row.sub}</span>
-									) : null}
-									{row.workspaceLabel ? (
-										<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full">
-											{row.workspaceLabel}
-										</span>
-									) : null}
+			{rows.map((row) => (
+				<button
+					key={row.key}
+					type="button"
+					disabled={busy || !row.onSelect || row.isActive}
+					onClick={row.onSelect ?? undefined}
+					className={`w-full text-left px-3 py-2 flex items-start gap-2 transition-colors ${
+						row.onSelect && !row.isActive ? "hover:bg-elevated-hover cursor-pointer" : "cursor-default"
+					} disabled:opacity-100`}
+				>
+					<span
+						aria-hidden
+						className={`w-3 h-3 mt-1 rounded-full border-2 shrink-0 ${
+							row.isActive ? "border-accent bg-accent" : "border-fg-muted/50"
+						}`}
+					/>
+					<span className="min-w-0 flex-1">
+						<span className="flex items-center gap-2 min-w-0">
+							<span className="text-fg text-sm truncate flex-1">{row.label}</span>
+							{row.isApi ? (
+								<span className="text-warning text-[0.625rem] px-1 py-px bg-warning/10 rounded shrink-0">API</span>
+							) : null}
+							{row.planLabel ? (
+								<span className="text-accent text-[0.625rem] px-1 py-px bg-accent/10 rounded shrink-0">
+									{row.planLabel}
 								</span>
 							) : null}
 						</span>
-					</button>
-				);
-				return row.usage?.snap ? (
-					<Tooltip
-						key={row.key}
-						layer="popover"
-						placement="right"
-						content={t("rateLimits.tooltipTitle")}
-						detail={
-							<div className="flex w-[19rem] max-w-[calc(100vw-3rem)] flex-col">
-								<AccountCard snap={row.usage.snap} account={row.usage.account} now={now} />
-							</div>
-						}
-					>
-						{button}
-					</Tooltip>
-				) : (
-					<span key={row.key} className="block">
-						{button}
+						{(row.sub && row.sub !== row.label && !row.label.includes(row.sub)) || row.workspaceLabel ? (
+							<span className="mt-1 flex flex-wrap items-center gap-1.5 min-w-0">
+								{row.sub && row.sub !== row.label && !row.label.includes(row.sub) ? (
+									<span className="text-fg-muted text-xs font-mono truncate max-w-full">{row.sub}</span>
+								) : null}
+								{row.workspaceLabel ? (
+									<span className="text-fg-3 text-[0.625rem] px-1 py-px bg-raised rounded max-w-full">
+										{row.workspaceLabel}
+									</span>
+								) : null}
+							</span>
+						) : null}
+						{row.usage ? <RowQuota usage={row.usage} now={now} /> : null}
 					</span>
-				);
-			})}
+				</button>
+			))}
 			<div className="border-t border-edge mt-1 pt-1.5 px-3 pb-1">
 				<p className="text-fg-muted text-[0.6875rem] leading-snug">{hint}</p>
 			</div>
@@ -403,12 +388,9 @@ export default function AgentAccountIndicator({
 	const usageFor = (accountId: string | null, isApi = false): RowUsage | null => {
 		if (!report || isApi) return null;
 		const snap = report.snapshots.find((s) => s.source === kind && (s.accountId ?? null) === accountId) ?? null;
-		if (!snap) return { snap: null, account: null, state: "none", percent: 0 };
-		const account = resolveAccount(kind, state, accountId);
-		if (isUnlimitedRateLimitSnapshot(snap)) return { snap, account, state: "unlimited", percent: 0 };
-		const worst = worstSnapshotWindow(snap);
-		if (!worst) return { snap, account, state: "none", percent: 0 };
-		return { snap, account, state: "used", percent: Math.round(worst.usedPercent) };
+		if (!snap) return { snap: null, state: "none" };
+		if (isUnlimitedRateLimitSnapshot(snap)) return { snap, state: "unlimited" };
+		return { snap, state: snap.windows.length > 0 || snap.monthlyCredits ? "used" : "none" };
 	};
 
 	const rows: PopoverRow[] = [];

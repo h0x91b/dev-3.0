@@ -261,7 +261,7 @@ describe("AgentAccountIndicator", () => {
 		expect(screen.getAllByText("API").length).toBeGreaterThan(0);
 	});
 
-	it("shows per-account usage rings with severity-colored percents", async () => {
+	it("shows per-window quota bars with severity-colored percents", async () => {
 		mockedApi.request.getAgentRateLimits.mockResolvedValue(
 			makeReport([
 				makeSnapshot({
@@ -282,15 +282,17 @@ describe("AgentAccountIndicator", () => {
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 
-		// Worst window wins: 62% (7d) for the system login, colored accent (<80).
+		// System login shows both windows inline (5h 34%, 7d 62%), accent (<80).
 		const okPercent = await screen.findByText("62%");
 		expect(okPercent.className).toContain("text-accent");
+		expect(screen.getByText("34%")).toBeTruthy();
+		expect(screen.getByText("5h")).toBeTruthy();
+		// The managed account's 7d window sits in the danger tier.
 		const dangerPercent = screen.getByText("97%");
 		expect(dangerPercent.className).toContain("text-danger");
-		expect(screen.getByRole("img", { name: "62% used" })).toBeTruthy();
 	});
 
-	it("shows ∞ for an unlimited account and — for one without a reading", async () => {
+	it("shows an unlimited chip and a no-data note per account", async () => {
 		mockedApi.request.getAgentRateLimits.mockResolvedValue(
 			makeReport([makeSnapshot({ accountId: null, creditsBalance: "unlimited" })]),
 		);
@@ -300,19 +302,17 @@ describe("AgentAccountIndicator", () => {
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 
 		// System login is unlimited; the managed account has no snapshot at all.
-		expect(await screen.findByText("∞")).toBeTruthy();
-		expect(screen.getByText("—")).toBeTruthy();
-		expect(screen.getByRole("img", { name: "∞ unlimited" })).toBeTruthy();
-		expect(screen.getByRole("img", { name: "no recent usage data" })).toBeTruthy();
+		expect(await screen.findByText("∞ unlimited")).toBeTruthy();
+		expect(screen.getByText("no recent usage data")).toBeTruthy();
 	});
 
-	it("hovering a row shows the quota card tooltip with windows and captured note", async () => {
+	it("shows reset countdowns and the captured note inline", async () => {
 		mockedApi.request.getAgentRateLimits.mockResolvedValue(
 			makeReport([
 				makeSnapshot({
 					accountId: null,
 					capturedAt: Date.now() - 20 * 60 * 1000,
-					windows: [{ id: "five_hour", usedPercent: 34, resetsAt: null, windowMinutes: 300 }],
+					windows: [{ id: "five_hour", usedPercent: 34, resetsAt: Date.now() + 2 * 60 * 60 * 1000, windowMinutes: 300 }],
 				}),
 			]),
 		);
@@ -320,15 +320,33 @@ describe("AgentAccountIndicator", () => {
 		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
-		await screen.findByText("34%");
-		await user.hover(screen.getByText("System login (~/.claude)"));
 
-		// Tooltip opens after the hover-intent delay with the full quota card.
-		expect(await screen.findByText("5h", undefined, { timeout: 2000 })).toBeTruthy();
+		// No hover needed — the quota line and its provenance render inline.
+		expect(await screen.findByText("34%")).toBeTruthy();
+		expect(screen.getByText(/· 2h/)).toBeTruthy();
 		expect(screen.getByText("captured 20m ago")).toBeTruthy();
 	});
 
-	it("shows a bare ring without percent text for API profiles", async () => {
+	it("renders the monthly credits line when the plan exposes it", async () => {
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([
+				makeSnapshot({
+					accountId: null,
+					windows: [],
+					monthlyCredits: { limit: 1000, used: 250, remainingPercent: 75, resetsAt: null },
+				}),
+			]),
+		);
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+
+		expect(await screen.findByText("monthly credits")).toBeTruthy();
+		expect(screen.getByText("25%")).toBeTruthy();
+	});
+
+	it("shows no quota block for API profiles", async () => {
 		const base = makeState();
 		mockedApi.request.listAgentAccounts.mockResolvedValue(
 			makeState({
@@ -357,7 +375,8 @@ describe("AgentAccountIndicator", () => {
 
 		await user.click(await screen.findByTestId("agent-account-trigger"));
 		await screen.findByText("34%"); // system row has data…
-		expect(screen.queryByText("—")).toBeNull(); // …but the API row shows no dash
+		// …but the API row gets neither bars nor a misleading "no data" note.
+		expect(screen.queryByText("no recent usage data")).toBeNull();
 	});
 
 	it("shows the readable Codex workspace name in the account popover", async () => {
