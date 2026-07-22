@@ -100,7 +100,7 @@ function Invoke-Target {
 	)
 	$resolved = Get-Command $Command[0] -ErrorAction SilentlyContinue
 	if (-not $resolved) {
-		Write-Host "-- $Name: not installed, skipped"
+		Write-Host "-- ${Name}: not installed, skipped"
 		return [ordered]@{ step = "target:$Name"; skipped = $true; reason = "$($Command[0]) not on PATH" }
 	}
 	$commandLine = @($resolved.Source) + $Command[1..($Command.Length - 1)]
