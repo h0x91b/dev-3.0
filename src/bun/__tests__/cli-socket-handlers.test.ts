@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
-import { getAllowedTransitions, type Project, type Task, type CliRequest, type TaskNote } from "../../shared/types";
+import { getAllowedTransitions, type Project, type Task, type CliRequest, type TaskNote, type SharedArtifact } from "../../shared/types";
 
 // ---- Mocks ----
 
@@ -60,11 +60,6 @@ vi.mock("../shared-artifacts", () => ({
 			bytes: 1,
 		})),
 	})),
-	pruneSharedArtifacts: vi.fn((existing: unknown[] | undefined, incoming: unknown[]) => ({
-		kept: [...(existing ?? []), ...incoming],
-		dropped: [],
-	})),
-	deleteSharedArtifactFiles: vi.fn(),
 }));
 
 vi.mock("../pty-server", () => ({
@@ -1110,6 +1105,41 @@ describe("ui.show-image", () => {
 });
 
 describe("ui.show-artifact", () => {
+	it("retains artifact history beyond the previous per-task cap", async () => {
+		const project = makeProject();
+		const existing: SharedArtifact[] = Array.from({ length: 20 }, (_, index) => ({
+			id: `artifact-${index}`,
+			kind: "html",
+			title: `Artifact ${index}`,
+			name: `artifact-${index}.html`,
+			storedPath: `/wt/shared-artifacts/artifact-${index}/report.html`,
+			originalPath: `/tmp/artifact-${index}.html`,
+			bytes: 10,
+			createdAt: index,
+			assets: [],
+		}));
+		const task = makeTask({ sharedArtifacts: existing });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		let persisted: Task | undefined;
+		vi.mocked(data.updateTaskWith).mockImplementation(async (_project, _taskId, mutator) => {
+			const { updates, result } = await (mutator as (t: Task) => { updates: Partial<Task>; result: unknown })(task);
+			persisted = { ...task, ...updates };
+			return { task: persisted, result } as never;
+		});
+
+		await handleRequest(makeRequest("ui.show-artifact", {
+			taskId: task.id,
+			projectId: project.id,
+			htmlPath: "/tmp/report.html",
+		}));
+
+		expect(persisted?.sharedArtifacts?.map((artifact) => artifact.id)).toEqual([
+			...existing.map((artifact) => artifact.id),
+			"artifact-1",
+		]);
+	});
+
 	it("stores HTML plus images and pushes taskUpdated + cliShowArtifact", async () => {
 		const project = makeProject();
 		const task = makeTask({ seq: 14 });
