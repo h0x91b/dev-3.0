@@ -26,7 +26,7 @@ vi.mock("../electrobun-platform", () => ({
 }));
 vi.mock("../quit-manager", () => ({ markQuitConfirmed }));
 
-import { applyUpdate, downloadUpdateForChannel } from "../updater";
+import { applyUpdate, downloadUpdateForChannel, checkForUpdateWithChannel } from "../updater";
 
 /** Remote state as Electrobun's checkForUpdate() returns it: no updateReady. */
 const remoteState = {
@@ -149,6 +149,49 @@ describe("downloadUpdateForChannel (same channel)", () => {
 		// Exactly one check (the initial state-populating one) — polling must
 		// use updateInfo(), because checkForUpdate resets updateReady.
 		expect(mockUpdater.checkForUpdate).toHaveBeenCalledOnce();
+	});
+});
+
+describe("dev channel guard", () => {
+	// Running from source builds the app on the "dev" channel. Electrobun's
+	// built-in updater disables updates on dev: checkForUpdate() early-returns
+	// WITHOUT initializing its module-level updateInfo, so a later
+	// downloadUpdate() dereferences undefined ("updateInfo.error = …") and
+	// throws a TypeError. Our flow must never reach that call on dev.
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockUpdater.localInfo.channel.mockResolvedValue("dev");
+		mockUpdater.checkForUpdate.mockImplementation(async () => {
+			throw new TypeError("undefined is not an object (evaluating 'updateInfo.error = ...')");
+		});
+		mockUpdater.downloadUpdate.mockImplementation(async () => {
+			throw new TypeError("undefined is not an object (evaluating 'updateInfo.error = ...')");
+		});
+	});
+
+	afterEach(() => {
+		mockUpdater.localInfo.channel.mockResolvedValue("stable");
+		vi.restoreAllMocks();
+	});
+
+	it("checkForUpdateWithChannel reports devBuild without hitting the network", async () => {
+		const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+		const result = await checkForUpdateWithChannel("stable");
+
+		expect(result.devBuild).toBe(true);
+		expect(result.updateAvailable).toBe(false);
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("downloadUpdateForChannel refuses to touch the built-in updater on dev", async () => {
+		const result = await downloadUpdateForChannel("stable", vi.fn());
+
+		expect(result.ok).toBe(false);
+		expect(result.error).toMatch(/dev/i);
+		// The crashing Electrobun calls must never run.
+		expect(mockUpdater.checkForUpdate).not.toHaveBeenCalled();
+		expect(mockUpdater.downloadUpdate).not.toHaveBeenCalled();
 	});
 });
 

@@ -19,6 +19,7 @@ const updates = {
 	"update.downloading": "Загрузка...",
 	"update.upToDateVersion": "У вас последняя версия — v{version}",
 	"update.checkFailedDetail": "Не удалось проверить обновления: {error}",
+	"update.devBuildNotice": "Это dev-сборка — обновления отключены. Чтобы обновиться, пересоберите из исходников.",
 	"update.applyFailed": "Не удалось применить обновление: {error}",
 	"update.whatsNewVersion": "Что нового в v{version}",
 	"update.seeAllChanges": "Все изменения",
