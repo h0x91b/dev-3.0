@@ -46,15 +46,20 @@ import {
 } from "./record";
 import { createWindowsJobContainment } from "./windows-job";
 import { WriterOwnership } from "./writer-ownership";
+import {
+	decodeShellLaunchSpec,
+	shellCommand,
+	NATIVE_SESSION_LAUNCH_ENV,
+	type ShellLaunchSpec,
+} from "./shell-launch";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export interface HostConfig {
 	sessionId: string;
-	cmd: string[];
+	launch: ShellLaunchSpec;
 	cols: number;
 	rows: number;
-	cwd: string;
 	/** Fixed port for tests; default 0 = OS-assigned ephemeral. */
 	port?: number;
 }
@@ -63,34 +68,19 @@ export interface HostConfig {
 export function resolveHostConfig(): HostConfig {
 	const sessionId = process.env.DEV3_NATIVE_SESSION_ID;
 	if (!sessionId) throw new Error("DEV3_NATIVE_SESSION_ID is required to run a native-session host");
+	const rawLaunch = process.env[NATIVE_SESSION_LAUNCH_ENV];
+	if (!rawLaunch) throw new Error(`${NATIVE_SESSION_LAUNCH_ENV} is required to run a native-session host`);
 	return {
 		sessionId,
-		cmd: resolveShellCommand(),
+		launch: decodeShellLaunchSpec(rawLaunch),
 		cols: parsePositiveInt(process.env.DEV3_NATIVE_SESSION_COLS, 80),
 		rows: parsePositiveInt(process.env.DEV3_NATIVE_SESSION_ROWS, 24),
-		cwd: process.env.DEV3_NATIVE_SESSION_CWD || process.cwd(),
 	};
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
 	const value = Number(raw);
 	return Number.isInteger(value) && value > 0 ? value : fallback;
-}
-
-export function resolveShellCommand(): string[] {
-	const raw = process.env.DEV3_NATIVE_SESSION_CMD;
-	if (raw) {
-		try {
-			const arr = JSON.parse(raw);
-			if (Array.isArray(arr) && arr.length > 0 && arr.every((x) => typeof x === "string")) {
-				return arr as string[];
-			}
-		} catch {
-			// fall through to default
-		}
-	}
-	if (process.platform === "win32") return ["powershell.exe", "-NoLogo", "-NoProfile"];
-	return [process.env.SHELL || "/bin/bash"];
 }
 
 export interface RecordFields {
@@ -255,7 +245,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 
 	const proc = (() => {
 		try {
-			return spawn(config.cmd, {
+			return spawn(shellCommand(config.launch), {
 				terminal: {
 					cols: config.cols,
 					rows: config.rows,
@@ -274,11 +264,11 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 						}
 					},
 				},
-				cwd: config.cwd,
-				env: { ...process.env, TERM: "xterm-256color" },
+				cwd: config.launch.cwd,
+				env: { ...process.env, TERM: "xterm-256color", ...config.launch.env },
 			});
 		} catch (cause) {
-			throw nativeTerminalSpawnError({ platform: process.platform, bunVersion, command: config.cmd[0] ?? "shell", cause });
+			throw nativeTerminalSpawnError({ platform: process.platform, bunVersion, command: config.launch.executable, cause });
 		}
 	})();
 	if (!proc.terminal) {
@@ -290,7 +280,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 		throw nativeTerminalSpawnError({
 			platform: process.platform,
 			bunVersion,
-			command: config.cmd[0] ?? "shell",
+			command: config.launch.executable,
 			cause: new Error("Bun.spawn returned without a terminal handle"),
 		});
 	}
@@ -444,7 +434,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				hostExecutable: process.execPath,
 				hostStartSignature,
 				shellPid,
-				shellCommand: config.cmd,
+				shellCommand: shellCommand(config.launch),
 				shellStartSignature,
 				port: server.port ?? 0,
 				cols: currentCols,

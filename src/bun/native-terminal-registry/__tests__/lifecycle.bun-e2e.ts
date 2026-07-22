@@ -35,6 +35,12 @@ import {
 	type NativeSessionRecord,
 } from "../record";
 import { cleanupStale, list, start, stop } from "../registry";
+import {
+	defaultNativeShellLaunchSpec,
+	defineShellLaunchSpec,
+	encodeShellLaunchSpec,
+	NATIVE_SESSION_LAUNCH_ENV,
+} from "../shell-launch";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
 import { powerShellReattachStateProbe, powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
 
@@ -195,16 +201,22 @@ async function run(): Promise<void> {
 	if (!isWindows) chmodSync(shim, 0o755);
 
 	process.env.DEV3_NATIVE_SESSIONS_DIR = metaDir;
-	process.env.DEV3_NATIVE_SESSION_CMD = JSON.stringify(
-		isWindows ? ["powershell.exe", "-NoLogo", "-NoProfile"] : ["/bin/bash", "--norc", "--noprofile"],
-	);
+	const launch = isWindows
+		? defaultNativeShellLaunchSpec({ platform: process.platform, cwd: root, env: process.env })
+		: defineShellLaunchSpec({
+				executable: "/bin/bash",
+				argv: ["--norc", "--noprofile"],
+				cwd: root,
+				env: {},
+			});
+	process.env[NATIVE_SESSION_LAUNCH_ENV] = encodeShellLaunchSpec(launch);
 	process.env.PATH = `${shimDir}${delimiter}${process.env.PATH ?? ""}`;
 
 	const testPid = process.pid;
 	// A pre-existing unrelated process the native registry must never adopt or kill.
 	const tmuxGuard = spawn(
 		isWindows
-			? ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
+			? [launch.executable, "-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
 			: ["sleep", "300"],
 		{ stdin: "ignore", stdout: "ignore", stderr: "ignore" },
 	);
@@ -215,7 +227,7 @@ async function run(): Promise<void> {
 
 	try {
 		// ── 1. start TWO sessions; bravo through a CLI subprocess that then exits ──
-		const alpha = await start("alpha", { timeoutMs: 15_000 });
+		const alpha = await start("alpha", { launch, timeoutMs: 15_000 });
 		bravo = startViaCli("bravo");
 
 		check(alpha.status === "started" && alpha.record.host.pid !== testPid, "alpha started as a separate detached host");
@@ -319,9 +331,23 @@ async function run(): Promise<void> {
 		c2.close();
 
 		// ── 6. duplicate start of a live id returns already-running, no 2nd shell ──
-		const dup = await start("alpha", { timeoutMs: 5000 });
+		const dup = await start("alpha", { launch, timeoutMs: 5000 });
 		check(dup.status === "already-running", "duplicate start of a live id returns already-running");
 		check(dup.record.shell.pid === alpha.record.shell.pid, "duplicate start did NOT spawn a second shell");
+
+		// A valid root shell failure is an exact exit event, not a startup error.
+		const exiting = await start("exit-code", { launch, timeoutMs: 15_000 });
+		const exitClient = new NativeSessionClient();
+		await exitClient.connect(exiting.record, readFileSync(tokenFile("exit-code"), "utf8").trim());
+		const exitPromise = exitClient.waitForExit({ timeoutMs: 8000 });
+		send(exitClient, "exit 37");
+		check((await exitPromise) === 37, "shell command failure reports the exact exit code 37");
+		const exitDeadline = Date.now() + 5000;
+		while (Date.now() < exitDeadline && (isProcessAlive(exiting.record.host.pid) || isProcessAlive(exiting.record.shell.pid))) {
+			await delay(50);
+		}
+		check(!isProcessAlive(exiting.record.host.pid) && !isProcessAlive(exiting.record.shell.pid), "natural shell exit removes its owned host + shell");
+		exitClient.close();
 
 		// v1 handshake rejects hostile first frames WITHOUT killing the live session.
 		const alphaToken = readFileSync(tokenFile("alpha"), "utf8").trim();
@@ -397,6 +423,7 @@ async function run(): Promise<void> {
 	} finally {
 		try {
 			await stop("bravo", { timeoutMs: 6000 });
+			await stop("exit-code", { timeoutMs: 3000 });
 		} catch {
 			// best-effort
 		}

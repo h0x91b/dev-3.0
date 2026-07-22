@@ -10,6 +10,7 @@ import { isProcessAlive } from "../process-identity";
 import type { ErrorMessage } from "../protocol";
 import { readRecord } from "../record";
 import { start, stop } from "../registry";
+import { defineShellLaunchSpec, encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../shell-launch";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -124,9 +125,13 @@ async function run(): Promise<void> {
 	if (!isWindows) chmodSync(shim, 0o755);
 
 	process.env.DEV3_NATIVE_SESSIONS_DIR = metaDir;
-	process.env.DEV3_NATIVE_SESSION_CMD = JSON.stringify(
-		isWindows ? ["powershell.exe", "-NoLogo", "-NoProfile"] : ["/bin/bash", "--norc", "--noprofile"],
-	);
+	const launch = defineShellLaunchSpec({
+		executable: isWindows ? "powershell.exe" : "/bin/bash",
+		argv: isWindows ? ["-NoLogo", "-NoProfile", "-NoExit"] : ["--norc", "--noprofile"],
+		cwd: root,
+		env: {},
+	});
+	process.env[NATIVE_SESSION_LAUNCH_ENV] = encodeShellLaunchSpec(launch);
 	process.env.PATH = `${shimDir}${delimiter}${process.env.PATH ?? ""}`;
 
 	const nonce = `n${Date.now()}`;
@@ -134,7 +139,7 @@ async function run(): Promise<void> {
 	let restartedHostPid: number | null = null;
 
 	try {
-		const started = await start(sessionId, { timeoutMs: 15_000 });
+		const started = await start(sessionId, { launch, timeoutMs: 15_000 });
 		const token = readFileSync(tokenFile(sessionId), "utf8").trim();
 		const seed = new NativeSessionClient();
 		const seedSink = makeSink(seed);
@@ -273,7 +278,7 @@ async function run(): Promise<void> {
 		await disconnect(sole);
 
 		check(await stop(sessionId, { timeoutMs: 8000 }), "first host stops cleanly after the multi-client lifecycle");
-		const restarted = await start(sessionId, { timeoutMs: 15_000 });
+		const restarted = await start(sessionId, { launch, timeoutMs: 15_000 });
 		restartedHostPid = restarted.record.host.pid;
 		const afterRestart = new NativeSessionClient();
 		await afterRestart.connect(restarted.record, readFileSync(tokenFile(sessionId), "utf8").trim());

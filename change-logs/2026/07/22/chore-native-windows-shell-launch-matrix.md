@@ -1,0 +1,1 @@
+Added a registry-only native Windows shell launch proof for Windows PowerShell 5.1, PowerShell 7, and cmd.exe, with explicit executable/argv/cwd/environment descriptors, exact exit and lifecycle verdicts, optional Git Bash/WSL detection, and a Bun 1.3.14 CI runner. Production tmux terminals, UI, RPC, settings, and persisted project/task data remain unchanged.

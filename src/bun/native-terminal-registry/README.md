@@ -32,6 +32,7 @@ of older dev3 versions on the same machine — are completely unaffected.
 | `parser-state.ts` | Bounded, versioned, fail-closed semantic snapshot = the reconstruction path (seq 1228). |
 | `stream-tap.ts` | Env-gated ordered ground-truth tap for proof runs (seq 1228). |
 | `regression-probe.ts` | Runnable seq 1185 repro: Ghostty inside vs outside the terminal callback. |
+| `shell-launch.ts` | Explicit executable/argv/cwd/environment launch descriptor and typed launch/exit verdicts. |
 | `host.ts` | Detached process owning ONE `Bun.Terminal` shell; publishes record + token + journal. |
 | `client.ts` | Short-lived attach handle; `discover(id)` reconnects a fresh process from disk. |
 | `registry.ts` | `start`/`list`/`status`/`stop`/`cleanupStale`; per-session lock; injectable effects. |
@@ -74,6 +75,28 @@ touched, renamed, moved, or rewritten.
   resizes; later clients receive output and reconstructed state only. A writer
   release/disconnect leaves a vacant slot while observers remain, and one
   explicit atomic claim wins it. No writer lease is persisted or auto-promoted.
+- **Explicit shell launch.** Registry callers provide one descriptor containing
+  `executable`, `argv`, `cwd`, and environment overrides. Host re-entry rejects
+  absent or malformed JSON; it never substitutes a different shell.
+
+## Windows shell launch matrix (HOST-008 / WIN-003)
+
+The native Windows proof runs Windows PowerShell 5.1, PowerShell 7, and cmd.exe
+as the actual long-lived session roots. Each target proves Unicode cwd and
+environment values, exact argv delivery, numeric exit reporting, fresh-client
+same-PID/state reattach, and Job Object teardown of a descendant tree. A missing
+root executable produces `ShellExecutableNotFoundError` before any host starts;
+a valid shell exiting 37 remains the distinct `shell-command-failed` verdict.
+
+Run from Windows PowerShell 5.1 or PowerShell 7 with Bun 1.3.14:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File src\bun\native-terminal-registry\__tests__\run-windows-shell-matrix.ps1
+```
+
+Git Bash and WSL are detected and reported as optional/skipped only. The compact
+matrix, evidence format, and CI contract are in
+[`WINDOWS-SHELL-MATRIX.md`](WINDOWS-SHELL-MATRIX.md).
 
 ## Protocol v1 (frozen)
 
@@ -207,6 +230,8 @@ For the visible two-window Windows takeover and resize exercise, follow
   native Windows, macOS, and Linux: equal output/reconstruction, one writer,
   observer conflicts, one-winner claim race, disconnect/reconnect, writer-only
   resize, restart-cleared ownership, and the tmux sentinel.
+- `bun run test:native-shell-launch` — focused pure descriptor, quoting,
+  executable-failure, exit-protocol, registry, and isolation guards on every OS.
 - `bun run test:native-live-parser-e2e` — the seq 1228 live-parser proof: DSR
   write-back exactly once, detach-boundary reconstruction equal to a
   ground-truth replay, explicit bounded overflow, contained parser faults, and
@@ -219,8 +244,9 @@ For the visible two-window Windows takeover and resize exercise, follow
   `powershell -ExecutionPolicy Bypass -File src\bun\native-terminal-registry\__tests__\run-windows-crash-recovery.ps1`.
   The wrapper requires native Windows and exactly Bun 1.3.14.
 - `__tests__/*.test.ts` — vitest units for paths, record serialization, locking,
-  stale detection, PID identity, ownership-safe cleanup, journal, protocol, the
-  Win32 handle lifecycle, and import-graph/tmux isolation; part of `bun run test`.
+  stale detection, PID identity, ownership-safe cleanup, journal, protocol,
+  structured shell launch, the Win32 handle lifecycle, and import-graph/tmux
+  isolation; part of `bun run test`.
 
 See [decision 151](../../../decisions/151-native-session-registry.md) for the
 record format and lifecycle boundaries, and

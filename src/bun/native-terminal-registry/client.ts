@@ -48,8 +48,11 @@ export class NativeSessionClient {
 	private readonly statusPending = new Map<number, Pending<StatusReply>>();
 	private readonly ownershipPending = new Map<number, Pending<OwnershipReply>>();
 	private readonly stopResolvers: Array<() => void> = [];
+	private readonly exitPending = new Set<Pending<number | null>>();
 	private helloPending: Pending<void> | null = null;
 	private currentRole: ClientRole | null = null;
+	private exitObserved = false;
+	private exitCode: number | null = null;
 
 	onOutput(cb: (bytes: Uint8Array) => void): void {
 		this.outputCbs.push(cb);
@@ -153,6 +156,11 @@ export class NativeSessionClient {
 		}
 		for (const r of this.stopResolvers.splice(0)) r();
 		for (const cb of this.disconnectCbs.splice(0)) cb();
+		for (const pending of this.exitPending) {
+			clearTimeout(pending.timer);
+			pending.reject(new Error("connection closed before shell exit event"));
+		}
+		this.exitPending.clear();
 	}
 
 	private onMessage(ev: MessageEvent): void {
@@ -187,6 +195,14 @@ export class NativeSessionClient {
 				const error = msg as ErrorMessage;
 				for (const cb of this.errorCbs) cb(error);
 				this.rejectPendingByError(error);
+			} else if (msg.type === "exit") {
+				this.exitObserved = true;
+				this.exitCode = msg.code;
+				for (const pending of this.exitPending) {
+					clearTimeout(pending.timer);
+					pending.resolve(msg.code);
+				}
+				this.exitPending.clear();
 			}
 			return;
 		}
@@ -304,6 +320,21 @@ export class NativeSessionClient {
 				resolve();
 			});
 			this.ws.send(encodeControl(stopRequest()));
+		});
+	}
+
+	waitForExit(opts: { timeoutMs?: number } = {}): Promise<number | null> {
+		if (this.exitObserved) return Promise.resolve(this.exitCode);
+		return new Promise((resolve, reject) => {
+			const pending: Pending<number | null> = {
+				resolve,
+				reject,
+				timer: setTimeout(() => {
+					this.exitPending.delete(pending);
+					reject(new Error("shell exit timeout"));
+				}, opts.timeoutMs ?? 5000),
+			};
+			this.exitPending.add(pending);
 		});
 	}
 

@@ -35,6 +35,12 @@ import { readParserState, type ParserStateSnapshot } from "../parser-state";
 import { isProcessAlive } from "../process-identity";
 import { readRecord } from "../record";
 import { start, stop } from "../registry";
+import {
+	defaultNativeShellLaunchSpec,
+	defineShellLaunchSpec,
+	encodeShellLaunchSpec,
+	NATIVE_SESSION_LAUNCH_ENV,
+} from "../shell-launch";
 import { readStreamTap } from "../stream-tap";
 
 let failures = 0;
@@ -186,16 +192,22 @@ async function run(): Promise<void> {
 	if (!isWindows) chmodSync(shim, 0o755);
 
 	process.env.DEV3_NATIVE_SESSIONS_DIR = metaDir;
-	process.env.DEV3_NATIVE_SESSION_CMD = JSON.stringify(
-		isWindows ? ["powershell.exe", "-NoLogo", "-NoProfile"] : ["/bin/bash", "--norc", "--noprofile"],
-	);
+	const launch = isWindows
+		? defaultNativeShellLaunchSpec({ platform: process.platform, cwd: root, env: process.env })
+		: defineShellLaunchSpec({
+				executable: "/bin/bash",
+				argv: ["--norc", "--noprofile"],
+				cwd: root,
+				env: {},
+			});
+	process.env[NATIVE_SESSION_LAUNCH_ENV] = encodeShellLaunchSpec(launch);
 	process.env.PATH = `${shimDir}${delimiter}${process.env.PATH ?? ""}`;
 
 	const probes = writeProbeScripts(probeDir);
 	// A pre-existing unrelated process the live parser must never disturb.
 	const guard = spawn(
 		isWindows
-			? ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
+			? [launch.executable, "-NoLogo", "-NoProfile", "-Command", "Start-Sleep -Seconds 300"]
 			: ["sleep", "300"],
 		{ stdin: "ignore", stdout: "ignore", stderr: "ignore" },
 	);
@@ -203,7 +215,7 @@ async function run(): Promise<void> {
 
 	try {
 		// ── 1. live session: parsing runs while ConPTY/PTY output streams ──
-		const main = await start("lp-main", { liveParser: true, stateTap: true, timeoutMs: 20_000 });
+		const main = await start("lp-main", { launch, liveParser: true, stateTap: true, timeoutMs: 20_000 });
 		check(main.status === "started", "lp-main started with the live parser enabled");
 		check(isProcessAlive(main.record.host.pid), "lp-main host is alive");
 
@@ -302,7 +314,7 @@ async function run(): Promise<void> {
 
 		// ── 3. overflow: bounded + explicit, session stays healthy ──
 		process.env.DEV3_NATIVE_SESSION_PARSER_QUEUE_MAX_BYTES = "1024";
-		const overflow = await start("lp-overflow", { liveParser: true, timeoutMs: 20_000 });
+		const overflow = await start("lp-overflow", { launch, liveParser: true, timeoutMs: 20_000 });
 		delete process.env.DEV3_NATIVE_SESSION_PARSER_QUEUE_MAX_BYTES;
 		const cOf = new NativeSessionClient();
 		await cOf.connect(overflow.record, readFileSync(tokenFile("lp-overflow"), "utf8").trim());
@@ -334,7 +346,7 @@ async function run(): Promise<void> {
 
 		// ── 4. parser fault injection: contained, nothing else dies ──
 		process.env.DEV3_NATIVE_SESSION_PARSER_FAULT = "ingest";
-		const fault = await start("lp-fault", { liveParser: true, timeoutMs: 20_000 });
+		const fault = await start("lp-fault", { launch, liveParser: true, timeoutMs: 20_000 });
 		delete process.env.DEV3_NATIVE_SESSION_PARSER_FAULT;
 		const cF = new NativeSessionClient();
 		await cF.connect(fault.record, readFileSync(tokenFile("lp-fault"), "utf8").trim());
