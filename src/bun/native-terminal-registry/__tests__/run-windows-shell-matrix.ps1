@@ -80,7 +80,7 @@ $gitBash = if ($gitBashPath) {
 $wslPath = Get-ApplicationPath -Name "wsl.exe"
 $wsl = if ($wslPath) {
 	$distros = @(& $wslPath -l -q 2>$null |
-		ForEach-Object { ([string]$_).Replace([char]0, "").Trim() } |
+		ForEach-Object { ([string]$_).Replace(([char]0).ToString(), [string]::Empty).Trim() } |
 		Where-Object { $_ })
 	$label = if ($distros.Count -gt 0) { ($distros -join ", ") } else { "no registered distributions" }
 	[ordered]@{ detected = $true; path = $wslPath; version = $label; reason = "optional target detected but intentionally skipped" }

@@ -11,4 +11,8 @@ describe("native Windows shell matrix runner", () => {
 		expect(runner.match(/Get-Command /g)).toHaveLength(1);
 		expect(runner).not.toMatch(/& \$[A-Za-z]+\.Source/);
 	});
+
+	it("uses the PowerShell 5.1 string overload when removing WSL NUL padding", () => {
+		expect(runner).toContain('.Replace(([char]0).ToString(), [string]::Empty)');
+	});
 });
