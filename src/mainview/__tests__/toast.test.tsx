@@ -119,6 +119,25 @@ describe("toast service", () => {
 		expect(screen.queryByText("Closable")).not.toBeInTheDocument();
 	});
 
+	it("keeps the dismiss button outside the swipe pointer capture", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Dismiss without swiping", { durationMs: 60_000 });
+		});
+
+		const card = toastCard() as HTMLElement;
+		const setPointerCapture = vi.fn();
+		Object.defineProperty(card, "setPointerCapture", { configurable: true, value: setPointerCapture });
+
+		act(() => {
+			fireEvent.pointerDown(screen.getByRole("button", { name: "Dismiss" }), { pointerId: 1, clientX: 0 });
+		});
+		expect(setPointerCapture).not.toHaveBeenCalled();
+
+		fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+		expect(screen.queryByText("Dismiss without swiping")).not.toBeInTheDocument();
+	});
+
 	it("dismisses a toast on a rightward swipe past the threshold", () => {
 		render(<ToastHost />);
 		act(() => {
