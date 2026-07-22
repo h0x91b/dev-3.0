@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import type { Project, Task } from "../../shared/types";
@@ -31,6 +31,8 @@ import {
 	getDefaultBranch,
 	isGitRepo,
 	applySparseCheckout,
+	recoverStaleInitializingWorktrees,
+	taskDir,
 } from "../git";
 import { createTestRepo, cleanup, makeTaskCommits, g, type TestRepo } from "./git-test-helpers";
 
@@ -210,6 +212,62 @@ describe("removeWorktree", () => {
 
 		const branches = g("git branch", repo.local);
 		expect(branches).not.toContain("dev3/task-aaaaaaaa");
+	});
+
+	it("removes an interrupted worktree still locked as initializing", async () => {
+		const wtPath = join(repo.dir, "initializing-worktree");
+		g(`git worktree add --lock --reason initializing -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+		rmSync(wtPath, { recursive: true, force: true });
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "dev3/task-aaaaaaaa",
+		});
+
+		await removeWorktree(project, task);
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git worktree list --porcelain", repo.local)).not.toContain(`worktree ${wtPath}`);
+		expect(g("git branch", repo.local)).not.toContain("dev3/task-aaaaaaaa");
+	});
+});
+
+// ─── startup recovery ──────────────────────────────────────────────────────
+
+describe("recoverStaleInitializingWorktrees", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	it("removes stale initializing entries without touching active managed worktrees", async () => {
+		const project = makeProject(repo.local);
+		const staleTask = makeTask({ id: "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee" });
+		const activeTask = makeTask({ id: "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee" });
+		const stalePath = join(taskDir(project, staleTask), "worktree");
+		const activePath = join(taskDir(project, activeTask), "worktree");
+		mkdirSync(join(stalePath, ".."), { recursive: true });
+		mkdirSync(join(activePath, ".."), { recursive: true });
+		g(`git worktree add --lock --reason initializing -b dev3/task-bbbbbbbb "${stalePath}" main`, repo.local);
+		g(`git worktree add --lock --reason initializing -b dev3/task-cccccccc "${activePath}" main`, repo.local);
+		const registeredStalePath = realpathSync(stalePath);
+		const registeredActivePath = realpathSync(activePath);
+		rmSync(stalePath, { recursive: true, force: true });
+
+		const recovered = await recoverStaleInitializingWorktrees(project, new Set([activePath]));
+
+		expect(recovered).toEqual([registeredStalePath]);
+		expect(existsSync(stalePath)).toBe(false);
+		expect(existsSync(activePath)).toBe(true);
+		const registrations = g("git worktree list --porcelain", repo.local);
+		expect(registrations).not.toContain(`worktree ${registeredStalePath}`);
+		expect(registrations).toContain(`worktree ${registeredActivePath}`);
 	});
 });
 

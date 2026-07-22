@@ -52,6 +52,16 @@ async function rehydrateTask(project: Project, task: Task): Promise<void> {
 	}, { project, task });
 }
 
+function protectedWorktreePaths(project: Project, tasks: Task[]): Set<string> {
+	const paths = new Set<string>();
+	for (const task of tasks) {
+		if (!shouldRehydrate(task)) continue;
+		const path = expectedWorktreePath(project, task);
+		if (path) paths.add(path);
+	}
+	return paths;
+}
+
 export async function rehydrateTaskLifecycles(): Promise<void> {
 	const projects = [
 		...await data.loadProjects(),
@@ -59,7 +69,21 @@ export async function rehydrateTaskLifecycles(): Promise<void> {
 	];
 	const work: Promise<void>[] = [];
 	for (const project of projects) {
-		for (const task of await data.loadTasks(project)) {
+		const tasks = await data.loadTasks(project);
+		if (project.kind !== "virtual") {
+			try {
+				await git.recoverStaleInitializingWorktrees(
+					project,
+					protectedWorktreePaths(project, tasks),
+				);
+			} catch (error) {
+				log.warn("Lifecycle boot stale worktree recovery failed", {
+					projectId: project.id.slice(0, 8),
+					error: String(error),
+				});
+			}
+		}
+		for (const task of tasks) {
 			if (!shouldRehydrate(task)) continue;
 			work.push(rehydrateTask(project, task).catch((error) => {
 				log.warn("Lifecycle boot rehydration failed", {

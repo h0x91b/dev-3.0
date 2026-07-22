@@ -478,7 +478,12 @@ export async function activateTask(
 }
 
 async function killPreparationProcesses(taskId: string): Promise<void> {
-	const { pids } = markTaskPreparationCancelled(taskId);
+	const {
+		pids,
+		settled,
+		trackedProcessesExited,
+		reentrant,
+	} = markTaskPreparationCancelled(taskId);
 	for (const pid of pids) {
 		try {
 			const proc = spawn(["kill", "-9", String(pid)], { stdout: "pipe", stderr: "pipe" });
@@ -487,6 +492,7 @@ async function killPreparationProcesses(taskId: string): Promise<void> {
 			log.warn("Failed to kill preparation process", { taskId: taskId.slice(0, 8), pid, error: String(error) });
 		}
 	}
+	await (reentrant ? trackedProcessesExited : settled);
 }
 
 function preparationFailurePayload(ctx: LifecycleExecutionContext, effect: Extract<LifecycleEffect, { type: "push" }>) {

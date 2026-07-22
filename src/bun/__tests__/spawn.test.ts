@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { spawn, spawnSync } from "../spawn";
 import { DEV3_HOME } from "../paths";
+import { markTaskPreparationCancelled, withTaskPreparation } from "../preparation-runtime";
 
 // The main process keeps its cwd inside the .app bundle (electrobun resolves the
 // `views://` protocol relative to process.cwd()), so child processes must NOT
@@ -44,5 +45,22 @@ describe("spawn/spawnSync cwd defaulting", () => {
 		const opts = spy.mock.calls[0][1] as { env: Record<string, string> };
 		expect(opts.env.FOO).toBe("bar");
 		expect(opts.env.PATH).toBe(process.env.PATH);
+	});
+
+	it("kills a child spawned after its preparation was cancelled", async () => {
+		const kill = vi.fn();
+		vi.spyOn(Bun, "spawn").mockReturnValue({
+			pid: 321,
+			exited: Promise.resolve(137),
+			kill,
+		});
+
+		await withTaskPreparation("late-spawn", "test", async () => {
+			markTaskPreparationCancelled("late-spawn");
+			const proc = spawn(["git", "worktree", "add"]);
+			await proc.exited;
+		});
+
+		expect(kill).toHaveBeenCalledWith(9);
 	});
 });

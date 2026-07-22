@@ -282,7 +282,11 @@ import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
 import { accessSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { createTaskPreparation, registerPreparationSpawn } from "../preparation-runtime";
+import {
+	createTaskPreparation,
+	finishTaskPreparation,
+	registerPreparationSpawn,
+} from "../preparation-runtime";
 
 // Import handlers and pure helper functions after all mocks are set up
 const {
@@ -4310,7 +4314,7 @@ describe("handlers.addAttempts", () => {
 describe("handlers.cancelTaskPreparation", () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it("kills tracked preparation processes and moves the task back to todo", async () => {
+	it("waits for tracked preparation processes to exit before removing the worktree", async () => {
 		const project = makeProject();
 		const task = makeTask({
 			id: "variant-1",
@@ -4329,9 +4333,13 @@ describe("handlers.cancelTaskPreparation", () => {
 			customColumnId: null,
 		});
 
-		createTaskPreparation(task.id, "test");
-		registerPreparationSpawn(task.id, 111, ["git", "fetch", "origin"]);
-		registerPreparationSpawn(task.id, 222, ["cp", "-R", "src", "dst"]);
+		let finishGit!: (code: number) => void;
+		let finishCopy!: (code: number) => void;
+		const gitExited = new Promise<number>((resolve) => { finishGit = resolve; });
+		const copyExited = new Promise<number>((resolve) => { finishCopy = resolve; });
+		const { runId } = createTaskPreparation(task.id, "test");
+		registerPreparationSpawn(task.id, 111, ["git", "fetch", "origin"], gitExited);
+		registerPreparationSpawn(task.id, 222, ["cp", "-R", "src", "dst"], copyExited);
 
 		mockSpawn.mockReturnValue({
 			pid: 999,
@@ -4345,10 +4353,22 @@ describe("handlers.cancelTaskPreparation", () => {
 		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
 		vi.mocked(git.taskDir).mockReturnValue("/tmp/test-dev3/worktrees/tmp-test-project/variant-1");
 
-		const result = await handlers.cancelTaskPreparation({
+		const cancellation = handlers.cancelTaskPreparation({
 			taskId: task.id,
 			projectId: project.id,
 		});
+
+		await vi.waitFor(() => {
+			expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "111"], expect.anything());
+			expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "222"], expect.anything());
+		});
+		finishTaskPreparation(task.id, runId);
+		await Promise.resolve();
+		expect(git.removeWorktree).not.toHaveBeenCalled();
+
+		finishGit(137);
+		finishCopy(137);
+		const result = await cancellation;
 
 		expect(result).toEqual(expect.objectContaining({
 			id: revertedTask.id,
@@ -4363,8 +4383,6 @@ describe("handlers.cancelTaskPreparation", () => {
 			preparingStartedAt: null,
 			runtimeState: expect.objectContaining({ runtime: "idle" }),
 		}));
-		expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "111"], expect.anything());
-		expect(mockSpawn).toHaveBeenCalledWith(["kill", "-9", "222"], expect.anything());
 		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
 			status: "todo",
 			preparing: false,

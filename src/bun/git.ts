@@ -1,6 +1,12 @@
 import type { Project, Task, TaskDiffFile, TaskDiffFileStatus, TaskDiffMode, TaskDiffResponse, TaskDiffSkippedFile, TaskDiffSummary } from "../shared/types";
 export { extractRepoName } from "../shared/types";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+	basename as basenamePath,
+	dirname as dirnamePath,
+	relative as relativePath,
+	resolve as resolvePath,
+} from "node:path";
 import { createLogger } from "./logger";
 import { CloneProgressParser } from "./clone-progress";
 import { reportCurrentPreparationStage } from "./preparation-runtime";
@@ -743,6 +749,88 @@ export function virtualWorkDir(project: Project, task: Task): string {
 
 function worktreePath(project: Project, task: Task): string {
 	return `${taskDir(project, task)}/worktree`;
+}
+
+type WorktreeRegistration = {
+	path: string;
+	lockedReason: string | null;
+};
+
+function parseWorktreeRegistrations(output: string): WorktreeRegistration[] {
+	const registrations: WorktreeRegistration[] = [];
+	let current: WorktreeRegistration | null = null;
+	for (const field of output.split("\0")) {
+		if (!field) {
+			if (current) registrations.push(current);
+			current = null;
+			continue;
+		}
+		const separator = field.indexOf(" ");
+		const name = separator < 0 ? field : field.slice(0, separator);
+		const value = separator < 0 ? "" : field.slice(separator + 1);
+		if (name === "worktree") {
+			if (current) registrations.push(current);
+			current = { path: value, lockedReason: null };
+		} else if (name === "locked" && current) {
+			current.lockedReason = value || "locked";
+		}
+	}
+	if (current) registrations.push(current);
+	return registrations;
+}
+
+async function listWorktreeRegistrations(projectPath: string): Promise<WorktreeRegistration[]> {
+	const result = await run(["git", "worktree", "list", "--porcelain", "-z"], projectPath);
+	return result.ok ? parseWorktreeRegistrations(result.stdout) : [];
+}
+
+function canonicalWorktreePath(candidate: string): string {
+	let existingAncestor = resolvePath(candidate);
+	const missingSegments: string[] = [];
+	while (!existsSync(existingAncestor)) {
+		const parent = dirnamePath(existingAncestor);
+		if (parent === existingAncestor) return resolvePath(candidate);
+		missingSegments.unshift(basenamePath(existingAncestor));
+		existingAncestor = parent;
+	}
+	try {
+		return resolvePath(realpathSync(existingAncestor), ...missingSegments);
+	} catch {
+		return resolvePath(candidate);
+	}
+}
+
+function isManagedTaskWorktreePath(project: Project, candidate: string): boolean {
+	const root = canonicalWorktreePath(`${DEV3_HOME}/worktrees/${projectSlug(project.path)}`);
+	const relative = relativePath(root, canonicalWorktreePath(candidate));
+	return /^[0-9a-f]{8}[\\/]worktree$/i.test(relative);
+}
+
+export async function recoverStaleInitializingWorktrees(
+	project: Project,
+	activePaths: ReadonlySet<string>,
+): Promise<string[]> {
+	const protectedPaths = new Set([...activePaths].map(canonicalWorktreePath));
+	const recovered: string[] = [];
+	for (const registration of await listWorktreeRegistrations(project.path)) {
+		if (registration.lockedReason !== "initializing") continue;
+		if (protectedPaths.has(canonicalWorktreePath(registration.path))) continue;
+		if (!isManagedTaskWorktreePath(project, registration.path)) continue;
+		const result = await run(
+			["git", "worktree", "remove", "--force", "--force", registration.path],
+			project.path,
+		);
+		if (result.ok) {
+			recovered.push(registration.path);
+			log.warn("Recovered stale initializing worktree", { path: registration.path });
+		} else {
+			log.warn("Failed to recover stale initializing worktree", {
+				path: registration.path,
+				error: result.stderr,
+			});
+		}
+	}
+	return recovered;
 }
 
 function branchName(task: Task): string {
@@ -2097,23 +2185,38 @@ export async function removeWorktree(
 
 	log.info("Removing worktree", { path: task.worktreePath, taskId: task.id });
 
-	const worktreeDirPresent = existsSync(task.worktreePath);
+	const targetPath = task.worktreePath;
+	const worktreeDirPresent = existsSync(targetPath);
+	const registration = (await listWorktreeRegistrations(project.path))
+		.find((candidate) => canonicalWorktreePath(candidate.path) === canonicalWorktreePath(targetPath));
+	const lockedInitializing = registration?.lockedReason === "initializing";
 
 	// Read live branch name before removing — it may differ from task.branchName
 	// if the agent renamed the branch (e.g. `git branch -m dev3/task-xxx dev3/fix-login`).
 	// Skip if the directory is already gone; spawning git with a missing cwd would
 	// throw ENOENT and leave the branch undeleted.
-	const liveBranch = worktreeDirPresent ? await getCurrentBranch(task.worktreePath) : null;
+	const liveBranch = worktreeDirPresent ? await getCurrentBranch(targetPath) : null;
 	const branchToDelete = liveBranch ?? task.branchName;
 
-	if (worktreeDirPresent) {
-		await run(
-			["git", "worktree", "remove", "--force", task.worktreePath],
+	if (worktreeDirPresent || lockedInitializing) {
+		const removeArgs = lockedInitializing
+			? ["git", "worktree", "remove", "--force", "--force", targetPath]
+			: ["git", "worktree", "remove", "--force", targetPath];
+		const removed = await run(
+			removeArgs,
 			project.path,
 		);
+		if (!removed.ok) {
+			log.warn("Worktree removal failed; preserving its branch", {
+				path: targetPath,
+				taskId: task.id,
+				error: removed.stderr,
+			});
+			return;
+		}
 	} else {
 		log.info("Worktree directory already missing, pruning git metadata", {
-			path: task.worktreePath,
+			path: targetPath,
 			taskId: task.id,
 		});
 		await run(["git", "worktree", "prune"], project.path);

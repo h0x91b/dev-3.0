@@ -10,9 +10,11 @@ Tracking only the top-level background promise was not enough because the actual
 
 We track active preparation runs in `src/bun/preparation-runtime.ts` and attach task context with `AsyncLocalStorage`. `src/bun/spawn.ts` records every spawned PID when a command runs inside that context, so `cancelTaskPreparation` in `src/bun/rpc-handlers/task-lifecycle.ts` can `kill -9` the exact preparation subprocesses for one task and then revert the task to `todo`.
 
+The registry keeps a completion barrier until the preparation function has finished and every tracked process has exited; external cancellation awaits that barrier before cleanup. Re-entrant stage-failure compensation waits only its already tracked exits so it does not deadlock the preparation that invoked it. A process spawned after cancellation remains tracked and is killed immediately instead of escaping the barrier. At startup, lifecycle recovery removes only unowned dev3 worktree registrations whose Git lock reason is exactly `initializing`; active task paths and every other locked worktree remain protected.
+
 ## Risks
 
-This assumes preparation subprocesses are created through the shared `spawn()` wrapper. A long-running `spawnSync()` or direct `Bun.spawn()` call inside the preparing path would bypass tracking and would not be killable from the new cancel action.
+This assumes preparation subprocesses are created through the shared `spawn()` wrapper. A long-running `spawnSync()` or direct `Bun.spawn()` call inside the preparing path would bypass tracking and would not be killable from the cancel action. If a tracked process never reports exit, cancellation intentionally stays in progress rather than removing its worktree underneath it. Startup recovery is restricted to the managed `<task-id>/worktree` shape, the `initializing` reason, and paths not owned by active task state.
 
 ## Alternatives considered
 
