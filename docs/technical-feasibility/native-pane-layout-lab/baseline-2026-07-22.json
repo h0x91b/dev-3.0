@@ -1,0 +1,65 @@
+{
+  "capturedAt": "2026-07-22T20:38:21.425Z",
+  "environment": {
+    "runtime": "Bun 1.3.14",
+    "platform": "darwin",
+    "release": "24.6.0",
+    "arch": "arm64",
+    "cpu": "Apple M4 Max"
+  },
+  "parameters": {
+    "paneCount": 6,
+    "durationMs": 5000,
+    "outputIntervalMs": 8,
+    "resizeIntervalMs": 16
+  },
+  "measurements": {
+    "elapsedMs": 5000.6,
+    "cpu": {
+      "userMs": 109.147,
+      "systemMs": 64.603,
+      "totalMs": 173.75
+    },
+    "memory": {
+      "beforeBytes": 386220,
+      "peakBytes": 971720,
+      "afterBytes": 971720,
+      "deltaBytes": 585500,
+      "retainedHeapBeforeBytes": 386220,
+      "retainedHeapAfterBytes": 971720,
+      "retainedHeapDeltaBytes": 585500
+    },
+    "events": {
+      "output": 3684,
+      "input": 432,
+      "resize": 1746,
+      "checksum": 3396714
+    }
+  },
+  "cleanup": {
+    "before": {
+      "activeSessions": 6,
+      "runningTimers": 6,
+      "outputSubscriptions": 6,
+      "inputSubscriptions": 6,
+      "resizeSubscriptions": 6,
+      "disposedSessions": 0,
+      "outputEvents": 3678,
+      "inputEvents": 432,
+      "resizeEvents": 1746
+    },
+    "after": {
+      "activeSessions": 0,
+      "runningTimers": 0,
+      "outputSubscriptions": 0,
+      "inputSubscriptions": 0,
+      "resizeSubscriptions": 0,
+      "disposedSessions": 6,
+      "outputEvents": 3678,
+      "inputEvents": 432,
+      "resizeEvents": 1746
+    },
+    "passed": true
+  }
+}
+
