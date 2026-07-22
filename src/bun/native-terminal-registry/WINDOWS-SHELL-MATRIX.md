@@ -57,6 +57,15 @@ with Bun 1.3.14 and uploads the evidence as `windows-shell-launch-matrix`. A Uni
 run is not accepted as Windows evidence; macOS and Linux continue to run the
 existing registry lifecycle test unchanged.
 
-No native result is embedded in this document before it runs. The generated JSON
-is the authoritative verdict and records the OS/architecture, Bun version, all
-required checks, optional detection, exact exit verdicts, PIDs, and scope guards.
+The checked-in
+[`windows-shell-verdict-72e2ddcb.json`](./__tests__/windows-shell-verdict-72e2ddcb.json)
+is the exact shareable output from a native Windows x64 run at commit `72e2ddcb`
+with Bun 1.3.14. Windows PowerShell 5.1, unpackaged PowerShell 7.6.3, and cmd.exe
+all report `SUPPORTED`; optional Git Bash and WSL report detected/skipped, the
+missing executable distinction passes, and the tmux sentinel stays clean. Its
+SHA-256 is `dd9300738cca407eea0aaea1190c9057f6f2abff883a14118dad8e935092516a`.
+
+The generated JSON remains the authoritative verdict for future runs and
+records the OS/architecture, Bun version, all required checks, optional
+detection, exact exit verdicts, PIDs, and scope guards. The focused evidence
+test rejects any checked-in verdict missing a required lifecycle assertion.

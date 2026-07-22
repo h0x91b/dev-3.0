@@ -1,0 +1,373 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-22T23:42:02.0012866+03:00",
+  "platform": "win32 x64",
+  "bunVersion": "1.3.14",
+  "passed": true,
+  "checks": [
+    {
+      "id": "bun-version",
+      "passed": true,
+      "detail": "native win32 x64; Bun 1.3.14"
+    },
+    {
+      "id": "executable-not-found",
+      "passed": true,
+      "detail": "requested shell executable not found: C:\\Users\\user\\AppData\\Local\\Temp\\dev3-windows-shell-matrix-20260722-234201\\raw\\requested-shell-does-not-exist.exe"
+    },
+    {
+      "id": "tmux-never-invoked",
+      "passed": true,
+      "detail": "PATH sentinel remained absent"
+    }
+  ],
+  "required": [
+    {
+      "shell": "windows-powershell-5.1",
+      "detected": true,
+      "supported": true,
+      "version": "5.1.19041.6456",
+      "checks": [
+        {
+          "id": "shell-version",
+          "passed": true,
+          "detail": "runner observed 5.1.19041.6456"
+        },
+        {
+          "id": "launch-command",
+          "passed": true,
+          "detail": "recorded command equals executable plus argv entries"
+        },
+        {
+          "id": "probe-ready",
+          "passed": true,
+          "detail": "attached argv probe wrote evidence"
+        },
+        {
+          "id": "cwd",
+          "passed": true,
+          "detail": "shell observed the Unicode cwd with spaces"
+        },
+        {
+          "id": "environment",
+          "passed": true,
+          "detail": "shell observed the exact Unicode environment value"
+        },
+        {
+          "id": "argv",
+          "passed": true,
+          "detail": "expected [\"argument with spaces\",\"quote\\\"value\",\"meta & | < > ^ ! ( ) ;\",\"plain-tail\"]; observed [\"argument with spaces\",\"quote\\\"value\",\"meta & | < > ^ ! ( ) ;\",\"plain-tail\"]"
+        },
+        {
+          "id": "root-pid",
+          "passed": true,
+          "detail": "argv probe was launched directly by the recorded root shell PID"
+        },
+        {
+          "id": "state-set",
+          "passed": true,
+          "detail": "interactive shell state was set before detach"
+        },
+        {
+          "id": "owned-child",
+          "passed": true,
+          "detail": "a descendant process is alive inside the session ownership boundary"
+        },
+        {
+          "id": "owned-boundary",
+          "passed": true,
+          "detail": "Windows Job Object membership for host/shell/child: true/true/true"
+        },
+        {
+          "id": "detach-complete",
+          "passed": true,
+          "detail": "original client observed WebSocket close before reattach"
+        },
+        {
+          "id": "same-pid",
+          "passed": true,
+          "detail": "fresh client reattached to the same shell PID"
+        },
+        {
+          "id": "same-state",
+          "passed": true,
+          "detail": "fresh client observed state retained by the same shell"
+        },
+        {
+          "id": "stop",
+          "passed": true,
+          "detail": "registry stop succeeded"
+        },
+        {
+          "id": "owned-teardown",
+          "passed": true,
+          "detail": "stop removed the host, root shell, and owned descendant tree"
+        },
+        {
+          "id": "exit-probe-ready",
+          "passed": true,
+          "detail": "exit-code shell reached its prompt"
+        },
+        {
+          "id": "exit-code",
+          "passed": true,
+          "detail": "requested 37, observed 37"
+        }
+      ],
+      "launch": {
+        "executable": "powershell.exe",
+        "argvEntries": 3,
+        "cwdHasSpaces": true,
+        "cwdHasUnicode": true
+      },
+      "pids": {
+        "host": 23204,
+        "shell": 31012,
+        "reattachedShell": 31012,
+        "ownedChild": 7196
+      },
+      "exit": {
+        "kind": "shell-command-failed",
+        "code": 37,
+        "requested": 37
+      }
+    },
+    {
+      "shell": "powershell-7",
+      "detected": true,
+      "supported": true,
+      "version": "7.6.3",
+      "checks": [
+        {
+          "id": "shell-version",
+          "passed": true,
+          "detail": "runner observed 7.6.3"
+        },
+        {
+          "id": "launch-command",
+          "passed": true,
+          "detail": "recorded command equals executable plus argv entries"
+        },
+        {
+          "id": "probe-ready",
+          "passed": true,
+          "detail": "attached argv probe wrote evidence"
+        },
+        {
+          "id": "cwd",
+          "passed": true,
+          "detail": "shell observed the Unicode cwd with spaces"
+        },
+        {
+          "id": "environment",
+          "passed": true,
+          "detail": "shell observed the exact Unicode environment value"
+        },
+        {
+          "id": "argv",
+          "passed": true,
+          "detail": "expected [\"argument with spaces\",\"quote\\\"value\",\"meta & | < > ^ ! ( ) ;\",\"plain-tail\"]; observed [\"argument with spaces\",\"quote\\\"value\",\"meta & | < > ^ ! ( ) ;\",\"plain-tail\"]"
+        },
+        {
+          "id": "root-pid",
+          "passed": true,
+          "detail": "argv probe was launched directly by the recorded root shell PID"
+        },
+        {
+          "id": "state-set",
+          "passed": true,
+          "detail": "interactive shell state was set before detach"
+        },
+        {
+          "id": "owned-child",
+          "passed": true,
+          "detail": "a descendant process is alive inside the session ownership boundary"
+        },
+        {
+          "id": "owned-boundary",
+          "passed": true,
+          "detail": "Windows Job Object membership for host/shell/child: true/true/true"
+        },
+        {
+          "id": "detach-complete",
+          "passed": true,
+          "detail": "original client observed WebSocket close before reattach"
+        },
+        {
+          "id": "same-pid",
+          "passed": true,
+          "detail": "fresh client reattached to the same shell PID"
+        },
+        {
+          "id": "same-state",
+          "passed": true,
+          "detail": "fresh client observed state retained by the same shell"
+        },
+        {
+          "id": "stop",
+          "passed": true,
+          "detail": "registry stop succeeded"
+        },
+        {
+          "id": "owned-teardown",
+          "passed": true,
+          "detail": "stop removed the host, root shell, and owned descendant tree"
+        },
+        {
+          "id": "exit-probe-ready",
+          "passed": true,
+          "detail": "exit-code shell reached its prompt"
+        },
+        {
+          "id": "exit-code",
+          "passed": true,
+          "detail": "requested 37, observed 37"
+        }
+      ],
+      "launch": {
+        "executable": "pwsh.exe",
+        "argvEntries": 3,
+        "cwdHasSpaces": true,
+        "cwdHasUnicode": true
+      },
+      "pids": {
+        "host": 3388,
+        "shell": 10256,
+        "reattachedShell": 10256,
+        "ownedChild": 27588
+      },
+      "exit": {
+        "kind": "shell-command-failed",
+        "code": 37,
+        "requested": 37
+      }
+    },
+    {
+      "shell": "cmd",
+      "detected": true,
+      "supported": true,
+      "version": "Microsoft Windows [Version 10.0.19045.6456]",
+      "checks": [
+        {
+          "id": "shell-version",
+          "passed": true,
+          "detail": "runner observed Microsoft Windows [Version 10.0.19045.6456]"
+        },
+        {
+          "id": "launch-command",
+          "passed": true,
+          "detail": "recorded command equals executable plus argv entries"
+        },
+        {
+          "id": "probe-ready",
+          "passed": true,
+          "detail": "attached argv probe wrote evidence"
+        },
+        {
+          "id": "cwd",
+          "passed": true,
+          "detail": "shell observed the Unicode cwd with spaces"
+        },
+        {
+          "id": "environment",
+          "passed": true,
+          "detail": "shell observed the exact Unicode environment value"
+        },
+        {
+          "id": "argv",
+          "passed": true,
+          "detail": "expected [\"argument with spaces\",\"quote\\\"value\",\"meta & | < > ^ ! ( ) ;\",\"plain-tail\"]; observed [\"argument with spaces\",\"quote\\\"value\",\"meta & | < > ^ ! ( ) ;\",\"plain-tail\"]"
+        },
+        {
+          "id": "root-pid",
+          "passed": true,
+          "detail": "argv probe was launched directly by the recorded root shell PID"
+        },
+        {
+          "id": "state-set",
+          "passed": true,
+          "detail": "interactive shell state was set before detach"
+        },
+        {
+          "id": "owned-child",
+          "passed": true,
+          "detail": "a descendant process is alive inside the session ownership boundary"
+        },
+        {
+          "id": "owned-boundary",
+          "passed": true,
+          "detail": "Windows Job Object membership for host/shell/child: true/true/true"
+        },
+        {
+          "id": "detach-complete",
+          "passed": true,
+          "detail": "original client observed WebSocket close before reattach"
+        },
+        {
+          "id": "same-pid",
+          "passed": true,
+          "detail": "fresh client reattached to the same shell PID"
+        },
+        {
+          "id": "same-state",
+          "passed": true,
+          "detail": "fresh client observed state retained by the same shell"
+        },
+        {
+          "id": "stop",
+          "passed": true,
+          "detail": "registry stop succeeded"
+        },
+        {
+          "id": "owned-teardown",
+          "passed": true,
+          "detail": "stop removed the host, root shell, and owned descendant tree"
+        },
+        {
+          "id": "exit-probe-ready",
+          "passed": true,
+          "detail": "exit-code shell reached its prompt"
+        },
+        {
+          "id": "exit-code",
+          "passed": true,
+          "detail": "requested 37, observed 37"
+        }
+      ],
+      "launch": {
+        "executable": "cmd.exe",
+        "argvEntries": 3,
+        "cwdHasSpaces": true,
+        "cwdHasUnicode": true
+      },
+      "pids": {
+        "host": 16312,
+        "shell": 28972,
+        "reattachedShell": 28972,
+        "ownedChild": 23780
+      },
+      "exit": {
+        "kind": "shell-command-failed",
+        "code": 37,
+        "requested": 37
+      }
+    }
+  ],
+  "optional": {
+    "git-bash": {
+      "detected": true,
+      "version": "GNU bash, version 5.2.15(1)-release (x86_64-pc-msys)",
+      "reason": "optional target detected but intentionally skipped"
+    },
+    "wsl": {
+      "detected": true,
+      "version": "Ubuntu, docker-desktop-data, docker-desktop",
+      "reason": "optional target detected but intentionally skipped"
+    }
+  },
+  "scope": {
+    "registryOnly": true,
+    "tmuxInvoked": false,
+    "staticGuard": "src/bun/native-terminal-registry/__tests__/isolation.test.ts"
+  }
+}

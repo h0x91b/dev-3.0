@@ -32,6 +32,9 @@ The Windows runner honors an explicit `-PwshPath` without fallback, otherwise
 prefers `%ProgramFiles%\PowerShell\7\pwsh.exe` before a PATH entry, and rejects
 WindowsApps executables with an actionable MSI/ZIP verdict. The cmd probe uses
 balanced quoted segments around caret-escaped literal quotes.
+The exact native Windows result is preserved in
+[`windows-shell-verdict-72e2ddcb.json`](../src/bun/native-terminal-registry/__tests__/windows-shell-verdict-72e2ddcb.json)
+and validated as part of the focused pure suite.
 
 ## Risks
 
