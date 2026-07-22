@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Native shell launch pure tests
+        run: bun run test:native-shell-launch
+
       # Real-runtime lifecycle regression for the persistent native-session
       # registry — runs on native Windows + POSIX with the pinned Bun 1.3.14.
       - name: Native-session registry lifecycle E2E
@@ -52,6 +55,20 @@ jobs:
       # native Windows and POSIX: concurrent attach, claim races, reconnect, and resize.
       - name: Native-session two-client lifecycle E2E
         run: bun run test:native-multi-client-e2e
+
+      - name: Explicit Windows shell launch matrix
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          & .\src\bun\native-terminal-registry\__tests__\run-windows-shell-matrix.ps1 `
+            -OutDir "${{ runner.temp }}\dev3-windows-shell-matrix"
+
+      - name: Upload Windows shell launch evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-shell-launch-matrix
+          path: ${{ runner.temp }}\dev3-windows-shell-matrix\
 
       # Seq 1228 live-parser proof. Gates ONLY the deferred path; `callback`
       # mode is printed as evidence and is EXPECTED to fail on Windows

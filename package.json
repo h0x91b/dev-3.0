@@ -23,6 +23,7 @@
 		"test:native-registry-e2e": "bun src/bun/native-terminal-registry/__tests__/lifecycle.bun-e2e.ts",
 		"test:native-crash-e2e": "bun src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts",
 		"test:native-multi-client-e2e": "bun src/bun/native-terminal-registry/__tests__/multi-client.bun-e2e.ts",
+		"test:native-shell-launch": "bunx vitest run --config vitest.config.bun.ts src/bun/native-terminal-registry/__tests__/shell-launch.test.ts src/bun/native-terminal-registry/__tests__/shell-probe.test.ts src/bun/native-terminal-registry/__tests__/windows-shell-runner.test.ts src/bun/native-terminal-registry/__tests__/windows-shell-evidence.test.ts src/bun/native-terminal-registry/__tests__/windows-shell-matrix-support.test.ts src/bun/native-terminal-registry/__tests__/host-config.test.ts src/bun/native-terminal-registry/__tests__/protocol.test.ts src/bun/native-terminal-registry/__tests__/registry.test.ts src/bun/native-terminal-registry/__tests__/client.test.ts src/bun/native-terminal-registry/__tests__/isolation.test.ts",
 		"test:native-live-parser-e2e": "bun src/bun/native-terminal-registry/__tests__/live-parser.bun-e2e.ts",
 		"test:terminal-state-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/terminal-state/__tests__",
 		"benchmark:terminal-state-spike": "bun src/bun/prototypes/terminal-state/benchmark.ts",

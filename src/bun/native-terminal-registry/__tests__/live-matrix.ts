@@ -29,6 +29,7 @@ import { GhosttyLiveParser, type NativeSemanticState } from "../ghostty-live";
 import { readParserState, type ParserStateSnapshot } from "../parser-state";
 import { readToken } from "../record";
 import { start, status, stop } from "../registry";
+import { defineShellLaunchSpec } from "../shell-launch";
 import { readStreamTap } from "../stream-tap";
 
 export type LiveMatrixStep =
@@ -88,8 +89,10 @@ function firstDifference(a: NativeSemanticState, b: NativeSemanticState): string
 
 export async function runLiveMatrixTarget(spec: LiveMatrixSpec): Promise<LiveMatrixVerdict> {
 	const sessionId = `lm-${spec.target.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+	const [executable, ...argv] = spec.command;
+	if (!executable) throw new Error(`target ${spec.target} has no executable`);
 	const result = await start(sessionId, {
-		cmd: spec.command,
+		launch: defineShellLaunchSpec({ executable, argv, cwd: process.cwd(), env: {} }),
 		cols: spec.cols,
 		rows: spec.rows,
 		liveParser: true,

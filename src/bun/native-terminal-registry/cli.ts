@@ -18,6 +18,12 @@ import { resolveHostConfig, runHost } from "./host";
 import { readParserState } from "./parser-state";
 import { readRecord, readToken } from "./record";
 import { cleanupStale, list, start, status, stop } from "./registry";
+import {
+	decodeShellLaunchSpec,
+	defaultNativeShellLaunchSpec,
+	NATIVE_SESSION_LAUNCH_ENV,
+	type ShellLaunchSpec,
+} from "./shell-launch";
 
 function requireId(): string {
 	const id = positionalArgs()[1];
@@ -35,6 +41,12 @@ function positionalArgs(): string[] {
 
 function hasFlag(flag: string): boolean {
 	return process.argv.includes(flag);
+}
+
+function cliShellLaunch(): ShellLaunchSpec {
+	const explicit = process.env[NATIVE_SESSION_LAUNCH_ENV];
+	if (explicit) return decodeShellLaunchSpec(explicit);
+	return defaultNativeShellLaunchSpec({ platform: process.platform, cwd: process.cwd(), env: process.env });
 }
 
 async function attach(sessionId: string): Promise<void> {
@@ -113,6 +125,7 @@ async function main(): Promise<void> {
 		case "start": {
 			const id = requireId();
 			const result = await start(id, {
+				launch: cliShellLaunch(),
 				liveParser: hasFlag("--live-parser"),
 				stateTap: hasFlag("--state-tap"),
 			});

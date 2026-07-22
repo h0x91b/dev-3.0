@@ -38,9 +38,10 @@ interface Pending<T> {
 
 export class NativeSessionClient {
 	private ws: WebSocket | null = null;
+	private connectionGeneration = 0;
 	private nextId = 1;
 	private helloId = 0;
-	private readonly outputCbs: Array<(bytes: Uint8Array) => void> = [];
+	private readonly outputCbs = new Set<(bytes: Uint8Array) => void>();
 	private readonly errorCbs: Array<(error: ErrorMessage) => void> = [];
 	private readonly disconnectCbs: Array<() => void> = [];
 	private readonly bufferedOutput: Uint8Array[] = [];
@@ -48,13 +49,17 @@ export class NativeSessionClient {
 	private readonly statusPending = new Map<number, Pending<StatusReply>>();
 	private readonly ownershipPending = new Map<number, Pending<OwnershipReply>>();
 	private readonly stopResolvers: Array<() => void> = [];
+	private readonly exitPending = new Set<Pending<number | null>>();
 	private helloPending: Pending<void> | null = null;
 	private currentRole: ClientRole | null = null;
+	private exitObserved = false;
+	private exitCode: number | null = null;
 
-	onOutput(cb: (bytes: Uint8Array) => void): void {
-		this.outputCbs.push(cb);
+	onOutput(cb: (bytes: Uint8Array) => void): () => void {
+		this.outputCbs.add(cb);
 		for (const bytes of this.bufferedOutput.splice(0)) cb(bytes);
 		this.bufferedOutputBytes = 0;
+		return () => this.outputCbs.delete(cb);
 	}
 
 	onError(cb: (error: ErrorMessage) => void): void {
@@ -70,12 +75,16 @@ export class NativeSessionClient {
 	}
 
 	async connect(record: NativeSessionRecord, token: string, opts: { timeoutMs?: number } = {}): Promise<void> {
+		if (this.ws) throw new Error("already connected");
 		const url = `ws://${record.endpoint.address}:${record.endpoint.port}/?token=${encodeURIComponent(token)}`;
 		const ws = new WebSocket(url);
+		const generation = ++this.connectionGeneration;
 		ws.binaryType = "arraybuffer";
 		this.ws = ws;
-		ws.addEventListener("message", (ev) => this.onMessage(ev));
-		ws.addEventListener("close", () => this.onClose());
+		this.exitObserved = false;
+		this.exitCode = null;
+		ws.addEventListener("message", (ev) => this.onMessage(generation, ws, ev));
+		ws.addEventListener("close", () => this.onClose(generation, ws));
 		const timeoutMs = opts.timeoutMs ?? 5000;
 		await new Promise<void>((resolve, reject) => {
 			const to = setTimeout(() => reject(new Error("connect timeout")), timeoutMs);
@@ -133,7 +142,9 @@ export class NativeSessionClient {
 		return readJournalTail(sessionId);
 	}
 
-	private onClose(): void {
+	private onClose(generation: number, socket: WebSocket): void {
+		if (generation !== this.connectionGeneration) return;
+		if (this.ws === socket) this.ws = null;
 		this.currentRole = null;
 		if (this.helloPending) {
 			clearTimeout(this.helloPending.timer);
@@ -153,9 +164,15 @@ export class NativeSessionClient {
 		}
 		for (const r of this.stopResolvers.splice(0)) r();
 		for (const cb of this.disconnectCbs.splice(0)) cb();
+		for (const pending of this.exitPending) {
+			clearTimeout(pending.timer);
+			pending.reject(new Error("connection closed before shell exit event"));
+		}
+		this.exitPending.clear();
 	}
 
-	private onMessage(ev: MessageEvent): void {
+	private onMessage(generation: number, socket: WebSocket, ev: MessageEvent): void {
+		if (generation !== this.connectionGeneration || this.ws !== socket) return;
 		const data = ev.data;
 		if (typeof data === "string") {
 			if (this.helloPending) {
@@ -187,6 +204,14 @@ export class NativeSessionClient {
 				const error = msg as ErrorMessage;
 				for (const cb of this.errorCbs) cb(error);
 				this.rejectPendingByError(error);
+			} else if (msg.type === "exit") {
+				this.exitObserved = true;
+				this.exitCode = msg.code;
+				for (const pending of this.exitPending) {
+					clearTimeout(pending.timer);
+					pending.resolve(msg.code);
+				}
+				this.exitPending.clear();
 			}
 			return;
 		}
@@ -197,7 +222,7 @@ export class NativeSessionClient {
 			bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 		}
 		if (!bytes) return;
-		if (this.outputCbs.length === 0) {
+		if (this.outputCbs.size === 0) {
 			const copy = bytes.slice();
 			this.bufferedOutput.push(copy);
 			this.bufferedOutputBytes += copy.byteLength;
@@ -307,14 +332,89 @@ export class NativeSessionClient {
 		});
 	}
 
+	waitForTextOutput<T>(
+		observe: (output: string) => T | undefined,
+		opts: { timeoutMs?: number; description?: string } = {},
+	): Promise<T> {
+		return new Promise((resolve, reject) => {
+			let output = "";
+			const decoder = new TextDecoder();
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			let unsubscribe = (): void => {};
+			const cleanup = (): void => {
+				if (timer) clearTimeout(timer);
+				unsubscribe();
+			};
+			unsubscribe = this.onOutput((bytes) => {
+				output += decoder.decode(bytes, { stream: true });
+				try {
+					const observed = observe(output);
+					if (observed === undefined) return;
+					cleanup();
+					resolve(observed);
+				} catch (error) {
+					cleanup();
+					reject(error);
+				}
+			});
+			timer = setTimeout(() => {
+				cleanup();
+				reject(new Error(`output deadline exceeded${opts.description ? ` waiting for ${opts.description}` : ""}`));
+			}, opts.timeoutMs ?? 5000);
+		});
+	}
+
+	waitForExit(opts: { timeoutMs?: number } = {}): Promise<number | null> {
+		if (this.exitObserved) return Promise.resolve(this.exitCode);
+		return new Promise((resolve, reject) => {
+			const pending: Pending<number | null> = {
+				resolve,
+				reject,
+				timer: setTimeout(() => {
+					this.exitPending.delete(pending);
+					reject(new Error("shell exit timeout"));
+				}, opts.timeoutMs ?? 5000),
+			};
+			this.exitPending.add(pending);
+		});
+	}
+
+	/** Finish detaching this client before a fresh process reconnects. */
+	disconnect(opts: { timeoutMs?: number } = {}): Promise<void> {
+		const socket = this.ws;
+		if (!socket) return Promise.resolve();
+		this.ws = null;
+		this.currentRole = null;
+		return new Promise((resolve, reject) => {
+			let timer: ReturnType<typeof setTimeout>;
+			const onClose = (): void => {
+				clearTimeout(timer);
+				resolve();
+			};
+			timer = setTimeout(() => {
+				socket.removeEventListener("close", onClose);
+				reject(new Error("websocket close timeout"));
+			}, opts.timeoutMs ?? 3000);
+			socket.addEventListener("close", onClose, { once: true });
+			try {
+				socket.close();
+			} catch (error) {
+				clearTimeout(timer);
+				socket.removeEventListener("close", onClose);
+				reject(error);
+			}
+		});
+	}
+
 	/** Disconnect this client only — the host + shell keep running. */
 	close(): void {
+		const socket = this.ws;
+		this.ws = null;
 		try {
-			this.ws?.close();
+			socket?.close();
 		} catch {
 			// already closed
 		}
-		this.ws = null;
 		this.currentRole = null;
 	}
 }

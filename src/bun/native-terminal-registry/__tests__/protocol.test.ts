@@ -6,6 +6,7 @@ import {
 	encodeControl,
 	errorMessage,
 	evaluateHello,
+	exitEvent,
 	exceedsControlFrameLimit,
 	helloMessage,
 	MAX_CONTROL_FRAME_BYTES,
@@ -32,11 +33,25 @@ describe("native-session protocol v1", () => {
 			welcomeMessage(1, "alpha", "writer"),
 			errorMessage("version-mismatch", 1, "nope"),
 			stoppingEvent(),
+			exitEvent(37),
+			exitEvent(null),
 		]) {
 			expect(decodeControl(encodeControl(msg))).toEqual(msg);
 		}
 		// hello is version-agnostic and parsed by its own decoder, not decodeControl.
 		expect(decodeHello(encodeControl(helloMessage("alpha", 1)))).toEqual(helloMessage("alpha", 1));
+	});
+
+	it("preserves exact shell exit codes", () => {
+		expect(decodeControl(encodeControl(exitEvent(37)))).toEqual(exitEvent(37));
+	});
+
+	it("rejects a non-numeric shell exit code", () => {
+		expect(decodeControl(JSON.stringify({ v: V, type: "exit", code: "37" }))).toBeNull();
+	});
+
+	it("rejects a missing shell exit code", () => {
+		expect(decodeControl(JSON.stringify({ v: V, type: "exit" }))).toBeNull();
 	});
 
 	it("rejects non-JSON, wrong version, unknown types, and bad payloads", () => {

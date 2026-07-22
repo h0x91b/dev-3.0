@@ -242,8 +242,10 @@ export function decodeControl(text: string): ControlMessage | null {
 			return decodeError(text);
 		case "stop":
 		case "stopping":
-		case "exit":
 			return obj as unknown as ControlMessage;
+		case "exit":
+			if (obj.code !== null && (typeof obj.code !== "number" || !Number.isInteger(obj.code))) return null;
+			return obj as unknown as ExitEvent;
 		default:
 			return null;
 	}

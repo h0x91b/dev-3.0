@@ -1,0 +1,71 @@
+# Windows shell launch matrix (HOST-008 / WIN-003)
+
+This proof is restricted to the isolated native-session registry. It does not
+select a product terminal backend, add settings, change RPC/UI, or alter the
+persisted project/task schema. The existing import-graph and PATH-sentinel tests
+prove that production terminal flows and tmux remain untouched.
+
+## Verdict matrix
+
+| Target | Requirement | Executable selection | Native verdict |
+|---|---|---|---|
+| Windows PowerShell 5.1 | required | `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` | `SUPPORTED` only after every lifecycle check passes |
+| PowerShell 7 | required | explicit `-PwshPath`; otherwise standard MSI path, then a non-WindowsApps PATH entry | `SUPPORTED` only after every lifecycle check passes |
+| cmd.exe | required | exact `%ComSpec%` path | `SUPPORTED` only after every lifecycle check passes |
+| Git Bash | optional | known Git installation paths | `DETECTED / SKIPPED` or `NOT DETECTED / SKIPPED` |
+| WSL | optional | `Get-Command wsl.exe` plus distro report | `DETECTED / SKIPPED` or `NOT DETECTED / SKIPPED` |
+
+Every required row gates on the same checks: structured launch command, cwd,
+Unicode environment, exact argv, root PID/version, completed client detach,
+retained state, same-PID reattach, direct Job Object membership, bounded owned
+descendant teardown, and exact exit code 37 reporting.
+The common gates distinguish `executable-not-found` from exit 37 and require the
+tmux PATH sentinel to remain absent.
+
+## Run on native Windows
+
+Prerequisites: this repository with dependencies installed and Bun exactly
+1.3.14 on PATH. PowerShell 7 must use an MSI or ZIP executable outside
+`WindowsApps`; Git Bash and WSL are not required. Starting with PowerShell 7.6,
+WinGet defaults to the Store/MSIX package, whose activated process does not
+inherit this registry's Job Object ownership boundary. Install the MSI build:
+
+```powershell
+winget install --id Microsoft.PowerShell --source winget --installer-type wix
+```
+
+If WinGet keeps the already-installed MSIX carrier, unpack the official ZIP
+release side by side and pass its executable explicitly:
+
+```powershell
+cd <repo>
+powershell -NoProfile -ExecutionPolicy Bypass -File src\bun\native-terminal-registry\__tests__\run-windows-shell-matrix.ps1 -PwshPath C:\tools\PowerShell-7\pwsh.exe
+```
+
+Without `-PwshPath`, the runner first checks
+`%ProgramFiles%\PowerShell\7\pwsh.exe`, then PATH. An explicit missing or
+WindowsApps path fails honestly and never falls through to another executable
+or shell. Use `-OutDir C:\path\to\evidence` to select an output directory. The
+runner writes the compact, shareable `share\windows-shell-verdict.json`, console
+output to `windows-shell-matrix.txt`, and per-session diagnostics under `raw\`.
+
+## CI and evidence status
+
+The `Packaged Bun runtime` workflow runs the focused pure/isolation tests on all
+three operating systems, then runs this PowerShell runner on `windows-latest`
+with Bun 1.3.14 and uploads the evidence as `windows-shell-launch-matrix`. A Unix
+run is not accepted as Windows evidence; macOS and Linux continue to run the
+existing registry lifecycle test unchanged.
+
+The checked-in
+[`windows-shell-verdict-72e2ddcb.json`](./__tests__/windows-shell-verdict-72e2ddcb.json)
+is the exact shareable output from a native Windows x64 run at commit `72e2ddcb`
+with Bun 1.3.14. Windows PowerShell 5.1, unpackaged PowerShell 7.6.3, and cmd.exe
+all report `SUPPORTED`; optional Git Bash and WSL report detected/skipped, the
+missing executable distinction passes, and the tmux sentinel stays clean. Its
+SHA-256 is `dd9300738cca407eea0aaea1190c9057f6f2abff883a14118dad8e935092516a`.
+
+The generated JSON remains the authoritative verdict for future runs and
+records the OS/architecture, Bun version, all required checks, optional
+detection, exact exit verdicts, PIDs, and scope guards. The focused evidence
+test rejects any checked-in verdict missing a required lifecycle assertion.

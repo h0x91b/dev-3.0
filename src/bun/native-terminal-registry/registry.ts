@@ -22,9 +22,11 @@
  */
 
 import { spawn as spawnChild } from "node:child_process";
-import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readdirSync, readFileSync, rmdirSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { withFileLock } from "../file-lock";
+import { whichSync } from "../which";
 import { NativeSessionClient } from "./client";
 import { classifyOwnership, type OwnershipVerdict } from "./ownership";
 import { isValidSessionId, logFile, recordFile, sessionDir, sessionsRootDir } from "./paths";
@@ -32,16 +34,21 @@ import { isProcessAlive } from "./process-identity";
 import { readRecord, readToken, removeSessionState, type NativeSessionRecord } from "./record";
 import type { StatusReply } from "./protocol";
 import { forceTerminateWindowsJob } from "./windows-job";
+import {
+	encodeShellLaunchSpec,
+	NATIVE_SESSION_LAUNCH_ENV,
+	resolveShellLaunchSpec,
+	type ShellLaunchSpec,
+} from "./shell-launch";
 
 const delay = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const CLEANUP_LOCK_TIMEOUT_MS = 5000;
 const CLEANUP_LOCK_STALE_THRESHOLD_MS = 60 * 60_000;
 
 export interface HostSpawnOptions {
-	cmd?: string[];
+	launch: ShellLaunchSpec;
 	cols?: number;
 	rows?: number;
-	cwd?: string;
 	/** Opt-in live-parser proof stage (seq 1228); default off keeps the host lean. */
 	liveParser?: boolean;
 	/** Opt-in unbounded ground-truth stream tap — proof runs only. */
@@ -91,6 +98,7 @@ export type HostLauncher = (sessionId: string, opts: HostSpawnOptions, logFd: nu
 export interface RegistryDeps {
 	launchHost: HostLauncher;
 	classify: (record: NativeSessionRecord, token: string | null) => Promise<OwnershipVerdict>;
+	resolveLaunch: (spec: ShellLaunchSpec) => ShellLaunchSpec;
 }
 
 function hostEntry(): string {
@@ -113,10 +121,9 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 		env: {
 			...process.env,
 			DEV3_NATIVE_SESSION_ID: sessionId,
-			...(opts.cmd ? { DEV3_NATIVE_SESSION_CMD: JSON.stringify(opts.cmd) } : {}),
+			[NATIVE_SESSION_LAUNCH_ENV]: encodeShellLaunchSpec(opts.launch),
 			...(opts.cols ? { DEV3_NATIVE_SESSION_COLS: String(opts.cols) } : {}),
 			...(opts.rows ? { DEV3_NATIVE_SESSION_ROWS: String(opts.rows) } : {}),
-			...(opts.cwd ? { DEV3_NATIVE_SESSION_CWD: opts.cwd } : {}),
 			...(opts.liveParser ? { DEV3_NATIVE_SESSION_LIVE_PARSER: "1" } : {}),
 			...(opts.stateTap ? { DEV3_NATIVE_SESSION_STATE_TAP: "1" } : {}),
 		},
@@ -141,6 +148,23 @@ export function defaultHostLauncher(sessionId: string, opts: HostSpawnOptions, l
 export const defaultDeps: RegistryDeps = {
 	launchHost: defaultHostLauncher,
 	classify: classifyOwnership,
+	resolveLaunch: (spec) =>
+		resolveShellLaunchSpec(spec, (executable, launch) => {
+			const isFile = (path: string): boolean => {
+				try {
+					return statSync(path).isFile();
+				} catch {
+					return false;
+				}
+			};
+			if (isAbsolute(executable)) return isFile(executable) ? executable : null;
+			if (executable.includes("/") || executable.includes("\\")) {
+				const candidate = resolve(launch.cwd, executable);
+				return isFile(candidate) ? candidate : null;
+			}
+			const path = launch.env.PATH ?? launch.env.Path ?? process.env.PATH ?? "";
+			return typeof Bun.which === "function" ? Bun.which(executable, { PATH: path }) : whichSync(executable);
+		}),
 };
 
 /**
@@ -150,7 +174,7 @@ export const defaultDeps: RegistryDeps = {
  */
 export async function start(
 	sessionId: string,
-	opts: StartOptions = {},
+	opts: StartOptions,
 	deps: RegistryDeps = defaultDeps,
 ): Promise<StartResult> {
 	const bootTimeout = opts.timeoutMs ?? 15_000;
@@ -176,14 +200,14 @@ export async function start(
 				mkdirSync(sessionDir(sessionId), { recursive: true, mode: 0o700 });
 			}
 
+			const launchSpec = deps.resolveLaunch(opts.launch);
 			const logFd = openSync(logFile(sessionId), "a");
 			const launch = deps.launchHost(
 				sessionId,
 				{
-					cmd: opts.cmd,
+					launch: launchSpec,
 					cols: opts.cols,
 					rows: opts.rows,
-					cwd: opts.cwd,
 					liveParser: opts.liveParser,
 					stateTap: opts.stateTap,
 				},

@@ -12,6 +12,12 @@ import {
 	type NativeSessionRecord,
 } from "../record";
 import type { OwnershipVerdict } from "../ownership";
+import {
+	defineShellLaunchSpec,
+	resolveShellLaunchSpec,
+	ShellExecutableNotFoundError,
+	type ShellLaunchSpec,
+} from "../shell-launch";
 import { cleanupStale, list, start, stop, type RegistryDeps } from "../registry";
 
 function fakeRecord(sessionId: string, hostPid: number, shellPid = process.pid): NativeSessionRecord {
@@ -38,12 +44,14 @@ describe("native-session registry", () => {
 	let root: string;
 	let prev: string | undefined;
 	let launchCalls: number;
+	let launch: ShellLaunchSpec;
 
 	beforeEach(() => {
 		prev = process.env[NATIVE_SESSIONS_DIR_ENV];
 		root = mkdtempSync(join(tmpdir(), "dev3-native-registry-"));
 		process.env[NATIVE_SESSIONS_DIR_ENV] = root;
 		launchCalls = 0;
+		launch = defineShellLaunchSpec({ executable: process.execPath, argv: [], cwd: root, env: {} });
 	});
 	afterEach(() => {
 		if (prev === undefined) delete process.env[NATIVE_SESSIONS_DIR_ENV];
@@ -55,6 +63,7 @@ describe("native-session registry", () => {
 	function deps(classify: (r: NativeSessionRecord, t: string | null) => Promise<OwnershipVerdict>): RegistryDeps {
 		return {
 			classify,
+			resolveLaunch: (spec) => spec,
 			launchHost: (sessionId) => {
 				launchCalls++;
 				writeToken(sessionId, `tok-${sessionId}`);
@@ -66,17 +75,45 @@ describe("native-session registry", () => {
 
 	it("starts a fresh session exactly once", async () => {
 		const classify = vi.fn(async () => "dead" as OwnershipVerdict);
-		const result = await start("alpha", { timeoutMs: 3000 }, deps(classify));
+		const result = await start("alpha", { launch, timeoutMs: 3000 }, deps(classify));
 		expect(result.status).toBe("started");
 		expect(result.record.sessionId).toBe("alpha");
 		expect(launchCalls).toBe(1);
 		expect(classify).not.toHaveBeenCalled(); // no pre-existing record to classify
 	});
 
+	it("passes one resolved launch descriptor to the detached host launcher", async () => {
+		let observed: ShellLaunchSpec | undefined;
+		const registryDeps = deps(async () => "dead");
+		const baseLaunch = registryDeps.launchHost;
+		registryDeps.launchHost = (sessionId, options, logFd) => {
+			observed = options.launch;
+			return baseLaunch(sessionId, options, logFd);
+		};
+
+		await start("explicit", { launch, timeoutMs: 3000 }, registryDeps);
+		expect(observed).toEqual(launch);
+	});
+
+	it("reports executable-not-found before launching a detached host", async () => {
+		const registryDeps = deps(async () => "dead");
+		registryDeps.resolveLaunch = (spec) => resolveShellLaunchSpec(spec, () => null);
+		let failure: unknown;
+		try {
+			await start("missing", { launch, timeoutMs: 3000 }, registryDeps);
+		} catch (error) {
+			failure = error;
+		}
+		expect({ failure, launchCalls }).toMatchObject({
+			failure: { name: ShellExecutableNotFoundError.name, code: "executable-not-found" },
+			launchCalls: 0,
+		});
+	});
+
 	it("returns already-running for a live session without launching a second host", async () => {
 		writeToken("alpha", "tok-alpha");
 		writeRecordAtomic(fakeRecord("alpha", process.pid));
-		const result = await start("alpha", { timeoutMs: 3000 }, deps(async () => "owned"));
+		const result = await start("alpha", { launch, timeoutMs: 3000 }, deps(async () => "owned"));
 		expect(result.status).toBe("already-running");
 		expect(launchCalls).toBe(0);
 	});
@@ -84,11 +121,11 @@ describe("native-session registry", () => {
 	it("serialises concurrent starts of one id: exactly one wins, losers get already-running", async () => {
 		const classify = async (_r: NativeSessionRecord, t: string | null): Promise<OwnershipVerdict> =>
 			t ? "owned" : "dead";
-		const d = deps(classify);
+		const registryDeps = deps(classify);
 		const results = await Promise.all([
-			start("beta", { timeoutMs: 5000 }, d),
-			start("beta", { timeoutMs: 5000 }, d),
-			start("beta", { timeoutMs: 5000 }, d),
+			start("beta", { launch, timeoutMs: 5000 }, registryDeps),
+			start("beta", { launch, timeoutMs: 5000 }, registryDeps),
+			start("beta", { launch, timeoutMs: 5000 }, registryDeps),
 		]);
 		expect(results.filter((r) => r.status === "started")).toHaveLength(1);
 		expect(results.filter((r) => r.status === "already-running")).toHaveLength(2);
@@ -98,7 +135,7 @@ describe("native-session registry", () => {
 	it("replaces a stale record with a fresh host on start", async () => {
 		writeToken("gamma", "old-tok");
 		writeRecordAtomic(fakeRecord("gamma", 2_000_000_000));
-		const result = await start("gamma", { timeoutMs: 3000 }, deps(async () => "dead"));
+		const result = await start("gamma", { launch, timeoutMs: 3000 }, deps(async () => "dead"));
 		expect(result.status).toBe("started");
 		expect(launchCalls).toBe(1);
 		expect(result.record.host.pid).toBe(process.pid);
@@ -106,7 +143,7 @@ describe("native-session registry", () => {
 
 	it("refuses to replace stale state when its cleanup token is missing", async () => {
 		writeRecordAtomic(fakeRecord("gamma", 2_000_000_000));
-		await expect(start("gamma", { timeoutMs: 3000 }, deps(async () => "dead"))).rejects.toThrow(
+		await expect(start("gamma", { launch, timeoutMs: 3000 }, deps(async () => "dead"))).rejects.toThrow(
 			"cannot safely replace stale native session gamma",
 		);
 		expect(launchCalls).toBe(0);
@@ -207,7 +244,7 @@ describe("native-session registry", () => {
 			}),
 		);
 		await entered;
-		const startPromise = start("locked-race", { timeoutMs: 3000 }, deps(async () => "dead"));
+		const startPromise = start("locked-race", { launch, timeoutMs: 3000 }, deps(async () => "dead"));
 		for (let turn = 0; turn < 20; turn++) await Promise.resolve();
 		const startedBeforeCleanupReleased = launchCalls > 0;
 		releaseClassification();

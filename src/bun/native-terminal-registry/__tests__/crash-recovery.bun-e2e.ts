@@ -13,6 +13,7 @@ import { readParserState } from "../parser-state";
 import { isProcessAlive } from "../process-identity";
 import { readRecord, readToken } from "../record";
 import { cleanupStale, list, start, status, stop } from "../registry";
+import { defineShellLaunchSpec, encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../shell-launch";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
 import { sendUntilObserved } from "./command-roundtrip";
 
@@ -103,9 +104,13 @@ async function run(): Promise<void> {
 	if (!isWindows) chmodSync(tmuxShim, 0o755);
 
 	process.env.DEV3_NATIVE_SESSIONS_DIR = metadataRoot;
-	process.env.DEV3_NATIVE_SESSION_CMD = JSON.stringify(
-		isWindows ? ["powershell.exe", "-NoLogo", "-NoProfile"] : ["/bin/bash", "--norc", "--noprofile"],
-	);
+	const launch = defineShellLaunchSpec({
+		executable: isWindows ? "powershell.exe" : "/bin/bash",
+		argv: isWindows ? ["-NoLogo", "-NoProfile", "-NoExit"] : ["--norc", "--noprofile"],
+		cwd: root,
+		env: {},
+	});
+	process.env[NATIVE_SESSION_LAUNCH_ENV] = encodeShellLaunchSpec(launch);
 	process.env.PATH = `${shimDir}${delimiter}${process.env.PATH ?? ""}`;
 
 	const sentinelCommand = isWindows
@@ -120,7 +125,7 @@ async function run(): Promise<void> {
 	if (isWindows) check(Bun.version === "1.3.14", "native Windows proof runs on Bun 1.3.14");
 
 	try {
-		const started = await start(sessionId, { liveParser: true, timeoutMs: 15_000 });
+		const started = await start(sessionId, { launch, liveParser: true, timeoutMs: 15_000 });
 		const crashedRecord = started.record;
 		const crashedToken = readToken(sessionId);
 		check(started.status === "started", "one isolated native session started");
@@ -240,14 +245,14 @@ async function run(): Promise<void> {
 		check(existsSync(unrelatedRegistryFile), "cleanup preserves unrelated registry-root state");
 		check(isProcessAlive(unrelatedSentinel.pid) && isProcessAlive(tmuxSentinel.pid), "cleanup signals no unrelated process");
 
-		const restarted = await start(sessionId, { timeoutMs: 15_000 });
+		const restarted = await start(sessionId, { launch, timeoutMs: 15_000 });
 		const restartedToken = readToken(sessionId);
 		check(restarted.status === "started", "the same stable session id starts again after cleanup");
 		check(
 			restarted.record.host.pid !== crashedRecord.host.pid && restartedToken !== crashedToken,
 			"restart creates one new host with a new ownership token",
 		);
-		const duplicate = await start(sessionId, { timeoutMs: 5000 });
+		const duplicate = await start(sessionId, { launch, timeoutMs: 5000 });
 		check(
 			duplicate.status === "already-running" && duplicate.record.shell.pid === restarted.record.shell.pid,
 			"a duplicate restart observes the one new shell instead of spawning another",
