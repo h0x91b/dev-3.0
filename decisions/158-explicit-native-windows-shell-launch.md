@@ -32,6 +32,8 @@ cmd probe uses balanced quoted segments around caret-escaped literal quotes.
 
 cmd and PowerShell have different interactive quoting rules, so the native
 matrix keeps exact metacharacter and quote probes rather than assuming parity.
+Windows Job termination can become observable one process at a time, so the
+matrix verifies direct membership and polls the three known PIDs to a bounded deadline.
 The descriptor is registry-local and is not a product backend seam; future
 integration still needs an explicit architecture decision.
 

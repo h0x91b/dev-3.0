@@ -17,8 +17,8 @@ prove that production terminal flows and tmux remain untouched.
 
 Every required row gates on the same checks: structured launch command, cwd,
 Unicode environment, exact argv, root PID/version, completed client detach,
-retained state, same-PID reattach, owned descendant teardown, and exact exit
-code 37 reporting.
+retained state, same-PID reattach, direct Job Object membership, bounded owned
+descendant teardown, and exact exit code 37 reporting.
 The common gates distinguish `executable-not-found` from exit 37 and require the
 tmux PATH sentinel to remain absent.
 

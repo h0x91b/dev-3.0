@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const runner = readFileSync(fileURLToPath(new URL("./run-windows-shell-matrix.ps1", import.meta.url)), "utf8");
 const ownedChildProbe = readFileSync(fileURLToPath(new URL("./windows-owned-child-probe.ts", import.meta.url)), "utf8");
+const matrix = readFileSync(fileURLToPath(new URL("./windows-shell-matrix.ts", import.meta.url)), "utf8");
 
 describe("native Windows shell matrix runner", () => {
 	it("collapses duplicate PATH applications to one scalar executable path", () => {
@@ -25,5 +26,13 @@ describe("native Windows shell matrix runner", () => {
 
 	it("detaches the owned descendant so it survives its short-lived launcher", () => {
 		expect(ownedChildProbe).toContain("detached: true");
+	});
+
+	it("allows asynchronous Job Object teardown to remove every owned PID", () => {
+		expect(matrix).toContain('"owned-boundary"');
+		expect(matrix).toContain("isProcessInWindowsJob(token, pid)");
+		expect(matrix).toContain("await waitForProcessesToExit(");
+		expect(matrix).toContain("const ownedPids = [record.host.pid, record.shell.pid, ownedChildPid]");
+		expect(matrix).toContain("stop left live PIDs after the teardown deadline");
 	});
 });

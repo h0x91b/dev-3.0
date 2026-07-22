@@ -3,11 +3,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { waitForProcessesToExit } from "./windows-shell-matrix-support";
 import { NativeSessionClient } from "../client";
 import { isProcessAlive } from "../process-identity";
 import { readToken } from "../record";
 import { start, stop } from "../registry";
 import { cmdArgvProbeBatch, powershellArgvProbeCommand, powershellLiteral } from "../shell-probe";
+import { isProcessInWindowsJob } from "../windows-job";
 import {
 	shellCommand,
 	shellExitVerdict,
@@ -192,9 +194,10 @@ async function proveLifecycle(
 	try {
 		const started = await start(sessionId, { launch, timeoutMs: 20_000 });
 		record = started.record;
+		const token = readToken(sessionId) ?? "";
 		addCheck(checks, "launch-command", JSON.stringify(record.shell.command) === JSON.stringify(shellCommand(launch)), "recorded command equals executable plus argv entries");
 		const client = new NativeSessionClient();
-		await client.connect(record, readToken(sessionId) ?? "", { timeoutMs: 8000 });
+		await client.connect(record, token, { timeoutMs: 8000 });
 		const probeReady = waitForText(client, "ARGV-PROBE-WROTE");
 		adapter.sendArgvProbe(client, launch);
 		addCheck(checks, "probe-ready", await probeReady, "attached argv probe wrote evidence");
@@ -221,6 +224,14 @@ async function proveLifecycle(
 		const childMatch = await childPid;
 		ownedChildPid = Number(childMatch[1]);
 		addCheck(checks, "owned-child", ownedChildPid > 0 && isProcessAlive(ownedChildPid), "a descendant process is alive inside the session ownership boundary");
+		const ownedPids = [record.host.pid, record.shell.pid, ownedChildPid];
+		const jobMembership = await Promise.all(ownedPids.map((pid) => isProcessInWindowsJob(token, pid)));
+		addCheck(
+			checks,
+			"owned-boundary",
+			jobMembership.every(Boolean),
+			`Windows Job Object membership for host/shell/child: ${jobMembership.join("/")}`,
+		);
 		const beforeDetach = await client.status();
 		await client.disconnect({ timeoutMs: 3000 });
 		addCheck(checks, "detach-complete", true, "original client observed WebSocket close before reattach");
@@ -235,11 +246,14 @@ async function proveLifecycle(
 
 		const stopped = await stop(sessionId, { timeoutMs: 10_000 });
 		addCheck(checks, "stop", stopped, "registry stop succeeded");
+		const teardownSurvivors = await waitForProcessesToExit(ownedPids, { timeoutMs: 8_000 });
 		addCheck(
 			checks,
 			"owned-teardown",
-			!isProcessAlive(record.host.pid) && !isProcessAlive(record.shell.pid) && !isProcessAlive(ownedChildPid),
-			"stop removed the host, root shell, and owned descendant tree",
+			teardownSurvivors.length === 0,
+			teardownSurvivors.length === 0
+				? "stop removed the host, root shell, and owned descendant tree"
+				: `stop left live PIDs after the teardown deadline: ${teardownSurvivors.join(", ")}`,
 		);
 		return {
 			host: record.host.pid,
