@@ -714,7 +714,8 @@ A starting situation that generates work, then merges onto the main flow.
 
 ## Verifying work
 
-- **Run the dev server → one per task.** The Dev Server button (or \`dev3 dev-server start\`) runs the project's \`devScript\` inside that task's tmux with that task's ports, so N tasks give you N side-by-side dev servers that never fight over a port.
+- **Set up the dev server — the first, simplest, most important thing.** If the project is a local app or a website that can run locally, wire up its dev server (\`/dev3-project-config\` does it for you). From then on it's one button on the task — it turns green and runs the project's \`devScript\` in that task's isolated environment with that task's own ports, so N tasks give N side-by-side dev servers that never fight over a port. This one habit helps everyone at once: the **agent** can hop into the running app with a browser tool (agent-browser, Puppeteer, a browser MCP) and screenshot its own work instead of claiming it works, and the **human** can glance at the real thing in seconds. Highly recommended for every project where it's possible.
+- **Slice features small enough for a 30-second check.** The dev server pays off most when a feature is small enough that pressing the button and clicking around for ~30 seconds tells you whether it's done: the new button is there and works, nothing that should exist has vanished, it looks right. If you can't verify a feature that fast, the task was probably too big — split it.
 - **Get visual proof → ask for it.** Agents can push screenshots (\`dev3 show-image\`) and interactive HTML reports (\`dev3 show-artifact\`) straight into the app. Prefer pixels over prose when the change is visual.
 
 ## Vocabulary underneath
