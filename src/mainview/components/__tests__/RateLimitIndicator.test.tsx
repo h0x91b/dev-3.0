@@ -139,9 +139,9 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 
-		expect(screen.getByText("0%")).toBeTruthy();
-		expect(screen.getByText("used")).toBeTruthy();
-		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("Codex 0% used");
+		expect(screen.getByText("∞ unlimited")).toBeTruthy();
+		expect(screen.queryByText("0%")).toBeNull();
+		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("Codex ∞ unlimited");
 		expect(screen.getByRole("status").className).toContain("text-fg-3");
 	});
 
@@ -160,8 +160,129 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		await userEvent.tab();
-		expect(await screen.findByText(/5h — 5% used/)).toBeTruthy();
-		expect(await screen.findByText(/7d — 42% used/)).toBeTruthy();
+		expect(await screen.findByText("5h")).toBeTruthy();
+		expect(screen.getByText("5% used")).toBeTruthy();
+		expect(screen.getByText("7d")).toBeTruthy();
+		expect(screen.getByText("42% used")).toBeTruthy();
+	});
+
+	it("renders a usage bar per window with severity-colored fill and clamped width", async () => {
+		mockedGet.mockResolvedValue(report(97));
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		await screen.findByText("5h");
+		const tooltip = screen.getByRole("tooltip");
+		const fills = tooltip.querySelectorAll("[class*='rounded-full'] > span");
+		expect(fills.length).toBe(2);
+		expect((fills[0] as HTMLElement).className).toContain("bg-accent");
+		expect((fills[0] as HTMLElement).style.width).toBe("5%");
+		expect((fills[1] as HTMLElement).className).toContain("bg-danger");
+		expect((fills[1] as HTMLElement).style.width).toBe("97%");
+	});
+
+	it("shows an unlimited-credits chip instead of usage bars for unlimited accounts", async () => {
+		mockedGet.mockResolvedValue({
+			generatedAt: Date.now(),
+			snapshots: [
+				{
+					source: "codex",
+					capturedAt: Date.now(),
+					windows: [],
+					creditsBalance: "unlimited",
+					monthlyCredits: null,
+					planType: "enterprise",
+				},
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+		await userEvent.tab();
+		// One match in the pill label, one as the tooltip card chip.
+		expect((await screen.findAllByText("∞ unlimited")).length).toBe(2);
+		expect(screen.queryByText(/credits: unlimited/)).toBeNull();
+	});
+
+	it("renders a mini usage bar inside the header pill", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		renderIndicator();
+		await act(async () => {});
+		const pill = screen.getByRole("status");
+		const fill = pill.querySelector('span[aria-hidden="true"] > span > span');
+		expect(fill).toBeTruthy();
+		expect((fill as HTMLElement).style.width).toBe("42%");
+		expect((fill as HTMLElement).className).toContain("bg-accent");
+	});
+
+	it("stacks one pill bar per account with its own severity color", async () => {
+		const now = Date.now();
+		const snapshot = (source: "claude" | "codex", accountId: string, percent: number, activeAt: number) => ({
+			source,
+			accountId,
+			capturedAt: activeAt,
+			activeAt,
+			windows: [{ id: source === "claude" ? "five_hour" : "primary", usedPercent: percent, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+			creditsBalance: null,
+			monthlyCredits: null,
+			planType: null,
+		});
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [snapshot("claude", "a", 42, now), snapshot("codex", "b", 85, now - 1_000), snapshot("codex", "c", 97, now - 2_000)],
+		});
+		renderIndicator();
+		await act(async () => {});
+		const pill = screen.getByRole("status");
+		const fills = pill.querySelectorAll('span[aria-hidden="true"] > span > span');
+		expect(fills.length).toBe(3);
+		expect((fills[0] as HTMLElement).style.width).toBe("42%");
+		expect((fills[0] as HTMLElement).className).toContain("bg-accent");
+		expect((fills[1] as HTMLElement).style.width).toBe("85%");
+		expect((fills[1] as HTMLElement).className).toContain("bg-warning");
+		expect((fills[2] as HTMLElement).style.width).toBe("97%");
+		expect((fills[2] as HTMLElement).className).toContain("bg-danger");
+		// The headline number still tracks the most recently active account.
+		expect(screen.getByText("42%")).toBeTruthy();
+	});
+
+	it("renders an unlimited account's pill bar as a full success line and caps bars at four", async () => {
+		const now = Date.now();
+		const snapshot = (accountId: string, percent: number) => ({
+			source: "codex" as const,
+			accountId,
+			capturedAt: now,
+			activeAt: now,
+			windows: [{ id: "primary", usedPercent: percent, resetsAt: now + 3_600_000, windowMinutes: 300 }],
+			creditsBalance: null,
+			monthlyCredits: null,
+			planType: null,
+		});
+		mockedGet.mockResolvedValue({
+			generatedAt: now,
+			snapshots: [
+				{
+					source: "codex",
+					accountId: "unl",
+					capturedAt: now,
+					activeAt: now,
+					windows: [],
+					creditsBalance: "unlimited",
+					monthlyCredits: null,
+					planType: "enterprise",
+				},
+				snapshot("a", 10),
+				snapshot("b", 20),
+				snapshot("c", 30),
+				snapshot("d", 40),
+			],
+		});
+		renderIndicator();
+		await act(async () => {});
+		const pill = screen.getByRole("status");
+		const fills = pill.querySelectorAll('span[aria-hidden="true"] > span > span');
+		expect(fills.length).toBe(4);
+		expect((fills[0] as HTMLElement).style.width).toBe("100%");
+		expect((fills[0] as HTMLElement).className).toContain("bg-success");
 	});
 
 	it("escalates to the warning token at ≥80%", async () => {

@@ -118,6 +118,7 @@ const dashboard = {
 	"rateLimits.percentUsed": "{percent}% использовано",
 	"rateLimits.resetsIn": "сброс через {time}",
 	"rateLimits.credits": "кредиты: {balance}",
+	"rateLimits.unlimited": "∞ безлимит",
 	"rateLimits.monthlyLabel": "месячные кредиты",
 	"rateLimits.monthlyUsage": "использовано {used} / {limit} · осталось {remaining}%",
 	"rateLimits.stale": "Данные {time} назад — обновляются, пока активна сессия агента",
