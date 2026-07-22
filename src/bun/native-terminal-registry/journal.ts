@@ -111,8 +111,9 @@ export class JournalWriter {
 		try {
 			writeFileSync(this.path, this.frames.join(""), { mode: 0o600 });
 			this.dirty = false;
-		} catch {
+		} catch (err) {
 			// best-effort: a failed journal flush must never take the host down
+			console.error("native-session journal flush failed:", this.path, err);
 		}
 	}
 

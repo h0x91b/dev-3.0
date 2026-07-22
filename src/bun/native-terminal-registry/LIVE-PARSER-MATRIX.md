@@ -1,0 +1,98 @@
+# Live-parser Windows matrix (seq 1228 / STATE-005)
+
+Proves on a native Windows host that the registry host maintains a real Ghostty
+screen while Bun.Terminal streams ConPTY output, with parsing deferred outside
+the data callback (decision 155), parser replies written back to the same PTY,
+and detach-boundary reconstruction from the bounded parser state.
+
+This is proof tooling around the isolated registry. Nothing here is imported by
+production; it does not touch tmux, backend selection, session data, or UI.
+
+## What one run covers
+
+| Step | Proof |
+|---|---|
+| `regression-probe.ts both` | `callback` mode preserves the seq 1185 repro (negative WASM allocation pointer on Bun 1.3.14); `deferred` mode is clean |
+| `test:native-live-parser-e2e` | DSR write-back exactly once, reconstruction == ground truth, bounded overflow, fault containment, tmux sentinel |
+| pwsh 7 / Neovim targets | Live screen through a real ConPTY TUI; verdict includes reconstructed screen text |
+| Claude / Codex targets | Same proof, metrics + SHA-256 only (fail-closed privacy: raw agent bytes never leave `raw\`) |
+
+Each target verdict records: reconstruction match vs a fresh-core replay of the
+ordered stream tap, parser health, query-reply count, drain latency
+(p50/p95/max), and host memory — the practical budget numbers.
+
+### ConPTY semantics on Windows
+
+ConPTY (conhost) is itself a terminal emulator sitting between the app and the
+host: it answers DSR queries from the app directly (the query may never reach
+the terminal-side stream), owns the window title (PowerShell rewrites it per
+prompt), and re-renders the alternate screen into the primary buffer instead of
+forwarding `?1049`. The parser's contract is to faithfully mirror whatever
+ConPTY emits — the E2E asserts the ConPTY-translated semantics on Windows and
+the raw VT passthrough semantics on POSIX. The exactly-once reply invariant
+holds on both: the query/answer paths are disjoint, and the probe counts total
+answers regardless of who produced them.
+
+## Run (one command, from the repo root)
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File src\bun\native-terminal-registry\__tests__\run-windows-live-matrix.ps1
+```
+
+Prerequisites: `bun install` done, Bun 1.3.14 on PATH; log into Claude/Codex
+first; `pwsh`/`nvim` optional (recorded as skipped when absent). Useful
+switches: `-SkipAgents`, `-SkipE2E`, `-Cols 100 -Rows 30`,
+`-ClaudeCommand @("claude")`, `-CodexCommand @("codex")`, `-NvimCommand @("nvim")`.
+
+**Paste back everything in `<outdir>\share`** (`environment.json`,
+`results.json`, `regression-probe.txt`, `live-parser-e2e.txt`, per-target
+`*.verdict.json` / `*.run.txt`). Keep `<outdir>\raw` local — agent session
+state may hold real transcript bytes.
+
+## Evidence record — macOS (harness validation)
+
+> Executed 2026-07-22 on macOS (darwin arm64, Bun 1.3.14) while building the
+> harness; the Windows run is the acceptance target and is recorded below.
+
+| Target | Match | Health | Query replies | Drain p95 | Host RSS |
+|---|---|---|---|---|---|
+| bash | yes | live | 0 | 1 ms | — |
+| nvim | yes | live | 2 (startup DSR answered live) | 1 ms | 128.6 MB |
+| claude (metrics-only) | yes | live | 0 | 1 ms | 85.6 MB |
+
+Regression probe on macOS: `callback` and `deferred` both clean (the failure is
+Windows-specific). E2E: `ALL CHECKS PASSED` (32 checks).
+
+## Evidence record — native Windows (STATE-005 acceptance)
+
+> Status: **CONFIRMED** — full run 2026-07-22 20:49 (+03:00) on the user's
+> native Windows host; `share` contents pasted back and summarized here.
+
+Environment: Windows 10 Pro 10.0.19045 (AMD64), Bun 1.3.14, PowerShell
+5.1.19041 (runner) / pwsh 7.6.3, Claude Code 2.1.42, codex-cli 0.144.6
+(winget target-triple binary), nvim not installed.
+
+Regression probe (the seq 1185 acceptance evidence; stable across 3 runs):
+
+| Mode | Outcome |
+|---|---|
+| `callback` (Ghostty inside the Bun.Terminal data callback) | **FAILED** — `RangeError: Offset should not be negative` (the preserved negative-WASM-allocation repro), screen not plausible |
+| `deferred` (this pipeline) | **CLEAN** — same workload (~183 KB, ~1.7k callbacks), plausible screen, no error |
+
+Lifecycle E2E: `ALL CHECKS PASSED` (ConPTY-translated semantics: conhost
+answered the DSR probe exactly once with 0 parser replies — duplicate-free;
+alt screen re-rendered into the primary buffer; title conhost-owned).
+
+| Target | Match | Health | Frames / bytes | Replies | Drain p50/p95/max | Host RSS | Clean exit |
+|---|---|---|---|---|---|---|---|
+| pwsh7 | yes | live | 5 / 616 B | 0 | 1 / 2 / 2 ms | 102.6 MB | yes |
+| nvim | — skipped (not installed on the evidence host; proven in the macOS matrix incl. live DSR answers) | | | | | | |
+| claude (metrics-only) | yes | live | 7 / 4.0 KiB | 0 | 1 / 3 / 3 ms | 90.3 MB | no (grace stop) |
+| codex (metrics-only) | yes | live | 567 / 102.3 KiB | 0 | 0 / 1 / 4 ms | 106.5 MB | yes |
+
+Every target reconstructed the same semantic screen as the fresh-core replay
+of its ordered stream tap (`reconstructionMatch: true`); stream SHA-256 per
+target lives in the pasted `*.verdict.json`. Notable: ConPTY does forward the
+title OSC (pwsh7's verdict carries the conhost-owned pwsh.exe title), and the
+practical budget on Windows matches macOS — sub-5 ms drains, ~90–107 MB host
+RSS with the WASM core.

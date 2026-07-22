@@ -18,7 +18,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { journalFile, logFile, recordFile, sessionDir, tokenFile } from "./paths";
+import { journalFile, logFile, parserStateFile, recordFile, sessionDir, streamTapFile, tokenFile } from "./paths";
 
 export const NATIVE_SESSION_SCHEMA_VERSION = 1 as const;
 export const NATIVE_SESSION_HOST_ARTIFACT_VERSION = "1" as const;
@@ -168,7 +168,14 @@ export function readToken(sessionId: string): string | null {
  */
 export function removeSessionState(sessionId: string, expectedToken: string | null): boolean {
 	if (expectedToken !== null && readToken(sessionId) !== expectedToken) return false;
-	const files = [journalFile(sessionId), logFile(sessionId), tokenFile(sessionId), recordFile(sessionId)];
+	const files = [
+		journalFile(sessionId),
+		parserStateFile(sessionId),
+		streamTapFile(sessionId),
+		logFile(sessionId),
+		tokenFile(sessionId),
+		recordFile(sessionId),
+	];
 	for (const file of files) {
 		try {
 			if (existsSync(file)) unlinkSync(file);

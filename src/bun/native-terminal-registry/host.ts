@@ -16,9 +16,12 @@ import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { spawn, spawnSync } from "../spawn";
 import { assertNativeTerminalRuntime, nativeTerminalSpawnError } from "../../shared/native-terminal-runtime";
-import { journalFile, sessionDir } from "./paths";
+import { journalFile, sessionDir, streamTapFile } from "./paths";
 import { readProcessStartSignature } from "./process-identity-native";
 import { JournalWriter } from "./journal";
+import { LiveParserPipeline } from "./live-parser";
+import { bootFailedParserState, writeParserStateAtomic } from "./parser-state";
+import { StreamTapWriter } from "./stream-tap";
 import {
 	decodeControl,
 	decodeHello,
@@ -210,6 +213,41 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 	let currentRows = config.rows;
 	let shuttingDown = false;
 
+	// Live-parser proof stage (seq 1228) — opt-in, additive, protocol-v1-neutral.
+	// Ghostty is loaded HERE on the boot path, never inside the terminal callback.
+	const tap = process.env.DEV3_NATIVE_SESSION_STATE_TAP === "1" ? new StreamTapWriter(streamTapFile(sessionId)) : null;
+	tap?.start();
+	let terminalRef: { write(data: string | Uint8Array): void } | null = null;
+	let pipeline: LiveParserPipeline | null = null;
+	if (process.env.DEV3_NATIVE_SESSION_LIVE_PARSER === "1") {
+		try {
+			pipeline = await LiveParserPipeline.create({
+				sessionId,
+				cols: config.cols,
+				rows: config.rows,
+				scrollbackLimit: parsePositiveInt(process.env.DEV3_NATIVE_SESSION_PARSER_SCROLLBACK, 1000),
+				snapshotScrollbackCap: parsePositiveInt(process.env.DEV3_NATIVE_SESSION_PARSER_SNAPSHOT_SCROLLBACK, 200),
+				queueMaxBytes: parsePositiveInt(process.env.DEV3_NATIVE_SESSION_PARSER_QUEUE_MAX_BYTES, 8 * 1024 * 1024),
+				writeReply: (reply) => {
+					try {
+						terminalRef?.write(reply); // parser replies go back to the SAME PTY
+					} catch {
+						// terminal already closed
+					}
+				},
+				persistState: (snapshot) => writeParserStateAtomic(sessionId, snapshot),
+				fault: process.env.DEV3_NATIVE_SESSION_PARSER_FAULT === "ingest" ? "ingest" : null,
+			});
+		} catch (err) {
+			// Containment: a parser that cannot boot must never take the host down.
+			try {
+				writeParserStateAtomic(sessionId, bootFailedParserState(sessionId, err));
+			} catch {
+				// state dir unavailable — raw operation continues regardless
+			}
+		}
+	}
+
 	const proc = (() => {
 		try {
 			return spawn(config.cmd, {
@@ -218,6 +256,9 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 					rows: config.rows,
 					data(_terminal: unknown, bytes: Uint8Array) {
 						journal.record(bytes, new Date().toISOString());
+						// Bounded enqueueing ONLY — parsing happens on a later event-loop task.
+						tap?.recordOutput(bytes);
+						pipeline?.onOutput(bytes);
 						for (const c of clients) {
 							try {
 								c.send(bytes);
@@ -247,6 +288,7 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			cause: new Error("Bun.spawn returned without a terminal handle"),
 		});
 	}
+	terminalRef = proc.terminal;
 
 	const startedAt = new Date().toISOString();
 	const shellPid = proc.pid;
@@ -272,6 +314,8 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 			},
 			close(ws) {
 				clients.delete(ws);
+				// Detach boundary: make the reconstructable state current on disk.
+				pipeline?.flush();
 			},
 			message(ws, message) {
 				try {
@@ -320,6 +364,9 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 				} catch {
 					// terminal already closed
 				}
+				// Record the resize at its real position in the output order.
+				tap?.recordResize(msg.cols, msg.rows);
+				pipeline?.onResize(msg.cols, msg.rows);
 				persist();
 			} else if (msg.type === "status") {
 				ws.send(encodeControl(currentStatus(msg.id)));
@@ -385,6 +432,13 @@ export async function runHost(config: HostConfig = resolveHostConfig()): Promise
 		} catch {
 			// already stopped
 		}
+		try {
+			pipeline?.flush();
+			pipeline?.dispose();
+		} catch {
+			// parser teardown must never block host shutdown
+		}
+		tap?.stop();
 		journal.stop();
 		if (windowsJob) {
 			try {
