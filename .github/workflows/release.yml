@@ -977,7 +977,11 @@ jobs:
             depends_on "cloudflared"
 
             def install
-              libexec.install "dev3", "dist"
+              # artifact-template ships in every CLI tarball (create-cli-tarball.sh)
+              # and MUST land next to the binary in libexec — the app resolves it at
+              # libexec/artifact-template. Without it, launching ANY task fails with
+              # "Bundled dev3 artifact template not found".
+              libexec.install "dev3", "dist", "artifact-template"
               chmod 0755, libexec/"dev3"
               # Bundled self-contained tmux (macOS tarballs only). The app
               # resolves it at libexec/tmux/tmux — next to the real binary,

@@ -1000,7 +1000,12 @@ export async function importCurrentCodexAccount(paths: AccountPaths = defaultAcc
 export async function prepareCodexLogin(paths: AccountPaths = defaultAccountPaths()): Promise<{ accountId: string; loginCommand: string }> {
 	const id = crypto.randomUUID();
 	const dir = ensureCodexAccountHome(id, paths);
-	return { accountId: id, loginCommand: `CODEX_HOME='${dir}' codex login` };
+	// Headless/remote box (`dev3 remote`) has no local browser, so plain
+	// `codex login` — which opens localhost:1455 + a browser — is a dead end.
+	// Codex's own hint there is `codex login --device-auth`; use it so the
+	// terminal prints a URL + code the user can open on any device.
+	const deviceAuth = process.env.DEV3_HEADLESS === "1" ? " --device-auth" : "";
+	return { accountId: id, loginCommand: `CODEX_HOME='${dir}' codex login${deviceAuth}` };
 }
 
 /** Verify a prepared CODEX_HOME login dir and register it as an account. */

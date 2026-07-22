@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { handleRemote, printAccessForState, computeDetachedChildArgs } from "../commands/remote";
+import { handleRemote, printAccessForState, computeDetachedChildArgs, awaitTunnelReady, REMOTE_TUNNEL_WAIT } from "../commands/remote";
 import type { ParsedArgs } from "../args";
 
 /**
@@ -86,6 +86,10 @@ beforeEach(() => {
 	mockAcquireLock.mockReset();
 	mockAcquireLock.mockReturnValue(7); // default: lock granted
 	mockReleaseLock.mockReset();
+	// Shrink the tunnel-wait so tests never poll the real 30s / 4s-settle.
+	REMOTE_TUNNEL_WAIT.pollIntervalMs = 1;
+	REMOTE_TUNNEL_WAIT.connectTimeoutMs = 20;
+	REMOTE_TUNNEL_WAIT.settleMs = 0;
 });
 
 afterEach(() => {
@@ -423,12 +427,55 @@ describe("dev3 remote --detach (lifecycle)", () => {
 		mockReadState.mockReturnValueOnce(null).mockReturnValue(liveState({ pid: 1234, port: 41234 }));
 		mockSendRequest.mockResolvedValue({
 			id: "x", ok: true,
-			data: { url: "http://localhost:41234/?token=t", tunnelUrl: null, port: 41234, staticCode: null },
+			data: { url: "https://abc.trycloudflare.com/?token=t", tunnelUrl: "https://abc.trycloudflare.com", port: 41234, staticCode: null },
 		});
 		await expect(handleRemote(undefined, args())).rejects.toThrow("__exit__");
 		expect(vi.mocked(spawn)).toHaveBeenCalled(); // detached child, not in-process boot
 		const childArgs = vi.mocked(spawn).mock.calls[0][1] as string[];
 		expect(childArgs).toContain("--no-detach"); // child runs foreground
+		// Waited for the tunnel, so the printed link is the PUBLIC url (not LAN).
+		expect(stdoutText()).toContain("https://abc.trycloudflare.com/?token=t");
+	});
+
+	// Regression: bare `dev3 remote` used to print the LAN URL the instant the
+	// server recorded its port, before the Cloudflare tunnel registered — a
+	// useless link the user had to swap via `dev3 remote url`. It must now wait.
+	it("waits for the tunnel, then prints the public URL (tunnel comes up on a later poll)", async () => {
+		mockReadState.mockReturnValueOnce(null).mockReturnValue(liveState({ pid: 1234, port: 41234 }));
+		// First few polls: tunnel not up yet (null); then it registers.
+		mockSendRequest
+			.mockResolvedValueOnce({ id: "1", ok: true, data: { url: "http://192.168.0.9:41234/?token=t", tunnelUrl: null, port: 41234, staticCode: null } })
+			.mockResolvedValue({ id: "2", ok: true, data: { url: "https://pub.trycloudflare.com/?token=t", tunnelUrl: "https://pub.trycloudflare.com", port: 41234, staticCode: null } });
+		await expect(handleRemote(undefined, args())).rejects.toThrow("__exit__");
+		const out = stdoutText();
+		expect(out).toContain("Waiting for the Cloudflare tunnel");
+		expect(out).toContain("https://pub.trycloudflare.com/?token=t");
+		expect(out).not.toContain("192.168.0.9"); // never leaks the LAN URL
+	});
+
+	it("falls back to the local URL with a note when the tunnel never comes up", async () => {
+		mockReadState.mockReturnValueOnce(null).mockReturnValue(liveState({ pid: 1234, port: 41234 }));
+		mockSendRequest.mockResolvedValue({
+			id: "x", ok: true,
+			data: { url: "http://192.168.0.9:41234/?token=t", tunnelUrl: null, port: 41234, staticCode: null },
+		});
+		await expect(handleRemote(undefined, args())).rejects.toThrow("__exit__");
+		const out = stdoutText();
+		expect(out).toContain("didn't come up in time");
+		expect(out).toContain("http://192.168.0.9:41234/?token=t"); // LAN URL as last resort
+	});
+
+	// --no-tunnel: no wait at all, print the LAN URL immediately.
+	it("does NOT wait for a tunnel when --no-tunnel is set", async () => {
+		mockReadState.mockReturnValueOnce(null).mockReturnValue(liveState({ pid: 1234, port: 41234, tunnelRequested: false }));
+		mockSendRequest.mockResolvedValue({
+			id: "x", ok: true,
+			data: { url: "http://192.168.0.9:41234/?token=t", tunnelUrl: null, port: 41234, staticCode: null },
+		});
+		await expect(handleRemote(undefined, args({ "no-tunnel": "true" }))).rejects.toThrow("__exit__");
+		const out = stdoutText();
+		expect(out).not.toContain("Waiting for the Cloudflare tunnel");
+		expect(out).toContain("http://192.168.0.9:41234/?token=t");
 	});
 
 	// F4: a second launch while another holds the start lock is refused (rather
@@ -475,6 +522,34 @@ describe("dev3 remote --detach (lifecycle)", () => {
 		).rejects.toThrow("__exit__");
 		expect(mockClearState).toHaveBeenCalled();
 		expect(codes).toContain(2); // CLI_EXIT_CODE_APP_NOT_RUNNING
+	});
+});
+
+describe("awaitTunnelReady", () => {
+	const fastTimings = { pollIntervalMs: 1, connectTimeoutMs: 200, settleMs: 0 };
+
+	it("resolves true once the server reports a tunnel URL", async () => {
+		mockSendRequest
+			.mockResolvedValueOnce({ id: "1", ok: true, data: { url: "http://lan/?t", tunnelUrl: null, port: 1, staticCode: null } })
+			.mockResolvedValue({ id: "2", ok: true, data: { url: "https://x.trycloudflare.com/?t", tunnelUrl: "https://x.trycloudflare.com", port: 1, staticCode: null } });
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings)).resolves.toBe(true);
+	});
+
+	it("resolves false when the tunnel never comes up within the timeout", async () => {
+		mockSendRequest.mockResolvedValue({ id: "x", ok: true, data: { url: "http://lan/?t", tunnelUrl: null, port: 1, staticCode: null } });
+		await expect(awaitTunnelReady("/tmp/x.sock", { pollIntervalMs: 1, connectTimeoutMs: 10, settleMs: 0 })).resolves.toBe(false);
+	});
+
+	it("keeps waiting through APP_NOT_RUNNING (socket still booting)", async () => {
+		mockSendRequest
+			.mockRejectedValueOnce(new Error("APP_NOT_RUNNING"))
+			.mockResolvedValue({ id: "2", ok: true, data: { url: "https://x.trycloudflare.com/?t", tunnelUrl: "https://x.trycloudflare.com", port: 1, staticCode: null } });
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings)).resolves.toBe(true);
+	});
+
+	it("rethrows non-APP_NOT_RUNNING socket errors", async () => {
+		mockSendRequest.mockRejectedValue(new Error("EPIPE broken socket"));
+		await expect(awaitTunnelReady("/tmp/x.sock", fastTimings)).rejects.toThrow("EPIPE");
 	});
 });
 
