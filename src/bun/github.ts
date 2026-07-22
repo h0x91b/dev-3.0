@@ -10,7 +10,32 @@ type GhJsonAccount = {
 	host?: string;
 	login?: string;
 	state?: string;
+	tokenSource?: string;
 };
+
+// `gh auth status --json` reports where each account's token lives. When the
+// source is one of these env var names, gh has NO stored credential — the token
+// exists only in the environment (e.g. a Coder workspace that injects GH_TOKEN
+// and never ran `gh auth login`). `gh auth token --user <login>` then has
+// nothing to return and errors "no oauth token found for … account …" on some
+// gh versions (decision 157). For those accounts we read the token straight from
+// process.env instead.
+const ENV_TOKEN_SOURCES = new Set(["GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"]);
+
+// Passed as the env for stored-account `gh auth token --user` calls: empty
+// values neutralize any ambient token env var (gh treats "" as unset), so a
+// stray GH_TOKEN can't override the requested --user and hand back a different
+// identity's token. spawn() merges over process.env, so "" is how we "unset".
+const NEUTRALIZE_TOKEN_ENV: Record<string, string> = {
+	GH_TOKEN: "",
+	GITHUB_TOKEN: "",
+	GH_ENTERPRISE_TOKEN: "",
+	GITHUB_ENTERPRISE_TOKEN: "",
+};
+
+function isEnvTokenSource(source: string | undefined): source is string {
+	return !!source && ENV_TOKEN_SOURCES.has(source);
+}
 
 type GhAuthStatusResponse = {
 	hosts?: Record<string, GhJsonAccount[]>;
@@ -162,6 +187,7 @@ function parseAccounts(payload: GhAuthStatusResponse): GitHubAccount[] {
 				host: normalizedHost,
 				login: account.login,
 				active: !!account.active,
+				tokenSource: account.tokenSource,
 			});
 		}
 	}
@@ -308,16 +334,34 @@ async function getAccountToken(account: GitHubAccount): Promise<string> {
 	if (cached && Date.now() - cached.at < TOKEN_CACHE_TTL_MS) {
 		return cached.promise;
 	}
-	const promise = (async () => {
-		const result = await runGh(["auth", "token", "--hostname", account.host, "--user", account.login]);
-		if (!result.ok || !result.stdout) {
-			throw new Error(result.stderr || `Failed to resolve GitHub token for ${account.login}@${account.host}`);
-		}
-		return result.stdout;
-	})();
+	const promise = resolveAccountToken(account);
 	tokenCache.set(key, { at: Date.now(), promise });
 	promise.catch(() => tokenCache.delete(key));
 	return promise;
+}
+
+async function resolveAccountToken(account: GitHubAccount): Promise<string> {
+	// Env-backed account (no `gh auth login`, token only in the environment):
+	// the token lives in process.env[tokenSource]; `gh auth token --user` cannot
+	// retrieve it. Read it directly. (decision 157)
+	if (isEnvTokenSource(account.tokenSource)) {
+		const envToken = process.env[account.tokenSource]?.trim();
+		if (envToken) return envToken;
+		throw new Error(
+			`GitHub account ${account.login}@${account.host} is authenticated via ${account.tokenSource}, but that variable is empty in dev3's environment`,
+		);
+	}
+
+	// Stored account: read gh's per-account credential, with ambient token env
+	// vars neutralized so they can't override the requested --user.
+	const result = await runGh(
+		["auth", "token", "--hostname", account.host, "--user", account.login],
+		{ env: NEUTRALIZE_TOKEN_ENV },
+	);
+	if (!result.ok || !result.stdout) {
+		throw new Error(result.stderr || `Failed to resolve GitHub token for ${account.login}@${account.host}`);
+	}
+	return result.stdout;
 }
 
 export async function getGitHubAuthEnv(project: ProjectGitHubSelection): Promise<Record<string, string>> {
@@ -339,8 +383,14 @@ export async function runGitHub(
 export async function getGitHubShellExports(project: ProjectGitHubSelection): Promise<string[]> {
 	const account = await resolveGitHubAccount(project);
 	const tokenVar = "__DEV3_GH_TOKEN";
+	// Env-backed account (Coder-style GH_TOKEN, no stored credential): resolve
+	// from the ambient env var rather than `gh auth token --user`, which errors
+	// on such accounts (decision 157). For a stored account, resolve via gh.
+	const resolveExpr = isEnvTokenSource(account.tokenSource)
+		? `"$${account.tokenSource}"`
+		: `"$(gh auth token --hostname ${shellQuote(account.host)} --user ${shellQuote(account.login)} 2>/dev/null)"`;
 	const lines = [
-		`${tokenVar}="$(gh auth token --hostname ${shellQuote(account.host)} --user ${shellQuote(account.login)} 2>/dev/null)"`,
+		`${tokenVar}=${resolveExpr}`,
 		`if [ -z "$${tokenVar}" ]; then`,
 		`  printf '\\033[1;31m✗ Failed to resolve GitHub auth token for ${account.login}@${account.host}\\033[0m\\n'`,
 		"  exit 1",
