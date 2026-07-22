@@ -688,22 +688,24 @@ A **flow** is a path through dev3's features. Most work travels one **main flow*
 
 ## The main flow: idea → shipped task
 
-1. **Start working on something → create a task.** Press ⌘N or double-click a Kanban column. The task card *is* the unit of work: the issue, the agent's prompt, and (once started) a worktree + terminal. Too foggy to brief? Create a **Scratch task** — it starts an agent with no description so you can talk the idea out first; the conversation then becomes the task.
-2. **What to put in the description → treat it as the agent's prompt.** The description is fed to the agent verbatim, so write it like a brief: the goal, the constraints, pointers to the files involved. Paste screenshots straight in, add labels inline with \`#\`, and pick a non-default base branch if the work should branch off something other than main.
-3. **One attempt or several → variants.** For ambiguous, risky, or design-heavy work, launch the task with **2–5 variants**: independent agents attack the same brief in parallel, each in its own worktree, blind to the others. Compare the results and keep the winner (⇧⌘[ / ⇧⌘] cycle between variants). Routine work → a single variant.
-4. **Launch — dev3 does the setup for you.** Starting a task creates a git worktree + branch + tmux session and boots the agent with your description. The project's \`setupScript\` installs deps, \`clonePaths\` copy-on-write-clone heavy dirs (node_modules in about a second), and each task gets its own ports so parallel dev servers never collide. (Project not configured yet? → \`/dev3-project-config\`.)
-5. **See what the agent is doing → don't babysit, glance.** Hover a card for a live terminal preview; flip the toggle next to **Active Tasks** in the sidebar to see every active task across all projects at once.
-6. **How the agent reaches you → it pings, you don't poll.** It raises an attention badge when blocked, fires toasts / desktop notifications on milestones, and moves the task into the **User questions** column when it needs an answer. Subscribe to any task for watch notifications.
-7. **Review the changes → Show Diff.** On the card, *Show Diff* lets you hide test noise and leave inline comments — those export back to the agent as a fix list. Turn on **AI Review** so a machine pass (the AI review column) pre-chews the diff before your human pass.
-8. **Get it shipped → PR from the task.** Push & create the PR straight from the task, enable auto-merge, and let the task auto-complete when the PR merges.
-9. **What completing does → the worktree is destroyed, notes survive.** Finishing a task removes its worktree and branch checkout, but its **notes** persist as project memory that future agents find via search. So durable findings belong in notes, not just the chat.
+1. **Start working on something → create a task.** Press ⌘N or double-click a Kanban column. The task card *is* the unit of work: the issue, the agent's prompt, and (once started) a worktree + terminal. Too foggy to brief? Create a **Scratch task** — it starts an agent with no description so you can talk the idea out first; the conversation then becomes the task. You don't even have to click: tell any dev3 agent *"create a task in dev3 about…"* and it lands on the board — agents see the board too and can list tasks, check statuses, and find past work.
+2. **What to put in the description → treat it as the agent's prompt.** The description is fed to the agent verbatim, so write it like a brief: the goal, the constraints, pointers to the files involved. Paste screenshots straight in, add labels inline with \`#\`, and type \`/\` to autocomplete an installed agent skill into the brief.
+3. **Where the branch starts → tasks inherit your current branch.** A new task branches off the project's currently checked-out branch, so small tasks stack naturally onto a big feature you're building; clear the branch field to start from the base branch instead.
+4. **One attempt or several → variants.** For ambiguous, risky, or design-heavy work, launch the task with **2–5 variants**: independent agents attack the same brief in parallel, each in its own worktree, blind to the others. Compare the results and keep the winner (⇧⌘[ / ⇧⌘] cycle between variants). Routine work → a single variant.
+5. **Launch — dev3 does the setup for you.** Starting a task creates a git worktree + branch + tmux session and boots the agent with your description. Which agent is your call — Claude, Codex, Gemini, or a custom shell agent, configured per project. The project's \`setupScript\` installs deps, \`clonePaths\` copy-on-write-clone heavy dirs (node_modules in about a second), and each task gets its own ports so parallel dev servers never collide. (Project not configured yet? → \`/dev3-project-config\`.)
+6. **See what the agent is doing → don't babysit, glance.** Hover a card for a live terminal preview; flip the toggle next to **Active Tasks** in the sidebar to see every active task across all projects at once.
+7. **How the agent reaches you → it pings, you don't poll.** It raises an attention badge when blocked, fires toasts / desktop notifications on milestones, and moves the task into the **User questions** column when it needs an answer. Subscribe to any task for watch notifications.
+8. **Review the changes → Show Diff.** On the card, *Show Diff* lets you hide test noise and leave inline comments — those export back to the agent as a fix list. Turn on **AI Review** so a machine pass (the AI review column) pre-chews the diff before your human pass.
+9. **Get it shipped → PR from the task.** Push & create the PR straight from the task, enable auto-merge, and let the task auto-complete when the PR merges.
+10. **What completing does → the worktree is destroyed, notes survive.** Finishing a task removes its worktree and branch checkout, but its **notes** persist as project memory that future agents find via search. So durable findings belong in notes, not just the chat. Completion is guarded: dev3 warns about uncommitted changes, unpushed commits, and unmerged branches before destroying anything — and it auto-saves a diff snapshot on every branch refresh, so work is recoverable even if a worktree gets wiped.
+11. **Changed your mind → reopen or restart.** Reopening a completed or cancelled task resumes the previous agent conversation instead of starting fresh. Want a truly clean slate? Move the task to Cancelled and back to Todo — fresh worktree, clean agent session.
 
 ## On-ramps
 
 A starting situation that generates work, then merges onto the main flow.
 
 - **A bug report arrived** → make it a task with the repro as the description; the fix then flows through review and PR like any feature. Don't know where the bug lives? → **bug-hunter swarm**: a multi-variant task where each agent runs \`/dev3-bug-hunter\` with a seeded strategy, so different agents start from different corners of the codebase.
-- **"Review this PR"** → create a **PR review task**: dev3 checks the PR branch out into a worktree and the agent reviews the actual diff — runnable code, not a GitHub-tab skim.
+- **"Review this PR"** → create a **PR review task**: paste the GitHub PR URL straight into the Create Task modal — dev3 fetches the branch into a worktree and the agent reviews the actual diff — runnable code, not a GitHub-tab skim.
 - **"Continue what we did in that other task"** → past conversations are searchable: the agent runs \`dev3 conversations search\` and reads the old task's notes and transcript. This is *why* notes matter — they are weighted highest in that search.
 - **A new codebase** → add the project from a folder or clone it from a URL, then run \`/dev3-project-config\` to auto-detect its setup / dev / cleanup scripts, ports, and clone paths.
 
@@ -729,6 +731,8 @@ Every agent running in dev3 knows perfectly well it lives inside a tmux session,
 - **"Open a pane below / a new window and run X there."** The agent can create panes and whole tmux windows (tmux has windows — they're the tabs), run any command inside them, and keep long-running things visible right next to itself.
 - **"Move it, shrink it, make it bigger."** Rearranging windows, resizing panes, renaming tabs — just ask; the agent manages the layout too.
 - **Paste and drop files straight into any terminal.** Hit ⌘V / Ctrl+V with an image in the clipboard — it's uploaded automatically and its file path lands in the terminal, ready for the agent. Drag & drop any file onto the terminal — same story: uploaded, full path typed into stdin. Even a huge pasted text block is saved as a file with its path injected, instead of flooding the terminal.
+- **Need more hands → spawn an extra agent.** Another agent in the *same* worktree, opened in a new pane with a fresh session — zero extra setup. Two agents, one branch, side by side.
+- **Too many sessions eating RAM → hibernate some.** The tmux badge in the header lists every dev3 session on the machine — kill the ones you don't need right now to free memory. The task card stays on the board, and **Resume Agent Session** later brings the agent back right where it left off.
 
 The full mechanics live in \`/dev3-tmux\` — the agent reaches for it on its own when needed.
 
@@ -747,6 +751,7 @@ Reach for these when the *word*, not the process, is the confusion.
 Point, don't dig. Name where to look and stop — deep diagnosis is \`/diagnosing-bugs\`, not this skill.
 
 - Environment or setup acting up → \`dev3 doctor\` first.
+- The task's terminal died → **Resume Agent Session** restarts the agent with its conversation intact (\`--continue\`), picking up right where it stopped.
 - "Why does dev3 behave this way?" → the relevant \`decisions/NNN-*.md\` record usually explains it.
 - Something crashed or misbehaved → the app logs, plus the decision record for that subsystem.
 
@@ -756,6 +761,11 @@ Off the main flow entirely.
 
 - **Focus on one task → focus mode (⇧⌘F).** With many tasks running in parallel, focus is the scarcest resource. Press ⇧⌘F (or F11, or the button above the board on the right) and the current task's terminal zooms to the full window while all notifications are muted — just you and the tmux, nothing else pulling at you. Press it again to surface back to the board.
 - **Move around fast** — command palette (⇧⌘P) and go-to-project (⌘K); ⌥Tab cycles recent tasks; \`/\` focuses search, which understands filter tokens; ⌘/ shows every shortcut.
+- **Open the worktree in your tools** — right-click any active task card to open its worktree in Finder, VS Code, Cursor, and friends.
+- **"What is this screen?" → help mode.** Click the \`?\` in the header (or press ⇧⌘/) — every zone on screen gets an (i) badge; click one to learn what it does.
+- **A quick shell at the repo root → Project Terminal (⌘\\\`).** Next to it, the **Git Pull** button pulls the project's main worktree without touching a terminal — a blue dot on it means origin has new commits.
+- **Run project scripts and Makefile targets** — the ƒ Scripts button lists them; pick one and it runs in a live pane.
+- **Huge monorepo → check out less.** Toggle off "Include All Files" in Project Settings so every worktree checks out only the directories you actually need.
 - **Stats** — productivity and token-cost dashboards across projects.
 - **Automations** — recurring scheduled agent runs on a cron.
 - **Multi-window** — a second window (⇧⌘N) for a second project on another monitor.
