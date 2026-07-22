@@ -129,12 +129,32 @@ describe("bundled artifact starter contract", () => {
 		expect(html).toContain("☾ Dark");
 		expect(html).toContain("prefers-color-scheme");
 		expect(html).toContain("dev3-artifact-theme");
-		expect(html).toContain("@media(max-width:560px)");
+		expect(html).toContain("@media (max-width: 560px)");
 		expect(html).toContain("<form");
 		expect(html).toContain("<svg");
+		expect(html).toContain('id="pipelinePie"');
+		expect(html).toContain('id="capabilityRadar"');
+		expect(html).toContain('aria-labelledby="pieTitle pieDesc"');
+		expect(html).toContain('aria-labelledby="radarTitle radarDesc"');
+		expect(html).toContain("function renderPie");
+		expect(html).toContain("function renderRadar");
 		expect(html).toContain("data-sort");
 		expect(guide).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
 		expect(guide).toContain("dev3 show-artifact");
+		expect(guide).toContain("Print and PDF");
+		expect(guide).toContain("radar/spider chart");
+	});
+
+	it("keeps the selected theme and report structure in print output", () => {
+		const html = readFileSync(htmlPath, "utf8");
+
+		expect(html).toContain("@media print");
+		expect(html).toContain("-webkit-print-color-adjust: exact");
+		expect(html).toContain("print-color-adjust: exact");
+		expect(html).toContain("background: rgb(var(--dev3-surface-base)) !important");
+		expect(html).toContain(".scenario-panel, .table-tools, .toast, .print-hidden { display: none !important; }");
+		expect(html).toContain("break-inside: avoid");
+		expect(html).toContain("thead { display: table-header-group; }");
 	});
 
 	it("defines the complete dev3 semantic token contract without network dependencies", () => {
