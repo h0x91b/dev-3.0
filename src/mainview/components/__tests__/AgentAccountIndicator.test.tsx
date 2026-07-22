@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { AgentAccountsState } from "../../../shared/agent-accounts";
+import type { AgentRateLimitSnapshot, AgentRateLimitsReport } from "../../../shared/rate-limits";
 import type { CodingAgent } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
@@ -8,6 +9,7 @@ vi.mock("../../rpc", () => ({
 		request: {
 			listAgentAccounts: vi.fn(),
 			setActiveAgentAccount: vi.fn(),
+			getAgentRateLimits: vi.fn(),
 		},
 	},
 }));
@@ -83,10 +85,28 @@ function renderIndicator(
 	);
 }
 
+function makeSnapshot(overrides: Partial<AgentRateLimitSnapshot>): AgentRateLimitSnapshot {
+	return {
+		source: "claude",
+		accountId: null,
+		capturedAt: Date.now(),
+		windows: [],
+		creditsBalance: null,
+		monthlyCredits: null,
+		planType: null,
+		...overrides,
+	};
+}
+
+function makeReport(snapshots: AgentRateLimitSnapshot[]): AgentRateLimitsReport {
+	return { snapshots, generatedAt: Date.now() };
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	mockedApi.request.listAgentAccounts.mockResolvedValue(makeState());
 	mockedApi.request.setActiveAgentAccount.mockResolvedValue(undefined as any);
+	mockedApi.request.getAgentRateLimits.mockResolvedValue(makeReport([]));
 	mockedConfirm.mockResolvedValue(true);
 });
 
@@ -239,6 +259,105 @@ describe("AgentAccountIndicator", () => {
 		await user.click(trigger);
 		expect(screen.getByText("openrouter.ai")).toBeTruthy();
 		expect(screen.getAllByText("API").length).toBeGreaterThan(0);
+	});
+
+	it("shows per-account usage rings with severity-colored percents", async () => {
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([
+				makeSnapshot({
+					accountId: null,
+					windows: [
+						{ id: "five_hour", usedPercent: 34, resetsAt: null, windowMinutes: 300 },
+						{ id: "seven_day", usedPercent: 62, resetsAt: null, windowMinutes: 10080 },
+					],
+				}),
+				makeSnapshot({
+					accountId: "cl-1",
+					windows: [{ id: "seven_day", usedPercent: 97, resetsAt: null, windowMinutes: 10080 }],
+				}),
+			]),
+		);
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+
+		// Worst window wins: 62% (7d) for the system login, colored accent (<80).
+		const okPercent = await screen.findByText("62%");
+		expect(okPercent.className).toContain("text-accent");
+		const dangerPercent = screen.getByText("97%");
+		expect(dangerPercent.className).toContain("text-danger");
+		expect(screen.getByRole("img", { name: "62% used" })).toBeTruthy();
+	});
+
+	it("shows ∞ for an unlimited account and — for one without a reading", async () => {
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([makeSnapshot({ accountId: null, creditsBalance: "unlimited" })]),
+		);
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+
+		// System login is unlimited; the managed account has no snapshot at all.
+		expect(await screen.findByText("∞")).toBeTruthy();
+		expect(screen.getByText("—")).toBeTruthy();
+		expect(screen.getByRole("img", { name: "∞ unlimited" })).toBeTruthy();
+		expect(screen.getByRole("img", { name: "no recent usage data" })).toBeTruthy();
+	});
+
+	it("hovering a row shows the quota card tooltip with windows and captured note", async () => {
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([
+				makeSnapshot({
+					accountId: null,
+					capturedAt: Date.now() - 20 * 60 * 1000,
+					windows: [{ id: "five_hour", usedPercent: 34, resetsAt: null, windowMinutes: 300 }],
+				}),
+			]),
+		);
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: null, onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await screen.findByText("34%");
+		await user.hover(screen.getByText("System login (~/.claude)"));
+
+		// Tooltip opens after the hover-intent delay with the full quota card.
+		expect(await screen.findByText("5h", undefined, { timeout: 2000 })).toBeTruthy();
+		expect(screen.getByText("captured 20m ago")).toBeTruthy();
+	});
+
+	it("shows a bare ring without percent text for API profiles", async () => {
+		const base = makeState();
+		mockedApi.request.listAgentAccounts.mockResolvedValue(
+			makeState({
+				claude: {
+					...base.claude,
+					accounts: [
+						{
+							id: "api-1",
+							kind: "claude",
+							label: "OpenRouter",
+							identity: null,
+							auth: "api",
+							api: { baseUrl: "https://openrouter.ai/api", model: null, slotModels: {}, hasApiKey: true, envKeys: [] },
+							createdAt: 1,
+						},
+					],
+					activeId: "api-1",
+				},
+			}),
+		);
+		mockedApi.request.getAgentRateLimits.mockResolvedValue(
+			makeReport([makeSnapshot({ accountId: null, windows: [{ id: "five_hour", usedPercent: 34, resetsAt: null, windowMinutes: 300 }] })]),
+		);
+		const user = userEvent.setup();
+		renderIndicator(claudeAgent, { value: "api-1", onSelect: vi.fn() });
+
+		await user.click(await screen.findByTestId("agent-account-trigger"));
+		await screen.findByText("34%"); // system row has data…
+		expect(screen.queryByText("—")).toBeNull(); // …but the API row shows no dash
 	});
 
 	it("shows the readable Codex workspace name in the account popover", async () => {

@@ -54,6 +54,9 @@ interface TooltipProps {
 	/** Widen the detail popup (from the default 22rem to 30rem) for content with
 	 *  long single-line rows — e.g. the rate-limit popup's account/workspace line. */
 	wide?: boolean;
+	/** Stacking tier. "popover" lifts the tooltip above portal popovers
+	 *  (z-[10000], e.g. the account switcher) that outrank the default tier. */
+	layer?: "default" | "popover";
 	placement?: PopoverPlacement;
 	/** Render children without any tooltip (conditional escape hatch). */
 	disabled?: boolean;
@@ -80,7 +83,16 @@ function mergeRefs<T>(...refs: (Ref<T> | undefined)[]): RefCallback<T> {
 	};
 }
 
-export default function Tooltip({ content, detail, kbd, wide, placement = "top", disabled, children }: TooltipProps) {
+export default function Tooltip({
+	content,
+	detail,
+	kbd,
+	wide,
+	layer = "default",
+	placement = "top",
+	disabled,
+	children,
+}: TooltipProps) {
 	const [open, setOpen] = useState(false);
 	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 	const anchorRef = useRef<HTMLElement | null>(null);
@@ -199,7 +211,7 @@ export default function Tooltip({ content, detail, kbd, wide, placement = "top",
 							ref={popRef}
 							id={tooltipId}
 							role="tooltip"
-							className={`fixed z-[1200] pointer-events-none bg-overlay border border-edge-active ring-1 ring-black/30 rounded-lg shadow-2xl shadow-black/60 text-xs ${
+							className={`fixed ${layer === "popover" ? "z-[10100]" : "z-[1200]"} pointer-events-none bg-overlay border border-edge-active ring-1 ring-black/30 rounded-lg shadow-2xl shadow-black/60 text-xs ${
 								detail
 									? `px-3 py-2 ${wide ? "max-w-[30rem]" : "max-w-[22rem]"}`
 									: "px-2.5 py-1.5 max-w-[18rem]"
