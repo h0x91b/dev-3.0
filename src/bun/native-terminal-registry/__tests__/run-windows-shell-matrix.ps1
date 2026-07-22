@@ -1,9 +1,10 @@
 # Native Windows shell launch proof for the isolated registry.
-# Requires Windows PowerShell 5.1, PowerShell 7, cmd.exe, and Bun 1.3.14.
+# Requires Windows PowerShell 5.1, unpackaged PowerShell 7, cmd.exe, and Bun 1.3.14.
 # Git Bash and WSL are detected and reported as optional/skipped.
 
 param(
-	[string]$OutDir = ""
+	[string]$OutDir = "",
+	[string]$PwshPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +27,50 @@ function Get-ApplicationPath {
 	return ""
 }
 
+function Test-IsWindowsAppsPath {
+	param([string]$Path)
+	if (-not $Path) { return $false }
+	return [bool]($Path -match '(?i)[\\/](?:Microsoft[\\/])?WindowsApps[\\/]')
+}
+
+function Get-PowerShell7Selection {
+	param([string]$RequestedPath)
+
+	if ($RequestedPath) {
+		if (-not (Test-Path -LiteralPath $RequestedPath -PathType Leaf)) {
+			return [ordered]@{ path = ""; reason = "requested PowerShell 7 executable not found: $RequestedPath" }
+		}
+		$resolved = [string]((Resolve-Path -LiteralPath $RequestedPath).Path)
+		if (Test-IsWindowsAppsPath -Path $resolved) {
+			return [ordered]@{
+				path = ""
+				reason = "PowerShell 7 Store/MSIX executables cannot satisfy native Job Object containment; install the MSI package or pass -PwshPath to an unpackaged pwsh.exe (selected: $resolved)"
+			}
+		}
+		return [ordered]@{ path = $resolved; reason = "" }
+	}
+
+	$msiPath = if ($env:ProgramFiles) { Join-Path $env:ProgramFiles "PowerShell\7\pwsh.exe" } else { "" }
+	if ($msiPath -and (Test-Path -LiteralPath $msiPath -PathType Leaf)) {
+		return [ordered]@{ path = [string]((Resolve-Path -LiteralPath $msiPath).Path); reason = "" }
+	}
+
+	$pathCommand = Get-ApplicationPath -Name "pwsh.exe"
+	if (-not $pathCommand) {
+		return [ordered]@{
+			path = ""
+			reason = "requested PowerShell 7 executable not found; install the MSI package or pass -PwshPath to an unpackaged pwsh.exe"
+		}
+	}
+	if (Test-IsWindowsAppsPath -Path $pathCommand) {
+		return [ordered]@{
+			path = ""
+			reason = "PowerShell 7 Store/MSIX executables cannot satisfy native Job Object containment; install the MSI package or pass -PwshPath to an unpackaged pwsh.exe (selected: $pathCommand)"
+		}
+	}
+	return [ordered]@{ path = $pathCommand; reason = "" }
+}
+
 $bunPath = Get-ApplicationPath -Name "bun"
 if (-not $bunPath) { throw "bun is required on PATH" }
 $bunVersion = ((& $bunPath --version) | Select-Object -First 1).ToString().Trim()
@@ -34,12 +79,13 @@ if ($bunVersion -ne "1.3.14") { throw "Bun 1.3.14 is required; detected $bunVers
 function Get-ApplicationDetection {
 	param(
 		[string]$Path,
-		[string]$Version
+		[string]$Version,
+		[string]$MissingReason = "requested executable not found"
 	)
 	if ($Path -and (Test-Path -LiteralPath $Path -PathType Leaf)) {
 		return [ordered]@{ detected = $true; path = (Resolve-Path -LiteralPath $Path).Path; version = $Version }
 	}
-	return [ordered]@{ detected = $false; reason = "requested executable not found" }
+	return [ordered]@{ detected = $false; reason = $MissingReason }
 }
 
 $ps51Path = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -47,17 +93,10 @@ $ps51Version = if (Test-Path $ps51Path) {
 	((& $ps51Path -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
 } else { "" }
 
-$pwshCommand = Get-ApplicationPath -Name "pwsh.exe"
-$pwshPath = if ($pwshCommand) {
-	$reportedPath = & $pwshCommand -NoLogo -NoProfile -Command '(Get-Process -Id $PID).Path' 2>$null |
-		Where-Object { $_ } |
-		Select-Object -First 1
-	if ($reportedPath -and (Test-Path -LiteralPath ([string]$reportedPath) -PathType Leaf)) {
-		[string]((Resolve-Path -LiteralPath ([string]$reportedPath)).Path)
-	} else { "" }
-} else { "" }
-$pwshVersion = if ($pwshPath) {
-	((& $pwshPath -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
+$pwshSelection = Get-PowerShell7Selection -RequestedPath $PwshPath
+$selectedPwshPath = [string]$pwshSelection.path
+$pwshVersion = if ($selectedPwshPath) {
+	((& $selectedPwshPath -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()') | Select-Object -First 1).ToString().Trim()
 } else { "" }
 
 $cmdPath = $env:ComSpec
@@ -101,7 +140,7 @@ $config = [ordered]@{
 	capturedAt = (Get-Date -Format "o")
 	required = [ordered]@{
 		"windows-powershell-5.1" = (Get-ApplicationDetection -Path $ps51Path -Version $ps51Version)
-		"powershell-7" = (Get-ApplicationDetection -Path $pwshPath -Version $pwshVersion)
+		"powershell-7" = (Get-ApplicationDetection -Path $selectedPwshPath -Version $pwshVersion -MissingReason $pwshSelection.reason)
 		"cmd" = (Get-ApplicationDetection -Path $cmdPath -Version $cmdVersion)
 	}
 	optional = [ordered]@{

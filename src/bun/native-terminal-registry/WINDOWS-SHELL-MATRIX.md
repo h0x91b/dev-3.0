@@ -10,7 +10,7 @@ prove that production terminal flows and tmux remain untouched.
 | Target | Requirement | Executable selection | Native verdict |
 |---|---|---|---|
 | Windows PowerShell 5.1 | required | `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` | `SUPPORTED` only after every lifecycle check passes |
-| PowerShell 7 | required | physical process path reported by the selected `pwsh.exe` | `SUPPORTED` only after every lifecycle check passes |
+| PowerShell 7 | required | explicit `-PwshPath`; otherwise standard MSI path, then a non-WindowsApps PATH entry | `SUPPORTED` only after every lifecycle check passes |
 | cmd.exe | required | exact `%ComSpec%` path | `SUPPORTED` only after every lifecycle check passes |
 | Git Bash | optional | known Git installation paths | `DETECTED / SKIPPED` or `NOT DETECTED / SKIPPED` |
 | WSL | optional | `Get-Command wsl.exe` plus distro report | `DETECTED / SKIPPED` or `NOT DETECTED / SKIPPED` |
@@ -25,16 +25,29 @@ tmux PATH sentinel to remain absent.
 ## Run on native Windows
 
 Prerequisites: this repository with dependencies installed and Bun exactly
-1.3.14 on PATH. PowerShell 7 is required; Git Bash and WSL are not.
+1.3.14 on PATH. PowerShell 7 must use an MSI or ZIP executable outside
+`WindowsApps`; Git Bash and WSL are not required. Starting with PowerShell 7.6,
+WinGet defaults to the Store/MSIX package, whose activated process does not
+inherit this registry's Job Object ownership boundary. Install the MSI build:
+
+```powershell
+winget install --id Microsoft.PowerShell --source winget --installer-type wix
+```
+
+If WinGet keeps the already-installed MSIX carrier, unpack the official ZIP
+release side by side and pass its executable explicitly:
 
 ```powershell
 cd <repo>
-powershell -NoProfile -ExecutionPolicy Bypass -File src\bun\native-terminal-registry\__tests__\run-windows-shell-matrix.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File src\bun\native-terminal-registry\__tests__\run-windows-shell-matrix.ps1 -PwshPath C:\tools\PowerShell-7\pwsh.exe
 ```
 
-Use `-OutDir C:\path\to\evidence` to select an output directory. The runner
-writes the compact, shareable `share\windows-shell-verdict.json`, console output
-to `windows-shell-matrix.txt`, and per-session diagnostics under `raw\`.
+Without `-PwshPath`, the runner first checks
+`%ProgramFiles%\PowerShell\7\pwsh.exe`, then PATH. An explicit missing or
+WindowsApps path fails honestly and never falls through to another executable
+or shell. Use `-OutDir C:\path\to\evidence` to select an output directory. The
+runner writes the compact, shareable `share\windows-shell-verdict.json`, console
+output to `windows-shell-matrix.txt`, and per-session diagnostics under `raw\`.
 
 ## CI and evidence status
 
