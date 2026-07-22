@@ -23,6 +23,7 @@ import { dirname, resolve } from "node:path";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, setFocusMode, pushTerminalBell } from "./rpc-handlers";
 import { createLogger, getLogPath } from "./logger";
 import { DEV3_HOME } from "./paths";
+import { ensureDev3CliSymlink } from "./cli-self-install";
 import { applyFullShellEnvToProcess, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients, getServerPort, getAccessUrl } from "./remote-access-server";
@@ -99,6 +100,13 @@ if (!process.env.DEV3_VIEWS_DIR) {
 		log.warn("Could not locate dist/ with index.html", { candidates });
 	}
 }
+
+// ── Ensure ~/.dev3.0/bin/dev3 resolves to this binary ──
+// Agent hooks, the injected dev3 skill, and lifecycle onExit commands all call
+// the CLI by that absolute path (agent-hooks.ts `DEV3_CLI`). The GUI keeps it
+// current; a headless `dev3 remote` box otherwise inherits a stale/dangling
+// entry, so every hook fails with "…/.dev3.0/bin/dev3: not found".
+ensureDev3CliSymlink(DEV3_HOME, process.execPath);
 
 // ── Resolve shell PATH + LANG + key gh config vars (same as GUI entry) ──
 process.env.SHELL = getUserShell();
