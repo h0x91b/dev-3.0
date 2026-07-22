@@ -281,10 +281,12 @@ async function run(): Promise<void> {
 		check(alphaEndpointGone, "alpha listening endpoint is gone after stop");
 
 		// ── 8. passive stale/reused detection + non-destructive, token-matched cleanup ──
+		// Valid-format (48-hex) tokens whose Job Objects were never created — models
+		// a real stale/reused record (host gone / PID reused), not a corrupt token.
 		writeRecordAtomic(ghostRecord("ghost-dead", 2_000_000_000, 2_000_000_000));
-		writeToken("ghost-dead", "ghost-dead-tok");
+		writeToken("ghost-dead", "a".repeat(48));
 		writeRecordAtomic(ghostRecord("ghost-reused", tmuxGuard.pid, tmuxGuard.pid));
-		writeToken("ghost-reused", "ghost-reused-tok");
+		writeToken("ghost-reused", "b".repeat(48));
 
 		const cleanup = await cleanupStale();
 		check(cleanup.removed.includes("ghost-dead"), "cleanup removed the dead-host record");

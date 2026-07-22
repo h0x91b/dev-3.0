@@ -39,8 +39,13 @@ export interface WindowsJobApi {
 	dispose(): void;
 }
 
+/** A live session token is 24 random bytes as lowercase hex (48 chars). */
+export function isValidSessionToken(sessionToken: string): boolean {
+	return typeof sessionToken === "string" && /^[0-9a-f]{48}$/i.test(sessionToken);
+}
+
 export function windowsJobName(sessionToken: string): string {
-	if (!/^[0-9a-f]{48}$/i.test(sessionToken)) {
+	if (!isValidSessionToken(sessionToken)) {
 		throw new Error("invalid native-session token for Windows Job Object");
 	}
 	return `Local\\dev3-native-sess-${sessionToken.toLowerCase()}`;

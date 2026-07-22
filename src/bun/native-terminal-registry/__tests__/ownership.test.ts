@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { classifyOwnership, type OwnershipProbes } from "../ownership";
 import { NATIVE_SESSION_SCHEMA_VERSION, type NativeSessionRecord } from "../record";
 
+// A well-formed 48-hex session token (the Windows Job Object name requires it).
+const VALID_TOKEN = "a".repeat(48);
+
 function record(evidenceKind: "posix-start-signature" | "windows-job"): NativeSessionRecord {
 	return {
 		schemaVersion: NATIVE_SESSION_SCHEMA_VERSION,
@@ -51,22 +54,38 @@ describe("classifyOwnership — Windows Job membership", () => {
 	const rec = record("windows-job");
 
 	it("owned when host and shell are both job members", async () => {
-		expect(await classifyOwnership(rec, "tok", probes({}))).toBe("owned");
+		expect(await classifyOwnership(rec, VALID_TOKEN, probes({}))).toBe("owned");
 	});
 
 	it("reused when the live PID is not in the session job", async () => {
-		expect(await classifyOwnership(rec, "tok", probes({ isInJob: async (_t, pid) => pid === 100 }))).toBe("reused");
+		expect(await classifyOwnership(rec, VALID_TOKEN, probes({ isInJob: async (_t, pid) => pid === 100 }))).toBe("reused");
 	});
 
 	it("reused when the private token is missing (cannot open the job)", async () => {
 		expect(await classifyOwnership(rec, null, probes({}))).toBe("reused");
 	});
 
+	it("reused (never throws) when the token is malformed — one corrupt token cannot abort a sweep", async () => {
+		let jobConsulted = false;
+		const verdict = await classifyOwnership(
+			rec,
+			"not-a-valid-hex-token",
+			probes({
+				isInJob: async () => {
+					jobConsulted = true;
+					return true;
+				},
+			}),
+		);
+		expect(verdict).toBe("reused");
+		expect(jobConsulted).toBe(false);
+	});
+
 	it("dead when a recorded PID is gone (never consults the job)", async () => {
 		let jobConsulted = false;
 		const verdict = await classifyOwnership(
 			rec,
-			"tok",
+			VALID_TOKEN,
 			probes({
 				isAlive: () => false,
 				isInJob: async () => {
