@@ -21,6 +21,18 @@ Each target verdict records: reconstruction match vs a fresh-core replay of the
 ordered stream tap, parser health, query-reply count, drain latency
 (p50/p95/max), and host memory — the practical budget numbers.
 
+### ConPTY semantics on Windows
+
+ConPTY (conhost) is itself a terminal emulator sitting between the app and the
+host: it answers DSR queries from the app directly (the query may never reach
+the terminal-side stream), owns the window title (PowerShell rewrites it per
+prompt), and re-renders the alternate screen into the primary buffer instead of
+forwarding `?1049`. The parser's contract is to faithfully mirror whatever
+ConPTY emits — the E2E asserts the ConPTY-translated semantics on Windows and
+the raw VT passthrough semantics on POSIX. The exactly-once reply invariant
+holds on both: the query/answer paths are disjoint, and the probe counts total
+answers regardless of who produced them.
+
 ## Run (one command, from the repo root)
 
 ```powershell
@@ -53,7 +65,20 @@ Windows-specific). E2E: `ALL CHECKS PASSED` (32 checks).
 
 ## Evidence record — native Windows (STATE-005 acceptance)
 
-> Status: **PENDING** — run the one-command matrix above on the Windows host
-> and paste the `share` directory back; this section is then filled with the
-> environment, per-target verdicts, latency/memory budgets, and the
-> regression-probe callback/deferred outcome.
+> Status: **PARTIAL** — regression probe confirmed on the Windows host
+> (2026-07-22, two independent runs, stable); full matrix verdicts pending the
+> `share` paste-back after the ConPTY-aware E2E rerun.
+
+Environment: Windows 10 Pro 10.0.19045 (AMD64), Bun 1.3.14, PowerShell 5.1 /
+pwsh 7.6.3, Claude Code 2.1.42.
+
+Regression probe (the seq 1185 acceptance evidence):
+
+| Mode | Outcome |
+|---|---|
+| `callback` (Ghostty inside the Bun.Terminal data callback) | **FAILED** — `RangeError: Offset should not be negative` (the preserved negative-WASM-allocation repro), screen not plausible |
+| `deferred` (this pipeline) | **CLEAN** — same workload (~183 KB, ~1.6k callbacks), plausible screen, no error |
+
+Matrix targets on the first run: pwsh7 and claude exited 0 (reconstruction
+match); nvim/codex skipped (not installed). Per-target budgets to be filled
+from `results.json` / `*.verdict.json`.

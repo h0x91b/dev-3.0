@@ -39,8 +39,13 @@ byte-identical.
 
 ## Risks
 
-Overflow and failure are terminal states with no resynchronization — recovery
-is STATE-006. The ground-truth stream tap is unbounded and therefore proof-only
+On Windows, ConPTY (conhost) is itself a terminal emulator: it answers DSR
+queries from the app directly, owns the title, and re-renders the alt screen
+into the primary buffer instead of forwarding `?1049`. The parser mirrors
+whatever ConPTY emits, so Windows checks assert ConPTY-translated semantics
+(exactly-once replies hold on both platforms — query/answer paths are
+disjoint). Overflow and failure are terminal states with no resynchronization —
+recovery is STATE-006. The ground-truth stream tap is unbounded and therefore proof-only
 (env-gated, never default). Host RSS with the WASM core measured ~86–129 MB in
 the macOS matrix; Windows budgets are recorded in `LIVE-PARSER-MATRIX.md` and
 must be revisited before any multi-session production shape.

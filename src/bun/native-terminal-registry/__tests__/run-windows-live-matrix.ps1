@@ -45,6 +45,13 @@ Set-Location $repo
 $bun = Get-Command bun -ErrorAction SilentlyContinue
 if (-not $bun) { throw "bun is required on PATH" }
 
+# winget installs OpenAI.Codex without a plain `codex` alias — fall back to the
+# full target-triple binary name when the default is not on PATH.
+if (-not (Get-Command $CodexCommand[0] -ErrorAction SilentlyContinue)) {
+	$codexTriple = "codex-x86_64-pc-windows-msvc"
+	if (Get-Command $codexTriple -ErrorAction SilentlyContinue) { $CodexCommand[0] = $codexTriple }
+}
+
 # ── environment record ──
 $os = Get-CimInstance Win32_OperatingSystem
 $environment = [ordered]@{
@@ -57,10 +64,10 @@ $environment = [ordered]@{
 	capturedAt   = (Get-Date -Format "o")
 }
 foreach ($probe in @(
-	@{ key = "pwsh"; exe = "pwsh"; args = @("-NoProfile", "-Command", '$PSVersionTable.PSVersion.ToString()') },
-	@{ key = "nvim"; exe = "nvim"; args = @("--version") },
-	@{ key = "claude"; exe = "claude"; args = @("--version") },
-	@{ key = "codex"; exe = "codex"; args = @("--version") }
+	@{ key = "pwsh"; exe = $PwshCommand[0]; args = @("-NoProfile", "-Command", '$PSVersionTable.PSVersion.ToString()') },
+	@{ key = "nvim"; exe = $NvimCommand[0]; args = @("--version") },
+	@{ key = "claude"; exe = $ClaudeCommand[0]; args = @("--version") },
+	@{ key = "codex"; exe = $CodexCommand[0]; args = @("--version") }
 )) {
 	$cmd = Get-Command $probe.exe -ErrorAction SilentlyContinue
 	if ($cmd) {
@@ -121,8 +128,10 @@ function Invoke-Target {
 	$spec | ConvertTo-Json -Depth 6 | Set-Content $specPath -Encoding utf8
 	$env:DEV3_NATIVE_SESSIONS_DIR = Join-Path $raw "sessions-$Name"
 	Write-Host "`n=== target: $Name ($Kind) ==="
+	# Out-Host keeps the run output on the console — inside a function the
+	# Tee-Object passthrough would otherwise become part of the return value.
 	& cmd /c "bun src\bun\native-terminal-registry\__tests__\live-matrix.ts ""$specPath"" ""$share"" 2>&1" |
-		Tee-Object -FilePath (Join-Path $share "$Name.run.txt")
+		Tee-Object -FilePath (Join-Path $share "$Name.run.txt") | Out-Host
 	$code = $LASTEXITCODE
 	Remove-Item Env:DEV3_NATIVE_SESSIONS_DIR -ErrorAction SilentlyContinue
 	return [ordered]@{ step = "target:$Name"; exitCode = $code }
