@@ -22,7 +22,7 @@
  * RULE: Never use Bun.spawn / Bun.spawnSync directly — always use these.
  */
 
-import { registerCurrentPreparationSpawn, unregisterPreparationSpawn } from "./preparation-runtime";
+import { registerCurrentPreparationSpawn } from "./preparation-runtime";
 import { DEV3_HOME } from "./paths";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,11 +37,13 @@ function withDefaults(opts?: any) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function spawn(cmd: string[], opts?: any) {
 	const proc = Bun.spawn(cmd, withDefaults(opts));
-	const ctx = registerCurrentPreparationSpawn(proc.pid, cmd);
-	if (ctx && proc.pid) {
-		proc.exited.finally(() => {
-			unregisterPreparationSpawn(ctx.taskId, proc.pid);
-		});
+	const registration = registerCurrentPreparationSpawn(proc.pid, cmd, proc.exited);
+	if (registration?.cancelled) {
+		try {
+			proc.kill(9);
+		} catch {
+			// The cancellation barrier still waits for proc.exited before cleanup.
+		}
 	}
 	return proc;
 }

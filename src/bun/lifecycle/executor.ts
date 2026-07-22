@@ -96,6 +96,8 @@ export interface LifecycleEffectOutcome {
 type BunMessagePayload<Name extends keyof AppRPCSchema["bun"]["messages"]> =
 	AppRPCSchema["bun"]["messages"][Name];
 
+const PREPARATION_CANCELLATION_EXIT_GRACE_MS = 10_000;
+
 function runtimeState(runtime: LifecycleRuntime): TaskRuntimeState {
 	if (runtime.phase === "preparing") {
 		return {
@@ -478,7 +480,12 @@ export async function activateTask(
 }
 
 async function killPreparationProcesses(taskId: string): Promise<void> {
-	const { pids } = markTaskPreparationCancelled(taskId);
+	const {
+		pids,
+		settled,
+		trackedProcessesExited,
+		reentrant,
+	} = markTaskPreparationCancelled(taskId);
 	for (const pid of pids) {
 		try {
 			const proc = spawn(["kill", "-9", String(pid)], { stdout: "pipe", stderr: "pipe" });
@@ -486,6 +493,21 @@ async function killPreparationProcesses(taskId: string): Promise<void> {
 		} catch (error) {
 			log.warn("Failed to kill preparation process", { taskId: taskId.slice(0, 8), pid, error: String(error) });
 		}
+	}
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const exited = await Promise.race([
+		(reentrant ? trackedProcessesExited : settled).then(() => true),
+		new Promise<false>((resolve) => {
+			timeoutId = setTimeout(() => resolve(false), PREPARATION_CANCELLATION_EXIT_GRACE_MS);
+		}),
+	]);
+	if (timeoutId) clearTimeout(timeoutId);
+	if (!exited) {
+		log.warn("Preparation cancellation did not settle within exit grace period", {
+			taskId: taskId.slice(0, 8),
+			processCount: pids.length,
+			exitWaitMs: PREPARATION_CANCELLATION_EXIT_GRACE_MS,
+		});
 	}
 }
 
