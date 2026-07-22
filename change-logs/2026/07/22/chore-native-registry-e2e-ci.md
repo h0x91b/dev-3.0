@@ -1,0 +1,1 @@
+Wire the native-session registry lifecycle E2E (test:native-registry-e2e) into the Packaged Bun runtime workflow so it runs on native Windows and POSIX with the pinned Bun 1.3.14. Dev-internal CI only; no product behavior changes.
