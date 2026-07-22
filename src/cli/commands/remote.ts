@@ -46,7 +46,8 @@ What it does:
 
 Subcommands:
   start (default)     Start the headless server in the BACKGROUND (survives the
-                      current shell), wait for the Cloudflare tunnel to come up,
+                      current shell), wait until the Cloudflare tunnel is actually
+                      reachable (so the link resolves the instant you click it),
                       print the public access link, and return. Add --no-detach
                       to keep it in the foreground instead.
   status              Show whether a server is running, its PID, port, and uptime.
@@ -235,6 +236,8 @@ function delay(ms: number): Promise<void> {
 export interface TunnelWaitTimings {
 	pollIntervalMs: number;
 	connectTimeoutMs: number;
+	probeIntervalMs: number;
+	probeTimeoutMs: number;
 	settleMs: number;
 }
 
@@ -242,43 +245,91 @@ export interface TunnelWaitTimings {
 export const REMOTE_TUNNEL_WAIT: TunnelWaitTimings = {
 	pollIntervalMs: 750,
 	connectTimeoutMs: 30_000,
-	// cloudflared prints the hostname a beat before Cloudflare's edge finishes
-	// provisioning DNS; a short settle keeps the first scan from hitting a 530.
-	settleMs: 4_000,
+	probeIntervalMs: 1_000,
+	// Cloudflare's edge usually starts routing 2-3s after cloudflared reports the
+	// hostname, occasionally up to ~10s — probe until it actually answers.
+	probeTimeoutMs: 20_000,
+	// A small margin so a fresh browser click never races the just-live edge.
+	settleMs: 1_000,
 };
 
 /**
- * Block until the running server reports a Cloudflare tunnel URL, so the QR/link
- * we print encodes the PUBLIC address instead of a not-yet-useful LAN one. The
- * tunnel starts at server boot but takes a few seconds to register with
- * Cloudflare's edge; without this wait `dev3 remote` printed the local URL and
- * the user had to re-run `dev3 remote url`. APP_NOT_RUNNING means the socket is
- * still booting — keep waiting, don't fail. Returns false (best-effort) if the
- * tunnel never came up within the timeout; the caller falls back to the LAN URL.
- * Exported for unit tests.
+ * End-to-end reachability probe for a Cloudflare quick-tunnel URL. Returns true
+ * only once a request travels the whole path (DNS → Cloudflare edge → our origin
+ * through the tunnel): the record must exist AND the tunnel must be registered.
+ * A thrown fetch (NXDOMAIN/connection refused/TLS not ready) or a Cloudflare
+ * edge error (HTTP 520-530, e.g. 1033 "tunnel not ready") means "not live yet".
+ * Any other status — 200/301/401/404 — proves the request reached our server.
+ * Exported for unit tests. `redirect: manual` + HEAD keep it a single hop.
  */
-export async function awaitTunnelReady(socketPath: string, timings: TunnelWaitTimings): Promise<boolean> {
-	const deadline = Date.now() + timings.connectTimeoutMs;
+export async function isTunnelLive(url: string): Promise<boolean> {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 5_000);
+	try {
+		const resp = await fetch(url, { method: "HEAD", redirect: "manual", signal: controller.signal });
+		return resp.status < 520 || resp.status > 530;
+	} catch {
+		return false;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/**
+ * Block until the running server's Cloudflare tunnel is actually reachable, so
+ * the QR/link we print resolves the instant the user clicks it. Two phases:
+ *   1. Poll the server's CLI socket until cloudflared reports a tunnel hostname.
+ *   2. Actively probe that URL until Cloudflare's edge routes it end-to-end.
+ * Phase 2 is what prevents the DNS_PROBE_FINISHED_NXDOMAIN trap: cloudflared
+ * announces the hostname a few seconds before the edge serves it, and a browser
+ * that clicks too early caches the negative DNS lookup and then hangs. Progress
+ * dots make the wait visible. APP_NOT_RUNNING means the socket is still booting —
+ * keep waiting, don't fail. Returns false (best-effort) if either phase times
+ * out; the caller falls back to printing the link with a caveat. Exported for
+ * unit tests — `probe` is injectable so they need no real network.
+ */
+export async function awaitTunnelReady(
+	socketPath: string,
+	timings: TunnelWaitTimings,
+	probe: (url: string) => Promise<boolean> = isTunnelLive,
+): Promise<boolean> {
+	// Phase 1 — wait for cloudflared to report a hostname.
+	const urlDeadline = Date.now() + timings.connectTimeoutMs;
+	let tunnelUrl: string | null = null;
 	let announced = false;
-	while (Date.now() < deadline) {
-		let tunnelUrl: string | null = null;
+	while (Date.now() < urlDeadline) {
 		try {
 			const resp = await sendRequest(socketPath, "remote.accessUrl", {});
 			if (resp.ok) tunnelUrl = (resp.data as RemoteAccessInfo).tunnelUrl;
 		} catch (err) {
 			if (!(err instanceof Error && err.message === "APP_NOT_RUNNING")) throw err;
 		}
-		if (tunnelUrl) {
-			if (timings.settleMs > 0) await delay(timings.settleMs);
-			return true;
-		}
+		if (tunnelUrl) break;
 		if (!announced) {
 			process.stdout.write("Waiting for the Cloudflare tunnel to come up (this takes a few seconds)…\n");
 			announced = true;
 		}
 		await delay(timings.pollIntervalMs);
 	}
-	return false;
+	if (!tunnelUrl) return false;
+
+	// Phase 2 — the hostname exists, but the edge needs a moment to start routing
+	// it. Probe until a request reaches our origin so we never hand the user a
+	// link that resolves to NXDOMAIN (which the browser would then cache).
+	process.stdout.write("Tunnel registered — verifying it's reachable ");
+	const probeDeadline = Date.now() + timings.probeTimeoutMs;
+	let live = false;
+	while (Date.now() < probeDeadline) {
+		if (await probe(tunnelUrl)) {
+			live = true;
+			break;
+		}
+		process.stdout.write(".");
+		await delay(timings.probeIntervalMs);
+	}
+	process.stdout.write(live ? " reachable!\n" : " still not reachable\n");
+	if (live && timings.settleMs > 0) await delay(timings.settleMs);
+	return live;
 }
 
 /**
@@ -451,29 +502,19 @@ async function startDetached(): Promise<void> {
 			process.exit(0);
 		}
 
-		// A public tunnel starts at boot but registers with Cloudflare a few seconds
-		// later. Wait for it before printing so the QR/link is the PUBLIC URL, not a
-		// useless LAN address the user then has to swap via `dev3 remote url`.
-		if (recorded.tunnelRequested) {
-			const tunnelUp = await awaitTunnelReady(recorded.socketPath, REMOTE_TUNNEL_WAIT);
-			if (!tunnelUp) {
-				process.stdout.write(
-					"The Cloudflare tunnel didn't come up in time — showing the local URL below.\n" +
-					"Run `dev3 remote url` in a moment to get the public link.\n",
-				);
-			}
-		}
-
 		// A public tunnel was requested (default): the server starts it AFTER
-		// recording its state, so wait for the tunnel URL before printing —
-		// otherwise the QR/link would be the useless LAN address (F: the tunnel
-		// URL is what makes `dev3 remote` usable from another device at all).
+		// recording its state, and Cloudflare's edge only begins routing a few
+		// seconds after cloudflared reports the hostname. Wait for it to be
+		// reachable end-to-end before printing — otherwise the QR/link is either a
+		// useless LAN address or a public URL that resolves to NXDOMAIN if clicked
+		// too early (the browser then caches the miss and hangs).
 		if (recorded.tunnelRequested) {
 			const tunnelUp = await awaitTunnelReady(recorded.socketPath, REMOTE_TUNNEL_WAIT);
 			if (!tunnelUp) {
 				process.stdout.write(
-					"\nThe Cloudflare tunnel didn't come up in time — showing the local URL below.\n" +
-					"Run `dev3 remote url` again in a moment for the public link.\n",
+					"\nThe Cloudflare tunnel didn't come up in time — the link below may not resolve yet.\n" +
+					"Wait a few seconds and refresh (clicking too early can cache a DNS miss), or run\n" +
+					"`dev3 remote url` again for a fresh link.\n",
 				);
 			}
 		}
