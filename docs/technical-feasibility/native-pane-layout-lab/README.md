@@ -23,4 +23,3 @@ After the run, active sessions, timers, and all three subscription classes retur
 
 - [Desktop: six tiled independent panes](desktop-6-panes.png)
 - [Narrow: one active pane with visible pager](narrow-6-panes.png)
-

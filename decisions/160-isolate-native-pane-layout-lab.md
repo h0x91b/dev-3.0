@@ -19,4 +19,3 @@ The fake streams do not represent native process or terminal-emulator performanc
 ## Alternatives considered
 
 Reusing tmux layout strings was rejected because it would preserve the dependency this proof is meant to remove. React-owned pane IDs were rejected because remounts could cross-wire stream identity, and connecting the lab to Bun.Terminal or the native session protocol was rejected as outside this renderer-only ticket.
-
