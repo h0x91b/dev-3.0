@@ -4,6 +4,8 @@ You are installing **dev-3.0** for your user — a desktop/headless app that run
 
 Follow the steps for the user's OS. Ask before installing anything beyond dev-3.0 itself.
 
+**Installation ends at the install step — do not start the long-running server yourself.** On a headless box the user runs `dev3 remote` (a foreground server they own) in *their own* terminal, not inside your agent session. When install finishes, print the exact run command and hand off: tell the user they can exit you first, then run it themselves. (Launching the macOS desktop app with `open -a "dev-3.0"` is fine to do for them — it's fire-and-forget, not a server tied to your session.)
+
 ## 1. Detect the platform
 
 ```sh
@@ -38,12 +40,11 @@ With Homebrew (https://docs.brew.sh/Homebrew-on-Linux):
 
 ```sh
 brew tap h0x91b/dev3 && brew trust h0x91b/dev3 && brew install h0x91b/dev3/dev3
-dev3 remote
 ```
 
 `brew trust` is **required** on Homebrew 6.0+ — it gates non-official taps and won't load the `dev3` formula / its `tmux@3.6` dependency until the tap is trusted. Homebrew < 6.0 has no such command: if `brew trust` errors as unknown, drop `brew trust h0x91b/dev3 &&` from the chain and re-run.
 
-`dev3 remote` prints an access URL + QR code — the user opens it in any browser (even a phone) and gets the full UI. A Cloudflare quick tunnel is started by default so no SSH forwarding is needed; pass `--no-tunnel` for local-only.
+Install is done — now hand off. Tell the user to run `dev3 remote` themselves (in their own terminal; they can exit you first). It starts the headless server, waits for a Cloudflare quick tunnel to come up, then prints a public access URL + QR code they open in any browser (even a phone) for the full UI — no SSH forwarding needed (they can pass `--no-tunnel` for local-only). Do not run `dev3 remote` from your own session.
 
 Without Homebrew (minimal container etc.) — pre-built CLI tarball:
 
@@ -52,10 +53,9 @@ case "$(uname -m)" in aarch64|arm64) A=arm64;; *) A=x64;; esac
 curl -fsSL -o /tmp/dev3.tar.gz \
   "https://github.com/h0x91b/dev-3.0/releases/latest/download/dev3-cli-linux-$A.tar.gz"
 mkdir -p ~/.dev3 && tar -C ~/.dev3 -xzf /tmp/dev3.tar.gz
-~/.dev3/dev3 remote
 ```
 
-For the tarball path, make sure `git` and `tmux` are installed via the system package manager (`cloudflared` is optional — without it `dev3 remote` falls back to LAN/SSH-forward URLs).
+Then hand off the same way — the user runs `~/.dev3/dev3 remote` themselves. For the tarball path, make sure `git` and `tmux` are installed via the system package manager (`cloudflared` is optional — without it `dev3 remote` falls back to LAN/SSH-forward URLs).
 
 For a desktop GUI on Linux instead of the browser UI: `dev3 gui` (lazily downloads the bundle on first run and prints the exact `apt`/`dnf`/`pacman` command if GTK/WebKit libs are missing).
 

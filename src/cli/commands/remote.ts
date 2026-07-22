@@ -46,8 +46,9 @@ What it does:
 
 Subcommands:
   start (default)     Start the headless server in the BACKGROUND (survives the
-                      current shell), print the access link, and return. Add
-                      --no-detach to keep it in the foreground instead.
+                      current shell), wait for the Cloudflare tunnel to come up,
+                      print the public access link, and return. Add --no-detach
+                      to keep it in the foreground instead.
   status              Show whether a server is running, its PID, port, and uptime.
   url                 Print a fresh access URL + QR for the running server. Handy
                       from a new SSH session to re-scan without rerunning start.
@@ -231,6 +232,55 @@ function delay(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
 }
 
+export interface TunnelWaitTimings {
+	pollIntervalMs: number;
+	connectTimeoutMs: number;
+	settleMs: number;
+}
+
+// Tunable so unit tests can shrink the waits without patching timers.
+export const REMOTE_TUNNEL_WAIT: TunnelWaitTimings = {
+	pollIntervalMs: 750,
+	connectTimeoutMs: 30_000,
+	// cloudflared prints the hostname a beat before Cloudflare's edge finishes
+	// provisioning DNS; a short settle keeps the first scan from hitting a 530.
+	settleMs: 4_000,
+};
+
+/**
+ * Block until the running server reports a Cloudflare tunnel URL, so the QR/link
+ * we print encodes the PUBLIC address instead of a not-yet-useful LAN one. The
+ * tunnel starts at server boot but takes a few seconds to register with
+ * Cloudflare's edge; without this wait `dev3 remote` printed the local URL and
+ * the user had to re-run `dev3 remote url`. APP_NOT_RUNNING means the socket is
+ * still booting — keep waiting, don't fail. Returns false (best-effort) if the
+ * tunnel never came up within the timeout; the caller falls back to the LAN URL.
+ * Exported for unit tests.
+ */
+export async function awaitTunnelReady(socketPath: string, timings: TunnelWaitTimings): Promise<boolean> {
+	const deadline = Date.now() + timings.connectTimeoutMs;
+	let announced = false;
+	while (Date.now() < deadline) {
+		let tunnelUrl: string | null = null;
+		try {
+			const resp = await sendRequest(socketPath, "remote.accessUrl", {});
+			if (resp.ok) tunnelUrl = (resp.data as RemoteAccessInfo).tunnelUrl;
+		} catch (err) {
+			if (!(err instanceof Error && err.message === "APP_NOT_RUNNING")) throw err;
+		}
+		if (tunnelUrl) {
+			if (timings.settleMs > 0) await delay(timings.settleMs);
+			return true;
+		}
+		if (!announced) {
+			process.stdout.write("Waiting for the Cloudflare tunnel to come up (this takes a few seconds)…\n");
+			announced = true;
+		}
+		await delay(timings.pollIntervalMs);
+	}
+	return false;
+}
+
 /**
  * Compute the argv to hand `spawn(execPath, …)` when backgrounding ourselves.
  *
@@ -399,6 +449,33 @@ async function startDetached(): Promise<void> {
 				`Check \`dev3 remote status\` or the log at ${REMOTE_LOG_FILE}.\n`,
 			);
 			process.exit(0);
+		}
+
+		// A public tunnel starts at boot but registers with Cloudflare a few seconds
+		// later. Wait for it before printing so the QR/link is the PUBLIC URL, not a
+		// useless LAN address the user then has to swap via `dev3 remote url`.
+		if (recorded.tunnelRequested) {
+			const tunnelUp = await awaitTunnelReady(recorded.socketPath, REMOTE_TUNNEL_WAIT);
+			if (!tunnelUp) {
+				process.stdout.write(
+					"The Cloudflare tunnel didn't come up in time — showing the local URL below.\n" +
+					"Run `dev3 remote url` in a moment to get the public link.\n",
+				);
+			}
+		}
+
+		// A public tunnel was requested (default): the server starts it AFTER
+		// recording its state, so wait for the tunnel URL before printing —
+		// otherwise the QR/link would be the useless LAN address (F: the tunnel
+		// URL is what makes `dev3 remote` usable from another device at all).
+		if (recorded.tunnelRequested) {
+			const tunnelUp = await awaitTunnelReady(recorded.socketPath, REMOTE_TUNNEL_WAIT);
+			if (!tunnelUp) {
+				process.stdout.write(
+					"\nThe Cloudflare tunnel didn't come up in time — showing the local URL below.\n" +
+					"Run `dev3 remote url` again in a moment for the public link.\n",
+				);
+			}
 		}
 
 		try {
