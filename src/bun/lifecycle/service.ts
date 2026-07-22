@@ -44,6 +44,12 @@ function errorEvent(effect: LifecycleEffect, error: unknown): LifecycleEvent | n
 			compensating: true,
 		};
 	}
+	if (effect.compensatingEvent.type === "teardownFailed") {
+		return {
+			...effect.compensatingEvent,
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
 	return effect.compensatingEvent;
 }
 

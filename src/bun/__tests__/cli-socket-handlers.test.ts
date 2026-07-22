@@ -2445,7 +2445,7 @@ describe("task.move", () => {
 		expect(git.removeWorktree).toHaveBeenCalled();
 	});
 
-	it("cleanup errors are swallowed during active → completed", async () => {
+	it("non-Git cleanup errors are swallowed during active → completed", async () => {
 		const project = makeProject();
 		const task = makeTask({ status: "in-progress" });
 
@@ -2455,7 +2455,7 @@ describe("task.move", () => {
 			throw new Error("PTY gone");
 		});
 		vi.mocked(runCleanupScript).mockRejectedValue(new Error("cleanup failed"));
-		vi.mocked(git.removeWorktree).mockRejectedValue(new Error("worktree gone"));
+		vi.mocked(git.removeWorktree).mockResolvedValue(undefined);
 		vi.mocked(data.updateTask).mockResolvedValue({
 			...task,
 			status: "completed",

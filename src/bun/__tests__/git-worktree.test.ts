@@ -108,6 +108,21 @@ describe("removeWorktree", () => {
 		expect(branches).not.toContain("dev3/task-aaaaaaaa");
 	});
 
+	it("rejects when Git cannot remove a present worktree", async () => {
+		const wtPath = join(repo.dir, "locked-worktree");
+		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
+		g(`git worktree lock "${wtPath}"`, repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			worktreePath: wtPath,
+			branchName: "dev3/task-aaaaaaaa",
+		});
+
+		await expect(removeWorktree(project, task)).rejects.toThrow("Failed to remove worktree");
+		expect(existsSync(wtPath)).toBe(true);
+	});
+
 	it("removes worktree and deletes RENAMED branch correctly", async () => {
 		const wtPath = join(repo.dir, "worktree");
 		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);
