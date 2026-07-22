@@ -85,12 +85,15 @@ const updates = {
 	"changelog.refactor": "refactor",
 	"changelog.docs": "docs",
 	"changelog.chore": "chore",
-	"changelog.filterLabel": "Filter:",
 	"changelog.clearFilter": "clear",
 	"changelog.subtitle": "Everything we've shipped, newest first.",
 	"changelog.entries_one": "{count} entry",
 	"changelog.entries_other": "{count} entries",
-	"changelog.expandHint": "Click to read the full note",
+	"changelog.searchPlaceholder": "Search changelog…",
+	"changelog.clearSearch": "Clear search",
+	"changelog.noResults": "Nothing matches your search or filters.",
+	"changelog.resetFilters": "Reset filters",
+	"changelog.showMore": "Show more",
 } as const;
 
 export default updates;

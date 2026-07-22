@@ -89,14 +89,17 @@ const updates = {
 	"changelog.refactor": "рефакторинг",
 	"changelog.docs": "документация",
 	"changelog.chore": "служебное",
-	"changelog.filterLabel": "Фильтр:",
 	"changelog.clearFilter": "сбросить",
 	"changelog.subtitle": "Всё, что мы выпустили, — свежее сверху.",
 	"changelog.entries_one": "{count} запись",
 	"changelog.entries_few": "{count} записи",
 	"changelog.entries_many": "{count} записей",
 	"changelog.entries_other": "{count} записей",
-	"changelog.expandHint": "Нажмите, чтобы прочитать полностью",
+	"changelog.searchPlaceholder": "Поиск по изменениям…",
+	"changelog.clearSearch": "Очистить поиск",
+	"changelog.noResults": "Ничего не найдено по запросу или фильтрам.",
+	"changelog.resetFilters": "Сбросить фильтры",
+	"changelog.showMore": "Показать ещё",
 };
 
 export default updates;
