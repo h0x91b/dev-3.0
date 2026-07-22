@@ -496,7 +496,8 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 		}
 		case "mergeDetected": {
 			if (!MERGE_ELIGIBLE_STATUSES.has(state.column.status) || !state.facts.hasWorktree) return unchanged(state);
-			const noticeOnly = state.facts.manualCompletion === true || !event.suggestCompletion;
+			const manualCompletion = state.facts.manualCompletion === true;
+			const noticeOnly = manualCompletion || !event.suggestCompletion;
 			const blocked = noticeOnly
 				? mergeReservationBlocked(state, event.fingerprint, event.detectedAt)
 				: mergePromptBlocked(state, event.fingerprint, event.precise, event.detectedAt);
@@ -536,7 +537,7 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					effect({
 						type: "push",
 						message: "branchMerged",
-						payload: { finding: event, noticeOnly },
+						payload: { finding: event, noticeOnly, shouldNotify: noticeOnly && !manualCompletion },
 					}),
 				],
 			};

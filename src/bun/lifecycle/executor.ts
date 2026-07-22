@@ -517,7 +517,7 @@ function pushEffect(effect: Extract<LifecycleEffect, { type: "push" }>, ctx: Lif
 			push("taskPreparationFailed", preparationFailurePayload(ctx, effect));
 			return;
 		case "branchMerged": {
-			const { finding, noticeOnly } = effect.payload;
+			const { finding, noticeOnly, shouldNotify } = effect.payload;
 			const payload: BunMessagePayload<"branchMerged"> = {
 				taskId: ctx.sourceTask.id,
 				projectId: ctx.project.id,
@@ -525,7 +525,7 @@ function pushEffect(effect: Extract<LifecycleEffect, { type: "push" }>, ctx: Lif
 				branchName: finding.branchName,
 				fingerprint: finding.fingerprint,
 				subject: buildTaskDialogSubject(ctx.sourceTask, ctx.project),
-				...(noticeOnly ? { shouldPrompt: false, shouldNotify: true } : {}),
+				...(noticeOnly ? { shouldPrompt: false, shouldNotify } : {}),
 			};
 			push("branchMerged", payload);
 			return;

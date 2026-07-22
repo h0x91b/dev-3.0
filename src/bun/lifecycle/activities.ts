@@ -110,13 +110,15 @@ export async function prepareMergeCompletionPrompt(params: { taskId: string; pro
 		suggestCompletion,
 		force: params.force === true,
 	});
-	const noticeOnly = updated.manualCompletion === true || !suggestCompletion;
+	const manualCompletion = updated.manualCompletion === true;
+	const noticeOnly = manualCompletion || !suggestCompletion;
 	if (noticeOnly) {
 		const reservation = lifecycleActorRuntime(task.id).mergePromptReservation;
 		return {
 			shouldPrompt: false,
 			fingerprint: fingerprint.fingerprint,
-			shouldNotify: reservation !== previousReservation
+			shouldNotify: !manualCompletion
+				&& reservation !== previousReservation
 				&& reservation?.fingerprint === fingerprint.fingerprint
 				&& reservation.reservedAt === Date.parse(promptedAt),
 		};
