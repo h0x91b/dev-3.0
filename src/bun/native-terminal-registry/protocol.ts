@@ -8,13 +8,16 @@
  * This is a deliberately small LOCAL protocol, not an RPC framework. A client
  * opens with a version-agnostic `hello`; the host replies `welcome` (accept) or
  * one explicit `error{code:"version-mismatch"}` and leaves the shell alive. Only
- * the two request/response pairs (hello→welcome, status→status) carry a request
+ * the three request/response pairs (hello→welcome, status→status, and
+ * ownership→ownership) carry a request
  * `id`; every other frame is a fire-and-forget command or an unsolicited event.
  * Unknown ADDITIVE fields on a known type are ignored; a future breaking change
  * bumps NATIVE_SESSION_PROTOCOL_VERSION rather than negotiating in-band.
  *
  * Pure module: no Bun/Node runtime deps, trivially unit-testable.
  */
+
+import type { ClientRole, WriterAction } from "./writer-ownership";
 
 export const NATIVE_SESSION_PROTOCOL_VERSION = 1;
 
@@ -49,11 +52,17 @@ export interface StatusRequest {
 	type: "status";
 	id: number;
 }
+export interface OwnershipRequest {
+	v: number;
+	type: "ownership";
+	id: number;
+	action: WriterAction;
+}
 export interface StopRequest {
 	v: number;
 	type: "stop";
 }
-export type ClientControl = HelloMessage | ResizeMessage | StatusRequest | StopRequest;
+export type ClientControl = HelloMessage | ResizeMessage | StatusRequest | OwnershipRequest | StopRequest;
 
 // ── Host → Client ─────────────────────────────────────────────────────
 /** Accepts a hello; echoes the hello's request id. */
@@ -63,6 +72,8 @@ export interface WelcomeMessage {
 	id: number;
 	sessionId: string;
 	protocolVersion: number;
+	/** Additive in v1; absent hosts predate explicit writer ownership. */
+	role?: ClientRole;
 }
 export interface ErrorMessage {
 	v: number;
@@ -84,6 +95,16 @@ export interface StatusReply {
 	rows: number;
 	alive: boolean;
 	startedAt: string;
+	/** Per-connection ephemeral ownership state; never persisted in record.json. */
+	clientRole?: ClientRole;
+	writerAttached?: boolean;
+}
+export interface OwnershipReply {
+	v: number;
+	type: "ownership";
+	id: number;
+	role: ClientRole;
+	writerAttached: boolean;
 }
 /** Sent to every client just before the host tears itself down. */
 export interface StoppingEvent {
@@ -96,7 +117,7 @@ export interface ExitEvent {
 	type: "exit";
 	code: number | null;
 }
-export type HostControl = WelcomeMessage | ErrorMessage | StatusReply | StoppingEvent | ExitEvent;
+export type HostControl = WelcomeMessage | ErrorMessage | StatusReply | OwnershipReply | StoppingEvent | ExitEvent;
 
 export type ControlMessage = ClientControl | HostControl;
 
@@ -104,8 +125,15 @@ export type ControlMessage = ClientControl | HostControl;
 export function helloMessage(sessionId: string, id: number): HelloMessage {
 	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "hello", sessionId, id };
 }
-export function welcomeMessage(id: number, sessionId: string): WelcomeMessage {
-	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "welcome", id, sessionId, protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION };
+export function welcomeMessage(id: number, sessionId: string, role?: ClientRole): WelcomeMessage {
+	return {
+		v: NATIVE_SESSION_PROTOCOL_VERSION,
+		type: "welcome",
+		id,
+		sessionId,
+		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
+		...(role ? { role } : {}),
+	};
 }
 export function errorMessage(code: ErrorCode, id?: number, message?: string): ErrorMessage {
 	const msg: ErrorMessage = { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "error", code };
@@ -118,6 +146,12 @@ export function resizeMessage(cols: number, rows: number): ResizeMessage {
 }
 export function statusRequest(id: number): StatusRequest {
 	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "status", id };
+}
+export function ownershipRequest(id: number, action: WriterAction): OwnershipRequest {
+	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "ownership", id, action };
+}
+export function ownershipReply(id: number, role: ClientRole, writerAttached: boolean): OwnershipReply {
+	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "ownership", id, role, writerAttached };
 }
 export function stopRequest(): StopRequest {
 	return { v: NATIVE_SESSION_PROTOCOL_VERSION, type: "stop" };
@@ -193,6 +227,13 @@ export function decodeControl(text: string): ControlMessage | null {
 		case "status":
 			if (typeof obj.id !== "number") return null;
 			return obj as unknown as StatusRequest | StatusReply;
+		case "ownership":
+			if (typeof obj.id !== "number") return null;
+			if (obj.action === "claim" || obj.action === "release") return obj as unknown as OwnershipRequest;
+			if ((obj.role === "writer" || obj.role === "observer") && typeof obj.writerAttached === "boolean") {
+				return obj as unknown as OwnershipReply;
+			}
+			return null;
 		case "welcome":
 			if (typeof obj.id !== "number") return null;
 			return obj as unknown as WelcomeMessage;
