@@ -78,7 +78,15 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 }
 
 async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string; priority?: TaskPriority }): Promise<Task> {
-	log.info("→ createTask", params);
+	log.info("→ createTask", {
+		projectId: params.projectId,
+		requestedStatus: params.status ?? "todo",
+		scratch: params.scratch === true,
+		descriptionLength: params.description.length,
+		hasExistingBranch: Boolean(params.existingBranch),
+		hasOpsWorkDir: Boolean(params.opsWorkDir),
+		priority: params.priority,
+	});
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
 	// Scratch tasks always start in "todo" with a placeholder title so the
