@@ -447,6 +447,7 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 				)}
 				<button
 					type="button"
+					onPointerDown={(event) => event.stopPropagation()}
 					onClick={() => {
 						if (suppressIfDragged()) return;
 						onDismiss(entry.id);
