@@ -390,12 +390,33 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			updateChangelog: changelog,
 		});
 
+		// The auto-shown toast renders the same list; dismiss it so the queries
+		// below target the dropdown only.
+		await user.click(screen.getByText("Postpone"));
 		await user.click(screen.getByRole("button", { name: /Version 1\.38\.0 is ready/i }));
 
 		expect(screen.getByText("What's new in v1.38.0")).toBeInTheDocument();
 		expect(screen.getByText("Terminal scrollback search")).toBeInTheDocument();
 		expect(screen.getByText("PR review threads in diff")).toBeInTheDocument();
 		// 5 total features, 2 shown → "+3 more features · 4 fixes"
+		expect(screen.getByText("+3 more features · 4 fixes")).toBeInTheDocument();
+	});
+
+	it("renders the what's-new changelog section in the auto-shown update toast", () => {
+		const changelog: UpdateChangelog = {
+			features: ["Terminal scrollback search", "PR review threads in diff"],
+			featureCount: 5,
+			fixCount: 4,
+		};
+		renderHeader({ screen: "dashboard" }, [project1, project2], vi.fn(), [], {
+			updateVersion: "1.38.0",
+			updateChangelog: changelog,
+		});
+
+		// Toast auto-shows on update-ready (no dropdown click); it must surface the
+		// same preview as the dropdown — regression: the toast previously omitted it.
+		expect(screen.getByText("What's new in v1.38.0")).toBeInTheDocument();
+		expect(screen.getByText("Terminal scrollback search")).toBeInTheDocument();
 		expect(screen.getByText("+3 more features · 4 fixes")).toBeInTheDocument();
 	});
 
@@ -407,6 +428,8 @@ describe("GlobalHeader — project switcher dropdown", () => {
 			updateChangelog: { features: ["A feature"], featureCount: 1, fixCount: 0 },
 		});
 
+		// Dismiss the auto-shown toast first so "See all changes" is unambiguous.
+		await user.click(screen.getByText("Postpone"));
 		await user.click(screen.getByRole("button", { name: /Version 1\.38\.0 is ready/i }));
 		await user.click(screen.getByText(/See all changes/));
 		expect(navigate).toHaveBeenCalledWith({ screen: "changelog" });
