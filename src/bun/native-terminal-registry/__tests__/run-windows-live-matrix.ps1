@@ -77,14 +77,16 @@ $results = @()
 
 # ── 1. regression probe: callback (evidence) vs deferred (gate) ──
 Write-Host "`n=== regression probe (callback vs deferred) ==="
-& bun src\bun\native-terminal-registry\regression-probe.ts both 2>&1 |
+# cmd /c merges stderr before PowerShell sees it — PS 5.1 + ErrorActionPreference=Stop
+# otherwise turns any native stderr line into a terminating NativeCommandError.
+& cmd /c "bun src\bun\native-terminal-registry\regression-probe.ts both 2>&1" |
 	Tee-Object -FilePath (Join-Path $share "regression-probe.txt")
 $results += [ordered]@{ step = "regression-probe"; exitCode = $LASTEXITCODE; note = "callback failure on Bun 1.3.14 is the EXPECTED seq 1185 repro; exit gates only the deferred mode" }
 
 # ── 2. live-parser lifecycle E2E ──
 if (-not $SkipE2E) {
 	Write-Host "`n=== live-parser lifecycle E2E ==="
-	& bun run test:native-live-parser-e2e 2>&1 |
+	& cmd /c "bun run test:native-live-parser-e2e 2>&1" |
 		Tee-Object -FilePath (Join-Path $share "live-parser-e2e.txt")
 	$results += [ordered]@{ step = "live-parser-e2e"; exitCode = $LASTEXITCODE }
 }
@@ -119,7 +121,7 @@ function Invoke-Target {
 	$spec | ConvertTo-Json -Depth 6 | Set-Content $specPath -Encoding utf8
 	$env:DEV3_NATIVE_SESSIONS_DIR = Join-Path $raw "sessions-$Name"
 	Write-Host "`n=== target: $Name ($Kind) ==="
-	& bun src\bun\native-terminal-registry\__tests__\live-matrix.ts $specPath $share 2>&1 |
+	& cmd /c "bun src\bun\native-terminal-registry\__tests__\live-matrix.ts ""$specPath"" ""$share"" 2>&1" |
 		Tee-Object -FilePath (Join-Path $share "$Name.run.txt")
 	$code = $LASTEXITCODE
 	Remove-Item Env:DEV3_NATIVE_SESSIONS_DIR -ErrorAction SilentlyContinue
