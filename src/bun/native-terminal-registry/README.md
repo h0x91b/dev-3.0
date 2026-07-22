@@ -25,7 +25,7 @@ of older dev3 versions on the same machine — are completely unaffected.
 | `writer-ownership.ts` | Ephemeral one-writer/many-observer state and atomic claim/release. |
 | `windows-job.ts` | Token-named Job Object containment (registry namespace). |
 | `protocol.ts` | Wire protocol: binary frames = PTY bytes, text frames = JSON control. |
-| `journal.ts` / `journal-read.ts` | Bounded, independent per-session output journal. |
+| `journal.ts` / `journal-read.ts` | Bounded, atomic, independent per-session output journal. |
 | `parser-queue.ts` | Byte-capped callback-side event queue with explicit overflow accounting (seq 1228). |
 | `ghostty-live.ts` | Registry-local Ghostty core: ingest, replies, semantic inspection (seq 1228). |
 | `live-parser.ts` | Deferred parsing pipeline — the ONLY place Ghostty runs (seq 1228). |
@@ -58,12 +58,16 @@ touched, renamed, moved, or rewritten.
 - **Ownership over PID.** A live PID alone never proves ownership. POSIX pins the
   recorded host/shell to `ps -o lstart`; Windows to token-named Job Object
   membership. A reused PID is classified `reused` and never signalled.
-- **Serialised start.** Concurrent `start` of one id is serialised by a
-  per-session file lock; the loser observes the winner's live record and returns
-  `already-running` — never a second shell.
+- **Serialised state replacement.** Concurrent `start` and `cleanupStale`
+  operations for one id share a per-session file lock. A start loser observes
+  the winner's live record, while cleanup cannot erase a replacement between
+  classification and token-matched deletion.
 - **Token-matched cleanup.** `stop`/`cleanupStale` remove only state whose
   on-disk token matches, and never attach to or kill an unverified PID. An
   unknown-schema record (newer dev3) is left untouched.
+- **Crash honesty.** An abruptly terminated host remains discoverable as
+  `dead` until `cleanup-stale` removes its token-matched additive state. A
+  partial temp file is never published or accepted as current state.
 - **Token privacy.** The bearer token lives only in the 0600 `token` file;
   `list`/`status` output and every serialised record are token-free.
 - **One writer, many observers.** The first authenticated client writes and
@@ -157,6 +161,26 @@ Proofs: `bun run test:native-live-parser-e2e` (also in the Windows/macOS/Ubuntu
 CI job), `regression-probe.ts both`, and the real-TUI matrix in
 [`LIVE-PARSER-MATRIX.md`](LIVE-PARSER-MATRIX.md) with latency/memory budgets.
 
+## Abrupt host recovery (seq 1236)
+
+The crash proof terminates the recorded host PID directly while terminal output
+and deferred parsing are active; it never calls `stop`. Windows uses the existing
+non-breakaway, kill-on-close Job Object: terminating the host closes its final
+owned handle, and Windows ends the root shell plus every child and grandchild in
+that job. POSIX uses its native PTY lifecycle instead: host death closes the PTY
+master, the kernel delivers the terminal hangup, and the attached interactive
+shell propagates it through its jobs. The POSIX claim covers the terminal-owned
+tree, not a deliberately daemonized or SIGHUP-ignoring breakaway process.
+
+`record.json`, `token`, `journal.ndjson`, and `parser-state.json` publish with a
+complete temp file plus atomic rename. Parser-state reads validate every nested
+health, counter, and semantic-state field; interrupted temp files are ignored.
+`list` and `status` still classify the session from process ownership, so a last
+good parser snapshot never makes a dead host look healthy. `cleanup-stale`
+shares `start`'s per-session lock, then deletes only state whose current token
+matches and only temp files named for the recorded crashed host PID; missing,
+changed, unknown-schema, and unrelated state remain untouched.
+
 ## Try it
 
 ```bash
@@ -165,6 +189,7 @@ bun src/bun/native-terminal-registry/cli.ts start bravo
 bun src/bun/native-terminal-registry/cli.ts list
 bun src/bun/native-terminal-registry/cli.ts attach alpha   # first client = writer; Ctrl-\\ release/claim, Ctrl-] detach
 bun src/bun/native-terminal-registry/cli.ts attach alpha   # second client = observer; sees the same output + journal
+bun src/bun/native-terminal-registry/cli.ts cleanup-stale  # remove token-matched dead session state
 bun src/bun/native-terminal-registry/cli.ts stop alpha     # stops ONLY alpha; bravo keeps running
 ```
 
@@ -186,6 +211,13 @@ For the visible two-window Windows takeover and resize exercise, follow
   write-back exactly once, detach-boundary reconstruction equal to a
   ground-truth replay, explicit bounded overflow, contained parser faults, and
   the tmux sentinel. Expected final line: `ALL CHECKS PASSED`.
+- `bun run test:native-crash-e2e` — force-kills one recorded host during active
+  journal/parser writes, proves bounded owned-tree death, dead status/list,
+  token-matched cleanup, same-id restart, sentinel survival, and zero tmux
+  invocation. The CI matrix runs it on Windows, macOS, and Linux with Bun 1.3.14.
+- On a real Windows checkout after `bun install --frozen-lockfile`, run
+  `powershell -ExecutionPolicy Bypass -File src\bun\native-terminal-registry\__tests__\run-windows-crash-recovery.ps1`.
+  The wrapper requires native Windows and exactly Bun 1.3.14.
 - `__tests__/*.test.ts` — vitest units for paths, record serialization, locking,
   stale detection, PID identity, ownership-safe cleanup, journal, protocol, the
   Win32 handle lifecycle, and import-graph/tmux isolation; part of `bun run test`.
@@ -193,4 +225,6 @@ For the visible two-window Windows takeover and resize exercise, follow
 See [decision 151](../../../decisions/151-native-session-registry.md) for the
 record format and lifecycle boundaries, and
 [decision 158](../../../decisions/158-native-client-writer-ownership.md) for the
-multi-client ownership semantics.
+multi-client ownership semantics. See
+[decision 159](../../../decisions/159-native-host-crash-recovery.md) for abrupt
+host recovery and its platform-specific containment guarantees.

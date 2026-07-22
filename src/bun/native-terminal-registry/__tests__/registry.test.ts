@@ -104,6 +104,15 @@ describe("native-session registry", () => {
 		expect(result.record.host.pid).toBe(process.pid);
 	});
 
+	it("refuses to replace stale state when its cleanup token is missing", async () => {
+		writeRecordAtomic(fakeRecord("gamma", 2_000_000_000));
+		await expect(start("gamma", { timeoutMs: 3000 }, deps(async () => "dead"))).rejects.toThrow(
+			"cannot safely replace stale native session gamma",
+		);
+		expect(launchCalls).toBe(0);
+		expect(readRecord("gamma")).not.toBeNull();
+	});
+
 	it("lists sessions with verdicts and never leaks tokens", async () => {
 		writeToken("a1", "tok-A");
 		writeRecordAtomic(fakeRecord("a1", process.pid));
@@ -121,13 +130,14 @@ describe("native-session registry", () => {
 		expect(serialized).not.toContain("tok-B");
 	});
 
-	it("cleanup removes dead/reused token-matched state, keeps owned and unknown-schema", async () => {
+	it("cleanup removes dead/reused token-matched state, keeps owned, tokenless, and unknown-schema", async () => {
 		writeToken("keep", "t1");
 		writeRecordAtomic(fakeRecord("keep", process.pid));
 		writeToken("dead", "t2");
 		writeRecordAtomic(fakeRecord("dead", process.pid));
 		writeToken("reuse", "t3");
 		writeRecordAtomic(fakeRecord("reuse", process.pid));
+		writeRecordAtomic(fakeRecord("tokenless", process.pid));
 		// A record written by an unknown (newer) schema must never be deleted.
 		mkdirSync(sessionDir("weird"), { recursive: true });
 		writeFileSync(recordFile("weird"), JSON.stringify({ schemaVersion: 999 }));
@@ -140,9 +150,74 @@ describe("native-session registry", () => {
 		expect(readRecord("keep")).not.toBeNull();
 		expect(readRecord("dead")).toBeNull();
 		expect(readRecord("reuse")).toBeNull();
+		expect(readRecord("tokenless")).not.toBeNull();
+		expect(res.kept.some((entry) => entry.sessionId === "tokenless" && entry.state === "dead")).toBe(true);
 		expect(existsSync(sessionDir("weird"))).toBe(true);
 		// Cleanup is purely passive: the (alive) shell PID was never signalled.
 		expect(isProcessAlive(process.pid)).toBe(true);
+	});
+
+	it("cleanup cannot erase a newer run that replaces the token during classification", async () => {
+		writeToken("raced", "old-token");
+		writeRecordAtomic(fakeRecord("raced", 2_000_000_000));
+		const replacement = fakeRecord("raced", process.pid);
+		const d = deps(async () => {
+			writeToken("raced", "new-token");
+			writeRecordAtomic(replacement);
+			return "dead";
+		});
+
+		const result = await cleanupStale(d);
+
+		expect(result.removed).not.toContain("raced");
+		expect(readRecord("raced")).toEqual(replacement);
+	});
+
+	it("cleanup removes its empty session directory and ignores registry-root files", async () => {
+		const rootSentinel = join(root, "root-sentinel");
+		writeFileSync(rootSentinel, "unrelated\n");
+		writeToken("dead-dir", "old-token");
+		writeRecordAtomic(fakeRecord("dead-dir", 2_000_000_000));
+
+		const result = await cleanupStale(deps(async () => "dead"));
+
+		expect({
+			removed: result.removed,
+			sessionDirExists: existsSync(sessionDir("dead-dir")),
+			rootSentinelExists: existsSync(rootSentinel),
+		}).toEqual({ removed: ["dead-dir"], sessionDirExists: false, rootSentinelExists: true });
+	});
+
+	it("serialises stale cleanup against a same-id replacement start", async () => {
+		writeToken("locked-race", "old-token");
+		writeRecordAtomic(fakeRecord("locked-race", 2_000_000_000));
+		let releaseClassification: () => void = () => {};
+		const classificationBlocked = new Promise<void>((resolve) => {
+			releaseClassification = resolve;
+		});
+		let classificationEntered: () => void = () => {};
+		const entered = new Promise<void>((resolve) => {
+			classificationEntered = resolve;
+		});
+		const cleanupPromise = cleanupStale(
+			deps(async () => {
+				classificationEntered();
+				await classificationBlocked;
+				return "dead";
+			}),
+		);
+		await entered;
+		const startPromise = start("locked-race", { timeoutMs: 3000 }, deps(async () => "dead"));
+		for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+		const startedBeforeCleanupReleased = launchCalls > 0;
+		releaseClassification();
+		const [cleanup, replacement] = await Promise.all([cleanupPromise, startPromise]);
+
+		expect({ startedBeforeCleanupReleased, removed: cleanup.removed, replacement: replacement.status }).toEqual({
+			startedBeforeCleanupReleased: false,
+			removed: ["locked-race"],
+			replacement: "started",
+		});
 	});
 
 	it("stop of a non-owned session drops state without signalling the PID", async () => {
@@ -151,6 +226,14 @@ describe("native-session registry", () => {
 		const ok = await stop("z", { timeoutMs: 1000 }, deps(async () => "reused"));
 		expect(ok).toBe(true);
 		expect(readRecord("z")).toBeNull();
+		expect(isProcessAlive(process.pid)).toBe(true);
+	});
+
+	it("stop fails closed when non-owned state has no cleanup token", async () => {
+		writeRecordAtomic(fakeRecord("tokenless-stop", process.pid));
+		const ok = await stop("tokenless-stop", { timeoutMs: 1000 }, deps(async () => "reused"));
+		expect(ok).toBe(false);
+		expect(readRecord("tokenless-stop")).not.toBeNull();
 		expect(isProcessAlive(process.pid)).toBe(true);
 	});
 

@@ -14,7 +14,7 @@
  * JournalWriter wraps them with buffered, debounced flushing to disk.
  */
 
-import { writeFileSync } from "node:fs";
+import { renameSync, writeFileSync } from "node:fs";
 
 export const DEFAULT_JOURNAL_MAX_BYTES = 256 * 1024;
 
@@ -114,7 +114,9 @@ export class JournalWriter {
 	flush(): void {
 		if (!this.dirty) return;
 		try {
-			writeFileSync(this.path, this.frames.join(""), { mode: 0o600 });
+			const tmp = `${this.path}.${process.pid}.tmp`;
+			writeFileSync(tmp, this.frames.join(""), { mode: 0o600 });
+			renameSync(tmp, this.path);
 			this.dirty = false;
 		} catch (err) {
 			// best-effort: a failed journal flush must never take the host down

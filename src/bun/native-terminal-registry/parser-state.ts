@@ -70,6 +70,81 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
+function isFiniteNumber(value: unknown, integer = false): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0 && (!integer || Number.isInteger(value));
+}
+
+function hasNumbers(value: Record<string, unknown>, keys: string[], integer = false): boolean {
+	return keys.every((key) => isFiniteNumber(value[key], integer));
+}
+
+function isSemanticCell(value: unknown): boolean {
+	if (!isRecord(value)) return false;
+	return (
+		typeof value.text === "string" &&
+		isFiniteNumber(value.width, true) &&
+		typeof value.foreground === "string" &&
+		typeof value.background === "string" &&
+		Array.isArray(value.attributes) &&
+		value.attributes.every((entry) => typeof entry === "string")
+	);
+}
+
+function isSemanticLine(value: unknown): boolean {
+	if (!isRecord(value)) return false;
+	return (
+		typeof value.text === "string" &&
+		(value.wrapped === null || typeof value.wrapped === "boolean") &&
+		Array.isArray(value.cells) &&
+		value.cells.every(isSemanticCell)
+	);
+}
+
+function isSemanticState(value: unknown): value is NativeSemanticState {
+	if (!isRecord(value)) return false;
+	const dimensions = value.dimensions;
+	const cursor = value.cursor;
+	const modes = value.modes;
+	if (!isRecord(dimensions) || !isRecord(cursor) || !isRecord(modes)) return false;
+	const mouseTracking = modes.mouseTracking;
+	const booleanModes = [
+		"applicationCursorKeys",
+		"applicationKeypad",
+		"bracketedPaste",
+		"focusEvents",
+		"insert",
+		"origin",
+		"reverseWraparound",
+		"synchronizedOutput",
+		"wraparound",
+	];
+	return (
+		(value.activeBuffer === "normal" || value.activeBuffer === "alternate") &&
+		typeof value.title === "string" &&
+		isFiniteNumber(dimensions.cols, true) &&
+		dimensions.cols > 0 &&
+		isFiniteNumber(dimensions.rows, true) &&
+		dimensions.rows > 0 &&
+		isFiniteNumber(cursor.x, true) &&
+		isFiniteNumber(cursor.y, true) &&
+		typeof cursor.visible === "boolean" &&
+		(cursor.style === "block" || cursor.style === "underline" || cursor.style === "bar") &&
+		typeof cursor.blink === "boolean" &&
+		booleanModes.every((key) => typeof modes[key] === "boolean") &&
+		(mouseTracking === "none" ||
+			mouseTracking === "x10" ||
+			mouseTracking === "vt200" ||
+			mouseTracking === "drag" ||
+			mouseTracking === "any") &&
+		Array.isArray(value.screen) &&
+		value.screen.every(isSemanticLine) &&
+		Array.isArray(value.scrollback) &&
+		value.scrollback.every(isSemanticLine) &&
+		isFiniteNumber(value.scrollbackLength, true) &&
+		value.scrollbackLength >= value.scrollback.length
+	);
+}
+
 export function isParserStateSnapshot(value: unknown): value is ParserStateSnapshot {
 	if (!isRecord(value)) return false;
 	if (value.schema !== PARSER_STATE_SCHEMA || value.version !== PARSER_STATE_VERSION) return false;
@@ -80,7 +155,21 @@ export function isParserStateSnapshot(value: unknown): value is ParserStateSnaps
 	}
 	const status = (value.health as Record<string, unknown>).status;
 	if (status !== "live" && status !== "overflowed" && status !== "failed") return false;
-	return value.state === null || isRecord(value.state);
+	const health = value.health as Record<string, unknown>;
+	const overflow = health.overflow;
+	if (!isRecord(overflow) || !hasNumbers(overflow, ["droppedChunks", "droppedBytes", "droppedResizes"], true)) {
+		return false;
+	}
+	if (health.error !== undefined && typeof health.error !== "string") return false;
+	if (!hasNumbers(value.ingested as Record<string, unknown>, ["frames", "bytes", "resizes", "replies"], true)) {
+		return false;
+	}
+	if (!hasNumbers(value.latency as Record<string, unknown>, ["drains", "totalMs", "maxMs", "p50Ms", "p95Ms"])) {
+		return false;
+	}
+	if (!hasNumbers(value.memory as Record<string, unknown>, ["rssBytes", "heapUsedBytes"], true)) return false;
+	if (!isFiniteNumber(value.watermarkSeq, true) || typeof value.updatedAt !== "string") return false;
+	return value.state === null || isSemanticState(value.state);
 }
 
 export function parseParserStateSnapshot(serialized: string): ParserStateSnapshot {
@@ -107,7 +196,8 @@ export function writeParserStateAtomic(sessionId: string, snapshot: ParserStateS
 
 export function readParserState(sessionId: string): ParserStateSnapshot | null {
 	try {
-		return parseParserStateSnapshot(readFileSync(parserStateFile(sessionId), "utf8"));
+		const snapshot = parseParserStateSnapshot(readFileSync(parserStateFile(sessionId), "utf8"));
+		return snapshot.sessionId === sessionId ? snapshot : null;
 	} catch {
 		return null;
 	}

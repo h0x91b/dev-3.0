@@ -74,6 +74,24 @@ describe("parser-state snapshot", () => {
 		expect(() => parseParserStateSnapshot(JSON.stringify(bad))).toThrow(/Unsupported parser-state snapshot/);
 	});
 
+	it("rejects structurally partial snapshots instead of accepting them as healthy", () => {
+		const partials = [
+			{ ...snapshot(), health: { status: "live" } },
+			{ ...snapshot(), ingested: { frames: 3 } },
+			{ ...snapshot(), latency: { drains: 3 } },
+			{ ...snapshot(), memory: { rssBytes: 100 } },
+			{ ...snapshot(), state: {} },
+		];
+		for (const partial of partials) {
+			expect(() => parseParserStateSnapshot(JSON.stringify(partial))).toThrow(/Unsupported parser-state snapshot/);
+		}
+	});
+
+	it("rejects a valid snapshot stored under a different session id", () => {
+		writeParserStateAtomic("alpha", { ...snapshot(), sessionId: "other" });
+		expect(readParserState("alpha")).toBeNull();
+	});
+
 	it("readParserState returns null for a missing or corrupt file", () => {
 		expect(readParserState("alpha")).toBeNull();
 		writeParserStateAtomic("alpha", snapshot());

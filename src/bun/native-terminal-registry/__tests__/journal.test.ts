@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -60,6 +60,23 @@ describe("native-session journal frames", () => {
 			writer.stop();
 			const frames = parseJournal(readFileSync(path, "utf8"));
 			expect(frames.map((f) => dec(f.data))).toEqual(["one\n", "two\n"]);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps the last complete journal when publishing the next tail fails", () => {
+		const dir = mkdtempSync(join(tmpdir(), "dev3-native-journal-atomic-"));
+		const path = join(dir, "journal.ndjson");
+		const oldLine = encodeJournalFrame(0, "2026-07-20T00:00:00.000Z", enc("old\n"));
+		try {
+			writeFileSync(path, oldLine);
+			mkdirSync(`${path}.${process.pid}.tmp`);
+			const writer = new JournalWriter(path);
+			writer.record(enc("new\n"), "2026-07-20T00:00:01.000Z");
+			writer.stop();
+
+			expect(readFileSync(path, "utf8")).toBe(oldLine);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

@@ -43,6 +43,11 @@ jobs:
       - name: Native-session registry lifecycle E2E
         run: bun run test:native-registry-e2e
 
+      # Seq 1236 force-kills only the recorded host while journal/parser writes
+      # are active, then proves owned-tree death and token-matched recovery.
+      - name: Native-session host crash recovery E2E
+        run: bun run test:native-crash-e2e
+
       # Seq 1237 writer/observer proof. The same real-runtime lifecycle runs on
       # native Windows and POSIX: concurrent attach, claim races, reconnect, and resize.
       - name: Native-session two-client lifecycle E2E
