@@ -98,8 +98,12 @@ export const tooltips = {
 	"ttip.scripts.run": "Runs a package.json script or Makefile target from this worktree in a tmux pane, so you watch the output live.",
 	"ttip.devServer":
 		"Starts the project's dev script in its own tmux window, on ports allocated to this task — parallel tasks never fight over a port.",
+	"ttip.devServerRemoteWarning":
+		"Remote mode: the dev server is tuned for local use and is still experimental here — it may fail to start or behave oddly over the tunnel. Use at your own risk while we keep polishing it.",
 	"ttip.sharedImages": "Screenshots, QA captures and diagrams the agent shared with you for this task. Click to view them.",
 	"ttip.sharedArtifacts": "Interactive HTML reports the agent shared for this task. Click to open the artifact workspace.",
 	"ttip.ports.copyUrl": "Copies the public tunnel URL for this port — share it or open it on another device.",
 	"ttip.ports.section": "Ports this task listens on: open them in the browser or expose them through the remote tunnel.",
+	"ttip.ports.remoteWarning":
+		"Beta over remote: port tunnels are still flaky through the browser transport — exposing or reaching a port may fail or drop. Use at your own risk while we keep polishing it.",
 };

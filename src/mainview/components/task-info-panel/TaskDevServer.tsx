@@ -7,6 +7,7 @@ import { useT } from "../../i18n";
 import { useEscapeKey } from "../../hooks/useEscapeKey";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import { useResolvedTaskProject } from "./useResolvedTaskProject";
+import RemoteBetaWarning from "./RemoteBetaWarning";
 import Tooltip from "../Tooltip";
 
 interface TaskDevServerProps {
@@ -288,6 +289,13 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 			? t("header.devServerStarting")
 			: t("header.devServer");
 
+	const devServerDetail = (
+		<>
+			{t("ttip.devServer")}
+			<RemoteBetaWarning text={t("ttip.devServerRemoteWarning")} />
+		</>
+	);
+
 	let devServerIcon: ReactNode;
 	if (isRunning) {
 		// Steady "alive" signal — a calm pulsing dot, not a spinner.
@@ -322,7 +330,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 
 	return (
 		<>
-			<Tooltip content={devServerTitle} detail={t("ttip.devServer")}>
+			<Tooltip content={devServerTitle} detail={devServerDetail}>
 				<button
 					ref={devServerBtnRef}
 					onClick={handleDevServer}
