@@ -120,3 +120,48 @@ export function buildUpdateChangelog(windowEntries: ChangelogEntry[]): UpdateCha
 		fixCount: fixes.length,
 	};
 }
+
+/** Sections rendered into the GitHub Release body, in display order. */
+export const RELEASE_NOTES_SECTIONS: ReadonlyArray<{ type: string; heading: string }> = [
+	{ type: "feature", heading: "Features" },
+	{ type: "fix", heading: "Fixes" },
+	{ type: "refactor", heading: "Refactors" },
+];
+
+export interface ReleaseNotesSection {
+	heading: string;
+	titles: string[];
+}
+
+/**
+ * Group a release window into the GitHub Release "what's new" sections —
+ * Features (priority-ordered, same as the popover), then Fixes, then Refactors,
+ * using full entry titles. Empty sections are omitted. Shares the release window
+ * with {@link buildUpdateChangelog} so the popover and the release page describe
+ * the same set of changes.
+ */
+export function buildReleaseNotesSections(windowEntries: ChangelogEntry[]): ReleaseNotesSection[] {
+	const sections: ReleaseNotesSection[] = [];
+	for (const { type, heading } of RELEASE_NOTES_SECTIONS) {
+		let entries = windowEntries.filter((e) => e.type === type);
+		if (type === "feature") entries = [...entries].sort((a, b) => entryPriority(a) - entryPriority(b));
+		if (entries.length > 0) sections.push({ heading, titles: entries.map((e) => e.title) });
+	}
+	return sections;
+}
+
+/**
+ * Render {@link buildReleaseNotesSections} as Markdown for the GitHub Release
+ * body. Returns "" when there is nothing to show so the release job can skip the
+ * whole section instead of emitting an empty heading.
+ */
+export function renderReleaseNotesMarkdown(sections: ReleaseNotesSection[], version?: string): string {
+	if (sections.length === 0) return "";
+	const lines: string[] = [version ? `## What's new in ${version}` : "## What's new", ""];
+	for (const section of sections) {
+		lines.push(`### ${section.heading}`, "");
+		for (const title of section.titles) lines.push(`- ${title}`);
+		lines.push("");
+	}
+	return lines.join("\n").trimEnd() + "\n";
+}
