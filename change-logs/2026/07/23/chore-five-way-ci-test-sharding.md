@@ -1,0 +1,1 @@
+Split the full test workflow into five parallel CI shards, with each runner executing its mainview, bun, and CLI shard sequentially. This reduces wall-clock time while preventing the three Vitest suites from competing for one runner's worker pool.
