@@ -3063,6 +3063,45 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(screen.queryByTestId("task-actions-sheet")).not.toBeInTheDocument();
 		});
 
+		it("opens the Move to bottom sheet from the status chip (not the anchored popover)", async () => {
+			await act(async () => {
+				renderPanel(makeTask({ status: "in-progress" }));
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByText("Agent is Working"));
+			});
+			const sheet = screen.getByTestId("task-status-sheet");
+			expect(within(sheet).getByText("Move to")).toBeInTheDocument();
+			expect(within(sheet).getByText("Has Questions")).toBeInTheDocument();
+			expect(within(sheet).getByText("Completed")).toBeInTheDocument();
+		});
+
+		it("moves the task from the status sheet and closes it", async () => {
+			const dispatch = vi.fn();
+			const task = makeTask({ status: "in-progress" });
+			const updatedTask = { ...task, status: "user-questions" as const };
+			mockedApi.request.moveTask.mockResolvedValue(updatedTask);
+
+			await act(async () => {
+				renderPanel(task, { dispatch });
+			});
+			await act(async () => {
+				fireEvent.click(screen.getByText("Agent is Working"));
+			});
+			await act(async () => {
+				fireEvent.click(within(screen.getByTestId("task-status-sheet")).getByText("Has Questions"));
+			});
+
+			expect(mockedApi.request.moveTask).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+				newStatus: "user-questions",
+				clientPlayedSound: false,
+			});
+			expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: updatedTask });
+			expect(screen.queryByTestId("task-status-sheet")).not.toBeInTheDocument();
+		});
+
 		it("surfaces git action rows (diff, rebase, push, create PR, merge) in the actions sheet", async () => {
 			await act(async () => {
 				renderPanel(makeTask(), { onOpenInlineDiff: vi.fn() });

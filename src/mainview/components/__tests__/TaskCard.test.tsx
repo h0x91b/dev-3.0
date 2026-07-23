@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import TaskCard from "../TaskCard";
 import { I18nProvider } from "../../i18n";
@@ -540,6 +540,65 @@ describe("TaskCard", () => {
 			// Click the trigger again to close — it's still the first match
 			await user.click(screen.getAllByText("Agent is Working")[0]);
 			expect(screen.queryByText("Move to")).not.toBeInTheDocument();
+		});
+	});
+
+	describe("narrow viewport (mobile) status sheet", () => {
+		/** Stub matchMedia + innerWidth so useNarrowViewport(768) reports a phone. */
+		function mockViewport(width: number) {
+			Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width });
+			Object.defineProperty(window, "matchMedia", {
+				writable: true,
+				configurable: true,
+				value: vi.fn((query: string) => {
+					const m = query.match(/max-width:\s*(\d+)/);
+					const matches = m ? width <= Number(m[1]) : false;
+					return {
+						matches,
+						media: query,
+						addEventListener: vi.fn(),
+						removeEventListener: vi.fn(),
+						addListener: vi.fn(),
+						removeListener: vi.fn(),
+						dispatchEvent: vi.fn(),
+					};
+				}),
+			});
+		}
+
+		beforeEach(() => mockViewport(390));
+		afterEach(() => mockViewport(1024));
+
+		it("opens a bottom sheet instead of the anchored popover", async () => {
+			const user = userEvent.setup();
+			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" }));
+
+			await user.click(screen.getAllByText("Agent is Working")[0]);
+
+			const sheet = screen.getByTestId("task-status-sheet");
+			expect(within(sheet).getByText("Move to")).toBeInTheDocument();
+			expect(within(sheet).getByText("Has Questions")).toBeInTheDocument();
+			expect(within(sheet).getByText("Completed")).toBeInTheDocument();
+		});
+
+		it("moves the task from the sheet without opening the card", async () => {
+			const user = userEvent.setup();
+			const navigate = vi.fn();
+			const task = makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "dev3/test" });
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "user-questions" });
+			renderCard(task, { navigate });
+
+			await user.click(screen.getAllByText("Agent is Working")[0]);
+			await user.click(within(screen.getByTestId("task-status-sheet")).getByText("Has Questions"));
+
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+					expect.objectContaining({ taskId: "t1", newStatus: "user-questions" }),
+				);
+			});
+			expect(screen.queryByTestId("task-status-sheet")).not.toBeInTheDocument();
+			// The tap inside the sheet must not bubble into the card click (navigate).
+			expect(navigate).not.toHaveBeenCalled();
 		});
 	});
 

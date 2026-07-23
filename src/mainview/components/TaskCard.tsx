@@ -24,6 +24,9 @@ import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TaskDetailModal from "./TaskDetailModal";
 import MiniPipeline from "./MiniPipeline";
 import PipelineDropdown from "./PipelineDropdown";
+import BottomSheet from "./BottomSheet";
+import { useNarrowViewport } from "../hooks/useNarrowViewport";
+import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import ScheduleMessageModal from "./ScheduleMessageModal";
 import ScheduledMessagesChip from "./ScheduledMessagesChip";
 import AgentLauncherBadge, { resolveAgentLauncherIcon } from "./AgentLauncherBadge";
@@ -60,6 +63,7 @@ interface TaskCardProps {
 function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
+	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [moving, setMoving] = useState(false);
 	const [cancellingPreparation, setCancellingPreparation] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
@@ -169,6 +173,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		document.addEventListener("mousedown", handleClick);
 		return () => document.removeEventListener("mousedown", handleClick);
 	}, [menuOpen]);
+
+	// Crossing the narrow breakpoint must not strand the open menu — it renders
+	// as a bottom sheet on narrow and an anchored popover on desktop.
+	useEffect(() => {
+		setMenuOpen(false);
+	}, [narrow]);
 
 	// After menu renders (invisible), measure and clamp position within viewport
 	useLayoutEffect(() => {
@@ -1090,8 +1100,43 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			)}
 
 
-			{/* Status dropdown menu — portal + smart viewport clamping */}
-			{menuOpen && createPortal(
+			{/* Status dropdown menu — bottom sheet on narrow (≥44px touch rows),
+			    anchored portal + smart viewport clamping on desktop. The wrapper
+			    stops clicks bubbling through the portal back to the card. */}
+			{menuOpen && narrow && (
+				<div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+					<BottomSheet
+						open
+						onClose={() => setMenuOpen(false)}
+						title={t("task.moveTo")}
+						testId="task-status-sheet"
+					>
+						<PipelineDropdown
+							currentStatus={task.status}
+							onMove={handleMove}
+							onMoveToCustomColumn={handleMoveToCustomColumn}
+							onDelete={isCancelled ? handleDelete : undefined}
+							customColumns={project.customColumns}
+							currentCustomColumnId={task.customColumnId}
+							project={project}
+							size="touch"
+							hideHeader
+						/>
+						{hasLiveAgent && (
+							<>
+								<div className="my-1 border-t border-edge" />
+								<button
+									onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setScheduleMsgOpen(true); }}
+									className="w-full text-left rounded-md min-h-[2.75rem] px-2 py-2.5 text-base text-fg-2 hover:bg-elevated-hover hover:text-fg transition-colors"
+								>
+									{t("task.sendMessageLater")}
+								</button>
+							</>
+						)}
+					</BottomSheet>
+				</div>
+			)}
+			{menuOpen && !narrow && createPortal(
 				<div
 					ref={menuRef}
 					className="fixed z-50 bg-overlay rounded-xl shadow-2xl shadow-black/40 border border-edge-active py-1.5 min-w-[11.25rem]"
