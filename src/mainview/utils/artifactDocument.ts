@@ -4,7 +4,11 @@ interface ArtifactAssetPayload {
 	dataUrl: string;
 }
 
-const CSP = "default-src 'none'; img-src data: blob:; media-src data: blob:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+// The iframe sandbox (opaque origin, allow-scripts only) is the security boundary,
+// not this CSP: artifacts may load libraries from any origin and talk to any server
+// (fetch/WebSocket) so agents can build integrations with the user's own services or
+// the dev3 dev server (decision 163). Only plugin/base-url legacy vectors stay closed.
+const CSP = "default-src data: blob: https: http:; script-src 'unsafe-inline' data: blob: https: http:; style-src 'unsafe-inline' data: blob: https: http:; connect-src data: blob: https: http: ws: wss:; object-src 'none'; base-uri 'none'";
 
 /**
  * Right-click "Save image" for artifact images. The iframe is opaque-origin and
