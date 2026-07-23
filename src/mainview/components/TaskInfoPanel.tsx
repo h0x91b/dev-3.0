@@ -244,9 +244,11 @@ function TaskInfoPanel({
 		setMetadataBranchState(null);
 	}, [task.id]);
 
-	// Leaving the narrow viewport (window widened) must not strand an open sheet.
+	// Crossing the narrow breakpoint must not strand an open sheet/menu — the
+	// status menu renders as a sheet on narrow and an anchored popover on desktop.
 	useEffect(() => {
 		if (!narrow) setActionsSheetOpen(false);
+		setStatusMenuOpen(false);
 	}, [narrow]);
 
 	useEffect(() => () => {
@@ -747,12 +749,15 @@ function TaskInfoPanel({
 
 	const priorityBadge = <PriorityBadge priority={task.priority} onChange={handleSetPriority} className="shrink-0" />;
 
+	// On narrow the chip is a primary touch target — bump it to ≥44px (§12.6).
 	const statusDropdownButton = (
 		<button
 			ref={statusTriggerRef}
 			onClick={toggleStatusMenu}
 			disabled={movingStatus}
-			className="flex items-center gap-2 px-2.5 py-1 rounded-lg hover:bg-elevated transition-colors flex-shrink-0"
+			className={`flex items-center gap-2 rounded-lg hover:bg-elevated transition-colors flex-shrink-0 ${
+				narrow ? "px-3 min-h-[2.75rem]" : "px-2.5 py-1"
+			}`}
 		>
 			{activeCustomColumn ? (
 				<div
@@ -762,10 +767,10 @@ function TaskInfoPanel({
 			) : (
 				<MiniPipeline status={task.status} />
 			)}
-			<span className="text-[0.6875rem] font-medium text-fg-2">
+			<span className={`font-medium text-fg-2 ${narrow ? "text-sm" : "text-[0.6875rem]"}`}>
 				{activeCustomColumn ? activeCustomColumn.name : getStatusLabel(task.status, t, project)}
 			</span>
-			<svg className="w-3 h-3 text-fg-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<svg className={`text-fg-3 ${narrow ? "w-4 h-4" : "w-3 h-3"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
 				<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
 			</svg>
 		</button>
@@ -788,6 +793,28 @@ function TaskInfoPanel({
 			/>
 		</div>,
 		document.body,
+	);
+
+	// Narrow form of the same menu: an anchored popover is a desktop idiom (small
+	// rows, edge clipping) — the manifest mandates a BottomSheet for "Move to".
+	const statusSheet = (
+		<BottomSheet
+			open={statusMenuOpen}
+			onClose={() => setStatusMenuOpen(false)}
+			title={t("task.moveTo")}
+			testId="task-status-sheet"
+		>
+			<PipelineDropdown
+				currentStatus={task.status}
+				onMove={handleStatusMove}
+				onMoveToCustomColumn={handleMoveToCustomColumn}
+				customColumns={project.customColumns}
+				currentCustomColumnId={task.customColumnId}
+				project={project}
+				size="touch"
+				hideHeader
+			/>
+		</BottomSheet>
 	);
 
 	const spawnAgentButton = isTaskActive && task.worktreePath ? (
@@ -1053,7 +1080,7 @@ function TaskInfoPanel({
 			<div className="flex-shrink-0 border-b border-edge glass-header">
 				{diffFilesPopover}
 				{fileOpenInMenuPortal}
-				{statusDropdownPortal}
+				{statusSheet}
 				{/* Wide diff counters (e.g. "9 files +451 −297") must never clip off
 				    the right edge — the bar wraps instead of keeping a fixed height,
 				    so the badge always stays fully visible and tappable. */}

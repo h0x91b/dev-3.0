@@ -14,6 +14,10 @@ interface PipelineDropdownProps {
 	customColumns?: CustomColumn[];
 	currentCustomColumnId?: string | null;
 	project?: Pick<Project, "customStatusLabels"> | null;
+	/** "touch" bumps rows to ≥44px targets for the narrow-viewport bottom sheet. */
+	size?: "default" | "touch";
+	/** Hide the internal "Move to" header (the hosting sheet already shows one). */
+	hideHeader?: boolean;
 }
 
 /** Side-branch statuses that aren't in PIPELINE_STAGES but still need to be selectable */
@@ -27,21 +31,29 @@ export default function PipelineDropdown({
 	customColumns,
 	currentCustomColumnId,
 	project,
+	size = "default",
+	hideHeader = false,
 }: PipelineDropdownProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const states = getStageStates(currentStatus);
 	const allowed = getAllowedTransitions(currentStatus);
 	const isCancelled = currentStatus === "cancelled";
+	const touch = size === "touch";
+	const sectionPad = touch ? "px-1" : "px-3";
+	const rowText = touch ? "text-base" : "text-sm";
+	const rowPad = touch ? "min-h-[2.75rem] py-2.5 px-2" : "py-1.5 px-1.5";
 
 	return (
 		<div onClick={(e) => e.stopPropagation()}>
-			<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
-				{t("task.moveTo")}
-			</div>
+			{!hideHeader && (
+				<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
+					{t("task.moveTo")}
+				</div>
+			)}
 
 			{/* Main pipeline stages */}
-			<div className="px-3 pb-1">
+			<div className={`${sectionPad} pb-1`}>
 				{PIPELINE_STAGES.map((stage, i) => {
 					const state = states[i];
 					const isCurrentStage = state === "current" && !isSideBranch(currentStatus);
@@ -52,14 +64,15 @@ export default function PipelineDropdown({
 					return (
 						<div key={stage} className="flex items-stretch">
 							{/* Pipeline track (dots + line) */}
-							<div className="flex flex-col items-center w-5 flex-shrink-0">
+							<div className={`flex flex-col items-center flex-shrink-0 ${touch ? "w-6" : "w-5"}`}>
 								{/* Dot */}
-								<div className="flex items-center justify-center h-[1.875rem]">
+								<div className={`flex items-center justify-center ${touch ? "h-[2.75rem]" : "h-[1.875rem]"}`}>
 									<PipelineDot
 										state={state}
 										color={color}
 										activeColor={statusColors[currentStatus]}
 										isSideBranch={false}
+										touch={touch}
 									/>
 								</div>
 								{/* Connector line */}
@@ -80,7 +93,7 @@ export default function PipelineDropdown({
 							<button
 								onClick={canTransition ? () => onMove(stage) : undefined}
 								disabled={!canTransition}
-								className={`flex-1 text-left py-1.5 pl-1.5 pr-3 text-sm rounded-md transition-colors ${
+								className={`flex-1 text-left ${touch ? "min-h-[2.75rem] py-2.5 pl-2" : "py-1.5 pl-1.5"} pr-3 ${rowText} rounded-md transition-colors ${
 									isCurrentStage
 										? "text-fg font-semibold cursor-default"
 										: canTransition
@@ -104,7 +117,7 @@ export default function PipelineDropdown({
 			{SIDE_STATUSES.some((s) => allowed.includes(s) || currentStatus === s) && (
 				<>
 					<div className="border-t border-edge-active mx-3 my-1" />
-					<div className="px-3 pb-1">
+					<div className={`${sectionPad} pb-1`}>
 						{SIDE_STATUSES.map((stage) => {
 							const isCurrentSide = currentStatus === stage;
 							const canTransition = allowed.includes(stage) && !isCurrentSide;
@@ -117,7 +130,7 @@ export default function PipelineDropdown({
 									key={stage}
 									onClick={canTransition ? () => onMove(stage) : undefined}
 									disabled={!canTransition}
-									className={`w-full text-left flex items-center gap-2.5 py-1.5 px-1.5 text-sm rounded-md transition-colors ${
+									className={`w-full text-left flex items-center gap-2.5 ${rowPad} ${rowText} rounded-md transition-colors ${
 										isCurrentSide
 											? "text-fg font-semibold cursor-default"
 											: canTransition
@@ -126,7 +139,7 @@ export default function PipelineDropdown({
 									}`}
 								>
 									<div
-										className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+										className={`rounded-full flex-shrink-0 ${touch ? "w-3 h-3" : "w-2.5 h-2.5"}`}
 										style={{
 											background: color,
 											opacity: isCurrentSide ? 1 : 0.6,
@@ -150,7 +163,7 @@ export default function PipelineDropdown({
 			{customColumns && customColumns.length > 0 && (
 				<>
 					<div className="border-t border-edge-active mx-3 my-1" />
-					<div className="px-3 pb-1">
+					<div className={`${sectionPad} pb-1`}>
 						{customColumns.map((col) => {
 							const isCurrent = col.id === currentCustomColumnId;
 							return (
@@ -158,14 +171,14 @@ export default function PipelineDropdown({
 									key={col.id}
 									onClick={!isCurrent ? () => onMoveToCustomColumn?.(col.id) : undefined}
 									disabled={isCurrent}
-									className={`w-full text-left flex items-center gap-2.5 py-1.5 px-1.5 text-sm rounded-md transition-colors ${
+									className={`w-full text-left flex items-center gap-2.5 ${rowPad} ${rowText} rounded-md transition-colors ${
 										isCurrent
 											? "text-fg font-semibold cursor-default"
 											: "text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
 									}`}
 								>
 									<div
-										className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+										className={`rounded-full flex-shrink-0 ${touch ? "w-3 h-3" : "w-2.5 h-2.5"}`}
 										style={{
 											background: col.color,
 											boxShadow: isCurrent ? `0 0 6px ${col.color}60` : undefined,
@@ -189,10 +202,10 @@ export default function PipelineDropdown({
 				<div className="border-t border-edge-active mx-3 mt-1 pt-1 pb-1">
 					<button
 						onClick={onDelete}
-						className="w-full text-left px-1.5 py-2 text-sm text-danger hover:bg-danger/10 flex items-center gap-2.5 rounded-md transition-colors"
+						className={`w-full text-left ${touch ? "min-h-[2.75rem] px-2 py-2.5" : "px-1.5 py-2"} ${rowText} text-danger hover:bg-danger/10 flex items-center gap-2.5 rounded-md transition-colors`}
 					>
 						<svg
-							className="w-4 h-4 flex-shrink-0"
+							className={`flex-shrink-0 ${touch ? "w-5 h-5" : "w-4 h-4"}`}
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"
@@ -217,14 +230,17 @@ function PipelineDot({
 	color,
 	activeColor,
 	isSideBranch: _isSide,
+	touch = false,
 }: {
 	state: StageState;
 	color: string;
 	activeColor: string;
 	isSideBranch: boolean;
+	touch?: boolean;
 }) {
-	const size = state === "current" ? 10 : 8;
-	const dotSize = state === "current" ? 10 : 6;
+	const bump = touch ? 2 : 0;
+	const size = (state === "current" ? 10 : 8) + bump;
+	const dotSize = (state === "current" ? 10 : 6) + bump;
 
 	return (
 		<div
