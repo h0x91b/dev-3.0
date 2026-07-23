@@ -16,6 +16,10 @@ export async function confirmTaskCompletion(
 ): Promise<boolean> {
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	if (!task.worktreePath) return true;
+	// PR-review tasks check out someone else's existing branch — the commits,
+	// unpushed and unmerged state aren't the user's work, so completing them
+	// must not warn about uncommitted/unpushed/unmerged changes.
+	if (task.existingBranch) return true;
 
 	let status;
 	try {

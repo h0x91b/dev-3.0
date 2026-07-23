@@ -89,6 +89,16 @@ describe("confirmTaskCompletion", () => {
 		);
 	});
 
+	it("skips the check entirely for PR-review tasks (existing branch is not the user's work)", async () => {
+		const task = { ...baseTask, existingBranch: "feature/someone-else" } as Task;
+
+		const ok = await confirmTaskCompletion(task, project, "completed", t);
+
+		expect(ok).toBe(true);
+		expect(mockedBranchStatus).not.toHaveBeenCalled();
+		expect(mockedConfirm).not.toHaveBeenCalled();
+	});
+
 	it("does not prompt (and renders no card) when there are no warnings", async () => {
 		mockedBranchStatus.mockResolvedValue({
 			insertions: 0,
