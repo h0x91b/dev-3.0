@@ -162,6 +162,8 @@ const common = {
 	"openIn.failedOpen": "Failed to open in {app}: {error}",
 	"openIn.copyPath": "Copy Path",
 	"openIn.pathCopied": "Copied!",
+	"openIn.customBadge": "custom",
+	"openIn.openShortcutHint": "1–9 open · ↵ open · esc close",
 
 	// GitHub CLI warning banner
 	"ghWarning.titleNotInstalled": "GitHub CLI (gh) is not installed",

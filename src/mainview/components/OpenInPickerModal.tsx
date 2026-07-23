@@ -5,7 +5,7 @@ import type { ExternalApp } from "../../shared/types";
 import { useAvailableApps } from "../hooks/useAvailableApps";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useFocusTrap } from "../utils/useFocusTrap";
-import { OPEN_IN_APP_ICONS, OPEN_IN_APP_ICON_FALLBACK } from "./openInAppIcons";
+import { OPEN_IN_APP_ICONS, brandColorForApp, isCustomOpenInApp } from "./openInAppIcons";
 import { useT } from "../i18n";
 import { api } from "../rpc";
 
@@ -18,13 +18,14 @@ interface OpenInPickerModalProps {
 	onClose: () => void;
 }
 
-const COLUMNS = 3;
+const COLUMNS = 4;
 
 /**
  * Centered, keyboard-summoned picker for the Cmd/Ctrl+O "Open in…" shortcut.
  * Unlike the anchored `OpenInMenu` dropdown (right-click / task-panel button),
- * this is a focused Modal surface: it always lists the installed apps as tiles
- * and opens the current context (project path or task worktree) in the chosen one.
+ * this is a focused Modal surface: a brand-colored tile grid that always lists
+ * the installed apps and opens the current context (project path or task
+ * worktree) in the chosen one. 1–9 open directly; arrows move the focus ring.
  */
 export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPickerModalProps) {
 	const t = useT();
@@ -35,7 +36,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 
 	useEscapeKey(onClose);
 
-	// Focus the first app tile once the list is known so keyboard users land on a
+	// Focus the first tile once the list is known so keyboard users land on a
 	// concrete choice (Enter opens it) instead of the bare dialog container.
 	useEffect(() => {
 		if (apps.length > 0) tileRefs.current[0]?.focus();
@@ -56,21 +57,44 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 		setTimeout(() => setCopied(false), 1200);
 	}
 
-	// Arrow keys move focus linearly across the tile grid (Right/Down = next,
-	// Left/Up = previous), wrapping at the ends.
-	function handleGridKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-		const delta =
-			event.key === "ArrowRight" || event.key === "ArrowDown"
-				? 1
-				: event.key === "ArrowLeft" || event.key === "ArrowUp"
-					? -1
-					: 0;
-		if (delta === 0) return;
-		event.preventDefault();
+	function focusTile(index: number) {
+		const count = apps.length;
+		if (count === 0) return;
+		tileRefs.current[((index % count) + count) % count]?.focus();
+	}
+
+	function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+		// 1–9 open the Nth app directly (no text input in this modal to conflict).
+		if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key >= "1" && event.key <= "9") {
+			const index = Number(event.key) - 1;
+			if (index < apps.length) {
+				event.preventDefault();
+				void handleOpen(apps[index]);
+			}
+			return;
+		}
 		const current = tileRefs.current.findIndex((el) => el === document.activeElement);
 		const base = current === -1 ? 0 : current;
-		const next = (base + delta + apps.length) % apps.length;
-		tileRefs.current[next]?.focus();
+		switch (event.key) {
+			case "ArrowRight":
+				event.preventDefault();
+				focusTile(base + 1);
+				break;
+			case "ArrowLeft":
+				event.preventDefault();
+				focusTile(base - 1);
+				break;
+			case "ArrowDown":
+				event.preventDefault();
+				focusTile(base + COLUMNS);
+				break;
+			case "ArrowUp":
+				event.preventDefault();
+				focusTile(base - COLUMNS);
+				break;
+			default:
+				break;
+		}
 	}
 
 	return createPortal(
@@ -89,6 +113,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 				aria-labelledby="open-in-picker-title"
 				className="bg-overlay rounded-2xl border border-edge-active shadow-2xl shadow-black/40 w-full max-w-[30rem] outline-none"
 				onMouseDown={(event) => event.stopPropagation()}
+				onKeyDown={handleKeyDown}
 			>
 				<div className="px-5 pt-4 pb-3 border-b border-edge">
 					<div id="open-in-picker-title" className="text-sm font-semibold text-fg">
@@ -102,29 +127,50 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 				{apps.length === 0 ? (
 					<div className="px-5 py-10 text-sm text-fg-muted text-center">{t("openIn.noAppsFound")}</div>
 				) : (
-					<div className="p-3 grid gap-2" style={{ gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))` }} onKeyDown={handleGridKeyDown}>
-						{apps.map((app, index) => (
-							<button
-								key={app.id}
-								ref={(el) => {
-									tileRefs.current[index] = el;
-								}}
-								onClick={() => handleOpen(app)}
-								className="flex flex-col items-center justify-center gap-2 rounded-xl px-2 py-4 text-fg-2 hover:text-fg hover:bg-elevated-hover border border-transparent hover:border-edge focus:outline-none focus:ring-2 focus:ring-accent/50 focus:bg-elevated-hover transition-colors"
-							>
-								<span
-									className="text-[1.75rem] leading-none text-accent"
-									style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+					<div className="p-3 grid gap-2" style={{ gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))` }}>
+						{apps.map((app, index) => {
+							const glyph = OPEN_IN_APP_ICONS[app.id];
+							const custom = isCustomOpenInApp(app.id);
+							return (
+								<button
+									key={app.id}
+									ref={(el) => {
+										tileRefs.current[index] = el;
+									}}
+									onClick={() => handleOpen(app)}
+									title={app.name}
+									className="relative flex flex-col items-center gap-2 rounded-xl px-1.5 pt-3.5 pb-2.5 border border-transparent hover:border-edge hover:bg-elevated-hover focus:outline-none focus:border-accent/60 focus:bg-accent/10 focus:ring-2 focus:ring-accent/20 transition-colors"
 								>
-									{OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK}
-								</span>
-								<span className="text-xs font-medium text-center leading-tight">{app.name}</span>
-							</button>
-						))}
+									{index < 9 && (
+										<span className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-[5px] bg-elevated border border-edge text-fg-muted text-[0.625rem] font-semibold leading-none font-mono">
+											{index + 1}
+										</span>
+									)}
+									{custom && (
+										<span className="absolute top-1.5 left-1.5 px-1 py-0.5 rounded-[5px] bg-warning/15 text-warning text-[0.5rem] font-bold uppercase tracking-wide leading-none">
+											{t("openIn.customBadge")}
+										</span>
+									)}
+									<span
+										className="flex items-center justify-center w-11 h-11 rounded-[27%] text-white shadow-inner"
+										style={{ background: brandColorForApp(app.id) }}
+									>
+										{glyph ? (
+											<span className="text-[1.25rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+												{glyph}
+											</span>
+										) : (
+											<span className="text-base font-bold leading-none">{app.name.slice(0, 1).toUpperCase()}</span>
+										)}
+									</span>
+									<span className="text-[0.6875rem] font-semibold text-fg-2 text-center leading-tight">{app.name}</span>
+								</button>
+							);
+						})}
 					</div>
 				)}
 
-				<div className="border-t border-edge px-3 py-2">
+				<div className="border-t border-edge px-3 py-2 flex items-center justify-between gap-3">
 					<button
 						onClick={copyPath}
 						className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-fg-3 hover:text-fg hover:bg-elevated-hover focus:outline-none focus:ring-2 focus:ring-accent/50 transition-colors"
@@ -134,6 +180,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 						</span>
 						{copied ? t("openIn.pathCopied") : t("openIn.copyPath")}
 					</button>
+					<span className="text-[0.625rem] text-fg-muted hidden sm:block">{t("openIn.openShortcutHint")}</span>
 				</div>
 			</div>
 		</div>,

@@ -72,6 +72,41 @@ describe("OpenInPickerModal", () => {
 		});
 	});
 
+	it("opens the Nth app when its digit key is pressed", async () => {
+		const onClose = vi.fn();
+		renderModal("/tmp/worktree", onClose);
+
+		await waitFor(() => {
+			expect(screen.getByText("VS Code")).toBeInTheDocument();
+		});
+
+		// Tile order is Finder(1), VS Code(2), Cursor(3) — pressing "2" opens VS Code.
+		await userEvent.keyboard("2");
+
+		expect(onClose).toHaveBeenCalled();
+		await waitFor(() => {
+			expect(mockedApi.request.openInApp).toHaveBeenCalledWith({
+				appName: "Visual Studio Code",
+				path: "/tmp/worktree",
+			});
+		});
+	});
+
+	it("marks a user-added app with the custom badge", async () => {
+		mockedApi.request.getAvailableApps.mockResolvedValueOnce([
+			{ id: "finder", name: "Finder", macAppName: "Finder" },
+			{ id: "textmate", name: "TextMate", macAppName: "TextMate" },
+		]);
+		invalidateAvailableApps();
+		renderModal();
+
+		await waitFor(() => {
+			expect(screen.getByText("TextMate")).toBeInTheDocument();
+		});
+		// Finder is a built-in default; TextMate is user-added → exactly one badge.
+		expect(screen.getAllByText("custom")).toHaveLength(1);
+	});
+
 	it("closes on Escape", async () => {
 		const onClose = vi.fn();
 		renderModal("/tmp/worktree", onClose);
