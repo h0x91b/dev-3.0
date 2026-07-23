@@ -862,7 +862,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			})()}
 
 			{/* Bottom row — pipeline + badges */}
-			<div data-testid="task-card-footer" className="mt-2 flex min-w-0 items-center gap-1.5">
+			<div data-testid="task-card-footer" className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
 				{/* Status dropdown trigger with mini-pipeline */}
 				{(() => {
 					const activeCol = task.customColumnId
