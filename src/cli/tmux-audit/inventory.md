@@ -16,12 +16,12 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 
 ## Baseline counts
 
-- Tracked files scanned: **2583**
-- In-boundary files with **no** tmux signal: **916**
-- **Inventoried tmux dependencies: 244** (4655 signal occurrences)
-- Historical references (changelogs + ADRs, out of scope): **265** files, 878 occurrences
+- Tracked files scanned: **2594**
+- In-boundary files with **no** tmux signal: **924**
+- **Inventoried tmux dependencies: 245** (4656 signal occurrences)
+- Historical references (changelogs + ADRs, out of scope): **267** files, 881 occurrences
 - Deep `TmuxClient` internals: **10** · callers that still know tmux vocabulary: **76**
-- Active dependencies (behavior changes on removal): **152** · reference-only mentions: **92**
+- Active dependencies (behavior changes on removal): **152** · reference-only mentions: **93**
 
 ### By category
 
@@ -31,7 +31,7 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `capture-state` | 6 | capture-pane, scrollback, copy-mode, search, and terminal state parsing. |
 | `cli-rpc-ui` | 33 | CLI commands, RPC handlers, menus, and UI wiring that speak tmux. |
 | `compatibility` | 10 | Backward-compatible data, session naming, and backend-identity contracts. |
-| `documentation` | 55 | Live docs, user-facing copy, and agent instructions naming tmux. |
+| `documentation` | 56 | Live docs, user-facing copy, and agent instructions naming tmux. |
 | `packaging-update` | 14 | Bundled tmux binary, shim, staging, signing, CI, container, and app-bundle copy. |
 | `pane-layout` | 17 | Panes, windows, splits, layout, zoom, focus, and the tmux prefix cheat sheet. |
 | `process-resource` | 3 | Reads the tmux process/pane tree for port and resource attribution. |
@@ -45,7 +45,7 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `caller` | 76 | Production code outside the adapter that calls it or otherwise depends on tmux. |
 | `deep-internal` | 10 | Inside the tmux adapter (src/bun/tmux/**) — owns tmux vocabulary by design. |
 | `isolation` | 6 | Native replacement / spike that references tmux only to assert it does NOT use it. |
-| `surface` | 65 | Docs, user-facing copy, CSS, packaging scripts, CI, and config that name tmux but are not TS callers. |
+| `surface` | 66 | Docs, user-facing copy, CSS, packaging scripts, CI, and config that name tmux but are not TS callers. |
 | `test` | 87 | Tests, e2e, and fixtures. |
 
 ### By dependency kind
@@ -53,7 +53,7 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | Kind | Count | Meaning |
 | --- | --- | --- |
 | `active` | 152 | Removing tmux forces a behavior/output change here. |
-| `reference` | 92 | Only a mention (comment, doc, copy, log key); deletable as cleanup. |
+| `reference` | 93 | Only a mention (comment, doc, copy, log key); deletable as cleanup. |
 
 ### By target roadmap item
 
@@ -72,7 +72,7 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `LAY-007` | 2 | Verify desktop, browser, and narrow/mobile rendering. |
 | `MIG-001` | 6 | Backend-neutral terminal parity corpus. |
 | `MIG-003` | 3 | Backend identity as backward-compatible data. |
-| `MIG-006` | 17 | Keep tmux failure isolation (native replacement asserts non-use). |
+| `MIG-006` | 18 | Keep tmux failure isolation (native replacement asserts non-use). |
 | `RUN-005` | 2 | Minimum-runtime gate and diagnostics. |
 | `RUN-006` | 2 | Package, sign, and update the host. |
 | `STATE-008` | 3 | Restore required terminal features. |
@@ -190,6 +190,7 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `src/bun/native-terminal-registry/README.md` | surface | reference | `MIG-006` | Native registry README contrasts with the tmux backend. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/bun/native-terminal-registry/WINDOWS-SHELL-MATRIX.md` | surface | reference | `MIG-006` | Windows shell matrix references tmux for contrast. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/bun/prototypes/detached-pty/README.md` | surface | reference | `MIG-006` | Detached-PTY spike README references tmux-removal context. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
+| `src/bun/prototypes/stream-resync/README.md` | surface | reference | `MIG-006` | Stream-resync spike README references tmux-removal context. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/bun/prototypes/terminal-state/README.md` | surface | reference | `MIG-006` | Terminal-state spike README references tmux for contrast. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/bun/prototypes/terminal-state/WINDOWS-MATRIX.md` | surface | reference | `MIG-006` | Terminal-state spike matrix references tmux for contrast. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/cli/help.ts` | surface | reference | `CUT-005` | CLI help text naming tmux. | The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006). |

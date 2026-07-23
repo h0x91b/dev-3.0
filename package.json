@@ -29,6 +29,7 @@
 		"test:native-host-images-e2e": "bun src/bun/native-terminal-registry/host-images/__tests__/lifecycle.bun-e2e.ts",
 		"test:terminal-state-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/terminal-state/__tests__",
 		"benchmark:terminal-state-spike": "bun src/bun/prototypes/terminal-state/benchmark.ts",
+		"test:stream-resync-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/stream-resync/__tests__",
 		"test:watch": "vitest",
 		"bump": "bun run scripts/bump.ts"
 	},

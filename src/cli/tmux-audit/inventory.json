@@ -42,14 +42,14 @@
 		]
 	},
 	"totals": {
-		"trackedFiles": 2583,
-		"inBoundaryClean": 916,
-		"inventoried": 244,
-		"occurrences": 4655
+		"trackedFiles": 2594,
+		"inBoundaryClean": 924,
+		"inventoried": 245,
+		"occurrences": 4656
 	},
 	"historical": {
-		"fileCount": 265,
-		"occurrences": 878
+		"fileCount": 267,
+		"occurrences": 881
 	},
 	"hiddenGrammarFiles": [
 		"src/bun/tmux/__tests__/alt-click.test.ts"
@@ -59,7 +59,7 @@
 		"capture-state": 6,
 		"cli-rpc-ui": 33,
 		"compatibility": 10,
-		"documentation": 55,
+		"documentation": 56,
 		"packaging-update": 14,
 		"pane-layout": 17,
 		"process-resource": 3,
@@ -70,12 +70,12 @@
 		"caller": 76,
 		"deep-internal": 10,
 		"isolation": 6,
-		"surface": 65,
+		"surface": 66,
 		"test": 87
 	},
 	"byDependencyKind": {
 		"active": 152,
-		"reference": 92
+		"reference": 93
 	},
 	"byRoadmapItem": {
 		"CUT-005": 116,
@@ -91,7 +91,7 @@
 		"LAY-007": 2,
 		"MIG-001": 6,
 		"MIG-003": 3,
-		"MIG-006": 17,
+		"MIG-006": 18,
 		"RUN-005": 2,
 		"RUN-006": 2,
 		"STATE-008": 3
@@ -1211,6 +1211,18 @@
 			"depth": "isolation",
 			"dependencyKind": "reference",
 			"consumer": "Detached-PTY spike state referencing tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		{
+			"path": "src/bun/prototypes/stream-resync/README.md",
+			"occurrences": 1,
+			"fingerprint": "b36823d20bde7b48",
+			"via": "override",
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Stream-resync spike README references tmux-removal context.",
 			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		},
 		{
