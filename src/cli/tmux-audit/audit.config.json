@@ -1129,6 +1129,14 @@
 			"consumer": "Terminal-state spike README references tmux for contrast.",
 			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		},
+		"src/bun/prototypes/stream-resync/README.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Stream-resync spike README references tmux-removal context.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
 		"src/bun/prototypes/terminal-state/WINDOWS-MATRIX.md": {
 			"category": "documentation",
 			"roadmapItem": "MIG-006",
