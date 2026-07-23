@@ -10,11 +10,11 @@ The affected tests passed alone and with capped workers, while concurrent uncapp
 
 ## Decision
 
-The Build workflow runs five matrix jobs, and job N executes shard N/5 of mainview, bun, and CLI sequentially. Each suite records its outcome without stopping the shard, a shard-local gate fails after all three have run, matrix fail-fast is disabled, only shard 1 may populate a missing dependency cache, and a final `test` gate preserves the existing required-check name.
+The Build workflow runs five matrix jobs, and job N executes shard N/5 of mainview, bun, and CLI sequentially. Each suite records its outcome without stopping the shard, every shard uploads one result artifact, and the final `test` gate reads all five artifacts before preserving the existing required-check verdict; this avoids GitHub finalizing the matrix dependency after its first failed child. Matrix fail-fast is disabled, matrix failures are deferred to the artifact gate, and only shard 1 may populate a missing dependency cache.
 
 ## Risks
 
-Five runners repeat checkout, Bun setup, cache restore, and generated-file work, increasing total billed minutes even as wall-clock time falls. Hash-based shards can still be imbalanced when unusually heavy files land together, so initial CI timings must be reviewed.
+Five runners repeat checkout, Bun setup, cache restore, generated-file work, and artifact upload, increasing total billed minutes even as wall-clock time falls. Hash-based shards can still be imbalanced when unusually heavy files land together, so initial CI timings must be reviewed.
 
 ## Alternatives considered
 
