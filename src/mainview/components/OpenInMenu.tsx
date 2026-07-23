@@ -4,25 +4,9 @@ import { createPortal } from "react-dom";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { ExternalApp } from "../../shared/types";
 import { useAvailableApps } from "../hooks/useAvailableApps";
-import { setSelectedOpenInAppId } from "../openInPreference";
+import { OPEN_IN_APP_ICONS, OPEN_IN_APP_ICON_FALLBACK } from "./openInAppIcons";
 import { useT } from "../i18n";
 import { api } from "../rpc";
-
-/** Nerd Font icons for known app IDs */
-const APP_ICONS: Record<string, string> = {
-	finder: "\uF024",     // nf-oct-file_directory
-	vscode: "\u{F0A1E}",  // nf-md-microsoft_visual_studio_code
-	cursor: "\u{F0A1E}",  // reuse vscode icon
-	ghostty: "\uF489",    // nf-oct-terminal
-	iterm: "\uF489",
-	terminal: "\uF489",
-	intellij: "\u{F0184}",    // nf-md-diamond_stone (IntelliJ)
-	"intellij-ultimate": "\u{F0184}",
-	"intellij-ce": "\u{F0184}",
-	pycharm: "\u{F0184}",
-	zed: "\u{F0599}",            // nf-md-lightning_bolt (Zed)
-	sublime: "\u{F0CC5}",        // nf-md-text_box (Sublime Text)
-};
 
 interface OpenInMenuProps {
 	/** Position of the menu (top-left corner) */
@@ -83,8 +67,6 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 
 	async function handleOpen(app: ExternalApp) {
 		onClose();
-		// Choosing an app from any picker makes it the default for Cmd/Ctrl+O.
-		setSelectedOpenInAppId(app.id);
 		try {
 			await api.request.openInApp({ appName: app.macAppName, path });
 		} catch (err) {
@@ -121,7 +103,7 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 							className="w-4 text-center text-[0.875rem] leading-none flex-shrink-0"
 							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
 						>
-							{APP_ICONS[app.id] ?? "\u{F0645}"}
+							{OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK}
 						</span>
 						{app.name}
 					</button>

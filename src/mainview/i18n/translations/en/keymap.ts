@@ -39,7 +39,7 @@ const keymap = {
 	"keymap.shortcut.zoomOut": "Zoom out",
 	"keymap.shortcut.zoomReset": "Reset zoom",
 	"keymap.shortcut.hardRefresh": "Hard refresh",
-	"keymap.shortcut.openIn": "Open current project/worktree in your app (or pick one)",
+	"keymap.shortcut.openIn": "Open current project/worktree in an app (picker)",
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
 	"keymap.shortcut.helpMode": "Explain this screen (help mode)",
 	"keymap.shortcut.terminalFullscreen": "Toggle terminal immersive fullscreen (task terminal only)",

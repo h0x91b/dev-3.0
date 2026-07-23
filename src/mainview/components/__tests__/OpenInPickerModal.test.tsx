@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import OpenInMenu from "../OpenInMenu";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import OpenInPickerModal from "../OpenInPickerModal";
 import { invalidateAvailableApps } from "../../hooks/useAvailableApps";
 import { I18nProvider } from "../../i18n";
 
@@ -20,25 +21,25 @@ vi.mock("../../rpc", () => ({
 import { api } from "../../rpc";
 const mockedApi = vi.mocked(api, true);
 
-function renderMenu(path = "/tmp/worktree", onClose = vi.fn()) {
+function renderModal(path = "/tmp/worktree", onClose = vi.fn()) {
 	return {
 		onClose,
 		...render(
 			<I18nProvider>
-				<OpenInMenu position={{ top: 100, left: 200 }} path={path} onClose={onClose} />
+				<OpenInPickerModal path={path} onClose={onClose} />
 			</I18nProvider>,
 		),
 	};
 }
 
-describe("OpenInMenu", () => {
+describe("OpenInPickerModal", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		invalidateAvailableApps();
 	});
 
-	it("renders available apps", async () => {
-		renderMenu();
+	it("renders the available apps as tiles", async () => {
+		renderModal();
 		await waitFor(() => {
 			expect(screen.getByText("Finder")).toBeInTheDocument();
 			expect(screen.getByText("VS Code")).toBeInTheDocument();
@@ -46,16 +47,15 @@ describe("OpenInMenu", () => {
 		});
 	});
 
-	it("shows 'Open in...' header", async () => {
-		renderMenu();
-		await waitFor(() => {
-			expect(screen.getByText("Open in...")).toBeInTheDocument();
-		});
+	it("shows the path being opened and the 'Open in...' title", async () => {
+		renderModal("/tmp/my-worktree");
+		expect(screen.getByText("Open in...")).toBeInTheDocument();
+		expect(screen.getByText("/tmp/my-worktree")).toBeInTheDocument();
 	});
 
-	it("calls openInApp and closes menu when clicking an app", async () => {
+	it("opens the clicked app for the given path and closes", async () => {
 		const onClose = vi.fn();
-		renderMenu("/tmp/worktree", onClose);
+		renderModal("/tmp/worktree", onClose);
 
 		await waitFor(() => {
 			expect(screen.getByText("VS Code")).toBeInTheDocument();
@@ -72,9 +72,9 @@ describe("OpenInMenu", () => {
 		});
 	});
 
-	it("closes on Escape key", async () => {
+	it("closes on Escape", async () => {
 		const onClose = vi.fn();
-		renderMenu("/tmp/worktree", onClose);
+		renderModal("/tmp/worktree", onClose);
 
 		await waitFor(() => {
 			expect(screen.getByText("Finder")).toBeInTheDocument();
@@ -84,12 +84,25 @@ describe("OpenInMenu", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("copies worktree path to clipboard when clicking Copy Path", async () => {
+	it("closes when clicking the backdrop", async () => {
+		const onClose = vi.fn();
+		renderModal("/tmp/worktree", onClose);
+
+		await waitFor(() => {
+			expect(screen.getByText("Finder")).toBeInTheDocument();
+		});
+
+		// The dialog's backdrop is the outermost presentation element.
+		const backdrop = screen.getByRole("presentation");
+		await userEvent.click(backdrop);
+		expect(onClose).toHaveBeenCalled();
+	});
+
+	it("copies the path to the clipboard", async () => {
 		const writeText = vi.fn().mockResolvedValue(undefined);
 		vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
 
-		renderMenu("/tmp/my-worktree");
-
+		renderModal("/tmp/my-worktree");
 		await waitFor(() => {
 			expect(screen.getByText("Copy Path")).toBeInTheDocument();
 		});
@@ -98,5 +111,15 @@ describe("OpenInMenu", () => {
 
 		expect(writeText).toHaveBeenCalledWith("/tmp/my-worktree");
 		expect(screen.getByText("Copied!")).toBeInTheDocument();
+	});
+
+	it("shows an empty state when no apps are installed", async () => {
+		mockedApi.request.getAvailableApps.mockResolvedValueOnce([]);
+		invalidateAvailableApps();
+		renderModal();
+
+		await waitFor(() => {
+			expect(screen.getByText("No external apps found")).toBeInTheDocument();
+		});
 	});
 });

@@ -51,8 +51,7 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
-import OpenInMenu from "./components/OpenInMenu";
-import { resolveSelectedOpenInApp } from "./openInPreference";
+import OpenInPickerModal from "./components/OpenInPickerModal";
 import TaskImageViewer from "./components/TaskImageViewer";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
@@ -588,27 +587,18 @@ function App() {
 		return () => window.removeEventListener("menu:open-quick-shell", onOpenQuickShell);
 	}, [openQuickShell]);
 
-	// Cmd/Ctrl+O — "Open in..." the active task's worktree, or the current project
-	// when no task is active. Opens the persisted app directly; with no selection
-	// (or an app that was uninstalled) it opens the picker so a choice can be made.
-	const openInCurrent = useCallback(async () => {
+	// Cmd/Ctrl+O — always open the "Open in…" picker for the active task's worktree,
+	// or the current project when no task is active. The picker lists the installed
+	// apps and opens the chosen one (see OpenInPickerModal).
+	const openInCurrent = useCallback(() => {
 		const taskId = routeTaskId(state.route);
 		const activeTask = taskId ? state.currentProjectTasks.find((task) => task.id === taskId) : null;
 		const projectId = projectIdForRoute(state.route);
 		const project = projectId ? state.projects.find((p) => p.id === projectId) : null;
 		const path = activeTask?.worktreePath || project?.path || null;
 		if (!path) return;
-		const app = await resolveSelectedOpenInApp(() => api.request.getAvailableApps());
-		if (!app) {
-			setOpenInPicker({ path, taskId: activeTask?.id });
-			return;
-		}
-		try {
-			await api.request.openInApp({ appName: app.macAppName, path });
-		} catch (err) {
-			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }), { taskId: activeTask?.id });
-		}
-	}, [state.route, state.currentProjectTasks, state.projects, t]);
+		setOpenInPicker({ path, taskId: activeTask?.id });
+	}, [state.route, state.currentProjectTasks, state.projects]);
 
 	// `g`-prefix "go to" sequence (Linear/GitHub style), kept in refs so the
 	// global keydown handler stays pure. Tiny state machine:
@@ -810,7 +800,7 @@ function App() {
 				if (remote) return;
 				e.preventDefault();
 				e.stopPropagation();
-				void openInCurrent();
+				openInCurrent();
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
 				// Cmd+Shift+N — open a new window (the native menu item has no
 				// accelerator because Electrobun can't bind chord shortcuts; see
@@ -2106,8 +2096,7 @@ function App() {
 				/>
 			)}
 			{openInPicker && (
-				<OpenInMenu
-					position={{ top: 76, left: Math.max(8, Math.round(window.innerWidth / 2 - 96)) }}
+				<OpenInPickerModal
 					path={openInPicker.path}
 					taskId={openInPicker.taskId}
 					onClose={() => setOpenInPicker(null)}

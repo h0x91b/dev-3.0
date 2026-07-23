@@ -36,7 +36,7 @@ const keymap = {
 	"keymap.shortcut.zoomOut": "Уменьшить масштаб",
 	"keymap.shortcut.zoomReset": "Сбросить масштаб",
 	"keymap.shortcut.hardRefresh": "Полная перезагрузка",
-	"keymap.shortcut.openIn": "Открыть текущий проект/worktree в вашем приложении (или выбрать)",
+	"keymap.shortcut.openIn": "Открыть текущий проект/worktree в приложении (выбор из списка)",
 	"keymap.shortcut.keyboardShortcuts": "Показать эту панель горячих клавиш",
 	"keymap.shortcut.helpMode": "Объяснить этот экран (режим подсказок)",
 	"keymap.shortcut.terminalFullscreen": "Переключить иммерсивный fullscreen терминала (только в терминале задачи)",
