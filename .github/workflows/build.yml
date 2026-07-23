@@ -42,8 +42,14 @@ jobs:
       - name: Type check
         run: bun run lint
 
-  test:
+  test_shards:
+    name: test (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v5
 
@@ -64,7 +70,7 @@ jobs:
         run: bun install
 
       - name: Save node_modules cache
-        if: steps.cache-deps.outputs.cache-hit != 'true'
+        if: steps.cache-deps.outputs.cache-hit != 'true' && matrix.shard == 1
         uses: actions/cache/save@v5
         with:
           path: ./node_modules
@@ -73,8 +79,121 @@ jobs:
       - name: Generate build files
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
 
-      - name: Run tests
-        run: bun run test:full
+      - name: Run mainview tests
+        id: mainview_tests
+        continue-on-error: true
+        run: bunx vitest run --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Run bun tests
+        id: bun_tests
+        continue-on-error: true
+        run: bunx vitest run --config vitest.config.bun.ts --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Run CLI tests
+        id: cli_tests
+        continue-on-error: true
+        run: bunx vitest run --config vitest.config.cli.ts --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      - name: Record shard result
+        if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARD_TOTAL: ${{ strategy.job-total }}
+          MAINVIEW_RESULT: ${{ steps.mainview_tests.outcome }}
+          BUN_RESULT: ${{ steps.bun_tests.outcome }}
+          CLI_RESULT: ${{ steps.cli_tests.outcome }}
+        run: |
+          mkdir -p test-shard-result
+          printf '%s %s %s %s %s\n' "$SHARD" "$SHARD_TOTAL" "$MAINVIEW_RESULT" "$BUN_RESULT" "$CLI_RESULT" \
+            > "test-shard-result/shard-$SHARD.txt"
+
+      - name: Upload shard result
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-shard-${{ matrix.shard }}
+          path: test-shard-result/shard-${{ matrix.shard }}.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  test:
+    name: test
+    if: always()
+    needs: test_shards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download shard results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: test-shard-*
+          path: test-shard-results
+          merge-multiple: true
+
+      - name: Verify test shards
+        run: |
+          shopt -s nullglob
+          result_files=(test-shard-results/shard-*.txt)
+          failed=0
+          expected_total=0
+          declare -A seen=()
+
+          if [ "${#result_files[@]}" -eq 0 ]; then
+            echo "::error::No test shard results were downloaded"
+            exit 1
+          fi
+
+          for result_file in "${result_files[@]}"; do
+            if ! read -r shard total mainview bun cli < "$result_file"; then
+              echo "::error::Malformed result in $result_file"
+              failed=1
+              continue
+            fi
+
+            if [[ ! "$shard" =~ ^[1-9][0-9]*$ ]] || [[ ! "$total" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Invalid shard identity in $result_file: shard=$shard total=$total"
+              failed=1
+              continue
+            fi
+
+            if [ "$result_file" != "test-shard-results/shard-$shard.txt" ]; then
+              echo "::error::Shard identity does not match artifact filename: $result_file declares $shard"
+              failed=1
+              continue
+            fi
+
+            if [ "$expected_total" -eq 0 ]; then
+              expected_total="$total"
+            elif [ "$total" -ne "$expected_total" ]; then
+              echo "::error::Inconsistent shard total in $result_file: expected=$expected_total actual=$total"
+              failed=1
+            fi
+
+            if [ "$shard" -gt "$total" ] || [[ -n "${seen[$shard]:-}" ]]; then
+              echo "::error::Invalid or duplicate test shard $shard/$total"
+              failed=1
+              continue
+            fi
+
+            seen[$shard]=1
+            echo "shard $shard/$total: mainview=$mainview bun=$bun cli=$cli"
+            if [ "$mainview" != "success" ] || [ "$bun" != "success" ] || [ "$cli" != "success" ]; then
+              failed=1
+            fi
+          done
+
+          if [ "$expected_total" -eq 0 ] || [ "${#result_files[@]}" -ne "$expected_total" ]; then
+            echo "::error::Expected $expected_total shard results, found ${#result_files[@]}"
+            failed=1
+          else
+            for ((shard = 1; shard <= expected_total; shard++)); do
+              if [[ -z "${seen[$shard]:-}" ]]; then
+                echo "::error::Missing result for test shard $shard/$expected_total"
+                failed=1
+              fi
+            done
+          fi
+
+          exit "$failed"
 
   build-check:
     runs-on: ubuntu-latest
