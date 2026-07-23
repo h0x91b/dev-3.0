@@ -161,6 +161,14 @@ const common = {
 	"openIn.failedOpen": "Не удалось открыть в {app}: {error}",
 	"openIn.copyPath": "Скопировать путь",
 	"openIn.pathCopied": "Скопировано!",
+	"openIn.customBadge": "своё",
+	"openIn.openShortcutHint": "1–9 открыть · ↑↓ выбор · ↵ открыть",
+	"openIn.searchPlaceholder": "Введи имя приложения…",
+	"openIn.noMatches": "Ничего не найдено",
+	"openIn.cat.files": "Файлы",
+	"openIn.cat.editor": "Редактор",
+	"openIn.cat.terminal": "Терминал",
+	"openIn.cat.custom": "Добавлено вами",
 
 	// GitHub CLI warning banner
 	"ghWarning.titleNotInstalled": "GitHub CLI (gh) не установлен",

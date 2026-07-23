@@ -35,7 +35,6 @@ describe("OpenInMenu", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		invalidateAvailableApps();
-		localStorage.clear();
 	});
 
 	it("renders available apps", async () => {
@@ -71,18 +70,6 @@ describe("OpenInMenu", () => {
 				path: "/tmp/worktree",
 			});
 		});
-	});
-
-	it("persists the picked app as the default for Cmd/Ctrl+O", async () => {
-		renderMenu();
-
-		await waitFor(() => {
-			expect(screen.getByText("VS Code")).toBeInTheDocument();
-		});
-
-		await userEvent.click(screen.getByText("VS Code"));
-
-		expect(localStorage.getItem("dev3-open-in-app")).toBe("vscode");
 	});
 
 	it("closes on Escape key", async () => {
