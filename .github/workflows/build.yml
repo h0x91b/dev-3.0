@@ -42,8 +42,13 @@ jobs:
       - name: Type check
         run: bun run lint
 
-  test:
+  test_shards:
+    name: test (${{ matrix.shard }}/5)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v5
 
@@ -64,7 +69,7 @@ jobs:
         run: bun install
 
       - name: Save node_modules cache
-        if: steps.cache-deps.outputs.cache-hit != 'true'
+        if: steps.cache-deps.outputs.cache-hit != 'true' && matrix.shard == 1
         uses: actions/cache/save@v5
         with:
           path: ./node_modules
@@ -73,8 +78,25 @@ jobs:
       - name: Generate build files
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
 
-      - name: Run tests
-        run: bun run test:full
+      - name: Run mainview tests
+        run: bunx vitest run --shard=${{ matrix.shard }}/5
+
+      - name: Run bun tests
+        run: bunx vitest run --config vitest.config.bun.ts --shard=${{ matrix.shard }}/5
+
+      - name: Run CLI tests
+        run: bunx vitest run --config vitest.config.cli.ts --shard=${{ matrix.shard }}/5
+
+  test:
+    name: test
+    if: always()
+    needs: test_shards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify test shards
+        env:
+          TEST_SHARDS_RESULT: ${{ needs.test_shards.result }}
+        run: test "$TEST_SHARDS_RESULT" = "success"
 
   build-check:
     runs-on: ubuntu-latest
