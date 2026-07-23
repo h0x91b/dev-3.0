@@ -79,13 +79,29 @@ jobs:
         run: bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts
 
       - name: Run mainview tests
+        id: mainview_tests
+        continue-on-error: true
         run: bunx vitest run --shard=${{ matrix.shard }}/5
 
       - name: Run bun tests
+        id: bun_tests
+        continue-on-error: true
         run: bunx vitest run --config vitest.config.bun.ts --shard=${{ matrix.shard }}/5
 
       - name: Run CLI tests
+        id: cli_tests
+        continue-on-error: true
         run: bunx vitest run --config vitest.config.cli.ts --shard=${{ matrix.shard }}/5
+
+      - name: Verify shard suites
+        env:
+          MAINVIEW_RESULT: ${{ steps.mainview_tests.outcome }}
+          BUN_RESULT: ${{ steps.bun_tests.outcome }}
+          CLI_RESULT: ${{ steps.cli_tests.outcome }}
+        run: |
+          test "$MAINVIEW_RESULT" = "success"
+          test "$BUN_RESULT" = "success"
+          test "$CLI_RESULT" = "success"
 
   test:
     name: test

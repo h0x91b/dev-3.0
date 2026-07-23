@@ -10,7 +10,7 @@ The affected tests passed alone and with capped workers, while concurrent uncapp
 
 ## Decision
 
-The Build workflow runs five matrix jobs, and job N executes shard N/5 of mainview, bun, and CLI sequentially. Matrix fail-fast is disabled for complete diagnostics, only shard 1 may populate a missing dependency cache, and a final `test` gate preserves the existing required-check name.
+The Build workflow runs five matrix jobs, and job N executes shard N/5 of mainview, bun, and CLI sequentially. Each suite records its outcome without stopping the shard, a shard-local gate fails after all three have run, matrix fail-fast is disabled, only shard 1 may populate a missing dependency cache, and a final `test` gate preserves the existing required-check name.
 
 ## Risks
 
