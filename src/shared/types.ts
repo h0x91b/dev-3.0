@@ -52,8 +52,6 @@ export interface UpdatePopoverPreview {
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
-export type WebNotificationKind = "status-change" | "event";
-
 /**
  * Minimum length of a short ID prefix (task/project/label/note) accepted for
  * prefix matching. Below this, a prefix is treated as "not a prefix" (too broad
@@ -3567,8 +3565,6 @@ export type AppRPCSchema = {
 			webNotification: {
 				taskId: string;
 				projectId: string;
-				/** Used by remote clients to apply viewport-specific notification policy. */
-				kind: WebNotificationKind;
 				/** Notification heading, e.g. "#804 Fix bug". */
 				title: string;
 				/** Notification body, e.g. a message or "In Progress → Review". */

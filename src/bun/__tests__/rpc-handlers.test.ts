@@ -10449,7 +10449,7 @@ describe("notifyWatchedTaskStatusChange", () => {
 		setTerminalFocus(false);
 
 		expect(Utils.showNotification).toHaveBeenCalledTimes(1);
-		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ taskId: task.id, kind: "status-change" }));
+		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ taskId: task.id }));
 	});
 });
 
@@ -10473,7 +10473,6 @@ describe("web notification push (remote/browser mode mirror)", () => {
 			taskId: task.id,
 			projectId: "proj-x",
 			title: "#7 Fix bug",
-			kind: "status-change",
 			body: "In Progress → Review By User",
 			level: "info",
 			taskSeq: 7,
@@ -10500,7 +10499,6 @@ describe("web notification push (remote/browser mode mirror)", () => {
 			taskId: task.id,
 			projectId: "proj-y",
 			title: "#3 Ship it",
-			kind: "event",
 			body: "build done",
 			level: "info",
 			taskSeq: 3,

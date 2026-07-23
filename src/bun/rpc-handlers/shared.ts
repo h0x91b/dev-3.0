@@ -25,7 +25,7 @@ export {
 import { extname } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { dlopen, FFIType } from "bun:ffi";
-import type { RendererLogLevel, RequirementCheckResult, SharedArtifact, SharedImage, Task, WebNotificationKind } from "../../shared/types";
+import type { RendererLogLevel, RequirementCheckResult, SharedArtifact, SharedImage, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { postNativeTaskNotification } from "../native-notifications";
@@ -177,7 +177,7 @@ export interface TerminalFocusArtifactPayload {
 }
 
 type QueuedTerminalNotification =
-	| { kind: "task"; task: Task; body: string; projectName?: string; notificationKind: WebNotificationKind }
+	| { kind: "task"; task: Task; body: string; projectName?: string }
 	| { kind: "toast"; payload: TerminalFocusToastPayload }
 	| { kind: "attention"; payload: TerminalFocusAttentionPayload }
 	| { kind: "terminalBell"; payload: TerminalFocusBellPayload }
@@ -203,7 +203,7 @@ function flushQueuedNotifications(): void {
 	const queued = queuedTerminalNotifications.splice(0, queuedTerminalNotifications.length);
 	for (const notification of queued) {
 		if (notification.kind === "task") {
-			deliverTaskNotification(notification.task, notification.body, notification.projectName, notification.notificationKind, true);
+			deliverTaskNotification(notification.task, notification.body, notification.projectName, true);
 		} else if (notification.kind === "toast") {
 			getPushMessage()?.("cliToast", notification.payload);
 		} else if (notification.kind === "attention") {
@@ -303,13 +303,11 @@ function pushWebNotification(opts: {
 	task: Task;
 	body: string;
 	projectName: string;
-	kind: WebNotificationKind;
 	level?: "info" | "success" | "error";
 }): void {
 	getPushMessage()?.("webNotification", {
 		taskId: opts.task.id,
 		projectId: opts.task.projectId,
-		kind: opts.kind,
 		title: `#${opts.task.seq} ${getTaskTitle(opts.task)}`,
 		body: opts.body,
 		level: opts.level ?? "info",
@@ -333,11 +331,10 @@ function deliverTaskNotification(
 	task: Task,
 	body: string,
 	projectName?: string,
-	kind: WebNotificationKind = "event",
 	bypassSuppression = false,
 ): void {
 	if (isNotificationSuppressed() && !bypassSuppression) {
-		queuedTerminalNotifications.push({ kind: "task", task, body, projectName, notificationKind: kind });
+		queuedTerminalNotifications.push({ kind: "task", task, body, projectName });
 		return;
 	}
 
@@ -358,7 +355,7 @@ function deliverTaskNotification(
 			silent: true,
 		});
 	}
-	pushWebNotification({ task, body, projectName: projectName ?? "", kind });
+	pushWebNotification({ task, body, projectName: projectName ?? "" });
 	if (nativePosted) return;
 	// Only arm click-to-open when the app is NOT already in the foreground. If the
 	// user is actively looking at the app, the banner is purely informational — a
@@ -375,7 +372,7 @@ function deliverTaskNotification(
 
 export function notifyWatchedTaskStatusChange(task: Task, oldStatus: string, newStatus: string, projectName: string): void {
 	if (!task.watched || oldStatus === newStatus) return;
-	deliverTaskNotification(task, `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`, projectName, "status-change");
+	deliverTaskNotification(task, `${formatStatus(oldStatus)} → ${formatStatus(newStatus)}`, projectName);
 }
 
 /**
