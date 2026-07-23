@@ -14,7 +14,7 @@ Represent links as optional `Task.relations`, with each entry containing a stabl
 
 ## 4. Risks
 
-Relation records can point at deleted or cross-project tasks until a future relation service adds validation and cleanup rules. Treating the field as optional keeps raw legacy files readable while allowing older app versions to preserve the additive key when they rewrite a task.
+Relation records can point at deleted or cross-project tasks until a future relation service adds validation and cleanup rules. Treating the field as optional keeps raw legacy files readable, and the compatibility regression test verifies an older-reader-shaped update preserves the additive key.
 
 ## 5. Alternatives considered
 

@@ -74,6 +74,36 @@ describe("task relation persistence", () => {
 		expect((await loadTasks(testProject)).find((task) => task.id === blockedTask.id)?.relations).toEqual(relations);
 	});
 
+	it("preserves relation records through an older-reader-shaped task update", async () => {
+		const relations: TaskRelation[] = [{ type: "blocked-by", taskId: "blocker-task" }];
+		seedTasks([
+			{
+				id: "legacy-reader-task",
+				seq: 1,
+				projectId: testProject.id,
+				title: "Legacy reader task",
+				description: "Legacy reader task",
+				status: "todo",
+				priority: "P3",
+				baseBranch: "main",
+				worktreePath: null,
+				branchName: null,
+				groupId: null,
+				variantIndex: null,
+				agentId: null,
+				configId: null,
+				createdAt: "2025-01-01T00:00:00Z",
+				updatedAt: "2025-01-01T00:00:00Z",
+				relations,
+			},
+		]);
+
+		// Older readers ignore the unknown field; their object-preserving writes must keep it.
+		await updateTask(testProject, "legacy-reader-task", { title: "Updated task" });
+
+		expect(readSavedTasks()[0].relations).toEqual(relations);
+	});
+
 	it("backfills the empty relation collection when a legacy task is mutated", async () => {
 		seedTasks([
 			{
