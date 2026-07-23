@@ -85,6 +85,23 @@ describe("Electrobun RPC transport", () => {
 
 		window.removeEventListener("rpc:openTaskFromNotification", listener);
 	});
+
+	it("dispatches a CustomEvent when the native menu pushes openAddProjectModal", async () => {
+		const listener = vi.fn();
+		window.addEventListener("rpc:openAddProjectModal", listener);
+
+		await import("../rpc");
+
+		const rpcConfig = defineRPCMock.mock.calls[0]?.[0];
+		expect(rpcConfig).toBeDefined();
+
+		expect(typeof rpcConfig.handlers.messages.openAddProjectModal).toBe("function");
+		rpcConfig.handlers.messages.openAddProjectModal({});
+
+		expect(listener).toHaveBeenCalledTimes(1);
+
+		window.removeEventListener("rpc:openAddProjectModal", listener);
+	});
 });
 
 describe("Browser RPC transport", () => {

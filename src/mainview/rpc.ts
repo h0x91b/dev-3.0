@@ -84,6 +84,7 @@ const pushMessageHandlers: Record<string, (payload: any) => void> = {
 	automationsUpdated: (payload) => window.dispatchEvent(new CustomEvent("rpc:automationsUpdated", { detail: payload })),
 	automationRunsMissed: (payload) => window.dispatchEvent(new CustomEvent("rpc:automationRunsMissed", { detail: payload })),
 	openCreateTaskModal: () => window.dispatchEvent(new CustomEvent("rpc:openCreateTaskModal")),
+	openAddProjectModal: () => window.dispatchEvent(new CustomEvent("rpc:openAddProjectModal")),
 	navigateToSettings: () => window.dispatchEvent(new CustomEvent("rpc:navigateToSettings")),
 	navigateToGaugeDemo: () => window.dispatchEvent(new CustomEvent("rpc:navigateToGaugeDemo")),
 	navigateToViewportLab: () => window.dispatchEvent(new CustomEvent("rpc:navigateToViewportLab")),
