@@ -3319,4 +3319,152 @@ describe("TaskDiffViewer — GitHub PR review layer", () => {
 			);
 		});
 	});
+
+	describe("markdown preview", () => {
+		function markdownFilePayload(file: Partial<TaskDiffResponse["files"][number]>): TaskDiffResponse {
+			return {
+				mode: "branch",
+				compareRef: "origin/main",
+				compareLabel: "origin/main",
+				fallbackReason: null,
+				recentCount: null,
+				summary: { files: 1, insertions: 3, deletions: 1 },
+				files: [
+					{
+						id: "docs/guide.md",
+						status: "modified",
+						displayPath: "docs/guide.md",
+						oldPath: "docs/guide.md",
+						newPath: "docs/guide.md",
+						oldContent: "# Old\n",
+						newContent: "# Title\n\n**bold** text\n",
+						hunks: ["diff --git a/docs/guide.md b/docs/guide.md\n@@ -1 +1,3 @@\n-# Old\n+# Title\n+\n+**bold** text\n"],
+						insertions: 3,
+						deletions: 1,
+						...file,
+					},
+				],
+				skippedFiles: [],
+			};
+		}
+
+		function renderViewer() {
+			return render(
+				<I18nProvider>
+					<TaskDiffViewer
+						task={task}
+						project={project}
+						request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+						onBack={vi.fn()}
+					/>
+				</I18nProvider>,
+			);
+		}
+
+		it("offers the Preview toggle only on markdown files", async () => {
+			renderViewer();
+
+			await screen.findAllByTestId("mock-diff");
+			const toggles = screen.getAllByRole("button", { name: /toggle markdown preview/i });
+			expect(toggles).toHaveLength(1);
+			expect(toggles[0]).toHaveAccessibleName("Toggle Markdown preview for zzz/readme.md");
+		});
+
+		it("switches a markdown file between source diff and rendered preview", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({}));
+			renderViewer();
+
+			await screen.findAllByTestId("mock-diff");
+			const toggle = screen.getByRole("button", { name: /toggle markdown preview for docs\/guide\.md/i });
+			expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+			await user.click(toggle);
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			const document_ = within(preview).getByTestId("markdown-document");
+			expect(document_.querySelector("h1")?.textContent).toBe("Title");
+			expect(document_.querySelector("strong")?.textContent).toBe("bold");
+			expect(toggle).toHaveAttribute("aria-pressed", "true");
+			expect(screen.queryByTestId("mock-diff")).toBeNull();
+
+			await user.click(toggle);
+
+			await screen.findAllByTestId("mock-diff");
+			expect(screen.queryByTestId("diff-md-preview")).toBeNull();
+		});
+
+		it("sanitizes markup embedded in the previewed markdown", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({
+				newContent: "safe <script>alert(1)</script> <img src=\"x\" onerror=\"alert(2)\">\n",
+			}));
+			renderViewer();
+
+			await screen.findAllByTestId("mock-diff");
+			await user.click(screen.getByRole("button", { name: /toggle markdown preview/i }));
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			expect(preview.querySelector("script")).toBeNull();
+			expect(preview.querySelector("[onerror]")).toBeNull();
+			expect(preview.textContent).toContain("safe");
+		});
+
+		it("previews the removed content for deleted markdown files", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({
+				status: "deleted",
+				oldContent: "# Gone\n",
+				newContent: "",
+				newPath: null,
+			}));
+			renderViewer();
+
+			await screen.findAllByTestId("mock-diff");
+			await user.click(screen.getByRole("button", { name: /toggle markdown preview/i }));
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			expect(within(preview).getByTestId("markdown-document").querySelector("h1")?.textContent).toBe("Gone");
+		});
+
+		it("shows a placeholder when previewing an empty markdown file", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({
+				status: "added",
+				oldContent: "",
+				newContent: "",
+				oldPath: null,
+				hunks: null,
+			}));
+			renderViewer();
+
+			await user.click(await screen.findByRole("button", { name: /toggle markdown preview/i }));
+
+			const preview = await screen.findByTestId("diff-md-preview");
+			expect(preview.textContent).toContain("Nothing to preview");
+			expect(within(preview).queryByTestId("markdown-document")).toBeNull();
+		});
+
+		it("flips a previewed markdown file back to source when a search hit lands in it", async () => {
+			const user = userEvent.setup();
+			vi.mocked(api.request.getTaskDiff).mockResolvedValue(markdownFilePayload({
+				newContent: "# Title\n\nfindme unique\n",
+				hunks: ["diff --git a/docs/guide.md b/docs/guide.md\n@@ -1 +1,3 @@\n-# Old\n+# Title\n+\n+findme unique\n"],
+			}));
+			renderViewer();
+
+			await screen.findAllByTestId("mock-diff");
+			await user.click(screen.getByRole("button", { name: /toggle markdown preview/i }));
+			await screen.findByTestId("diff-md-preview");
+
+			await user.keyboard("{Meta>}f{/Meta}");
+			await user.type(screen.getByPlaceholderText("Search diff..."), "findme");
+
+			await waitFor(() => {
+				expect(screen.queryByTestId("diff-md-preview")).toBeNull();
+			});
+			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
+			expect(screen.getByRole("button", { name: /toggle markdown preview/i })).toHaveAttribute("aria-pressed", "false");
+		});
+	});
 });

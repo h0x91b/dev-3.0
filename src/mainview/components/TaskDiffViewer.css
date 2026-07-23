@@ -245,3 +245,26 @@
 	background: rgb(var(--surface-base));
 	font-weight: 600;
 }
+
+/* ---- Markdown document preview (.dev3-md-doc) ----
+   The per-file diff preview renders whole .md files, so headings keep a real
+   hierarchy (PR comments flatten them all to one compact size). */
+.dev3-md-doc h1 {
+	font-size: 1.375rem;
+	margin: 0.875rem 0 0.375rem;
+}
+.dev3-md-doc h2 {
+	font-size: 1.1875rem;
+	margin: 0.75rem 0 0.375rem;
+}
+.dev3-md-doc h3 {
+	font-size: 1.0625rem;
+}
+.dev3-md-doc h4 {
+	font-size: 1rem;
+}
+.dev3-md-doc h1,
+.dev3-md-doc h2 {
+	border-bottom: 1px solid rgb(var(--border-default));
+	padding-bottom: 0.25rem;
+}

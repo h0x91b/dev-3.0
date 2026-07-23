@@ -28,6 +28,7 @@ import { extractReviewSnippet, getReviewFilePath, parseDiffHunkLines, type DiffS
 import { PrConversationBlock } from "./pr-review/PrConversationBlock";
 import { GithubThreadView, OutdatedThreadsGroup, type ThreadSendState } from "./pr-review/GithubThreadView";
 import { buildThreadFixPrompt, groupGithubThreadsByFile, isLineRenderedInDiff, locateThread, partitionThreadsForDiff } from "./pr-review/mapping";
+import { MarkdownDocument } from "./pr-review/markdown";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
@@ -230,6 +231,9 @@ interface TaskDiffFileSectionProps {
 	onDeleteComment: (commentId: string) => void;
 	onToggleExpanded: () => void;
 	onToggleRead: () => void;
+	/** True while a markdown file renders its rendered preview instead of the source diff. */
+	mdPreview: boolean;
+	onToggleMdPreview: () => void;
 	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
 	sectionRef: (element: HTMLDivElement | null) => void;
 	/** GitHub review threads on this file (branch mode); the section partitions
@@ -941,6 +945,18 @@ function findDiffFileByPath(files: TaskDiffFile[], path: string | undefined): Ta
 	)) ?? null;
 }
 
+/** Markdown files get a per-file source-diff ↔ rendered-preview toggle (issue #1063). */
+export function isMarkdownDiffFile(file: TaskDiffFile): boolean {
+	const path = file.newPath ?? file.oldPath ?? file.displayPath;
+	return /\.(md|markdown)$/i.test(path);
+}
+
+/** Preview renders what the change produced: the new content, or for deletions
+ * the old content (the only side that exists). */
+export function getMarkdownPreviewSource(file: TaskDiffFile): string {
+	return file.status === "deleted" ? file.oldContent : file.newContent;
+}
+
 function statusClassName(status: TaskDiffFileStatus): string {
 	switch (status) {
 		case "added":
@@ -1124,6 +1140,8 @@ function TaskDiffFileSection({
 	onDeleteComment,
 	onToggleExpanded,
 	onToggleRead,
+	mdPreview,
+	onToggleMdPreview,
 	registerCommentRef,
 	sectionRef,
 	githubThreads,
@@ -1400,6 +1418,9 @@ function TaskDiffFileSection({
 	const diffMode = viewMode === "split" ? diffLib.DiffModeEnum.Split : diffLib.DiffModeEnum.Unified;
 	const diffRenderKey = `${file.id}:${viewMode}:${resolvedTheme}:${getDiffFileContentHash(file)}`;
 	const copiedFilePath = getCopiedFilePath(worktreePath, file);
+	const isMdFile = isMarkdownDiffFile(file);
+	const showMdPreview = isMdFile && mdPreview;
+	const mdPreviewSource = getMarkdownPreviewSource(file);
 
 	// The built diff instance is the only honest source of "is this line on
 	// screen" (the backend ships hunks: null — the library computes the diff
@@ -1529,6 +1550,26 @@ function TaskDiffFileSection({
 					)}
 				</div>
 
+				{isMdFile && (
+					<button
+						type="button"
+						onClick={onToggleMdPreview}
+						aria-pressed={mdPreview}
+						aria-label={t("infoPanel.diffMdPreviewFile", { file: file.displayPath })}
+						title={t("infoPanel.diffMdPreviewFile", { file: file.displayPath })}
+						className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${mdPreview ? "border-accent/30 bg-accent/10 text-accent hover:bg-accent/20" : "border-edge bg-base text-fg-2 hover:bg-elevated-hover"}`}
+					>
+						<span
+							aria-hidden="true"
+							className="text-[0.85rem] leading-none"
+							style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
+						>
+							{"\uF06E"}
+						</span>
+						<span>{t("infoPanel.diffMdPreview")}</span>
+					</button>
+				)}
+
 				<label className={`inline-flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${isRead ? "border-success/30 bg-success/10 text-success" : "border-edge bg-base text-fg-2 hover:bg-elevated-hover"}`}>
 					<input
 						type="checkbox"
@@ -1557,7 +1598,13 @@ function TaskDiffFileSection({
 			</div>
 
 			{expanded && (
-				buildError ? (
+				showMdPreview ? (
+					<div className="px-4 py-4" data-testid="diff-md-preview">
+						{mdPreviewSource.trim()
+							? <MarkdownDocument body={mdPreviewSource} />
+							: <div className="text-sm text-fg-muted">{t("infoPanel.diffMdPreviewEmpty")}</div>}
+					</div>
+				) : buildError ? (
 					<div className="px-4 py-5 text-sm text-danger">{buildError}</div>
 				) : diffFile ? (
 					<>
@@ -1685,6 +1732,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode | null>(null);
+	// Per-file markdown source-diff ↔ rendered-preview switch. Ephemeral view
+	// state (like GitHub's rich-diff toggle): resets on viewer mount, never persisted.
+	const [mdPreviewFiles, setMdPreviewFiles] = useState<Record<string, boolean>>({});
 	// Lazy-initialize from localStorage so the first persist-effect fire (when
 	// payload arrives) sees the stored review rather than `{}` — otherwise the
 	// persist effect would delete the localStorage entry before the restore effect's
@@ -2468,6 +2518,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		const match = searchMatches[nextIndex];
 		if (!match) {
 			return;
+		}
+		// A content hit only exists in the source diff DOM — a file left in
+		// markdown preview mode flips back so the hit can be decorated and scrolled to.
+		if (match.kind === "content") {
+			setMdPreviewFiles((current) => (current[match.fileId] ? { ...current, [match.fileId]: false } : current));
 		}
 		scrollToFile(match.fileId, {
 			expand: true,
@@ -3631,6 +3686,11 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								onDeleteComment={deleteInlineComment}
 								onToggleExpanded={() => toggleFileExpanded(file.id)}
 								onToggleRead={() => toggleFileRead(file.id)}
+								mdPreview={mdPreviewFiles[file.id] ?? false}
+								onToggleMdPreview={() => setMdPreviewFiles((current) => ({
+									...current,
+									[file.id]: !(current[file.id] ?? false),
+								}))}
 								registerCommentRef={registerCommentRef}
 								sectionRef={(element) => {
 									sectionRefs.current[file.id] = element;
