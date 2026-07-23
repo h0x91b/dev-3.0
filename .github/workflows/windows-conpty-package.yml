@@ -56,6 +56,13 @@ jobs:
       - name: Native-session two-client lifecycle E2E
         run: bun run test:native-multi-client-e2e
 
+      # Seq 1247 app-restart proof. Two separate short-lived controller processes:
+      # controller A starts + marks + exits; controller B (a clean process)
+      # rediscovers and reattaches to the same host/shell/session/pane + state,
+      # with a deterministic single writer and honest lost-session results.
+      - name: Native-session app-restart reattach E2E
+        run: bun run test:native-app-restart-e2e
+
       - name: Explicit Windows shell launch matrix
         if: runner.os == 'Windows'
         shell: powershell
