@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { Project, Task, TaskDiffResponse } from "../../../shared/types";
+import type { Project, Task, TaskDiffFile, TaskDiffResponse } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import type { NavigationGuard } from "../../navigation-guard";
 import TaskDiffViewer from "../TaskDiffViewer";
@@ -531,56 +531,31 @@ describe("TaskDiffViewer", () => {
 		expect(raisedTo).toBeGreaterThan(2000);
 	});
 
-	it("sorts the right-panel file list alphabetically by full path", async () => {
-		// Regression: git.ts assembles `files` as `[...trackedEntries, ...untrackedEntries]`,
-		// so untracked files always end up at the bottom of the right panel while the left tree
-		// shows them in their alphabetical position. The right panel must match the tree order.
+	it("orders the right diff panel to match the left file tree, not a flat path sort", async () => {
+		// Regression (reported by Alexander Kiselyov): the left tree groups folders before files,
+		// so its depth-first order diverges from a flat path sort whenever a file and a subfolder
+		// share a directory level. The right panel must follow the tree the user reads top-to-bottom.
+		const mkFile = (path: string): TaskDiffFile => ({
+			id: path,
+			status: "modified",
+			displayPath: path,
+			oldPath: path,
+			newPath: path,
+			oldContent: "x\n",
+			newContent: "y\n",
+			hunks: [`diff --git a/${path} b/${path}\n@@ -1 +1 @@\n-x\n+y\n`],
+			insertions: 1,
+			deletions: 1,
+		});
 		vi.mocked(api.request.getTaskDiff).mockResolvedValue({
 			mode: "uncommitted",
 			compareRef: null,
 			compareLabel: "Working tree",
 			fallbackReason: null,
 			recentCount: null,
-			summary: { files: 3, insertions: 0, deletions: 0 },
-			files: [
-				{
-					id: "src/management/handler.ts",
-					status: "modified",
-					displayPath: "src/management/handler.ts",
-					oldPath: "src/management/handler.ts",
-					newPath: "src/management/handler.ts",
-					oldContent: "x\n",
-					newContent: "y\n",
-					hunks: ["diff --git a/src/management/handler.ts b/src/management/handler.ts\n@@ -1 +1 @@\n-x\n+y\n"],
-					insertions: 1,
-					deletions: 1,
-				},
-				{
-					id: "src/utils/helper.ts",
-					status: "modified",
-					displayPath: "src/utils/helper.ts",
-					oldPath: "src/utils/helper.ts",
-					newPath: "src/utils/helper.ts",
-					oldContent: "a\n",
-					newContent: "b\n",
-					hunks: ["diff --git a/src/utils/helper.ts b/src/utils/helper.ts\n@@ -1 +1 @@\n-a\n+b\n"],
-					insertions: 1,
-					deletions: 1,
-				},
-				// Backend appends untracked entries last — must be re-sorted into alphabetical position.
-				{
-					id: "src/migrations/0001_init.ts",
-					status: "untracked",
-					displayPath: "src/migrations/0001_init.ts",
-					oldPath: null,
-					newPath: "src/migrations/0001_init.ts",
-					oldContent: "",
-					newContent: "export {};\n",
-					hunks: ["diff --git a/src/migrations/0001_init.ts b/src/migrations/0001_init.ts\n@@ -0,0 +1 @@\n+export {};\n"],
-					insertions: 1,
-					deletions: 0,
-				},
-			],
+			summary: { files: 3, insertions: 3, deletions: 3 },
+			// Backend order is arbitrary; the viewer must reorder it to tree order regardless.
+			files: [mkFile("readme.md"), mkFile("src/app.ts"), mkFile("src/utils/format.ts")],
 			skippedFiles: [],
 		});
 
@@ -596,12 +571,88 @@ describe("TaskDiffViewer", () => {
 		);
 
 		await screen.findAllByTestId("mock-diff");
-		const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-file-id]"));
-		expect(sections.map((node) => node.dataset.fileId)).toEqual([
-			"src/management/handler.ts",
-			"src/migrations/0001_init.ts",
-			"src/utils/helper.ts",
-		]);
+
+		// Folder "src" first (folders-first), then its subfolder "utils" before the file "app.ts",
+		// then the root file "readme.md".
+		const treeOrder = ["src/utils/format.ts", "src/app.ts", "readme.md"];
+		const flatPathSort = ["readme.md", "src/app.ts", "src/utils/format.ts"];
+
+		const rightOrder = Array.from(document.querySelectorAll<HTMLElement>("[data-file-id]")).map((node) => node.dataset.fileId);
+		expect(rightOrder).toEqual(treeOrder);
+		expect(rightOrder).not.toEqual(flatPathSort);
+
+		const leftOrder = Array.from(document.querySelectorAll<HTMLElement>('[aria-label^="Open diff file"]'))
+			.map((node) => node.getAttribute("aria-label")?.replace("Open diff file ", ""));
+		expect(leftOrder).toEqual(treeOrder);
+	});
+
+	it("highlights the file currently under the reading line as the diff scrolls (scroll spy)", async () => {
+		render(
+			<I18nProvider>
+				<TaskDiffViewer
+					task={task}
+					project={project}
+					request={{ mode: "branch", compareRef: "origin/main", compareLabel: "origin/main" }}
+					onBack={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+
+		await waitFor(() => {
+			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
+		});
+
+		const formatButton = screen.getByRole("button", { name: /open diff file src\/utils\/format\.ts/i });
+		const readmeButton = screen.getByRole("button", { name: /open diff file zzz\/readme\.md/i });
+		// Initial active file is the top of the tree (folders-first), not the flat-sort first file.
+		expect(formatButton.className).toContain("border-accent/30");
+		expect(readmeButton.className).not.toContain("border-accent/30");
+
+		const originalRaf = window.requestAnimationFrame;
+		const originalCancelRaf = window.cancelAnimationFrame;
+		window.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+			cb(0);
+			return 0;
+		}) as typeof window.requestAnimationFrame;
+		window.cancelAnimationFrame = vi.fn();
+
+		const rect = (top: number, height: number) => () => ({
+			top,
+			bottom: top + height,
+			left: 0,
+			right: 900,
+			width: 900,
+			height,
+			x: 0,
+			y: top,
+			toJSON: () => ({}),
+		});
+
+		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
+		Object.defineProperty(scrollRegion, "getBoundingClientRect", { configurable: true, value: rect(100, 600) });
+		const toolbar = screen.getByTestId("inline-diff-toolbar");
+		Object.defineProperty(toolbar, "getBoundingClientRect", { configurable: true, value: rect(100, 40) });
+
+		// reading line = 100 + 40 + 8 = 148. Push the first two sections above it; readme straddles it.
+		const rects: Record<string, () => DOMRect> = {
+			"src/utils/format.ts": rect(-300, 160) as () => DOMRect,
+			"src/app.ts": rect(-100, 160) as () => DOMRect,
+			"zzz/readme.md": rect(120, 160) as () => DOMRect,
+		};
+		for (const [fileId, getRect] of Object.entries(rects)) {
+			const section = document.querySelector(`[data-file-id="${fileId}"]`) as HTMLElement;
+			Object.defineProperty(section, "getBoundingClientRect", { configurable: true, value: getRect });
+		}
+
+		fireEvent.scroll(scrollRegion);
+
+		await waitFor(() => {
+			expect(readmeButton.className).toContain("border-accent/30");
+		});
+		expect(formatButton.className).not.toContain("border-accent/30");
+
+		window.requestAnimationFrame = originalRaf;
+		window.cancelAnimationFrame = originalCancelRaf;
 	});
 
 	it("renders binary and oversized skipped files with status, old→new sizes and reason badges", async () => {
@@ -1722,9 +1773,10 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		const diffs = await screen.findAllByTestId("mock-diff");
+		await screen.findAllByTestId("mock-diff");
+		const appSection = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
 		expect(screen.getByRole("button", { name: "Send to Agent" })).toBeDisabled();
-		await user.click(within(diffs[0]).getByRole("button", { name: "Open inline comment composer" }));
+		await user.click(within(appSection).getByRole("button", { name: "Open inline comment composer" }));
 		expect(screen.getByTestId("mock-widget").querySelector(".dev3-inline-comment--composer")).not.toBeNull();
 
 		await user.type(
@@ -1851,8 +1903,8 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		const diffs = await screen.findAllByTestId("mock-diff");
-		const section = diffs[0];
+		await screen.findAllByTestId("mock-diff");
+		const section = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
 		const newNums = section.querySelectorAll<HTMLElement>(".diff-line-new-num [data-line-num]");
 		// src/app.ts adds two new lines (1 and 2).
 		expect(newNums.length).toBeGreaterThanOrEqual(2);
@@ -1905,7 +1957,7 @@ describe("TaskDiffViewer", () => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4");
 		});
 
-		const section = screen.getAllByTestId("mock-diff")[0];
+		const section = document.querySelector('[data-file-id="src/app.ts"]') as HTMLElement;
 		// Unified gutter: a single `.diff-line-num` cell with `[data-line-new-num]` spans.
 		const newNums = section.querySelectorAll<HTMLElement>(".diff-line-num [data-line-new-num]");
 		expect(newNums.length).toBeGreaterThanOrEqual(2);

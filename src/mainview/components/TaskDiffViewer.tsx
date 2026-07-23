@@ -1117,6 +1117,21 @@ function buildDiffTree(files: TaskDiffFile[], skippedFiles: TaskDiffSkippedFile[
 	return sortNodes(root);
 }
 
+// Depth-first fileId order that matches how the left tree renders (folders first, then files,
+// alphabetical within each). The right panel and skipped list follow this so their order can
+// never diverge from the tree the user reads top-to-bottom.
+export function flattenDiffTree(nodes: DiffTreeNode[]): string[] {
+	const fileIds: string[] = [];
+	for (const node of nodes) {
+		if (node.type === "folder") {
+			fileIds.push(...flattenDiffTree(node.children));
+		} else {
+			fileIds.push(node.fileId);
+		}
+	}
+	return fileIds;
+}
+
 function TaskDiffFileSection({
 	file,
 	worktreePath,
@@ -1710,7 +1725,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const scrollRegionRef = useRef<HTMLDivElement | null>(null);
 	const searchInputRef = useRef<HTMLInputElement | null>(null);
 	const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+	const fileButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 	const pendingScrollFrameRef = useRef<number | null>(null);
+	const scrollSpyFrameRef = useRef<number | null>(null);
 	const pendingCommentScrollFrameRef = useRef<number | null>(null);
 	const pendingSearchScrollFrameRef = useRef<number | null>(null);
 	const commentRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -1824,7 +1841,32 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		}
 		return { files: visibleFiles.length + visibleSkippedFiles.length, insertions, deletions };
 	}, [payload, includeTests, visibleFiles, visibleSkippedFiles]);
-	const fileTree = payload ? buildDiffTree(visibleFiles, visibleSkippedFiles) : [];
+	const fileTree = useMemo(
+		() => (payload ? buildDiffTree(visibleFiles, visibleSkippedFiles) : []),
+		[payload, visibleFiles, visibleSkippedFiles],
+	);
+	// Render the right panel and skipped list in the tree's depth-first order so they always
+	// match the left file tree the user scans top-to-bottom (folders-first tree order != flat
+	// path sort whenever a file and a subfolder share a directory level).
+	const { orderedVisibleFiles, orderedVisibleSkippedFiles } = useMemo(() => {
+		const fileOrder = flattenDiffTree(fileTree);
+		const filesById = new Map(visibleFiles.map((file) => [file.id, file]));
+		const skippedById = new Map(visibleSkippedFiles.map((file) => [file.id, file]));
+		const orderedFiles: TaskDiffFile[] = [];
+		const orderedSkipped: TaskDiffSkippedFile[] = [];
+		for (const fileId of fileOrder) {
+			const file = filesById.get(fileId);
+			if (file) {
+				orderedFiles.push(file);
+				continue;
+			}
+			const skipped = skippedById.get(fileId);
+			if (skipped) {
+				orderedSkipped.push(skipped);
+			}
+		}
+		return { orderedVisibleFiles: orderedFiles, orderedVisibleSkippedFiles: orderedSkipped };
+	}, [fileTree, visibleFiles, visibleSkippedFiles]);
 	const reviewExportEntries = payload
 		? [
 			...buildInlineReviewExportEntries(visibleFiles, inlineComments),
@@ -2108,7 +2150,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			payload.files.map((file) => [file.id, !nextReadFiles[file.id]]),
 		);
 		const focusedFile = currentRequest.focusFile ? findDiffFileByPath(payload.files, currentRequest.focusFile) : null;
-		const initialActiveFileId = focusedFile?.id ?? payload.files[0]?.id ?? null;
+		const initialActiveFileId = focusedFile?.id ?? orderedVisibleFiles[0]?.id ?? payload.files[0]?.id ?? null;
 		setCollapsedFolders({});
 		setExpandedFiles(nextExpandedFiles);
 		setReadFiles(nextReadFiles);
@@ -2119,6 +2161,60 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		setEditingCommentId(null);
 		setEditingCommentDraft("");
 	}, [currentRequest.focusFile, payload, task.id]);
+
+	// Scroll spy: as the user scrolls the diff, highlight the file whose section is currently
+	// under the reading line (just below the sticky toolbar). rAF-throttled; only commits a
+	// state change when the active file actually changes.
+	useEffect(() => {
+		const region = scrollRegionRef.current;
+		if (!region || orderedVisibleFiles.length === 0) {
+			return;
+		}
+		const computeActiveFile = () => {
+			scrollSpyFrameRef.current = null;
+			const regionTop = region.getBoundingClientRect().top;
+			const toolbarHeight = toolbarRef.current?.getBoundingClientRect().height ?? 0;
+			const readingLine = regionTop + toolbarHeight + 8;
+			let candidate: string | null = orderedVisibleFiles[0]?.id ?? null;
+			for (const file of orderedVisibleFiles) {
+				const section = sectionRefs.current[file.id];
+				if (!section) {
+					continue;
+				}
+				if (section.getBoundingClientRect().top - 1 <= readingLine) {
+					candidate = file.id;
+				} else {
+					break;
+				}
+			}
+			if (candidate) {
+				setActiveFileId((prev) => (prev === candidate ? prev : candidate));
+			}
+		};
+		const onScroll = () => {
+			if (scrollSpyFrameRef.current !== null) {
+				return;
+			}
+			scrollSpyFrameRef.current = window.requestAnimationFrame(computeActiveFile);
+		};
+		region.addEventListener("scroll", onScroll, { passive: true });
+		return () => {
+			region.removeEventListener("scroll", onScroll);
+			if (scrollSpyFrameRef.current !== null) {
+				window.cancelAnimationFrame(scrollSpyFrameRef.current);
+				scrollSpyFrameRef.current = null;
+			}
+		};
+	}, [orderedVisibleFiles]);
+
+	// Keep the active file in view in the left tree whether it changed via the scroll spy or a
+	// jump. block:"nearest" only nudges the left list (a sibling of the diff scroll region).
+	useEffect(() => {
+		if (!activeFileId) {
+			return;
+		}
+		fileButtonRefs.current[activeFileId]?.scrollIntoView({ block: "nearest" });
+	}, [activeFileId]);
 
 	// Tracks the task.id that inlineComments currently belongs to.
 	// Updated in the persist effect whenever task.id changes, so we can detect
@@ -2808,6 +2904,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		return (
 			<button
 				key={node.key}
+				ref={(element) => {
+					fileButtonRefs.current[node.fileId] = element;
+				}}
 				onClick={() => { scrollToFile(node.fileId, { expand: true }); onFileClick?.(); }}
 				aria-label={t("infoPanel.diffOpenFile", { file: node.path })}
 				className={`flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm transition-colors ${
@@ -3661,7 +3760,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 
 				{!error && !isBusy && payload && diffLib && viewMode && visibleFiles.length > 0 && (
 					<div className="space-y-5">
-						{visibleFiles.map((file, index) => (
+						{orderedVisibleFiles.map((file, index) => (
 							<TaskDiffFileSection
 								key={file.id}
 								file={file}
@@ -3724,7 +3823,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								</span>
 							</div>
 							<ul className="divide-y divide-edge">
-								{visibleSkippedFiles.map((skipped) => {
+								{orderedVisibleSkippedFiles.map((skipped) => {
 									const isRead = readFiles[skipped.id] ?? false;
 									const isActive = activeFileId === skipped.id;
 									return (
