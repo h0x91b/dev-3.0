@@ -39,6 +39,26 @@ export function renderCommentMarkdown(body: string): string {
 	return sanitizeHtml(html, SANITIZE_OPTIONS);
 }
 
+/** Render a markdown *document* (e.g. a .md file) into safe HTML. Same sanitize
+ * allowlist as comments, but `breaks: false` — in documents a single newline is
+ * a soft wrap, not a <br> (GitHub renders files vs comments the same way). */
+export function renderMarkdownDocument(body: string): string {
+	const html = marked.parse(body, { gfm: true, breaks: false, async: false });
+	return sanitizeHtml(html, SANITIZE_OPTIONS);
+}
+
+export function MarkdownDocument({ body, className }: { body: string; className?: string }) {
+	const html = useMemo(() => renderMarkdownDocument(body), [body]);
+	return (
+		<div
+			className={`dev3-pr-md dev3-md-doc min-w-0 text-sm leading-relaxed text-fg${className ? ` ${className}` : ""}`}
+			data-testid="markdown-document"
+			// eslint-disable-next-line react/no-danger -- sanitized above via sanitize-html
+			dangerouslySetInnerHTML={{ __html: html }}
+		/>
+	);
+}
+
 export function CommentMarkdown({ body }: { body: string }) {
 	const html = useMemo(() => renderCommentMarkdown(body), [body]);
 	return (
