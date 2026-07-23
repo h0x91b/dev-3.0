@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
  * blurred by CSS (`index.css`). Masking is pure CSS: toggling never re-renders
  * the tree, and the wrapped values stay in the DOM/clipboard — the threat
  * model is a viewer of a recording, not a local inspector. Terminal content
- * (tmux panes) is NOT masked — it renders whatever the agent prints.
+ * is NOT masked — terminals render whatever the agent prints.
  *
  * Any UI that displays identity-bearing values (emails, account labels,
  * org/workspace names, home-dir paths, tunnel URLs, GitHub logins) must apply
