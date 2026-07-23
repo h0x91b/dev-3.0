@@ -1460,6 +1460,20 @@ describe("TaskCard", () => {
 	});
 
 	describe("PR badge", () => {
+		it("wraps crowded completed-card footer badges instead of overlapping them", () => {
+			renderCard(makeTask({ status: "completed" }), {
+				prInfo: {
+					number: 42,
+					url: "https://github.com/test/repo/pull/42",
+					mergeState: { mergeable: "CONFLICTING", status: "DIRTY" },
+					reviewState: "approved",
+					unresolvedCount: 7,
+				},
+			});
+
+			expect(screen.getByTestId("task-card-footer")).toHaveClass("flex-wrap");
+		});
+
 		it("renders the PR badge in its own status-badge row for active tasks", () => {
 			renderCard(makeTask({ status: "in-progress", worktreePath: "/tmp/wt", branchName: "feat/test" }), {
 				prInfo: { number: 42, url: "https://github.com/test/repo/pull/42" },
