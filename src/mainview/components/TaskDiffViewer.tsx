@@ -3425,7 +3425,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 																		>
 																			{""}
 																		</span>
-																		<span>{entry.author ?? "GitHub"}</span>
+																		<span className="streamer-private">{entry.author ?? "GitHub"}</span>
 																	</span>
 																)}
 															</div>

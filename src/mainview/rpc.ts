@@ -305,12 +305,16 @@ function initBrowserApi(): ApiShape {
 		window.dispatchEvent(new CustomEvent("rpc:authFailed", { detail }));
 	}
 
-	// Extract QR token from URL and clean it from the address bar
+	// Extract QR token from URL and clean it from the address bar. Only the
+	// token is a credential — keep other params (e.g. ?streamer=on, read later
+	// by initStreamerMode) instead of wiping the whole query.
 	const urlParams = new URLSearchParams(window.location.search);
 	const qrToken = urlParams.get("token") || "";
 	console.log("[browser-rpc] init", { isViteDevServer, hasQrToken: !!qrToken, protocol: wsProtocol });
 	if (qrToken) {
-		window.history.replaceState({}, "", window.location.pathname);
+		urlParams.delete("token");
+		const rest = urlParams.toString();
+		window.history.replaceState({}, "", rest ? `${window.location.pathname}?${rest}` : window.location.pathname);
 	}
 
 	function buildWsUrl(path: string, extraParams?: string): string {

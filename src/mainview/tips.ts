@@ -889,6 +889,14 @@ const ALL_TIPS: Tip[] = [
 		score: 3,
 		contexts: ["terminal"],
 	},
+	{
+		id: "streamer-mode",
+		titleKey: "tip.streamerMode.title",
+		bodyKey: "tip.streamerMode.body",
+		icon: "\u{F0567}", // nf-md-video
+		score: 3,
+		contexts: ["settings", "board"],
+	},
 ];
 
 const COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

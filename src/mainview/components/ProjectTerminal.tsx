@@ -123,7 +123,7 @@ function ProjectTerminal({ projectId, projectPath, onBack }: ProjectTerminalProp
 					<span>{t("projectTerminal.backToBoard")}</span>
 				</button>
 				<div className="flex items-center gap-3">
-					<span className="text-fg-muted text-xs truncate max-w-[20rem]">{projectPath}</span>
+					<span className="text-fg-muted text-xs truncate max-w-[20rem] streamer-private">{projectPath}</span>
 					<kbd className="text-[0.625rem] text-fg-muted/60 font-mono px-1.5 py-0.5 rounded bg-elevated border border-edge">
 						{t("projectTerminal.shortcutHint")}
 					</kbd>

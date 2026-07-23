@@ -22,7 +22,7 @@ function CommentBubble({ comment }: { comment: PRReviewComment }) {
 	return (
 		<div className="dev3-inline-comment__bubble rounded-lg border border-edge bg-raised px-3 py-2 space-y-1.5">
 			<div className="flex flex-wrap items-center gap-2">
-				<span className="text-xs font-semibold text-fg">{comment.author ?? t("infoPanel.prUnknownAuthor")}</span>
+				<span className="text-xs font-semibold text-fg streamer-private">{comment.author ?? t("infoPanel.prUnknownAuthor")}</span>
 				{comment.isBot && (
 					<span className="rounded border border-edge bg-base px-1 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-fg-3">
 						{t("infoPanel.prBotBadge")}

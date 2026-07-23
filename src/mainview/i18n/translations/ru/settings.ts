@@ -126,6 +126,8 @@ const settings = {
 	"settings.zoom": "Масштаб",
 	"settings.zoomDesc": "Масштабирование всего интерфейса",
 	"settings.zoomReset": "Сбросить",
+	"settings.streamerMode": "Режим стримера",
+	"settings.streamerModeDesc": "Размывает почту, названия аккаунтов, организации, пути к файлам и tunnel-URL — для записи экрана и скриншотов. Содержимое терминала не скрывается.",
 	"settings.scrollSpeed": "Скорость прокрутки терминала",
 	"settings.scrollSpeedDesc": "Настройка скорости прокрутки терминала колёсиком мыши",
 	"settings.terminalKeymap": "Раскладка клавиш терминала",

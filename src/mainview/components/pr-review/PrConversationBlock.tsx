@@ -179,7 +179,7 @@ export function PrConversationBlock({
 						conversation.map((comment) => (
 							<div key={comment.id} className="rounded-lg border border-edge bg-base/60 px-3 py-2 space-y-1.5">
 								<div className="flex flex-wrap items-center gap-2">
-									<span className="text-xs font-semibold text-fg">{comment.author ?? t("infoPanel.prUnknownAuthor")}</span>
+									<span className="text-xs font-semibold text-fg streamer-private">{comment.author ?? t("infoPanel.prUnknownAuthor")}</span>
 									{comment.isBot && (
 										<span className="rounded border border-edge bg-raised px-1 py-px text-[0.625rem] font-semibold uppercase tracking-wide text-fg-3">
 											{t("infoPanel.prBotBadge")}

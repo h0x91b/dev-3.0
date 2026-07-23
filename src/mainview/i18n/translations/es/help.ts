@@ -201,6 +201,9 @@ const help = {
 	"help.field.taskBranch.title": "¿Por qué esta rama?",
 	"help.field.taskBranch.body":
 		"Las tareas nuevas parten de la rama activa del proyecto cuando no es la rama base, para que las tareas pequeñas se apilen sobre una función grande que estés creando. Vacía el campo para volver a la rama base predeterminada del proyecto.",
+	"help.field.streamerMode.title": "Oculta datos privados en directo",
+	"help.field.streamerMode.body":
+		"Al activarlo, los valores que revelan identidad — correos y nombres de cuentas, organizaciones, rutas de la carpeta personal, URLs de túnel y el código QR de acceso remoto — se difuminan en toda la interfaz. El contenido del terminal NO se oculta: los paneles muestran lo que impriman los agentes. Actívalo rápido desde la paleta de comandos ⇧⌘P.",
 } as const;
 
 export default help;

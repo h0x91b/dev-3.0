@@ -14,6 +14,9 @@ import {
 } from "../../zoom";
 import SettingsSection from "./SettingsSection";
 import SettingsEntry from "./SettingsEntry";
+import SettingsToggle from "./SettingsToggle";
+import HelpSpot from "../HelpSpot";
+import { setStreamerMode, useStreamerMode } from "../../streamer-mode";
 import type { Theme } from "./utils";
 
 interface AppearanceSettingsSectionProps {
@@ -33,6 +36,7 @@ export default function AppearanceSettingsSection({
 	onThemeChange,
 	onLocaleChange,
 }: AppearanceSettingsSectionProps) {
+	const streamerMode = useStreamerMode();
 	return (
 		<SettingsSection title={t("settings.categoryAppearance")} helpTopicId="settings.appearance">
 			<SettingsEntry anchor="theme">
@@ -136,6 +140,23 @@ export default function AppearanceSettingsSection({
 						{t("settings.zoomReset")}
 					</button>
 				</div>
+				</div>
+			</SettingsEntry>
+
+			<SettingsEntry anchor="streamer-mode">
+				<div data-help-id="field.streamer-mode">
+					<label className="flex items-center gap-1.5 text-fg text-sm font-semibold mb-2">
+						{t("settings.streamerMode")}
+						<HelpSpot topicId="field.streamer-mode" />
+					</label>
+					<p className="text-fg-3 text-sm mb-3">{t("settings.streamerModeDesc")}</p>
+					<SettingsToggle
+						checked={streamerMode}
+						ariaLabel={t("settings.streamerMode")}
+						onLabel={t("settings.on")}
+						offLabel={t("settings.off")}
+						onToggle={() => setStreamerMode(!streamerMode)}
+					/>
 				</div>
 			</SettingsEntry>
 		</SettingsSection>

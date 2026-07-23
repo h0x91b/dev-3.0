@@ -1,5 +1,6 @@
 import { api } from "./rpc";
 import { startClosePanePicker } from "./close-pane-picker";
+import { toggleStreamerMode } from "./streamer-mode";
 import type { AppState, AppAction, Route } from "./state";
 import type { Locale } from "./i18n/types";
 import type { TaskStatus } from "../shared/types";
@@ -77,6 +78,9 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			return;
 		case "set-locale-es":
 			ctx.setLocale("es");
+			return;
+		case "toggle-streamer-mode":
+			toggleStreamerMode();
 			return;
 
 		// ── App: About / hard refresh ──
@@ -384,6 +388,7 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	// App
 	"set-theme-light", "set-theme-dark", "set-theme-auto",
 	"set-locale-en", "set-locale-ru", "set-locale-es",
+	"toggle-streamer-mode",
 	"about", "hard-refresh",
 	// View / navigation
 	"view-dashboard", "view-kanban", "view-changelog", "view-stats", "open-settings",

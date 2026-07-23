@@ -133,6 +133,7 @@ export const HELP_TOPICS: HelpTopic[] = [
 
 	// ── Form fields ──
 	{ id: "field.task-branch", titleKey: "help.field.taskBranch.title", bodyKey: "help.field.taskBranch.body" },
+	{ id: "field.streamer-mode", titleKey: "help.field.streamerMode.title", bodyKey: "help.field.streamerMode.body" },
 
 	// ── Header / sidebar ──
 	{
@@ -229,6 +230,7 @@ export const REQUIRED_HELP_SURFACES: string[] = [
 	"sidebar.active-tasks",
 	// Form fields (non-self-evident behavior)
 	"field.task-branch",
+	"field.streamer-mode",
 ];
 
 const TOPIC_BY_ID = new Map(HELP_TOPICS.map((topic) => [topic.id, topic]));

@@ -126,6 +126,8 @@ const settings = {
 	"settings.zoom": "Zoom",
 	"settings.zoomDesc": "Escalar toda la interfaz",
 	"settings.zoomReset": "Restablecer",
+	"settings.streamerMode": "Modo streamer",
+	"settings.streamerModeDesc": "Difumina correos, nombres de cuentas, organizaciones, rutas de archivos y URLs de túnel — para grabaciones de pantalla y capturas. El contenido del terminal no se oculta.",
 	"settings.scrollSpeed": "Velocidad de desplazamiento del terminal",
 	"settings.scrollSpeedDesc": "Ajusta la velocidad de desplazamiento del terminal con la rueda del ratón",
 	"settings.terminalKeymap": "Mapa de teclas del terminal",

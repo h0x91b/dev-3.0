@@ -71,14 +71,14 @@ function IdentityBadges({
 	return (
 		<>
 			{identity.email && identity.email !== hideEmail ? (
-				<span className="text-fg-3 text-xs font-mono truncate">{identity.email}</span>
+				<span className="text-fg-3 text-xs font-mono truncate streamer-private">{identity.email}</span>
 			) : null}
 			{kind !== "codex" && identity.organization ? (
-				<span className="text-fg-muted text-xs truncate">{identity.organization}</span>
+				<span className="text-fg-muted text-xs truncate streamer-private">{identity.organization}</span>
 			) : null}
 			{workspace ? (
 				<span
-					className={`text-fg-3 text-[0.6875rem] px-1.5 py-0.5 bg-raised rounded max-w-full truncate ${
+					className={`text-fg-3 text-[0.6875rem] px-1.5 py-0.5 bg-raised rounded max-w-full truncate streamer-private ${
 						identity.organization ? "" : "font-mono"
 					}`}
 				>
@@ -111,7 +111,7 @@ function ApiProfileBadges({ api }: { api: AgentApiProfileInfo }) {
 	return (
 		<>
 			<span className="text-warning text-xs px-1.5 py-0.5 bg-warning/10 rounded shrink-0">API</span>
-			{host ? <span className="text-fg-3 text-xs font-mono truncate">{host}</span> : null}
+			{host ? <span className="text-fg-3 text-xs font-mono truncate streamer-private">{host}</span> : null}
 		</>
 	);
 }
@@ -191,7 +191,7 @@ function AccountRow({
 						className="flex-none w-48 max-w-full px-2 py-0.5 bg-base border border-edge rounded text-fg text-sm outline-none focus:border-accent/40"
 					/>
 				) : (
-					<span className="text-fg text-sm font-medium truncate">{label}</span>
+					<span className="text-fg text-sm font-medium truncate streamer-private">{label}</span>
 				)}
 				{api ? (
 					<ApiProfileBadges api={api} />

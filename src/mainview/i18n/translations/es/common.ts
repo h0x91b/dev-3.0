@@ -134,6 +134,7 @@ const common = {
 	"command.localeEn": "Language: English",
 	"command.localeRu": "Language: Русский (Russian)",
 	"command.localeEs": "Language: Español (Spanish)",
+	"command.toggleStreamerMode": "Alternar modo streamer",
 	"command.pullMain": "Actualizar main",
 	"command.createPr": "Crear pull request",
 	"command.devServerStart": "Iniciar servidor dev",

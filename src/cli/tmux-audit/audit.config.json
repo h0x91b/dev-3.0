@@ -64,6 +64,7 @@
 		"LAY-006": "Preserve keyboard and accessibility behavior.",
 		"LAY-007": "Verify desktop, browser, and narrow/mobile rendering.",
 		"STATE-008": "Restore required terminal features.",
+		"MIG-001": "Backend-neutral terminal parity corpus.",
 		"MIG-003": "Backend identity as backward-compatible data.",
 		"MIG-006": "Keep tmux failure isolation (native replacement asserts non-use).",
 		"RUN-005": "Minimum-runtime gate and diagnostics.",
@@ -100,6 +101,15 @@
 			"dependencyKind": "active",
 			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
 			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"match": "^src/bun/terminal-parity/",
+			"category": "test-only",
+			"roadmapItem": "MIG-001",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Backend-neutral parity corpus + the tmux runner proving the current backend satisfies it (test artifact only; no production imports).",
+			"deletionPrerequisite": "Corpus retargets the native runner (MIG-001); the tmux runner is removed with the tmux backend (CUT-005)."
 		}
 	],
 	"overrides": {
@@ -1133,6 +1143,38 @@
 			"depth": "surface",
 			"dependencyKind": "reference",
 			"consumer": "Native pane-layout feasibility README references tmux for contrast.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/APP-RESTART-REATTACH.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "App-restart reattach evidence doc: proves native session recovery with no tmux involved.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/host-images/README.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Immutable staged host-image README contrasts with the tmux backend.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/host-images/VERSION-SESSION-MATRIX.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Host-image version/session matrix references tmux for contrast (never falls back to tmux).",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		"src/bun/native-terminal-registry/host-images/staged-host-runtime.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Staged-image host runtime: 'NO tmux involvement' marker proving isolation from tmux.",
 			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		}
 	}

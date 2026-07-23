@@ -218,6 +218,8 @@ const tips = {
 	"tip.mobileTaskGit.body": "В мобильном виде задачи нажмите меню \u22ee \u2014 rebase, push, создание PR и дифф в секции Git.",
 	"tip.terminalSearch.title": "Поиск по терминалу",
 	"tip.terminalSearch.body": "Нажмите \u2318F (Ctrl+F в Linux) в терминале, чтобы искать по истории tmux \u2014 совпадения подсвечиваются прямо в панели.",
+	"tip.streamerMode.title": "Записывайте экран без утечек",
+	"tip.streamerMode.body": "Режим стримера (Настройки → Внешний вид или ⇧⌘P) размывает почту, аккаунты, пути и tunnel-URL для скринкастов.",
 };
 
 export default tips;

@@ -2256,7 +2256,7 @@ function App() {
 						<h2 className="text-fg text-lg font-semibold">{t("remote.title")}</h2>
 						<p className="text-fg-2 text-sm">{t("remote.subtitle")}</p>
 						<div className="flex justify-center relative">
-							<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-all duration-500 ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
+							<img src={remoteQR.qrDataUrl} alt="QR Code" className={`w-56 h-56 rounded-lg transition-all duration-500 streamer-private-media ${qrConsumed ? "opacity-20 grayscale" : ""}`} />
 							{qrConsumed && (
 								<div className="absolute inset-0 flex items-center justify-center">
 									<div className="bg-base/90 rounded-lg px-4 py-2">
@@ -2296,7 +2296,7 @@ function App() {
 											setQrCountdown(25);
 										}).catch(() => {});
 									}}
-									className="mt-1 w-full px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-xs outline-none focus:border-accent/40 transition-colors disabled:opacity-40"
+									className="mt-1 w-full px-2 py-1.5 bg-elevated border border-edge rounded-lg text-fg text-xs outline-none focus:border-accent/40 transition-colors disabled:opacity-40 streamer-private"
 								>
 									{remoteQR.interfaces.map((iface) => (
 										<option key={`${iface.name}-${iface.address}`} value={iface.address}>
@@ -2307,7 +2307,7 @@ function App() {
 							</div>
 						)}
 						<div className={`bg-base rounded-lg p-3 ${qrConsumed ? "opacity-40" : ""}`}>
-							<code className={`text-xs break-all ${qrConsumed ? "text-fg-3" : "text-fg select-all"}`}>{remoteQR.accessUrl}</code>
+							<code className={`text-xs break-all streamer-private ${qrConsumed ? "text-fg-3" : "text-fg select-all"}`}>{remoteQR.accessUrl}</code>
 						</div>
 
 						{/* Tunnel toggle */}

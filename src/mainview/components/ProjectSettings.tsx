@@ -1649,7 +1649,7 @@ function ProjectSettings({
 										}));
 									}}
 									disabled={githubStatus?.authStatus !== "authenticated"}
-									className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+									className="w-full px-4 py-3 bg-raised border border-edge rounded-xl text-fg text-sm outline-none focus:border-accent/40 transition-colors disabled:opacity-60 disabled:cursor-not-allowed streamer-private"
 								>
 									<option value="">
 										{activeGitHubAccount
