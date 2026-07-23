@@ -2779,6 +2779,13 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string };
 				response: void;
 			};
+			moveTaskToProject: {
+				// Relocate a To Do task to another project (true move, same id). The
+				// backend re-derives project-scoped fields; the response is the moved
+				// task as it now lives in the target project.
+				params: { taskId: string; fromProjectId: string; toProjectId: string };
+				response: Task;
+			};
 			editTask: {
 				params: { taskId: string; projectId: string; description: string };
 				response: Task;

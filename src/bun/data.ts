@@ -998,6 +998,122 @@ export async function getTask(
 	return task;
 }
 
+/**
+ * Relocate a single **To Do** task to another project — a true move (same `id`,
+ * disappears from the source board). This is the one decision-rich seam for the
+ * feature; the RPC handler above it is pure wiring.
+ *
+ * Portable fields (title, description, overview, notes, history, priority,
+ * `automationId`, `createdAt`, …) travel unchanged. Project-scoped fields are
+ * re-derived: `projectId` → target, `seq` → next free target seq, `baseBranch`
+ * → the target project's default. Labels match by NAME (attach the target
+ * project's same-name label, else drop — never auto-create). `customColumnId`,
+ * `opsWorkDir`, and `scheduledLaunch` are cleared (target has different columns;
+ * a deferred launch carries the old project's agent/branch config).
+ *
+ * Guards: only `status === "todo"` is movable; the target must be a different,
+ * non-deleted project (cross-kind git↔virtual moves are allowed — a To Do task
+ * has no git state).
+ *
+ * Crash safety: both projects' task files are locked (acquired in a canonical
+ * sorted order so two opposite-direction moves cannot deadlock). We append to
+ * the target and read-back-verify it landed (decision 082 pattern) BEFORE
+ * removing from the source, so the worst crash outcome is a harmless duplicate,
+ * never a lost task. Only file CONTENTS change — no path is renamed or moved
+ * (frozen ~/.dev3.0 layout, AGENTS.md).
+ */
+export async function moveTaskToProject(
+	sourceProject: Project,
+	targetProject: Project,
+	taskId: string,
+	dropPosition: "top" | "bottom" = "bottom",
+): Promise<Task> {
+	if (sourceProject.id === targetProject.id) {
+		throw new Error("Cannot move a task to the project it is already in");
+	}
+	if (targetProject.deleted) {
+		throw new Error("Cannot move a task to a deleted project");
+	}
+
+	const sourceFile = tasksFile(sourceProject);
+	const targetFile = tasksFile(targetProject);
+	// Canonical lock order (sorted paths) so concurrent A→B and B→A moves can
+	// never deadlock — both acquire the lower path first.
+	const [firstLock, secondLock] = [sourceFile, targetFile].sort();
+
+	return withFileLock(firstLock, () =>
+		withFileLock(secondLock, async () => {
+			log.info("Moving task to project", { taskId, from: sourceProject.id, to: targetProject.id });
+			const sourceTasks = await rawLoadTasks(sourceProject, { strict: true, persistMigrations: true });
+			const source = sourceTasks.find((t) => t.id === taskId);
+			if (!source) throw new Error(`Task not found: ${taskId}`);
+			if (source.status !== "todo") {
+				throw new Error(`Only To Do tasks can be moved between projects (task ${taskId} is ${source.status})`);
+			}
+
+			const targetTasks = await rawLoadTasks(targetProject, { strict: true, persistMigrations: true });
+
+			// Labels: match by name, drop the rest. No labels are auto-created.
+			const sourceLabelNameById = new Map((sourceProject.labels ?? []).map((l) => [l.id, l.name]));
+			const targetLabelIdByName = new Map((targetProject.labels ?? []).map((l) => [l.name, l.id]));
+			const remappedLabelIds: string[] = [];
+			for (const id of source.labelIds ?? []) {
+				const name = sourceLabelNameById.get(id);
+				if (name === undefined) continue;
+				const targetId = targetLabelIdByName.get(name);
+				if (targetId) remappedLabelIds.push(targetId);
+			}
+
+			const now = new Date().toISOString();
+			const moved: Task = {
+				...source,
+				projectId: targetProject.id,
+				seq: nextSeq(targetTasks),
+				baseBranch: deriveTaskBaseBranch(targetProject),
+				labelIds: remappedLabelIds,
+				customColumnId: null,
+				opsWorkDir: null,
+				scheduledLaunch: null,
+				// A fresh position in the target column; source ordering is meaningless there.
+				columnOrder: undefined,
+				updatedAt: now,
+			};
+
+			targetTasks.push(moved);
+			// Place the moved card at the top/bottom of the target To Do column per
+			// the user's taskDropPosition, mirroring applyTaskUpdate's drop handling:
+			// reassign sequential columnOrder to the (band-sorted) column so the card
+			// lands where the setting says within its priority band.
+			const columnTasks = sortColumnTasksForReorder(
+				targetTasks.filter((t) => t.status === "todo" && (t.customColumnId ?? null) === null && t.id !== moved.id),
+			);
+			if (dropPosition === "top") columnTasks.unshift(moved);
+			else columnTasks.push(moved);
+			for (let i = 0; i < columnTasks.length; i++) columnTasks[i].columnOrder = i;
+
+			await rawSaveTasks(targetProject, targetTasks);
+
+			// Verify the append landed before removing the source copy — the same
+			// read-back guard addTask uses (decision 082). If it did not persist we
+			// throw WITHOUT touching the source, so the task is never lost.
+			const persisted = await rawLoadTasks(targetProject, { strict: true });
+			if (!persisted.some((t) => t.id === moved.id)) {
+				log.error("Move verification failed — target write did not persist", { taskId, to: targetProject.id });
+				throw new Error(
+					`Task ${taskId} failed to persist in target project ${targetProject.id} ` +
+					`(verification read-back did not find it). Source left untouched — no data lost.`,
+				);
+			}
+
+			const remainingSource = sourceTasks.filter((t) => t.id !== taskId);
+			await rawSaveTasks(sourceProject, remainingSource);
+
+			log.info("Task moved to project", { taskId, seq: moved.seq, to: targetProject.id });
+			return moved;
+		}),
+	);
+}
+
 function applyTaskUpdate(
 	tasks: Task[],
 	idx: number,

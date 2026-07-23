@@ -1187,6 +1187,17 @@ function App() {
 		return () => window.removeEventListener("rpc:taskUpdated", onTaskUpdated);
 	}, [dispatch]);
 
+	// A task left a project's board (moved to another project). Scoped to the
+	// source project so a window viewing the TARGET keeps the just-added card.
+	useEffect(() => {
+		function onTaskRemoved(e: Event) {
+			const { taskId, projectId } = (e as CustomEvent).detail;
+			dispatch({ type: "removeTask", taskId, projectId });
+		}
+		window.addEventListener("rpc:taskRemoved", onTaskRemoved);
+		return () => window.removeEventListener("rpc:taskRemoved", onTaskRemoved);
+	}, [dispatch]);
+
 	useEffect(() => {
 		function onGlobalSettingsUpdated(e: Event) {
 			setGlobalSettings((e as CustomEvent<GlobalSettingsType>).detail);

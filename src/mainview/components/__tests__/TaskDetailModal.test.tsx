@@ -12,6 +12,8 @@ vi.mock("../../rpc", () => ({
 			renameTask: vi.fn(),
 			moveTask: vi.fn(),
 			moveTaskToCustomColumn: vi.fn(),
+			moveTaskToProject: vi.fn(),
+			getProjects: vi.fn(),
 			addTaskNote: vi.fn(),
 			updateTaskNote: vi.fn(),
 			deleteTaskNote: vi.fn(),
@@ -283,6 +285,28 @@ describe("TaskDetailModal", () => {
 
 			expect(mockedConfirm).toHaveBeenCalledTimes(1);
 			expect(mockedApi.request.deleteTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(dispatch).toHaveBeenCalledWith({ type: "removeTask", taskId: "t1" });
+			expect(onClose).toHaveBeenCalledTimes(1);
+		});
+
+		it("moving to a project calls the RPC, dispatches removal, and closes", async () => {
+			const task = makeTodoTask();
+			const dispatch = vi.fn();
+			const onClose = vi.fn();
+			const dest: Project = { ...mockProject, id: "p2", name: "Destination", path: "/home/user/dest" };
+			mockedApi.request.getProjects.mockResolvedValue([mockProject, dest]);
+			mockedApi.request.moveTaskToProject.mockResolvedValue({ ...task, projectId: "p2" });
+			renderModal(task, { dispatch, onClose });
+			const user = userEvent.setup();
+
+			await user.click(screen.getByRole("button", { name: "Move to project…" }));
+			await user.click(await screen.findByText("Destination"));
+
+			expect(mockedApi.request.moveTaskToProject).toHaveBeenCalledWith({
+				taskId: "t1",
+				fromProjectId: "p1",
+				toProjectId: "p2",
+			});
 			expect(dispatch).toHaveBeenCalledWith({ type: "removeTask", taskId: "t1" });
 			expect(onClose).toHaveBeenCalledTimes(1);
 		});

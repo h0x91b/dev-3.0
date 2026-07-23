@@ -91,3 +91,25 @@ reversible by moving back; a success toast reports the destination.
   it instead so the move always succeeds.
 - **Confirm dialog / Undo toast** — unnecessary for a reversible action; plain
   success toast chosen.
+
+## Implementation notes
+
+- `data.moveTaskToProject(source, target, taskId, dropPosition = "bottom")` — the
+  4th arg honors the user's `taskDropPosition` by reassigning `columnOrder` across
+  the target To Do column (same logic as `applyTaskUpdate`'s drop handling). The
+  RPC handler sources it from `loadSettings()`.
+- **Renderer sync uses a new `taskRemoved` push** `{ projectId, taskId }` for the
+  source board, alongside the existing `taskUpdated` for the target. There was no
+  removal push before (local delete only dispatched `removeTask` in the initiating
+  window). The `removeTask` reducer action gained an optional `projectId`: a
+  `taskRemoved` for the SOURCE must NOT strip the freshly-added card from a window
+  viewing the TARGET (same task id), so the reducer only filters when the shown
+  board matches. `taskRemoved` is also added to the cross-instance broadcast
+  whitelist (`shared-pure.ts` + `cli-socket-server._notify`) so separate app
+  processes stay consistent — otherwise the auto-broadcast `taskUpdated` would
+  upsert the moved card into another instance's source board as a phantom.
+- Lock order is the two task files sorted lexicographically (not source-then-
+  target) so concurrent A→B and B→A moves cannot deadlock.
+- UI: `MoveToProjectPicker.tsx` (portal popover on desktop like `LabelPicker`,
+  `BottomSheet` under 768px like `FilterFunnel`); wired into `TaskDetailModal`'s
+  To Do footer next to Delete.

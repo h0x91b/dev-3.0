@@ -270,6 +270,10 @@ const handlers: Record<string, Handler> = {
 				const tasks = await data.loadTasks(project);
 				const task = tasks.find((t) => t.id === taskId);
 				if (task) localPush("taskUpdated", { projectId, task });
+			} else if (event === "taskRemoved" && projectId && taskId) {
+				// Another instance moved/deleted a task out of this project — drop it
+				// from the local board. No disk read: the task is already gone there.
+				localPush("taskRemoved", { projectId, taskId });
 			} else if (event === "projectUpdated" && projectId) {
 				const project = await data.getProject(projectId);
 				localPush("projectUpdated", { project });

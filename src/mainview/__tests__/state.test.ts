@@ -469,6 +469,29 @@ describe("reducer", () => {
 		expect(next.currentProjectTasks).toEqual([]);
 	});
 
+	it("removeTask: scoped to the source project removes when that project is shown", () => {
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p1" },
+			currentProjectTasks: [mockTask],
+		};
+		const next = reducer(state, { type: "removeTask", taskId: "t1", projectId: "p1" });
+		expect(next.currentProjectTasks).toEqual([]);
+	});
+
+	it("removeTask: scoped to another project is a no-op for the shown board (move-sync guard)", () => {
+		// A `taskRemoved` for the SOURCE project must not strip the freshly-added
+		// card from a window viewing the TARGET (same task id, different board).
+		const state: AppState = {
+			...initialState,
+			route: { screen: "project", projectId: "p2" },
+			currentProjectTasks: [mockTask],
+		};
+		const next = reducer(state, { type: "removeTask", taskId: "t1", projectId: "p1" });
+		expect(next).toBe(state);
+		expect(next.currentProjectTasks).toEqual([mockTask]);
+	});
+
 	it("addProject: appends to projects", () => {
 		const next = reducer(initialState, {
 			type: "addProject",
