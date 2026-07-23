@@ -3514,6 +3514,34 @@ export type AppRPCSchema = {
 			 */
 			cliAttention: { taskId: string; reason: string };
 			/**
+			 * CLI-shared images (`dev3 show-image`). Carries the task's shared images
+			 * so the renderer can raise the attention badge and open the lightbox
+			 * (auto-open only when already viewing the task). Sole emitter:
+			 * `pushCliShowImage` in `src/bun/rpc-handlers/shared.ts`.
+			 */
+			cliShowImage: {
+				taskId: string;
+				projectId: string;
+				images: SharedImage[];
+				newCount: number;
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
+			/**
+			 * CLI-shared HTML artifacts (`dev3 show-artifact`). Same delivery model as
+			 * {@link cliShowImage} but for self-contained artifacts.
+			 */
+			cliShowArtifact: {
+				taskId: string;
+				projectId: string;
+				artifacts: SharedArtifact[];
+				newCount: number;
+				taskSeq?: number;
+				taskTitle?: string;
+				projectName?: string;
+			};
+			/**
 			 * Browser Web Notification request. Mirrors a native OS notification
 			 * (`dev3 notify --desktop`, watched-task status/event banners) for clients
 			 * running in remote/browser mode, where `Utils.showNotification` is a no-op.

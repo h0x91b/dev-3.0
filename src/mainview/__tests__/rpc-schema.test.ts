@@ -14,3 +14,12 @@ describe("AppRPCSchema webview messages", () => {
 		expect(sharedTypesSource).toContain("osc52Clipboard: { taskId: string; text: string; len: number };");
 	});
 });
+
+describe("AppRPCSchema bun messages", () => {
+	it("declares the CLI shared-image / shared-artifact push messages", () => {
+		expect(sharedTypesSource).toContain("cliShowImage: {");
+		expect(sharedTypesSource).toContain("images: SharedImage[];");
+		expect(sharedTypesSource).toContain("cliShowArtifact: {");
+		expect(sharedTypesSource).toContain("artifacts: SharedArtifact[];");
+	});
+});
