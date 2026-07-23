@@ -2,7 +2,7 @@ import type { LaunchVariant, Project, Task, TaskPriority, TaskStatus } from "../
 import { ACTIVE_STATUSES, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import { resolveCompletionRequest } from "../completion-requests";
-import { recordFavoriteUsages } from "../settings";
+import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getPushMessage, isActive, log } from "./shared";
 import { dispatchLifecycleEvent, removeLifecycleActor } from "../lifecycle/service";
 import { clearMergeNotification } from "../lifecycle/activities";
@@ -216,6 +216,25 @@ async function deleteTask(params: { taskId: string; projectId: string }): Promis
 	await dispatchLifecycleEvent(project.id, task.id, { type: "deleteRequested" }, { project, task });
 	removeLifecycleActor(task.id);
 	log.info("← deleteTask done");
+}
+
+// Relocate a To Do task to another project (UI only; no CLI in v1). All the
+// decision-rich logic lives in data.moveTaskToProject — this resolves both
+// projects, threads the drop-position setting, and syncs every renderer:
+// `taskUpdated` adds the card to the target board, `taskRemoved` drops it from
+// the source board (both fan out to desktop + remote browser, and cross-instance).
+async function moveTaskToProject(params: { taskId: string; fromProjectId: string; toProjectId: string }): Promise<Task> {
+	log.info("→ moveTaskToProject", params);
+	const [fromProject, toProject] = await Promise.all([
+		data.getProject(params.fromProjectId),
+		data.getProject(params.toProjectId),
+	]);
+	const dropPosition = (await loadSettings()).taskDropPosition;
+	const moved = await data.moveTaskToProject(fromProject, toProject, params.taskId, dropPosition);
+	getPushMessage()?.("taskUpdated", { projectId: toProject.id, task: moved });
+	getPushMessage()?.("taskRemoved", { projectId: fromProject.id, taskId: params.taskId });
+	log.info("← moveTaskToProject done", { taskId: moved.id.slice(0, 8), to: toProject.id });
+	return moved;
 }
 
 async function spawnVariants(params: {
@@ -771,6 +790,7 @@ export const taskLifecycleHandlers = {
 	reorderTask,
 	setTaskPriority,
 	deleteTask,
+	moveTaskToProject,
 	spawnVariants,
 	addAttempts,
 	editTask,

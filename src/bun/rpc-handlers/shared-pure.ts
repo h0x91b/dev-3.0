@@ -213,11 +213,12 @@ export function setPushMessage(fn: (name: string, payload: any) => void): void {
 	pushMessageRaw = fn;
 	pushMessage = (name, payload) => {
 		fn(name, payload);
-		if (name === "taskUpdated" || name === "projectUpdated") {
+		if (name === "taskUpdated" || name === "projectUpdated" || name === "taskRemoved") {
 			const params: Record<string, string> = { event: name };
 			if (payload.projectId) params.projectId = payload.projectId;
 			if (payload.project?.id) params.projectId = payload.project.id;
 			if (payload.task?.id) params.taskId = payload.task.id;
+			if (payload.taskId) params.taskId = payload.taskId;
 			broadcastToOtherInstances(name, params);
 		}
 	};

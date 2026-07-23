@@ -6,6 +6,7 @@ import { titleFromDescription, getAllowedTransitions, getTaskTitle } from "../..
 import { useStatusColors } from "../hooks/useStatusColors";
 import LabelChip from "./LabelChip";
 import LabelPicker from "./LabelPicker";
+import MoveToProjectPicker from "./MoveToProjectPicker";
 import PriorityBadge from "./PriorityBadge";
 import { NoteItem, formatDate } from "./NoteItem";
 import { ImageAttachmentsStrip } from "./ImageAttachmentsStrip";
@@ -46,13 +47,18 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 	const [renameValue, setRenameValue] = useState("");
 	const [renameSaving, setRenameSaving] = useState(false);
 	const [pickerOpen, setPickerOpen] = useState(false);
+	const [moveOpen, setMoveOpen] = useState(false);
+	const [moving, setMoving] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const renameInputRef = useRef<HTMLInputElement>(null);
 	const pickerAnchorRef = useRef<HTMLButtonElement>(null);
+	const moveAnchorRef = useRef<HTMLButtonElement>(null);
 
 	useEscapeKey(() => {
-		if (pickerOpen) {
+		if (moveOpen) {
+			setMoveOpen(false);
+		} else if (pickerOpen) {
 			setPickerOpen(false);
 		} else if (statusMenuOpen) {
 			setStatusMenuOpen(false);
@@ -256,6 +262,25 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 		} catch (err) {
 			toast.error(t("task.failedDelete", { error: String(err) }), { taskId: task.id });
 			setDeleting(false);
+		}
+	}
+
+	async function handleMoveToProject(target: Project) {
+		setMoveOpen(false);
+		setMoving(true);
+		try {
+			await api.request.moveTaskToProject({
+				taskId: task.id,
+				fromProjectId: project.id,
+				toProjectId: target.id,
+			});
+			dispatch({ type: "removeTask", taskId: task.id });
+			trackEvent("task_moved_to_project", { from_project_id: project.id, to_project_id: target.id });
+			toast.success(t("task.movedToProject", { project: target.name }));
+			onClose();
+		} catch (err) {
+			toast.error(t("task.failedMoveToProject", { error: String(err) }), { taskId: task.id });
+			setMoving(false);
 		}
 	}
 
@@ -585,16 +610,38 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 
 						{/* Primary + destructive actions */}
 						<div className="flex items-center justify-between">
-							<button
-								onClick={handleDelete}
-								disabled={deleting}
-								className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-fg-3 transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
-							>
-								{t("task.delete")}
-							</button>
+							<div className="flex items-center gap-1">
+								<button
+									onClick={handleDelete}
+									disabled={deleting || moving}
+									className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-fg-3 transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+								>
+									{t("task.delete")}
+								</button>
+								<div className="relative">
+									<button
+										ref={moveAnchorRef}
+										onClick={() => setMoveOpen((v) => !v)}
+										disabled={deleting || moving}
+										aria-haspopup="dialog"
+										aria-expanded={moveOpen}
+										className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-fg-3 transition-colors hover:bg-fg/8 hover:text-fg disabled:opacity-50"
+									>
+										{t("task.moveToProject")}
+									</button>
+									{moveOpen && moveAnchorRef.current && (
+										<MoveToProjectPicker
+											currentProjectId={project.id}
+											anchorEl={moveAnchorRef.current}
+											onSelect={handleMoveToProject}
+											onClose={() => setMoveOpen(false)}
+										/>
+									)}
+								</div>
+							</div>
 							<button
 								onClick={handleRun}
-								disabled={deleting}
+								disabled={deleting || moving}
 								className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-green-900/30 transition-colors hover:bg-green-500 disabled:opacity-50"
 								title={t("task.run")}
 							>

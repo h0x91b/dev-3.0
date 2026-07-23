@@ -48,6 +48,7 @@ vi.mock("../data", () => ({
 	addProject: vi.fn(),
 	reorderProjects: vi.fn(),
 	deleteTask: vi.fn(),
+	moveTaskToProject: vi.fn(),
 	removeProject: vi.fn(),
 	updateProject: vi.fn(),
 	updateProjectWith: vi.fn(),
@@ -2753,6 +2754,42 @@ describe("handlers.deleteTask", () => {
 		await handlers.deleteTask({ taskId: "task-1", projectId: "proj-1" });
 
 		expect(releaseSpy).toHaveBeenCalledWith("task-1");
+	});
+});
+
+describe("handlers.moveTaskToProject", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("resolves both projects, threads the drop position, and syncs both boards", async () => {
+		const from = makeProject({ id: "from", path: "/tmp/from" });
+		const to = makeProject({ id: "to", path: "/tmp/to" });
+		const moved = makeTask({ id: "task-1", projectId: "to", status: "todo" });
+		vi.mocked(data.getProject).mockImplementation(async (id) => (id === "from" ? from : to));
+		vi.mocked(data.moveTaskToProject).mockResolvedValue(moved);
+		vi.mocked(loadSettings).mockResolvedValue({ updateChannel: "stable", taskDropPosition: "bottom" } as any);
+		const push = vi.fn();
+		setPushMessage(push);
+
+		const result = await handlers.moveTaskToProject({ taskId: "task-1", fromProjectId: "from", toProjectId: "to" });
+
+		expect(data.moveTaskToProject).toHaveBeenCalledWith(from, to, "task-1", "bottom");
+		expect(push).toHaveBeenCalledWith("taskUpdated", { projectId: "to", task: moved });
+		expect(push).toHaveBeenCalledWith("taskRemoved", { projectId: "from", taskId: "task-1" });
+		expect(result).toEqual(moved);
+	});
+
+	it("propagates a guard rejection from the data layer and pushes nothing", async () => {
+		const from = makeProject({ id: "from", path: "/tmp/from" });
+		const to = makeProject({ id: "to", path: "/tmp/to" });
+		vi.mocked(data.getProject).mockImplementation(async (id) => (id === "from" ? from : to));
+		vi.mocked(data.moveTaskToProject).mockRejectedValue(new Error("Only To Do tasks can be moved between projects"));
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await expect(
+			handlers.moveTaskToProject({ taskId: "task-1", fromProjectId: "from", toProjectId: "to" }),
+		).rejects.toThrow(/Only To Do tasks/);
+		expect(push).not.toHaveBeenCalled();
 	});
 });
 

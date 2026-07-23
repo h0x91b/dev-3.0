@@ -168,7 +168,7 @@ export type AppAction =
 	| { type: "setTasks"; projectId: string; tasks: Task[] }
 	| { type: "updateTask"; task: Task }
 	| { type: "addTask"; task: Task }
-	| { type: "removeTask"; taskId: string }
+	| { type: "removeTask"; taskId: string; projectId?: string }
 	| { type: "spawnVariants"; sourceTaskId: string; variants: Task[] }
 	| { type: "addAttempts"; sourceTaskId: string; newAttempts: Task[]; updatedSource: Task }
 	| { type: "addProject"; project: Project }
@@ -323,6 +323,12 @@ export function reducer(state: AppState, action: AppAction): AppState {
 				currentProjectTasks: [...state.currentProjectTasks, action.task],
 			};
 		case "removeTask":
+			// When scoped to a project (cross-project move sync), only clear the card
+			// if that project's board is the one currently shown — otherwise a
+			// `taskRemoved` for the SOURCE project would also strip the freshly-added
+			// card from a window viewing the TARGET (same task id). Unscoped removals
+			// (local delete) always filter, preserving prior behavior.
+			if (action.projectId && projectIdForRoute(state.route) !== action.projectId) return state;
 			return {
 				...state,
 				currentProjectTasks: state.currentProjectTasks.filter(
