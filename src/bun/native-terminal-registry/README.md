@@ -204,6 +204,19 @@ shares `start`'s per-session lock, then deletes only state whose current token
 matches and only temp files named for the recorded crashed host PID; missing,
 changed, unknown-schema, and unrelated state remain untouched.
 
+## Staged host version skew (seq 1248)
+
+The [`host-images/`](host-images/README.md) sub-harness proves the safe update
+rule for a detached host: an app update may stage a NEW immutable host image, but
+an existing session stays owned by its original compatible host until it ends. An
+incompatible client gets one explicit `version-mismatch` (via this module's
+frozen hello/version boundary, generalised by the host's own version) without the
+live host, shell, pane, or shell state being killed or taken over; a new session
+boots on the new image while the old one continues on the old image; and rollback
+selects a compatible staged image explicitly — never guessing, never tmux. Proof:
+`bun run test:native-host-images-e2e`; contract in
+[`host-images/VERSION-SESSION-MATRIX.md`](host-images/VERSION-SESSION-MATRIX.md).
+
 ## Try it
 
 ```bash
