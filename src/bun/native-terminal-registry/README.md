@@ -230,6 +230,12 @@ For the visible two-window Windows takeover and resize exercise, follow
   native Windows, macOS, and Linux: equal output/reconstruction, one writer,
   observer conflicts, one-winner claim race, disconnect/reconnect, writer-only
   resize, restart-cleared ownership, and the tmux sentinel.
+- `bun run test:native-app-restart-e2e` — the seq 1247 app-restart proof: TWO
+  separate short-lived controller processes (A starts + marks + exits; B, a clean
+  process, rediscovers + reattaches to the same host/shell/session/pane + state),
+  a deterministic single writer after restart, an isolated stop, and honest
+  lost-session results for missing/dead/reused metadata without ever spawning a
+  replacement shell. Evidence in [`APP-RESTART-REATTACH.md`](APP-RESTART-REATTACH.md).
 - `bun run test:native-shell-launch` — focused pure descriptor, quoting,
   executable-failure, exit-protocol, registry, and isolation guards on every OS.
 - `bun run test:native-live-parser-e2e` — the seq 1228 live-parser proof: DSR
