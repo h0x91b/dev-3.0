@@ -1087,6 +1087,86 @@
 			"consumer": "Windows shell matrix references tmux for contrast.",
 			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		},
+		"src/bun/native-terminal-registry/APP-RESTART-REATTACH.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "App-restart reattach proof documents the tmux sentinel and native-session isolation.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that the native restart path does NOT use it."
+		},
+		"src/bun/native-terminal-registry/host-images/README.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Immutable-host-image proof documents no-fallback and tmux-isolation guarantees.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that staged native hosts do NOT depend on it."
+		},
+		"src/bun/native-terminal-registry/host-images/staged-host-runtime.ts": {
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Staged native host runtime comment asserts that the detached host has no tmux involvement.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that the native runtime does NOT use it."
+		},
+		"src/bun/native-terminal-registry/host-images/VERSION-SESSION-MATRIX.md": {
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Version/session matrix documents explicit rollback with no tmux fallback.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that native rollback does NOT use it."
+		},
+		"src/bun/terminal-parity/checks.ts": {
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "reference",
+			"consumer": "Backend-neutral parity checks mention the current tmux runner in test-harness documentation.",
+			"deletionPrerequisite": "Update the reference when the tmux parity runner retires after native parity is proven."
+		},
+		"src/bun/terminal-parity/corpus.ts": {
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Frozen parity scenarios catalog required tmux behavior and intentional native differences.",
+			"deletionPrerequisite": "The native runner proves the required contract and intentional differences are accepted before the tmux comparison retires (CUT-001/CUT-005)."
+		},
+		"src/bun/terminal-parity/README.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Parity-corpus documentation explains the current tmux runner and future native comparison.",
+			"deletionPrerequisite": "Update the guide when native parity is proven and the tmux runner is removed (CUT-001/CUT-005)."
+		},
+		"src/bun/terminal-parity/runner.ts": {
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "reference",
+			"consumer": "Backend-neutral ParityRunner comments identify tmux as the current concrete test backend.",
+			"deletionPrerequisite": "Update the comments when the native runner replaces the tmux parity runner."
+		},
+		"src/bun/terminal-parity/scenario-roadmap-map.md": {
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Scenario roadmap map records which parity cases exercise or intentionally differ from tmux.",
+			"deletionPrerequisite": "Update the map after native parity is proven and the tmux comparison retires."
+		},
+		"src/bun/terminal-parity/tmux-runner.ts": {
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Concrete parity-test adapter drives a real tmux server through TmuxClient.",
+			"deletionPrerequisite": "The native runner proves the required corpus contract side by side (CUT-001), then this adapter retires with tmux (CUT-005)."
+		},
 		"src/bun/prototypes/detached-pty/host.ts": {
 			"category": "compatibility",
 			"roadmapItem": "MIG-006",

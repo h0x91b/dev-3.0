@@ -42,14 +42,14 @@
 		]
 	},
 	"totals": {
-		"trackedFiles": 2545,
-		"inBoundaryClean": 902,
-		"inventoried": 229,
-		"occurrences": 4490
+		"trackedFiles": 2581,
+		"inBoundaryClean": 914,
+		"inventoried": 244,
+		"occurrences": 4655
 	},
 	"historical": {
-		"fileCount": 260,
-		"occurrences": 853
+		"fileCount": 266,
+		"occurrences": 879
 	},
 	"hiddenGrammarFiles": [
 		"src/bun/tmux/__tests__/alt-click.test.ts"
@@ -58,27 +58,27 @@
 		"agent-control": 10,
 		"capture-state": 6,
 		"cli-rpc-ui": 33,
-		"compatibility": 9,
-		"documentation": 52,
+		"compatibility": 10,
+		"documentation": 57,
 		"packaging-update": 14,
 		"pane-layout": 17,
 		"process-resource": 3,
 		"terminal-ownership": 9,
-		"test-only": 76
+		"test-only": 85
 	},
 	"byDepth": {
 		"caller": 76,
 		"deep-internal": 10,
-		"isolation": 5,
-		"surface": 62,
-		"test": 76
+		"isolation": 6,
+		"surface": 67,
+		"test": 85
 	},
 	"byDependencyKind": {
-		"active": 141,
-		"reference": 88
+		"active": 148,
+		"reference": 96
 	},
 	"byRoadmapItem": {
-		"CUT-005": 111,
+		"CUT-005": 122,
 		"CUT-006": 29,
 		"INT-001": 13,
 		"INT-002": 9,
@@ -90,7 +90,7 @@
 		"LAY-006": 5,
 		"LAY-007": 2,
 		"MIG-003": 3,
-		"MIG-006": 13,
+		"MIG-006": 17,
 		"RUN-005": 2,
 		"RUN-006": 2,
 		"STATE-008": 3
@@ -889,6 +889,18 @@
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
 		},
 		{
+			"path": "src/bun/native-terminal-registry/__tests__/app-restart.bun-e2e.ts",
+			"occurrences": 9,
+			"fingerprint": "d283f4839a62a1c6",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
 			"path": "src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts",
 			"occurrences": 22,
 			"fingerprint": "5817d97202553cc3",
@@ -997,6 +1009,66 @@
 			"deletionPrerequisite": "Removed together with the production code it exercises."
 		},
 		{
+			"path": "src/bun/native-terminal-registry/APP-RESTART-REATTACH.md",
+			"occurrences": 7,
+			"fingerprint": "02ed9d061b2f87a8",
+			"via": "override",
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "App-restart reattach proof documents the tmux sentinel and native-session isolation.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that the native restart path does NOT use it."
+		},
+		{
+			"path": "src/bun/native-terminal-registry/host-images/__tests__/lifecycle.bun-e2e.ts",
+			"occurrences": 7,
+			"fingerprint": "267ee5faa07dcc7c",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/native-terminal-registry/host-images/README.md",
+			"occurrences": 6,
+			"fingerprint": "e2a7b41b81984013",
+			"via": "override",
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Immutable-host-image proof documents no-fallback and tmux-isolation guarantees.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that staged native hosts do NOT depend on it."
+		},
+		{
+			"path": "src/bun/native-terminal-registry/host-images/staged-host-runtime.ts",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
+			"via": "override",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Staged native host runtime comment asserts that the detached host has no tmux involvement.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that the native runtime does NOT use it."
+		},
+		{
+			"path": "src/bun/native-terminal-registry/host-images/VERSION-SESSION-MATRIX.md",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
+			"via": "override",
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Version/session matrix documents explicit rollback with no tmux fallback.",
+			"deletionPrerequisite": "None — the file references tmux only to assert that native rollback does NOT use it."
+		},
+		{
 			"path": "src/bun/native-terminal-registry/host.ts",
 			"occurrences": 2,
 			"fingerprint": "7a56879bf89d7717",
@@ -1046,8 +1118,8 @@
 		},
 		{
 			"path": "src/bun/native-terminal-registry/README.md",
-			"occurrences": 9,
-			"fingerprint": "3fdd0d336c35299c",
+			"occurrences": 10,
+			"fingerprint": "42717a6d274ecbef",
 			"via": "override",
 			"category": "documentation",
 			"roadmapItem": "MIG-006",
@@ -1331,6 +1403,114 @@
 			"dependencyKind": "reference",
 			"consumer": "Comment: temp dir holds tmux configuration / plugin state.",
 			"deletionPrerequisite": "Native runtime ships and no supported build bundles or installs tmux (RUN-006/CUT-005)."
+		},
+		{
+			"path": "src/bun/terminal-parity/__tests__/corpus.test.ts",
+			"occurrences": 1,
+			"fingerprint": "8032b049695c1b97",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/terminal-parity/__tests__/isolation.test.ts",
+			"occurrences": 14,
+			"fingerprint": "d78d52a1177447ee",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/terminal-parity/__tests__/parity-corpus.live-e2e.test.ts",
+			"occurrences": 14,
+			"fingerprint": "0abb40a693448dbe",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/terminal-parity/checks.ts",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
+			"via": "override",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "reference",
+			"consumer": "Backend-neutral parity checks mention the current tmux runner in test-harness documentation.",
+			"deletionPrerequisite": "Update the reference when the tmux parity runner retires after native parity is proven."
+		},
+		{
+			"path": "src/bun/terminal-parity/corpus.ts",
+			"occurrences": 46,
+			"fingerprint": "e21a86642e2eb59e",
+			"via": "override",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Frozen parity scenarios catalog required tmux behavior and intentional native differences.",
+			"deletionPrerequisite": "The native runner proves the required contract and intentional differences are accepted before the tmux comparison retires (CUT-001/CUT-005)."
+		},
+		{
+			"path": "src/bun/terminal-parity/README.md",
+			"occurrences": 15,
+			"fingerprint": "8c137d894f61ba89",
+			"via": "override",
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Parity-corpus documentation explains the current tmux runner and future native comparison.",
+			"deletionPrerequisite": "Update the guide when native parity is proven and the tmux runner is removed (CUT-001/CUT-005)."
+		},
+		{
+			"path": "src/bun/terminal-parity/runner.ts",
+			"occurrences": 7,
+			"fingerprint": "9c75c4ea31fbceee",
+			"via": "override",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "reference",
+			"consumer": "Backend-neutral ParityRunner comments identify tmux as the current concrete test backend.",
+			"deletionPrerequisite": "Update the comments when the native runner replaces the tmux parity runner."
+		},
+		{
+			"path": "src/bun/terminal-parity/scenario-roadmap-map.md",
+			"occurrences": 7,
+			"fingerprint": "926c9ec7cda72f6b",
+			"via": "override",
+			"category": "documentation",
+			"roadmapItem": "CUT-005",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Scenario roadmap map records which parity cases exercise or intentionally differ from tmux.",
+			"deletionPrerequisite": "Update the map after native parity is proven and the tmux comparison retires."
+		},
+		{
+			"path": "src/bun/terminal-parity/tmux-runner.ts",
+			"occurrences": 28,
+			"fingerprint": "592095327e0241e8",
+			"via": "override",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Concrete parity-test adapter drives a real tmux server through TmuxClient.",
+			"deletionPrerequisite": "The native runner proves the required corpus contract side by side (CUT-001), then this adapter retires with tmux (CUT-005)."
 		},
 		{
 			"path": "src/bun/tmux/__tests__/alt-click.test.ts",
