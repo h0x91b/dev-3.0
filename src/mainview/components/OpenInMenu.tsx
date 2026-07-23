@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import type { ExternalApp } from "../../shared/types";
 import { useAvailableApps } from "../hooks/useAvailableApps";
+import { setSelectedOpenInAppId } from "../openInPreference";
 import { useT } from "../i18n";
 import { api } from "../rpc";
 
@@ -82,6 +83,8 @@ export default function OpenInMenu({ position, path, taskId, onClose }: OpenInMe
 
 	async function handleOpen(app: ExternalApp) {
 		onClose();
+		// Choosing an app from any picker makes it the default for Cmd/Ctrl+O.
+		setSelectedOpenInAppId(app.id);
 		try {
 			await api.request.openInApp({ appName: app.macAppName, path });
 		} catch (err) {

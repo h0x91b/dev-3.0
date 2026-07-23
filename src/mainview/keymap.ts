@@ -92,6 +92,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "zoom-out", keys: { mac: "⌘-", other: "Ctrl+Alt+-" }, descKey: "keymap.shortcut.zoomOut", category: "view", scope: "desktop" },
 	{ id: "zoom-reset", keys: { mac: "⇧⌘0", other: "Ctrl+Shift+0" }, descKey: "keymap.shortcut.zoomReset", category: "view", scope: "desktop" },
 	{ id: "hard-refresh", keys: { mac: "⌘R", other: "Ctrl+R" }, descKey: "keymap.shortcut.hardRefresh", category: "view", scope: "desktop" },
+	{ id: "open-in", keys: { mac: "⌘O", other: "Ctrl+O" }, descKey: "keymap.shortcut.openIn", category: "view", scope: "desktop" },
 	{ id: "keyboard-shortcuts", keys: { mac: "⌘/", other: "Ctrl+/" }, descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },
 	{ id: "help-mode", keys: { mac: "⇧⌘/", other: "Ctrl+Shift+/" }, descKey: "keymap.shortcut.helpMode", category: "view" },
 	{ id: "terminal-fullscreen", keys: { mac: "F11 / ⇧⌘F", other: "F11 / Ctrl+Shift+F" }, descKey: "keymap.shortcut.terminalFullscreen", category: "view" },

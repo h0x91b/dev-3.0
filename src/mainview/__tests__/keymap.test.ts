@@ -93,10 +93,21 @@ describe("transport-aware keymap", () => {
 		expect(shortcutAppliesInMode(desktopOnly, true)).toBe(false);
 	});
 
+	it("open-in yields to the browser in remote mode (desktop-scoped)", () => {
+		// Cmd/Ctrl+O is the browser's native Open-File dialog, so the app-level
+		// shortcut must not apply in remote — it opens an app on the host the
+		// remote user can't see. Registry scope is what the handler mirrors.
+		const openIn = APP_SHORTCUTS.find((s) => s.id === "open-in")!;
+		expect(openIn.scope).toBe("desktop");
+		expect(shortcutAppliesInMode(openIn, false)).toBe(true);
+		expect(shortcutAppliesInMode(openIn, true)).toBe(false);
+		expect(appShortcutsForMode(true).map((s) => s.id)).not.toContain("open-in");
+	});
+
 	it("appShortcutsForMode(remote) excludes every desktop-only shortcut", () => {
 		const remote = appShortcutsForMode(true);
 		const ids = remote.map((s) => s.id);
-		for (const id of ["quit", "hide", "new-window", "zoom-in", "zoom-out", "zoom-reset", "hard-refresh"]) {
+		for (const id of ["quit", "hide", "new-window", "zoom-in", "zoom-out", "zoom-reset", "hard-refresh", "open-in"]) {
 			expect(ids, `${id} should be hidden in remote`).not.toContain(id);
 		}
 		// Desktop keeps them all.
