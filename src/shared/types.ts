@@ -226,6 +226,19 @@ export function normalizePriority(input: string): TaskPriority | null {
 	return m ? (`P${m[1]}` as TaskPriority) : null;
 }
 
+// ---- Task relations ----
+
+/** Relation kinds reserved for the task-linking foundation. */
+export const TASK_RELATION_TYPES = ["blocked-by", "relates-to"] as const;
+
+export type TaskRelationType = (typeof TASK_RELATION_TYPES)[number];
+
+/** A typed link from a source task to a target task in the shared task store. */
+export interface TaskRelation {
+	type: TaskRelationType;
+	taskId: string;
+}
+
 // ---- Column Agents ----
 
 export interface ColumnAgentConfig {
@@ -1208,6 +1221,8 @@ export interface Task {
 	prStatusCache?: TaskPRStatusCache | null;
 	groupId: string | null;
 	variantIndex: number | null;
+	/** Future-facing links to other tasks; the data layer fills [] for legacy records on load. */
+	relations?: TaskRelation[];
 	agentId: string | null;
 	configId: string | null;
 	/**

@@ -1,0 +1,1 @@
+Added a forward-compatible task relation model with typed `blocked-by` and `relates-to` links. New and migrated tasks persist an empty relation collection, older-reader updates preserve it, and existing UI and integrations remain unchanged.
