@@ -51,6 +51,8 @@ import { useTaskSwitcher } from "./hooks/useTaskSwitcher";
 import TaskSwitcherOverlay from "./components/TaskSwitcherOverlay";
 import ProjectQuickSwitchModal from "./components/ProjectQuickSwitchModal";
 import CommandPaletteModal from "./components/CommandPaletteModal";
+import OpenInMenu from "./components/OpenInMenu";
+import { resolveSelectedOpenInApp } from "./openInPreference";
 import TaskImageViewer from "./components/TaskImageViewer";
 import HintOverlay from "./components/HintOverlay";
 import HelpOverlay from "./components/HelpOverlay";
@@ -312,6 +314,8 @@ function App() {
 	const [showAddProjectModal, setShowAddProjectModal] = useState(false);
 	const [openAddProjectOnDashboard, setOpenAddProjectOnDashboard] = useState(false);
 	const [showProjectSwitch, setShowProjectSwitch] = useState(false);
+	// Cmd/Ctrl+O picker when no app is chosen yet (or the chosen one is gone).
+	const [openInPicker, setOpenInPicker] = useState<{ path: string; taskId?: string } | null>(null);
 	const [showCommandPalette, setShowCommandPalette] = useState(false);
 	// Vimium-style task hint navigation overlay (toggled with `f` on the board).
 	const [hintMode, setHintMode] = useState(false);
@@ -584,6 +588,28 @@ function App() {
 		return () => window.removeEventListener("menu:open-quick-shell", onOpenQuickShell);
 	}, [openQuickShell]);
 
+	// Cmd/Ctrl+O — "Open in..." the active task's worktree, or the current project
+	// when no task is active. Opens the persisted app directly; with no selection
+	// (or an app that was uninstalled) it opens the picker so a choice can be made.
+	const openInCurrent = useCallback(async () => {
+		const taskId = routeTaskId(state.route);
+		const activeTask = taskId ? state.currentProjectTasks.find((task) => task.id === taskId) : null;
+		const projectId = projectIdForRoute(state.route);
+		const project = projectId ? state.projects.find((p) => p.id === projectId) : null;
+		const path = activeTask?.worktreePath || project?.path || null;
+		if (!path) return;
+		const app = await resolveSelectedOpenInApp(() => api.request.getAvailableApps());
+		if (!app) {
+			setOpenInPicker({ path, taskId: activeTask?.id });
+			return;
+		}
+		try {
+			await api.request.openInApp({ appName: app.macAppName, path });
+		} catch (err) {
+			toast.error(t("openIn.failedOpen", { app: app.name, error: String(err) }), { taskId: activeTask?.id });
+		}
+	}, [state.route, state.currentProjectTasks, state.projects, t]);
+
 	// `g`-prefix "go to" sequence (Linear/GitHub style), kept in refs so the
 	// global keydown handler stays pure. Tiny state machine:
 	//   g          → arm "verb": expect d/p/t/s, or a 1–9 digit (= project N, keep view)
@@ -777,6 +803,14 @@ function App() {
 				e.preventDefault();
 				e.stopPropagation();
 				api.request.hideApp().catch(() => {});
+			} else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
+				// Cmd/Ctrl+O — open the current project/worktree in the selected app,
+				// or the "Open in..." picker when nothing is chosen yet. In remote mode
+				// Cmd+O is the browser's Open-File dialog, so yield to it (scope: desktop).
+				if (remote) return;
+				e.preventDefault();
+				e.stopPropagation();
+				void openInCurrent();
 			} else if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === "n") {
 				// Cmd+Shift+N — open a new window (the native menu item has no
 				// accelerator because Electrobun can't bind chord shortcuts; see
@@ -1049,7 +1083,7 @@ function App() {
 				}
 			}
 		},
-		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route, toggleTerminalImmersive],
+		[armGoToIndex, armGoToVerb, clearGoTo, createTaskProjectId, cycleVariant, dispatch, goToCurrentProject, goToProjectIndex, hintMode, navigate, navigateToProject, openAddProject, openCreateTaskModal, openInCurrent, openQuickShell, showAddProjectModal, showQuitDialog, state.projects, state.route, toggleTerminalImmersive],
 		{ capture: true },
 	);
 
@@ -2058,6 +2092,14 @@ function App() {
 						navigateToProject(projectId);
 					}}
 					onClose={() => setShowProjectSwitch(false)}
+				/>
+			)}
+			{openInPicker && (
+				<OpenInMenu
+					position={{ top: 76, left: Math.max(8, Math.round(window.innerWidth / 2 - 96)) }}
+					path={openInPicker.path}
+					taskId={openInPicker.taskId}
+					onClose={() => setOpenInPicker(null)}
 				/>
 			)}
 			{showCommandPalette && (
