@@ -1,0 +1,1 @@
+Added a classified, machine-readable inventory of every remaining production tmux dependency under src/cli/tmux-audit (manifest + generated JSON/Markdown) plus a deterministic test that fails when a new unclassified tmux dependency appears. Tooling only — no production tmux code was changed. Roadmap item INT-008 of the tmux-removal track.
