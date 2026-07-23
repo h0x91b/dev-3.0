@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent }
 import { createPortal } from "react-dom";
 import { toast } from "../toast";
 import type { ExternalApp } from "../../shared/types";
+import type { TranslationKey } from "../i18n";
 import { useAvailableApps } from "../hooks/useAvailableApps";
 import { useEscapeKey } from "../hooks/useEscapeKey";
 import { useFocusTrap } from "../utils/useFocusTrap";
-import { OPEN_IN_APP_ICONS, brandColorForApp, isCustomOpenInApp } from "./openInAppIcons";
+import { OPEN_IN_APP_ICONS, OPEN_IN_APP_ICON_FALLBACK, brandColorForApp, isCustomOpenInApp, openInAppCategory } from "./openInAppIcons";
 import { useT } from "../i18n";
 import { api } from "../rpc";
 
@@ -18,29 +19,38 @@ interface OpenInPickerModalProps {
 	onClose: () => void;
 }
 
-const COLUMNS = 4;
+const CATEGORY_KEY: Record<ReturnType<typeof openInAppCategory>, TranslationKey> = {
+	files: "openIn.cat.files",
+	editor: "openIn.cat.editor",
+	terminal: "openIn.cat.terminal",
+	custom: "openIn.cat.custom",
+};
 
 /**
- * Centered, keyboard-summoned picker for the Cmd/Ctrl+O "Open in…" shortcut.
- * Unlike the anchored `OpenInMenu` dropdown (right-click / task-panel button),
- * this is a focused Modal surface: a brand-colored tile grid that always lists
- * the installed apps and opens the current context (project path or task
- * worktree) in the chosen one. 1–9 open directly; arrows move the focus ring.
+ * Keyboard-summoned "Open in…" launcher for the Cmd/Ctrl+O shortcut. Unlike the
+ * anchored `OpenInMenu` dropdown (right-click / task-panel button), this is a
+ * focused Modal surface: a searchable list (Raycast-style) that opens the current
+ * context — the project path, or the active task's worktree — in the chosen app.
+ * Type to filter, 1–9 to open the Nth visible row, ↑↓ to move, Enter to open.
  */
 export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPickerModalProps) {
 	const t = useT();
 	const apps = useAvailableApps();
 	const dialogRef = useFocusTrap<HTMLDivElement>();
-	const tileRefs = useRef<Array<HTMLButtonElement | null>>([]);
+	const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
+	const [query, setQuery] = useState("");
+	const [activeIndex, setActiveIndex] = useState(0);
 	const [copied, setCopied] = useState(false);
 
 	useEscapeKey(onClose);
 
-	// Focus the first tile once the list is known so keyboard users land on a
-	// concrete choice (Enter opens it) instead of the bare dialog container.
+	const filtered = apps.filter((app) => app.name.toLowerCase().includes(query.trim().toLowerCase()));
+	const active = Math.min(activeIndex, Math.max(0, filtered.length - 1));
+
+	// Keep the highlighted row scrolled into view as it moves.
 	useEffect(() => {
-		if (apps.length > 0) tileRefs.current[0]?.focus();
-	}, [apps.length]);
+		rowRefs.current[active]?.scrollIntoView({ block: "nearest" });
+	}, [active]);
 
 	async function handleOpen(app: ExternalApp) {
 		onClose();
@@ -57,43 +67,27 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 		setTimeout(() => setCopied(false), 1200);
 	}
 
-	function focusTile(index: number) {
-		const count = apps.length;
-		if (count === 0) return;
-		tileRefs.current[((index % count) + count) % count]?.focus();
-	}
-
 	function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-		// 1–9 open the Nth app directly (no text input in this modal to conflict).
+		// Digits 1–9 open the Nth visible row directly. App names are alphabetic, so
+		// repurposing digits as quick-open (rather than filter text) is worth it.
 		if (!event.metaKey && !event.ctrlKey && !event.altKey && event.key >= "1" && event.key <= "9") {
 			const index = Number(event.key) - 1;
-			if (index < apps.length) {
+			if (index < filtered.length) {
 				event.preventDefault();
-				void handleOpen(apps[index]);
+				void handleOpen(filtered[index]);
 			}
 			return;
 		}
-		const current = tileRefs.current.findIndex((el) => el === document.activeElement);
-		const base = current === -1 ? 0 : current;
-		switch (event.key) {
-			case "ArrowRight":
-				event.preventDefault();
-				focusTile(base + 1);
-				break;
-			case "ArrowLeft":
-				event.preventDefault();
-				focusTile(base - 1);
-				break;
-			case "ArrowDown":
-				event.preventDefault();
-				focusTile(base + COLUMNS);
-				break;
-			case "ArrowUp":
-				event.preventDefault();
-				focusTile(base - COLUMNS);
-				break;
-			default:
-				break;
+		if (event.key === "ArrowDown") {
+			event.preventDefault();
+			setActiveIndex(Math.min(active + 1, filtered.length - 1));
+		} else if (event.key === "ArrowUp") {
+			event.preventDefault();
+			setActiveIndex(Math.max(active - 1, 0));
+		} else if (event.key === "Enter") {
+			if (!filtered[active]) return;
+			event.preventDefault();
+			void handleOpen(filtered[active]);
 		}
 	}
 
@@ -111,7 +105,7 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby="open-in-picker-title"
-				className="bg-overlay rounded-2xl border border-edge-active shadow-2xl shadow-black/40 w-full max-w-[30rem] outline-none"
+				className="bg-overlay rounded-2xl border border-edge-active shadow-2xl shadow-black/40 w-full max-w-[27rem] outline-none flex flex-col"
 				onMouseDown={(event) => event.stopPropagation()}
 				onKeyDown={handleKeyDown}
 			>
@@ -124,46 +118,73 @@ export default function OpenInPickerModal({ path, taskId, onClose }: OpenInPicke
 					</div>
 				</div>
 
+				<div className="px-3 pt-3">
+					<div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-edge bg-base focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/15 transition-colors">
+						<span className="text-fg-muted text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+							{"\u{F002}"}
+						</span>
+						<input
+							type="text"
+							autoFocus
+							value={query}
+							onChange={(event) => {
+								setQuery(event.target.value);
+								setActiveIndex(0);
+							}}
+							placeholder={t("openIn.searchPlaceholder")}
+							aria-label={t("openIn.searchPlaceholder")}
+							className="flex-1 bg-transparent border-0 outline-none text-sm text-fg placeholder:text-fg-muted"
+						/>
+					</div>
+				</div>
+
 				{apps.length === 0 ? (
-					<div className="px-5 py-10 text-sm text-fg-muted text-center">{t("openIn.noAppsFound")}</div>
+					<div className="px-5 py-9 text-sm text-fg-muted text-center">{t("openIn.noAppsFound")}</div>
+				) : filtered.length === 0 ? (
+					<div className="px-5 py-9 text-sm text-fg-muted text-center">{t("openIn.noMatches")}</div>
 				) : (
-					<div className="p-3 grid gap-2" style={{ gridTemplateColumns: `repeat(${COLUMNS}, minmax(0, 1fr))` }}>
-						{apps.map((app, index) => {
-							const glyph = OPEN_IN_APP_ICONS[app.id];
+					<div className="p-2 max-h-[19rem] overflow-auto" role="listbox" aria-label={t("openIn.menuTitle")}>
+						{filtered.map((app, index) => {
+							const glyph = OPEN_IN_APP_ICONS[app.id] ?? OPEN_IN_APP_ICON_FALLBACK;
 							const custom = isCustomOpenInApp(app.id);
 							return (
 								<button
 									key={app.id}
 									ref={(el) => {
-										tileRefs.current[index] = el;
+										rowRefs.current[index] = el;
 									}}
+									role="option"
+									aria-selected={index === active}
 									onClick={() => handleOpen(app)}
-									title={app.name}
-									className="relative flex flex-col items-center gap-2 rounded-xl px-1.5 pt-3.5 pb-2.5 border border-transparent hover:border-edge hover:bg-elevated-hover focus:outline-none focus:border-accent/60 focus:bg-accent/10 focus:ring-2 focus:ring-accent/20 transition-colors"
+									onMouseMove={() => setActiveIndex(index)}
+									className={`flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg text-left transition-colors ${
+										index === active ? "bg-accent/12 ring-1 ring-inset ring-accent/40" : "hover:bg-elevated-hover"
+									}`}
 								>
-									{index < 9 && (
-										<span className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-[5px] bg-elevated border border-edge text-fg-muted text-[0.625rem] font-semibold leading-none font-mono">
-											{index + 1}
-										</span>
-									)}
-									{custom && (
-										<span className="absolute top-1.5 left-1.5 px-1 py-0.5 rounded-[5px] bg-warning/15 text-warning text-[0.5rem] font-bold uppercase tracking-wide leading-none">
-											{t("openIn.customBadge")}
-										</span>
-									)}
 									<span
-										className="flex items-center justify-center w-11 h-11 rounded-[27%] text-white shadow-inner"
+										className="flex items-center justify-center w-7 h-7 rounded-[27%] text-white shadow-inner flex-shrink-0"
 										style={{ background: brandColorForApp(app.id) }}
 									>
-										{glyph ? (
-											<span className="text-[1.25rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
-												{glyph}
+										<span className="text-sm leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
+											{isCustomOpenInApp(app.id) && !OPEN_IN_APP_ICONS[app.id] ? app.name.slice(0, 1).toUpperCase() : glyph}
+										</span>
+									</span>
+									<span className="flex-1 min-w-0">
+										<span className="block text-[0.8125rem] font-semibold text-fg truncate">{app.name}</span>
+										<span className="block text-[0.6875rem] text-fg-muted">{t(CATEGORY_KEY[openInAppCategory(app.id)])}</span>
+									</span>
+									<span className="flex items-center gap-1.5 flex-shrink-0">
+										{custom && (
+											<span className="px-1 py-0.5 rounded-[5px] bg-warning/15 text-warning text-[0.5rem] font-bold uppercase tracking-wide leading-none">
+												{t("openIn.customBadge")}
 											</span>
-										) : (
-											<span className="text-base font-bold leading-none">{app.name.slice(0, 1).toUpperCase()}</span>
+										)}
+										{index < 9 && (
+											<span className="flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-[5px] bg-elevated border border-edge text-fg-muted text-[0.625rem] font-semibold leading-none font-mono">
+												{index + 1}
+											</span>
 										)}
 									</span>
-									<span className="text-[0.6875rem] font-semibold text-fg-2 text-center leading-tight">{app.name}</span>
 								</button>
 							);
 						})}

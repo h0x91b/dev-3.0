@@ -38,7 +38,7 @@ describe("OpenInPickerModal", () => {
 		invalidateAvailableApps();
 	});
 
-	it("renders the available apps as tiles", async () => {
+	it("renders the available apps as a list", async () => {
 		renderModal();
 		await waitFor(() => {
 			expect(screen.getByText("Finder")).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe("OpenInPickerModal", () => {
 		});
 	});
 
-	it("opens the Nth app when its digit key is pressed", async () => {
+	it("opens the Nth visible row when its digit key is pressed", async () => {
 		const onClose = vi.fn();
 		renderModal("/tmp/worktree", onClose);
 
@@ -80,7 +80,8 @@ describe("OpenInPickerModal", () => {
 			expect(screen.getByText("VS Code")).toBeInTheDocument();
 		});
 
-		// Tile order is Finder(1), VS Code(2), Cursor(3) — pressing "2" opens VS Code.
+		// Row order is Finder(1), VS Code(2), Cursor(3) — from the search box, "2" opens VS Code.
+		await userEvent.click(screen.getByRole("textbox"));
 		await userEvent.keyboard("2");
 
 		expect(onClose).toHaveBeenCalled();
@@ -89,6 +90,28 @@ describe("OpenInPickerModal", () => {
 				appName: "Visual Studio Code",
 				path: "/tmp/worktree",
 			});
+		});
+	});
+
+	it("filters the list by typing and opens the match with Enter", async () => {
+		const onClose = vi.fn();
+		renderModal("/tmp/worktree", onClose);
+
+		await waitFor(() => {
+			expect(screen.getByText("Cursor")).toBeInTheDocument();
+		});
+
+		await userEvent.type(screen.getByRole("textbox"), "curs");
+
+		expect(screen.getByText("Cursor")).toBeInTheDocument();
+		expect(screen.queryByText("Finder")).not.toBeInTheDocument();
+		expect(screen.queryByText("VS Code")).not.toBeInTheDocument();
+
+		await userEvent.keyboard("{Enter}");
+
+		expect(onClose).toHaveBeenCalled();
+		await waitFor(() => {
+			expect(mockedApi.request.openInApp).toHaveBeenCalledWith({ appName: "Cursor", path: "/tmp/worktree" });
 		});
 	});
 

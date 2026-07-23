@@ -162,7 +162,13 @@ const common = {
 	"openIn.copyPath": "Copiar ruta",
 	"openIn.pathCopied": "¡Copiado!",
 	"openIn.customBadge": "propia",
-	"openIn.openShortcutHint": "1–9 abrir · ↵ abrir · esc cerrar",
+	"openIn.openShortcutHint": "1–9 abrir · ↑↓ elegir · ↵ abrir",
+	"openIn.searchPlaceholder": "Escribe el nombre de una app…",
+	"openIn.noMatches": "Sin coincidencias",
+	"openIn.cat.files": "Archivos",
+	"openIn.cat.editor": "Editor",
+	"openIn.cat.terminal": "Terminal",
+	"openIn.cat.custom": "Añadida por ti",
 
 	// GitHub CLI warning banner
 	"ghWarning.titleNotInstalled": "GitHub CLI (gh) no está instalado",

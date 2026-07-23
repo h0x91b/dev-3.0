@@ -26,6 +26,17 @@ export function isCustomOpenInApp(id: string): boolean {
 	return !KNOWN_APP_IDS.has(id);
 }
 
+const FILES_APP_IDS = new Set(["finder"]);
+const TERMINAL_APP_IDS = new Set(["ghostty", "iterm", "terminal"]);
+
+/** Coarse category for the launcher row subtitle; custom apps get their own bucket. */
+export function openInAppCategory(id: string): "files" | "editor" | "terminal" | "custom" {
+	if (isCustomOpenInApp(id)) return "custom";
+	if (FILES_APP_IDS.has(id)) return "files";
+	if (TERMINAL_APP_IDS.has(id)) return "terminal";
+	return "editor";
+}
+
 /**
  * Brand colors for the "Open in…" squircle tiles. These are external-app brand
  * identities (theme-independent, white glyph on top), NOT theme chrome — kept as
