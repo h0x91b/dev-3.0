@@ -1,10 +1,20 @@
+/**
+ * Isolation guards for the native single-view adapter (seq 1254):
+ *  - No production source imports it (it has no product callers yet). This is
+ *    what keeps the registry it consumes out of the production graph too.
+ *  - It never imports the removable prototype spikes.
+ *  - Its production (non-test) code never imports the test-only parity corpus —
+ *    the adapter conforms to the ParityRunner shape structurally; only tests
+ *    drive the corpus.
+ *  - It never imports or spawns tmux.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const sourceRoot = resolve(fileURLToPath(new URL("../../../", import.meta.url))); // repo/src
-const moduleRoot = resolve(fileURLToPath(new URL("../", import.meta.url))); // the registry module
+const moduleRoot = resolve(fileURLToPath(new URL("../", import.meta.url))); // the adapter module
 
 function sourceFiles(directory: string): string[] {
 	const files: string[] = [];
@@ -19,18 +29,15 @@ function sourceFiles(directory: string): string[] {
 const moduleFiles = sourceFiles(moduleRoot);
 const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests__"));
 
-// The native single-view adapter (seq 1254) is a SANCTIONED non-production
-// consumer of this registry: it composes these primitives but has no product
-// callers of its own (proved by its own isolation test), so it does not put the
-// registry into the app/CLI graph.
-const adapterRoot = resolve(sourceRoot, "bun/native-terminal-adapter");
-
-describe("native-session registry isolation", () => {
-	it("is absent from the production source import graph", () => {
+describe("native single-view adapter isolation", () => {
+	it("has no product callers (absent from the production import graph)", () => {
+		// Match an actual import/require of the module, not a stray mention (the
+		// registry/parity isolation tests reference the adapter path as a string to
+		// exempt this sanctioned consumer).
+		const importsModule = /(?:from|import|require\s*\()\s*['"][^'"]*native-terminal-adapter/;
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
-			.filter((path) => !path.startsWith(adapterRoot))
-			.filter((path) => readFileSync(path, "utf8").includes("native-terminal-registry"));
+			.filter((path) => importsModule.test(readFileSync(path, "utf8")));
 		expect(importers).toEqual([]);
 	});
 
@@ -40,9 +47,13 @@ describe("native-session registry isolation", () => {
 		expect(offenders).toEqual([]);
 	});
 
+	it("keeps production code decoupled from the test-only parity corpus", () => {
+		const importsCorpus = /(?:from|import|require\s*\()\s*['"][^'"]*terminal-parity/;
+		const offenders = moduleFilesNoTests.filter((path) => importsCorpus.test(readFileSync(path, "utf8")));
+		expect(offenders).toEqual([]);
+	});
+
 	it("never imports or spawns tmux (static sentinel over the module source)", () => {
-		// Flag real usage — a tmux import path or a "tmux" command literal — not the
-		// word appearing in prose that documents this module never touches tmux.
 		const usesTmux = /(?:from|require\s*\()\s*['"][^'"]*tmux|['"`]tmux(?:\.exe|\.cmd)?['"`]/i;
 		const offenders = moduleFilesNoTests.filter((path) => usesTmux.test(readFileSync(path, "utf8")));
 		expect(offenders).toEqual([]);
