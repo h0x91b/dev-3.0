@@ -613,7 +613,6 @@ describe("App keyboard shortcuts", () => {
 					detail: {
 						taskId: "t-web",
 						projectId: "p1",
-						kind: "event",
 						title: "#7 Task update",
 						body: "Agent finished",
 						level: "info",
@@ -626,6 +625,39 @@ describe("App keyboard shortcuts", () => {
 			act(() => FakeWebNotification.instances[0].onclick?.());
 
 			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-active-task-id", "t-web"));
+		});
+
+		// Regression for #1042 reversal: a watched status-change notification must
+		// fire on a wide desktop browser too, not only on narrow/mobile viewports.
+		it("fires a notification on a wide viewport (no status-change suppression)", async () => {
+			rpcTransport.isElectrobun = false;
+			Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+			Object.defineProperty(window, "innerWidth", { value: 1280, configurable: true });
+			FakeWebNotification.permission = "granted";
+			FakeWebNotification.instances = [];
+			(window as unknown as { Notification: unknown }).Notification = FakeWebNotification;
+			vi.mocked(api.request.getProjects).mockResolvedValue([
+				{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+			]);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("rpc:webNotification", {
+					detail: {
+						taskId: "t-status",
+						projectId: "p1",
+						title: "#8 Watched task",
+						body: "In Progress → Review By User",
+						level: "info",
+					},
+				}));
+			});
+
+			expect(FakeWebNotification.instances).toHaveLength(1);
+			expect(FakeWebNotification.instances[0].options?.body).toBe("In Progress → Review By User");
 		});
 	});
 

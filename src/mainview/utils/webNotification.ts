@@ -1,5 +1,4 @@
 import { toast } from "../toast";
-import type { WebNotificationKind } from "../../shared/types";
 
 /**
  * Browser Web Notifications for remote/headless mode.
@@ -58,17 +57,12 @@ export function canShowWebNotification(): boolean {
 export interface WebNotificationDetail {
 	taskId: string;
 	projectId: string;
-	kind: WebNotificationKind;
 	title: string;
 	body: string;
 	level: "info" | "success" | "error";
 	taskSeq?: number;
 	taskTitle?: string;
 	projectName?: string;
-}
-
-export function shouldShowRemoteWebNotification(detail: Pick<WebNotificationDetail, "kind">, narrowViewport: boolean): boolean {
-	return detail.kind !== "status-change" || narrowViewport;
 }
 
 interface PendingWebNotification {
