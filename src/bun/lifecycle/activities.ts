@@ -476,13 +476,16 @@ async function fetchUnresolvedReviewThreadCount(
 	return null;
 }
 
-async function pollTaskPrStatus(project: Project, task: Task): Promise<PolledPRStatus | null> {
+async function pollTaskPrStatus(project: Project, task: Task, suggestCompletion: boolean): Promise<PolledPRStatus | null> {
 	if (!task.worktreePath) return null;
 	const branchName = await git.getCurrentBranch(task.worktreePath);
 	if (!branchName) return null;
 
 	const unpushed = await git.getUnpushedCount(task.worktreePath, branchName);
-	if (unpushed === -1) return null;
+	// A missing remote branch means "never pushed" only when the task has no
+	// sticky PR. After auto-merge, GitHub may delete the branch while the task
+	// still needs the exact PR fetched by number.
+	if (unpushed === -1 && task.prNumber == null) return null;
 
 	const ghResult = await github.runGitHub(
 		project,
@@ -610,6 +613,17 @@ async function pollTaskPrStatus(project: Project, task: Task): Promise<PolledPRS
 		signalKey,
 		...(signalReason ? { signalReason } : {}),
 	});
+	if (mergeState.state === "MERGED") {
+		const fingerprint = await getMergeCompletionFingerprint(task, branchName);
+		await dispatchLifecycleFinding(project, task, {
+			type: "mergeDetected",
+			branchName,
+			fingerprint: fingerprint.fingerprint,
+			precise: fingerprint.precise,
+			detectedAt: new Date().toISOString(),
+			suggestCompletion,
+		});
+	}
 
 	return { found: isOpenPr, ciStatus };
 }
@@ -619,6 +633,8 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 	if (!getPushMessage()) return;
 
 	const projects = await data.loadProjects();
+	const settings = await loadSettings();
+	const suggestCompletion = settings.suggestCompletingTasksAfterMerge !== false;
 	const { projectId: activeProjectId } = getActiveContext();
 	const foreground = isAppForeground();
 	const now = Date.now();
@@ -658,7 +674,7 @@ export async function checkOpenPRsForPromotion(): Promise<void> {
 
 		for (const task of dueTasks) {
 			try {
-				const result = await pollTaskPrStatus(project, task);
+				const result = await pollTaskPrStatus(project, task, suggestCompletion);
 				if (result) lifecycleActorRuntime(task.id).prPending = result.found && result.ciStatus === "pending";
 			} catch (err) {
 				log.warn("PR check failed for task", { taskId: task.id.slice(0, 8), error: String(err) });
@@ -680,7 +696,9 @@ export async function refreshTaskPrStatus(params: { taskId: string; projectId: s
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (project.kind === "virtual" || !task.worktreePath || TERMINAL_TASK_STATUSES.has(task.status)) return;
-	const result = await pollTaskPrStatus(project, task);
+	const settings = await loadSettings();
+	const suggestCompletion = settings.suggestCompletingTasksAfterMerge !== false;
+	const result = await pollTaskPrStatus(project, task, suggestCompletion);
 	const runtime = lifecycleActorRuntime(task.id);
 	if (result) runtime.prPending = result.found && result.ciStatus === "pending";
 	delete runtime.prNextDue;

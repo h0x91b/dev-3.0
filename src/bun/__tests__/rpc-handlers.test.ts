@@ -8756,6 +8756,121 @@ describe("checkOpenPRsForPromotion", () => {
 		expect(data.updateTask).not.toHaveBeenCalledWith(project, task.id, { status: "review-by-colleague" });
 	});
 
+	it("reconciles an auto-merged sticky PR after its remote branch disappears", async () => {
+		const { project, task } = setup({
+			status: "review-by-user",
+			prNumber: 42,
+			prUrl: "https://github.com/test/repo/pull/42",
+		});
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		const mergedPr = {
+			number: 42,
+			isDraft: false,
+			autoMergeRequest: null,
+			url: task.prUrl,
+			statusCheckRollup: [],
+			reviewDecision: null,
+			mergeable: "UNKNOWN",
+			mergeStateStatus: "UNKNOWN",
+			state: "MERGED",
+			title: "Merged change",
+		};
+		vi.mocked(github.runGitHub)
+			.mockResolvedValueOnce({ ok: true, stdout: "[]", stderr: "", code: 0 })
+			.mockResolvedValueOnce({ ok: true, stdout: JSON.stringify(mergedPr), stderr: "", code: 0 })
+			.mockResolvedValueOnce({
+				ok: true,
+				stdout: JSON.stringify({
+					data: {
+						repository: {
+							pullRequest: {
+								reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+							},
+						},
+					},
+				}),
+				stderr: "",
+				code: 0,
+			});
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await checkOpenPRsForPromotion();
+
+		expect(github.runGitHub).toHaveBeenNthCalledWith(
+			2,
+			project,
+			task.worktreePath,
+			expect.arrayContaining(["pr", "view", "42", "--json"]),
+			expect.objectContaining({ timeoutMs: expect.any(Number) }),
+		);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, expect.objectContaining({
+			prStatusCache: expect.objectContaining({
+				mergeState: { mergeable: "UNKNOWN", status: "UNKNOWN", state: "MERGED" },
+			}),
+		}));
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({
+			taskId: task.id,
+			fingerprint: "v1:dev3/my-feature:abc123",
+		}));
+	});
+
+	it("does not repeat merge handling when the same merged PR is refreshed", async () => {
+		const { project, task } = setup({
+			status: "review-by-user",
+			prNumber: 42,
+			prUrl: "https://github.com/test/repo/pull/42",
+		});
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.getHeadSha).mockResolvedValue("abc123");
+		vi.mocked(github.runGitHub).mockImplementation(async (_project, _worktreePath, args) => {
+			if (args.includes("list")) return { ok: true, stdout: "[]", stderr: "", code: 0 };
+			if (args.includes("view")) {
+				return {
+					ok: true,
+					stdout: JSON.stringify({
+						number: 42,
+						isDraft: false,
+						autoMergeRequest: null,
+						url: task.prUrl,
+						statusCheckRollup: [],
+						reviewDecision: null,
+						mergeable: "UNKNOWN",
+						mergeStateStatus: "UNKNOWN",
+						state: "MERGED",
+						title: "Merged change",
+					}),
+					stderr: "",
+					code: 0,
+				};
+			}
+			return {
+				ok: true,
+				stdout: JSON.stringify({
+					data: {
+						repository: {
+							pullRequest: {
+								reviewThreads: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+							},
+						},
+					},
+				}),
+				stderr: "",
+				code: 0,
+			};
+		});
+		const push = vi.fn();
+		setPushMessage(push);
+
+		await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id });
+		await handlers.refreshTaskPrStatus({ taskId: task.id, projectId: project.id });
+
+		expect(push.mock.calls.filter(([message]) => message === "branchMerged")).toHaveLength(1);
+	});
+
 	it("uses the GraphQL review-thread page and persists the PR identity", async () => {
 		const { project, task } = setup({ status: "review-by-colleague" }, { githubAuthHost: "ghe.example.com" });
 		const prUrl = "https://ghe.example.com/test/repo/pull/42";
