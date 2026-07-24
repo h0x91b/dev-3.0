@@ -6,6 +6,11 @@ describe("resolveModelRate", () => {
 		expect(rate).toEqual({ input: 5, output: 25, cacheWrite5m: 6.25, cacheWrite1h: 10, cacheRead: 0.5 });
 	});
 
+	it("prices Opus 5 at the current Opus tier via the generic opus fallback", () => {
+		expect(resolveModelRate("claude-opus-5")).toMatchObject({ input: 5, output: 25 });
+		expect(resolveModelRate("claude-opus-5[1m]")).toMatchObject({ input: 5, output: 25 });
+	});
+
 	it("prices Sonnet at $3/$15 regardless of minor version (incl. the sonnet-5 placeholder)", () => {
 		expect(resolveModelRate("claude-sonnet-4-6")?.input).toBe(3);
 		expect(resolveModelRate("claude-sonnet-5")?.output).toBe(15);
