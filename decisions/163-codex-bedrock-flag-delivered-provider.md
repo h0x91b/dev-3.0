@@ -16,6 +16,8 @@ Generalized `ProviderDefinition` with two delivery channels instead of adding a 
 
 If Bedrock ever ships an OpenAI model whose id is not `openai.<alias>`, the derived default will be wrong — the per-model override row in Settings is the escape hatch. `enableArgs` are appended before the config's `additionalArgs`, so an explicit user `-c model_provider=...` still wins.
 
+Regions are currently a non-issue for OpenAI on Bedrock: only US regions are supported, there are no cross-region inference profiles, and the region lives in the endpoint (codex's `[model_providers.amazon-bedrock.aws] region`), not the model id — so dev3 exposes no geo/region control for Codex. Once Bedrock offers OpenAI models in other regions, re-evaluate how dev3 should let users override the region (e.g. a per-launch `-c model_providers.amazon-bedrock.aws.region=...` enableArg or a registry-driven region selector).
+
 ## Alternatives considered
 
 Re-keying the registry by (agent, provider) pairs (more invasive for zero user-visible gain); generating a dev3-owned codex profile with `model_provider` baked in (couples backend selection to the theme-profile mechanism, decision 055); injecting nothing and relying on the user's global `model_provider` (breaks the toggle's Native option and still 404s on dev3's aliases).
