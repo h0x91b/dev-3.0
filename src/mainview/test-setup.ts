@@ -9,6 +9,28 @@ import { createElement } from "react";
 // desktop keymap (e.g. ⌘Q, zoom) set the flag themselves AND mock rpc — see
 // App.test.tsx / zoom.test.ts / KeyboardShortcutsModal.test.tsx.
 
+// Node 26 exposes an experimental global `localStorage` that is undefined unless
+// --localstorage-file is passed, and it shadows happy-dom's on both globalThis
+// and window (sessionStorage is unaffected). Substitute an in-memory Storage —
+// setupFiles run per test file, so each file gets a fresh, isolated store, which
+// is the isolation happy-dom's own storage provided.
+if (typeof globalThis.localStorage === "undefined") {
+	const store = new Map<string, string>();
+	const storage: Storage = {
+		get length() {
+			return store.size;
+		},
+		clear: () => store.clear(),
+		getItem: (key) => store.get(String(key)) ?? null,
+		key: (index) => Array.from(store.keys())[index] ?? null,
+		removeItem: (key) => void store.delete(String(key)),
+		setItem: (key, value) => void store.set(String(key), String(value)),
+	};
+	for (const target of [globalThis, globalThis.window].filter(Boolean)) {
+		Object.defineProperty(target, "localStorage", { value: storage, configurable: true, writable: true });
+	}
+}
+
 // happy-dom has no ResizeObserver; recharts' ResponsiveContainer needs one.
 if (typeof globalThis.ResizeObserver === "undefined") {
 	globalThis.ResizeObserver = class {
