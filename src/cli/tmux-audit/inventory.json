@@ -42,14 +42,14 @@
 		]
 	},
 	"totals": {
-		"trackedFiles": 2594,
-		"inBoundaryClean": 924,
-		"inventoried": 245,
-		"occurrences": 4656
+		"trackedFiles": 2626,
+		"inBoundaryClean": 936,
+		"inventoried": 251,
+		"occurrences": 4672
 	},
 	"historical": {
-		"fileCount": 267,
-		"occurrences": 881
+		"fileCount": 269,
+		"occurrences": 885
 	},
 	"hiddenGrammarFiles": [
 		"src/bun/tmux/__tests__/alt-click.test.ts"
@@ -58,27 +58,27 @@
 		"agent-control": 10,
 		"capture-state": 6,
 		"cli-rpc-ui": 33,
-		"compatibility": 10,
-		"documentation": 56,
+		"compatibility": 12,
+		"documentation": 57,
 		"packaging-update": 14,
 		"pane-layout": 17,
 		"process-resource": 3,
 		"terminal-ownership": 9,
-		"test-only": 87
+		"test-only": 90
 	},
 	"byDepth": {
 		"caller": 76,
 		"deep-internal": 10,
-		"isolation": 6,
-		"surface": 66,
-		"test": 87
+		"isolation": 8,
+		"surface": 67,
+		"test": 90
 	},
 	"byDependencyKind": {
-		"active": 152,
-		"reference": 93
+		"active": 154,
+		"reference": 97
 	},
 	"byRoadmapItem": {
-		"CUT-005": 116,
+		"CUT-005": 118,
 		"CUT-006": 29,
 		"INT-001": 13,
 		"INT-002": 9,
@@ -89,9 +89,9 @@
 		"LAY-004": 9,
 		"LAY-006": 5,
 		"LAY-007": 2,
-		"MIG-001": 6,
+		"MIG-001": 7,
 		"MIG-003": 3,
-		"MIG-006": 18,
+		"MIG-006": 21,
 		"RUN-005": 2,
 		"RUN-006": 2,
 		"STATE-008": 3
@@ -888,6 +888,78 @@
 			"dependencyKind": "reference",
 			"consumer": "Comment: command string is injected into the tmux-wrapped `bash -c` invocation.",
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/__tests__/isolation.test.ts",
+			"occurrences": 6,
+			"fingerprint": "d3552939dfc3265a",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/__tests__/parity-corpus.native-e2e.ts",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/adapter.ts",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
+			"via": "override",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native single-view adapter: comment asserting it never inspects, attaches to, or modifies tmux sessions.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/native-runner.ts",
+			"occurrences": 3,
+			"fingerprint": "8b558c0a1ed7dc15",
+			"via": "override",
+			"category": "test-only",
+			"roadmapItem": "MIG-001",
+			"depth": "test",
+			"dependencyKind": "reference",
+			"consumer": "Native parity-corpus runner mirroring terminal-parity/tmux-runner.ts; mentions tmux/detectTmux only in comments.",
+			"deletionPrerequisite": "None — comment-only contrast with the tmux runner; it survives tmux removal unchanged."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/README.md",
+			"occurrences": 3,
+			"fingerprint": "86ae8fd33e8a5238",
+			"via": "override",
+			"category": "documentation",
+			"roadmapItem": "MIG-006",
+			"depth": "surface",
+			"dependencyKind": "reference",
+			"consumer": "Native adapter README contrasts with the tmux backend and the tmux-removal roadmap.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/scenario-partition.ts",
+			"occurrences": 2,
+			"fingerprint": "314235ad0cb6698c",
+			"via": "override",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Scenario partition comments contrasting driven/documented scenarios with the tmux runner.",
+			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		},
 		{
 			"path": "src/bun/native-terminal-registry/__tests__/app-restart.bun-e2e.ts",

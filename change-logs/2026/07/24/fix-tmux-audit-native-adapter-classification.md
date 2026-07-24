@@ -1,0 +1,1 @@
+Classify the native-terminal-adapter files in the tmux dependency audit and regenerate the inventory; the audit test on main was failing because the adapter landed without overrides for its comment-only tmux references.
