@@ -19,17 +19,10 @@ function sourceFiles(directory: string): string[] {
 const moduleFiles = sourceFiles(moduleRoot);
 const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests__"));
 
-// The native single-view adapter (seq 1254) is a SANCTIONED non-production
-// consumer of this registry: it composes these primitives but has no product
-// callers of its own (proved by its own isolation test), so it does not put the
-// registry into the app/CLI graph.
-const adapterRoot = resolve(sourceRoot, "bun/native-terminal-adapter");
-
 describe("native-session registry isolation", () => {
 	it("is absent from the production source import graph", () => {
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
-			.filter((path) => !path.startsWith(adapterRoot))
 			.filter((path) => readFileSync(path, "utf8").includes("native-terminal-registry"));
 		expect(importers).toEqual([]);
 	});

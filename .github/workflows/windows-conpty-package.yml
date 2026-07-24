@@ -15,8 +15,6 @@ on:
       - "src/shared/native-terminal-runtime.ts"
       - "src/bun/prototypes/detached-pty/**"
       - "src/bun/native-terminal-registry/**"
-      - "src/bun/native-terminal-adapter/**"
-      - "src/bun/terminal-parity/**"
   workflow_dispatch:
 
 permissions:
@@ -64,13 +62,6 @@ jobs:
       # with a deterministic single writer and honest lost-session results.
       - name: Native-session app-restart reattach E2E
         run: bun run test:native-app-restart-e2e
-
-      # Seq 1254 single-view adapter parity. Drives the shared backend-neutral
-      # parity corpus against the native adapter on native Windows + POSIX with
-      # the pinned Bun 1.3.14 (single-view live + pure scenarios; multi-view
-      # deferred to LAY-003/LAY-004). Expected final line: ALL CHECKS PASSED.
-      - name: Native single-view adapter parity E2E
-        run: bun run test:native-parity-e2e
 
       - name: Explicit Windows shell launch matrix
         if: runner.os == 'Windows'
