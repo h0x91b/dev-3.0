@@ -76,12 +76,42 @@ describe("AgentSettingsSection — per-agent provider selector", () => {
 		expect(screen.getByRole("button", { name: "settings.providerBedrock" })).toBeTruthy();
 	});
 
-	it("does NOT show a provider toggle for an agent with no registered backend (Codex)", async () => {
+	it("shows the OpenAI/Bedrock toggle inside the expanded Codex agent (no geo selector)", async () => {
 		const user = userEvent.setup();
 		renderSection();
 		await expandAgent(user, "Codex");
-		// Codex has no backend in the registry → no provider toggle.
+		expect(screen.getByRole("button", { name: "settings.providerOpenAI" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "settings.providerBedrock" })).toBeTruthy();
+	});
+
+	it("does NOT show a provider toggle for an agent with no registered backend (Gemini)", async () => {
+		const user = userEvent.setup();
+		renderSection();
+		await expandAgent(user, "Gemini");
+		// Gemini has no backend in the registry → no provider toggle.
 		expect(screen.queryByRole("button", { name: "settings.providerBedrock" })).toBeNull();
+	});
+
+	it("Codex on Bedrock: model table derives flat openai.<family> ids and hides the geo toggle", async () => {
+		const user = userEvent.setup();
+		render(
+			<I18nProvider>
+				<AgentSettingsSection
+					t={((k: string) => k) as never}
+					agents={DEFAULT_AGENTS.map((a) =>
+						a.baseCommand === "codex" ? { ...a, llmProvider: "bedrock-codex" as const } : a,
+					)}
+					globalSettings={baseSettings}
+					onAgentsChange={vi.fn()}
+					onDefaultAgentChange={vi.fn()}
+					onDefaultConfigChange={vi.fn()}
+				/>
+			</I18nProvider>,
+		);
+		await expandAgent(user, "Codex");
+		expect(screen.getByPlaceholderText("openai.gpt-5.6-sol")).toBeTruthy();
+		// Bedrock's OpenAI ids carry no geo prefix → no inference-profile selector.
+		expect(screen.queryByRole("button", { name: "global" })).toBeNull();
 	});
 
 	it("selecting Bedrock persists llmProvider on the Claude agent", async () => {

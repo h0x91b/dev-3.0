@@ -5,7 +5,7 @@ import type {
 	LlmProvider,
 	ProviderConfig,
 } from "../../../shared/types";
-import { buildProviderEnv, isThirdPartyProvider } from "../../../shared/llm-provider";
+import { buildProviderEnv, getProviderDefinition, providerPinnedModel } from "../../../shared/llm-provider";
 
 export type Theme = "dark" | "light" | "system";
 
@@ -131,15 +131,27 @@ export function buildCommandPreview(
 	const isCodex = cmdName === "codex";
 	const isClaude = cmdName === "claude";
 
-	// Mirror the launcher: for Claude on a third-party provider, the model comes
-	// from the injected provider env (ANTHROPIC_MODEL), so --model is omitted —
-	// the Anthropic-API alias would be rejected by the provider with a 400.
-	const claudeOnProvider = isClaude && isThirdPartyProvider(llmProvider);
+	// Mirror the launcher: only a backend registered for THIS agent applies
+	// (same guard as agentProvider in agents.ts).
+	const def = getProviderDefinition(llmProvider);
+	const providerDef = def && def.agentCommand === cmdName ? def : undefined;
+	// Env-delivering backends (Claude on Bedrock) omit --model — the alias would
+	// be rejected with a 400; the pinned model rides ANTHROPIC_MODEL instead.
+	// Flag-delivering backends (Codex on Bedrock) show the rewritten pinned id.
+	const modelViaEnv = providerDef?.modelEnv != null;
+	const previewModel =
+		providerDef && !modelViaEnv && config.model
+			? (providerPinnedModel(llmProvider, providerConfig, config.model) ?? config.model)
+			: config.model;
 
-	if (config.model && !claudeOnProvider) {
+	if (previewModel && !modelViaEnv) {
 		// Match the actual launcher: quote when the value would otherwise be
 		// glob-expanded by the shell (e.g. `claude-opus-4-8[1m]`).
-		parts.push("--model", quoteIfUnsafeForPreview(config.model));
+		parts.push("--model", quoteIfUnsafeForPreview(previewModel));
+	}
+	// Backend routing args (before additionalArgs, as at launch time).
+	for (const arg of providerDef?.enableArgs ?? []) {
+		parts.push(quoteIfUnsafeForPreview(arg));
 	}
 
 	if (!isCodex && config.permissionMode && config.permissionMode !== "default") {
@@ -193,7 +205,7 @@ export function buildCommandPreview(
 
 	// Mirror the launcher's env: provider env (Bedrock flag + pinned model)
 	// first, then config envVars (which win on conflict, as at launch time).
-	const providerEnv = claudeOnProvider
+	const providerEnv = providerDef
 		? buildProviderEnv(llmProvider, providerConfig, config.model)
 		: {};
 	const envPairs = Object.entries({ ...providerEnv, ...config.envVars }).filter(

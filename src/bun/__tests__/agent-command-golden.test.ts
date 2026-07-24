@@ -101,6 +101,8 @@ function buildCases(): Case[] {
 		push(`${b}/appendPrompt`, b, cfg({ model, appendPrompt: "Extra: {{TASK_TITLE}}" }));
 	}
 	push("claude/provider-bedrock", "claude", cfg({ model: "claude-opus-4-8[1m]" }), { llmProvider: "bedrock" });
+	// Codex on Bedrock: --model keeps the (rewritten) id; routing rides -c args.
+	push("codex/provider-bedrock", "codex", cfg({ model: "openai.gpt-5.6-sol" }), { llmProvider: "bedrock-codex" });
 	push("claude/model-1m", "claude", cfg({ model: "claude-opus-4-8[1m]" }));
 	push("codex/theme-profile", "codex", cfg({ model: "gpt-5.6-sol", additionalArgs: ["-p", "dev3"] }));
 	return cases;
@@ -200,6 +202,7 @@ const EXPECTED: Record<string, string> = {
 	"aider/addargs": "aider --model sonnet --foo bar -- 'Fix the login bug'",
 	"aider/appendPrompt": "aider --model sonnet -- 'Fix the login bug\n\nExtra: Fix bug'",
 	"claude/provider-bedrock": "claude --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
+	"codex/provider-bedrock": "codex --model openai.gpt-5.6-sol -c 'model_provider=\"amazon-bedrock\"' -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 	"claude/model-1m": "claude --model 'claude-opus-4-8[1m]' --allow-dangerously-skip-permissions --append-system-prompt <CLAUDE_BODY> -- 'Fix the login bug'",
 	"codex/theme-profile": "codex --model gpt-5.6-sol -p dev3-dark -c 'tui.theme=\"dracula\"' -c <CODEX_DEV_INSTR> -- 'Fix the login bug'",
 };

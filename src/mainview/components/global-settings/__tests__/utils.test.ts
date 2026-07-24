@@ -208,9 +208,27 @@ describe("global-settings utils", () => {
 		expect(buildCommandPreview("claude", config).command).toContain("--model");
 	});
 
-	it("does not affect non-Claude agents under a provider", () => {
+	it("ignores a provider registered for a different agent command", () => {
+		// "bedrock" is Claude's backend — a codex preview must not react to it.
 		const config: AgentConfiguration = { id: "c", name: "Codex", model: "gpt-5.5" };
 		expect(buildCommandPreview("codex", config, "bedrock").command).toContain("--model gpt-5.5");
+	});
+
+	it("Codex on Bedrock: rewrites --model to the mapped id and shows the routing args", () => {
+		const config: AgentConfiguration = { id: "c", name: "Codex", model: "gpt-5.6-sol" };
+		const { command, envLine } = buildCommandPreview("codex", config, "bedrock-codex");
+		expect(command).toContain("--model openai.gpt-5.6-sol");
+		expect(command).toContain(`-c 'model_provider="amazon-bedrock"'`);
+		// Codex is routed entirely via CLI args — no provider env is injected.
+		expect(envLine).toBeNull();
+	});
+
+	it("Codex on Bedrock: a per-model override wins in the preview", () => {
+		const config: AgentConfiguration = { id: "c", name: "Codex", model: "gpt-5.6-sol" };
+		const { command } = buildCommandPreview("codex", config, "bedrock-codex", {
+			"bedrock-codex": { modelOverrides: { "gpt-5.6-sol": "openai.custom-id" } },
+		});
+		expect(command).toContain("--model openai.custom-id");
 	});
 
 	it("surfaces the injected provider env in the preview env line", () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
+import { resolveAgentCommand, supportsResume, supportsPreAssignedSessionId, buildResumeCommand, skillInvocationPrefix, mergeMcpApproval, mergeWithDefaults, applyLayoutResync, applyModelOverride, applyProviderModel, claudeModelFamily, __setCodexProfileV2Override, type TemplateContext } from "../agents";
 import type { AgentConfiguration, CodingAgent } from "../../shared/types";
 import { DEFAULT_AGENTS } from "../../shared/types";
 import { ENV_UNSET } from "../../shared/agent-accounts";
@@ -185,6 +185,19 @@ describe("resolveAgentCommand — resume", () => {
 		);
 		// On Bedrock the model comes from injected ANTHROPIC_MODEL, not --model.
 		expect(cmd).not.toContain("--model");
+	});
+
+	it("Codex on Bedrock: keeps --model and appends the model_provider routing args", () => {
+		const cmd = resolveAgentCommand(
+			makeAgent({ baseCommand: "codex" }),
+			makeConfig({ model: "openai.gpt-5.6-sol" }),
+			makeCtx({ taskDescription: "Some task" }),
+			{ llmProvider: "bedrock-codex" },
+		);
+		// Codex has no model env var: the model rides the (rewritten) --model flag
+		// and the backend is selected via a -c config override.
+		expect(cmd).toContain("--model openai.gpt-5.6-sol");
+		expect(cmd).toContain(`-c 'model_provider="amazon-bedrock"'`);
 	});
 
 	it("keeps --model when no provider is selected (native default)", () => {
@@ -1102,6 +1115,43 @@ describe("applyLayoutResync", () => {
 	});
 });
 
+
+describe("applyProviderModel — flag-delivered backends rewrite the model alias", () => {
+	const codexOnBedrock = (providerConfig?: CodingAgent["providerConfig"]) =>
+		makeAgent({ baseCommand: "codex", llmProvider: "bedrock-codex", providerConfig });
+
+	it("rewrites a codex alias to the mapped Bedrock id", () => {
+		const config = makeConfig({ model: "gpt-5.6-sol" });
+		const result = applyProviderModel(config, codexOnBedrock());
+		expect(result?.model).toBe("openai.gpt-5.6-sol");
+		// Original config is not mutated.
+		expect(config.model).toBe("gpt-5.6-sol");
+	});
+
+	it("a per-model manual override wins over the map", () => {
+		const config = makeConfig({ model: "gpt-5.6-sol" });
+		const result = applyProviderModel(
+			config,
+			codexOnBedrock({ "bedrock-codex": { modelOverrides: { "gpt-5.6-sol": "openai.custom" } } }),
+		);
+		expect(result?.model).toBe("openai.custom");
+	});
+
+	it("does nothing on the native default", () => {
+		const config = makeConfig({ model: "gpt-5.6-sol" });
+		expect(applyProviderModel(config, makeAgent({ baseCommand: "codex" }))).toBe(config);
+	});
+
+	it("does nothing for env-delivering backends (Claude on Bedrock keeps its alias; --model is omitted)", () => {
+		const config = makeConfig({ model: "claude-opus-4-8[1m]" });
+		expect(applyProviderModel(config, makeAgent({ baseCommand: "claude", llmProvider: "bedrock" }))).toBe(config);
+	});
+
+	it("ignores a provider registered for a different agent command", () => {
+		const config = makeConfig({ model: "gpt-5.6-sol" });
+		expect(applyProviderModel(config, makeAgent({ baseCommand: "gemini", llmProvider: "bedrock-codex" }))).toBe(config);
+	});
+});
 
 describe("applyModelOverride — API profile model beats the preset --model flag", () => {
 	it("replaces the preset model when ANTHROPIC_MODEL is in the session env", () => {

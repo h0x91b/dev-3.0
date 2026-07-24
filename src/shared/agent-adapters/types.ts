@@ -51,8 +51,12 @@ export interface AdapterLaunchOptions {
 	skipSystemPrompt?: boolean;
 	/** statusLine-wrapper settings file (Claude only). */
 	statuslineSettingsFile?: string;
-	/** True when a third-party backend (e.g. Bedrock) is active → omit --model. */
+	/** True when a third-party backend delivers the model via env → omit --model. */
 	skipModelForProvider?: boolean;
+	/** Raw (unescaped) CLI args the active third-party backend adds to the launch
+	 *  (e.g. Codex's `-c model_provider="amazon-bedrock"`). Adapters shell-escape
+	 *  them and push them before the config's additionalArgs, so user args win. */
+	providerArgs?: string[];
 	/** Codex-only runtime (theme/profile/launch-flag); present only for codex. */
 	codex?: CodexLaunchRuntime;
 }

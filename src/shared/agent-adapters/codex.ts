@@ -1,7 +1,7 @@
 /** Codex adapter. Owns Codex's quirks: the `resume` subcommand, the theme
  *  profile rewrite, and the developer-instructions delivery channel. */
 import { CODEX_SKILL_BODY } from "../agent-skill-content";
-import { modelArgs } from "./common";
+import { modelArgs, providerArgs } from "./common";
 import { shellEscape } from "./shell";
 import { buildTaskPrompt } from "./template";
 import type { AgentAdapter, CodexLaunchRuntime } from "./types";
@@ -42,6 +42,9 @@ export const codexAdapter: AgentAdapter = {
 		// Resume uses a subcommand (assembled at the end). Codex ignores dev3's
 		// generic permission-mode / effort / budget flags.
 		args.push(...modelArgs(config, options));
+		// Backend routing (e.g. Bedrock's `-c model_provider=...`) before the
+		// config's additionalArgs, so an explicit user override still wins.
+		args.push(...providerArgs(options));
 		if (config?.additionalArgs) args.push(...config.additionalArgs);
 
 		applyCodexTheme(args, options?.codex);

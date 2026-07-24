@@ -14,3 +14,9 @@ export function modelArgs(
 	// `claude-opus-4-8[1m]`). Quote them so zsh doesn't glob-expand.
 	return ["--model", quoteIfUnsafe(config.model)];
 }
+
+/** The active third-party backend's routing args (shell-quoted), e.g. Codex's
+ *  `-c model_provider="amazon-bedrock"`. Empty for the native default. */
+export function providerArgs(options?: AdapterLaunchOptions): string[] {
+	return (options?.providerArgs ?? []).map(quoteIfUnsafe);
+}
