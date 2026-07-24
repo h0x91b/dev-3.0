@@ -1041,38 +1041,6 @@
 			"consumer": "Feature plan references tmux-pty.",
 			"deletionPrerequisite": "The named feature is migrated/removed in its own roadmap item; copy updated in the same change (CUT-005/CUT-006)."
 		},
-		"src/bun/native-terminal-adapter/adapter.ts": {
-			"category": "compatibility",
-			"roadmapItem": "MIG-006",
-			"depth": "isolation",
-			"dependencyKind": "reference",
-			"consumer": "Native single-view adapter: comment asserting it never inspects, attaches to, or modifies tmux sessions.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
-		"src/bun/native-terminal-adapter/scenario-partition.ts": {
-			"category": "compatibility",
-			"roadmapItem": "MIG-006",
-			"depth": "isolation",
-			"dependencyKind": "reference",
-			"consumer": "Scenario partition comments contrasting driven/documented scenarios with the tmux runner.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
-		"src/bun/native-terminal-adapter/native-runner.ts": {
-			"category": "test-only",
-			"roadmapItem": "MIG-001",
-			"depth": "test",
-			"dependencyKind": "reference",
-			"consumer": "Native parity-corpus runner mirroring terminal-parity/tmux-runner.ts; mentions tmux/detectTmux only in comments.",
-			"deletionPrerequisite": "None — comment-only contrast with the tmux runner; it survives tmux removal unchanged."
-		},
-		"src/bun/native-terminal-adapter/README.md": {
-			"category": "documentation",
-			"roadmapItem": "MIG-006",
-			"depth": "surface",
-			"dependencyKind": "reference",
-			"consumer": "Native adapter README contrasts with the tmux backend and the tmux-removal roadmap.",
-			"deletionPrerequisite": "None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
-		},
 		"src/bun/native-terminal-registry/host.ts": {
 			"category": "compatibility",
 			"roadmapItem": "MIG-006",
