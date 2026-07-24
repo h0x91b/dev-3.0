@@ -76,6 +76,17 @@ describe("mapModelForProvider", () => {
 			"global.anthropic.claude-sonnet-4-6",
 		);
 	});
+	it("maps Opus 5 and resolves the 'opus' shorthand to it", () => {
+		expect(mapModelForProvider("claude-opus-5[1m]", LLM_PROVIDER.BedrockClaude)).toBe(
+			"global.anthropic.claude-opus-5[1m]",
+		);
+		expect(mapModelForProvider("claude-opus-5", LLM_PROVIDER.BedrockClaude)).toBe(
+			"global.anthropic.claude-opus-5",
+		);
+		expect(mapModelForProvider("opus", LLM_PROVIDER.BedrockClaude)).toBe(
+			"global.anthropic.claude-opus-5",
+		);
+	});
 	it("derives an id for an unknown/new model (always pins the model)", () => {
 		expect(mapModelForProvider("claude-fable-5", LLM_PROVIDER.BedrockClaude)).toBe(
 			"global.anthropic.claude-fable-5",

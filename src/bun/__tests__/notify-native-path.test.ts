@@ -102,7 +102,7 @@ describe("native notification channel routing", () => {
 
 		notifyFromCliDesktop({ task: makeTask(), body: "done", projectName: "MyProject" });
 
-		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ taskId: "task-1", body: "done", kind: "event" }));
+		expect(push).toHaveBeenCalledWith("webNotification", expect.objectContaining({ taskId: "task-1", body: "done" }));
 	});
 
 	it("falls back to the legacy path and arms the focus-proxy when the shim declines", () => {

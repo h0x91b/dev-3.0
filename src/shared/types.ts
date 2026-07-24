@@ -52,8 +52,6 @@ export interface UpdatePopoverPreview {
 
 export type RendererLogLevel = "debug" | "info" | "warn" | "error";
 
-export type WebNotificationKind = "status-change" | "event";
-
 /**
  * Minimum length of a short ID prefix (task/project/label/note) accepted for
  * prefix matching. Below this, a prefix is treated as "not a prefix" (too broad
@@ -388,10 +386,13 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 		installCommand: "brew install claude-code",
 		installUrl: "https://docs.anthropic.com/en/docs/claude-code",
 		configurations: [
-			// --- Auto (Fable 5 first — flagship — then Opus 4.8/Sonnet 5 effort tiers, then Opus 4.7) ---
+			// --- Auto (Fable 5 first — flagship — then Opus 5/Opus 4.8/Sonnet 5 effort tiers, then Opus 4.7) ---
 			{ id: "claude-auto-fable5-medium", name: "Auto (Fable 5, Medium)", model: "claude-fable-5", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-fable5-high", name: "Auto (Fable 5, High)", model: "claude-fable-5", permissionMode: "auto", effort: "high", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-fable5-xhigh", name: "Auto (Fable 5, X-High)", model: "claude-fable-5", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-opus5-medium", name: "Auto (Opus 5, Medium)", model: "claude-opus-5[1m]", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-opus5-high", name: "Auto (Opus 5, High)", model: "claude-opus-5[1m]", permissionMode: "auto", effort: "high", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-auto-opus5-xhigh", name: "Auto (Opus 5, X-High)", model: "claude-opus-5[1m]", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-opus48-medium", name: "Auto (Opus 4.8, Medium)", model: "claude-opus-4-8[1m]", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-opus48-xhigh", name: "Auto (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "auto", effort: "xhigh", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-auto-sonnet5-medium", name: "Auto (Sonnet 5, Medium)", model: "claude-sonnet-5", permissionMode: "auto", effort: "medium", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -401,6 +402,9 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-bypass-fable5-medium", name: "Bypass (Fable 5, Medium)", model: "claude-fable-5", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-fable5-high", name: "Bypass (Fable 5, High)", model: "claude-fable-5", permissionMode: "bypassPermissions", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-fable5-xhigh", name: "Bypass (Fable 5, X-High)", model: "claude-fable-5", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-opus5-medium", name: "Bypass (Opus 5, Medium)", model: "claude-opus-5[1m]", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-opus5-high", name: "Bypass (Opus 5, High)", model: "claude-opus-5[1m]", permissionMode: "bypassPermissions", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
+			{ id: "claude-bypass-opus5-xhigh", name: "Bypass (Opus 5, X-High)", model: "claude-opus-5[1m]", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-opus48-medium", name: "Bypass (Opus 4.8, Medium)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-opus48-xhigh", name: "Bypass (Opus 4.8, X-High)", model: "claude-opus-4-8[1m]", permissionMode: "bypassPermissions", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-bypass-sonnet5-medium", name: "Bypass (Sonnet 5, Medium)", model: "claude-sonnet-5", permissionMode: "bypassPermissions", effort: "medium", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
@@ -413,16 +417,19 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			//     dropped from already-stored copies (mergeConfig discards user
 			//     additionalArgs when the preset version advances). ---
 			{ id: "claude-default", name: "Default (Fable 5)", model: "claude-fable-5", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 9 },
+			{ id: "claude-default-opus5", name: "Default (Opus 5)", model: "claude-opus-5[1m]", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-default-opus48", name: "Default (Opus 4.8)", model: "claude-opus-4-8[1m]", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
 			{ id: "claude-default-sonnet5", name: "Default (Sonnet 5)", model: "claude-sonnet-5", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 2 },
 			// --- Plan ---
 			// Plan mode: the allow-bypass flag is now injected by the claude adapter
 			// for every session, so it is not repeated here (single source).
 			{ id: "claude-plan", name: "Plan (Fable 5)", model: "claude-fable-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 9 },
+			{ id: "claude-plan-opus5", name: "Plan (Opus 5)", model: "claude-opus-5[1m]", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-plan-opus48", name: "Plan (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-plan-sonnet5", name: "Plan (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "plan", envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			// --- Accept Edits ---
 			{ id: "claude-approvals", name: "Accept Edits (Fable 5)", model: "claude-fable-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 8 },
+			{ id: "claude-approvals-opus5", name: "Accept Edits (Opus 5)", model: "claude-opus-5[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals-opus48", name: "Accept Edits (Opus 4.8)", model: "claude-opus-4-8[1m]", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			{ id: "claude-approvals-sonnet5", name: "Accept Edits (Sonnet 5)", model: "claude-sonnet-5", permissionMode: "acceptEdits", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1" }, version: 1 },
 			// --- Experimental: token-saving image proxy (opt-in, disabled until enabled in Settings) ---
@@ -439,7 +446,7 @@ export const DEFAULT_AGENTS: CodingAgent[] = [
 			{ id: "claude-fable5-cost-trick-default-high", name: "Fable 5 (cost trick, Default, High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", effort: "high", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
 			{ id: "claude-fable5-cost-trick-default-xhigh", name: "Fable 5 (cost trick, Default, X-High)", model: "claude-fable-5", groupLabel: "Fable 5 (cost trick)", effort: "xhigh", additionalArgs: ["--dangerously-skip-permissions"], envVars: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1", ANTHROPIC_BASE_URL: PXPIPE_PROXY_BASE_URL }, requiresPxpipeProxy: true, version: 1 },
 		],
-		defaultConfigId: "claude-auto-opus48-xhigh",
+		defaultConfigId: "claude-auto-opus5-medium",
 	},
 	{
 		id: "builtin-codex",
@@ -3574,8 +3581,6 @@ export type AppRPCSchema = {
 			webNotification: {
 				taskId: string;
 				projectId: string;
-				/** Used by remote clients to apply viewport-specific notification policy. */
-				kind: WebNotificationKind;
 				/** Notification heading, e.g. "#804 Fix bug". */
 				title: string;
 				/** Notification body, e.g. a message or "In Progress → Review". */

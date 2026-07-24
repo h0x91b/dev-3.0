@@ -1,0 +1,3 @@
+Short: Beautiful interactive charts in artifacts
+
+The dev3 artifact starter now renders charts with Apache ECharts (SRI-pinned cdnjs script, SVG renderer) behind a tiny theme-aware dev3Chart bridge, so agent-built reports get modern interactive charts — tooltips, legends, animations, any ECharts chart type — with a few lines of declarative code instead of hand-rolled SVG. The sandboxed artifact viewer now allows network access: artifacts can load external libraries and fetch data from your own services or the dev3 dev server, while staying fully isolated from the app itself. Artifact HTML stays a small readable file, charts follow the Auto/Light/Dark theme switch, and PDF export stays crisp.

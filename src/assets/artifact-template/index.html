@@ -60,7 +60,7 @@
       transition: .16s ease;
     }
     button:hover { border-color: rgb(var(--dev3-accent) / .65); transform: translateY(-1px); }
-    button:focus-visible, input:focus-visible, select:focus-visible, th:focus-visible, .point:focus-visible {
+    button:focus-visible, input:focus-visible, select:focus-visible, th:focus-visible {
       outline: 2px solid rgb(var(--dev3-accent));
       outline-offset: 2px;
     }
@@ -110,11 +110,13 @@
     .section { padding: 18px; }
     .section-head {
       display: flex;
+      flex-wrap: wrap;
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
       margin-bottom: 16px;
     }
+    .gallery-panel { margin-bottom: 14px; }
     .section-title { font-size: 15px; font-weight: 700; }
     .section-copy { margin-top: 2px; color: rgb(var(--dev3-text-secondary)); font-size: 12px; }
     .segmented {
@@ -126,70 +128,22 @@
     }
     .segmented button { padding: 6px 9px; border: 0; background: transparent; }
     .segmented button.active { background: rgb(var(--dev3-accent)); color: rgb(var(--dev3-on-accent)); }
-    .chart { position: relative; height: 245px; }
-    .chart svg, .pie-chart, .radar-chart { display: block; width: 100%; height: 100%; overflow: visible; }
-    .grid-line, .radar-grid, .radar-axis { stroke: rgb(var(--dev3-border)); stroke-width: 1; }
-    .area { fill: rgb(var(--dev3-accent) / .12); }
-    .line {
-      fill: none;
-      stroke: rgb(var(--dev3-accent));
-      stroke-width: 3;
-      stroke-linecap: round;
-      stroke-linejoin: round;
+    .chart-host { height: 250px; }
+    .chart-host svg { max-width: 100%; }
+    html.printing .chart-host { height: 155px; }
+    html.printing .chart-host > div, html.printing .chart-host svg { width: 100% !important; height: 100% !important; }
+    .chart-unavailable {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      padding: 0 24px;
+      border: 1px dashed rgb(var(--dev3-border));
+      border-radius: 12px;
+      color: rgb(var(--dev3-text-muted));
+      font-size: 12px;
+      text-align: center;
     }
-    .point {
-      fill: rgb(var(--dev3-surface-raised));
-      stroke: rgb(var(--dev3-accent));
-      stroke-width: 3;
-      cursor: pointer;
-    }
-    .axis-label, .radar-label { fill: rgb(var(--dev3-text-muted)); font-size: 10px; }
-    .chart-tip {
-      position: absolute;
-      display: none;
-      padding: 6px 8px;
-      border: 1px solid rgb(var(--dev3-border));
-      border-radius: 8px;
-      background: rgb(var(--dev3-surface-elevated));
-      box-shadow: 0 8px 24px rgb(var(--dev3-shadow) / .18);
-      font-size: 11px;
-      pointer-events: none;
-    }
-    .pie-layout { display: flex; align-items: center; gap: 24px; min-height: 245px; }
-    .pie-chart { width: min(190px, 48%); aspect-ratio: 1; height: auto; flex: none; }
-    .pie-segment {
-      stroke: rgb(var(--dev3-surface-raised));
-      stroke-width: 3;
-      transition: opacity .16s ease;
-    }
-    .pie-segment:hover { opacity: .82; }
-    .fill-accent { fill: rgb(var(--dev3-accent)); }
-    .fill-warning { fill: rgb(var(--dev3-warning)); }
-    .fill-danger { fill: rgb(var(--dev3-danger)); }
-    .legend { display: grid; gap: 9px; flex: 1; }
-    .legend-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
-    .legend-key { display: flex; align-items: center; gap: 7px; }
-    .swatch { width: 8px; height: 8px; border-radius: 3px; }
-    .radar-wrap { height: 245px; }
-    .radar-grid { fill: none; }
-    .radar-target {
-      fill: none;
-      stroke: rgb(var(--dev3-success));
-      stroke-width: 2;
-      stroke-dasharray: 6 5;
-      stroke-linejoin: round;
-    }
-    .radar-shape {
-      fill: rgb(var(--dev3-accent) / .18);
-      stroke: rgb(var(--dev3-accent));
-      stroke-width: 3;
-      stroke-linejoin: round;
-    }
-    .radar-point { fill: rgb(var(--dev3-surface-raised)); stroke: rgb(var(--dev3-accent)); stroke-width: 3; }
-    .series-legend { display: flex; justify-content: center; gap: 18px; margin-top: 2px; color: rgb(var(--dev3-text-secondary)); font-size: 11px; }
-    .series-key { display: flex; align-items: center; gap: 6px; }
-    .series-line { width: 18px; border-top: 3px solid rgb(var(--dev3-accent)); }
-    .series-line.target { border-top: 2px dashed rgb(var(--dev3-success)); }
     .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .field { display: grid; gap: 6px; }
     .field.full { grid-column: 1 / -1; }
@@ -287,8 +241,6 @@
       body { padding: 14px; }
       .kpis { grid-template-columns: 1fr; }
       .actions { flex-wrap: wrap; }
-      .pie-layout { align-items: flex-start; flex-direction: column; }
-      .pie-chart { width: min(210px, 72%); margin: auto; }
       .controls { grid-template-columns: 1fr; }
       .field.full { grid-column: auto; }
       .table-tools { align-items: stretch; flex-direction: column; }
@@ -330,13 +282,8 @@
       .segmented { padding: 0; border: 0; background: transparent; }
       .segmented button { display: none; padding: 3px 6px; font-size: 8px; }
       .segmented button.active { display: block; }
-      .chart { height: 145px; }
-      .pie-layout { min-height: 165px; gap: 12px; }
-      .pie-chart { width: 135px; }
-      .radar-wrap { height: 148px; }
-      .series-legend { margin-top: 0; font-size: 8px; }
-      .legend { gap: 5px; }
-      .legend-row { font-size: 8px; }
+      .chart-host { height: 155px; }
+      .chart-host > div, .chart-host svg { width: 100% !important; height: 100% !important; }
       .table-head { padding: 8px 10px 6px; }
       th, td { padding: 5px 10px; font-size: 8px; }
       thead { display: table-header-group; }
@@ -404,25 +351,17 @@
           <div><div class="section-title">Delivery velocity</div><div class="section-copy">Completed tasks and predicted capacity</div></div>
           <div class="segmented" id="periods"><button type="button" data-period="7">7d</button><button type="button" class="active" data-period="30">30d</button><button type="button" data-period="90">90d</button></div>
         </div>
-        <div class="chart"><svg id="velocityChart" viewBox="0 0 720 240" role="img" aria-label="Delivery velocity area chart"></svg><div class="chart-tip" id="chartTip"></div></div>
+        <div class="chart-host" id="velocityChart" role="img"></div>
       </article>
 
       <article class="card section pie-panel">
         <div class="section-head"><div><div class="section-title">Pipeline health</div><div class="section-copy">Current task distribution</div></div></div>
-        <div class="pie-layout">
-          <svg class="pie-chart" id="pipelinePie" viewBox="0 0 200 200" role="img" aria-labelledby="pieTitle pieDesc"></svg>
-          <div class="legend">
-            <div class="legend-row"><span class="legend-key"><span class="swatch" style="background:rgb(var(--dev3-accent))"></span>Running</span><strong id="runningPct">62%</strong></div>
-            <div class="legend-row"><span class="legend-key"><span class="swatch" style="background:rgb(var(--dev3-warning))"></span>Review</span><strong id="reviewPct">24%</strong></div>
-            <div class="legend-row"><span class="legend-key"><span class="swatch" style="background:rgb(var(--dev3-danger))"></span>Blocked</span><strong id="blockedPct">14%</strong></div>
-          </div>
-        </div>
+        <div class="chart-host" id="pipelinePie" role="img"></div>
       </article>
 
       <article class="card section radar-panel">
         <div class="section-head"><div><div class="section-title">Capability profile</div><div class="section-copy">Current scenario against the delivery target</div></div></div>
-        <div class="radar-wrap"><svg class="radar-chart" id="capabilityRadar" viewBox="0 0 420 280" role="img" aria-labelledby="radarTitle radarDesc"></svg></div>
-        <div class="series-legend"><span class="series-key"><span class="series-line"></span>Current scenario</span><span class="series-key"><span class="series-line target"></span>Target</span></div>
+        <div class="chart-host" id="capabilityRadar" role="img"></div>
       </article>
 
       <article class="card section scenario-panel">
@@ -437,6 +376,19 @@
       </article>
     </section>
 
+    <section class="card section gallery-panel">
+      <div class="section-head">
+        <div><div class="section-title">Chart gallery</div><div class="section-copy">More ECharts types through the same bridge — keep what fits your report, delete the rest</div></div>
+        <div class="segmented" id="galleryTabs">
+          <button type="button" class="active" data-gallery="heatmap">Heatmap</button>
+          <button type="button" data-gallery="sankey">Sankey</button>
+          <button type="button" data-gallery="sunburst">Sunburst</button>
+          <button type="button" data-gallery="gauge">Gauge</button>
+        </div>
+      </div>
+      <div class="chart-host" id="galleryChart" role="img"></div>
+    </section>
+
     <section class="card table-card">
       <div class="section-head table-head">
         <div><div class="section-title">Recent agent runs</div><div class="section-copy">Click a column heading to sort</div></div>
@@ -449,7 +401,123 @@
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite">Scenario recalculated.</div>
 
+  <!-- Apache ECharts 6.1.0 (Apache-2.0) from cdnjs. Keep src, integrity, and crossorigin
+       exactly as-is: SRI rejects tampered payloads. Charts degrade to a notice while offline.
+       Extra libraries / fetch integrations are allowed too — see AUTHORING.md "Network access". -->
+  <script data-dev3-vendor="echarts@6.1.0" src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js" integrity="sha512-3R9RRqDVhSNI5qNFolkgqYFn8qPfMTgA5EJ0hmzu63eOUf8apFGtkTc4MtMjTLmFIpriHg6uqLzLOUITGfMifg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
   <script>
+    // ---- dev3 chart bridge --------------------------------------------------
+    // The pinned cdnjs script above exposes window.echarts. Charts must keep
+    // the SVG renderer: canvas output blurs or disappears in print/PDF export.
+    // Offline (CDN unreachable / SRI rejected) every chart degrades to a notice
+    // while the rest of the report stays fully interactive.
+    const CHART_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    const chartsAvailable = typeof echarts !== "undefined";
+    const dev3ChartRegistry = new Set();
+    let appliedChartTheme;
+
+    function tokenColor(name, alpha) {
+      const triplet = getComputedStyle(document.documentElement).getPropertyValue(name).trim().split(/\s+/).join(", ");
+      return alpha == null ? `rgb(${triplet})` : `rgba(${triplet}, ${alpha})`;
+    }
+
+    function registerDev3ChartTheme() {
+      if (!chartsAvailable) return;
+      appliedChartTheme = document.documentElement.dataset.theme;
+      const axisLabel = { color: tokenColor("--dev3-text-muted") };
+      const softSplit = { lineStyle: { color: tokenColor("--dev3-border", .6) } };
+      echarts.registerTheme("dev3", {
+        color: [tokenColor("--dev3-accent"), tokenColor("--dev3-success"), tokenColor("--dev3-warning"), tokenColor("--dev3-danger"), tokenColor("--dev3-text-secondary")],
+        backgroundColor: "transparent",
+        textStyle: { fontFamily: CHART_FONT, color: tokenColor("--dev3-text-secondary") },
+        categoryAxis: { axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, axisTick: { show: false }, axisLabel, splitLine: { show: false } },
+        valueAxis: { axisLine: { show: false }, axisTick: { show: false }, axisLabel, splitLine: softSplit },
+        legend: { textStyle: { color: tokenColor("--dev3-text-secondary"), fontSize: 11 }, itemWidth: 14, itemHeight: 9 },
+        radar: { axisName: { color: tokenColor("--dev3-text-muted"), fontSize: 10 }, axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, splitLine: softSplit, splitArea: { show: false } },
+      });
+    }
+
+    // ECharts emits its root <svg> without a viewBox; mirroring the rendered
+    // size into one lets the print stylesheet scale charts to the page grid.
+    function syncChartViewBox(element) {
+      const svg = element.querySelector("svg");
+      if (svg) svg.setAttribute("viewBox", `0 0 ${svg.getAttribute("width")} ${svg.getAttribute("height")}`);
+    }
+
+    // Theme-aware chart wrapper. optionFactory returns a normal ECharts option;
+    // call .update() after changing the data it reads. Theme switches remount
+    // every chart so token colors captured inside factories stay current.
+    function dev3Chart(element, optionFactory) {
+      if (!chartsAvailable) {
+        element.innerHTML = '<div class="chart-unavailable">Charts need network access to cdnjs.cloudflare.com — reconnect and reload.</div>';
+        return { chart: null, update() {}, resize() {}, remount() {} };
+      }
+      const factory = typeof optionFactory === "function" ? optionFactory : () => optionFactory;
+      const entry = {
+        chart: null,
+        update() {
+          entry.chart.setOption(factory());
+          syncChartViewBox(element);
+        },
+        resize() {
+          entry.chart.resize();
+          syncChartViewBox(element);
+        },
+        remount() {
+          if (entry.chart) entry.chart.dispose();
+          entry.chart = echarts.init(element, "dev3", { renderer: "svg" });
+          // Themes cannot style the HTML tooltip overlay, so tooltip colors ride
+          // in a base option that later setOption(factory()) calls merge into.
+          entry.chart.setOption({
+            aria: { enabled: true },
+            tooltip: {
+              backgroundColor: tokenColor("--dev3-surface-elevated"),
+              borderColor: tokenColor("--dev3-border"),
+              textStyle: { color: tokenColor("--dev3-text-primary"), fontSize: 12 },
+            },
+          });
+          entry.chart.setOption(factory());
+          syncChartViewBox(element);
+        },
+      };
+      entry.remount();
+      new ResizeObserver(() => entry.resize()).observe(element);
+      dev3ChartRegistry.add(entry);
+      return entry;
+    }
+
+    function rethemeDev3Charts() {
+      registerDev3ChartTheme();
+      dev3ChartRegistry.forEach((entry) => entry.remount());
+    }
+
+    // The host theme message can land while the document is still parsing (the
+    // shell listener in <head> applies it before this script exists), so charts
+    // follow the data-theme attribute itself instead of message timing.
+    new MutationObserver(() => {
+      const theme = document.documentElement.dataset.theme;
+      if (theme === appliedChartTheme) return;
+      appliedChartTheme = theme;
+      rethemeDev3Charts();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+    // Re-render charts at the compact print height before the page snapshot.
+    window.addEventListener("beforeprint", () => {
+      document.documentElement.classList.add("printing");
+      dev3ChartRegistry.forEach((entry) => {
+        entry.chart.dispatchAction({ type: "hideTip" });
+        entry.resize();
+      });
+    });
+    window.addEventListener("afterprint", () => {
+      document.documentElement.classList.remove("printing");
+      dev3ChartRegistry.forEach((entry) => entry.resize());
+    });
+
+    registerDev3ChartTheme();
+
+    // ---- demo data and state ------------------------------------------------
     const datasets = {
       7: [12, 18, 15, 24, 21, 29, 35],
       30: [9, 14, 12, 18, 22, 19, 28, 31, 26, 38, 42, 39],
@@ -465,25 +533,21 @@
     ];
     const radarLabels = ["Speed", "Quality", "Autonomy", "Coverage", "Efficiency", "Predictability"];
     const radarTarget = [82, 88, 80, 86, 84, 82];
+    let velocityValues = datasets[30];
+    let pipelineShare = [62, 24, 14];
+    let capabilityValues = [78, 82, 68, 88, 75, 72];
     let currentPeriod = 30;
     let sortKey = "name";
     let sortDirection = 1;
     let themeMode = "auto";
     let hostTheme = document.documentElement.dataset.theme || "dark";
 
-    const velocityChart = document.getElementById("velocityChart");
-    const pipelinePie = document.getElementById("pipelinePie");
-    const capabilityRadar = document.getElementById("capabilityRadar");
-    const chartTip = document.getElementById("chartTip");
     const artifactTheme = document.getElementById("artifactTheme");
     const refresh = document.getElementById("refresh");
     const shipped = document.getElementById("shipped");
     const success = document.getElementById("success");
     const cycle = document.getElementById("cycle");
     const queue = document.getElementById("queue");
-    const runningPct = document.getElementById("runningPct");
-    const reviewPct = document.getElementById("reviewPct");
-    const blockedPct = document.getElementById("blockedPct");
     const riskValue = document.getElementById("riskValue");
     const search = document.getElementById("search");
     const statusFilter = document.getElementById("statusFilter");
@@ -491,94 +555,163 @@
     const empty = document.getElementById("empty");
     const toast = document.getElementById("toast");
 
-    function renderChart(values) {
-      const width = 720;
-      const height = 220;
-      const padding = 24;
-      const max = Math.max(...values) * 1.18;
-      const step = (width - padding * 2) / (values.length - 1);
-      const points = values.map((value, index) => [padding + index * step, height - padding - (value / max) * (height - padding * 2)]);
-      const line = points.map((point, index) => `${index ? "L" : "M"}${point.join(" ")}`).join(" ");
-      const area = `${line} L ${points.at(-1)[0]} ${height - padding} L ${padding} ${height - padding} Z`;
-      const grid = [.25, .5, .75, 1].map((level) => `<line class="grid-line" x1="${padding}" y1="${height - padding - (height - padding * 2) * level}" x2="${width - padding}" y2="${height - padding - (height - padding * 2) * level}"/>`).join("");
-      const labels = points.map((point, index) => `<text class="axis-label" x="${point[0]}" y="${height - 4}" text-anchor="middle">${index + 1}</text>`).join("");
-      const dots = points.map((point, index) => `<circle class="point" data-index="${index}" cx="${point[0]}" cy="${point[1]}" r="5" tabindex="0" aria-label="Day ${index + 1}: ${values[index]} tasks"/>`).join("");
-      velocityChart.innerHTML = `<title>Delivery velocity</title><desc>Tasks completed over the selected period.</desc>${grid}<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}${labels}`;
-      velocityChart.querySelectorAll(".point").forEach((point) => {
-        const showPoint = () => {
-          const index = Number(point.dataset.index);
-          chartTip.textContent = `Day ${index + 1}: ${values[index]} tasks`;
-          chartTip.style.display = "block";
-          chartTip.style.left = `${Math.min(82, Number(point.getAttribute("cx")) / 7.2)}%`;
-          chartTip.style.top = `${Math.max(4, Number(point.getAttribute("cy")) / 2.4 - 8)}%`;
-        };
-        point.addEventListener("mouseenter", showPoint);
-        point.addEventListener("focus", showPoint);
-        point.addEventListener("mouseleave", () => { chartTip.style.display = "none"; });
-        point.addEventListener("blur", () => { chartTip.style.display = "none"; });
-      });
-    }
+    // ---- charts ---------------------------------------------------------------
+    const velocityChart = dev3Chart(document.getElementById("velocityChart"), () => ({
+      grid: { left: 40, right: 16, top: 28, bottom: 26 },
+      tooltip: { trigger: "axis", valueFormatter: (value) => `${value} tasks` },
+      xAxis: { type: "category", boundaryGap: false, data: velocityValues.map((_, index) => String(index + 1)) },
+      yAxis: { type: "value" },
+      series: [{
+        name: "Tasks completed",
+        type: "line",
+        smooth: true,
+        symbol: "circle",
+        symbolSize: 7,
+        lineStyle: { width: 3 },
+        areaStyle: {
+          color: {
+            type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: tokenColor("--dev3-accent", .3) },
+              { offset: 1, color: tokenColor("--dev3-accent", 0) },
+            ],
+          },
+        },
+        data: velocityValues,
+      }],
+    }));
 
-    function polarPoint(centerX, centerY, radius, angle) {
-      const radians = (angle - 90) * Math.PI / 180;
-      return [centerX + radius * Math.cos(radians), centerY + radius * Math.sin(radians)];
-    }
+    const pipelinePie = dev3Chart(document.getElementById("pipelinePie"), () => ({
+      color: [tokenColor("--dev3-accent"), tokenColor("--dev3-warning"), tokenColor("--dev3-danger")],
+      tooltip: { trigger: "item", formatter: "{b}: {c}%" },
+      legend: { bottom: 0, icon: "circle" },
+      series: [{
+        name: "Pipeline",
+        type: "pie",
+        radius: ["52%", "76%"],
+        center: ["50%", "42%"],
+        itemStyle: { borderColor: tokenColor("--dev3-surface-raised"), borderWidth: 3, borderRadius: 7 },
+        label: { show: false, position: "center" },
+        labelLine: { show: false },
+        emphasis: { label: { show: true, fontSize: 16, fontWeight: 700, color: tokenColor("--dev3-text-primary"), formatter: "{b}\n{c}%" } },
+        data: [
+          { name: "Running", value: pipelineShare[0] },
+          { name: "Review", value: pipelineShare[1] },
+          { name: "Blocked", value: pipelineShare[2] },
+        ],
+      }],
+    }));
 
-    function piePath(startAngle, endAngle) {
-      const start = polarPoint(100, 100, 88, startAngle);
-      const end = polarPoint(100, 100, 88, endAngle);
-      const largeArc = endAngle - startAngle > 180 ? 1 : 0;
-      return `M 100 100 L ${start[0]} ${start[1]} A 88 88 0 ${largeArc} 1 ${end[0]} ${end[1]} Z`;
-    }
+    const capabilityRadar = dev3Chart(document.getElementById("capabilityRadar"), () => ({
+      tooltip: {},
+      legend: { bottom: 0, icon: "roundRect" },
+      radar: { indicator: radarLabels.map((name) => ({ name, max: 100 })), radius: "64%", center: ["50%", "46%"] },
+      series: [{
+        type: "radar",
+        symbol: "circle",
+        symbolSize: 5,
+        data: [
+          { name: "Current scenario", value: capabilityValues, lineStyle: { width: 3 }, areaStyle: { opacity: .22 } },
+          { name: "Target", value: radarTarget, symbol: "none", lineStyle: { type: "dashed", width: 2, color: tokenColor("--dev3-success") }, itemStyle: { color: tokenColor("--dev3-success") } },
+        ],
+      }],
+    }));
 
-    function renderPie(values) {
-      const segments = [
-        { label: "Running", value: values[0], className: "fill-accent" },
-        { label: "Review", value: values[1], className: "fill-warning" },
-        { label: "Blocked", value: values[2], className: "fill-danger" },
-      ];
-      let angle = 0;
-      const paths = segments.map((segment) => {
-        const start = angle;
-        angle += segment.value * 3.6;
-        return `<path class="pie-segment ${segment.className}" d="${piePath(start, angle)}"><title>${segment.label}: ${segment.value}%</title></path>`;
-      }).join("");
-      const summary = segments.map((segment) => `${segment.label} ${segment.value}%`).join(", ");
-      pipelinePie.innerHTML = `<title id="pieTitle">Pipeline health</title><desc id="pieDesc">${summary}</desc>${paths}`;
-      pipelinePie.setAttribute("aria-label", summary);
-    }
+    // ---- chart gallery: one host, four more chart types -----------------------
+    // Switching series *type* needs a fresh mount (setOption merges would keep
+    // stale axes/components), so the tab handler calls remount(), not update().
+    const galleryHours = ["8a", "9a", "10a", "11a", "12p", "1p", "2p", "3p", "4p", "5p", "6p", "7p"];
+    const galleryDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    let galleryType = "heatmap";
 
-    function radarPoint(centerX, centerY, radius, index, total) {
-      return polarPoint(centerX, centerY, radius, index * 360 / total);
-    }
+    const galleryOptions = {
+      heatmap: () => ({
+        grid: { left: 44, right: 16, top: 14, bottom: 44 },
+        tooltip: { position: "top", formatter: (p) => `${galleryDays[p.value[1]]} ${galleryHours[p.value[0]]}: ${p.value[2]} runs` },
+        xAxis: { type: "category", data: galleryHours },
+        yAxis: { type: "category", data: galleryDays },
+        visualMap: {
+          min: 0, max: 10, orient: "horizontal", left: "center", bottom: 0,
+          itemWidth: 10, itemHeight: 90,
+          textStyle: { color: tokenColor("--dev3-text-muted"), fontSize: 10 },
+          inRange: { color: [tokenColor("--dev3-accent", .06), tokenColor("--dev3-accent")] },
+        },
+        series: [{
+          type: "heatmap",
+          itemStyle: { borderColor: tokenColor("--dev3-surface-raised"), borderWidth: 2, borderRadius: 3 },
+          data: galleryDays.flatMap((_, day) => galleryHours.map((_, hour) => [hour, day, (day * 5 + hour * 7 + 3) % 11])),
+        }],
+      }),
+      sankey: () => ({
+        tooltip: { trigger: "item" },
+        series: [{
+          type: "sankey",
+          left: 12, right: 80, top: 14, bottom: 14,
+          nodeGap: 14,
+          lineStyle: { color: "gradient", opacity: .25, curveness: .5 },
+          itemStyle: { borderRadius: 4 },
+          label: { color: tokenColor("--dev3-text-secondary"), fontSize: 11 },
+          // Sankey ignores palette order for nodes — color each node explicitly.
+          data: [
+            { name: "Backlog", itemStyle: { color: tokenColor("--dev3-text-muted") } },
+            { name: "Planned", itemStyle: { color: tokenColor("--dev3-accent", .55) } },
+            { name: "In progress", itemStyle: { color: tokenColor("--dev3-accent") } },
+            { name: "Review", itemStyle: { color: tokenColor("--dev3-warning") } },
+            { name: "Shipped", itemStyle: { color: tokenColor("--dev3-success") } },
+            { name: "Rework", itemStyle: { color: tokenColor("--dev3-warning", .7) } },
+            { name: "Blocked", itemStyle: { color: tokenColor("--dev3-danger") } },
+          ],
+          links: [
+            { source: "Backlog", target: "Planned", value: 34 },
+            { source: "Backlog", target: "Blocked", value: 4 },
+            { source: "Planned", target: "In progress", value: 30 },
+            { source: "In progress", target: "Review", value: 26 },
+            { source: "In progress", target: "Blocked", value: 4 },
+            { source: "Review", target: "Shipped", value: 22 },
+            { source: "Review", target: "Rework", value: 4 },
+          ],
+        }],
+      }),
+      sunburst: () => ({
+        tooltip: { trigger: "item", formatter: "{b}: {c}" },
+        series: [{
+          type: "sunburst",
+          radius: ["18%", "90%"],
+          itemStyle: { borderColor: tokenColor("--dev3-surface-raised"), borderWidth: 2, borderRadius: 6 },
+          label: { fontSize: 10, minAngle: 14 },
+          data: [
+            { name: "App", children: [{ name: "UI", value: 14 }, { name: "State", value: 8 }, { name: "RPC", value: 6 }] },
+            { name: "CLI", children: [{ name: "Commands", value: 9 }, { name: "Hooks", value: 5 }] },
+            { name: "Infra", children: [{ name: "CI", value: 6 }, { name: "Release", value: 4 }] },
+          ],
+        }],
+      }),
+      gauge: () => ({
+        series: [{
+          type: "gauge",
+          startAngle: 210, endAngle: -30, min: 0, max: 100,
+          progress: { show: true, width: 14, roundCap: true },
+          axisLine: { lineStyle: { width: 14, color: [[1, tokenColor("--dev3-border", .55)]] } },
+          axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, pointer: { show: false }, anchor: { show: false },
+          title: { offsetCenter: [0, "30%"], color: tokenColor("--dev3-text-secondary"), fontSize: 12 },
+          detail: { offsetCenter: [0, "-6%"], formatter: "{value}%", color: tokenColor("--dev3-text-primary"), fontSize: 30, fontWeight: 700, valueAnimation: true },
+          itemStyle: { color: tokenColor("--dev3-accent") },
+          data: [{ value: 94, name: "Agent success" }],
+        }],
+      }),
+    };
 
-    function radarPolygon(values, radius, centerX, centerY) {
-      return values.map((value, index) => radarPoint(centerX, centerY, radius * value / 100, index, values.length).join(",")).join(" ");
-    }
+    const galleryChart = dev3Chart(document.getElementById("galleryChart"), () => galleryOptions[galleryType]());
 
-    function renderRadar(values) {
-      const centerX = 210;
-      const centerY = 138;
-      const radius = 92;
-      const levels = [25, 50, 75, 100].map((level) => `<polygon class="radar-grid" points="${radarPolygon(radarLabels.map(() => level), radius, centerX, centerY)}"/>`).join("");
-      const axes = radarLabels.map((_, index) => {
-        const point = radarPoint(centerX, centerY, radius, index, radarLabels.length);
-        return `<line class="radar-axis" x1="${centerX}" y1="${centerY}" x2="${point[0]}" y2="${point[1]}"/>`;
-      }).join("");
-      const labels = radarLabels.map((label, index) => {
-        const point = radarPoint(centerX, centerY, radius + 30, index, radarLabels.length);
-        const anchor = point[0] < centerX - 8 ? "end" : point[0] > centerX + 8 ? "start" : "middle";
-        return `<text class="radar-label" x="${point[0]}" y="${point[1]}" text-anchor="${anchor}" dominant-baseline="middle">${label}</text>`;
-      }).join("");
-      const points = values.map((value, index) => {
-        const point = radarPoint(centerX, centerY, radius * value / 100, index, values.length);
-        return `<circle class="radar-point" cx="${point[0]}" cy="${point[1]}" r="4"><title>${radarLabels[index]}: ${value}%</title></circle>`;
-      }).join("");
-      const summary = radarLabels.map((label, index) => `${label} ${values[index]}%`).join(", ");
-      capabilityRadar.innerHTML = `<title id="radarTitle">Capability profile</title><desc id="radarDesc">${summary}</desc>${levels}${axes}<polygon class="radar-target" points="${radarPolygon(radarTarget, radius, centerX, centerY)}"/><polygon class="radar-shape" points="${radarPolygon(values, radius, centerX, centerY)}"/>${points}${labels}`;
-      capabilityRadar.setAttribute("aria-label", summary);
-    }
+    document.getElementById("galleryTabs").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-gallery]");
+      if (!button) return;
+      galleryType = button.dataset.gallery;
+      document.querySelectorAll("[data-gallery]").forEach((item) => item.classList.toggle("active", item === button));
+      galleryChart.remount();
+    });
 
+    // ---- table, scenario, and shell wiring ------------------------------------
     function statusClass(status) {
       return status === "Shipped" ? "success" : status === "Review" ? "warning" : "accent";
     }
@@ -618,16 +751,14 @@
       success.textContent = `${(97.2 - risk * .45).toFixed(1)}%`;
       cycle.textContent = `${Math.max(9, 30 - agentCount - risk)}m`;
       queue.textContent = Math.max(2, 12 - risk);
-      const base = datasets[currentPeriod];
-      renderChart(base.map((value, index) => Math.round(value * (.82 + risk * .035) + (index % 3) * agentCount / 3)));
       const running = Math.min(78, 50 + risk * 2);
       const review = Math.min(94, running + 22);
-      const pieValues = [running, review - running, 100 - review];
-      renderPie(pieValues);
-      renderRadar(scenarioRadar(risk, agentCount));
-      runningPct.textContent = `${pieValues[0]}%`;
-      reviewPct.textContent = `${pieValues[1]}%`;
-      blockedPct.textContent = `${pieValues[2]}%`;
+      velocityValues = datasets[currentPeriod].map((value, index) => Math.round(value * (.82 + risk * .035) + (index % 3) * agentCount / 3));
+      pipelineShare = [running, review - running, 100 - review];
+      capabilityValues = scenarioRadar(risk, agentCount);
+      velocityChart.update();
+      pipelinePie.update();
+      capabilityRadar.update();
       showToast(`Scenario recalculated with ${agentCount} agents`);
     }
 
@@ -636,7 +767,8 @@
       if (!button) return;
       currentPeriod = Number(button.dataset.period);
       document.querySelectorAll("[data-period]").forEach((item) => item.classList.toggle("active", item === button));
-      renderChart(datasets[currentPeriod]);
+      velocityValues = datasets[currentPeriod];
+      velocityChart.update();
       showToast(`${currentPeriod} day window loaded`);
     });
 
@@ -681,9 +813,6 @@
       });
     });
 
-    renderChart(datasets[30]);
-    renderPie([62, 24, 14]);
-    renderRadar([78, 82, 68, 88, 75, 72]);
     renderTable();
   </script>
 </body>

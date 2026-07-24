@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAppState, routeTaskId, projectIdForRoute, routeAfterTaskClosed, getTaskOpenMode, OPEN_SETTINGS_SECTION_EVENT, type Route, type SettingsSectionId } from "./state";
 import { api, isElectrobun, getRpcConnectionState } from "./rpc";
-import { setWebNotificationsSuppressed, shouldShowRemoteWebNotification, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
+import { setWebNotificationsSuppressed, showWebNotificationOrToast, type WebNotificationDetail } from "./utils/webNotification";
 import { useT, useLocale } from "./i18n";
 import { handleMenuAction } from "./menuRouter";
 import { trackPageView, trackEvent, registerAgents } from "./analytics";
@@ -13,7 +13,6 @@ import { adjustZoom, applyZoom, ZOOM_STEP, DEFAULT_ZOOM } from "./zoom";
 import { useViewport } from "./hooks/useViewport";
 import { useMobileDenseZoom } from "./hooks/useMobileDenseZoom";
 import { useMobile } from "./hooks/useMobile";
-import { useNarrowViewport } from "./hooks/useNarrowViewport";
 import { useAndroidBackGuard } from "./hooks/useAndroidBackGuard";
 import GlobalHeader from "./components/GlobalHeader";
 import AppMenuBar from "./components/AppMenuBar";
@@ -124,7 +123,6 @@ function App() {
 	}, [dispatch]);
 	const t = useT();
 	const [, setLocale] = useLocale();
-	const narrowViewport = useNarrowViewport(768);
 	const [terminalImmersive, setTerminalImmersive] = useState(false);
 	const terminalImmersiveVisible = terminalImmersive && isTaskTerminalRoute(state.route);
 	const skipNextTerminalCopyResetRef = useRef(false);
@@ -1388,12 +1386,12 @@ function App() {
 		if (isElectrobun) return;
 		function onWebNotification(e: Event) {
 			const detail = (e as CustomEvent).detail as WebNotificationDetail;
-			if (!detail?.body || !shouldShowRemoteWebNotification(detail, narrowViewport)) return;
+			if (!detail?.body) return;
 			showWebNotificationOrToast(detail, openTaskFromNotification);
 		}
 		window.addEventListener("rpc:webNotification", onWebNotification);
 		return () => window.removeEventListener("rpc:webNotification", onWebNotification);
-	}, [narrowViewport, openTaskFromNotification]);
+	}, [openTaskFromNotification]);
 
 	// Listen for port scan updates
 	useEffect(() => {
