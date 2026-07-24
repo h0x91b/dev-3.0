@@ -1,0 +1,1 @@
+Keep generated agent guidance for `dev3 notify` aligned with the CLI contract by documenting separate in-app duration and native desktop notification forms. The guidance now states that `--duration` cannot be combined with `--desktop`.

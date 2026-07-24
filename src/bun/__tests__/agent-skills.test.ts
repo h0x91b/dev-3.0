@@ -131,6 +131,23 @@ describe("dev3 skill content", () => {
 		expect(getGenericSkillContent()).toContain("If you started the dev server only for verification, stop it afterwards");
 	});
 
+	it("documents mutually exclusive notify duration and desktop forms", () => {
+		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
+			expect(skill).toContain(
+				'`dev3 notify "message" [--level info|success|error] [--duration <seconds>]` — clickable in-app toast',
+			);
+			expect(skill).toContain(
+				'`dev3 notify "message" [--level info|success|error] --desktop` — sends a native OS notification',
+			);
+			expect(skill).toContain("`--duration` applies only to in-app toasts.");
+			expect(skill).toContain("do not combine `--desktop` with `--duration`.");
+
+			const notifyExamples = skill.split("\n").filter((line) => line.startsWith("- `dev3 notify"));
+			const notifyCommands = notifyExamples.map((line) => line.match(/^- `([^`]+)`/)?.[1] ?? "");
+			expect(notifyCommands.every((command) => !(command.includes("--duration") && command.includes("--desktop")))).toBe(true);
+		}
+	});
+
 	it("teaches the agent to use the dev3 tmux session proactively (short summary)", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## tmux — use it proactively");
