@@ -114,8 +114,8 @@ export interface ProviderDefinition {
  * API is intentionally absent — it injects nothing and uses `--model` as usual.
  */
 export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>> = {
-	[LLM_PROVIDER.Bedrock]: {
-		id: LLM_PROVIDER.Bedrock,
+	[LLM_PROVIDER.BedrockClaude]: {
+		id: LLM_PROVIDER.BedrockClaude,
 		agentCommand: "claude",
 		labelKey: "settings.providerBedrock",
 		hintKey: "settings.providerBedrockHint",

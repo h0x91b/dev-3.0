@@ -791,9 +791,13 @@ export interface PxpipeProxyStatus {
  */
 export const LLM_PROVIDER = {
 	Anthropic: "anthropic",
-	Bedrock: "bedrock",
-	/** Amazon Bedrock as the backend for the Codex agent. A separate id from
-	 *  `bedrock` because the registry pairs each id with one agent command. */
+	/** Amazon Bedrock as the backend for the Claude agent. The stored value
+	 *  stays the historical `"bedrock"` — it is persisted in users' settings
+	 *  (agent.llmProvider + providerConfig keys), so renaming it would silently
+	 *  reset existing Bedrock setups. */
+	BedrockClaude: "bedrock",
+	/** Amazon Bedrock as the backend for the Codex agent. A separate id because
+	 *  the registry pairs each id with one agent command. */
 	BedrockCodex: "bedrock-codex",
 } as const;
 
