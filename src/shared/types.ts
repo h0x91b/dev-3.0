@@ -792,6 +792,9 @@ export interface PxpipeProxyStatus {
 export const LLM_PROVIDER = {
 	Anthropic: "anthropic",
 	Bedrock: "bedrock",
+	/** Amazon Bedrock as the backend for the Codex agent. A separate id from
+	 *  `bedrock` because the registry pairs each id with one agent command. */
+	BedrockCodex: "bedrock-codex",
 } as const;
 
 export type LlmProvider = (typeof LLM_PROVIDER)[keyof typeof LLM_PROVIDER];

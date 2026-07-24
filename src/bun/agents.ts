@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import type { AgentConfiguration, CodingAgent, LlmProvider, Project } from "../shared/types";
 import { DEFAULT_AGENTS } from "../shared/types";
 export { skillInvocationPrefix } from "../shared/types";
-import { buildProviderEnv, getProviderDefinition, isThirdPartyProvider } from "../shared/llm-provider";
+import { buildProviderEnv, getProviderDefinition, providerOmitsModelFlag, providerPinnedModel } from "../shared/llm-provider";
 import { createLogger } from "./logger";
 import { detectCodexProfileLaunchFlag, detectCodexVersion, ensureCodexConfig, type CodexProfileLaunchFlag } from "./codex-config";
 import { DEV3_HOME } from "./paths";
@@ -406,10 +406,10 @@ export interface CommandOptions {
 	 *  agents. Set automatically by resolveCommandForAgent/resolveCommandForProject
 	 *  when rate-limit tracking is enabled. */
 	statuslineSettingsFile?: string;
-	/** The LLM backend selected in global settings. For Bedrock, dev3 omits the
-	 *  Anthropic-API --model alias (the provider would reject it); the model is
-	 *  supplied via injected provider env (ANTHROPIC_MODEL) instead.
-	 *  Only affects the Claude agent. */
+	/** The LLM backend selected for this agent. The provider registry decides how
+	 *  the pinned model is delivered: via injected env (Claude on Bedrock —
+	 *  ANTHROPIC_MODEL, --model omitted) or via a rewritten --model value plus
+	 *  routing args (Codex on Bedrock — `-c model_provider="amazon-bedrock"`). */
 	llmProvider?: LlmProvider;
 	/** Per-launch managed account selection (agent account switcher). `undefined`
 	 *  → use the registry default (the preselect); `null` → force the system
@@ -460,9 +460,11 @@ export function resolveAgentCommand(
 		sessionId: options?.sessionId,
 		skipSystemPrompt: options?.skipSystemPrompt,
 		statuslineSettingsFile: options?.statuslineSettingsFile,
-		// Under a third-party backend (e.g. Bedrock for Claude) the model comes
+		// Under an env-delivering backend (e.g. Bedrock for Claude) the model comes
 		// from injected env (ANTHROPIC_MODEL), so the adapter omits --model.
-		skipModelForProvider: isThirdPartyProvider(options?.llmProvider),
+		skipModelForProvider: providerOmitsModelFlag(options?.llmProvider),
+		// Backend routing args (e.g. Codex on Bedrock), shell-escaped by the adapter.
+		providerArgs: getProviderDefinition(options?.llmProvider)?.enableArgs,
 		// Codex-only: resolve the theme/profile runtime (impure) here so the pure
 		// adapter stays pure. Non-Codex agents skip it (avoids the codex --help probe).
 		codex: adapter.command === "codex" ? codexLaunchRuntime() : undefined,
@@ -639,7 +641,7 @@ export async function resolveCommandForAgent(
 	await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
 	const command = resolveAgentCommand(
 		agentWithPath,
-		applyModelOverride(config, baseCmd, extraEnv),
+		applyModelOverride(applyProviderModel(config, agentWithPath), baseCmd, extraEnv),
 		ctx,
 		providerOpts,
 	);
@@ -653,6 +655,20 @@ function agentProvider(agent: CodingAgent, config: AgentConfiguration | undefine
 	if (!def) return undefined;
 	const baseCmd = (config?.baseCommandOverride || agent.baseCommand).split("/").pop() ?? "";
 	return def.agentCommand === baseCmd ? agent.llmProvider : undefined;
+}
+
+/** For backends that deliver the model via the --model flag (no `modelEnv`,
+ *  e.g. Codex on Bedrock), rewrite the config's model alias to the pinned
+ *  provider-native id. No-op for env-delivering backends and the native default. */
+export function applyProviderModel(
+	config: AgentConfiguration | undefined,
+	agent: CodingAgent,
+): AgentConfiguration | undefined {
+	const provider = agentProvider(agent, config);
+	const def = getProviderDefinition(provider);
+	if (!def || def.modelEnv || !config?.model) return config;
+	const pinned = providerPinnedModel(provider, agent.providerConfig, config.model);
+	return pinned ? { ...config, model: pinned } : config;
 }
 
 /** Provider env to inject for this agent's launch under its selected backend.
@@ -716,7 +732,7 @@ export async function resolveCommandForProject(
 		await applyCodexAccountEnv(baseCmd, extraEnv, options?.accountId);
 		const command = resolveAgentCommand(
 			agentWithPath,
-			applyModelOverride(config, baseCmd, extraEnv),
+			applyModelOverride(applyProviderModel(config, agentWithPath), baseCmd, extraEnv),
 			ctx,
 			providerOpts,
 		);

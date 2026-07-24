@@ -6,6 +6,8 @@ import {
 	isThirdPartyProvider,
 	mapModelForProvider,
 	normalizeAlias,
+	providerOmitsModelFlag,
+	providerPinnedModel,
 	providersForAgent,
 	thirdPartyProvidersForAgent,
 	wantsLongContext,
@@ -37,6 +39,14 @@ describe("getProviderDefinition", () => {
 		expect(def?.id).toBe(LLM_PROVIDER.Bedrock);
 		expect(def?.enableEnv).toBe("CLAUDE_CODE_USE_BEDROCK");
 		expect(def?.usesGeo).toBe(true);
+	});
+	it("returns the Codex Bedrock definition for the bedrock-codex id", () => {
+		const def = getProviderDefinition(LLM_PROVIDER.BedrockCodex);
+		expect(def?.id).toBe(LLM_PROVIDER.BedrockCodex);
+		expect(def?.agentCommand).toBe("codex");
+		expect(def?.enableArgs).toEqual(["-c", 'model_provider="amazon-bedrock"']);
+		expect(def?.modelEnv).toBeUndefined();
+		expect(def?.usesGeo).toBe(false);
 	});
 	it("returns undefined for the Anthropic default and unknown ids", () => {
 		expect(getProviderDefinition(LLM_PROVIDER.Anthropic)).toBeUndefined();
@@ -90,8 +100,12 @@ describe("thirdPartyProvidersForAgent", () => {
 			LLM_PROVIDER.Bedrock,
 		]);
 	});
+	it("returns Bedrock (codex flavor) for the codex command", () => {
+		expect(thirdPartyProvidersForAgent("codex").map((d) => d.id)).toEqual([
+			LLM_PROVIDER.BedrockCodex,
+		]);
+	});
 	it("returns nothing for agents with no registered backend", () => {
-		expect(thirdPartyProvidersForAgent("codex")).toEqual([]);
 		expect(thirdPartyProvidersForAgent("gemini")).toEqual([]);
 	});
 });
@@ -103,20 +117,64 @@ describe("providersForAgent", () => {
 			{ id: LLM_PROVIDER.Bedrock, labelKey: "settings.providerBedrock" },
 		]);
 	});
+	it("lists OpenAI (native) first, then Bedrock, for codex", () => {
+		expect(providersForAgent("codex")).toEqual([
+			{ id: LLM_PROVIDER.Anthropic, labelKey: "settings.providerOpenAI" },
+			{ id: LLM_PROVIDER.BedrockCodex, labelKey: "settings.providerBedrock" },
+		]);
+	});
 	it("is empty for an agent with no backend (no toggle shown)", () => {
-		expect(providersForAgent("codex")).toEqual([]);
+		expect(providersForAgent("gemini")).toEqual([]);
 	});
 });
 
 describe("isThirdPartyProvider", () => {
-	it("is true for bedrock, false otherwise", () => {
+	it("is true for bedrock and bedrock-codex, false otherwise", () => {
 		expect(isThirdPartyProvider(LLM_PROVIDER.Bedrock)).toBe(true);
+		expect(isThirdPartyProvider(LLM_PROVIDER.BedrockCodex)).toBe(true);
 		expect(isThirdPartyProvider(LLM_PROVIDER.Anthropic)).toBe(false);
 		expect(isThirdPartyProvider(undefined)).toBe(false);
 	});
 });
 
+describe("providerOmitsModelFlag", () => {
+	it("is true only for env-delivering backends (Claude on Bedrock)", () => {
+		expect(providerOmitsModelFlag(LLM_PROVIDER.Bedrock)).toBe(true);
+		// Codex delivers the model via a rewritten --model flag, not env.
+		expect(providerOmitsModelFlag(LLM_PROVIDER.BedrockCodex)).toBe(false);
+		expect(providerOmitsModelFlag(LLM_PROVIDER.Anthropic)).toBe(false);
+		expect(providerOmitsModelFlag(undefined)).toBe(false);
+	});
+});
+
+describe("providerPinnedModel (bedrock-codex)", () => {
+	it("maps a codex alias to the flat openai.<family> Bedrock id (no geo prefix)", () => {
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.6-sol")).toBe(
+			"openai.gpt-5.6-sol",
+		);
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.5")).toBe(
+			"openai.gpt-5.5",
+		);
+	});
+	it("a per-model manual override wins over the map", () => {
+		expect(
+			providerPinnedModel(
+				LLM_PROVIDER.BedrockCodex,
+				{ "bedrock-codex": { modelOverrides: { "gpt-5.6-sol": "openai.custom-id" } } },
+				"gpt-5.6-sol",
+			),
+		).toBe("openai.custom-id");
+	});
+	it("is undefined for the native default or when the config has no model", () => {
+		expect(providerPinnedModel(LLM_PROVIDER.Anthropic, undefined, "gpt-5.6-sol")).toBeUndefined();
+		expect(providerPinnedModel(LLM_PROVIDER.BedrockCodex, undefined, undefined)).toBeUndefined();
+	});
+});
+
 describe("buildProviderEnv", () => {
+	it("returns {} for bedrock-codex — Codex is routed via CLI args, not env", () => {
+		expect(buildProviderEnv(LLM_PROVIDER.BedrockCodex, undefined, "gpt-5.6-sol")).toEqual({});
+	});
 	it("returns {} for anthropic (default) — nothing injected", () => {
 		expect(buildProviderEnv(LLM_PROVIDER.Anthropic, undefined, "claude-opus-4-8[1m]")).toEqual({});
 		expect(buildProviderEnv(undefined, undefined, "claude-opus-4-8[1m]")).toEqual({});

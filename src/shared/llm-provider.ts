@@ -1,28 +1,33 @@
 /**
- * LLM provider (backend) registry for the Claude agent.
+ * LLM provider (backend) registry for agents with selectable backends.
  *
- * dev3's built-in Claude configs select a model with `--model` using
- * Anthropic-API aliases (e.g. `claude-opus-4-8[1m]`). Third-party backends like
- * Amazon Bedrock reject those — they need provider-native model ids. When an
- * agent is set to a third-party provider, dev3:
- *   1. injects the provider's enable flag (e.g. CLAUDE_CODE_USE_BEDROCK) + the
- *      pinned ANTHROPIC_MODEL, and
- *   2. omits the `--model` flag (handled in agents.ts), so the model comes from
- *      ANTHROPIC_MODEL instead.
+ * dev3's built-in configs select a model with `--model` using each agent's
+ * native aliases (e.g. `claude-opus-4-8[1m]`, `gpt-5.6-sol`). Third-party
+ * backends like Amazon Bedrock reject those — they need provider-native model
+ * ids. When an agent is set to a third-party provider, dev3 pins the mapped
+ * model id via the delivery channel the agent supports:
+ *   - env (`modelEnv`, e.g. Claude's ANTHROPIC_MODEL): the enable flag + model
+ *     are injected as env vars and the `--model` flag is omitted (agents.ts).
+ *   - flag (no `modelEnv`, e.g. Codex): the `--model` value is rewritten to the
+ *     mapped id and `enableArgs` (e.g. `-c model_provider="amazon-bedrock"`)
+ *     are appended to the launch command.
  *
  * dev3 does NOT manage credentials, region, AWS profile, or GCP project — the
- * customer configures those in their own global Claude Code setup (shell env or
- * ~/.claude/settings.json).
+ * customer configures those in their own global agent setup (shell env,
+ * ~/.claude/settings.json, ~/.codex/config.toml).
  *
- * The model id is derived from each provider's built-in alias→provider-id map
- * for known models; unknown/new models are derived from the alias so dev3
- * ALWAYS pins the model (never lets Claude Code pick its own default — that
- * would let the control plane and data plane diverge). The user can override
- * the id per model for region-specific inference-profile prefixes or ARNs.
+ * The model id is DERIVED from the config's alias by each provider's
+ * `mapFamily` — there is no per-model table to maintain, so adding a model to
+ * DEFAULT_AGENTS needs no change here, for any agent or provider. dev3 ALWAYS
+ * pins the model (never lets the agent pick its own default — that would let
+ * the control plane and data plane diverge). The user can override the id per
+ * model in settings for region-specific inference-profile prefixes or ARNs.
  *
  * Adding a provider: append a `ProviderDefinition` to PROVIDER_REGISTRY (plus
  * its id in `LLM_PROVIDER` and i18n labels). No call site needs to special-case
- * it — the registry drives env injection, the settings UI, and the model table.
+ * it — the registry drives env/args injection, the settings UI, and the model
+ * table. Adding a backend for a NEW agent: same, with `agentCommand` set to
+ * that agent and a `NATIVE_PROVIDER_LABEL` entry for its default backend.
  *
  * This module is pure (no I/O) so it is fully unit-testable.
  */
@@ -85,7 +90,16 @@ export interface ProviderDefinition {
 	/** i18n key for the help text shown under the provider's settings. */
 	hintKey: string;
 	/** Env var dev3 sets to `"1"` to route the agent at this backend. */
-	enableEnv: string;
+	enableEnv?: string;
+	/**
+	 * Env var that receives the pinned provider model id (e.g. ANTHROPIC_MODEL).
+	 * When set, the `--model` flag is omitted and the model is delivered via env;
+	 * when absent, the `--model` value is rewritten to the mapped id instead.
+	 */
+	modelEnv?: string;
+	/** Raw (unescaped) CLI args appended to launches to route the agent at this
+	 *  backend (e.g. Codex's `-c model_provider="amazon-bedrock"`). */
+	enableArgs?: string[];
 	/** Whether this provider exposes the Bedrock-style geo (inference-profile) selector. */
 	usesGeo: boolean;
 	/**
@@ -94,14 +108,6 @@ export interface ProviderDefinition {
 	 */
 	mapFamily(family: string, geo: BedrockGeo): string;
 }
-
-const BEDROCK_FAMILY_SUFFIX: Record<string, string> = {
-	"claude-opus-4-8": "anthropic.claude-opus-4-8",
-	"claude-opus-4-7": "anthropic.claude-opus-4-7",
-	"claude-opus-4-6": "anthropic.claude-opus-4-6",
-	"claude-sonnet-4-6": "anthropic.claude-sonnet-4-6",
-	"claude-haiku-4-5": "anthropic.claude-haiku-4-5",
-};
 
 /**
  * The third-party providers dev3 supports, keyed by id. The default Anthropic
@@ -114,10 +120,24 @@ export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>>
 		labelKey: "settings.providerBedrock",
 		hintKey: "settings.providerBedrockHint",
 		enableEnv: "CLAUDE_CODE_USE_BEDROCK",
+		modelEnv: "ANTHROPIC_MODEL",
 		usesGeo: true,
-		// Known families map to `<geo>.anthropic.<family>` inference profiles;
-		// unknown/new families are derived from the alias (always pinned).
-		mapFamily: (family, geo) => `${geo}.${BEDROCK_FAMILY_SUFFIX[family] ?? `anthropic.${family}`}`,
+		// `<geo>.anthropic.<family>` inference profiles, fully derived from the
+		// alias — new models need no registry edit (always pinned).
+		mapFamily: (family, geo) => `${geo}.anthropic.${family}`,
+	},
+	[LLM_PROVIDER.BedrockCodex]: {
+		id: LLM_PROVIDER.BedrockCodex,
+		agentCommand: "codex",
+		labelKey: "settings.providerBedrock",
+		hintKey: "settings.providerBedrockCodexHint",
+		// Codex has no model env var: the model rides the --model flag (rewritten
+		// to the mapped id) and the backend is selected via a config override.
+		enableArgs: ["-c", 'model_provider="amazon-bedrock"'],
+		usesGeo: false,
+		// Bedrock exposes OpenAI models as flat `openai.<family>` ids — no
+		// cross-region geo prefix (verified against the live Bedrock endpoint).
+		mapFamily: (family) => `openai.${family}`,
 	},
 };
 
@@ -130,6 +150,7 @@ export const PROVIDER_REGISTRY: Partial<Record<LlmProvider, ProviderDefinition>>
  */
 const NATIVE_PROVIDER_LABEL: Record<string, string> = {
 	claude: "settings.providerAnthropic",
+	codex: "settings.providerOpenAI",
 };
 
 /** Resolve a base command to its agent key (last path segment, e.g. `claude`). */
@@ -167,9 +188,36 @@ export function getProviderDefinition(provider: LlmProvider | undefined): Provid
 	return provider ? PROVIDER_REGISTRY[provider] : undefined;
 }
 
-/** True when the provider is a third-party backend (model comes from env, not --model). */
+/** True when the provider is a third-party backend (dev3 pins the model id). */
 export function isThirdPartyProvider(provider: LlmProvider | undefined): boolean {
 	return getProviderDefinition(provider) !== undefined;
+}
+
+/** True when the provider delivers the model via env (`modelEnv`), so the
+ *  `--model` flag must be omitted from the launch command. */
+export function providerOmitsModelFlag(provider: LlmProvider | undefined): boolean {
+	return getProviderDefinition(provider)?.modelEnv != null;
+}
+
+/**
+ * The provider-native model id to pin for a launch: a per-model manual override
+ * wins, else the id is mapped/derived from the launching config's alias (with
+ * the selected geo where the provider uses one). Undefined for the native
+ * default or when the config has no model.
+ */
+export function providerPinnedModel(
+	provider: LlmProvider | undefined,
+	providerConfig: ProviderConfig | undefined,
+	configModel: string | undefined,
+): string | undefined {
+	const def = getProviderDefinition(provider);
+	if (!def) return undefined;
+	const settings = providerConfig?.[def.id];
+	const geo = settings?.geo ?? DEFAULT_BEDROCK_GEO;
+	return (
+		resolveModelOverride(settings?.modelOverrides, configModel) ||
+		mapModelForProvider(configModel, def.id, geo)
+	);
 }
 
 /**
@@ -194,9 +242,10 @@ export function mapModelForProvider(
 }
 
 /**
- * Build the environment variables to inject for a Claude launch under the
- * selected provider. Returns an empty object for the Anthropic API (default) —
- * nothing to inject, and `--model` is passed as usual.
+ * Build the environment variables to inject for a launch under the selected
+ * provider. Returns an empty object for the native default (nothing to inject,
+ * `--model` is passed as usual) and for providers that route entirely via CLI
+ * args (`enableArgs`, no `enableEnv`/`modelEnv` — e.g. Codex on Bedrock).
  *
  * `configModel` is the model alias of the config being launched, used to derive
  * the provider model id when the user hasn't set an explicit override.
@@ -212,16 +261,14 @@ export function buildProviderEnv(
 	const env: Record<string, string> = {};
 
 	// dev3 injects only the provider flag + the pinned model. Region, AWS profile,
-	// and GCP project come from the customer's own global Claude Code config
-	// (shell env / ~/.claude/settings.json) — dev3 does not manage credentials.
-	env[def.enableEnv] = "1";
-	// Always pin the model: a per-model manual override wins, else map/derive
-	// from the launching config's alias (with the selected geo prefix). Only a
-	// config with no model leaves it unset.
-	const settings = providerConfig?.[def.id];
-	const geo = settings?.geo ?? DEFAULT_BEDROCK_GEO;
-	const model = resolveModelOverride(settings?.modelOverrides, configModel) || mapModelForProvider(configModel, def.id, geo);
-	if (model) env.ANTHROPIC_MODEL = model;
+	// and GCP project come from the customer's own global agent config — dev3
+	// does not manage credentials.
+	if (def.enableEnv) env[def.enableEnv] = "1";
+	// Always pin the model: only a config with no model leaves it unset.
+	if (def.modelEnv) {
+		const model = providerPinnedModel(provider, providerConfig, configModel);
+		if (model) env[def.modelEnv] = model;
+	}
 	return env;
 }
 
