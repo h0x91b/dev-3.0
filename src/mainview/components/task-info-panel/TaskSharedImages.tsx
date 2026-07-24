@@ -5,6 +5,8 @@ import { ImagesIcon } from "../TaskIcons";
 
 interface TaskSharedImagesProps {
 	task: Task;
+	/** Icon-only rendering (count kept) for a bar that is short on width. */
+	compact?: boolean;
 }
 
 /**
@@ -15,7 +17,7 @@ interface TaskSharedImagesProps {
  * App-level lightbox at the newest image via the same `dev3:openImageViewer`
  * event the inspector badge used, so the viewer stays a single App-mounted host.
  */
-export default function TaskSharedImages({ task }: TaskSharedImagesProps) {
+export default function TaskSharedImages({ task, compact = false }: TaskSharedImagesProps) {
 	const t = useT();
 	const count = task.sharedImages?.length ?? 0;
 	if (count === 0) return null;
@@ -33,7 +35,7 @@ export default function TaskSharedImages({ task }: TaskSharedImagesProps) {
 				data-testid="shared-images-badge"
 			>
 				<ImagesIcon className="w-[1.125rem] h-[1.125rem]" />
-				<span className="text-[0.6875rem] font-semibold">{t("infoPanel.imagesLabel")}</span>
+				{!compact && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.imagesLabel")}</span>}
 				<span className="text-[0.6875rem] font-semibold text-accent tabular-nums">{count}</span>
 			</button>
 		</Tooltip>

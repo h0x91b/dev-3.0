@@ -17,6 +17,8 @@ interface TaskExposedPortsProps {
 	 * pill. Used by the narrow-viewport Task actions sheet.
 	 */
 	rowClassName?: string;
+	/** Icon-only rendering (count kept) for a bar that is short on width. */
+	compact?: boolean;
 }
 
 /** Tiny inline spinner matching the design-token palette — use inside small
@@ -82,7 +84,7 @@ function CopyUrlRow({ url }: { url: string }) {
  * Lives in the Runtime & access bar (row 2 right) per UX bible §5.1.
  * Hidden when the project doesn't allocate any ports.
  */
-export default function TaskExposedPorts({ task, rowClassName }: TaskExposedPortsProps) {
+export default function TaskExposedPorts({ task, rowClassName, compact = false }: TaskExposedPortsProps) {
 	const t = useT();
 	const allocatedPorts = useTaskAllocatedPorts(task);
 	const btnRef = useRef<HTMLButtonElement>(null);
@@ -165,9 +167,11 @@ export default function TaskExposedPorts({ task, rowClassName }: TaskExposedPort
 				}`}
 			>
 				<PortsIcon className="w-[1.125rem] h-[1.125rem]" />
-				<span className="text-[0.6875rem] font-semibold">
-					{activeCount > 0 ? `${t("tunnel.portsLabel")} (${activeCount})` : t("tunnel.portsLabel")}
-				</span>
+				{(!compact || activeCount > 0) && (
+					<span className="text-[0.6875rem] font-semibold">
+						{compact ? activeCount : activeCount > 0 ? `${t("tunnel.portsLabel")} (${activeCount})` : t("tunnel.portsLabel")}
+					</span>
+				)}
 			</button>
 			</Tooltip>
 

@@ -3,7 +3,7 @@ import { useT } from "../../i18n";
 import { ArtifactsIcon } from "../TaskIcons";
 import Tooltip from "../Tooltip";
 
-export default function TaskArtifacts({ task }: { task: Task }) {
+export default function TaskArtifacts({ task, compact = false }: { task: Task; compact?: boolean }) {
 	const t = useT();
 	const count = task.sharedArtifacts?.length ?? 0;
 	if (count === 0) return null;
@@ -20,7 +20,7 @@ export default function TaskArtifacts({ task }: { task: Task }) {
 				data-testid="shared-artifacts-badge"
 			>
 				<ArtifactsIcon className="w-[1.125rem] h-[1.125rem]" />
-				<span className="text-[0.6875rem] font-semibold">{t("infoPanel.artifactsLabel")}</span>
+				{!compact && <span className="text-[0.6875rem] font-semibold">{t("infoPanel.artifactsLabel")}</span>}
 				<span className="text-[0.6875rem] font-semibold text-accent tabular-nums">{count}</span>
 			</button>
 		</Tooltip>

@@ -55,6 +55,7 @@ import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import { useCompact } from "../utils/useCompact";
+import { useContainerWidth } from "../hooks/useContainerWidth";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import BottomSheet from "./BottomSheet";
@@ -87,6 +88,17 @@ const MAX_RATIO = 0.33;
 // Extra labels collapse into a "+k" chip; the full list still shows in the
 // expanded metadata grid below.
 const MAX_INLINE_LABELS = 4;
+
+// The 2×2 bar grid is sized by the panel's own width, not the viewport: in split
+// view the board eats most of a 1100px window, so the bars go tight while
+// `useCompact` (1600) still reports "roomy". Below this the label strip folds to
+// its "+k" chip and the branch name clamps harder, keeping both rows on one line.
+const TIGHT_PANEL_WIDTH = 1280;
+
+// Below this the Context bar can only keep its identity and primary actions: the
+// label strip and the include-tests toggle drop out (both still readable in the
+// expanded metadata grid / diff viewer) rather than eat the status label.
+const VERY_TIGHT_PANEL_WIDTH = 1000;
 
 // Uniform full-width row used by the narrow-viewport (mobile) actions sheet.
 // The mobile sheet is a curated read/trigger surface — a clean list of rows, not
@@ -162,6 +174,9 @@ function TaskInfoPanel({
 	const [diffFilesPos, setDiffFilesPos] = useState({ top: 0, left: 0 });
 	const [fileOpenInMenu, setFileOpenInMenu] = useState<{ path: string; pos: { top: number; left: number } } | null>(null);
 	const panelRef = useRef<HTMLDivElement>(null);
+	const panelWidth = useContainerWidth(panelRef);
+	const tight = panelWidth > 0 && panelWidth < TIGHT_PANEL_WIDTH;
+	const veryTight = panelWidth > 0 && panelWidth < VERY_TIGHT_PANEL_WIDTH;
 	const dragging = useRef(false);
 	const statusTriggerRef = useRef<HTMLButtonElement>(null);
 	const statusMenuRef = useRef<HTMLDivElement>(null);
@@ -610,7 +625,7 @@ function TaskInfoPanel({
 			)}
 		</button>
 	) : null;
-	const diffIncludeTestsToggle = project.kind !== "virtual" && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
+	const diffIncludeTestsToggle = project.kind !== "virtual" && !veryTight && metadataBranchStatus && metadataBranchStatus.diffFiles > 0 ? (
 		<Tooltip content={t("infoPanel.diffIncludeTestsTooltip")} detail={t("ttip.infoPanel.includeTests")}>
 		<button
 			type="button"
@@ -683,17 +698,26 @@ function TaskInfoPanel({
 		/>
 	) : null;
 
-	const inlineLabels = assignedLabels.slice(0, MAX_INLINE_LABELS);
-	const overflowLabels = assignedLabels.slice(MAX_INLINE_LABELS);
-	const labelStrip = assignedLabels.length > 0 ? (
-		<div className="flex items-center gap-1 min-w-0 flex-shrink">
+	// On a tight panel every inline chip is width the bar does not have — fold the
+	// whole strip into the "+k" chip instead of letting it overrun the next bar.
+	const maxInlineLabels = tight ? 0 : MAX_INLINE_LABELS;
+	const inlineLabels = assignedLabels.slice(0, maxInlineLabels);
+	const overflowLabels = assignedLabels.slice(maxInlineLabels);
+	const labelStrip = assignedLabels.length > 0 && !veryTight ? (
+		<div className="flex items-center gap-1 min-w-0 flex-shrink overflow-hidden">
 			{inlineLabels.map((label) => <LabelChip key={label.id} label={label} size="xs" />)}
 			{overflowLabels.length > 0 && (
 				<span
-					className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-elevated text-fg-3 text-[0.625rem] font-medium flex-shrink-0"
+					className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-elevated text-fg-3 text-[0.625rem] font-medium flex-shrink-0"
 					title={overflowLabels.map((label) => label.name).join(", ")}
+					data-testid="label-strip-overflow"
 				>
-					+{overflowLabels.length}
+					{/* With no chip beside it a bare "+2" is meaningless — the tag glyph
+					    says what is being counted. */}
+					{inlineLabels.length === 0 && (
+						<span className="text-[0.6875rem] leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>{"\u{F04F9}"}</span>
+					)}
+					{inlineLabels.length === 0 ? overflowLabels.length : `+${overflowLabels.length}`}
 				</span>
 			)}
 		</div>
@@ -738,10 +762,12 @@ function TaskInfoPanel({
 				}`}
 			>
 				<CompletionOwnerIcon className="h-[0.95rem] w-[0.95rem]" active={task.manualCompletion} />
-				{(!compact || task.manualCompletion) && (
-					<span className="text-[0.6875rem] font-medium">
-						{compact ? t("task.manualCompletionShort") : task.manualCompletion ? t("task.manualCompletionEnabled") : t("task.manualCompletion")}
-					</span>
+				{/* Always the short label: the full sentence ("I'll complete it myself")
+				    costs ~180px of bar — more in ru/es — for a state the accent icon
+				    already carries. The sentence stays in the tooltip and in the mobile
+				    sheet row. A tight bar drops even the short label. */}
+				{!tight && (
+					<span className="text-[0.6875rem] font-medium">{t("task.manualCompletionShort")}</span>
 				)}
 			</button>
 		</Tooltip>
@@ -755,9 +781,9 @@ function TaskInfoPanel({
 			ref={statusTriggerRef}
 			onClick={toggleStatusMenu}
 			disabled={movingStatus}
-			className={`flex items-center gap-2 rounded-lg hover:bg-elevated transition-colors flex-shrink-0 ${
+			className={`flex items-center gap-2 rounded-lg hover:bg-elevated transition-colors ${
 				narrow ? "px-3 min-h-[2.75rem]" : "px-2.5 py-1"
-			}`}
+			} ${tight && !narrow ? "min-w-0 shrink" : "flex-shrink-0"}`}
 		>
 			{activeCustomColumn ? (
 				<div
@@ -767,7 +793,7 @@ function TaskInfoPanel({
 			) : (
 				<MiniPipeline status={task.status} />
 			)}
-			<span className={`font-medium text-fg-2 ${narrow ? "text-sm" : "text-[0.6875rem]"}`}>
+			<span className={`font-medium text-fg-2 truncate ${narrow ? "text-sm" : "text-[0.6875rem]"}`}>
 				{activeCustomColumn ? activeCustomColumn.name : getStatusLabel(task.status, t, project)}
 			</span>
 			<svg className={`text-fg-3 ${narrow ? "w-4 h-4" : "w-3 h-3"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1244,22 +1270,29 @@ function TaskInfoPanel({
 			{collapsed ? (
 				<div className="flex flex-col h-full px-4 gap-1 justify-center">
 					<div className="flex items-center gap-1.5 min-w-0">
-						{variantSwitcher}
-						{watchToggleButton}
-						{manualCompletionToggleButton}
-						{priorityBadge}
-						{statusDropdownButton}
+						{/* Same bar boxing as the expanded rows: the Context bar is the only
+						    shrinkable region, so the Session bar and the pinned chrome to
+						    its right can never be pushed out of the panel. */}
+						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+							{variantSwitcher}
+							{watchToggleButton}
+							{manualCompletionToggleButton}
+							{priorityBadge}
+							{statusDropdownButton}
+							{diffSummaryBadge}
+							{diffIncludeTestsToggle}
+							{labelStrip}
+						</div>
 						{statusDropdownPortal}
-						{diffSummaryBadge}
-						{diffIncludeTestsToggle}
-						{labelStrip}
 						<div className="flex-1" />
-						{bugHuntersButton}
-						{spawnAgentButton}
-						{sendLaterButton}
-						{scheduledMessagesChip}
-						<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-						<TaskTmuxControls taskId={task.id} />
+						<div className="flex items-center gap-1.5 flex-shrink-0">
+							{bugHuntersButton}
+							{spawnAgentButton}
+							{sendLaterButton}
+							{scheduledMessagesChip}
+							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
+							<TaskTmuxControls taskId={task.id} compact={tight} />
+						</div>
 						{worktreeSettingsButton}
 						{showPanelButton}
 						<Tooltip content={terminalFullscreenLabel} detail={terminalFullscreenTooltip}>
@@ -1285,34 +1318,37 @@ function TaskInfoPanel({
 					</div>
 
 					<div className="flex items-center gap-1.5 min-w-0">
-						{project.kind === "virtual" ? (
-							<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
-						) : (
-							<TaskGitActions
-								task={task}
-								project={project}
-								dispatch={dispatch}
-								navigate={navigate}
-								isTaskActive={isTaskActive}
-								showWorktreeCopy
-								showLoading
-								compact={compact}
-								onBranchStatusChange={setMetadataBranchState}
-								onOpenInlineDiff={onOpenInlineDiff}
-							/>
-						)}
+						<div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+							{project.kind === "virtual" ? (
+								<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
+							) : (
+								<TaskGitActions
+									task={task}
+									project={project}
+									dispatch={dispatch}
+									navigate={navigate}
+									isTaskActive={isTaskActive}
+									showWorktreeCopy
+									showLoading
+									branchNameClassName={`text-fg-3 text-xs font-mono flex-shrink-0 truncate ${veryTight ? "max-w-[4rem]" : tight ? "max-w-[6rem]" : "max-w-[12.5rem]"}`}
+									compact={compact}
+									onBranchStatusChange={setMetadataBranchState}
+									onOpenInlineDiff={onOpenInlineDiff}
+								/>
+							)}
+						</div>
 						<div className="flex-1" />
 						<div className="flex items-center gap-2 flex-shrink-0">
-							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser />
+							<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser compact={tight} />
 							{project.kind !== "virtual" && (
 								<>
 									<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+									<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} compact={tight} />
 								</>
 							)}
-							<TaskExposedPorts task={task} />
-							<TaskSharedImages task={task} />
-							<TaskArtifacts task={task} />
+							<TaskExposedPorts task={task} compact={tight} />
+							<TaskSharedImages task={task} compact={tight} />
+							<TaskArtifacts task={task} compact={tight} />
 						</div>
 					</div>
 				</div>
@@ -1320,7 +1356,12 @@ function TaskInfoPanel({
 				<div className="flex flex-col h-full">
 					<div className="flex flex-col px-4">
 						<div className="flex items-center gap-1.5 min-w-0 pt-1">
-							<div className="flex items-center gap-1.5 min-w-0" data-help-id="inspector.context-bar">
+							{/* `overflow-hidden` is the backstop that keeps a bar's contents
+							    inside its own box: without it the shrink-0 children spill
+							    over the neighbouring bar and over the pinned chrome (which
+							    then becomes unclickable). `tight` folds content first, so
+							    clipping only happens at pathological widths. */}
+							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.context-bar">
 								{variantSwitcher}
 								{watchToggleButton}
 								{manualCompletionToggleButton}
@@ -1338,7 +1379,7 @@ function TaskInfoPanel({
 								{sendLaterButton}
 								{scheduledMessagesChip}
 								<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-								<TaskTmuxControls taskId={task.id} />
+								<TaskTmuxControls taskId={task.id} compact={tight} />
 							</div>
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							{showPanelButton}
@@ -1365,7 +1406,7 @@ function TaskInfoPanel({
 						</div>
 
 						<div className="flex items-center gap-1.5 min-w-0 pb-1">
-							<div className="flex items-center gap-1.5 min-w-0" data-help-id="inspector.git-bar">
+							<div className="flex items-center gap-1.5 min-w-0 overflow-hidden" data-help-id="inspector.git-bar">
 								{project.kind === "virtual" ? (
 									<span className="text-fg-muted text-[0.6875rem] italic flex-shrink-0 truncate">{t("ops.gitUnavailable")}</span>
 								) : (
@@ -1375,7 +1416,7 @@ function TaskInfoPanel({
 										dispatch={dispatch}
 										navigate={navigate}
 										isTaskActive={isTaskActive}
-										branchNameClassName="text-fg-3 text-xs font-mono flex-shrink-0 truncate max-w-[12.5rem]"
+										branchNameClassName={`text-fg-3 text-xs font-mono flex-shrink-0 truncate ${veryTight ? "max-w-[4rem]" : tight ? "max-w-[6rem]" : "max-w-[12.5rem]"}`}
 										compact={compact}
 										onBranchStatusChange={setMetadataBranchState}
 										onOpenInlineDiff={onOpenInlineDiff}
@@ -1384,16 +1425,16 @@ function TaskInfoPanel({
 							</div>
 							<div className="flex-1" />
 							<div className="flex items-center gap-2 flex-shrink-0" data-help-id="inspector.runtime-bar">
-								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} />
+								<TaskOpenIn task={task} project={project} isTaskActive={isTaskActive} showFileBrowser={false} compact={tight} />
 								{project.kind !== "virtual" && (
 									<>
 										<TaskScripts task={task} project={project} isTaskActive={isTaskActive} />
-										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} />
+										<TaskDevServer task={task} project={project} isTaskActive={isTaskActive} compact={tight} />
 									</>
 								)}
-								<TaskExposedPorts task={task} />
-								<TaskSharedImages task={task} />
-								<TaskArtifacts task={task} />
+								<TaskExposedPorts task={task} compact={tight} />
+								<TaskSharedImages task={task} compact={tight} />
+								<TaskArtifacts task={task} compact={tight} />
 							</div>
 						</div>
 					</div>

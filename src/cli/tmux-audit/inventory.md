@@ -16,10 +16,10 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 
 ## Baseline counts
 
-- Tracked files scanned: **2624**
-- In-boundary files with **no** tmux signal: **935**
-- **Inventoried tmux dependencies: 252** (4671 signal occurrences)
-- Historical references (changelogs + ADRs, out of scope): **269** files, 885 occurrences
+- Tracked files scanned: **2637**
+- In-boundary files with **no** tmux signal: **939**
+- **Inventoried tmux dependencies: 252** (4674 signal occurrences)
+- Historical references (changelogs + ADRs, out of scope): **272** files, 893 occurrences
 - Deep `TmuxClient` internals: **10** · callers that still know tmux vocabulary: **76**
 - Active dependencies (behavior changes on removal): **155** · reference-only mentions: **97**
 

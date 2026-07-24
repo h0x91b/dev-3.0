@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-24 — Inspector bars adapt to the PANEL's width, not the viewport's
+
+- **Rule:** A toolbar that shares the viewport with another surface gates its label/fold behaviour on its own container width (`useContainerWidth`, ResizeObserver), not on `useCompact`/`useNarrowViewport`; and every bar is boxed (`min-w-0 overflow-hidden`) so it can never paint over a neighbour or the pinned chrome. Inspector tiers: `tight` <1280 (label strip → `+k`, branch clamp, tmux/Runtime icon-only), `veryTight` <900 (drop label strip + include-tests).
+- **Why:** In split view the panel is 400-600px narrower than the window, so viewport gates never fired and both rows overflowed — chrome and Runtime controls landed outside the panel's `overflow-hidden` box, unclickable. Wrapping was rejected (fixed collapsed height clips the second line); lowering `COMPACT_MAX_WIDTH` was rejected (wrong axis). Bible §5.1/§12.1; `decisions/164-inspector-bars-adapt-to-panel-width.md`.
+- **Status:** Observed. Evidence: `useContainerWidth.ts`, `TaskInfoPanel.tsx`.
+
 ## 2026-07-23 — Streamer mode: privacy masking is a CSS class contract
 
 - **Rule:** Identity-bearing display values (emails, account labels, orgs, home-dir paths, tunnel URLs, QR) must carry `streamer-private`/`streamer-private-media`; `data-streamer="on"` on `<html>` blurs them. Toggle = Settings → Appearance (`local` storage) + `⇧⌘P` palette command; no header button, no hover-to-reveal.

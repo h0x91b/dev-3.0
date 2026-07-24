@@ -3233,4 +3233,69 @@ describe("TaskInfoPanel — virtual (Operations) tasks", () => {
 			expect(mockedApi.request.getBranchStatus).not.toHaveBeenCalled();
 		});
 	});
+	describe("tight panel container", () => {
+		/**
+		 * The bars adapt to the PANEL's width, not the viewport's (split view makes
+		 * the panel much narrower than the window), so the gate is a ResizeObserver.
+		 * happy-dom ships none — stub one that reports a fixed width.
+		 */
+		function mockPanelWidth(width: number) {
+			class StubResizeObserver {
+				constructor(private cb: ResizeObserverCallback) {}
+				observe(el: Element) {
+					this.cb(
+						[{ target: el, contentRect: { width } } as unknown as ResizeObserverEntry],
+						this as unknown as ResizeObserver,
+					);
+				}
+				unobserve() {}
+				disconnect() {}
+			}
+			vi.stubGlobal("ResizeObserver", StubResizeObserver);
+		}
+
+		afterEach(() => vi.unstubAllGlobals());
+
+		it("keeps label chips inline on a roomy panel", async () => {
+			mockPanelWidth(1600);
+			await act(async () => {
+				renderPanel(makeTask({ labelIds: [label1.id, label2.id] }));
+			});
+
+			expect(screen.getByText("Bug")).toBeInTheDocument();
+			expect(screen.queryByTestId("label-strip-overflow")).not.toBeInTheDocument();
+		});
+
+		it("folds the label strip into a single count chip on a tight panel", async () => {
+			mockPanelWidth(1000);
+			await act(async () => {
+				renderPanel(makeTask({ labelIds: [label1.id, label2.id] }));
+			});
+
+			expect(screen.queryByText("Bug")).not.toBeInTheDocument();
+			expect(screen.getByTestId("label-strip-overflow")).toHaveAttribute("title", "Bug, Feature");
+		});
+
+		it("drops the completion-ownership label on a tight panel", async () => {
+			mockPanelWidth(1000);
+			await act(async () => {
+				renderPanel(makeTask({ manualCompletion: true }));
+			});
+
+			expect(screen.queryByText("I decide")).not.toBeInTheDocument();
+			// The toggle itself stays reachable — only its text label goes.
+			expect(
+				screen.getAllByRole("button", { name: "I’ll complete it myself — merge prompts are off" }).length,
+			).toBeGreaterThan(0);
+		});
+
+		it("drops the label strip entirely just above the mobile breakpoint", async () => {
+			mockPanelWidth(820);
+			await act(async () => {
+				renderPanel(makeTask({ labelIds: [label1.id, label2.id] }));
+			});
+
+			expect(screen.queryByTestId("label-strip-overflow")).not.toBeInTheDocument();
+		});
+	});
 });

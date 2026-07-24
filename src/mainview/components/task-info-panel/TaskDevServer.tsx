@@ -14,6 +14,8 @@ interface TaskDevServerProps {
 	task: Task;
 	project: Project;
 	isTaskActive: boolean;
+	/** Icon-only rendering for a bar that is short on width. */
+	compact?: boolean;
 }
 
 /**
@@ -107,7 +109,7 @@ function DevServerMenu({ position, onRestart, onStop, onClose }: DevServerMenuPr
 	);
 }
 
-export default function TaskDevServer({ task, project, isTaskActive }: TaskDevServerProps) {
+export default function TaskDevServer({ task, project, isTaskActive, compact = false }: TaskDevServerProps) {
 	const t = useT();
 	const reducedMotion = useReducedMotion();
 	const resolvedProject = useResolvedTaskProject(task, project);
@@ -339,7 +341,7 @@ export default function TaskDevServer({ task, project, isTaskActive }: TaskDevSe
 					aria-busy={isStarting}
 				>
 					{devServerIcon}
-					<span className="text-[0.6875rem] font-semibold">{devServerLabel}</span>
+					{!compact && <span className="text-[0.6875rem] font-semibold">{devServerLabel}</span>}
 				</button>
 			</Tooltip>
 

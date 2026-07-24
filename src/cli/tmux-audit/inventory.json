@@ -42,14 +42,14 @@
 		]
 	},
 	"totals": {
-		"trackedFiles": 2624,
-		"inBoundaryClean": 935,
+		"trackedFiles": 2637,
+		"inBoundaryClean": 939,
 		"inventoried": 252,
-		"occurrences": 4671
+		"occurrences": 4674
 	},
 	"historical": {
-		"fileCount": 269,
-		"occurrences": 885
+		"fileCount": 272,
+		"occurrences": 893
 	},
 	"hiddenGrammarFiles": [
 		"src/bun/tmux/__tests__/alt-click.test.ts"
@@ -267,8 +267,8 @@
 		},
 		{
 			"path": "docs/ux/PRODUCT_UX_BIBLE.md",
-			"occurrences": 22,
-			"fingerprint": "3345423f840a2ace",
+			"occurrences": 23,
+			"fingerprint": "d04b85be4c949f34",
 			"via": "override",
 			"category": "documentation",
 			"roadmapItem": "CUT-005",
@@ -279,8 +279,8 @@
 		},
 		{
 			"path": "docs/ux/UX_DECISIONS.md",
-			"occurrences": 18,
-			"fingerprint": "7c98adc3b6b8d52a",
+			"occurrences": 19,
+			"fingerprint": "b417b9eb844d4160",
 			"via": "override",
 			"category": "documentation",
 			"roadmapItem": "CUT-005",
@@ -291,8 +291,8 @@
 		},
 		{
 			"path": "docs/ux/ux-architecture.yaml",
-			"occurrences": 33,
-			"fingerprint": "d9023e5e687fabab",
+			"occurrences": 34,
+			"fingerprint": "8a310fb762166579",
 			"via": "override",
 			"category": "documentation",
 			"roadmapItem": "CUT-005",
