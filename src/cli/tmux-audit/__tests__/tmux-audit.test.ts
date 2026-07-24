@@ -1,74 +1,59 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
+/**
+ * Deterministic unit tests for the tmux audit's pure logic: fingerprints, the
+ * scan boundary, classification resolution, and the advisory verification rules.
+ *
+ * Deliberately NO live repository assertions — inventory drift (a new tmux
+ * token, a stale snapshot, a stale override) is checked by the manual audit
+ * command, not by `bun run test` / required CI. See
+ * `decisions/167-tmux-inventory-advisory-not-gating.md`.
+ */
+
 import { describe, it, expect } from "vitest";
-import {
-	buildInventory,
-	loadConfig,
-	resolveClassification,
-	resolveRepoRoot,
-	type Inventory,
-} from "../inventory";
+import { loadConfig, resolveClassification, resolveRepoRoot, type Inventory, type InventoryEntry } from "../inventory";
 import { computeFingerprint, extractSignals, classifyBoundary } from "../scanner";
+import { collectManifestProblems, collectSnapshotDrift, entryIdentities, formatProblems } from "../verify";
 
-const repoRoot = resolveRepoRoot();
-const config = loadConfig(repoRoot);
-const inventory: Inventory = buildInventory(repoRoot, config);
+const config = loadConfig(resolveRepoRoot());
 
-/** Stable per-file identity: content fingerprint + classification, no line numbers. */
-function identity(inv: Inventory): Record<string, string> {
-	const map: Record<string, string> = {};
-	for (const e of inv.entries) {
-		map[e.path] = [e.fingerprint, e.category, e.roadmapItem, e.depth, e.dependencyKind].join("|");
-	}
-	return map;
+function entry(overrides: Partial<InventoryEntry> = {}): InventoryEntry {
+	return {
+		path: "src/bun/pty-server.ts",
+		occurrences: 3,
+		fingerprint: "abc",
+		via: "override",
+		category: "terminal-runtime",
+		roadmapItem: "CUT-005",
+		depth: "caller",
+		dependencyKind: "active",
+		consumer: "pty server",
+		deletionPrerequisite: "native terminal default",
+		...overrides,
+	};
 }
 
-describe("tmux audit — deterministic no-unclassified check", () => {
-	it("classifies every scanned production tmux dependency", () => {
-		const missing = inventory.unclassified.map((f) => f.path);
-		// A new production tmux dependency that no override/rule covers fails here.
-		expect(missing, `unclassified tmux dependencies (add an override or rule):\n${missing.join("\n")}`).toEqual([]);
-	});
+function inventoryOf(entries: readonly InventoryEntry[], extra: Partial<Inventory> = {}): Inventory {
+	return {
+		entries,
+		unclassified: [],
+		hiddenGrammarFiles: [],
+		historical: { fileCount: 0, occurrences: 0 },
+		totals: { trackedFiles: 1, inBoundaryClean: 0, inventoried: entries.length, occurrences: 0 },
+		byCategory: {},
+		byDepth: {},
+		byDependencyKind: {},
+		byRoadmapItem: {},
+		...extra,
+	} as Inventory;
+}
 
-	it("keeps the committed inventory.json in sync (stable identities)", () => {
-		const committedRaw = readFileSync(path.join(repoRoot, "src/cli/tmux-audit/inventory.json"), "utf8");
-		const committed = JSON.parse(committedRaw) as { entries: Inventory["entries"] };
-		const committedInventory = { entries: committed.entries } as Inventory;
-
-		// Compare the churn-stable projection: moving lines does not change the
-		// fingerprint, so pure reordering never trips this; a new/removed tmux
-		// token or a reclassification does — forcing `bun generate` + review.
-		expect(identity(committedInventory)).toEqual(identity(inventory));
-	});
-
-	it("has no stale overrides (every override still carries tmux signals)", () => {
-		const scannedPaths = new Set(inventory.entries.map((e) => e.path));
-		const stale = Object.keys(config.overrides).filter((p) => !scannedPaths.has(p));
-		expect(stale, `stale overrides — remove them from audit.config.json:\n${stale.join("\n")}`).toEqual([]);
-	});
-
-	it("classifies every file that hides tmux grammar without the literal token", () => {
-		const entryPaths = new Set(inventory.entries.map((e) => e.path));
-		const unclassifiedHidden = inventory.hiddenGrammarFiles.filter((p) => !entryPaths.has(p));
-		expect(unclassifiedHidden).toEqual([]);
-	});
-
-	it("uses only known categories, depths, kinds, and roadmap items", () => {
-		for (const e of inventory.entries) {
-			expect(config.categories, e.path).toHaveProperty(e.category);
-			expect(config.depths, e.path).toHaveProperty(e.depth);
-			expect(config.dependencyKinds, e.path).toHaveProperty(e.dependencyKind);
-			expect(config.roadmap, e.path).toHaveProperty(e.roadmapItem);
-		}
-	});
-
-	it("reports the deep-internal vs caller split distinctly", () => {
-		expect(inventory.byDepth["deep-internal"]).toBeGreaterThan(0);
-		expect(inventory.byDepth["caller"]).toBeGreaterThan(0);
-		// The adapter must stay strictly smaller than its caller surface.
-		expect(inventory.byDepth["deep-internal"]).toBeLessThan(inventory.byDepth["caller"] ?? 0);
-	});
-});
+const taxonomy = {
+	categories: { "terminal-runtime": "" },
+	roadmap: { "CUT-005": "" },
+	depths: { caller: "", "deep-internal": "" },
+	dependencyKinds: { active: "" },
+	overrides: {},
+	rules: [],
+} as unknown as typeof config;
 
 describe("tmux audit — fingerprint stability (line moves must not churn)", () => {
 	const original = [
@@ -128,8 +113,84 @@ describe("tmux audit — boundary is cross-platform and self-excluding", () => {
 	});
 
 	it("resolves classification via override before rule", () => {
-		const resolved = resolveClassification("src/bun/tmux/client.ts", config);
+		const withBoth = {
+			...taxonomy,
+			overrides: { "src/bun/tmux/client.ts": { ...entry(), depth: "deep-internal" } },
+			rules: [{ ...entry(), match: "^src/bun/" }],
+		} as unknown as typeof config;
+		const resolved = resolveClassification("src/bun/tmux/client.ts", withBoth);
 		expect(resolved?.via).toBe("override");
 		expect(resolved?.classification.depth).toBe("deep-internal");
+	});
+
+	it("falls back to the first matching rule when no override exists", () => {
+		const rulesOnly = { ...taxonomy, rules: [{ ...entry(), match: "^src/bun/" }] } as unknown as typeof config;
+		expect(resolveClassification("src/bun/other.ts", rulesOnly)?.via).toBe("^src/bun/");
+		expect(resolveClassification("docs/x.md", rulesOnly)).toBeNull();
+	});
+});
+
+describe("tmux audit — advisory verification rules", () => {
+	it("accepts a fully classified inventory", () => {
+		expect(collectManifestProblems(inventoryOf([entry()]), taxonomy)).toEqual([]);
+	});
+
+	it("reports an unclassified dependency", () => {
+		const inv = inventoryOf([], {
+			unclassified: [{ path: "src/bun/new.ts", occurrences: 2, tokens: { tmux: 2 }, fingerprint: "f" }],
+		});
+		expect(collectManifestProblems(inv, taxonomy).map((p) => p.kind)).toEqual(["unclassified"]);
+	});
+
+	it("reports tmux grammar hiding in an unclassified file", () => {
+		const inv = inventoryOf([entry()], { hiddenGrammarFiles: ["src/bun/sneaky.ts"] });
+		expect(collectManifestProblems(inv, taxonomy).map((p) => p.kind)).toEqual(["hidden-grammar"]);
+	});
+
+	it("reports an unknown taxonomy value", () => {
+		const problems = collectManifestProblems(inventoryOf([entry({ depth: "bogus" })]), taxonomy);
+		expect(problems.map((p) => p.kind)).toEqual(["unknown-taxonomy"]);
+	});
+
+	it("reports a stale override", () => {
+		const stale = { ...taxonomy, overrides: { "src/bun/gone.ts": {} } } as unknown as typeof config;
+		expect(collectManifestProblems(inventoryOf([entry()]), stale).map((p) => p.kind)).toEqual(["stale-override"]);
+	});
+
+	it("ignores line moves but reports added, removed, and reclassified files", () => {
+		const committed = [entry(), entry({ path: "src/bun/old.ts" }), entry({ path: "src/bun/kept.ts" })];
+		const live = inventoryOf([
+			entry({ fingerprint: "changed" }),
+			entry({ path: "src/bun/kept.ts" }),
+			entry({ path: "src/bun/fresh.ts" }),
+		]);
+		expect(collectSnapshotDrift(committed, live).map((p) => p.detail)).toEqual([
+			"added: src/bun/fresh.ts",
+			"changed: src/bun/pty-server.ts",
+			"removed: src/bun/old.ts",
+		]);
+	});
+
+	it("finds no drift when the snapshot matches the scan", () => {
+		expect(collectSnapshotDrift([entry()], inventoryOf([entry()]))).toEqual([]);
+	});
+
+	it("keys identities on fingerprint plus classification only", () => {
+		const a = entryIdentities([entry({ occurrences: 1 })]);
+		const b = entryIdentities([entry({ occurrences: 99 })]);
+		expect(a).toEqual(b);
+	});
+
+	it("formats nothing when there are no problems", () => {
+		expect(formatProblems([])).toBe("");
+	});
+
+	it("groups formatted problems by kind", () => {
+		const report = formatProblems([
+			{ kind: "unclassified", detail: "a.ts" },
+			{ kind: "unclassified", detail: "b.ts" },
+			{ kind: "stale-override", detail: "c.ts" },
+		]);
+		expect(report).toBe("unclassified (2):\n  a.ts\n  b.ts\n\nstale-override (1):\n  c.ts");
 	});
 });

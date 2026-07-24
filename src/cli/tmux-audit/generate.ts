@@ -1,15 +1,21 @@
 #!/usr/bin/env bun
 /**
- * Regenerate the tmux-dependency inventory artifacts from `audit.config.json`.
+ * The tmux dependency audit — full live scan of the repository.
  *
- *   bun src/cli/tmux-audit/generate.ts
+ *   bun src/cli/tmux-audit/generate.ts            # scan + regenerate artifacts
+ *   bun src/cli/tmux-audit/generate.ts --check    # scan + verify, write nothing
  *
- * Writes `inventory.json` (machine-readable) and `inventory.md` (summary).
- * Exits non-zero if any scanned production file is unclassified — fix the
- * manifest (add an override or rule) and re-run. Never mutates production code.
+ * Exits non-zero if any scanned production file is unclassified, hides tmux
+ * grammar, uses an unknown taxonomy value, or is covered by a stale override —
+ * fix `audit.config.json` and re-run. `--check` additionally fails when the
+ * committed `inventory.json` differs from the fresh scan.
+ *
+ * This is **advisory tooling run by hand** at tmux-removal milestones, not a PR
+ * gate (`decisions/167-tmux-inventory-advisory-not-gating.md`). It never mutates
+ * production code.
  */
 
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
 	buildInventory,
@@ -19,6 +25,7 @@ import {
 	type Inventory,
 	type InventoryEntry,
 } from "./inventory";
+import { collectManifestProblems, collectSnapshotDrift, formatProblems } from "./verify";
 
 function renderTable(rows: string[][], headers: string[]): string {
 	const head = `| ${headers.join(" | ")} |`;
@@ -117,21 +124,38 @@ function renderMarkdown(inv: Inventory, config: AuditConfig): string {
 	return sections.join("\n") + "\n";
 }
 
+function readCommittedEntries(jsonPath: string): readonly InventoryEntry[] {
+	const committed = JSON.parse(readFileSync(jsonPath, "utf8")) as { entries?: readonly InventoryEntry[] };
+	return committed.entries ?? [];
+}
+
 function main(): void {
+	const checkOnly = process.argv.includes("--check");
 	const repoRoot = resolveRepoRoot();
 	const config = loadConfig(repoRoot);
 	const inv = buildInventory(repoRoot, config);
 
-	if (inv.unclassified.length > 0) {
-		console.error(`\n${inv.unclassified.length} unclassified tmux dependency file(s) — add an override or rule:\n`);
-		for (const f of inv.unclassified) {
-			console.error(`  ${f.path}  (occ ${f.occurrences}; tokens: ${Object.keys(f.tokens).sort().join(", ")})`);
-		}
+	const jsonPath = path.join(repoRoot, "src/cli/tmux-audit/inventory.json");
+	const mdPath = path.join(repoRoot, "src/cli/tmux-audit/inventory.md");
+
+	const problems = collectManifestProblems(inv, config);
+	if (checkOnly) problems.push(...collectSnapshotDrift(readCommittedEntries(jsonPath), inv));
+
+	if (problems.length > 0) {
+		console.error(`\ntmux audit found ${problems.length} problem(s):\n`);
+		console.error(formatProblems(problems));
+		console.error(
+			checkOnly
+				? "\nFix audit.config.json, then run `bun src/cli/tmux-audit/generate.ts` to refresh the artifacts."
+				: "\nFix audit.config.json and re-run.",
+		);
 		process.exit(1);
 	}
 
-	const jsonPath = path.join(repoRoot, "src/cli/tmux-audit/inventory.json");
-	const mdPath = path.join(repoRoot, "src/cli/tmux-audit/inventory.md");
+	if (checkOnly) {
+		console.log(`tmux audit clean: ${inv.totals.inventoried} classified dependencies, artifacts in sync.`);
+		return;
+	}
 
 	const json = {
 		$generatedBy: "bun src/cli/tmux-audit/generate.ts",

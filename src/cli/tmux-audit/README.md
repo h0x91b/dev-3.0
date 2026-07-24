@@ -1,7 +1,12 @@
 # tmux dependency audit
 
-Reproducible, classified inventory of every remaining production tmux dependency,
-plus a deterministic check that fails when a new **unclassified** one appears.
+Reproducible, classified inventory of every remaining production tmux dependency.
+
+**Advisory, not a PR gate.** The full live scan runs on demand via one command
+(below), at tmux-removal milestones and before **CUT-005 / CUT-006** — not on
+every pull request. Inventory bookkeeping is not a runtime safety invariant, and
+gating CI on it blocked unrelated work
+(see [decision 167](../../../decisions/167-tmux-inventory-advisory-not-gating.md)).
 
 Roadmap item **INT-008** (parent Seq 1141 → Seq 1251). This is **tooling and
 documentation only** — it never removes, renames, wraps, or refactors tmux code.
@@ -14,10 +19,11 @@ Existing production imports and callers are read-only inputs.
 | `audit.config.json` | **The manifest.** Hand-maintained: scan boundary, taxonomy, classification rules, and per-file overrides. Edit this. |
 | `scanner.ts` | Pure, cross-platform scanner: enumerates tracked files, applies the boundary, extracts stable tmux signals + fingerprints. |
 | `inventory.ts` | Builds the classified inventory from the manifest + a live scan. Shared by the generator and the check. |
-| `generate.ts` | Regenerates `inventory.json` + `inventory.md`. Fails if anything is unclassified. |
+| `generate.ts` | **The audit command.** Full live scan; regenerates `inventory.json` + `inventory.md`, or verifies with `--check`. |
+| `verify.ts` | Pure verification rules (manifest problems, snapshot drift, report formatting). |
 | `inventory.json` | **Generated.** Full machine-readable inventory (per-file classification + fingerprint). |
 | `inventory.md` | **Generated.** Concise human summary: baseline counts + per-category tables. |
-| `__tests__/tmux-audit.test.ts` | The deterministic check (runs in `bun run test` via the CLI vitest project). |
+| `__tests__/tmux-audit.test.ts` | Pure unit tests only — fingerprints, boundary, classification, verification rules. No live scan. |
 
 ## What it detects
 
@@ -54,18 +60,32 @@ multiset of tmux tokens — plus its classification. Reordering or moving lines 
 a tmux token (a genuinely new dependency, or a deletion) does change it, forcing a
 regenerate + reclassify.
 
-## Maintaining it
+## Running the audit (manual)
 
-1. Edit `audit.config.json` (add an override or a rule; adjust the boundary).
-2. Regenerate: `bun src/cli/tmux-audit/generate.ts`.
-3. Commit `audit.config.json`, `inventory.json`, and `inventory.md` together.
+One command performs the full live scan:
 
-The check (`bun run test`) fails when:
+```bash
+bun src/cli/tmux-audit/generate.ts            # scan + regenerate the artifacts
+bun src/cli/tmux-audit/generate.ts --check    # scan + verify only, writes nothing
+```
+
+Both modes exit non-zero when:
 
 - a scanned production file has tmux signals but no classification (**new unclassified dependency**);
-- the committed `inventory.json` is out of sync with a fresh scan (a new/removed tmux token, or a reclassification — run the generator);
-- an override points at a path that no longer carries tmux signals (**stale entry**);
-- a file hides tmux grammar without the literal token and is not classified.
+- a file hides tmux grammar without the literal token and is not classified;
+- an entry uses a category / depth / kind / roadmap item that is not in the taxonomy;
+- an override points at a path that no longer carries tmux signals (**stale entry**).
+
+`--check` additionally fails when the committed `inventory.json` differs from a
+fresh scan (a new/removed tmux token or a reclassification).
+
+**When to run it:** at tmux-removal roadmap milestones and before **CUT-005** and
+**CUT-006** — not per pull request. `bun run test` covers only the pure unit tests,
+so ordinary work never has to regenerate the inventory.
+
+To update it: edit `audit.config.json` (add an override or rule; adjust the
+boundary), run the generator, and commit `audit.config.json`, `inventory.json`,
+and `inventory.md` together.
 
 ## Cross-platform
 
