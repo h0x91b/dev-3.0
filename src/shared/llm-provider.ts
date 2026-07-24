@@ -47,7 +47,7 @@ export function wantsLongContext(model: string): boolean {
 /** Non-family aliases dev3 uses in its configs → canonical Anthropic family key. */
 const ALIAS_FAMILY: Record<string, string> = {
 	sonnet: "claude-sonnet-4-6",
-	opus: "claude-opus-4-8",
+	opus: "claude-opus-5",
 	haiku: "claude-haiku-4-5",
 	"anthropic/claude-opus-4-6": "claude-opus-4-6",
 	"anthropic/claude-sonnet-4-6": "claude-sonnet-4-6",
@@ -96,6 +96,7 @@ export interface ProviderDefinition {
 }
 
 const BEDROCK_FAMILY_SUFFIX: Record<string, string> = {
+	"claude-opus-5": "anthropic.claude-opus-5",
 	"claude-opus-4-8": "anthropic.claude-opus-4-8",
 	"claude-opus-4-7": "anthropic.claude-opus-4-7",
 	"claude-opus-4-6": "anthropic.claude-opus-4-6",

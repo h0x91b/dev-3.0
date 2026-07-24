@@ -29,6 +29,7 @@ const claude: CodingAgent = {
 
 describe("getModelGroupLabel", () => {
 	it("maps known model strings to clean labels", () => {
+		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-5[1m]" })).toBe("Opus 5");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-opus-4-8[1m]" })).toBe("Opus 4.8");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "claude-fable-5" })).toBe("Fable 5");
 		expect(getModelGroupLabel({ id: "a", name: "x", model: "gpt-5.6-sol" })).toBe("GPT-5.6 Sol");

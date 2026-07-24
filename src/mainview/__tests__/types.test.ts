@@ -307,6 +307,34 @@ describe("DEFAULT_AGENTS", () => {
 		expect(claude!.baseCommand).toBe("claude");
 	});
 
+	it("uses the pinned Opus 5 model in Opus 5 presets", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		expect(claude).toBeDefined();
+
+		const opus5Configs = claude!.configurations.filter((config) => /-opus5(-|$)/.test(config.id));
+		expect(opus5Configs.length).toBeGreaterThan(0);
+		for (const config of opus5Configs) {
+			expect(config.model).toBe("claude-opus-5[1m]");
+		}
+	});
+
+	it("defaults Claude to Opus 5 at High effort", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		expect(claude!.defaultConfigId).toBe("claude-auto-opus5-high");
+
+		const cfg = claude!.configurations.find((c) => c.id === claude!.defaultConfigId);
+		expect(cfg!.model).toBe("claude-opus-5[1m]");
+		expect(cfg!.effort).toBe("high");
+		expect(cfg!.permissionMode).toBe("auto");
+	});
+
+	it("lists Opus 5 ahead of Opus 4.8 in every Claude mode group", () => {
+		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
+		const ids = claude!.configurations.map((c) => c.id);
+		const firstIndexOf = (needle: string) => ids.findIndex((id) => id.includes(needle));
+		expect(firstIndexOf("-opus5")).toBeLessThan(firstIndexOf("-opus48"));
+	});
+
 	it("uses the pinned Sonnet 5 model in Sonnet 5 presets", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
 		expect(claude).toBeDefined();
