@@ -19,7 +19,7 @@ export type { GlobalSettings };
 
 const DEFAULT_SETTINGS: GlobalSettings = {
 	defaultAgentId: "builtin-claude",
-	defaultConfigId: "claude-auto-opus5-high",
+	defaultConfigId: "claude-auto-opus5-medium",
 	taskDropPosition: "top",
 	updateChannel: "stable",
 };

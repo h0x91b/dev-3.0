@@ -118,7 +118,7 @@ describe("saveSettings", () => {
 
 	it("falls back to the current default for a dangling builtin-looking id with no remap entry", async () => {
 		writeFileSync(settingsPath, JSON.stringify(makeSettings({ defaultConfigId: "claude-some-preset-that-never-existed" }), null, 2), "utf-8");
-		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus5-high");
+		expect((await loadSettings()).defaultConfigId).toBe("claude-auto-opus5-medium");
 	});
 
 	it("leaves a non-builtin (custom) defaultConfigId untouched", async () => {

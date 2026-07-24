@@ -318,13 +318,13 @@ describe("DEFAULT_AGENTS", () => {
 		}
 	});
 
-	it("defaults Claude to Opus 5 at High effort", () => {
+	it("defaults Claude to Opus 5 at Medium effort", () => {
 		const claude = DEFAULT_AGENTS.find((a) => a.id === "builtin-claude");
-		expect(claude!.defaultConfigId).toBe("claude-auto-opus5-high");
+		expect(claude!.defaultConfigId).toBe("claude-auto-opus5-medium");
 
 		const cfg = claude!.configurations.find((c) => c.id === claude!.defaultConfigId);
 		expect(cfg!.model).toBe("claude-opus-5[1m]");
-		expect(cfg!.effort).toBe("high");
+		expect(cfg!.effort).toBe("medium");
 		expect(cfg!.permissionMode).toBe("auto");
 	});
 
