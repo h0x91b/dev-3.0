@@ -42,14 +42,14 @@
 		]
 	},
 	"totals": {
-		"trackedFiles": 2594,
-		"inBoundaryClean": 924,
-		"inventoried": 245,
-		"occurrences": 4656
+		"trackedFiles": 2624,
+		"inBoundaryClean": 935,
+		"inventoried": 252,
+		"occurrences": 4671
 	},
 	"historical": {
-		"fileCount": 267,
-		"occurrences": 881
+		"fileCount": 269,
+		"occurrences": 885
 	},
 	"hiddenGrammarFiles": [
 		"src/bun/tmux/__tests__/alt-click.test.ts"
@@ -58,27 +58,27 @@
 		"agent-control": 10,
 		"capture-state": 6,
 		"cli-rpc-ui": 33,
-		"compatibility": 10,
+		"compatibility": 14,
 		"documentation": 56,
 		"packaging-update": 14,
 		"pane-layout": 17,
 		"process-resource": 3,
 		"terminal-ownership": 9,
-		"test-only": 87
+		"test-only": 90
 	},
 	"byDepth": {
 		"caller": 76,
 		"deep-internal": 10,
-		"isolation": 6,
+		"isolation": 10,
 		"surface": 66,
-		"test": 87
+		"test": 90
 	},
 	"byDependencyKind": {
-		"active": 152,
-		"reference": 93
+		"active": 155,
+		"reference": 97
 	},
 	"byRoadmapItem": {
-		"CUT-005": 116,
+		"CUT-005": 119,
 		"CUT-006": 29,
 		"INT-001": 13,
 		"INT-002": 9,
@@ -91,7 +91,7 @@
 		"LAY-007": 2,
 		"MIG-001": 6,
 		"MIG-003": 3,
-		"MIG-006": 18,
+		"MIG-006": 22,
 		"RUN-005": 2,
 		"RUN-006": 2,
 		"STATE-008": 3
@@ -579,8 +579,20 @@
 		},
 		{
 			"path": "src/bun/__tests__/pty-server.test.ts",
-			"occurrences": 133,
-			"fingerprint": "fd258f9a98fc1080",
+			"occurrences": 132,
+			"fingerprint": "d7bfc0eb130a6261",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/__tests__/resize-protocol.test.ts",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
 			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
 			"category": "test-only",
 			"roadmapItem": "CUT-005",
@@ -888,6 +900,78 @@
 			"dependencyKind": "reference",
 			"consumer": "Comment: command string is injected into the tmux-wrapped `bash -c` invocation.",
 			"deletionPrerequisite": "Product-level terminal contract exists and the native adapter implements the consumed operation (MIG-002)."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/__tests__/isolation.test.ts",
+			"occurrences": 6,
+			"fingerprint": "d3552939dfc3265a",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/__tests__/parity-corpus.native-e2e.ts",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
+			"via": "(/__tests__/|\\.test\\.|\\.bun-e2e\\.|\\.e2e\\.|test-preload|-fixture|/fixtures/|windows-shell-matrix(-support)?\\.ts$|command-roundtrip\\.ts$)",
+			"category": "test-only",
+			"roadmapItem": "CUT-005",
+			"depth": "test",
+			"dependencyKind": "active",
+			"consumer": "Test / e2e / fixture exercising or asserting tmux behavior or isolation.",
+			"deletionPrerequisite": "Removed together with the production code it exercises."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/adapter.ts",
+			"occurrences": 1,
+			"fingerprint": "314238ad0cb66ea5",
+			"via": "^src/bun/native-terminal-adapter/",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner.",
+			"deletionPrerequisite": "None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/native-runner.ts",
+			"occurrences": 3,
+			"fingerprint": "8b558c0a1ed7dc15",
+			"via": "^src/bun/native-terminal-adapter/",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner.",
+			"deletionPrerequisite": "None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/README.md",
+			"occurrences": 3,
+			"fingerprint": "86ae8fd33e8a5238",
+			"via": "^src/bun/native-terminal-adapter/",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner.",
+			"deletionPrerequisite": "None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
+		},
+		{
+			"path": "src/bun/native-terminal-adapter/scenario-partition.ts",
+			"occurrences": 2,
+			"fingerprint": "314235ad0cb6698c",
+			"via": "^src/bun/native-terminal-adapter/",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner.",
+			"deletionPrerequisite": "None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		},
 		{
 			"path": "src/bun/native-terminal-registry/__tests__/app-restart.bun-e2e.ts",
@@ -1251,8 +1335,8 @@
 		},
 		{
 			"path": "src/bun/pty-server.ts",
-			"occurrences": 207,
-			"fingerprint": "5080c6233ae1f619",
+			"occurrences": 206,
+			"fingerprint": "49dc98a90963700c",
 			"via": "override",
 			"category": "terminal-ownership",
 			"roadmapItem": "INT-001",

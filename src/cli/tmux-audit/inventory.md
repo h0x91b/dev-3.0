@@ -16,12 +16,12 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 
 ## Baseline counts
 
-- Tracked files scanned: **2594**
-- In-boundary files with **no** tmux signal: **924**
-- **Inventoried tmux dependencies: 245** (4656 signal occurrences)
-- Historical references (changelogs + ADRs, out of scope): **267** files, 881 occurrences
+- Tracked files scanned: **2624**
+- In-boundary files with **no** tmux signal: **935**
+- **Inventoried tmux dependencies: 252** (4671 signal occurrences)
+- Historical references (changelogs + ADRs, out of scope): **269** files, 885 occurrences
 - Deep `TmuxClient` internals: **10** · callers that still know tmux vocabulary: **76**
-- Active dependencies (behavior changes on removal): **152** · reference-only mentions: **93**
+- Active dependencies (behavior changes on removal): **155** · reference-only mentions: **97**
 
 ### By category
 
@@ -30,13 +30,13 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `agent-control` | 10 | Agent-facing tmux grammar (send-keys to agent panes, prompts, skill content). |
 | `capture-state` | 6 | capture-pane, scrollback, copy-mode, search, and terminal state parsing. |
 | `cli-rpc-ui` | 33 | CLI commands, RPC handlers, menus, and UI wiring that speak tmux. |
-| `compatibility` | 10 | Backward-compatible data, session naming, and backend-identity contracts. |
+| `compatibility` | 14 | Backward-compatible data, session naming, and backend-identity contracts. |
 | `documentation` | 56 | Live docs, user-facing copy, and agent instructions naming tmux. |
 | `packaging-update` | 14 | Bundled tmux binary, shim, staging, signing, CI, container, and app-bundle copy. |
 | `pane-layout` | 17 | Panes, windows, splits, layout, zoom, focus, and the tmux prefix cheat sheet. |
 | `process-resource` | 3 | Reads the tmux process/pane tree for port and resource attribution. |
 | `terminal-ownership` | 9 | Owns tmux sessions/server lifecycle, config, themes, and adapter core. |
-| `test-only` | 87 | Tests, e2e, and fixtures; removed with the production code they cover. |
+| `test-only` | 90 | Tests, e2e, and fixtures; removed with the production code they cover. |
 
 ### By depth
 
@@ -44,22 +44,22 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | --- | --- | --- |
 | `caller` | 76 | Production code outside the adapter that calls it or otherwise depends on tmux. |
 | `deep-internal` | 10 | Inside the tmux adapter (src/bun/tmux/**) — owns tmux vocabulary by design. |
-| `isolation` | 6 | Native replacement / spike that references tmux only to assert it does NOT use it. |
+| `isolation` | 10 | Native replacement / spike that references tmux only to assert it does NOT use it. |
 | `surface` | 66 | Docs, user-facing copy, CSS, packaging scripts, CI, and config that name tmux but are not TS callers. |
-| `test` | 87 | Tests, e2e, and fixtures. |
+| `test` | 90 | Tests, e2e, and fixtures. |
 
 ### By dependency kind
 
 | Kind | Count | Meaning |
 | --- | --- | --- |
-| `active` | 152 | Removing tmux forces a behavior/output change here. |
-| `reference` | 93 | Only a mention (comment, doc, copy, log key); deletable as cleanup. |
+| `active` | 155 | Removing tmux forces a behavior/output change here. |
+| `reference` | 97 | Only a mention (comment, doc, copy, log key); deletable as cleanup. |
 
 ### By target roadmap item
 
 | Roadmap item | Count | Meaning |
 | --- | --- | --- |
-| `CUT-005` | 116 | Remove tmux implementation and distribution. |
+| `CUT-005` | 119 | Remove tmux implementation and distribution. |
 | `CUT-006` | 29 | Prove deletion mechanically (no user-facing tmux copy). |
 | `INT-001` | 13 | Task, project, and variant terminals. |
 | `INT-002` | 9 | Agent control plane. |
@@ -72,7 +72,7 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `LAY-007` | 2 | Verify desktop, browser, and narrow/mobile rendering. |
 | `MIG-001` | 6 | Backend-neutral terminal parity corpus. |
 | `MIG-003` | 3 | Backend identity as backward-compatible data. |
-| `MIG-006` | 18 | Keep tmux failure isolation (native replacement asserts non-use). |
+| `MIG-006` | 22 | Keep tmux failure isolation (native replacement asserts non-use). |
 | `RUN-005` | 2 | Minimum-runtime gate and diagnostics. |
 | `RUN-006` | 2 | Package, sign, and update the host. |
 | `STATE-008` | 3 | Restore required terminal features. |
@@ -151,6 +151,10 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `src/bun/tmux/session-names.ts` | deep-internal | active | `MIG-003` | dev3 session naming scheme + reverse parser (task/project/dev-server/cleanup prefixes). | No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004). |
 | `src/bun/data.ts` | caller | reference | `MIG-003` | Seed/default `tmuxSocket: "dev3"` on task data. | No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004). |
 | `src/shared/types.ts` | caller | active | `MIG-003` | Terminal contract types: Task.tmuxSocket, tmuxAction, kill/listTmuxSessions RPC, tmuxAltClickMoveCursor, tmux-derived fields. | No persisted or discoverable session references tmux; backend identity migration complete (MIG-003/CUT-004). |
+| `src/bun/native-terminal-adapter/adapter.ts` | isolation | reference | `MIG-006` | Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner. | None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
+| `src/bun/native-terminal-adapter/native-runner.ts` | isolation | reference | `MIG-006` | Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner. | None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
+| `src/bun/native-terminal-adapter/README.md` | isolation | reference | `MIG-006` | Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner. | None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
+| `src/bun/native-terminal-adapter/scenario-partition.ts` | isolation | reference | `MIG-006` | Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner. | None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/bun/native-terminal-registry/host-images/staged-host-runtime.ts` | isolation | reference | `MIG-006` | Staged-image host runtime: 'NO tmux involvement' marker proving isolation from tmux. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/bun/native-terminal-registry/host.ts` | isolation | reference | `MIG-006` | Native host: 'tmux-backed' marker/sentinel proving isolation from tmux. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
 | `src/bun/native-terminal-registry/paths.ts` | isolation | reference | `MIG-006` | Native paths comment contrasting with tmux. | None — the file references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged. |
@@ -303,6 +307,7 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `src/bun/__tests__/port-scanner.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/__tests__/pty-server-module-load.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/__tests__/pty-server.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
+| `src/bun/__tests__/resize-protocol.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/__tests__/resource-monitor.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/__tests__/rpc-handlers.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/__tests__/scheduled-message-scheduler.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
@@ -313,6 +318,8 @@ git-tracked files only. Detection is the literal token `tmux` (case-insensitive)
 | `src/bun/__tests__/which.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/lifecycle/__tests__/machine.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/lifecycle/__tests__/rehydrate.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
+| `src/bun/native-terminal-adapter/__tests__/isolation.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
+| `src/bun/native-terminal-adapter/__tests__/parity-corpus.native-e2e.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/native-terminal-registry/__tests__/app-restart.bun-e2e.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/native-terminal-registry/__tests__/crash-recovery.bun-e2e.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |
 | `src/bun/native-terminal-registry/__tests__/isolation.test.ts` | test | active | `CUT-005` | Test / e2e / fixture exercising or asserting tmux behavior or isolation. | Removed together with the production code it exercises. |

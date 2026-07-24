@@ -64,11 +64,21 @@ export function createNativeParityHarness(): NativeParityHarness {
 	process.env[SNAPSHOT_SCROLLBACK_ENV] = HARNESS_SCROLLBACK;
 
 	const runner = new NativeSingleViewAdapter({ owner: true });
+	// Every handed-out reconnect controller is tracked: a check may send input
+	// through it, which opens an attach WebSocket. Leaving one open keeps the
+	// whole process alive after the checks pass.
+	const reconnected: NativeSingleViewAdapter[] = [];
 	return {
 		runner,
 		workDir,
-		reconnect: () => runner.reconnect(),
+		reconnect: () => {
+			const fresh = runner.reconnect();
+			reconnected.push(fresh);
+			return fresh;
+		},
 		async dispose() {
+			for (const fresh of reconnected) await fresh.dispose().catch(() => {});
+			reconnected.length = 0;
 			await runner.dispose().catch(() => {});
 			restoreEnv(NATIVE_SESSIONS_DIR_ENV, previousEnv.sessions);
 			restoreEnv(PARSER_SCROLLBACK_ENV, previousEnv.scrollback);

@@ -31,3 +31,25 @@ export function parseResizeSequence(data: string): { cols: number; rows: number 
 	if (!match) return null;
 	return { cols: Number(match[1]), rows: Number(match[2]) };
 }
+
+/**
+ * Negotiate one PTY geometry from the sizes reported by every attached client:
+ * the smallest positive value per axis, independently. Null means no client
+ * reported a usable size, so no geometry should be applied.
+ *
+ * Deliberately lives here and not in `pty-server.ts`: importing that module
+ * starts the PTY WebSocket server at load time, so a test-only or
+ * backend-neutral caller that only wanted this helper would never exit.
+ */
+export function smallestClientSize(
+	sizes: ReadonlyArray<{ cols?: number; rows?: number }>,
+): { cols: number; rows: number } | null {
+	let minCols = Infinity;
+	let minRows = Infinity;
+	for (const { cols, rows } of sizes) {
+		if (typeof cols === "number" && cols > 0) minCols = Math.min(minCols, cols);
+		if (typeof rows === "number" && rows > 0) minRows = Math.min(minRows, rows);
+	}
+	if (minCols === Infinity || minRows === Infinity) return null;
+	return { cols: minCols, rows: minRows };
+}

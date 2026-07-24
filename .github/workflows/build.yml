@@ -81,11 +81,16 @@ jobs:
 
       # Each suite is teed to a per-suite log so the aggregate `test` job can
       # surface the exact failing tests without anyone opening this shard job.
-      # pipefail (GitHub's default bash flags) keeps the vitest exit code, so
-      # continue-on-error still records the real outcome.
+      #
+      # `shell: bash` is MANDATORY on every step that pipes: the default `run:`
+      # shell is `bash -e {0}` WITHOUT pipefail, so `vitest | tee` reports tee's
+      # exit code (0) and a genuinely failing suite gets recorded as success —
+      # which silently turned this gate into a rubber stamp once already.
+      # `shell: bash` runs `bash --noprofile --norc -eo pipefail {0}`.
       - name: Run mainview tests
         id: mainview_tests
         continue-on-error: true
+        shell: bash
         run: |
           mkdir -p test-shard-result
           bunx vitest run --shard=${{ matrix.shard }}/${{ strategy.job-total }} \
@@ -94,6 +99,7 @@ jobs:
       - name: Run bun tests
         id: bun_tests
         continue-on-error: true
+        shell: bash
         run: |
           mkdir -p test-shard-result
           bunx vitest run --config vitest.config.bun.ts --shard=${{ matrix.shard }}/${{ strategy.job-total }} \
@@ -102,6 +108,7 @@ jobs:
       - name: Run CLI tests
         id: cli_tests
         continue-on-error: true
+        shell: bash
         run: |
           mkdir -p test-shard-result
           bunx vitest run --config vitest.config.cli.ts --shard=${{ matrix.shard }}/${{ strategy.job-total }} \

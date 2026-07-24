@@ -69,7 +69,10 @@ jobs:
       # parity corpus against the native adapter on native Windows + POSIX with
       # the pinned Bun 1.3.14 (single-view live + pure scenarios; multi-view
       # deferred to LAY-003/LAY-004). Expected final line: ALL CHECKS PASSED.
+      # Completes in ~20s; the step timeout turns a future non-exiting run into a
+      # fast, obvious failure instead of eating the job's whole 20-minute budget.
       - name: Native single-view adapter parity E2E
+        timeout-minutes: 5
         run: bun run test:native-parity-e2e
 
       - name: Explicit Windows shell launch matrix

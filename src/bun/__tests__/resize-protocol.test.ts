@@ -3,6 +3,7 @@ import {
 	encodeResizeSequence,
 	isResizeSequence,
 	parseResizeSequence,
+	smallestClientSize,
 	RESIZE_SEQUENCE_PREFIX,
 } from "../../shared/resize-protocol";
 
@@ -30,5 +31,39 @@ describe("resize protocol", () => {
 		expect(parseResizeSequence("\x1b]resize;12;\x07")).toBeNull();
 		expect(parseResizeSequence("\x1b]resize;a;b\x07")).toBeNull();
 		expect(parseResizeSequence("\x1b]resize;12;34")).toBeNull();
+	});
+});
+
+// Multi-window / multi-client resize: the shared PTY must be sized to the
+// SMALLEST viewer so two app windows of different sizes on the same task
+// don't flip-flop the geometry (last-write-wins). Mirrors tmux multi-client.
+describe("smallestClientSize", () => {
+	it("returns null when no client has reported a size", () => {
+		expect(smallestClientSize([])).toBeNull();
+		expect(smallestClientSize([{}, {}])).toBeNull();
+	});
+
+	it("returns the single client's size", () => {
+		expect(smallestClientSize([{ cols: 120, rows: 40 }])).toEqual({ cols: 120, rows: 40 });
+	});
+
+	it("takes the min of cols and rows independently across clients", () => {
+		// Window A is wide+short, window B is narrow+tall — the PTY must fit
+		// inside both, so min width AND min height taken separately.
+		expect(
+			smallestClientSize([
+				{ cols: 200, rows: 30 },
+				{ cols: 100, rows: 50 },
+			]),
+		).toEqual({ cols: 100, rows: 30 });
+	});
+
+	it("ignores clients that have not reported a size yet", () => {
+		// A freshly-connected window (no size) must not shrink everyone.
+		expect(smallestClientSize([{ cols: 150, rows: 45 }, {}, { rows: 60 }])).toEqual({ cols: 150, rows: 45 });
+	});
+
+	it("ignores non-positive sizes", () => {
+		expect(smallestClientSize([{ cols: 0, rows: 0 }, { cols: 80, rows: 24 }])).toEqual({ cols: 80, rows: 24 });
 	});
 });

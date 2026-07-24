@@ -110,6 +110,15 @@
 			"dependencyKind": "active",
 			"consumer": "Backend-neutral parity corpus + the tmux runner proving the current backend satisfies it (test artifact only; no production imports).",
 			"deletionPrerequisite": "Corpus retargets the native runner (MIG-001); the tmux runner is removed with the tmux backend (CUT-005)."
+		},
+		{
+			"match": "^src/bun/native-terminal-adapter/",
+			"category": "compatibility",
+			"roadmapItem": "MIG-006",
+			"depth": "isolation",
+			"dependencyKind": "reference",
+			"consumer": "Native single-view adapter: names tmux only in comments asserting it never touches a tmux session, and to contrast its harness with the corpus's tmux runner.",
+			"deletionPrerequisite": "None — the module references tmux only to assert it does NOT use tmux; it survives tmux removal unchanged."
 		}
 	],
 	"overrides": {

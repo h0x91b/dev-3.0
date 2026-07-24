@@ -42,6 +42,18 @@ describe("terminal-parity corpus isolation", () => {
 		expect(importers).toEqual([]);
 	});
 
+	it("keeps the shared modules free of side-effecting imports", () => {
+		// Standalone `bun` e2e scripts import these modules directly. `pty-server.ts`
+		// starts a WebSocket server at module load, so importing it (previously for
+		// the pure `smallestClientSize` helper) left those scripts running forever
+		// after their checks passed, burning the CI job's entire timeout.
+		const importsPtyServer = /(?:from|import|require\s*\()\s*['"][^'"]*pty-server/;
+		for (const name of ["checks.ts", "corpus.ts", "runner.ts"]) {
+			const src = readFileSync(join(moduleRoot, name), "utf8");
+			expect(src).not.toMatch(importsPtyServer);
+		}
+	});
+
 	it("keeps corpus data and the runner interface free of raw tmux vocabulary", () => {
 		// tmux `-F` format variables and subcommand/flag literals — the exact things
 		// that must not leak into backend-neutral scenario cases (acceptance #2).

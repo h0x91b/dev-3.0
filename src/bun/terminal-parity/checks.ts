@@ -9,10 +9,14 @@
  * — the point of MIG-001.
  *
  * `gap` scenarios have no check here by design; the corpus documents why.
+ *
+ * Import hygiene: this module must stay free of side-effecting imports. It is
+ * loaded by standalone `bun` e2e scripts, and `pty-server.ts` (the previous home
+ * of `smallestClientSize`) starts a WebSocket server at load time, which kept
+ * those scripts alive forever after their checks had passed.
  */
 import { realpathSync } from "node:fs";
-import { smallestClientSize } from "../pty-server";
-import { encodeResizeSequence, parseResizeSequence } from "../../shared/resize-protocol";
+import { encodeResizeSequence, parseResizeSequence, smallestClientSize } from "../../shared/resize-protocol";
 import type { ParityRunner } from "./runner";
 
 function assert(condition: unknown, message: string): asserts condition {

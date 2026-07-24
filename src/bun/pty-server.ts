@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { ENV_UNSET } from "../shared/agent-accounts";
-import { isResizeSequence, parseResizeSequence } from "../shared/resize-protocol";
+import { isResizeSequence, parseResizeSequence, smallestClientSize } from "../shared/resize-protocol";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
@@ -572,26 +572,6 @@ function checkForBell(data: string, taskId: string): void {
  * freshly-connected window doesn't shrink everyone to the 80x24 default before
  * its real size arrives.
  */
-/**
- * Pure helper: given the sizes reported by each connected client, compute the
- * geometry to apply to the shared PTY. We take the min cols and min rows
- * independently (tmux's multi-client negotiation), so the smallest viewer fits
- * exactly and larger viewers letterbox. Clients with no reported size yet
- * (undefined / non-positive) are ignored. Returns null when nobody has a size.
- */
-export function smallestClientSize(
-	sizes: ReadonlyArray<{ cols?: number; rows?: number }>,
-): { cols: number; rows: number } | null {
-	let minCols = Infinity;
-	let minRows = Infinity;
-	for (const { cols, rows } of sizes) {
-		if (typeof cols === "number" && cols > 0) minCols = Math.min(minCols, cols);
-		if (typeof rows === "number" && rows > 0) minRows = Math.min(minRows, rows);
-	}
-	if (minCols === Infinity || minRows === Infinity) return null;
-	return { cols: minCols, rows: minRows };
-}
-
 function applyClientSizes(session: PtySession): void {
 	const term = session.proc?.terminal as { resize(cols: number, rows: number): void } | undefined;
 	if (!term) return;

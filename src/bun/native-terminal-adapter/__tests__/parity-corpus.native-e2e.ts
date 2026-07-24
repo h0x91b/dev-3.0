@@ -179,10 +179,14 @@ async function main(): Promise<void> {
 	}
 
 	console.log(`\n${failures === 0 ? "ALL CHECKS PASSED" : `${failures} CHECK(S) FAILED`}`);
-	if (failures > 0) process.exit(1);
 }
 
-main().catch((err) => {
-	console.error("native parity E2E crashed:", err);
-	process.exit(1);
-});
+// Exit EXPLICITLY, like every sibling native e2e. Attach WebSockets and any
+// import-time handle would otherwise keep this process alive after the checks
+// are done, and CI would burn the whole job timeout instead of moving on.
+main()
+	.then(() => process.exit(failures === 0 ? 0 : 1))
+	.catch((err) => {
+		console.error("native parity E2E crashed:", err);
+		process.exit(1);
+	});
