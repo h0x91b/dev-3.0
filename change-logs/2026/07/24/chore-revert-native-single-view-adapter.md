@@ -1,1 +1,0 @@
-Reverted the dev-internal native single-view terminal adapter (#1111) because its parity E2E never exited after printing ALL CHECKS PASSED, leaving the packaged-runtime CI job to burn its full 20-minute timeout on every platform. The adapter had no product callers, so nothing user-facing changes; it will land again once the E2E terminates cleanly.

@@ -24,6 +24,12 @@ function sourceFiles(directory: string): string[] {
 	return files;
 }
 
+// The native single-view adapter (seq 1254, CUT-001) reuses this corpus + checks
+// to drive a native runner — but ONLY from its tests; its production code stays
+// decoupled (its own isolation test guards that). Allow its test files as a
+// sanctioned, non-production consumer.
+const adapterTestsRoot = resolve(sourceRoot, "bun/native-terminal-adapter/__tests__");
+
 describe("terminal-parity corpus isolation", () => {
 	it("is absent from the production source import graph", () => {
 		// Match an actual import/require of the module, not a stray text mention
@@ -31,6 +37,7 @@ describe("terminal-parity corpus isolation", () => {
 		const importsModule = /(?:from|import|require\s*\()\s*['"][^'"]*terminal-parity/;
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
+			.filter((path) => !path.startsWith(adapterTestsRoot))
 			.filter((path) => importsModule.test(readFileSync(path, "utf8")));
 		expect(importers).toEqual([]);
 	});
