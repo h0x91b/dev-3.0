@@ -26,6 +26,8 @@ import {
 
 interface TaskTmuxControlsProps {
 	taskId: string;
+	/** Drop the layout button's text label when the inspector bar is short on width. */
+	compact?: boolean;
 }
 
 type TmuxAction =
@@ -43,7 +45,7 @@ type TmuxAction =
 
 type LayoutAction = "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV";
 
-export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
+export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxControlsProps) {
 	const t = useT();
 	// Hover-to-pick only makes sense on a real split with a pointer. On a narrow
 	// viewport the terminal is a one-pane carousel (no hover, no visible split),
@@ -318,7 +320,7 @@ export default function TaskTmuxControls({ taskId }: TaskTmuxControlsProps) {
 							aria-label={t("tmux.nextLayoutDesc")}
 						>
 							{cycleIcon}
-							<span>tmux layout</span>
+							{!compact && <span>tmux layout</span>}
 						</button>
 					</Tooltip>
 					<Tooltip content={t("tmux.chooseLayout")} detail={t("ttip.tmux.chooseLayout")}>

@@ -1,0 +1,3 @@
+Short: Task toolbars fit narrow windows
+
+The task inspector's two toolbars no longer overlap or clip on a narrow window: the bars now adapt to the panel's own width instead of the viewport's, so label chips stop painting over the tmux controls and the fullscreen, collapse, Dev Server, Ports and Artifacts controls stay inside the panel. As the panel gets tighter the label strip folds into a count chip, the branch name clamps, and the tmux-layout and Runtime buttons go icon-only; the completion-ownership chip now always uses its short label instead of the full "I'll complete it myself" sentence, which alone ate ~180px of the bar.
