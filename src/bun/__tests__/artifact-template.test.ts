@@ -4,12 +4,13 @@ import {
 	mkdirSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { Project, Task } from "../../shared/types";
+import { MAX_SHARED_ARTIFACT_HTML_BYTES, type Project, type Task } from "../../shared/types";
 import {
 	ARTIFACT_TEMPLATE_VERSION,
 	artifactTemplateDir,
@@ -146,18 +147,34 @@ describe("bundled artifact starter contract", () => {
 		expect(html).toContain("dev3-artifact-theme");
 		expect(html).toContain("@media (max-width: 560px)");
 		expect(html).toContain("<form");
-		expect(html).toContain("<svg");
+		expect(html).toContain('id="velocityChart"');
 		expect(html).toContain('id="pipelinePie"');
 		expect(html).toContain('id="capabilityRadar"');
-		expect(html).toContain('aria-labelledby="pieTitle pieDesc"');
-		expect(html).toContain('aria-labelledby="radarTitle radarDesc"');
-		expect(html).toContain("function renderPie");
-		expect(html).toContain("function renderRadar");
+		expect(html).toContain('id="galleryChart"');
+		for (const type of ["heatmap", "sankey", "sunburst", "gauge"]) expect(html).toContain(`"${type}"`);
 		expect(html).toContain("data-sort");
 		expect(guide).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
 		expect(guide).toContain("dev3 show-artifact");
 		expect(guide).toContain("Print and PDF");
-		expect(guide).toContain("radar/spider chart");
+		expect(guide).toContain("Apache ECharts");
+		expect(guide).toContain("dev3Chart");
+	});
+
+	it("loads the pinned ECharts build behind the dev3Chart bridge", () => {
+		const html = readFileSync(htmlPath, "utf8");
+
+		expect(html).toContain('data-dev3-vendor="echarts@6.1.0"');
+		// The exact origin the viewer CSP allowlists; SRI + crossorigin are
+		// mandatory so a tampered CDN payload is rejected, not executed.
+		expect(html).toContain('src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js"');
+		expect(html).toMatch(/integrity="sha(256|384|512)-[A-Za-z0-9+/=]+"/);
+		expect(html).toContain('crossorigin="anonymous"');
+		expect(html).toContain("function dev3Chart");
+		expect(html).toContain('renderer: "svg"');
+		expect(html).toContain('registerTheme("dev3"');
+		expect(html).toContain("aria: { enabled: true }");
+		// Offline degradation: charts show a notice instead of throwing.
+		expect(html).toContain("chart-unavailable");
 	});
 
 	it("keeps the selected theme and report structure in print output", () => {
@@ -172,8 +189,12 @@ describe("bundled artifact starter contract", () => {
 		expect(html).toContain("thead { display: table-header-group; }");
 	});
 
-	it("defines the complete dev3 semantic token contract without network dependencies", () => {
+	it("defines the complete dev3 semantic token contract and stays lean beyond the pinned CDN script", () => {
 		const html = readFileSync(htmlPath, "utf8");
+		// The viewer allows network access, but the STARTER itself must stay
+		// self-contained: ECharts from cdnjs is its only remote reference.
+		const withoutVendorTag = html.replace(/<script data-dev3-vendor=[^>]*><\/script>/, "");
+		expect(withoutVendorTag.length).toBeLessThan(html.length);
 		for (const token of [
 			"--dev3-surface-base",
 			"--dev3-surface-raised",
@@ -191,6 +212,15 @@ describe("bundled artifact starter contract", () => {
 		]) {
 			expect(html).toContain(token);
 		}
-		expect(html).not.toMatch(/https?:\/\//);
+		expect(withoutVendorTag).not.toMatch(/https?:\/\/(?!cdnjs\.cloudflare\.com)/);
+		// mentions of the CDN host outside the tag (comments) are fine; loads are not
+		expect(withoutVendorTag).not.toMatch(/\bsrc\s*=\s*["']https?:/);
+	});
+
+	it("stays a small readable file so agents and LLMs can consume artifact HTML", () => {
+		// Guards against re-inlining the chart library: a ~1 MB single-line blob
+		// makes artifact HTML unreadable for agents (the reason we load from CDN).
+		expect(statSync(htmlPath).size).toBeLessThan(120_000);
+		expect(statSync(htmlPath).size).toBeLessThan(MAX_SHARED_ARTIFACT_HTML_BYTES);
 	});
 });
