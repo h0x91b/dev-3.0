@@ -762,7 +762,7 @@ const handlers: Record<string, Handler> = {
 		if (!projectId) throw new Error("projectId is required");
 		if (!Array.isArray(rawLabelIds)) throw new Error("labelIds must be an array");
 
-		const project = await data.getProject(projectId);
+		const { project, task } = await resolveTaskFromParams(params);
 		const projectLabels = project.labels ?? [];
 
 		// Resolve short label ID prefixes to full UUIDs, rejecting any that do not
@@ -783,9 +783,9 @@ const handlers: Record<string, Handler> = {
 			);
 		}
 
-		const task = await data.updateTask(project, taskId, { labelIds });
-		getPushMessage()?.("taskUpdated", { projectId: project.id, task });
-		return task;
+		const updated = await data.updateTask(project, task.id, { labelIds });
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return updated;
 	},
 
 	"task.agentHook": async (params) => {

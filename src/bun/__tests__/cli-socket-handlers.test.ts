@@ -2733,6 +2733,80 @@ describe("task.setLabels", () => {
 		expect(resp.error).toContain("labelIds must be an array");
 	});
 
+	it("resolves a seq:<N> task reference before updating labels", async () => {
+		const project = makeProject({
+			labels: [{ id: "lbl-1", name: "bug", color: "#ef4444" }],
+		});
+		const task = makeTask({ seq: 42, labelIds: [] });
+		const updated = { ...task, labelIds: ["lbl-1"] };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId) => {
+			if (taskId !== task.id) throw new Error(`Task not found: ${taskId}`);
+			return updated;
+		});
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: "seq:42",
+				projectId: project.id,
+				labelIds: ["lbl-1"],
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"] });
+	});
+
+	it("resolves a valid task ID prefix before updating labels", async () => {
+		const project = makeProject({
+			labels: [{ id: "lbl-1", name: "bug", color: "#ef4444" }],
+		});
+		const task = makeTask({ labelIds: [] });
+		const updated = { ...task, labelIds: ["lbl-1"] };
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(data.updateTask).mockImplementation(async (_project, taskId) => {
+			if (taskId !== task.id) throw new Error(`Task not found: ${taskId}`);
+			return updated;
+		});
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: task.id.slice(0, 8),
+				projectId: project.id,
+				labelIds: ["lbl-1"],
+			}),
+		);
+
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { labelIds: ["lbl-1"] });
+	});
+
+	it("rejects an unknown task selector without mutating a task", async () => {
+		const project = makeProject({
+			labels: [{ id: "lbl-1", name: "bug", color: "#ef4444" }],
+		});
+		const task = makeTask({ labelIds: [] });
+
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+
+		const resp = await handleRequest(
+			makeRequest("task.setLabels", {
+				taskId: "missing-task",
+				projectId: project.id,
+				labelIds: ["lbl-1"],
+			}),
+		);
+
+		expect(resp.ok).toBe(false);
+		expect(resp.error).toContain("Task not found: missing-task");
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
 	it("sets labels on task", async () => {
 		const project = makeProject({
 			labels: [
@@ -2744,6 +2818,7 @@ describe("task.setLabels", () => {
 		const updated = { ...task, labelIds: ["lbl-1", "lbl-2"] };
 
 		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
 		vi.mocked(data.updateTask).mockResolvedValue(updated);
 		vi.mocked(getPushMessage).mockReturnValue(vi.fn());
 

@@ -66,6 +66,18 @@ afterEach(() => {
 });
 
 describe("label set task targeting", () => {
+	it("passes stable seq selectors through to the task resolver", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleLabel("set", args(["lbl-1"], { task: "seq:42", project: "proj-001" }), SOCKET, null);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.setLabels", {
+			taskId: "seq:42",
+			projectId: "proj-001",
+			labelIds: ["lbl-1"],
+		});
+	});
+
 	it("uses --task-id flag as an explicit task target", async () => {
 		mockSend.mockResolvedValue(okResp(FAKE_TASK));
 
