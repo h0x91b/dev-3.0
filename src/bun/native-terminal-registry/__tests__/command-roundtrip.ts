@@ -32,6 +32,26 @@ export function powerShellReattachStateProbe(
 	};
 }
 
+/**
+ * Retry budget for probing a FRESHLY started interactive shell — the one shared
+ * knob for every warm-up probe.
+ *
+ * A cold CI runner (Windows especially: PowerShell's first interactive prompt)
+ * can take well over the ~4s the call sites used to allow, and the probe would
+ * give up moments before the shell answered — the observed flake was two failed
+ * checks immediately followed by a successful wait on the NEXT command's output.
+ * The budget is a ceiling, not a delay: `sendUntilObserved` returns as soon as
+ * the probe is observed.
+ */
+export const SHELL_WARMUP_PROBE = { attempts: 15, attemptTimeoutMs: 2000, pollIntervalMs: 30 } as const;
+
+/**
+ * Budget for awaiting the output of a command that must NOT be re-sent (it has
+ * side effects, e.g. spawning a process). Hence a single long wait instead of
+ * retries — same cold-runner patience, no duplicate side effects.
+ */
+export const SINGLE_SHOT_WAIT = { attempts: 1, attemptTimeoutMs: 20_000, pollIntervalMs: 30 } as const;
+
 /** Retry an idempotent probe while a new interactive shell prompt starts. */
 export async function sendUntilObserved<T>(options: SendUntilObservedOptions<T>): Promise<T | null> {
 	for (let attempt = 0; attempt < options.attempts; attempt++) {

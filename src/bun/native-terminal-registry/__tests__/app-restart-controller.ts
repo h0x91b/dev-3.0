@@ -34,7 +34,12 @@ import {
 	NATIVE_SESSION_LAUNCH_ENV,
 	type ShellLaunchSpec,
 } from "../shell-launch";
-import { powerShellReattachStateProbe, powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
+import {
+	powerShellReattachStateProbe,
+	powerShellRootStateProbe,
+	sendUntilObserved,
+	SHELL_WARMUP_PROBE,
+} from "./command-roundtrip";
 
 const JSON_SENTINEL = "__APP_RESTART_JSON__";
 const isWindows = process.platform === "win32";
@@ -111,9 +116,7 @@ async function startMark(sessionId: string, nonce: string): Promise<void> {
 			(await sendUntilObserved({
 				send: () => send(client, probe.command),
 				observe: () => probe.observe(sink.text()),
-				attempts: 4,
-				attemptTimeoutMs: 1000,
-				pollIntervalMs: 30,
+				...SHELL_WARMUP_PROBE,
 			})) !== null;
 	} else {
 		send(client, "set +H");
@@ -162,9 +165,7 @@ async function reattachVerify(sessionId: string, nonce: string): Promise<void> {
 			(await sendUntilObserved({
 				send: () => send(writer, probe.command),
 				observe: () => probe.observe(writerSink.text()),
-				attempts: 4,
-				attemptTimeoutMs: 1000,
-				pollIntervalMs: 30,
+				...SHELL_WARMUP_PROBE,
 			})) !== null;
 	} else {
 		send(writer, `echo "MARKER:$DEV3_NATIVE_STATE:$$"`);

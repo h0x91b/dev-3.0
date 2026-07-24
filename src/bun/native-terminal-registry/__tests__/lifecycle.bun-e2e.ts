@@ -42,7 +42,12 @@ import {
 	NATIVE_SESSION_LAUNCH_ENV,
 } from "../shell-launch";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
-import { powerShellReattachStateProbe, powerShellRootStateProbe, sendUntilObserved } from "./command-roundtrip";
+import {
+	powerShellReattachStateProbe,
+	powerShellRootStateProbe,
+	sendUntilObserved,
+	SHELL_WARMUP_PROBE,
+} from "./command-roundtrip";
 
 let failures = 0;
 function check(condition: boolean, msg: string): void {
@@ -263,9 +268,7 @@ async function run(): Promise<void> {
 			rootObserved = await sendUntilObserved({
 				send: () => send(c1, probe.command),
 				observe: () => probe.observe(s1.text()),
-				attempts: 4,
-				attemptTimeoutMs: 1000,
-				pollIntervalMs: 30,
+				...SHELL_WARMUP_PROBE,
 			});
 			rootPidMatches = rootObserved !== null;
 			send(c1, `Write-Output "ALPHAMARK:${nonce}"`);
@@ -318,9 +321,7 @@ async function run(): Promise<void> {
 			markerSeen = await sendUntilObserved({
 				send: () => send(c2, probe.command),
 				observe: () => probe.observe(s2.text()),
-				attempts: 4,
-				attemptTimeoutMs: 1000,
-				pollIntervalMs: 30,
+				...SHELL_WARMUP_PROBE,
 			});
 		} else {
 			send(c2, `echo "MARKER:$DEV3_NATIVE_STATE:$$"`);

@@ -15,7 +15,7 @@ import { readRecord, readToken } from "../record";
 import { cleanupStale, list, start, status, stop } from "../registry";
 import { defineShellLaunchSpec, encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../shell-launch";
 import { isProcessInWindowsJob, windowsJobExists } from "../windows-job";
-import { sendUntilObserved } from "./command-roundtrip";
+import { sendUntilObserved, SHELL_WARMUP_PROBE, SINGLE_SHOT_WAIT } from "./command-roundtrip";
 
 let failures = 0;
 function check(condition: boolean, message: string): void {
@@ -143,16 +143,12 @@ async function run(): Promise<void> {
 			? await sendUntilObserved({
 					send: () => sendLine('Write-Output "CHILDPID[$PID]"'),
 					observe: () => /CHILDPID\[(\d+)\]/.exec(sink.text()),
-					attempts: 6,
-					attemptTimeoutMs: 1000,
-					pollIntervalMs: 30,
+					...SHELL_WARMUP_PROBE,
 				})
 			: await sendUntilObserved({
 					send: () => sendLine('echo "CHILDPID[$$]"'),
 					observe: () => /CHILDPID\[(\d+)\]/.exec(sink.text()),
-					attempts: 6,
-					attemptTimeoutMs: 1000,
-					pollIntervalMs: 30,
+					...SHELL_WARMUP_PROBE,
 				});
 		const childPid = Number(childMatch?.[1]);
 		check(Number.isInteger(childPid) && isProcessAlive(childPid), "root shell owns a live nested child shell");
@@ -169,9 +165,7 @@ async function run(): Promise<void> {
 		const grandchildMatch = await sendUntilObserved({
 			send: () => {},
 			observe: () => /GRANDPID\[(\d+)\]/.exec(sink.text()),
-			attempts: 1,
-			attemptTimeoutMs: 5000,
-			pollIntervalMs: 30,
+			...SINGLE_SHOT_WAIT,
 		});
 		const grandchildPid = Number(grandchildMatch?.[1]);
 		if (!grandchildMatch) console.error(`       terminal transcript tail: ${JSON.stringify(sink.text().slice(-2000))}`);
