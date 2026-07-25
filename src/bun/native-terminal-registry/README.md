@@ -35,7 +35,8 @@ of older dev3 versions on the same machine — are completely unaffected.
 | `shell-launch.ts` | Explicit executable/argv/cwd/environment launch descriptor and typed launch/exit verdicts. |
 | `host.ts` | Detached process owning ONE `Bun.Terminal` shell; publishes record + token + journal. |
 | `client.ts` | Short-lived attach handle; `discover(id)` reconnects a fresh process from disk. |
-| `registry.ts` | `start`/`list`/`status`/`stop`/`cleanupStale`; per-session lock; injectable effects. |
+| `registry.ts` | `start`/`list`/`status`/`stop`/`cleanupStale`/`inspectRecovery`/`recoverSessions`; per-session lock; injectable effects. |
+| `recovery.ts` | Pure reboot/lost-session classification + actionable diagnostics (seq 1294). |
 | `cli.ts` | Dev-only manual driver + the `__host` re-entry the launcher spawns. |
 
 ## On-disk layout
@@ -69,6 +70,10 @@ touched, renamed, moved, or rewritten.
 - **Crash honesty.** An abruptly terminated host remains discoverable as
   `dead` until `cleanup-stale` removes its token-matched additive state. A
   partial temp file is never published or accepted as current state.
+- **Reboot honesty.** A record whose host/shell no longer exists, or whose PID was
+  reused, is reported as an explicit lost state — never attached, restarted,
+  adopted, or downgraded to tmux. An unreadable record fails closed with a
+  diagnostic instead of being skipped silently.
 - **Token privacy.** The bearer token lives only in the 0600 `token` file;
   `list`/`status` output and every serialised record are token-free.
 - **One writer, many observers.** The first authenticated client writes and
@@ -204,6 +209,29 @@ shares `start`'s per-session lock, then deletes only state whose current token
 matches and only temp files named for the recorded crashed host PID; missing,
 changed, unknown-schema, and unrelated state remain untouched.
 
+## Reboot / lost-session recovery (seq 1294)
+
+A reboot invalidates every recorded PID, so the existing identity proof already
+answers it: the process is gone (`dead`) or a different process now holds that PID
+(`reused`). `recovery.ts` turns that verdict — or a record-read failure — into an
+explicit lifecycle state plus an actionable diagnostic, always marked
+`backend: "native"`:
+
+| State | Meaning | Cleanup |
+|---|---|---|
+| `attachable` | live and identity-verified | never |
+| `lost-host-gone` | a recorded PID no longer exists (crash / reboot) | token-matched only |
+| `lost-pid-reused` | a recorded PID is alive but is a different process | token-matched only; the process is never signalled |
+| `unreadable` | torn / foreign-schema / invalid record, or a directory that lost its record | never — fail closed with a diagnostic |
+| `absent` | no session directory at all — never started, or stopped and self-cleaned | nothing to do |
+
+`inspectRecovery()` is read-only and idempotent; `recoverSessions({cleanup:true})`
+delegates removal to `cleanupStale`, so it stays per-session locked, token-matched,
+and blind to unreadable state. Recovery never starts a shell, adopts a PID,
+migrates a record, or falls back to tmux. `status()` returns the same entry as
+`recovery`. Driver: `cli.ts recover [--cleanup]`; see
+[decision 171](../../../decisions/171-native-registry-reboot-recovery.md).
+
 ## Staged host version skew (seq 1248)
 
 The [`host-images/`](host-images/README.md) sub-harness proves the safe update
@@ -225,6 +253,7 @@ bun src/bun/native-terminal-registry/cli.ts start bravo
 bun src/bun/native-terminal-registry/cli.ts list
 bun src/bun/native-terminal-registry/cli.ts attach alpha   # first client = writer; Ctrl-\\ release/claim, Ctrl-] detach
 bun src/bun/native-terminal-registry/cli.ts attach alpha   # second client = observer; sees the same output + journal
+bun src/bun/native-terminal-registry/cli.ts recover        # attachable/lost/unreadable report (add --cleanup to drop lost metadata)
 bun src/bun/native-terminal-registry/cli.ts cleanup-stale  # remove token-matched dead session state
 bun src/bun/native-terminal-registry/cli.ts stop alpha     # stops ONLY alpha; bravo keeps running
 ```

@@ -227,7 +227,17 @@ async function run(): Promise<void> {
 		);
 		const statusCli = cli(["status", sessionId]);
 		const listCli = cli(["list"]);
-		check(statusCli.exitCode === 0 && statusCli.stdout.includes("not running (dead)"), "a fresh CLI reports dead status honestly");
+		check(
+			statusCli.exitCode === 0 && statusCli.stdout.includes("not running state=lost-host-gone"),
+			"a fresh CLI reports dead status honestly",
+		);
+		const recoverCli = cli(["recover"]);
+		check(
+			recoverCli.exitCode === 0 &&
+				recoverCli.stdout.includes(`${sessionId}\tbackend=native\tstate=lost-host-gone\tattachable=false`) &&
+				recoverCli.stdout.includes("attachable=0 lost=1 unreadable=0"),
+			"recovery classifies the crashed session as lost and non-attachable",
+		);
 		check(listCli.exitCode === 0 && listCli.stdout.includes(`${sessionId}\tstate=dead`), "a fresh CLI lists the crashed record as dead");
 
 		const cleanupCli = cli(["cleanup-stale"]);

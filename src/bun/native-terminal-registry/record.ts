@@ -129,6 +129,48 @@ export function readRecord(sessionId: string): NativeSessionRecord | null {
 	}
 }
 
+/** Why a record file could not be adopted — the input of an actionable diagnostic. */
+export type RecordProblem =
+	| { kind: "absent" }
+	| { kind: "missing" }
+	| { kind: "unreadable-file"; message: string }
+	| { kind: "invalid-json" }
+	| { kind: "foreign-schema"; schemaVersion: unknown }
+	| { kind: "invalid-fields" };
+
+export type RecordInspection = { ok: true; record: NativeSessionRecord } | { ok: false; problem: RecordProblem };
+
+/**
+ * Same fail-closed acceptance rule as `readRecord`, but it reports WHY a record
+ * was rejected so recovery can print an actionable diagnostic instead of
+ * silently skipping a session directory.
+ */
+export function inspectRecordFile(sessionId: string): RecordInspection {
+	let text: string;
+	try {
+		text = readFileSync(recordFile(sessionId), "utf8");
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		// No session directory at all ≠ a directory that lost its record.
+		if (code === "ENOENT") {
+			return { ok: false, problem: { kind: existsSync(sessionDir(sessionId)) ? "missing" : "absent" } };
+		}
+		return { ok: false, problem: { kind: "unreadable-file", message: (error as Error).message } };
+	}
+	const record = parseRecord(text);
+	if (record) return { ok: true, record };
+	let raw: unknown;
+	try {
+		raw = JSON.parse(text);
+	} catch {
+		return { ok: false, problem: { kind: "invalid-json" } };
+	}
+	if (!raw || typeof raw !== "object") return { ok: false, problem: { kind: "invalid-json" } };
+	const schemaVersion = (raw as Record<string, unknown>).schemaVersion;
+	if (schemaVersion !== NATIVE_SESSION_SCHEMA_VERSION) return { ok: false, problem: { kind: "foreign-schema", schemaVersion } };
+	return { ok: false, problem: { kind: "invalid-fields" } };
+}
+
 /** Atomically publish a record (tmp write + rename) so readers never see a torn file. */
 export function writeRecordAtomic(record: NativeSessionRecord): void {
 	const dir = sessionDir(record.sessionId);

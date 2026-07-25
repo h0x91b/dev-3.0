@@ -8,6 +8,7 @@
  *   bun src/bun/native-terminal-registry/cli.ts status <id>         # discover + query one
  *   bun src/bun/native-terminal-registry/cli.ts attach <id>         # interactive attach (Ctrl-] detaches)
  *   bun src/bun/native-terminal-registry/cli.ts parser-state <id>   # reconstructed semantic screen (seq 1228)
+ *   bun src/bun/native-terminal-registry/cli.ts recover [--cleanup] # post-reboot lifecycle report (seq 1294)
  *   bun src/bun/native-terminal-registry/cli.ts cleanup-stale       # remove token-matched dead records
  *   bun src/bun/native-terminal-registry/cli.ts stop <id>           # stop one session's tree
  *   bun src/bun/native-terminal-registry/cli.ts __host <id>         # internal: the detached host
@@ -16,8 +17,9 @@
 import { NativeSessionClient } from "./client";
 import { resolveHostConfig, runHost } from "./host";
 import { readParserState } from "./parser-state";
+import { sessionsRootDir } from "./paths";
 import { readRecord, readToken } from "./record";
-import { cleanupStale, list, start, status, stop } from "./registry";
+import { cleanupStale, list, recoverSessions, start, status, stop } from "./registry";
 import {
 	decodeShellLaunchSpec,
 	defaultNativeShellLaunchSpec,
@@ -153,7 +155,7 @@ async function main(): Promise<void> {
 			const id = requireId();
 			const r = await status(id);
 			if (!r.running) {
-				process.stdout.write(`not running${r.verdict ? ` (${r.verdict})` : ""}\n`);
+				process.stdout.write(`not running state=${r.recovery.state}\n  ${r.recovery.diagnostic}\n`);
 				process.exit(0);
 			}
 			process.stdout.write(
@@ -176,6 +178,24 @@ async function main(): Promise<void> {
 			process.exit(0);
 			break;
 		}
+		case "recover": {
+			// Post-reboot lifecycle answer; `--cleanup` drops only lost, token-matched metadata.
+			const result = await recoverSessions({ cleanup: hasFlag("--cleanup") });
+			// Print the root, so a diagnostic can never be read against the wrong directory.
+			process.stdout.write(`registry root=${sessionsRootDir()}\n`);
+			if (result.before.entries.length === 0) process.stdout.write("no native sessions\n");
+			for (const entry of result.before.entries) {
+				process.stdout.write(
+					`${entry.sessionId}\tbackend=${entry.backend}\tstate=${entry.state}\tattachable=${entry.attachable}\tcleanupEligible=${entry.cleanupEligible}\n  ${entry.diagnostic}\n`,
+				);
+			}
+			for (const sessionId of result.removed) process.stdout.write(`removed sessionId=${sessionId}\n`);
+			process.stdout.write(
+				`attachable=${result.after.attachable.length} lost=${result.after.lost.length} unreadable=${result.after.unreadable.length}\n`,
+			);
+			process.exit(0);
+			break;
+		}
 		case "cleanup-stale": {
 			const result = await cleanupStale();
 			for (const sessionId of result.removed) process.stdout.write(`removed sessionId=${sessionId}\n`);
@@ -194,7 +214,7 @@ async function main(): Promise<void> {
 		}
 		default:
 			process.stdout.write(
-				"usage: cli.ts start [--live-parser] [--state-tap]|list|status|attach|parser-state|cleanup-stale|stop <sessionId>\n",
+				"usage: cli.ts start [--live-parser] [--state-tap]|list|status|attach|parser-state|recover [--cleanup]|cleanup-stale|stop <sessionId>\n",
 			);
 			process.exit(2);
 	}

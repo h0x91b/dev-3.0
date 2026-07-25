@@ -31,7 +31,14 @@ import { NativeSessionClient } from "./client";
 import { classifyOwnership, type OwnershipVerdict } from "./ownership";
 import { isValidSessionId, logFile, recordFile, sessionDir, sessionsRootDir } from "./paths";
 import { isProcessAlive } from "./process-identity";
-import { readRecord, readToken, removeSessionState, type NativeSessionRecord } from "./record";
+import { inspectRecordFile, readRecord, readToken, removeSessionState, type NativeSessionRecord } from "./record";
+import {
+	isLostState,
+	recoveryEntryForInvalidId,
+	recoveryEntryForRecord,
+	recoveryEntryForUnreadable,
+	type RecoveryEntry,
+} from "./recovery";
 import type { StatusReply } from "./protocol";
 import { forceTerminateWindowsJob } from "./windows-job";
 import {
@@ -78,6 +85,22 @@ export interface StatusResult {
 	record?: NativeSessionRecord;
 	verdict?: OwnershipVerdict;
 	live?: StatusReply;
+	/** Explicit lifecycle answer — a non-attachable session is honestly lost/unreadable. */
+	recovery: RecoveryEntry;
+}
+
+export interface RecoveryReport {
+	entries: RecoveryEntry[];
+	attachable: string[];
+	lost: string[];
+	unreadable: string[];
+}
+
+export interface RecoverResult {
+	before: RecoveryReport;
+	/** Session ids whose token-matched native metadata was removed (empty without `cleanup`). */
+	removed: string[];
+	after: RecoveryReport;
 }
 
 export interface CleanupResult {
@@ -261,23 +284,73 @@ export async function list(deps: RegistryDeps = defaultDeps): Promise<SessionLis
 	return out.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
 }
 
+/**
+ * Classify one session without touching a process: readable record + ownership
+ * verdict → an explicit attachable/lost/unreadable answer with a diagnostic.
+ */
+async function classifyRecovery(
+	sessionId: string,
+	deps: RegistryDeps,
+): Promise<{ entry: RecoveryEntry; verdict?: OwnershipVerdict }> {
+	const inspection = inspectRecordFile(sessionId);
+	if (!inspection.ok) return { entry: recoveryEntryForUnreadable(sessionId, inspection.problem) };
+	const token = readToken(sessionId);
+	const verdict = await deps.classify(inspection.record, token);
+	return { entry: recoveryEntryForRecord(sessionId, inspection.record, verdict, token !== null), verdict };
+}
+
 /** Inspect one session; attaches for live status only after ownership is verified. */
 export async function status(sessionId: string, deps: RegistryDeps = defaultDeps): Promise<StatusResult> {
-	if (!isValidSessionId(sessionId)) return { running: false };
-	const record = readRecord(sessionId);
-	if (!record) return { running: false };
+	if (!isValidSessionId(sessionId)) return { running: false, recovery: recoveryEntryForInvalidId(sessionId) };
+	const { entry: recovery, verdict } = await classifyRecovery(sessionId, deps);
+	const record = recovery.record ?? undefined;
 	const token = readToken(sessionId);
-	const verdict = await deps.classify(record, token);
-	if (verdict !== "owned" || !token) return { running: false, record, verdict };
+	if (!recovery.attachable || !record || !token) return { running: false, record, verdict, recovery };
 	try {
 		const client = new NativeSessionClient();
 		await client.connect(record, token, { timeoutMs: 2000 });
 		const live = await client.status({ timeoutMs: 2000 });
 		client.close();
-		return { running: true, record, verdict, live };
+		return { running: true, record, verdict, live, recovery };
 	} catch {
-		return { running: true, record, verdict };
+		return { running: true, record, verdict, recovery };
 	}
+}
+
+/**
+ * Sweep every discoverable session into an explicit recovery classification.
+ * Read-only and idempotent: it never launches a host, signals a PID, or removes
+ * anything, so it is safe to call at boot and repeatedly afterwards.
+ */
+export async function inspectRecovery(deps: RegistryDeps = defaultDeps): Promise<RecoveryReport> {
+	const entries: RecoveryEntry[] = [];
+	for (const sessionId of listSessionIds()) entries.push((await classifyRecovery(sessionId, deps)).entry);
+	entries.sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+	const ids = (state: (entry: RecoveryEntry) => boolean): string[] =>
+		entries.filter(state).map((entry) => entry.sessionId);
+	return {
+		entries,
+		attachable: ids((entry) => entry.attachable),
+		lost: ids((entry) => isLostState(entry.state)),
+		unreadable: ids((entry) => entry.state === "unreadable"),
+	};
+}
+
+/**
+ * Report recovery, and — only with `cleanup` — drop the metadata of sessions
+ * proven lost. Cleanup delegates to `cleanupStale`, so removal stays
+ * token-matched, per-session locked, and blind to unreadable records; an
+ * unrelated process holding a reused PID is never signalled, and no replacement
+ * shell is ever started.
+ */
+export async function recoverSessions(
+	opts: { cleanup?: boolean } = {},
+	deps: RegistryDeps = defaultDeps,
+): Promise<RecoverResult> {
+	const before = await inspectRecovery(deps);
+	if (!opts.cleanup) return { before, removed: [], after: before };
+	const { removed } = await cleanupStale(deps);
+	return { before, removed, after: await inspectRecovery(deps) };
 }
 
 /**
