@@ -18,6 +18,8 @@ This file provides guidance to AI coding agents when working with code in this r
 - Short sentences, concrete nouns, direct verbs. Don't repeat a point in different words; don't add background that doesn't change the decision; delete sentences that add no information. Target: readable in 10-15 seconds for normal task updates.
 - For code changes, always end the final reply with the repo-mandated `## Test instructions` block.
 
+**Decision-First governs structure, never language or register.** The user's own language, tone, and formality settings (session language policy, personal instructions, an explicit request mid-conversation) always win — write the sections in whatever language and register the user asked for. Never switch a reply to English, or flatten the user's preferred tone, just to look like the example above. If the two ever seem to collide, keep the user's voice and drop the formatting, not the reverse. The English-only rule applies solely to text written **into** the repo (see [Language policy](#language-policy)).
+
 ## What is this
 
 A **terminal-centric project manager** — iTerm2 meets Kanban. Desktop app for managing multiple AI coding agents and terminal tools across tasks and projects. Built with **Electrobun** (not Electron), React 19, Tailwind CSS, Vite; runtime is Bun. Supports macOS and Linux (Windows planned).
@@ -60,9 +62,26 @@ The app runs as the **Electrobun desktop** shell **and** as a **headless remote 
 
 **Aim for code that explains itself** (clear names, small functions) and add comments only where they earn their place. **Cap: a comment ≤ 3 lines.** The only exception is a genuinely weird, non-obvious use case (a workaround, a subtle invariant, a "why not the obvious thing") — those may go longer, and belong in a `decisions/NNN-*.md` record if substantial. Don't restate what the code already says, don't narrate obvious steps, don't leave changelog-style history in comments.
 
-## Parallelism — TeamCreate over Agent tool (MANDATORY)
+## No deprecation — ever (MANDATORY)
 
-When spawning agents for research, investigation, or parallel work — **use `TeamCreate`, not the `Agent` tool.** Team members run as independent peers with full tool access and are the correct delegation mechanism in this project. The only valid direct uses of `Agent`: a team member spawning a sub-agent for its own internal sub-task, or work so trivial (single file read, single grep) that a dedicated tool (`Read`, `Grep`, `Glob`) beats any delegation. If in doubt, use `TeamCreate`.
+**This project does not deprecate things; it replaces them.** No `@deprecated` marker, no compatibility shim, no "the old path still works for now", no dead branch kept alive for callers that haven't migrated. The moment something is obsolete, delete it and rewrite **every** caller in the same change. Backward compatibility inside the codebase is not a goal — a full in-place refactor is.
+
+If the rewrite feels too large to finish now, that is a signal to narrow the change, not to leave a deprecated stub behind: half-migrated code with two ways to do one thing is worse than either version alone.
+
+**The one carve-out is on-disk state**, where other installed versions of the app read the same files — there [On-disk data layout](#on-disk-data-layout--hard-invariants-mandatory) governs and its N-2 readability requirement wins. That is a data-format promise to other *processes*, not a deprecation policy for code.
+
+## Parallelism — prefer TeamCreate, within limits
+
+When spawning agents for research, investigation, or parallel work, **prefer `TeamCreate` if your harness exposes it** — team members run as independent peers with full tool access and show up as real peers in the dev3 UI.
+
+Pick the mechanism by what is actually available and how wide the fan-out is:
+
+- **`TeamCreate`, up to 5 members** — the default for multi-agent work. Above 5 the team view becomes unreadable in the GUI, so never exceed it.
+- **Wider than 5, or a deterministic multi-stage pipeline** — use `Workflow` (or plain `Agent` fan-out) instead of stuffing more members into a team. Breadth belongs in a workflow, not in the team panel.
+- **`Agent`** — correct when `TeamCreate` is not in your toolset at all, for a sub-agent spawned by a team member for its own internal sub-task, or for one-off delegation that doesn't need peers.
+- **No delegation** — work so trivial (single file read, single grep) that `Read` / `Grep` / `Glob` beats any agent.
+
+Do not fake a team when the tool is missing, and do not skip delegation just because `TeamCreate` is absent — fall back down the list.
 
 ## On-disk data layout — hard invariants (MANDATORY)
 
@@ -91,15 +110,10 @@ Hard rules for any feature that leans on an external binary:
 
 ## Git
 
-### Worktree
-
-Agents typically run inside a **git worktree**, not the main working tree. Find the main project path with `git worktree list` (first entry). Use it when you need the original project (read a secret, copy a config, inspect main branch state). Never write to the main working tree from a worktree — read only.
-
 ### Committing
 
 - **Commit immediately after each logical unit of work — messages in English only.** Don't wait to be asked. Do NOT `git push` automatically — the user decides when to push.
 - **Always commit `.claude/` directory changes** (e.g., `settings.local.json`) — they are modified automatically during agent sessions and are part of your session.
-- **CRITICAL: never let Git open an editor.** Pass messages inline (`git commit -m`, `git tag -m`) and force non-interactive continues: `GIT_EDITOR=true git rebase --continue`, `git merge --continue --no-edit`, `git cherry-pick --continue --no-edit`. If a command would open an editor window, choose a non-interactive form instead.
 
 ### GitHub CLI (`gh`)
 
@@ -125,7 +139,7 @@ Before pushing a PR branch or running `gh pr create`, rebase on the live base fi
 
 **Every code change gets a changelog entry file** (avoids merge conflicts between parallel agents).
 
-**Path:** `change-logs/YYYY/MM/DD/<type>-[<NN>-]<short-slug>.md` — type prefixes: `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`. An optional two-digit `NN` right after the type ranks features in the update popover (`00` = most prominent) — see the popover-priority rule below.
+**Path:** `change-logs/YYYY/MM/DD/<type>-[<NN>-]<short-slug>.md` — type prefixes: `feature-`, `fix-`, `refactor-`, `docs-`, `chore-`.
 
 **The `YYYY/MM/DD` is the expected PR merge date, not the start date.** If the task spans days, move (rename) the entry before opening/merging the PR so it matches the actual merge day (with auto-merge, normally the day you open the PR) — the changelog UI groups by ship date.
 
@@ -134,8 +148,9 @@ Before pushing a PR branch or running `gh pr create`, rebase on the live base fi
 Rules:
 - Include the changelog file in the same commit as the code change.
 - Slug must be unique and descriptive enough that parallel agents don't collide.
-- **`Short:` line (mandatory for `feature-` entries):** first line `Short: <≤6 words, no trailing period>`, then a blank line, then the content. It feeds the update-ready popover's "what's new" preview (features lead it); the full first sentence still drives the Changelog screen. `fix-` entries add one when user-visible; otherwise a crude fallback is derived. See `change-logs/README.md`.
-- **Popover priority (`<type>-<NN>-<slug>`, optional):** the update popover has room for only the top `MAX_POPOVER_FEATURES` features and rolls the rest into "+N more". Insert a two-digit `NN` right after the type to control which ones win those slots — `00` = most prominent (demo-reel "wow"), higher = lower; omit it and the entry sits mid-pack (priority 50). Numbering only reorders **features** (the slotted list); `fix-`/others merely contribute a count, so numbering them is optional. Type is still parsed from the first dash, so `feature-00-foo` stays type `feature`. Rank honestly (reuse the tips coolness rubric) and push dev-only/internal features to a high number so they never eat a user-facing slot.
+- **Feeding the update popover** (only `feature-` entries really compete for its slots):
+  - **`Short:` line — mandatory for `feature-`:** first line `Short: <≤6 words, no trailing period>`, then a blank line, then the content. It drives the popover's "what's new" preview, while the full first sentence still drives the Changelog screen. `fix-` entries add one when user-visible; otherwise a crude fallback is derived.
+  - **Optional two-digit `NN` right after the type** (`feature-00-foo`) ranks which features win the top `MAX_POPOVER_FEATURES` slots before the rest roll into "+N more": `00` = most prominent (demo-reel "wow"), higher = lower, omitted = mid-pack (priority 50). Type is still parsed from the first dash. Rank honestly (reuse the tips coolness rubric) and push dev-only/internal features to a high number so they never eat a user-facing slot. Numbering `fix-`/others is pointless — they only contribute a count.
 - **One worktree = one changelog file** — a single task produces exactly one entry for the whole session, not one per commit or per feature; if the task evolves, update/append the existing file.
 - **Credit community contributors:** if the change originated from a GitHub issue by an external user, end the file with a blank line then `Suggested by @username (h0x91b/dev-3.0#N)` — parsed into `suggestedBy`/`issueRef`/`issueUrl` and shown in the changelog UI as a linked credit. Example: `Suggested by @roiros (h0x91b/dev-3.0#191)`.
 - Full format spec: `change-logs/README.md`.
@@ -309,23 +324,6 @@ All UI colors are **CSS custom properties** (design tokens) in `src/mainview/ind
 
 All tokens support Tailwind opacity modifiers (`bg-accent/20`, `border-accent/30`). Need a new color? Add a CSS variable in `index.css` (both themes) + a Tailwind mapping — never inline arbitrary values. **Exception:** `STATUS_COLORS` in `src/shared/types.ts` stay hex — semantic status colors used in inline styles (column headers, card borders, dots), not theme chrome.
 
-### Nerd Font icons in the renderer
-
-The app bundles **JetBrainsMono Nerd Font Mono** (`src/mainview/assets/fonts/`, `@font-face` in `index.css`). Prefer Nerd Font glyphs over SVGs:
-
-```tsx
-<span
-  className="text-[1.125rem] leading-none"
-  style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}
->
-  {"\u{F0645}"}
-</span>
-```
-
-- **Always wrap font-family in single quotes** inside the style object — multi-word font names may not resolve otherwise.
-- **Use ES6 `\u{...}` escapes for codepoints above U+FFFF**: the classic `"\uF0645"` silently parses as `"\uF064" + "5"` (only 4 hex digits consumed). Up to U+FFFF, classic `"\uF188"` is fine.
-- Browse glyphs at [nerdfonts.com/cheat-sheet](https://www.nerdfonts.com/cheat-sheet). Working examples: `GlobalHeader.tsx` (bug icon `\uf188`), `TaskInfoPanel.tsx` (file-tree icon `\u{F0645}`).
-
 ## Internationalization (i18n)
 
 All user-facing renderer strings are localized via `src/mainview/i18n/`; locales: **English** (default, source of truth — defines the `TranslationKey` type), **Russian**, **Spanish**. **Strict rule: NEVER hardcode user-facing strings in components** — use `t()` from the `useT()` hook.
@@ -360,9 +358,12 @@ Running vitest directly (outside `bun run`): use `bunx vitest run`, not `npx`.
 
 **Local E2E policy:** Do not run the complete E2E suite locally (`bun run test:full` or an equivalent unfiltered command); it is reserved for CI/PR validation. When investigating or verifying a specific behavior, run only the targeted E2E file or test case.
 
-**Always run both `bun run lint` AND `bun run test` before committing** — a commit that breaks type-checking is unacceptable even if tests pass.
+### Verification gates (MANDATORY)
 
-**Hard rule — full suite before push/PR:** before `git push`, `gh pr create`, or enabling auto-merge, `bun run test` must be green end-to-end. Running only the test file you edited is NOT sufficient — sibling test files assert against the same components (e.g., `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`). Fix failures and re-run until green BEFORE pushing — don't push and watch CI go red.
+Two gates, escalating. Committing itself has no gate — commit freely, verify before the work leaves the machine.
+
+1. **Before `git push`** — `bun run lint` plus the tests covering what you touched. A push that breaks type-checking is unacceptable even if the tests pass.
+2. **Before `gh pr create`, before enabling auto-merge, and again after any rebase** — the **full** `bun run test`, green end-to-end. Only the file you edited is NOT sufficient: sibling test files assert against the same components (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`), and a rebase pulls in code your run never saw. Fix and re-run until green BEFORE opening the PR — don't open it and watch CI go red.
 
 ### Manual UI QA in a browser
 
@@ -372,9 +373,15 @@ With the dev-server running and the project's Port Allocation ≥ 1, the dev app
 
 **Screenshots are taken in streamer mode — always (MANDATORY).** The developer's real accounts/emails/paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL when opening it with `agent-browser` — it enables **streamer mode** (privacy masking: blurs account emails/labels, orgs, home-dir paths, tunnel URLs, the remote-access QR; see [decision 161](decisions/161-streamer-mode-css-blur-masking.md)). The only exception: the task itself is about verifying those unmasked values — then capture the minimum needed and say so. Users toggle the same mode via Settings → Appearance or the ⇧⌘P palette ("Toggle streamer mode").
 
-### Coverage requirements
+### Coverage expectations
 
-Overall: **70% lines, 65% branches, 70% functions.** Critical modules need **85% lines, 80% branches**: `state.ts`, `src/shared/types.ts` (helpers), `src/mainview/i18n/`, `src/cli/`, `src/bun/data.ts`, `src/bun/git.ts`, `src/bun/tmux/`, `src/mainview/utils/`. Excluded (bootstrap/wrappers that only make sense in e2e): `src/bun/index.ts`, `updater.ts`, `shell-env.ts`, `spawn.ts`, `src/mainview/rpc.ts`, `main.tsx`.
+Two numbers, no per-metric split: **~70% for normal code, ~85% for critical modules.**
+
+**Critical modules** (the ones where a silent regression is expensive): `state.ts`, `src/shared/types.ts` (helpers), `src/mainview/i18n/`, `src/cli/`, `src/bun/data.ts`, `src/bun/git.ts`, `src/bun/tmux/`, `src/mainview/utils/`.
+
+**Not expected to be covered** (bootstrap/wrappers that only make sense in e2e): `src/bun/index.ts`, `updater.ts`, `shell-env.ts`, `spawn.ts`, `src/mainview/rpc.ts`, `main.tsx`.
+
+**No coverage provider is wired up** — the vitest configs have no `coverage` block, nothing is installed, and CI does not gate on it. So these are review-time expectations, not a machine check: a change that leaves a critical module visibly less tested than it was gets rejected in review, and nobody should cite a percentage as if a tool measured it.
 
 ### What to test
 
@@ -391,7 +398,7 @@ Overall: **70% lines, 65% branches, 70% functions.** Critical modules need **85%
 - One logical assertion per test; no dependencies between tests.
 - Mock only external boundaries (git, tmux, fs, Electrobun), not internal modules.
 - No `sleep`/timers — use proper async/await.
-- Every new feature or bug fix must include tests; PRs that drop coverage below thresholds are rejected.
+- Every new feature or bug fix must include tests; a PR that leaves its area visibly less tested than before gets rejected.
 - Tests live in `__tests__/` directories next to their modules (e.g., `src/mainview/components/__tests__/Dashboard.test.tsx`).
 
 ### Mocking Electrobun RPC / providers
