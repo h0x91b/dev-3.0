@@ -780,6 +780,20 @@ svg .gtx-draw { stroke-dasharray: 1; stroke-dashoffset: 0; }
 .git-anim:hover .gtx-gd-plus { transform-origin: 7px 9px; animation: gtx-gd-plus 2.4s ease-in-out infinite; }
 .git-anim:hover .gtx-gd-del { animation: gtx-gd-del 2.4s ease-in-out infinite; }
 
+/* -- Commit (commit node): the new commit dot lands, a ring expands out of it -- */
+@keyframes gtx-gk-dot {
+	0%, 10% { transform: scale(.2); opacity: 0; }
+	32% { transform: scale(1.35); opacity: 1; }
+	44%, 100% { transform: scale(1); opacity: 1; }
+}
+@keyframes gtx-gk-ring {
+	0%, 26% { transform: scale(.6); opacity: 0; }
+	38% { opacity: .55; }
+	72%, 100% { transform: scale(2); opacity: 0; }
+}
+.git-anim:hover .gtx-gk-dot { transform-origin: 12px 12px; animation: gtx-gk-dot 2.4s ease-in-out infinite; }
+.git-anim:hover .gtx-gk-ring { transform-origin: 12px 12px; animation: gtx-gk-ring 2.4s ease-out infinite; }
+
 /* -- Rebase (replant): rail marches, the commit rides it up, the tip pulses -- */
 @keyframes gtx-gr-ants { to { stroke-dashoffset: -23; } }
 @keyframes gtx-gr-dot {

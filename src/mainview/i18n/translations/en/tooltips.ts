@@ -83,6 +83,8 @@ export const tooltips = {
 	"ttip.git.changeRef": "Change comparison branch",
 	"ttip.git.refDropdown":
 		"Choose which branch the diff and the ahead/behind counters compare against — usually the base branch you'll merge into.",
+	"ttip.git.commit":
+		"Hands the commit to the agent in the task terminal: it reviews the changes, stages them and writes the message. Nothing is pushed.",
 	"ttip.git.rebase": "Replays this task's commits on top of the latest base branch. Keeps the diff honest and surfaces conflicts early.",
 	"ttip.git.push": "Publishes the task branch to the remote. The first push creates the remote branch.",
 	"ttip.git.createPR": "Opens a pull request from this task's branch. The card badge then tracks its CI and review state.",

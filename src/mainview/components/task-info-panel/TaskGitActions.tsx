@@ -8,7 +8,7 @@ import { useTaskBranchStatus } from "./useTaskBranchStatus";
 import { useReducedMotion } from "../../utils/useReducedMotion";
 import Tooltip from "../Tooltip";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
-import { AutoMergeIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
+import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import TaskPrStatusPopover from "../TaskPrStatusPopover";
 
 export interface TaskBranchStatusMeta {
@@ -105,9 +105,11 @@ export default function TaskGitActions({
 	const {
 		baseBranch,
 		branchStatus,
+		committing,
 		compareRef,
 		creatingPR,
 		displayRef,
+		handleCommit,
 		handleCreatePR,
 		handleMerge,
 		handlePush,
@@ -356,6 +358,13 @@ export default function TaskGitActions({
 	) : null;
 	const hasUncommittedChanges = !!branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
 
+	const commitDisabled = !branchStatus || !hasUncommittedChanges || committing;
+	const commitTooltip = !branchStatus
+		? t("infoPanel.statusLoading")
+		: !hasUncommittedChanges
+			? t("infoPanel.commitDisabledClean")
+			: t("infoPanel.commitAgentTooltip");
+
 	// A conflicting rebase (behind but can't apply cleanly) no longer disables the
 	// button — it hands the rebase off to the agent instead. Only "nothing to
 	// rebase" / no-status / in-flight disable it.
@@ -466,7 +475,19 @@ export default function TaskGitActions({
 					{btnContent(<ShowDiffIcon className={iconClass} />, t("infoPanel.showDiffShort"))}
 				</button>
 			</GitActionTooltip>
-			<GitActionTooltip content={rebaseTooltip} detail={t("ttip.git.rebase")} disabled={rebaseDisabled}>
+			<GitActionTooltip content={commitTooltip} detail={t("ttip.git.commit")} disabled={commitDisabled}>
+					<button
+						onClick={() => void handleCommit()}
+						disabled={commitDisabled}
+						className={`git-anim inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[0.625rem] font-medium transition-colors ${
+							commitDisabled ? disabledBtnClass : enabledBtnClass
+						}`}
+						aria-label={t("infoPanel.commit")}
+					>
+						{btnContent(<CommitIcon className={iconClass} />, committing ? t("infoPanel.committing") : t("infoPanel.commit"), committing)}
+					</button>
+				</GitActionTooltip>
+				<GitActionTooltip content={rebaseTooltip} detail={t("ttip.git.rebase")} disabled={rebaseDisabled}>
 				<button
 					onClick={handleRebase}
 					disabled={rebaseDisabled}

@@ -55,6 +55,7 @@ export function useTaskBranchStatus({
 	const t = useT();
 	const [branchStatus, setBranchStatus] = useState<BranchStatus | null>(null);
 	const [rebasing, setRebasing] = useState(false);
+	const [committing, setCommitting] = useState(false);
 	const [merging, setMerging] = useState(false);
 	const [pushing, setPushing] = useState(false);
 	const [creatingPR, setCreatingPR] = useState(false);
@@ -322,6 +323,30 @@ export function useTaskBranchStatus({
 		setRebasing(false);
 	}, [branchStatus, compareRef, project.id, rebasing, task.id, t]);
 
+	// Commit is always an agent handoff — it picks what to stage and writes the
+	// message (issue #271), so there is no direct-git counterpart like rebase has.
+	const handleCommit = useCallback(async () => {
+		if (committing) {
+			return;
+		}
+
+		setCommitting(true);
+		try {
+			const { handedOff } = await api.request.commitTaskViaAgent({
+				taskId: task.id,
+				projectId: project.id,
+			});
+			if (handedOff) {
+				toast.info(t("infoPanel.commitAgentStarted"), { taskId: task.id });
+			} else {
+				toast.error(t("infoPanel.commitAgentNoPane"), { taskId: task.id });
+			}
+		} catch (err) {
+			toast.error(t("infoPanel.commitFailed", { error: String(err) }), { taskId: task.id });
+		}
+		setCommitting(false);
+	}, [committing, project.id, task.id, t]);
+
 	const handleMerge = useCallback(async () => {
 		if (merging) {
 			return;
@@ -371,8 +396,10 @@ export function useTaskBranchStatus({
 		baseBranch,
 		branchStatus,
 		compareRef,
+		committing,
 		creatingPR,
 		displayRef: compareRef || `origin/${baseBranch}`,
+		handleCommit,
 		handleCreatePR,
 		handleMerge,
 		handleOpenPR,

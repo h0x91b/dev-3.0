@@ -508,6 +508,9 @@ const CREATE_PR_AGENT_PROMPT =
 const CREATE_PR_AUTO_MERGE_AGENT_PROMPT =
 	"Please push this branch and open a pull request for it using the gh CLI (first run git push, then gh pr create). Choose an appropriate title and description based on the work in this conversation. Finally, enable auto-merge on the PR with gh pr merge --auto so it merges automatically once checks pass.";
 
+const COMMIT_AGENT_PROMPT =
+	"Please commit the current changes in this worktree. Review what changed (git status, git diff), stage everything that belongs to the work in this conversation, and create one or more commits with clear English messages describing the change. Do not push.";
+
 function rebaseConflictAgentPrompt(rebaseTarget: string): string {
 	return `This branch cannot be rebased automatically onto ${rebaseTarget} because of merge conflicts. Please rebase it and resolve the conflicts: run \`git fetch origin\`, then \`git rebase ${rebaseTarget}\`, resolve each conflict carefully preserving the intent of both sides, \`git add\` the resolved files, and \`git rebase --continue\` until the rebase finishes. If it becomes unsafe, abort with \`git rebase --abort\` and explain what happened.`;
 }
@@ -553,6 +556,27 @@ async function rebaseTaskViaAgent(params: { taskId: string; projectId: string; c
 
 	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, rebaseConflictAgentPrompt(rebaseTarget), task.sessionState?.panes);
 	log.info("← rebaseTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
+	return { handedOff };
+}
+
+/**
+ * Commit handoff: the git row's Commit button never runs `git commit` itself —
+ * choosing what to stage and how to word the message is exactly the agent's job
+ * (issue #271). Mirrors the Create-PR / rebase-conflict handoffs and returns
+ * whether the prompt reached an agent pane.
+ */
+async function commitTaskViaAgent(params: { taskId: string; projectId: string }): Promise<{ handedOff: boolean }> {
+	log.info("→ commitTaskViaAgent", params);
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+
+	assertGitTask(project, task);
+
+	const tmuxSession = taskSessionName(task.id);
+	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+
+	const handedOff = await sendPromptToAgentPane(tmuxSession, socket, COMMIT_AGENT_PROMPT, task.sessionState?.panes);
+	log.info("← commitTaskViaAgent", { taskId: task.id.slice(0, 8), handedOff });
 	return { handedOff };
 }
 
@@ -817,6 +841,7 @@ export const gitOperationHandlers = {
 	dismissMergeCompletionPrompt,
 	rebaseTask,
 	rebaseTaskViaAgent,
+	commitTaskViaAgent,
 	mergeTask,
 	pushTask,
 	createPullRequest,

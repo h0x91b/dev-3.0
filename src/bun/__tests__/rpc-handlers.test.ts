@@ -6649,6 +6649,81 @@ describe("handlers.rebaseTaskViaAgent", () => {
 });
 
 // ================================================================
+// handlers.commitTaskViaAgent — commit handoff to the terminal agent
+// ================================================================
+
+describe("handlers.commitTaskViaAgent", () => {
+	function sendKeysCalls() {
+		return mockSpawn.mock.calls
+			.map((c) => c[0] as string[])
+			.filter((args) => args.includes("send-keys"));
+	}
+
+	beforeEach(() => vi.clearAllMocks());
+
+	it("sends a commit prompt to the active pane and reports handedOff", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: args.includes("display-message") ? "%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		const result = await handlers.commitTaskViaAgent({ taskId: "task-1", projectId: project.id });
+		expect(result).toEqual({ handedOff: true });
+
+		const paste = sendKeysCalls();
+		expect(paste[0]).toEqual(expect.arrayContaining(["send-keys", "-t", "%3"]));
+		expect(paste[0]?.some((a) => a.includes("commit the current changes"))).toBe(true);
+	});
+
+	it("never asks the agent to push", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation((args: string[]) => ({
+			stdout: args.includes("display-message") ? "%3\n" : "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		await handlers.commitTaskViaAgent({ taskId: "task-1", projectId: project.id });
+		expect(sendKeysCalls()[0]?.some((a) => a.includes("Do not push"))).toBe(true);
+	});
+
+	it("reports handedOff:false when there is no active pane", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: "/tmp/test-worktree" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		mockSpawn.mockImplementation(() => ({
+			stdout: "",
+			stderr: "",
+			exited: Promise.resolve(0),
+		}));
+
+		const result = await handlers.commitTaskViaAgent({ taskId: "task-1", projectId: project.id });
+		expect(result).toEqual({ handedOff: false });
+		expect(sendKeysCalls()).toHaveLength(0);
+	});
+
+	it("throws when the task has no worktree", async () => {
+		const project = makeProject();
+		const task = makeTask({ id: "task-1", worktreePath: null });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.commitTaskViaAgent({ taskId: "task-1", projectId: project.id }),
+		).rejects.toThrow("Task has no worktree");
+	});
+});
+
+// ================================================================
 // handlers.pushTask
 // ================================================================
 

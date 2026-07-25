@@ -26,6 +26,7 @@ vi.mock("../../rpc", () => ({
 			setTaskManualCompletion: vi.fn(),
 			rebaseTask: vi.fn(),
 			rebaseTaskViaAgent: vi.fn(),
+			commitTaskViaAgent: vi.fn(),
 			mergeTask: vi.fn(),
 			pushTask: vi.fn(),
 			createPullRequest: vi.fn(),
@@ -1804,6 +1805,69 @@ describe("TaskInfoPanel", () => {
 
 			const enabledBtn = screen
 				.getAllByText("Rebase (AI)")
+				.find((b) => !b.closest("button")!.disabled);
+			await user.click(enabledBtn!.closest("button")!);
+
+			await waitFor(() => expect(toast.error).toHaveBeenCalled());
+		});
+
+		it("hands the commit off to the agent when the worktree is dirty", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				insertions: 12,
+				deletions: 3,
+			});
+			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ handedOff: true });
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const enabledBtn = screen
+				.getAllByText("Commit")
+				.find((b) => !b.closest("button")!.disabled);
+			expect(enabledBtn).toBeTruthy();
+			await user.click(enabledBtn!.closest("button")!);
+
+			expect(mockedApi.request.commitTaskViaAgent).toHaveBeenCalledWith({
+				taskId: "t1",
+				projectId: "p1",
+			});
+			await waitFor(() => expect(toast.info).toHaveBeenCalled());
+		});
+
+		it("disables Commit when there are no uncommitted changes", async () => {
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				insertions: 0,
+				deletions: 0,
+			});
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const commitButtons = screen.getAllByText("Commit");
+			expect(commitButtons.length).toBeGreaterThanOrEqual(1);
+			expect(commitButtons.every((b) => b.closest("button")!.disabled)).toBe(true);
+		});
+
+		it("warns when there is no agent terminal to hand the commit to", async () => {
+			const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+			mockedApi.request.getBranchStatus.mockResolvedValue({
+				...defaultBranchStatus,
+				insertions: 4,
+				deletions: 0,
+			});
+			mockedApi.request.commitTaskViaAgent.mockResolvedValue({ handedOff: false });
+
+			await act(async () => {
+				renderPanel(makeTask());
+			});
+
+			const enabledBtn = screen
+				.getAllByText("Commit")
 				.find((b) => !b.closest("button")!.disabled);
 			await user.click(enabledBtn!.closest("button")!);
 

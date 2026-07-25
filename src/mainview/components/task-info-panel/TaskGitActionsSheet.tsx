@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Project, Task } from "../../../shared/types";
 import { useT } from "../../i18n";
 import type { TaskBranchStatusController } from "./useTaskBranchStatus";
-import { AutoMergeIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
+import { AutoMergeIcon, CommitIcon, CreatePRIcon, MergeIcon, PushIcon, RebaseIcon, ShowDiffIcon } from "./GitIcons";
 import type { TaskInlineDiffRequest } from "../task-inline-diff";
 
 interface TaskGitActionsSheetProps {
@@ -58,6 +58,7 @@ export default function TaskGitActionsSheet({
 		branchStatus,
 		compareRef,
 		displayRef,
+		handleCommit,
 		handleCreatePR,
 		handleMerge,
 		handleOpenPR,
@@ -102,6 +103,16 @@ export default function TaskGitActionsSheet({
 			),
 		});
 	}
+
+	const hasUncommittedChanges = !!branchStatus && (branchStatus.insertions > 0 || branchStatus.deletions > 0);
+	rows.push({
+		key: "commit",
+		icon: <CommitIcon className={`h-5 w-5 shrink-0 ${hasUncommittedChanges ? "text-success" : "text-fg-muted"}`} />,
+		label: t("infoPanel.commit"),
+		disabled: !hasUncommittedChanges,
+		reason: !branchStatus ? t("infoPanel.statusLoading") : !hasUncommittedChanges ? t("infoPanel.commitDisabledClean") : undefined,
+		run: withDismiss(() => void handleCommit()),
+	});
 
 	rows.push({
 		key: "rebase",

@@ -7,7 +7,8 @@ import type { SVGProps } from "react";
  * Every icon carries `gtx-*` animation hooks: when a `.git-anim` ancestor
  * (the button / toggle) is hovered, pure-CSS keyframes in index.css act out
  * the operation the icon triggers — the diff types its added line and blinks
- * the removed one, the rebase commit rides the rail to the tip, the push arrow
+ * the removed one, the commit dot lands on the branch and rings out, the rebase
+ * commit rides the rail to the tip, the push arrow
  * launches into the cloud, the PR curve draws over and the sparkle twinkles,
  * the auto-merge bolt strikes, the merge commit lands, the tests flask boils.
  * Idle rendering is pixel-identical to the static glyph.
@@ -41,6 +42,18 @@ export function ShowDiffIcon({ className }: GitIconProps) {
 				<path d="M5.2 15 L8.8 15" className="text-danger" />
 				<line x1="11.5" y1="15" x2="18.5" y2="15" className="text-danger" />
 			</g>
+		</svg>
+	);
+}
+
+// C1 — Commit (commit node): a new commit dot lands on the branch and pulses.
+export function CommitIcon({ className }: GitIconProps) {
+	return (
+		<svg {...svgBase(className)}>
+			<line x1="12" y1="3" x2="12" y2="8.4" />
+			<line x1="12" y1="15.6" x2="12" y2="21" />
+			<circle cx="12" cy="12" r="3.6" className="text-success gtx gtx-gk-ring" opacity="0" />
+			<circle cx="12" cy="12" r="3.6" className="text-success gtx gtx-gk-dot" />
 		</svg>
 	);
 }
