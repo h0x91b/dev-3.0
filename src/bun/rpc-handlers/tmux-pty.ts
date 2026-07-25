@@ -679,6 +679,8 @@ export async function launchTaskPty(
 		permissionMode: resolvedPermissionMode,
 	});
 
+	const nativeBackend = taskTerminalBackendIdentity(task) === "native";
+
 	let isSetupWrapper = false;
 	if (runSetup && project.setupScript.trim()) {
 		const setupScriptLaunchMode = project.setupScriptLaunchMode ?? "parallel";
@@ -690,7 +692,8 @@ export async function launchTaskPty(
 		await Bun.write(setupPath, project.setupScript + "\n");
 		await Bun.write(cmdPath, buildCmdScript(tmuxCmd, env, { keepShell: true, shellPath: userShell }));
 
-		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "${escapeForDoubleQuotes(buildScriptRunnerCommand(cmdPath, { shellPath: userShell }))}"`;
+		const cmdRunner = buildScriptRunnerCommand(cmdPath, { shellPath: userShell });
+		const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}"`;
 		const setupFail = [
 			"  printf '\\033[1;31m✗ Setup failed (exit %s)\\033[0m\\n' \"$S\"",
 			`  exec ${shellQuote(userShell)}`,
@@ -703,18 +706,33 @@ export async function launchTaskPty(
 			portableReadKey({ timeoutSeconds: 15 }),
 			"exit 0",
 		].join("\n");
-
-		const startupLines = [
-			"#!/bin/bash",
-			...(setupScriptLaunchMode === "parallel" ? [splitCmd] : []),
-			buildScriptRunnerCommand(setupPath, { shellPath: userShell, trace: true }),
-			"S=$?",
-			`if [ $S -ne 0 ]; then`,
-			setupFail,
-			"fi",
-			...(setupScriptLaunchMode === "blocking" ? [splitCmd] : []),
-			setupOkClose,
-		];
+		// The tmux flavour puts the agent in a SECOND pane via `tmux split-window`,
+		// which only works because the wrapper runs inside a dev3 tmux pane. A native
+		// session has one view and no $TMUX, so there the setup script runs first and
+		// then EXECs the agent in the same view — never a bare `tmux` shell-out, which
+		// outside tmux would target the user's own default socket.
+		const startupLines = nativeBackend
+			? [
+				"#!/bin/bash",
+				buildScriptRunnerCommand(setupPath, { shellPath: userShell, trace: true }),
+				"S=$?",
+				`if [ $S -ne 0 ]; then`,
+				setupFail,
+				"fi",
+				"printf '\\033[1;32m✓ Setup done\\033[0m\\n'",
+				`exec ${cmdRunner}`,
+			]
+			: [
+				"#!/bin/bash",
+				...(setupScriptLaunchMode === "parallel" ? [splitCmd] : []),
+				buildScriptRunnerCommand(setupPath, { shellPath: userShell, trace: true }),
+				"S=$?",
+				`if [ $S -ne 0 ]; then`,
+				setupFail,
+				"fi",
+				...(setupScriptLaunchMode === "blocking" ? [splitCmd] : []),
+				setupOkClose,
+			];
 		await Bun.write(startupPath, startupLines.join("\n") + "\n");
 		tmuxCmd = buildScriptRunnerCommand(startupPath, { shellPath: userShell });
 		isSetupWrapper = true;
@@ -735,7 +753,7 @@ export async function launchTaskPty(
 	// Everything above is backend-neutral on purpose: the same resolved agent
 	// command, hooks, trust, account, env, ports, and wrapper script feed both
 	// backends. Only the session itself differs.
-	if (taskTerminalBackendIdentity(task) === "native") {
+	if (nativeBackend) {
 		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
 		return;
 	}
@@ -1282,7 +1300,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 	// If session is in memory (alive or dead), verify the backend's session still
 	// exists. When the tmux server (or a native host) is killed externally, our
 	// handle may or may not have noticed yet — the backend is the ground truth.
-	if (pty.hasSession(params.taskId)) {
+	if (pty.hasSession(params.taskId) && !pty.isNativeSessionSettling(params.taskId)) {
 		const alive = pty.getSessionBackend(params.taskId) === "native"
 			? await nativeTaskTerminalAlive(params.taskId)
 			: await pty.tmuxSessionExists(params.taskId, pty.getSessionSocket(params.taskId));

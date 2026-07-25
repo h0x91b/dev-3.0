@@ -108,6 +108,7 @@ vi.mock("../pty-server", () => ({
 	hasDeadSession: vi.fn(),
 	// Unmarked tasks are tmux — the native branches are exercised by their own suites.
 	getSessionBackend: vi.fn(() => "tmux"),
+	isNativeSessionSettling: vi.fn(() => false),
 	tmuxSessionExists: vi.fn(() => true),
 	listPaneIds: vi.fn(() => Promise.resolve(["%5"])),
 	getPtyPort: vi.fn(() => 9999),

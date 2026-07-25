@@ -16,6 +16,8 @@ on:
       - "src/bun/native-task-terminal.ts"
       - "src/bun/native-host-runtime.ts"
       - "src/bun/task-terminal-backend.ts"
+      - "src/bun/pty-server.ts"
+      - "src/shared/resize-protocol.ts"
       - "src/bun/__tests__/native-task-terminal.bun-e2e.ts"
       - "src/bun/__tests__/native-task-terminal-controller.ts"
       - "src/shared/native-terminal-runtime.ts"
@@ -80,7 +82,8 @@ jobs:
       # Seq 1292 PRODUCT proof: a task's primary terminal driven through
       # startNativeTaskTerminal/attach/stop — create, shell round-trip, resize,
       # detach, controller restart, observer refusal, owned-tree cleanup with a
-      # live tmux sentinel, and an honest null after cleanup.
+      # live tmux sentinel, an honest null after cleanup, and the renderer
+      # transport (pty-server WebSocket bridge with two real WS clients).
       - name: Product native task-terminal E2E
         timeout-minutes: 5
         run: bun run test:native-task-terminal-e2e

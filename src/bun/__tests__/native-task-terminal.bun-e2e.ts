@@ -22,11 +22,20 @@
  *      the product writer keeps working;
  *   7. cleanup removes exactly the owned tree, and a pre-existing tmux sentinel
  *      session on a throwaway socket is still alive afterwards;
- *   8. after cleanup, reattach returns null and nothing respawns.
+ *   8. after cleanup, reattach returns null and nothing respawns;
+ *   9. the RENDERER transport: a SECOND task driven exactly as `TerminalView.tsx`
+ *      drives it — `pty.createNativeTaskSession` plus real WebSocket clients on the
+ *      pty-server bridge — proving native bytes reach a renderer socket, two
+ *      renderers share one shell, the in-band resize sequence lands (under the
+ *      smallest-client-size rule), and `destroySessionAwaited` kills the tree.
  *
  * Isolation: registry state, host images, and logs are redirected into a tmpdir
  * (DEV3_NATIVE_SESSIONS_DIR / DEV3_NATIVE_HOST_IMAGES_DIR / DEV3_LOG_DIR), so the
  * user's `~/.dev3.0/` is never touched. Test-only: no production file changes.
+ *
+ * `pty-server` owns a Bun.serve listener and an idle-detection interval, so this
+ * script always ends in an explicit process.exit — after every check and the
+ * tmpdir removal, non-zero when any check failed.
  */
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -42,6 +51,7 @@ import {
 	type NativeTaskTerminal,
 } from "../native-task-terminal";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "../task-terminal-backend";
+import { encodeResizeSequence } from "../../shared/resize-protocol";
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { readRecord } from "../native-terminal-registry/record";
 import { sessionsRootDir } from "../native-terminal-registry/paths";
@@ -70,18 +80,24 @@ const JSON_SENTINEL = "__TASK_TERMINAL_JSON__";
 // property the reattach path depends on.
 const TASK_ID = "00000000-0000-4000-8000-0000000e2e12";
 const SESSION_ID = nativeTaskSessionId(TASK_ID);
+// The renderer-transport section owns its OWN task so the two halves stay independent.
+const WS_TASK_ID = "00000000-0000-4000-8000-0000000e2e34";
+const WS_SESSION_ID = nativeTaskSessionId(WS_TASK_ID);
 
 interface Sink {
 	text: () => string;
 	waitFor: (needle: string, timeoutMs?: number) => Promise<boolean>;
 }
 
-function makeSink(): { sink: Sink; onOutput: (bytes: Uint8Array) => void } {
+function makeSink(): { sink: Sink; onOutput: (bytes: Uint8Array) => void; push: (text: string) => void } {
 	let buf = "";
 	const decoder = new TextDecoder();
 	return {
 		onOutput: (bytes) => {
 			buf += decoder.decode(bytes, { stream: true });
+		},
+		push: (text) => {
+			buf += text;
 		},
 		sink: {
 			text: () => buf,
@@ -103,7 +119,48 @@ function taskLaunch(cwd: string): TerminalLaunchSpec {
 		const spec = defaultNativeShellLaunchSpec({ platform: process.platform, cwd, env: process.env });
 		return { executable: spec.executable, argv: spec.argv };
 	}
-	return { executable: "/bin/bash", argv: ["--norc", "--noprofile"] };
+	// `-i` keeps COLUMNS/LINES maintained by the shell, which the renderer-transport
+	// geometry probe reads.
+	return { executable: "/bin/bash", argv: ["--norc", "--noprofile", "-i"] };
+}
+
+/** One renderer: a raw WebSocket on the pty-server bridge, exactly like TerminalView. */
+interface RendererClient {
+	sink: Sink;
+	send: (data: string) => void;
+	close: () => void;
+}
+
+async function openRenderer(port: number, taskId: string): Promise<RendererClient> {
+	const ws = new WebSocket(`ws://localhost:${port}?session=${encodeURIComponent(taskId)}`);
+	const { sink, push } = makeSink();
+	ws.addEventListener("message", (ev) => {
+		const data = (ev as MessageEvent).data;
+		push(typeof data === "string" ? data : new TextDecoder().decode(data as ArrayBuffer));
+	});
+	await new Promise<void>((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error("renderer websocket open timeout")), 5000);
+		ws.addEventListener("open", () => {
+			clearTimeout(timer);
+			resolve();
+		}, { once: true });
+		ws.addEventListener("error", () => {
+			clearTimeout(timer);
+			reject(new Error("renderer websocket error"));
+		}, { once: true });
+	});
+	return { sink, send: (data) => ws.send(data), close: () => ws.close() };
+}
+
+/** Geometry as the SHELL reports it to a renderer — the coordinator's $COLUMNS/$LINES form. */
+function rendererGeometryProbe(cols: number, rows: number): { command: string; expected: string } {
+	if (isWindows) {
+		return {
+			command: 'Write-Output "GEOM-$($Host.UI.RawUI.WindowSize.Width)-$($Host.UI.RawUI.WindowSize.Height)"',
+			expected: `GEOM-${cols}-${rows}`,
+		};
+	}
+	return { command: "echo GEOM-$COLUMNS-$LINES", expected: `GEOM-${cols}-${rows}` };
 }
 
 /** Plant a shell-state marker that also proves the interactive ROOT pid answered. */
@@ -201,6 +258,7 @@ async function run(): Promise<void> {
 	if (sentinelAlive) console.log(`  info - tmux sentinel session live on socket ${sentinelSocket}`);
 
 	let terminal: NativeTaskTerminal | null = null;
+	const renderers: RendererClient[] = [];
 	try {
 		// ── 1. explicit native create through the product path ──
 		const first = makeSink();
@@ -329,14 +387,82 @@ async function run(): Promise<void> {
 		const lost = runController(marker.expected);
 		check(lost.exitCode === 0 && lost.verdict?.attached === false, "a fresh app controller also gets an honest lost session");
 		check(sessionDirCount() === 0 && !isProcessAlive(hostPid) && !isProcessAlive(shellPid), "the lost reattach spawned NOTHING");
+
+		// ── 9. renderer transport: the pty-server WebSocket bridge over a native session ──
+		// Imported HERE, not at module load: importing pty-server starts its Bun.serve
+		// listener and idle timer, and it must see this run's isolated env.
+		const pty = await import("../pty-server");
+		await pty.createNativeTaskSession(WS_TASK_ID, "e2e-project", work, taskLaunch(work), {}, { cols: 100, rows: 30 });
+		check(pty.getSessionBackend(WS_TASK_ID) === "native", "pty-server registered the task session on the native backend");
+		check(pty.hasDeadSession(WS_TASK_ID) === false, "the native pty-server session is live, not dead");
+		const wsRecord = readRecord(WS_SESSION_ID);
+		const wsHostPid = wsRecord?.host.pid ?? -1;
+		const wsShellPid = wsRecord?.shell.pid ?? -1;
+		check(isProcessAlive(wsHostPid) && isProcessAlive(wsShellPid), "the renderer-transport session has its own live host + shell");
+		const port = pty.getPtyPort();
+		check(port > 0, "the pty-server WebSocket bridge is listening");
+
+		const rendererA = await openRenderer(port, WS_TASK_ID);
+		renderers.push(rendererA);
+		const wsMarker = markerProbe(`${nonce}a`, wsShellPid);
+		for (const line of wsMarker.setup) rendererA.send(`${line}${lineEnd}`);
+		const seenByA = await sendUntilObserved({
+			send: () => rendererA.send(`${wsMarker.command}${lineEnd}`),
+			observe: () => (rendererA.sink.text().includes(wsMarker.expected) ? wsMarker.expected : null),
+			...SHELL_WARMUP_PROBE,
+		});
+		check(seenByA !== null, "a command sent over the renderer WebSocket came back on the same socket");
+
+		const rendererB = await openRenderer(port, WS_TASK_ID);
+		renderers.push(rendererB);
+		const fanout = `FANOUT[${nonce}]`;
+		const fanoutSeen = await sendUntilObserved({
+			send: () => rendererB.send(`${isWindows ? `Write-Output "${fanout}"` : `echo "${fanout}"`}${lineEnd}`),
+			observe: () =>
+				rendererB.sink.text().includes(fanout) && rendererA.sink.text().includes(fanout) ? fanout : null,
+			...SHELL_WARMUP_PROBE,
+		});
+		check(fanoutSeen !== null, "a second renderer's input reaches the SAME shell and both renderers receive its output");
+
+		// The bridge applies the SMALLEST size across clients that reported one, so B
+		// reports a deliberately larger viewport and A's 120x40 must win.
+		const wsCols = 120;
+		const wsRows = 40;
+		rendererB.send(encodeResizeSequence(wsCols + 80, wsRows + 20));
+		rendererA.send(encodeResizeSequence(wsCols, wsRows));
+		const wsGeo = rendererGeometryProbe(wsCols, wsRows);
+		const wsGeoSeen = await sendUntilObserved({
+			send: () => rendererA.send(`${wsGeo.command}${lineEnd}`),
+			observe: () => (rendererA.sink.text().includes(wsGeo.expected) ? wsGeo.expected : null),
+			...SHELL_WARMUP_PROBE,
+		});
+		check(wsGeoSeen !== null, `the shell reports the smallest reported geometry (${wsCols}x${wsRows}, not B's larger one)`);
+
+		await pty.destroySessionAwaited(WS_TASK_ID);
+		check(!pty.hasSession(WS_TASK_ID), "pty-server dropped the session after destroySessionAwaited");
+		const wsStopDeadline = Date.now() + 5000;
+		while (Date.now() < wsStopDeadline && (isProcessAlive(wsHostPid) || isProcessAlive(wsShellPid))) await delay(50);
+		check(!isProcessAlive(wsHostPid) && !isProcessAlive(wsShellPid), "the renderer-transport host + shell tree is dead");
+		check(readRecord(WS_SESSION_ID) === null && sessionDirCount() === 0, "the renderer-transport registry state is gone");
+		if (sentinelAlive) {
+			check(await tmux.hasSession(sentinelSession, { socket: sentinelSocket }), "the tmux sentinel session survived the renderer-transport teardown too");
+		}
 	} finally {
 		try {
 			terminal?.detach();
 		} catch {
 			// best-effort
 		}
+		for (const renderer of renderers) {
+			try {
+				renderer.close();
+			} catch {
+				// best-effort
+			}
+		}
 		try {
 			await stopNativeTaskTerminal(TASK_ID);
+			await stopNativeTaskTerminal(WS_TASK_ID);
 		} catch {
 			// best-effort
 		}

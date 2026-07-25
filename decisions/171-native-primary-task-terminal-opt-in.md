@@ -70,11 +70,29 @@ way to start a real product session.
   needs that answer; it refuses to switch while either side still owns a live
   session, since live terminal state is never migrated.
 
+## Setup scripts
+
+The tmux flavour of the generated startup wrapper runs the agent in a SECOND pane via
+a bare `tmux split-window`, which only resolves correctly because that wrapper executes
+inside a dev3 tmux pane. A native session has one view and no `$TMUX`, where the same
+line would silently target the user's own default tmux socket. So a native task gets an
+inline flavour instead: the setup script runs first, then the wrapper `exec`s the agent
+in the same view. Same scripts, same env, same failure banner — one view instead of two.
+
 ## Risks
 
 - `destroySessionAwaited` exists because a native session id is deterministic: a
   relaunch racing its own teardown would hit `session-exists`. Restart/resume/recovery
-  paths await it; the tmux path keeps its exact fire-and-forget `kill-session` timing.
+  paths await it, and `stopNativeTaskTerminal` re-checks presence so an UNCONFIRMED
+  teardown fails loudly instead of being swallowed by `ignoreMissing`. The tmux path
+  keeps its exact fire-and-forget `kill-session` timing.
+- Only one client per session may write. The app marks a session "settling" for the
+  whole create/attach window (`isNativeSessionSettling`) so a renderer connecting
+  mid-boot cannot open a second client — the loser would become the host's observer,
+  whose input and resize are dropped in silence. `ensureWriter` claims the lease when
+  the app somehow attached as observer anyway, and logs loudly if the claim is refused.
+- Boot only PROBES presence; the reattach happens when the task is opened. Attaching at
+  boot would bind a writer client and start idle timers for sessions nobody is viewing.
 - Every renderer attached to one task multiplexes through the app's single writer
   client, same as tmux. Writer ownership is only enforced against OTHER processes
   attaching to the host — which is what the host's lease is for.

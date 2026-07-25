@@ -55,6 +55,26 @@ export interface NativeTaskTerminal {
 	detach(): void;
 }
 
+/**
+ * The app must be the WRITER: an observer's input and resize are silently dropped
+ * by the host, which would look like a dead terminal in the UI. If another process
+ * got the lease first, claim it once and say so loudly when the claim is refused.
+ */
+async function ensureWriter(sessionId: string, client: NativeSessionClient): Promise<void> {
+	if (client.getRole() === "writer") return;
+	try {
+		const reply = await client.claimWriter();
+		if (reply.role === "writer") {
+			log.info("Claimed the native writer lease", { sessionId });
+			return;
+		}
+	} catch (err) {
+		log.error("Claiming the native writer lease failed", { sessionId, error: String(err) });
+		return;
+	}
+	log.error("Attached as OBSERVER; the host will drop this terminal's input and resize", { sessionId });
+}
+
 function bind(
 	sessionId: string,
 	client: NativeSessionClient,
@@ -68,6 +88,11 @@ function bind(
 		hooks.onClosed();
 	};
 	client.onOutput(hooks.onOutput);
+	// A refused write/resize arrives as a host error frame, never as a throw — without
+	// this hook an observer-role terminal would fail completely silently.
+	client.onError((error) => {
+		log.warn("Native host refused a request", { sessionId, code: error.code, message: error.message ?? "" });
+	});
 	// The host closes the socket when the shell exits or the host itself stops, so
 	// one disconnect hook covers every way this terminal can die.
 	client.onDisconnect(close);
@@ -114,6 +139,7 @@ export async function startNativeTaskTerminal(spec: NativeTaskTerminalSpec): Pro
 	});
 	const client = await NativeSessionClient.discover(sessionId);
 	const terminal = bind(sessionId, client, spec);
+	await ensureWriter(sessionId, client);
 	log.info("Native task terminal started", {
 		taskId: spec.taskId.slice(0, 8),
 		hostPid: terminal.hostPid,
@@ -136,6 +162,7 @@ export async function attachNativeTaskTerminal(
 	if (!(await backend.describeSession(sessionId))) return null;
 	const client = await NativeSessionClient.discover(sessionId);
 	const terminal = bind(sessionId, client, hooks);
+	await ensureWriter(sessionId, client);
 	log.info("Native task terminal reattached", {
 		taskId: taskId.slice(0, 8),
 		hostPid: terminal.hostPid,
@@ -150,10 +177,22 @@ export async function nativeTaskTerminalAlive(taskId: string): Promise<boolean> 
 	return (await backend.describeSession(nativeTaskSessionId(taskId))) !== null;
 }
 
-/** Tear down exactly this task's native tree. Idempotent; touches nothing else. */
+/**
+ * Tear down exactly this task's native tree. Idempotent; touches nothing else.
+ *
+ * `ignoreMissing` makes "already gone" a success, but it ALSO makes an unconfirmed
+ * teardown one — and a still-dying host would make the next launch of this task
+ * fail with `session-exists`, since the session id is deterministic. So the result
+ * is verified and an unconfirmed teardown is reported as the failure it is.
+ */
 export async function stopNativeTaskTerminal(taskId: string): Promise<void> {
 	const sessionId = nativeTaskSessionId(taskId);
 	const backend = nativeTaskTerminalBackend();
 	await backend.cleanupSession(sessionId, { ignoreMissing: true });
+	if (await backend.describeSession(sessionId)) {
+		throw new Error(
+			`native session ${sessionId} is still present after teardown — its host or shell did not exit`,
+		);
+	}
 	log.info("Native task terminal stopped", { taskId: taskId.slice(0, 8), sessionId });
 }

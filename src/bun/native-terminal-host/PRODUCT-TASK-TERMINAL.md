@@ -24,7 +24,11 @@ driver (src/bun/__tests__/native-task-terminal.bun-e2e.ts)
   │            attachNativeTaskTerminal ▸ same host/shell pid + replayed screen
   ├─ attachNativeTaskTerminal (writer) + raw NativeSessionClient (observer)
   ├─ stopNativeTaskTerminal ▸ owned tree dies, tmux sentinel survives
-  └─ spawn ─▶ controller again ▸ honest `attached:false`, nothing respawns
+  ├─ spawn ─▶ controller again ▸ honest `attached:false`, nothing respawns
+  └─ SECOND task, renderer transport (section 9):
+       pty.createNativeTaskSession ─▶ ws://localhost:<ptyPort>?session=<taskId>
+       renderer A + renderer B — real WebSockets, as TerminalView.tsx drives them
+       ▸ destroySessionAwaited kills the tree; tmux sentinel still alive
 ```
 
 ## What it proves
@@ -49,6 +53,19 @@ driver (src/bun/__tests__/native-task-terminal.bun-e2e.ts)
    the repo's `tmux` client singleton on a throwaway socket) is still alive afterwards.
 8. **Honest null** — after cleanup, `attachNativeTaskTerminal` returns `null`, presence
    is false, a fresh controller process also reports `attached:false`, and nothing respawns.
+9. **Renderer transport** — a SECOND, independent task id driven the way
+   [`TerminalView.tsx`](../../mainview/TerminalView.tsx) drives it:
+   `pty.createNativeTaskSession` registers the session (`getSessionBackend === "native"`,
+   `hasDeadSession === false`), then real WebSocket clients on
+   `ws://localhost:${pty.getPtyPort()}?session=<taskId>` prove that
+   - native bytes reach a renderer socket through the OSC52/bell/batching pipeline,
+   - a second renderer's input hits the SAME shell and **both** sockets receive its
+     output (one shell, many renderers),
+   - `encodeResizeSequence` from `shared/resize-protocol` lands on the PTY under the
+     **smallest-client-size rule** — B reports a deliberately larger viewport, A
+     reports 120x40, and the shell answers `GEOM-120-40`,
+   - `destroySessionAwaited` clears `hasSession`, kills that task's host + shell tree,
+     removes its registry state, and leaves the tmux sentinel alive.
 
 Windows-capable by construction: the shell, line ending, and geometry/marker probes
 branch on the platform, and the shell comes from the registry's own
@@ -59,6 +76,11 @@ branch on the platform, and the shell comes from the registry's own
 `DEV3_NATIVE_SESSIONS_DIR`, `DEV3_NATIVE_HOST_IMAGES_DIR`, and `DEV3_LOG_DIR` are
 redirected into a tmpdir that is removed at the end, so the user's `~/.dev3.0/` is
 never read or written. Test-only: no production source changes.
+
+`pty-server` is imported **dynamically**, after that redirection: importing it starts
+its `Bun.serve` listener and an idle-detection `setInterval`, so the script also always
+ends in an explicit `process.exit` — reached only after every check and the tmpdir
+removal, and non-zero when any check failed.
 
 ## Commands
 
@@ -76,7 +98,7 @@ tmux is unavailable.
 
 ```
   info - platform=darwin bun=1.3.14 session=dev3-task-00000000-0000-4000-8000-0000000e2e12
-  info - tmux sentinel session live on socket dev3-native-task-e2e-96051
+  info - tmux sentinel session live on socket dev3-native-task-e2e-10145
   ok   - the task's terminal addresses the deterministic native session id
   ok   - exactly ONE native session exists after the explicit create
   ok   - the product presence check reports the task terminal alive
@@ -107,6 +129,17 @@ tmux is unavailable.
   ok   - the product presence check reports the task terminal gone
   ok   - a fresh app controller also gets an honest lost session
   ok   - the lost reattach spawned NOTHING
+  ok   - pty-server registered the task session on the native backend
+  ok   - the native pty-server session is live, not dead
+  ok   - the renderer-transport session has its own live host + shell
+  ok   - the pty-server WebSocket bridge is listening
+  ok   - a command sent over the renderer WebSocket came back on the same socket
+  ok   - a second renderer's input reaches the SAME shell and both renderers receive its output
+  ok   - the shell reports the smallest reported geometry (120x40, not B's larger one)
+  ok   - pty-server dropped the session after destroySessionAwaited
+  ok   - the renderer-transport host + shell tree is dead
+  ok   - the renderer-transport registry state is gone
+  ok   - the tmux sentinel session survived the renderer-transport teardown too
 
 ALL CHECKS PASSED
 ```

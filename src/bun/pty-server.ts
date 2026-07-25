@@ -234,6 +234,25 @@ function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	if (cleaned && session.clients.size > 0) enqueuePtyData(session, cleaned);
 }
 
+/** One death path for both create and reattach, so their bookkeeping cannot drift. */
+function markNativeClosed(session: PtySession): void {
+	session.native = null;
+	session.appliedCols = undefined;
+	session.appliedRows = undefined;
+	log.info("Native PTY session closed", { taskId: shortId(session.taskId) });
+	onPtyDiedCallback?.(session.taskId);
+}
+
+/**
+ * True while a native session is being created or reattached. Callers that probe
+ * the backend for liveness must treat this as alive: the host has not written its
+ * record yet, so a probe would report "gone" and tear down a session that is
+ * still coming up — and the relaunch that follows would race the real one.
+ */
+export function isNativeSessionSettling(taskId: string): boolean {
+	return sessions.get(taskId)?.nativeAttaching === true;
+}
+
 /**
  * Create the task's PRIMARY terminal on the native backend.
  *
@@ -283,6 +302,10 @@ export async function createNativeTaskSession(
 		appliedCols: size.cols,
 		appliedRows: size.rows,
 	};
+	// Marked as settling BEFORE the await so a WebSocket client connecting mid-boot
+	// does not start a competing reattach — two clients for one host would leave the
+	// app holding the observer, whose input the host silently drops.
+	session.nativeAttaching = true;
 	sessions.set(taskId, session);
 	try {
 		session.native = await startNativeTaskTerminal({
@@ -293,19 +316,15 @@ export async function createNativeTaskSession(
 			cols: size.cols,
 			rows: size.rows,
 			onOutput: (bytes) => ingestPtyOutput(session, bytes),
-			onClosed: () => {
-				session.native = null;
-				session.appliedCols = undefined;
-				session.appliedRows = undefined;
-				log.info("Native PTY session closed", { taskId: shortId(taskId) });
-				onPtyDiedCallback?.(taskId);
-			},
+			onClosed: () => markNativeClosed(session),
 		});
 	} catch (err) {
 		// A session that never started must not look alive/recoverable to callers,
 		// and must never be quietly replaced by tmux.
 		sessions.delete(taskId);
 		throw err;
+	} finally {
+		session.nativeAttaching = false;
 	}
 	log.info("Native PTY session ready", {
 		taskId: shortId(taskId),
@@ -350,14 +369,20 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 	try {
 		const native = await attachNativeTaskTerminal(taskId, {
 			onOutput: (bytes) => ingestPtyOutput(session, bytes),
-			onClosed: () => {
-				session.native = null;
-				log.info("Native PTY session closed", { taskId: shortId(taskId) });
-				onPtyDiedCallback?.(taskId);
-			},
+			onClosed: () => markNativeClosed(session),
 		});
 		if (!native) {
 			if (!existing) sessions.delete(taskId);
+			return false;
+		}
+		// The session may have been torn down while we were attaching. Keeping this
+		// client would leak it AND hold the host's writer lease, demoting the next
+		// legitimate reattach to a silent read-only observer.
+		if (sessions.get(taskId) !== session) {
+			native.detach();
+			log.info("Native reattach landed on a torn-down session; released the client", {
+				taskId: shortId(taskId),
+			});
 			return false;
 		}
 		session.native = native;
@@ -442,8 +467,8 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 		});
 }
 
-/** Tear down a native session's own tree — never tmux, never a sibling session. */
-function destroyNativeSession(session: PtySession): Promise<void> {
+/** Drop OUR side of a native session: timers, writer client, renderer clients. */
+function releaseNativeSession(session: PtySession): void {
 	log.info("Destroying native PTY session", {
 		taskId: shortId(session.taskId),
 		attached: !!session.native,
@@ -464,8 +489,13 @@ function destroyNativeSession(session: PtySession): Promise<void> {
 	}
 	session.clients.clear();
 	sessions.delete(session.taskId);
+}
+
+/** Tear down a native session's own tree — never tmux, never a sibling session. */
+function destroyNativeSession(session: PtySession): Promise<void> {
+	releaseNativeSession(session);
 	// Stopping the host tree is I/O; like tmux kill-session it must not block the
-	// lifecycle event loop. Callers that relaunch the same task await the promise
+	// lifecycle event loop. Callers that relaunch the same task await the outcome
 	// via destroySessionAwaited instead.
 	return stopNativeTaskTerminal(session.taskId).catch((err) => {
 		log.warn("Native session teardown failed (best-effort)", {
@@ -486,6 +516,14 @@ export function destroyNativeTaskSession(taskId: string): void {
 		void destroyNativeSession(session);
 		return;
 	}
+	if (session) {
+		// The record says native but memory holds a tmux session — an inconsistent
+		// state we tear down on BOTH sides rather than leaving half a session behind.
+		log.warn("Native teardown found a tmux session in memory; tearing down both", {
+			taskId: shortId(taskId),
+		});
+		destroySession(taskId);
+	}
 	log.info("Destroying unattached native session", { taskId: shortId(taskId) });
 	stopNativeTaskTerminal(taskId).catch((err) => {
 		log.warn("Native session teardown failed (best-effort)", { taskId: shortId(taskId), error: String(err) });
@@ -504,7 +542,10 @@ export async function destroySessionAwaited(taskId: string, fallbackSocket?: str
 		destroySession(taskId, fallbackSocket);
 		return;
 	}
-	await destroyNativeSession(session);
+	releaseNativeSession(session);
+	// Unconfirmed teardown propagates on purpose: the caller is about to relaunch
+	// this exact session id, and failing here beats a confusing `session-exists`.
+	await stopNativeTaskTerminal(taskId);
 }
 
 export function hasSession(taskId: string): boolean {
