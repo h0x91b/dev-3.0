@@ -26,7 +26,17 @@ vi.mock("../electrobun-platform", () => ({
 }));
 vi.mock("../quit-manager", () => ({ markQuitConfirmed }));
 
-import { applyUpdate, downloadUpdateForChannel, checkForUpdateWithChannel } from "../updater";
+import {
+	applyUpdate,
+	downloadUpdateForChannel,
+	checkForUpdateWithChannel,
+	startAutoCheck,
+	markUpdateReady,
+	clearReadyUpdate,
+	isUpdateAlreadyReady,
+	shouldRemindAboutReadyUpdate,
+	READY_REMINDER_INTERVAL_MS,
+} from "../updater";
 
 /** Remote state as Electrobun's checkForUpdate() returns it: no updateReady. */
 const remoteState = {
@@ -36,6 +46,12 @@ const remoteState = {
 	updateReady: undefined as boolean | undefined,
 	error: "",
 };
+
+// downloadUpdateForChannel records the downloaded version in module state (the
+// #1072 re-download guard) — reset it so tests stay independent.
+beforeEach(() => {
+	clearReadyUpdate();
+});
 
 describe("applyUpdate", () => {
 	let ready: boolean;
@@ -232,5 +248,141 @@ describe("updater single-flight lock", () => {
 		await applyPromise;
 
 		expect(mockUpdater.applyUpdate).toHaveBeenCalledOnce();
+	});
+});
+
+describe("ready-update guard (issue #1072)", () => {
+	let ready: boolean;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		ready = false;
+		mockUpdater.localInfo.channel.mockResolvedValue("stable");
+		mockUpdater.updateInfo.mockImplementation(() => ({ ...remoteState, updateReady: ready }));
+		mockUpdater.checkForUpdate.mockImplementation(async () => {
+			ready = false;
+			return { ...remoteState };
+		});
+		mockUpdater.downloadUpdate.mockImplementation(async () => {
+			ready = true;
+		});
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it("remembers the downloaded version so the same version is not fetched again", async () => {
+		await downloadUpdateForChannel("stable", vi.fn());
+
+		expect(isUpdateAlreadyReady("1.30.0")).toBe(true);
+	});
+
+	it("does not treat a newer release as already downloaded", async () => {
+		await downloadUpdateForChannel("stable", vi.fn());
+
+		expect(isUpdateAlreadyReady("1.31.0")).toBe(false);
+	});
+
+	it("forgets the version when the download fails, so the next check retries", async () => {
+		mockUpdater.downloadUpdate.mockImplementation(async () => {
+			// download failed — ready flag stays false
+		});
+		vi.useFakeTimers();
+
+		const promise = downloadUpdateForChannel("stable", vi.fn());
+		await vi.advanceTimersByTimeAsync(120_000);
+		const result = await promise;
+
+		expect(result.ok).toBe(false);
+		expect(isUpdateAlreadyReady("1.30.0")).toBe(false);
+	});
+
+	it("reminds about a downloaded update only once per reminder interval", () => {
+		markUpdateReady("1.30.0", 1_000);
+
+		expect(shouldRemindAboutReadyUpdate(1_000)).toBe(false);
+		expect(shouldRemindAboutReadyUpdate(1_000 + READY_REMINDER_INTERVAL_MS)).toBe(true);
+		// The reminder just fired — the next check must stay silent.
+		expect(shouldRemindAboutReadyUpdate(1_000 + READY_REMINDER_INTERVAL_MS + 1)).toBe(false);
+		expect(shouldRemindAboutReadyUpdate(1_000 + 2 * READY_REMINDER_INTERVAL_MS + 1)).toBe(true);
+	});
+
+	it("never reminds when nothing is downloaded", () => {
+		expect(shouldRemindAboutReadyUpdate(Date.now() + READY_REMINDER_INTERVAL_MS)).toBe(false);
+	});
+});
+
+describe("startAutoCheck", () => {
+	const STARTUP_DELAY_MS = 10_000;
+	const CHECK_INTERVAL_MS = 30 * 60 * 1000;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		clearReadyUpdate();
+		mockUpdater.localInfo.channel.mockResolvedValue("stable");
+		mockUpdater.localInfo.version.mockResolvedValue("1.29.0");
+		vi.spyOn(globalThis, "fetch").mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({ version: "1.30.0", hash: "bbbb2222bbbb2222" }),
+		} as unknown as Response);
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it("asks for a download when nothing is downloaded yet", async () => {
+		const onUpdate = vi.fn();
+		const onRemind = vi.fn();
+
+		startAutoCheck(async () => "stable", onUpdate, vi.fn(), onRemind);
+		await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS);
+
+		expect(onUpdate).toHaveBeenCalledWith("1.30.0", undefined);
+		expect(onRemind).not.toHaveBeenCalled();
+	});
+
+	it("skips the download for a version already waiting for restart", async () => {
+		const onUpdate = vi.fn();
+		const onRemind = vi.fn();
+		markUpdateReady("1.30.0");
+
+		startAutoCheck(async () => "stable", onUpdate, vi.fn(), onRemind);
+		await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS + CHECK_INTERVAL_MS);
+
+		expect(onUpdate).not.toHaveBeenCalled();
+	});
+
+	it("re-prompts the postponed update once the reminder interval elapses", async () => {
+		const onUpdate = vi.fn();
+		const onRemind = vi.fn();
+		markUpdateReady("1.30.0");
+
+		startAutoCheck(async () => "stable", onUpdate, vi.fn(), onRemind);
+		// First checks stay silent, then one crosses the reminder interval.
+		await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS + READY_REMINDER_INTERVAL_MS + CHECK_INTERVAL_MS);
+
+		expect(onUpdate).not.toHaveBeenCalled();
+		expect(onRemind).toHaveBeenCalledWith("1.30.0", undefined);
+	});
+
+	it("downloads a newer release even while an older one is ready", async () => {
+		const onUpdate = vi.fn();
+		markUpdateReady("1.30.0");
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({ version: "1.31.0", hash: "cccc3333cccc3333" }),
+		} as unknown as Response);
+
+		startAutoCheck(async () => "stable", onUpdate, vi.fn(), vi.fn());
+		await vi.advanceTimersByTimeAsync(STARTUP_DELAY_MS);
+
+		expect(onUpdate).toHaveBeenCalledWith("1.31.0", undefined);
 	});
 });

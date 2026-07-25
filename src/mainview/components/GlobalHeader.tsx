@@ -51,6 +51,8 @@ interface GlobalHeaderProps {
 	canGoBack: boolean;
 	canGoForward: boolean;
 	updateVersion?: string | null;
+	/** Counter bumped on every update announcement, including repeats of the same version. */
+	updateAnnouncement?: number;
 	updateChangelog?: UpdateChangelog | null;
 	updateDownloadStatus?: string | null;
 	remoteAccessActive: boolean;
@@ -67,7 +69,7 @@ interface BreadcrumbSegment {
 /** Cache TTL for project task counts (30 seconds) */
 const COUNTS_CACHE_TTL = 30_000;
 
-function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
+function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, canGoBack, canGoForward, updateVersion, updateAnnouncement, updateChangelog, updateDownloadStatus, remoteAccessActive }: GlobalHeaderProps) {
 	const t = useT();
 	const compact = useCompact();
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -102,7 +104,8 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 		}
 	};
 
-	// Show toast with 5min countdown when updateVersion first appears
+	// Show toast with 5min countdown on every update announcement — the first one
+	// and each periodic reminder for a postponed, already-downloaded version.
 	useEffect(() => {
 		if (updateVersion) {
 			setShowToast(true);
@@ -117,7 +120,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 				if (countdownRef.current) clearInterval(countdownRef.current);
 			};
 		}
-	}, [updateVersion]);
+	}, [updateVersion, updateAnnouncement]);
 
 	// Auto-restart when countdown reaches 0
 	useEffect(() => {

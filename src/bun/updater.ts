@@ -7,6 +7,8 @@ import type { UpdateChangelog } from "../shared/types";
 const log = createLogger("updater");
 
 const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+/** How often a already-downloaded update re-nags the user (issue #1072). */
+export const READY_REMINDER_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const BASE_URL = "https://h0x91b-releases.s3.eu-west-1.amazonaws.com/dev-3.0";
 
 // Electrobun's Updater keeps its state (updateReady flag, downloaded tar
@@ -25,6 +27,43 @@ function withUpdaterLock<T>(fn: () => Promise<T>): Promise<T> {
 		() => undefined,
 	);
 	return run;
+}
+
+/**
+ * The version already downloaded and waiting for a restart. Electrobun's own
+ * `updateReady` flag cannot be trusted for this (any later checkForUpdate wipes
+ * it — decision 106), so we remember it ourselves: it gates re-downloads and
+ * paces the "still waiting for restart" reminder.
+ */
+let readyUpdate: { version: string; remindedAt: number } | null = null;
+
+export function markUpdateReady(version: string, now: number = Date.now()): void {
+	readyUpdate = { version, remindedAt: now };
+}
+
+export function clearReadyUpdate(): void {
+	readyUpdate = null;
+}
+
+export function getReadyUpdateVersion(): string | null {
+	return readyUpdate?.version ?? null;
+}
+
+/** True when `version` is already downloaded — a re-download would be wasted work. */
+export function isUpdateAlreadyReady(version: string): boolean {
+	return !!readyUpdate && !isNewerVersion(readyUpdate.version, version);
+}
+
+/**
+ * Nag gate for an update that sits downloaded while the user keeps working.
+ * Returns true at most once per READY_REMINDER_INTERVAL_MS so people don't
+ * linger on an old version, without a toast on every 30-minute check.
+ */
+export function shouldRemindAboutReadyUpdate(now: number = Date.now()): boolean {
+	if (!readyUpdate) return false;
+	if (now - readyUpdate.remindedAt < READY_REMINDER_INTERVAL_MS) return false;
+	readyUpdate.remindedAt = now;
+	return true;
 }
 
 interface UpdateJson {
@@ -115,7 +154,18 @@ export function downloadUpdateForChannel(
 	channel: string,
 	onProgress?: (status: string, progress?: number) => void,
 ): Promise<{ ok: boolean; error?: string }> {
-	return withUpdaterLock(() => doDownloadUpdateForChannel(channel, onProgress));
+	return withUpdaterLock(async () => {
+		const result = await doDownloadUpdateForChannel(channel, onProgress);
+		// Remember (or forget) the waiting-for-restart version here, so every
+		// caller — auto-check, menu, Settings RPC — feeds the same guard.
+		if (result.ok) {
+			const version = Updater.updateInfo?.()?.version;
+			if (version) markUpdateReady(version);
+		} else {
+			clearReadyUpdate();
+		}
+		return result;
+	});
 }
 
 async function doDownloadUpdateForChannel(
@@ -298,6 +348,7 @@ export function startAutoCheck(
 	getChannel: () => Promise<string>,
 	onUpdate: (version: string, changelog?: UpdateChangelog) => void,
 	onProgress?: (status: string, progress?: number) => void,
+	onRemind?: (version: string, changelog?: UpdateChangelog) => void,
 ): void {
 	const doCheck = async () => {
 		try {
@@ -312,12 +363,27 @@ export function startAutoCheck(
 			const channel = await getChannel();
 			const result = await checkForUpdateWithChannel(channel);
 
-			if (result.updateAvailable) {
-				log.info("Auto-check found update", { version: result.version });
-				onUpdate(result.version, result.changelog);
-			} else {
+			if (!result.updateAvailable) {
 				onProgress?.("idle");
+				return;
 			}
+
+			// Already downloaded and waiting for a restart: never re-download it
+			// (issue #1072), but keep reminding the user on a slower cadence so
+			// nobody sits on an old version for days.
+			if (isUpdateAlreadyReady(result.version)) {
+				onProgress?.("idle");
+				if (shouldRemindAboutReadyUpdate()) {
+					log.info("Reminding about downloaded update", { version: getReadyUpdateVersion() });
+					onRemind?.(result.version, result.changelog);
+				} else {
+					log.info("Update already downloaded, skipping re-download", { version: result.version });
+				}
+				return;
+			}
+
+			log.info("Auto-check found update", { version: result.version });
+			onUpdate(result.version, result.changelog);
 		} catch (err) {
 			log.error("Auto-check failed", { error: String(err) });
 			onProgress?.("idle");

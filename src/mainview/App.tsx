@@ -284,6 +284,10 @@ function App() {
 	const [updateVersion, setUpdateVersion] = useState<string | null>(null);
 	// "What's new" summary for the ready update (features-first), shown in the header popover
 	const [updateChangelog, setUpdateChangelog] = useState<UpdateChangelog | null>(null);
+	// Bumped on every update announcement so a repeat one (same version, user
+	// postponed earlier) re-opens the restart prompt instead of being swallowed
+	// by unchanged `updateVersion` state.
+	const [updateAnnouncement, setUpdateAnnouncement] = useState(0);
 	// Download progress: null = idle, "checking" | "downloading" | "error"
 	const [updateDownloadStatus, setUpdateDownloadStatus] = useState<string | null>(null);
 	const updateStatusShownAtRef = useRef<number>(0);
@@ -1549,6 +1553,7 @@ function App() {
 			setUpdateVersion(version);
 			setUpdateChangelog(changelog ?? null);
 			setUpdateDownloadStatus(null); // clear download indicator once ready
+			setUpdateAnnouncement((n) => n + 1);
 		}
 		window.addEventListener("rpc:updateAvailable", onUpdateAvailable);
 		return () => window.removeEventListener("rpc:updateAvailable", onUpdateAvailable);
@@ -2054,6 +2059,7 @@ function App() {
 						canGoBack={state.historyIndex > 0}
 						canGoForward={state.historyIndex < state.routeHistory.length - 1}
 						updateVersion={updateVersion}
+						updateAnnouncement={updateAnnouncement}
 						updateChangelog={updateChangelog}
 						updateDownloadStatus={updateDownloadStatus}
 						remoteAccessActive={remoteAccessActive}

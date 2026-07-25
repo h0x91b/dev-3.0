@@ -5,7 +5,13 @@ import Electrobun, {
 	Utils,
 } from "electrobun/bun";
 import { handlers, setPushMessage, getPushMessage, handleBellAutoStatus, isTaskInProgress, startMergeDetectionPoller, startPRDetectionPoller, handlePaneExited, consumeRecentWatchedNotification, setAppForeground, setFocusMode, pushTerminalBell } from "./rpc-handlers";
-import { startAutoCheck, checkForUpdateWithChannel, getLocalVersion, downloadUpdateForChannel } from "./updater";
+import {
+	startAutoCheck,
+	checkForUpdateWithChannel,
+	getLocalVersion,
+	downloadUpdateForChannel,
+	isUpdateAlreadyReady,
+} from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
 import { installSignalQuitConfirmation, isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { initNativeNotifications } from "./native-notifications";
@@ -731,6 +737,17 @@ Electrobun.events.on("application-menu-clicked", async (e) => {
 				sendUpdateProgress("idle");
 				sendToFocusedWindow("updateCheckOutcome", { status: "error", detail: result.error });
 			} else if (result.updateAvailable) {
+				// Already downloaded — answer instantly with the ready prompt instead
+				// of downloading the same tar again (issue #1072).
+				if (isUpdateAlreadyReady(result.version)) {
+					sendUpdateProgress("idle");
+					broadcastToAllWindows("updateAvailable", {
+						version: result.version,
+						changelog: result.changelog,
+						reminder: true,
+					});
+					return;
+				}
 				sendUpdateProgress("downloading", 0);
 				const dlResult = await downloadUpdateForChannel(settings.updateChannel, sendUpdateProgress);
 				if (dlResult.ok) {
@@ -805,6 +822,10 @@ startAutoCheck(
 		}
 	},
 	sendUpdateProgress,
+	(version, changelog) => {
+		log.info("Re-prompting for the downloaded update", { version });
+		broadcastToAllWindows("updateAvailable", { version, changelog, reminder: true });
+	},
 );
 
 log.info("=== dev-3.0 ready ===");

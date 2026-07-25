@@ -128,6 +128,7 @@ function renderHeader(
 	tasks: Task[] = [],
 	extra?: {
 		updateVersion?: string | null;
+		updateAnnouncement?: number;
 		updateChangelog?: UpdateChangelog | null;
 		updateDownloadStatus?: string | null;
 		remoteAccessActive?: boolean;
@@ -137,7 +138,17 @@ function renderHeader(
 		canGoForward?: boolean;
 	},
 ) {
-	return render(
+	return render(headerElement(route, projects, navigate, tasks, extra));
+}
+
+function headerElement(
+	route: Route,
+	projects: Project[] = [project1, project2],
+	navigate?: (route: Route) => void,
+	tasks: Task[] = [],
+	extra?: Parameters<typeof renderHeader>[4],
+) {
+	return (
 		<I18nProvider>
 			<GlobalHeader
 				route={route}
@@ -149,11 +160,12 @@ function renderHeader(
 				canGoBack={extra?.canGoBack ?? false}
 				canGoForward={extra?.canGoForward ?? false}
 				updateVersion={extra?.updateVersion}
+				updateAnnouncement={extra?.updateAnnouncement}
 				updateChangelog={extra?.updateChangelog}
 				updateDownloadStatus={extra?.updateDownloadStatus}
 				remoteAccessActive={extra?.remoteAccessActive ?? false}
 			/>
-		</I18nProvider>,
+		</I18nProvider>
 	);
 }
 
@@ -637,6 +649,26 @@ describe("GlobalHeader — update countdown", () => {
 
 		// Toast should be dismissed
 		expect(screen.queryByText(/Restart to Update \(\d+s\)/)).not.toBeInTheDocument();
+	});
+
+	it("re-opens the postponed toast when the same version is announced again (issue #1072)", () => {
+		const view = render(
+			headerElement({ screen: "dashboard" }, [project1], vi.fn(), [], {
+				updateVersion: "1.2.3",
+				updateAnnouncement: 1,
+			}),
+		);
+		act(() => { fireEvent.click(screen.getByText("Postpone")); });
+		expect(screen.queryByText(/Restart to Update \(\d+s\)/)).not.toBeInTheDocument();
+
+		view.rerender(
+			headerElement({ screen: "dashboard" }, [project1], vi.fn(), [], {
+				updateVersion: "1.2.3",
+				updateAnnouncement: 2,
+			}),
+		);
+
+		expect(screen.getByText(/Restart to Update \(300s\)/)).toBeInTheDocument();
 	});
 
 	it("auto-restarts when countdown reaches 0", async () => {
