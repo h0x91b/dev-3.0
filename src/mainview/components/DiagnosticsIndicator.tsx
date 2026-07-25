@@ -12,6 +12,9 @@ import { DIAGNOSTICS_OPEN_EVENT } from "../diagnostics";
  * of the Electrobun desktop shell, which already has devtools + "Open logs". On
  * a phone browser — where there is no console — this is the one visible signal
  * that something went wrong and a way to see/copy it.
+ *
+ * Positioning belongs to {@link StatusDock}, which stacks this pill with the
+ * connection pill in the bottom-left corner.
  */
 export default function DiagnosticsIndicator() {
 	const t = useT();
@@ -25,11 +28,7 @@ export default function DiagnosticsIndicator() {
 			onClick={() => window.dispatchEvent(new CustomEvent(DIAGNOSTICS_OPEN_EVENT))}
 			aria-label={t("diagnostics.indicatorLabel")}
 			data-testid="diagnostics-indicator"
-			className="fixed z-[55] flex items-center gap-2 pl-2.5 pr-3 py-2 rounded-full bg-danger/15 border border-danger/40 text-danger shadow-lg backdrop-blur-sm hover:bg-danger/25 transition-colors"
-			style={{
-				bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
-				left: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
-			}}
+			className="pointer-events-auto flex items-center gap-2 pl-2.5 pr-3 py-2 rounded-full bg-danger/15 border border-danger/40 text-danger shadow-lg backdrop-blur-sm hover:bg-danger/25 transition-colors"
 		>
 			<span className="text-lg leading-none" style={{ fontFamily: "'JetBrainsMono Nerd Font Mono'" }}>
 				{"\uf188"}

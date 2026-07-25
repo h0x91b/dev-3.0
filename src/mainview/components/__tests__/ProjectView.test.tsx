@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Project, Task } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
+import { RPC_STATUS_EVENT } from "../../diagnostics";
 import ProjectView from "../ProjectView";
 
 // Mutable so a test can flip to remote/browser mode; a getter proves the layout
@@ -13,6 +14,8 @@ vi.mock("../../rpc", () => ({
 	get isElectrobun() {
 		return rpcMock.isElectrobun;
 	},
+	getRpcConnectionState: () => "connected",
+	reconnectRpc: vi.fn(),
 }));
 
 // Heavy children — stub so the test focuses on ProjectView's own layout logic.
@@ -140,6 +143,7 @@ describe("ProjectView task-view layout", () => {
 	it("opens unresolved comments from Kanban in the configured split task route", async () => {
 		const navigate = vi.fn();
 		renderView({ navigate });
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
 
 		await userEvent.click(screen.getByTestId("open-unresolved-from-board"));
 
@@ -155,6 +159,7 @@ describe("ProjectView task-view layout", () => {
 		localStorage.setItem("dev3-task-open-mode", "fullscreen");
 		const navigate = vi.fn();
 		renderView({ navigate });
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
 
 		await userEvent.click(screen.getByTestId("open-unresolved-from-board"));
 
@@ -171,6 +176,65 @@ describe("ProjectView task-view layout", () => {
 		renderView({ activeTaskId: "t1", tasks: [task], openUnresolvedComments: true });
 
 		await waitFor(() => expect(screen.getByTestId("workspace-unresolved-diff")).toBeInTheDocument());
+	});
+});
+
+describe("ProjectView board load states", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		rpcMock.isElectrobun = false;
+	});
+
+	it("shows a skeleton instead of an empty board while the first fetch is in flight", async () => {
+		const { api } = await import("../../rpc");
+		vi.mocked(api.request.getTasks).mockReturnValueOnce(new Promise<Task[]>(() => {}));
+
+		renderView({});
+
+		await waitFor(() => expect(screen.getByTestId("kanban-skeleton")).toBeInTheDocument());
+		expect(screen.queryByTestId("kanban")).not.toBeInTheDocument();
+	});
+
+	it("keeps showing cached tasks while a refetch is in flight", async () => {
+		const { api } = await import("../../rpc");
+		vi.mocked(api.request.getTasks).mockReturnValueOnce(new Promise<Task[]>(() => {}));
+		const task = { id: "t1", projectId: "p1", title: "T", status: "todo" } as unknown as Task;
+
+		renderView({ tasks: [task] });
+
+		expect(screen.getByTestId("kanban")).toBeInTheDocument();
+		await new Promise((resolve) => setTimeout(resolve, 250));
+		expect(screen.queryByTestId("kanban-skeleton")).not.toBeInTheDocument();
+	});
+
+	it("surfaces a retry panel when the fetch fails, and refetches on retry", async () => {
+		const { api } = await import("../../rpc");
+		vi.mocked(api.request.getTasks)
+			.mockRejectedValueOnce(new Error("RPC connection closed"))
+			.mockResolvedValueOnce([]);
+
+		renderView({});
+
+		await waitFor(() => expect(screen.getByTestId("board-load-failed")).toBeInTheDocument());
+		await userEvent.click(screen.getByText("Retry"));
+
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(screen.getByTestId("kanban")).toBeInTheDocument());
+	});
+
+	it("refetches tasks by itself once the transport reconnects", async () => {
+		const { api } = await import("../../rpc");
+		renderView({});
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledTimes(1));
+
+		act(() => {
+			window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "reconnecting" } }));
+		});
+		act(() => {
+			window.dispatchEvent(new CustomEvent(RPC_STATUS_EVENT, { detail: { state: "connected" } }));
+		});
+
+		await waitFor(() => expect(api.request.getTasks).toHaveBeenCalledTimes(2));
 	});
 });
 

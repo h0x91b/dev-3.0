@@ -44,6 +44,10 @@ const diagnostics = {
 	"diagnostics.indicatorLabel": "Ver diagnóstico",
 	"diagnostics.issues_one": "{count} problema",
 	"diagnostics.issues_other": "{count} problemas",
+	// Floating connection pill (remote only, shown while the transport is unhealthy)
+	"conn.pill.retry": "Toca para reintentar",
+	"conn.pill.retryAria": "Conexión perdida — reintentar ahora",
+	"conn.pill.restored": "Conexión restablecida",
 } as const;
 
 export default diagnostics;

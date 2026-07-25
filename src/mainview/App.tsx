@@ -57,7 +57,7 @@ import HelpOverlay from "./components/HelpOverlay";
 import { HELP_LINK_ACTION_EVENT, type HelpLinkAction } from "./help";
 import BootstrapScreen, { type BootPhase } from "./components/BootstrapScreen";
 import DiagnosticsPanel from "./components/DiagnosticsPanel";
-import DiagnosticsIndicator from "./components/DiagnosticsIndicator";
+import StatusDock from "./components/StatusDock";
 import TerminalImmersiveChrome from "./components/TerminalImmersiveChrome";
 import { useRpcStatus } from "./hooks/useDiagnostics";
 import { reconnectRpc } from "./rpc";
@@ -2491,10 +2491,12 @@ function App() {
 					onClose={() => setRosettaWarning(null)}
 				/>
 			)}
-			<DiagnosticsIndicator />
-			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 			</>
 			)}
+			{/* Transport health is not immersive chrome either — a dropped socket must
+			    stay visible (and retryable) while the terminal is fullscreen. */}
+			<StatusDock />
+			{showDiagnostics && <DiagnosticsPanel onClose={() => setShowDiagnostics(false)} />}
 			{/* Toasts are transient feedback, not immersive chrome; notification toasts
 			    must remain clickable so their handler can exit fullscreen first. */}
 			<ToastHost onTaskOverflow={handleToastOverflow} />

@@ -46,6 +46,10 @@ const diagnostics = {
 	"diagnostics.issues_few": "{count} проблемы",
 	"diagnostics.issues_many": "{count} проблем",
 	"diagnostics.issues_other": "{count} проблем",
+	// Floating connection pill (remote only, shown while the transport is unhealthy)
+	"conn.pill.retry": "Нажмите, чтобы повторить",
+	"conn.pill.retryAria": "Соединение потеряно — переподключиться",
+	"conn.pill.restored": "Связь восстановлена",
 } as const;
 
 export default diagnostics;

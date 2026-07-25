@@ -4,6 +4,9 @@ import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import type { NavigationGuard } from "../navigation-guard";
 import { api } from "../rpc";
 import KanbanBoard from "./KanbanBoard";
+import KanbanBoardSkeleton from "./KanbanBoardSkeleton";
+import BoardLoadFailed from "./BoardLoadFailed";
+import { useRpcStatus } from "../hooks/useDiagnostics";
 import TaskInfoPanel from "./TaskInfoPanel";
 import SplitLayout from "./SplitLayout";
 import ActiveTasksSidebar from "./ActiveTasksSidebar";
@@ -64,6 +67,12 @@ function ProjectView({
 	const isNarrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const taskUpdateEpochRef = useRef(0);
 	const unresolvedRouteKeyRef = useRef<string | null>(null);
+	// Board fetch state — drives the skeleton / retry panel instead of letting a
+	// failed or slow load render as an empty board (remote/mobile).
+	const [tasksStatus, setTasksStatus] = useState<"loading" | "ready" | "error">("loading");
+	const [tasksReloadNonce, setTasksReloadNonce] = useState(0);
+	const rpcState = useRpcStatus();
+	const transportWasDownRef = useRef(false);
 
 	const openUnresolvedFromBoard = useCallback((task: Task) => {
 		if (getTaskOpenMode() === "fullscreen") {
@@ -88,18 +97,35 @@ function ProjectView({
 	useEffect(() => {
 		const taskUpdateEpoch = taskUpdateEpochRef.current;
 		let cancelled = false;
+		setTasksStatus("loading");
 		(async () => {
 			try {
 				const tasks = await api.request.getTasks({ projectId });
-				if (!cancelled && taskUpdateEpoch === taskUpdateEpochRef.current) {
+				if (cancelled) return;
+				if (taskUpdateEpoch === taskUpdateEpochRef.current) {
 					dispatch({ type: "setTasks", projectId, tasks });
 				}
+				setTasksStatus("ready");
 			} catch (err) {
 				console.error("Failed to load tasks:", err);
+				if (!cancelled) setTasksStatus("error");
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [projectId, dispatch]);
+	}, [projectId, dispatch, tasksReloadNonce]);
+
+	// A remote socket that dropped mid-session leaves the board frozen on a stale
+	// snapshot (or on the error state above). Refetch as soon as the transport is
+	// healthy again so recovery needs no user action.
+	useEffect(() => {
+		if (rpcState !== "connected") {
+			transportWasDownRef.current = true;
+			return;
+		}
+		if (!transportWasDownRef.current) return;
+		transportWasDownRef.current = false;
+		setTasksReloadNonce((n) => n + 1);
+	}, [rpcState]);
 
 	useEffect(() => {
 		api.request.getAgents().then(setAgents).catch(() => {});
@@ -242,6 +268,20 @@ function ProjectView({
 					}
 					terminalContent={terminalPane}
 				/>
+			</div>
+		);
+	}
+
+	// Cached tasks always win: a background refetch (or a reconnect) must not blank
+	// a board the user is already reading.
+	if (tasks.length === 0 && tasksStatus !== "ready") {
+		return (
+			<div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col">
+				{tasksStatus === "loading" ? (
+					<KanbanBoardSkeleton />
+				) : (
+					<BoardLoadFailed onRetry={() => setTasksReloadNonce((n) => n + 1)} />
+				)}
 			</div>
 		);
 	}

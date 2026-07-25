@@ -284,6 +284,12 @@ const kanban = {
 	"kanban.carouselPrev": "Columna anterior",
 	"kanban.carouselNext": "Columna siguiente",
 	"kanban.carouselGoTo": "Ir a {label}",
+	// Board load states
+	"kanban.loadingTasks": "Cargando tareas…",
+	"kanban.loadFailed": "No se pudo cargar el tablero",
+	"kanban.loadFailedDesc": "No se pudieron cargar las tareas del proyecto. Inténtalo de nuevo.",
+	"kanban.loadFailedOffline": "dev-3.0 no puede alcanzar tu ordenador ahora mismo. El tablero se recargará solo cuando vuelva la conexión.",
+	"kanban.loadRetry": "Reintentar",
 };
 
 export default kanban;

@@ -284,6 +284,12 @@ const kanban = {
 	"kanban.carouselPrev": "Previous column",
 	"kanban.carouselNext": "Next column",
 	"kanban.carouselGoTo": "Go to {label}",
+	// Board load states
+	"kanban.loadingTasks": "Loading tasks…",
+	"kanban.loadFailed": "Couldn't load the board",
+	"kanban.loadFailedDesc": "Loading this project's tasks failed. Try again.",
+	"kanban.loadFailedOffline": "dev-3.0 can't reach your computer right now. The board reloads itself once the connection is back.",
+	"kanban.loadRetry": "Retry",
 } as const;
 
 export default kanban;

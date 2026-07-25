@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-25 — Transport health is a docked pill + per-screen fetch states, not a banner
+
+- **Rule:** While the remote transport is unhealthy, a conditional pill in the bottom-left `StatusDock` names the state and *is* the retry, then confirms recovery for ~2.5s; every transport-fed screen owes a delayed skeleton, a retry panel, and a self-heal refetch on reconnect (cached data always wins).
+- **Why:** Post-boot the app read as frozen — `BootstrapScreen` only covers launch, so a dropped socket left a stale board and silently queued actions for the 120s RPC timeout. A header dot/banner was rejected (permanent chrome + layout shift on phones), a toast too (transient signal for a persisting condition). Bible §5.5 + §10.
+- **Status:** Observed. Evidence: `StatusDock.tsx`, `ConnectionStatusPill.tsx`, `ProjectView.tsx`, `KanbanBoardSkeleton.tsx`, `BoardLoadFailed.tsx`.
+
 ## 2026-07-24 — Inspector bars adapt to the PANEL's width, not the viewport's
 
 - **Rule:** A toolbar that shares the viewport with another surface gates its label/fold behaviour on its own container width (`useContainerWidth`, ResizeObserver), not on `useCompact`/`useNarrowViewport`; and every bar is boxed (`min-w-0 overflow-hidden`) so it can never paint over a neighbour or the pinned chrome. Inspector tiers: `tight` <1280 (label strip → `+k`, branch clamp, tmux/Runtime icon-only), `veryTight` <900 (drop label strip + include-tests).
