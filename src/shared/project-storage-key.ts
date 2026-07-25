@@ -77,3 +77,19 @@ export function toPosixSeparators(
 ): string {
 	return platform === "win32" ? value.replaceAll("\\", "/") : value;
 }
+
+/**
+ * Last component of a filesystem path.
+ *
+ * Platform-gated: a backslash is a legal character in a POSIX file name, so only
+ * Windows may treat it as a separator. Never call this from the renderer — in
+ * remote mode the browser and the backend can be different operating systems, so
+ * only the process that owns the filesystem can answer correctly.
+ */
+export function pathBasename(value: string, platform: NodeJS.Platform = process.platform): string {
+	const separators = platform === "win32" ? /[\\/]/ : /\//;
+	const trailing = platform === "win32" ? /[\\/]+$/ : /\/+$/;
+	const trimmed = value.replace(trailing, "");
+	const parts = trimmed.split(separators);
+	return parts[parts.length - 1] || trimmed;
+}

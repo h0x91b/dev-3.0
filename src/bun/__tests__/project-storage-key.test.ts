@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { posixProjectSlug, projectStorageKey, toPosixSeparators } from "../../shared/project-storage-key";
+import { pathBasename, posixProjectSlug, projectStorageKey, toPosixSeparators } from "../../shared/project-storage-key";
 import { projectSlug as searchProjectSlug } from "../../shared/conversation-search-core";
 import { listFilesystemRoots } from "../../shared/filesystem-roots";
 
@@ -91,5 +91,26 @@ describe("listFilesystemRoots", () => {
 	it("stays absent on POSIX, where the picker already offers /", () => {
 		expect(listFilesystemRoots("darwin", () => true)).toBeUndefined();
 		expect(listFilesystemRoots("linux", () => true)).toBeUndefined();
+	});
+});
+
+describe("pathBasename", () => {
+	it("names a project from a Windows path", () => {
+		expect(pathBasename("D:\\src\\dev-3.0", "win32")).toBe("dev-3.0");
+		expect(pathBasename("D:/src/dev-3.0", "win32")).toBe("dev-3.0");
+		expect(pathBasename("D:\\src\\dev-3.0\\", "win32")).toBe("dev-3.0");
+	});
+
+	it("names a project from a POSIX path", () => {
+		expect(pathBasename("/Users/a/dev-3.0", "darwin")).toBe("dev-3.0");
+		expect(pathBasename("/Users/a/repo/", "darwin")).toBe("repo");
+	});
+
+	it("keeps a backslash inside a POSIX file name", () => {
+		expect(pathBasename("/Users/a/we\\ird", "darwin")).toBe("we\\ird");
+	});
+
+	it("falls back to the input when there is no separator", () => {
+		expect(pathBasename("repo", "win32")).toBe("repo");
 	});
 });

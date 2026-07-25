@@ -15,7 +15,7 @@ import type { NotificationClickTarget } from "../native-notifications";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
-import { projectStorageKey } from "../../shared/project-storage-key";
+import { pathBasename, projectStorageKey } from "../../shared/project-storage-key";
 import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
@@ -273,7 +273,7 @@ async function listAgentSkills(params?: { projectPath?: string | null }): Promis
 	}
 }
 
-async function addProjectImpl(params: { path: string; name: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+async function addProjectImpl(params: { path: string; name?: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
 	log.info("→ addProject", params);
 	try {
 		// Protect the synthetic virtual-project namespace: a real git repo must
@@ -287,7 +287,10 @@ async function addProjectImpl(params: { path: string; name: string }): Promise<{
 			log.warn("Not a git repo", { path: params.path });
 			return { ok: false, error: "Selected folder is not a git repository" };
 		}
-		const project = await data.addProject(params.path, params.name);
+		// A renderer cannot name a project from its path: in remote mode the browser
+		// may be macOS while the repo lives on a Windows drive.
+		const name = params.name?.trim() || pathBasename(params.path);
+		const project = await data.addProject(params.path, name);
 		try {
 			const defaultBranch = await git.getDefaultBranch(params.path);
 			await data.updateProject(project.id, { defaultBaseBranch: defaultBranch });
@@ -431,7 +434,7 @@ function isEffectivelyEmpty(path: string): boolean {
  * - Non-empty and not a git repo → refuse (we don't want to silently add
  *   files into someone's unrelated folder).
  */
-async function initAndAddProject(params: { path: string; name: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
+async function initAndAddProject(params: { path: string; name?: string }): Promise<{ ok: true; project: Project } | { ok: false; error: string }> {
 	log.info("→ initAndAddProject", params);
 	try {
 		if (!isAbsolute(params.path) || !existsSync(params.path)) {

@@ -2617,7 +2617,9 @@ export type AppRPCSchema = {
 				response: Project;
 			};
 			addProject: {
-				params: { path: string; name: string };
+				/** `name` is optional: the backend derives it from the path, which is the
+				 *  only side that knows how to spell a path on its own platform. */
+				params: { path: string; name?: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
 			cloneAndAddProject: {
@@ -2629,7 +2631,7 @@ export type AppRPCSchema = {
 				response: { ok: true; path: string } | { ok: false; error: string };
 			};
 			initAndAddProject: {
-				params: { path: string; name: string };
+				params: { path: string; name?: string };
 				response: { ok: true; project: Project } | { ok: false; error: string };
 			};
 			/** Create a virtual "Operations" board (no git repo). Stored in virtual-projects.json. */

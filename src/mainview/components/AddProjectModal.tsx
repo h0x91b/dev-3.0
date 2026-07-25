@@ -75,9 +75,10 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 			const errors: string[] = [];
 			let anySucceeded = false;
 			for (const folder of folders) {
-				const name = folder.split("/").pop() || folder;
+				// The backend names the project — see the addProject RPC comment.
+				const name = folder;
 				try {
-					const result = await api.request.addProject({ path: folder, name });
+					const result = await api.request.addProject({ path: folder });
 					if (result.ok) {
 						dispatch({ type: "addProject", project: result.project });
 						trackEvent("project_added", { source: "local" });
@@ -121,8 +122,7 @@ function AddProjectModal({ dispatch, onClose }: AddProjectModalProps) {
 		if (!folder) return;
 		setInitializing(true);
 		try {
-			const name = folder.split("/").pop() || folder;
-			const result = await api.request.initAndAddProject({ path: folder, name });
+			const result = await api.request.initAndAddProject({ path: folder });
 			if (result.ok) {
 				dispatch({ type: "addProject", project: result.project });
 				trackEvent("project_added", { source: "init" });

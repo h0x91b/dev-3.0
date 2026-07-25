@@ -91,7 +91,9 @@ describe("AddProjectModal", () => {
 		await act(async () => { await user.click(screen.getByText("Pick folder...")); });
 
 		expect(mockedOpenFolderPicker).toHaveBeenCalledWith(expect.objectContaining({ allowCreateFolder: true }));
-		expect(mockedApi.request.initAndAddProject).toHaveBeenCalledWith({ path: "/tmp/fresh", name: "fresh" });
+		// No `name`: the backend derives it, because only it knows how paths are
+		// spelled on the machine that owns the repo (a Windows drive over remote).
+		expect(mockedApi.request.initAndAddProject).toHaveBeenCalledWith({ path: "/tmp/fresh" });
 		expect(dispatch).toHaveBeenCalledWith({ type: "addProject", project: mockProject });
 		expect(onClose).toHaveBeenCalled();
 	});
@@ -138,10 +140,7 @@ describe("AddProjectModal", () => {
 		await user.click(screen.getByText("Browse..."));
 
 		expect(mockedOpenFolderPickerMulti).toHaveBeenCalled();
-		expect(mockedApi.request.addProject).toHaveBeenCalledWith({
-			path: "/new/path",
-			name: "path",
-		});
+		expect(mockedApi.request.addProject).toHaveBeenCalledWith({ path: "/new/path" });
 		expect(dispatch).toHaveBeenCalledWith({
 			type: "addProject",
 			project: expect.objectContaining({ path: "/new/path" }),
