@@ -1,10 +1,11 @@
-import { mkdirSync, realpathSync, symlinkSync, unlinkSync } from "node:fs";
+import { copyFileSync, mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { WINDOWS_DEV3_CLI_BASENAME } from "../shared/dev3-cli-path";
 import { createLogger } from "./logger";
 
 const log = createLogger("cli-self-install");
 
-export type Dev3CliSymlinkResult = "unchanged" | "linked" | "skipped";
+export type Dev3CliSymlinkResult = "unchanged" | "linked" | "copied" | "shimmed" | "skipped";
 
 /**
  * Ensure `<dev3Home>/bin/dev3` is a working symlink to the running binary.
@@ -21,10 +22,19 @@ export type Dev3CliSymlinkResult = "unchanged" | "linked" | "skipped";
  * the source is never the `<bin>/dev3` symlink itself, so we can't create a
  * self-referential link (the ELOOP class of bug, decision 105). Best-effort:
  * every failure is logged and swallowed so it never blocks server startup.
+ *
+ * On Windows the destination is `dev3.exe`, where a symlink needs elevation or
+ * Developer Mode — so the link attempt degrades to a copy, and then to a `.cmd`
+ * shim beside it (typical when the copy is refused because the exe is running).
  */
-export function ensureDev3CliSymlink(dev3Home: string, execPath: string): Dev3CliSymlinkResult {
+export function ensureDev3CliSymlink(
+	dev3Home: string,
+	execPath: string,
+	platform: NodeJS.Platform = process.platform,
+): Dev3CliSymlinkResult {
+	const windows = platform === "win32";
 	const binDir = join(dev3Home, "bin");
-	const dest = join(binDir, "dev3");
+	const dest = join(binDir, windows ? WINDOWS_DEV3_CLI_BASENAME : "dev3");
 
 	let source: string;
 	try {
@@ -47,11 +57,35 @@ export function ensureDev3CliSymlink(dev3Home: string, execPath: string): Dev3Cl
 	try {
 		mkdirSync(binDir, { recursive: true });
 		try { unlinkSync(dest); } catch { /* nothing to replace */ }
-		symlinkSync(source, dest);
+		if (windows) symlinkSync(source, dest, "file");
+		else symlinkSync(source, dest);
 		log.info("dev3 CLI symlink ensured", { from: source, to: dest });
 		return "linked";
 	} catch (err) {
-		log.warn("Failed to ensure dev3 CLI symlink (non-fatal)", { error: String(err) });
+		if (!windows) {
+			log.warn("Failed to ensure dev3 CLI symlink (non-fatal)", { error: String(err) });
+			return "skipped";
+		}
+		log.info("Windows symlink unavailable (needs elevation or Developer Mode) — falling back", {
+			error: String(err),
+		});
+	}
+
+	try {
+		copyFileSync(source, dest);
+		log.info("dev3 CLI copied", { from: source, to: dest });
+		return "copied";
+	} catch (err) {
+		log.info("Could not copy the dev3 CLI — writing a .cmd shim instead", { error: String(err) });
+	}
+
+	const shim = join(binDir, "dev3.cmd");
+	try {
+		writeFileSync(shim, `@echo off\r\n"${source}" %*\r\n`, "utf-8");
+		log.info("dev3 CLI shim written", { shim, target: source });
+		return "shimmed";
+	} catch (err) {
+		log.warn("Failed to install the dev3 CLI on this machine (non-fatal)", { error: String(err) });
 		return "skipped";
 	}
 }

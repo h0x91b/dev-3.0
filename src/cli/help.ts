@@ -97,6 +97,8 @@ const COMMANDS: CommandHelp[] = [
 					"--status <status>        Target status or custom column id (required).",
 					"--if-status <status>     Only move if the current status matches.",
 					"--if-status-not <s>      Only move if the current status differs.",
+					"--tolerate-app-offline   Exit 0 (with a stderr warning) when the app is not",
+					"                         running, instead of exit 2. For generated hooks.",
 					"Built-in: todo, in-progress, user-questions, review-by-ai, review-by-user.",
 					'"completed" asks the user for approval; "cancelled" is forbidden via CLI.',
 				],

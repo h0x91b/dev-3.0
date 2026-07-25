@@ -17,7 +17,8 @@ import { installSignalQuitConfirmation, isQuitConfirmed, markQuitDialogPending }
 import { initNativeNotifications } from "./native-notifications";
 import { markPendingNotificationNav } from "./notification-nav";
 import { createLogger, getLogPath } from "./logger";
-import { DEV3_HOME } from "./paths";
+import { writeAppReadyMarker } from "./app-ready-marker";
+import { DEV3_HOME, resolveUserHome } from "./paths";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
@@ -30,7 +31,7 @@ import { buildApplicationMenu, getMenuContext, MENU_ACTIONS, onMenuContextChange
 import { openLogsDirectory } from "./menu-actions";
 import { startLoopMonitor } from "./loop-monitor";
 import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedWindow, getWindowCount, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
-import electrobunConfig from "../../electrobun.config";
+import electrobunConfig, { cliBinaryName } from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -127,7 +128,9 @@ log.info("Log files", { dir: getLogPath() });
 		}
 	};
 
-	installBinary("dev3");
+	// Windows ships `dev3.exe`; the bundle name is owned by electrobun.config so
+	// the copy map and this install path can never disagree.
+	installBinary(cliBinaryName());
 
 	// Install dev3 skill into all supported AI agent directories (~/.claude, ~/.codex, etc.).
 	// Overwritten on every start to match the running app version (same pattern as CLI binary).
@@ -139,7 +142,7 @@ log.info("Log files", { dir: getLogPath() });
 	// getShellRcFiles for why login bash (macOS / tmux) needs the former.
 	const shell = getUserShell();
 	process.env.SHELL = shell;
-	const home = process.env.HOME || "/tmp";
+	const home = resolveUserHome();
 	const marker = ".dev3.0/bin";
 	const rcFiles = getShellRcFiles(shell, home, fExists);
 	if (rcFiles.length === 0) {
@@ -243,9 +246,15 @@ if (shellEnv.sshAuthSock) {
 applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
 // ── CLI socket server ──
-// Start Unix domain socket server for CLI tool communication.
+// Start the Unix domain socket server for CLI tool communication. `null` means
+// the platform has no transport yet (Windows — Seq 1296); the window must still
+// open, so this is reported and boot continues.
 const cliSocketPath = startSocketServer();
-log.info("CLI socket server ready", { path: cliSocketPath });
+if (cliSocketPath) {
+	log.info("CLI socket server ready", { path: cliSocketPath });
+} else {
+	log.warn("Starting without a CLI transport — dev3 CLI commands and agent hooks will not reach this instance");
+}
 
 // Daily projects.json safety snapshot (projects-YYYY-MM-DD.json.bak, 7 days kept).
 // Saves also trigger it, but projects.json can go untouched for weeks — the
@@ -364,6 +373,10 @@ setPushMessage((name, payload) => {
 	broadcastToAllWindows(name, payload);
 	pushToBrowserClients(name, payload);
 });
+
+// Window + RPC + push transport are live, so the app is usable: report it for
+// automated packaged-build proofs. No-op without DEV3_READY_MARKER_FILE.
+writeAppReadyMarker(APP_VERSION);
 
 // Initialize the backend gate before background pollers and CLI requests can
 // raise agent notifications. Queued entries flush when Focus Mode is disabled.

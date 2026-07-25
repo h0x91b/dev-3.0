@@ -156,7 +156,15 @@ const { loadSettings } = await import("./settings");
 applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
 // ── CLI socket server (required — CLI tool talks to the app over this) ──
+// Unlike the GUI entry, headless mode has no other control surface: `dev3 remote
+// status/url/stop` reach this process only over the socket. A platform without
+// the transport (Windows — Seq 1296) must fail here rather than run invisibly.
 const cliSocketPath = startSocketServer();
+if (!cliSocketPath) {
+	log.error("Headless remote mode requires the CLI socket transport, which this platform does not have yet");
+	console.error("dev3 remote is not available on this platform yet: the CLI transport is missing.");
+	process.exit(1);
+}
 log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Exclude the worktrees root from OS backups (Time Machine) once at startup.

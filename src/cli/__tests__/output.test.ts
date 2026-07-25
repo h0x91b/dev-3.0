@@ -147,6 +147,20 @@ describe("exitAppNotRunning", () => {
 		expect(exitSpy).toHaveBeenCalledWith(CLI_EXIT_CODE_APP_NOT_RUNNING);
 	});
 
+	it("--tolerate-app-offline keeps the notice but exits 0 (hooks with no POSIX shell)", () => {
+		expect(() => exitAppNotRunning({ stage: "discovery", tolerate: true })).toThrow("EXIT_0");
+		expect(stderrOutput).toContain("warning: app not running");
+		expect(stderrOutput).not.toContain("error:");
+		expect(exitSpy).toHaveBeenCalledWith(0);
+	});
+
+	it("tolerating also covers a connect-stage failure", () => {
+		expect(() =>
+			exitAppNotRunning({ stage: "connect", socketPath: "/tmp/x.sock", tolerate: true }),
+		).toThrow("EXIT_0");
+		expect(stderrOutput).toContain("warning: cannot reach the dev3.0 app");
+	});
+
 	it("stays terse when no diagnostics are provided", () => {
 		expect(() => exitAppNotRunning()).toThrow();
 		expect(stderrOutput).not.toContain("DEV3_DEBUG");

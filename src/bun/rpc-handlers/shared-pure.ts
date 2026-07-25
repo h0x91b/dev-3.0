@@ -5,7 +5,13 @@
  */
 import type { Project, Task, TaskStatus } from "../../shared/types";
 import { ACTIVE_STATUSES, DEV3_REPO_CONFIG_KEYS } from "../../shared/types";
-import { ENV_UNSET } from "../../shared/agent-accounts";
+import {
+	assertPosixLaunchDialect,
+	getLaunchShellPath,
+	indentLines,
+	launchDialect,
+	posixEscapeForDoubleQuotes,
+} from "../../shared/platform-launch";
 import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { broadcastToOtherInstances } from "../instance-broadcast";
@@ -16,50 +22,42 @@ import { isExecutableFile } from "../executable";
 
 export const log = createLogger("rpc");
 
+/**
+ * POSIX-only escaping used where a command line is embedded in a tmux
+ * double-quoted argument. tmux itself is POSIX-only, so this has no Windows
+ * counterpart in the dialect.
+ */
 export function escapeForDoubleQuotes(s: string): string {
-	return s.replace(/[\\"$`!]/g, "\\$&");
+	return posixEscapeForDoubleQuotes(s);
 }
 
+/** Quote a literal for the current platform's script dialect. */
 export function shellQuote(s: string): string {
-	return "'" + s.replace(/'/g, "'\\''") + "'";
+	return launchDialect().quote(s);
 }
 
+/** The shell that interprets dev3's generated wrapper scripts. */
 export function getScriptShellPath(shellPath?: string): string {
-	return shellPath?.trim() || process.env.SHELL || "/bin/zsh";
+	return getLaunchShellPath(shellPath);
 }
 
 export function buildScriptRunnerCommand(
 	scriptPath: string,
 	options?: { shellPath?: string; trace?: boolean },
 ): string {
-	const parts = [shellQuote(getScriptShellPath(options?.shellPath))];
-	if (options?.trace) {
-		parts.push("-x");
-	}
-	parts.push(shellQuote(scriptPath));
-	return parts.join(" ");
+	return launchDialect().runScript(scriptPath, options);
 }
 
 export function buildEnvExports(env: Record<string, string>): string[] {
 	// ENV_UNSET marks a variable for active removal (agent account switcher):
 	// the launched shell inherits the long-lived tmux server env, so a stale
-	// value must be `unset`, not merely left out of the exports.
-	return Object.entries(env).map(([key, value]) => (value === ENV_UNSET ? `unset ${key}` : `export ${key}=${shellQuote(value)}`));
+	// value must be actively removed, not merely left out of the exports.
+	return launchDialect().envLines(env);
 }
 
-/**
- * Emit a shell-portable "read a single keypress silently" snippet.
- *
- * The setup/startup wrapper scripts carry a `#!/bin/bash` shebang but are
- * executed via the user's login shell (`buildScriptRunnerCommand` → `zsh script`,
- * shebang ignored). bash-only `read -n 1 -s` then breaks under zsh with
- * "not an identifier: -s", because zsh spells "read N chars" as `-k N` (not `-n N`).
- * Branch on `$ZSH_VERSION` so the snippet works under both shells.
- */
+/** Read a single keypress silently, in the current dialect. */
 export function portableReadKey(options?: { timeoutSeconds?: number }): string {
-	const t = options?.timeoutSeconds;
-	const timeout = typeof t === "number" ? `-t ${t} ` : "";
-	return `if [ -n "$ZSH_VERSION" ]; then read ${timeout}-k 1 -s; else read ${timeout}-n 1 -s; fi`;
+	return launchDialect().readKey(options);
 }
 
 export function buildCmdScript(
@@ -67,42 +65,136 @@ export function buildCmdScript(
 	env?: Record<string, string>,
 	options?: { paneTitle?: string; keepShell?: boolean; onExitCommand?: string; shellPath?: string },
 ): string {
-	const escaped = escapeForDoubleQuotes(tmuxCmd);
-	const exportLines = env && Object.keys(env).length > 0 ? buildEnvExports(env) : [];
+	const d = launchDialect();
+	const exportLines = env && Object.keys(env).length > 0 ? d.envLines(env) : [];
 	const safePaneTitle = options?.paneTitle?.replace(/'/g, "") ?? "";
-	const titleLine = safePaneTitle ? `printf '\\033]2;${safePaneTitle}\\033\\\\'` : "";
+	const titleLine = safePaneTitle ? d.paneTitle(safePaneTitle) : "";
 	const onExitLines = options?.onExitCommand ? [options.onExitCommand] : [];
-	const shellPath = getScriptShellPath(options?.shellPath);
+	const handOverToShell = d.execReplacing(d.interactiveShellCommand(options?.shellPath));
+	const failNotice = d.print(d.style("✗ Process exited with code %s", "error"), {
+		blankBefore: true,
+		args: [d.exitCodeArg("__EC")],
+	});
+	const preamble = [
+		...d.header(),
+		...(titleLine ? [titleLine] : []),
+		...exportLines,
+		...d.announceAndRun(`Starting: ${tmuxCmd}`, tmuxCmd),
+		d.captureExitCode("__EC"),
+	];
 	if (options?.keepShell) {
+		const okNotice = d.print(
+			d.style("Agent session ended (exit 0). You are in the worktree shell.", "dim"),
+			{ blankBefore: true },
+		);
 		return [
-			"#!/bin/bash",
-			...(titleLine ? [titleLine] : []),
-			...exportLines,
-			`echo "Starting: ${escaped}" && ${tmuxCmd}`,
-			"__EC=$?",
-			"if [ $__EC -ne 0 ]; then",
-			`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
-			"else",
-			`  printf '\\n\\033[2mAgent session ended (exit 0). You are in the worktree shell.\\033[0m\\n'`,
-			...onExitLines,
-			"fi",
-			`exec ${shellQuote(shellPath)}`,
+			...preamble,
+			...d.branchOnFailure("__EC", {
+				fail: indentLines(2, [failNotice]),
+				ok: [...indentLines(2, [okNotice]), ...onExitLines],
+			}),
+			handOverToShell,
 			"",
 		].join("\n");
 	}
 	return [
-		"#!/bin/bash",
-		...(titleLine ? [titleLine] : []),
-		...exportLines,
-		`echo "Starting: ${escaped}" && ${tmuxCmd}`,
-		"__EC=$?",
-		"if [ $__EC -ne 0 ]; then",
-		`  printf '\\n\\033[1;31m✗ Process exited with code %s\\033[0m\\n' "$__EC"`,
-		`  exec ${shellQuote(shellPath)}`,
-		...(onExitLines.length > 0 ? ["else", ...onExitLines] : []),
-		"fi",
+		...preamble,
+		...d.branchOnFailure("__EC", {
+			fail: indentLines(2, [failNotice, handOverToShell]),
+			ok: onExitLines,
+		}),
 		"",
 	].join("\n");
+}
+
+/**
+ * Wrapper used when the agent binary is missing: it prints install guidance and
+ * re-checks PATH on every keypress, handing the view over to the real agent
+ * wrapper as soon as the binary appears.
+ */
+export function buildAgentRetryWrapper(opts: {
+	binaryName: string;
+	installCmd: string;
+	originalCmdPath: string;
+	shellPath: string;
+}): string {
+	const d = launchDialect();
+	const binary = d.quote(opts.binaryName);
+	const check = d.declareFunction(
+		"check_and_run",
+		indentLines(
+			2,
+			d.ifCommandExists(
+				opts.binaryName,
+				indentLines(2, [
+					d.print(d.style("✓ Found %s", "success"), { blankBefore: true, blankAfter: true, args: [binary] }),
+					d.execReplacing(d.runScript(opts.originalCmdPath, { shellPath: opts.shellPath })),
+				]),
+			),
+		),
+	);
+	const loop = d.loopForever(
+		indentLines(2, [
+			d.print(d.style("✗ Agent not found: %s", "error"), { blankAfter: true, args: [binary] }),
+			d.print(`${d.style("Install:", "bold")} %s`, { args: [d.quote(opts.installCmd)] }),
+			d.print(d.style('After installing, run "%s" once in a terminal to log in.', "dim"), { args: [binary] }),
+			d.print(d.style("Installation and setup are not managed by dev-3.0.", "dim"), { blankAfter: true }),
+			d.print(`Press ${d.style("Enter", "bold")} to retry...`),
+			d.readLine(),
+			d.callFunction("check_and_run"),
+		]),
+	);
+	return [...d.header(), "", ...check, "", ...loop, ""].join("\n");
+}
+
+/**
+ * The setup/startup wrapper: run the project's setup script, then hand the view
+ * to the agent wrapper.
+ *
+ * The tmux flavour puts the agent in a SECOND pane via `tmux split-window`,
+ * which only works because the wrapper runs inside a dev3 tmux pane. A native
+ * session has one view and no $TMUX, so there the setup script runs first and
+ * then EXECs the agent in the same view — never a bare `tmux` shell-out, which
+ * outside tmux would target the user's own default socket.
+ */
+export function buildSetupStartupWrapper(opts: {
+	setupPath: string;
+	cmdPath: string;
+	worktreePath: string;
+	shellPath: string;
+	nativeBackend: boolean;
+	launchMode: "parallel" | "blocking";
+}): string {
+	const d = launchDialect();
+	const cmdRunner = d.runScript(opts.cmdPath, { shellPath: opts.shellPath });
+	const setupDone = d.print(d.style("✓ Setup done", "success"));
+	const runSetup = [
+		d.runScript(opts.setupPath, { shellPath: opts.shellPath, trace: true }),
+		d.captureExitCode("S"),
+		...d.branchOnFailure("S", {
+			fail: indentLines(2, [
+				d.print(d.style("✗ Setup failed (exit %s)", "error"), { args: [d.exitCodeArg("S")] }),
+				d.execReplacing(d.interactiveShellCommand(opts.shellPath)),
+			]),
+		}),
+	];
+	if (opts.nativeBackend) {
+		return [...d.header(), ...runSetup, setupDone, d.execReplacing(cmdRunner)].join("\n") + "\n";
+	}
+	assertPosixLaunchDialect("the tmux setup/startup wrapper");
+	const splitCmd = `tmux split-window -v -c "${escapeForDoubleQuotes(opts.worktreePath)}" "${escapeForDoubleQuotes(cmdRunner)}"`;
+	return [
+		...d.header(),
+		...(opts.launchMode === "parallel" ? [splitCmd] : []),
+		...runSetup,
+		...(opts.launchMode === "blocking" ? [splitCmd] : []),
+		setupDone,
+		d.print(d.style("Closing in 15s — press any key to close now", "dim")),
+		// Wrapper runs under the user's login shell (often zsh), so use a
+		// shell-portable read — bash's `read -n 1 -s` crashes zsh.
+		d.readKey({ timeoutSeconds: 15 }),
+		"exit 0",
+	].join("\n") + "\n";
 }
 
 const FALLBACK_BIN_PATHS = [

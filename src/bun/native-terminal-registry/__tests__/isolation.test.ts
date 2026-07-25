@@ -34,11 +34,15 @@ const multipaneRoot = resolve(sourceRoot, "bun/native-terminal-multipane");
 // resolver (which build launches a host), the task-terminal module (one writer
 // client per task), and the packaged host entrypoint. Everything else must reach
 // the native backend through the product seam, so this list stays short by design.
+// The platform launch dialect is the fifth: it owns the `ShellLaunchSpec`
+// vocabulary for every generated wrapper script, and reuses this module's
+// pure spec/validation helpers rather than restating them.
 const SANCTIONED_PRODUCT_CALLERS = [
 	"bun/native-host-runtime.ts",
 	"bun/native-task-terminal.ts",
 	"bun/native-terminal-host/main.ts",
 	"bun/task-terminal-backend.ts",
+	"shared/platform-launch.ts",
 ];
 
 describe("native-session registry isolation", () => {

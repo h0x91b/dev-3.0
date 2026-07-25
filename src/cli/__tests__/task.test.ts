@@ -644,6 +644,26 @@ describe("task move", () => {
 		expect(stdoutOutput).toMatch(/→.*AI Review/);
 	});
 
+	it("accepts --tolerate-app-offline without sending it to the server", async () => {
+		// The flag only softens the app-offline exit code (decided before dispatch,
+		// in main.ts); a reachable app must behave exactly as without it.
+		const moved = { ...FAKE_TASK, status: "in-progress" as const };
+		mockSend.mockResolvedValue(okResp(moved));
+
+		await handleTask(
+			"move",
+			args(["aaaaaaaa"], { status: "in-progress", "tolerate-app-offline": "true" }),
+			SOCKET,
+			null,
+		);
+
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "task.move", {
+			taskId: "aaaaaaaa",
+			newStatus: "in-progress",
+		});
+		expect(stderrOutput).not.toContain("Unknown flag");
+	});
+
 	it("prints minimal JSON stdout for Codex stop hooks", async () => {
 		const moved = { ...FAKE_TASK, status: "review-by-user" as const };
 		mockSend.mockResolvedValue(okResp(moved));

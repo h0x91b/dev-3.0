@@ -9,6 +9,7 @@ import { tmux, DEFAULT_TMUX_SOCKET, TmuxError, taskSessionName, type SplitOrient
 import { resolveRunnerCommand } from "./package-scripts";
 import { resolveMakeCommand } from "./makefile";
 import { createLogger } from "./logger";
+import { assertPosixLaunchDialect } from "../shared/platform-launch";
 
 const log = createLogger("script-runner");
 
@@ -42,6 +43,8 @@ interface RunScriptOptions {
 }
 
 export async function runScript(opts: RunScriptOptions): Promise<void> {
+	// Panes and windows only exist on the tmux backend.
+	assertPosixLaunchDialect("running a package script in a tmux pane");
 	const { taskId, worktreePath, scriptName, source, runner, placement } = opts;
 	const socket = opts.socket ?? DEFAULT_TMUX_SOCKET;
 	const session = taskSessionName(taskId);
@@ -53,6 +56,7 @@ export async function runScript(opts: RunScriptOptions): Promise<void> {
 	// of the output. They press Enter (or any key) to close the pane.
 	// Single quotes around the inner script protect against the outer shell —
 	// `command` is built from a safe-name validator so it cannot contain quotes.
+	// Stays bash: the guard above makes this reachable only on POSIX.
 	const wrapped = `bash -c '${command}; __EC=$?; printf "\\n\\033[2m[exited %s — press Enter to close]\\033[0m " "$__EC"; read'`;
 	const spec = placementSpec(placement);
 

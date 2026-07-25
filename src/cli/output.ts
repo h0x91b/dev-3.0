@@ -2,6 +2,7 @@ import {
 	CLI_EXIT_CODE_APP_NOT_RUNNING,
 	CLI_EXIT_CODE_COMMAND_FAILED,
 	CLI_EXIT_CODE_INTERNAL_ERROR,
+	CLI_EXIT_CODE_SUCCESS,
 	CLI_EXIT_CODE_USAGE_ERROR,
 } from "../shared/cli-exit-codes";
 
@@ -45,7 +46,17 @@ export function exitError(message: string, detail?: string, code = CLI_EXIT_CODE
 }
 
 export function exitAppNotRunning(
-	opts: { stage?: "discovery" | "connect"; diagnostics?: string; socketPath?: string } = {},
+	opts: {
+		stage?: "discovery" | "connect";
+		diagnostics?: string;
+		socketPath?: string;
+		/**
+		 * `--tolerate-app-offline`: report the same notice on stderr but exit 0.
+		 * Generated agent hooks use it where no POSIX shell is available to
+		 * collapse exit code 2 themselves (see `TOLERATE_APP_OFFLINE_FLAG`).
+		 */
+		tolerate?: boolean;
+	} = {},
 ): never {
 	let message: string;
 	let detail: string;
@@ -86,6 +97,12 @@ export function exitAppNotRunning(
 					: "\n  stage: connect — a socket was found but the connection was refused/blocked";
 		}
 		detail += `\n${opts.diagnostics}`;
+	}
+
+	if (opts.tolerate) {
+		process.stderr.write(`warning: ${message}\n`);
+		for (const line of detail.split("\n")) process.stderr.write(`  ${line}\n`);
+		process.exit(CLI_EXIT_CODE_SUCCESS);
 	}
 
 	exitError(message, detail, CLI_EXIT_CODE_APP_NOT_RUNNING);

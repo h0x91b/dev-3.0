@@ -1,5 +1,6 @@
 import { createLogger } from "./logger";
 import { spawn, spawnSync } from "./spawn";
+import { defaultLaunchShellPath } from "../shared/platform-launch";
 
 const log = createLogger("shell-env");
 
@@ -103,7 +104,9 @@ export function getUserShell(): string {
 	if (cachedUserShell && now - cachedUserShellAt < USER_SHELL_TTL_MS) {
 		return cachedUserShell;
 	}
-	cachedUserShell = readAccountShell() || process.env.SHELL || "/bin/zsh";
+	// Platform-aware default: on Windows there is no login-shell record to read
+	// and no `/bin/zsh` — the shell is Windows PowerShell.
+	cachedUserShell = readAccountShell() || defaultLaunchShellPath();
 	cachedUserShellAt = now;
 	return cachedUserShell;
 }

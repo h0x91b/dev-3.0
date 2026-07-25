@@ -3150,7 +3150,8 @@ describe("socket meta sidecar", () => {
 
 		expect(writeFileSync).toHaveBeenCalledTimes(1);
 		const [metaPath, content] = vi.mocked(writeFileSync).mock.calls[0] as [string, string];
-		expect(metaPath).toBe(socketPath.replace(/\.sock$/, ".meta.json"));
+		expect(socketPath).not.toBeNull();
+		expect(metaPath).toBe(socketPath!.replace(/\.sock$/, ".meta.json"));
 		expect(JSON.parse(content)).toMatchObject({ pid: process.pid, hostTaskId: null });
 	});
 

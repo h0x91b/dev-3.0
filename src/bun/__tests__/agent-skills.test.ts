@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
 	applyClaudeSettings,
+	buildClaudeSkillContent,
+	buildCodexSkillContent,
+	buildGenericSkillContent,
+	claudeBashPermission,
 	CLAUDE_SKILL_BODY,
 	getBugHunterSkillContent,
 	getClaudeSkillContent,
@@ -9,6 +13,7 @@ import {
 	getProjectConfigSkillContent,
 	getTmuxSkillContent,
 } from "../agent-skills";
+import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 // The Claude SKILL.md is deliberately short (the protocol lives in the system
 // prompt via --append-system-prompt), so body-content assertions run against
@@ -445,5 +450,45 @@ describe("applyClaudeSettings (Claude Code sandbox socket allowlist, issue #726)
 		expect(changed).toBe(true); // permission was added
 		const sandbox = settings.sandbox as { network: { allowUnixSockets: string[] } };
 		expect(sandbox.network.allowUnixSockets).toEqual([SOCKETS]);
+	});
+});
+
+describe("skill content per platform dialect", () => {
+	const WINDOWS = hookCliDialect({
+		platform: "win32",
+		execDir: "C:\\dev3",
+		homeDir: "C:\\Users\\dev",
+		exists: () => false,
+	});
+	const POSIX = hookCliDialect({ platform: "darwin" });
+
+	it("keeps the POSIX skill text byte-identical to this machine's output", () => {
+		expect(buildClaudeSkillContent(POSIX)).toBe(getClaudeSkillContent());
+		expect(buildCodexSkillContent(POSIX)).toBe(getCodexSkillContent());
+		expect(buildGenericSkillContent(POSIX)).toBe(getGenericSkillContent());
+		expect(buildClaudeSkillContent(POSIX)).toContain("~/.dev3.0/bin/dev3 current --brief");
+	});
+
+	it("gives Windows an absolute dev3.exe with no stderr redirect", () => {
+		const cli = "C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe";
+
+		const claude = buildClaudeSkillContent(WINDOWS);
+		expect(claude).toContain(`!\`${cli} task move --status in-progress --if-status-not review-by-ai\``);
+		expect(claude).toContain(`!\`${cli} current --brief\``);
+		// Windows has no POSIX shell in the injection runner.
+		expect(claude).not.toContain("2>&1");
+		expect(claude).not.toContain("~/.dev3.0/bin/dev3");
+
+		// The shared protocol body is platform-neutral prose; only the generated
+		// session-start block is templated, so assert on that.
+		for (const content of [buildCodexSkillContent(WINDOWS), buildGenericSkillContent(WINDOWS)]) {
+			expect(content).toContain(`- \`${cli} --help\` — learn all available CLI commands`);
+			expect(content).toContain(`- \`${cli} current\` — see your current project, task, and status`);
+		}
+	});
+
+	it("spells the Claude bash permission the same way the generated commands do", () => {
+		expect(claudeBashPermission(POSIX)).toBe("Bash(~/.dev3.0/bin/dev3 *)");
+		expect(claudeBashPermission(WINDOWS)).toBe("Bash(C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe *)");
 	});
 });

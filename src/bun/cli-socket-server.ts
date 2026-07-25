@@ -22,6 +22,7 @@ import { syncTaskBranchName } from "./task-branch-sync";
 import { nativeTaskTerminalAlive } from "./native-task-terminal";
 import { isTerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import { DEV3_HOME } from "./paths";
+import { cliSocketTransportSupported } from "../shared/cli-socket-transport";
 import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
 
 const log = createLogger("cli-socket");
@@ -1318,7 +1319,20 @@ export async function handleRequest(req: CliRequest): Promise<CliResponse> {
 	}
 }
 
-export function startSocketServer(): string {
+/**
+ * Start the CLI transport. Returns the socket path, or `null` when this platform
+ * has no transport yet (see {@link cliSocketTransportSupported}).
+ */
+export function startSocketServer(): string | null {
+	if (!cliSocketTransportSupported()) {
+		socketPath = "";
+		log.warn(
+			"CLI socket server unavailable on this platform — the dev3 CLI and agent hooks cannot reach the app (Windows IPC is Seq 1296)",
+			{ platform: process.platform },
+		);
+		return null;
+	}
+
 	mkdirSync(SOCKETS_DIR, { recursive: true });
 	cleanupStaleSockets();
 

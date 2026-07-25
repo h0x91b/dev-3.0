@@ -79,6 +79,22 @@ Generated in each task's `.codex/hooks.json` and enabled via `~/.codex/config.to
 
 Beyond status, the `SessionStart`/`UserPromptSubmit` hook payloads carry the Codex `session_id` (the resumable rollout id), and the hook process inherits `$TMUX_PANE`. dev3 records that id onto the matching `sessionState` pane so recovery can `codex resume <id>` the exact per-pane session — Codex has no launch-time session-id flag, so this is the only way to target a specific session (see decision 125).
 
+## Windows: how generated commands are spelled
+
+Hook commands, the `!`-injected skill lines, and the Claude permission rule are
+built from one platform dialect (`hookCliDialect` in `src/shared/dev3-cli-path.ts`).
+POSIX output is frozen; Windows differs in three ways:
+
+| Aspect | POSIX (macOS / Linux) | Windows |
+|--------|----------------------|---------|
+| CLI invocation | `~/.dev3.0/bin/dev3` | absolute path to the bundled `dev3.exe` (`<exec dir>\cli\`, then `Resources\app\cli\`, then `%USERPROFILE%\.dev3.0\bin\`), double-quoted only if it contains spaces |
+| App-offline tolerance in Claude hooks | `<cmd> \|\| [ $? -eq 2 ]` | `<cmd> --tolerate-app-offline` (no shell operators; the CLI exits 0 for that one condition) |
+| Claude skill `!` injection | `… --if-status-not review-by-ai 2>&1` | same command without `2>&1` |
+
+Codex hooks are identical in shape on both platforms — `dev3 hook codex` always
+exits 0, so they never needed a shell fallback. See
+[decision 172](decisions/172-windows-hook-command-dialect.md).
+
 ## Skill Differences
 
 ### dev3 (task lifecycle)
@@ -143,6 +159,6 @@ toggle re-prefixes all non-overridden rows. See [decision 089](decisions/089-llm
 |-------------|--------|---------|
 | `~/.agents/AGENTS.md` | All (fallback) | Appended rule block for agents that read `AGENTS.md` |
 | `~/.agents/skills/*/agents/openai.yaml` | Shared skill UI | Managed display metadata for `dev3`, `dev3-project-config`, and `dev3 Bug Hunter` |
-| `~/.claude/settings.json` | Claude Code | Auto-adds `Bash(~/.dev3.0/bin/dev3 *)` permission |
+| `~/.claude/settings.json` | Claude Code | Auto-adds a `Bash(<dev3 cli> *)` permission — `Bash(~/.dev3.0/bin/dev3 *)` on POSIX, `Bash(<abs path>\dev3.exe *)` on Windows |
 | `~/.codex/config.toml` | Codex | Configures trust, creates a fallback `permissions.workspace` default when missing, patches dev3 sandbox access, and enables the Codex hook feature with version-compatible key names |
 | `<worktree>/.codex/hooks.json` | Codex | Generated, gitignored lifecycle definitions mirrored into each dev3-launched Codex pane as session flags |

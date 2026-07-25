@@ -1,7 +1,7 @@
 import type { CliResponse, Task, TaskStatus, TaskHistoryEntry, TaskNote } from "../../shared/types";
 import { STATUS_LABELS, ALL_STATUSES, DEFAULT_PRIORITY, getTaskTitle, getTaskOverview, normalizePriority } from "../../shared/types";
 import { CLI_EXIT_CODE_COMPLETION_DECLINED } from "../../shared/cli-exit-codes";
-import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON } from "../../shared/agent-hooks";
+import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
 import type { ParsedArgs } from "../args";
@@ -292,7 +292,12 @@ async function requestCompletion(
 }
 
 async function moveTask(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
-	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "status", "if-status", "if-status-not", CODEX_STOP_HOOK_FLAG.slice(2)]);
+	// `--tolerate-app-offline` only changes the app-offline exit code, which is
+	// decided before dispatch (main.ts) — accepted and ignored here.
+	rejectUnknownFlags(args, [
+		"id", "task", "task-id", "project", "status", "if-status", "if-status-not",
+		CODEX_STOP_HOOK_FLAG.slice(2), TOLERATE_APP_OFFLINE_FLAG.slice(2),
+	]);
 	const taskId = resolveTaskId(args, context);
 	if (!taskId) {
 		exitUsage("Usage: dev3 task move <id|--task id|--task-id id|--id id> --status <status>");

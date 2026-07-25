@@ -13,6 +13,12 @@ Public `dev3` CLI exit codes are defined in `src/shared/cli-exit-codes.ts`.
 | `6` | `CLI_EXIT_CODE_COMPLETION_DECLINED` | `dev3 task move --status completed` asked the user for approval and the user declined. The task keeps its current status and the session stays alive. |
 | `7` | `CLI_EXIT_CODE_DOCTOR_PROBLEMS` | `dev3 doctor` found at least one problem (a check with status "fail"). Warnings alone still exit 0. |
 
+`--tolerate-app-offline` turns code `2` into code `0` for a single invocation: the
+"app not running" notice is still written to stderr, but the process exits
+successfully. Generated agent hooks pass it on platforms whose hook runner has no
+POSIX shell (Windows) and therefore cannot collapse the code themselves. Every
+other failure code is unaffected.
+
 Rules:
 
 - Every non-zero public `dev3` CLI exit code must be unique.

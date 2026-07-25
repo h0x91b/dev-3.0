@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parsePackageScripts, detectRunner, resolveRunnerCommand } from "../package-scripts";
+import { devPlan, devRunEnv } from "../../../scripts/dev";
 
 describe("package-scripts", () => {
 	let tmp: string;
@@ -156,12 +157,25 @@ describe("package-scripts", () => {
 			readFileSync(resolve(repoRoot, "package.json"), "utf-8"),
 		) as { scripts: Record<string, string> };
 
-		it("pins DEV3_REMOTE_PORT to $DEV3_PORT0 with a :-0 fallback", () => {
-			expect(rootPkg.scripts.dev).toContain("DEV3_REMOTE_PORT=${DEV3_PORT0:-0}");
+		// The wiring moved out of the package script itself: env-var prefixes,
+		// `$(...)` and `${VAR:-0}` are POSIX shell syntax PowerShell cannot run, so
+		// `dev` now delegates to scripts/dev.ts. The GUARANTEE is unchanged and is
+		// asserted against the orchestrator instead of a shell string.
+		it("routes dev/start through the shell-free orchestrator", () => {
+			expect(rootPkg.scripts.dev).toBe("bun scripts/dev.ts");
+			expect(rootPkg.scripts.start).toBe("bun scripts/dev.ts --start");
+			expect(rootPkg.scripts.dev).not.toMatch(/[&|;$]/);
+		});
+
+		it("pins DEV3_REMOTE_PORT to $DEV3_PORT0 with a 0 fallback", () => {
+			expect(devRunEnv("dev", { staticCode: null, port0: "31337" }).DEV3_REMOTE_PORT).toBe("31337");
+			expect(devRunEnv("dev", { staticCode: null, port0: undefined }).DEV3_REMOTE_PORT).toBe("0");
 		});
 
 		it("still sets the stable dev web-access code", () => {
-			expect(rootPkg.scripts.dev).toContain("DEV3_REMOTE_STATIC_CODE=$(bun scripts/dev-web-code.ts)");
+			expect(devRunEnv("dev", { staticCode: "stable-code", port0: "0" }).DEV3_REMOTE_STATIC_CODE)
+				.toBe("stable-code");
+			expect(devPlan("dev", "bun").some((s) => s.command.includes("scripts/build-cli.ts"))).toBe(true);
 		});
 	});
 });

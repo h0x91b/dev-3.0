@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import {
 	buildClaudeHooks,
@@ -12,11 +12,14 @@ import {
 } from "../agent-hooks";
 import type { MatcherGroup } from "../../shared/agent-hooks";
 import {
+	buildCodexHooksConfigOverride,
 	CODEX_DEV3_HOOK_COMMAND,
 	DEV3_BASH_PERMISSION,
 	ensureDefaultMode,
 	getCodexHookTargetStatus,
+	TOLERATE_APP_OFFLINE_FLAG,
 } from "../../shared/agent-hooks";
+import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 const DEV3_CLI = "~/.dev3.0/bin/dev3";
 
@@ -735,5 +738,160 @@ describe("writeCodexHooks", () => {
 		const second = readFileSync(hooksPath, "utf-8");
 
 		expect(first).toBe(second);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Platform dialects: the POSIX strings are frozen (older dev3 builds read the
+// same worktree files), Windows must be shell-free and tilde-free.
+// ---------------------------------------------------------------------------
+
+const WIN_SPACES = hookCliDialect({
+	platform: "win32",
+	execDir: "C:\\Program Files\\dev3\\bin",
+	homeDir: "C:\\Users\\John Doe",
+	exists: () => false,
+});
+
+const WIN_PLAIN = hookCliDialect({
+	platform: "win32",
+	execDir: "C:\\dev3",
+	homeDir: "C:\\Users\\dev",
+	exists: () => false,
+});
+
+function everyCommand(hooks: Record<string, MatcherGroup[]>): string[] {
+	return Object.values(hooks).flatMap((groups) => groups.flatMap((group) => group.hooks.map((h) => h.command)));
+}
+
+describe("POSIX hook output (byte-identical contract)", () => {
+	const posix = hookCliDialect({ platform: "darwin" });
+
+	it("renders the exact Claude command strings", () => {
+		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix });
+		const working = `${DEV3_CLI} task move --status in-progress --if-status-not review-by-ai || [ $? -eq 2 ]`;
+
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(working);
+		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
+		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
+			`${DEV3_CLI} task move --status user-questions || [ $? -eq 2 ]`,
+		);
+		expect(hooks.Stop[0].hooks[0].command).toBe(
+			`${DEV3_CLI} task move --status review-by-ai --if-status in-progress || [ $? -eq 2 ]`,
+		);
+		expect(hooks.Stop[1].hooks[0].command).toBe(
+			`${DEV3_CLI} task move --status review-by-user --if-status review-by-ai || [ $? -eq 2 ]`,
+		);
+	});
+
+	it("renders the exact Codex handler command", () => {
+		expect(buildCodexHooks({ dialect: posix }).Stop[0].hooks[0].command).toBe("~/.dev3.0/bin/dev3 hook codex");
+	});
+
+	it("never carries the Windows tolerance flag", () => {
+		for (const command of everyCommand(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix }))) {
+			expect(command).not.toContain(TOLERATE_APP_OFFLINE_FLAG);
+		}
+	});
+
+	it("is what the default (this machine) dialect produces", () => {
+		expect(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: posix })).toEqual(
+			buildClaudeHooks({ stopTarget: "review-by-ai" }),
+		);
+		expect(buildCodexHooks({ dialect: posix })).toEqual(buildCodexHooks());
+		expect(buildCodexHooksConfigOverride({}, { dialect: posix })).toBe(buildCodexHooksConfigOverride());
+	});
+});
+
+describe("Windows hook output", () => {
+	it("renders the exact Claude command strings", () => {
+		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_SPACES });
+		const cli = WIN_SPACES.cli;
+		expect(cli).toBe('"C:\\Users\\John Doe\\.dev3.0\\bin\\dev3.exe"');
+		const working = `${cli} task move --status in-progress --if-status-not review-by-ai --tolerate-app-offline`;
+
+		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(working);
+		expect(hooks.PreToolUse[0].hooks[0].command).toBe(working);
+		expect(hooks.PostToolUse[0].hooks[0].command).toBe(working);
+		expect(hooks.PermissionRequest[0].hooks[0].command).toBe(
+			`${cli} task move --status user-questions --tolerate-app-offline`,
+		);
+		expect(hooks.Stop[0].hooks[0].command).toBe(
+			`${cli} task move --status review-by-ai --if-status in-progress --tolerate-app-offline`,
+		);
+		expect(hooks.Stop[1].hooks[0].command).toBe(
+			`${cli} task move --status review-by-user --if-status review-by-ai --tolerate-app-offline`,
+		);
+	});
+
+	it("renders the exact Codex handler command (no tolerance flag — the subcommand always exits 0)", () => {
+		expect(buildCodexHooks({ dialect: WIN_SPACES }).Stop[0].hooks[0].command).toBe(
+			`${WIN_SPACES.cli} hook codex`,
+		);
+	});
+
+	it("emits no tilde, no shell operators and no redirects in either hook map", () => {
+		const commands = [
+			...everyCommand(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_SPACES })),
+			...everyCommand(buildCodexHooks({ dialect: WIN_SPACES })),
+		];
+		expect(commands.length).toBeGreaterThan(6);
+
+		for (const command of commands) {
+			expect(command).not.toContain("~");
+			expect(command).not.toContain("&&");
+			expect(command).not.toContain("||");
+			expect(command).not.toContain(";");
+			expect(command).not.toContain("$?");
+			expect(command).not.toContain("2>&1");
+		}
+	});
+
+	it("starts every command with an absolute path to dev3.exe", () => {
+		const commands = [
+			...everyCommand(buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_PLAIN })),
+			...everyCommand(buildCodexHooks({ dialect: WIN_PLAIN })),
+		];
+
+		for (const command of commands) {
+			const [binary] = command.split(" ");
+			expect(binary).toBe("C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe");
+			expect(binary.endsWith("dev3.exe")).toBe(true);
+			expect(isAbsolute(binary) || /^[A-Za-z]:\\/.test(binary)).toBe(true);
+		}
+	});
+
+	it("keeps the Codex TOML override free of tildes and shell operators", () => {
+		const override = buildCodexHooksConfigOverride({}, { dialect: WIN_SPACES });
+
+		expect(override.startsWith("hooks=")).toBe(true);
+		// TOML basic strings escape the backslashes; the decoded command is absolute.
+		expect(override).toContain(JSON.stringify(`${WIN_SPACES.cli} hook codex`));
+		expect(override).not.toContain("~");
+		expect(override).not.toContain("||");
+		expect(override).not.toContain("&&");
+		expect(override).not.toContain("$?");
+		expect(override).not.toContain("2>&1");
+	});
+
+	it("still recognizes and replaces dev3 entries written by a POSIX dev3", () => {
+		const existing = {
+			hooks: {
+				PreToolUse: [
+					{ hooks: [{ type: "command", command: `${DEV3_CLI} task move --status in-progress` }] },
+					{ hooks: [{ type: "command", command: "echo mine" }] },
+				],
+			},
+		};
+
+		const merged = mergeClaudeHooks(existing, { dialect: WIN_SPACES }) as {
+			hooks: Record<string, MatcherGroup[]>;
+		};
+		const commands = merged.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => h.command));
+
+		expect(commands).toContain("echo mine");
+		expect(commands.some((c) => c.includes("dev3.exe"))).toBe(true);
+		expect(commands.some((c) => c.includes("~/.dev3.0/bin/dev3"))).toBe(false);
 	});
 });

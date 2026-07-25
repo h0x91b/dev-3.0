@@ -57,6 +57,7 @@ import {
 	notifyWatchedTaskStatusChange,
 	pushCliAttention,
 } from "../rpc-handlers/shared";
+import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import type { LifecycleEffect } from "./effects";
 import type {
 	LifecycleColumn,
@@ -343,9 +344,12 @@ export async function runCleanupScript(
 	if (!task.worktreePath || !existsSync(task.worktreePath)) return;
 	const resolved = await resolveOperationalProjectConfig(project, task.worktreePath);
 	const script = resolved.cleanupScript?.trim() || 'echo "Task finished"';
-	const scriptPath = dev3TaskTempPath(task.id, "cleanup.sh");
+	const dialect = launchDialect();
+	const scriptPath = dev3TaskTempPath(task.id, `cleanup${dialect.scriptExtension}`);
 	const cleanupEnv = buildCleanupScriptEnv(task, project, transition);
-	await Bun.write(scriptPath, `#!/bin/bash\n${script}\n`);
+	await Bun.write(scriptPath, `${[...dialect.header(), script].join("\n")}\n`);
+	// The cleanup script is shown in a throwaway tmux session — POSIX-only.
+	assertPosixLaunchDialect("the cleanup-script tmux session");
 	const proc = tmux.spawnAttachedSession({
 		socket: task.tmuxSocket ?? DEFAULT_TMUX_SOCKET,
 		configFile: activeTmuxConfigPath(),

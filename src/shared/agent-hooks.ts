@@ -6,9 +6,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PermissionMode, TaskStatus } from "./types";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
+import { type HookCliDialect, hookCliDialect, POSIX_DEV3_CLI } from "./dev3-cli-path";
 
-export const DEV3_CLI = "~/.dev3.0/bin/dev3";
+/** Dialect of the machine generating the hooks (the frozen POSIX string on macOS/Linux). */
+const DEFAULT_DIALECT = hookCliDialect();
+
+export const DEV3_CLI = DEFAULT_DIALECT.cli;
 export const CODEX_STOP_HOOK_FLAG = "--codex-stop-hook";
+/** Makes the CLI exit 0 instead of `CLI_EXIT_CODE_APP_NOT_RUNNING`, still warning on stderr. */
+export const TOLERATE_APP_OFFLINE_FLAG = "--tolerate-app-offline";
 export const CODEX_STOP_HOOK_SUCCESS_JSON = "{}";
 export const CODEX_DEV3_HOOK_COMMAND = `${DEV3_CLI} hook codex`;
 export const CODEX_STATUS_HOOK_EVENTS = [
@@ -76,8 +82,9 @@ function buildMoveCommand(
 	status: string,
 	extra?: string,
 	options?: { codexStopHook?: boolean },
+	dialect: HookCliDialect = DEFAULT_DIALECT,
 ): string {
-	const parts = [`${DEV3_CLI} task move --status ${status}`];
+	const parts = [`${dialect.cli} task move --status ${status}`];
 	if (extra) parts.push(extra);
 	if (options?.codexStopHook) parts.push(CODEX_STOP_HOOK_FLAG);
 	return parts.join(" ");
@@ -93,17 +100,22 @@ function buildMoveCommand(
 // selective rather than `|| true`, which would mask real regressions (see
 // decisions 032 and 089). The CLI still prints its "app not running" notice to
 // stderr, so the warning survives — we just don't let it block the agent.
-function wrapAppOfflineFallback(command: string): string {
+//
+// Windows agents run hook commands without a POSIX shell, so there is no `$?`
+// and no `||` to lean on. The same tolerance is requested from the CLI itself
+// with `--tolerate-app-offline`, which exits 0 for that single condition and
+// leaves every other failure code intact.
+function withAppOfflineTolerance(command: string, dialect: HookCliDialect): string {
+	if (!dialect.posixShell) return `${command} ${TOLERATE_APP_OFFLINE_FLAG}`;
 	return `${command} || [ $? -eq ${CLI_EXIT_CODE_APP_NOT_RUNNING} ]`;
 }
 
 function buildStopGroups(
 	stopTarget: TaskStatus,
+	dialect: HookCliDialect,
 ): MatcherGroup[] {
-	const move = (status: string, extra?: string) => {
-		const command = buildMoveCommand(status, extra);
-		return wrapAppOfflineFallback(command);
-	};
+	const move = (status: string, extra?: string) =>
+		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
 
 	const stopGroups: MatcherGroup[] = [
 		{
@@ -137,11 +149,12 @@ function mergeHookMaps(
 }
 
 export function buildClaudeHooks(
-	options?: { stopTarget?: TaskStatus },
+	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect },
 ): HookMap {
 	const stopTarget: TaskStatus = options?.stopTarget ?? "review-by-user";
+	const dialect = options?.dialect ?? DEFAULT_DIALECT;
 	const move = (status: string, extra?: string) =>
-		wrapAppOfflineFallback(buildMoveCommand(status, extra));
+		withAppOfflineTolerance(buildMoveCommand(status, extra, undefined, dialect), dialect);
 
 	// Working hook: move to in-progress, but NOT when in review-by-ai
 	// (the review agent shares the same hooks file and must not flip status).
@@ -164,7 +177,7 @@ export function buildClaudeHooks(
 		PermissionRequest: [
 			{ hooks: [{ type: "command", command: move("user-questions") }] },
 		],
-		Stop: buildStopGroups(stopTarget),
+		Stop: buildStopGroups(stopTarget, dialect),
 	};
 }
 
@@ -174,11 +187,15 @@ export function buildClaudeHooks(
  * All entries call one stable handler from a worktree-local hooks file. The
  * handler receives the event JSON on stdin and asks dev3 to perform the status
  * transition atomically.
+ *
+ * `dev3 hook codex` always exits 0 (it owns the app-offline case internally), so
+ * these commands need neither a shell fallback nor `--tolerate-app-offline`.
  */
-export function buildCodexHooks(): HookMap {
+export function buildCodexHooks(options?: { dialect?: HookCliDialect }): HookMap {
+	const dialect = options?.dialect ?? DEFAULT_DIALECT;
 	const handler: HookEntry = {
 		type: "command",
-		command: CODEX_DEV3_HOOK_COMMAND,
+		command: `${dialect.cli} hook codex`,
 		timeout: 5,
 	};
 	const toolMatcher = "Bash|Edit|Write|^apply_patch$|^mcp__.*";
@@ -235,8 +252,9 @@ function tomlInline(value: unknown): string {
  */
 export function buildCodexHooksConfigOverride(
 	state: Record<string, { trusted_hash: string }> = {},
+	options?: { dialect?: HookCliDialect },
 ): string {
-	const hooks: Record<string, unknown> = { ...buildCodexHooks() };
+	const hooks: Record<string, unknown> = { ...buildCodexHooks(options) };
 	if (Object.keys(state).length > 0) hooks.state = state;
 	return `hooks=${tomlInline(hooks)}`;
 }
@@ -246,15 +264,25 @@ export function buildCodexHooksConfigOverride(
  * Preserves any existing hooks for other events, and any non-dev3 hooks
  * on the same events.  Idempotent: replaces previous dev3 hooks.
  */
+/**
+ * Recognize our own hook commands. A settings file can carry entries written by
+ * a different platform's dev3 (a repo checked out on both), so the POSIX spelling
+ * is always accepted alongside this platform's.
+ */
+function mentionsDev3Cli(command?: string): boolean {
+	if (!command) return false;
+	return command.includes(DEV3_CLI) || command.includes(POSIX_DEV3_CLI);
+}
+
 /** Check if a matcher group (or legacy flat entry) contains a dev3 hook. */
 function isDev3Entry(group: MatcherGroup | HookEntry): boolean {
 	// New format: matcher group with nested hooks array
 	if ("hooks" in group && Array.isArray(group.hooks)) {
-		return group.hooks.some((h) => h.command?.includes(DEV3_CLI));
+		return group.hooks.some((h) => mentionsDev3Cli(h.command));
 	}
 	// Legacy flat format: { type, command } at top level
 	if ("command" in group) {
-		return (group as HookEntry).command?.includes(DEV3_CLI) ?? false;
+		return mentionsDev3Cli((group as HookEntry).command);
 	}
 	return false;
 }
@@ -285,15 +313,16 @@ export function ensureDefaultMode(
 
 export function mergeClaudeHooks(
 	existing: Record<string, unknown>,
-	options?: { stopTarget?: TaskStatus },
+	options?: { stopTarget?: TaskStatus; dialect?: HookCliDialect },
 ): Record<string, unknown> {
 	return mergeHookMaps(existing, buildClaudeHooks(options));
 }
 
 export function mergeCodexHooks(
 	existing: Record<string, unknown>,
+	options?: { dialect?: HookCliDialect },
 ): Record<string, unknown> {
-	return mergeHookMaps(existing, buildCodexHooks());
+	return mergeHookMaps(existing, buildCodexHooks(options));
 }
 
 /**

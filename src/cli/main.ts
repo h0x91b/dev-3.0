@@ -24,6 +24,7 @@ import { handleShowArtifact } from "./commands/show-artifact";
 import { handleStatusLine } from "./commands/statusline";
 import { handleCodexHook } from "./commands/codex-hook";
 import { handleDoctor } from "./commands/doctor";
+import { TOLERATE_APP_OFFLINE_FLAG } from "../shared/agent-hooks";
 import { BUILD_TIME, BUILD_COMMIT, BUILD_VERSION } from "../shared/build-info.generated";
 import { CLI_EXIT_CODE_SUCCESS } from "../shared/cli-exit-codes";
 import { installEpipeGuard, isEpipeError } from "./epipe";
@@ -137,6 +138,11 @@ async function main(): Promise<void> {
 	const restArgs = subcommand ? rawArgs.slice(2) : rawArgs.slice(1);
 	const args = resolveFileArgs(parseArgs(restArgs));
 
+	// Generated agent hooks on platforms without a POSIX shell cannot collapse
+	// CLI_EXIT_CODE_APP_NOT_RUNNING themselves, so they ask for it here: still
+	// warn on stderr, but exit 0 so a closed app never blocks the agent.
+	const tolerateAppOffline = args.flags[TOLERATE_APP_OFFLINE_FLAG.slice(2)] === "true";
+
 	const context = detectContext();
 	let socketPath = resolveSocketPath();
 
@@ -193,7 +199,11 @@ async function main(): Promise<void> {
 		socketPath = await resolveSocketPathWithRetry();
 	}
 	if (!socketPath) {
-		exitAppNotRunning({ stage: "discovery", ...debugAppNotRunning("discovery") });
+		exitAppNotRunning({
+			stage: "discovery",
+			tolerate: tolerateAppOffline,
+			...debugAppNotRunning("discovery"),
+		});
 	}
 
 	try {
@@ -246,7 +256,12 @@ async function main(): Promise<void> {
 	} catch (err) {
 		if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
 			const connectCode = (err as Error & { connectCode?: string }).connectCode;
-			exitAppNotRunning({ stage: "connect", socketPath, ...debugAppNotRunning("connect", connectCode) });
+			exitAppNotRunning({
+				stage: "connect",
+				socketPath,
+				tolerate: tolerateAppOffline,
+				...debugAppNotRunning("connect", connectCode),
+			});
 		}
 		throw err;
 	}

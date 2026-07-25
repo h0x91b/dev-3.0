@@ -8,9 +8,14 @@ on:
       - "electrobun.config.ts"
       - "package.json"
       - "scripts/fixtures/windows-conpty-package/**"
+      - "scripts/build-cli.ts"
+      - "scripts/build-native.ts"
       - "scripts/build-windows-terminal-host.ts"
       - "scripts/verify-packaged-windows-conpty.ts"
+      - "scripts/verify-windows-app-launch.ts"
       - "scripts/verify-windows-conpty-update-archive.ts"
+      - "src/bun/app-ready-marker.ts"
+      - "src/bun/index.ts"
       - "scripts/native-terminal-host-manifest/**"
       - "src/bun/native-terminal-host/**"
       - "src/bun/native-task-terminal.ts"
@@ -170,6 +175,13 @@ jobs:
       - name: Build the real dev3 Windows package and verify the final archive
         run: bun run package:win-archive
 
+      # Whole-app proof on top of the native-host lifecycle one: the archive ships
+      # the desktop executable + bundled dev3.exe + manifest-validated host image,
+      # and the extracted executable reaches the ready marker and dies completely.
+      - name: Launch the packaged Windows app and prove clean shutdown
+        timeout-minutes: 10
+        run: bun run verify:win-app-launch
+
       - name: Upload real Windows archive proof
         if: always()
         uses: actions/upload-artifact@v5
@@ -177,4 +189,5 @@ jobs:
           name: windows-app-archive-proof
           path: |
             artifacts/windows-conpty-package-proof.json
+            artifacts/windows-app-launch-proof.json
             artifacts/*-update.json

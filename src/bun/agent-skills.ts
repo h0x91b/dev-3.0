@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { createLogger } from "./logger";
 import { ensureCodexConfigFile } from "./codex-config";
 import { CLAUDE_SKILL_BODY, CODEX_SKILL_BODY, GENERIC_SKILL_BODY } from "../shared/agent-skill-content";
+import { type HookCliDialect, hookCliDialect } from "../shared/dev3-cli-path";
 
 // Re-exported for backward-compat: agents.ts and other callers import the
 // composed skill bodies from here. The section constants that compose them now
@@ -22,7 +23,14 @@ const SKILL_DESCRIPTION = "MANDATORY — invoke BEFORE doing anything else. Trig
 // body is written to PROTOCOL.md next to this SKILL.md as a fallback for
 // sessions started outside the dev3 launcher.
 
-const CLAUDE_SKILL_CONTENT = `---
+/**
+ * How this machine spells the dev3 CLI in generated content. POSIX keeps the
+ * frozen `~/.dev3.0/bin/dev3`; Windows gets the absolute `dev3.exe` and loses the
+ * `2>&1` redirect, which its hook/injection runner does not parse.
+ */
+export function buildClaudeSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+	const captureStderr = dialect.posixShell ? " 2>&1" : "";
+	return `---
 name: dev3
 description: "${SKILL_DESCRIPTION}"
 user-invocable: true
@@ -30,22 +38,24 @@ user-invocable: true
 
 # dev3 — Task Lifecycle Protocol
 
-The full protocol is already in your system prompt (the "dev3 — Task Lifecycle Protocol" section, injected by the dev3 launcher) — follow it; this skill only refreshes live state. If that section is NOT in your context (session started outside the dev3 app), read PROTOCOL.md in this skill's directory before continuing. Run \`~/.dev3.0/bin/dev3 --help\` when you need the full CLI reference.
+The full protocol is already in your system prompt (the "dev3 — Task Lifecycle Protocol" section, injected by the dev3 launcher) — follow it; this skill only refreshes live state. If that section is NOT in your context (session started outside the dev3 app), read PROTOCOL.md in this skill's directory before continuing. Run \`${dialect.cli} --help\` when you need the full CLI reference.
 
 ## Status (auto-set on skill load)
 
-!\`~/.dev3.0/bin/dev3 task move --status in-progress --if-status-not review-by-ai 2>&1\`
+!\`${dialect.cli} task move --status in-progress --if-status-not review-by-ai${captureStderr}\`
 
 ## Your current task
 
 \\\`\\\`\\\`
-!\`~/.dev3.0/bin/dev3 current --brief\`
+!\`${dialect.cli} current --brief\`
 \\\`\\\`\\\`
 `;
+}
 
 // ---- Codex and generic skills (no command injection support) ----
 
-const CODEX_SKILL_CONTENT = `---
+export function buildCodexSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+	return `---
 name: dev3
 description: "${SKILL_DESCRIPTION}"
 user-invocable: true
@@ -56,13 +66,15 @@ ${CODEX_SKILL_BODY}
 
 Run these two commands to learn about available CLI commands and your current task:
 
-- \`~/.dev3.0/bin/dev3 --help\` — learn all available CLI commands
-- \`~/.dev3.0/bin/dev3 current\` — see your current project, task, and status
+- \`${dialect.cli} --help\` — learn all available CLI commands
+- \`${dialect.cli} current\` — see your current project, task, and status
 
 Then begin working. Do not move the task status on session start; the injected \`SessionStart\` hook already owns that transition.
 `;
+}
 
-const GENERIC_SKILL_CONTENT = `---
+export function buildGenericSkillContent(dialect: HookCliDialect = hookCliDialect()): string {
+	return `---
 name: dev3
 description: "${SKILL_DESCRIPTION}"
 user-invocable: true
@@ -73,11 +85,12 @@ ${GENERIC_SKILL_BODY}
 
 Run these two commands to learn about available CLI commands and your current task:
 
-- \`~/.dev3.0/bin/dev3 --help\` — learn all available CLI commands
-- \`~/.dev3.0/bin/dev3 current\` — see your current project, task, and status
+- \`${dialect.cli} --help\` — learn all available CLI commands
+- \`${dialect.cli} current\` — see your current project, task, and status
 
 Then set \`in-progress\` and begin working.
 `;
+}
 
 /** Claude Code skill directory (supports !`command` injection). */
 const CLAUDE_SKILL_DIR = ".claude/skills/dev3";
@@ -665,15 +678,15 @@ export function getBugHunterSkillContent(): string {
 }
 
 export function getClaudeSkillContent(): string {
-	return CLAUDE_SKILL_CONTENT;
+	return buildClaudeSkillContent();
 }
 
 export function getCodexSkillContent(): string {
-	return CODEX_SKILL_CONTENT;
+	return buildCodexSkillContent();
 }
 
 export function getGenericSkillContent(): string {
-	return GENERIC_SKILL_CONTENT;
+	return buildGenericSkillContent();
 }
 
 /** Claude Code project-config skill directory. */
@@ -803,7 +816,14 @@ function installAgentsMd(): void {
 	}
 }
 
-const CLAUDE_BASH_PERMISSION = "Bash(~/.dev3.0/bin/dev3 *)";
+/**
+ * Claude Code matches a `Bash(<prefix>*)` rule against the literal command text,
+ * so the rule has to spell the CLI exactly the way our generated commands do —
+ * `~/.dev3.0/bin/dev3` on POSIX, the absolute `dev3.exe` on Windows.
+ */
+export function claudeBashPermission(dialect: HookCliDialect = hookCliDialect()): string {
+	return `Bash(${dialect.cli} *)`;
+}
 
 /**
  * Pure: ensure a parsed Claude Code settings object has both
@@ -824,10 +844,11 @@ export function applyClaudeSettings(settings: Record<string, unknown>, socketsPa
 	let changed = false;
 
 	// 1. permissions.allow — auto-approve the dev3 CLI.
+	const bashPermission = claudeBashPermission();
 	const permissions = (settings.permissions ?? {}) as Record<string, unknown>;
 	const allow = Array.isArray(permissions.allow) ? (permissions.allow as string[]) : [];
-	if (!allow.includes(CLAUDE_BASH_PERMISSION)) {
-		allow.push(CLAUDE_BASH_PERMISSION);
+	if (!allow.includes(bashPermission)) {
+		allow.push(bashPermission);
 		changed = true;
 	}
 	permissions.allow = allow;
@@ -945,7 +966,7 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 	const claudeSkillFile = `${claudeSkillDir}/SKILL.md`;
 	try {
 		mkdirSync(claudeSkillDir, { recursive: true });
-		writeFileSync(claudeSkillFile, CLAUDE_SKILL_CONTENT, "utf-8");
+		writeFileSync(claudeSkillFile, getClaudeSkillContent(), "utf-8");
 		writeFileSync(`${claudeSkillDir}/PROTOCOL.md`, CLAUDE_SKILL_BODY, "utf-8");
 		log.info("Claude skill installed", { path: claudeSkillFile });
 	} catch (err) {
@@ -960,7 +981,7 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 	const codexSkillFile = `${codexSkillDir}/SKILL.md`;
 	try {
 		mkdirSync(codexSkillDir, { recursive: true });
-		writeFileSync(codexSkillFile, CODEX_SKILL_CONTENT, "utf-8");
+		writeFileSync(codexSkillFile, getCodexSkillContent(), "utf-8");
 		log.info("Codex skill installed", { path: codexSkillFile });
 	} catch (err) {
 		log.warn("Failed to install Codex skill (non-fatal)", {
@@ -975,7 +996,7 @@ export function installAgentSkills(options: InstallAgentSkillsOptions = {}): voi
 		const skillFile = `${skillDir}/SKILL.md`;
 		try {
 			mkdirSync(skillDir, { recursive: true });
-			writeFileSync(skillFile, GENERIC_SKILL_CONTENT, "utf-8");
+			writeFileSync(skillFile, getGenericSkillContent(), "utf-8");
 			log.info("Agent skill installed", { path: skillFile });
 		} catch (err) {
 			log.warn("Failed to install agent skill (non-fatal)", {

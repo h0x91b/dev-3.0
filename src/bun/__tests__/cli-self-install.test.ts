@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync, realpathSync, lstatSync, unlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync, realpathSync, lstatSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureDev3CliSymlink } from "../cli-self-install";
@@ -77,6 +77,29 @@ describe("ensureDev3CliSymlink", () => {
 		// Passing dest itself as the running binary must not try to link it to itself.
 		expect(ensureDev3CliSymlink(home, dest())).toBe("unchanged");
 		expect(lstatSync(dest()).isSymbolicLink()).toBe(false);
+	});
+
+	// Windows: the destination is dev3.exe, and a symlink needs elevation or
+	// Developer Mode — so the code must degrade instead of throwing.
+	it("targets dev3.exe when the platform is Windows", () => {
+		expect(ensureDev3CliSymlink(home, binExec, "win32")).toBe("linked");
+		expect(realpathSync(join(home, "bin", "dev3.exe"))).toBe(realpathSync(binExec));
+	});
+
+	it("falls back to a .cmd shim when neither a link nor a copy is possible", () => {
+		// A directory at the destination makes both symlink and copy fail, which
+		// stands in for the elevation-less Windows box.
+		mkdirSync(join(home, "bin", "dev3.exe"), { recursive: true });
+
+		expect(ensureDev3CliSymlink(home, binExec, "win32")).toBe("shimmed");
+		const shim = readFileSync(join(home, "bin", "dev3.cmd"), "utf-8");
+		expect(shim).toContain(realpathSync(binExec));
+		expect(shim.startsWith("@echo off")).toBe(true);
+	});
+
+	it("never throws when the dev3 home is not writable", () => {
+		expect(() => ensureDev3CliSymlink(join(binExec, "not-a-dir"), binExec, "win32")).not.toThrow();
+		expect(ensureDev3CliSymlink(join(binExec, "not-a-dir"), binExec, "win32")).toBe("skipped");
 	});
 
 	it("recreates the bin dir if it was removed", () => {
