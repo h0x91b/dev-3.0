@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 import { resolveUserHome } from "../paths";
 import { cliSocketTransportSupported } from "../../shared/cli-socket-transport";
 import { WINDOWS_POWERSHELL_FALLBACK, defaultLaunchShellPath } from "../../shared/platform-launch";
-import { devPlan, devRunEnv } from "../../../scripts/dev";
+import { descendantPids, devPlan, devRunEnv, parseProcessTable, shutdownSignals, treeKillCommand } from "../../../scripts/dev";
 import { cliBinaryName, cliCopyEntry } from "../../../electrobun.config";
 import { emitsUpdateArchive } from "../../shared/electrobun-build-env";
 import { findEnvPathKey, normalizeEnvPath, readEnvPath } from "../../shared/env-path";
@@ -248,5 +248,80 @@ describe("system requirements per platform", () => {
 		}
 		expect(getSystemRequirements("win32").find((r) => r.id === "git")?.installCommand)
 			.toBe("winget install --id Git.Git -e");
+	});
+});
+
+// Inserting scripts/dev.ts as a parent process broke Ctrl+C on Windows: the
+// parent died, the electrobun child and the app grandchild were orphaned, and the
+// app kept writing into a console that had already printed a new prompt.
+describe("dev-loop shutdown", () => {
+	it("intercepts Ctrl+C and terminal close on POSIX", () => {
+		expect(shutdownSignals("darwin")).toEqual(["SIGINT", "SIGTERM", "SIGHUP"]);
+	});
+
+	it("uses SIGBREAK instead of SIGHUP on Windows, which has no SIGHUP", () => {
+		const signals = shutdownSignals("win32");
+		expect(signals).toContain("SIGBREAK");
+		expect(signals).not.toContain("SIGHUP");
+	});
+
+	it("kills the whole tree on Windows, since the app is a grandchild", () => {
+		expect(treeKillCommand(4242, "win32", { SystemRoot: "C:\\Windows" })).toEqual([
+			"C:\\Windows\\System32\\taskkill.exe", "/PID", "4242", "/T", "/F",
+		]);
+	});
+
+	it("addresses taskkill through %SystemRoot%, never assuming PATH resolves it", () => {
+		const command = treeKillCommand(1, "win32", { WINDIR: "D:\\Win" });
+		expect(command?.[0]).toBe("D:\\Win\\System32\\taskkill.exe");
+		// Last resort only when Windows tells us nothing about its own root.
+		expect(treeKillCommand(1, "win32", {})?.[0]).toBe("taskkill");
+	});
+
+	it("needs no tree kill on POSIX, where Ctrl+C reaches the process group", () => {
+		expect(treeKillCommand(1, "darwin")).toBeNull();
+		expect(treeKillCommand(1, "linux")).toBeNull();
+	});
+});
+
+// Signalling the direct child does NOT cascade — verified on macOS, where after
+// SIGINT the electrobun CLI processes died while the app launcher and the app
+// itself survived and kept logging into the console. So POSIX needs a real walk.
+describe("POSIX process-tree walk", () => {
+	const table = [
+		"    1     0",
+		"  100     1",
+		"  200   100",
+		"  300   200",
+		"  301   200",
+		"  400     1",
+	].join("\n");
+
+	it("parses `ps -Ao pid=,ppid=` output", () => {
+		expect(parseProcessTable("  100     1\n  200   100")).toEqual([
+			{ pid: 100, ppid: 1 },
+			{ pid: 200, ppid: 100 },
+		]);
+	});
+
+	it("drops header and malformed lines instead of producing NaN pids", () => {
+		expect(parseProcessTable("PID PPID\n\n  \n  10    1\nbogus")).toEqual([{ pid: 10, ppid: 1 }]);
+	});
+
+	it("collects the whole subtree, deepest first and the root last", () => {
+		const pids = descendantPids(parseProcessTable(table), 100);
+		expect(pids[pids.length - 1]).toBe(100);
+		expect(pids).toEqual(expect.arrayContaining([200, 300, 301]));
+		expect(pids).not.toContain(400);
+		expect(pids).not.toContain(1);
+	});
+
+	it("returns just the root when it has no children", () => {
+		expect(descendantPids(parseProcessTable(table), 400)).toEqual([400]);
+	});
+
+	it("cannot loop on a self-parenting or cyclic row", () => {
+		expect(descendantPids([{ pid: 7, ppid: 7 }], 7)).toEqual([7]);
+		expect(descendantPids([{ pid: 8, ppid: 9 }, { pid: 9, ppid: 8 }], 8).sort()).toEqual([8, 9]);
 	});
 });

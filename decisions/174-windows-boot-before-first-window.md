@@ -86,6 +86,22 @@ Requirements** gate, which is what actually stood between it and the Dashboard:
   never in the electrobun copy map, so **every** launch on every platform failed
   three resource loads. macOS swallowed it; the Windows console printed it.
 
+## Ctrl+C: the cost of inserting a parent process
+
+Replacing the shell one-liner with `scripts/dev.ts` inserted a process between the
+shell and electrobun, and that broke Ctrl+C: the parent died on SIGINT while the
+electrobun CLI, the launcher and the app were orphaned — still attached to the
+console, still logging after the shell had printed a new prompt.
+
+Reproduced on macOS as well, which killed the first fix: signalling the direct
+child does NOT cascade. After SIGINT the two electrobun CLI processes died while
+the app launcher and the app process survived. So the script now owns the whole
+tree — `taskkill /PID <pid> /T /F` on Windows (one recursive call), and on POSIX an
+explicit `ps -Ao pid=,ppid=` walk, SIGTERM to every descendant, SIGKILL to
+survivors after a 3s grace. The pids are enumerated BEFORE the first kill, because
+they vanish as the tree dies. `SIGBREAK` replaces `SIGHUP` on Windows, which has
+none, and Node throws `ERR_UNKNOWN_SIGNAL` for a name the platform does not know.
+
 ## Risks
 
 - On Windows every CLI-driven feature is dead until Seq 1296: agent hooks cannot
