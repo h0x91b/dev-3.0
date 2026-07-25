@@ -29,6 +29,7 @@ export function taskDialogInfoFromSubject(taskTitle: string, subject?: TaskDialo
  * it to the confirm info card in one step. Equivalent to the wire path so every
  * worktree-destroying prompt renders the same context card.
  */
-export function taskDialogInfo(task: Task, project: Project): ConfirmInfo {
-	return taskDialogInfoFromSubject(getTaskTitle(task), buildTaskDialogSubject(task, project));
+export function taskDialogInfo(task: Task, project: Project, onClick?: () => void): ConfirmInfo {
+	const info = taskDialogInfoFromSubject(getTaskTitle(task), buildTaskDialogSubject(task, project));
+	return onClick ? { ...info, onClick } : info;
 }

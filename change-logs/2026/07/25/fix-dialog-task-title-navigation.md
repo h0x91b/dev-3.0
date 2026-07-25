@@ -1,0 +1,1 @@
+Make the task title in unsaved-changes confirmation dialogs clickable. Clicking it now dismisses the destructive prompt without moving the task and opens the referenced task using the user's configured task view.

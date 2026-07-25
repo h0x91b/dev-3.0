@@ -63,6 +63,15 @@ describe("moveTaskToStatus", () => {
 		expect(mockedMoveTask).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1", newStatus: "completed", clientPlayedSound: true });
 	});
 
+	it("passes the task opener into the terminal confirmation", async () => {
+		const dispatch = vi.fn();
+		const onOpenTask = vi.fn();
+
+		await moveTaskToStatus({ task, project, newStatus: "completed", dispatch, t, onOpenTask });
+
+		expect(mockedConfirm).toHaveBeenCalledWith(task, project, "completed", t, onOpenTask);
+	});
+
 	it("tells the backend NOT to suppress the push when the UI did not play (sound off)", async () => {
 		mockedSound.mockReturnValue(false);
 		const dispatch = vi.fn();

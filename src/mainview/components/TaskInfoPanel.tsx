@@ -344,6 +344,12 @@ function TaskInfoPanel({
 	async function handleStatusMove(newStatus: TaskStatus) {
 		setStatusMenuOpen(false);
 		const terminal = newStatus === "completed" || newStatus === "cancelled";
+		const openTaskFromDialog = () => {
+			const openMode = getTaskOpenMode();
+			navigate(openMode === "fullscreen"
+				? { screen: "task", projectId: project.id, taskId: task.id }
+				: { screen: "project", projectId: project.id, activeTaskId: task.id });
+		};
 		// Terminal moves leave the task screen immediately (worktree teardown runs
 		// in the background); other moves keep the panel and show a spinner.
 		const leaveScreen = terminal || !ACTIVE_STATUSES.includes(newStatus);
@@ -357,6 +363,7 @@ function TaskInfoPanel({
 			newStatus,
 			dispatch,
 			t,
+			onOpenTask: openTaskFromDialog,
 			// Terminal moves leave the screen and keep the optimistic completion on
 			// failure (matches the fire-and-forget behaviour); other moves stay and
 			// revert + toast if the RPC fails.

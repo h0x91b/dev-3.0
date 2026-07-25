@@ -55,4 +55,15 @@ describe("taskDialogInfo", () => {
 			labels: [LABEL],
 		});
 	});
+
+	it("attaches an opener when the dialog can navigate to the task", () => {
+		const onClick = () => {};
+		const task = { seq: 42, customTitle: "Do the thing" } as Task;
+		const project = { id: "p1", name: "dev-3.0", path: "/p", labels: [LABEL] } as Project;
+
+		expect(taskDialogInfo(task, project, onClick)).toEqual(expect.objectContaining({
+			title: "Do the thing",
+			onClick,
+		}));
+	});
 });

@@ -892,6 +892,7 @@ describe("TaskInfoPanel", () => {
 				project,
 				"completed",
 				expect.any(Function),
+				expect.any(Function),
 			);
 			// Move was blocked
 			expect(mockedApi.request.moveTask).not.toHaveBeenCalled();

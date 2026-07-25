@@ -63,6 +63,17 @@ describe("confirmTaskCompletion", () => {
 		);
 	});
 
+	it("makes the task title openable from the confirmation dialog", async () => {
+		const onOpenTask = vi.fn();
+		await confirmTaskCompletion(baseTask, project, "completed", t, onOpenTask);
+
+		expect(mockedConfirm).toHaveBeenCalledWith(
+			expect.objectContaining({
+				info: expect.objectContaining({ onClick: onOpenTask }),
+			}),
+		);
+	});
+
 	it("prefers the user-edited title/overview overrides in the info card", async () => {
 		const task = {
 			...baseTask,

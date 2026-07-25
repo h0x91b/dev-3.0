@@ -28,11 +28,13 @@ interface TaskDetailModalProps {
 	project: Project;
 	dispatch: Dispatch<AppAction>;
 	onClose: () => void;
+	/** Opens the task workspace from a terminal-state confirmation card. */
+	onOpenTask?: () => void;
 	/** Opens the LaunchVariantsModal to start a todo task (agent + variant picker). */
 	onLaunchVariants: (task: Task, targetStatus: TaskStatus) => void;
 }
 
-function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }: TaskDetailModalProps) {
+function TaskDetailModal({ task, project, dispatch, onClose, onOpenTask, onLaunchVariants }: TaskDetailModalProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const trapRef = useFocusTrap<HTMLDivElement>();
@@ -234,6 +236,7 @@ function TaskDetailModal({ task, project, dispatch, onClose, onLaunchVariants }:
 			newStatus,
 			dispatch,
 			t,
+			onOpenTask,
 			afterOptimistic: () => onClose(),
 		});
 	}

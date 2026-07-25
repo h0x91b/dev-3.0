@@ -272,6 +272,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			newStatus,
 			dispatch,
 			t,
+			onOpenTask: openTaskFromDialog,
 			onMoved: () => onTaskMoved(task.id),
 			onMovingChange: (moving) =>
 				isTerminal ? onSetMoving?.(task.id, moving) : setMoving(moving),
@@ -390,6 +391,16 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			// this from the title; matching it here keeps clicks consistent and lets
 			// the keyboard hint ("jump to task") land somewhere for todo cards too.
 			setDetailOpen(true);
+		}
+	}
+
+	function openTaskFromDialog() {
+		setDetailOpen(false);
+		const openMode = getTaskOpenMode();
+		if (openMode === "fullscreen") {
+			navigate({ screen: "task", projectId: project.id, taskId: task.id });
+		} else {
+			navigate({ screen: "project", projectId: project.id, activeTaskId: task.id });
 		}
 	}
 
@@ -740,6 +751,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					project={project}
 					dispatch={dispatch}
 					onClose={() => setDetailOpen(false)}
+					onOpenTask={openTaskFromDialog}
 					onLaunchVariants={onLaunchVariants}
 				/>,
 				document.body

@@ -18,6 +18,8 @@ export interface MoveTaskToStatusOptions {
 	newStatus: TaskStatus;
 	dispatch: Dispatch<AppAction>;
 	t: TFunction;
+	/** Open the task from the terminal-state confirmation card. */
+	onOpenTask?: () => void;
 	/** Run the unpushed/uncommitted confirmation before terminal moves. Default true. */
 	confirm?: boolean;
 	/** Toggle a per-card "moving" spinner while the background RPC is in flight. */
@@ -64,6 +66,7 @@ export async function moveTaskToStatus({
 	newStatus,
 	dispatch,
 	t,
+	onOpenTask,
 	confirm = true,
 	onMovingChange,
 	onMoved,
@@ -74,7 +77,7 @@ export async function moveTaskToStatus({
 	const terminal = isTerminalStatus(newStatus);
 
 	if (confirm && terminal && task.worktreePath) {
-		const proceed = await confirmTaskCompletion(task, project, newStatus, t);
+		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask);
 		if (!proceed) return false;
 	}
 

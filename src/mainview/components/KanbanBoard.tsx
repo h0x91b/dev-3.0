@@ -7,7 +7,7 @@ import { PRIORITY_NAME_KEYS } from "./priorityStyles";
 // Column ordering + visibility lives in the shared, unit-tested getBoardColumns
 // (single source of truth for the board's column layout).
 type ColumnSlot = BoardColumnSlot;
-import type { AppAction, Route } from "../state";
+import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
 import KanbanColumn from "./KanbanColumn";
@@ -287,6 +287,12 @@ function KanbanBoard({
 			newStatus: targetStatus,
 			dispatch,
 			t,
+			onOpenTask: () => {
+				const openMode = getTaskOpenMode();
+				navigate(openMode === "fullscreen"
+					? { screen: "task", projectId: project.id, taskId: task.id }
+					: { screen: "project", projectId: project.id, activeTaskId: task.id });
+			},
 			onMoved: () => recordMove(task.id),
 			onMovingChange: (moving) => handleSetMoving(task.id, moving),
 		});

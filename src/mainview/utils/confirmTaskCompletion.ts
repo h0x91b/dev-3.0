@@ -13,6 +13,7 @@ export async function confirmTaskCompletion(
 	project: Project,
 	newStatus: TaskStatus,
 	t: TFunction,
+	onOpenTask?: () => void,
 ): Promise<boolean> {
 	if (newStatus !== "completed" && newStatus !== "cancelled") return true;
 	if (!task.worktreePath) return true;
@@ -72,7 +73,7 @@ export async function confirmTaskCompletion(
 
 	return confirm({
 		title: t("task.warnCompletionTitle"),
-		info: taskDialogInfo(task, project),
+		info: taskDialogInfo(task, project, onOpenTask),
 		message,
 	});
 }
