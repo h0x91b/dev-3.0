@@ -55,6 +55,16 @@ export interface LaunchDialect {
 	readonly id: LaunchDialectId;
 	/** Extension of generated wrapper scripts, including the dot. */
 	readonly scriptExtension: string;
+	/**
+	 * Byte-order mark a generated script must start with.
+	 *
+	 * Windows PowerShell 5.1 reads a BOM-less `.ps1` as ANSI, so any non-ASCII
+	 * character in it decodes to mojibake — and `✓` decodes to a byte PowerShell
+	 * accepts as a smart quote, which broke the whole script with
+	 * `TerminatorExpectedAtEndOfString` (observed on a real Windows machine).
+	 * A Cyrillic task title in an env line would break it exactly the same way.
+	 */
+	readonly scriptByteOrderMark: string;
 	/** Expression holding the previous command's exit code. */
 	readonly lastExitCodeExpr: string;
 	/** Leading lines of a generated script (shebang / strict-mode prelude). */
@@ -168,6 +178,7 @@ export function posixEscapeForDoubleQuotes(value: string): string {
 const posixDialect: LaunchDialect = {
 	id: "posix-shell",
 	scriptExtension: ".sh",
+	scriptByteOrderMark: "",
 	lastExitCodeExpr: "$?",
 	header: () => ["#!/bin/bash"],
 	quote: posixShellQuote,
@@ -260,6 +271,7 @@ function powerShellPath(shellPath?: string): string {
 const windowsDialect: LaunchDialect = {
 	id: "windows-powershell",
 	scriptExtension: ".ps1",
+	scriptByteOrderMark: "\uFEFF",
 	lastExitCodeExpr: "$LASTEXITCODE",
 	// No shebang on Windows; stop on unhandled errors instead of limping on.
 	header: () => ["$ErrorActionPreference = 'Continue'"],

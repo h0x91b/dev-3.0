@@ -60,6 +60,15 @@ export function portableReadKey(options?: { timeoutSeconds?: number }): string {
 	return launchDialect().readKey(options);
 }
 
+/**
+ * Write a generated wrapper script. The ONLY way dev3 puts one on disk: the
+ * dialect decides whether the file needs a byte-order mark, and a `.ps1` without
+ * one is read as ANSI by Windows PowerShell 5.1 (see `scriptByteOrderMark`).
+ */
+export async function writeLaunchScript(scriptPath: string, body: string): Promise<void> {
+	await Bun.write(scriptPath, launchDialect().scriptByteOrderMark + body);
+}
+
 export function buildCmdScript(
 	tmuxCmd: string,
 	env?: Record<string, string>,

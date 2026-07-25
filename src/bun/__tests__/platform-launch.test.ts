@@ -31,6 +31,14 @@ describe("dialect selection", () => {
 		expect(launchDialect("win32").scriptExtension).toBe(".ps1");
 	});
 
+	it("marks a .ps1 as UTF-8 and leaves POSIX scripts byte-identical", () => {
+		// Without the BOM, PowerShell 5.1 read `✓` as a smart quote and the whole
+		// script died with TerminatorExpectedAtEndOfString.
+		expect(launchDialect("win32").scriptByteOrderMark).toBe("\uFEFF");
+		expect(launchDialect("darwin").scriptByteOrderMark).toBe("");
+		expect(launchDialect("linux").scriptByteOrderMark).toBe("");
+	});
+
 	it("keeps the historical POSIX default shell", () => {
 		expect(defaultLaunchShellPath("darwin", { SHELL: "/bin/fish" })).toBe("/bin/fish");
 		expect(defaultLaunchShellPath("linux", {})).toBe("/bin/zsh");

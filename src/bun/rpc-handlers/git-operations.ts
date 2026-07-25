@@ -22,6 +22,7 @@ import {
 import { Semaphore } from "../concurrency";
 import { syncTaskBranchName } from "../task-branch-sync";
 import { getPushMessage, log } from "./shared";
+import { writeLaunchScript } from "./shared-pure";
 import { lifecycleActorRuntime } from "../lifecycle/service";
 import {
 	PR_DETECTION_TIMEOUT_MS,
@@ -357,7 +358,7 @@ async function rebaseTask(params: { taskId: string; projectId: string; compareRe
 		`  read -n 1 -s`,
 		`fi`,
 	].join("\n") + "\n";
-	await Bun.write(scriptPath, script);
+	await writeLaunchScript(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
 	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
@@ -455,7 +456,7 @@ async function mergeTask(params: { taskId: string; projectId: string }): Promise
 		`  read -n 1 -s`,
 		`fi`,
 	].join("\n") + "\n";
-	await Bun.write(scriptPath, script);
+	await writeLaunchScript(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, project.path, scriptPath, socket);
 	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
@@ -493,7 +494,7 @@ async function pushTask(params: { taskId: string; projectId: string }): Promise<
 		`  read -n 1 -s`,
 		`fi`,
 	].join("\n") + "\n";
-	await Bun.write(scriptPath, script);
+	await writeLaunchScript(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
 	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
@@ -611,7 +612,7 @@ async function openPullRequest(params: { taskId: string; projectId: string }): P
 		`  read -n 1 -s`,
 		`fi`,
 	].join("\n") + "\n";
-	await Bun.write(scriptPath, script);
+	await writeLaunchScript(scriptPath, script);
 
 	const paneId = await openGitOpPane(tmuxSession, task.worktreePath, scriptPath, socket);
 	if (paneId) lifecycleActorRuntime(task.id).gitOpPaneId = paneId;
