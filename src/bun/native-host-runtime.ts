@@ -82,11 +82,20 @@ function realExecDir(): string | null {
 }
 
 /**
- * Where a packaged image would sit: beside the app runtime, exactly where
- * Electrobun's packaging hook assembles `<packageRoot>/native-host-image/<tag>/`.
+ * Where a packaged image can sit, nearest first.
+ *
+ * The packaging hook assembles `<packageRoot>/native-host-image/<tag>/`, and
+ * `<packageRoot>` is not always the runtime's own directory: the Windows package
+ * puts the runtime in `<packageRoot>\bin\bun.exe`, so looking only beside the
+ * executable missed the image the same build had just written one level up
+ * (observed on a real Windows machine — the launch failed with "this dev3
+ * package has no native-host-image/ directory").
  */
-export function packagedHostImageRoot(): string | null {
-	return realExecDir();
+export function packagedHostImageRoots(): string[] {
+	const execDir = realExecDir();
+	if (!execDir) return [];
+	const parent = dirname(execDir);
+	return parent && parent !== execDir ? [execDir, parent] : [execDir];
 }
 
 function developmentRuntime(): NativeHostRuntime | null {
@@ -109,8 +118,8 @@ function developmentRuntime(): NativeHostRuntime | null {
 }
 
 function packagedImageRuntime(diagnostics: string[]): NativeHostRuntime | null {
-	const packageRoot = packagedHostImageRoot();
-	if (!packageRoot) {
+	const packageRoots = packagedHostImageRoots();
+	if (packageRoots.length === 0) {
 		diagnostics.push("Could not resolve this install's directory from process.execPath.");
 		return null;
 	}
@@ -125,11 +134,16 @@ function packagedImageRuntime(diagnostics: string[]): NativeHostRuntime | null {
 		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
 		archiveParent: PACKAGED_HOST_IMAGE_PARENT,
 	};
-	const discovered = discoverPackagedImage(packageRoot, expectations);
-	if (discovered.status !== "ok") {
-		diagnostics.push(`Packaged host image unusable: ${discovered.reason}`);
-		return null;
+	let discovered: ReturnType<typeof discoverPackagedImage> | null = null;
+	for (const root of packageRoots) {
+		const candidate = discoverPackagedImage(root, expectations);
+		if (candidate.status === "ok") {
+			discovered = candidate;
+			break;
+		}
+		diagnostics.push(`Packaged host image unusable: ${candidate.reason}`);
 	}
+	if (!discovered) return null;
 	const stagingRoot = hostImagesRootDir();
 	const staged = stagePackagedImage({ sourceImageDir: discovered.imageDir, stagingRoot, expectations });
 	if (staged.status === "failed") {

@@ -37,9 +37,11 @@ import {
 	NATIVE_HOST_RUNTIME_ENV,
 	NativeHostRuntimeError,
 	nativeHostLauncher,
+	packagedHostImageRoots,
 	PACKAGED_HOST_SESSION_VERB,
 	resolveNativeHostRuntime,
 } from "../native-host-runtime";
+import { discoverPackagedImage } from "../native-terminal-registry/host-images/packaged-image";
 import { encodeShellLaunchSpec, NATIVE_SESSION_LAUNCH_ENV } from "../native-terminal-registry/shell-launch";
 
 const TEST_ROOT = join(process.env.DEV3_TEST_ROOT ?? "/tmp", "native-host-runtime");
@@ -63,6 +65,10 @@ beforeEach(() => {
 afterEach(() => {
 	delete process.env[NATIVE_HOST_ENTRYPOINT_ENV];
 	delete process.env[NATIVE_HOST_RUNTIME_ENV];
+	// clearAllMocks keeps implementations, so restore the hermetic "no image" one.
+	vi.mocked(discoverPackagedImage).mockImplementation(
+		() => ({ status: "absent", reason: "no native-host-image/ in this test package" }) as never,
+	);
 });
 
 describe("development entrypoint override", () => {
@@ -127,6 +133,27 @@ describe("a build with no launchable host", () => {
 			"This dev3 build cannot launch a native terminal host, and it will not silently start tmux instead.",
 			"Or set this task's terminal backend back to tmux: `dev3 task terminal-backend --to tmux`.",
 		]);
+	});
+});
+
+describe("packaged image lookup", () => {
+	it("looks beside the runtime first, then one level up", () => {
+		const roots = packagedHostImageRoots();
+		expect(roots.length).toBe(2);
+		expect(join(roots[0], "..")).toBe(roots[1]);
+	});
+
+	it("finds an image the Windows package wrote above the runtime's bin/ directory", () => {
+		const roots = packagedHostImageRoots();
+		vi.mocked(discoverPackagedImage).mockImplementation((root: string) =>
+			root === roots[1]
+				? ({ status: "ok", imageDir: join(root, "native-host-image", "tag"), tag: "tag", manifest: {} } as never)
+				: ({ status: "absent", reason: "no native-host-image/ here" } as never),
+		);
+		vi.mocked(existsSync).mockImplementation(() => false); // no registry CLI source either
+
+		// The near root misses, the parent hits — resolution must not stop at the miss.
+		expect(() => resolveNativeHostRuntime()).toThrow(/Staging the packaged host image/);
 	});
 });
 
