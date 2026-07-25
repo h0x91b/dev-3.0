@@ -30,6 +30,7 @@
 		"test:native-host-image": "bunx vitest run --config vitest.config.bun.ts src/bun/native-terminal-registry/host-images/__tests__/artifact-manifest.test.ts src/bun/native-terminal-registry/host-images/__tests__/artifact-manifest-cli.test.ts src/bun/native-terminal-registry/host-images/__tests__/packaged-image-manifest.test.ts src/bun/native-terminal-registry/host-images/__tests__/packaged-image.test.ts",
 		"package:win-archive": "bun scripts/generate-build-info.ts && bun scripts/generate-changelog.ts && vite build && bun run build:cli && electrobun build --env=canary",
 		"test:native-parity-e2e": "bun src/bun/native-terminal-adapter/__tests__/parity-corpus.native-e2e.ts",
+		"test:ownership-e2e": "bun src/bun/terminal-process-ownership/__tests__/ownership.bun-e2e.ts",
 		"test:terminal-state-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/terminal-state/__tests__",
 		"benchmark:terminal-state-spike": "bun src/bun/prototypes/terminal-state/benchmark.ts",
 		"test:stream-resync-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/stream-resync/__tests__",
