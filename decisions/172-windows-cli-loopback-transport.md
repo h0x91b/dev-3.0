@@ -63,9 +63,18 @@ Keep the endpoint handle a **real file path** and give Windows a second carrier:
 - The endpoint record is additive: every pre-existing scan filters on `.sock`, so
   older installed versions ignore it (the `~/.dev3.0` N-2 invariant holds). No
   file is renamed, moved, or migrated.
-- The Windows end-to-end proof through the *packaged* `dev3.exe` still depends on
-  Seq 1295's bundling and state-root work and on a real Windows machine; the
-  automated proof is `bun run test:cli-loopback-e2e` plus the vitest suites.
+- The Windows end-to-end proof through the *packaged* `dev3.exe` is automated by
+  `bun run test:cli-packaged-e2e` (compiles the CLI with `bun build --compile`
+  and drives the binary against real loopback listeners in a temp state dir; it
+  runs on the Windows CI matrix, where the artifact is `dev3.exe`). What remains
+  human-only is the real desktop app publishing the record on Windows.
+- Both `src/bun/paths.ts` and `src/cli/context.ts` resolve the state root from
+  `process.env.HOME || "/tmp"`. Windows normally leaves `HOME` unset, so app and
+  CLI agree but on a non-`USERPROFILE` path. That is Seq 1295's contract, not
+  this change's; the packaged E2E injects `HOME` explicitly.
+- The packaged CLI resolves context from `cwd` before the `DEV3_TASK_ID` env var,
+  so a harness run from inside this repo's worktree dials the *real* running app.
+  The E2E runs the child with `cwd` set to its temp state root.
 
 ## Alternatives considered
 

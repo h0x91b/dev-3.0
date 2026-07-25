@@ -35,6 +35,7 @@
 		"test:native-parity-e2e": "bun src/bun/native-terminal-adapter/__tests__/parity-corpus.native-e2e.ts",
 		"test:ownership-e2e": "bun src/bun/terminal-process-ownership/__tests__/ownership.bun-e2e.ts",
 		"test:cli-loopback-e2e": "bun src/bun/__tests__/cli-loopback-transport.bun-e2e.ts",
+		"test:cli-packaged-e2e": "bun src/cli/__tests__/cli-packaged-loopback.bun-e2e.ts",
 		"test:terminal-state-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/terminal-state/__tests__",
 		"benchmark:terminal-state-spike": "bun src/bun/prototypes/terminal-state/benchmark.ts",
 		"test:stream-resync-spike": "bunx vitest run --config vitest.config.bun.ts src/bun/prototypes/stream-resync/__tests__",

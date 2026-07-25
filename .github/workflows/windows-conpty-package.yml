@@ -31,6 +31,16 @@ on:
       - "src/bun/native-terminal-multipane/**"
       - "src/bun/native-terminal-adapter/**"
       - "src/bun/terminal-parity/**"
+      # Windows CLI control transport (seq 1296): both loopback E2E steps below.
+      - "src/shared/cli-endpoint.ts"
+      - "src/bun/cli-listener.ts"
+      - "src/bun/cli-socket-server.ts"
+      - "src/bun/cli-self-install.ts"
+      - "src/bun/instance-broadcast.ts"
+      - "src/cli/context.ts"
+      - "src/cli/socket-client.ts"
+      - "src/bun/__tests__/cli-loopback-transport.bun-e2e.ts"
+      - "src/cli/__tests__/cli-packaged-loopback.bun-e2e.ts"
   workflow_dispatch:
 
 permissions:
@@ -62,6 +72,13 @@ jobs:
       # network boundary against this runner's real interfaces.
       - name: CLI loopback transport E2E
         run: bun run test:cli-loopback-e2e
+
+      # The same transport driven through the COMPILED CLI (`dev3.exe` on this
+      # runner): representative commands, instance selection, stale/corrupt
+      # records, and the documented app-not-running exit code.
+      - name: Packaged CLI over loopback E2E
+        timeout-minutes: 5
+        run: bun run test:cli-packaged-e2e
 
       # Merged host-image manifest: generator, validator, deterministic assembly,
       # additive staging outside the install root, and rollback selection.
