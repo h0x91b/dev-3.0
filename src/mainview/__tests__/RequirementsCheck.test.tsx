@@ -65,3 +65,54 @@ describe("RequirementsCheck custom binary path", () => {
 		expect(screen.queryByText("Path must point to an executable tmux binary")).not.toBeInTheDocument();
 	});
 });
+
+// On Windows tmux has no install command at all — it cannot be installed there.
+// The copy-command block must disappear rather than render an empty code box,
+// while the custom-path row (the only actionable control left) stays.
+describe("RequirementsCheck without an install command", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	const windowsTmux = {
+		id: "tmux",
+		name: "tmux",
+		installed: false,
+		installHint: "requirements.tmuxUnavailableWindows",
+		brewInstallable: false,
+		optional: true,
+		customPathError: false,
+	};
+
+	function renderWindows() {
+		render(
+			<I18nProvider>
+				<RequirementsCheck
+					results={[windowsTmux] as any}
+					checking={false}
+					onRefresh={() => {}}
+					onRefreshResults={vi.fn(async () => undefined)}
+				/>
+			</I18nProvider>,
+		);
+	}
+
+	it("still explains why the tool is missing", () => {
+		renderWindows();
+		expect(screen.getByText(/Not available on Windows/i)).toBeInTheDocument();
+	});
+
+	it("renders no copy-to-clipboard button when there is nothing to copy", () => {
+		renderWindows();
+		expect(screen.queryByTitle("Copy")).not.toBeInTheDocument();
+	});
+
+	it("keeps the manual binary-path input available", () => {
+		renderWindows();
+		expect(screen.getByPlaceholderText("/path/to/tmux")).toBeInTheDocument();
+	});
+
+	it("still shows the copy button for a requirement that HAS a command", () => {
+		renderCheck();
+		expect(screen.getByTitle("Copy")).toBeInTheDocument();
+		expect(screen.getByText("brew install h0x91b/dev3/tmux@3.6")).toBeInTheDocument();
+	});
+});

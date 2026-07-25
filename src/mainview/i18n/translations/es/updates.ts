@@ -69,6 +69,8 @@ const updates = {
 	"requirements.refresh": "Verificar de nuevo",
 	"requirements.copied": "Copiado!",
 	"requirements.installGit": "Instalar con Xcode CLI tools:",
+	"requirements.installGitWindows": "Instalar con winget:",
+	"requirements.tmuxUnavailableWindows": "No disponible en Windows: las terminales de tarea usan el backend nativo.",
 	"requirements.installTmux": "Instalar con Homebrew:",
 	"requirements.installYazi": "Instalar con Homebrew (opcional, para explorador de archivos):",
 	"requirements.optional": "opcional",

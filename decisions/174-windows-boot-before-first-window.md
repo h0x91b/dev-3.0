@@ -61,6 +61,31 @@ neither was wrapped speculatively.
   `electrobun.config`, so the copy map and the boot-time install can never
   disagree about `dev3` vs `dev3.exe`.
 
+## Follow-up found by the first successful Windows launch
+
+The window opened, React rendered — and the app stopped on the **System
+Requirements** gate, which is what actually stood between it and the Dashboard:
+
+- `process.env.PATH` was **undefined** in the app process, while `SystemRoot` read
+  fine. Windows spells the variable `Path` and a JS env object need not fold the
+  case, so every binary lookup (`Bun.which`, `resolveBinaryPath`, spawned
+  children) searched an empty path and git reported "not found" despite being
+  installed. `normalizeEnvPath()` in `src/shared/env-path.ts` aliases whatever
+  casing exists onto `PATH`, in place, before any lookup runs; a still-missing
+  PATH is logged with the env key NAMES (never values) so the cause is
+  identifiable next time. The exact key is checked first, so POSIX is untouched.
+- tmux was a REQUIRED binary and cannot be installed on Windows, making the gate
+  permanently unpassable. It is now `optional` there — still listed and still
+  shown as missing, because hiding it would misrepresent the terminal backend —
+  and `App.tsx` passes on `installed || optional`.
+- The install hints ARE commands: `xcode-select --install` and `brew install` on
+  Windows are noise. git now offers `winget install --id Git.Git -e`, and tmux
+  offers no command at all, so `installCommand` became optional and
+  `RequirementsCheck` renders no empty code box or dead copy button.
+- Unrelated but surfaced by the same run: the favicons vite emits to `dist/` were
+  never in the electrobun copy map, so **every** launch on every platform failed
+  three resource loads. macOS swallowed it; the Windows console printed it.
+
 ## Risks
 
 - On Windows every CLI-driven feature is dead until Seq 1296: agent hooks cannot

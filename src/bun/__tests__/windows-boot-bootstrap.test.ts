@@ -14,6 +14,8 @@ import { WINDOWS_POWERSHELL_FALLBACK, defaultLaunchShellPath } from "../../share
 import { devPlan, devRunEnv } from "../../../scripts/dev";
 import { cliBinaryName, cliCopyEntry } from "../../../electrobun.config";
 import { emitsUpdateArchive } from "../../shared/electrobun-build-env";
+import { findEnvPathKey, normalizeEnvPath, readEnvPath } from "../../shared/env-path";
+import { getSystemRequirements } from "../../shared/system-requirements";
 
 const fakeOs = (home: string, tmp = "/fallback-tmp") => ({ homedir: () => home, tmpdir: () => tmp });
 
@@ -165,5 +167,86 @@ describe("update-archive proof gate", () => {
 		expect(emitsUpdateArchive(undefined)).toBe(true);
 		expect(emitsUpdateArchive("prod")).toBe(true);
 		expect(emitsUpdateArchive("")).toBe(true);
+	});
+});
+
+// A real Windows run reported git as "not found" while git was installed and on
+// the user's Path: process.env.PATH was undefined (SystemRoot read fine), so
+// every binary lookup searched an empty path. Windows spells the variable `Path`.
+describe("search PATH resolution", () => {
+	it("reads the canonical POSIX spelling untouched", () => {
+		expect(readEnvPath({ PATH: "/usr/bin:/bin" })).toBe("/usr/bin:/bin");
+		expect(findEnvPathKey({ PATH: "/usr/bin" })).toBe("PATH");
+	});
+
+	it("finds the Windows `Path` spelling", () => {
+		expect(readEnvPath({ Path: "C:\\Windows\\System32" })).toBe("C:\\Windows\\System32");
+		expect(findEnvPathKey({ Path: "C:\\W" })).toBe("Path");
+	});
+
+	it("prefers an exact PATH over a case variant, so POSIX never changes meaning", () => {
+		expect(readEnvPath({ PATH: "/exact", Path: "/variant" })).toBe("/exact");
+	});
+
+	it("reports no PATH rather than inventing one", () => {
+		expect(readEnvPath({ SystemRoot: "C:\\Windows" })).toBeUndefined();
+		expect(findEnvPathKey({})).toBeUndefined();
+	});
+
+	it("aliases a Windows Path onto PATH in place, so Bun.which and children see it", () => {
+		const env: Record<string, string | undefined> = { Path: "C:\\Windows\\System32;C:\\git\\cmd" };
+		expect(normalizeEnvPath(env)).toEqual({ outcome: "aliased", fromKey: "Path", length: env.Path!.length });
+		expect(env.PATH).toBe("C:\\Windows\\System32;C:\\git\\cmd");
+	});
+
+	it("leaves a canonical environment completely alone", () => {
+		const env: Record<string, string | undefined> = { PATH: "/usr/bin" };
+		expect(normalizeEnvPath(env)).toEqual({ outcome: "already-canonical" });
+		expect(env.PATH).toBe("/usr/bin");
+	});
+
+	it("returns env key NAMES for diagnostics when there is no PATH at all", () => {
+		const result = normalizeEnvPath({ SystemRoot: "C:\\Windows", USERPROFILE: "C:\\Users\\u" });
+		expect(result).toEqual({ outcome: "missing", envKeys: ["SystemRoot", "USERPROFILE"] });
+	});
+});
+
+// tmux cannot be installed on Windows, so a REQUIRED tmux made the requirements
+// gate permanently unpassable — the app was reachable only up to that screen.
+// App.tsx passes when every requirement is `installed || optional`.
+describe("system requirements per platform", () => {
+	it("keeps git required everywhere", () => {
+		for (const platform of ["darwin", "linux", "win32"] as NodeJS.Platform[]) {
+			const git = getSystemRequirements(platform).find((r) => r.id === "git");
+			expect(git?.optional).toBeFalsy();
+		}
+	});
+
+	it("keeps tmux required on POSIX with the brew install command", () => {
+		const tmux = getSystemRequirements("darwin").find((r) => r.id === "tmux");
+		expect(tmux?.optional).toBeFalsy();
+		expect(tmux?.installCommand).toBe("brew install h0x91b/dev3/tmux@3.6");
+		expect(tmux?.brewInstallable).toBe(true);
+	});
+
+	it("marks tmux optional on Windows so the gate can pass, without hiding it", () => {
+		const requirements = getSystemRequirements("win32");
+		const tmux = requirements.find((r) => r.id === "tmux");
+		expect(tmux).toBeDefined();
+		expect(tmux?.optional).toBe(true);
+		expect(tmux?.installCommand).toBeUndefined();
+		expect(tmux?.brewInstallable).toBe(false);
+		// The gate App.tsx applies, with only git present.
+		const withGitFound = requirements.map((r) => ({ ...r, installed: r.id === "git" }));
+		expect(withGitFound.every((r) => r.installed || r.optional)).toBe(true);
+	});
+
+	it("never offers a macOS-only install command on Windows", () => {
+		for (const req of getSystemRequirements("win32")) {
+			expect(req.installCommand ?? "").not.toMatch(/brew|xcode-select/);
+			expect(req.brewInstallable).toBe(false);
+		}
+		expect(getSystemRequirements("win32").find((r) => r.id === "git")?.installCommand)
+			.toBe("winget install --id Git.Git -e");
 	});
 });

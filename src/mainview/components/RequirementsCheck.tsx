@@ -104,13 +104,14 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 										<p className="text-fg-muted text-xs mb-1.5">
 											{t(req.installHint as any)}
 										</p>
+										{req.installCommand && (
 										<div className="flex items-center gap-1.5">
 											<code className="text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded text-xs font-mono">
 												{req.installCommand}
 											</code>
 											<button
 												type="button"
-												onClick={() => handleCopy(req.id, req.installCommand)}
+												onClick={() => handleCopy(req.id, req.installCommand!)}
 												className="p-1 rounded hover:bg-elevated transition-colors text-fg-3 hover:text-fg shrink-0"
 												title="Copy"
 											>
@@ -131,6 +132,7 @@ export default function RequirementsCheck({ results, checking, onRefresh, onRefr
 												</span>
 											)}
 										</div>
+										)}
 										<div className="mt-2.5 pt-2.5 border-t border-edge/50">
 											<p className="text-fg-3 text-xs mb-1.5">
 												{t("requirements.customPathHint")}

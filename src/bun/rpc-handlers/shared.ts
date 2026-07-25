@@ -20,12 +20,16 @@ export {
 	extractConfigFromParams,
 } from "./shared-pure";
 
+// Pure requirement data lives in shared/ so the renderer and unit tests can read
+// it without dragging in electrobun; re-exported here for existing importers.
+export { getSystemRequirements } from "../../shared/system-requirements";
+
 // ── Electrobun/native-dependent exports ─────────────────────────────
 
 import { extname } from "node:path";
 import { Utils } from "../electrobun-platform";
 import { dlopen, FFIType } from "bun:ffi";
-import type { RendererLogLevel, RequirementCheckResult, SharedArtifact, SharedImage, Task } from "../../shared/types";
+import type { RendererLogLevel, SharedArtifact, SharedImage, Task } from "../../shared/types";
 import { formatStatus, getTaskTitle } from "../../shared/types";
 import { createLogger } from "../logger";
 import { postNativeTaskNotification } from "../native-notifications";
@@ -79,14 +83,6 @@ export function logRendererEvent(params: {
 	fn(`[${params.tag}] ${params.message}`, params.extra);
 }
 
-const SYSTEM_REQUIREMENTS: RequirementCheckResult[] = [
-	{ id: "git", name: "Git", installed: false, installHint: "requirements.installGit", installCommand: "xcode-select --install", brewInstallable: false },
-	{ id: "tmux", name: "tmux", installed: false, installHint: "requirements.installTmux", installCommand: "brew install h0x91b/dev3/tmux@3.6", brewInstallable: true },
-];
-
-export function getSystemRequirements(): RequirementCheckResult[] {
-	return SYSTEM_REQUIREMENTS.map((req) => ({ ...req }));
-}
 
 /**
  * Window in which a window-focus event is treated as "user clicked the notification".

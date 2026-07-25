@@ -19,6 +19,7 @@ import { markPendingNotificationNav } from "./notification-nav";
 import { createLogger, getLogPath } from "./logger";
 import { writeAppReadyMarker } from "./app-ready-marker";
 import { DEV3_HOME, resolveUserHome } from "./paths";
+import { normalizeEnvPath } from "../shared/env-path";
 import { applyFullShellEnvToProcess, getShellRcFiles, getUserShell, resolveShellEnv } from "./shell-env";
 import { startSocketServer, stopSocketServer } from "./cli-socket-server";
 import { startRemoteAccessServer, pushToBrowserClients } from "./remote-access-server";
@@ -68,6 +69,22 @@ let lastBuildTime = BUILD_TIME;
 log.info(`=== dev-3.0 starting [${lastBuildTime}] ===`);
 log.info("All data at", { dir: DEV3_HOME });
 log.info("Log files", { dir: getLogPath() });
+
+// ── Search PATH, before ANY binary lookup ──
+// Windows spells the variable `Path`; a JS env object need not fold the case, and
+// on a real Windows run `process.env.PATH` was undefined while other variables
+// read fine — so git resolved to "not found" despite being installed.
+{
+	const result = normalizeEnvPath(process.env);
+	if (result.outcome === "aliased") {
+		log.info("Search PATH aliased to the canonical key", { fromKey: result.fromKey, length: result.length });
+	} else if (result.outcome === "missing") {
+		// Names only, never values: enough to identify who trimmed the environment.
+		log.error("No search PATH in this process environment — binary lookups will fail", {
+			envKeys: result.envKeys.join(","),
+		});
+	}
+}
 
 // NOTE: We deliberately do NOT process.chdir() away from the .app bundle.
 // electrobun resolves native resources and the `views://` protocol relative to

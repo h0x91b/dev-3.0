@@ -2395,7 +2395,9 @@ export interface RequirementCheckResult {
 	name: string;
 	installed: boolean;
 	installHint: string; // i18n key
-	installCommand: string;
+	/** Copy-pasteable install command; absent when the tool cannot be installed
+	 *  on this platform (e.g. tmux on Windows). */
+	installCommand?: string;
 	resolvedPath?: string; // full path to the binary (if found)
 	brewInstallable: boolean;
 	customPathError?: boolean; // true if custom path was set but file doesn't exist

@@ -73,6 +73,8 @@ const updates = {
 	"requirements.refresh": "Проверить снова",
 	"requirements.copied": "Скопировано!",
 	"requirements.installGit": "Установить через Xcode CLI tools:",
+	"requirements.installGitWindows": "Установить через winget:",
+	"requirements.tmuxUnavailableWindows": "Недоступен в Windows — терминалы задач работают на нативном бэкенде.",
 	"requirements.installTmux": "Установить через Homebrew:",
 	"requirements.installYazi": "Установить через Homebrew (опционально, для файлового браузера):",
 	"requirements.optional": "опционально",

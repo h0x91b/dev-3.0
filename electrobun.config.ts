@@ -54,6 +54,13 @@ export default {
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",
+			// index.html links these at the views root. They were never copied, so
+			// every launch failed three resource loads — silent on macOS, loud in the
+			// Windows console.
+			"dist/favicon.png": "views/mainview/favicon.png",
+			"dist/favicon-32.png": "views/mainview/favicon-32.png",
+			"dist/favicon-16.png": "views/mainview/favicon-16.png",
+			"dist/apple-touch-icon.png": "views/mainview/apple-touch-icon.png",
 			"changelog.json": "changelog.json",
 			[cliCopySource]: cliCopyDestination,
 			"src/assets/sounds": "sounds",
