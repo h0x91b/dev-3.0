@@ -30,6 +30,11 @@ const adapterRoot = resolve(sourceRoot, "bun/native-terminal-adapter");
 // and proves in its own isolation test that nothing imports it either.
 const multipaneRoot = resolve(sourceRoot, "bun/native-terminal-multipane");
 
+// The opt-in multi-session soak (seq 1301) is the third SANCTIONED non-production
+// consumer: it drives real hosts through sustained load, reconnects, a crash, and
+// create/stop churn, and proves in its own isolation test that nothing imports it.
+const soakRoot = resolve(sourceRoot, "bun/native-terminal-soak");
+
 // Since seq 1292 the registry HAS product callers, but only these: the host-runtime
 // resolver (which build launches a host), the task-terminal module (one writer
 // client per task), and the packaged host entrypoint. Everything else must reach
@@ -51,6 +56,7 @@ describe("native-session registry isolation", () => {
 			.filter((path) => !path.startsWith(moduleRoot))
 			.filter((path) => !path.startsWith(adapterRoot))
 			.filter((path) => !path.startsWith(multipaneRoot))
+			.filter((path) => !path.startsWith(soakRoot))
 			.filter((path) => !path.includes("__tests__"))
 			.filter((path) => readFileSync(path, "utf8").includes("native-terminal-registry"))
 			.map((path) => path.slice(sourceRoot.length + 1).replaceAll("\\", "/"))
