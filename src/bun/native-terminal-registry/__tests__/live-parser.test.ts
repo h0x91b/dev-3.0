@@ -8,10 +8,10 @@ const decoder = new TextDecoder();
 
 const last = <T>(items: T[]): T | undefined => items[items.length - 1];
 
-function emptyState(): NativeSemanticState {
+function emptyState(title = ""): NativeSemanticState {
 	return {
 		activeBuffer: "normal",
-		title: "",
+		title,
 		dimensions: { cols: 80, rows: 24 },
 		cursor: { x: 0, y: 0, visible: true, style: "block", blink: false },
 		modes: {
@@ -37,6 +37,8 @@ class FakeCore implements LiveParserCore {
 	ingestError: Error | null = null;
 	inspectError: Error | null = null;
 	disposed = false;
+	/** Mutating this makes the next inspected screen differ byte-wise. */
+	title = "";
 	private pendingResponses: string[] = [];
 
 	ingest(data: Uint8Array): void {
@@ -61,7 +63,7 @@ class FakeCore implements LiveParserCore {
 
 	inspect(): NativeSemanticState {
 		if (this.inspectError) throw this.inspectError;
-		return emptyState();
+		return emptyState(this.title);
 	}
 
 	dispose(): void {
@@ -75,6 +77,10 @@ interface Harness {
 	replies: string[];
 	snapshots: ParserStateSnapshot[];
 	runScheduled: () => void;
+	/** Delays the pipeline asked for, in order — the persistence cadence evidence. */
+	timerDelays: number[];
+	/** Fire every armed persistence timer; returns how many fired. */
+	runTimers: () => number;
 }
 
 async function makeHarness(overrides: Partial<LiveParserPipelineOptions> = {}): Promise<Harness> {
@@ -82,14 +88,28 @@ async function makeHarness(overrides: Partial<LiveParserPipelineOptions> = {}): 
 	const replies: string[] = [];
 	const snapshots: ParserStateSnapshot[] = [];
 	const tasks: Array<() => void> = [];
+	const timerDelays: number[] = [];
+	const timers = new Map<number, () => void>();
+	let nextHandle = 1;
 	const pipeline = await LiveParserPipeline.create({
 		sessionId: "s1",
 		cols: 80,
 		rows: 24,
 		writeReply: (reply) => replies.push(reply),
-		persistState: (snapshot) => snapshots.push(snapshot),
+		persistState: (snapshot) => {
+			snapshots.push(snapshot);
+		},
 		createCore: (_options: GhosttyLiveOptions) => Promise.resolve(core),
 		schedule: (fn) => tasks.push(fn),
+		setTimer: (fn, ms) => {
+			const handle = nextHandle++;
+			timers.set(handle, fn);
+			timerDelays.push(ms);
+			return handle;
+		},
+		clearTimer: (handle) => {
+			timers.delete(handle as number);
+		},
 		memory: () => ({ rssBytes: 1, heapUsedBytes: 1 }),
 		...overrides,
 	});
@@ -98,8 +118,20 @@ async function makeHarness(overrides: Partial<LiveParserPipelineOptions> = {}): 
 		core,
 		replies,
 		snapshots,
+		timerDelays,
 		runScheduled: () => {
 			while (tasks.length > 0) tasks.shift()?.();
+		},
+		runTimers: () => {
+			let fired = 0;
+			while (timers.size > 0) {
+				const [handle, fn] = [...timers][0];
+				timers.delete(handle);
+				fn();
+				fired++;
+				if (fired > 100) break;
+			}
+			return fired;
 		},
 	};
 }
@@ -233,5 +265,149 @@ describe("LiveParserPipeline", () => {
 		h.pipeline.onOutput(encoder.encode("late"));
 		h.runScheduled();
 		expect(h.core.applied).toEqual([]);
+	});
+});
+
+describe("LiveParserPipeline queue observability", () => {
+	it("publishes depth, high-water, caps and pressure without exposing the events", async () => {
+		const h = await makeHarness({ queueMaxBytes: 100, queueMaxEvents: 10 });
+		h.pipeline.onOutput(encoder.encode("1234567890"));
+		const pending = h.pipeline.queueCounters();
+		expect(pending.pendingBytes).toBe(10);
+		expect(pending.pendingEvents).toBe(1);
+		expect(pending.maxBytes).toBe(100);
+		expect(pending.maxEvents).toBe(10);
+		expect(pending.pressure).toBe("nominal");
+		h.runScheduled();
+		const drained = h.pipeline.queueCounters();
+		expect(drained.pendingBytes).toBe(0);
+		// The peak survives the drain — that is the whole point of a high-water mark.
+		expect(drained.highWaterBytes).toBe(10);
+		expect(drained.highWaterEvents).toBe(1);
+		expect(Object.keys(drained)).not.toContain("events");
+	});
+
+	it("reports slow-consumer before overflow, then the terminal overflowed verdict", async () => {
+		const h = await makeHarness({ queueMaxBytes: 100, queueMaxEvents: 1_000 });
+		h.pipeline.onOutput(encoder.encode("x".repeat(60))); // 60% of the byte cap
+		expect(h.pipeline.queueCounters().pressure).toBe("slow-consumer");
+		expect(h.pipeline.queueCounters().slowConsumerEpisodes).toBe(1);
+		h.pipeline.onOutput(encoder.encode("x".repeat(60))); // dropped — over the cap
+		expect(h.pipeline.queueCounters().pressure).toBe("overflowed");
+		h.runScheduled();
+		expect(h.pipeline.healthStatus).toBe("overflowed");
+	});
+
+	it("counts a sequence gap when an event never reaches the parser", async () => {
+		const h = await makeHarness();
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.pipeline.onOutput(new Uint8Array(0)); // consumes a seq, is never enqueued
+		h.pipeline.onOutput(encoder.encode("b"));
+		h.runScheduled();
+		const resync = h.pipeline.resyncCounters();
+		expect(resync.gaps).toBe(1);
+		expect(resync.missedSeqs).toBe(1);
+		expect(resync.lastGapAtSeq).toBe(3);
+	});
+});
+
+describe("LiveParserPipeline persistence budget", () => {
+	it("skips a write when the semantic snapshot is byte-identical", async () => {
+		const h = await makeHarness();
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.snapshots).toHaveLength(1);
+		expect(h.pipeline.persistenceCounters().writes).toBe(1);
+
+		h.pipeline.onOutput(encoder.encode("b")); // more ingest, identical screen
+		h.runScheduled();
+		h.runTimers();
+		expect(h.snapshots).toHaveLength(1);
+		expect(h.pipeline.persistenceCounters().skippedIdentical).toBe(1);
+
+		h.core.title = "changed";
+		h.pipeline.onOutput(encoder.encode("c"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.snapshots).toHaveLength(2);
+		expect(h.pipeline.persistenceCounters().writes).toBe(2);
+	});
+
+	it("spaces consecutive writes by the cadence ceiling, not the debounce", async () => {
+		const h = await makeHarness({ now: () => 0, persistDebounceMs: 250, persistMinIntervalMs: 1_000 });
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		expect(h.timerDelays).toEqual([250]); // nothing written yet — plain debounce
+		h.runTimers();
+		h.core.title = "b";
+		h.pipeline.onOutput(encoder.encode("b"));
+		h.runScheduled();
+		expect(h.timerDelays).toEqual([250, 1_000]); // pushed out to the cadence ceiling
+	});
+
+	it("keeps at most one write in flight and coalesces dirty updates into one re-armed write", async () => {
+		let release: () => void = () => {};
+		const h = await makeHarness({
+			persistState: () => new Promise<void>((resolve) => (release = resolve)),
+		});
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.pipeline.persistenceCounters().inFlight).toBe(true);
+		expect(h.pipeline.persistenceCounters().writes).toBe(1);
+
+		// Two more dirty rounds while the write is outstanding — neither starts a write.
+		for (const chunk of ["b", "c"]) {
+			h.core.title = chunk;
+			h.pipeline.onOutput(encoder.encode(chunk));
+			h.runScheduled();
+			h.runTimers();
+		}
+		expect(h.pipeline.persistenceCounters().writes).toBe(1);
+		expect(h.pipeline.persistenceCounters().coalesced).toBe(2);
+
+		release();
+		await Promise.resolve();
+		expect(h.pipeline.persistenceCounters().inFlight).toBe(false);
+		h.runTimers(); // the coalesced backlog settles into exactly ONE further write
+		expect(h.pipeline.persistenceCounters().writes).toBe(2);
+	});
+
+	it("flush() persists the latest state even when the semantic screen is unchanged", async () => {
+		const h = await makeHarness();
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		h.runTimers();
+		expect(h.snapshots).toHaveLength(1);
+		h.pipeline.onOutput(encoder.encode("b"));
+		h.pipeline.flush(); // teardown must land the final counters regardless
+		expect(h.snapshots).toHaveLength(2);
+		expect(last(h.snapshots)?.ingested.frames).toBe(2);
+	});
+
+	it("counts a failing write without taking the host down", async () => {
+		const h = await makeHarness({
+			persistState: () => {
+				throw new Error("disk full");
+			},
+		});
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		expect(() => h.runTimers()).not.toThrow();
+		expect(h.pipeline.persistenceCounters().failures).toBe(1);
+		expect(h.pipeline.healthStatus).toBe("live");
+	});
+
+	it("accounts serialized snapshot bytes per write", async () => {
+		const h = await makeHarness();
+		h.pipeline.onOutput(encoder.encode("a"));
+		h.runScheduled();
+		h.runTimers();
+		const counters = h.pipeline.persistenceCounters();
+		expect(counters.lastBytes).toBeGreaterThan(0);
+		expect(counters.maxBytes).toBe(counters.lastBytes);
+		expect(counters.totalBytes).toBe(counters.lastBytes);
+		expect(counters.minIntervalMs).toBe(1_000);
 	});
 });

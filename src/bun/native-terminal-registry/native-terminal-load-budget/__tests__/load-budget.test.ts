@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_PARSER_QUEUE_MAX_BYTES,
 	DEFAULT_PARSER_QUEUE_MAX_EVENTS,
+	DEFAULT_QUEUE_SLOW_CONSUMER_RATIO,
 	ParserEventQueue,
 } from "../../parser-queue";
 import { DEFAULT_JOURNAL_MAX_BYTES } from "../../journal";
-import { DEFAULT_SNAPSHOT_SCROLLBACK_CAP } from "../../live-parser";
+import { DEFAULT_PERSIST_MIN_INTERVAL_MS, DEFAULT_SNAPSHOT_SCROLLBACK_CAP, LiveParserPipeline } from "../../live-parser";
 import { parseParserStateSnapshot } from "../../parser-state";
-import { SteppingClock, DeterministicScheduler } from "../clock";
+import { SteppingClock, DeterministicScheduler, ManualTimers } from "../clock";
 import { mulberry32 } from "../prng";
 import {
 	burstFrames,
@@ -18,7 +19,7 @@ import {
 	totalOutputFrames,
 	type HarnessFrame,
 } from "../generators";
-import { aggregate, StreamHarness, type StreamHarnessOptions } from "../harness";
+import { aggregate, BudgetCore, StreamHarness, type StreamHarnessOptions } from "../harness";
 import { emptyJournal, planResync, recordJournalFrame } from "../resync";
 
 const STREAM_COUNTS = [1, 6, 20] as const;
@@ -225,15 +226,13 @@ describe("bounded queue overflow", () => {
 		const stream = await makeStream({ queueMaxBytes: 64 });
 		stream.feed({ kind: "output", bytes: steadyChunk(mulberry32(1), 40) }); // accepted
 		stream.feed({ kind: "output", bytes: steadyChunk(mulberry32(2), 40) }); // dropped — over 64
-		expect(stream.mirror.overflowed).toBe(true);
+		expect(stream.pipeline.queueCounters().pressure).toBe("overflowed");
 		const drainsBefore = stream.drain(); // one drain flips the pipeline to overflowed
 		expect(drainsBefore).toBe(1);
 		const budget = stream.budget();
 		expect(budget.health).toBe("overflowed");
 		expect(budget.overflow.droppedChunks).toBe(1);
 		expect(budget.overflow.droppedBytes).toBe(40);
-		// The pipeline's own overflow accounting matches the mirror fed the identical stream.
-		expect(budget.overflow).toEqual(stream.mirror.overflow);
 		// Post-verdict traffic is a bounded no-op: no further drains, verdict unchanged.
 		stream.feed({ kind: "output", bytes: steadyChunk(mulberry32(3), 8) });
 		expect(stream.drain()).toBe(0);
@@ -244,7 +243,7 @@ describe("bounded queue overflow", () => {
 	it("flips to overflowed on the event cap and counts the dropped chunk", async () => {
 		const stream = await makeStream({ queueMaxEvents: 2 });
 		for (let i = 0; i < 3; i++) stream.feed({ kind: "output", bytes: steadyChunk(mulberry32(i), 4) });
-		expect(stream.mirror.overflow.droppedChunks).toBe(1);
+		expect(stream.pipeline.queueCounters().overflow.droppedChunks).toBe(1);
 		stream.drain();
 		expect(stream.budget().health).toBe("overflowed");
 		stream.dispose();
@@ -322,11 +321,124 @@ describe("cleanup semantics", () => {
 	});
 });
 
+describe("snapshot persistence budget", () => {
+	it.each(STREAM_COUNTS)("writes once and then coalesces identical screens across %i stream(s)", async (count) => {
+		const streams = await makeFleet(count);
+		streams.forEach((stream, index) => {
+			// Ten independent produce → drain → persist rounds with an unchanged screen.
+			for (let round = 0; round < 10; round++) {
+				stream.feedAll(steadyFrames(mulberry32(400 + index * 10 + round), { frames: 3, bytesPerFrame: 128 }));
+				stream.drain();
+				stream.runPersistTimers();
+			}
+		});
+		const budgets = streams.map((s) => s.budget());
+		for (const budget of budgets) {
+			expect(budget.persistence.writes).toBe(1); // only the first round changed anything
+			expect(budget.persistence.skippedIdentical).toBe(9);
+			expect(budget.persistence.failures).toBe(0);
+			expect(budget.persistence.totalBytes).toBe(budget.persistence.lastBytes);
+		}
+		const rollup = aggregate(count, budgets);
+		expect(rollup.totalWrites).toBe(count);
+		expect(rollup.totalSkippedWrites).toBe(count * 9);
+		streams.forEach((s) => s.dispose());
+	});
+
+	it.each(STREAM_COUNTS)("keeps each changed screen to one write per cadence window across %i stream(s)", async (count) => {
+		const streams = await makeFleet(count, { persistDebounceMs: 250, persistMinIntervalMs: 1_000 });
+		streams.forEach((stream, index) => {
+			for (let round = 0; round < 5; round++) {
+				stream.core.title = `round-${round}`; // every round genuinely changes the screen
+				stream.feedAll(steadyFrames(mulberry32(500 + index * 10 + round), { frames: 2, bytesPerFrame: 64 }));
+				stream.drain();
+				stream.runPersistTimers();
+			}
+		});
+		for (const stream of streams) {
+			const budget = stream.budget();
+			expect(budget.persistence.writes).toBe(5);
+			// First arm is the plain debounce; every later arm is pushed to the ceiling.
+			expect(stream.timers.delays[0]).toBe(250);
+			expect(stream.timers.delays.slice(1).every((ms) => ms > 250)).toBe(true);
+			expect(budget.persistence.minIntervalMs).toBe(1_000);
+		}
+		streams.forEach((s) => s.dispose());
+	});
+
+	it("never stacks writes: a dirty update during an in-flight write becomes one re-armed write", async () => {
+		let release: () => void = () => {};
+		const clock = new SteppingClock(1);
+		const scheduler = new DeterministicScheduler();
+		const core = new BudgetCore(80, 24, 0);
+		const timers = new ManualTimers();
+		let writes = 0;
+		const pipeline = await LiveParserPipeline.create({
+			sessionId: "inflight",
+			cols: 80,
+			rows: 24,
+			writeReply: () => {},
+			persistState: () => {
+				writes++;
+				return new Promise<void>((resolve) => (release = resolve));
+			},
+			createCore: () => Promise.resolve(core),
+			schedule: scheduler.schedule,
+			setTimer: timers.set,
+			clearTimer: timers.clear,
+			now: clock.now,
+		});
+		pipeline.onOutput(steadyChunk(mulberry32(1), 16));
+		scheduler.runAll();
+		timers.runAll();
+		expect(writes).toBe(1);
+		for (let i = 0; i < 5; i++) {
+			core.title = `t${i}`;
+			pipeline.onOutput(steadyChunk(mulberry32(10 + i), 16));
+			scheduler.runAll();
+			timers.runAll();
+		}
+		expect(writes).toBe(1); // five dirty rounds, still ONE outstanding write
+		expect(pipeline.persistenceCounters().coalesced).toBe(5);
+		release();
+		await Promise.resolve();
+		timers.runAll();
+		expect(writes).toBe(2);
+		pipeline.dispose();
+	});
+});
+
+describe("teardown", () => {
+	it.each(STREAM_COUNTS)("flushes the latest state and disarms every timer across %i stream(s)", async (count) => {
+		const streams = await makeFleet(count);
+		streams.forEach((stream, index) => {
+			stream.feedAll(steadyFrames(mulberry32(600 + index), { frames: 8, bytesPerFrame: 96 }));
+		});
+		for (const stream of streams) {
+			stream.flush(); // drains the backlog AND forces the final write
+			const budget = stream.budget();
+			expect(budget.frames).toBe(8);
+			expect(budget.persistence.writes).toBeGreaterThanOrEqual(1);
+			expect(stream.pipeline.queueCounters().pendingBytes).toBe(0);
+			expect(stream.pipeline.queueCounters().pendingEvents).toBe(0);
+			expect(stream.timers.pending).toBe(0); // flush cancelled the armed debounce
+			expect(parseParserStateSnapshot(JSON.stringify(stream.snapshots[stream.snapshots.length - 1]))).toBeTruthy();
+		}
+		streams.forEach((s) => {
+			s.dispose();
+			expect(s.core.disposed).toBe(true);
+			expect(s.timers.pending).toBe(0);
+		});
+	});
+});
+
 describe("existing caps are what the harness assumes", () => {
-	it("pins the parser-queue, journal, and snapshot caps", () => {
+	it("pins the parser-queue, journal, snapshot, and persistence-cadence budgets", () => {
 		expect(DEFAULT_PARSER_QUEUE_MAX_BYTES).toBe(8 * 1024 * 1024);
 		expect(DEFAULT_PARSER_QUEUE_MAX_EVENTS).toBe(65_536);
 		expect(DEFAULT_JOURNAL_MAX_BYTES).toBe(256 * 1024);
 		expect(DEFAULT_SNAPSHOT_SCROLLBACK_CAP).toBe(200);
+		expect(DEFAULT_PERSIST_MIN_INTERVAL_MS).toBe(1_000);
+		expect(DEFAULT_QUEUE_SLOW_CONSUMER_RATIO).toBe(0.5);
 	});
 });

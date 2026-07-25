@@ -18,6 +18,13 @@
  * `failed` state (recorded in the snapshot) and the host keeps serving raw
  * bytes. Queue overflow flips it to `overflowed` — bounded and explicit, never
  * a silently corrupt screen. Neither state ever throws into the host.
+ *
+ * PERSISTENCE BUDGET (seq 1284): the semantic snapshot is MiB-scale, so writes
+ * are debounced, capped at one per `persistMinIntervalMs`, skipped when the
+ * semantic payload is byte-identical, and limited to one in flight per pane —
+ * a later dirty update coalesces into a single re-armed write instead of
+ * stacking promises. `queueCounters` / `persistenceCounters` / `resyncCounters`
+ * expose the resulting pressure read-only, without leaking queue internals.
  */
 
 import {
@@ -30,7 +37,9 @@ import {
 import {
 	DEFAULT_PARSER_QUEUE_MAX_BYTES,
 	DEFAULT_PARSER_QUEUE_MAX_EVENTS,
+	DEFAULT_QUEUE_SLOW_CONSUMER_RATIO,
 	ParserEventQueue,
+	type ParserQueueCounters,
 } from "./parser-queue";
 import {
 	PARSER_STATE_SCHEMA,
@@ -42,8 +51,49 @@ import {
 
 export const DEFAULT_SNAPSHOT_SCROLLBACK_CAP = 200;
 export const DEFAULT_PERSIST_DEBOUNCE_MS = 250;
+/**
+ * Cadence CEILING for snapshot persistence: at most one write per pane per
+ * second. The debounce alone allowed ~4 writes/s of a multi-MiB semantic
+ * snapshot (measured: ~1.6 MiB at 80×24 and ~4.7 MiB at 200×60 with a full
+ * 200-line scrollback — see native-terminal-load-budget/FINDINGS.md), i.e. up
+ * to ~19 MiB/s of disk churn per busy wide pane. See decision 169.
+ */
+export const DEFAULT_PERSIST_MIN_INTERVAL_MS = 1_000;
 export const DEFAULT_MAX_REPLIES_PER_DRAIN = 64;
 const LATENCY_RING_SIZE = 512;
+
+/** Snapshot-persistence accounting, exposed read-only for diagnostics. */
+export interface ParserPersistenceCounters {
+	/** Writes actually handed to `persistState`. */
+	writes: number;
+	/** Write attempts skipped because the semantic snapshot was byte-identical. */
+	skippedIdentical: number;
+	/** Dirty updates folded into a later write because one was already in flight. */
+	coalesced: number;
+	/** Write attempts that threw or rejected — contained, never fatal. */
+	failures: number;
+	/** Serialized size of the semantic payload of the last write (dominant term). */
+	lastBytes: number;
+	/** Peak serialized semantic payload observed. */
+	maxBytes: number;
+	/** Cumulative serialized semantic bytes written. */
+	totalBytes: number;
+	/** Injected-clock timestamp of the last completed write, or null. */
+	lastWriteAtMs: number | null;
+	/** A write is currently outstanding (async `persistState` only). */
+	inFlight: boolean;
+	minIntervalMs: number;
+}
+
+/** Sequence-gap accounting — the resync signal the journal replay consumes. */
+export interface ParserResyncCounters {
+	/** Number of discontinuities observed in the ingested sequence. */
+	gaps: number;
+	/** Total sequence numbers that never reached the parser. */
+	missedSeqs: number;
+	/** Watermark at which the most recent gap was observed, or null. */
+	lastGapAtSeq: number | null;
+}
 
 export interface LiveParserPipelineOptions {
 	sessionId: string;
@@ -55,15 +105,30 @@ export interface LiveParserPipelineOptions {
 	snapshotScrollbackCap?: number;
 	queueMaxBytes?: number;
 	queueMaxEvents?: number;
+	/** Backlog fraction of either cap at which pressure reports `slow-consumer`. */
+	queueSlowConsumerRatio?: number;
 	persistDebounceMs?: number;
+	/** Cadence ceiling — minimum wall time between two snapshot writes. */
+	persistMinIntervalMs?: number;
+	/**
+	 * Skip a write whose semantic payload is byte-identical (default true).
+	 * Only the load probe turns it off, to measure the pre-policy baseline.
+	 */
+	persistSkipIdentical?: boolean;
 	maxRepliesPerDrain?: number;
 	/** Write one parser-generated reply back to the SAME PTY. Must not throw. */
 	writeReply: (reply: string) => void;
-	/** Persist a snapshot (atomic file write in the host). Failures are contained. */
-	persistState: (snapshot: ParserStateSnapshot) => void;
+	/**
+	 * Persist a snapshot (atomic file write in the host). Failures are contained.
+	 * May return a promise; only one write is ever in flight per pipeline.
+	 */
+	persistState: (snapshot: ParserStateSnapshot) => void | Promise<void>;
 	/** Test seams — production uses the defaults. */
 	createCore?: (options: GhosttyLiveOptions) => Promise<LiveParserCore>;
 	schedule?: (fn: () => void) => void;
+	/** Delayed-timer seam for the persistence debounce/cadence. */
+	setTimer?: (fn: () => void, ms: number) => unknown;
+	clearTimer?: (handle: unknown) => void;
 	now?: () => number;
 	memory?: () => ParserMemoryStats;
 	/** Test-only injected fault (DEV3_NATIVE_SESSION_PARSER_FAULT). */
@@ -73,6 +138,16 @@ export interface LiveParserPipelineOptions {
 const defaultSchedule = (fn: () => void): void => {
 	if (typeof setImmediate === "function") setImmediate(fn);
 	else setTimeout(fn, 0);
+};
+
+const defaultSetTimer = (fn: () => void, ms: number): unknown => {
+	const handle = setTimeout(fn, ms);
+	handle.unref?.();
+	return handle;
+};
+
+const defaultClearTimer = (handle: unknown): void => {
+	clearTimeout(handle as ReturnType<typeof setTimeout>);
 };
 
 const defaultMemory = (): ParserMemoryStats => {
@@ -98,8 +173,24 @@ export class LiveParserPipeline {
 	private drains = 0;
 	private totalMs = 0;
 	private maxMs = 0;
-	private persistTimer: ReturnType<typeof setTimeout> | null = null;
+	private persistTimer: unknown = null;
 	private lastState: NativeSemanticState | null = null;
+	private readonly resync: ParserResyncCounters = { gaps: 0, missedSeqs: 0, lastGapAtSeq: null };
+	private readonly persist = {
+		writes: 0,
+		skippedIdentical: 0,
+		coalesced: 0,
+		failures: 0,
+		lastBytes: 0,
+		maxBytes: 0,
+		totalBytes: 0,
+		lastWriteAtMs: null as number | null,
+	};
+	/** Serialized semantic payload of the last write — the identical-skip key. */
+	private lastPersistedKey: string | null = null;
+	private writeInFlight = false;
+	/** A newer state is waiting for the in-flight write to settle. */
+	private persistDirty = false;
 
 	private constructor(
 		private readonly core: LiveParserCore,
@@ -108,6 +199,7 @@ export class LiveParserPipeline {
 		this.queue = new ParserEventQueue(
 			opts.queueMaxBytes ?? DEFAULT_PARSER_QUEUE_MAX_BYTES,
 			opts.queueMaxEvents ?? DEFAULT_PARSER_QUEUE_MAX_EVENTS,
+			opts.queueSlowConsumerRatio ?? DEFAULT_QUEUE_SLOW_CONSUMER_RATIO,
 		);
 	}
 
@@ -161,6 +253,11 @@ export class LiveParserPipeline {
 				throw new Error("injected parser fault (DEV3_NATIVE_SESSION_PARSER_FAULT=ingest)");
 			}
 			for (const event of events) {
+				if (event.seq > this.watermarkSeq + 1) {
+					this.resync.gaps++;
+					this.resync.missedSeqs += event.seq - this.watermarkSeq - 1;
+					this.resync.lastGapAtSeq = event.seq;
+				}
 				if (event.kind === "output") {
 					this.core.ingest(event.bytes);
 					this.ingested.frames++;
@@ -199,24 +296,78 @@ export class LiveParserPipeline {
 	private enterTerminalState(status: ParserHealthStatus): void {
 		this.status = status;
 		this.queue.clear();
-		this.persistNow();
+		this.persistNow(true);
 	}
 
+	/**
+	 * Arm the debounce, pushed out so two writes are never closer together than
+	 * the cadence ceiling. Re-arming while armed is a no-op — the single timer
+	 * always persists the LATEST state, so dirty updates coalesce for free.
+	 */
 	private schedulePersist(): void {
 		if (this.persistTimer || this.disposed) return;
-		this.persistTimer = setTimeout(() => {
+		const debounce = this.opts.persistDebounceMs ?? DEFAULT_PERSIST_DEBOUNCE_MS;
+		const minInterval = this.opts.persistMinIntervalMs ?? DEFAULT_PERSIST_MIN_INTERVAL_MS;
+		const sinceLast =
+			this.persist.lastWriteAtMs === null ? Number.POSITIVE_INFINITY : (this.opts.now ?? Date.now)() - this.persist.lastWriteAtMs;
+		const delay = Math.max(debounce, minInterval - sinceLast);
+		this.persistTimer = (this.opts.setTimer ?? defaultSetTimer)(() => {
 			this.persistTimer = null;
 			this.persistNow();
-		}, this.opts.persistDebounceMs ?? DEFAULT_PERSIST_DEBOUNCE_MS);
-		this.persistTimer.unref?.();
+		}, delay);
 	}
 
-	private persistNow(): void {
+	private cancelPersistTimer(): void {
+		if (this.persistTimer === null) return;
+		(this.opts.clearTimer ?? defaultClearTimer)(this.persistTimer);
+		this.persistTimer = null;
+	}
+
+	/**
+	 * Persist the latest state. `force` bypasses the identical-skip (terminal
+	 * verdicts and teardown must always land on disk). At most ONE write is ever
+	 * outstanding; anything arriving during a write is folded into a re-arm.
+	 */
+	private persistNow(force = false): void {
+		if (this.writeInFlight) {
+			this.persist.coalesced++;
+			this.persistDirty = true;
+			return;
+		}
+		const snapshot = this.snapshot();
+		const key = `${this.status}|${JSON.stringify(snapshot.state)}`;
+		if (!force && this.opts.persistSkipIdentical !== false && key === this.lastPersistedKey) {
+			this.persist.skippedIdentical++;
+			this.persistDirty = false;
+			return;
+		}
+		const bytes = Buffer.byteLength(key, "utf8");
+		this.lastPersistedKey = key;
+		this.persistDirty = false;
+		this.writeInFlight = true;
+		this.persist.writes++;
+		this.persist.lastBytes = bytes;
+		this.persist.totalBytes += bytes;
+		if (bytes > this.persist.maxBytes) this.persist.maxBytes = bytes;
+		this.persist.lastWriteAtMs = (this.opts.now ?? Date.now)();
+		const settle = (): void => {
+			this.writeInFlight = false;
+			if (this.persistDirty && !this.disposed) this.schedulePersist();
+		};
 		try {
-			this.opts.persistState(this.snapshot());
+			const result = this.opts.persistState(snapshot);
+			if (result && typeof (result as Promise<void>).then === "function") {
+				(result as Promise<void>).then(settle, () => {
+					this.persist.failures++;
+					settle();
+				});
+				return;
+			}
 		} catch {
 			// a failed snapshot write must never take the host down
+			this.persist.failures++;
 		}
+		settle();
 	}
 
 	/** Build the bounded snapshot; inspection errors degrade to the last state. */
@@ -256,28 +407,45 @@ export class LiveParserPipeline {
 		};
 	}
 
-	/** Force-drain pending events and persist immediately (detach/shutdown path). */
+	/**
+	 * Force-drain pending events and persist immediately (detach/shutdown path).
+	 * Bypasses both the cadence ceiling and the identical-skip so the latest
+	 * state — including final counters — is always on disk after cleanup.
+	 */
 	flush(): void {
 		if (this.disposed) return;
-		if (this.persistTimer) {
-			clearTimeout(this.persistTimer);
-			this.persistTimer = null;
-		}
 		this.drainNow();
-		this.persistNow();
+		this.cancelPersistTimer(); // the drain may have re-armed the debounce
+		this.persistNow(true);
 	}
 
 	get healthStatus(): ParserHealthStatus {
 		return this.status;
 	}
 
+	/** Read-only live queue depth, high-water marks, caps, and pressure verdict. */
+	queueCounters(): ParserQueueCounters {
+		return this.queue.counters();
+	}
+
+	/** Read-only snapshot-persistence accounting (writes, skips, bytes, cadence). */
+	persistenceCounters(): ParserPersistenceCounters {
+		return {
+			...this.persist,
+			inFlight: this.writeInFlight,
+			minIntervalMs: this.opts.persistMinIntervalMs ?? DEFAULT_PERSIST_MIN_INTERVAL_MS,
+		};
+	}
+
+	/** Read-only sequence-gap accounting observed while ingesting. */
+	resyncCounters(): ParserResyncCounters {
+		return { ...this.resync };
+	}
+
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
-		if (this.persistTimer) {
-			clearTimeout(this.persistTimer);
-			this.persistTimer = null;
-		}
+		this.cancelPersistTimer();
 		try {
 			this.core.dispose();
 		} catch {

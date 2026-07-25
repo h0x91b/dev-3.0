@@ -79,7 +79,11 @@ export interface DiagnosticsLiveInput {
 	writerAttached?: boolean;
 }
 
-/** Queue counters the caller reads from `ParserEventQueue` getters. */
+/**
+ * Queue counters the caller reads from `LiveParserPipeline.queueCounters()`.
+ * High-water marks, caps, and the pressure verdict are optional so a caller on
+ * an older read API still produces a valid (if less detailed) snapshot.
+ */
 export interface ParserQueueCountersInput {
 	pendingBytes: number;
 	pendingEvents: number;
@@ -87,6 +91,37 @@ export interface ParserQueueCountersInput {
 	droppedChunks: number;
 	droppedBytes: number;
 	droppedResizes: number;
+	highWaterBytes?: number;
+	highWaterEvents?: number;
+	maxBytes?: number;
+	maxEvents?: number;
+	slowConsumerEpisodes?: number;
+	pressure?: ParserQueuePressure;
+}
+
+/** Structurally matches the registry's `ParserQueuePressure`. */
+export type ParserQueuePressure = "nominal" | "slow-consumer" | "overflowed";
+
+/** Persistence counters read from `LiveParserPipeline.persistenceCounters()`. */
+export interface ParserPersistenceCountersInput {
+	writes: number;
+	skippedIdentical: number;
+	coalesced: number;
+	failures: number;
+	lastBytes: number;
+	maxBytes: number;
+	totalBytes: number;
+	/** Epoch millis of the last completed write, or null when nothing was written. */
+	lastWriteAtMs: number | null;
+	inFlight: boolean;
+	minIntervalMs: number;
+}
+
+/** Sequence-gap counters read from `LiveParserPipeline.resyncCounters()`. */
+export interface ParserResyncCountersInput {
+	gaps: number;
+	missedSeqs: number;
+	lastGapAtSeq: number | null;
 }
 
 /**
@@ -113,6 +148,8 @@ export interface NativeTerminalDiagnosticsInput {
 	lastAttachAt?: string | null;
 	queue?: ParserQueueCountersInput | null;
 	snapshot?: ParserSnapshotCountersInput | null;
+	persistence?: ParserPersistenceCountersInput | null;
+	resync?: ParserResyncCountersInput | null;
 	/** Override the staleness threshold; defaults to DIAGNOSTICS_STALE_AFTER_MS. */
 	staleAfterMs?: number;
 }
@@ -122,11 +159,36 @@ export interface NativeTerminalDiagnosticsInput {
 export interface DiagnosticsQueueCounters {
 	pendingBytes: number;
 	pendingEvents: number;
+	highWaterBytes: number;
+	highWaterEvents: number;
+	maxBytes: number;
+	maxEvents: number;
 	lastSeq: number;
+	slowConsumerEpisodes: number;
 	droppedChunks: number;
 	droppedBytes: number;
 	droppedResizes: number;
 	overflowed: boolean;
+	pressure: ParserQueuePressure;
+}
+
+export interface DiagnosticsPersistenceCounters {
+	writes: number;
+	skippedIdentical: number;
+	coalesced: number;
+	failures: number;
+	lastBytes: number;
+	maxBytes: number;
+	totalBytes: number;
+	lastWriteAtMs: number | null;
+	inFlight: boolean;
+	minIntervalMs: number;
+}
+
+export interface DiagnosticsResyncCounters {
+	gaps: number;
+	missedSeqs: number;
+	lastGapAtSeq: number | null;
 }
 
 export interface DiagnosticsSnapshotCounters {
@@ -171,6 +233,8 @@ export interface NativeTerminalDiagnosticsSnapshot {
 	counters: {
 		queue: DiagnosticFact<DiagnosticsQueueCounters>;
 		parserSnapshot: DiagnosticFact<DiagnosticsSnapshotCounters>;
+		persistence: DiagnosticFact<DiagnosticsPersistenceCounters>;
+		resync: DiagnosticFact<DiagnosticsResyncCounters>;
 	};
 }
 
@@ -253,15 +317,82 @@ function deriveQueueCounters(
 	if (!fields.every(isBoundedCount)) {
 		return unknown("parser queue counters contained a non-finite or negative value");
 	}
+	const optional = [queue.highWaterBytes, queue.highWaterEvents, queue.maxBytes, queue.maxEvents, queue.slowConsumerEpisodes];
+	if (optional.some((value) => value !== undefined && !isBoundedCount(value))) {
+		return unknown("parser queue counters contained a non-finite or negative value");
+	}
+	const overflowed = queue.droppedChunks > 0 || queue.droppedResizes > 0;
 	return known({
 		pendingBytes: queue.pendingBytes,
 		pendingEvents: queue.pendingEvents,
+		// A caller on an older read API reports no peak — the live depth is the floor.
+		highWaterBytes: queue.highWaterBytes ?? queue.pendingBytes,
+		highWaterEvents: queue.highWaterEvents ?? queue.pendingEvents,
+		maxBytes: queue.maxBytes ?? 0,
+		maxEvents: queue.maxEvents ?? 0,
 		lastSeq: queue.lastSeq,
+		slowConsumerEpisodes: queue.slowConsumerEpisodes ?? 0,
 		droppedChunks: queue.droppedChunks,
 		droppedBytes: queue.droppedBytes,
 		droppedResizes: queue.droppedResizes,
-		overflowed: queue.droppedChunks > 0 || queue.droppedResizes > 0,
+		overflowed,
+		pressure: derivePressure(queue, overflowed),
 	});
+}
+
+function derivePressure(queue: ParserQueueCountersInput, overflowed: boolean): ParserQueuePressure {
+	if (overflowed) return "overflowed";
+	if (queue.pressure === "nominal" || queue.pressure === "slow-consumer" || queue.pressure === "overflowed") {
+		return queue.pressure;
+	}
+	return "nominal";
+}
+
+function derivePersistenceCounters(
+	persistence: ParserPersistenceCountersInput | null | undefined,
+): DiagnosticFact<DiagnosticsPersistenceCounters> {
+	if (!persistence) return unknown("no snapshot-persistence counters provided");
+	const fields = [
+		persistence.writes,
+		persistence.skippedIdentical,
+		persistence.coalesced,
+		persistence.failures,
+		persistence.lastBytes,
+		persistence.maxBytes,
+		persistence.totalBytes,
+		persistence.minIntervalMs,
+	];
+	if (!fields.every(isBoundedCount)) {
+		return unknown("snapshot-persistence counters contained a non-finite or negative value");
+	}
+	if (persistence.lastWriteAtMs !== null && !isBoundedCount(persistence.lastWriteAtMs)) {
+		return unknown("snapshot-persistence last-write timestamp was not a finite epoch value");
+	}
+	return known({
+		writes: persistence.writes,
+		skippedIdentical: persistence.skippedIdentical,
+		coalesced: persistence.coalesced,
+		failures: persistence.failures,
+		lastBytes: persistence.lastBytes,
+		maxBytes: persistence.maxBytes,
+		totalBytes: persistence.totalBytes,
+		lastWriteAtMs: persistence.lastWriteAtMs,
+		inFlight: persistence.inFlight === true,
+		minIntervalMs: persistence.minIntervalMs,
+	});
+}
+
+function deriveResyncCounters(
+	resync: ParserResyncCountersInput | null | undefined,
+): DiagnosticFact<DiagnosticsResyncCounters> {
+	if (!resync) return unknown("no parser resync counters provided");
+	if (![resync.gaps, resync.missedSeqs].every(isBoundedCount)) {
+		return unknown("parser resync counters contained a non-finite or negative value");
+	}
+	if (resync.lastGapAtSeq !== null && !isBoundedCount(resync.lastGapAtSeq)) {
+		return unknown("parser resync last-gap sequence was not a finite non-negative value");
+	}
+	return known({ gaps: resync.gaps, missedSeqs: resync.missedSeqs, lastGapAtSeq: resync.lastGapAtSeq });
 }
 
 function deriveSnapshotCounters(
@@ -336,6 +467,8 @@ export function buildDiagnosticsSnapshot(input: NativeTerminalDiagnosticsInput):
 		counters: {
 			queue: deriveQueueCounters(input.queue),
 			parserSnapshot: deriveSnapshotCounters(input.snapshot, input.now),
+			persistence: derivePersistenceCounters(input.persistence),
+			resync: deriveResyncCounters(input.resync),
 		},
 	};
 }

@@ -75,3 +75,51 @@ describe("ParserEventQueue", () => {
 		expect(drained.map((e) => e.seq)).toEqual([1, 3]);
 	});
 });
+
+describe("ParserEventQueue observability", () => {
+	it("keeps high-water marks across drains and clears", () => {
+		const queue = new ParserEventQueue();
+		queue.enqueueOutput(bytes("aaaa"));
+		queue.enqueueOutput(bytes("bbbb"));
+		expect(queue.highWater).toEqual({ bytes: 8, events: 2 });
+		queue.drain();
+		expect(queue.pendingBytes).toBe(0);
+		expect(queue.highWater).toEqual({ bytes: 8, events: 2 });
+		queue.enqueueOutput(bytes("c"));
+		queue.clear();
+		expect(queue.highWater).toEqual({ bytes: 8, events: 2 });
+	});
+
+	it("flags a slow consumer once the backlog crosses the configured ratio", () => {
+		const queue = new ParserEventQueue(100, 1_000, 0.5);
+		queue.enqueueOutput(bytes("x".repeat(40)));
+		expect(queue.pressure).toBe("nominal");
+		queue.enqueueOutput(bytes("x".repeat(20)));
+		expect(queue.pressure).toBe("slow-consumer");
+		expect(queue.counters().slowConsumerEpisodes).toBe(1);
+		// Draining clears the pressure; backing up again is a SECOND episode.
+		queue.drain();
+		expect(queue.pressure).toBe("nominal");
+		queue.enqueueOutput(bytes("x".repeat(60)));
+		expect(queue.counters().slowConsumerEpisodes).toBe(2);
+	});
+
+	it("reports overflowed pressure and never exposes the pending events", () => {
+		const queue = new ParserEventQueue(8, 1_000);
+		queue.enqueueOutput(bytes("12345678"));
+		queue.enqueueOutput(bytes("9")); // dropped
+		const counters = queue.counters();
+		expect(counters.pressure).toBe("overflowed");
+		expect(counters.overflow).toEqual({ droppedChunks: 1, droppedBytes: 1, droppedResizes: 0 });
+		expect(counters.maxBytes).toBe(8);
+		expect(Object.values(counters).some((value) => Array.isArray(value))).toBe(false);
+	});
+
+	it("returns a copied overflow record so a caller cannot mutate queue state", () => {
+		const queue = new ParserEventQueue(4);
+		queue.enqueueOutput(bytes("12345")); // dropped
+		const counters = queue.counters();
+		counters.overflow.droppedChunks = 99;
+		expect(queue.counters().overflow.droppedChunks).toBe(1);
+	});
+});

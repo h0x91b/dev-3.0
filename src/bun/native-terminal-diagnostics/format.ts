@@ -37,8 +37,20 @@ export function formatDiagnosticsSnapshot(snapshot: NativeTerminalDiagnosticsSna
 			render(
 				counters.queue,
 				(q) =>
-					`pending=${q.pendingBytes}B/${q.pendingEvents}ev lastSeq=${q.lastSeq} dropped=${q.droppedChunks}c/${q.droppedBytes}B/${q.droppedResizes}r${q.overflowed ? " OVERFLOWED" : ""}`,
+					`pending=${q.pendingBytes}B/${q.pendingEvents}ev peak=${q.highWaterBytes}B/${q.highWaterEvents}ev cap=${q.maxBytes}B/${q.maxEvents}ev lastSeq=${q.lastSeq} pressure=${q.pressure} slowEpisodes=${q.slowConsumerEpisodes} dropped=${q.droppedChunks}c/${q.droppedBytes}B/${q.droppedResizes}r${q.overflowed ? " OVERFLOWED" : ""}`,
 			),
+		],
+		[
+			"persist",
+			render(
+				counters.persistence,
+				(p) =>
+					`writes=${p.writes} skipped=${p.skippedIdentical} coalesced=${p.coalesced} failures=${p.failures} last=${p.lastBytes}B max=${p.maxBytes}B total=${p.totalBytes}B minInterval=${p.minIntervalMs}ms lastWriteAt=${p.lastWriteAtMs ?? "never"}${p.inFlight ? " IN-FLIGHT" : ""}`,
+			),
+		],
+		[
+			"resync",
+			render(counters.resync, (r) => `gaps=${r.gaps} missedSeqs=${r.missedSeqs} lastGapAtSeq=${r.lastGapAtSeq ?? "none"}`),
 		],
 		[
 			"parser",

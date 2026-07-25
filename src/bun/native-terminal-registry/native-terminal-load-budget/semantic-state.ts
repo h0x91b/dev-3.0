@@ -34,6 +34,8 @@ export interface SemanticStateShape {
 	scrollbackLines: number;
 	/** Total scrollback the core holds before the cap — makes the cap explicit. */
 	scrollbackLength: number;
+	/** Varying this is how a scenario makes two snapshots differ byte-wise. */
+	title?: string;
 }
 
 /** Build a schema-valid semantic state of the given geometry (deterministic content). */
@@ -41,7 +43,7 @@ export function buildSemanticState(shape: SemanticStateShape): NativeSemanticSta
 	const scrollbackLines = Math.min(shape.scrollbackLines, shape.scrollbackLength);
 	return {
 		activeBuffer: "normal",
-		title: "dev3-load-budget",
+		title: shape.title ?? "dev3-load-budget",
 		dimensions: { cols: shape.cols, rows: shape.rows },
 		cursor: { x: 0, y: 0, visible: true, style: "block", blink: false },
 		modes: {

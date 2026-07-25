@@ -2,23 +2,23 @@
  * Load/budget harness over the real native parser + resync primitives.
  *
  * Each StreamHarness drives ONE real LiveParserPipeline (with a fake WASM core
- * injected through the pipeline's own `createCore` seam — the only fake) and,
- * alongside it, a MIRROR ParserEventQueue fed the identical frame stream. The
- * pipeline's internal queue depth is not publicly observable, so the mirror —
- * same caps, same enqueue order — is what exposes the queue high-water marks
- * and overflow the integration work needs (see FINDINGS.md follow-up).
+ * injected through the pipeline's own `createCore` seam — the only fake). Since
+ * seq 1284 the pipeline publishes its own queue / persistence / resync counters,
+ * so the harness reads the production primitives directly; the mirror queue that
+ * previously approximated queue depth is gone.
  *
  * The harness measures only what the public primitives expose: ingest totals
- * (bytes/frames/resizes/replies), drain iterations, watermark, health/overflow
- * verdict, and the serialized snapshot size. Nothing here touches a PTY, child
- * process, socket, filesystem, or real clock.
+ * (bytes/frames/resizes/replies), drain iterations, watermark, queue high-water
+ * and pressure, snapshot write/skip/byte accounting, health/overflow verdict, and
+ * the serialized snapshot size. Nothing here touches a PTY, child process,
+ * socket, filesystem, or real clock.
  */
 
 import type { GhosttyLiveOptions, LiveParserCore, NativeSemanticState } from "../ghostty-live";
-import { LiveParserPipeline } from "../live-parser";
-import { ParserEventQueue, type ParserQueueOverflow } from "../parser-queue";
+import { LiveParserPipeline, type ParserPersistenceCounters, type ParserResyncCounters } from "../live-parser";
+import type { ParserQueueOverflow, ParserQueuePressure } from "../parser-queue";
 import type { ParserHealthStatus, ParserStateSnapshot } from "../parser-state";
-import { SteppingClock, DeterministicScheduler } from "./clock";
+import { SteppingClock, DeterministicScheduler, ManualTimers } from "./clock";
 import type { HarnessFrame } from "./generators";
 import { buildSemanticState } from "./semantic-state";
 
@@ -30,6 +30,8 @@ export class BudgetCore implements LiveParserCore {
 	ingestedBytes = 0;
 	ingestedFrames = 0;
 	disposed = false;
+	/** Mutate to make the next inspected screen differ byte-wise (identical-skip). */
+	title = "dev3-load-budget";
 	private cols: number;
 	private rows: number;
 	private pending: string[] = [];
@@ -70,6 +72,7 @@ export class BudgetCore implements LiveParserCore {
 			rows: this.rows,
 			scrollbackLines: Math.min(scrollbackCap, this.scrollbackLength),
 			scrollbackLength: this.scrollbackLength,
+			title: this.title,
 		});
 	}
 
@@ -87,7 +90,11 @@ export interface StreamBudget {
 	drains: number;
 	queueHighWaterBytes: number;
 	queueHighWaterEvents: number;
+	queuePressure: ParserQueuePressure;
+	slowConsumerEpisodes: number;
 	snapshotBytes: number;
+	persistence: ParserPersistenceCounters;
+	resync: ParserResyncCounters;
 	watermarkSeq: number;
 	overflow: ParserQueueOverflow;
 	health: ParserHealthStatus;
@@ -103,19 +110,18 @@ export interface StreamHarnessOptions {
 	queueMaxEvents?: number;
 	snapshotScrollbackCap?: number;
 	scrollbackLength?: number;
+	persistDebounceMs?: number;
+	persistMinIntervalMs?: number;
 }
 
 export class StreamHarness {
-	private highWaterBytes = 0;
-	private highWaterEvents = 0;
-
 	private constructor(
 		readonly streamId: string,
 		readonly pipeline: LiveParserPipeline,
 		readonly core: BudgetCore,
-		readonly mirror: ParserEventQueue,
 		readonly snapshots: ParserStateSnapshot[],
 		readonly replies: string[],
+		readonly timers: ManualTimers,
 		private readonly scheduler: DeterministicScheduler,
 	) {}
 
@@ -123,9 +129,9 @@ export class StreamHarness {
 		const cols = opts.cols ?? 80;
 		const rows = opts.rows ?? 24;
 		const core = new BudgetCore(cols, rows, opts.scrollbackLength ?? 0);
-		const mirror = new ParserEventQueue(opts.queueMaxBytes, opts.queueMaxEvents);
 		const snapshots: ParserStateSnapshot[] = [];
 		const replies: string[] = [];
+		const timers = new ManualTimers();
 		const pipeline = await LiveParserPipeline.create({
 			sessionId: opts.streamId,
 			cols,
@@ -133,37 +139,39 @@ export class StreamHarness {
 			queueMaxBytes: opts.queueMaxBytes,
 			queueMaxEvents: opts.queueMaxEvents,
 			snapshotScrollbackCap: opts.snapshotScrollbackCap,
+			persistDebounceMs: opts.persistDebounceMs,
+			persistMinIntervalMs: opts.persistMinIntervalMs,
 			writeReply: (reply) => replies.push(reply),
-			persistState: (snapshot) => snapshots.push(snapshot),
+			persistState: (snapshot) => {
+				snapshots.push(snapshot);
+			},
 			createCore: (_options: GhosttyLiveOptions) => Promise.resolve(core),
 			schedule: opts.scheduler.schedule,
+			setTimer: timers.set,
+			clearTimer: timers.clear,
 			now: opts.clock.now,
 			memory: () => ({ rssBytes: 1_000, heapUsedBytes: 500 }),
 		});
-		return new StreamHarness(opts.streamId, pipeline, core, mirror, snapshots, replies, opts.scheduler);
+		return new StreamHarness(opts.streamId, pipeline, core, snapshots, replies, timers, opts.scheduler);
 	}
 
-	/** Feed one frame to both the pipeline and the mirror, tracking mirror high-water. */
 	feed(frame: HarnessFrame): void {
-		if (frame.kind === "output") {
-			this.mirror.enqueueOutput(frame.bytes);
-			this.pipeline.onOutput(frame.bytes);
-		} else {
-			this.mirror.enqueueResize(frame.cols, frame.rows);
-			this.pipeline.onResize(frame.cols, frame.rows);
-		}
-		this.highWaterBytes = Math.max(this.highWaterBytes, this.mirror.pendingBytes);
-		this.highWaterEvents = Math.max(this.highWaterEvents, this.mirror.pendingEvents);
+		if (frame.kind === "output") this.pipeline.onOutput(frame.bytes);
+		else this.pipeline.onResize(frame.cols, frame.rows);
 	}
 
 	feedAll(frames: HarnessFrame[]): void {
 		for (const frame of frames) this.feed(frame);
 	}
 
-	/** Run every pending pipeline drain and drop the mirror's drained backlog in lockstep. */
+	/** Run every pending pipeline drain; returns the number of drains executed. */
 	drain(): number {
-		this.mirror.drain();
 		return this.scheduler.runAll();
+	}
+
+	/** Fire every armed persistence timer; returns the number of writes attempted. */
+	runPersistTimers(): number {
+		return this.timers.runAll();
 	}
 
 	/** Force the pipeline to drain and persist without waiting on a scheduled task. */
@@ -172,15 +180,16 @@ export class StreamHarness {
 	}
 
 	get queueHighWaterBytes(): number {
-		return this.highWaterBytes;
+		return this.pipeline.queueCounters().highWaterBytes;
 	}
 
 	get queueHighWaterEvents(): number {
-		return this.highWaterEvents;
+		return this.pipeline.queueCounters().highWaterEvents;
 	}
 
 	budget(): StreamBudget {
 		const snapshot = this.pipeline.snapshot();
+		const queue = this.pipeline.queueCounters();
 		return {
 			streamId: this.streamId,
 			bytes: snapshot.ingested.bytes,
@@ -188,9 +197,13 @@ export class StreamHarness {
 			resizes: snapshot.ingested.resizes,
 			replies: snapshot.ingested.replies,
 			drains: snapshot.latency.drains,
-			queueHighWaterBytes: this.highWaterBytes,
-			queueHighWaterEvents: this.highWaterEvents,
+			queueHighWaterBytes: queue.highWaterBytes,
+			queueHighWaterEvents: queue.highWaterEvents,
+			queuePressure: queue.pressure,
+			slowConsumerEpisodes: queue.slowConsumerEpisodes,
 			snapshotBytes: Buffer.byteLength(JSON.stringify(snapshot), "utf8"),
+			persistence: this.pipeline.persistenceCounters(),
+			resync: this.pipeline.resyncCounters(),
 			watermarkSeq: snapshot.watermarkSeq,
 			overflow: snapshot.health.overflow,
 			health: snapshot.health.status,
@@ -209,6 +222,9 @@ export interface MultiStreamResult {
 	totalFrames: number;
 	maxQueueHighWaterBytes: number;
 	maxSnapshotBytes: number;
+	totalWrites: number;
+	totalSkippedWrites: number;
+	totalPersistedBytes: number;
 }
 
 /** Fold per-stream budgets into a fleet-level rollup for the multi-stream scenarios. */
@@ -220,5 +236,8 @@ export function aggregate(streamCount: number, budgets: StreamBudget[]): MultiSt
 		totalFrames: budgets.reduce((sum, b) => sum + b.frames, 0),
 		maxQueueHighWaterBytes: budgets.reduce((max, b) => Math.max(max, b.queueHighWaterBytes), 0),
 		maxSnapshotBytes: budgets.reduce((max, b) => Math.max(max, b.snapshotBytes), 0),
+		totalWrites: budgets.reduce((sum, b) => sum + b.persistence.writes, 0),
+		totalSkippedWrites: budgets.reduce((sum, b) => sum + b.persistence.skippedIdentical, 0),
+		totalPersistedBytes: budgets.reduce((sum, b) => sum + b.persistence.totalBytes, 0),
 	};
 }

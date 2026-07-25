@@ -231,3 +231,105 @@ describe("buildDiagnosticsSnapshot", () => {
 		expect(JSON.stringify(reordered)).toBe(JSON.stringify(canonical));
 	});
 });
+
+describe("backpressure counters", () => {
+	const NOW_ISO = "2026-07-24T12:00:00.000Z";
+
+	it("reports persistence and resync counters as known facts", () => {
+		const snap = buildDiagnosticsSnapshot({
+			now: NOW_ISO,
+			persistence: {
+				writes: 3,
+				skippedIdentical: 12,
+				coalesced: 1,
+				failures: 0,
+				lastBytes: 1_000,
+				maxBytes: 2_000,
+				totalBytes: 3_000,
+				lastWriteAtMs: 1_780_000_000_000,
+				inFlight: false,
+				minIntervalMs: 1_000,
+			},
+			resync: { gaps: 2, missedSeqs: 9, lastGapAtSeq: 41 },
+		});
+		expect(snap.counters.persistence).toEqual({
+			known: true,
+			value: {
+				writes: 3,
+				skippedIdentical: 12,
+				coalesced: 1,
+				failures: 0,
+				lastBytes: 1_000,
+				maxBytes: 2_000,
+				totalBytes: 3_000,
+				lastWriteAtMs: 1_780_000_000_000,
+				inFlight: false,
+				minIntervalMs: 1_000,
+			},
+		});
+		expect(snap.counters.resync).toEqual({ known: true, value: { gaps: 2, missedSeqs: 9, lastGapAtSeq: 41 } });
+	});
+
+	it("rejects non-finite persistence and resync values with an explicit reason", () => {
+		const base = {
+			writes: 1,
+			skippedIdentical: 0,
+			coalesced: 0,
+			failures: 0,
+			lastBytes: 1,
+			maxBytes: 1,
+			totalBytes: 1,
+			lastWriteAtMs: null,
+			inFlight: false,
+			minIntervalMs: 1_000,
+		};
+		const bad = buildDiagnosticsSnapshot({
+			now: NOW_ISO,
+			persistence: { ...base, writes: Number.NaN },
+			resync: { gaps: -1, missedSeqs: 0, lastGapAtSeq: null },
+		});
+		expect(bad.counters.persistence.known).toBe(false);
+		expect(bad.counters.resync.known).toBe(false);
+	});
+
+	it("defaults the peak to the live depth when a caller reports no high-water marks", () => {
+		const snap = buildDiagnosticsSnapshot({
+			now: NOW_ISO,
+			queue: { pendingBytes: 64, pendingEvents: 2, lastSeq: 5, droppedChunks: 0, droppedBytes: 0, droppedResizes: 0 },
+		});
+		expect(snap.counters.queue).toEqual({
+			known: true,
+			value: {
+				pendingBytes: 64,
+				pendingEvents: 2,
+				highWaterBytes: 64,
+				highWaterEvents: 2,
+				maxBytes: 0,
+				maxEvents: 0,
+				lastSeq: 5,
+				slowConsumerEpisodes: 0,
+				droppedChunks: 0,
+				droppedBytes: 0,
+				droppedResizes: 0,
+				overflowed: false,
+				pressure: "nominal",
+			},
+		});
+	});
+
+	it("forces the pressure verdict to overflowed whenever a drop was recorded", () => {
+		const snap = buildDiagnosticsSnapshot({
+			now: NOW_ISO,
+			queue: {
+				pendingBytes: 0,
+				pendingEvents: 0,
+				lastSeq: 9,
+				droppedChunks: 1,
+				droppedBytes: 10,
+				droppedResizes: 0,
+				pressure: "nominal", // a stale caller verdict must not win over the drop
+			},
+		});
+		expect(snap.counters.queue.known && snap.counters.queue.value.pressure).toBe("overflowed");
+	});
+});

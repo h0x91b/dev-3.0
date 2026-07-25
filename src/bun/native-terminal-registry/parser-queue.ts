@@ -16,6 +16,11 @@
 export const DEFAULT_PARSER_QUEUE_MAX_BYTES = 8 * 1024 * 1024;
 /** Safety valve for event-count floods (e.g. a resize storm of tiny frames). */
 export const DEFAULT_PARSER_QUEUE_MAX_EVENTS = 65_536;
+/**
+ * Fraction of either cap at which a backlog is reported as `slow-consumer` —
+ * the typed early warning that precedes the terminal `overflowed` verdict.
+ */
+export const DEFAULT_QUEUE_SLOW_CONSUMER_RATIO = 0.5;
 
 export interface ParserOutputEvent {
 	kind: "output";
@@ -38,16 +43,53 @@ export interface ParserQueueOverflow {
 	droppedResizes: number;
 }
 
+/** Typed backpressure verdict — never a silent stall, never unbounded growth. */
+export type ParserQueuePressure = "nominal" | "slow-consumer" | "overflowed";
+
+/** Immutable read-only view of the queue. Exposes counters, never the events. */
+export interface ParserQueueCounters {
+	pendingBytes: number;
+	pendingEvents: number;
+	highWaterBytes: number;
+	highWaterEvents: number;
+	maxBytes: number;
+	maxEvents: number;
+	lastSeq: number;
+	/** Times the backlog crossed into `slow-consumer` from a nominal state. */
+	slowConsumerEpisodes: number;
+	overflow: ParserQueueOverflow;
+	overflowed: boolean;
+	pressure: ParserQueuePressure;
+}
+
 export class ParserEventQueue {
 	private events: ParserEvent[] = [];
 	private bytes = 0;
 	private seq = 0;
+	private highWaterBytes = 0;
+	private highWaterEvents = 0;
+	private slowConsumerEpisodes = 0;
+	private inSlowConsumer = false;
 	private readonly dropped: ParserQueueOverflow = { droppedChunks: 0, droppedBytes: 0, droppedResizes: 0 };
 
 	constructor(
 		private readonly maxBytes: number = DEFAULT_PARSER_QUEUE_MAX_BYTES,
 		private readonly maxEvents: number = DEFAULT_PARSER_QUEUE_MAX_EVENTS,
+		private readonly slowConsumerRatio: number = DEFAULT_QUEUE_SLOW_CONSUMER_RATIO,
 	) {}
+
+	/** Refresh high-water marks and the slow-consumer episode counter after a push. */
+	private observeDepth(): void {
+		if (this.bytes > this.highWaterBytes) this.highWaterBytes = this.bytes;
+		if (this.events.length > this.highWaterEvents) this.highWaterEvents = this.events.length;
+		const slow = this.isSlowConsumer();
+		if (slow && !this.inSlowConsumer) this.slowConsumerEpisodes++;
+		this.inSlowConsumer = slow;
+	}
+
+	private isSlowConsumer(): boolean {
+		return this.bytes >= this.maxBytes * this.slowConsumerRatio || this.events.length >= this.maxEvents * this.slowConsumerRatio;
+	}
 
 	/**
 	 * Enqueue one PTY output chunk, copying it (the callback's buffer may be
@@ -64,6 +106,7 @@ export class ParserEventQueue {
 		}
 		this.events.push({ kind: "output", seq: this.seq, bytes: bytes.slice() });
 		this.bytes += bytes.length;
+		this.observeDepth();
 		return true;
 	}
 
@@ -75,6 +118,7 @@ export class ParserEventQueue {
 			return false;
 		}
 		this.events.push({ kind: "resize", seq: this.seq, cols, rows });
+		this.observeDepth();
 		return true;
 	}
 
@@ -83,6 +127,7 @@ export class ParserEventQueue {
 		const drained = this.events;
 		this.events = [];
 		this.bytes = 0;
+		this.inSlowConsumer = false;
 		return drained;
 	}
 
@@ -90,6 +135,7 @@ export class ParserEventQueue {
 	clear(): void {
 		this.events = [];
 		this.bytes = 0;
+		this.inSlowConsumer = false;
 	}
 
 	get pendingBytes(): number {
@@ -111,5 +157,32 @@ export class ParserEventQueue {
 
 	get overflowed(): boolean {
 		return this.dropped.droppedChunks > 0 || this.dropped.droppedResizes > 0;
+	}
+
+	/** Peak backlog since construction — drains and clears never lower it. */
+	get highWater(): { bytes: number; events: number } {
+		return { bytes: this.highWaterBytes, events: this.highWaterEvents };
+	}
+
+	get pressure(): ParserQueuePressure {
+		if (this.overflowed) return "overflowed";
+		return this.isSlowConsumer() ? "slow-consumer" : "nominal";
+	}
+
+	/** One flat, frozen-by-copy read of everything observable. No queue internals. */
+	counters(): ParserQueueCounters {
+		return {
+			pendingBytes: this.bytes,
+			pendingEvents: this.events.length,
+			highWaterBytes: this.highWaterBytes,
+			highWaterEvents: this.highWaterEvents,
+			maxBytes: this.maxBytes,
+			maxEvents: this.maxEvents,
+			lastSeq: this.seq,
+			slowConsumerEpisodes: this.slowConsumerEpisodes,
+			overflow: { ...this.dropped },
+			overflowed: this.overflowed,
+			pressure: this.pressure,
+		};
 	}
 }

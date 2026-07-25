@@ -63,8 +63,34 @@ function healthyInput(): NativeTerminalDiagnosticsInput {
 		live,
 		verdict: "owned",
 		lastAttachAt: "2026-07-24T11:59:58.000Z",
-		queue: { pendingBytes: 128, pendingEvents: 3, lastSeq: 42, droppedChunks: 0, droppedBytes: 0, droppedResizes: 0 },
+		queue: {
+			pendingBytes: 128,
+			pendingEvents: 3,
+			highWaterBytes: 4096,
+			highWaterEvents: 12,
+			maxBytes: 8_388_608,
+			maxEvents: 65_536,
+			slowConsumerEpisodes: 0,
+			lastSeq: 42,
+			droppedChunks: 0,
+			droppedBytes: 0,
+			droppedResizes: 0,
+			pressure: "nominal",
+		},
 		snapshot: { updatedAt: "2026-07-24T11:59:59.500Z", watermarkSeq: 42, health: "live", frames: 100, bytes: 4096, resizes: 2, replies: 5 },
+		persistence: {
+			writes: 7,
+			skippedIdentical: 31,
+			coalesced: 2,
+			failures: 0,
+			lastBytes: 174_000,
+			maxBytes: 174_500,
+			totalBytes: 1_218_000,
+			lastWriteAtMs: 1_780_000_000_000,
+			inFlight: false,
+			minIntervalMs: 1_000,
+		},
+		resync: { gaps: 1, missedSeqs: 4, lastGapAtSeq: 37 },
 	};
 }
 
@@ -81,8 +107,29 @@ describe("formatDiagnosticsSnapshot", () => {
 		expect(rows["shell-pid"]).toBe("4243");
 		expect(rows.writer).toBe("attached (writer)");
 		expect(rows["last-attach"]).toBe("2026-07-24T11:59:58.000Z");
-		expect(rows.queue).toBe("pending=128B/3ev lastSeq=42 dropped=0c/0B/0r");
+		expect(rows.queue).toBe(
+			"pending=128B/3ev peak=4096B/12ev cap=8388608B/65536ev lastSeq=42 pressure=nominal slowEpisodes=0 dropped=0c/0B/0r",
+		);
 		expect(rows.parser).toBe("health=live watermark=42 frames=100 bytes=4096 resizes=2 replies=5 age=500ms");
+		expect(rows.persist).toBe(
+			"writes=7 skipped=31 coalesced=2 failures=0 last=174000B max=174500B total=1218000B minInterval=1000ms lastWriteAt=1780000000000",
+		);
+		expect(rows.resync).toBe("gaps=1 missedSeqs=4 lastGapAtSeq=37");
+	});
+
+	it("renders a slow consumer and an in-flight write", () => {
+		const input = healthyInput();
+		const { rows } = parse(
+			formatDiagnosticsSnapshot(
+				buildDiagnosticsSnapshot({
+					...input,
+					queue: { ...input.queue!, pendingBytes: 5_000_000, pressure: "slow-consumer", slowConsumerEpisodes: 3 },
+					persistence: { ...input.persistence!, inFlight: true, writes: 0, lastWriteAtMs: null },
+				}),
+			),
+		);
+		expect(rows.queue).toContain("pressure=slow-consumer slowEpisodes=3");
+		expect(rows.persist).toContain("lastWriteAt=never IN-FLIGHT");
 	});
 
 	it("renders unavailable facts as 'unknown'", () => {
@@ -92,6 +139,8 @@ describe("formatDiagnosticsSnapshot", () => {
 		expect(rows.writer).toBe("unknown (unknown)");
 		expect(rows.queue).toBe("unknown");
 		expect(rows.parser).toBe("unknown");
+		expect(rows.persist).toBe("unknown");
+		expect(rows.resync).toBe("unknown");
 	});
 
 	it("flags queue overflow and stale freshness", () => {

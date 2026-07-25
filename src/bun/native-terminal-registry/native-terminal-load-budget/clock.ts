@@ -63,3 +63,43 @@ export class DeterministicScheduler {
 		this.tasks = [];
 	}
 }
+
+/**
+ * Manual replacement for the pipeline's delayed-timer seam (`setTimer` /
+ * `clearTimer`). Delays are recorded rather than slept, so a scenario can assert
+ * the persistence cadence the pipeline ASKED for and then fire the write itself.
+ */
+export class ManualTimers {
+	private next = 1;
+	private readonly timers = new Map<number, () => void>();
+	/** Every delay requested, in order — the cadence evidence. */
+	readonly delays: number[] = [];
+
+	readonly set = (fn: () => void, ms: number): unknown => {
+		const handle = this.next++;
+		this.timers.set(handle, fn);
+		this.delays.push(ms);
+		return handle;
+	};
+
+	readonly clear = (handle: unknown): void => {
+		this.timers.delete(handle as number);
+	};
+
+	get pending(): number {
+		return this.timers.size;
+	}
+
+	/** Fire every armed timer (a callback may arm another); returns the count fired. */
+	runAll(): number {
+		let fired = 0;
+		while (this.timers.size > 0) {
+			const [handle, fn] = [...this.timers][0];
+			this.timers.delete(handle);
+			fn();
+			fired++;
+			if (fired > 1_000) break; // runaway guard: a scenario must converge
+		}
+		return fired;
+	}
+}
