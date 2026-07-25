@@ -13,6 +13,11 @@ on:
       - "scripts/verify-windows-conpty-update-archive.ts"
       - "scripts/native-terminal-host-manifest/**"
       - "src/bun/native-terminal-host/**"
+      - "src/bun/native-task-terminal.ts"
+      - "src/bun/native-host-runtime.ts"
+      - "src/bun/task-terminal-backend.ts"
+      - "src/bun/__tests__/native-task-terminal.bun-e2e.ts"
+      - "src/bun/__tests__/native-task-terminal-controller.ts"
       - "src/shared/native-terminal-runtime.ts"
       - "src/bun/prototypes/detached-pty/**"
       - "src/bun/native-terminal-registry/**"
@@ -71,6 +76,14 @@ jobs:
       # with a deterministic single writer and honest lost-session results.
       - name: Native-session app-restart reattach E2E
         run: bun run test:native-app-restart-e2e
+
+      # Seq 1292 PRODUCT proof: a task's primary terminal driven through
+      # startNativeTaskTerminal/attach/stop — create, shell round-trip, resize,
+      # detach, controller restart, observer refusal, owned-tree cleanup with a
+      # live tmux sentinel, and an honest null after cleanup.
+      - name: Product native task-terminal E2E
+        timeout-minutes: 5
+        run: bun run test:native-task-terminal-e2e
 
       # Seq 1254 single-view adapter parity. Drives the shared backend-neutral
       # parity corpus against the native adapter on native Windows + POSIX with
