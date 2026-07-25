@@ -13,7 +13,7 @@
  */
 
 import { existsSync, statSync, readFileSync } from "node:fs";
-import { join, extname, resolve } from "node:path";
+import { isAbsolute, join, extname, relative, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
 import type { RemoteNetInterface } from "../shared/types";
@@ -236,6 +236,21 @@ function getStaticRoot(): string {
 }
 
 /**
+ * True when `candidate` is neither the root itself nor anything beneath it.
+ *
+ * `path` is injectable so a POSIX test run can exercise the win32 rules; at
+ * runtime it is the platform's own implementation.
+ */
+export function escapesRoot(
+	root: string,
+	candidate: string,
+	path: { relative: (from: string, to: string) => string; isAbsolute: (p: string) => boolean } = { relative, isAbsolute },
+): boolean {
+	const rel = path.relative(root, candidate);
+	return rel !== "" && (rel.startsWith("..") || path.isAbsolute(rel));
+}
+
+/**
  * Exported for testing. `staticRootOverride` lets tests point at a temp dir
  * without going through the lazily-resolved bundle path.
  */
@@ -243,8 +258,10 @@ export async function serveStatic(pathname: string, staticRootOverride?: string)
 	const staticRoot = staticRootOverride ?? getStaticRoot();
 	let filePath = resolve(staticRoot, "." + pathname);
 
-	// Reject any path that escapes the static root (path traversal)
-	if (!filePath.startsWith(staticRoot + "/") && filePath !== staticRoot) return null;
+	// Reject any path that escapes the static root (path traversal). Compared via
+	// `relative()` rather than a string prefix: `resolve()` returns backslashes on
+	// Windows, so a `staticRoot + "/"` prefix never matched and every file 404'd.
+	if (escapesRoot(staticRoot, filePath)) return null;
 
 	// If path doesn't exist, try as directory with index.html
 	if (!existsSync(filePath)) {
@@ -264,7 +281,7 @@ export async function serveStatic(pathname: string, staticRootOverride?: string)
 	}
 
 	// Re-check after directory resolution
-	if (!filePath.startsWith(staticRoot + "/")) return null;
+	if (escapesRoot(staticRoot, filePath)) return null;
 
 	const ext = extname(filePath).toLowerCase();
 	const contentType = MIME_TYPES[ext] || "application/octet-stream";

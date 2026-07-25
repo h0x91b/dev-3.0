@@ -83,12 +83,13 @@ vi.mock("qrcode", () => ({
 
 import { resolve } from "node:path";
 
-// Reimplement the serveStatic path logic for unit testing
-// (same logic as in remote-access-server.ts)
+import { escapesRoot } from "../remote-access-server";
+import { win32 } from "node:path";
+
+// Exercises the REAL boundary check the server uses, not a copy of it.
 function resolveSafePath(staticRoot: string, pathname: string): string | null {
 	const filePath = resolve(staticRoot, "." + pathname);
-	if (!filePath.startsWith(staticRoot + "/") && filePath !== staticRoot) return null;
-	return filePath;
+	return escapesRoot(staticRoot, filePath) ? null : filePath;
 }
 
 describe("serveStatic path traversal protection", () => {
@@ -130,6 +131,22 @@ describe("serveStatic path traversal protection", () => {
 	it("rejects paths that resolve outside root via symlink-like patterns", () => {
 		const result = resolveSafePath(testStaticRoot, "/../");
 		expect(result).toBeNull();
+	});
+
+	// A Windows `resolve()` returns backslashes, so the previous `root + "/"`
+	// prefix test never matched and the remote UI 404'd on every asset.
+	it("accepts a backslash-separated path under a backslash-separated root", () => {
+		expect(escapesRoot("D:\\app\\views", "D:\\app\\views\\index.html", win32)).toBe(false);
+		expect(escapesRoot("D:\\app\\views", "D:\\app\\views", win32)).toBe(false);
+	});
+
+	it("still rejects an escape spelled with backslashes", () => {
+		expect(escapesRoot("D:\\app\\views", "D:\\app\\secrets.txt", win32)).toBe(true);
+		expect(escapesRoot("D:\\app\\views", "C:\\Windows\\system32", win32)).toBe(true);
+	});
+
+	it("does not treat a sibling directory with the same prefix as inside the root", () => {
+		expect(escapesRoot(testStaticRoot, `${testStaticRoot}-evil/passwd`)).toBe(true);
 	});
 });
 
