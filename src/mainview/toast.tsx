@@ -347,17 +347,22 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 		draggedRef.current = false;
 		dragXRef.current = 0;
 		setDragging(true);
-		try {
-			e.currentTarget.setPointerCapture(e.pointerId);
-		} catch {
-			// Pointer capture is a best-effort enhancement (absent in happy-dom).
-		}
 	}
 
 	function updateSwipe(e: React.PointerEvent) {
 		if (pointerIdRef.current !== e.pointerId) return;
 		const dx = e.clientX - startXRef.current;
-		if (Math.abs(dx) > SWIPE_DECIDE_PX) draggedRef.current = true;
+		if (Math.abs(dx) > SWIPE_DECIDE_PX && !draggedRef.current) {
+			draggedRef.current = true;
+			// Capture only once a real drag starts: an active pointer capture retargets
+			// the follow-up `click` to the capturing card, so capturing on pointerdown
+			// killed every clickable toast's own button (decision 172).
+			try {
+				e.currentTarget.setPointerCapture(e.pointerId);
+			} catch {
+				// Best-effort enhancement (absent in happy-dom).
+			}
+		}
 		const next = dx > 0 ? dx : 0; // right-anchored toast: only follow rightward
 		dragXRef.current = next;
 		setDragX(next);
@@ -421,7 +426,7 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 			<div
 				data-toast-card
 				data-dragging={dragging ? "true" : "false"}
-				className={`toast-swipe relative overflow-hidden bg-overlay border ${v.border} rounded-xl shadow-2xl w-[26rem] max-w-[calc(100vw-2rem)] flex items-start gap-3 p-4`}
+				className={`toast-swipe group relative overflow-hidden bg-overlay border ${v.border} rounded-xl shadow-2xl w-[26rem] max-w-[calc(100vw-2rem)] flex items-start gap-3 p-4`}
 				style={{ transform: `translateX(${dragX}px)`, opacity }}
 				onPointerDown={beginSwipe}
 				onPointerMove={updateSwipe}
@@ -434,46 +439,47 @@ function ToastCard({ entry, paused, onDismiss, onInteraction }: ToastCardProps) 
 				>
 					{v.icon}
 				</span>
-				{entry.onClick ? (
+				<div className="flex-1 min-w-0 pr-1">
+					{entry.context && (
+						<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
+							{entry.context}
+						</div>
+					)}
+					<div
+						className={`text-fg text-sm leading-relaxed break-words ${entry.onClick ? "group-hover:underline" : ""}`}
+					>
+						{entry.message}
+					</div>
+				</div>
+				{/* Whole-card hit area for a clickable toast, laid over the content so
+				    every pixel except the dismiss button activates it. Inset by 3px so
+				    the keyboard focus ring (2px outline, 2px offset) stays inside the
+				    card's `overflow-hidden` box instead of being clipped away. */}
+				{entry.onClick && (
 					<button
 						type="button"
+						// Pointer press must not focus the toast: WebKit then paints the
+						// keyboard focus ring around a toast nobody tabbed to.
+						onMouseDown={(event) => event.preventDefault()}
 						onClick={() => {
 							if (suppressIfDragged()) return;
 							entry.onClick?.();
 							onDismiss(entry.id);
 						}}
-						className="flex-1 min-w-0 text-left pr-1 cursor-pointer group"
-					>
-						{entry.context && (
-							<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
-								{entry.context}
-							</div>
-						)}
-						<div className="text-fg text-sm leading-relaxed break-words group-hover:underline">
-							{entry.message}
-						</div>
-					</button>
-				) : (
-					<div className="flex-1 min-w-0 pr-1">
-						{entry.context && (
-							<div className="text-[0.6875rem] font-mono text-fg-muted truncate mb-0.5">
-								{entry.context}
-							</div>
-						)}
-						<div className="text-fg text-sm leading-relaxed break-words">
-							{entry.message}
-						</div>
-					</div>
+						aria-label={entry.message}
+						className="absolute inset-[3px] cursor-pointer rounded-[0.625rem]"
+					/>
 				)}
 				<button
 					type="button"
 					onPointerDown={(event) => event.stopPropagation()}
+					onMouseDown={(event) => event.preventDefault()}
 					onClick={() => {
 						if (suppressIfDragged()) return;
 						onDismiss(entry.id);
 					}}
 					aria-label="Dismiss"
-					className="text-fg-muted hover:text-fg transition-colors flex-shrink-0"
+					className="relative text-fg-muted hover:text-fg transition-colors flex-shrink-0"
 				>
 					<svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

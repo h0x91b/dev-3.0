@@ -191,6 +191,52 @@ describe("toast service", () => {
 		expect(screen.getByText("Open task")).toBeInTheDocument();
 	});
 
+	it("captures the pointer only once a drag starts (a tap must stay clickable)", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Tap me", { onClick: vi.fn(), durationMs: 60_000 });
+		});
+
+		const card = toastCard() as HTMLElement;
+		const setPointerCapture = vi.fn();
+		Object.defineProperty(card, "setPointerCapture", { configurable: true, value: setPointerCapture });
+
+		act(() => {
+			fireEvent.pointerDown(card, { pointerId: 1, clientX: 0 });
+			fireEvent.pointerMove(card, { pointerId: 1, clientX: 4 });
+		});
+		expect(setPointerCapture).not.toHaveBeenCalled();
+
+		act(() => {
+			fireEvent.pointerMove(card, { pointerId: 1, clientX: 40 });
+		});
+		expect(setPointerCapture).toHaveBeenCalledOnce();
+	});
+
+	it("spreads a clickable toast's hit area over the whole card except the dismiss button", () => {
+		render(<ToastHost />);
+		act(() => {
+			toast.info("Whole box", { onClick: vi.fn(), durationMs: 60_000 });
+		});
+
+		const card = toastCard() as HTMLElement;
+		const overlay = within(card).getByRole("button", { name: "Whole box" });
+		expect(overlay.className).toContain("absolute");
+		expect(overlay.className).toContain("inset-[3px]");
+		expect(overlay.contains(within(card).getByRole("button", { name: "Dismiss" }))).toBe(false);
+	});
+
+	it("does not focus a clickable toast on pointer press (no stray focus ring)", async () => {
+		const user = userEvent.setup();
+		render(<ToastHost />);
+		act(() => {
+			toast.info("No ring", { onClick: vi.fn(), durationMs: 60_000 });
+		});
+		const button = within(screen.getByRole("alert")).getByRole("button", { name: "No ring" });
+		await user.pointer({ target: button, keys: "[MouseLeft>]" });
+		expect(document.activeElement).not.toBe(button);
+	});
+
 	it("still runs a clickable toast's action on a plain click (no drag)", async () => {
 		const user = userEvent.setup();
 		const onClick = vi.fn();
