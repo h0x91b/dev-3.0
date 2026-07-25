@@ -2456,6 +2456,12 @@ export interface FolderListing {
 	parent: string | null;
 	home: string;
 	entries: FolderEntry[];
+	/**
+	 * Filesystem roots to offer as shortcuts. Windows-only: `parent` is null at
+	 * `C:\`, so without these a repo on another drive is unreachable. POSIX has
+	 * the single `/` root and omits the field.
+	 */
+	roots?: string[];
 	/** Present when the requested path could not be read. `entries` is empty then. */
 	error?: string;
 }

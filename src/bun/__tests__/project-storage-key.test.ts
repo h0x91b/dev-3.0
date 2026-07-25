@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { posixProjectSlug, projectStorageKey, toPosixSeparators } from "../../shared/project-storage-key";
 import { projectSlug as searchProjectSlug } from "../../shared/conversation-search-core";
+import { listFilesystemRoots } from "../../shared/filesystem-roots";
 
 /**
  * The POSIX half of this file guards a frozen on-disk contract (AGENTS.md): a
@@ -74,5 +75,21 @@ describe("toPosixSeparators", () => {
 
 	it("leaves POSIX paths untouched, backslash included", () => {
 		expect(toPosixSeparators("/Users/a/we\\ird", "darwin")).toBe("/Users/a/we\\ird");
+	});
+});
+
+describe("listFilesystemRoots", () => {
+	it("offers every present drive so a repo off the home drive is reachable", () => {
+		const present = new Set(["C:\\", "D:\\"]);
+		expect(listFilesystemRoots("win32", (p) => present.has(p))).toEqual(["C:\\", "D:\\"]);
+	});
+
+	it("omits drives that are not mounted", () => {
+		expect(listFilesystemRoots("win32", (p) => p === "C:\\")).toEqual(["C:\\"]);
+	});
+
+	it("stays absent on POSIX, where the picker already offers /", () => {
+		expect(listFilesystemRoots("darwin", () => true)).toBeUndefined();
+		expect(listFilesystemRoots("linux", () => true)).toBeUndefined();
 	});
 });

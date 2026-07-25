@@ -140,7 +140,10 @@ function pushRecent(path: string): string[] {
 /** Collapse $HOME prefix to ~ for display. */
 function displayPath(full: string, home: string): string {
 	if (home && full === home) return "~";
-	if (home && full.startsWith(home + "/")) return "~" + full.slice(home.length);
+	// Windows mixes separators: `home` comes from os.homedir() with backslashes
+	// while navigated paths may use either, so compare on a normalised copy.
+	const norm = (p: string): string => p.replaceAll("\\", "/");
+	if (home && norm(full).startsWith(norm(home) + "/")) return "~" + full.slice(home.length);
 	return full;
 }
 
@@ -190,6 +193,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 	const [recentPaths] = useState<string[]>(() => loadRecent());
 	const [home, setHome] = useState<string>("");
 	const [homeEntries, setHomeEntries] = useState<Set<string>>(new Set());
+	const [driveRoots, setDriveRoots] = useState<string[]>([]);
 	const [treeKey, setTreeKey] = useState(0);
 	const [newFolderInput, setNewFolderInput] = useState<string | null>(null);
 	const [newFolderError, setNewFolderError] = useState<string | null>(null);
@@ -210,6 +214,7 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 				setManualPath(initial.path);
 				setListingError(initial.error ?? null);
 				setHome(initial.home);
+				setDriveRoots(initial.roots ?? []);
 				setTreeKey((k) => k + 1);
 
 				// If the initial path IS home, reuse it; otherwise fetch home too.
@@ -308,9 +313,15 @@ function FolderPickerModal({ options, onClose }: ModalProps) {
 			if (homeEntries.has("Documents")) items.push({ label: "Documents", path: `${home}/Documents`, glyph: NF.documents });
 			if (homeEntries.has("Downloads")) items.push({ label: "Downloads", path: `${home}/Downloads`, glyph: NF.downloads });
 		}
-		items.push({ label: t("folderPicker.rootLabel"), path: "/", glyph: NF.hardDrive });
+		// Windows reports its drive roots because the picker cannot walk out of a
+		// drive; elsewhere there is the single filesystem root.
+		if (driveRoots.length > 0) {
+			for (const root of driveRoots) items.push({ label: root.replace(/\\+$/, ""), path: root, glyph: NF.hardDrive });
+		} else {
+			items.push({ label: t("folderPicker.rootLabel"), path: "/", glyph: NF.hardDrive });
+		}
 		return items;
-	}, [home, homeEntries, t]);
+	}, [home, homeEntries, driveRoots, t]);
 
 	return (
 		<div

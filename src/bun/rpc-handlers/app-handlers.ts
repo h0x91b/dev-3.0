@@ -16,6 +16,7 @@ import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
 import { projectStorageKey } from "../../shared/project-storage-key";
+import { listFilesystemRoots } from "../../shared/filesystem-roots";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
@@ -192,6 +193,7 @@ async function listDirectory(params?: { path?: string | null; includeFiles?: boo
 	const includeFiles = params?.includeFiles === true;
 	const showHidden = params?.showHidden === true;
 	const home = homedir();
+	const roots = listFilesystemRoots();
 	log.info("→ listDirectory", { path: requestedPath, includeFiles, showHidden });
 
 	const parentOf = (p: string): string | null => {
@@ -205,6 +207,7 @@ async function listDirectory(params?: { path?: string | null; includeFiles?: boo
 			path: requestedPath,
 			parent: parentOf(requestedPath),
 			home,
+			roots,
 			entries: [],
 			error: "Path does not exist",
 		};
@@ -238,6 +241,7 @@ async function listDirectory(params?: { path?: string | null; includeFiles?: boo
 			path: requestedPath,
 			parent: parentOf(requestedPath),
 			home,
+			roots,
 			entries,
 		};
 	} catch (err) {
@@ -246,6 +250,7 @@ async function listDirectory(params?: { path?: string | null; includeFiles?: boo
 			path: requestedPath,
 			parent: parentOf(requestedPath),
 			home,
+			roots,
 			entries: [],
 			error: String(err),
 		};
