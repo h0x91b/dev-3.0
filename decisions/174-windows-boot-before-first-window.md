@@ -50,6 +50,13 @@ neither was wrapped speculatively.
   and `vite` / `electrobun` resolved as files inside `node_modules`. `devPlan()`
   and `devRunEnv()` are pure and tested, including the `${DEV3_PORT0:-0}` default
   that decision 093 depends on.
+- `emitsUpdateArchive()` in `src/shared/electrobun-build-env.ts` gates the
+  `postPackage` archive proof. Electrobun runs that hook for `dev` too, but `dev`
+  emits no `.tar.zst`, so the proof threw and failed `electrobun build` *after* it
+  had otherwise succeeded — the window never opened. Found on a real Windows run,
+  invisible on macOS because the proof exits early off win32. The check is
+  one-sided on purpose: only `dev` is known-archiveless, and an unset or unknown
+  environment stays strict so the release proof cannot become a silent no-op.
 - `index.ts` installs the bundle CLI under `cliBinaryName()` from
   `electrobun.config`, so the copy map and the boot-time install can never
   disagree about `dev3` vs `dev3.exe`.
@@ -75,6 +82,10 @@ neither was wrapped speculatively.
 - **Keep the shell one-liners and add `dev:win`.** Rejected under the
   no-deprecation rule: two spellings of the dev loop drift, and the POSIX one
   would stay the only tested path.
+- **Treat the build environment as an exhaustive enum and throw on anything
+  unknown.** Rejected: Electrobun types it `"stable" | "canary" | "dev" | (string
+  & {})`, and this repo also builds with `--channel prod`, so an exhaustive check
+  would fail release builds on a value that is legitimately open-ended.
 - **Point `DEV3_HOME` at `%LOCALAPPDATA%` on Windows.** Rejected: `~/.dev3.0` is
   the documented, frozen layout; a different root on one platform would fork the
   data-layout contract for no benefit at this stage.

@@ -13,6 +13,7 @@ import { cliSocketTransportSupported } from "../../shared/cli-socket-transport";
 import { WINDOWS_POWERSHELL_FALLBACK, defaultLaunchShellPath } from "../../shared/platform-launch";
 import { devPlan, devRunEnv } from "../../../scripts/dev";
 import { cliBinaryName, cliCopyEntry } from "../../../electrobun.config";
+import { emitsUpdateArchive } from "../../shared/electrobun-build-env";
 
 const fakeOs = (home: string, tmp = "/fallback-tmp") => ({ homedir: () => home, tmpdir: () => tmp });
 
@@ -144,5 +145,25 @@ describe("bundled CLI name", () => {
 			const [, destination] = cliCopyEntry(platform);
 			expect(destination).toBe(`cli/${cliBinaryName(platform)}`);
 		}
+	});
+});
+
+// Electrobun runs postPackage for `dev` too, where it emits no artifacts at all.
+// Before this gate, `bun run dev` on Windows died inside the archive proof —
+// after `electrobun build` had already succeeded — so the window never opened.
+describe("update-archive proof gate", () => {
+	it("skips the archive proof for the dev build, which emits no artifacts", () => {
+		expect(emitsUpdateArchive("dev")).toBe(false);
+	});
+
+	it("keeps release builds strict", () => {
+		expect(emitsUpdateArchive("canary")).toBe(true);
+		expect(emitsUpdateArchive("stable")).toBe(true);
+	});
+
+	it("stays strict for an unset or unknown environment, never a silent no-op", () => {
+		expect(emitsUpdateArchive(undefined)).toBe(true);
+		expect(emitsUpdateArchive("prod")).toBe(true);
+		expect(emitsUpdateArchive("")).toBe(true);
 	});
 });
