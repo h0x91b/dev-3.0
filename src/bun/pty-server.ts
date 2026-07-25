@@ -1,10 +1,18 @@
 import { access } from "node:fs/promises";
 import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { ENV_UNSET } from "../shared/agent-accounts";
+import type { TerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import { isResizeSequence, parseResizeSequence, smallestClientSize } from "../shared/resize-protocol";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
+import {
+	attachNativeTaskTerminal,
+	startNativeTaskTerminal,
+	stopNativeTaskTerminal,
+	type NativeTaskTerminal,
+} from "./native-task-terminal";
+import type { TerminalLaunchSpec } from "./task-terminal-backend";
 import {
 	tmux,
 	DEFAULT_TMUX_SOCKET,
@@ -100,7 +108,13 @@ interface PtySession {
 	cwd: string;
 	tmuxCommand: string;
 	env: Record<string, string>;
+	/** Which backend owns this session's shell. `tmux` uses `proc`, `native` uses `native`. */
+	backend: TerminalBackendIdentity;
 	proc: ReturnType<typeof Bun.spawn> | null;
+	/** The app's single writer binding to a native host, when `backend` is native. */
+	native: NativeTaskTerminal | null;
+	/** Guards against two concurrent reattach attempts for one native session. */
+	nativeAttaching: boolean;
 	/** All currently connected WebSocket clients. PTY output is broadcast to all. */
 	clients: Set<any>;
 	tmuxSocket: string;
@@ -181,7 +195,10 @@ export function createSession(
 		cwd,
 		tmuxCommand,
 		env: extraEnv,
+		backend: "tmux",
 		proc: null,
+		native: null,
+		nativeAttaching: false,
 		clients: new Set(),
 		tmuxSocket,
 		tmuxSessionName,
@@ -207,8 +224,160 @@ export function createSession(
 	}
 }
 
+/** Feed one chunk of PTY bytes through the same pipeline both backends share. */
+function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
+	const str = typeof data === "string" ? data : session.decoder.decode(data, { stream: true });
+	session.lastOutputTime = Date.now();
+	session.idleNotified = false;
+	const cleaned = handleOsc52(str, session);
+	checkForBell(cleaned, session.taskId);
+	if (cleaned && session.clients.size > 0) enqueuePtyData(session, cleaned);
+}
+
+/**
+ * Create the task's PRIMARY terminal on the native backend.
+ *
+ * Deliberately not a branch inside {@link createSession}: this path creates no
+ * tmux session, never probes one, and takes a structured launch instead of a
+ * shell string, so keeping it separate makes "tmux was not involved" checkable by
+ * reading the call sites. Only a task marked `terminalBackend: "native"` reaches
+ * it (see `task-terminal-backend.ts`).
+ */
+export async function createNativeTaskSession(
+	taskId: string,
+	projectId: string,
+	cwd: string,
+	launch: TerminalLaunchSpec,
+	extraEnv: Record<string, string> = {},
+	size: { cols: number; rows: number } = { cols: 220, rows: 50 },
+): Promise<void> {
+	log.info("Creating native PTY session", {
+		taskId: taskId.slice(0, 8),
+		cwd,
+		executable: launch.executable,
+		argv: launch.argv.length,
+	});
+	const session: PtySession = {
+		taskId,
+		projectId,
+		cwd,
+		tmuxCommand: "",
+		env: extraEnv,
+		backend: "native",
+		proc: null,
+		native: null,
+		nativeAttaching: false,
+		clients: new Set(),
+		// A native session has no tmux socket or session name; the empty strings
+		// exist so a stray tmux call fails loudly instead of hitting a real session.
+		tmuxSocket: "",
+		tmuxSessionName: "",
+		sessionType: "task",
+		lastOutputTime: Date.now(),
+		idleNotified: false,
+		decoder: new TextDecoder("utf-8", { fatal: false }),
+		pendingData: "",
+		batchTimer: null,
+		configureTimer: null,
+		osc52Buffer: "",
+		appliedCols: size.cols,
+		appliedRows: size.rows,
+	};
+	sessions.set(taskId, session);
+	try {
+		session.native = await startNativeTaskTerminal({
+			taskId,
+			cwd,
+			env: Object.fromEntries(Object.entries(extraEnv).filter(([, value]) => value !== ENV_UNSET)),
+			launch,
+			cols: size.cols,
+			rows: size.rows,
+			onOutput: (bytes) => ingestPtyOutput(session, bytes),
+			onClosed: () => {
+				session.native = null;
+				session.appliedCols = undefined;
+				session.appliedRows = undefined;
+				log.info("Native PTY session closed", { taskId: shortId(taskId) });
+				onPtyDiedCallback?.(taskId);
+			},
+		});
+	} catch (err) {
+		// A session that never started must not look alive/recoverable to callers,
+		// and must never be quietly replaced by tmux.
+		sessions.delete(taskId);
+		throw err;
+	}
+	log.info("Native PTY session ready", {
+		taskId: shortId(taskId),
+		hostPid: session.native.hostPid,
+		shellPid: session.native.shellPid,
+	});
+}
+
+/**
+ * Rebind a native session that this app process did not create — the app
+ * restarted while the host and shell kept running. Returns false when there is
+ * no owned session to reattach to; never spawns a replacement.
+ */
+export async function reattachNativeTaskSession(taskId: string, projectId: string, cwd: string): Promise<boolean> {
+	const existing = sessions.get(taskId);
+	if (existing?.native) return true;
+	const session: PtySession = existing ?? {
+		taskId,
+		projectId,
+		cwd,
+		tmuxCommand: "",
+		env: {},
+		backend: "native",
+		proc: null,
+		native: null,
+		nativeAttaching: false,
+		clients: new Set(),
+		tmuxSocket: "",
+		tmuxSessionName: "",
+		sessionType: "task",
+		lastOutputTime: Date.now(),
+		idleNotified: false,
+		decoder: new TextDecoder("utf-8", { fatal: false }),
+		pendingData: "",
+		batchTimer: null,
+		configureTimer: null,
+		osc52Buffer: "",
+	};
+	if (session.nativeAttaching) return true;
+	session.nativeAttaching = true;
+	sessions.set(taskId, session);
+	try {
+		const native = await attachNativeTaskTerminal(taskId, {
+			onOutput: (bytes) => ingestPtyOutput(session, bytes),
+			onClosed: () => {
+				session.native = null;
+				log.info("Native PTY session closed", { taskId: shortId(taskId) });
+				onPtyDiedCallback?.(taskId);
+			},
+		});
+		if (!native) {
+			if (!existing) sessions.delete(taskId);
+			return false;
+		}
+		session.native = native;
+		applyClientSizes(session);
+		return true;
+	} finally {
+		session.nativeAttaching = false;
+	}
+}
+
 export function destroySession(taskId: string, fallbackSocket?: string): void {
 	const session = sessions.get(taskId);
+
+	// A native session owns a host + shell tree instead of a tmux session; tearing
+	// it down must not touch tmux at all, and must leave every other session alone.
+	if (session?.backend === "native") {
+		destroyNativeSession(session);
+		return;
+	}
+
 	const socket = session?.tmuxSocket ?? fallbackSocket ?? DEFAULT_TMUX_SOCKET;
 
 	log.info("Destroying PTY session", {
@@ -273,18 +442,76 @@ export function destroySession(taskId: string, fallbackSocket?: string): void {
 		});
 }
 
+/** Tear down a native session's own tree — never tmux, never a sibling session. */
+function destroyNativeSession(session: PtySession): Promise<void> {
+	log.info("Destroying native PTY session", {
+		taskId: shortId(session.taskId),
+		attached: !!session.native,
+	});
+	if (session.batchTimer) {
+		clearTimeout(session.batchTimer);
+		session.batchTimer = null;
+	}
+	session.pendingData = "";
+	session.native?.detach();
+	session.native = null;
+	for (const client of session.clients) {
+		try {
+			client.close();
+		} catch {
+			// already closed
+		}
+	}
+	session.clients.clear();
+	sessions.delete(session.taskId);
+	// Stopping the host tree is I/O; like tmux kill-session it must not block the
+	// lifecycle event loop. Callers that relaunch the same task await the promise
+	// via destroySessionAwaited instead.
+	return stopNativeTaskTerminal(session.taskId).catch((err) => {
+		log.warn("Native session teardown failed (best-effort)", {
+			taskId: shortId(session.taskId),
+			error: String(err),
+		});
+	});
+}
+
+/**
+ * Destroy a session and, for the native backend, WAIT until its owned tree is
+ * gone. Relaunching a native task must not race its own teardown: the session id
+ * is deterministic, so a still-dying host would make the fresh `openSession` fail
+ * with `session-exists`. The tmux path keeps its exact fire-and-forget timing.
+ */
+export async function destroySessionAwaited(taskId: string, fallbackSocket?: string): Promise<void> {
+	const session = sessions.get(taskId);
+	if (session?.backend !== "native") {
+		destroySession(taskId, fallbackSocket);
+		return;
+	}
+	await destroyNativeSession(session);
+}
+
 export function hasSession(taskId: string): boolean {
 	return sessions.has(taskId);
 }
 
-/** Returns true if the session is registered but its process has exited. */
+/** Which backend owns a registered session, or null when there is none. */
+export function getSessionBackend(taskId: string): TerminalBackendIdentity | null {
+	return sessions.get(taskId)?.backend ?? null;
+}
+
+/** Returns true if the session is registered but its shell is gone. */
 export function hasDeadSession(taskId: string): boolean {
 	const session = sessions.get(taskId);
-	return !!session && session.proc === null;
+	if (!session) return false;
+	if (session.backend === "native") return session.native === null && !session.nativeAttaching;
+	return session.proc === null;
 }
 
 export async function capturePane(taskId: string): Promise<string | null> {
 	const session = sessions.get(taskId);
+	// A native session has no tmux pane to capture; callers already treat null as
+	// "no capture available".
+	if (session?.backend === "native") return null;
 	const socket = session?.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 	const tmuxSessionName = session?.tmuxSessionName ?? computeTmuxSessionName(taskId, "task");
 	try {
@@ -572,8 +799,22 @@ function checkForBell(data: string, taskId: string): void {
  * freshly-connected window doesn't shrink everyone to the 80x24 default before
  * its real size arrives.
  */
+/**
+ * The session's live write/resize surface, whichever backend owns it. Both are
+ * the SAME shape on purpose: the WebSocket bridge, geometry negotiation, and
+ * batching above this line stay backend-agnostic.
+ */
+function sessionShell(session: PtySession): { write(data: string): void; resize(cols: number, rows: number): void } | null {
+	if (session.backend === "native") {
+		const native = session.native;
+		return native ? { write: (data) => native.write(data), resize: (cols, rows) => native.resize(cols, rows) } : null;
+	}
+	const term = session.proc?.terminal as { write(data: string): void; resize(cols: number, rows: number): void } | undefined;
+	return term ?? null;
+}
+
 function applyClientSizes(session: PtySession): void {
-	const term = session.proc?.terminal as { resize(cols: number, rows: number): void } | undefined;
+	const term = sessionShell(session);
 	if (!term) return;
 	const target = smallestClientSize(
 		Array.from(session.clients, (c) => ({ cols: (c as any).ptyCols, rows: (c as any).ptyRows })),
@@ -782,15 +1023,6 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 				rows,
 				data(_terminal: unknown, data: string | Uint8Array) {
 					try {
-						// Use the session's streaming decoder so that
-						// multi-byte UTF-8 sequences split across chunks
-						// are buffered instead of replaced with U+FFFD.
-						const str =
-							typeof data === "string"
-								? data
-								: session.decoder.decode(data, { stream: true });
-						session.lastOutputTime = Date.now();
-						session.idleNotified = false;
 						if (!firstOutputLogged) {
 							firstOutputLogged = true;
 							log.info("PTY first output", {
@@ -799,11 +1031,7 @@ function spawnPty(session: PtySession, cols: number, rows: number): void {
 								bytes: typeof data === "string" ? data.length : data.byteLength,
 							});
 						}
-							const cleaned = handleOsc52(str, session);
-							checkForBell(cleaned, session.taskId);
-							if (cleaned && session.clients.size > 0) {
-								enqueuePtyData(session, cleaned);
-							}
+						ingestPtyOutput(session, data);
 					} catch (err) {
 						log.error("PTY data callback error", {
 							taskId: shortId(session.taskId),
@@ -912,7 +1140,7 @@ const IDLE_CHECK_INTERVAL_MS = 5_000;
 setInterval(() => {
 	const now = Date.now();
 	for (const session of sessions.values()) {
-		if (!session.proc) continue;
+		if (!sessionShell(session)) continue;
 		if (session.idleNotified) continue;
 		if (now - session.lastOutputTime >= IDLE_THRESHOLD_MS) {
 			session.idleNotified = true;
@@ -1014,7 +1242,18 @@ const ptyServer = Bun.serve({
 				// capture-pane replay here races that redraw and causes
 				// visible flicker on every task switch; sending nothing
 				// is the clean path. See fix: task cb75af7b.
-				if (!session.proc) {
+				if (session.backend === "native") {
+					// Never spawn from here: a native session's host is created by the
+					// launch path and rediscovered by reattach. A missing one means the
+					// shell is gone, which the ptyDied path already reports.
+					if (!session.native && !session.nativeAttaching) {
+						void reattachNativeTaskSession(sessionId, session.projectId, session.cwd).then((ok) => {
+							if (!ok) log.warn("Native session is gone; nothing to reattach", { taskId: shortId(sessionId) });
+						}).catch((err) => {
+							log.error("Native session reattach failed", { taskId: shortId(sessionId), error: String(err) });
+						});
+					}
+				} else if (!session.proc) {
 					log.info("No proc, spawning new PTY", { taskId: shortId(sessionId) });
 					spawnPty(session, cols, rows);
 				} else {
@@ -1034,7 +1273,9 @@ const ptyServer = Bun.serve({
 				const sessionId = (ws as any).sessionId as string | undefined;
 				if (!sessionId) return;
 				const session = sessions.get(sessionId);
-				if (!session?.proc?.terminal) return;
+				if (!session) return;
+				const shell = sessionShell(session);
+				if (!shell) return;
 
 				const data =
 					typeof message === "string"
@@ -1054,7 +1295,7 @@ const ptyServer = Bun.serve({
 					return;
 				}
 
-				session.proc.terminal.write(data);
+				shell.write(data);
 			} catch (err) {
 				log.error("WS message handler error", {
 					error: String(err),

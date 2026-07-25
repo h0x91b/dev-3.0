@@ -19,6 +19,7 @@ import {
 	type NativeAdapterDeps,
 } from "../native-terminal-adapter";
 import {
+	isTerminalLaunchSpec,
 	isTerminalSessionId,
 	isTerminalSize,
 	type TerminalAttachment,
@@ -37,6 +38,7 @@ import {
 import {
 	attachmentReleased,
 	backendFailure,
+	invalidLaunch,
 	invalidSessionId,
 	invalidSize,
 	sessionExists,
@@ -82,23 +84,21 @@ export class NativeTerminalBackend implements TerminalBackend {
 	async openSession(spec: TerminalSessionSpec): Promise<TerminalSessionState> {
 		if (!isTerminalSessionId(spec.id)) throw invalidSessionId(spec.id);
 		if (spec.size && !isTerminalSize(spec.size)) throw invalidSize(spec.size);
+		if (spec.launch && !isTerminalLaunchSpec(spec.launch)) throw invalidLaunch(spec.launch);
 		if (await this.describeSession(spec.id)) throw sessionExists(spec.id);
+		// The native host spawns the process itself, so geometry is part of the
+		// launch instead of a resize after the shell has already painted once.
 		const handle = await this.guard("openSession", spec.id, () =>
 			this.adapter.createSession({
 				id: spec.id,
 				cwd: spec.cwd,
 				env: spec.env as Record<string, string> | undefined,
 				command: spec.command,
+				launch: spec.launch,
+				cols: spec.size?.cols,
+				rows: spec.size?.rows,
 			}),
 		);
-		if (spec.size) {
-			await this.guard(
-				"openSession.resize",
-				spec.id,
-				() => this.adapter.resizeView(spec.id, handle.firstViewId, spec.size!.cols, spec.size!.rows),
-				handle.firstViewId,
-			);
-		}
 		return {
 			id: spec.id,
 			views: [{ id: handle.firstViewId, focused: true }],

@@ -8,7 +8,7 @@
  * with the original on `cause` — they never escape the seam.
  */
 
-import type { TerminalSessionId, TerminalSize, TerminalViewId } from "./contract";
+import type { TerminalLaunchSpec, TerminalSessionId, TerminalSize, TerminalViewId } from "./contract";
 import { TERMINAL_SESSION_ID_RULE } from "./contract";
 
 export type TerminalBackendErrorCode =
@@ -22,6 +22,8 @@ export type TerminalBackendErrorCode =
 	| "invalid-session-id"
 	/** A resize with non-positive or non-integer geometry. */
 	| "invalid-size"
+	/** A structured launch with a missing executable or a non-string argv entry. */
+	| "invalid-launch"
 	/** The attachment was released — get a fresh one via `attachView`. */
 	| "detached"
 	/** The backend cannot serve this product operation (documented, not a bug). */
@@ -93,6 +95,13 @@ export function invalidSize(size: TerminalSize): TerminalBackendError {
 	return new TerminalBackendError(
 		"invalid-size",
 		`invalid terminal size ${size?.cols}x${size?.rows} — cols and rows must be positive integers`,
+	);
+}
+
+export function invalidLaunch(launch: TerminalLaunchSpec): TerminalBackendError {
+	return new TerminalBackendError(
+		"invalid-launch",
+		`invalid terminal launch ${JSON.stringify(launch?.executable)} — an executable and an all-string argv are required`,
 	);
 }
 

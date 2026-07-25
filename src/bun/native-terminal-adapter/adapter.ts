@@ -41,11 +41,21 @@ const INPUT_SUBMIT = "\r";
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 
+/** Executable + exact argv, so nothing re-splits the arguments on the way down. */
+export interface LaunchOptions {
+	executable: string;
+	argv: readonly string[];
+}
+
 export interface CreateSessionOptions {
 	id: string;
 	cwd: string;
 	env?: Record<string, string>;
 	command?: string;
+	/** Structured launch; takes precedence over `command` when both are given. */
+	launch?: LaunchOptions;
+	cols?: number;
+	rows?: number;
 }
 
 export interface SplitViewOptions {
@@ -123,10 +133,15 @@ export class NativeSingleViewAdapter {
 	}
 
 	async createSession(opts: CreateSessionOptions): Promise<SessionHandle> {
-		const launch = this.buildLaunchSpec(opts.cwd, opts.env, opts.command);
+		const launch = this.buildLaunchSpec(opts.cwd, opts.env, opts.command, opts.launch);
 		const result = await this.deps.start(
 			opts.id,
-			{ launch, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, liveParser: true },
+			{
+				launch,
+				cols: opts.cols ?? DEFAULT_COLS,
+				rows: opts.rows ?? DEFAULT_ROWS,
+				liveParser: true,
+			},
 			this.deps.registryDeps,
 		);
 		this.created.add(opts.id);
@@ -224,7 +239,20 @@ export class NativeSingleViewAdapter {
 		this.created.clear();
 	}
 
-	private buildLaunchSpec(cwd: string, env: Record<string, string> | undefined, command: string | undefined): ShellLaunchSpec {
+	private buildLaunchSpec(
+		cwd: string,
+		env: Record<string, string> | undefined,
+		command: string | undefined,
+		launch: LaunchOptions | undefined,
+	): ShellLaunchSpec {
+		if (launch) {
+			return defineShellLaunchSpec({
+				executable: launch.executable,
+				argv: [...launch.argv],
+				cwd,
+				env: env ?? {},
+			});
+		}
 		const executable = command?.trim();
 		if (executable) {
 			return defineShellLaunchSpec({ executable, argv: [], cwd, env: env ?? {} });

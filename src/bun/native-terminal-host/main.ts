@@ -19,6 +19,7 @@ import {
 	sameNativeTerminalPath,
 	type NativeTerminalHostProofState,
 } from "../../shared/native-terminal-runtime";
+import { resolveHostConfig, runHost as runRegistrySessionHost } from "../native-terminal-registry/host";
 import { powerShellInteractiveArgs } from "./pty-proof";
 import { computeTerminalHostReentryArgs, requireLiveTerminalHostState } from "./reentry";
 import { resolvesWithin } from "./wait-with-timeout";
@@ -294,7 +295,15 @@ async function main(): Promise<void> {
 	if (command === "reattach") return reattach();
 	if (command === "stop") return stop();
 	if (command === "__host") return runHost();
-	throw new Error("usage: dev3-terminal-host version|start|reattach|stop");
+	// The real product session host: a task's detached native host re-enters the
+	// staged packaged image here (seq 1292). Distinct verb from the `__host`
+	// packaging tracer above so neither can be reached by accident.
+	if (command === "session-host") {
+		const sessionId = process.argv[3];
+		if (sessionId) process.env.DEV3_NATIVE_SESSION_ID = sessionId;
+		return runRegistrySessionHost(resolveHostConfig());
+	}
+	throw new Error("usage: dev3-terminal-host version|start|reattach|stop|session-host <sessionId>");
 }
 
 void main().catch((error) => {

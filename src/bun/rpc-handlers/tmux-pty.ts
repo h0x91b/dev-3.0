@@ -41,7 +41,9 @@ import {
 } from "../tmux";
 import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
-import { getPushMessage, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
+import { taskTerminalBackendIdentity } from "../task-terminal-backend";
+import { nativeTaskTerminalAlive } from "../native-task-terminal";
+import { getPushMessage, getScriptShellPath, isActive, buildAgentEnv, buildCmdScript, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, escapeForDoubleQuotes, log, portableReadKey, resolveBinaryPath, shellQuote } from "./shared-pure";
 import { resolveOperationalProjectConfig } from "./settings-config";
 
 const devViewerPaneIds = new Map<string, string>();
@@ -452,6 +454,39 @@ async function applyAgentHooksToCommand(
 	}
 }
 
+/**
+ * Start a task's primary terminal on the native backend (seq 1292).
+ *
+ * Runs the SAME wrapper script the tmux path runs, handed over as an explicit
+ * executable + argv so no shell re-parses it. It creates no tmux session and
+ * probes none, which also means the tmux-only follow-ups are absent by
+ * construction: there is no pane id to persist, session-environment already
+ * arrives through the wrapper's exports, and the virtual-project side shell is a
+ * multi-view feature the native backend does not serve yet.
+ */
+async function launchNativeTaskSession(
+	project: Project,
+	task: Task,
+	worktreePath: string,
+	runScriptPath: string,
+	env: Record<string, string>,
+	userShell: string,
+): Promise<void> {
+	await pty.createNativeTaskSession(
+		task.id,
+		project.id,
+		worktreePath,
+		{ executable: getScriptShellPath(userShell), argv: [runScriptPath] },
+		env,
+	);
+	if (project.kind === "virtual") {
+		log.info("Native task terminal: skipping the virtual-project side shell (single view)", {
+			taskId: task.id.slice(0, 8),
+		});
+	}
+	log.info("launchTaskPty DONE — native session created", { taskId: task.id.slice(0, 8) });
+}
+
 export async function launchTaskPty(
 	project: Project,
 	task: Task,
@@ -696,6 +731,15 @@ export async function launchTaskPty(
 		scriptPath: runScriptPath,
 		envKeys: Object.keys(env),
 	});
+
+	// Everything above is backend-neutral on purpose: the same resolved agent
+	// command, hooks, trust, account, env, ports, and wrapper script feed both
+	// backends. Only the session itself differs.
+	if (taskTerminalBackendIdentity(task) === "native") {
+		await launchNativeTaskSession(project, task, worktreePath, runScriptPath, env, userShell);
+		return;
+	}
+
 	try {
 		const sessionSocket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		// For virtual ops, only add the split-right shell on a FRESH session — not
@@ -1232,19 +1276,21 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 		log.info("Resume requested on dead session — destroying to force recreation", {
 			taskId: params.taskId.slice(0, 8),
 		});
-		pty.destroySession(params.taskId);
+		await pty.destroySessionAwaited(params.taskId);
 	}
 
-	// If session is in memory (alive or dead), verify the tmux session still
-	// exists. When the tmux server is killed externally, the proc may or may
-	// not have exited yet — but `has-session` is the ground truth.
+	// If session is in memory (alive or dead), verify the backend's session still
+	// exists. When the tmux server (or a native host) is killed externally, our
+	// handle may or may not have noticed yet — the backend is the ground truth.
 	if (pty.hasSession(params.taskId)) {
-		const socket = pty.getSessionSocket(params.taskId);
-		if (!(await pty.tmuxSessionExists(params.taskId, socket))) {
-			log.info("Session in memory but tmux session gone — destroying for recovery", {
+		const alive = pty.getSessionBackend(params.taskId) === "native"
+			? await nativeTaskTerminalAlive(params.taskId)
+			: await pty.tmuxSessionExists(params.taskId, pty.getSessionSocket(params.taskId));
+		if (!alive) {
+			log.info("Session in memory but the backend session is gone — destroying for recovery", {
 				taskId: params.taskId.slice(0, 8),
 			});
-			pty.destroySession(params.taskId);
+			await pty.destroySessionAwaited(params.taskId);
 		}
 	}
 
@@ -1257,10 +1303,22 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 		const { task: foundTask, project: foundProject } = await findTaskAcrossProjects(params.taskId);
 
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
-			const socket = foundTask.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
-			const tmuxAlive = await pty.tmuxSessionExists(params.taskId, socket);
+			const identity = taskTerminalBackendIdentity(foundTask);
+			const sessionAlive = identity === "native"
+				? await nativeTaskTerminalAlive(params.taskId)
+				: await pty.tmuxSessionExists(params.taskId, foundTask.tmuxSocket ?? DEFAULT_TMUX_SOCKET);
 
-			if (tmuxAlive) {
+			if (sessionAlive && identity === "native") {
+				// The host and shell outlived this app process — rebind to them. This
+				// must never go through launchTaskPty: creating a second session for a
+				// live one is exactly the double-spawn the seam refuses.
+				try {
+					await pty.reattachNativeTaskSession(params.taskId, foundProject.id, foundTask.worktreePath);
+					log.info("Reattached to existing native session", { taskId: params.taskId.slice(0, 8) });
+				} catch (err) {
+					log.error("Failed to reattach to native session", { taskId: params.taskId.slice(0, 8), error: String(err) });
+				}
+			} else if (sessionAlive) {
 				// Tmux session exists — just reconnect (no resume needed).
 				// Skip session persist so we don't overwrite the real session ID.
 				try {
@@ -1344,7 +1402,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 
 	// Destroy any dead session in memory
 	if (pty.hasSession(params.taskId)) {
-		pty.destroySession(params.taskId);
+		await pty.destroySessionAwaited(params.taskId);
 	}
 
 	// Launch main pane (panes[0]) with resume
@@ -1365,7 +1423,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 
 	// Resume extra panes (panes[1..]) via split-window.
 	// Wait for the tmux session to be ready before splitting.
-	if (panes.length > 1) {
+	if (panes.length > 1 && taskTerminalBackendIdentity(task) === "tmux") {
 		const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
 		const maxWaitMs = 3000;
 		const pollMs = 100;
@@ -1445,7 +1503,7 @@ async function restartTask(params: { taskId: string }): Promise<string> {
 
 	// Destroy any dead session in memory
 	if (pty.hasSession(params.taskId)) {
-		pty.destroySession(params.taskId);
+		await pty.destroySessionAwaited(params.taskId);
 	}
 
 	// Remember agent info before clearing

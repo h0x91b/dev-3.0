@@ -1,8 +1,11 @@
 /**
- * Isolation guards for the product terminal-backend seam (MIG-002, seq 1280):
- *  - No production source imports it — this task creates the seam, not the
- *    rollout, so there is no selector, caller, flag, or persisted identity yet.
- *  - No backend-selection vocabulary anywhere in the module.
+ * Isolation guards for the product terminal-backend seam (MIG-002, seq 1280;
+ * narrowed for the first product caller in MIG-004/INT-001, seq 1292):
+ *  - Exactly ONE production source imports the seam: the task-terminal resolver.
+ *    Every other caller must go through it, so "which backend runs this task" is
+ *    decided in one place instead of spreading branches through the app.
+ *  - No backend-selection vocabulary INSIDE the module — the seam still holds no
+ *    selector; the resolver above it owns that decision.
  *  - tmux stays private: only `tmux-port.ts` may speak tmux, and the barrel
  *    exports nothing tmux-shaped.
  */
@@ -29,13 +32,16 @@ const moduleFiles = sourceFiles(moduleRoot);
 const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests__"));
 
 describe("terminal-backend seam isolation", () => {
-	it("has no product callers (absent from the production import graph)", () => {
-		// This module exactly — not the sibling `shared/terminal-backend-identity`.
-		const importsModule = /(?:from|import|require\s*\()\s*['"][^'"]*terminal-backend(?:\/[^'"]*)?['"]/;
+	it("is reached only through the single task-terminal resolver", () => {
+		// This module exactly — not the sibling `shared/terminal-backend-identity`
+		// nor the product resolver `../task-terminal-backend`.
+		const importsModule = /(?:from|import|require\s*\()\s*['"][^'"]*\/terminal-backend(?:\/[^'"]*)?['"]/;
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
-			.filter((path) => importsModule.test(readFileSync(path, "utf8")));
-		expect(importers).toEqual([]);
+			.filter((path) => !path.includes("__tests__"))
+			.filter((path) => importsModule.test(readFileSync(path, "utf8")))
+			.map((path) => path.slice(sourceRoot.length + 1).replaceAll("\\", "/"));
+		expect(importers).toEqual(["bun/task-terminal-backend.ts"]);
 	});
 
 	it("contains no backend selection or negotiation vocabulary", () => {

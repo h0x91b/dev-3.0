@@ -54,6 +54,42 @@ export function isTerminalSize(size: TerminalSize): boolean {
 	);
 }
 
+/**
+ * A structured process launch: one executable plus its exact argv, with nothing
+ * re-parsing the arguments between the product and the process. It exists
+ * because the native backend spawns a process directly — a single command
+ * string would have to be split by guesswork — while tmux runs its command
+ * through a shell. A caller whose arguments must survive verbatim (a login
+ * shell running a wrapper script whose path may contain spaces) passes `launch`;
+ * `command` stays the simpler form for a plain shell-ready string. When both are
+ * given, `launch` wins, and every backend must honour it losslessly.
+ */
+export interface TerminalLaunchSpec {
+	readonly executable: string;
+	readonly argv: readonly string[];
+}
+
+export function isTerminalLaunchSpec(launch: TerminalLaunchSpec): boolean {
+	return (
+		typeof launch?.executable === "string" &&
+		launch.executable.trim().length > 0 &&
+		Array.isArray(launch.argv) &&
+		launch.argv.every((arg) => typeof arg === "string")
+	);
+}
+
+function posixQuote(value: string): string {
+	return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * Flatten a structured launch into the single shell-ready command string the
+ * tmux backend needs. tmux is POSIX-only here, so POSIX quoting is exact.
+ */
+export function terminalLaunchCommand(launch: TerminalLaunchSpec): string {
+	return [launch.executable, ...launch.argv].map(posixQuote).join(" ");
+}
+
 export interface TerminalSessionSpec {
 	readonly id: TerminalSessionId;
 	/** Working directory of the session's first process. */
@@ -62,6 +98,8 @@ export interface TerminalSessionSpec {
 	readonly env?: Readonly<Record<string, string>>;
 	/** Command for the first view; the user's login shell when omitted. */
 	readonly command?: string;
+	/** Structured launch for the first view; takes precedence over `command`. */
+	readonly launch?: TerminalLaunchSpec;
 	/** Initial geometry; the backend's default when omitted. */
 	readonly size?: TerminalSize;
 }
@@ -71,6 +109,8 @@ export interface TerminalViewSpec {
 	readonly cwd: string;
 	readonly env?: Readonly<Record<string, string>>;
 	readonly command?: string;
+	/** Structured launch for the new view; takes precedence over `command`. */
+	readonly launch?: TerminalLaunchSpec;
 }
 
 export interface TerminalViewState {

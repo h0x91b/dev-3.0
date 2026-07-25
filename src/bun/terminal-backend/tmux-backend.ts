@@ -12,8 +12,10 @@
  */
 
 import {
+	isTerminalLaunchSpec,
 	isTerminalSessionId,
 	isTerminalSize,
+	terminalLaunchCommand,
 	type TerminalAttachment,
 	type TerminalBackend,
 	type TerminalCapture,
@@ -30,6 +32,7 @@ import {
 import {
 	attachmentReleased,
 	backendFailure,
+	invalidLaunch,
 	invalidSessionId,
 	invalidSize,
 	sessionExists,
@@ -37,6 +40,13 @@ import {
 	viewNotFound,
 } from "./errors";
 import { tmuxBackendPort, type TmuxBackendPort } from "./tmux-port";
+
+/** tmux runs one shell-ready string, so a structured launch is quoted into one. */
+function launchCommand(spec: TerminalSessionSpec | TerminalViewSpec): string | undefined {
+	if (!spec.launch) return spec.command;
+	if (!isTerminalLaunchSpec(spec.launch)) throw invalidLaunch(spec.launch);
+	return terminalLaunchCommand(spec.launch);
+}
 
 export interface TmuxTerminalBackendOptions {
 	/** Injectable tmux port — tests pass a fake, production uses the default. */
@@ -55,9 +65,10 @@ export class TmuxTerminalBackend implements TerminalBackend {
 	async openSession(spec: TerminalSessionSpec): Promise<TerminalSessionState> {
 		if (!isTerminalSessionId(spec.id)) throw invalidSessionId(spec.id);
 		if (spec.size && !isTerminalSize(spec.size)) throw invalidSize(spec.size);
+		const command = launchCommand(spec);
 		if (await this.present(spec.id)) throw sessionExists(spec.id);
 		await this.guard("openSession", spec.id, () =>
-			this.port.newSessionDetached(spec.id, { cwd: spec.cwd, env: spec.env, command: spec.command }),
+			this.port.newSessionDetached(spec.id, { cwd: spec.cwd, env: spec.env, command }),
 		);
 		if (spec.size) {
 			await this.guard("openSession.resize", spec.id, () =>
@@ -103,10 +114,11 @@ export class TmuxTerminalBackend implements TerminalBackend {
 		spec: TerminalViewSpec,
 	): Promise<TerminalViewState> {
 		await this.requireView(id, from);
+		const command = launchCommand(spec);
 		const paneId = await this.guard(
 			"splitView",
 			id,
-			() => this.port.splitPane(from, { cwd: spec.cwd, env: spec.env, command: spec.command }),
+			() => this.port.splitPane(from, { cwd: spec.cwd, env: spec.env, command }),
 			from,
 		);
 		const focusedViewId = await this.guard("splitView.focus", id, () => this.port.activePaneId(id));
