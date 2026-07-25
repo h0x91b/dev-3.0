@@ -1270,6 +1270,8 @@ function App() {
 	// re-subscribing it every time the viewer opens/closes.
 	const imageViewerRef = useRef(imageViewer);
 	imageViewerRef.current = imageViewer;
+	const artifactViewerRef = useRef(artifactViewer);
+	artifactViewerRef.current = artifactViewer;
 
 	// CLI-shared images (`dev3 show-image`). Always raise the attention badge; auto-open
 	// the lightbox ONLY when the user is already looking at this task (never steal focus).
@@ -1350,7 +1352,8 @@ function App() {
 				(state.route.screen === "task" && state.route.taskId === taskId) ||
 				(state.route.screen === "project" && state.route.activeTaskId === taskId);
 			const foreground = typeof document === "undefined" || (document.visibilityState === "visible" && document.hasFocus());
-			if (viewingThisTask && foreground) {
+			const alreadyOpenForTask = artifactViewerRef.current?.taskId === taskId;
+			if (alreadyOpenForTask || (viewingThisTask && foreground)) {
 				setArtifactViewer({ taskId, artifacts, index: artifacts.length - 1 });
 				return;
 			}

@@ -83,8 +83,8 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const current = artifacts[index];
 
 	useEffect(() => {
-		setIndex((value) => Math.max(0, Math.min(artifacts.length - 1, value)));
-	}, [artifacts.length]);
+		setIndex(Math.max(0, Math.min(artifacts.length - 1, initialIndex)));
+	}, [artifacts.length, initialIndex]);
 
 	useEffect(() => {
 		if (!current) return;

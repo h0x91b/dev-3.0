@@ -113,6 +113,7 @@ vi.mock("../components/ProjectView", () => ({
 		activeTaskId?: string;
 		taskView?: boolean;
 		bellCounts?: Map<string, number>;
+		artifactViewer?: { artifacts: Array<{ title?: string }>; index: number } | null;
 	}) => (
 		<div
 			data-testid="project-screen"
@@ -120,6 +121,9 @@ vi.mock("../components/ProjectView", () => ({
 			data-active-task-id={props.activeTaskId ?? ""}
 			data-task-view={props.taskView ? "true" : "false"}
 			data-bell-count={String(props.bellCounts?.get("t-overflow") ?? 0)}
+			data-artifact-count={String(props.artifactViewer?.artifacts.length ?? 0)}
+			data-artifact-index={String(props.artifactViewer?.index ?? -1)}
+			data-artifact-title={props.artifactViewer?.artifacts[props.artifactViewer.index]?.title ?? ""}
 		/>
 	),
 }));
@@ -880,6 +884,58 @@ describe("App keyboard shortcuts", () => {
 
 			expect(await screen.findByTestId("task-screen")).toBeInTheDocument();
 			expect(screen.getByTestId("image-viewer")).toBeInTheDocument();
+		});
+	});
+
+	describe("CLI shared-artifact updates", () => {
+		const oneProject = [
+			{ id: "p1", name: "Alpha", path: "/a", setupScript: "", devScript: "", cleanupScript: "", defaultBaseBranch: "main", createdAt: "" },
+		];
+		const artifact = (id: string) => ({
+			id,
+			kind: "html",
+			title: `Artifact ${id}`,
+			name: `${id}.html`,
+			storedPath: `/a/shared-artifacts/${id}/${id}.html`,
+			bytes: 1,
+			createdAt: 0,
+		});
+
+		it("replaces an open viewer with the latest artifact even when the window loses focus", async () => {
+			vi.mocked(api.request.getProjects).mockResolvedValue(oneProject);
+			vi.mocked(api.request.getLastRoute).mockResolvedValue({
+				route: JSON.stringify({ screen: "project", projectId: "p1", activeTaskId: "t-artifact" }),
+			});
+
+			await renderApp();
+			act(() => {
+				window.dispatchEvent(new CustomEvent("dev3:openArtifactViewer", {
+					detail: { taskId: "t-artifact", artifacts: [artifact("a"), artifact("b")], index: 1 },
+				}));
+			});
+			await waitFor(() => expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-title", "Artifact b"));
+
+			const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+			try {
+				act(() => {
+					window.dispatchEvent(new CustomEvent("rpc:cliShowArtifact", {
+						detail: {
+							taskId: "t-artifact",
+							projectId: "p1",
+							artifacts: [artifact("a"), artifact("b"), artifact("c")],
+							newCount: 1,
+						},
+					}));
+				});
+
+				await waitFor(() => {
+					expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-count", "3");
+					expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-index", "2");
+					expect(screen.getByTestId("project-screen")).toHaveAttribute("data-artifact-title", "Artifact c");
+				});
+			} finally {
+				hasFocus.mockRestore();
+			}
 		});
 	});
 

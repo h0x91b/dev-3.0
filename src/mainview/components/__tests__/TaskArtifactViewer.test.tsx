@@ -46,6 +46,21 @@ describe("TaskArtifactViewer", () => {
 		await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("data:image/png;base64,AAA"));
 	});
 
+	it("opens the latest artifact when the list updates while the viewer is open", async () => {
+		const { rerender } = render(
+			<I18nProvider><TaskArtifactViewer artifacts={[artifact("a"), artifact("b")]} initialIndex={1} onClose={vi.fn()} /></I18nProvider>,
+		);
+
+		rerender(
+			<I18nProvider><TaskArtifactViewer artifacts={[artifact("a"), artifact("b"), artifact("c")]} initialIndex={2} onClose={vi.fn()} /></I18nProvider>,
+		);
+
+		expect(screen.getByText("Artifact c")).toBeInTheDocument();
+		expect(screen.getByText("3 / 3")).toBeInTheDocument();
+		const frame = await screen.findByTitle("Artifact c");
+		expect(frame).toBeInTheDocument();
+	});
+
 	it("toggles fullscreen and closes", async () => {
 		const onClose = vi.fn();
 		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={onClose} /></I18nProvider>);
