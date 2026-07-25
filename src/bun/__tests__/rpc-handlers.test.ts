@@ -92,6 +92,7 @@ vi.mock("../git", () => ({
 
 vi.mock("../github", () => ({
 	runGitHub: vi.fn(),
+	isPullRequestMerged: vi.fn(),
 	getGitHubShellExports: vi.fn().mockResolvedValue([]),
 	getGitHubCliStatus: vi.fn(),
 }));
@@ -4753,6 +4754,91 @@ describe("handlers.getBranchStatus", () => {
 		const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
 		expect(result.canRebase).toBe(false);
 		expect(git.canRebaseCleanly).not.toHaveBeenCalled();
+	});
+
+	// `ahead === 0` means HEAD is an ancestor of the base: git alone cannot tell
+	// "merged, then rebased away" from "brand-new branch, nothing committed".
+	// Only this task's own merged PR proves the work landed.
+	describe("mergedByContent when the branch has no commits of its own (ahead === 0)", () => {
+		function mockAheadZero(behind: number) {
+			vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/t");
+			vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind });
+			vi.mocked(git.getUncommittedChanges).mockResolvedValue({ insertions: 0, deletions: 0 });
+			vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+			vi.mocked(git.getBranchDiffStats).mockResolvedValue({ files: 0, insertions: 0, deletions: 0, fileStats: [] });
+			vi.mocked(git.canRebaseCleanly).mockResolvedValue(true);
+		}
+
+		it("reports merged when the task's own PR is merged (squash-merged, then rebased)", async () => {
+			const project = makeProject();
+			const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t", prNumber: 1077, prUrl: "https://gh/pr/1077" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockAheadZero(3);
+			vi.mocked(github.isPullRequestMerged).mockResolvedValue(true);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.mergedByContent).toBe(true);
+			expect(github.isPullRequestMerged).toHaveBeenCalledWith(project, "/tmp/wt", 1077);
+			// Content strategies are pointless here — nothing of the branch is left.
+			expect(git.isContentMergedInto).not.toHaveBeenCalled();
+		});
+
+		it("reports NOT merged for a brand-new branch sitting on the base tip", async () => {
+			const project = makeProject();
+			const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockAheadZero(0);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.mergedByContent).toBe(false);
+			expect(github.isPullRequestMerged).not.toHaveBeenCalled();
+		});
+
+		it("reports NOT merged for a brand-new branch after the base moved on (the false-positive trap)", async () => {
+			const project = makeProject();
+			const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockAheadZero(7);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.mergedByContent).toBe(false);
+		});
+
+		it("reports NOT merged when the task's PR exists but is not merged", async () => {
+			const project = makeProject();
+			const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t", prNumber: 42, prUrl: "https://gh/pr/42" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockAheadZero(3);
+			vi.mocked(github.isPullRequestMerged).mockResolvedValue(false);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.mergedByContent).toBe(false);
+		});
+
+		it("still uses the content strategies when the branch has commits of its own", async () => {
+			const project = makeProject();
+			const task = makeTask({ worktreePath: "/tmp/wt", branchName: "dev3/t", prNumber: 42, prUrl: "https://gh/pr/42" });
+			vi.mocked(data.getProject).mockResolvedValue(project);
+			vi.mocked(data.getTask).mockResolvedValue(task);
+			mockAheadZero(0);
+			vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 0 });
+			vi.mocked(git.isContentMergedInto).mockResolvedValue(true);
+
+			const result = await handlers.getBranchStatus({ taskId: "task-1", projectId: "proj-1" });
+
+			expect(result.mergedByContent).toBe(true);
+			expect(git.isContentMergedInto).toHaveBeenCalled();
+			expect(github.isPullRequestMerged).not.toHaveBeenCalled();
+		});
 	});
 
 	it("compares a PR-review task (baseBranch === branchName) against the project base, not itself", async () => {
@@ -9675,6 +9761,61 @@ describe("startMergeDetectionPoller / stopMergeDetectionPoller", () => {
 		await vi.advanceTimersByTimeAsync(60_000);
 
 		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+	});
+
+	it("prompts when the remote branch is gone and the task's own PR merged, even though HEAD moved off the PR head (squash + rebase)", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			prNumber: 1077,
+			prUrl: "https://gh/pr/1077",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(false);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 0, behind: 4 });
+		vi.mocked(github.isPullRequestMerged).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).toHaveBeenCalledWith("branchMerged", expect.objectContaining({ taskId: task.id }));
+	});
+
+	it("does not prompt when the task's PR merged but the branch has new commits of its own", async () => {
+		const project = makeProject();
+		const task = makeTask({
+			status: "review-by-user",
+			worktreePath: "/tmp/test-worktree",
+			branchName: "dev3/task-test",
+			prNumber: 1077,
+			prUrl: "https://gh/pr/1077",
+		});
+		const push = vi.fn();
+
+		vi.mocked(data.loadProjects).mockResolvedValue([project]);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(git.fetchOrigin).mockResolvedValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("dev3/task-test");
+		vi.mocked(git.getUnpushedCount).mockResolvedValue(-1);
+		vi.mocked(git.isBranchMergedViaGitHubPR).mockResolvedValue(false);
+		vi.mocked(git.getBranchStatus).mockResolvedValue({ ahead: 2, behind: 4 });
+		vi.mocked(github.isPullRequestMerged).mockResolvedValue(true);
+		setPushMessage(push);
+
+		startMergeDetectionPoller();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(push).not.toHaveBeenCalledWith("branchMerged", expect.anything());
+		expect(github.isPullRequestMerged).not.toHaveBeenCalled();
 	});
 
 	it("does not prompt or reserve while the worktree is dirty, then prompts once clean", async () => {

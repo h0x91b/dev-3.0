@@ -4,12 +4,12 @@ import {
 	type BranchStatus,
 	type Project,
 	type Task,
-	MERGE_COMPLETE_ELIGIBLE_STATUSES,
 	resolveTaskCompareBaseBranch,
 } from "../../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../../state";
 import { api } from "../../rpc";
 import { useT } from "../../i18n";
+import { mergeCompletionBlocker } from "./mergeCompletionBlocker";
 import { moveTaskToStatus } from "../../utils/moveTaskToStatus";
 import { offerMergeCompletion } from "../../utils/offerMergeCompletion";
 import { startVisibilityAwarePoll } from "../../utils/poll";
@@ -107,23 +107,13 @@ export function useTaskBranchStatus({
 	// suppression), and gives an explicit toast when nothing is mergeable yet.
 	const offerMergeCompletionIfMerged = useCallback(
 		async (status: BranchStatus, { force }: { force: boolean }) => {
-			// mergedByContent is computed against whatever ref the user selected in
-			// the compare dropdown. The completion prompt is only meaningful against
-			// the task's real base branch.
-			const isDefaultBaseCompare =
-				!compareRef || compareRef === baseBranch || compareRef === `origin/${baseBranch}`;
-			const eligible =
-				status.mergedByContent &&
-				isDefaultBaseCompare &&
-				// The popup claims "no changes left" — uncommitted changes mean that's
-				// false, and completing would destroy them.
-				status.insertions === 0 &&
-				status.deletions === 0 &&
-				MERGE_COMPLETE_ELIGIBLE_STATUSES.includes(task.status);
-
-			if (!eligible) {
+			const blocker = mergeCompletionBlocker(status, { compareRef, baseBranch, taskStatus: task.status });
+			if (blocker) {
 				if (force) {
-					toast.info(t("infoPanel.mergeCheckNotMerged", { branch: baseBranch }), { taskId: task.id });
+					const params = blocker.statusParam
+						? { status: t(blocker.statusParam) }
+						: blocker.params;
+					toast.info(t(blocker.key, params), { taskId: task.id });
 				}
 				return;
 			}

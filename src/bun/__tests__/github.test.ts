@@ -523,4 +523,50 @@ describe("github", () => {
 			vi.useRealTimers();
 		}
 	});
+
+	describe("isPullRequestMerged", () => {
+		const PROJECT = { githubAuthHost: "github.com", githubAuthLogin: "h0x91b" };
+
+		function mockGhPrView(state: string | null, ok = true) {
+			whichMock.mockResolvedValue("/opt/homebrew/bin/gh");
+			spawnMock.mockImplementation((cmd: string[]) => {
+				if (cmd.join(" ") === "gh auth status --json hosts") {
+					return fakeProc(JSON.stringify({
+						hosts: { "github.com": [{ login: "h0x91b", host: "github.com", active: true, state: "success" }] },
+					}));
+				}
+				if (cmd[1] === "auth" && cmd[2] === "token") return fakeProc("secret-token\n");
+				if (!ok) return fakeProc("", "no such PR", 1);
+				return fakeProc(JSON.stringify({ state }));
+			});
+		}
+
+		it("returns true for a merged PR", async () => {
+			mockGhPrView("MERGED");
+			const { isPullRequestMerged } = await import("../github");
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077)).resolves.toBe(true);
+		});
+
+		it("returns false for an open PR", async () => {
+			mockGhPrView("OPEN");
+			const { isPullRequestMerged } = await import("../github");
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077)).resolves.toBe(false);
+		});
+
+		it("returns false when the gh command fails (offline / unauthenticated)", async () => {
+			mockGhPrView(null, false);
+			const { isPullRequestMerged } = await import("../github");
+			await expect(isPullRequestMerged(PROJECT, "/tmp/wt", 1077)).resolves.toBe(false);
+		});
+
+		it("caches a merged answer instead of re-asking gh", async () => {
+			mockGhPrView("MERGED");
+			const { isPullRequestMerged, _resetPullRequestMergedCache } = await import("../github");
+			_resetPullRequestMergedCache();
+			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077);
+			const callsAfterFirst = spawnMock.mock.calls.length;
+			await isPullRequestMerged(PROJECT, "/tmp/wt", 1077);
+			expect(spawnMock.mock.calls.length).toBe(callsAfterFirst);
+		});
+	});
 });

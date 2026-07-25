@@ -265,8 +265,14 @@ async function checkMergedBranches(): Promise<void> {
 					// the PR merged (delete_branch_on_merge). Content strategies are
 					// unsafe here (a never-pushed branch with zero commits would
 					// false-positive), but a merged PR whose head equals local HEAD
-					// is definitive.
-					merged = await git.isBranchMergedViaGitHubPR(task.worktreePath!, project);
+					// is definitive. A squash merge followed by a rebase moves HEAD off
+					// that oid, so also accept this task's own merged PR — but only
+					// once the branch has no commits of its own left (ahead === 0),
+					// otherwise post-merge work would read as merged.
+					merged = await git.isBranchMergedViaGitHubPR(task.worktreePath!, project)
+						|| (task.prNumber != null
+							&& (await git.getBranchStatus(task.worktreePath!, ref)).ahead === 0
+							&& await github.isPullRequestMerged(project, task.worktreePath!, task.prNumber));
 				} else {
 					merged = await git.isContentMergedInto(task.worktreePath!, ref, project);
 				}

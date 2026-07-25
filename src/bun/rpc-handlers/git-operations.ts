@@ -218,7 +218,16 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	const prUrl = prInfo?.url ?? null;
 	log.debug("getBranchStatus: raw results", { status, uncommitted, unpushed, branchDiff, prNumber, prUrl, ref });
 	const canRebase = status.behind > 0 ? await git.canRebaseCleanly(task.worktreePath, ref) : false;
-	const mergedByContent = status.ahead > 0 ? await git.isContentMergedInto(task.worktreePath, ref, project) === true : false;
+	// ahead === 0 means HEAD is an ancestor of `ref`: every commit of this branch
+	// is already in the base, so content strategies would trivially say "merged".
+	// Git alone cannot tell "merged, then rebased away" from "brand-new branch,
+	// nothing committed yet" — only this task's own merged PR proves work landed.
+	// No PR (or no GitHub / offline) ⇒ not merged, never a false positive.
+	const prNumberForMergeProof = detectedPr?.number ?? task.prNumber ?? null;
+	const mergedByContent = status.ahead > 0
+		? await git.isContentMergedInto(task.worktreePath, ref, project) === true
+		: prNumberForMergeProof != null
+			&& await github.isPullRequestMerged(project, task.worktreePath, prNumberForMergeProof) === true;
 	const mergeCompletionFingerprint = mergedByContent
 		? (await getMergeCompletionFingerprint(task, branchForPush)).fingerprint
 		: null;

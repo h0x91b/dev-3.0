@@ -383,6 +383,51 @@ export async function runGitHub(
 	return runGh(args, { cwd, env, timeoutMs: options?.timeoutMs });
 }
 
+// A merged PR never un-merges, so positive answers are cached for the process
+// lifetime; negatives expire so the 15s branch-status poll re-asks without
+// hammering the API.
+const PR_MERGED_NEGATIVE_TTL_MS = 60_000;
+const PR_MERGED_TIMEOUT_MS = 10_000;
+const prMergedCache = new Map<string, { at: number; merged: boolean }>();
+
+/** Test-only: clear the merged-PR cache. */
+export function _resetPullRequestMergedCache(): void {
+	prMergedCache.clear();
+}
+
+/**
+ * Is this exact PR merged? Task-scoped by design: the caller passes the PR
+ * number recorded for its own task, so a reused branch name cannot make
+ * somebody else's merged PR look like this task's work.
+ */
+export async function isPullRequestMerged(
+	project: ProjectGitHubSelection,
+	cwd: string,
+	prNumber: number,
+): Promise<boolean> {
+	const key = `${cwd}#${prNumber}`;
+	const cached = prMergedCache.get(key);
+	if (cached && (cached.merged || Date.now() - cached.at < PR_MERGED_NEGATIVE_TTL_MS)) {
+		return cached.merged;
+	}
+
+	let merged = false;
+	try {
+		const result = await runGitHub(project, cwd, ["pr", "view", String(prNumber), "--json", "state"], {
+			timeoutMs: PR_MERGED_TIMEOUT_MS,
+		});
+		if (result.ok && result.stdout) {
+			merged = JSON.parse(result.stdout)?.state === "MERGED";
+		}
+	} catch (err) {
+		// Offline, unauthenticated, non-GitHub remote — degrade to "not merged".
+		log.warn("isPullRequestMerged failed", { prNumber, error: String(err) });
+	}
+	prMergedCache.set(key, { at: Date.now(), merged });
+	log.info("isPullRequestMerged", { prNumber, merged });
+	return merged;
+}
+
 export async function getGitHubShellExports(project: ProjectGitHubSelection): Promise<string[]> {
 	const account = await resolveGitHubAccount(project);
 	const tokenVar = "__DEV3_GH_TOKEN";
