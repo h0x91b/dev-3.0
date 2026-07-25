@@ -37,16 +37,20 @@ export function isTmuxError(err: unknown): err is TmuxError {
  * path resolves fine from a normal shell — the raw `posix_spawn '<path>'`
  * ENOENT is misleading because the file is right there. The message points at
  * that fix; the original error is preserved on `.cause`. See decision 123.
+ *
+ * Windows has no tmux at all, so the Full Disk Access advice would send the user
+ * to a settings pane that does not exist — there the message says so instead.
  */
 export class TmuxSpawnError extends Error {
 	readonly binary: string;
-	constructor(binary: string, cause: unknown) {
+	constructor(binary: string, cause: unknown, platform: NodeJS.Platform = process.platform) {
 		const reason = cause instanceof Error ? cause.message : String(cause);
-		super(
-			`tmux failed to spawn (${binary}): ${reason}. ` +
-				"The path resolves but could not be executed — on macOS this usually means dev3 lost Full Disk Access. " +
-				"Re-add dev3 under System Settings → Privacy & Security → Full Disk Access, then retry.",
-		);
+		const hint =
+			platform === "win32"
+				? "tmux is POSIX-only and has no Windows build; this code path should not run here."
+				: "The path resolves but could not be executed — on macOS this usually means dev3 lost Full Disk Access. " +
+					"Re-add dev3 under System Settings → Privacy & Security → Full Disk Access, then retry.";
+		super(`tmux failed to spawn (${binary}): ${reason}. ${hint}`);
 		this.name = "TmuxSpawnError";
 		this.binary = binary;
 		this.cause = cause;

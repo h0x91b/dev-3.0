@@ -7,7 +7,8 @@
  * All paths are cloned in parallel.
  */
 
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { cp, mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
@@ -32,6 +33,10 @@ function isMacOS(): boolean {
  * Windows has none of `cp`/`rm`/`test`, and no copy-on-write clone we can reach
  * from here — NTFS block cloning needs a DeviceIoControl call. It gets a plain
  * recursive copy through node:fs; POSIX keeps its spawn-based cascade untouched.
+ *
+ * Every Windows call here is the promise form on purpose: the sync form froze the
+ * main process for 26s copying node_modules (`Event loop stall detected`, observed
+ * live), while POSIX pays nothing because a spawned `cp` was never on this thread.
  */
 function isWindows(): boolean {
 	return process.platform === "win32";
@@ -85,7 +90,7 @@ async function expandGlob(root: string, pattern: string): Promise<string[]> {
 async function removePath(fullPath: string): Promise<void> {
 	if (isWindows()) {
 		try {
-			rmSync(fullPath, { recursive: true, force: true });
+			await rm(fullPath, { recursive: true, force: true });
 		} catch {
 			// best-effort
 		}
@@ -103,7 +108,7 @@ async function removePath(fullPath: string): Promise<void> {
 async function ensureParent(fullPath: string): Promise<void> {
 	if (isWindows()) {
 		const parent = dirname(fullPath);
-		if (parent && parent !== fullPath) mkdirSync(parent, { recursive: true });
+		if (parent && parent !== fullPath) await mkdir(parent, { recursive: true });
 		return;
 	}
 	const parent = fullPath.slice(0, fullPath.lastIndexOf("/"));
@@ -181,7 +186,7 @@ async function cloneSingle(
 	await removePath(dst);
 
 	if (isWindows()) {
-		cpSync(src, dst, { recursive: true, force: true });
+		await cp(src, dst, { recursive: true, force: true });
 		const ms = Math.round(performance.now() - start);
 		log.info("Copied via node:fs cp", { path: relativePath, ms });
 		return { path: relativePath, method: "copy", durationMs: ms };

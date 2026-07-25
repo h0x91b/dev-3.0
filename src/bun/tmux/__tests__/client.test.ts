@@ -121,6 +121,12 @@ describe("error model", () => {
 		expect((err as Error).message).toContain("Full Disk Access");
 		expect((err as TmuxSpawnError).cause).toBe(cause);
 	});
+
+	it("does not send a Windows user to a macOS settings pane that has no equivalent", () => {
+		const err = new TmuxSpawnError("tmux", new Error("not found"), "win32");
+		expect(err.message).not.toContain("Full Disk Access");
+		expect(err.message).toContain("POSIX-only");
+	});
 });
 
 describe("list/parse methods", () => {

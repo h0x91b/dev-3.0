@@ -1,10 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock spawn before importing the module
 const mockSpawn = vi.fn();
 vi.mock("../spawn", () => ({
 	spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
+
+const mockCp = vi.fn(async () => undefined);
+const mockRm = vi.fn(async () => undefined);
+const mockMkdir = vi.fn(async () => undefined);
+vi.mock("node:fs/promises", () => ({
+	cp: (...args: unknown[]) => mockCp(...(args as [])),
+	rm: (...args: unknown[]) => mockRm(...(args as [])),
+	mkdir: (...args: unknown[]) => mockMkdir(...(args as [])),
+}));
+vi.mock("node:fs", () => ({ existsSync: () => true }));
 
 // Mock logger
 vi.mock("../logger", () => ({
@@ -172,6 +182,34 @@ describe("cow-clone", () => {
 		);
 		expect(mkdirCall).toBeDefined();
 		expect((mkdirCall![0] as string[]).join(" ")).toContain("/dst/frontend");
+	});
+
+	describe("on Windows", () => {
+		const origPlatform = process.platform;
+		beforeEach(() => {
+			Object.defineProperty(process, "platform", { value: "win32", writable: true });
+		});
+		afterEach(() => {
+			Object.defineProperty(process, "platform", { value: origPlatform, writable: true });
+		});
+
+		it("copies through node:fs without spawning a POSIX binary", async () => {
+			const results = await clonePaths("D:\\src\\repo", "C:/wt/worktree", ["node_modules"]);
+
+			expect(results).toEqual([expect.objectContaining({ path: "node_modules", method: "copy" })]);
+			expect(results[0].skipped).toBeUndefined();
+			expect(mockCp).toHaveBeenCalledWith("D:\\src\\repo/node_modules", "C:/wt/worktree/node_modules", {
+				recursive: true,
+				force: true,
+			});
+			// `cp`/`rm`/`mkdir`/`test` are not Windows binaries.
+			expect(mockSpawn).not.toHaveBeenCalled();
+		});
+
+		it("creates the destination parent for a nested path", async () => {
+			await clonePaths("D:\\src\\repo", "C:/wt/worktree", ["frontend/node_modules"]);
+			expect(mockMkdir).toHaveBeenCalledWith("C:/wt/worktree/frontend", { recursive: true });
+		});
 	});
 });
 
