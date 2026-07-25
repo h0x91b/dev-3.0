@@ -196,6 +196,21 @@ const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
 const WORKTREE = "/tmp/wt";
 const RUN_SCRIPT = `/tmp/dev3/${TASK_ID}/run.sh`;
 const EXPECTED_ENV = { DEV3_TASK_ID: TASK_ID, DEV3_AGENT: "claude", DEV3_ARTIFACT_DIR: "/tmp/art" };
+const SETUP_SCRIPT = `/tmp/dev3/${TASK_ID}-setup.sh`;
+const CMD_SCRIPT = `/tmp/dev3/${TASK_ID}-cmd.sh`;
+const STARTUP_SCRIPT = `/tmp/dev3/${TASK_ID}-startup.sh`;
+
+// The generated wrapper scripts are the product here, so capture their bodies
+// instead of the no-op Bun.write stub the bun test setup installs.
+const written = new Map<string, string>();
+vi.spyOn(Bun, "write").mockImplementation(async (path: unknown, content: unknown) => {
+	written.set(String(path), String(content));
+	return 0;
+});
+
+function startupLines(): string[] {
+	return (written.get(STARTUP_SCRIPT) ?? "").trimEnd().split("\n");
+}
 
 function makeProject(overrides: Partial<Project> = {}): Project {
 	return {
@@ -231,6 +246,7 @@ function tmuxCalls(): string[] {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	written.clear();
 });
 
 describe("unmarked task — the legacy tmux path is untouched", () => {
@@ -312,5 +328,56 @@ describe("native task — tmux is not involved at all", () => {
 		).rejects.toThrow(/no native host runtime/);
 		expect(pty.createSession).not.toHaveBeenCalled();
 		expect(tmuxCalls()).toEqual([]);
+	});
+});
+
+// The tmux flavour of the setup wrapper starts the agent with a bare
+// `tmux split-window`, which only works inside a dev3 tmux pane. A native task has
+// one view and no $TMUX, so a shelled-out `tmux` would hit the user's own default
+// socket and the agent would never start at all.
+describe("setup-script wrapper — one flavour per backend", () => {
+	const setupProject = (overrides: Partial<Project> = {}) =>
+		makeProject({ setupScript: "bun install\n", ...overrides });
+	const SPLIT_LINE = `tmux split-window -v -c "${WORKTREE}" "/bin/zsh ${CMD_SCRIPT}"`;
+
+	it("execs the agent inline for a native task, never shelling out to tmux", async () => {
+		await launchTaskPty(setupProject(), makeTask({ terminalBackend: "native" }), WORKTREE, null, null, true);
+
+		const lines = startupLines();
+		expect(written.get(STARTUP_SCRIPT)).not.toContain("tmux");
+		expect(lines[1]).toBe(`/bin/zsh ${SETUP_SCRIPT}`);
+		expect(lines[lines.length - 1]).toBe(`exec /bin/zsh ${CMD_SCRIPT}`);
+	});
+
+	it("keeps the native setup launch free of any tmux call", async () => {
+		await launchTaskPty(setupProject(), makeTask({ terminalBackend: "native" }), WORKTREE, null, null, true);
+
+		expect(pty.createNativeTaskSession).toHaveBeenCalledTimes(1);
+		expect(pty.createSession).not.toHaveBeenCalled();
+		expect(tmuxCalls()).toEqual([]);
+	});
+
+	it("still splits a tmux pane first for an unmarked task in parallel mode", async () => {
+		await launchTaskPty(setupProject(), makeTask(), WORKTREE, null, null, true);
+
+		const lines = startupLines();
+		expect(lines[1]).toBe(SPLIT_LINE);
+		expect(lines[lines.length - 1]).toBe("exit 0");
+		expect(written.get(STARTUP_SCRIPT)).not.toContain("exec /bin/zsh " + CMD_SCRIPT);
+	});
+
+	it("still splits a tmux pane after the setup script in blocking mode", async () => {
+		await launchTaskPty(
+			setupProject({ setupScriptLaunchMode: "blocking" }),
+			makeTask(),
+			WORKTREE,
+			null,
+			null,
+			true,
+		);
+
+		const lines = startupLines();
+		expect(lines[1]).toBe(`/bin/zsh ${SETUP_SCRIPT}`);
+		expect(lines.indexOf(SPLIT_LINE)).toBe(lines.indexOf("fi") + 1);
 	});
 });

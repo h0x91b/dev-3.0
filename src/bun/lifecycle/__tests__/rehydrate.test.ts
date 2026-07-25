@@ -20,6 +20,11 @@ vi.mock("../../git", () => ({
 
 vi.mock("../../pty-server", () => ({
 	tmuxSessionExists: vi.fn(() => Promise.resolve(true)),
+	reattachNativeTaskSession: vi.fn(() => Promise.resolve(true)),
+}));
+
+vi.mock("../../native-task-terminal", () => ({
+	nativeTaskTerminalAlive: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock("../../tmux", () => ({
@@ -38,6 +43,9 @@ vi.mock("../service", () => ({
 
 import * as data from "../../data";
 import * as git from "../../git";
+import { nativeTaskTerminalAlive } from "../../native-task-terminal";
+import * as pty from "../../pty-server";
+import { dispatchLifecycleEvent } from "../service";
 import { rehydrateTaskLifecycles } from "../rehydrate";
 
 function project(): Project {
@@ -99,5 +107,52 @@ describe("rehydrateTaskLifecycles", () => {
 		const [recoveryProject, protectedPaths] = vi.mocked(git.recoverStaleInitializingWorktrees).mock.calls[0];
 		expect(recoveryProject).toBe(currentProject);
 		expect([...protectedPaths]).toEqual([activePath]);
+	});
+});
+
+// The boot probe only READS. Attaching here bound a writer client and started an
+// idle timer for a session nobody was looking at; the real reattach belongs to
+// opening the task.
+describe("boot terminal probe", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	function bootReality(): { terminalAlive: boolean } {
+		const [, , event] = vi.mocked(dispatchLifecycleEvent).mock.calls[0];
+		return (event as { type: "bootObserved"; reality: { terminalAlive: boolean } }).reality;
+	}
+
+	async function bootWith(overrides: Partial<Task>): Promise<void> {
+		vi.mocked(data.loadProjects).mockResolvedValue([project()]);
+		vi.mocked(data.loadTasks).mockResolvedValue([
+			task({ status: "in-progress", worktreePath: "/managed/active/worktree", branchName: "fix/active", ...overrides }),
+		]);
+		await rehydrateTaskLifecycles();
+	}
+
+	it("probes a native task for presence instead of reattaching to it", async () => {
+		await bootWith({ terminalBackend: "native" });
+
+		expect(nativeTaskTerminalAlive).toHaveBeenCalledTimes(1);
+		expect(pty.reattachNativeTaskSession).not.toHaveBeenCalled();
+	});
+
+	it("reports what the native probe found", async () => {
+		vi.mocked(nativeTaskTerminalAlive).mockResolvedValueOnce(false);
+
+		await bootWith({ terminalBackend: "native" });
+
+		expect(bootReality().terminalAlive).toBe(false);
+		expect(pty.tmuxSessionExists).not.toHaveBeenCalled();
+	});
+
+	it("keeps tmux has-session as the only probe for an unmarked task", async () => {
+		await bootWith({});
+
+		expect(pty.tmuxSessionExists).toHaveBeenCalledTimes(1);
+		expect(nativeTaskTerminalAlive).not.toHaveBeenCalled();
+		expect(pty.reattachNativeTaskSession).not.toHaveBeenCalled();
+		expect(bootReality().terminalAlive).toBe(true);
 	});
 });

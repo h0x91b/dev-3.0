@@ -5304,6 +5304,21 @@ describe("handlers.getPtyUrl", () => {
 		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
 	});
 
+	it("leaves a settling native session alone instead of probing and tearing it down", async () => {
+		// The host has not written its record yet, so a liveness probe would report
+		// "gone" and destroy a session that is still coming up.
+		vi.mocked(pty.hasSession).mockReturnValue(true);
+		vi.mocked(pty.isNativeSessionSettling).mockReturnValueOnce(true);
+		vi.mocked(pty.getPtyPort).mockReturnValue(9999);
+
+		const result = await handlers.getPtyUrl({ taskId: "task-1" });
+
+		expect(result).toEqual({ url: "ws://localhost:9999?session=task-1" });
+		expect(pty.destroySessionAwaited).not.toHaveBeenCalled();
+		expect(pty.tmuxSessionExists).not.toHaveBeenCalled();
+		expect(pty.createSession).not.toHaveBeenCalled();
+	});
+
 	it("destroys stale session when tmux is gone and offers recovery", async () => {
 		const project = makeProject();
 		const sessionState = { panes: [{ agentCmd: "claude", sessionId: "sid-1", agentId: "a", configId: "c" }] };
