@@ -1,0 +1,4 @@
+# Shell scripts must keep LF even on Windows clones: Git for Windows defaults to
+# core.autocrlf=true, and bash then dies on the CR (`$'\r': command not found`),
+# which breaks `bun run build:cli` / `package:win-archive` in a Windows checkout.
+*.sh text eol=lf
