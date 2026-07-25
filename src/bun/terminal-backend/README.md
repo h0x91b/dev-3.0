@@ -4,10 +4,13 @@ One **backend-neutral product contract** for everything dev3 needs from a
 terminal backend, plus **two real adapters** behind it: the current tmux
 implementation and the already-merged native single-view lifecycle.
 
-This task creates the **seam only**. tmux remains the production backend; there
-is no selector, feature flag, fallback, migration, session adoption, or persisted
-backend identity, and **no production code imports this module** (guarded by
-`__tests__/isolation.test.ts`).
+The seam itself still holds no selector, feature flag, fallback, migration, or
+session adoption. Since seq 1292 it has exactly ONE production caller —
+`../task-terminal-backend.ts`, which decodes a task's persisted
+`terminalBackend` identity and returns the matching adapter. Everything else must
+go through that resolver (guarded by `__tests__/isolation.test.ts`), so backend
+branches cannot spread through the app. tmux remains the default for every task
+without an explicit `native` marker. See `decisions/171-*`.
 
 ## Files
 
@@ -31,6 +34,9 @@ which has no attach handle, no resize, no error taxonomy, and a test-shaped
   view, obtainable from a *fresh* controller (reconnect) with identical ids.
 - **Resize** — a first-class product operation the corpus only records as an
   intentional-difference note.
+- **`launch` (executable + argv)** — the native backend spawns a process itself, so
+  a command string would have to be re-split by guesswork. `launch` wins over
+  `command`; tmux quotes it back into one shell string, native passes it through.
 - **Typed failures** instead of "a catchable error or an empty result".
 - **`describeSession` returning `null`** — presence, views, and focus in one read
   instead of four separate probes.
