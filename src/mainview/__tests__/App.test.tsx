@@ -177,6 +177,13 @@ async function renderApp() {
 			|| screen.queryByTestId("project-terminal-screen"),
 		).toBeInTheDocument(),
 	);
+	// A screen testid appears at commit time, which can precede React flushing the
+	// passive effects that register App's window `rpc:*` listeners. Draining them
+	// here keeps every test that dispatches a synthetic push message deterministic —
+	// an event fired into that window is lost outright, not merely late.
+	await act(async () => {
+		await Promise.resolve();
+	});
 }
 
 class FakeWebNotification {
@@ -1803,12 +1810,14 @@ describe("App keyboard shortcuts", () => {
 
 			await fireBranchMerged("t1", "p1", "fp-confirm-1");
 
-			// Slow CI runners can exceed the default 1s waitFor timeout here
+			// Slow CI runners can exceed the default 1s waitFor timeout here. Stay
+			// clear of the 5s test timeout so a genuine failure reports the missing
+			// element (with a DOM dump) instead of an opaque "test timed out".
 			await waitFor(
 				() => {
 					expect(screen.getByTestId("project-screen")).toBeInTheDocument();
 				},
-				{ timeout: 5000 },
+				{ timeout: 3000 },
 			);
 			expect(screen.queryByTestId("task-screen")).not.toBeInTheDocument();
 			expect(api.request.moveTask).toHaveBeenCalledWith(

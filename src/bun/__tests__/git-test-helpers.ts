@@ -5,31 +5,24 @@
  * and vi.mock("../spawn") at the top level before importing git functions.
  * See git-merge-detection.test.ts for the reference pattern.
  */
-import { vi } from "vitest";
 import { execSync } from "child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawn as cpSpawn } from "child_process";
 
-// ─── Common mocks setup ─────────────────────────────────────────────────────
-
-export function setupCommonMocks() {
-	vi.mock("../logger", () => ({
-		createLogger: () => ({
-			debug: vi.fn(),
-			info: vi.fn(),
-			warn: vi.fn(),
-			error: vi.fn(),
-		}),
-	}));
-
-	vi.mock("../paths", () => ({
-		DEV3_HOME: process.env.DEV3_HOME ?? `${tmpdir()}/dev3-test-home`,
-	}));
-}
-
 // ─── Git helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Ignore the machine's git config so hooks, commit signing, templates or a custom
+ * `init.defaultBranch` cannot change what these repos look like — locally or on CI.
+ */
+export const GIT_CONFIG_ISOLATION = {
+	GIT_CONFIG_GLOBAL: "/dev/null",
+	GIT_CONFIG_SYSTEM: "/dev/null",
+	GIT_CONFIG_NOSYSTEM: "1",
+	GIT_TERMINAL_PROMPT: "0",
+};
 
 export const GIT_ENV = {
 	...process.env,
@@ -37,6 +30,7 @@ export const GIT_ENV = {
 	GIT_AUTHOR_EMAIL: "test@test.com",
 	GIT_COMMITTER_NAME: "Test",
 	GIT_COMMITTER_EMAIL: "test@test.com",
+	...GIT_CONFIG_ISOLATION,
 };
 
 export function g(cmd: string, cwd: string): string {
@@ -82,8 +76,24 @@ export function createTestRepo(): TestRepo {
 	return { dir, local };
 }
 
+/**
+ * Removing the repo in `afterEach` races any git subprocess the previous test left
+ * running (git.ts coalesces fetches, so a call can outlive its caller): the child
+ * then dies with ENOENT on a cwd that no longer exists and poisons an unrelated
+ * test. Retire the directory instead and delete it once, after the worker's last
+ * test — the template repo already lives for the whole worker.
+ */
+const retiredDirs: string[] = [];
+let removalHookInstalled = false;
+
 export function cleanup({ dir }: TestRepo): void {
-	rmSync(dir, { recursive: true, force: true });
+	retiredDirs.push(dir);
+	if (removalHookInstalled) return;
+	removalHookInstalled = true;
+	process.once("exit", () => {
+		for (const retired of retiredDirs) rmSync(retired, { recursive: true, force: true });
+		if (_templateDir) rmSync(_templateDir, { recursive: true, force: true });
+	});
 }
 
 export function makeTaskCommits(local: string): void {
@@ -105,6 +115,10 @@ export function makeTaskCommits(local: string): void {
 
 // ─── Spawn mock factory ─────────────────────────────────────────────────────
 
+function emptyStream() {
+	return new ReadableStream({ start: (controller) => controller.close() });
+}
+
 function toWebStream(readable: NodeJS.ReadableStream) {
 	return new ReadableStream({
 		start(controller) {
@@ -112,7 +126,14 @@ function toWebStream(readable: NodeJS.ReadableStream) {
 				controller.enqueue(new Uint8Array(chunk)),
 			);
 			readable.on("end", () => controller.close());
-			readable.on("error", (err: Error) => controller.error(err));
+			// A stream error is the child dying mid-read; close instead of erroring so
+			// callers see an empty output plus the non-zero `exited`, never a rejection
+			// surfacing as an unhandled error in an unrelated test.
+			readable.on("error", () => {
+				try {
+					controller.close();
+				} catch { /* already closed */ }
+			});
 		},
 	});
 }
@@ -144,25 +165,34 @@ export function createSpawnMock(getGhResponse?: () => string) {
 
 			const child = cpSpawn(cmd[0], cmd.slice(1), {
 				cwd: opts?.cwd as string | undefined,
-				env: (opts?.env as NodeJS.ProcessEnv | undefined) ?? process.env,
+				// Isolation last: the machine's git config must not reach the code under test.
+				env: { ...(opts?.env as NodeJS.ProcessEnv | undefined ?? process.env), ...GIT_CONFIG_ISOLATION },
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 
 			if (opts?.stdin instanceof Blob) {
 				(opts.stdin as Blob).arrayBuffer().then((buf) => {
-					child.stdin!.write(Buffer.from(buf));
-					child.stdin!.end();
-				});
+					child.stdin?.write(Buffer.from(buf));
+					child.stdin?.end();
+				}).catch(() => { /* the child died before stdin was writable */ });
 			} else {
 				child.stdin?.end();
 			}
 
+			// A spawn that never starts (ENOENT because a previous test already removed
+			// the cwd, EAGAIN under fork pressure…) emits `error`, not `close`. Without
+			// this the ChildProcess raises an uncaught exception AND `exited` never
+			// settles, so the awaiting test hangs until the suite-wide timeout instead
+			// of failing with a readable message.
+			const exited = new Promise<number>((resolve) => {
+				child.on("close", (code: number | null) => resolve(code ?? 1));
+				child.on("error", () => resolve(1));
+			});
+
 			return {
-				exited: new Promise<number>((resolve) =>
-					child.on("close", (code: number | null) => resolve(code ?? 1)),
-				),
-				stdout: toWebStream(child.stdout!),
-				stderr: toWebStream(child.stderr!),
+				exited,
+				stdout: child.stdout ? toWebStream(child.stdout) : emptyStream(),
+				stderr: child.stderr ? toWebStream(child.stderr) : emptyStream(),
 			};
 		},
 	};

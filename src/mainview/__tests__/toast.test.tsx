@@ -335,6 +335,27 @@ describe("toast service", () => {
 		expect(() => toast.error("orphan")).not.toThrow();
 	});
 
+	// `ToastHost` subscribes from a passive effect, so a push message handled in the
+	// window before React flushes it used to drop the toast outright — invisible in
+	// production and a source of flaky assertions in tests.
+	it("delivers a toast raised before the host subscribed", async () => {
+		toast.info("Raised before mount");
+
+		render(<ToastHost />);
+
+		expect(await screen.findByText("Raised before mount")).toBeInTheDocument();
+	});
+
+	it("keeps only the newest queued entries when no host ever subscribes", async () => {
+		for (let index = 1; index <= 7; index += 1) toast.info(`Queued ${index}`);
+
+		render(<ToastHost />);
+
+		expect(await screen.findByText("Queued 7")).toBeInTheDocument();
+		expect(screen.queryByText("Queued 1")).not.toBeInTheDocument();
+		expect(screen.queryByText("Queued 2")).not.toBeInTheDocument();
+	});
+
 	it("queues toasts while suppressed and flushes them in order", async () => {
 		render(<ToastHost />);
 		setToastSuppressed(true);

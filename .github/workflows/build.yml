@@ -254,12 +254,24 @@ jobs:
               echo "     ✗ shard ${entry%% *} · ${entry##* }"
             done
             echo "=================================================================="
+            echo ""
+            echo "  This job only reads the shard artifacts — it never runs a test."
+            echo "  Re-running ONLY this job re-reads the same artifacts and fails"
+            echo "  identically. Re-run the whole workflow instead:"
+            echo "      gh run rerun $GITHUB_RUN_ID          # all jobs"
+            echo "      gh run rerun $GITHUB_RUN_ID --failed # failed jobs (incl. shards)"
+            echo ""
             {
               echo "## ❌ Failing test suites"
               echo ""
               for entry in "${failed_suites[@]}"; do
                 echo "- **shard ${entry%% *}** · \`${entry##* }\`"
               done
+              echo ""
+              echo "> ⚠️ **Re-running the \`test\` job alone will not help.** It only reads the"
+              echo "> shard artifacts; re-run the whole workflow with"
+              echo "> \`gh run rerun $GITHUB_RUN_ID\` (or **Re-run all jobs**) so the shards"
+              echo "> actually execute again."
               echo ""
             } >> "$GITHUB_STEP_SUMMARY"
 

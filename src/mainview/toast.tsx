@@ -54,6 +54,8 @@ const pendingEntries: ToastEntry[] = [];
 /** Default auto-dismiss delay. Long on purpose so error messages aren't missed. */
 const DEFAULT_DURATION_MS = 30_000;
 const MAX_VISIBLE_TOASTS = 5;
+/** Queue bound for entries raised while suppressed or before a host subscribed. */
+const MAX_PENDING_ENTRIES = 5;
 const NARROW_MAX_VISIBLE_TOASTS = 1;
 const NARROW_VIEWPORT_PX = 768;
 
@@ -71,12 +73,23 @@ function emit(message: string, variant: ToastVariant, opts?: ToastOpts): void {
 		onClick: opts?.onClick,
 		context: opts?.context,
 	};
-	if (suppressed) {
+	// Queue while immersive fullscreen suppresses toasts, and also while no host is
+	// subscribed yet: `ToastHost` subscribes from a passive effect, so a toast raised
+	// from a push message that lands before React flushes it would otherwise vanish
+	// with no trace at all.
+	if (suppressed || !listeners.size) {
 		pendingEntries.push(entry);
+		if (pendingEntries.length > MAX_PENDING_ENTRIES) pendingEntries.shift();
 		return;
 	}
-	// No host mounted (e.g. in unit tests) → silently drop.
 	deliver(entry);
+}
+
+/** Hands queued entries to a host that just subscribed (see {@link emit}). */
+function flushPendingEntries(): void {
+	if (suppressed || !listeners.size) return;
+	const pending = pendingEntries.splice(0, pendingEntries.length);
+	pending.forEach(deliver);
 }
 
 /**
@@ -99,9 +112,15 @@ export function setToastSuppressed(value: boolean): void {
 	if (suppressed === value) return;
 	suppressed = value;
 	if (suppressed) return;
+	flushPendingEntries();
+}
 
-	const pending = pendingEntries.splice(0, pendingEntries.length);
-	pending.forEach(deliver);
+/**
+ * Drops queued entries so a test file that raises toasts without a mounted host
+ * cannot leak them into the next test's host.
+ */
+export function _resetPendingToastsForTests(): void {
+	pendingEntries.length = 0;
 }
 
 const VARIANT: Record<ToastVariant, { icon: string; border: string; text: string; bar: string }> = {
@@ -265,6 +284,7 @@ export function ToastHost({ onTaskOverflow }: ToastHostProps = {}) {
 			startRuntime(entry.id);
 		};
 		listeners.add(listener);
+		flushPendingEntries();
 		return () => {
 			listeners.delete(listener);
 			for (const id of runtimesRef.current.keys()) clearRuntime(id);

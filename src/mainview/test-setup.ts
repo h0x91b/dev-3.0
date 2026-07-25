@@ -1,5 +1,12 @@
 import "@testing-library/jest-dom/vitest";
 import { createElement } from "react";
+import { _resetPendingToastsForTests } from "./toast";
+
+// Toasts raised without a mounted host are queued for the next host (see toast.tsx),
+// so drop the queue between tests instead of leaking them into the next render.
+afterEach(() => {
+	_resetPendingToastsForTests();
+});
 
 // NOTE on transport detection in tests: happy-dom has no `__electrobunWebviewId`,
 // so `isRemote()` (utils/platform) reports browser-remote by default — the SAME

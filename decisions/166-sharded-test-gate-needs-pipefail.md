@@ -33,6 +33,14 @@ propagates vitest's exit code into `outcome` (see `build.yml`, steps
 into `tee` without an explicit `shell: bash`. The guard was verified by removing
 `shell: bash` from one step and watching it name that step.
 
+## Re-running the gate
+
+The aggregate `test` job never executes a test — it only reads the shard artifacts, so
+re-running that job alone re-downloads the same artifacts and fails identically. That
+repeatedly read as "the flake is still there". The failure banner and the run summary
+now say so and print `gh run rerun <run-id>`: a red gate needs the **whole** workflow
+re-run (or `--failed`, which includes the shard jobs) for the shards to run again.
+
 ## Risks
 
 - The guard only recognises `| tee`; a different pipe construct in a gating step
