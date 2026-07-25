@@ -5,6 +5,12 @@ import type { Project } from "../shared/types";
 import { parseSocketMeta, socketMetaFileName } from "../shared/socket-meta";
 import { projectStorageKey, toPosixSeparators } from "../shared/project-storage-key";
 import { resolveUserHome } from "../shared/user-home";
+import {
+	isCliEndpointHandle,
+	parseCliEndpointRecord,
+	pidFromCliEndpointFileName,
+	type CliEndpointRecord,
+} from "../shared/cli-endpoint";
 
 const HOME = resolveUserHome();
 const DEV3_HOME = `${HOME}/.dev3.0`;
@@ -298,34 +304,76 @@ function isGuestSocket(socketsDir: string, pid: number): boolean {
 }
 
 /**
- * Find any live socket in a given sockets directory. Primary-instance sockets
- * are preferred over guest sockets (see isGuestSocket); within each group the
- * newest mtime (then highest pid) wins. `exclude` skips sockets that already
- * failed this invocation (e.g. died mid-request) — vital in sandboxed envs
- * where liveness probes are EPERM-blocked and a dead socket would otherwise be
- * re-picked forever.
+ * One discoverable endpoint in a sockets dir: a `<pid>.sock` (POSIX Unix socket)
+ * or a `<pid>.endpoint.json` loopback record (Windows). A record's guest flag
+ * comes from the record itself — the `.meta.json` sidecar is written only by the
+ * Unix transport.
+ */
+interface EndpointEntry {
+	pid: number;
+	socketPath: string;
+	mtimeMs: number;
+	guest: boolean;
+	unix: boolean;
+}
+
+function readCliEndpointRecord(recordPath: string): CliEndpointRecord | null {
+	try {
+		return parseCliEndpointRecord(readFileSync(recordPath, "utf-8"));
+	} catch {
+		return null;
+	}
+}
+
+function describeEndpointEntry(socketsDir: string, file: string, exclude?: ReadonlySet<string>): EndpointEntry | null {
+	const unix = file.endsWith(".sock");
+	if (!unix && !isCliEndpointHandle(file)) return null;
+
+	const pid = unix ? parseInt(file.replace(".sock", ""), 10) : pidFromCliEndpointFileName(file);
+	if (pid === null || isNaN(pid)) return null;
+
+	const socketPath = `${socketsDir}/${file}`;
+	if (exclude?.has(socketPath)) return null;
+
+	let mtimeMs = 0;
+	try {
+		mtimeMs = statSync(socketPath).mtimeMs;
+	} catch {
+		mtimeMs = 0;
+	}
+
+	let guest: boolean;
+	if (unix) {
+		guest = isGuestSocket(socketsDir, pid);
+	} else {
+		const record = readCliEndpointRecord(socketPath);
+		// A record we cannot parse cannot be dialed — drop it so a corrupt leftover
+		// never wins discovery and blocks a healthy instance behind it.
+		if (!record) return null;
+		guest = record.hostTaskId != null;
+	}
+
+	return { pid, socketPath, mtimeMs, guest, unix };
+}
+
+/**
+ * Find any live endpoint in a given sockets directory. Primary instances are
+ * preferred over guests (see isGuestSocket); within each group a Unix socket
+ * wins over a loopback record (a platform only ever publishes one kind, so this
+ * only matters for a leftover from the other), then newest mtime, then highest
+ * pid. `exclude` skips endpoints that already failed this invocation (e.g. died
+ * mid-request) — vital in sandboxed envs where liveness probes are EPERM-blocked
+ * and a dead socket would otherwise be re-picked forever.
  */
 function discoverSocketIn(socketsDir: string, exclude?: ReadonlySet<string>): string | null {
 	if (!existsSync(socketsDir)) return null;
 
 	const entries = readdirSync(socketsDir)
-		.filter((file) => file.endsWith(".sock"))
-		.map((file) => {
-			const pid = parseInt(file.replace(".sock", ""), 10);
-			if (isNaN(pid)) return null;
-			const socketPath = `${socketsDir}/${file}`;
-			if (exclude?.has(socketPath)) return null;
-			let mtimeMs = 0;
-			try {
-				mtimeMs = statSync(socketPath).mtimeMs;
-			} catch {
-				mtimeMs = 0;
-			}
-			return { pid, socketPath, mtimeMs, guest: isGuestSocket(socketsDir, pid) };
-		})
-		.filter((entry): entry is { pid: number; socketPath: string; mtimeMs: number; guest: boolean } => entry !== null)
+		.map((file) => describeEndpointEntry(socketsDir, file, exclude))
+		.filter((entry): entry is EndpointEntry => entry !== null)
 		.sort((a, b) => {
 			if (a.guest !== b.guest) return a.guest ? 1 : -1;
+			if (a.unix !== b.unix) return a.unix ? -1 : 1;
 			if (b.mtimeMs !== a.mtimeMs) return b.mtimeMs - a.mtimeMs;
 			return b.pid - a.pid;
 		});
@@ -419,7 +467,7 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
 	} else {
 		let files: string[] = [];
 		try {
-			files = readdirSync(SOCKETS_DIR).filter((f) => f.endsWith(".sock"));
+			files = readdirSync(SOCKETS_DIR).filter((f) => f.endsWith(".sock") || isCliEndpointHandle(f));
 		} catch (e) {
 			lines.push(`  readdir error: ${e}`);
 		}
@@ -427,7 +475,8 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
 			lines.push(`  sockets: none present`);
 		}
 		for (const f of files) {
-			const pid = parseInt(f.replace(".sock", ""), 10);
+			const unix = f.endsWith(".sock");
+			const pid = unix ? parseInt(f.replace(".sock", ""), 10) : (pidFromCliEndpointFileName(f) ?? NaN);
 			let state = "unknown";
 			try {
 				process.kill(pid, 0);
@@ -436,8 +485,16 @@ export function socketDiagnostics(cwd: string = process.cwd()): string {
 				const code = (e as NodeJS.ErrnoException).code;
 				state = code === "EPERM" ? "EPERM (sandboxed — cannot probe, may be alive)" : "process dead (stale socket)";
 			}
-			const guestTag = !isNaN(pid) && isGuestSocket(SOCKETS_DIR, pid) ? " [guest instance — deprioritized]" : "";
-			lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}${guestTag}`);
+			if (unix) {
+				const guestTag = !isNaN(pid) && isGuestSocket(SOCKETS_DIR, pid) ? " [guest instance — deprioritized]" : "";
+				lines.push(`  socket ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}${guestTag}`);
+			} else {
+				// Never print the token — these diagnostics land in bug reports.
+				const record = readCliEndpointRecord(`${SOCKETS_DIR}/${f}`);
+				const target = record ? `${record.host}:${record.port}` : "UNREADABLE RECORD";
+				const guestTag = record?.hostTaskId ? " [guest instance — deprioritized]" : "";
+				lines.push(`  endpoint ${f}: pid=${isNaN(pid) ? "?" : pid} → ${state}, loopback ${target}${guestTag}`);
+			}
 		}
 	}
 

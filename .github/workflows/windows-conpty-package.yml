@@ -57,6 +57,12 @@ jobs:
       - name: Native shell launch pure tests
         run: bun run test:native-shell-launch
 
+      # Real loopback proof for the Windows CLI control transport: round-trip,
+      # two instances, stale record, token rejection, and the loopback-only
+      # network boundary against this runner's real interfaces.
+      - name: CLI loopback transport E2E
+        run: bun run test:cli-loopback-e2e
+
       # Merged host-image manifest: generator, validator, deterministic assembly,
       # additive staging outside the install root, and rollback selection.
       - name: Packaged host image + manifest tests

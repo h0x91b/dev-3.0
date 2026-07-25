@@ -47,9 +47,11 @@ export function exitError(message: string, detail?: string, code = CLI_EXIT_CODE
 
 export function exitAppNotRunning(
 	opts: {
-		stage?: "discovery" | "connect";
+		stage?: "discovery" | "connect" | "endpoint";
 		diagnostics?: string;
 		socketPath?: string;
+		/** Why the endpoint record is unusable (Windows loopback transport only). */
+		reason?: string;
 		/**
 		 * `--tolerate-app-offline`: report the same notice on stderr but exit 0.
 		 * Generated agent hooks use it where no POSIX shell is available to
@@ -61,7 +63,20 @@ export function exitAppNotRunning(
 	let message: string;
 	let detail: string;
 
-	if (opts.stage === "connect") {
+	if (opts.stage === "endpoint") {
+		// Windows loopback transport only: the endpoint record we dialed does not
+		// describe a live dev3 instance any more (corrupt/foreign record, or the
+		// listener rejected its token because the port was taken over). Retrying
+		// is the right advice — the app rewrites the record on every start.
+		message = "cannot reach the dev3.0 app";
+		const where = opts.socketPath ? ` (${opts.socketPath})` : "";
+		detail =
+			`A dev3.0 endpoint record was found${where}, but it no longer points at a live app instance.\n` +
+			(opts.reason ? `Reason: ${opts.reason}.\n` : "") +
+			"This is normal right after the app exits or restarts — retry the command.\n" +
+			"If it persists, quit dev-3.0 completely and start it again; the app rewrites its\n" +
+			"endpoint record on every launch.";
+	} else if (opts.stage === "connect") {
 		// A socket file was found but the live connection failed. Two causes:
 		// the calling agent's sandbox (Claude Code seatbelt / Codex) blocking the
 		// Unix-socket connect (issue #726), or the socket belonging to an app
@@ -90,11 +105,12 @@ export function exitAppNotRunning(
 	// found but connection refused/blocked" (connect — busy app / sandbox denial).
 	if (opts.diagnostics) {
 		detail += "\n\n[DEV3_DEBUG] app-not-running diagnostics:";
-		if (opts.stage) {
-			detail +=
-				opts.stage === "discovery"
-					? "\n  stage: discovery — no live socket found in the sockets dir"
-					: "\n  stage: connect — a socket was found but the connection was refused/blocked";
+		if (opts.stage === "discovery") {
+			detail += "\n  stage: discovery — no live socket found in the sockets dir";
+		} else if (opts.stage === "connect") {
+			detail += "\n  stage: connect — a socket was found but the connection was refused/blocked";
+		} else if (opts.stage === "endpoint") {
+			detail += "\n  stage: endpoint — a loopback endpoint record was found but it is stale or unusable";
 		}
 		detail += `\n${opts.diagnostics}`;
 	}

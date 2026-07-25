@@ -2433,6 +2433,13 @@ export interface CliRequest {
 	id: string;
 	method: string;
 	params: Record<string, unknown>;
+	/**
+	 * Endpoint token, sent only over the Windows loopback-TCP transport (a
+	 * loopback port has none of a socket file's access control). Absent on every
+	 * Unix-socket request, which keeps that wire format unchanged. See
+	 * `src/shared/cli-endpoint.ts`.
+	 */
+	token?: string;
 }
 
 export interface CliResponse {

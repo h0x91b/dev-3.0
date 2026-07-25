@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, unlinkSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
 import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
-import { socketMetaPathFor, type SocketMeta } from "../shared/socket-meta";
+import { socketMetaPathFor } from "../shared/socket-meta";
+import { isCliEndpointHandle } from "../shared/cli-endpoint";
 import { ALL_STATUSES, DEV3_REPO_CONFIG_KEYS, ID_PREFIX_MIN_LENGTH, LABEL_COLORS, MAX_SHARED_IMAGES_PER_TASK, buildTaskDialogSubject, getTaskTitle, normalizePriority, titleFromDescription } from "../shared/types";
 import { CODEX_STATUS_HOOK_EVENTS, getCodexHookTargetStatus, type CodexStatusHookEvent } from "../shared/agent-hooks";
 import { SharedImageError, deleteSharedImageFiles, pruneSharedImages, saveSharedImage } from "./shared-images";
@@ -22,8 +23,7 @@ import { syncTaskBranchName } from "./task-branch-sync";
 import { nativeTaskTerminalAlive } from "./native-task-terminal";
 import { isTerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import { DEV3_HOME } from "./paths";
-import { cliSocketTransportSupported } from "../shared/cli-socket-transport";
-import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
+import { cliTransportFor, startCliListener } from "./cli-listener";
 
 const log = createLogger("cli-socket");
 
@@ -45,29 +45,20 @@ function findByIdPrefix<T extends { id: string }>(items: T[], prefix: string, en
 }
 
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
-const MAX_CLI_REQUEST_BYTES = 1024 * 1024;
 let socketPath = "";
-const pendingRequestText = new Map<unknown, string>();
 
 export function getSocketPath(): string {
 	return socketPath;
-}
-
-function formatKiB(bytes: number): number {
-	return Math.ceil(bytes / 1024);
-}
-
-function payloadTooLargeMessage(bytes: number): string {
-	return `Payload exceeded ${formatKiB(MAX_CLI_REQUEST_BYTES)} KB limit, current size ${formatKiB(bytes)} KB`;
 }
 
 function cleanupStaleSockets(): void {
 	if (!existsSync(SOCKETS_DIR)) return;
 
 	for (const file of readdirSync(SOCKETS_DIR)) {
-		// Both the socket and its meta sidecar (`<pid>.sock` / `<pid>.meta.json`)
-		// are keyed by pid; a SIGKILLed instance leaves both behind.
-		if (!file.endsWith(".sock") && !file.endsWith(".meta.json")) continue;
+		// Socket, meta sidecar, and loopback endpoint record (`<pid>.sock` /
+		// `<pid>.meta.json` / `<pid>.endpoint.json`) are all keyed by pid; a
+		// SIGKILLed instance leaves them behind.
+		if (!file.endsWith(".sock") && !file.endsWith(".meta.json") && !isCliEndpointHandle(file)) continue;
 		const pid = parseInt(file.split(".")[0], 10);
 		if (isNaN(pid)) continue;
 
@@ -1320,120 +1311,28 @@ export async function handleRequest(req: CliRequest): Promise<CliResponse> {
 }
 
 /**
- * Start the CLI transport. Returns the socket path, or `null` when this platform
- * has no transport yet (see {@link cliSocketTransportSupported}).
+ * Start the CLI transport and return its endpoint handle: a `<pid>.sock` path on
+ * POSIX, a `<pid>.endpoint.json` loopback record on Windows.
  */
-export function startSocketServer(): string | null {
-	if (!cliSocketTransportSupported()) {
-		socketPath = "";
-		log.warn(
-			"CLI socket server unavailable on this platform — the dev3 CLI and agent hooks cannot reach the app (Windows IPC is Seq 1296)",
-			{ platform: process.platform },
-		);
-		return null;
-	}
-
+export function startSocketServer(): string {
 	mkdirSync(SOCKETS_DIR, { recursive: true });
 	cleanupStaleSockets();
 
-	socketPath = `${SOCKETS_DIR}/${process.pid}.sock`;
-
-	// Remove leftover socket file if it exists
-	if (existsSync(socketPath)) {
-		unlinkSync(socketPath);
-	}
-
-	Bun.listen({
-		unix: socketPath,
-		socket: {
-			open() {
-				log.debug("CLI client connected");
-			},
-			async data(socket, raw) {
-				const text = typeof raw === "string" ? raw : Buffer.from(raw).toString("utf-8");
-				const buffered = pendingRequestText.get(socket) || "";
-				const combined = buffered + text;
-				const combinedBytes = Buffer.byteLength(combined, "utf-8");
-
-				if (combinedBytes > MAX_CLI_REQUEST_BYTES) {
-					pendingRequestText.delete(socket);
-					const errResp: CliResponse = {
-						id: "unknown",
-						ok: false,
-						error: payloadTooLargeMessage(combinedBytes),
-					};
-					flushAndEnd(socket, JSON.stringify(errResp) + "\n");
-					return;
-				}
-
-				// Handle multiple NDJSON messages in one chunk — accumulate all
-				// responses first, then flush once to avoid interleaved partial writes.
-				let responseData = "";
-				const lines = combined.split("\n");
-				const tail = lines.pop() || "";
-				if (tail) {
-					pendingRequestText.set(socket, tail);
-				} else {
-					pendingRequestText.delete(socket);
-				}
-
-				for (const line of lines) {
-					if (!line.trim()) continue;
-
-					let req: CliRequest;
-					try {
-						req = JSON.parse(line);
-					} catch {
-						const bytes = Buffer.byteLength(line, "utf-8");
-						const errResp: CliResponse = {
-							id: "unknown",
-							ok: false,
-							error: `Invalid JSON in CLI request (${formatKiB(bytes)} KB). The request may be truncated or corrupted.`,
-						};
-						responseData += JSON.stringify(errResp) + "\n";
-						continue;
-					}
-
-					const resp = await handleRequest(req);
-					responseData += JSON.stringify(resp) + "\n";
-				}
-
-				if (responseData) {
-					flushAndEnd(socket, responseData);
-				}
-			},
-			drain(socket) {
-				drainSocket(socket);
-			},
-			close(socket) {
-				pendingWrites.delete(socket);
-				pendingRequestText.delete(socket);
-				log.debug("CLI client disconnected");
-			},
-			error(_socket, error) {
-				log.error("CLI socket error", { error: String(error) });
-			},
-		},
+	const listener = startCliListener({
+		socketsDir: SOCKETS_DIR,
+		pid: process.pid,
+		hostTaskId: process.env.DEV3_TASK_ID || null,
+		transport: cliTransportFor(process.platform),
+		handle: handleRequest,
 	});
+	socketPath = listener.endpoint;
 
-	// Meta sidecar: record whether this instance was launched from inside a dev3
-	// task context (DEV3_TASK_ID is injected into task/dev-server tmux panes —
-	// devScript-booted dev builds, `dev3 remote` from an agent pane). The CLI
-	// deprioritizes such guest sockets during discovery so control commands
-	// route to the primary app instead of an instance the command may be about
-	// to tear down (#910/#920). See src/shared/socket-meta.ts.
-	try {
-		const meta: SocketMeta = {
-			pid: process.pid,
-			hostTaskId: process.env.DEV3_TASK_ID || null,
-			startedAt: new Date().toISOString(),
-		};
-		writeFileSync(socketMetaPathFor(socketPath), JSON.stringify(meta));
-	} catch (err) {
-		log.warn("Failed to write socket meta sidecar (non-fatal)", { error: String(err) });
-	}
-
-	log.info("CLI socket server started", { path: socketPath, guestOfTask: process.env.DEV3_TASK_ID ?? null });
+	log.info("CLI socket server started", {
+		path: socketPath,
+		transport: listener.transport,
+		port: listener.port ?? null,
+		guestOfTask: process.env.DEV3_TASK_ID ?? null,
+	});
 	return socketPath;
 }
 
@@ -1446,9 +1345,12 @@ export function stopSocketServer(): void {
 			// Ignore cleanup errors
 		}
 	}
-	if (socketPath && existsSync(socketMetaPathFor(socketPath))) {
+	// The loopback endpoint record carries its own guest info, so only a `.sock`
+	// handle has a separate sidecar to remove.
+	const metaPath = socketPath && !isCliEndpointHandle(socketPath) ? socketMetaPathFor(socketPath) : "";
+	if (metaPath && existsSync(metaPath)) {
 		try {
-			unlinkSync(socketMetaPathFor(socketPath));
+			unlinkSync(metaPath);
 		} catch {
 			// Ignore cleanup errors
 		}

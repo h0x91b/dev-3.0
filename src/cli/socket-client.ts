@@ -1,5 +1,7 @@
 import { connect } from "node:net";
+import { readFileSync } from "node:fs";
 import type { CliRequest, CliResponse } from "../shared/types";
+import { CLI_ENDPOINT_TOKEN_MISMATCH, isCliEndpointHandle, parseCliEndpointRecord } from "../shared/cli-endpoint";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -55,7 +57,25 @@ export class EmptyResponseError extends Error {
  */
 export function isInstanceLossError(err: unknown): boolean {
 	if (!(err instanceof Error)) return false;
-	return err.name === "EmptyResponseError" || err.message === "APP_NOT_RUNNING";
+	return err.name === "EmptyResponseError" || err.name === "StaleEndpointError" || err.message === "APP_NOT_RUNNING";
+}
+
+/**
+ * The loopback endpoint record we dialed is unusable or no longer describes the
+ * instance that answered: the record is corrupt/foreign, or the listener
+ * rejected our token because the record is stale and the port now belongs to
+ * something else. A Unix socket cannot hit this — the socket file IS the
+ * instance. Reported as "cannot reach the app" (exit code 2), not as a command
+ * failure, and treated as instance loss so idempotent replays re-discover.
+ */
+export class StaleEndpointError extends Error {
+	constructor(
+		readonly endpoint: string,
+		readonly reason: string,
+	) {
+		super("STALE_ENDPOINT");
+		this.name = "StaleEndpointError";
+	}
 }
 
 /** Connect failed with a code that may clear on retry while the app is alive. */
@@ -78,15 +98,54 @@ function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function sendOnce(socketPath: string, req: CliRequest, timeoutMs: number): Promise<CliResponse> {
+/**
+ * Where an endpoint handle actually points. A `.sock` path connects by path as
+ * it always has; a `.endpoint.json` record resolves to the app's loopback port
+ * plus the token that authorizes the request (see src/shared/cli-endpoint.ts).
+ */
+type ConnectTarget =
+	| { kind: "unix"; path: string }
+	| { kind: "tcp"; host: string; port: number; token: string };
+
+function resolveConnectTarget(endpoint: string): ConnectTarget {
+	if (!isCliEndpointHandle(endpoint)) return { kind: "unix", path: endpoint };
+
+	let raw: string;
+	try {
+		raw = readFileSync(endpoint, "utf-8");
+	} catch {
+		// The record vanished between discovery and connect — the same race a
+		// missing `.sock` produces, so reuse the transient ENOENT path.
+		throw new TransientConnectError("ENOENT");
+	}
+
+	const record = parseCliEndpointRecord(raw);
+	if (!record) throw new StaleEndpointError(endpoint, "the endpoint record is corrupt, from a newer format, or not loopback-bound");
+	return { kind: "tcp", host: record.host, port: record.port, token: record.token };
+}
+
+function sendOnce(endpoint: string, req: CliRequest, timeoutMs: number): Promise<CliResponse> {
 	return new Promise((resolve, reject) => {
-		const socket = connect({ path: socketPath });
+		let target: ConnectTarget;
+		try {
+			target = resolveConnectTarget(endpoint);
+		} catch (err) {
+			reject(err);
+			return;
+		}
+
+		const socket = target.kind === "unix"
+			? connect({ path: target.path })
+			: connect({ host: target.host, port: target.port });
+		// The token travels only on the loopback carrier, so Unix-socket request
+		// bytes stay exactly what they were.
+		const payload: CliRequest = target.kind === "tcp" ? { ...req, token: target.token } : req;
 		// Accumulate raw buffers to avoid corrupting multi-byte UTF-8
 		// characters that may be split across data events.
 		const chunks: Buffer[] = [];
 
 		socket.on("connect", () => {
-			socket.write(JSON.stringify(req) + "\n");
+			socket.write(JSON.stringify(payload) + "\n");
 		});
 
 		socket.on("data", (data) => {
@@ -100,11 +159,18 @@ function sendOnce(socketPath: string, req: CliRequest, timeoutMs: number): Promi
 				reject(new EmptyResponseError());
 				return;
 			}
+			let resp: CliResponse;
 			try {
-				resolve(JSON.parse(lines[0]) as CliResponse);
+				resp = JSON.parse(lines[0]) as CliResponse;
 			} catch {
 				reject(new Error(`Invalid JSON response: ${lines[0]}`));
+				return;
 			}
+			if (resp.error === CLI_ENDPOINT_TOKEN_MISMATCH) {
+				reject(new StaleEndpointError(endpoint, "the listening instance rejected the record's token"));
+				return;
+			}
+			resolve(resp);
 		});
 
 		socket.on("error", (err) => {

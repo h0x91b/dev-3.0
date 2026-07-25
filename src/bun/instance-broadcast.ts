@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { DEV3_HOME } from "./paths";
 import { createLogger } from "./logger";
+import { isCliEndpointHandle, parseCliEndpointRecord, pidFromCliEndpointFileName } from "../shared/cli-endpoint";
 
 const log = createLogger("instance-broadcast");
 
@@ -8,7 +9,12 @@ const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 const NOTIFY_TIMEOUT_MS = 2000;
 const DEBOUNCE_MS = 50;
 
-/** Discover all alive peer socket paths (excluding our own PID). */
+/**
+ * Discover all alive peer endpoint handles (excluding our own PID): `<pid>.sock`
+ * on POSIX, `<pid>.endpoint.json` loopback records on Windows. Without the
+ * records, cross-instance data-change notifications would silently stop working
+ * on Windows even though the CLI transport itself works.
+ */
 export function discoverPeerSockets(): string[] {
 	if (!existsSync(SOCKETS_DIR)) return [];
 
@@ -16,8 +22,9 @@ export function discoverPeerSockets(): string[] {
 	const peers: string[] = [];
 
 	for (const file of readdirSync(SOCKETS_DIR)) {
-		if (!file.endsWith(".sock")) continue;
-		const pid = parseInt(file.replace(".sock", ""), 10);
+		const unix = file.endsWith(".sock");
+		if (!unix && !isCliEndpointHandle(file)) continue;
+		const pid = unix ? parseInt(file.replace(".sock", ""), 10) : (pidFromCliEndpointFileName(file) ?? NaN);
 		if (isNaN(pid) || pid === myPid) continue;
 
 		try {
@@ -36,16 +43,32 @@ export function discoverPeerSockets(): string[] {
 	return peers;
 }
 
-/** Fire-and-forget: send a _notify message to a single socket. */
+function readPeerRecord(recordPath: string): ReturnType<typeof parseCliEndpointRecord> {
+	try {
+		return parseCliEndpointRecord(readFileSync(recordPath, "utf-8"));
+	} catch {
+		return null;
+	}
+}
+
+/** Fire-and-forget: send a _notify message to a single peer endpoint. */
 async function notifySocket(
 	socketPath: string,
 	event: string,
 	params: Record<string, string>,
 ): Promise<void> {
+	// A loopback peer requires the token from its endpoint record; an unusable
+	// record means that peer is not reachable, so skip it silently.
+	const record = isCliEndpointHandle(socketPath) ? readPeerRecord(socketPath) : null;
+	if (isCliEndpointHandle(socketPath) && !record) {
+		log.debug("Skipping peer with an unusable endpoint record", { socketPath });
+		return;
+	}
 	const payload = JSON.stringify({
 		id: "_notify",
 		method: "_notify",
 		params: { event, ...params },
+		...(record ? { token: record.token } : {}),
 	}) + "\n";
 
 	return new Promise<void>((resolve) => {
@@ -54,27 +77,29 @@ async function notifySocket(
 			resolve();
 		}, NOTIFY_TIMEOUT_MS);
 
+		const handlers = {
+			open(socket: { write(data: string): unknown; end(): unknown }) {
+				socket.write(payload);
+				socket.end();
+			},
+			data() { /* ignore response */ },
+			close() {
+				clearTimeout(timer);
+				resolve();
+			},
+			error(_socket: unknown, error: unknown) {
+				clearTimeout(timer);
+				cleanupIfStale(socketPath, error);
+				resolve();
+			},
+			drain() { /* no-op */ },
+		};
+
 		try {
-			Bun.connect({
-				unix: socketPath,
-				socket: {
-					open(socket) {
-						socket.write(payload);
-						socket.end();
-					},
-					data() { /* ignore response */ },
-					close() {
-						clearTimeout(timer);
-						resolve();
-					},
-					error(_, error) {
-						clearTimeout(timer);
-						cleanupIfStale(socketPath, error);
-						resolve();
-					},
-					drain() { /* no-op */ },
-				},
-			}).catch((err) => {
+			const connecting = record
+				? Bun.connect({ hostname: record.host, port: record.port, socket: handlers } as never)
+				: Bun.connect({ unix: socketPath, socket: handlers } as never);
+			connecting.catch((err) => {
 				clearTimeout(timer);
 				cleanupIfStale(socketPath, err);
 				resolve();

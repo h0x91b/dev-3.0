@@ -1,6 +1,6 @@
 /**
  * The Windows boot path up to the first window: home resolution, the CLI
- * transport seam, the shell default, and the shell-free dev/start command chain.
+ * transport carrier, the shell default, and the shell-free dev/start command chain.
  *
  * Everything asserted here runs BEFORE a window exists, so a regression is not a
  * degraded feature — it is an app that never draws.
@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { resolveUserHome } from "../../shared/user-home";
-import { cliSocketTransportSupported } from "../../shared/cli-socket-transport";
+import { cliTransportFor } from "../cli-listener";
 import { WINDOWS_POWERSHELL_FALLBACK, defaultLaunchShellPath } from "../../shared/platform-launch";
 import { descendantPids, devPlan, devRunEnv, parseProcessTable, shutdownSignals, treeKillCommand } from "../../../scripts/dev";
 import { cliBinaryName, cliCopyEntry } from "../../../electrobun.config";
@@ -58,14 +58,14 @@ describe("resolveUserHome", () => {
 	});
 });
 
-describe("cliSocketTransportSupported", () => {
-	it("reports the Unix-socket transport present on POSIX", () => {
-		expect(cliSocketTransportSupported("darwin")).toBe(true);
-		expect(cliSocketTransportSupported("linux")).toBe(true);
+describe("cliTransportFor", () => {
+	it("keeps the Unix-socket transport on POSIX", () => {
+		expect(cliTransportFor("darwin")).toBe("unix");
+		expect(cliTransportFor("linux")).toBe("unix");
 	});
 
-	it("reports it absent on Windows — the Seq 1296 seam", () => {
-		expect(cliSocketTransportSupported("win32")).toBe(false);
+	it("carries the CLI over loopback TCP on Windows", () => {
+		expect(cliTransportFor("win32")).toBe("tcp");
 	});
 });
 

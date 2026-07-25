@@ -264,15 +264,10 @@ if (shellEnv.sshAuthSock) {
 applyFullShellEnvToProcess(shellEnv, (await loadSettings()).importShellEnv !== false);
 
 // ── CLI socket server ──
-// Start the Unix domain socket server for CLI tool communication. `null` means
-// the platform has no transport yet (Windows — Seq 1296); the window must still
-// open, so this is reported and boot continues.
+// Unix domain socket on POSIX, loopback-only TCP plus an endpoint record on
+// Windows (see src/bun/cli-listener.ts).
 const cliSocketPath = startSocketServer();
-if (cliSocketPath) {
-	log.info("CLI socket server ready", { path: cliSocketPath });
-} else {
-	log.warn("Starting without a CLI transport — dev3 CLI commands and agent hooks will not reach this instance");
-}
+log.info("CLI socket server ready", { path: cliSocketPath });
 
 // Daily projects.json safety snapshot (projects-YYYY-MM-DD.json.bak, 7 days kept).
 // Saves also trigger it, but projects.json can go untouched for weeks — the

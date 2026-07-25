@@ -254,6 +254,12 @@ async function main(): Promise<void> {
 				exitUsage(`Unknown command: ${command}\nRun "dev3 --help" for usage.`);
 		}
 	} catch (err) {
+		// Matched by name, not instanceof, so it survives module mocks (same
+		// convention as isInstanceLossError in socket-client).
+		if (err instanceof Error && err.name === "StaleEndpointError") {
+			const reason = (err as Error & { reason?: string }).reason;
+			exitAppNotRunning({ stage: "endpoint", socketPath, reason, ...debugAppNotRunning("endpoint") });
+		}
 		if (err instanceof Error && err.message === "APP_NOT_RUNNING") {
 			const connectCode = (err as Error & { connectCode?: string }).connectCode;
 			exitAppNotRunning({
@@ -273,7 +279,7 @@ async function main(): Promise<void> {
  * while bug reporters can rerun with DEV3_DEBUG=1 to capture the actual cause.
  */
 function debugAppNotRunning(
-	stage: "discovery" | "connect",
+	stage: "discovery" | "connect" | "endpoint",
 	connectCode?: string,
 ): { diagnostics?: string } {
 	if (process.env.DEV3_DEBUG !== "1" && process.env.DEV3_DEBUG !== "true") return {};
