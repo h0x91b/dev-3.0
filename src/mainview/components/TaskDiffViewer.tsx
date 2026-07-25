@@ -29,6 +29,7 @@ import { PrConversationBlock } from "./pr-review/PrConversationBlock";
 import { GithubThreadView, OutdatedThreadsGroup, type ThreadSendState } from "./pr-review/GithubThreadView";
 import { buildThreadFixPrompt, groupGithubThreadsByFile, isLineRenderedInDiff, locateThread, partitionThreadsForDiff } from "./pr-review/mapping";
 import { MarkdownDocument } from "./pr-review/markdown";
+import { MarkdownRichDiff, useMarkdownDiffBlocks } from "./pr-review/markdown-diff";
 import { isTestFile } from "../../shared/test-files";
 import { useIncludeTestsInDiff } from "../utils/includeTestsInDiff";
 import "@git-diff-view/react/styles/diff-view-pure.css";
@@ -951,6 +952,12 @@ export function isMarkdownDiffFile(file: TaskDiffFile): boolean {
 	return /\.(md|markdown)$/i.test(path);
 }
 
+/** Only a two-sided change has something to colour: added/untracked files are
+ * all-new and deleted files all-gone, so those preview as a plain document. */
+export function isMarkdownRichDiffFile(file: TaskDiffFile): boolean {
+	return isMarkdownDiffFile(file) && file.status !== "added" && file.status !== "untracked" && file.status !== "deleted";
+}
+
 /** Preview renders what the change produced: the new content, or for deletions
  * the old content (the only side that exists). */
 export function getMarkdownPreviewSource(file: TaskDiffFile): string {
@@ -1436,6 +1443,10 @@ function TaskDiffFileSection({
 	const isMdFile = isMarkdownDiffFile(file);
 	const showMdPreview = isMdFile && mdPreview;
 	const mdPreviewSource = getMarkdownPreviewSource(file);
+	// Two-sided changes preview as a GitHub-style rich diff (added blocks green,
+	// removed blocks red); pure adds/deletes have nothing to compare against.
+	const mdRichDiffBlocks = useMarkdownDiffBlocks(file.oldContent, file.newContent);
+	const mdDiffBlocks = isMarkdownRichDiffFile(file) ? mdRichDiffBlocks : null;
 
 	// The built diff instance is the only honest source of "is this line on
 	// screen" (the backend ships hunks: null — the library computes the diff
@@ -1616,7 +1627,9 @@ function TaskDiffFileSection({
 				showMdPreview ? (
 					<div className="px-4 py-4" data-testid="diff-md-preview">
 						{mdPreviewSource.trim()
-							? <MarkdownDocument body={mdPreviewSource} />
+							? mdDiffBlocks
+								? <MarkdownRichDiff blocks={mdDiffBlocks} />
+								: <MarkdownDocument body={mdPreviewSource} />
 							: <div className="text-sm text-fg-muted">{t("infoPanel.diffMdPreviewEmpty")}</div>}
 					</div>
 				) : buildError ? (
@@ -1749,8 +1762,9 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [showLoadingState, setShowLoadingState] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [viewMode, setViewMode] = useState<DiffViewMode | null>(null);
-	// Per-file markdown source-diff ↔ rendered-preview switch. Ephemeral view
-	// state (like GitHub's rich-diff toggle): resets on viewer mount, never persisted.
+	// Per-file markdown source-diff ↔ rendered-preview switch, defaulting to
+	// preview (missing entry = on). Ephemeral view state (like GitHub's rich-diff
+	// toggle): resets on viewer mount, never persisted.
 	const [mdPreviewFiles, setMdPreviewFiles] = useState<Record<string, boolean>>({});
 	// Lazy-initialize from localStorage so the first persist-effect fire (when
 	// payload arrives) sees the stored review rather than `{}` — otherwise the
@@ -2618,7 +2632,7 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		// A content hit only exists in the source diff DOM — a file left in
 		// markdown preview mode flips back so the hit can be decorated and scrolled to.
 		if (match.kind === "content") {
-			setMdPreviewFiles((current) => (current[match.fileId] ? { ...current, [match.fileId]: false } : current));
+			setMdPreviewFiles((current) => ((current[match.fileId] ?? true) ? { ...current, [match.fileId]: false } : current));
 		}
 		scrollToFile(match.fileId, {
 			expand: true,
@@ -3785,10 +3799,10 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								onDeleteComment={deleteInlineComment}
 								onToggleExpanded={() => toggleFileExpanded(file.id)}
 								onToggleRead={() => toggleFileRead(file.id)}
-								mdPreview={mdPreviewFiles[file.id] ?? false}
+								mdPreview={mdPreviewFiles[file.id] ?? true}
 								onToggleMdPreview={() => setMdPreviewFiles((current) => ({
 									...current,
-									[file.id]: !(current[file.id] ?? false),
+									[file.id]: !(current[file.id] ?? true),
 								}))}
 								registerCommentRef={registerCommentRef}
 								sectionRef={(element) => {

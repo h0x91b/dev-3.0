@@ -15,6 +15,8 @@ const SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
 		img: ["src", "alt", "title", "width", "height"],
 		// GFM task lists render as checkbox inputs; keep them visual-only.
 		input: ["type", "checked", "disabled"],
+		// A rich-diff fragment can start mid-list, so numbering must survive.
+		ol: ["start"],
 		td: ["align"],
 		th: ["align"],
 	},

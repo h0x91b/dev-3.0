@@ -268,3 +268,35 @@
 	border-bottom: 1px solid rgb(var(--border-default));
 	padding-bottom: 0.25rem;
 }
+
+/* ---- Markdown rich diff (.dev3-md-diff) ----
+   Rendered markdown where every block carries its change state: added blocks sit
+   on a green wash, removed blocks on a red one, unchanged blocks stay plain. */
+.dev3-md-diff-block {
+	border-left: 3px solid transparent;
+	border-radius: 0.25rem;
+	padding: 0.0625rem 0.625rem;
+}
+.dev3-md-diff-block > :first-child {
+	margin-top: 0;
+}
+.dev3-md-diff-block > :last-child {
+	margin-bottom: 0;
+}
+.dev3-md-diff-added,
+.dev3-md-diff-removed {
+	margin: 0.25rem 0;
+	padding-top: 0.375rem;
+	padding-bottom: 0.375rem;
+}
+.dev3-md-diff-added {
+	background: rgb(var(--success) / 0.14);
+	border-left-color: rgb(var(--success));
+}
+.dev3-md-diff-removed {
+	background: rgb(var(--danger) / 0.14);
+	border-left-color: rgb(var(--danger));
+}
+.dev3-md-diff-removed > * {
+	opacity: 0.85;
+}
