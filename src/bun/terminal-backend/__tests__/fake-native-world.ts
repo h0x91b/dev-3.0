@@ -26,13 +26,18 @@ export class FakeNativeWorld {
 	deps(): Partial<NativeAdapterDeps> {
 		const world = this;
 		return {
-			start: (async (id: string, opts: { launch?: { env?: Record<string, string> } }) => {
+			start: (async (
+				id: string,
+				opts: { launch?: { env?: Record<string, string> }; cols?: number; rows?: number },
+			) => {
 				const session: FakeSession = {
 					paneId: `${id}:0`,
 					lines: [""],
 					watermark: 0,
-					cols: 80,
-					rows: 24,
+					// The native host spawns the shell at its final geometry, so the
+					// requested size arrives with the launch rather than as a later resize.
+					cols: opts?.cols ?? 80,
+					rows: opts?.rows ?? 24,
 					env: { ...(opts?.launch?.env ?? {}) },
 				};
 				world.sessions.set(id, session);

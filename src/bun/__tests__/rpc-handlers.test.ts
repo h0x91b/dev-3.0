@@ -99,9 +99,15 @@ vi.mock("../github", () => ({
 
 vi.mock("../pty-server", () => ({
 	createSession: vi.fn(),
+	createNativeTaskSession: vi.fn(),
+	reattachNativeTaskSession: vi.fn(() => Promise.resolve(false)),
 	destroySession: vi.fn(),
+	destroySessionAwaited: vi.fn(() => Promise.resolve()),
+	destroyNativeTaskSession: vi.fn(),
 	hasSession: vi.fn(),
 	hasDeadSession: vi.fn(),
+	// Unmarked tasks are tmux — the native branches are exercised by their own suites.
+	getSessionBackend: vi.fn(() => "tmux"),
 	tmuxSessionExists: vi.fn(() => true),
 	listPaneIds: vi.fn(() => Promise.resolve(["%5"])),
 	getPtyPort: vi.fn(() => 9999),
@@ -5310,7 +5316,7 @@ describe("handlers.getPtyUrl", () => {
 		vi.mocked(data.getTask).mockResolvedValue(task);
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1" });
-		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(pty.destroySessionAwaited).toHaveBeenCalledWith("task-1");
 		expect(result).toEqual({ recoverable: true, sessionState });
 	});
 
@@ -5449,7 +5455,7 @@ describe("handlers.getPtyUrl", () => {
 
 		const result = await handlers.getPtyUrl({ taskId: "task-1", resume: true });
 
-		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(pty.destroySessionAwaited).toHaveBeenCalledWith("task-1");
 		expect(result).toEqual({ url: expect.stringContaining("session=task-1") });
 		expect(pty.createSession).toHaveBeenCalled();
 	});
@@ -5481,7 +5487,7 @@ describe("handlers.getPtyUrl", () => {
 
 		await handlers.getPtyUrl({ taskId: "task-1" });
 
-		expect(pty.destroySession).toHaveBeenCalledWith("task-1");
+		expect(pty.destroySessionAwaited).toHaveBeenCalledWith("task-1");
 	});
 
 	it("passes task agentId and configId when restoring session", async () => {

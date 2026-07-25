@@ -30,14 +30,28 @@ const adapterRoot = resolve(sourceRoot, "bun/native-terminal-adapter");
 // and proves in its own isolation test that nothing imports it either.
 const multipaneRoot = resolve(sourceRoot, "bun/native-terminal-multipane");
 
+// Since seq 1292 the registry HAS product callers, but only these: the host-runtime
+// resolver (which build launches a host), the task-terminal module (one writer
+// client per task), and the packaged host entrypoint. Everything else must reach
+// the native backend through the product seam, so this list stays short by design.
+const SANCTIONED_PRODUCT_CALLERS = [
+	"bun/native-host-runtime.ts",
+	"bun/native-task-terminal.ts",
+	"bun/native-terminal-host/main.ts",
+	"bun/task-terminal-backend.ts",
+];
+
 describe("native-session registry isolation", () => {
-	it("is absent from the production source import graph", () => {
+	it("reaches production only through the sanctioned callers", () => {
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
 			.filter((path) => !path.startsWith(adapterRoot))
 			.filter((path) => !path.startsWith(multipaneRoot))
-			.filter((path) => readFileSync(path, "utf8").includes("native-terminal-registry"));
-		expect(importers).toEqual([]);
+			.filter((path) => !path.includes("__tests__"))
+			.filter((path) => readFileSync(path, "utf8").includes("native-terminal-registry"))
+			.map((path) => path.slice(sourceRoot.length + 1).replaceAll("\\", "/"))
+			.sort();
+		expect(importers).toEqual(SANCTIONED_PRODUCT_CALLERS);
 	});
 
 	it("never imports the removable prototype spikes", () => {
