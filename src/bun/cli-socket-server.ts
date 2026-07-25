@@ -11,7 +11,7 @@ import { createCompletionRequest } from "./completion-requests";
 import * as data from "./data";
 import { getPushMessage, getPushMessageLocal, moveTask, notifyFromCliDesktop, isAppForeground, getActiveContext, isNotificationSuppressed, pushCliAttention, pushCliToast, pushCliShowImage, pushCliShowArtifact, setFocusMode, clearMergeNotification } from "./rpc-handlers";
 import { getDevServerStatus, runDevServer, stopDevServer, restartDevServer } from "./rpc-handlers/tmux-pty";
-import { getTmuxLayout } from "./pty-server";
+import { getTmuxLayout, tmuxSessionExists } from "./pty-server";
 import { scheduleMessage as scheduleMessageCore, sendMessageImmediately } from "./scheduled-message-scheduler";
 import { getUserIdleSeconds } from "./user-activity";
 import * as repoConfig from "./repo-config";
@@ -19,6 +19,8 @@ import { loadSettings } from "./settings";
 import { addVent } from "./vents";
 import { createLogger } from "./logger";
 import { syncTaskBranchName } from "./task-branch-sync";
+import { nativeTaskTerminalAlive } from "./native-task-terminal";
+import { isTerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import { DEV3_HOME } from "./paths";
 import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
 
@@ -753,6 +755,66 @@ const handlers: Record<string, Handler> = {
 		// for this file (unit tests import it with the pipeline mocked out).
 		const { runAutomationNow } = await import("./automations-scheduler");
 		return runAutomationNow(project, automation);
+	},
+
+	/**
+	 * Preview/operator surface for the task's PRIMARY terminal backend (seq 1292).
+	 *
+	 * Read-only without `to`. With `to` it flips the persisted identity — refused
+	 * while either backend still owns a live session for this task, because live
+	 * terminal state is never migrated between backends: you stop the session
+	 * first, then switch. Deliberately CLI-only and unlisted in the UI.
+	 *
+	 * This is the ONE place that asks both backends about one task — the switch
+	 * gate needs that answer. It only reads: nothing here creates, attaches to, or
+	 * kills a session on either side.
+	 */
+	"task.terminalBackend": async (params) => {
+		const { project, task } = await resolveTaskFromParams(params);
+		const current = data.readTaskTerminalBackend(task);
+		if (!current.ok) {
+			throw new Error(
+				`Task ${task.id.slice(0, 8)} has an unreadable terminalBackend (${current.code}: ${JSON.stringify(current.received)}). ` +
+					'Repair it with --to tmux.',
+			);
+		}
+
+		const liveOn = async (): Promise<"tmux" | "native" | null> => {
+			if (await nativeTaskTerminalAlive(task.id)) return "native";
+			if (await tmuxSessionExists(task.id, task.tmuxSocket ?? undefined)) return "tmux";
+			return null;
+		};
+
+		if (params.to === undefined) {
+			return {
+				taskId: task.id,
+				projectId: project.id,
+				backend: current.backend,
+				explicit: current.present,
+				liveBackend: await liveOn(),
+			};
+		}
+
+		const target = String(params.to);
+		if (!isTerminalBackendIdentity(target)) {
+			throw new Error(`Invalid terminal backend "${target}". Use tmux or native.`);
+		}
+		const live = await liveOn();
+		if (live && target !== current.backend) {
+			throw new Error(
+				`Task ${task.id.slice(0, 8)} still has a live ${live} terminal. Stop it first ` +
+					"(move the task out of progress, or restart it after switching) — dev3 never transfers live terminal state between backends.",
+			);
+		}
+		const updated = await data.setTaskTerminalBackend(project, task.id, target);
+		getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+		return {
+			taskId: updated.id,
+			projectId: project.id,
+			backend: target,
+			explicit: true,
+			liveBackend: null,
+		};
 	},
 
 	"task.setLabels": async (params) => {

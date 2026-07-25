@@ -476,6 +476,23 @@ function destroyNativeSession(session: PtySession): Promise<void> {
 }
 
 /**
+ * Tear down a task's native session even when this app process never attached to
+ * it (an app restart between launch and completion). Routed by the task's
+ * persisted identity, so a native task never reaches the tmux teardown path.
+ */
+export function destroyNativeTaskSession(taskId: string): void {
+	const session = sessions.get(taskId);
+	if (session?.backend === "native") {
+		void destroyNativeSession(session);
+		return;
+	}
+	log.info("Destroying unattached native session", { taskId: shortId(taskId) });
+	stopNativeTaskTerminal(taskId).catch((err) => {
+		log.warn("Native session teardown failed (best-effort)", { taskId: shortId(taskId), error: String(err) });
+	});
+}
+
+/**
  * Destroy a session and, for the native backend, WAIT until its owned tree is
  * gone. Relaunching a native task must not race its own teardown: the session id
  * is deterministic, so a still-dying host would make the fresh `openSession` fail

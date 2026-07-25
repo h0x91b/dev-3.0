@@ -341,6 +341,58 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	process.stdout.write(`Moved task ${task.id.slice(0, 8)} → ${displayStatus}\n`);
 }
 
+interface TerminalBackendReport {
+	taskId: string;
+	backend: "tmux" | "native";
+	explicit: boolean;
+	liveBackend: "tmux" | "native" | null;
+}
+
+/**
+ * Inspect or flip which backend runs this task's PRIMARY terminal (seq 1292).
+ *
+ * Read-only without `--to`. `--to native` is the deliberate, reversible opt-in
+ * that makes the next launch of this task use the native terminal host; tmux
+ * stays the default for every task that never runs this command. The switch is
+ * refused while a terminal is still live, because live state is never migrated
+ * between backends.
+ */
+async function taskTerminalBackend(args: ParsedArgs, socketPath: string, context: CliContext | null): Promise<void> {
+	rejectUnknownFlags(args, ["id", "task", "task-id", "project", "to"]);
+	const taskId = resolveTaskId(args, context);
+	if (!taskId) {
+		exitUsage("Usage: dev3 task terminal-backend <id|--task id> [--to tmux|native]");
+	}
+
+	const to = args.flags.to;
+	if (to !== undefined && to !== "tmux" && to !== "native") {
+		exitUsage(`--to must be tmux or native (got "${to}")`);
+	}
+
+	const params: Record<string, unknown> = { taskId };
+	if (to !== undefined) params.to = to;
+	const projectId = resolveProjectId(args.flags.project, context);
+	if (projectId) params.projectId = projectId;
+
+	const resp = await sendRequest(socketPath, "task.terminalBackend", params);
+	if (!resp.ok) exitError(resp.error || "Failed to read the task terminal backend");
+
+	const report = resp.data as TerminalBackendReport;
+	const source = report.explicit ? "explicit" : "default (unmarked task)";
+	if (to === undefined) {
+		printDetail([
+			["Task", report.taskId.slice(0, 8)],
+			["Terminal backend", `${report.backend} — ${source}`],
+			["Live session", report.liveBackend ?? "none"],
+		]);
+		return;
+	}
+	process.stdout.write(
+		`Task ${report.taskId.slice(0, 8)} terminal backend → ${report.backend}\n` +
+			"Takes effect on the next launch of this task.\n",
+	);
+}
+
 export async function handleTask(
 	subcommand: string | undefined,
 	args: ParsedArgs,
@@ -356,6 +408,8 @@ export async function handleTask(
 			return updateTask(args, socketPath, context);
 		case "move":
 			return moveTask(args, socketPath, context);
+		case "terminal-backend":
+			return taskTerminalBackend(args, socketPath, context);
 		case "list":
 			// Alias: the enumerate command lives under the plural `tasks list`.
 			// `task list` is a natural mistype, so forward it transparently.
@@ -363,7 +417,7 @@ export async function handleTask(
 		default:
 			exitUsage(
 				`Unknown subcommand: task ${subcommand || "(none)"}` +
-				"\nAvailable: task show, task create, task update, task move",
+				"\nAvailable: task show, task create, task update, task move, task terminal-backend",
 			);
 	}
 }

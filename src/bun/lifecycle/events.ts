@@ -164,7 +164,8 @@ export type LifecycleEvent =
 		type: "bootObserved";
 		reality: {
 			worktreeExists: boolean;
-			tmuxAlive: boolean;
+			/** The task's terminal session is live on ITS backend (tmux or native). */
+			terminalAlive: boolean;
 			worktreePath?: string | null;
 			branchName?: string | null;
 		};

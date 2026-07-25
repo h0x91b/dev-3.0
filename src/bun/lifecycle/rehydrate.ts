@@ -5,6 +5,7 @@ import * as git from "../git";
 import * as pty from "../pty-server";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { log } from "../rpc-handlers/shared";
+import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import { dispatchLifecycleEvent } from "./service";
 
 function shouldRehydrate(task: Task): boolean {
@@ -26,10 +27,34 @@ function expectedWorktreePath(project: Project, task: Task): string | null {
 	return `${git.taskDir(project, task)}/worktree`;
 }
 
+/**
+ * Is this task's terminal still live, on ITS backend?
+ *
+ * A native task must never be probed through tmux — a tmux `has-session` for it
+ * would always answer "no" and the lifecycle machine would declare a perfectly
+ * healthy host dead. Reattaching here is what makes an app restart transparent:
+ * the host, shell, and agent kept running, so we rebind to them instead of
+ * spawning anything.
+ */
+async function terminalStillAlive(project: Project, task: Task, worktreePath: string | null): Promise<boolean> {
+	if (taskTerminalBackendIdentity(task) === "tmux") {
+		return pty.tmuxSessionExists(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET);
+	}
+	try {
+		return await pty.reattachNativeTaskSession(task.id, project.id, worktreePath ?? task.worktreePath ?? "");
+	} catch (error) {
+		log.warn("Lifecycle boot native reattach failed", {
+			taskId: task.id.slice(0, 8),
+			error: String(error),
+		});
+		return false;
+	}
+}
+
 async function rehydrateTask(project: Project, task: Task): Promise<void> {
 	const worktreePath = expectedWorktreePath(project, task);
 	const worktreeExists = worktreePath ? existsSync(worktreePath) : false;
-	const tmuxAlive = await pty.tmuxSessionExists(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET);
+	const terminalAlive = await terminalStillAlive(project, task, worktreePath);
 	let branchName = task.branchName ?? null;
 	if (project.kind !== "virtual" && worktreeExists && worktreePath && !branchName) {
 		try {
@@ -45,7 +70,7 @@ async function rehydrateTask(project: Project, task: Task): Promise<void> {
 		type: "bootObserved",
 		reality: {
 			worktreeExists,
-			tmuxAlive,
+			terminalAlive,
 			worktreePath: worktreeExists ? worktreePath : null,
 			branchName,
 		},

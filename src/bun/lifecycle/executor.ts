@@ -29,6 +29,7 @@ import {
 	withTaskPreparationRunId,
 } from "../preparation-runtime";
 import * as pty from "../pty-server";
+import { taskTerminalBackendIdentity } from "../task-terminal-backend";
 import * as repoConfig from "../repo-config";
 import { loadSettings, loadSettingsSync } from "../settings";
 import { getUserShell } from "../shell-env";
@@ -733,9 +734,19 @@ export async function executeLifecycleEffect(
 			return {};
 		}
 		case "destroyTaskPty":
-			pty.destroySession(ctx.sourceTask.id, ctx.sourceTask.tmuxSocket ?? undefined);
+			// Routed by the task's own backend identity, not by whatever happens to be
+			// in memory: teardown must stop the tree this task actually owns and touch
+			// no session — of either backend — belonging to anything else.
+			if (taskTerminalBackendIdentity(ctx.sourceTask) === "native") {
+				pty.destroyNativeTaskSession(ctx.sourceTask.id);
+			} else {
+				pty.destroySession(ctx.sourceTask.id, ctx.sourceTask.tmuxSocket ?? undefined);
+			}
 			return {};
 		case "killDevServer":
+			// A dev server is a tmux session; a native task has none, and probing tmux
+			// for it is exactly what the native path must never do.
+			if (taskTerminalBackendIdentity(ctx.sourceTask) === "native") return {};
 			await killDevServerSession(
 				ctx.sourceTask.id,
 				ctx.sourceTask.tmuxSocket ?? DEFAULT_TMUX_SOCKET,

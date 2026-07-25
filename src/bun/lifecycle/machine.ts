@@ -316,9 +316,9 @@ function bootTransition(
 	state: LifecycleState,
 	event: Extract<LifecycleEvent, { type: "bootObserved" }>,
 ): TransitionResult {
-	const { worktreeExists, tmuxAlive } = event.reality;
+	const { worktreeExists, terminalAlive } = event.reality;
 	if (state.runtime.phase === "idle") {
-		if (ACTIVE_STATUSES.has(state.column.status) && worktreeExists && tmuxAlive) {
+		if (ACTIVE_STATUSES.has(state.column.status) && worktreeExists && terminalAlive) {
 			const runtime = { phase: "running" } as const;
 			return {
 				next: { ...state, runtime, facts: { ...state.facts, hasWorktree: worktreeExists } },
@@ -329,7 +329,7 @@ function bootTransition(
 	}
 
 	if (state.runtime.phase === "running") {
-		if (tmuxAlive) return unchanged({ ...state, facts: { ...state.facts, hasWorktree: worktreeExists } });
+		if (terminalAlive) return unchanged({ ...state, facts: { ...state.facts, hasWorktree: worktreeExists } });
 		const runtime = { phase: "idle" } as const;
 		return {
 			next: { ...state, runtime, facts: { ...state.facts, hasWorktree: worktreeExists } },
@@ -338,7 +338,7 @@ function bootTransition(
 	}
 
 	if (state.runtime.phase === "preparing") {
-		if (tmuxAlive && worktreeExists) {
+		if (terminalAlive && worktreeExists) {
 			const runtime = { phase: "running" } as const;
 			const taskPatch = event.reality.worktreePath
 				? {

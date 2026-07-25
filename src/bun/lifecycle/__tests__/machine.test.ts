@@ -626,7 +626,7 @@ describe("boot runtime reconciliation", () => {
 		["running", true, false, "idle", ["persistRuntime"]],
 	] as const)(
 		"reconciles %s with worktree=%s tmux=%s to %s",
-		(runtime, worktreeExists, tmuxAlive, expectedRuntime, expectedEffects) => {
+		(runtime, worktreeExists, terminalAlive, expectedRuntime, expectedEffects) => {
 			const current = state("in-progress", {
 				runtime: { phase: runtime },
 				facts: {
@@ -638,7 +638,7 @@ describe("boot runtime reconciliation", () => {
 			});
 			const result = transition(current, {
 				type: "bootObserved",
-				reality: { worktreeExists, tmuxAlive },
+				reality: { worktreeExists, terminalAlive },
 			});
 
 			expect(result.next.runtime.phase).toBe(expectedRuntime);
@@ -653,7 +653,7 @@ describe("boot runtime reconciliation", () => {
 		[true, true, "in-progress", "running"],
 	] as const)(
 		"reconciles preparing with worktree=%s tmux=%s",
-		(worktreeExists, tmuxAlive, expectedStatus, expectedRuntime) => {
+		(worktreeExists, terminalAlive, expectedStatus, expectedRuntime) => {
 			const current = state("in-progress", {
 				runtime: {
 					phase: "preparing",
@@ -670,7 +670,7 @@ describe("boot runtime reconciliation", () => {
 			});
 			const result = transition(current, {
 				type: "bootObserved",
-				reality: { worktreeExists, tmuxAlive },
+				reality: { worktreeExists, terminalAlive },
 			});
 
 			expect(result.next.column.status).toBe(expectedStatus);
@@ -685,7 +685,7 @@ describe("boot runtime reconciliation", () => {
 		[true, true],
 	] as const)(
 		"reconciles tearing-down with worktree=%s tmux=%s",
-		(worktreeExists, tmuxAlive) => {
+		(worktreeExists, terminalAlive) => {
 			const current = state("in-progress", {
 				runtime: {
 					phase: "tearing-down",
@@ -701,7 +701,7 @@ describe("boot runtime reconciliation", () => {
 			});
 			const result = transition(current, {
 				type: "bootObserved",
-				reality: { worktreeExists, tmuxAlive },
+				reality: { worktreeExists, terminalAlive },
 			});
 
 			expect(result.next.column.status).toBe("completed");
@@ -721,7 +721,7 @@ describe("boot runtime reconciliation", () => {
 		});
 		const result = transition(current, {
 			type: "bootObserved",
-			reality: { worktreeExists: true, tmuxAlive: false },
+			reality: { worktreeExists: true, terminalAlive: false },
 		});
 
 		expect(result.next.column.status).toBe("todo");
@@ -748,7 +748,7 @@ describe("boot runtime reconciliation", () => {
 			type: "bootObserved",
 			reality: {
 				worktreeExists: true,
-				tmuxAlive: true,
+				terminalAlive: true,
 				worktreePath: "/tmp/recovered",
 				branchName: "dev3/recovered",
 			},
@@ -774,7 +774,7 @@ describe("boot runtime reconciliation", () => {
 		});
 		const result = transition(current, {
 			type: "bootObserved",
-			reality: { worktreeExists: false, tmuxAlive: false },
+			reality: { worktreeExists: false, terminalAlive: false },
 		});
 
 		expect(result.next.column.status).toBe("cancelled");
@@ -795,7 +795,7 @@ describe("boot runtime reconciliation", () => {
 		});
 		const result = transition(current, {
 			type: "bootObserved",
-			reality: { worktreeExists: true, tmuxAlive: false },
+			reality: { worktreeExists: true, terminalAlive: false },
 		});
 
 		expect(result.effects.find((candidate) => candidate.type === "removeWorktree")).toMatchObject({
