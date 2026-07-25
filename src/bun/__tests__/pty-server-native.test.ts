@@ -42,8 +42,10 @@ vi.mock("../native-task-terminal", () => ({
 
 import { spawn } from "../spawn";
 import { startNativeTaskTerminal, stopNativeTaskTerminal } from "../native-task-terminal";
+import { tmux } from "../tmux";
 import {
 	createNativeTaskSession,
+	destroyNativeTaskSession,
 	destroySessionAwaited,
 	getSessionBackend,
 	hasDeadSession,
@@ -52,6 +54,7 @@ import {
 } from "../pty-server";
 
 const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
+const SIBLING_TASK_ID = "11223344-5555-6666-7777-888888888888";
 const LAUNCH = { executable: "/bin/zsh", argv: ["/tmp/dev3/run.sh"] };
 
 function fakeTerminal() {
@@ -143,5 +146,74 @@ describe("destroySessionAwaited on a native session", () => {
 		vi.mocked(stopNativeTaskTerminal).mockRejectedValueOnce(new Error("still present after teardown"));
 
 		await expect(destroySessionAwaited(TASK_ID)).rejects.toThrow(/still present after teardown/);
+	});
+});
+
+/**
+ * The lifecycle teardown primitive (seq 1298): the cleanup script and the worktree
+ * removal run after it, so it may only resolve once the owned tree is verified gone
+ * — attached or not — and it must leave every other session alone.
+ */
+describe("destroyNativeTaskSession", () => {
+	async function liveSession(taskId: string): Promise<ReturnType<typeof fakeTerminal>> {
+		const terminal = fakeTerminal();
+		const boot = deferredBoot();
+		const creating = createNativeTaskSession(taskId, "proj-1", "/tmp/wt", LAUNCH);
+		boot.settle(terminal);
+		await creating;
+		return terminal;
+	}
+
+	it("releases the attached client and then waits for the owned tree", async () => {
+		const terminal = await liveSession(TASK_ID);
+
+		await destroyNativeTaskSession(TASK_ID);
+
+		expect(terminal.detach).toHaveBeenCalledTimes(1);
+		expect(stopNativeTaskTerminal).toHaveBeenCalledWith(TASK_ID);
+		expect(hasSession(TASK_ID)).toBe(false);
+	});
+
+	it("stops an unattached tree after an app restart, without spawning anything", async () => {
+		expect(hasSession(TASK_ID)).toBe(false);
+
+		await destroyNativeTaskSession(TASK_ID);
+
+		expect(stopNativeTaskTerminal).toHaveBeenCalledWith(TASK_ID);
+		expect(startNativeTaskTerminal).not.toHaveBeenCalled();
+		expect(spawn).not.toHaveBeenCalled();
+	});
+
+	it("stays an idempotent success when repeated on an already-stopped task", async () => {
+		await liveSession(TASK_ID);
+
+		await destroyNativeTaskSession(TASK_ID);
+		await expect(destroyNativeTaskSession(TASK_ID)).resolves.toBeUndefined();
+
+		expect(stopNativeTaskTerminal).toHaveBeenCalledTimes(2);
+		expect(startNativeTaskTerminal).toHaveBeenCalledTimes(1);
+	});
+
+	it("propagates an unconfirmed teardown so the lifecycle can hold off cleanup", async () => {
+		await liveSession(TASK_ID);
+		vi.mocked(stopNativeTaskTerminal).mockRejectedValueOnce(new Error("still present after teardown"));
+
+		await expect(destroyNativeTaskSession(TASK_ID)).rejects.toThrow(/still present after teardown/);
+	});
+
+	it("leaves a sibling native session alone and never reaches for tmux", async () => {
+		const sibling = await liveSession(SIBLING_TASK_ID);
+		await liveSession(TASK_ID);
+		const killSession = vi.spyOn(tmux, "killSession").mockResolvedValue("" as never);
+
+		await destroyNativeTaskSession(TASK_ID);
+
+		expect(hasSession(SIBLING_TASK_ID)).toBe(true);
+		expect(sibling.detach).not.toHaveBeenCalled();
+		expect(vi.mocked(stopNativeTaskTerminal).mock.calls).toEqual([[TASK_ID]]);
+		expect(killSession).not.toHaveBeenCalled();
+
+		await destroyNativeTaskSession(SIBLING_TASK_ID);
+		killSession.mockRestore();
 	});
 });

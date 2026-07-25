@@ -738,9 +738,21 @@ export async function executeLifecycleEffect(
 			// in memory: teardown must stop the tree this task actually owns and touch
 			// no session — of either backend — belonging to anything else.
 			if (taskTerminalBackendIdentity(ctx.sourceTask) === "native") {
-				pty.destroyNativeTaskSession(ctx.sourceTask.id);
-			} else {
+				// Awaited on purpose, and the failure propagates: the effects that follow
+				// (cleanup script, diff capture, worktree removal) must never run while
+				// this task's host tree is still alive.
+				await pty.destroyNativeTaskSession(ctx.sourceTask.id);
+				return {};
+			}
+			try {
 				pty.destroySession(ctx.sourceTask.id, ctx.sourceTask.tmuxSocket ?? undefined);
+			} catch (error) {
+				// The legacy path is fire-and-forget by design; the abort policy on this
+				// effect exists for the native tree only.
+				log.warn("tmux PTY teardown failed (best-effort)", {
+					taskId: ctx.sourceTask.id.slice(0, 8),
+					error: String(error),
+				});
 			}
 			return {};
 		case "killDevServer":

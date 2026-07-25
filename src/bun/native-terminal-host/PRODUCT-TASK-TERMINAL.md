@@ -25,10 +25,13 @@ driver (src/bun/__tests__/native-task-terminal.bun-e2e.ts)
   ├─ attachNativeTaskTerminal (writer) + raw NativeSessionClient (observer)
   ├─ stopNativeTaskTerminal ▸ owned tree dies, tmux sentinel survives
   ├─ spawn ─▶ controller again ▸ honest `attached:false`, nothing respawns
-  └─ SECOND task, renderer transport (section 9):
-       pty.createNativeTaskSession ─▶ ws://localhost:<ptyPort>?session=<taskId>
-       renderer A + renderer B — real WebSockets, as TerminalView.tsx drives them
-       ▸ destroySessionAwaited kills the tree; tmux sentinel still alive
+  ├─ SECOND task, renderer transport (section 9):
+  │    pty.createNativeTaskSession ─▶ ws://localhost:<ptyPort>?session=<taskId>
+  │    renderer A + renderer B — real WebSockets, as TerminalView.tsx drives them
+  │    ▸ destroySessionAwaited kills the tree; tmux sentinel still alive
+  └─ TWO more tasks, lifecycle teardown (section 10):
+       unattached host + nested child, plus a sibling session
+       ▸ destroyNativeTaskSession resolves only once the whole owned tree is gone
 ```
 
 ## What it proves
@@ -66,6 +69,14 @@ driver (src/bun/__tests__/native-task-terminal.bun-e2e.ts)
      reports 120x40, and the shell answers `GEOM-120-40`,
    - `destroySessionAwaited` clears `hasSession`, kills that task's host + shell tree,
      removes its registry state, and leaves the tmux sentinel alive.
+10. **Lifecycle teardown ordering** (seq 1298) — two more task ids, neither registered
+   with `pty-server`, which is the shape after an app restart: the lifecycle holds a
+   native task record and no in-memory session. The shell starts a long-lived NESTED
+   child, then `pty.destroyNativeTaskSession` is awaited — and with **no polling
+   afterwards** the host, shell and nested child are all already gone, which is the
+   ordering guarantee the cleanup script and worktree removal depend on. The sibling
+   native session and the tmux sentinel are untouched, and repeating the call on the
+   already-stopped task succeeds without spawning anything.
 
 Windows-capable by construction: the shell, line ending, and geometry/marker probes
 branch on the platform, and the shell comes from the registry's own

@@ -78,7 +78,10 @@ function preparationFailureEffects(
 		effect({ type: "cancelPreparationProcesses" }),
 		effect({ type: "clearTaskRuntime" }),
 		effect({ type: "releasePorts" }),
-		effect({ type: "destroyTaskPty" }),
+		// Aborts on failure: an unconfirmed terminal teardown must not be followed by
+		// the cleanup script or worktree removal. The failure keeps the persisted
+		// preparation state, so the worktree survives for an explicit retry.
+		effect({ type: "destroyTaskPty" }, "abort"),
 		effect({ type: "killDevServer" }),
 	];
 	if (state.facts.projectKind === "git" && (state.facts.hasWorktree || state.runtime.phase === "preparing")) {
@@ -262,7 +265,10 @@ function moveTransition(
 			const allowDerivedPath = state.runtime.phase === "preparing";
 			effects.push(
 				effect({ type: "push", message: "taskUpdated", view: "shuttingDown" }),
-				effect({ type: "destroyTaskPty" }),
+				// Same abort policy as removeWorktree below, and for the same reason:
+				// nothing downstream may touch the worktree until the task's own
+				// terminal tree is confirmed gone.
+				effect({ type: "destroyTaskPty" }, "abort", teardownFailed),
 				effect({ type: "killDevServer" }),
 				effect({ type: "runCleanupScript", toStatus: terminalStatus, allowDerivedPath }),
 				effect({ type: "captureCompletedDiffStats", allowDerivedPath }),
@@ -383,7 +389,7 @@ function bootTransition(
 	return {
 		next,
 		effects: [
-			effect({ type: "destroyTaskPty" }),
+			effect({ type: "destroyTaskPty" }, "abort", teardownFailed),
 			effect({ type: "killDevServer" }),
 			effect({ type: "runCleanupScript", toStatus: terminalStatus, allowDerivedPath: true }),
 			effect({ type: "captureCompletedDiffStats", allowDerivedPath: true }),
@@ -407,7 +413,9 @@ export function transition(state: LifecycleState, event: LifecycleEvent): Transi
 					? [effect({ type: "cancelPreparationProcesses" })]
 					: []),
 				effect({ type: "releasePorts" }),
-				effect({ type: "destroyTaskPty" }),
+				// A failed terminal teardown aborts before cleanup, workspace removal,
+				// and the record delete — the task stays deletable once the tree is gone.
+				effect({ type: "destroyTaskPty" }, "abort"),
 			];
 			if (ACTIVE_STATUSES.has(state.column.status) || state.facts.hasWorktree) {
 				effects.push(

@@ -506,28 +506,32 @@ function destroyNativeSession(session: PtySession): Promise<void> {
 }
 
 /**
- * Tear down a task's native session even when this app process never attached to
- * it (an app restart between launch and completion). Routed by the task's
- * persisted identity, so a native task never reaches the tmux teardown path.
+ * Tear down a task's native session and WAIT for its owned tree, even when this
+ * app process never attached to it (an app restart between launch and
+ * completion). Routed by the task's persisted identity, so a native task never
+ * reaches the tmux teardown path.
+ *
+ * Our own client state is released immediately, but the promise settles only once
+ * the host/shell/descendant tree is verified gone: the lifecycle must not run a
+ * cleanup script or remove the worktree under a still-live process tree. An
+ * unconfirmed teardown rejects; a missing or already-stopped session is a success
+ * that spawns and adopts nothing, so retries stay idempotent.
  */
-export function destroyNativeTaskSession(taskId: string): void {
+export async function destroyNativeTaskSession(taskId: string): Promise<void> {
 	const session = sessions.get(taskId);
 	if (session?.backend === "native") {
-		void destroyNativeSession(session);
-		return;
-	}
-	if (session) {
+		releaseNativeSession(session);
+	} else if (session) {
 		// The record says native but memory holds a tmux session — an inconsistent
 		// state we tear down on BOTH sides rather than leaving half a session behind.
 		log.warn("Native teardown found a tmux session in memory; tearing down both", {
 			taskId: shortId(taskId),
 		});
 		destroySession(taskId);
+	} else {
+		log.info("Destroying unattached native session", { taskId: shortId(taskId) });
 	}
-	log.info("Destroying unattached native session", { taskId: shortId(taskId) });
-	stopNativeTaskTerminal(taskId).catch((err) => {
-		log.warn("Native session teardown failed (best-effort)", { taskId: shortId(taskId), error: String(err) });
-	});
+	await stopNativeTaskTerminal(taskId);
 }
 
 /**

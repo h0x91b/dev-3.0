@@ -230,6 +230,32 @@ describe("task lifecycle transition table", () => {
 		});
 	});
 
+	it("declares the terminal PTY teardown as an abort with a teardown-failure compensation", () => {
+		const result = transition(state("in-progress"), {
+			type: "moveRequested",
+			target: { status: "completed" },
+			runId: "run-teardown",
+		});
+		const pty = result.effects.find((candidate) => candidate.type === "destroyTaskPty");
+
+		expect(pty).toMatchObject({
+			onError: "abort",
+			compensatingEvent: { type: "teardownFailed", runId: "run-teardown" },
+		});
+		const types = result.effects.map((candidate) => candidate.type);
+		expect(types.indexOf("destroyTaskPty")).toBeLessThan(types.indexOf("runCleanupScript"));
+		expect(types.indexOf("runCleanupScript")).toBeLessThan(types.indexOf("removeWorktree"));
+	});
+
+	it("aborts a delete before cleanup and the record delete when the PTY teardown fails", () => {
+		const result = transition(state("in-progress"), { type: "deleteRequested" });
+		const types = result.effects.map((candidate) => candidate.type);
+
+		expect(result.effects.find((candidate) => candidate.type === "destroyTaskPty")).toMatchObject({ onError: "abort" });
+		expect(types.indexOf("destroyTaskPty")).toBeLessThan(types.indexOf("runCleanupScript"));
+		expect(types.indexOf("removeTaskWorkspace")).toBeLessThan(types.indexOf("deleteTaskRecord"));
+	});
+
 	it("ignores cancellation from an obsolete preparation run", () => {
 		const preparing = state("in-progress", {
 			runtime: {

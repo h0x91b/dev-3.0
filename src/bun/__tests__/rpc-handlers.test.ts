@@ -103,7 +103,7 @@ vi.mock("../pty-server", () => ({
 	reattachNativeTaskSession: vi.fn(() => Promise.resolve(false)),
 	destroySession: vi.fn(),
 	destroySessionAwaited: vi.fn(() => Promise.resolve()),
-	destroyNativeTaskSession: vi.fn(),
+	destroyNativeTaskSession: vi.fn(async () => undefined),
 	hasSession: vi.fn(),
 	hasDeadSession: vi.fn(),
 	// Unmarked tasks are tmux — the native branches are exercised by their own suites.

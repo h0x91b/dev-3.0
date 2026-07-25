@@ -27,7 +27,11 @@
  *      drives it — `pty.createNativeTaskSession` plus real WebSocket clients on the
  *      pty-server bridge — proving native bytes reach a renderer socket, two
  *      renderers share one shell, the in-band resize sequence lands (under the
- *      smallest-client-size rule), and `destroySessionAwaited` kills the tree.
+ *      smallest-client-size rule), and `destroySessionAwaited` kills the tree;
+ *  10. LIFECYCLE teardown (seq 1298): `pty.destroyNativeTaskSession` on a task with
+ *      NO in-memory session (the app-restart shape) resolves only after its host,
+ *      shell and NESTED CHILD are gone, leaves a sibling native session and the tmux
+ *      sentinel alive, and repeats idempotently.
  *
  * Isolation: registry state, host images, and logs are redirected into a tmpdir
  * (DEV3_NATIVE_SESSIONS_DIR / DEV3_NATIVE_HOST_IMAGES_DIR / DEV3_LOG_DIR), so the
@@ -38,7 +42,7 @@
  * tmpdir removal, non-zero when any check failed.
  */
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -83,6 +87,12 @@ const SESSION_ID = nativeTaskSessionId(TASK_ID);
 // The renderer-transport section owns its OWN task so the two halves stay independent.
 const WS_TASK_ID = "00000000-0000-4000-8000-0000000e2e34";
 const WS_SESSION_ID = nativeTaskSessionId(WS_TASK_ID);
+// The lifecycle-teardown section: one task torn down with no in-memory pty-server
+// session (the app-restart shape) plus a sibling that must survive it untouched.
+const LC_TASK_ID = "00000000-0000-4000-8000-0000000e2e56";
+const LC_SESSION_ID = nativeTaskSessionId(LC_TASK_ID);
+const SIB_TASK_ID = "00000000-0000-4000-8000-0000000e2e78";
+const SIB_SESSION_ID = nativeTaskSessionId(SIB_TASK_ID);
 
 interface Sink {
 	text: () => string;
@@ -188,6 +198,32 @@ function geometryProbe(cols: number, rows: number): { command: string; expected:
 		};
 	}
 	return { command: `echo "GEO[$(stty size | tr ' ' x)]"`, expected: `GEO[${rows}x${cols}]` };
+}
+
+/**
+ * Start a long-lived NESTED child inside the shell and report its pid through a
+ * FILE, not the byte stream — the pid must be readable even if an interactive
+ * shell mangles or delays the echo.
+ */
+function nestedChildProbe(pidFile: string): { command: string; read: () => number } {
+	const read = (): number => {
+		try {
+			// Digits only: PowerShell's Set-Content encoding (BOM, UTF-16, CRLF) varies
+			// by host version and must not decide whether this probe works.
+			const digits = /(\d+)/.exec(readFileSync(pidFile, "utf8").replace(/\0/g, ""));
+			const pid = digits ? Number(digits[1]) : Number.NaN;
+			return Number.isInteger(pid) && pid > 0 ? pid : Number.NaN;
+		} catch {
+			return Number.NaN;
+		}
+	};
+	if (isWindows) {
+		return {
+			command: `$c = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 600' -PassThru; Set-Content -Path '${pidFile}' -Value $c.Id`,
+			read,
+		};
+	}
+	return { command: `sleep 600 & echo $! > '${pidFile}'`, read };
 }
 
 function sessionDirCount(): number {
@@ -447,6 +483,72 @@ async function run(): Promise<void> {
 		if (sentinelAlive) {
 			check(await tmux.hasSession(sentinelSession, { socket: sentinelSocket }), "the tmux sentinel session survived the renderer-transport teardown too");
 		}
+
+		// ── 10. lifecycle teardown: an AWAITED stop of an unattached tree with a nested child ──
+		// Both sessions are created through the product path but never registered with
+		// pty-server, which is exactly the state after an app restart: the lifecycle has
+		// a native task record and no in-memory session to detach from.
+		const lifecycle = await startNativeTaskTerminal({
+			taskId: LC_TASK_ID,
+			cwd: work,
+			env: {},
+			launch: taskLaunch(work),
+			cols: 100,
+			rows: 30,
+			onOutput: () => {},
+			onClosed: () => {},
+		});
+		const sibling = await startNativeTaskTerminal({
+			taskId: SIB_TASK_ID,
+			cwd: work,
+			env: {},
+			launch: taskLaunch(work),
+			cols: 100,
+			rows: 30,
+			onOutput: () => {},
+			onClosed: () => {},
+		});
+		const child = nestedChildProbe(join(work, "nested-child.pid"));
+		const childSeen = await sendUntilObserved({
+			send: () => lifecycle.write(`${child.command}${lineEnd}`),
+			observe: () => (Number.isNaN(child.read()) ? null : "child"),
+			...SHELL_WARMUP_PROBE,
+		});
+		const childPid = child.read();
+		check(childSeen !== null && isProcessAlive(childPid), `the task shell owns a live nested child (pid ${childPid})`);
+		// Drop our clients: from here nothing in this process holds either session.
+		lifecycle.detach();
+		sibling.detach();
+		check(!pty.hasSession(LC_TASK_ID), "pty-server holds NO in-memory session for the task about to be torn down");
+
+		await pty.destroyNativeTaskSession(LC_TASK_ID);
+		// No polling on purpose: the promise resolving IS the claim that the owned tree
+		// is already gone, which is what the lifecycle relies on before cleanup.
+		check(
+			!isProcessAlive(lifecycle.hostPid) && !isProcessAlive(lifecycle.shellPid) && !isProcessAlive(childPid),
+			"the awaited teardown resolved only after host, shell and nested child were all gone",
+		);
+		check(readRecord(LC_SESSION_ID) === null, "the torn-down task's registry state is gone");
+		check(
+			isProcessAlive(sibling.hostPid) && isProcessAlive(sibling.shellPid) && readRecord(SIB_SESSION_ID) !== null,
+			"the sibling native session is untouched by the other task's teardown",
+		);
+		if (sentinelAlive) {
+			check(await tmux.hasSession(sentinelSession, { socket: sentinelSocket }), "the tmux sentinel session survived the lifecycle teardown");
+		}
+
+		const dirsBeforeRepeat = sessionDirCount();
+		await pty.destroyNativeTaskSession(LC_TASK_ID);
+		check(
+			sessionDirCount() === dirsBeforeRepeat && readRecord(SIB_SESSION_ID) !== null,
+			"repeating the teardown of an already-stopped task succeeds and spawns nothing",
+		);
+
+		await pty.destroyNativeTaskSession(SIB_TASK_ID);
+		check(
+			!isProcessAlive(sibling.hostPid) && !isProcessAlive(sibling.shellPid) && sessionDirCount() === 0,
+			"tearing the sibling down afterwards leaves no native session behind",
+		);
 	} finally {
 		try {
 			terminal?.detach();
@@ -463,6 +565,8 @@ async function run(): Promise<void> {
 		try {
 			await stopNativeTaskTerminal(TASK_ID);
 			await stopNativeTaskTerminal(WS_TASK_ID);
+			await stopNativeTaskTerminal(LC_TASK_ID);
+			await stopNativeTaskTerminal(SIB_TASK_ID);
 		} catch {
 			// best-effort
 		}
