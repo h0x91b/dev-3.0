@@ -1,7 +1,8 @@
 /**
  * Isolation guards for the native single-view adapter (seq 1254):
- *  - No production source imports it (it has no product callers yet). This is
- *    what keeps the registry it consumes out of the production graph too.
+ *  - Only the sanctioned product terminal-backend seam imports it, and that seam
+ *    has no product callers either — which is what keeps the registry it
+ *    consumes out of the production graph too.
  *  - It never imports the removable prototype spikes.
  *  - Its production (non-test) code never imports the test-only parity corpus —
  *    the adapter conforms to the ParityRunner shape structurally; only tests
@@ -29,14 +30,20 @@ function sourceFiles(directory: string): string[] {
 const moduleFiles = sourceFiles(moduleRoot);
 const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests__"));
 
+// The product terminal-backend seam (seq 1280) is a SANCTIONED consumer: its
+// native adapter wraps this one, and it has no product callers of its own
+// (proved by `bun/terminal-backend/__tests__/isolation.test.ts`).
+const seamRoot = resolve(sourceRoot, "bun/terminal-backend");
+
 describe("native single-view adapter isolation", () => {
-	it("has no product callers (absent from the production import graph)", () => {
+	it("has no product callers beyond the sanctioned seam", () => {
 		// Match an actual import/require of the module, not a stray mention (the
 		// registry/parity isolation tests reference the adapter path as a string to
 		// exempt this sanctioned consumer).
 		const importsModule = /(?:from|import|require\s*\()\s*['"][^'"]*native-terminal-adapter/;
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
+			.filter((path) => !path.startsWith(seamRoot))
 			.filter((path) => importsModule.test(readFileSync(path, "utf8")));
 		expect(importers).toEqual([]);
 	});

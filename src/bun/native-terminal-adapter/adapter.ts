@@ -160,12 +160,25 @@ export class NativeSingleViewAdapter {
 		if (view !== record.paneId) throw new MultiViewUnsupportedError("focusView on a second view");
 	}
 
-	async sendInput(id: string, view: string, text: string): Promise<void> {
-		const record = await this.ownedRecord(id);
-		if (!record) throw new NativeSessionNotFoundError(id);
-		if (view !== record.paneId) throw new NativeViewGoneError(id, view);
-		const client = await this.ensureClient(id, record);
-		client.input(text + INPUT_SUBMIT);
+	/** A typed line: the text plus the submit key, as the corpus scenarios drive it. */
+	sendInput(id: string, view: string, text: string): Promise<void> {
+		return this.writeInput(id, view, text + INPUT_SUBMIT);
+	}
+
+	/** Raw input delivered verbatim — no submit key appended. */
+	async writeInput(id: string, view: string, data: string): Promise<void> {
+		const client = await this.viewClient(id, view);
+		client.input(data);
+	}
+
+	async resizeView(id: string, view: string, cols: number, rows: number): Promise<void> {
+		const client = await this.viewClient(id, view);
+		client.resize(cols, rows);
+	}
+
+	/** Release this controller's client for a session; the session keeps running. */
+	detachSession(id: string): Promise<void> {
+		return this.detach(id);
 	}
 
 	async capture(id: string, view: string, opts: CaptureOptions = {}): Promise<string> {
@@ -227,6 +240,14 @@ export class NativeSingleViewAdapter {
 			this.attachments.set(id, attachment);
 		}
 		return attachment;
+	}
+
+	/** The attached client for a live, owned view — the shared I/O precondition. */
+	private async viewClient(id: string, view: string): Promise<NativeSessionClient> {
+		const record = await this.ownedRecord(id);
+		if (!record) throw new NativeSessionNotFoundError(id);
+		if (view !== record.paneId) throw new NativeViewGoneError(id, view);
+		return this.ensureClient(id, record);
 	}
 
 	private async ensureClient(id: string, record: NativeSessionRecord): Promise<NativeSessionClient> {

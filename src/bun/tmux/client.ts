@@ -382,9 +382,32 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["resize-pane", "-Z", "-t", target], opts);
 	}
 
-	/** `send-keys -t <target> <keys…>` — each entry is one tmux key argument. */
-	sendKeys(target: string, keys: readonly string[], opts?: CommandOpts): Promise<void> {
-		return this.runCommand(opts?.socket, ["send-keys", "-t", target, ...keys], opts);
+	/**
+	 * `send-keys -t <target> <keys…>` — each entry is one tmux key argument.
+	 * `literal` adds `-l` so the entries are sent as raw text (control bytes
+	 * included) instead of being looked up as key names.
+	 */
+	sendKeys(
+		target: string,
+		keys: readonly string[],
+		opts?: CommandOpts & { literal?: boolean },
+	): Promise<void> {
+		const args = ["send-keys"];
+		if (opts?.literal) args.push("-l");
+		args.push("-t", target, ...keys);
+		return this.runCommand(opts?.socket, args, opts);
+	}
+
+	/**
+	 * `resize-window -t <target> -x -y` — set the window geometry explicitly.
+	 * tmux switches the window to manual sizing, so this works on a detached
+	 * session with no attached client dictating the size.
+	 */
+	resizeWindow(
+		opts: { target: string; cols: number; rows: number } & CommandOpts,
+	): Promise<void> {
+		const args = ["resize-window", "-t", opts.target, "-x", String(opts.cols), "-y", String(opts.rows)];
+		return this.runCommand(opts.socket, args, opts);
 	}
 
 	/** `send-keys -X cancel` — leave copy-mode in the target pane. */

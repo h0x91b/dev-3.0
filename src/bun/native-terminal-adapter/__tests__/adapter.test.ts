@@ -78,7 +78,7 @@ interface Harness {
 	records: Map<string, NativeSessionRecord>;
 	snapshots: Map<string, ParserStateSnapshot>;
 	verdict: { value: OwnershipVerdict };
-	client: { input: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
+	client: { input: ReturnType<typeof vi.fn>; resize: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> };
 	stop: ReturnType<typeof vi.fn>;
 	start: ReturnType<typeof vi.fn>;
 }
@@ -87,7 +87,7 @@ function harness(overrides: Partial<NativeAdapterDeps> = {}): Harness {
 	const records = new Map<string, NativeSessionRecord>();
 	const snapshots = new Map<string, ParserStateSnapshot>();
 	const verdict = { value: "owned" as OwnershipVerdict };
-	const client = { input: vi.fn(), close: vi.fn() };
+	const client = { input: vi.fn(), resize: vi.fn(), close: vi.fn() };
 	const start = vi.fn(async (id: string) => {
 		const record = makeRecord(id);
 		records.set(id, record);
@@ -159,6 +159,43 @@ describe("NativeSingleViewAdapter — lifecycle mapping", () => {
 		expect(await h.adapter.capture("alpha", "alpha:0", { includeHistory: true })).toBe("");
 		h.snapshots.set("alpha", snapshotWith(["PARITY-L1", "PARITY-L2"]));
 		expect(await h.adapter.capture("alpha", "alpha:0", { includeHistory: true })).toBe("PARITY-L1\nPARITY-L2");
+	});
+
+	it("writes raw input verbatim while sendInput appends the submit key", async () => {
+		const h = harness();
+		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+		await h.adapter.writeInput("alpha", "alpha:0", "abc");
+		await h.adapter.sendInput("alpha", "alpha:0", "abc");
+		expect(h.client.input).toHaveBeenNthCalledWith(1, "abc");
+		expect(h.client.input).toHaveBeenNthCalledWith(2, "abc\r");
+	});
+
+	it("resizes the view through the attached client", async () => {
+		const h = harness();
+		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+		await h.adapter.resizeView("alpha", "alpha:0", 120, 40);
+		expect(h.client.resize).toHaveBeenCalledWith(120, 40);
+	});
+
+	it("detachSession closes the client but keeps the session running", async () => {
+		const h = harness();
+		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+		await h.adapter.writeInput("alpha", "alpha:0", "x");
+		await h.adapter.detachSession("alpha");
+		expect(h.client.close).toHaveBeenCalledTimes(1);
+		expect(h.stop).not.toHaveBeenCalled();
+		expect(await h.adapter.isSessionPresent("alpha")).toBe(true);
+	});
+
+	it("rejects raw input and resize for a missing session or dead view", async () => {
+		const h = harness();
+		await h.adapter.createSession({ id: "alpha", cwd: "/tmp", command: "sh" });
+		await expect(h.adapter.writeInput("ghost", "ghost:0", "x")).rejects.toBeInstanceOf(
+			NativeSessionNotFoundError,
+		);
+		await expect(h.adapter.resizeView("alpha", "alpha:1", 80, 24)).rejects.toBeInstanceOf(
+			NativeViewGoneError,
+		);
 	});
 });
 
