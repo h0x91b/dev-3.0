@@ -130,3 +130,39 @@ none, and Node throws `ERR_UNKNOWN_SIGNAL` for a name the platform does not know
 - **Point `DEV3_HOME` at `%LOCALAPPDATA%` on Windows.** Rejected: `~/.dev3.0` is
   the documented, frozen layout; a different root on one platform would fork the
   data-layout contract for no benefit at this stage.
+
+## Found by driving the real Windows machine (Seq 1295, second round)
+
+Three defects only a live run could show, all fixed here:
+
+1. **The storage key.** `projectSlug()` mapped `D:\src\dev-3.0` to itself —
+   colon and backslashes included — which is not a legal directory name. The
+   formula also existed as five hand-copied literals (git.ts, shared-images.ts,
+   conversation-search-core.ts, app-handlers.ts, context.ts×3), so "keep them in
+   lockstep" was unenforceable. `shared/project-storage-key.ts` is now the only
+   copy: POSIX output is byte-identical to the frozen algorithm, and win32 gets
+   an additive sanitised key (`D-src-dev-3.0`). Windows has no pre-existing
+   `~/.dev3.0`, so nothing migrates.
+
+2. **The remote UI served nothing.** `serveStatic` bounded the static root with
+   `filePath.startsWith(staticRoot + "/")`, but `resolve()` returns backslashes
+   on Windows, so the check failed for every file — including `index.html` —
+   and the whole UI 404'd. Containment is now decided by `relative()`.
+
+3. **Ctrl+C could wedge the console.** The Windows branch of `scripts/dev.ts`
+   ran `taskkill /PID <electrobun child> /T /F` and then awaited `child.exited`.
+   The desktop app is not always inside that tree — the launcher can leave it
+   detached — so the kill missed it and the await never resolved, leaving a
+   console that accepts no input. The wait now has a deadline.
+
+Two environment facts worth recording for the next agent:
+
+- **A desktop window cannot be created over SSH**: WebView2 fails with
+  `HRESULT 0x80070578` (`ERROR_INVALID_WINDOW_HANDLE`) because an SSH session has
+  no interactive desktop. GUI validation over SSH must go through the remote web
+  UI; the native window needs a real interactive logon.
+- **With no renderer, the quit gate never completes.** `before-quit` asks the
+  renderer to confirm; when WebView2 failed there is nobody to answer and the app
+  stays alive after a console shutdown signal. Not changed here — it is only
+  reachable when the webview is already broken — but it is why the deadline in
+  `dev.ts` matters.

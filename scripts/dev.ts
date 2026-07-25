@@ -202,7 +202,18 @@ function main(): void {
 		if (tree) {
 			// One recursive call covers the whole tree on Windows.
 			Bun.spawnSync(tree, { stdout: "ignore", stderr: "ignore", env: process.env });
-			child.exited.then(() => process.exit(0));
+			// The desktop app is NOT always inside that tree: the electrobun launcher
+			// can leave it detached, so `/T` misses it. Observed live — waiting on
+			// `child.exited` then never returned and wedged the console with no way
+			// to type. The prompt comes back on a deadline no matter what.
+			const giveUp = setTimeout(() => {
+				console.error("[dev] the app did not exit after taskkill; leaving it to the OS");
+				process.exit(0);
+			}, FORCE_KILL_GRACE_MS);
+			child.exited.then(() => {
+				clearTimeout(giveUp);
+				process.exit(0);
+			});
 			return;
 		}
 		// POSIX: enumerate first, because the pids disappear as we kill them.
