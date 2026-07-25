@@ -1,3 +1,19 @@
+/**
+ * Windows packaged-host proof. Runs twice per build:
+ *
+ *   postBuild    — ASSEMBLES the versioned native host image into the app bundle
+ *                  (so it ships inside the final update archive) and proves the
+ *                  packaged runtime + entrypoint identity.
+ *   postPackage  — re-enters with DEV3_VERIFY_UPDATE_ARCHIVE=1, extracts the FINAL
+ *                  `.tar.zst`, DISCOVERS the shipped image, validates its merged
+ *                  manifest against the archive paths, stages it outside the
+ *                  replaceable installation directory, and drives the detached
+ *                  host lifecycle from the staged image with no Bun on PATH.
+ *
+ * Everything it asserts is written to `windows-conpty-package-proof.json` beside
+ * the artifacts. No-ops outside Windows.
+ */
+
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
@@ -12,7 +28,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
 	NATIVE_TERMINAL_HOST_READY_MARKER,
 	assertPackagedConptyRuntime,
@@ -20,6 +36,19 @@ import {
 	type NativeTerminalHostIdentity,
 	type NativeTerminalHostProofState,
 } from "../src/shared/native-terminal-runtime";
+import { NATIVE_SESSION_PROTOCOL_VERSION } from "../src/bun/native-terminal-registry/protocol";
+import {
+	assemblePackagedImage,
+	discoverPackagedImage,
+	fingerprintPackagedImage,
+	isInsideDirectory,
+	listPackagedImages,
+	selectPackagedImage,
+	stagePackagedImage,
+	PACKAGED_HOST_ENTRYPOINT,
+	PACKAGED_HOST_IMAGE_PARENT,
+} from "../src/bun/native-terminal-registry/host-images/packaged-image";
+import type { PackagedHostImageManifest } from "../src/bun/native-terminal-registry/host-images/packaged-image-manifest";
 
 if (process.platform !== "win32") {
 	console.log("[native-terminal-runtime] packaged ConPTY proof skipped outside Windows");
@@ -97,6 +126,16 @@ function tasklistImageForPid(output: string, pid: number): string | null {
 	return null;
 }
 
+/** The bundle directory that becomes the archive's top-level entry; image paths are relative to it. */
+function appBundleRootFor(packageRoot: string, pathInsideBundle: string): string {
+	const segments = relative(resolve(packageRoot), resolve(pathInsideBundle)).split(/[\\/]/);
+	return segments.length > 1 ? join(resolve(packageRoot), segments[0]) : resolve(packageRoot);
+}
+
+function toPosix(path: string): string {
+	return path.split(/[\\/]/).join("/");
+}
+
 function resolvePackageSource(buildDir: string, system32: string): PackageSource {
 	if (process.env.DEV3_VERIFY_UPDATE_ARCHIVE !== "1") {
 		return { root: buildDir, proofDir: buildDir, archivePath: null, cleanupDir: null };
@@ -146,13 +185,17 @@ const buildDir = process.env.ELECTROBUN_BUILD_DIR;
 if (!buildDir || !existsSync(buildDir)) {
 	throw new Error(`Electrobun did not provide a valid ELECTROBUN_BUILD_DIR (${buildDir ?? "missing"}).`);
 }
+const appVersion = process.env.ELECTROBUN_APP_VERSION;
+if (!appVersion) throw new Error("Packaged host image assembly requires ELECTROBUN_APP_VERSION from the Electrobun hook.");
 const systemRoot = process.env.SystemRoot ?? process.env.WINDIR;
 if (!systemRoot) throw new Error("Packaged ConPTY verification cannot resolve SystemRoot.");
 const system32 = join(systemRoot, "System32");
 const packageSource = resolvePackageSource(buildDir, system32);
+const verifyingArchive = packageSource.archivePath !== null;
 const cleanDir = mkdtempSync(join(tmpdir(), "dev3-packaged-conpty-"));
 const keepProofFiles = process.env.DEV3_KEEP_CONPTY_PROOF_FILES === "1";
 const sessionDir = join(cleanDir, "session");
+const stagingRoot = join(cleanDir, "native-host-images");
 const cleanEnv: NodeJS.ProcessEnv = {
 	SystemRoot: systemRoot,
 	WINDIR: process.env.WINDIR ?? systemRoot,
@@ -174,12 +217,15 @@ try {
 		);
 	}
 	const packagedAppRuntime = resolve(appRuntimes[0]);
+	const appBundleRoot = appBundleRootFor(packageSource.root, packagedAppRuntime);
 
-	const terminalEntrypoints = findFiles(packageSource.root, "dev3-terminal-host.js");
+	const terminalEntrypoints = findFiles(packageSource.root, PACKAGED_HOST_ENTRYPOINT).filter(
+		(path) => !path.split(/[\\/]/).includes(PACKAGED_HOST_IMAGE_PARENT),
+	);
 	if (terminalEntrypoints.length !== 1) {
 		throw new Error(
-			`Expected exactly one packaged dev3-terminal-host.js under ${packageSource.root}; found ${terminalEntrypoints.length}. ` +
-				"Run bun run build:native before Electrobun packaging.",
+			`Expected exactly one packaged ${PACKAGED_HOST_ENTRYPOINT} outside ${PACKAGED_HOST_IMAGE_PARENT}/ under ${packageSource.root}; ` +
+				`found ${terminalEntrypoints.length}. Run bun run build:native before Electrobun packaging.`,
 		);
 	}
 	const packagedEntrypoint = resolve(terminalEntrypoints[0]);
@@ -198,9 +244,9 @@ try {
 		),
 	);
 	const buildConfigs = findFiles(packageSource.root, "build.json");
-	if (buildConfigs.length > 1 || (packageSource.archivePath !== null && buildConfigs.length !== 1)) {
+	if (buildConfigs.length > 1 || (verifyingArchive && buildConfigs.length !== 1)) {
 		throw new Error(
-			`Expected ${packageSource.archivePath ? "exactly one" : "at most one"} packaged build.json ` +
+			`Expected ${verifyingArchive ? "exactly one" : "at most one"} packaged build.json ` +
 				`under ${packageSource.root}; found ${buildConfigs.length}.`,
 		);
 	}
@@ -234,18 +280,68 @@ try {
 
 	const runtimeHash = sha256(packagedAppRuntime);
 	const entrypointHash = sha256(packagedEntrypoint);
-	const hostArtifactId = `${appRuntimeVersion}-${entrypointHash.slice(0, 12)}`;
-	const stagedDir = join(cleanDir, "terminal-host", hostArtifactId);
-	mkdirSync(stagedDir, { recursive: true });
-	const stagedRuntime = resolve(stagedDir, "dev3-terminal-host.exe");
-	const stagedEntrypoint = resolve(stagedDir, "dev3-terminal-host.js");
-	if (pathIsWithin(packageSource.root, stagedRuntime) || pathIsWithin(packageSource.root, stagedEntrypoint)) {
-		throw new Error(`Terminal host staging must be outside the replaceable package root ${packageSource.root}.`);
+	const imageExpectations = {
+		os: "win32" as const,
+		arch: process.arch === "arm64" ? ("arm64" as const) : ("x64" as const),
+		bunVersion: appRuntimeVersion,
+		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
+		archiveParent: PACKAGED_HOST_IMAGE_PARENT,
+	};
+
+	// postBuild assembles the image into the bundle so it ships in the archive;
+	// postPackage must FIND that same image already inside the extracted archive.
+	let imageDir: string;
+	let imageManifest: PackagedHostImageManifest;
+	let imageReused = false;
+	if (verifyingArchive) {
+		const discovered = discoverPackagedImage(appBundleRoot, imageExpectations);
+		if (discovered.status !== "ok") {
+			throw new Error(`Final Windows update archive does not ship a usable native host image: ${JSON.stringify(discovered)}`);
+		}
+		imageDir = discovered.imageDir;
+		imageManifest = discovered.manifest;
+	} else {
+		const assembled = assemblePackagedImage({
+			packageRoot: appBundleRoot,
+			runtimeSourcePath: packagedAppRuntime,
+			entrypointSourcePath: packagedEntrypoint,
+			hostVersion: appVersion,
+			protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
+			bunVersion: appRuntimeVersion,
+			runtimeFloor: appRuntimeVersion,
+			os: "win32",
+			arch: imageExpectations.arch,
+		});
+		imageDir = assembled.imageDir;
+		imageManifest = assembled.manifest;
+		imageReused = assembled.reused;
+		const verified = discoverPackagedImage(appBundleRoot, imageExpectations);
+		if (verified.status !== "ok" || verified.tag !== assembled.tag) {
+			throw new Error(`Assembled native host image did not validate inside the bundle: ${JSON.stringify(verified)}`);
+		}
 	}
-	copyFileSync(packagedAppRuntime, stagedRuntime);
-	copyFileSync(packagedEntrypoint, stagedEntrypoint);
+	const imageArchivePath = toPosix(relative(appBundleRoot, imageDir));
+	if (imageArchivePath !== imageManifest.archiveRoot) {
+		throw new Error(`Host image sits at ${imageArchivePath} but its manifest declares ${imageManifest.archiveRoot}.`);
+	}
+
+	// Additive staging OUTSIDE the replaceable installation directory.
+	const staged = stagePackagedImage({ sourceImageDir: imageDir, stagingRoot, expectations: imageExpectations });
+	if (staged.status !== "staged") {
+		throw new Error(`Staging the packaged host image failed: ${JSON.stringify(staged)}`);
+	}
+	if (pathIsWithin(packageSource.root, staged.imageDir) || isInsideDirectory(appBundleRoot, staged.imageDir)) {
+		throw new Error(`Host image staging must be outside the replaceable package root ${packageSource.root}.`);
+	}
+	const stagedRuntime = staged.runtimeCarrierPath;
+	const stagedEntrypoint = staged.entrypointPath;
 	if (sha256(stagedRuntime) !== runtimeHash || sha256(stagedEntrypoint) !== entrypointHash) {
-		throw new Error("Staged terminal host files differ from the packaged runtime and entrypoint.");
+		throw new Error("Staged host image files differ from the packaged runtime and entrypoint.");
+	}
+	const stagedFingerprint = fingerprintPackagedImage(staged.imageDir);
+	const restagedSameImage = stagePackagedImage({ sourceImageDir: imageDir, stagingRoot, expectations: imageExpectations });
+	if (restagedSameImage.status !== "already-staged" || fingerprintPackagedImage(staged.imageDir) !== stagedFingerprint) {
+		throw new Error(`Re-staging an existing host image must be a no-op: ${JSON.stringify(restagedSameImage)}`);
 	}
 
 	const hostEnv: NodeJS.ProcessEnv = {
@@ -287,6 +383,40 @@ try {
 	) {
 		throw new Error(`Detached packaged terminal host returned invalid state: ${JSON.stringify(state)}`);
 	}
+	// The detached host keeps writing to its own log file rather than a console,
+	// which is what keeps the background launch invisible to the user.
+	const hostLogRedirected = existsSync(join(sessionDir, "host.log"));
+
+	// Stage a DIFFERENT image beside the running one and prove the old image is
+	// untouched, still selectable, and still serving the live host.
+	const rollbackPackageRoot = join(cleanDir, "next-package");
+	mkdirSync(rollbackPackageRoot, { recursive: true });
+	const nextEntrypointSource = join(cleanDir, "next-dev3-terminal-host.js");
+	copyFileSync(packagedEntrypoint, nextEntrypointSource);
+	writeFileSync(nextEntrypointSource, `${readFileSync(nextEntrypointSource, "utf8")}\n// staged-beside proof\n`);
+	const nextImage = assemblePackagedImage({
+		packageRoot: rollbackPackageRoot,
+		runtimeSourcePath: packagedAppRuntime,
+		entrypointSourcePath: nextEntrypointSource,
+		hostVersion: appVersion,
+		protocolVersion: NATIVE_SESSION_PROTOCOL_VERSION,
+		bunVersion: appRuntimeVersion,
+		runtimeFloor: appRuntimeVersion,
+		os: "win32",
+		arch: imageExpectations.arch,
+	});
+	if (nextImage.tag === staged.tag) throw new Error("A changed host entrypoint must produce a different image tag.");
+	const stagedNext = stagePackagedImage({ sourceImageDir: nextImage.imageDir, stagingRoot, expectations: imageExpectations });
+	if (stagedNext.status !== "staged") throw new Error(`Staging a second host image failed: ${JSON.stringify(stagedNext)}`);
+	if (fingerprintPackagedImage(staged.imageDir) !== stagedFingerprint) {
+		throw new Error("Staging a new host image rewrote the older image the live host was launched from.");
+	}
+	const rollbackSelection = selectPackagedImage(stagingRoot, { tag: staged.tag });
+	if (rollbackSelection.status !== "selected" || rollbackSelection.entrypointPath !== stagedEntrypoint) {
+		throw new Error(`Explicit rollback did not select the older staged image: ${JSON.stringify(rollbackSelection)}`);
+	}
+	const stagedTags = listPackagedImages(stagingRoot).ok.map((entry) => entry.tag).sort();
+
 	const reattachOutput = requireSuccess(
 		run(stagedRuntime, [stagedEntrypoint, "reattach"], cleanDir, hostEnv, 15_000),
 		"Detached packaged terminal host reattach",
@@ -357,10 +487,11 @@ try {
 		marker: state.marker,
 		rawPty: true,
 		systemBunOnPath: false,
-		packageSource: packageSource.archivePath ? "update-archive" : "build-tree",
+		packageSource: verifyingArchive ? "update-archive" : "build-tree",
 		proofFilesRetained: keepProofFiles,
 		proofWorkspacePath: cleanDir,
 		extractedPackageRoot: packageSource.root,
+		appBundleRoot,
 		archiveExtractionWorkspacePath: packageSource.cleanupDir,
 		updateArchivePath: packageSource.archivePath,
 		updateArchiveBytes: packageSource.archivePath ? statSync(packageSource.archivePath).size : null,
@@ -373,18 +504,33 @@ try {
 		packagedEntrypointBytes: statSync(packagedEntrypoint).size,
 		packagedRuntimeSha256: runtimeHash,
 		packagedEntrypointSha256: entrypointHash,
-		hostArtifactId,
 		packagedRuntimePath: packagedAppRuntime,
 		packagedEntrypointPath: packagedEntrypoint,
-		packagedRuntimeArchiveEntry: packageSource.archivePath
-			? relative(packageSource.root, packagedAppRuntime)
-			: null,
-		packagedEntrypointArchiveEntry: packageSource.archivePath
-			? relative(packageSource.root, packagedEntrypoint)
-			: null,
+		hostImageAssembled: !verifyingArchive,
+		hostImageReusedExisting: imageReused,
+		hostImageTag: staged.tag,
+		hostImageDir: imageDir,
+		hostImageArchivePath: imageArchivePath,
+		hostImageDeclaredArchiveRoot: imageManifest.archiveRoot,
+		hostImageProtocolVersion: imageManifest.artifact.protocolVersion,
+		hostImageRuntimeFloor: imageManifest.runtimeFloor,
+		hostImageOs: imageManifest.artifact.os,
+		hostImageArch: imageManifest.artifact.arch,
+		hostImageHostVersion: imageManifest.artifact.hostVersion,
+		hostImageFiles: imageManifest.artifact.files,
+		hostImageFingerprint: stagedFingerprint,
+		stagingRoot,
+		stagedImageDir: staged.imageDir,
 		stagedRuntimePath: stagedRuntime,
 		stagedEntrypointPath: stagedEntrypoint,
 		stagedOutsideInstallationDirectory: true,
+		restagingExistingImageWasNoOp: true,
+		stagedBesideImageTag: stagedNext.tag,
+		stagedBesideImageDir: stagedNext.imageDir,
+		olderImageUnchangedAfterStagingNewOne: true,
+		rollbackSelectedTag: rollbackSelection.tag,
+		stagedImageTags: stagedTags,
+		detachedHostLogRedirected: hostLogRedirected,
 		detachedHostImageName: hostImageName,
 		detachedHostTasklist: hostTasklist,
 		powershellImageName,
@@ -400,13 +546,16 @@ try {
 	};
 	writeFileSync(join(packageSource.proofDir, "windows-conpty-package-proof.json"), `${JSON.stringify(proof, null, 2)}\n`);
 	console.log(`[native-terminal-runtime] ${JSON.stringify(proof)}`);
-	console.log("[native-terminal-runtime] verified packaged detached re-entry with no Bun available on PATH");
+	console.log(
+		`[native-terminal-runtime] verified the ${proof.packageSource} host image ${staged.tag}: ` +
+			"staged outside the install root, detached re-entry with no Bun on PATH, old image intact beside the new one",
+	);
 } finally {
-	if (!hostStopped && existsSync(join(sessionDir, "state.json"))) {
-		const stagedHosts = findFiles(cleanDir, "dev3-terminal-host.exe");
+	if (!hostStopped && existsSync(join(sessionDir, "state.json")) && existsSync(stagingRoot)) {
+		const stagedHosts = findFiles(stagingRoot, "dev3-terminal-host.exe");
 		const stagedHost = stagedHosts[0];
-		const stagedEntrypoints = findFiles(cleanDir, "dev3-terminal-host.js");
-		if (stagedHost && stagedEntrypoints[0]) {
+		const stagedEntrypoints = stagedHost ? [join(dirname(stagedHost), PACKAGED_HOST_ENTRYPOINT)] : [];
+		if (stagedHost && stagedEntrypoints[0] && existsSync(stagedEntrypoints[0])) {
 			const cleanup = run(stagedHost, [stagedEntrypoints[0], "stop"], cleanDir, {
 				...cleanEnv,
 				DEV3_TERMINAL_HOST_PROOF_DIR: sessionDir,

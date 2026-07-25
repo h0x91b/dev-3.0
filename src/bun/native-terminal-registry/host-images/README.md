@@ -1,5 +1,10 @@
 # Staged host version-skew harness (seq 1248)
 
+> The **packaged** Windows host image — real Bun carrier + bundled entrypoint +
+> merged manifest, shipped inside the update archive — is a separate artifact
+> documented in [`PACKAGED-IMAGE.md`](PACKAGED-IMAGE.md). This file covers the
+> version-skew lab, whose images carry a generated shim instead of real bytes.
+
 Proof harness for the **version-skew + immutable-host-image** slice of the
 tmux-removal roadmap (parent seq 1141; RUN-004 / HOST-006). It answers one
 question with real processes and focused units:

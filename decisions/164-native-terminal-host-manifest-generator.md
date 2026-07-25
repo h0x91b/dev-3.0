@@ -36,11 +36,21 @@ NOT run under `bun run test`/`bun run lint` or in CI (the task also forbids addi
 a CI check). Type-check the module directly with
 `bunx tsc --ignoreConfig --noEmit --strict ... manifest.ts generate.ts`.
 
+## Superseded by 169
+
+Once packaging started consuming the manifest, the module moved into
+`src/bun/native-terminal-registry/host-images/artifact-manifest.ts` (CLI logic in
+`artifact-manifest-cli.ts`, a thin shim left at
+`scripts/native-terminal-host-manifest/generate.ts`). The core contract above is
+unchanged; the runner, the type-check path, and the CI gap are not — see
+`169-packaged-windows-native-host-image.md`. Tests now run under vitest via
+`bun run test:native-host-image` and are gated in CI.
+
 ## Risks
 
-Tests are not wired into CI, so a regression here is caught only by running the
-Bun test command above. Acceptable while the module is production-unused; when a
-packaging step starts consuming it, wire the tests into a checked path then.
+(Historic, resolved by 169.) Tests were not wired into CI, so a regression here
+was caught only by running the Bun test command above. Acceptable while the module
+was production-unused.
 
 ## Alternatives considered
 

@@ -9,7 +9,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ManifestMetadata } from "../manifest";
+import type { ManifestMetadata } from "../artifact-manifest";
 
 export interface FixtureFile {
 	/** POSIX relative path inside the artifact root. */

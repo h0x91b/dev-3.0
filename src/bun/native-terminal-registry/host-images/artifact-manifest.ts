@@ -85,7 +85,12 @@ export type ManifestErrorCode =
 	| "empty-file" // a declared regular file has zero bytes
 	| "invalid-metadata" // host/protocol/bun/os/arch metadata is malformed
 	| "invalid-entrypoint" // the entrypoint is not among the declared files
-	| "no-files"; // an empty declared file list
+	| "no-files" // an empty declared file list
+	| "invalid-tag" // a packaged image tag is not a safe single directory segment
+	| "invalid-runtime-carrier" // the declared Bun runtime carrier is not among the declared files
+	| "invalid-archive-root" // the recorded archive root is not the image's own tag directory
+	| "runtime-floor" // the packaged Bun version is below the image's own runtime floor
+	| "unexpected-target"; // a validated manifest contradicts what the caller expected
 
 export interface ManifestErrorDetail {
 	path?: string;

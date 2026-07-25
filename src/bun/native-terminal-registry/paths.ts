@@ -18,13 +18,29 @@ import { join } from "node:path";
 
 export const NATIVE_SESSIONS_DIR_ENV = "DEV3_NATIVE_SESSIONS_DIR";
 
+export const NATIVE_HOST_IMAGES_DIR_ENV = "DEV3_NATIVE_HOST_IMAGES_DIR";
+
+function dev3HomeDir(): string {
+	return process.env.DEV3_HOME || `${process.env.HOME || process.env.USERPROFILE || "/tmp"}/.dev3.0`;
+}
+
 /** Root of the registry namespace: env override, else additive `~/.dev3.0/native-sessions/`. */
 export function sessionsRootDir(): string {
 	const explicit = process.env[NATIVE_SESSIONS_DIR_ENV];
 	if (explicit) return explicit;
-	const dev3Home =
-		process.env.DEV3_HOME || `${process.env.HOME || process.env.USERPROFILE || "/tmp"}/.dev3.0`;
-	return join(dev3Home, "native-sessions");
+	return join(dev3HomeDir(), "native-sessions");
+}
+
+/**
+ * Root the packaged host images are staged into: env override, else an additive
+ * `~/.dev3.0/native-host-images/`. Deliberately OUTSIDE the replaceable
+ * installation directory, so an update that swaps the app bundle cannot delete
+ * the image a running host was launched from.
+ */
+export function hostImagesRootDir(): string {
+	const explicit = process.env[NATIVE_HOST_IMAGES_DIR_ENV];
+	if (explicit) return explicit;
+	return join(dev3HomeDir(), "native-host-images");
 }
 
 // Stable session ids are chosen by launchers, so they must map to a safe single

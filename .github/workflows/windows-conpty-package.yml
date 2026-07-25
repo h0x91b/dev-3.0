@@ -11,6 +11,7 @@ on:
       - "scripts/build-windows-terminal-host.ts"
       - "scripts/verify-packaged-windows-conpty.ts"
       - "scripts/verify-windows-conpty-update-archive.ts"
+      - "scripts/native-terminal-host-manifest/**"
       - "src/bun/native-terminal-host/**"
       - "src/shared/native-terminal-runtime.ts"
       - "src/bun/prototypes/detached-pty/**"
@@ -42,6 +43,11 @@ jobs:
 
       - name: Native shell launch pure tests
         run: bun run test:native-shell-launch
+
+      # Merged host-image manifest: generator, validator, deterministic assembly,
+      # additive staging outside the install root, and rollback selection.
+      - name: Packaged host image + manifest tests
+        run: bun run test:native-host-image
 
       # Real-runtime lifecycle regression for the persistent native-session
       # registry — runs on native Windows + POSIX with the pinned Bun 1.3.14.
@@ -113,3 +119,36 @@ jobs:
           name: windows-conpty-package
           path: |
             scripts/fixtures/windows-conpty-package/artifacts/
+
+  # The REAL dev3 Windows package, not the isolated tracer fixture: proves the
+  # versioned native host image ships inside the final update archive and that
+  # it stages, launches detached, reattaches, and stops from there with no Bun
+  # on PATH. Separate job so its ~10 minutes do not eat the matrix job's budget.
+  windows-app-archive:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup build Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # postBuild assembles + validates the host image inside the bundle;
+      # postPackage re-verifies it from the final `.tar.zst` and drives the
+      # detached lifecycle from the staged copy.
+      - name: Build the real dev3 Windows package and verify the final archive
+        run: bun run package:win-archive
+
+      - name: Upload real Windows archive proof
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-app-archive-proof
+          path: |
+            artifacts/windows-conpty-package-proof.json
+            artifacts/*-update.json

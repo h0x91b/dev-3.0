@@ -68,6 +68,11 @@ function versionAtLeast(version: unknown, minimum: string): version is string {
 	return floor.prerelease !== null || parsed.prerelease === null;
 }
 
+/** Public semver-floor comparison so packaged-image validation reuses one parser. */
+export function nativeTerminalRuntimeAtLeast(version: unknown, minimum: string): boolean {
+	return versionAtLeast(version, minimum);
+}
+
 function displayVersion(version: unknown): string {
 	return typeof version === "string" && version.trim() ? version : "missing";
 }

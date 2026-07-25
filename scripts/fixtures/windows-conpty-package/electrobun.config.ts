@@ -25,6 +25,7 @@ export default {
 		generatePatch: false,
 	},
 	scripts: {
+		postBuild: "../../verify-packaged-windows-conpty.ts",
 		postPackage: "../../verify-windows-conpty-update-archive.ts",
 	},
 } satisfies ElectrobunConfig;

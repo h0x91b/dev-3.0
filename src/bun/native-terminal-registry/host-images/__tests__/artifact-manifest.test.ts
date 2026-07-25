@@ -1,17 +1,14 @@
 /**
- * Fixture-driven tests for the native-terminal-host manifest generator +
- * validator. Runs under Bun's own test runner (this module lives under scripts/,
- * outside the three vitest roots) — invoke with:
- *
- *   bun test scripts/native-terminal-host-manifest/
+ * Fixture-driven tests for the native-terminal-host ARTIFACT manifest generator
+ * + validator (`bun run test:bun`).
  *
  * Covers Windows x64, macOS arm64, Linux x64 happy paths, byte-level
  * determinism, and every typed rejection.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	enumerateArtifactFiles,
@@ -24,7 +21,7 @@ import {
 	type GenerateManifestInput,
 	type ManifestErrorCode,
 	type ManifestMetadata,
-} from "../manifest";
+} from "../artifact-manifest";
 import {
 	declaredFiles,
 	LINUX_X64_FIXTURE,
@@ -33,7 +30,7 @@ import {
 	PLATFORM_FIXTURES,
 	WINDOWS_X64_FIXTURE,
 	type PlatformFixture,
-} from "./fixtures";
+} from "./artifact-manifest-fixtures";
 
 function sha256(contents: string): string {
 	return createHash("sha256").update(Buffer.from(contents, "binary")).digest("hex");
