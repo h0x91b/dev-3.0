@@ -26,7 +26,13 @@ import { readRecord, readToken, type NativeSessionRecord } from "../native-termi
 import { start, stop, type StartOptions, type StartResult } from "../native-terminal-registry/registry";
 import type { ShellLaunchSpec } from "../native-terminal-registry/shell-launch";
 import { CoordinatorClientView } from "./client-view";
-import { CoordinatorExistsError, CoordinatorGoneError, ObserverMutationError, PaneNotFoundError } from "./errors";
+import {
+	CoordinatorExistsError,
+	CoordinatorGoneError,
+	ObserverMutationError,
+	PaneNotFoundError,
+	PaneResizeNotAppliedError,
+} from "./errors";
 import { normalizeSharedLayout } from "./focus-mapping";
 import { coordinatorRecordFile, paneSessionId } from "./paths";
 import {
@@ -40,6 +46,7 @@ import {
 } from "./record";
 
 const RECORD_LOCK_TIMEOUT_MS = 30_000;
+const RESIZE_APPLY_TIMEOUT_MS = 5000;
 
 /** Everything a genuinely independent pane shell needs — no implicit inheritance. */
 export interface PaneLaunchSpec {
@@ -342,11 +349,25 @@ export class NativeMultipaneCoordinator {
 		return connection;
 	}
 
-	/** Writer-owned: an observer attachment is refused rather than silently ignored. */
-	async resizePane(paneId: string, cols: number, rows: number): Promise<void> {
+	/**
+	 * Writer-owned: an observer attachment is refused rather than silently
+	 * ignored. Resolves only once the pane's host has republished the new size,
+	 * so a caller that reads the record right after never sees the stale one.
+	 */
+	async resizePane(paneId: string, cols: number, rows: number, opts: { timeoutMs?: number } = {}): Promise<void> {
 		const connection = await this.connect(paneId);
 		if (connection.role() !== "writer") throw new ObserverMutationError(paneId, "resize");
 		connection.resize(cols, rows);
+		const sessionId = paneSessionId(this.coordinatorId, paneId);
+		const deadline = Date.now() + (opts.timeoutMs ?? RESIZE_APPLY_TIMEOUT_MS);
+		for (;;) {
+			const record = this.deps.readPaneRecord(sessionId);
+			if (record?.cols === cols && record.rows === rows) return;
+			if (Date.now() >= deadline) {
+				throw new PaneResizeNotAppliedError(paneId, cols, rows, record?.cols ?? -1, record?.rows ?? -1);
+			}
+			await new Promise((resolve) => setTimeout(resolve, 25));
+		}
 	}
 
 	/** Writer-owned: observers may watch a pane but never type into it. */

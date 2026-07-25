@@ -25,6 +25,21 @@ export class PaneNotFoundError extends Error {
 	}
 }
 
+/** The writer's resize never showed up in the pane's republished record. */
+export class PaneResizeNotAppliedError extends Error {
+	readonly code = "pane-resize-not-applied";
+	constructor(
+		readonly paneId: string,
+		requestedCols: number,
+		requestedRows: number,
+		actualCols: number,
+		actualRows: number,
+	) {
+		super(`pane ${paneId} still reports ${actualCols}x${actualRows} after resizing to ${requestedCols}x${requestedRows}`);
+		this.name = "PaneResizeNotAppliedError";
+	}
+}
+
 /** An observer client tried to write to or resize a PTY it does not own. */
 export class ObserverMutationError extends Error {
 	readonly code = "observer-mutation";

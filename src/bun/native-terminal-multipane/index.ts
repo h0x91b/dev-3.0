@@ -21,6 +21,7 @@ export {
 	CoordinatorGoneError,
 	ObserverMutationError,
 	PaneNotFoundError,
+	PaneResizeNotAppliedError,
 } from "./errors";
 export { directionalFocusTarget, normalizeSharedLayout } from "./focus-mapping";
 export {

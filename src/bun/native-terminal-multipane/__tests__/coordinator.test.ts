@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { listPaneIds } from "../../../shared/split-tree";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { NativeMultipaneCoordinator, type PaneLaunchSpec } from "../coordinator";
-import { CoordinatorExistsError, CoordinatorGoneError, ObserverMutationError, PaneNotFoundError } from "../errors";
+import {
+	CoordinatorExistsError,
+	CoordinatorGoneError,
+	ObserverMutationError,
+	PaneNotFoundError,
+	PaneResizeNotAppliedError,
+} from "../errors";
 import { NATIVE_MULTIPANE_DIR_ENV, coordinatorRecordFile } from "../paths";
 import { readMultipaneRecord, writeMultipaneRecordAtomic } from "../record";
 import { createFakeRegistry, type FakeRegistry } from "./fake-panes";
@@ -175,6 +181,34 @@ describe("native multipane writer ownership", () => {
 		await expect(observer.writePane("pane-1", "echo hi")).rejects.toBeInstanceOf(ObserverMutationError);
 		expect(deps.panes.get("mp-pane-1")?.resizes).toEqual([{ cols: 120, rows: 40 }]);
 		expect(deps.panes.get("mp-pane-1")?.inputs).toEqual([]);
+	});
+
+	it("waits for the host to republish the new size before resolving", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		const pane = deps.panes.get("mp-pane-1")!;
+		const applyLater = { ...deps, async connectPane(record: Parameters<typeof deps.connectPane>[0], token: string) {
+			const connection = await deps.connectPane(record, token);
+			return { ...connection, resize: (cols: number, rows: number) => {
+				setTimeout(() => { pane.record.cols = cols; pane.record.rows = rows; }, 60);
+			} };
+		} };
+		const delayed = (await NativeMultipaneCoordinator.recover(ID, applyLater))!;
+		await delayed.resizePane("pane-1", 200, 60);
+		expect(deps.readPaneRecord("mp-pane-1")).toMatchObject({ cols: 200, rows: 60 });
+		coordinator.detach();
+	});
+
+	it("reports a resize the host never applied instead of claiming success", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		const neverApplies = { ...deps, async connectPane(record: Parameters<typeof deps.connectPane>[0], token: string) {
+			const connection = await deps.connectPane(record, token);
+			return { ...connection, resize: () => undefined };
+		} };
+		const stuck = (await NativeMultipaneCoordinator.recover(ID, neverApplies))!;
+		await expect(stuck.resizePane("pane-1", 200, 60, { timeoutMs: 100 })).rejects.toBeInstanceOf(
+			PaneResizeNotAppliedError,
+		);
+		coordinator.detach();
 	});
 
 	it("keeps two clients' focus and zoom independent over one pane set", async () => {

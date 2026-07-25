@@ -58,16 +58,6 @@ function makeSink(connection: PaneConnection): { text: () => string; waitFor: (n
 	};
 }
 
-/** Poll `probe` until it yields a value, or give up and return null. */
-async function waitFor<T>(probe: () => T | null, timeoutMs = 5000): Promise<T | null> {
-	const deadline = Date.now() + timeoutMs;
-	for (;;) {
-		const value = probe();
-		if (value !== null) return value;
-		if (Date.now() >= deadline) return null;
-		await new Promise((resolve) => setTimeout(resolve, 50));
-	}
-}
 
 /** Echo the pane's own env marker plus the shell's real pid — proof of independence. */
 function identityCommand(): string {
@@ -193,13 +183,11 @@ async function run(): Promise<void> {
 
 		console.log("\n# writer-owned resize vs observer");
 		await coordinator.resizePane("pane-1", 111, 41);
-		// The host republishes its record after applying the resize, so poll rather
-		// than assume the write already landed.
-		const resized = await waitFor(() => {
-			const record = readRecord(paneSessionId(COORDINATOR_ID, "pane-1"));
-			return record?.cols === 111 && record?.rows === 41 ? record : null;
-		});
-		check(resized !== null, "the writer resizes its pane's PTY");
+		const resized = readRecord(paneSessionId(COORDINATOR_ID, "pane-1"));
+		check(
+			resized?.cols === 111 && resized?.rows === 41,
+			"resizePane resolves only once the pane's record reports the new size",
+		);
 
 		const observerController = await NativeMultipaneCoordinator.recover(COORDINATOR_ID);
 		check(observerController !== null, "a second controller observes the same live pane set");
