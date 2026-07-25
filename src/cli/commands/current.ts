@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import type { Task } from "../../shared/types";
 import { STATUS_LABELS, getTaskTitle } from "../../shared/types";
 import { detectContext, detectContextDiagnostics, readProjectDirect, readTaskDirect, type ProjectDirect } from "../context";
@@ -17,6 +18,24 @@ function printCustomColumns(project: ProjectDirect | null): void {
 	for (const col of customColumns) {
 		const instruction = col.llmInstruction ? `  → "${col.llmInstruction}"` : "";
 		process.stdout.write(`  ${col.id.slice(0, 8)}   ${col.name}${instruction}\n`);
+	}
+}
+
+/**
+ * Read the branch actually checked out in the worktree. Offline mode has no app
+ * to reconcile a `git branch -m`, so the stored name would be stale forever.
+ */
+function liveBranchName(worktreePath: string): string | null {
+	try {
+		const res = spawnSync("git", ["-C", worktreePath, "rev-parse", "--abbrev-ref", "HEAD"], {
+			encoding: "utf-8",
+			timeout: 5000,
+		});
+		if (res.status !== 0) return null;
+		const branch = (res.stdout || "").trim();
+		return branch && branch !== "HEAD" ? branch : null;
+	} catch {
+		return null;
 	}
 }
 
@@ -122,8 +141,10 @@ export async function handleCurrent(socketPath: string | null, opts: { brief?: b
 		if (task.seq !== undefined) fields.push(["Seq:", String(task.seq)]);
 		if (displayTitle) fields.push(["Title:", `${displayTitle}${titleMarker}`]);
 		if (task.status) fields.push(["Status:", STATUS_LABELS[task.status as keyof typeof STATUS_LABELS] || (task.status as string)]);
-		if (task.branchName) fields.push(["Branch:", task.branchName as string]);
-		if (task.worktreePath) fields.push(["Worktree:", task.worktreePath as string]);
+		const worktreePath = task.worktreePath as string | undefined;
+		const offlineBranch = (worktreePath ? liveBranchName(worktreePath) : null) ?? (task.branchName as string | undefined);
+		if (offlineBranch) fields.push(["Branch:", offlineBranch]);
+		if (worktreePath) fields.push(["Worktree:", worktreePath]);
 
 		fields.push(["", ""]);
 		fields.push(["(offline)", "App not running — showing cached data"]);

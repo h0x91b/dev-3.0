@@ -13,6 +13,10 @@ vi.mock("../context", () => ({
 	readTaskDirect: vi.fn(),
 }));
 
+vi.mock("node:child_process", () => ({
+	spawnSync: vi.fn(() => ({ status: 1, stdout: "", stderr: "" })),
+}));
+
 vi.mock("../../shared/build-info.generated", () => ({
 	BUILD_TIME: "Sat, 28 Mar 2026 · 00:00:00",
 	BUILD_COMMIT: "deadbeef",
@@ -22,6 +26,9 @@ vi.mock("../../shared/build-info.generated", () => ({
 import { handleCurrent } from "../commands/current";
 import { sendRequest } from "../socket-client";
 import { detectContext, readProjectDirect, readTaskDirect } from "../context";
+import { spawnSync } from "node:child_process";
+
+const mockSpawnSync = vi.mocked(spawnSync);
 
 const mockSend = vi.mocked(sendRequest);
 const mockDetect = vi.mocked(detectContext);
@@ -76,6 +83,8 @@ beforeEach(() => {
 	mockDetect.mockReset();
 	mockReadProject.mockReset();
 	mockReadTask.mockReset();
+	mockSpawnSync.mockReset();
+	mockSpawnSync.mockReturnValue({ status: 1, stdout: "", stderr: "" } as ReturnType<typeof spawnSync>);
 });
 
 afterEach(() => {
@@ -306,6 +315,61 @@ describe("handleCurrent", () => {
 			expect(stdoutOutput).toContain("(offline)");
 			// Should NOT call sendRequest
 			expect(mockSend).not.toHaveBeenCalled();
+		});
+
+		it("shows the live worktree branch after a rename, not the stored name", async () => {
+			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: "" });
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+			mockReadTask.mockReturnValue({
+				id: FAKE_TASK.id,
+				seq: 7,
+				title: "Implement auth",
+				status: "in-progress",
+				branchName: "dev3/task-aaaaaaaa",
+				worktreePath: "/tmp/wt",
+			});
+			mockSpawnSync.mockReturnValue({ status: 0, stdout: "chore/dev3-example\n", stderr: "" } as ReturnType<typeof spawnSync>);
+
+			await handleCurrent(null);
+
+			expect(stdoutOutput).toContain("chore/dev3-example");
+			expect(stdoutOutput).not.toContain("dev3/task-aaaaaaaa");
+		});
+
+		it("falls back to the stored branch when the worktree git read fails", async () => {
+			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: "" });
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+			mockReadTask.mockReturnValue({
+				id: FAKE_TASK.id,
+				seq: 7,
+				title: "Implement auth",
+				status: "in-progress",
+				branchName: "dev3/task-aaaaaaaa",
+				worktreePath: "/tmp/wt",
+			});
+			mockSpawnSync.mockReturnValue({ status: 128, stdout: "", stderr: "not a git repository" } as ReturnType<typeof spawnSync>);
+
+			await handleCurrent(null);
+
+			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
+		});
+
+		it("ignores a detached HEAD and shows the stored branch", async () => {
+			mockDetect.mockReturnValue({ projectId: "proj-001", taskId: FAKE_TASK.id, socketPath: "" });
+			mockReadProject.mockReturnValue({ id: "proj-001", name: "My Project", path: "/dev/proj" });
+			mockReadTask.mockReturnValue({
+				id: FAKE_TASK.id,
+				seq: 7,
+				title: "Implement auth",
+				status: "in-progress",
+				branchName: "dev3/task-aaaaaaaa",
+				worktreePath: "/tmp/wt",
+			});
+			mockSpawnSync.mockReturnValue({ status: 0, stdout: "HEAD\n", stderr: "" } as ReturnType<typeof spawnSync>);
+
+			await handleCurrent(null);
+
+			expect(stdoutOutput).toContain("dev3/task-aaaaaaaa");
 		});
 
 		it("shows custom title from offline task data when present", async () => {

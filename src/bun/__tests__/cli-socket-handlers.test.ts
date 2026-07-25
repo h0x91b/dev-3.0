@@ -20,6 +20,7 @@ vi.mock("../data", () => ({
 vi.mock("../git", () => ({
 	createWorktree: vi.fn(),
 	removeWorktree: vi.fn(),
+	getCurrentBranch: vi.fn(async () => null),
 }));
 
 vi.mock("../shared-images", () => ({
@@ -705,6 +706,38 @@ describe("task.show", () => {
 		);
 		expect(resp.ok).toBe(true);
 		expect(resp.data).toEqual(task);
+	});
+
+	it("returns the live branch after an out-of-band `git branch -m` (issue #1003)", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue("chore/dev3-example");
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, branchName: "chore/dev3-example" });
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "task-abc12345", projectId: "proj-1" }),
+		);
+		expect(resp.ok).toBe(true);
+		expect((resp.data as Task).branchName).toBe("chore/dev3-example");
+		expect(data.updateTask).toHaveBeenCalledWith(project, task.id, { branchName: "chore/dev3-example" });
+	});
+
+	it("does not touch the stored branch when it already matches the worktree", async () => {
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.loadTasks).mockResolvedValue([task]);
+		vi.mocked(existsSync).mockReturnValue(true);
+		vi.mocked(git.getCurrentBranch).mockResolvedValue(task.branchName);
+
+		const resp = await handleRequest(
+			makeRequest("task.show", { taskId: "task-abc12345", projectId: "proj-1" }),
+		);
+		expect(resp.ok).toBe(true);
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 
 	it("resolves a seq:<N> reference within the project", async () => {

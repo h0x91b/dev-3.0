@@ -18,6 +18,7 @@ import * as repoConfig from "./repo-config";
 import { loadSettings } from "./settings";
 import { addVent } from "./vents";
 import { createLogger } from "./logger";
+import { syncTaskBranchName } from "./task-branch-sync";
 import { DEV3_HOME } from "./paths";
 import { flushAndEnd, drainSocket, pendingWrites } from "./socket-backpressure";
 
@@ -317,12 +318,12 @@ const handlers: Record<string, Handler> = {
 			const tasks = await data.loadTasks(project);
 			const task = findTaskByRef(tasks, taskId);
 			if (!task) throw taskNotFoundError(taskId);
-			return task;
+			return await syncTaskBranchName(project, task);
 		}
 
 		const found = await resolveTaskAcrossProjects(taskId);
 		if (!found) throw taskNotFoundError(taskId);
-		return found.task;
+		return await syncTaskBranchName(found.project, found.task);
 	},
 
 	"task.create": async (params) => {
