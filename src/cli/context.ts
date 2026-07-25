@@ -3,8 +3,10 @@ import { dirname } from "node:path";
 import { ID_PREFIX_MIN_LENGTH } from "../shared/types";
 import type { Project } from "../shared/types";
 import { parseSocketMeta, socketMetaFileName } from "../shared/socket-meta";
+import { projectStorageKey, toPosixSeparators } from "../shared/project-storage-key";
+import { resolveUserHome } from "../shared/user-home";
 
-const HOME = process.env.HOME || "/tmp";
+const HOME = resolveUserHome();
 const DEV3_HOME = `${HOME}/.dev3.0`;
 const SOCKETS_DIR = `${DEV3_HOME}/sockets`;
 const WORKTREES_DIR = `${DEV3_HOME}/worktrees`;
@@ -55,7 +57,10 @@ const OPS_MARKER = "/.dev3.0/ops/";
  * sandbox rewrites HOME=/tmp while cwd still uses the real home), falls back
  * to searching for the `/.dev3.0/worktrees/` marker anywhere in the path.
  */
-export function detectFromWorktreePath(cwd: string): { projectSlug: string; taskShortId: string; realDev3Home: string } | null {
+export function detectFromWorktreePath(rawCwd: string): { projectSlug: string; taskShortId: string; realDev3Home: string } | null {
+	// Windows hands back `C:\Users\...\worktree` while every dev3 path is built
+	// with `/`, so the prefix match below would never fire without this.
+	const cwd = toPosixSeparators(rawCwd);
 	// Strategy 1: HOME-based prefix match
 	const prefix = `${WORKTREES_DIR}/`;
 	const result = matchWorktreePrefix(cwd, prefix);
@@ -108,10 +113,7 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
 	// Find the project by slug match
 	try {
 		const projects = JSON.parse(readFileSync(projectsFile, "utf-8")) as Array<{ id: string; path: string }>;
-		const project = projects.find((p) => {
-			const slug = p.path.replace(/^\//, "").replaceAll("/", "-");
-			return slug === pathInfo.projectSlug;
-		});
+		const project = projects.find((p) => projectStorageKey(p.path) === pathInfo.projectSlug);
 		if (!project) return null;
 
 		// Find the task by short ID prefix
@@ -147,7 +149,8 @@ function resolveFromWorktreePath(cwd: string): CliContext | null {
  * The readable slug is the basename of the virtual project's synthetic path —
  * NOT the munged projectSlug used for the data dir.
  */
-function detectFromVirtualPath(cwd: string): { readableSlug: string; taskShortId: string; realDev3Home: string } | null {
+function detectFromVirtualPath(rawCwd: string): { readableSlug: string; taskShortId: string; realDev3Home: string } | null {
+	const cwd = toPosixSeparators(rawCwd);
 	const markerIdx = cwd.indexOf(OPS_MARKER);
 	if (markerIdx === -1) return null;
 	const after = cwd.slice(markerIdx + OPS_MARKER.length);
@@ -179,7 +182,7 @@ function resolveFromVirtualPath(cwd: string): CliContext | null {
 		if (!project) return null;
 
 		// Tasks live at data/<projectSlug(path)>/tasks.json — same formula as git.
-		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+		const slug = projectStorageKey(project.path);
 		const tasksFile = `${effectiveHome}/data/${slug}/tasks.json`;
 		if (!existsSync(tasksFile)) return null;
 
@@ -215,7 +218,7 @@ function resolveFromEnv(): CliContext | null {
 	if (!taskId) return null;
 	try {
 		for (const project of readAllProjectsRaw()) {
-			const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+			const slug = projectStorageKey(project.path);
 			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
 			if (!existsSync(tasksFile)) continue;
 			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
@@ -262,10 +265,7 @@ export function detectContextDiagnostics(cwd: string = process.cwd()): string {
 		if (projectsExist) {
 			try {
 				const projects = JSON.parse(readFileSync(projectsFile, "utf-8")) as Array<{ id: string; path: string }>;
-				const slugMatch = projects.find((p) => {
-					const slug = p.path.replace(/^\//, "").replaceAll("/", "-");
-					return slug === pathInfo.projectSlug;
-				});
+				const slugMatch = projects.find((p) => projectStorageKey(p.path) === pathInfo.projectSlug);
 				lines.push(`  project match: ${slugMatch ? `id=${slugMatch.id} path=${slugMatch.path}` : `none (looking for slug "${pathInfo.projectSlug}")`}`);
 			} catch (e) {
 				lines.push(`  projects.json read error: ${e}`);
@@ -473,7 +473,7 @@ export function expandShortId(id: string, context: CliContext | null): string {
 	try {
 		const matches: string[] = [];
 		for (const project of readAllProjectsRaw()) {
-			const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+			const slug = projectStorageKey(project.path);
 			const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
 			if (!existsSync(tasksFile)) continue;
 			const tasks = JSON.parse(readFileSync(tasksFile, "utf-8")) as Array<{ id: string }>;
@@ -563,7 +563,7 @@ export function readTaskDirect(projectId: string, taskId: string): Record<string
 		const project = readAllProjectsRaw().find((p) => p.id === projectId);
 		if (!project) return null;
 
-		const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
+		const slug = projectStorageKey(project.path);
 		const tasksFile = `${DEV3_HOME}/data/${slug}/tasks.json`;
 		if (!existsSync(tasksFile)) return null;
 

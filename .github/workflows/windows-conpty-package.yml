@@ -180,6 +180,8 @@ jobs:
       # and the extracted executable reaches the ready marker and dies completely.
       - name: Launch the packaged Windows app and prove clean shutdown
         timeout-minutes: 10
+        env:
+          DEV3_REQUIRE_WINDOWS_PROOF: "1"
         run: bun run verify:win-app-launch
 
       - name: Upload real Windows archive proof

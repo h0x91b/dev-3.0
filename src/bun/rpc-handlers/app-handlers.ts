@@ -15,6 +15,7 @@ import type { NotificationClickTarget } from "../native-notifications";
 import { BUNDLED_CHANGELOG } from "../changelog-bundled";
 import * as repoConfig from "../repo-config";
 import { DEV3_HOME } from "../paths";
+import { projectStorageKey } from "../../shared/project-storage-key";
 import { listAgentSkills as scanAgentSkills } from "../skills-catalog";
 import { spawn, spawnSync } from "../spawn";
 import { writeSystemClipboard } from "../system-clipboard";
@@ -721,10 +722,8 @@ async function saveUploadedFile(
 	opts?: { filename?: string; mimeType?: string },
 ): Promise<{ path: string }> {
 	const project = await data.getProject(projectId);
-	const slug = project.path.replace(/^\//, "").replaceAll("/", "-");
-	const uploadsDir = `${DEV3_HOME}/worktrees/${slug}/uploads`;
-	const mkdirProc = spawn(["mkdir", "-p", uploadsDir]);
-	await mkdirProc.exited;
+	const uploadsDir = `${DEV3_HOME}/worktrees/${projectStorageKey(project.path)}/uploads`;
+	mkdirSync(uploadsDir, { recursive: true });
 	const filename = buildUploadedFilename(opts);
 	const fullPath = `${uploadsDir}/${filename}`;
 	await Bun.write(fullPath, fileData);

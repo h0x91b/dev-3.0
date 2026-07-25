@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { resolveUserHome } from "../paths";
+import { resolveUserHome } from "../../shared/user-home";
 import { cliSocketTransportSupported } from "../../shared/cli-socket-transport";
 import { WINDOWS_POWERSHELL_FALLBACK, defaultLaunchShellPath } from "../../shared/platform-launch";
 import { descendantPids, devPlan, devRunEnv, parseProcessTable, shutdownSignals, treeKillCommand } from "../../../scripts/dev";

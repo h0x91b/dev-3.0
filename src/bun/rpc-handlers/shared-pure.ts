@@ -295,8 +295,8 @@ export function resolveBinaryPath(
 			const candidate = `${dir}/${binaryName}`;
 			if (isExecutableFile(candidate)) {
 				resolvedPath = candidate;
-				if (!process.env.PATH?.split(":").includes(dir)) {
-					process.env.PATH = `${dir}:${process.env.PATH}`;
+				if (!process.env.PATH?.split(delimiter).includes(dir)) {
+					process.env.PATH = `${dir}${delimiter}${process.env.PATH}`;
 				}
 				break;
 			}

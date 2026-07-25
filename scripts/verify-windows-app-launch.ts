@@ -325,7 +325,17 @@ async function main(): Promise<void> {
 		}
 
 		const snapshotBefore = processSnapshot();
-		ownedPids = [...new Set([desktopPid, marker.pid, ...descendantPids(snapshotBefore, desktopPid)])].sort((a, b) => a - b);
+		const descendantsBefore = descendantPids(snapshotBefore, desktopPid);
+		// A marker written by anything outside the launched tree would let a hung
+		// app pass as ready, so the reported main process must be the launcher
+		// itself or one of its descendants.
+		if (marker.pid !== desktopPid && !descendantsBefore.includes(marker.pid)) {
+			throw new Error(
+				`Ready marker reports pid ${marker.pid}, which is not the launched executable (${desktopPid}) ` +
+					`nor one of its descendants (${descendantsBefore.join(", ") || "none"}).`,
+			);
+		}
+		ownedPids = [...new Set([desktopPid, marker.pid, ...descendantsBefore])].sort((a, b) => a - b);
 		const ownedProcessesBeforeShutdown = snapshotBefore
 			.filter((entry) => ownedPids.includes(entry.pid))
 			.map((entry) => ({ pid: entry.pid, parentPid: entry.parentPid, name: entry.name }));
@@ -336,6 +346,9 @@ async function main(): Promise<void> {
 		run(taskkill, ["/PID", String(desktopPid), "/T"], workspace, process.env);
 		const gracefulDeadline = Date.now() + GRACEFUL_SHUTDOWN_MS;
 		while (Date.now() < gracefulDeadline && alivePids(ownedPids).length > 0) await sleep(500);
+		// The first snapshot cannot see a helper the app spawns while shutting down;
+		// re-walk the tree so a late child is owned too, not silently left running.
+		ownedPids = [...new Set([...ownedPids, ...descendantPids(processSnapshot(), desktopPid)])].sort((a, b) => a - b);
 		let shutdownMethod: "close-request" | "forced-tree-kill" = "close-request";
 		if (alivePids(ownedPids).length > 0) {
 			shutdownMethod = "forced-tree-kill";
@@ -406,6 +419,12 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
 	if (process.platform !== "win32") {
+		// CI sets DEV3_REQUIRE_WINDOWS_PROOF so a job that stops being a Windows
+		// runner fails instead of reporting a green step that proved nothing.
+		if (process.env.DEV3_REQUIRE_WINDOWS_PROOF === "1") {
+			console.error(`[windows-app-launch] required proof cannot run on ${process.platform}`);
+			process.exit(1);
+		}
 		console.log("[windows-app-launch] packaged app launch proof skipped outside Windows");
 	} else {
 		await main();

@@ -655,7 +655,10 @@ describe("uploadFileBase64", () => {
 			mimeType: "text/plain",
 		});
 
-		expect(mockSpawn).toHaveBeenCalledWith(["mkdir", "-p", "/tmp/test-dev3/worktrees/tmp-project-root/uploads"]);
+		// `mkdir -p` is not a binary on Windows, so the uploads dir is created
+		// through node:fs rather than a spawned process.
+		expect(mkdirSync).toHaveBeenCalledWith("/tmp/test-dev3/worktrees/tmp-project-root/uploads", { recursive: true });
+		expect(mockSpawn).not.toHaveBeenCalled();
 		expect((globalThis as any).Bun.write).toHaveBeenCalledTimes(1);
 
 		const [path, fileData] = (globalThis as any).Bun.write.mock.calls[0];

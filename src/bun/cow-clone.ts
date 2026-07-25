@@ -7,6 +7,8 @@
  * All paths are cloned in parallel.
  */
 
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { dirname } from "node:path";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 
@@ -26,6 +28,15 @@ function isMacOS(): boolean {
 	return process.platform === "darwin";
 }
 
+/**
+ * Windows has none of `cp`/`rm`/`test`, and no copy-on-write clone we can reach
+ * from here — NTFS block cloning needs a DeviceIoControl call. It gets a plain
+ * recursive copy through node:fs; POSIX keeps its spawn-based cascade untouched.
+ */
+function isWindows(): boolean {
+	return process.platform === "win32";
+}
+
 /** Check if a pattern contains glob characters. */
 function isGlob(p: string): boolean {
 	return p.includes("*") || p.includes("?") || p.includes("[");
@@ -33,12 +44,13 @@ function isGlob(p: string): boolean {
 
 /** Validate a relative path — reject traversal and absolute paths. */
 function validatePath(p: string): void {
-	if (p.startsWith("/")) {
+	// `C:\x` and `\\server\x` are absolute too, and neither starts with "/".
+	if (p.startsWith("/") || p.startsWith("\\") || /^[A-Za-z]:/.test(p)) {
 		throw new Error(`Absolute path not allowed: ${p}`);
 	}
 	// Strip glob characters for traversal check
 	const cleaned = p.replace(/[*?\[\]]/g, "");
-	const segments = cleaned.split("/");
+	const segments = cleaned.split(/[\\/]/);
 	for (const seg of segments) {
 		if (seg === "..") {
 			throw new Error(`Path traversal not allowed: ${p}`);
@@ -71,6 +83,14 @@ async function expandGlob(root: string, pattern: string): Promise<string[]> {
 
 /** Remove a path (rm -rf), ignoring errors. */
 async function removePath(fullPath: string): Promise<void> {
+	if (isWindows()) {
+		try {
+			rmSync(fullPath, { recursive: true, force: true });
+		} catch {
+			// best-effort
+		}
+		return;
+	}
 	try {
 		const proc = spawn(["rm", "-rf", fullPath]);
 		await proc.exited;
@@ -81,6 +101,11 @@ async function removePath(fullPath: string): Promise<void> {
 
 /** Ensure parent directory exists. */
 async function ensureParent(fullPath: string): Promise<void> {
+	if (isWindows()) {
+		const parent = dirname(fullPath);
+		if (parent && parent !== fullPath) mkdirSync(parent, { recursive: true });
+		return;
+	}
 	const parent = fullPath.slice(0, fullPath.lastIndexOf("/"));
 	if (parent) {
 		const proc = spawn(["mkdir", "-p", parent]);
@@ -90,6 +115,7 @@ async function ensureParent(fullPath: string): Promise<void> {
 
 /** Check if a path exists. */
 async function pathExists(fullPath: string): Promise<boolean> {
+	if (isWindows()) return existsSync(fullPath);
 	try {
 		const proc = spawn(["test", "-e", fullPath]);
 		const code = await proc.exited;
@@ -153,6 +179,13 @@ async function cloneSingle(
 	// Prepare destination
 	await ensureParent(dst);
 	await removePath(dst);
+
+	if (isWindows()) {
+		cpSync(src, dst, { recursive: true, force: true });
+		const ms = Math.round(performance.now() - start);
+		log.info("Copied via node:fs cp", { path: relativePath, ms });
+		return { path: relativePath, method: "copy", durationMs: ms };
+	}
 
 	if (isMacOS()) {
 		// 1. Try clonefile(2) — atomic whole-tree clone

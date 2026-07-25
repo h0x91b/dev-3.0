@@ -12,6 +12,7 @@ import { CloneProgressParser } from "./clone-progress";
 import { reportCurrentPreparationStage } from "./preparation-runtime";
 import { spawn } from "./spawn";
 import { DEV3_HOME } from "./paths";
+import { projectStorageKey } from "../shared/project-storage-key";
 import * as github from "./github";
 
 const log = createLogger("git");
@@ -728,9 +729,16 @@ export function shortId(taskId: string): string {
 	return taskId.slice(0, 8);
 }
 
+/**
+ * Directory name for this project's data and worktrees.
+ *
+ * POSIX output is the frozen `/a/b/c` → `a-b-c` mapping; Windows gets a
+ * sanitised key because a drive-qualified path is not a legal directory name.
+ * The formula itself lives in `shared/project-storage-key.ts` so the CLI and
+ * the conversation index cannot drift from it.
+ */
 export function projectSlug(projectPath: string): string {
-	// /Users/arsenyp/Desktop/my-repo → Users-arsenyp-Desktop-my-repo
-	return projectPath.replace(/^\//, "").replaceAll("/", "-");
+	return projectStorageKey(projectPath);
 }
 
 export function taskDir(project: Project, task: Task): string {
@@ -848,9 +856,9 @@ export async function createWorktree(
 	const wtPath = worktreePath(project, task);
 	const tDir = taskDir(project, task);
 
-	// Create the task container directory (with logs/ subfolder)
-	const mkdirProc = spawn(["mkdir", "-p", `${tDir}/logs`]);
-	await mkdirProc.exited;
+	// Create the task container directory (with logs/ subfolder). `mkdir -p` is
+	// not a Windows binary, and this runs before any worktree exists.
+	mkdirSync(`${tDir}/logs`, { recursive: true });
 
 	if (existingBranch && variantBranchName) {
 		// Multi-variant mode: create a new branch from the existing branch's HEAD

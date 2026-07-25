@@ -1,4 +1,5 @@
 import type { TaskStatus } from "./types";
+import { projectStorageKey } from "./project-storage-key";
 
 /**
  * Pure (I/O-free) core for conversation search across past task transcripts.
@@ -53,12 +54,9 @@ export function reconstructWorktreePath(dev3Home: string, projectSlug: string, t
 	return `${dev3Home}/worktrees/${projectSlug}/${shortId}/worktree`;
 }
 
-/**
- * Mirror of the frozen `projectSlug()` algorithm (see git.ts / context.ts):
- * strip a leading slash, then replace every `/` with `-`. Dots are preserved.
- */
+/** Re-exported so search callers derive the key from the one shared formula. */
 export function projectSlug(projectPath: string): string {
-	return projectPath.replace(/^\//, "").replaceAll("/", "-");
+	return projectStorageKey(projectPath);
 }
 
 /** Split a free-text query into lowercased search tokens (length >= 2, deduped). */

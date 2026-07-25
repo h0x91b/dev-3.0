@@ -3,6 +3,7 @@ import { basename, extname } from "node:path";
 import type { SharedImage } from "../shared/types";
 import { MAX_SHARED_IMAGE_BYTES, SHARED_IMAGE_EXTS } from "../shared/types";
 import { DEV3_HOME } from "./paths";
+import { projectStorageKey } from "../shared/project-storage-key";
 import { createLogger } from "./logger";
 
 const log = createLogger("shared-images");
@@ -18,9 +19,8 @@ const MIME_BY_EXT: Record<string, string> = {
 	bmp: "image/bmp",
 };
 
-/** Frozen slug algorithm (mirrors git.ts / app-handlers). Do not change. */
 function projectSlug(projectPath: string): string {
-	return projectPath.replace(/^\//, "").replaceAll("/", "-");
+	return projectStorageKey(projectPath);
 }
 
 export function sharedImagesDir(projectPath: string): string {
