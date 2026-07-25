@@ -413,14 +413,6 @@ function KanbanBoard({
 		[tasks, resolver, priorityCandidates, statusCandidates, t],
 	);
 
-	// Labels shown inline are ordered by popularity (how many tasks use each), so
-	// the funnel/"+N more" hides the least-used first.
-	const popularLabels = useMemo(() => {
-		const count = new Map<string, number>();
-		for (const task of tasks) for (const id of task.labelIds ?? []) count.set(id, (count.get(id) ?? 0) + 1);
-		return [...projectLabels].sort((a, b) => (count.get(b.id) ?? 0) - (count.get(a.id) ?? 0));
-	}, [tasks, projectLabels]);
-
 	async function handleRenameBuiltinColumn(status: TaskStatus, name: string | null) {
 		try {
 			const updated = await api.request.renameBuiltinColumn({ projectId: project.id, status, name });
@@ -706,7 +698,7 @@ function KanbanBoard({
 	return (
 		<>
 			<LabelFilterBar
-				labels={popularLabels}
+				labels={projectLabels}
 				searchQuery={searchQuery}
 				onSearchChange={setSearchQuery}
 				filterGroups={filterGroups}

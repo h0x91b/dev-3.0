@@ -1,0 +1,1 @@
+Kanban label filter chips now follow the label order configured in Project Settings instead of being reordered by task usage. This keeps the board consistent with the user's project-wide label arrangement.

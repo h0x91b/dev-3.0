@@ -10,11 +10,11 @@ import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { PRIORITY_NAME_KEYS, PRIORITY_STYLES } from "./priorityStyles";
 
-/** How many (most-popular) label chips to show inline before the "+N more". */
+/** How many label chips to show inline before the "+N more". */
 const MAX_INLINE_LABELS = 10;
 
 interface LabelFilterBarProps {
-	/** Project labels, pre-sorted by popularity (most-used first). */
+	/** Project labels in the order configured in Project Settings. */
 	labels: Label[];
 	searchQuery: string;
 	onSearchChange: (query: string) => void;
@@ -91,8 +91,8 @@ function LabelFilterBar({
 	}, [disableGlobalFindShortcut]);
 
 	const hasLabels = labels.length > 0;
-	// Only the most-popular labels show inline; the rest live in the funnel,
-	// reachable via the "+N more" chip (labels used to clip off the right edge).
+	// Only the first labels in the project settings order show inline; the rest
+	// live in the funnel, reachable via the "+N more" chip.
 	const shownLabels = labels.slice(0, MAX_INLINE_LABELS);
 	const hiddenLabelCount = labels.length - shownLabels.length;
 
@@ -213,8 +213,8 @@ function LabelFilterBar({
 				<PriorityFilterChips query={searchQuery} onChange={onSearchChange} />
 			</div>
 
-			{/* Labels — the most-popular ones inline (wrapping to ~1.5 rows), the rest
-			    behind "+N more" which opens the funnel's full label list. */}
+			{/* Labels — the project-configured order inline (wrapping to ~1.5 rows),
+			    the rest behind "+N more" which opens the funnel's full label list. */}
 			{hasLabels && (
 				<div className="flex items-center gap-1.5 flex-wrap min-w-0">
 					<span className="flex items-center gap-1 text-xs text-fg-3 font-medium flex-shrink-0">

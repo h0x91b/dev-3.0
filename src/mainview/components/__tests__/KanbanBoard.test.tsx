@@ -401,6 +401,34 @@ describe("column ordering", () => {
 	});
 });
 
+describe("label filter ordering", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		localStorage.clear();
+	});
+
+	it("keeps the project settings order instead of sorting by task usage", async () => {
+		const labels = [
+			{ id: "feature", name: "Feature", color: "#22c55e" },
+			{ id: "bug", name: "Bug", color: "#ef4444" },
+		];
+		const tasks = [
+			makeTask({ id: "bug-1", labelIds: ["bug"] }),
+			makeTask({ id: "bug-2", labelIds: ["bug"] }),
+		];
+
+		await renderBoardWith({ project: { ...project, labels }, tasks });
+
+		const helpButton = screen.getAllByRole("button", { name: "About this section" })[1];
+		const labelGroup = helpButton.parentElement?.parentElement;
+		expect(labelGroup).not.toBeNull();
+		const chipOrder = Array.from(labelGroup!.querySelectorAll("button[title]"))
+			.map((button) => button.getAttribute("title"));
+
+		expect(chipOrder).toEqual(["Feature", "Bug"]);
+	});
+});
+
 describe("tip rotation", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
