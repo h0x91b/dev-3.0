@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { Project, Task, TaskDiffFile, TaskDiffResponse } from "../../../shared/types";
 import { I18nProvider } from "../../i18n";
 import type { NavigationGuard } from "../../navigation-guard";
+import { waitForTicks } from "../../test-utils/wait-for-ticks";
 import TaskDiffViewer from "../TaskDiffViewer";
 
 vi.mock("../../rpc", () => ({
@@ -474,7 +475,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -493,12 +494,12 @@ describe("TaskDiffViewer", () => {
 
 		expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
 		expect(within(screen.getByRole("button", { name: /open diff file src\/app\.ts/i })).getByText("app.ts")).toHaveClass("line-through");
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(1);
 		});
 
 		await user.click(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i }));
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 	});
@@ -515,7 +516,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 
@@ -598,7 +599,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -885,7 +886,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4 theme:dark");
 		});
 	});
@@ -914,7 +915,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4 theme:dark");
 		});
 	});
@@ -943,7 +944,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:3 theme:dark");
 		});
 	});
@@ -1068,7 +1069,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1140,7 +1141,7 @@ describe("TaskDiffViewer", () => {
 			);
 		});
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getByRole("checkbox", { name: /mark src\/app\.ts as read/i })).toBeChecked();
 			expect(screen.getAllByText("src/app.ts")[0]).toHaveClass("line-through");
 			expect(screen.queryAllByTestId("mock-diff")).toHaveLength(1);
@@ -1251,7 +1252,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1350,7 +1351,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1377,7 +1378,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1388,7 +1389,7 @@ describe("TaskDiffViewer", () => {
 		expect(screen.getByRole("button", { name: "Expand all" })).toBeInTheDocument();
 
 		await user.click(screen.getByRole("button", { name: "Expand all" }));
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 
@@ -1400,7 +1401,7 @@ describe("TaskDiffViewer", () => {
 
 		await user.click(screen.getByRole("button", { name: "Mark all unread" }));
 		expect(screen.getByText("0/3 Read")).toBeInTheDocument();
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 	});
@@ -1458,7 +1459,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1504,7 +1505,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1617,7 +1618,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1700,7 +1701,7 @@ describe("TaskDiffViewer", () => {
 		});
 
 		expect(scrollToMock).toHaveBeenCalledWith(expect.objectContaining({ top: 288, behavior: "auto" }));
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.queryAllByTestId("mock-diff")).toHaveLength(1);
 		});
 
@@ -1722,7 +1723,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("theme:light");
 		});
 	});
@@ -1743,7 +1744,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")).toHaveLength(2);
 		});
 
@@ -1953,7 +1954,7 @@ describe("TaskDiffViewer", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff")[0]).toHaveTextContent("mode:4");
 		});
 
@@ -2814,7 +2815,7 @@ describe("TaskDiffViewer narrow viewport", () => {
 			</I18nProvider>,
 		);
 
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 
@@ -2838,7 +2839,7 @@ describe("TaskDiffViewer narrow viewport", () => {
 				/>
 			</I18nProvider>,
 		);
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 
@@ -2868,7 +2869,7 @@ describe("TaskDiffViewer narrow viewport", () => {
 				/>
 			</I18nProvider>,
 		);
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 
@@ -2889,7 +2890,7 @@ describe("TaskDiffViewer narrow viewport", () => {
 				/>
 			</I18nProvider>,
 		);
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 		expect(screen.getByRole("button", { name: "Branch" })).toBeInTheDocument();
@@ -2909,7 +2910,7 @@ describe("TaskDiffViewer narrow viewport", () => {
 				/>
 			</I18nProvider>,
 		);
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 		const scrollRegion = screen.getByTestId("inline-diff-scroll-region");
@@ -2931,7 +2932,7 @@ describe("TaskDiffViewer narrow viewport", () => {
 				/>
 			</I18nProvider>,
 		);
-		await waitFor(() => {
+		await waitForTicks(() => {
 			expect(screen.getAllByTestId("mock-diff").length).toBeGreaterThan(0);
 		});
 		// The directory part and the basename render as separate spans: the
