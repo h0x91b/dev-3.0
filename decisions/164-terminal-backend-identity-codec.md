@@ -27,12 +27,10 @@ importer. It is identity only — no capabilities, versions, negotiation, or
 
 ## Risks
 
-- The tests are not yet wired into any CI shard: the three vitest configs root
-  at `src/mainview` / `src/bun` / `src/cli`, and none discover `src/shared`.
-  This is intentional per the ticket ("record wiring as follow-up"); the codec
-  is still covered by `bun run lint` (tsc over `src/`) and runs locally via a
-  throwaway config rooted at the module. The follow-up that persists the field
-  adds a `src/shared` vitest project + CI shard.
+- The tests were initially orphaned from CI (the three vitest configs root at
+  `src/mainview` / `src/bun` / `src/cli`, none discovers `src/shared`). Resolved
+  by the persistence follow-up: they now live in `src/bun/__tests__/terminal-backend-identity-codec.test.ts`
+  and run in the existing bun shard — see decision 165.
 - Freezing the field name now is a light schema commitment; kept private to the
   module so it can still change before any on-disk write exists.
 
@@ -43,6 +41,7 @@ importer. It is identity only — no capabilities, versions, negotiation, or
   read it), so it belongs in `src/shared`; the ticket pins the location there.
 - **Add the shared vitest project + CI shard in this task** — rejected: touches
   `package.json` and `.github/workflows/build.yml`, expanding beyond the ticket's
-  isolation boundary; deferred to the persistence-wiring follow-up.
+  isolation boundary; the persistence follow-up instead moved the tests into the
+  existing bun shard (decision 165).
 - **Backfill `tmux` onto legacy records on encode** — rejected: rewrites
   untouched on-disk records and breaks the `~/.dev3.0` no-silent-rewrite rule.

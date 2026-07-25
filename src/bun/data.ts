@@ -1,6 +1,13 @@
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import type { Project, Task, TaskHistoryChange, TaskHistoryEntry, TaskPriority, TaskStatus, TipState } from "../shared/types";
 import { comparePriority, DEFAULT_PRIORITY, getTaskOverview, getTaskTitle, isStatusGuardBlocked, titleFromDescription } from "../shared/types";
+import {
+	decodeTerminalBackend,
+	isTerminalBackendIdentity,
+	TERMINAL_BACKEND_FIELD,
+	type TerminalBackendDecodeResult,
+	type TerminalBackendIdentity,
+} from "../shared/terminal-backend-identity";
 import { createLogger } from "./logger";
 import { DEV3_HOME, OPS_DIR } from "./paths";
 import { detectClonePaths } from "./cow-clone";
@@ -979,6 +986,46 @@ export async function setTaskPriority(
 		if (changed.length > 0) await rawSaveTasks(project, tasks);
 		log.info("Task priority set", { taskId, priority, changed: changed.length });
 		return changed;
+	});
+}
+
+/**
+ * Read which backend runs a task's PRIMARY terminal, through the shared codec.
+ * Pure: a legacy record (no field) reports effective `tmux` with
+ * `present: false` and is never rewritten; an unrecognized stored value returns
+ * a typed failure instead of guessing a backend. Other terminal kinds (project,
+ * dev-server) are not covered by this field — see decision 165.
+ */
+export function readTaskTerminalBackend(task: Task): TerminalBackendDecodeResult {
+	return decodeTerminalBackend(task);
+}
+
+/**
+ * Persist an EXPLICIT terminal backend identity for a task's primary terminal.
+ * The only writer of {@link TERMINAL_BACKEND_FIELD} — nothing else stamps it, so
+ * records that never went through here stay field-less (effective tmux) and
+ * remain readable by older app versions. Rejects unknown identities rather than
+ * writing a value this build cannot decode. No-op (no write) when the stored
+ * value already matches.
+ */
+export async function setTaskTerminalBackend(
+	project: Project,
+	taskId: string,
+	backend: TerminalBackendIdentity,
+): Promise<Task> {
+	if (!isTerminalBackendIdentity(backend)) {
+		throw new Error(`Unsupported terminal backend identity: ${String(backend)}`);
+	}
+	const file = tasksFile(project);
+	return withFileLock(file, async () => {
+		log.info("Setting task terminal backend", { taskId, backend, projectId: project.id });
+		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
+		const idx = tasks.findIndex((t) => t.id === taskId);
+		if (idx === -1) throw new Error(`Task not found: ${taskId}`);
+		if (tasks[idx][TERMINAL_BACKEND_FIELD] === backend) return tasks[idx];
+		const updated = applyTaskUpdate(tasks, idx, { [TERMINAL_BACKEND_FIELD]: backend });
+		await rawSaveTasks(project, tasks);
+		return updated;
 	});
 }
 

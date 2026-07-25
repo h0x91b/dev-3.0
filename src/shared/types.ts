@@ -2,6 +2,7 @@ import type { RPCSchema } from "electrobun/bun";
 import type { ConversationMatch } from "./conversation-search-core";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
+import type { TerminalBackendIdentity } from "./terminal-backend-identity";
 
 // ---- Changelog ----
 
@@ -1262,6 +1263,14 @@ export interface Task {
 	lifecycleStartedAt?: string;
 	columnOrder?: number;
 	tmuxSocket?: string | null;
+	/**
+	 * Which backend runs this task's PRIMARY terminal. Absent means the legacy
+	 * effective backend (tmux) and MUST stay absent — the data layer never
+	 * backfills it. Read it through the codec in
+	 * `src/shared/terminal-backend-identity` (see decision 165); project and
+	 * dev-server terminals are not covered by this field yet.
+	 */
+	terminalBackend?: TerminalBackendIdentity;
 	labelIds?: string[];
 	existingBranch?: string | null;
 	notes?: TaskNote[];

@@ -8,14 +8,14 @@ import {
 	TERMINAL_BACKEND_FIELD,
 	TERMINAL_BACKENDS,
 	type TerminalBackendDecodeSuccess,
-} from "../index";
+} from "../../shared/terminal-backend-identity";
 import {
 	COMPAT_CASES,
 	EXPLICIT_NATIVE_WITH_EXTRAS,
 	LEGACY_RECORD_EXTRA_PROPS,
 	LEGACY_RECORD_NO_FIELD,
 	UNKNOWN_FUTURE_SIBLING_RECORD,
-} from "../fixtures";
+} from "../../shared/terminal-backend-identity/fixtures";
 
 function decodeOrThrow(source: unknown): TerminalBackendDecodeSuccess {
 	const result = decodeTerminalBackend(source);
