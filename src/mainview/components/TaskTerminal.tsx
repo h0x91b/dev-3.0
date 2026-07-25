@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type Dispatch } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -15,6 +15,8 @@ import MobilePaneCarousel from "./MobilePaneCarousel";
 import MobileWindowCarousel from "./MobileWindowCarousel";
 import PaneZoomBadge from "./PaneZoomBadge";
 import ClosePanePicker from "./ClosePanePicker";
+import NativeViewerBar from "./NativeViewerBar";
+import type { NativeStreamRole } from "../../shared/native-terminal-stream";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
@@ -53,6 +55,14 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// (instead of waiting up to one poll interval).
 	const [windowEpoch, setWindowEpoch] = useState(0);
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
+	// Native backend only: this viewer's write role plus a bump each time the
+	// server refused its input. Never set for a tmux terminal.
+	const [nativeRole, setNativeRole] = useState<NativeStreamRole>("writer");
+	const [refusedAt, setRefusedAt] = useState(0);
+	const handleNativeStatus = useCallback(({ role, refused }: { role: NativeStreamRole; refused: boolean }) => {
+		setNativeRole(role);
+		if (refused) setRefusedAt(Date.now());
+	}, []);
 	const [termHandle, setTermHandle] = useState<TerminalHandle | null>(null);
 	const [error, setError] = useState<{ kind: ErrorKind; path: string } | null>(null);
 	const [recoverable, setRecoverable] = useState<TaskSessionState | null>(null);
@@ -330,6 +340,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			taskId={taskId}
 			projectId={projectId}
 			onReady={setTermHandle}
+			onNativeStatus={handleNativeStatus}
 			touchComposeMode={touchInput && !rawMode}
 		/>
 	) : (
@@ -347,6 +358,13 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 				<div className="contents" data-collapse-on-compose>
 					<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
 				</div>
+			)}
+			{ptyUrl && (
+				<NativeViewerBar
+					role={nativeRole}
+					refusedAt={refusedAt}
+					onTakeControl={() => termHandle?.claimWriter()}
+				/>
 			)}
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).

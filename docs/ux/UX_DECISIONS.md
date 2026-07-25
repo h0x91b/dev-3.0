@@ -10,6 +10,12 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** Post-boot the app read as frozen — `BootstrapScreen` only covers launch, so a dropped socket left a stale board and silently queued actions for the 120s RPC timeout. A header dot/banner was rejected (permanent chrome + layout shift on phones), a toast too (transient signal for a persisting condition). Bible §5.5 + §10.
 - **Status:** Observed. Evidence: `StatusDock.tsx`, `ConnectionStatusPill.tsx`, `ProjectView.tsx`, `KanbanBoardSkeleton.tsx`, `BoardLoadFailed.tsx`.
 
+## 2026-07-25 — A read-only terminal viewer says so, in an earned strip above the canvas
+
+- **Rule:** A native task terminal shared by several viewers (desktop window + remote tabs) gives exactly one of them the write lease; an observer gets a slim NON-overlapping strip directly above the canvas naming the read-only state plus a `Take control` button (secondary, bordered), and that strip flashes `danger` for ~1.6s when the server refuses a keystroke. Writers — and every tmux terminal — get zero chrome.
+- **Why:** A silently read-only terminal is indistinguishable from a hung one. An absolute overlay badge (PaneZoomBadge's pattern) was rejected because it collides with the narrow pane-dots strip; a toast per refused keystroke was rejected as spam for an expected, persisting condition. Follows the existing slim-strip pattern (window switcher/pane dots), so wide and narrow are identical. Bible §5 terminal surfaces.
+- **Status:** Observed. Evidence: `NativeViewerBar.tsx`, `TaskTerminal.tsx`, `decisions/172-native-terminal-remote-viewer-bridge.md`.
+
 ## 2026-07-24 — Inspector bars adapt to the PANEL's width, not the viewport's
 
 - **Rule:** A toolbar that shares the viewport with another surface gates its label/fold behaviour on its own container width (`useContainerWidth`, ResizeObserver), not on `useCompact`/`useNarrowViewport`; and every bar is boxed (`min-w-0 overflow-hidden`) so it can never paint over a neighbour or the pinned chrome. Inspector tiers: `tight` <1280 (label strip → `+k`, branch clamp, tmux/Runtime icon-only), `veryTight` <900 (drop label strip + include-tests).

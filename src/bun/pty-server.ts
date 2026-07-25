@@ -3,6 +3,15 @@ import type { TmuxLayout, TmuxWindowInfo, TmuxPaneInfo } from "../shared/types";
 import { ENV_UNSET } from "../shared/agent-accounts";
 import type { TerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import { isResizeSequence, parseResizeSequence, smallestClientSize } from "../shared/resize-protocol";
+import {
+	attachMessage,
+	decodeNativeStreamMessage,
+	outputMessage,
+	parseSinceParam,
+	roleMessage,
+	NATIVE_STREAM_SINCE_PARAM,
+} from "../shared/native-terminal-stream";
+import { NativeBridgeJournal, NativeClientLease } from "./native-terminal-bridge";
 import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
@@ -13,7 +22,7 @@ import {
 	type NativeTaskTerminal,
 } from "./native-task-terminal";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
-import type { TerminalLaunchSpec } from "./task-terminal-backend";
+import { nativeTaskSessionId, type TerminalLaunchSpec } from "./task-terminal-backend";
 import {
 	tmux,
 	DEFAULT_TMUX_SOCKET,
@@ -116,6 +125,10 @@ interface PtySession {
 	native: NativeTaskTerminal | null;
 	/** Guards against two concurrent reattach attempts for one native session. */
 	nativeAttaching: boolean;
+	/** Bounded mirror of broadcast output, so a late/reconnecting viewer sees the screen. */
+	nativeStream: NativeBridgeJournal | null;
+	/** Which viewer may type into the shell. Native only — tmux arbitrates its own clients. */
+	nativeLease: NativeClientLease<any> | null;
 	/** All currently connected WebSocket clients. PTY output is broadcast to all. */
 	clients: Set<any>;
 	tmuxSocket: string;
@@ -200,6 +213,8 @@ export function createSession(
 		proc: null,
 		native: null,
 		nativeAttaching: false,
+		nativeStream: null,
+		nativeLease: null,
 		clients: new Set(),
 		tmuxSocket,
 		tmuxSessionName,
@@ -232,7 +247,11 @@ function ingestPtyOutput(session: PtySession, data: string | Uint8Array): void {
 	session.idleNotified = false;
 	const cleaned = handleOsc52(str, session);
 	checkForBell(cleaned, session.taskId);
-	if (cleaned && session.clients.size > 0) enqueuePtyData(session, cleaned);
+	if (!cleaned) return;
+	// A native session always enqueues: the batch lands in its bounded journal even
+	// with no viewer attached, which is what lets a remote tab attach to a running
+	// shell and see the screen. tmux replays its own pane, so it stays as it was.
+	if (session.backend === "native" || session.clients.size > 0) enqueuePtyData(session, cleaned);
 }
 
 /** One death path for both create and reattach, so their bookkeeping cannot drift. */
@@ -287,6 +306,8 @@ export async function createNativeTaskSession(
 		proc: null,
 		native: null,
 		nativeAttaching: false,
+		nativeStream: new NativeBridgeJournal(),
+		nativeLease: new NativeClientLease(),
 		clients: new Set(),
 		// A native session has no tmux socket or session name; the empty strings
 		// exist so a stray tmux call fails loudly instead of hitting a real session.
@@ -352,6 +373,8 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		proc: null,
 		native: null,
 		nativeAttaching: false,
+		nativeStream: new NativeBridgeJournal(),
+		nativeLease: new NativeClientLease(),
 		clients: new Set(),
 		tmuxSocket: "",
 		tmuxSessionName: "",
@@ -876,16 +899,97 @@ function sessionShell(session: PtySession): { write(data: string): void; resize(
 	return term ?? null;
 }
 
+function sendToClient(client: any, text: string): void {
+	try {
+		client.sendText(text);
+	} catch {
+		// dead client — dropped on its close event
+	}
+}
+
+/**
+ * Hand a newly connected viewer its role and the screen, before it joins the
+ * live broadcast. `since` is the watermark it last applied (null on a first
+ * attach), so a reconnect replays only the missing tail; a watermark that fell
+ * off the bounded journal is answered with the whole tail and an explicit reset
+ * rather than a silently corrupt screen.
+ */
+function attachNativeClient(session: PtySession, ws: any, since: number | null): void {
+	const journal = session.nativeStream;
+	const lease = session.nativeLease;
+	if (!journal || !lease) return;
+	settleNativeStream(session);
+	const role = lease.attach(ws);
+	const replay = journal.replayFrom(since);
+	const sessionId = nativeTaskSessionId(session.taskId);
+	sendToClient(
+		ws,
+		attachMessage(
+			{
+				seq: replay.seq,
+				role,
+				sessionId,
+				paneId: session.native?.paneId ?? `${sessionId}:0`,
+				hostPid: session.native?.hostPid ?? -1,
+				shellPid: session.native?.shellPid ?? -1,
+				resumed: replay.resumed,
+				...(replay.reset ? { reset: replay.reset } : {}),
+			},
+			replay.data,
+		),
+	);
+	log.info("Native viewer attached", {
+		taskId: shortId(session.taskId),
+		role,
+		since,
+		seq: replay.seq,
+		resumed: replay.resumed,
+		reset: replay.reset ?? "none",
+		viewers: lease.size,
+	});
+}
+
+/** Move the writer lease between viewers and tell both sides, in one step. */
+function handleNativeOwnership(session: PtySession, ws: any, action: "claim" | "release"): void {
+	const lease = session.nativeLease;
+	if (!lease) return;
+	const change = action === "claim" ? lease.claim(ws) : lease.release(ws);
+	if (!change) return;
+	if (change.previous) sendToClient(change.previous, roleMessage(lease.roleOf(change.previous)));
+	if (change.writer) sendToClient(change.writer, roleMessage("writer"));
+	if (action === "release") sendToClient(ws, roleMessage(lease.roleOf(ws)));
+	// The new writer's viewport now owns the PTY geometry.
+	applyClientSizes(session);
+	log.info("Native writer lease moved", { taskId: shortId(session.taskId), action, viewers: lease.size });
+}
+
+/** The native writer's last reported viewport, or null while it has not sent one. */
+function writerClientSize(session: PtySession): { cols: number; rows: number } | null {
+	const writer = session.nativeLease?.writer as { ptyCols?: number; ptyRows?: number } | null | undefined;
+	if (!writer?.ptyCols || !writer.ptyRows) return null;
+	return { cols: writer.ptyCols, rows: writer.ptyRows };
+}
+
 function applyClientSizes(session: PtySession): void {
 	const term = sessionShell(session);
 	if (!term) return;
-	const target = smallestClientSize(
-		Array.from(session.clients, (c) => ({ cols: (c as any).ptyCols, rows: (c as any).ptyRows })),
-	);
+	// Native: the WRITER alone sizes the PTY. A native host has no client-size
+	// negotiation of its own, so clamping to the smallest viewer would let any
+	// remote tab (a phone in portrait, say) shrink the writer's shell out from
+	// under it. Observers letterbox instead — their zoom stays client-local.
+	const target = session.backend === "native"
+		? writerClientSize(session)
+		: smallestClientSize(
+			Array.from(session.clients, (c) => ({ cols: (c as any).ptyCols, rows: (c as any).ptyRows })),
+		);
 	if (!target) return;
 	const { cols: minCols, rows: minRows } = target;
 
 	if (session.appliedCols === minCols && session.appliedRows === minRows) {
+		// A native viewer is repainted from the journal on attach, so it never needs
+		// the redraw jiggle below — and jiggling would resize a live shell for a
+		// client that merely reconnected.
+		if (session.backend === "native") return;
 		// Target size is unchanged — typically a new, equal-or-larger viewer just
 		// connected. tmux does NOT emit a SIGWINCH / redraw for a same-size
 		// resize, so that viewer's freshly-mounted blank terminal would never get
@@ -911,15 +1015,49 @@ function applyClientSizes(session: PtySession): void {
 	}
 }
 
-/** Flush accumulated PTY data to all connected WebSocket clients in one batch. */
+/**
+ * Flush accumulated PTY data to all connected WebSocket clients in one batch.
+ *
+ * A native session records the batch into its bounded journal first and tags the
+ * message with the resulting watermark, so a viewer that drops can resume from
+ * exactly where it stopped. tmux sessions send the bare text they always have.
+ */
 function flushPendingData(session: PtySession): void {
 	session.batchTimer = null;
-	if (!session.pendingData || session.clients.size === 0) return;
+	if (!session.pendingData) return;
+	if (session.backend !== "native") {
+		if (session.clients.size === 0) return;
+		const data = session.pendingData;
+		session.pendingData = "";
+		for (const client of session.clients) {
+			try { client.sendText(data); } catch { /* dead client */ }
+		}
+		return;
+	}
 	const data = session.pendingData;
 	session.pendingData = "";
+	// Journal FIRST and unconditionally: with no viewer attached (remote-only use,
+	// or every tab closed) this tail is the entire screen the next one will get.
+	const seq = session.nativeStream?.push(data) ?? 0;
+	if (session.clients.size === 0) return;
+	const framed = outputMessage(seq, data);
 	for (const client of session.clients) {
-		try { client.sendText(data); } catch { /* dead client */ }
+		try { client.sendText(framed); } catch { /* dead client */ }
 	}
+}
+
+/**
+ * Bring the journal level with everything already broadcast, so a client
+ * attaching right now replays a tail that ends exactly where the live stream
+ * resumes. Called before an attach — the ordering guarantee, not an optimisation.
+ */
+function settleNativeStream(session: PtySession): void {
+	if (session.backend !== "native" || !session.pendingData) return;
+	if (session.batchTimer) {
+		clearTimeout(session.batchTimer);
+		session.batchTimer = null;
+	}
+	flushPendingData(session);
 }
 
 /**
@@ -1290,9 +1428,17 @@ const ptyServer = Bun.serve({
 					cwd: session.cwd,
 				});
 
+				(ws as any).sessionId = sessionId;
+
+				// Native attaches BEFORE joining the broadcast set: the replay tail must
+				// end exactly where this client's live stream begins, or the screen it
+				// rebuilds is missing (or double-printing) the frames in between.
+				if (session.backend === "native") {
+					attachNativeClient(session, ws, parseSinceParam(url?.searchParams.get(NATIVE_STREAM_SINCE_PARAM)));
+				}
+
 				// Add this client to the session's broadcast set
 				session.clients.add(ws as any);
-				(ws as any).sessionId = sessionId;
 
 				const cols = 80;
 				const rows = 24;
@@ -1345,6 +1491,34 @@ const ptyServer = Bun.serve({
 						? message
 						: new TextDecoder().decode(message);
 
+				if (session.backend === "native") {
+					const control = decodeNativeStreamMessage(data);
+					if (control) {
+						if (control.header.t === "claim" || control.header.t === "release") {
+							handleNativeOwnership(session, ws, control.header.t);
+						}
+						return;
+					}
+					// Every viewer reports its own viewport; only the writer's reaches the
+					// PTY (see applyClientSizes), so an observer's zoom stays client-local.
+					if (isResizeSequence(data)) {
+						const size = parseResizeSequence(data);
+						if (size) {
+							(ws as any).ptyCols = size.cols;
+							(ws as any).ptyRows = size.rows;
+							applyClientSizes(session);
+						}
+						return;
+					}
+					if (!session.nativeLease?.canWrite(ws)) {
+						// Say so explicitly — silently swallowed keystrokes read as a hung shell.
+						sendToClient(ws, roleMessage("observer", true));
+						return;
+					}
+					shell.write(data);
+					return;
+				}
+
 				// Handle resize messages. Record this client's requested size and
 				// resize the shared PTY to the smallest across all clients, so
 				// multiple windows on the same task don't fight over the geometry.
@@ -1375,8 +1549,12 @@ const ptyServer = Bun.serve({
 
 				const session = sessions.get(sessionId);
 				if (session) {
-					// Remove this client — don't kill the PTY
+					// Remove this client — don't kill the PTY. For native that also means
+					// the host, shell, and every sibling viewer keep running; a browser tab
+					// closing only releases its own lease.
+					const promoted = session.nativeLease?.detach(ws as any) ?? null;
 					session.clients.delete(ws as any);
+					if (promoted?.writer) sendToClient(promoted.writer, roleMessage("writer"));
 					// A viewer left: the smallest-size constraint may have relaxed,
 					// so grow the PTY back to the smallest of the remaining clients.
 					applyClientSizes(session);

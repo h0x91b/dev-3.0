@@ -47,6 +47,8 @@ export interface NativeTaskTerminalSpec extends NativeTaskTerminalHooks {
 /** The app's live write/resize/read binding to one native task terminal. */
 export interface NativeTaskTerminal {
 	readonly sessionId: string;
+	/** The host's pane identity — the same string every viewer of this shell sees. */
+	readonly paneId: string;
 	readonly hostPid: number;
 	readonly shellPid: number;
 	write(data: string): void;
@@ -98,6 +100,7 @@ function bind(
 	client.onDisconnect(close);
 	return {
 		sessionId,
+		paneId: record?.paneId ?? `${sessionId}:0`,
 		hostPid: record?.host.pid ?? -1,
 		shellPid: record?.shell.pid ?? -1,
 		write(data) {

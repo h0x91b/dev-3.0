@@ -56,6 +56,12 @@ const terminal = {
 	"paneZoom.badge": "Zoomed",
 	"paneZoom.restore": "Show all panes",
 
+	// Native terminal: one viewer types, the rest watch until they take over
+	"nativeViewer.readOnly": "Read-only — another viewer is typing",
+	"nativeViewer.refused": "Read-only — take control to type here",
+	"nativeViewer.takeControl": "Take control",
+	"nativeViewer.takeControlHint": "Type in this terminal; the other viewer becomes read-only",
+
 	// Tmux hotkey hints
 	"tmux.hSplit": "h-split",
 	"tmux.vSplit": "v-split",

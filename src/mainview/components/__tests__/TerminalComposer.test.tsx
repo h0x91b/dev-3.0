@@ -51,6 +51,7 @@ function makeHandle(): TerminalHandle {
 		submit: vi.fn(),
 		focus: vi.fn(),
 		blur: vi.fn(),
+	claimWriter: vi.fn(),
 	};
 }
 

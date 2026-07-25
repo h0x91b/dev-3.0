@@ -5,6 +5,13 @@ import { toast } from "./toast";
 import { api, isElectrobun } from "./rpc";
 import { getShiftKeySequence } from "./shift-key-sequences";
 import { encodeResizeSequence } from "../shared/resize-protocol";
+import {
+	claimMessage,
+	decodeNativeStreamMessage,
+	ptyUrlWithSince,
+	type NativeStreamHeader,
+	type NativeStreamRole,
+} from "../shared/native-terminal-stream";
 // TEMP DIAGNOSTIC: remove these imports after the terminal copy bug is fixed.
 import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
@@ -204,6 +211,8 @@ export interface TerminalHandle {
 	submit: (data: string) => void;
 	focus: () => void;
 	blur: () => void;
+	/** Native backend only: take the writer lease from whoever holds it. No-op on tmux. */
+	claimWriter: () => void;
 }
 
 /** Set once the user has seen the one-time "select text to copy" hint toast. */
@@ -215,6 +224,11 @@ interface TerminalViewProps {
 	projectId: string;
 	onReady?: (handle: TerminalHandle) => void;
 	/**
+	 * Native backend only: this viewer's write role, and whether the server just
+	 * refused something it typed. Never fires for a tmux session.
+	 */
+	onNativeStatus?: (status: { role: NativeStreamRole; refused: boolean }) => void;
+	/**
 	 * Touch compose mode (mobile/tablet in browser mode): the terminal must NOT
 	 * summon the on-screen keyboard — taps neither focus the hidden textarea nor
 	 * forward touch→mouse to the canvas. Text entry goes through TerminalComposer;
@@ -223,7 +237,7 @@ interface TerminalViewProps {
 	touchComposeMode?: boolean;
 }
 
-function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: TerminalViewProps) {
+function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, touchComposeMode }: TerminalViewProps) {
 	const t = useT();
 	// Mirror t in a ref so the long-lived terminal-setup effect's closures
 	// (e.g. the select-to-copy hint) always read the latest translator.
@@ -245,6 +259,12 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 	const touchComposeModeRef = useRef(touchComposeMode ?? false);
 	touchComposeModeRef.current = touchComposeMode ?? false;
 	const copyDiagnosticsRef = useRef<TerminalCopyDiagnostics | null>(null);
+	// Native backend only. The watermark is what a reconnect resumes from, so it
+	// must survive the socket — a tmux session never sets either of these.
+	const nativeSeqRef = useRef<number | null>(null);
+	const nativeRoleRef = useRef<NativeStreamRole | null>(null);
+	const onNativeStatusRef = useRef(onNativeStatus);
+	onNativeStatusRef.current = onNativeStatus;
 	// Mouse-copy keeps tmux copy mode alive so the scrollback viewport does not
 	// jump to live output. Remember when that mode may be active so the next
 	// plain click can return to live input without requiring Escape.
@@ -778,6 +798,11 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 
 							// Expose terminal handle for external input (ExtraKeyBar, TerminalComposer)
 							onReady?.({
+								claimWriter: () => {
+									if (wsRef.current?.readyState === WebSocket.OPEN) {
+										wsRef.current.send(claimMessage());
+									}
+								},
 								sendInput: (data: string) => {
 									if (wsRef.current?.readyState === WebSocket.OPEN) {
 										wsRef.current.send(data);
@@ -1150,6 +1175,39 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			}
 		}
 
+		/** Publish the writer/observer role, and whether the server just refused input. */
+		function reportNativeRole(role: NativeStreamRole, refused: boolean): void {
+			nativeRoleRef.current = role;
+			onNativeStatusRef.current?.({ role, refused });
+		}
+
+		/**
+		 * Apply one native-stream frame. `attach` either continues this viewer's
+		 * stream (resumed — write the delta straight on) or replaces the screen, in
+		 * which case the terminal is reset FIRST so a rebuilt screen can never be
+		 * printed underneath the stale one.
+		 */
+		function handleNativeFrame(header: NativeStreamHeader, payload: string): void {
+			if (header.t === "role") {
+				reportNativeRole(header.role, header.refused === true);
+				return;
+			}
+			let reset = "";
+			if (header.t === "attach") {
+				nativeSeqRef.current = header.seq;
+				reportNativeRole(header.role, false);
+				// RIS in the SAME batch as the replay, so the screen is replaced in one
+				// write instead of briefly showing an empty terminal.
+				if (!header.resumed) reset = "\x1bc";
+			} else if (header.t === "o") {
+				nativeSeqRef.current = header.seq;
+			} else {
+				return;
+			}
+			const cleaned = payload.replace(OSC52_RE, "");
+			if (reset || cleaned) enqueueTermWrite(reset + cleaned);
+		}
+
 		function connectPty(term: Terminal, fit: FitAddon) {
 			if (disposed || ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
 			if (reconnectTimer !== null) {
@@ -1161,7 +1219,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			console.log("[TerminalView] Creating WebSocket connection to", diagnosticPtyUrl);
 			let socket: WebSocket;
 			try {
-				socket = new WebSocket(ptyUrl);
+				socket = new WebSocket(ptyUrlWithSince(ptyUrl, nativeSeqRef.current));
 			} catch (err) {
 				console.error("[TerminalView] WebSocket constructor FAILED:", err);
 				console.error("[TerminalView] URL was:", diagnosticPtyUrl);
@@ -1197,6 +1255,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				if (disposed) return;
 				try {
 					if (typeof event.data === "string") {
+						// A native session frames every message with a watermark header; a
+						// tmux session sends bare terminal text and never enters this branch.
+						const native = decodeNativeStreamMessage(event.data);
+						if (native) {
+							handleNativeFrame(native.header, native.payload);
+							return;
+						}
 						const cleaned = event.data.replace(OSC52_RE, "");
 						if (cleaned) enqueueTermWrite(cleaned);
 					} else {

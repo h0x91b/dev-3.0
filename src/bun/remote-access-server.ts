@@ -17,6 +17,7 @@ import { isAbsolute, join, extname, relative, resolve } from "node:path";
 import { networkInterfaces } from "node:os";
 import QRCode from "qrcode";
 import type { RemoteNetInterface } from "../shared/types";
+import { NATIVE_STREAM_SINCE_PARAM, parseSinceParam } from "../shared/native-terminal-stream";
 import { PATHS } from "./electrobun-platform";
 import { createLogger } from "./logger";
 import { initSecret, createQrToken, createSessionToken, exchangeQrForSession, refreshSession, verifySessionToken, SESSION_TOKEN_TTL_S } from "./jwt";
@@ -344,14 +345,18 @@ let ptyPortGetter: (() => number) | null = null;
  * Proxy a WebSocket connection to the internal PTY server.
  * Browser connects to us at /pty?session=xxx, we forward to localhost:ptyPort.
  */
-function proxyToPty(clientWs: any, sessionId: string): void {
+function proxyToPty(clientWs: any, sessionId: string, sinceSeq: number | null): void {
 	const ptyPort = ptyPortGetter?.() ?? 0;
 	if (!ptyPort) {
 		clientWs.close(4002, "PTY server not available");
 		return;
 	}
 
-	const targetUrl = `ws://localhost:${ptyPort}?session=${sessionId}`;
+	// `since` is the native viewer's resume watermark; it has to survive this hop
+	// or every browser reconnect would rebuild the whole screen. Absent for tmux.
+	const targetUrl = `ws://localhost:${ptyPort}?session=${sessionId}${
+		sinceSeq === null ? "" : `&${NATIVE_STREAM_SINCE_PARAM}=${sinceSeq}`
+	}`;
 	const upstream = new WebSocket(targetUrl);
 
 	upstream.addEventListener("open", () => {
@@ -451,6 +456,8 @@ async function handleRpcMessage(ws: any, raw: string | ArrayBuffer): Promise<voi
 interface WsData {
 	type: "rpc" | "pty" | "shared-proxy";
 	sessionId?: string;
+	/** Native viewer's resume watermark, forwarded to the PTY server. */
+	sinceSeq?: number | null;
 	/** For `shared-proxy`: the upstream `ws://localhost:<port>/<path>` URL to dial. */
 	proxyUpstreamUrl?: string;
 }
@@ -645,7 +652,8 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 				const sessionId = url.searchParams.get("session");
 				if (!sessionId) return new Response("Missing session param", { status: 400 });
 				log.info("PTY WS upgrade: authorized", { ip: clientIp, session: sessionId.slice(0, 8) });
-				if (server.upgrade(req, { data: { type: "pty", sessionId } as WsData })) return;
+				const sinceSeq = parseSinceParam(url.searchParams.get(NATIVE_STREAM_SINCE_PARAM));
+				if (server.upgrade(req, { data: { type: "pty", sessionId, sinceSeq } as WsData })) return;
 				return new Response("WebSocket upgrade failed", { status: 400 });
 			}
 
@@ -698,12 +706,12 @@ export async function startRemoteAccessServer(options: StartOptions): Promise<vo
 		},
 		websocket: {
 			open(ws) {
-				const wsData = (ws as any).data as { type: string; sessionId?: string; proxyUpstreamUrl?: string };
+				const wsData = (ws as any).data as { type: string; sessionId?: string; sinceSeq?: number | null; proxyUpstreamUrl?: string };
 				if (wsData.type === "rpc") {
 					rpcClients.add(ws);
 					log.info("Remote RPC client connected", { total: rpcClients.size });
 				} else if (wsData.type === "pty") {
-					proxyToPty(ws, wsData.sessionId!);
+					proxyToPty(ws, wsData.sessionId!, wsData.sinceSeq ?? null);
 				} else if (wsData.type === "shared-proxy") {
 					proxyToSharedUpstream(ws, wsData.proxyUpstreamUrl!);
 				}

@@ -58,6 +58,12 @@ const terminal = {
 	"paneZoom.badge": "Зум",
 	"paneZoom.restore": "Показать все панели",
 
+	// Native terminal: one viewer types, the rest watch until they take over
+	"nativeViewer.readOnly": "Только чтение — печатает другой клиент",
+	"nativeViewer.refused": "Только чтение — возьмите управление, чтобы печатать",
+	"nativeViewer.takeControl": "Взять управление",
+	"nativeViewer.takeControlHint": "Печатать будете вы, другой клиент перейдёт в режим чтения",
+
 	// Tmux hotkey hints
 	"tmux.hSplit": "гориз.",
 	"tmux.vSplit": "верт.",

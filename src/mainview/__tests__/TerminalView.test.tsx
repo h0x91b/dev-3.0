@@ -1,8 +1,9 @@
 import { render, act, fireEvent, waitFor } from "@testing-library/react";
-import TerminalView, { buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
+import TerminalView, { type TerminalHandle, buildResizeDance, buildCursorMoveSequence, clearStaleSelectionOnWrite, normalizePastedText } from "../TerminalView";
 import { I18nProvider } from "../i18n";
 import { api } from "../rpc";
 import { KEYMAP_LS_KEY } from "../terminal-keymaps";
+import type { NativeStreamRole } from "../../shared/native-terminal-stream";
 
 // ── Hoisted mocks (must be before vi.mock factories) ─────────────────────────
 
@@ -151,7 +152,10 @@ class MockWebSocket {
 	onclose: ((e: CloseEvent) => void) | null = null;
 	onerror: ((e: Event) => void) | null = null;
 
-	constructor() {
+	readonly url: string;
+
+	constructor(url = "") {
+		this.url = url;
 		lastWebSocket = this;
 		webSockets.push(this);
 	}
@@ -1359,5 +1363,165 @@ describe("clearStaleSelectionOnWrite", () => {
 			},
 		};
 		expect(() => clearStaleSelectionOnWrite(throwing)).not.toThrow();
+	});
+});
+
+/**
+ * Native backend: the PTY socket carries framed messages with a watermark, so a
+ * reconnect resumes instead of rebuilding, and the writer/observer role reaches
+ * the UI. A tmux session must be completely unaffected by all of it.
+ */
+describe("TerminalView – native stream framing", () => {
+	const PTY_URL = "ws://localhost:1234/pty?session=t1";
+
+	async function renderNative(onNativeStatus?: (status: { role: NativeStreamRole; refused: boolean }) => void) {
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<TerminalView ptyUrl={PTY_URL} taskId="t1" projectId="p1" onNativeStatus={onNativeStatus} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => {
+			fireResize?.();
+		});
+	}
+
+	function deliver(text: string) {
+		act(() => {
+			lastWebSocket?.onmessage?.({ data: text } as MessageEvent);
+		});
+	}
+
+	function frame(header: Record<string, unknown>, payload = ""): string {
+		return `\x1b_dev3nt;${JSON.stringify({ v: 1, ...header })}\x1b\\${payload}`;
+	}
+
+	it("connects without a watermark and resumes from one after a drop", async () => {
+		const onNativeStatus = vi.fn();
+		await renderNative(onNativeStatus);
+		expect(webSockets[0].url).toBe(PTY_URL);
+
+		deliver(frame({
+			t: "attach",
+			seq: 4,
+			role: "writer",
+			sessionId: "dev3-task-t1",
+			paneId: "dev3-task-t1:0",
+			hostPid: 1,
+			shellPid: 2,
+			resumed: false,
+			reset: "fresh",
+		}, "screen"));
+		deliver(frame({ t: "o", seq: 9 }, "live"));
+
+		await act(async () => {
+			webSockets[0].readyState = WebSocket.CLOSED;
+			webSockets[0].onclose?.({ code: 1006, reason: "network gone", wasClean: false } as CloseEvent);
+			document.dispatchEvent(new Event("visibilitychange"));
+		});
+
+		expect(webSockets).toHaveLength(2);
+		expect(webSockets[1].url).toBe(`${PTY_URL}&since=9`);
+	});
+
+	it("replaces the screen in one write when the server rebuilt it", async () => {
+		await renderNative();
+		mockTermInstance.write.mockClear();
+
+		deliver(frame({
+			t: "attach",
+			seq: 2,
+			role: "writer",
+			sessionId: "s",
+			paneId: "s:0",
+			hostPid: 1,
+			shellPid: 2,
+			resumed: false,
+			reset: "pressure",
+		}, "rebuilt"));
+
+		expect(mockTermInstance.write).toHaveBeenCalledWith("\x1bcrebuilt");
+	});
+
+	it("appends a resumed delta without resetting the screen", async () => {
+		await renderNative();
+		mockTermInstance.write.mockClear();
+
+		deliver(frame({
+			t: "attach",
+			seq: 3,
+			role: "writer",
+			sessionId: "s",
+			paneId: "s:0",
+			hostPid: 1,
+			shellPid: 2,
+			resumed: true,
+		}, "delta"));
+
+		expect(mockTermInstance.write).toHaveBeenCalledWith("delta");
+	});
+
+	it("reports the role, and a refusal, to the surrounding UI", async () => {
+		const onNativeStatus = vi.fn();
+		await renderNative(onNativeStatus);
+
+		deliver(frame({
+			t: "attach",
+			seq: 0,
+			role: "observer",
+			sessionId: "s",
+			paneId: "s:0",
+			hostPid: 1,
+			shellPid: 2,
+			resumed: true,
+		}));
+		expect(onNativeStatus).toHaveBeenCalledWith({ role: "observer", refused: false });
+
+		deliver(frame({ t: "role", role: "observer", refused: true }));
+		expect(onNativeStatus).toHaveBeenLastCalledWith({ role: "observer", refused: true });
+
+		deliver(frame({ t: "role", role: "writer" }));
+		expect(onNativeStatus).toHaveBeenLastCalledWith({ role: "writer", refused: false });
+	});
+
+	it("sends a claim through the handle so a viewer can take over", async () => {
+		let handle: TerminalHandle | null = null;
+		await act(async () => {
+			render(
+				<I18nProvider>
+					<TerminalView ptyUrl={PTY_URL} taskId="t1" projectId="p1" onReady={(h) => { handle = h; }} />
+				</I18nProvider>,
+			);
+			await Promise.resolve();
+			await Promise.resolve();
+		});
+		await act(async () => {
+			fireResize?.();
+		});
+
+		handle!.claimWriter();
+
+		expect(lastWebSocket?.send).toHaveBeenCalledWith(`\x1b_dev3nt;${JSON.stringify({ t: "claim", v: 1 })}\x1b\\`);
+	});
+
+	it("leaves a tmux session's plain text and reconnect URL untouched", async () => {
+		const onNativeStatus = vi.fn();
+		await renderNative(onNativeStatus);
+		mockTermInstance.write.mockClear();
+
+		deliver("$ ls -la\r\n");
+
+		expect(mockTermInstance.write).toHaveBeenCalledWith("$ ls -la\r\n");
+		expect(onNativeStatus).not.toHaveBeenCalled();
+
+		await act(async () => {
+			webSockets[0].readyState = WebSocket.CLOSED;
+			webSockets[0].onclose?.({ code: 1006, reason: "gone", wasClean: false } as CloseEvent);
+			document.dispatchEvent(new Event("visibilitychange"));
+		});
+		expect(webSockets[1].url).toBe(PTY_URL);
 	});
 });
