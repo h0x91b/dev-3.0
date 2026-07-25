@@ -16,6 +16,7 @@ on:
       - "src/shared/native-terminal-runtime.ts"
       - "src/bun/prototypes/detached-pty/**"
       - "src/bun/native-terminal-registry/**"
+      - "src/bun/native-terminal-multipane/**"
       - "src/bun/native-terminal-adapter/**"
       - "src/bun/terminal-parity/**"
   workflow_dispatch:
@@ -80,6 +81,15 @@ jobs:
       - name: Native single-view adapter parity E2E
         timeout-minutes: 5
         run: bun run test:native-parity-e2e
+
+      # Seq 1283 native multi-pane coordinator. Runs the previously deferred
+      # multi-view scenarios with REAL panes (2 then 6, PowerShell on Windows):
+      # independent shells, non-crossing output, client-local focus/zoom,
+      # writer-vs-observer resize, fresh-process reconnect to the same pids,
+      # single-pane close, and full owned-tree cleanup.
+      - name: Native multi-pane coordinator E2E
+        timeout-minutes: 6
+        run: bun run test:native-multipane-e2e
 
       - name: Explicit Windows shell launch matrix
         if: runner.os == 'Windows'

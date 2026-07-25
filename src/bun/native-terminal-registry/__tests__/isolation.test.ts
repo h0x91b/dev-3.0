@@ -25,11 +25,17 @@ const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests_
 // registry into the app/CLI graph.
 const adapterRoot = resolve(sourceRoot, "bun/native-terminal-adapter");
 
+// The native multi-pane coordinator (seq 1283) is the second SANCTIONED
+// non-production consumer: it composes one registry-owned host per logical pane
+// and proves in its own isolation test that nothing imports it either.
+const multipaneRoot = resolve(sourceRoot, "bun/native-terminal-multipane");
+
 describe("native-session registry isolation", () => {
 	it("is absent from the production source import graph", () => {
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
 			.filter((path) => !path.startsWith(adapterRoot))
+			.filter((path) => !path.startsWith(multipaneRoot))
 			.filter((path) => readFileSync(path, "utf8").includes("native-terminal-registry"));
 		expect(importers).toEqual([]);
 	});
