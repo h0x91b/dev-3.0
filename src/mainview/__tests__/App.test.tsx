@@ -1988,9 +1988,11 @@ describe("App keyboard shortcuts", () => {
 				}));
 			});
 
-			expect(await screen.findByRole("alert")).toHaveTextContent(
-				"Couldn't prepare \"Broken task\" — moved back to To Do: tmux failed to spawn",
-			);
+			// `toast.error` delivers synchronously, so the toast is in the DOM once act()
+			// returns — polling only spent a 1s budget concurrent suites could exhaust.
+			// Match the exact message so another role="alert" can't satisfy or break it.
+			const message = "Couldn't prepare \"Broken task\" — moved back to To Do: tmux failed to spawn";
+			expect(screen.getByText(message).closest('[role="alert"]')).toBeInTheDocument();
 		});
 	});
 

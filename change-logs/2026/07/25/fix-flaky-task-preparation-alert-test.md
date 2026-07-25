@@ -1,0 +1,1 @@
+Made the App test for the task-preparation-failure toast deterministic. It polled for any `role="alert"` element inside the default 1s timeout even though the toast is delivered synchronously, so it could time out under concurrent test-suite load; it now asserts the exact toast message right after the dispatching `act()`.
