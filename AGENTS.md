@@ -36,7 +36,7 @@ Before designing or implementing **anything** UI/UX-related — a new screen, su
 
 If the manifest is stale or missing, regenerate it with `/ux-create-manifest`. Keep `docs/ux/` updated whenever surfaces or the action taxonomy change.
 
-**Bookend `/ux-principal` with `/debug-ui`:** *before* planning, drive the current UI and screenshot the zones you're about to touch — grounding the plan in what's actually on screen beats reasoning from memory; *after* implementing, verify in a browser before review. See [Manual UI QA in a browser](#manual-ui-qa-in-a-browser).
+**Screenshot the zone before you plan it.** Driving the current UI beats reasoning from memory about what is on screen — same tooling as the mandatory QA pass afterwards, see [Manual UI QA in a browser](#manual-ui-qa-in-a-browser-mandatory).
 
 ## No native dialogs — ever (remote/browser mode) (MANDATORY)
 
@@ -167,17 +167,9 @@ Rules:
 
 **Count:** 0 by default; 1 if the gate passes; 2 only for a genuine flagship (score 5). Ship tips in the same commit as the feature. **Never write a tip for:** self-describing UI, visible visual states (spinners, glows, badges), settings toggles that restate their label, behavior users already expect, anything met naturally on the happy path.
 
-**Files:** registry `src/mainview/tips.ts` (`ALL_TIPS` array); i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. **Content:** title 3–6 words; body one sentence max ~120 chars — tell the user *what to do*, no fluff; icon = Nerd Font glyph (`\u{XXXXX}`).
+**Files:** registry `src/mainview/tips.ts` (`ALL_TIPS` array); i18n keys `tip.<id>.title` / `tip.<id>.body` in `{en,ru,es}.ts`. **Content:** title 3–6 words; body one sentence max ~120 chars — tell the user *what to do*, no fluff.
 
-**Coolness score (mandatory `score` field, 1–5 where 5 is coolest).** Tips surface highest tier first, random within a tier (see `selectTip` in `tips.ts`). Self-assign the score with this rubric — do NOT ask the user:
-
-- **5** — flagship demo-reel "wow" that sells the product: multi-agent variants, bug-hunter swarm, CoW worktree deps, AI Review, live terminal preview.
-- **4** — strong distinctive capability most users will love: agent-driven PRs, command palette, OSC52 clipboard, port auto-allocation, image/large-text paste.
-- **3** — useful everyday convenience that is still non-obvious: search operators, right-click open, hover previews.
-- **2** — minor convenience or settings toggle. Below the gate — normally no tip.
-- **1** — niche/power-user trivia. Never add.
-
-When unsure between two tiers, pick the lower — and below 3 the answer is usually "no tip". Append new tips at the end of `ALL_TIPS`. **Registry hygiene:** if a new tip supersedes/overlaps an older one, delete or merge the old one in the same commit (its `ALL_TIPS` entry + keys in all three locales).
+**The 1–5 coolness rubric lives on the `TipScore` type** in `src/mainview/tips.ts` — read it there when scoring, and keep it there when it changes. Append new tips at the end of `ALL_TIPS`. **Registry hygiene:** if a new tip supersedes/overlaps an older one, delete or merge the old one in the same commit (its `ALL_TIPS` entry + keys in all three locales).
 
 ## Keyboard shortcuts
 
@@ -233,7 +225,7 @@ bun run dev          # Main local development flow (build, package, launch local
 bun run start        # Alternative launch path (reuses existing Vite output)
 bun run build        # Build (staging channel)
 bun run build:prod   # Build (production channel)
-bun run lint         # TypeScript type-check — must pass before committing
+bun run lint         # TypeScript type-check — must pass before pushing
 ```
 
 **HMR / Vite watch is NOT used in this project.** Never run `bun run watch`, `bun run hmr`, or any `vite --watch` flow — the only supported dev loop is `bun run dev`. **Never run `bun run bump`** — versioning is owned by the user, not AI agents.
@@ -344,19 +336,17 @@ All user-facing renderer strings are localized via `src/mainview/i18n/`; locales
 
 ## Testing
 
-**Framework: Vitest** with `happy-dom` and React Testing Library. Three configs: `vitest.config.ts` (mainview), `vitest.config.bun.ts` (backend), `vitest.config.cli.ts` (CLI).
+**Framework: Vitest** with `happy-dom` and React Testing Library. Three configs run as three independent processes: `vitest.config.ts` (renderer), `vitest.config.bun.ts` (backend), `vitest.config.cli.ts` (CLI).
 
 ```bash
-bun run test          # Fast — mainview + bun + cli in parallel, excludes 3 slow e2e files (~6s)
-bun run test:full     # Everything incl. slow e2e files (~42s, for CI/PR)
-bun run test:bun      # Backend tests only
-bun run test:cli      # CLI tests
-bun run test:watch    # Watch mode
+bun run test          # renderer + backend + cli in parallel, minus 3 slow e2e files (~6s)
+bun run test:full     # everything incl. slow e2e (~42s) — CI/PR only, not local
+bun run test:bun      # backend only
+bun run test:cli      # CLI only
+bun run test:watch    # watch mode
 ```
 
-Running vitest directly (outside `bun run`): use `bunx vitest run`, not `npx`.
-
-**Local E2E policy:** Do not run the complete E2E suite locally (`bun run test:full` or an equivalent unfiltered command); it is reserved for CI/PR validation. When investigating or verifying a specific behavior, run only the targeted E2E file or test case.
+**Everything else about testing here — which config covers what, what a change needs covered, house style, mocking Electrobun RPC and `useT()`, reproducing flakes, coverage expectations — is the [`/verify-changes`](.claude/skills/verify-changes/SKILL.md) skill.** Load it when writing or fixing tests. The gates below apply whether or not you read it.
 
 ### Verification gates (MANDATORY)
 
@@ -365,60 +355,29 @@ Two gates, escalating. Committing itself has no gate — commit freely, verify b
 1. **Before `git push`** — `bun run lint` plus the tests covering what you touched. A push that breaks type-checking is unacceptable even if the tests pass.
 2. **Before `gh pr create`, before enabling auto-merge, and again after any rebase** — the **full** `bun run test`, green end-to-end. Only the file you edited is NOT sufficient: sibling test files assert against the same components (e.g. `TaskCard.tsx` is covered by both `TaskCard.test.tsx` AND `TaskCardSeq.test.tsx`), and a rebase pulls in code your run never saw. Fix and re-run until green BEFORE opening the PR — don't open it and watch CI go red.
 
-### Manual UI QA in a browser
+### Manual UI QA in a browser (MANDATORY)
 
-**Self-QA UI changes in a browser before review — it's the default.** Any change touching what the user sees can break subtly (layout shift, overflow on one viewport, console error, wrong state render). Drive the running UI, look at a screenshot, check console errors before handing off. **"It's small" is not a reason to skip** — small UI changes slip through the most. Only real exceptions: no visual surface at all, or the UI genuinely can't be brought up. When in doubt, QA it.
+**A green suite does not verify a visual surface.** Any change touching what the user sees can break subtly — layout shift, overflow on one viewport, console error, wrong state render. Drive the running UI, look at a screenshot, read the console before handing off. **Being a small change is not a reason to skip it** — small UI changes slip through the most. Only real exceptions: no visual surface at all, or the UI genuinely cannot be brought up. The full recipe (serving the app, the per-task isolated browser session, `agent-browser` usage) is the [`/debug-ui`](.claude/skills/debug-ui/SKILL.md) skill.
 
-With the dev-server running and the project's Port Allocation ≥ 1, the dev app already serves the web UI at `http://localhost:<DEV3_PORT0>/?token=<code>` (`dev3 dev-server status` → `DEV3_PORT0`; see [decision 093](decisions/093-dev-remote-port-from-pool.md)). Otherwise serve it yourself: `dev3 remote --no-tunnel --static-code <code> --port <port>`. Point `agent-browser` at the URL. **Each task must drive its own isolated browser session** — `export AGENT_BROWSER_SESSION="dev3-${DEV3_TASK_ID%%-*}"` — otherwise parallel agents share one global browser and stomp each other's QA. Full recipe: the **`/debug-ui`** skill (`.claude/skills/debug-ui/SKILL.md`; dev-internal tooling, not dev3-shipped).
+**Screenshots are taken in streamer mode — always.** The developer's real accounts, emails, and paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL — it blurs account emails/labels, orgs, home-dir paths, tunnel URLs, and the remote-access QR (see [decision 161](decisions/161-streamer-mode-css-blur-masking.md)). The only exception is a task about verifying those unmasked values: capture the minimum needed and say so.
 
-**Screenshots are taken in streamer mode — always (MANDATORY).** The developer's real accounts/emails/paths are live in the app, and any screenshot can end up in a PR, an issue, or a recording. Append `&streamer=on` to the app URL when opening it with `agent-browser` — it enables **streamer mode** (privacy masking: blurs account emails/labels, orgs, home-dir paths, tunnel URLs, the remote-access QR; see [decision 161](decisions/161-streamer-mode-css-blur-masking.md)). The only exception: the task itself is about verifying those unmasked values — then capture the minimum needed and say so. Users toggle the same mode via Settings → Appearance or the ⇧⌘P palette ("Toggle streamer mode").
+## Key files
 
-### Coverage expectations
-
-Two numbers, no per-metric split: **~70% for normal code, ~85% for critical modules.**
-
-**Critical modules** (the ones where a silent regression is expensive): `state.ts`, `src/shared/types.ts` (helpers), `src/mainview/i18n/`, `src/cli/`, `src/bun/data.ts`, `src/bun/git.ts`, `src/bun/tmux/`, `src/mainview/utils/`.
-
-**Not expected to be covered** (bootstrap/wrappers that only make sense in e2e): `src/bun/index.ts`, `updater.ts`, `shell-env.ts`, `spawn.ts`, `src/mainview/rpc.ts`, `main.tsx`.
-
-**No coverage provider is wired up** — the vitest configs have no `coverage` block, nothing is installed, and CI does not gate on it. So these are review-time expectations, not a machine check: a change that leaves a critical module visibly less tested than it was gets rejected in review, and nobody should cite a percentage as if a tool measured it.
-
-### What to test
-
-- **Unit (mandatory):** state reducer actions + edge cases, all pure functions/utils/parsers, every RPC handler (happy path + 2-3 error cases), CLI commands (parsing + validation + output), data layer CRUD + corrupt data handling, git operations with mocked spawn, i18n interpolation + pluralization for all locales.
-- **Component (mandatory):** all major interactive components — board views, task cards, modals, settings panels. Always `userEvent`, not `fireEvent`. Test behavior, not implementation.
-- **E2E (CLI-based):** full lifecycle through CLI + Unix socket against a real app process with tmpdir — task lifecycle (create → move statuses → complete), project CRUD, worktree creation + cleanup, notes CRUD, CLI context auto-detection, concurrent writes (no data corruption).
-
-### Bug fixing workflow — reproduce first
-
-**Always start by writing a failing test that reproduces the bug** (red), then fix the code until it passes (green); commit test + fix together. Exception (rare): the bug genuinely can't be reproduced in a test (OS-specific timing, hardware, unmockable third-party behavior) — default to writing the test first.
-
-### Test writing rules
-
-- One logical assertion per test; no dependencies between tests.
-- Mock only external boundaries (git, tmux, fs, Electrobun), not internal modules.
-- No `sleep`/timers — use proper async/await.
-- Every new feature or bug fix must include tests; a PR that leaves its area visibly less tested than before gets rejected.
-- Tests live in `__tests__/` directories next to their modules (e.g., `src/mainview/components/__tests__/Dashboard.test.tsx`).
-
-### Mocking Electrobun RPC / providers
-
-Components that import `api` from `rpc.ts` need the Electrobun native module mocked:
-
-```ts
-vi.mock("../../rpc", () => ({
-	api: { request: { listDirectory: vi.fn(), addProject: vi.fn() /* … */ } },
-}));
-```
-
-Components using `useT()` must be rendered inside `<I18nProvider>` (import from `../../i18n`).
-
-## Key config files
+Open the file itself rather than trusting a paraphrase — this list exists so you know it is there.
 
 - `electrobun.config.ts` — Electrobun app config (name, identifier, build copy rules)
 - `vite.config.ts` — Vite config (root: `src/mainview`, output: `dist/`)
 - `tailwind.config.js` — Tailwind scans `src/mainview/**/*.{html,js,ts,jsx,tsx}`
 - `tsconfig.json` — strict mode, ES2020 target, bundler module resolution
+- `src/shared/types.ts` — `AppRPCSchema`, `Task`/`Project`, `STATUS_COLORS`
+- `src/bun/rpc-handlers.ts` — barrel indexing every `rpc-handlers/*.ts` domain
+- `src/mainview/state.ts` — the reducer: every action and state field the UI has
+- `src/mainview/index.css` — design tokens, both themes
+- `src/mainview/keymap.ts` — every app-level keyboard shortcut
+- `src/bun/agent-skills.ts` — `SKILL_CONTENT`, the skill text shipped to agent config dirs
+- `src/shared/cli-exit-codes.ts` — public CLI exit-code contract
+- `.github/workflows/` — what CI actually runs (incl. the sharded test job)
+- `decisions/` — 280+ records of why non-obvious things are as they are; grep before assuming
 
 ## Documentation
 

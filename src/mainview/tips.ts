@@ -9,19 +9,30 @@ import type { TipState } from "../shared/types";
  */
 export type TipContext = "board" | "terminal" | "diff" | "settings" | "preparing";
 
+/**
+ * Coolness tier, surfaced highest-tier-first (all 5s before any 4), random
+ * within a tier — see selectTip(). Self-assess honestly; never ask the user:
+ *
+ * - 5 — flagship demo-reel "wow" that sells the product: multi-agent variants,
+ *       bug-hunter swarm, CoW worktree deps, AI Review, live terminal preview.
+ * - 4 — strong distinctive capability most users will love: agent-driven PRs,
+ *       command palette, OSC52 clipboard, port auto-allocation, image paste.
+ * - 3 — useful everyday convenience that is still non-obvious: search
+ *       operators, right-click open, hover previews. Lowest tier worth adding.
+ * - 2 — minor convenience or a settings toggle. Below the bar: normally no tip.
+ * - 1 — niche/power-user trivia. Never add.
+ *
+ * Torn between two tiers? Pick the lower. Below 3 the answer is usually "no
+ * tip at all" — see AGENTS.md "Feature discovery tips" for when one is earned.
+ */
+export type TipScore = 1 | 2 | 3 | 4 | 5;
+
 export interface Tip {
 	id: string;
 	titleKey: TranslationKey;
 	bodyKey: TranslationKey;
 	icon: string; // Nerd Font codepoint
-	/**
-	 * Coolness / priority tier, 1–5 where 5 is the coolest.
-	 * Tips are surfaced highest-tier-first (all 5s before any 4, etc.),
-	 * picked at random within a tier. See selectTip().
-	 * When adding a new tip, score it with the rubric in AGENTS.md
-	 * ("Feature discovery tips").
-	 */
-	score: number;
+	score: TipScore;
 	/**
 	 * Surfaces where this tip is most relevant (required, non-empty). The tip
 	 * carrier for a given surface passes its context to selectTip(), which
