@@ -267,6 +267,27 @@ describe("TerminalView – PTY reconnect", () => {
 
 		expect(webSockets).toHaveLength(2);
 	});
+
+	// The server accepts the upgrade before rejecting the session, so `onopen`
+	// resets the backoff — retrying a final verdict reconnected once a second
+	// forever and buried the app log in "WS connection to unknown session".
+	it("stops reconnecting when the app says the session does not exist", async () => {
+		await renderAndSetup();
+		expect(webSockets).toHaveLength(1);
+
+		vi.useFakeTimers();
+		try {
+			await act(async () => {
+				webSockets[0].readyState = WebSocket.CLOSED;
+				webSockets[0].onclose?.({ code: 4001, reason: "Unknown session", wasClean: false } as CloseEvent);
+			});
+			await act(async () => { vi.advanceTimersByTime(60_000); });
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect(webSockets).toHaveLength(1);
+	});
 });
 
 describe("TerminalView – resilient re-fit on late layout growth", () => {

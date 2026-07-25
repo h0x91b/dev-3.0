@@ -19,6 +19,7 @@ import { submitPastedText } from "./terminal-submit";
 import { isMac } from "./utils/platform";
 import { paneHighlightRect, type PaneRectPct } from "./utils/paneHighlight";
 import TerminalSearchBar, { type TerminalSearchBarHandle } from "./components/TerminalSearchBar";
+import { isFinalPtyCloseCode } from "../shared/pty-ws-close-codes";
 
 const DARK_TERMINAL_THEME = {
 	background: "#1a1b26",
@@ -1206,6 +1207,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				if (disposed) return;
 				if (event.code === 1000 && event.wasClean) {
 					try { term.writeln("\r\n\x1b[2m[session ended]\x1b[0m"); } catch { /* disposed */ }
+					return;
+				}
+				if (isFinalPtyCloseCode(event.code)) {
+					try { term.writeln(`\r\n\x1b[2m[no terminal session — ${event.reason || "rejected by the app"}]\x1b[0m`); } catch { /* disposed */ }
 					return;
 				}
 				schedulePtyReconnect(term, fit);

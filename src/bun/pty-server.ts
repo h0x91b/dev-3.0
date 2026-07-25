@@ -12,6 +12,7 @@ import {
 	stopNativeTaskTerminal,
 	type NativeTaskTerminal,
 } from "./native-task-terminal";
+import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import type { TerminalLaunchSpec } from "./task-terminal-backend";
 import {
 	tmux,
@@ -1260,7 +1261,7 @@ const ptyServer = Bun.serve({
 				const url = (ws.data as any)?.url as URL | undefined;
 				const sessionId = url?.searchParams.get("session");
 
-				log.info("WS open handler called", {
+				log.debug("WS open handler called", {
 					hasUrl: !!url,
 					sessionId: sessionId?.slice(0, 8) ?? "none",
 					totalSessions: sessions.size,
@@ -1268,7 +1269,7 @@ const ptyServer = Bun.serve({
 
 				if (!sessionId) {
 					log.warn("WS connection without session param");
-					ws.close(4000, "Missing session parameter");
+					ws.close(PTY_WS_CLOSE.MISSING_SESSION, "Missing session parameter");
 					return;
 				}
 
@@ -1278,7 +1279,7 @@ const ptyServer = Bun.serve({
 						sessionId: sessionId.slice(0, 8),
 						knownSessions: Array.from(sessions.keys()).map((k) => k.slice(0, 8)),
 					});
-					ws.close(4001, "Unknown session");
+					ws.close(PTY_WS_CLOSE.UNKNOWN_SESSION, "Unknown session");
 					return;
 				}
 
