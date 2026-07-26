@@ -43,6 +43,10 @@ export async function handleMessage(
 	const params: Record<string, unknown> = { taskId: expandShortId(rawTaskId, context), text };
 	const projectId = resolveProjectId(args.flags.project, context);
 	if (projectId) params.projectId = projectId;
+	// Running inside a worktree means an agent is the author: hand the app our own
+	// task id so it can wrap the text in the cross-task envelope (it resolves both
+	// ends and skips wrapping when a task messages itself).
+	if (context?.taskId) params.sourceTaskId = context.taskId;
 
 	// Bare form → send immediately.
 	if (!hasIn && !hasAt) {

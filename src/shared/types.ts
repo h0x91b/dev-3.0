@@ -1550,6 +1550,23 @@ export interface ScheduledMessage {
 	at: string;
 	/** Delivery target; `{ kind: "agent" }` by default. */
 	target: ScheduledMessageTarget;
+	/** Set when another task's agent sent it — wraps the text at fire time. */
+	source?: AgentMessageSource;
+}
+
+/**
+ * The task whose agent authored a cross-task message. Present only for
+ * agent-to-agent traffic (`dev3 message` run inside another task's worktree);
+ * absent for anything the human sends. Drives the pseudo-XML envelope in
+ * `wrapAgentMessage` so the receiver knows who wrote it and how to reply.
+ */
+export interface AgentMessageSource {
+	/** Sender task id (used to skip wrapping when a task messages itself). */
+	taskId: string;
+	/** Sender's stable `seq` — the reply address (`--task seq:<N>`). */
+	seq: number;
+	/** Sender's title, for human-readable context in the envelope. */
+	title?: string;
 }
 
 /** Per-task cap on pending scheduled messages; scheduling past this is rejected. */

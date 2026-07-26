@@ -245,6 +245,25 @@ describe("cancel / send-now / immediate", () => {
 		expect(sendPromptToAgentPane).toHaveBeenCalledWith("dev3-task-123", "dev3", "hello now", task.sessionState.panes);
 	});
 
+	it("sendMessageImmediately wraps a cross-task message in the envelope", async () => {
+		const task = makeTask();
+		await sendMessageImmediately(task as never, "hello now", null, { taskId: "other", seq: 7, title: "Sender" });
+		const text = vi.mocked(sendPromptToAgentPane).mock.calls[0]![2];
+		expect(text).toContain("<dev3-ai-message>");
+		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(text).toContain("hello now");
+	});
+
+	it("fireScheduledMessage wraps a queued cross-task message but stores it plain", async () => {
+		const message = makeMessage({ source: { taskId: "other", seq: 7 } });
+		const task = makeTask({ scheduledMessages: [message] });
+		mockUpdateTaskWith(task);
+		await fireScheduledMessage(project, task as never, message as never, { late: false });
+		const text = vi.mocked(sendPromptToAgentPane).mock.calls[0]![2];
+		expect(text).toContain("<from-task>seq:7</from-task>");
+		expect(message.text).toBe("check CI and continue");
+	});
+
 	it("sendMessageImmediately throws when nothing is live to deliver to", async () => {
 		vi.mocked(sendPromptToAgentPane).mockResolvedValue(false);
 		const task = makeTask();

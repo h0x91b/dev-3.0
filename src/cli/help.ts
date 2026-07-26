@@ -379,6 +379,8 @@ const COMMANDS: CommandHelp[] = [
 			"--at <hh:mm>  Schedule at the next occurrence of a local time (today or tomorrow).",
 			"Text can be a positional arg, --message, or @file. An agent may schedule its own wake-up.",
 			"Targets the current worktree's task; override with --task <id>.",
+			"Messaging ANOTHER task from a worktree wraps the text in a <dev3-ai-message> envelope",
+			"carrying your seq + the reply command, so the receiving agent knows who wrote it.",
 		],
 	},
 	{

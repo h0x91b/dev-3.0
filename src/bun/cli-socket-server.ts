@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, unlinkSync, mkdirSync } from "node:fs";
-import type { CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
+import type { AgentMessageSource, CliRequest, CliResponse, CustomColumn, Label, Project, Task, TaskStatus, TaskNote, NoteSource, SharedArtifact, SharedImage } from "../shared/types";
 import { isValidNotificationDurationMs, NOTIFICATION_MAX_DURATION_MS, NOTIFICATION_MIN_DURATION_MS } from "../shared/duration";
 import { socketMetaPathFor } from "../shared/socket-meta";
 import { isCliEndpointHandle } from "../shared/cli-endpoint";
@@ -173,6 +173,27 @@ async function resolveTaskFromParams(params: Record<string, unknown>): Promise<{
 	const found = await resolveTaskAcrossProjects(taskId);
 	if (!found) throw taskNotFoundError(taskId);
 	return found;
+}
+
+/**
+ * Turn the CLI's `sourceTaskId` (set when `dev3 message` ran inside a worktree)
+ * into the envelope metadata. Returns null for human-sent messages, an unknown
+ * sender, or a task messaging itself — those stay verbatim.
+ */
+async function resolveAgentMessageSource(
+	params: Record<string, unknown>,
+	targetTaskId: string,
+): Promise<AgentMessageSource | null> {
+	const sourceTaskId = typeof params.sourceTaskId === "string" ? params.sourceTaskId.trim() : "";
+	if (!sourceTaskId) return null;
+	let found: { project: Project; task: Task } | null = null;
+	try {
+		found = await resolveTaskAcrossProjects(sourceTaskId);
+	} catch {
+		return null; // ambiguous/broken sender ref — deliver the raw text instead
+	}
+	if (!found || found.task.id === targetTaskId) return null;
+	return { taskId: found.task.id, seq: found.task.seq, title: getTaskTitle(found.task) };
 }
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
@@ -1076,7 +1097,8 @@ const handlers: Record<string, Handler> = {
 	"message.send": async (params) => {
 		const { project, task } = await resolveTaskFromParams(params);
 		const text = ((params.text as string) ?? "").toString();
-		await sendMessageImmediately(task, text);
+		const source = await resolveAgentMessageSource(params, task.id);
+		await sendMessageImmediately(task, text, null, source);
 		return { delivered: true, taskId: task.id, projectId: project.id };
 	},
 
@@ -1086,7 +1108,8 @@ const handlers: Record<string, Handler> = {
 		const { project, task } = await resolveTaskFromParams(params);
 		const text = ((params.text as string) ?? "").toString();
 		const at = (params.at as string) ?? "";
-		const updated = await scheduleMessageCore(project, task, { text, at });
+		const source = await resolveAgentMessageSource(params, task.id);
+		const updated = await scheduleMessageCore(project, task, { text, at, source });
 		return { taskId: task.id, projectId: project.id, at, pending: (updated.scheduledMessages ?? []).length };
 	},
 

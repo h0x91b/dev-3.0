@@ -1,4 +1,5 @@
 import {
+	type AgentMessageSource,
 	type Project,
 	type Task,
 	type TaskStatus,
@@ -11,6 +12,7 @@ import {
 import * as data from "./data";
 import { DEFAULT_TMUX_SOCKET, taskSessionName } from "./tmux";
 import { sendPromptToAgentPane, sendPromptToPane } from "./agent-prompt";
+import { wrapAgentMessage } from "../shared/agent-message-envelope";
 // Import push via the barrel (not ./rpc-handlers/shared) so tests that mock
 // `../rpc-handlers` — e.g. the cli-socket lost-update race suites, which reach
 // this module through cli-socket-server — don't load the real Electrobun-backed
@@ -58,10 +60,13 @@ function messagePreview(text: string): string {
 async function deliverToTarget(task: Task, message: ScheduledMessage): Promise<boolean> {
 	const tmuxSession = taskSessionName(task.id);
 	const socket = task.tmuxSocket ?? DEFAULT_TMUX_SOCKET;
+	// Agent-to-agent traffic is wrapped at delivery time, so the queue (and the
+	// card chip that previews it) keeps the plain text the sender wrote.
+	const text = message.source ? wrapAgentMessage(message.text, message.source) : message.text;
 	if (message.target.kind === "pane") {
-		return sendPromptToPane(tmuxSession, socket, message.target.paneId, message.text);
+		return sendPromptToPane(tmuxSession, socket, message.target.paneId, text);
 	}
-	return sendPromptToAgentPane(tmuxSession, socket, message.text, task.sessionState?.panes);
+	return sendPromptToAgentPane(tmuxSession, socket, text, task.sessionState?.panes);
 }
 
 /** Toast + attention for a late-fire or drop. Silent path never calls this. */
@@ -149,7 +154,7 @@ function validateText(text: string): string {
 export async function scheduleMessage(
 	project: Project,
 	task: Task,
-	input: { text: string; at: string; target?: ScheduledMessageTarget | null },
+	input: { text: string; at: string; target?: ScheduledMessageTarget | null; source?: AgentMessageSource | null },
 ): Promise<Task> {
 	const text = validateText(input.text);
 	if (isTerminal(task.status)) {
@@ -164,6 +169,7 @@ export async function scheduleMessage(
 		text,
 		at: at.toISOString(),
 		target: normalizeTarget(input.target),
+		...(input.source ? { source: input.source } : {}),
 	};
 	const { task: updated } = await data.updateTaskWith<void>(project, task.id, (current) => {
 		const queue = current.scheduledMessages ?? [];
@@ -201,6 +207,7 @@ export async function sendMessageImmediately(
 	task: Task,
 	text: string,
 	target?: ScheduledMessageTarget | null,
+	source?: AgentMessageSource | null,
 ): Promise<void> {
 	const trimmed = validateText(text);
 	if (isTerminal(task.status)) {
@@ -211,6 +218,7 @@ export async function sendMessageImmediately(
 		text: trimmed,
 		at: "",
 		target: normalizeTarget(target),
+		...(source ? { source } : {}),
 	});
 	if (!delivered) {
 		throw new Error("Could not deliver the message — the task has no live agent session.");

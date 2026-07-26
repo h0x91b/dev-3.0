@@ -65,8 +65,24 @@ describe("message — immediate (bare form)", () => {
 			taskId: CTX.taskId,
 			text: "continue please",
 			projectId: CTX.projectId,
+			sourceTaskId: CTX.taskId,
 		});
 		expect(stdoutOutput).toContain("Message sent");
+	});
+
+	it("attaches the worktree task as the sender when messaging another task", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: "other", projectId: CTX.projectId }));
+		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, CTX);
+		const [, , params] = mockSend.mock.calls[0]!;
+		expect(params!.taskId).toBe("seq:42");
+		expect(params!.sourceTaskId).toBe(CTX.taskId);
+	});
+
+	it("omits the sender when there is no worktree context", async () => {
+		mockSend.mockResolvedValue(okResp({ delivered: true, taskId: "other", projectId: "p" }));
+		await handleMessage(args(["ping"], { task: "seq:42" }), SOCKET, null);
+		const [, , params] = mockSend.mock.calls[0]!;
+		expect(params).not.toHaveProperty("sourceTaskId");
 	});
 
 	it("reports a delivery failure as a command error", async () => {
