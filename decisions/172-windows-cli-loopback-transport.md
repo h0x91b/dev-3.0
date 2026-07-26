@@ -52,6 +52,19 @@ Keep the endpoint handle a **real file path** and give Windows a second carrier:
   symlink there needs Developer Mode or elevation, and `index.ts` installs the
   platform-suffixed bundle name.
 
+## Hook dialect (found on the real box)
+
+Claude Code on Windows runs hook commands through Git Bash (`/usr/bin/bash`),
+which eats a bare backslash: the generated
+`D:\src\...\Resources\app\cli\dev3.exe` reached it as
+`D:srcdev3.exe: command not found` (exit 127) and killed UserPromptSubmit,
+PreToolUse, PostToolUse and Stop. Reproduced and fixed against Git Bash on the
+Windows machine: `hookCliCommandPath` (`src/shared/dev3-cli-path.ts`) now spells
+the CLI with forward slashes inside double quotes, which bash, `cmd.exe` and
+`CreateProcess` all accept, and `mentionsDev3Cli`
+(`src/shared/agent-hooks.ts`) compares spellings normalised so hooks an earlier
+build wrote are replaced instead of duplicated.
+
 ## Risks
 
 - A same-user local process that can read the record can issue CLI commands. That
@@ -63,6 +76,15 @@ Keep the endpoint handle a **real file path** and give Windows a second carrier:
 - The endpoint record is additive: every pre-existing scan filters on `.sock`, so
   older installed versions ignore it (the `~/.dev3.0` N-2 invariant holds). No
   file is renamed, moved, or migrated.
+- Validated on a real Windows 10 box (PowerShell 5.1, Bun 1.3.14): the desktop
+  app published `sockets/<pid>.endpoint.json` with `host 127.0.0.1`, a single
+  listener on `127.0.0.1:<port>` owned by the app pid and none on any other
+  interface; the installed `dev3.exe` ran `tasks list`, `task show`,
+  `task move --if-status-not`, `note add`, `overview set` and `ui state` against
+  it; both generated hook commands reached the app through Git Bash while the
+  pre-fix spelling failed with exit 127; with the app killed, `ui state` and the
+  status hook exited 2 (`--tolerate-app-offline` exited 0 with a warning) and the
+  next app start cleaned the leftover record.
 - The Windows end-to-end proof through the *packaged* `dev3.exe` is automated by
   `bun run test:cli-packaged-e2e` (compiles the CLI with `bun build --compile`
   and drives the binary against real loopback listeners in a temp state dir; it
