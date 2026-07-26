@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Project, Task } from "../../shared/types";
@@ -26,6 +26,7 @@ beforeEach(() => {
 import {
 	_resetDataCaches,
 	addTask,
+	newTaskTerminalBackend,
 	loadTasks,
 	readTaskTerminalBackend,
 	setTaskTerminalBackend,
@@ -114,7 +115,7 @@ describe("legacy records without terminalBackend", () => {
 		expect(saved).not.toHaveProperty("terminalBackend");
 	});
 
-	it("is not stamped onto freshly created tasks", async () => {
+	it("is not stamped onto tasks created on POSIX", async () => {
 		const created = await addTask(testProject, "Fresh task");
 		expect(created).not.toHaveProperty("terminalBackend");
 		expect(readSavedTasks()[0]).not.toHaveProperty("terminalBackend");
@@ -132,6 +133,60 @@ describe("legacy records without terminalBackend", () => {
 		expect(saved.terminalBackendCapabilities).toEqual(["images"]);
 		expect(saved.someFutureField).toBe(7);
 		expect(saved).not.toHaveProperty("terminalBackend");
+	});
+});
+
+// ============================================================
+// New tasks on Windows — stamped at creation, never by the resolver
+// ============================================================
+
+describe("newTaskTerminalBackend", () => {
+	it("marks win32 native and leaves every POSIX platform unmarked", () => {
+		expect(newTaskTerminalBackend("win32")).toBe("native");
+		expect(newTaskTerminalBackend("darwin")).toBeNull();
+		expect(newTaskTerminalBackend("linux")).toBeNull();
+	});
+});
+
+describe("task creation on Windows", () => {
+	const realPlatform = process.platform;
+	beforeEach(() => {
+		Object.defineProperty(process, "platform", { value: "win32", writable: true });
+	});
+	afterEach(() => {
+		Object.defineProperty(process, "platform", { value: realPlatform, writable: true });
+	});
+
+	// Windows has no tmux, so an unmarked task there could never launch. The
+	// marker is written at creation instead of teaching the resolver a platform.
+	it("stamps a new task with an explicit native identity", async () => {
+		const created = await addTask(testProject, "Fresh task");
+		expect(created.terminalBackend).toBe("native");
+		expect(readSavedTasks()[0].terminalBackend).toBe("native");
+		expect(readTaskTerminalBackend(created)).toMatchObject({ ok: true, backend: "native", present: true });
+	});
+
+	it("stamps a Scratch task the same way", async () => {
+		const created = await addTask(testProject, "Scratch — 01:08", "todo", { scratch: true });
+		expect(created.scratch).toBe(true);
+		expect(created.terminalBackend).toBe("native");
+	});
+
+	it("leaves an existing unmarked task alone — no backfill, still tmux", async () => {
+		seedTasks([legacyRecord()]);
+		const [legacy] = await loadTasks(testProject);
+		expect(legacy).not.toHaveProperty("terminalBackend");
+		expect(readTaskTerminalBackend(legacy)).toMatchObject({ ok: true, backend: "tmux", present: false });
+
+		await addTask(testProject, "Fresh task");
+		expect(readSavedTasks()[0]).not.toHaveProperty("terminalBackend");
+	});
+
+	it("keeps an explicit tmux identity readable instead of reinterpreting it", async () => {
+		const created = await addTask(testProject, "Fresh task");
+		await setTaskTerminalBackend(testProject, created.id, "tmux");
+		const [saved] = await loadTasks(testProject);
+		expect(readTaskTerminalBackend(saved)).toMatchObject({ ok: true, backend: "tmux", present: true });
 	});
 });
 

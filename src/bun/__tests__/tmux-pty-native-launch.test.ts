@@ -366,6 +366,25 @@ describe("setup-script wrapper — one flavour per backend", () => {
 		expect(pty.createSession).toHaveBeenCalledTimes(1);
 	});
 
+	// Windows stamps new tasks native at creation; an explicitly tmux-marked task
+	// there must still be routed to tmux — which then fails on its POSIX-only
+	// guard — never quietly switched to the backend that happens to work.
+	it("keeps an explicitly tmux task on the tmux path on Windows", async () => {
+		const realPlatform = process.platform;
+		Object.defineProperty(process, "platform", { value: "win32", writable: true });
+		try {
+			await launchTaskPty(setupProject(), makeTask({ terminalBackend: "tmux" }), WORKTREE, null, null, true)
+				.catch(() => undefined);
+		} finally {
+			Object.defineProperty(process, "platform", { value: realPlatform, writable: true });
+		}
+
+		expect(pty.createNativeTaskSession).not.toHaveBeenCalled();
+		expect(vi.mocked(sharedPure.buildSetupStartupWrapper)).toHaveBeenCalledWith(
+			expect.objectContaining({ nativeBackend: false }),
+		);
+	});
+
 	it("forwards the project's blocking launch mode", async () => {
 		await launchTaskPty(
 			setupProject({ setupScriptLaunchMode: "blocking" }),

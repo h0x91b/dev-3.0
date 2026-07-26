@@ -783,6 +783,22 @@ export async function saveTasks(
 	await withFileLock(file, () => rawSaveTasks(project, tasks));
 }
 
+/**
+ * The backend a NEWLY created task is stamped with, or `null` to leave the field
+ * absent.
+ *
+ * Windows has no tmux, so an unmarked task there would resolve to the legacy
+ * backend and fail every launch. The frozen resolver contract is untouched —
+ * absent still means tmux everywhere — so the marker is written at creation
+ * time instead, and only for new tasks. Existing unmarked tasks are never
+ * backfilled, reinterpreted, or migrated: that is Seq 1296's call.
+ */
+export function newTaskTerminalBackend(
+	platform: NodeJS.Platform = process.platform,
+): TerminalBackendIdentity | null {
+	return platform === "win32" ? "native" : null;
+}
+
 export async function addTask(
 	project: Project,
 	description: string,
@@ -842,6 +858,7 @@ export async function addTask(
 			}
 			variantIndex = maxVariantIndex + 1;
 		}
+		const newBackend = newTaskTerminalBackend();
 		const task: Task = {
 			id: crypto.randomUUID(),
 			seq: extras?.seq ?? nextSeq(tasks),
@@ -880,6 +897,7 @@ export async function addTask(
 			...(extras?.overview ? { overview: extras.overview } : {}),
 			...(extras?.userOverview ? { userOverview: extras.userOverview } : {}),
 			...(extras?.automationId ? { automationId: extras.automationId } : {}),
+			...(newBackend ? { [TERMINAL_BACKEND_FIELD]: newBackend } : {}),
 		};
 		task.history = [{ at: now, title: getTaskTitle(task), overview: getTaskOverview(task), changed: "created" }];
 		tasks.push(task);
