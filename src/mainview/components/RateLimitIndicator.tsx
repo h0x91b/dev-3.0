@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../rpc";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../state";
 import { useT } from "../i18n";
 import Tooltip from "./Tooltip";
 import type { AgentRateLimitsReport } from "../../shared/rate-limits";
@@ -21,7 +22,7 @@ const MAX_PILL_BARS = 4;
 
 /**
  * Ambient agent rate-limit indicator (global header, stateful-indicators zone).
- * Passive "battery gauge" for the account-wide Claude/Codex limit windows so a
+ * "Battery gauge" for the account-wide Claude/Codex limit windows so a
  * dev running many parallel agents is never blindsided by hitting a limit.
  * Hidden until usable data exists; shows the most constrained window for the
  * most recently active account and treats unlimited credits as 0% used.
@@ -80,6 +81,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 	const ariaLabel = unlimited
 		? `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source} ${t("rateLimits.unlimited")}`
 		: `${t("rateLimits.tooltipTitle")}: ${SOURCE_NAMES[latestSnapshot.source] ?? latestSnapshot.source}${latestLabel ? ` ${latestLabel}` : ""} ${t("rateLimits.percentUsed", { percent })}${latestReset ? `, ${t("rateLimits.resetsIn", { time: latestReset })}` : ""}`;
+	const interactiveAriaLabel = `${ariaLabel}. ${t("rateLimits.openAccounts")}`;
 
 	const pillSnapshots = report.snapshots.slice(0, MAX_PILL_BARS);
 
@@ -88,6 +90,10 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 		: warn
 			? "text-warning bg-warning/15 border-warning/30"
 			: "text-fg-3 border-transparent";
+
+	const openAccountsSettings = () => {
+		window.dispatchEvent(new CustomEvent(OPEN_SETTINGS_SECTION_EVENT, { detail: "accounts" }));
+	};
 
 	return (
 		<Tooltip
@@ -106,11 +112,11 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 				</div>
 			}
 		>
-			<div
-				role="status"
-				tabIndex={0}
-				aria-label={ariaLabel}
+			<button
+				type="button"
+				aria-label={interactiveAriaLabel}
 				data-help-id="header.rateLimits"
+				onClick={openAccountsSettings}
 				className={`header-anim flex cursor-pointer select-none items-center gap-1.5 px-1.5 py-1 rounded-lg border transition-colors ${colorClasses}`}
 			>
 				{/* One mini bar per recently active account, top-to-bottom in the
@@ -146,7 +152,7 @@ function RateLimitIndicator({ compact = false }: { compact?: boolean }) {
 						)}
 					</span>
 				)}
-			</div>
+			</button>
 		</Tooltip>
 	);
 }

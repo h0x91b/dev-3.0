@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
+import { OPEN_SETTINGS_SECTION_EVENT } from "../../state";
 import RateLimitIndicator from "../RateLimitIndicator";
 import type { AgentRateLimitsReport } from "../../../shared/rate-limits";
 import type { AgentAccountsState } from "../../../shared/agent-accounts";
@@ -54,6 +55,10 @@ function renderIndicator() {
 	);
 }
 
+function getIndicator() {
+	return screen.getByRole("button", { name: /Agent rate limits/ });
+}
+
 beforeEach(() => {
 	mockedGet.mockReset();
 	mockedAccounts.mockReset();
@@ -65,7 +70,7 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue({ generatedAt: Date.now(), snapshots: [] });
 		const { container } = renderIndicator();
 		await act(async () => {});
-		expect(container.querySelector("[role='status']")).toBeNull();
+		expect(container.querySelector("button")).toBeNull();
 	});
 
 	it("shows the worst window percentage from the latest active account", async () => {
@@ -73,7 +78,7 @@ describe("RateLimitIndicator", () => {
 		renderIndicator();
 		await act(async () => {});
 		expect(screen.getByText("42%")).toBeTruthy();
-		expect(screen.getByRole("status").className).toContain("text-fg-3");
+		expect(getIndicator().className).toContain("text-fg-3");
 	});
 
 	it("compact mode keeps the mini bars but drops the percent text", async () => {
@@ -84,7 +89,7 @@ describe("RateLimitIndicator", () => {
 			</I18nProvider>,
 		);
 		await act(async () => {});
-		const pill = screen.getByRole("status");
+		const pill = getIndicator();
 		expect(pill.querySelector("[aria-hidden='true']")).toBeTruthy();
 		expect(screen.queryByText("42%")).toBeNull();
 	});
@@ -121,7 +126,7 @@ describe("RateLimitIndicator", () => {
 
 		expect(screen.getByText("29%")).toBeTruthy();
 		expect(screen.queryByText("100%")).toBeNull();
-		expect(screen.getByRole("status").className).toContain("text-fg-3");
+		expect(getIndicator().className).toContain("text-fg-3");
 	});
 
 	it("shows unlimited latest accounts as 0% used", async () => {
@@ -154,8 +159,8 @@ describe("RateLimitIndicator", () => {
 
 		expect(screen.getByText("∞ unlimited")).toBeTruthy();
 		expect(screen.queryByText("0%")).toBeNull();
-		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("Codex ∞ unlimited");
-		expect(screen.getByRole("status").className).toContain("text-fg-3");
+		expect(getIndicator().getAttribute("aria-label")).toContain("Codex ∞ unlimited");
+		expect(getIndicator().className).toContain("text-fg-3");
 	});
 
 	it("labels the header percentage as used so it is not ambiguous", async () => {
@@ -165,7 +170,23 @@ describe("RateLimitIndicator", () => {
 		// The number and the "used" qualifier sit in the same badge.
 		expect(screen.getByText("42%")).toBeTruthy();
 		expect(screen.getByText("used")).toBeTruthy();
-		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("42% used");
+		expect(getIndicator().getAttribute("aria-label")).toContain("42% used");
+	});
+
+	it("opens agent accounts settings when the usage indicator is clicked", async () => {
+		mockedGet.mockResolvedValue(report(42));
+		const onOpenSettings = vi.fn();
+		window.addEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettings);
+		try {
+			renderIndicator();
+			await act(async () => {});
+			await userEvent.click(getIndicator());
+
+			expect(onOpenSettings).toHaveBeenCalledTimes(1);
+			expect((onOpenSettings.mock.calls[0]?.[0] as CustomEvent).detail).toBe("accounts");
+		} finally {
+			window.removeEventListener(OPEN_SETTINGS_SECTION_EVENT, onOpenSettings);
+		}
 	});
 
 	it("spells out '<n>% used' on each Claude window row in the tooltip", async () => {
@@ -220,7 +241,7 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue(report(42));
 		renderIndicator();
 		await act(async () => {});
-		const pill = screen.getByRole("status");
+		const pill = getIndicator();
 		const fill = pill.querySelector('span[aria-hidden="true"] > span > span');
 		expect(fill).toBeTruthy();
 		expect((fill as HTMLElement).style.width).toBe("42%");
@@ -277,7 +298,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		const pill = screen.getByRole("status");
+		const pill = getIndicator();
 		const fills = pill.querySelectorAll('span[aria-hidden="true"] > span > span');
 		expect(fills.length).toBe(3);
 		expect((fills[0] as HTMLElement).style.width).toBe("42%");
@@ -323,7 +344,7 @@ describe("RateLimitIndicator", () => {
 		});
 		renderIndicator();
 		await act(async () => {});
-		const pill = screen.getByRole("status");
+		const pill = getIndicator();
 		const fills = pill.querySelectorAll('span[aria-hidden="true"] > span > span');
 		expect(fills.length).toBe(4);
 		expect((fills[0] as HTMLElement).style.width).toBe("100%");
@@ -334,14 +355,14 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockResolvedValue(report(83));
 		renderIndicator();
 		await act(async () => {});
-		expect(screen.getByRole("status").className).toContain("text-warning");
+		expect(getIndicator().className).toContain("text-warning");
 	});
 
 	it("escalates to the danger token at ≥95%", async () => {
 		mockedGet.mockResolvedValue(report(97));
 		renderIndicator();
 		await act(async () => {});
-		expect(screen.getByRole("status").className).toContain("text-danger");
+		expect(getIndicator().className).toContain("text-danger");
 	});
 
 	it("updates from an agentRateLimitsUpdated push event", async () => {
@@ -358,7 +379,7 @@ describe("RateLimitIndicator", () => {
 		mockedGet.mockRejectedValue(new Error("no backend"));
 		const { container } = renderIndicator();
 		await act(async () => {});
-		expect(container.querySelector("[role='status']")).toBeNull();
+		expect(container.querySelector("button")).toBeNull();
 	});
 
 	it("shows a monthly-only Codex limit and its detailed credit usage", async () => {
@@ -379,7 +400,7 @@ describe("RateLimitIndicator", () => {
 		await act(async () => {});
 
 		expect(screen.getByText("97%")).toBeTruthy();
-		expect(screen.getByRole("status").getAttribute("aria-label")).toContain("monthly credits");
+		expect(getIndicator().getAttribute("aria-label")).toContain("monthly credits");
 		await userEvent.tab();
 		expect(await screen.findByText(/329.53 \/ 8,824/)).toBeTruthy();
 	});
