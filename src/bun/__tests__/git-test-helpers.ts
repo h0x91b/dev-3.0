@@ -6,7 +6,7 @@
  * See git-merge-detection.test.ts for the reference pattern.
  */
 import { execSync } from "child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { spawn as cpSpawn } from "child_process";
@@ -70,7 +70,9 @@ function getTemplateDir(): string {
 export function createTestRepo(): TestRepo {
 	const template = getTemplateDir();
 	const dir = mkdtempSync(join(tmpdir(), "dev3-git-test-"));
-	execSync(`cp -R "${template}/origin.git" "${template}/local" "${dir}/"`, { stdio: "pipe" });
+	// cpSync, not `cp -R`: these tests also run on Windows, where cmd.exe has no cp.
+	cpSync(join(template, "origin.git"), join(dir, "origin.git"), { recursive: true });
+	cpSync(join(template, "local"), join(dir, "local"), { recursive: true });
 	const local = join(dir, "local");
 	g(`git remote set-url origin "${join(dir, "origin.git")}"`, local);
 	return { dir, local };
@@ -153,12 +155,41 @@ function fakeProc(stdout: string, exitCode: number) {
 }
 
 /**
+ * Every command the spawn mock was asked to run, in order. Lets a test assert
+ * *how* something was executed (e.g. that no shell was involved).
+ */
+export const spawnedCommands: string[][] = [];
+
+/** Node writable dressed up as Bun's FileSink, for `stdin: "pipe"` callers. */
+function nodeStdinAsFileSink(stdin: NodeJS.WritableStream | null) {
+	stdin?.on("error", () => { /* EPIPE when the child exits before we finish writing */ });
+	return {
+		write(chunk: Uint8Array) {
+			stdin?.write(Buffer.from(chunk));
+			return chunk.byteLength;
+		},
+		// Bun resolves flush() once the child drained the chunk; Node's write
+		// callback fires at the same point, so an empty write is a fence.
+		flush() {
+			return new Promise<number>((resolve) => {
+				if (!stdin || (stdin as NodeJS.WritableStream & { destroyed?: boolean }).destroyed) return resolve(0);
+				stdin.write(Buffer.alloc(0), () => resolve(0));
+			});
+		},
+		end() {
+			stdin?.end();
+		},
+	};
+}
+
+/**
  * Creates a spawn mock that replaces Bun.spawn with Node.js child_process.
  * Optionally intercepts `gh` CLI calls with a custom response getter.
  */
 export function createSpawnMock(getGhResponse?: () => string) {
 	return {
 		spawn: (cmd: string[], opts?: Record<string, unknown>) => {
+			spawnedCommands.push([...cmd]);
 			if (cmd[0] === "gh" && getGhResponse) {
 				return fakeProc(getGhResponse(), 0);
 			}
@@ -170,7 +201,10 @@ export function createSpawnMock(getGhResponse?: () => string) {
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 
-			if (opts?.stdin instanceof Blob) {
+			let sink: ReturnType<typeof nodeStdinAsFileSink> | undefined;
+			if (opts?.stdin === "pipe") {
+				sink = nodeStdinAsFileSink(child.stdin);
+			} else if (opts?.stdin instanceof Blob) {
 				(opts.stdin as Blob).arrayBuffer().then((buf) => {
 					child.stdin?.write(Buffer.from(buf));
 					child.stdin?.end();
@@ -191,8 +225,10 @@ export function createSpawnMock(getGhResponse?: () => string) {
 
 			return {
 				exited,
+				stdin: sink,
 				stdout: child.stdout ? toWebStream(child.stdout) : emptyStream(),
 				stderr: child.stderr ? toWebStream(child.stderr) : emptyStream(),
+				kill: (signal?: number) => child.kill(signal as NodeJS.Signals | number | undefined),
 			};
 		},
 	};

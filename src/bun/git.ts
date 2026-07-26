@@ -308,6 +308,102 @@ async function runGitStdinBinary(
 	return { code: await proc.exited, stdout: new Uint8Array(stdoutBuffer) };
 }
 
+type PipeSink = {
+	write(chunk: Uint8Array): number;
+	flush(): Promise<number> | number;
+	end(): void;
+};
+
+/**
+ * Streams one git process's stdout straight into another git process's stdin,
+ * with no shell involved.
+ *
+ * A `bash -c "git … | git …"` pipeline is unusable on Windows: PATH there
+ * resolves `bash` to WSL bash, whose filesystem view mangles the native
+ * worktree cwd, so the whole pipeline exits 128. See decision 178.
+ *
+ * Bytes are copied verbatim (patches are binary-safe) and each chunk is flushed
+ * before the next read, so memory stays bounded no matter how large the patch.
+ */
+export async function runGitPipe(
+	producerCmd: string[],
+	consumerCmd: string[],
+	cwd: string,
+	opts?: { prefix?: Uint8Array },
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+	const producerFinal = withGitFilenameEncoding(producerCmd);
+	const consumerFinal = withGitFilenameEncoding(consumerCmd);
+	log.debug("Executing git pipeline", { cwd, producer: producerFinal, consumer: consumerFinal });
+
+	let producer: ReturnType<typeof spawn> | undefined;
+	let consumer: ReturnType<typeof spawn> | undefined;
+	try {
+		producer = spawn(producerFinal, { cwd, stdin: "ignore", stdout: "pipe", stderr: "pipe" });
+		consumer = spawn(consumerFinal, { cwd, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+	} catch (err) {
+		// One side never started — never leave the other running.
+		try { producer?.kill(); } catch { /* already gone */ }
+		try { consumer?.kill(); } catch { /* already gone */ }
+		const stderr = `git pipeline spawn failed: ${String(err)}`;
+		log.warn("Git pipeline spawn failed", { producer: producerFinal, consumer: consumerFinal, error: String(err) });
+		return { ok: false, stdout: "", stderr };
+	}
+
+	// Drain every pipe before awaiting exit, or a >64KB write blocks forever.
+	const consumerStdoutPromise = new Response(consumer.stdout as unknown as ReadableStream<Uint8Array>).text().catch(() => "");
+	const consumerStderrPromise = new Response(consumer.stderr as unknown as ReadableStream<Uint8Array>).text().catch(() => "");
+	const producerStderrPromise = new Response(producer.stderr as unknown as ReadableStream<Uint8Array>).text().catch(() => "");
+
+	const sink = consumer.stdin as unknown as PipeSink;
+	const reader = (producer.stdout as unknown as ReadableStream<Uint8Array>).getReader();
+	let pipeError: string | null = null;
+	try {
+		if (opts?.prefix) {
+			sink.write(opts.prefix);
+			await sink.flush();
+		}
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (!value?.byteLength) continue;
+			sink.write(value);
+			await sink.flush();
+		}
+	} catch (err) {
+		// Consumer died early (broken pipe) or the producer stream errored.
+		pipeError = String(err);
+	} finally {
+		try { reader.releaseLock(); } catch { /* already released */ }
+		try { sink.end(); } catch { /* consumer already gone */ }
+		if (pipeError) {
+			try { producer.kill(); } catch { /* already gone */ }
+		}
+	}
+
+	const [producerCode, consumerCode] = await Promise.all([
+		producer.exited.catch(() => 1),
+		consumer.exited.catch(() => 1),
+	]);
+	const [stdout, producerStderr, consumerStderr] = await Promise.all([
+		consumerStdoutPromise,
+		producerStderrPromise,
+		consumerStderrPromise,
+	]);
+
+	const ok = producerCode === 0 && consumerCode === 0 && !pipeError;
+	const stderr = [pipeError, producerStderr.trim(), consumerStderr.trim()].filter(Boolean).join("\n");
+	if (!ok) {
+		log.warn("Git pipeline failed", {
+			producer: producerFinal,
+			consumer: consumerFinal,
+			producerCode,
+			consumerCode,
+			stderr,
+		});
+	}
+	return { ok, stdout: stdout.trim(), stderr };
+}
+
 const BATCH_HEADER_RE = /^[0-9a-f]{40,64} blob (\d+)$/;
 
 function indexOfNewline(bytes: Uint8Array, from: number): number {
@@ -1619,6 +1715,11 @@ export async function getBranchDiffStats(
 	};
 }
 
+const PATCH_ID_CMD = ["git", "patch-id", "--stable"];
+// git patch-id keys each patch by the commit line preceding it; a raw `git diff`
+// has none, so we synthesise a zero SHA header.
+const FAKE_COMMIT_HEADER = new TextEncoder().encode(`commit ${"0".repeat(40)}\n\n`);
+
 export async function isContentMergedInto(
 	worktreePath: string,
 	ref: string,
@@ -1645,8 +1746,8 @@ export async function isContentMergedInto(
 	// same files AFTER the squash merge (add/add conflicts). In that case,
 	// fall back to patch-id matching which handles post-merge divergence well.
 	//
-	// IMPORTANT: We pipe git log -p directly into git patch-id via Bun
-	// subprocess piping to avoid reading multi-MB patch output into JS memory.
+	// IMPORTANT: We stream git log -p directly into git patch-id via runGitPipe
+	// (no shell) to avoid reading multi-MB patch output into JS memory.
 	const mergeBaseResult = await run(["git", "merge-base", ref, "HEAD"], worktreePath);
 	if (!mergeBaseResult.ok) return false;
 	const mergeBase = mergeBaseResult.stdout;
@@ -1655,27 +1756,28 @@ export async function isContentMergedInto(
 	const taskStatResult = await run(["git", "diff", "--shortstat", mergeBase, "HEAD"], worktreePath);
 	if (!taskStatResult.ok || !taskStatResult.stdout) return true; // no task changes
 
-	// Validate refs before use — mergeBase is a SHA from git merge-base,
-	// ref is origin/<baseBranch> from project config. Guard against injection
-	// for the one bash -c call below.
+	// Validate refs before use — mergeBase is a SHA from git merge-base, ref is
+	// origin/<baseBranch> from project config. Nothing below goes through a
+	// shell, but a ref starting with "-" would still be read as a git option.
 	assertSafeRef(mergeBase, "mergeBase");
 	assertSafeRef(ref, "ref");
 
 	const [combinedPatchIdResult, taskPatchIdsResult, mainPatchIdsResult] = await Promise.all([
 		// Combined diff as a single patch-id (for squash merge detection).
 		// We prepend a fake commit header so git patch-id can parse it.
-		run(
-			["bash", "-c", `{ echo "commit ${"0".repeat(40)}"; echo; git diff "${mergeBase}" HEAD; } | git patch-id --stable`],
-			worktreePath,
-		),
+		runGitPipe(["git", "diff", mergeBase, "HEAD"], PATCH_ID_CMD, worktreePath, {
+			prefix: FAKE_COMMIT_HEADER,
+		}),
 		// Per-commit patch-ids from the task branch (capped to prevent unbounded memory)
-		run(
-			["bash", "-c", `git log -p --no-merges --max-count=500 "${mergeBase}..HEAD" | git patch-id --stable`],
+		runGitPipe(
+			["git", "log", "-p", "--no-merges", "--max-count=500", `${mergeBase}..HEAD`],
+			PATCH_ID_CMD,
 			worktreePath,
 		),
 		// Per-commit patch-ids from the base branch (capped to prevent unbounded memory)
-		run(
-			["bash", "-c", `git log -p --no-merges --max-count=500 "${mergeBase}..${ref}" | git patch-id --stable`],
+		runGitPipe(
+			["git", "log", "-p", "--no-merges", "--max-count=500", `${mergeBase}..${ref}`],
+			PATCH_ID_CMD,
 			worktreePath,
 		),
 	]);

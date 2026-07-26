@@ -22,8 +22,11 @@ vi.mock("../spawn", async () => {
 	return createSpawnMock(() => ghPrListResponse);
 });
 
-import { isBranchMergedViaGitHubPR, isContentMergedInto } from "../git";
-import { createTestRepo, cleanup, makeTaskCommits, g, type TestRepo } from "./git-test-helpers";
+import { isBranchMergedViaGitHubPR, isContentMergedInto, runGitPipe } from "../git";
+import { createTestRepo, cleanup, makeTaskCommits, g, spawnedCommands, type TestRepo } from "./git-test-helpers";
+
+// Anything that would put a shell (or WSL) between us and git.
+const SHELLS = /^(bash|sh|zsh|dash|cmd|cmd\.exe|powershell|powershell\.exe|pwsh|wsl|wsl\.exe)$/i;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +36,7 @@ describe("isContentMergedInto", () => {
 	beforeEach(() => {
 		repo = createTestRepo();
 		ghPrListResponse = "[]";
+		spawnedCommands.length = 0;
 	});
 
 	afterEach(() => {
@@ -253,6 +257,206 @@ describe("isContentMergedInto", () => {
 
 		const result = await isContentMergedInto(repo.local, "origin/main");
 		expect(result).toBe(false);
+	});
+
+	// ── Shell-free streaming pipeline (Windows regression) ───────────────────
+	//
+	// A `bash -c "git … | git patch-id"` pipeline exits 128 on Windows because
+	// PATH resolves bash to WSL bash, which cannot see the native worktree cwd.
+
+	it("detects a squash merge without spawning any shell", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push -u origin task-branch", repo.local);
+
+		g("git checkout main", repo.local);
+		g("git merge --squash task-branch", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+		// Diverge on the same file afterwards so merge-tree conflicts and the
+		// patch-id pipeline is what actually answers.
+		writeFileSync(
+			join(repo.local, "feature.ts"),
+			"export const add = (a: number, b: number) => a + b;\n" +
+				"export const sub = (a: number, b: number) => a - b;\n" +
+				"export const mul = (a: number, b: number) => a * b;\n",
+		);
+		g("git add feature.ts", repo.local);
+		g('git commit -m "unrelated PR"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+
+		expect(spawnedCommands.filter((cmd) => SHELLS.test(cmd[0]))).toEqual([]);
+		// No rendered pipeline string smuggled into argv either.
+		expect(spawnedCommands.filter((cmd) => cmd.some((arg) => arg.includes("|")))).toEqual([]);
+		expect(spawnedCommands.some((cmd) => cmd.includes("patch-id"))).toBe(true);
+	});
+
+	it("detects a squash merge from a linked worktree (separate gitdir pointer)", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push -u origin task-branch", repo.local);
+
+		g("git checkout main", repo.local);
+		g("git merge --squash task-branch", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+		writeFileSync(
+			join(repo.local, "feature.ts"),
+			"export const add = (a: number, b: number) => a + b;\n" +
+				"export const sub = (a: number, b: number) => a - b;\n" +
+				"export const mul = (a: number, b: number) => a * b;\n",
+		);
+		g("git add feature.ts", repo.local);
+		g('git commit -m "unrelated PR"', repo.local);
+		g("git push origin main", repo.local);
+
+		const linked = join(repo.dir, "linked-worktree");
+		g(`git worktree add "${linked}" task-branch`, repo.local);
+
+		expect(await isContentMergedInto(linked, "origin/main")).toBe(true);
+		expect(spawnedCommands.filter((cmd) => SHELLS.test(cmd[0]))).toEqual([]);
+	});
+
+	it("detects a squash merge whose patch contains binary, renamed and deleted files", async () => {
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "logo.bin"), Buffer.from([0, 1, 2, 0, 255, 0, 7]));
+		g("git mv app.ts renamed.ts", repo.local);
+		g("git add logo.bin", repo.local);
+		g('git commit -m "task: binary + rename"', repo.local);
+		writeFileSync(join(repo.local, "doomed.ts"), "export const gone = true;\n");
+		g("git add doomed.ts", repo.local);
+		g('git commit -m "task: add doomed"', repo.local);
+		g("git rm doomed.ts", repo.local);
+		g('git commit -m "task: delete doomed"', repo.local);
+		g("git push -u origin task-branch", repo.local);
+
+		g("git checkout main", repo.local);
+		g("git merge --squash task-branch", repo.local);
+		g('git commit -m "squash: task (#1)"', repo.local);
+		writeFileSync(join(repo.local, "renamed.ts"), "const a = 1;\nconst b = 2;\nconst c = 4;\n");
+		g("git add renamed.ts", repo.local);
+		g('git commit -m "unrelated PR"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+	});
+
+	it("returns true when the branch carries no changes at all (empty diff)", async () => {
+		g("git checkout -b task-branch", repo.local);
+		g("git push -u origin task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+	});
+
+	it("returns true after cherry-picking every task commit onto main", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push -u origin task-branch", repo.local);
+		const shas = g("git log --format=%H main..task-branch", repo.local).trim().split("\n").reverse();
+
+		g("git checkout main", repo.local);
+		for (const sha of shas) g(`git cherry-pick ${sha}`, repo.local);
+		writeFileSync(join(repo.local, "unrelated.ts"), "export const x = 1;\n");
+		g("git add unrelated.ts", repo.local);
+		g('git commit -m "unrelated PR"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(true);
+	});
+
+	it("returns false when main changed the same file differently", async () => {
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'task';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "task: change a"', repo.local);
+		g("git push -u origin task-branch", repo.local);
+
+		g("git checkout main", repo.local);
+		writeFileSync(join(repo.local, "app.ts"), "const a = 'other';\nconst b = 2;\nconst c = 3;\n");
+		g("git add app.ts", repo.local);
+		g('git commit -m "other PR"', repo.local);
+		g("git push origin main", repo.local);
+		g("git checkout task-branch", repo.local);
+
+		expect(await isContentMergedInto(repo.local, "origin/main")).toBe(false);
+	});
+});
+
+describe("runGitPipe", () => {
+	let repo: TestRepo;
+
+	beforeEach(() => {
+		repo = createTestRepo();
+		spawnedCommands.length = 0;
+	});
+
+	afterEach(() => {
+		cleanup(repo);
+	});
+
+	const PATCH_ID = ["git", "patch-id", "--stable"];
+
+	it("streams a prefix followed by the producer's bytes into the consumer", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		const prefix = new TextEncoder().encode(`commit ${"0".repeat(40)}\n\n`);
+		const piped = await runGitPipe(["git", "diff", "main", "HEAD"], PATCH_ID, repo.local, { prefix });
+
+		expect(piped.ok).toBe(true);
+		// patch-id echoes the commit id it was given after the patch id.
+		expect(piped.stdout).toMatch(/^[0-9a-f]{40} 0{40}$/);
+		expect(spawnedCommands.filter((cmd) => SHELLS.test(cmd[0]))).toEqual([]);
+	});
+
+	it("produces identical patch-ids for identical patches across invocations", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		const cmd = ["git", "log", "-p", "--no-merges", "main..HEAD"];
+		const first = await runGitPipe(cmd, PATCH_ID, repo.local);
+		const second = await runGitPipe(cmd, PATCH_ID, repo.local);
+
+		expect(first.ok).toBe(true);
+		expect(first.stdout.split("\n")).toHaveLength(2);
+		expect(second.stdout).toBe(first.stdout);
+	});
+
+	it("streams patches larger than the OS pipe buffer without deadlocking", async () => {
+		g("git checkout -b task-branch", repo.local);
+		writeFileSync(join(repo.local, "big.txt"), "x".repeat(64) + "\n".repeat(1) + Array.from({ length: 40_000 }, (_, i) => `line ${i}`).join("\n"));
+		g("git add big.txt", repo.local);
+		g('git commit -m "task: big file"', repo.local);
+
+		const piped = await runGitPipe(["git", "log", "-p", "main..HEAD"], PATCH_ID, repo.local);
+		expect(piped.ok).toBe(true);
+		expect(piped.stdout).toMatch(/^[0-9a-f]{40} /);
+	});
+
+	it("fails when the producer fails", async () => {
+		const piped = await runGitPipe(["git", "log", "-p", "no-such-ref-xyz"], PATCH_ID, repo.local);
+		expect(piped.ok).toBe(false);
+		expect(piped.stderr).not.toBe("");
+	});
+
+	it("fails when the consumer fails", async () => {
+		g("git checkout -b task-branch", repo.local);
+		makeTaskCommits(repo.local);
+
+		const piped = await runGitPipe(
+			["git", "log", "-p", "main..HEAD"],
+			["git", "patch-id", "--definitely-not-a-flag"],
+			repo.local,
+		);
+		expect(piped.ok).toBe(false);
+	});
+
+	it("fails when a side cannot be spawned at all", async () => {
+		const piped = await runGitPipe(["dev3-no-such-binary"], PATCH_ID, repo.local);
+		expect(piped.ok).toBe(false);
 	});
 });
 
