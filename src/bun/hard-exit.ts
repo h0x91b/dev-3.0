@@ -32,20 +32,26 @@ export interface HardExitDeps {
 	osExit?: (code: number, platform: NodeJS.Platform) => void | Promise<void>;
 }
 
-/** libc / kernel32 entry point that ends the process, per platform. */
-function osExitTarget(platform: NodeJS.Platform): { library: string; symbol: string } {
-	if (platform === "win32") return { library: "kernel32.dll", symbol: "ExitProcess" };
-	if (platform === "darwin") return { library: "libSystem.B.dylib", symbol: "_exit" };
-	return { library: "libc.so.6", symbol: "_exit" };
-}
-
 async function ffiOsExit(code: number, platform: NodeJS.Platform): Promise<void> {
-	const { library, symbol } = osExitTarget(platform);
 	const { dlopen, FFIType } = await import("bun:ffi");
+	if (platform === "win32") {
+		// TerminateProcess, not ExitProcess: `ExitProcess(8)` runs loader/CRT
+		// teardown while electrobun's native threads are live, and Bun fail-fasts
+		// on the way out — the process died with 0xC0000409 instead of 8 (measured).
+		// TerminateProcess kills every thread immediately with the code we pass,
+		// which is safe here because our own cleanup already ran.
+		const lib = dlopen("kernel32.dll", {
+			GetCurrentProcess: { args: [], returns: FFIType.ptr },
+			TerminateProcess: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.i32 },
+		});
+		lib.symbols.TerminateProcess(lib.symbols.GetCurrentProcess(), code);
+		return;
+	}
+	const library = platform === "darwin" ? "libSystem.B.dylib" : "libc.so.6";
 	const lib = dlopen(library, {
-		[symbol]: { args: [FFIType.u32], returns: FFIType.void },
+		_exit: { args: [FFIType.u32], returns: FFIType.void },
 	});
-	(lib.symbols as Record<string, (value: number) => void>)[symbol](code);
+	lib.symbols._exit(code);
 }
 
 /**
