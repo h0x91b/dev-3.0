@@ -25,9 +25,12 @@
  *   8. after cleanup, reattach returns null and nothing respawns;
  *   9. the RENDERER transport: a SECOND task driven exactly as `TerminalView.tsx`
  *      drives it — `pty.createNativeTaskSession` plus real WebSocket clients on the
- *      pty-server bridge — proving native bytes reach a renderer socket, two
- *      renderers share one shell, the in-band resize sequence lands (under the
- *      smallest-client-size rule), and `destroySessionAwaited` kills the tree;
+ *      pty-server bridge — proving native bytes reach a renderer socket under the
+ *      writer/observer contract (seq 1300): the second renderer attaches as a
+ *      replayed OBSERVER whose input is refused, an explicit `claim` moves the lease
+ *      atomically, the new writer reaches the SAME shell while both viewers receive
+ *      its output, geometry follows the WRITER only, a reconnect resumes at its
+ *      watermark, and `destroySessionAwaited` kills the tree;
  *  10. LIFECYCLE teardown (seq 1298): `pty.destroyNativeTaskSession` on a task with
  *      NO in-memory session (the app-restart shape) resolves only after its host,
  *      shell and NESTED CHILD are gone, leaves a sibling native session and the tmux
@@ -56,6 +59,14 @@ import {
 } from "../native-task-terminal";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "../task-terminal-backend";
 import { encodeResizeSequence } from "../../shared/resize-protocol";
+import {
+	claimMessage,
+	decodeNativeStreamMessage,
+	ptyUrlWithSince,
+	type NativeStreamAttachHeader,
+	type NativeStreamHeader,
+	type NativeStreamRole,
+} from "../../shared/native-terminal-stream";
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { readRecord } from "../native-terminal-registry/record";
 import { sessionsRootDir } from "../native-terminal-registry/paths";
@@ -134,19 +145,63 @@ function taskLaunch(cwd: string): TerminalLaunchSpec {
 	return { executable: "/bin/bash", argv: ["--norc", "--noprofile", "-i"] };
 }
 
-/** One renderer: a raw WebSocket on the pty-server bridge, exactly like TerminalView. */
+/**
+ * One renderer: a raw WebSocket on the pty-server bridge, exactly like
+ * TerminalView. A native session frames every message with the in-band APC
+ * header (seq 1300), so this client decodes the frames: `sink` holds the raw
+ * terminal payload only, while the headers drive the role/resume assertions.
+ */
 interface RendererClient {
 	sink: Sink;
+	/** The first frame of the attach, which must precede any live output. */
+	attach: () => NativeStreamAttachHeader | null;
+	/** Watermark of the last applied frame — what a reconnect resumes from. */
+	lastSeq: () => number;
+	role: () => NativeStreamRole;
+	/** How many times the server told this client its input was refused. */
+	refusals: () => number;
+	/** Messages that were NOT native-stream frames; must stay 0 on a native session. */
+	unframed: () => number;
+	awaitHeader: (predicate: (header: NativeStreamHeader) => boolean, timeoutMs?: number) => Promise<boolean>;
 	send: (data: string) => void;
 	close: () => void;
 }
 
-async function openRenderer(port: number, taskId: string): Promise<RendererClient> {
-	const ws = new WebSocket(`ws://localhost:${port}?session=${encodeURIComponent(taskId)}`);
+async function openRenderer(port: number, taskId: string, since: number | null = null): Promise<RendererClient> {
+	const url = ptyUrlWithSince(`ws://localhost:${port}?session=${encodeURIComponent(taskId)}`, since);
+	const ws = new WebSocket(url);
 	const { sink, push } = makeSink();
+	const headers: NativeStreamHeader[] = [];
+	let attach: NativeStreamAttachHeader | null = null;
+	let seq = 0;
+	let role: NativeStreamRole = "observer";
+	let refusals = 0;
+	let unframed = 0;
 	ws.addEventListener("message", (ev) => {
 		const data = (ev as MessageEvent).data;
-		push(typeof data === "string" ? data : new TextDecoder().decode(data as ArrayBuffer));
+		const text = typeof data === "string" ? data : new TextDecoder().decode(data as ArrayBuffer);
+		const frame = decodeNativeStreamMessage(text);
+		if (!frame) {
+			unframed++;
+			push(text);
+			return;
+		}
+		headers.push(frame.header);
+		switch (frame.header.t) {
+			case "attach":
+				attach = frame.header;
+				seq = frame.header.seq;
+				role = frame.header.role;
+				break;
+			case "o":
+				seq = frame.header.seq;
+				break;
+			case "role":
+				role = frame.header.role;
+				if (frame.header.refused) refusals++;
+				break;
+		}
+		if (frame.payload) push(frame.payload);
 	});
 	await new Promise<void>((resolve, reject) => {
 		const timer = setTimeout(() => reject(new Error("renderer websocket open timeout")), 5000);
@@ -159,7 +214,28 @@ async function openRenderer(port: number, taskId: string): Promise<RendererClien
 			reject(new Error("renderer websocket error"));
 		}, { once: true });
 	});
-	return { sink, send: (data) => ws.send(data), close: () => ws.close() };
+	const client: RendererClient = {
+		sink,
+		attach: () => attach,
+		lastSeq: () => seq,
+		role: () => role,
+		refusals: () => refusals,
+		unframed: () => unframed,
+		async awaitHeader(predicate, timeoutMs = 5000) {
+			const deadline = Date.now() + timeoutMs;
+			while (Date.now() < deadline) {
+				if (headers.some(predicate)) return true;
+				await delay(20);
+			}
+			return false;
+		},
+		send: (data) => ws.send(data),
+		close: () => ws.close(),
+	};
+	// The attach frame carries the role and the replayed screen; every later
+	// assertion reads it, so a renderer is not "open" until it has landed.
+	await client.awaitHeader((header) => header.t === "attach");
+	return client;
 }
 
 /** Geometry as the SHELL reports it to a renderer — the coordinator's $COLUMNS/$LINES form. */
@@ -440,6 +516,13 @@ async function run(): Promise<void> {
 
 		const rendererA = await openRenderer(port, WS_TASK_ID);
 		renderers.push(rendererA);
+		check(rendererA.attach()?.role === "writer", "the first renderer attaches as the session's writer");
+		check(
+			rendererA.attach()?.sessionId === WS_SESSION_ID &&
+				rendererA.attach()?.hostPid === wsHostPid &&
+				rendererA.attach()?.shellPid === wsShellPid,
+			"the attach frame names the same native session, host and shell",
+		);
 		const wsMarker = markerProbe(`${nonce}a`, wsShellPid);
 		for (const line of wsMarker.setup) rendererA.send(`${line}${lineEnd}`);
 		const seenByA = await sendUntilObserved({
@@ -449,30 +532,93 @@ async function run(): Promise<void> {
 		});
 		check(seenByA !== null, "a command sent over the renderer WebSocket came back on the same socket");
 
+		// A second renderer is an OBSERVER (seq 1300): it sees the screen and every
+		// live frame, but its keystrokes must not reach the shell until it says so.
 		const rendererB = await openRenderer(port, WS_TASK_ID);
 		renderers.push(rendererB);
-		const fanout = `FANOUT[${nonce}]`;
-		const fanoutSeen = await sendUntilObserved({
-			send: () => rendererB.send(`${isWindows ? `Write-Output "${fanout}"` : `echo "${fanout}"`}${lineEnd}`),
+		check(rendererB.attach()?.role === "observer", "a second renderer attaching to the same session is an observer");
+		check(
+			(rendererB.attach()?.seq ?? 0) > 0 && rendererB.sink.text().includes(wsMarker.expected),
+			"the observer was replayed the screen the writer had already produced",
+		);
+
+		const wsRejected = `WSREJECT[${nonce}]`;
+		rendererB.send(`${isWindows ? `Write-Output "${wsRejected}"` : `echo "${wsRejected}"`}${lineEnd}`);
+		const refusalTold = await rendererB.awaitHeader((h) => h.t === "role" && h.refused === true, 4000);
+		// The shell is asked to speak AFTER the refused input: if the rejected text
+		// were queued anywhere, it would have surfaced ahead of this barrier.
+		const wsBarrier = `WSBARRIER[${nonce}]`;
+		const barrierSeen = await sendUntilObserved({
+			send: () => rendererA.send(`${isWindows ? `Write-Output "${wsBarrier}"` : `echo "${wsBarrier}"`}${lineEnd}`),
 			observe: () =>
-				rendererB.sink.text().includes(fanout) && rendererA.sink.text().includes(fanout) ? fanout : null,
+				rendererA.sink.text().includes(wsBarrier) && rendererB.sink.text().includes(wsBarrier) ? wsBarrier : null,
 			...SHELL_WARMUP_PROBE,
 		});
-		check(fanoutSeen !== null, "a second renderer's input reaches the SAME shell and both renderers receive its output");
+		check(barrierSeen !== null, "the writer keeps driving the shell while an observer is attached");
+		check(
+			refusalTold && rendererB.refusals() > 0 && !rendererA.sink.text().includes(wsRejected) && !rendererB.sink.text().includes(wsRejected),
+			"the observer's input never reached the shell and it was told so explicitly",
+		);
 
-		// The bridge applies the SMALLEST size across clients that reported one, so B
-		// reports a deliberately larger viewport and A's 120x40 must win.
+		// Explicit takeover over the real wire: one claim frame, both sides re-roled.
+		rendererB.send(claimMessage());
+		const bPromoted = await rendererB.awaitHeader((h) => h.t === "role" && h.role === "writer", 4000);
+		const aDemoted = await rendererA.awaitHeader((h) => h.t === "role" && h.role === "observer", 4000);
+		check(
+			bPromoted && aDemoted && rendererB.role() === "writer" && rendererA.role() === "observer",
+			"an explicit claim moves the writer lease atomically — B is promoted and A demoted",
+		);
+
+		// The new writer must land on the SAME shell: the probe echoes the shell's own
+		// pid, so a second shell (or a stale one) could not produce this line.
+		const fanout = markerProbe(`${nonce}b`, wsShellPid);
+		for (const line of fanout.setup) rendererB.send(`${line}${lineEnd}`);
+		const fanoutSeen = await sendUntilObserved({
+			send: () => rendererB.send(`${fanout.command}${lineEnd}`),
+			observe: () =>
+				rendererB.sink.text().includes(fanout.expected) && rendererA.sink.text().includes(fanout.expected)
+					? fanout.expected
+					: null,
+			...SHELL_WARMUP_PROBE,
+		});
+		check(fanoutSeen !== null, "after the takeover B's input reaches the SAME shell and both renderers receive its output");
+
+		const aRefusalsBefore = rendererA.refusals();
+		rendererA.send(`${isWindows ? `Write-Output "AREJECT[${nonce}]"` : `echo "AREJECT[${nonce}]"`}${lineEnd}`);
+		const aRefused = await rendererA.awaitHeader((h) => h.t === "role" && h.refused === true, 4000);
+		check(
+			aRefused && rendererA.refusals() > aRefusalsBefore && !rendererB.sink.text().includes(`AREJECT[${nonce}]`),
+			"the demoted renderer is refused in turn — never two writers on one PTY",
+		);
+
+		// Native geometry is WRITER-only: the observer's viewport stays client-local,
+		// so A reports a deliberately different size and B's 120x40 must win.
 		const wsCols = 120;
 		const wsRows = 40;
-		rendererB.send(encodeResizeSequence(wsCols + 80, wsRows + 20));
-		rendererA.send(encodeResizeSequence(wsCols, wsRows));
+		rendererA.send(encodeResizeSequence(wsCols + 80, wsRows + 20));
+		rendererB.send(encodeResizeSequence(wsCols, wsRows));
 		const wsGeo = rendererGeometryProbe(wsCols, wsRows);
 		const wsGeoSeen = await sendUntilObserved({
-			send: () => rendererA.send(`${wsGeo.command}${lineEnd}`),
-			observe: () => (rendererA.sink.text().includes(wsGeo.expected) ? wsGeo.expected : null),
+			send: () => rendererB.send(`${wsGeo.command}${lineEnd}`),
+			observe: () => (rendererB.sink.text().includes(wsGeo.expected) ? wsGeo.expected : null),
 			...SHELL_WARMUP_PROBE,
 		});
-		check(wsGeoSeen !== null, `the shell reports the smallest reported geometry (${wsCols}x${wsRows}, not B's larger one)`);
+		check(wsGeoSeen !== null, `the shell reports the WRITER's geometry (${wsCols}x${wsRows}, not the observer's)`);
+
+		// Reconnect at the watermark: a resumed viewer continues its stream instead of
+		// being handed the whole screen again.
+		const resumeSeq = rendererA.lastSeq();
+		rendererA.close();
+		const rendererC = await openRenderer(port, WS_TASK_ID, resumeSeq);
+		renderers.push(rendererC);
+		check(
+			rendererC.attach()?.resumed === true && !rendererC.sink.text().includes(wsMarker.expected),
+			"a renderer reconnecting at its watermark resumes instead of replaying the whole screen",
+		);
+		check(
+			rendererB.unframed() === 0 && rendererC.unframed() === 0,
+			"every message on a native session is APC-framed — no bare terminal text on this wire",
+		);
 
 		await pty.destroySessionAwaited(WS_TASK_ID);
 		check(!pty.hasSession(WS_TASK_ID), "pty-server dropped the session after destroySessionAwaited");

@@ -1,0 +1,1 @@
+The packaged native task-terminal E2E now matches the merged writer/observer contract: the second renderer attaches as a replayed observer whose input is refused, an explicit claim moves the writer lease atomically, and the promoted writer reaches the same shell while both viewers receive its output, with geometry following the writer and a reconnect resuming at its watermark.
