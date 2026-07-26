@@ -107,10 +107,62 @@ describe("windows package discovery", () => {
 		).toThrow(/exactly one/);
 	});
 
-	it("treats the only top-level exe as the desktop executable", () => {
-		expect(selectDesktopExecutable(["dev-3.0.exe", "build.json", "changelog.json"])).toBe("dev-3.0.exe");
-		expect(() => selectDesktopExecutable(["build.json"])).toThrow(/exactly one/);
-		expect(() => selectDesktopExecutable(["a.exe", "b.exe"])).toThrow(/exactly one/);
+	// The real windows-latest layout: electrobun puts every executable in `bin/`,
+	// the dev3 additions sit beside it, and nothing lands at the bundle root.
+	const REAL_WINDOWS_BUNDLE = [
+		"bin/bspatch.exe",
+		"bin/bun.exe",
+		"bin/launcher.exe",
+		"bin/zig-zstd.exe",
+		"cli/dev3.exe",
+		"native-host-image/dev3-host-1.40.0/dev3-terminal-host.exe",
+		"Resources/app/views/mainview/index.html",
+	];
+
+	it("selects the nested electrobun launcher out of the real Windows layout", () => {
+		const selection = selectDesktopExecutable(REAL_WINDOWS_BUNDLE);
+		expect(selection.relativePath).toBe("bin/launcher.exe");
+		expect(selection.rejected.map((entry) => entry.relativePath)).toEqual([
+			"bin/bspatch.exe",
+			"bin/bun.exe",
+			"bin/zig-zstd.exe",
+			"cli/dev3.exe",
+			"native-host-image/dev3-host-1.40.0/dev3-terminal-host.exe",
+		]);
+	});
+
+	it("normalizes Windows separators and accepts a flat-root launcher", () => {
+		expect(selectDesktopExecutable(["bin\\launcher.exe", "cli\\dev3.exe"]).relativePath).toBe("bin/launcher.exe");
+		expect(selectDesktopExecutable(["launcher.exe", "bin\\bun.exe"]).relativePath).toBe("launcher.exe");
+	});
+
+	it("rejects the CLI, the terminal host, setup carriers and cached runtimes with reasons", () => {
+		const rejected = selectDesktopExecutable([
+			"bin/launcher.exe",
+			"cli/dev3.exe",
+			"native-host-image/dev3-host-1.40.0/dev3-terminal-host.exe",
+			"dev-3.0-Setup.exe",
+			"bin/bun.exe",
+		]).rejected;
+		expect(Object.fromEntries(rejected.map((entry) => [entry.relativePath, entry.reason]))).toEqual({
+			"cli/dev3.exe": "outside the bundle exec directory 'bin/'",
+			"native-host-image/dev3-host-1.40.0/dev3-terminal-host.exe": "outside the bundle exec directory 'bin/'",
+			"dev-3.0-Setup.exe": "not the electrobun desktop launcher 'launcher.exe'",
+			"bin/bun.exe": "not the electrobun desktop launcher 'launcher.exe'",
+		});
+	});
+
+	it("fails with the full considered inventory when no launcher is present", () => {
+		expect(() => selectDesktopExecutable(["cli/dev3.exe", "bin/bun.exe", "build.json"])).toThrow(
+			/found 0[\s\S]*bin\/bun\.exe — rejected: not the electrobun desktop launcher[\s\S]*cli\/dev3\.exe — rejected: outside the bundle exec directory 'bin\/'/,
+		);
+		expect(() => selectDesktopExecutable(["build.json"])).toThrow(/Considered executables:\n {2}none/);
+	});
+
+	it("refuses to guess between ambiguous launcher candidates", () => {
+		expect(() => selectDesktopExecutable(["bin/launcher.exe", "launcher.exe"])).toThrow(
+			/found 2: bin\/launcher\.exe, launcher\.exe/,
+		);
 	});
 });
 

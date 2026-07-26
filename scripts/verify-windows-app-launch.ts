@@ -27,7 +27,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { assertPackagedConptyRuntime } from "../src/shared/native-terminal-runtime";
 import { NATIVE_SESSION_PROTOCOL_VERSION } from "../src/bun/native-terminal-registry/protocol";
 import {
@@ -66,18 +66,68 @@ export function selectWindowsArchive(fileNames: string[]): string {
 }
 
 /**
- * The launcher electrobun places at the bundle root. `bun.exe` and the terminal
- * host carrier live in nested directories, so a top-level `.exe` is the desktop
- * executable by construction.
+ * Electrobun's non-macOS bundle layout puts every executable in `bin/` and names
+ * the desktop launcher `launcher.exe` (`createAppBundle` + the Windows rename in
+ * `node_modules/electrobun/src/cli/index.ts`). Nothing lands at the bundle root,
+ * which is why the old top-level scan found zero candidates.
  */
-export function selectDesktopExecutable(topLevelFileNames: string[]): string {
-	const candidates = topLevelFileNames.filter((name) => name.toLowerCase().endsWith(".exe")).sort();
-	if (candidates.length !== 1) {
+export const BUNDLE_EXEC_DIR = "bin";
+export const DESKTOP_LAUNCHER_NAME = "launcher.exe";
+
+export interface RejectedExecutable {
+	relativePath: string;
+	reason: string;
+}
+
+export interface DesktopExecutableSelection {
+	/** Bundle-relative, POSIX-separated path of the launcher to start. */
+	relativePath: string;
+	rejected: RejectedExecutable[];
+}
+
+function toBundleRelative(path: string): string {
+	return path.split(/[\\/]/).filter((segment) => segment.length > 0).join("/");
+}
+
+/**
+ * Picks the desktop launcher out of every `.exe` in the package. Auxiliary
+ * executables (`cli/dev3.exe`, the native terminal host image, setup/bootstrap
+ * carriers) sit outside `bin/`; the electrobun runtime binaries (`bun.exe`,
+ * `bspatch.exe`, `zig-zstd.exe`, CEF helpers) share `bin/` but are not the
+ * launcher. Both classes are rejected with a reason so a layout change reads as
+ * a diagnosis, not a mystery.
+ */
+export function selectDesktopExecutable(bundleRelativePaths: string[]): DesktopExecutableSelection {
+	const executables = bundleRelativePaths
+		.map(toBundleRelative)
+		.filter((path) => path.toLowerCase().endsWith(".exe"))
+		.sort();
+	const selected: string[] = [];
+	const rejected: RejectedExecutable[] = [];
+	for (const path of executables) {
+		const segments = path.split("/");
+		const directory = segments.slice(0, -1).join("/").toLowerCase();
+		const name = segments[segments.length - 1].toLowerCase();
+		if (directory !== BUNDLE_EXEC_DIR && directory !== "") {
+			rejected.push({ relativePath: path, reason: `outside the bundle exec directory '${BUNDLE_EXEC_DIR}/'` });
+		} else if (name !== DESKTOP_LAUNCHER_NAME) {
+			rejected.push({ relativePath: path, reason: `not the electrobun desktop launcher '${DESKTOP_LAUNCHER_NAME}'` });
+		} else {
+			selected.push(path);
+		}
+	}
+	if (selected.length !== 1) {
+		const inventory = [
+			...selected.map((relativePath) => `  ${relativePath} — desktop launcher candidate`),
+			...rejected.map((entry) => `  ${entry.relativePath} — rejected: ${entry.reason}`),
+		];
 		throw new Error(
-			`Expected exactly one desktop executable at the bundle root; found ${candidates.length}: ${candidates.join(", ") || "none"}`,
+			`Expected exactly one desktop launcher ('${BUNDLE_EXEC_DIR}/${DESKTOP_LAUNCHER_NAME}'); found ${selected.length}` +
+				`${selected.length > 1 ? `: ${selected.join(", ")}` : ""}.\nConsidered executables:\n` +
+				`${inventory.join("\n") || "  none"}`,
 		);
 	}
-	return candidates[0];
+	return { relativePath: selected[0], rejected };
 }
 
 export function isUsableReadyMarker(value: unknown, expectedVersion: string): value is AppReadyMarker {
@@ -149,6 +199,17 @@ function findFiles(root: string, name: string): string[] {
 		else if (entry.isFile() && entry.name.toLowerCase() === name.toLowerCase()) matches.push(path);
 	}
 	return matches;
+}
+
+/** Every `.exe` under `root`, as POSIX-separated bundle-relative paths. */
+function listExecutables(root: string, prefix = ""): string[] {
+	const found: string[] = [];
+	for (const entry of readdirSync(join(root, prefix), { withFileTypes: true })) {
+		const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) found.push(...listExecutables(root, relativePath));
+		else if (entry.isFile() && entry.name.toLowerCase().endsWith(".exe")) found.push(relativePath);
+	}
+	return found.sort();
 }
 
 function sleep(ms: number): Promise<void> {
@@ -239,11 +300,27 @@ async function main(): Promise<void> {
 		const bundleRoot = join(unpackedDir, bundleDirs[0].name);
 
 		// ── AC1: archive contents ──────────────────────────────────────────────
-		const bundleEntries = readdirSync(bundleRoot, { withFileTypes: true });
-		const desktopExecutableName = selectDesktopExecutable(
-			bundleEntries.filter((entry) => entry.isFile()).map((entry) => entry.name),
+		// Written before selection so a layout change uploads its own evidence
+		// instead of only a stack trace.
+		const bundleExecutables = listExecutables(bundleRoot);
+		writeFileSync(
+			join(proofDir, "windows-app-layout.json"),
+			`${JSON.stringify(
+				{ archiveName: basename(archivePath), bundleRootName: bundleDirs[0].name, executables: bundleExecutables },
+				null,
+				2,
+			)}\n`,
 		);
-		const desktopExecutable = join(bundleRoot, desktopExecutableName);
+		const desktopSelection = selectDesktopExecutable(bundleExecutables);
+		const desktopExecutableRelativePath = desktopSelection.relativePath;
+		const desktopExecutable = join(bundleRoot, desktopExecutableRelativePath);
+		// The launcher must come from the artifact under test — never the source
+		// checkout, an installed copy, or PATH.
+		if (!resolve(desktopExecutable).startsWith(resolve(bundleRoot) + sep) || !statSync(desktopExecutable).isFile()) {
+			throw new Error(
+				`Selected desktop launcher ${desktopExecutableRelativePath} does not resolve to a file inside the extracted bundle.`,
+			);
+		}
 
 		const expectedCliName = cliBinaryName("win32");
 		const cliMatches = findFiles(bundleRoot, expectedCliName).filter((path) =>
@@ -279,8 +356,10 @@ async function main(): Promise<void> {
 
 		// ── AC2: launch, ready marker, clean shutdown ──────────────────────────
 		const markerPath = join(workspace, "app-ready.json");
+		// Electrobun itself launches the bundle from the exec directory, and so does
+		// Explorer on a double-click.
 		const child = spawn(desktopExecutable, [], {
-			cwd: bundleRoot,
+			cwd: dirname(desktopExecutable),
 			env: { ...process.env, DEV3_READY_MARKER_FILE: markerPath, ELECTROBUN_CONSOLE: "1" },
 			stdio: ["ignore", "pipe", "pipe"],
 			windowsHide: true,
@@ -369,13 +448,14 @@ async function main(): Promise<void> {
 		launcherPid = null;
 
 		const proof = {
-			archivePath,
+			archiveName: basename(archivePath),
 			archiveBytes: statSync(archivePath).size,
 			archiveSha256: sha256(archivePath),
 			bundleRoot: relative(unpackedDir, bundleRoot),
-			desktopExecutableName,
+			desktopExecutableRelativePath,
 			desktopExecutableBytes: statSync(desktopExecutable).size,
 			desktopExecutableSha256: sha256(desktopExecutable),
+			rejectedExecutables: desktopSelection.rejected,
 			bundledCliArchivePath: relative(bundleRoot, bundledCli).split(/[\\/]/).join("/"),
 			bundledCliBytes: statSync(bundledCli).size,
 			bundledCliSha256: sha256(bundledCli),
@@ -390,7 +470,7 @@ async function main(): Promise<void> {
 			hostImageManifestValidated: true,
 			desktopExecutablePid: desktopPid,
 			mainProcessPid: marker.pid,
-			readyMarkerPath: markerPath,
+			readyMarkerName: basename(markerPath),
 			readyMarker: marker,
 			readyAfterMs,
 			readyTimeoutMs: READY_TIMEOUT_MS,
@@ -404,8 +484,9 @@ async function main(): Promise<void> {
 		writeFileSync(join(proofDir, "windows-app-launch-proof.json"), `${JSON.stringify(proof, null, 2)}\n`);
 		console.log(`[windows-app-launch] ${JSON.stringify(proof)}`);
 		console.log(
-			`[windows-app-launch] ${desktopExecutableName} shipped with cli/${expectedCliName} and host image ${discovered.tag}, ` +
-				`reached ready in ${readyAfterMs}ms, shut down via ${shutdownMethod} with no owned processes left`,
+			`[windows-app-launch] ${desktopExecutableRelativePath} (rejected ${desktopSelection.rejected.length} other executables) ` +
+				`shipped with cli/${expectedCliName} and host image ${discovered.tag}, reached ready in ${readyAfterMs}ms, ` +
+				`shut down via ${shutdownMethod} with no owned processes left`,
 		);
 	} finally {
 		if (launcherPid !== null) {

@@ -214,5 +214,6 @@ jobs:
           name: windows-app-archive-proof
           path: |
             artifacts/windows-conpty-package-proof.json
+            artifacts/windows-app-layout.json
             artifacts/windows-app-launch-proof.json
             artifacts/*-update.json
