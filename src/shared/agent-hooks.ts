@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { PermissionMode, TaskStatus } from "./types";
 import { CLI_EXIT_CODE_APP_NOT_RUNNING } from "./cli-exit-codes";
-import { type HookCliDialect, hookCliDialect, POSIX_DEV3_CLI } from "./dev3-cli-path";
+import { type HookCliDialect, hookCliDialect } from "./dev3-cli-path";
 
 /** Dialect of the machine generating the hooks (the frozen POSIX string on macOS/Linux). */
 const DEFAULT_DIALECT = hookCliDialect();
@@ -271,7 +271,21 @@ export function buildCodexHooksConfigOverride(
  */
 function mentionsDev3Cli(command?: string): boolean {
 	if (!command) return false;
-	return command.includes(DEV3_CLI) || command.includes(POSIX_DEV3_CLI);
+	// Trailing space so the last token gets the same boundary as the others.
+	const normalized = `${normalizeCliMention(command)} `;
+	return normalized.includes("/dev3 ") || normalized.includes("/dev3.exe ");
+}
+
+/**
+ * Recognize the CLI however it was spelled when the entry was written: quoted or
+ * bare, backslashes or forward slashes, `~/.dev3.0/bin/dev3`, a per-user
+ * `dev3.exe`, or a bundle-relative one — a repo checked out on two platforms, or
+ * an older build, leaves any of those behind. Matching only the current spelling
+ * would stop replacing them, and the refreshed hooks would pile up next to the
+ * broken ones.
+ */
+function normalizeCliMention(text: string): string {
+	return text.replaceAll("\\", "/").replaceAll('"', "").toLowerCase();
 }
 
 /** Check if a matcher group (or legacy flat entry) contains a dev3 hook. */

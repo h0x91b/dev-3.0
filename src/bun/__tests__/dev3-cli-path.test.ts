@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
 	hookCliDialect,
 	POSIX_DEV3_CLI,
-	quoteWindowsPath,
+	hookCliCommandPath,
 	resolveDev3CliPath,
 	windowsDev3CliCandidates,
 } from "../../shared/dev3-cli-path";
@@ -61,10 +61,13 @@ describe("resolveDev3CliPath", () => {
 	});
 });
 
-describe("quoteWindowsPath", () => {
-	it("quotes only paths containing whitespace", () => {
-		expect(quoteWindowsPath("C:\\dev3\\dev3.exe")).toBe("C:\\dev3\\dev3.exe");
-		expect(quoteWindowsPath("C:\\Program Files\\dev3.exe")).toBe('"C:\\Program Files\\dev3.exe"');
+describe("hookCliCommandPath", () => {
+	it("turns separators into forward slashes so bash cannot eat them", () => {
+		expect(hookCliCommandPath("C:\\dev3\\dev3.exe")).toBe('"C:/dev3/dev3.exe"');
+	});
+
+	it("quotes unconditionally, so a path with spaces stays one argument", () => {
+		expect(hookCliCommandPath("C:\\Program Files\\dev3.exe")).toBe('"C:/Program Files/dev3.exe"');
 	});
 });
 
@@ -83,21 +86,21 @@ describe("hookCliDialect", () => {
 				exists: () => false,
 			}),
 		).toEqual({
-			cli: '"C:\\Users\\John Doe\\.dev3.0\\bin\\dev3.exe"',
+			cli: '"C:/Users/John Doe/.dev3.0/bin/dev3.exe"',
 			posixShell: false,
 		});
 	});
 
 	it("gives Windows an absolute CLI and no POSIX shell", () => {
 		expect(hookCliDialect({ platform: "win32", execDir: EXEC_DIR, homeDir: HOME, exists: () => false })).toEqual({
-			cli: "C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe",
+			cli: '"C:/Users/dev/.dev3.0/bin/dev3.exe"',
 			posixShell: false,
 		});
 	});
 
-	it("leaves a space-free Windows path unquoted", () => {
-		expect(
-			hookCliDialect({ platform: "win32", execDir: "C:\\dev3", homeDir: "C:\\home", exists: () => false }).cli,
-		).toBe("C:\\home\\.dev3.0\\bin\\dev3.exe");
+	it("never emits a bare backslash — Git Bash would strip it (the hook repro)", () => {
+		const cli = hookCliDialect({ platform: "win32", execDir: "C:\\dev3", homeDir: "C:\\home", exists: () => false }).cli;
+		expect(cli).toBe('"C:/home/.dev3.0/bin/dev3.exe"');
+		expect(cli).not.toContain("\\");
 	});
 });

@@ -808,7 +808,7 @@ describe("Windows hook output", () => {
 	it("renders the exact Claude command strings", () => {
 		const hooks = buildClaudeHooks({ stopTarget: "review-by-ai", dialect: WIN_SPACES });
 		const cli = WIN_SPACES.cli;
-		expect(cli).toBe('"C:\\Users\\John Doe\\.dev3.0\\bin\\dev3.exe"');
+		expect(cli).toBe('"C:/Users/John Doe/.dev3.0/bin/dev3.exe"');
 		const working = `${cli} task move --status in-progress --if-status-not review-by-ai --tolerate-app-offline`;
 
 		expect(hooks.UserPromptSubmit[0].hooks[0].command).toBe(working);
@@ -856,9 +856,12 @@ describe("Windows hook output", () => {
 
 		for (const command of commands) {
 			const [binary] = command.split(" ");
-			expect(binary).toBe("C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe");
-			expect(binary.endsWith("dev3.exe")).toBe(true);
-			expect(isAbsolute(binary) || /^[A-Za-z]:\\/.test(binary)).toBe(true);
+			expect(binary).toBe('"C:/Users/dev/.dev3.0/bin/dev3.exe"');
+			// Quoted, forward-slashed, and still an absolute drive path: bash strips a
+			// bare backslash, so the drive letter must be followed by "/" here.
+			const bare = binary.replaceAll('"', "");
+			expect(bare.endsWith("dev3.exe")).toBe(true);
+			expect(isAbsolute(bare) || /^[A-Za-z]:\//.test(bare)).toBe(true);
 		}
 	});
 
@@ -893,5 +896,21 @@ describe("Windows hook output", () => {
 		expect(commands).toContain("echo mine");
 		expect(commands.some((c) => c.includes("dev3.exe"))).toBe(true);
 		expect(commands.some((c) => c.includes("~/.dev3.0/bin/dev3"))).toBe(false);
+	});
+
+	it("replaces the bare-backslash spelling an earlier build wrote (bash ate the separators)", () => {
+		const broken = "C:\\Users\\John Doe\\.dev3.0\\bin\\dev3.exe task move --status in-progress";
+		const existing = {
+			hooks: { PreToolUse: [{ hooks: [{ type: "command", command: broken }] }] },
+		};
+
+		const merged = mergeClaudeHooks(existing, { dialect: WIN_SPACES }) as {
+			hooks: Record<string, MatcherGroup[]>;
+		};
+		const commands = merged.hooks.PreToolUse.flatMap((g) => g.hooks.map((h) => h.command));
+
+		expect(commands).not.toContain(broken);
+		expect(commands.every((c) => !c.includes("\\"))).toBe(true);
+		expect(commands.some((c) => c.startsWith(WIN_SPACES.cli))).toBe(true);
 	});
 });

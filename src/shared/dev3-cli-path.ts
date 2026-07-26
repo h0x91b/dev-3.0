@@ -75,12 +75,16 @@ export function resolveDev3CliPath(lookup: Dev3CliLookup = {}): string {
 }
 
 /**
- * Quote a Windows path only when it needs it. Double quotes are what both
- * `CreateProcess` argument parsing and `cmd.exe` understand; they are not a
- * shell operator, so a quoted command still runs without a shell.
+ * Spell a Windows path so every hook runner we have observed can execute it.
+ *
+ * Claude Code runs hook commands through Git Bash (`/usr/bin/bash`), which eats
+ * `\` as an escape: a bare `D:\src\dev-3.0\...\dev3.exe` arrives as
+ * `D:srcdev-3.0...dev3.exe: command not found`. Forward slashes survive bash,
+ * `cmd.exe` and `CreateProcess` alike, and the quotes keep a path with spaces in
+ * one argument — quotes are not a shell operator, so this still runs shell-free.
  */
-export function quoteWindowsPath(path: string): string {
-	return /\s/.test(path) ? `"${path}"` : path;
+export function hookCliCommandPath(path: string): string {
+	return `"${path.replaceAll("\\", "/")}"`;
 }
 
 /**
@@ -98,7 +102,7 @@ export function hookCliDialect(lookup: Dev3CliLookup = {}): HookCliDialect {
 	const platform = lookup.platform ?? process.platform;
 	if (platform !== "win32") return { cli: POSIX_DEV3_CLI, posixShell: true };
 	return {
-		cli: quoteWindowsPath(resolveDev3CliPath({ ...lookup, platform })),
+		cli: hookCliCommandPath(resolveDev3CliPath({ ...lookup, platform })),
 		posixShell: false,
 	};
 }

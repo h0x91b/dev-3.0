@@ -470,7 +470,7 @@ describe("skill content per platform dialect", () => {
 	});
 
 	it("gives Windows an absolute dev3.exe with no stderr redirect", () => {
-		const cli = "C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe";
+		const cli = '"C:/Users/dev/.dev3.0/bin/dev3.exe"';
 
 		const claude = buildClaudeSkillContent(WINDOWS);
 		expect(claude).toContain(`!\`${cli} task move --status in-progress --if-status-not review-by-ai\``);
@@ -489,6 +489,6 @@ describe("skill content per platform dialect", () => {
 
 	it("spells the Claude bash permission the same way the generated commands do", () => {
 		expect(claudeBashPermission(POSIX)).toBe("Bash(~/.dev3.0/bin/dev3 *)");
-		expect(claudeBashPermission(WINDOWS)).toBe("Bash(C:\\Users\\dev\\.dev3.0\\bin\\dev3.exe *)");
+		expect(claudeBashPermission(WINDOWS)).toBe('Bash("C:/Users/dev/.dev3.0/bin/dev3.exe" *)');
 	});
 });
