@@ -791,6 +791,83 @@ describe("TerminalView – tmux copy-mode focus recovery", () => {
 	});
 });
 
+// ── Mouse-report flood control (decision 175) ─────────────────────────────────
+
+describe("TerminalView – mouse report pacing", () => {
+	afterEach(() => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(false);
+	});
+
+	const countReports = () =>
+		mockInput.mock.calls.reduce(
+			(sum, [data]) => sum + (String(data).match(/\x1b\[</g)?.length ?? 0),
+			0,
+		);
+
+	it("caps a single violent flick and keeps every write far below 1 KB", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		await renderAndSetup();
+		const wheelHandler = mockTermInstance.attachCustomWheelEventHandler.mock.calls[0]?.[0] as
+			| ((event: WheelEvent) => boolean)
+			| undefined;
+
+		mockInput.mockClear();
+		act(() => {
+			wheelHandler?.({ deltaY: 100_000, clientX: 20, clientY: 20 } as WheelEvent);
+		});
+
+		expect(countReports()).toBeLessThanOrEqual(16);
+		for (const [data] of mockInput.mock.calls) {
+			expect(String(data).length).toBeLessThan(1022);
+		}
+	});
+
+	it("drops sustained excess instead of queueing it", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		await renderAndSetup();
+		const wheelHandler = mockTermInstance.attachCustomWheelEventHandler.mock.calls[0]?.[0] as
+			| ((event: WheelEvent) => boolean)
+			| undefined;
+
+		mockInput.mockClear();
+		act(() => {
+			for (let i = 0; i < 50; i++) {
+				wheelHandler?.({ deltaY: 5_000, clientX: 20, clientY: 20 } as WheelEvent);
+			}
+		});
+
+		// 50 events × 5000px would be thousands of reports unpaced; the bucket
+		// only refills with elapsed time, and these all land in the same tick.
+		expect(countReports()).toBeLessThanOrEqual(20);
+	});
+
+	it("reports a drag once per cell, not once per pixel", async () => {
+		mockTermInstance.hasMouseTracking.mockReturnValue(true);
+		await renderAndSetup();
+		const canvasListeners = mockTermInstance.renderer.getCanvas().addEventListener.mock.calls;
+		const mouseDown = canvasListeners.find((call: unknown[]) => call[0] === "mousedown")?.[1] as (event: MouseEvent) => void;
+		const mouseMove = canvasListeners.find((call: unknown[]) => call[0] === "mousemove")?.[1] as (event: MouseEvent) => void;
+		const event = (x: number, y: number) => ({
+			button: 0,
+			clientX: x,
+			clientY: y,
+			preventDefault: vi.fn(),
+			stopPropagation: vi.fn(),
+		}) as unknown as MouseEvent;
+
+		act(() => {
+			mouseDown(event(20, 20));
+		});
+		mockInput.mockClear();
+		act(() => {
+			// charWidth is 8, so x 16–23 is one cell: only the jump to 33 counts.
+			for (const x of [17, 18, 19, 20, 21, 22, 23, 33]) mouseMove(event(x, 20));
+		});
+
+		expect(countReports()).toBe(1);
+	});
+});
+
 // ── Terminal disposal safety ──────────────────────────────────────────────────
 
 describe("TerminalView – disposal safety (no 'Terminal has been disposed' errors)", () => {

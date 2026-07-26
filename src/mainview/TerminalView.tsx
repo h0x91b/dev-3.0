@@ -10,6 +10,7 @@ import type { TerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { installTerminalCopyDiagnostics } from "./terminal-copy-diagnostics";
 import { getEffectiveZoom, ZOOM_CHANGED_EVENT } from "./zoom";
 import { getScrollThreshold } from "./scroll-speed";
+import { createWheelPacer } from "./wheel-pacer";
 import { TERMINAL_KEYMAPS, getKeymapPreset, KEYMAP_CHANGED_EVENT } from "./terminal-keymaps";
 import { uploadDroppedFile } from "./utils/uploadDroppedFile";
 import { writeClipboardText } from "./utils/clipboard-write";
@@ -827,6 +828,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			let trackedButton = -1;
 			let mouseDownX = 0;
 			let mouseDownY = 0;
+			let lastDragCell = "";
 
 			function cellCoords(e: MouseEvent): [number, number] {
 				const rect = canvas.getBoundingClientRect();
@@ -858,9 +860,10 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 				col: number,
 				row: number,
 				press: boolean,
+				repeat = 1,
 			) {
 				term.input(
-					`\x1b[<${btn};${col};${row}${press ? "M" : "m"}`,
+					`\x1b[<${btn};${col};${row}${press ? "M" : "m"}`.repeat(repeat),
 					true,
 				);
 			}
@@ -886,6 +889,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 					mouseDownY = e.clientY;
 					mouseGestureDraggedRef.current = false;
 					const [col, row] = cellCoords(e);
+					lastDragCell = `${col};${row}`;
 					sgrMouse(e.button | altBit(e), col, row, true);
 					e.preventDefault();
 					e.stopPropagation();
@@ -918,7 +922,13 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 						mouseGestureDraggedRef.current = true;
 					}
 					const [col, row] = cellCoords(e);
-					sgrMouse((trackedButton | altBit(e)) + 32, col, row, true);
+					// One report per cell, not per pixel — a drag across the pane
+					// otherwise pumps ~100 redundant sequences/s into the PTY.
+					const cell = `${col};${row}`;
+					if (cell !== lastDragCell) {
+						lastDragCell = cell;
+						sgrMouse((trackedButton | altBit(e)) + 32, col, row, true);
+					}
 					e.stopPropagation();
 				} catch { /* disposed */ }
 			}
@@ -993,6 +1003,7 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 			document.addEventListener("mouseup", onMouseUp);
 
 			let scrollAccumulator = 0;
+			const wheelPacer = createWheelPacer();
 
 			term.attachCustomWheelEventHandler((e: WheelEvent) => {
 				if (disposed) return false;
@@ -1009,10 +1020,14 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, touchComposeMode }: 
 						scrollAccumulator -= lines * threshold;
 						if (lines < 0) tmuxCopyModeMayBeActiveRef.current = true;
 						const code = lines < 0 ? 64 : 65;
-						const count = Math.abs(lines);
-						for (let i = 0; i < count; i++) {
-							sgrMouse(code, col, row, true);
-						}
+						// Paced and sent as one write — an unpaced flick overruns the
+						// PTY's 1022-byte read window and TUIs paste the sliced tail
+						// into their prompt (decision 175).
+						const allowed = wheelPacer.take(
+							Math.abs(lines),
+							performance.now(),
+						);
+						if (allowed > 0) sgrMouse(code, col, row, true, allowed);
 					}
 					return true;
 				} catch { return false; /* disposed */ }
