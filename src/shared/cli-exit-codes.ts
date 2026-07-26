@@ -6,6 +6,7 @@ export const CLI_EXIT_CODE_INTERNAL_ERROR = 4;
 export const CLI_EXIT_CODE_GUI_DEPS_MISSING = 5;
 export const CLI_EXIT_CODE_COMPLETION_DECLINED = 6;
 export const CLI_EXIT_CODE_DOCTOR_PROBLEMS = 7;
+export const CLI_EXIT_CODE_RENDERER_UNAVAILABLE = 8;
 
 export const CLI_EXIT_CODE_DEFINITIONS = [
 	{
@@ -50,5 +51,11 @@ export const CLI_EXIT_CODE_DEFINITIONS = [
 		code: CLI_EXIT_CODE_DOCTOR_PROBLEMS,
 		description:
 			'`dev3 doctor` found at least one problem (a check with status "fail"). Warnings alone still exit 0.',
+	},
+	{
+		constant: "CLI_EXIT_CODE_RENDERER_UNAVAILABLE",
+		code: CLI_EXIT_CODE_RENDERER_UNAVAILABLE,
+		description:
+			"The desktop launch created a window but no renderer ever reported dom-ready within the readiness budget (missing/broken WebView2 runtime, or no interactive desktop). The process prints an actionable diagnostic and leaves instead of running without a UI.",
 	},
 ] as const;

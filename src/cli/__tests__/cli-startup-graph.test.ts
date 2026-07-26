@@ -112,3 +112,32 @@ describe("CLI startup import graph stays light", () => {
 		expect(electrobunDeps, `unexpected static electrobun import(s): ${electrobunDeps.join(", ")}`).toEqual([]);
 	});
 });
+
+/**
+ * The headless server must be window-free BY DESIGN, not by luck. `dev3 remote`
+ * is the documented answer for a machine with no interactive desktop — the exact
+ * situation where creating a BrowserWindow yields a window with no WebView2
+ * controller and no renderer (see renderer-readiness.ts). If the window layer
+ * ever becomes statically reachable from headless-entry, remote mode inherits
+ * that failure mode; this goes red first.
+ */
+describe("headless server never reaches the desktop window layer", () => {
+	const HEADLESS_ENTRY = resolve(REPO_ROOT, "src/bun/headless-entry.ts");
+	const { files, bare } = walkStaticGraph(HEADLESS_ENTRY);
+
+	it("walks a non-trivial graph that includes the remote access server", () => {
+		expect(files.size).toBeGreaterThan(10);
+		expect(files.has(resolve(REPO_ROOT, "src/bun/remote-access-server.ts"))).toBe(true);
+	});
+
+	it("never statically imports the window manager", () => {
+		const windowManager = resolve(REPO_ROOT, "src/bun/window-manager.ts");
+		expect(existsSync(windowManager)).toBe(true);
+		expect(files.has(windowManager), "headless mode must never reach window-manager").toBe(false);
+	});
+
+	it("never statically imports electrobun's native GUI layer", () => {
+		const electrobunDeps = [...bare].filter((d) => d === "electrobun" || d.startsWith("electrobun/"));
+		expect(electrobunDeps, `unexpected static electrobun import(s): ${electrobunDeps.join(", ")}`).toEqual([]);
+	});
+});

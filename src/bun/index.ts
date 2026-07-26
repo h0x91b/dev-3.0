@@ -13,11 +13,18 @@ import {
 	isUpdateAlreadyReady,
 } from "./updater";
 import { loadSettings, loadSettingsSync } from "./settings";
-import { installSignalQuitConfirmation, isQuitConfirmed, markQuitDialogPending } from "./quit-manager";
+import { installSignalQuitConfirmation, isQuitConfirmed, markQuitConfirmed, markQuitDialogPending } from "./quit-manager";
 import { initNativeNotifications } from "./native-notifications";
 import { markPendingNotificationNav } from "./notification-nav";
 import { createLogger, getLogPath } from "./logger";
 import { writeAppReadyMarker } from "./app-ready-marker";
+import {
+	buildRendererUnavailableDiagnostic,
+	createRendererReadinessWatchdog,
+	resolveRendererReadyTimeoutMs,
+} from "./renderer-readiness";
+import { hardExit } from "./hard-exit";
+import { CLI_EXIT_CODE_RENDERER_UNAVAILABLE } from "../shared/cli-exit-codes";
 import { DEV3_HOME } from "./paths";
 import { resolveUserHome } from "../shared/user-home";
 import { normalizeEnvPath } from "../shared/env-path";
@@ -35,7 +42,7 @@ import { startLoopMonitor } from "./loop-monitor";
 import { createAppWindow, broadcastToAllWindows, focusFocusedWindow, getFocusedWindow, getWindowCount, sendToFocusedWindow, setOpenNewWindow, flushWindowState } from "./window-manager";
 import electrobunConfig, { cliBinaryName } from "../../electrobun.config";
 import { BUILD_TIME } from "../shared/build-info.generated";
-import { existsSync } from "node:fs";
+import { existsSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { rehydrateTaskLifecycles } from "./lifecycle/rehydrate";
 
@@ -345,6 +352,36 @@ onMenuContextChange((ctx) => {
 
 // --- Main Window ---
 
+// A created window is not a renderer: on Windows the WebView2 controller can
+// fail AFTER the window exists (HRESULT 0x80070578 with no interactive desktop)
+// with no JS error and a non-null window pointer. Everything below that needs a
+// live webview hangs off the first `dom-ready`; silence for the whole budget
+// means this launch has no UI and must leave. See renderer-readiness.ts.
+const readiness = createRendererReadinessWatchdog({
+	timeoutMs: resolveRendererReadyTimeoutMs(),
+	onArmed: (timeoutMs) => log.info("Waiting for the renderer to report dom-ready", { timeoutMs }),
+	onReady: (source, elapsedMs) => log.info("Renderer ready", { source, elapsedMs }),
+	onTimeout: (timeoutMs) => failDesktopLaunch(timeoutMs),
+});
+
+/**
+ * The desktop launch produced no renderer. Print the diagnostic, tear down
+ * everything this process owns, and leave with the documented code.
+ *
+ * `markQuitConfirmed()` first: the `before-quit` gate below asks the renderer to
+ * confirm, and there is no renderer to answer — without this the app would sit
+ * alive forever (proven on Windows, decision 174).
+ */
+function failDesktopLaunch(timeoutMs: number): void {
+	const diagnostic = buildRendererUnavailableDiagnostic(timeoutMs);
+	log.error("Desktop launch failed: no renderer", { timeoutMs, exitCode: CLI_EXIT_CODE_RENDERER_UNAVAILABLE });
+	// Synchronous, because hardExit() below skips any buffered flush.
+	try { writeSync(2, `${diagnostic}\n`); } catch { /* stderr is closed — the log file still has it */ }
+	markQuitConfirmed();
+	try { runGlobalQuitCleanup(); } catch (err) { log.warn("Cleanup during failed launch failed", { error: String(err) }); }
+	hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE);
+}
+
 async function openMainWindow() {
 	const buildChannel = await Updater.localInfo.channel();
 	return createAppWindow({
@@ -352,6 +389,14 @@ async function openMainWindow() {
 		url,
 		handlers: handlers as unknown as Record<string, (...args: unknown[]) => unknown>,
 		onDomReady: async (win) => {
+			// dom-ready is the readiness contract: it only fires once a webview
+			// actually rendered, so it is the one signal that proves a renderer.
+			if (readiness.markReady("dom-ready")) {
+				// Window, RPC, push transport AND a live renderer — only now is the
+				// app genuinely usable, so this is where the automated packaged-build
+				// proof gets its marker. No-op without DEV3_READY_MARKER_FILE.
+				writeAppReadyMarker(APP_VERSION);
+			}
 			if (buildChannel === "dev") {
 				win.webview.openDevTools();
 			}
@@ -379,6 +424,7 @@ setOpenNewWindow(() => {
 
 await openMainWindow();
 log.info("Main window created");
+readiness.arm();
 
 // Wire push messages: every open renderer window + any connected browser clients.
 setPushMessage((name, payload) => {
@@ -386,10 +432,6 @@ setPushMessage((name, payload) => {
 	broadcastToAllWindows(name, payload);
 	pushToBrowserClients(name, payload);
 });
-
-// Window + RPC + push transport are live, so the app is usable: report it for
-// automated packaged-build proofs. No-op without DEV3_READY_MARKER_FILE.
-writeAppReadyMarker(APP_VERSION);
 
 // Initialize the backend gate before background pollers and CLI requests can
 // raise agent notifications. Queued entries flush when Focus Mode is disabled.
