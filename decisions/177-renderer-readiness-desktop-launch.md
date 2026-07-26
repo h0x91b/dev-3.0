@@ -25,16 +25,31 @@ no event, and no falsy return — the bun side cannot see it at all.
   `DOM ready` **366 ms** after `Window created` (`NavigationCompleted fired for
   webview 1`, no HRESULT). The packaged Windows launch proof measured 1511 ms.
   So a healthy renderer is ~3 orders of magnitude faster than any sane budget.
-- Electrobun's webview transport (`BrowserView.createTransport`) sends over the
-  encrypted renderer socket, and when no socket ever connected it falls back to an
-  FFI `evaluateJavaScriptWithNoCompletion(webviewPtr, …)`. It early-returns only on
-  a null `ptr`, which a controller failure does not produce — so every
-  `broadcastToAllWindows()` from the 10 s pollers is an FFI call into a webview
-  with no live controller. This is the leading candidate for the delayed native
-  crash, but it is NOT proven: an idle SSH launch survived 17.5 minutes with those
-  pollers ticking. The Seq 1295 run had real projects and an attempted `createTask`;
-  the idle one had none. The delayed crash is therefore treated as *evidence*, not
-  as the thing being fixed — the fix removes the window in which it can happen.
+- **The crash is the first-paint resize nudge.** `createAppWindow` fired a 200 ms
+  `setTimeout` that called `win.getSize()` + `win.setSize()` unconditionally. With a
+  dead WebView2 controller that reaches an invalid native wrapper and Bun panics:
+
+  ```
+  [22:21] ERROR: Failed to create WebView2 controller, HRESULT: 0x80070578
+  panic(thread 26360): Segmentation fault at address 0xFFFFFFFFFFFFFFFF
+  bun.report/1.3.14/…libNativeWrapper.dll…   → exit code 9
+  Elapsed: 4176ms
+  ```
+
+  Controlled A/B on the same machine, same SSH session, same checkout: nudge
+  unconditional → segfault 4176 ms after start, exit 9. Nudge moved behind
+  `dom-ready` → no crash, process alive until the watchdog ended it. That also
+  explains the Seq 1295 "4–15 minutes" spread and why an idle run survived 17.5
+  minutes: it is a **race** between the 200 ms timer and the asynchronous controller
+  failure, not a timer we could ever out-wait. A readiness watchdog alone would
+  never have caught it — the offending call has to be removed from the pre-renderer
+  window, which is why the nudge now waits for `dom-ready` (where it belongs
+  anyway: it exists to fix the FIRST PAINT).
+- Electrobun's webview transport falls back from the renderer socket to an FFI
+  `evaluateJavaScriptWithNoCompletion(webviewPtr, …)` and only early-returns on a
+  null `ptr`, which a controller failure does not produce — so poller broadcasts
+  are also FFI calls into a controller-less webview. Not observed to crash on its
+  own (17.5 minutes of 10 s ticks), but it is why the launch must not linger.
 - Shutdown was independently broken: the `before-quit` gate cancels the quit and
   asks the renderer to confirm. With a renderer, Ctrl+C works (observed:
   `Quit intercepted` → `quitApp (confirmed by renderer)` → cleanup). Without one,
@@ -62,9 +77,20 @@ no event, and no falsy return — the bun side cannot see it at all.
   `markQuitConfirmed()` so the quit gate cannot wait for a renderer, runs the
   normal `runGlobalQuitCleanup()`, and leaves via `hardExit()` with the new
   `CLI_EXIT_CODE_RENDERER_UNAVAILABLE = 8`.
-- `src/bun/hard-exit.ts` prefers `process.reallyExit` and falls back to
-  `process.exit`. It skips buffered flushes, so the diagnostic is written with a
-  synchronous `writeSync(2, …)` first.
+- `src/bun/hard-exit.ts` owns leaving the process, and every layer of that had to
+  be measured on Windows rather than assumed:
+  - `process.exit(8)` exits **0** — electrobun replaces `process.exit` and its
+    `quit()` always ends in `forceExit(0)`.
+  - `process.reallyExit(8)` exits 8 in a plain Bun process but does **not end an
+    electrobun app**: the app logged its full cleanup and then stayed alive for
+    4.5 minutes with the native runtime holding the process.
+  - `ExitProcess(8)` via `bun:ffi` does end it, but the process died with
+    `0xC0000409` (fail-fast) because loader/CRT teardown ran while electrobun's
+    native threads were live.
+  - `TerminateProcess(GetCurrentProcess(), 8)` yields exactly 8. That is the
+    primary path; `reallyExit` and `process.exit` remain ordered fallbacks for a
+    platform where the FFI lookup fails. All of them skip buffered flushes, so the
+    diagnostic is written with a synchronous `writeSync(2, …)` first.
 - `writeAppReadyMarker()` moved from "window created" to "renderer ready". The
   marker is the packaged-launch proof's readiness signal and used to be written
   while there was no UI at all — a half-started app reporting success.
@@ -80,11 +106,16 @@ no event, and no falsy return — the bun side cannot see it at all.
 - A healthy launch that is slower than 45 s to first paint would now be killed.
   Observed healthy startups are 0.37–1.5 s, and the budget is win32-only, so the
   margin is large — but a pathologically slow machine is the failure mode to watch.
-- The delayed `libNativeWrapper` crash is bounded out, not root-caused. If it ever
-  appears within the readiness budget, this fix will not catch it.
-- `reallyExit` bypasses exit handlers. Everything this process owns is torn down
-  explicitly before the call; anything added to `runGlobalQuitCleanup()` later
-  inherits that requirement.
+- The nudge was the crash we could reproduce; the pre-renderer window still
+  contains other native calls (poller broadcasts into a controller-less webview).
+  Nothing was observed to crash there in 17.5 minutes, but the class is not
+  eliminated — only shortened to 45 s.
+- `TerminateProcess` bypasses every exit handler and flush. Everything this process
+  owns is torn down explicitly before the call; anything added to
+  `runGlobalQuitCleanup()` later inherits that requirement.
+- The launcher chain does not forward the code: with `bun run dev` the console saw
+  `9` while the app process itself exited `8`. The app's own exit code is the
+  contract; `bin/launcher.exe`'s translation of it is an electrobun detail.
 
 ## Alternatives considered
 

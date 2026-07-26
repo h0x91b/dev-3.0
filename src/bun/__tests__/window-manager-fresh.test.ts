@@ -102,13 +102,23 @@ function spawn() {
 	return createAppWindow({ title: "dev-3.0", url: "views://mainview/index.html", handlers: {} });
 }
 
+/** Fire every registered dom-ready listener, then let their timers run. */
+function reportDomReady(win: FakeWindow): void {
+	for (const [event, handler] of win.webview.on.mock.calls) {
+		if (event === "dom-ready") (handler as () => void)();
+	}
+	vi.advanceTimersByTime(500);
+}
+
 describe("window-manager fresh-start mode", () => {
 	it("restores the saved geometry when fresh-start is off", () => {
 		delete process.env.DEV3_FRESH_START;
 		spawn();
 		expect(createdWindows[0].frame).toEqual(SAVED_FRAME);
-		// Fullscreen restore is wired on dom-ready.
-		expect(createdWindows[0].webview.on).toHaveBeenCalledWith("dom-ready", expect.any(Function));
+		// Fullscreen restore happens on dom-ready, and replaces the resize nudge.
+		reportDomReady(createdWindows[0]);
+		expect(createdWindows[0].setFullScreen).toHaveBeenCalledWith(true);
+		expect(createdWindows[0].setSize).not.toHaveBeenCalled();
 		// Geometry persistence listeners are attached.
 		expect(createdWindows[0].handlers.move).toBeTypeOf("function");
 		expect(createdWindows[0].handlers.resize).toBeTypeOf("function");
@@ -119,10 +129,33 @@ describe("window-manager fresh-start mode", () => {
 		spawn();
 		// 95% of 1920×1080, centered → 1824×1026 at (48, 27) — NOT the saved frame.
 		expect(createdWindows[0].frame).toEqual({ x: 48, y: 27, width: 1824, height: 1026 });
-		// No fullscreen restore.
-		expect(createdWindows[0].webview.on).not.toHaveBeenCalledWith("dom-ready", expect.any(Function));
+		// No fullscreen restore — the first-paint resize nudge runs instead.
+		reportDomReady(createdWindows[0]);
+		expect(createdWindows[0].setFullScreen).not.toHaveBeenCalled();
+		expect(createdWindows[0].setSize).toHaveBeenCalled();
 		// No geometry persistence listeners — dev must not clobber shared state.
 		expect(createdWindows[0].handlers.move).toBeUndefined();
 		expect(createdWindows[0].handlers.resize).toBeUndefined();
+	});
+
+	// Regression guard for the Windows segfault (decision 177): resizing a window
+	// whose webview never initialized reaches an invalid native wrapper and kills
+	// the process, so NOTHING may size the window before the renderer reports in.
+	it("never touches window size before the renderer reports dom-ready", () => {
+		delete process.env.DEV3_FRESH_START;
+		spawn();
+		vi.advanceTimersByTime(60_000);
+		expect(createdWindows[0].getSize).not.toHaveBeenCalled();
+		expect(createdWindows[0].setSize).not.toHaveBeenCalled();
+		expect(createdWindows[0].setFullScreen).not.toHaveBeenCalled();
+	});
+
+	it("nudges the first paint only once, even if dom-ready fires again", () => {
+		process.env.DEV3_FRESH_START = "1";
+		spawn();
+		reportDomReady(createdWindows[0]);
+		const afterFirst = createdWindows[0].setSize.mock.calls.length;
+		reportDomReady(createdWindows[0]);
+		expect(createdWindows[0].setSize.mock.calls.length).toBe(afterFirst);
 	});
 });
