@@ -176,17 +176,27 @@ export function createAppWindow(opts: CreateAppWindowOptions): BrowserWindow {
 		// versions. A quick resize nudge forces the viewport into the post-resize
 		// layout immediately so the app's pb-8 padding stays reliable. Skipped when
 		// restoring fullscreen (setSize would fight the fullscreen transition).
-		setTimeout(() => {
-			try {
-				const size = win.getSize();
-				win.setSize(size.width, size.height - 1);
-				setTimeout(() => {
-					try { win.setSize(size.width, size.height); } catch { /* ignore */ }
-				}, 50);
-			} catch (err) {
-				log.warn("Resize nudge failed", { error: String(err) });
-			}
-		}, 200);
+		//
+		// It waits for dom-ready because resizing a window whose webview never came
+		// up is fatal, not cosmetic: on Windows a failed WebView2 controller plus
+		// this nudge segfaults the native wrapper (decision 177). dom-ready is also
+		// when the nudge is meant to happen — it exists to fix the FIRST PAINT.
+		let nudged = false;
+		win.webview.on("dom-ready", () => {
+			if (nudged) return; // a reload re-fires dom-ready; one nudge per window
+			nudged = true;
+			setTimeout(() => {
+				try {
+					const size = win.getSize();
+					win.setSize(size.width, size.height - 1);
+					setTimeout(() => {
+						try { win.setSize(size.width, size.height); } catch { /* ignore */ }
+					}, 50);
+				} catch (err) {
+					log.warn("Resize nudge failed", { error: String(err) });
+				}
+			}, 200);
+		});
 	}
 
 	if (opts.onDomReady) {
