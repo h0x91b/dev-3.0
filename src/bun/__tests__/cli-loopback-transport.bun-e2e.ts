@@ -102,7 +102,10 @@ async function run(): Promise<void> {
 		console.log("single instance round-trip");
 		const primary = start(socketsDir, 4242);
 		check(existsSync(primary.endpoint), "the endpoint record is published after the bind");
-		check(primary.endpoint === join(socketsDir, cliEndpointFileName(4242)), "the record is named by pid");
+		// The listener composes paths with "/" like the rest of the data layer
+		// (DEV3_HOME is normalised to forward slashes — see resolveUserHome), so
+		// compare that spelling rather than the platform's path.join.
+		check(primary.endpoint === `${socketsDir}/${cliEndpointFileName(4242)}`, "the record is named by pid");
 		const primaryRecord = record(primary.endpoint);
 		check(primaryRecord.host === "127.0.0.1", "the record advertises loopback only");
 		check(primaryRecord.port === primary.port && primaryRecord.port > 0, "the record carries the bound ephemeral port");
