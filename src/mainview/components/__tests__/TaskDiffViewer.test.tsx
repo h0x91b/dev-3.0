@@ -57,6 +57,16 @@ vi.mock("@git-diff-view/react", async () => {
 		}) => {
 			const [widget, setWidget] = React.useState<{ lineNumber: number; side: number } | null>(null);
 			const [nextWidgetLineNumber, setNextWidgetLineNumber] = React.useState(1);
+			const [storedRenderExtendLine, setStoredRenderExtendLine] = React.useState<typeof renderExtendLine>(
+				() => renderExtendLine,
+			);
+
+			// The real library publishes a new slot renderer from an effect. Keeping
+			// that delay here catches controlled inputs whose caret gets reset when
+			// the external slot store applies the next value.
+			React.useEffect(() => {
+				setStoredRenderExtendLine(() => renderExtendLine);
+			}, [renderExtendLine]);
 
 			// Mirror the library's onCreateUseWidgetHook so production code can open
 			// the composer programmatically (used by drag-to-select range commenting).
@@ -146,7 +156,7 @@ vi.mock("@git-diff-view/react", async () => {
 						{threadEntries.map((entry) => (
 							<React.Fragment key={entry.key}>
 								<div data-testid="mock-extend">
-									{renderExtendLine?.({
+									{storedRenderExtendLine?.({
 										diffFile: {},
 										side: entry.side,
 										lineNumber: entry.lineNumber,
@@ -156,7 +166,7 @@ vi.mock("@git-diff-view/react", async () => {
 								</div>
 								{diffViewMode === 3 && (
 									<div data-testid="mock-empty-extend-counterpart">
-										{renderExtendLine?.({
+										{storedRenderExtendLine?.({
 											diffFile: {},
 											side: entry.side === SplitSide.old ? SplitSide.new : SplitSide.old,
 											lineNumber: entry.lineNumber,

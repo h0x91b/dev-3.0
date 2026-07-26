@@ -224,9 +224,7 @@ interface TaskDiffFileSectionProps {
 		body: string;
 	}) => void;
 	editingCommentId: string | null;
-	editingCommentDraft: string;
-	onEditDraftChange: (value: string) => void;
-	onStartEditComment: (commentId: string, body: string) => void;
+	onStartEditComment: (commentId: string) => void;
 	onCancelEditComment: () => void;
 	onSaveEditComment: (commentId: string, body: string) => void;
 	onDeleteComment: (commentId: string) => void;
@@ -604,8 +602,6 @@ function InlineCommentThreadView({
 	lineNumber,
 	registerCommentRef,
 	editingCommentId,
-	editingCommentDraft,
-	onEditDraftChange,
 	onStartEdit,
 	onCancelEdit,
 	onSaveEdit,
@@ -616,9 +612,7 @@ function InlineCommentThreadView({
 	lineNumber: number;
 	registerCommentRef: (commentId: string, element: HTMLDivElement | null) => void;
 	editingCommentId: string | null;
-	editingCommentDraft: string;
-	onEditDraftChange: (value: string) => void;
-	onStartEdit: (commentId: string, body: string) => void;
+	onStartEdit: (commentId: string) => void;
 	onCancelEdit: () => void;
 	onSaveEdit: (commentId: string, body: string) => void;
 	onDeleteComment: (commentId: string) => void;
@@ -626,6 +620,7 @@ function InlineCommentThreadView({
 	const t = useT();
 	const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const focusedEditCommentIdRef = useRef<string | null>(null);
+	const [editingCommentDraft, setEditingCommentDraft] = useState("");
 
 	useEffect(() => {
 		if (!editingCommentId) {
@@ -670,7 +665,7 @@ function InlineCommentThreadView({
 							<textarea
 								ref={editTextareaRef}
 								value={editingCommentDraft}
-								onChange={(event) => onEditDraftChange(event.target.value)}
+								onChange={(event) => setEditingCommentDraft(event.target.value)}
 								rows={3}
 								className="dev3-inline-comment__textarea w-full resize-y rounded-lg border border-edge bg-base px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-muted focus:border-edge-active focus:bg-elevated"
 							/>
@@ -701,7 +696,10 @@ function InlineCommentThreadView({
 							<div className="flex shrink-0 items-center gap-1">
 								<button
 									type="button"
-									onClick={() => onStartEdit(comment.id, comment.body)}
+									onClick={() => {
+										setEditingCommentDraft(comment.body);
+										onStartEdit(comment.id);
+									}}
 									aria-label={t("infoPanel.diffReviewEdit")}
 									className="inline-flex h-7 items-center justify-center rounded-md border border-edge bg-base px-2 text-[0.6875rem] font-semibold text-fg-2 transition-colors hover:bg-elevated-hover"
 								>
@@ -1154,8 +1152,6 @@ function TaskDiffFileSection({
 	isRead,
 	onAddComment,
 	editingCommentId,
-	editingCommentDraft,
-	onEditDraftChange,
 	onStartEditComment,
 	onCancelEditComment,
 	onSaveEditComment,
@@ -1696,8 +1692,6 @@ function TaskDiffFileSection({
 										lineNumber={lineNumber}
 										registerCommentRef={registerCommentRef}
 										editingCommentId={editingCommentId}
-										editingCommentDraft={editingCommentDraft}
-										onEditDraftChange={onEditDraftChange}
 										onStartEdit={onStartEditComment}
 										onCancelEdit={onCancelEditComment}
 										onSaveEdit={onSaveEditComment}
@@ -1774,7 +1768,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 	const [copiedReviewXml, setCopiedReviewXml] = useState(false);
 	const [reviewSendState, setReviewSendState] = useState<"sending" | "sent" | undefined>();
 	const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
-	const [editingCommentDraft, setEditingCommentDraft] = useState("");
 	// GitHub PR review layer (read-only). Fetched once per diff open when the
 	// task carries a sticky PR; the refresh button re-fetches with force. The
 	// export selection and send states are deliberately session-local — unlike
@@ -2149,7 +2142,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 			setActiveFileId(null);
 			setInlineComments({});
 			setEditingCommentId(null);
-			setEditingCommentDraft("");
 			return;
 		}
 
@@ -2173,7 +2165,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		// must survive diff reloads (e.g. a refresh after the agent edits files).
 		setInlineComments(readStoredReview(task.id));
 		setEditingCommentId(null);
-		setEditingCommentDraft("");
 	}, [currentRequest.focusFile, payload, task.id]);
 
 	// Scroll spy: as the user scrolls the diff, highlight the file whose section is currently
@@ -2359,7 +2350,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 				}
 				setInlineComments({});
 				setEditingCommentId(null);
-				setEditingCommentDraft("");
 			})
 			.catch(() => {});
 	}
@@ -2653,15 +2643,13 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 		activateSearchMatch(activeSearchIndex + direction);
 	}
 
-	function startEditingComment(commentId: string, body: string) {
+	function startEditingComment(commentId: string) {
 		setEditingCommentId(commentId);
-		setEditingCommentDraft(body);
 		setCopiedReviewXml(false);
 	}
 
 	function cancelEditingComment() {
 		setEditingCommentId(null);
-		setEditingCommentDraft("");
 	}
 
 	function updateInlineComment(commentId: string, body: string) {
@@ -3791,8 +3779,6 @@ function TaskDiffViewer({ task, project, request, onBack, navigationGuardRef }: 
 								isRead={readFiles[file.id] ?? false}
 								onAddComment={addInlineComment}
 								editingCommentId={editingCommentId}
-								editingCommentDraft={editingCommentDraft}
-								onEditDraftChange={setEditingCommentDraft}
 								onStartEditComment={startEditingComment}
 								onCancelEditComment={cancelEditingComment}
 								onSaveEditComment={updateInlineComment}
