@@ -122,6 +122,15 @@ async function runCli(exe: string, home: string, args: string[]): Promise<RunRes
 
 /** Compile the CLI exactly as `build:cli` does, into the temp root. */
 async function buildCli(root: string): Promise<string> {
+	// build-info.generated.ts is gitignored, so a fresh clone has none and the
+	// compile fails on the import. Generate it only when missing, the same way
+	// the real build does, and leave an existing one alone.
+	if (!existsSync("src/shared/build-info.generated.ts")) {
+		const gen = Bun.spawn(["bun", "scripts/generate-build-info.ts"], { stdout: "pipe", stderr: "pipe" });
+		const [genErr, genCode] = await Promise.all([new Response(gen.stderr).text(), gen.exited]);
+		if (genCode !== 0) throw new Error(`generate-build-info failed (${genCode}):\n${genErr}`);
+	}
+
 	const outfile = join(root, "dev3");
 	const proc = Bun.spawn(["bun", "build", "src/cli/main.ts", "--compile", "--outfile", outfile], {
 		stdout: "pipe",
