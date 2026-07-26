@@ -158,17 +158,32 @@ describe("renderer-unavailable diagnostic", () => {
 });
 
 describe("hardExit", () => {
-	it("prefers reallyExit, which electrobun does not replace", () => {
-		const reallyExit = vi.fn();
-		const exit = vi.fn();
-		hardExit(8, { exit: exit as never, reallyExit });
-		expect(reallyExit).toHaveBeenCalledWith(8);
-		expect(exit).not.toHaveBeenCalled();
+	function fakeProc(platform: NodeJS.Platform = "win32", withReallyExit = true) {
+		return {
+			platform,
+			exit: vi.fn() as never,
+			...(withReallyExit ? { reallyExit: vi.fn() } : {}),
+		};
+	}
+
+	it("exits through the OS primitive first — electrobun survives reallyExit", async () => {
+		const osExit = vi.fn();
+		const proc = fakeProc();
+		await hardExit(8, { proc, osExit });
+		expect(osExit).toHaveBeenCalledWith(8, "win32");
 	});
 
-	it("falls back to process.exit when reallyExit is absent", () => {
-		const exit = vi.fn();
-		hardExit(8, { exit: exit as never });
-		expect(exit).toHaveBeenCalledWith(8);
+	it("falls back to reallyExit and then process.exit when the OS exit fails", async () => {
+		const osExit = vi.fn(() => { throw new Error("dlopen failed"); });
+		const proc = fakeProc();
+		await hardExit(8, { proc, osExit });
+		expect(proc.reallyExit).toHaveBeenCalledWith(8);
+		expect(proc.exit).toHaveBeenCalledWith(8);
+	});
+
+	it("still exits when the process has no reallyExit at all", async () => {
+		const proc = fakeProc("linux", false);
+		await hardExit(8, { proc, osExit: () => { throw new Error("no libc"); } });
+		expect(proc.exit).toHaveBeenCalledWith(8);
 	});
 });

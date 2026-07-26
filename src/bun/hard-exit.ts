@@ -1,26 +1,70 @@
 /**
- * Leave the desktop process with a real exit code.
+ * Leave the desktop process with a real exit code — for real.
  *
- * Electrobun REPLACES `process.exit`: the first call routes into its own
- * `quit()`, which emits `before-quit` (our gate can cancel it) and then always
- * ends in `forceExit(0)` — so a desktop-side `process.exit(8)` exits 0. It does
- * not patch `process.reallyExit`, which is the Node-compat primitive underneath
- * (verified on Windows with Bun 1.3.14: `bun -e "process.reallyExit(8)"` exits 8).
+ * Two layers of the runtime fight this:
  *
- * `reallyExit` skips exit handlers and any buffered stream flush, so callers must
- * have written their diagnostic synchronously (`writeSync`) before calling this.
+ * 1. Electrobun REPLACES `process.exit`. The first call routes into its own
+ *    `quit()`, which emits `before-quit` (our gate can cancel it) and always ends
+ *    in `forceExit(0)` — so a desktop-side `process.exit(8)` exits 0.
+ * 2. `process.reallyExit` is not patched and works in a plain Bun process
+ *    (`bun -e "process.reallyExit(8)"` exits 8), but it does NOT end an electrobun
+ *    app: measured on Windows, the app logged its cleanup and then stayed alive
+ *    for minutes with the native runtime still holding the process (decision 177).
+ *
+ * So the primary exit is the OS primitive — `ExitProcess` / `_exit` — which
+ * terminates every thread of the process with the code we ask for, native runtime
+ * included. `bun:ffi` is imported dynamically: this module is also loaded by tests
+ * running under Node, and the import only happens on the failure path.
+ *
+ * All of these skip exit handlers and buffered stream flushes, so callers must
+ * have written their diagnostic synchronously (`writeSync`) beforehand.
  */
 
 export interface ExitCapableProcess {
 	exit: (code?: number) => never;
 	reallyExit?: (code: number) => void;
+	platform: NodeJS.Platform;
 }
 
-export function hardExit(code: number, proc: ExitCapableProcess = process): void {
-	const reallyExit = proc.reallyExit;
-	if (typeof reallyExit === "function") {
-		reallyExit.call(proc, code);
-		return;
+export interface HardExitDeps {
+	proc?: ExitCapableProcess;
+	/** Injected in tests; the default goes through `bun:ffi`. */
+	osExit?: (code: number, platform: NodeJS.Platform) => void | Promise<void>;
+}
+
+/** libc / kernel32 entry point that ends the process, per platform. */
+function osExitTarget(platform: NodeJS.Platform): { library: string; symbol: string } {
+	if (platform === "win32") return { library: "kernel32.dll", symbol: "ExitProcess" };
+	if (platform === "darwin") return { library: "libSystem.B.dylib", symbol: "_exit" };
+	return { library: "libc.so.6", symbol: "_exit" };
+}
+
+async function ffiOsExit(code: number, platform: NodeJS.Platform): Promise<void> {
+	const { library, symbol } = osExitTarget(platform);
+	const { dlopen, FFIType } = await import("bun:ffi");
+	const lib = dlopen(library, {
+		[symbol]: { args: [FFIType.u32], returns: FFIType.void },
+	});
+	(lib.symbols as Record<string, (value: number) => void>)[symbol](code);
+}
+
+/**
+ * Never returns in practice. Ordered attempts: OS primitive → `reallyExit` →
+ * electrobun's `process.exit`, so a platform where the FFI lookup fails still
+ * gets the best available exit instead of a process that refuses to die.
+ */
+export async function hardExit(code: number, deps: HardExitDeps = {}): Promise<void> {
+	const proc = deps.proc ?? (process as unknown as ExitCapableProcess);
+	const osExit = deps.osExit ?? ffiOsExit;
+	try {
+		await osExit(code, proc.platform);
+	} catch {
+		// dlopen or the symbol lookup failed — fall through to the JS exits.
+	}
+	try {
+		proc.reallyExit?.(code);
+	} catch {
+		// ignore — the last resort below is electrobun's own exit
 	}
 	proc.exit(code);
 }

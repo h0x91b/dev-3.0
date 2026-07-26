@@ -379,7 +379,9 @@ function failDesktopLaunch(timeoutMs: number): void {
 	try { writeSync(2, `${diagnostic}\n`); } catch { /* stderr is closed — the log file still has it */ }
 	markQuitConfirmed();
 	try { runGlobalQuitCleanup(); } catch (err) { log.warn("Cleanup during failed launch failed", { error: String(err) }); }
-	hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE);
+	// Async only because the OS-level exit needs a dynamic bun:ffi import; it
+	// never returns, so there is nothing to await.
+	void hardExit(CLI_EXIT_CODE_RENDERER_UNAVAILABLE);
 }
 
 async function openMainWindow() {
