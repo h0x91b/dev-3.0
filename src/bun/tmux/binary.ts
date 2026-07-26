@@ -31,24 +31,53 @@ export function getTmuxBinary(): string {
 	return tmuxBinary;
 }
 
-type TmuxServerProbe = "compatible" | "no-server" | "mismatch";
+type TmuxServerProbe = {
+	status: "compatible" | "no-server" | "mismatch";
+	serverVersion?: string;
+};
+
+export interface TmuxServerVersionMismatch {
+	clientVersion: string;
+	serverVersion: string;
+}
+
+let serverVersionMismatch: TmuxServerVersionMismatch | null = null;
+
+export function getTmuxServerVersionMismatch(): TmuxServerVersionMismatch | null {
+	return serverVersionMismatch;
+}
+
+function normalizeTmuxVersion(version: string): string {
+	return version.trim().replace(/^tmux\s+/, "");
+}
 
 /**
- * Check whether `binary` can talk to a server already running on `socket`.
- * tmux clients hard-fail against a server built from a different version
- * ("server exited unexpectedly"), so a cheap `list-sessions` distinguishes
- * three states: works, no server at all, or a version-mismatched server.
+ * Check whether `binary` matches a server already running on `socket`.
+ * Non-interactive commands may succeed across version skew while attached
+ * clients lose their terminal fd (tmux/tmux#4356), so compare the running
+ * server's `#{version}` with this binary instead of trusting list-sessions.
  */
-async function probeTmuxServer(binary: string, socket: string): Promise<TmuxServerProbe> {
+async function probeTmuxServer(binary: string, binaryVersion: string, socket: string): Promise<TmuxServerProbe> {
 	try {
-		const proc = spawn([binary, "-L", socket, "list-sessions"], { stdout: "pipe", stderr: "pipe" });
-		const stderr = await new Response(proc.stderr).text();
-		const exitCode = await proc.exited;
-		if (exitCode === 0) return "compatible";
-		if (stderr.includes("no server running") || stderr.includes("error connecting")) return "no-server";
-		return "mismatch";
+		const proc = spawn([binary, "-L", socket, "display-message", "-p", "#{version}"], { stdout: "pipe", stderr: "pipe" });
+		const [stdout, stderr, exitCode] = await Promise.all([
+			new Response(proc.stdout).text(),
+			new Response(proc.stderr).text(),
+			proc.exited,
+		]);
+		if (exitCode === 0) {
+			const serverVersion = normalizeTmuxVersion(stdout);
+			return {
+				status: serverVersion === normalizeTmuxVersion(binaryVersion) ? "compatible" : "mismatch",
+				...(serverVersion ? { serverVersion } : {}),
+			};
+		}
+		if (stderr.includes("no server running") || stderr.includes("error connecting")) {
+			return { status: "no-server" };
+		}
+		return { status: "mismatch" };
 	} catch {
-		return "mismatch";
+		return { status: "mismatch" };
 	}
 }
 
@@ -173,6 +202,7 @@ function isSymlink(path: string): boolean {
  * reboot, when no incompatible server is left running.
  */
 export async function selectTmuxBinary(preferred: string, fallbackCandidates: string[] = []): Promise<string | undefined> {
+	serverVersionMismatch = null;
 	// Never commit the PATH shim itself — dereference it to its real target
 	// (whichSync returns the shim because ~/.dev3.0/bin is first in PATH).
 	const preferredReal = dereferenceTmuxShim(preferred);
@@ -180,12 +210,13 @@ export async function selectTmuxBinary(preferred: string, fallbackCandidates: st
 		preferredReal,
 		...fallbackCandidates.filter((candidate) => candidate !== TMUX_SHIM_PATH),
 	].filter((candidate): candidate is string => Boolean(candidate))));
-	const validCandidates: string[] = [];
+	const validCandidates: Array<{ path: string; version: string }> = [];
 	for (const candidate of candidates) {
 		if (candidate.startsWith("/") && !isExecutableFile(candidate)) continue;
-		if (await probeTmuxVersion(candidate)) validCandidates.push(candidate);
+		const version = await probeTmuxVersion(candidate);
+		if (version) validCandidates.push({ path: candidate, version });
 	}
-	if (preferred === TMUX_SHIM_PATH && preferredReal && !validCandidates.includes(preferredReal) && isSymlink(TMUX_SHIM_PATH)) {
+	if (preferred === TMUX_SHIM_PATH && preferredReal && !validCandidates.some((candidate) => candidate.path === preferredReal) && isSymlink(TMUX_SHIM_PATH)) {
 		log.warn("tmux shim points to an executable that is not tmux — removing it", { shim: TMUX_SHIM_PATH, target: preferredReal });
 		try {
 			unlinkSync(TMUX_SHIM_PATH);
@@ -198,29 +229,39 @@ export async function selectTmuxBinary(preferred: string, fallbackCandidates: st
 		log.error("no executable tmux binary found", { preferred, fallbacks: fallbackCandidates });
 		return undefined;
 	}
-	const probe = await probeTmuxServer(chosen, DEFAULT_TMUX_SOCKET);
-	if (probe === "mismatch") {
+	const preferredProbe = await probeTmuxServer(chosen.path, chosen.version, DEFAULT_TMUX_SOCKET);
+	if (preferredProbe.status === "mismatch") {
 		for (const candidate of validCandidates) {
-			if (candidate === chosen) continue;
-			if ((await probeTmuxServer(candidate, DEFAULT_TMUX_SOCKET)) === "compatible") {
+			if (candidate.path === chosen.path) continue;
+			const candidateProbe = await probeTmuxServer(candidate.path, candidate.version, DEFAULT_TMUX_SOCKET);
+			if (candidateProbe.status === "compatible") {
 				log.warn("preferred tmux binary can't talk to the running dev3 server — falling back until the server restarts", {
-					preferred: chosen,
-					fallback: candidate,
+					preferred: chosen.path,
+					preferredVersion: normalizeTmuxVersion(chosen.version),
+					serverVersion: preferredProbe.serverVersion,
+					fallback: candidate.path,
+					fallbackVersion: normalizeTmuxVersion(candidate.version),
 				});
 				chosen = candidate;
 				break;
 			}
 		}
-		if (chosen === validCandidates[0]) {
+		if (chosen.path === validCandidates[0].path && preferredProbe.serverVersion) {
+			serverVersionMismatch = {
+				clientVersion: normalizeTmuxVersion(chosen.version),
+				serverVersion: preferredProbe.serverVersion,
+			};
 			log.warn("running dev3 tmux server is incompatible with every known tmux binary — a one-time `tmux -L dev3 kill-server` is required", {
-				preferred: chosen,
+				preferred: chosen.path,
+				clientVersion: serverVersionMismatch.clientVersion,
+				serverVersion: serverVersionMismatch.serverVersion,
 			});
 		}
 	}
-	setTmuxBinary(chosen);
-	updateTmuxShim(chosen);
-	await warnIfKnownBadTmux(chosen);
-	return chosen;
+	setTmuxBinary(chosen.path);
+	updateTmuxShim(chosen.path);
+	await warnIfKnownBadTmux(chosen.path);
+	return chosen.path;
 }
 
 // tmux 3.7 clients busy-spin on a congested server socket (10-35s UI freezes

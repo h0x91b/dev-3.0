@@ -10,7 +10,7 @@ import { createLogger } from "../logger";
 import { DEV3_HOME } from "../paths";
 import { broadcastToOtherInstances } from "../instance-broadcast";
 import { realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { whichSync } from "../which";
 import { isExecutableFile } from "../executable";
 
@@ -163,6 +163,14 @@ function realExecDir(): string | undefined {
  */
 export function tmuxSearchPaths(): string[] {
 	return [...bundledTmuxCandidates(process.platform, realExecDir()), ...VENDORED_TMUX_PATHS];
+}
+
+export function binaryCandidatesOnPath(binaryName: string, path = process.env.PATH ?? ""): string[] {
+	const directories = path
+		.split(delimiter)
+		.map((directory) => directory.trim().replace(/^"|"$/g, ""))
+		.filter(Boolean);
+	return Array.from(new Set(directories.map((directory) => join(directory, binaryName))));
 }
 
 export function resolveBinaryPath(

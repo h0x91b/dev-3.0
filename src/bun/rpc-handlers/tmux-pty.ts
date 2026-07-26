@@ -58,6 +58,14 @@ async function waitForTaskTmuxSession(taskId: string, socket: string): Promise<v
 			await new Promise((resolve) => setTimeout(resolve, MAIN_AGENT_PANE_CAPTURE_INTERVAL_MS));
 		}
 	}
+	const mismatch = tmux.serverVersionMismatch();
+	if (mismatch) {
+		throw new Error(
+			`tmux ${mismatch.clientVersion} cannot attach to the running tmux ${mismatch.serverVersion} server, ` +
+			`so ${taskSessionName(taskId)} was not created. Open the tmux Sessions menu in the header, ` +
+			"choose Kill All, then retry.",
+		);
+	}
 	throw new Error(
 		`tmux started but did not create session ${taskSessionName(taskId)}. ` +
 			"Run `dev3 doctor` to verify the selected tmux binary, then retry.",

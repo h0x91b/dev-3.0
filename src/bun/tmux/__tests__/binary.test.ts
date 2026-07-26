@@ -52,6 +52,7 @@ import {
 	probeTmuxVersion,
 	TMUX_SHIM_PATH,
 	getTmuxBinary,
+	getTmuxServerVersionMismatch,
 	setTmuxBinary,
 } from "../binary";
 
@@ -110,7 +111,7 @@ describe("selectTmuxBinary", () => {
 		expect(chosen).toBe(PREFERRED);
 		expect(getTmuxBinary()).toBe(PREFERRED);
 		// One probe only — no fallback scanning when there is no server at all.
-		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("list-sessions"));
+		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("display-message"));
 		expect(probes).toHaveLength(1);
 	});
 
@@ -133,18 +134,60 @@ describe("selectTmuxBinary", () => {
 		expect(getTmuxBinary()).toBe(PATH_TMUX);
 	});
 
+	it("detects version skew when non-interactive server commands still succeed", async () => {
+		mockSpawn.mockImplementation(((args: string[]) => {
+			if (args[1] === "-V") {
+				return {
+					exited: Promise.resolve(0),
+					stderr: "",
+					stdout: args[0] === PREFERRED ? "tmux 3.6a\n" : "tmux 3.7a\n",
+				};
+			}
+			if (args.includes("display-message")) {
+				return { exited: Promise.resolve(0), stderr: "", stdout: "3.7a\n" };
+			}
+			// tmux/tmux#4356: list-sessions can still succeed across the protocol
+			// skew even though an attached client loses its terminal file descriptor.
+			return { exited: Promise.resolve(0), stderr: "", stdout: "" };
+		}) as any);
+
+		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
+
+		expect(chosen).toBe(PATH_TMUX);
+		expect(getTmuxBinary()).toBe(PATH_TMUX);
+		expect(getTmuxServerVersionMismatch()).toBeNull();
+	});
+
+	it("records the server version when no compatible client remains", async () => {
+		mockSpawn.mockImplementation(((args: string[]) => {
+			if (args[1] === "-V") {
+				return { exited: Promise.resolve(0), stderr: "", stdout: "tmux 3.6a\n" };
+			}
+			return { exited: Promise.resolve(0), stderr: "", stdout: "3.7a\n" };
+		}) as any);
+
+		const chosen = await selectTmuxBinary(PREFERRED);
+
+		expect(chosen).toBe(PREFERRED);
+		expect(getTmuxServerVersionMismatch()).toEqual({
+			clientVersion: "3.6a",
+			serverVersion: "3.7a",
+		});
+	});
+
 	it("keeps the preferred binary when every candidate is incompatible", async () => {
 		mockVersionAndServer(1, "server exited unexpectedly");
 		const chosen = await selectTmuxBinary(PREFERRED, [PATH_TMUX, "/usr/local/bin/tmux"]);
 		expect(chosen).toBe(PREFERRED);
 		expect(getTmuxBinary()).toBe(PREFERRED);
+		expect(getTmuxServerVersionMismatch()).toBeNull();
 	});
 
 	it("skips fallback candidates that do not exist on disk", async () => {
 		mockVersionAndServer(1, "server exited unexpectedly");
 		mockExistsSync.mockImplementation((path) => path === PREFERRED);
 		await selectTmuxBinary(PREFERRED, [PATH_TMUX]);
-		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("list-sessions"));
+		const probes = mockSpawn.mock.calls.filter((c) => (c[0] as string[]).includes("display-message"));
 		expect(probes).toHaveLength(1); // only the preferred binary was probed
 	});
 

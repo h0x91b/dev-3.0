@@ -18,6 +18,7 @@ import { spawn as defaultSpawn } from "../spawn";
 import {
 	dereferenceTmuxShim,
 	getTmuxBinary,
+	getTmuxServerVersionMismatch,
 	probeTmuxVersion,
 	selectTmuxBinary,
 } from "./binary";
@@ -95,6 +96,11 @@ export class TmuxClient {
 	/** Resolve a candidate path that may be the dev3 PATH shim (see ./binary). */
 	dereferenceShim(binaryPath: string): string | undefined {
 		return dereferenceTmuxShim(binaryPath);
+	}
+
+	/** Version skew detected against the live server, when no compatible client was found. */
+	serverVersionMismatch(): { clientVersion: string; serverVersion: string } | null {
+		return getTmuxServerVersionMismatch();
 	}
 
 	// ── Core runner (private — no raw-args escape hatch) ──────────────

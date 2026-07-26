@@ -5958,18 +5958,24 @@ describe("handlers.checkSystemRequirements", () => {
 	});
 
 	it("dereferences the PATH shim in fallback candidates (ELOOP regression)", async () => {
-		// Without the tmux@3.6 keg, whichSync returns our own ~/.dev3.0/bin/tmux
-		// shim (that dir is first in PATH) — it must never survive as a fallback
+		// Without the tmux@3.6 keg, PATH starts with our own ~/.dev3.0/bin/tmux
+		// shim — it must never survive as a fallback
 		// candidate, or the shim ends up symlinked onto itself.
+		const originalPath = process.env.PATH;
 		const SHIM = "/mock/dev3-home/bin/tmux";
+		process.env.PATH = "/mock/dev3-home/bin:/usr/bin";
 		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode(SHIM) });
 		vi.mocked(existsSync).mockImplementation((p) => String(p) === SHIM); // valid shim; vendored keg not installed
 
-		await handlers.checkSystemRequirements();
-		expect(tmux.dereferenceShim).toHaveBeenCalledWith(SHIM);
-		const fallbacks = vi.mocked(tmux.selectBinary).mock.calls[0][1] as string[];
-		expect(fallbacks).toContain("/opt/homebrew/bin/tmux");
-		expect(fallbacks).not.toContain(SHIM);
+		try {
+			await handlers.checkSystemRequirements();
+			expect(tmux.dereferenceShim).toHaveBeenCalledWith(SHIM);
+			const fallbacks = vi.mocked(tmux.selectBinary).mock.calls[0][1] as string[];
+			expect(fallbacks).toContain("/opt/homebrew/bin/tmux");
+			expect(fallbacks).not.toContain(SHIM);
+		} finally {
+			process.env.PATH = originalPath;
+		}
 	});
 
 	it("rejects a PATH tmux shim that resolves to a directory", async () => {
@@ -6059,6 +6065,36 @@ describe("resolveTmuxBinaryAtStartup", () => {
 		const chosen = await resolveTmuxBinaryAtStartup();
 		expect(chosen).toBe("/opt/homebrew/opt/tmux@3.6/bin/tmux");
 		expect(tmux.selectBinary).toHaveBeenCalled();
+	});
+
+	it("keeps tmux binaries after the dev3 PATH shim as live-server fallbacks", async () => {
+		const originalPath = process.env.PATH;
+		const shim = "/mock/dev3-home/bin/tmux";
+		const preferred = "/opt/homebrew/opt/tmux@3.6/bin/tmux";
+		const legacyPathTmux = "/opt/homebrew/bin/tmux";
+		const dereferenceMock = vi.mocked(tmux.dereferenceShim);
+		const originalDereference = dereferenceMock.getMockImplementation();
+		process.env.PATH = "/mock/dev3-home/bin:/opt/homebrew/bin:/usr/bin";
+		mockSpawnSync.mockReturnValue({ exitCode: 0, stdout: new TextEncoder().encode(`${shim}\n`) });
+		vi.mocked(existsSync).mockImplementation((path) => [shim, preferred, legacyPathTmux].includes(String(path)));
+		dereferenceMock.mockImplementation((path) => {
+			if (path === shim) return preferred;
+			if (path === preferred || path === legacyPathTmux) return path;
+			return undefined;
+		});
+
+		try {
+			const { resolveTmuxBinaryAtStartup } = await import("../rpc-handlers/settings-config");
+			await resolveTmuxBinaryAtStartup();
+
+			expect(tmux.selectBinary).toHaveBeenCalledWith(
+				preferred,
+				expect.arrayContaining([legacyPathTmux]),
+			);
+		} finally {
+			process.env.PATH = originalPath;
+			if (originalDereference) dereferenceMock.mockImplementation(originalDereference);
+		}
 	});
 
 	it("ignores a saved home-directory path instead of recreating the shim to it", async () => {
@@ -8487,6 +8523,31 @@ describe("launchTaskPty", () => {
 			await rejection;
 			expect(pty.tmuxSessionExists).toHaveBeenCalledTimes(10);
 		} finally {
+			vi.useRealTimers();
+			vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
+		}
+	});
+
+	it("explains how to recover when the selected tmux cannot attach to the running server", async () => {
+		vi.useFakeTimers();
+		const project = makeProject();
+		const task = makeTask();
+		vi.mocked(pty.tmuxSessionExists).mockResolvedValue(false);
+		const mismatchSpy = vi.spyOn(tmux, "serverVersionMismatch").mockReturnValue({
+			clientVersion: "3.6a",
+			serverVersion: "3.7a",
+		});
+
+		try {
+			const launch = launchTaskPty(project, task, "/tmp/wt", "builtin-claude", "claude-default");
+			const rejection = expect(launch).rejects.toThrow(
+				"tmux 3.6a cannot attach to the running tmux 3.7a server",
+			);
+			await vi.runAllTimersAsync();
+			await rejection;
+			await expect(launch).rejects.toThrow("choose Kill All, then retry");
+		} finally {
+			mismatchSpy.mockRestore();
 			vi.useRealTimers();
 			vi.mocked(pty.tmuxSessionExists).mockResolvedValue(true);
 		}

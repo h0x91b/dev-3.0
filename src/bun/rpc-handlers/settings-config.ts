@@ -18,8 +18,7 @@ import { isFreshStartMode } from "../fresh-start";
 import { spawn } from "../spawn";
 import { setCurrentUiTheme } from "../theme-state";
 import { extractConfigFromParams, getPushMessage, getSystemRequirements, log, resolveBinaryPath, setFocusMode } from "./shared";
-import { hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
-import { whichSync } from "../which";
+import { binaryCandidatesOnPath, hasModelProviderSection, tmuxSearchPaths } from "./shared-pure";
 import { isExecutableFile } from "../executable";
 
 // `resolveOperationalProjectConfig` moved to ../repo-config (it depends only on
@@ -242,16 +241,13 @@ async function getAppVersion(): Promise<{ version: string; channel: string; buil
  * the server restarts.
  */
 async function commitTmuxBinary(preferred: string): Promise<string | undefined> {
-	let pathTmux: string | null = null;
-	try {
-		pathTmux = whichSync("tmux");
-	} catch {
-		log.debug("which tmux failed while building fallback candidates");
-	}
-	// whichSync may hand us our own PATH shim (~/.dev3.0/bin is first in
-	// PATH) — dereference it so we never probe or commit the shim itself.
-	const pathTmuxReal = pathTmux ? tmux.dereferenceShim(pathTmux) : undefined;
-	const fallbacks = [pathTmuxReal ?? "", ...tmuxSearchPaths()].filter(Boolean);
+	// The app's shim is first in PATH, but a compatible client for a server
+	// left by an older release may still exist later (for example Homebrew).
+	// Keep every executable candidate so version selection can find that client.
+	const pathCandidates = binaryCandidatesOnPath("tmux")
+		.map((candidate) => tmux.dereferenceShim(candidate))
+		.filter((candidate): candidate is string => Boolean(candidate));
+	const fallbacks = [...pathCandidates, ...tmuxSearchPaths()];
 	return tmux.selectBinary(preferred, fallbacks);
 }
 
