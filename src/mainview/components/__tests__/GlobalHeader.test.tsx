@@ -211,6 +211,20 @@ describe("GlobalHeader — project switcher dropdown", () => {
 		});
 	});
 
+	it("styles the clickable project name as an accent link", () => {
+		const navigate = vi.fn();
+		renderHeader(
+			{ screen: "project", projectId: "p1", activeTaskId: "t1" },
+			[project1, project2],
+			navigate,
+			[{ id: "t1", seq: 1, title: "Task 1", status: "in-progress" } as Task],
+		);
+
+		const projectName = screen.getByRole("button", { name: "Project Alpha" });
+		expect(projectName).toHaveClass("text-accent", "hover:text-accent-hover");
+		expect(projectName).not.toHaveClass("text-fg-3");
+	});
+
 	it("project name is clickable in activity/task view with no task selected", async () => {
 		const user = userEvent.setup();
 		const navigate = vi.fn();

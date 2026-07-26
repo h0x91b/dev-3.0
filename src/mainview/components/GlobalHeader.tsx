@@ -426,7 +426,7 @@ function GlobalHeader({ route, projects, tasks, navigate, goBack, goForward, can
 								{seg.onClick ? (
 									<button
 										onClick={seg.onClick}
-										className="text-fg-3 hover:text-fg transition-colors truncate"
+										className="text-accent hover:text-accent-hover transition-colors truncate"
 									>
 										{seg.label}
 									</button>
