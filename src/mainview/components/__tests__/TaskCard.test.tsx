@@ -1601,7 +1601,23 @@ describe("TaskCard", () => {
 			renderCard(reviewTask(), {
 				prInfo: { number: 12, url: "https://example/pr/12", ciStatus: null, reviewState: "approved" },
 			});
+			const badge = screen.getByLabelText(/PR approved/);
+			expect(badge).toHaveClass("h-5", "w-5", "justify-center", "p-0");
+			expect(badge.querySelector("svg")).toBeInTheDocument();
+		});
+
+		it("keeps the approval badge visible when the PR is not mergeable", () => {
+			renderCard(reviewTask(), {
+				prInfo: {
+					number: 12,
+					url: "https://example/pr/12",
+					ciStatus: null,
+					reviewState: "approved",
+					mergeState: { mergeable: "CONFLICTING", status: "DIRTY" },
+				},
+			});
 			expect(screen.getByLabelText(/PR approved/)).toBeInTheDocument();
+			expect(screen.getByLabelText(/not mergeable/i)).toBeInTheDocument();
 		});
 
 		it("clicking a badge opens the pull request", async () => {
