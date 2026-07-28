@@ -25,6 +25,7 @@ interface ArtifactResizeSession {
 	target: HTMLDivElement;
 	previousCursor: string;
 	previousUserSelect: string;
+	rafId: number | null;
 }
 
 function initialArtifactWidth(): number {
@@ -73,6 +74,7 @@ function TaskWorkspacePane({
 	const workspaceRef = useRef<HTMLDivElement>(null);
 	const inlineDiffWasOpenRef = useRef(false);
 	const artifactPanelRef = useRef<HTMLDivElement>(null);
+	const resizeGhostRef = useRef<HTMLDivElement>(null);
 	const resizeSessionRef = useRef<ArtifactResizeSession | null>(null);
 	const showArtifact = artifactViewer?.taskId === taskId && !inlineDiffRequest;
 
@@ -89,6 +91,7 @@ function TaskWorkspacePane({
 		const session = resizeSessionRef.current;
 		if (!session) return;
 		resizeSessionRef.current = null;
+		if (session.rafId !== null) cancelAnimationFrame(session.rafId);
 		setArtifactWidth(session.lastWidth);
 		setArtifactResizing(false);
 		document.body.style.cursor = session.previousCursor;
@@ -101,7 +104,7 @@ function TaskWorkspacePane({
 	const onArtifactResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
 		if (event.button !== 0) return;
 		event.preventDefault();
-		const startWidth = artifactPanelRef.current?.offsetWidth ?? artifactWidth;
+		const startWidth = artifactPanelRef.current?.offsetWidth || artifactWidth;
 		event.currentTarget.setPointerCapture(event.pointerId);
 		resizeSessionRef.current = {
 			pointerId: event.pointerId,
@@ -111,18 +114,25 @@ function TaskWorkspacePane({
 			target: event.currentTarget,
 			previousCursor: document.body.style.cursor,
 			previousUserSelect: document.body.style.userSelect,
+			rafId: null,
 		};
 		document.body.style.cursor = "col-resize";
 		document.body.style.userSelect = "none";
 		setArtifactResizing(true);
 	}, [artifactWidth]);
 
+	// Resizing the panel live would relayout the artifact iframe and refit the
+	// terminal (SIGWINCH → full TUI repaint) on every pointer move. Only a ghost
+	// line follows the pointer; the real width lands once, on pointer up.
 	const onArtifactResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
 		const session = resizeSessionRef.current;
 		if (!session || session.pointerId !== event.pointerId) return;
-		const width = clampArtifactWidth(session.startWidth - (event.clientX - session.startX));
-		session.lastWidth = width;
-		if (artifactPanelRef.current) artifactPanelRef.current.style.width = `${width}px`;
+		session.lastWidth = clampArtifactWidth(session.startWidth - (event.clientX - session.startX));
+		if (session.rafId !== null) return;
+		session.rafId = requestAnimationFrame(() => {
+			session.rafId = null;
+			if (resizeGhostRef.current) resizeGhostRef.current.style.right = `${session.lastWidth}px`;
+		});
 	}, [clampArtifactWidth]);
 
 	const resizeArtifactBy = useCallback((delta: number) => {
@@ -132,6 +142,7 @@ function TaskWorkspacePane({
 	useEffect(() => () => {
 		const session = resizeSessionRef.current;
 		if (!session) return;
+		if (session.rafId !== null) cancelAnimationFrame(session.rafId);
 		document.body.style.cursor = session.previousCursor;
 		document.body.style.userSelect = session.previousUserSelect;
 	}, []);
@@ -187,7 +198,14 @@ function TaskWorkspacePane({
 	return (
 		<div ref={workspaceRef} className="h-full w-full relative overflow-hidden">
 			{artifactResizing && (
-				<div data-testid="artifact-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize" />
+				<div data-testid="artifact-resize-shield" aria-hidden="true" className="absolute inset-0 z-[60] cursor-col-resize">
+					<div
+						ref={resizeGhostRef}
+						data-testid="artifact-resize-ghost"
+						className="absolute top-0 bottom-0 w-[2px] bg-accent"
+						style={{ right: artifactWidth }}
+					/>
+				</div>
 			)}
 			<div className={inlineDiffRequest ? "h-full hidden" : "h-full flex min-w-0"}>
 				{/* key={taskId} forces a fresh TaskTerminal instance per task.

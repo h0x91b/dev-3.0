@@ -268,8 +268,12 @@ describe("TaskWorkspaceView", () => {
 		expect(setPointerCapture).toHaveBeenCalledWith(7);
 		expect(screen.getByTestId("artifact-resize-shield")).toBeInTheDocument();
 		fireEvent.pointerMove(separator, { pointerId: 7, clientX: 850 });
+		// Dragging must not resize the panel yet — only the ghost line follows.
+		expect(screen.getByTestId("artifact-resize-ghost")).toBeInTheDocument();
+		expect(separator).toHaveAttribute("aria-valuenow", "584");
 		fireEvent.pointerUp(separator, { pointerId: 7, clientX: 850 });
 		expect(releasePointerCapture).toHaveBeenCalledWith(7);
+		expect(separator).toHaveAttribute("aria-valuenow", "634");
 		expect(screen.queryByTestId("artifact-resize-shield")).not.toBeInTheDocument();
 		expect(document.body.style.cursor).toBe("");
 		expect(document.body.style.userSelect).toBe("");
