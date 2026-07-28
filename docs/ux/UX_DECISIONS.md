@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-28 — A lifecycle split-control counts as ONE task-card inline action
+
+- **Rule:** The card's status control may carry a second half that commits the pipeline's own terminal move (today: a ✓ straight to Completed) and still spends one slot of the §9 `max_inline_actions: 2` budget — but only when it is glued to the status trigger, shares its hover surface, is desktop-only (the narrow path stays the BottomSheet's promoted Completed row, ≥44px), and hides whenever `getAllowedTransitions` forbids the target. Anything not on the object's own lifecycle is a normal action and costs its own slot.
+- **Why:** Completing was two clicks on the densest surface, and a standalone card button is exactly the toolbar-button-creep the budget exists to stop; scoping the exception to the control's own lifecycle move keeps it from becoming the loophole. A duplicate "Complete task" CTA under the menu was rejected — the Completed row is promoted (success role + ✓) instead of doubled. Confirmation is unchanged: `moveTaskToStatus` → `confirmTaskCompletion`.
+- **Status:** Observed. Evidence: `PipelineRing.tsx`, `PipelineDropdown.tsx`, `TaskCard.tsx`, `TaskInfoPanel.tsx`, bible §9/§11.
+
 ## 2026-07-25 — Transport health is a docked pill + per-screen fetch states, not a banner
 
 - **Rule:** While the remote transport is unhealthy, a conditional pill in the bottom-left `StatusDock` names the state and *is* the retry, then confirms recovery for ~2.5s; every transport-fed screen owes a delayed skeleton, a retry panel, and a self-heal refetch on reconnect (cached data always wins).

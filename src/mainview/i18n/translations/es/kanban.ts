@@ -255,6 +255,8 @@ const kanban = {
 
 	// Pipeline
 	"pipeline.current": "actual",
+	"pipeline.stageOf": "Etapa {current} de {total}",
+	"pipeline.completeTooltip": "Mover a Completed",
 
 	// Git pull (Kanban toolbar)
 	"kanban.gitPull": "Git Pull",

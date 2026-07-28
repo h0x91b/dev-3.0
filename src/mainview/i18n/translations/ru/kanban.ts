@@ -259,6 +259,8 @@ const kanban = {
 
 	// Pipeline
 	"pipeline.current": "текущий",
+	"pipeline.stageOf": "Этап {current} из {total}",
+	"pipeline.completeTooltip": "Перевести в Completed",
 
 	// Git pull (Kanban toolbar)
 	"kanban.gitPull": "Git Pull",

@@ -443,6 +443,29 @@ describe("TaskCard", () => {
 			});
 		});
 
+		it("quick-complete check moves the task straight to completed", async () => {
+			const user = userEvent.setup();
+			const task = makeTask({ status: "review-by-user", worktreePath: "/tmp/wt", branchName: "dev3/test" });
+			mockedConfirmTaskCompletion.mockResolvedValue(true);
+			mockedApi.request.moveTask.mockResolvedValue({ ...task, status: "completed" });
+
+			renderCard(task);
+
+			await user.click(screen.getByTestId("task-card-quick-complete"));
+
+			await waitFor(() => {
+				expect(mockedApi.request.moveTask).toHaveBeenCalledWith(
+					expect.objectContaining({ taskId: "t1", newStatus: "completed" }),
+				);
+			});
+		});
+
+		it("hides the quick-complete check once the task is completed", () => {
+			renderCard(makeTask({ status: "completed" }));
+
+			expect(screen.queryByTestId("task-card-quick-complete")).not.toBeInTheDocument();
+		});
+
 		it("status dropdown opens with In Progress and Cancelled", async () => {
 			const user = userEvent.setup();
 			renderCard(makeTask({ status: "todo" }));

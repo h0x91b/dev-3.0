@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, type Dispatch } from "rea
 import { toast } from "../toast";
 import { createPortal } from "react-dom";
 import type { CodingAgent, PortInfo, Project, ResourceUsage, Task, TaskPRBadgeInfo, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
+import { ACTIVE_STATUSES, getAllowedTransitions, getPreparingStageProgress, getTaskTitle } from "../../shared/types";
 import { getTaskOpenMode, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
 import { confirm } from "../confirm";
@@ -22,8 +22,8 @@ import OpenInMenu from "./OpenInMenu";
 import TerminalPreviewPopover from "./TerminalPreviewPopover";
 import { moveTaskToStatus } from "../utils/moveTaskToStatus";
 import TaskDetailModal from "./TaskDetailModal";
-import MiniPipeline from "./MiniPipeline";
-import PipelineDropdown from "./PipelineDropdown";
+import PipelineRing, { CompleteCheckIcon } from "./PipelineRing";
+import PipelineDropdown, { PipelineMenuAction } from "./PipelineDropdown";
 import BottomSheet from "./BottomSheet";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
@@ -35,6 +35,16 @@ import Tooltip from "./Tooltip";
 import TaskShutdownOverlay from "./TaskShutdownOverlay";
 import TaskPrStatusPopover from "./TaskPrStatusPopover";
 import { summarizeMergeability, type PRMergeabilityReason } from "../../shared/pr-status";
+
+/** Deferred-time glyph: the scheduled-launch badge and the "send later" menu row. */
+function ClockIcon({ className }: { className?: string }) {
+	return (
+		<svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+			<circle cx="12" cy="12" r="9" />
+			<path d="M12 7v5l3 2" />
+		</svg>
+	);
+}
 
 interface TaskCardProps {
 	task: Task;
@@ -892,30 +902,47 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 
 			{/* Bottom row — pipeline + badges */}
 			<div data-testid="task-card-footer" className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
-				{/* Status dropdown trigger with mini-pipeline */}
+				{/* Status control: pipeline ring + label opens "Move to"; the ✓ half is
+				    the same lifecycle control, not a second card action. Desktop only —
+				    on narrow the sheet's promoted Completed row is the ≥44px touch path. */}
 				{(() => {
 					const activeCol = task.customColumnId
 						? (project.customColumns ?? []).find((c) => c.id === task.customColumnId)
 						: null;
+					const canQuickComplete = !narrow && !isDisabled && getAllowedTransitions(task.status).includes("completed");
 					return (
-						<button
-							ref={triggerRef}
-							onClick={toggleMenu}
-							className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-fg/5"
-							disabled={isDisabled}
-						>
-							{activeCol ? (
-								<div
-									className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-									style={{ background: activeCol.color, boxShadow: `0 0 6px ${activeCol.color}60` }}
-								/>
-							) : (
-								<MiniPipeline status={task.status} />
+						<div className="flex min-w-0 items-center rounded-lg transition-colors hover:bg-fg/5">
+							<button
+								ref={triggerRef}
+								onClick={toggleMenu}
+								className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1"
+								disabled={isDisabled}
+							>
+								{activeCol ? (
+									<div
+										className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+										style={{ background: activeCol.color, boxShadow: `0 0 6px ${activeCol.color}60` }}
+									/>
+								) : (
+									<PipelineRing status={task.status} />
+								)}
+								<span className="min-w-0 truncate text-xs text-fg-2">
+									{activeCol ? activeCol.name : getStatusLabel(task.status, t, project)}
+								</span>
+							</button>
+							{canQuickComplete && (
+								<Tooltip content={t("pipeline.completeTooltip")}>
+									<button
+										data-testid="task-card-quick-complete"
+										onClick={(e) => { e.stopPropagation(); handleMove("completed"); }}
+										aria-label={t("pipeline.completeTooltip")}
+										className="mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success opacity-50 transition-all hover:bg-success/20 hover:opacity-100 group-hover:opacity-80"
+									>
+										<CompleteCheckIcon className="w-3 h-3" />
+									</button>
+								</Tooltip>
 							)}
-							<span className="min-w-0 truncate text-xs text-fg-2">
-								{activeCol ? activeCol.name : getStatusLabel(task.status, t, project)}
-							</span>
-						</button>
+						</div>
 					);
 				})()}
 
@@ -928,10 +955,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								onClick={(e) => { e.stopPropagation(); setSchedPopoverOpen(!schedPopoverOpen); }}
 								className="flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-accent transition-colors hover:bg-fg/5"
 							>
-								<svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-									<circle cx="12" cy="12" r="9" />
-									<path d="M12 7v5l3 2" />
-								</svg>
+								<ClockIcon className="w-3 h-3" />
 								{formatCountdown(new Date(sched.at).getTime() - Date.now())}
 							</button>
 						</Tooltip>
@@ -1153,13 +1177,13 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 						/>
 						{hasLiveAgent && (
 							<>
-								<div className="my-1 border-t border-edge" />
-								<button
+								<div className="mx-3 my-1 border-t border-edge-active" />
+								<PipelineMenuAction
+									size="touch"
+									icon={<ClockIcon className="w-5 h-5" />}
+									label={t("task.sendMessageLater")}
 									onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setScheduleMsgOpen(true); }}
-									className="w-full text-left rounded-md min-h-[2.75rem] px-2 py-2.5 text-base text-fg-2 hover:bg-elevated-hover hover:text-fg transition-colors"
-								>
-									{t("task.sendMessageLater")}
-								</button>
+								/>
 							</>
 						)}
 					</BottomSheet>
@@ -1187,13 +1211,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					/>
 					{hasLiveAgent && (
 						<>
-							<div className="my-1 border-t border-edge" />
-							<button
+							<div className="mx-3 my-1 border-t border-edge-active" />
+							<PipelineMenuAction
+								icon={<ClockIcon className="w-4 h-4" />}
+								label={t("task.sendMessageLater")}
 								onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setScheduleMsgOpen(true); }}
-								className="w-full text-left px-3 py-1.5 text-sm text-fg-2 hover:bg-elevated-hover hover:text-fg transition-colors"
-							>
-								{t("task.sendMessageLater")}
-							</button>
+							/>
 						</>
 					)}
 				</div>,

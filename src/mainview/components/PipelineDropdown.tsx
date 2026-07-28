@@ -1,10 +1,12 @@
+import type { ReactNode } from "react";
 import type { TaskStatus } from "../../shared/types";
 import type { CustomColumn, Project } from "../../shared/types";
 import { getAllowedTransitions } from "../../shared/types";
 import { useStatusColors } from "../hooks/useStatusColors";
 import { useT } from "../i18n";
 import { getStatusLabel } from "../utils/statusLabel";
-import { PIPELINE_STAGES, getStageStates, isSideBranch, type StageState } from "./StatusPipeline";
+import PipelineRing, { CompleteCheckIcon } from "./PipelineRing";
+import { PIPELINE_STAGES, getPipelineIndex, getStageStates, isSideBranch, type StageState } from "./StatusPipeline";
 
 interface PipelineDropdownProps {
 	currentStatus: TaskStatus;
@@ -22,6 +24,40 @@ interface PipelineDropdownProps {
 
 /** Side-branch statuses that aren't in PIPELINE_STAGES but still need to be selectable */
 const SIDE_STATUSES: TaskStatus[] = ["cancelled"];
+
+/**
+ * A non-status action appended below the menu (currently "Send message later…").
+ * Shares the rows' type scale and the 20px glyph column so it lines up with the
+ * pipeline instead of floating as an unstyled tail.
+ */
+export function PipelineMenuAction({
+	icon,
+	label,
+	onClick,
+	size = "default",
+}: {
+	icon: ReactNode;
+	label: string;
+	onClick: (event: React.MouseEvent) => void;
+	size?: "default" | "touch";
+}) {
+	const touch = size === "touch";
+	return (
+		<div className={touch ? "px-1" : "px-3"}>
+			<button
+				onClick={onClick}
+				className={`flex w-full items-center gap-2 rounded-md text-left font-medium text-fg-2 transition-colors hover:bg-elevated-hover hover:text-fg ${
+					touch ? "min-h-[2.75rem] px-2 py-2.5 text-base" : "px-1.5 py-1.5 text-[0.9375rem]"
+				}`}
+			>
+				<span className={`flex flex-shrink-0 items-center justify-center text-fg-3 ${touch ? "w-6" : "w-5"}`}>
+					{icon}
+				</span>
+				{label}
+			</button>
+		</div>
+	);
+}
 
 export default function PipelineDropdown({
 	currentStatus,
@@ -41,14 +77,30 @@ export default function PipelineDropdown({
 	const isCancelled = currentStatus === "cancelled";
 	const touch = size === "touch";
 	const sectionPad = touch ? "px-1" : "px-3";
-	const rowText = touch ? "text-base" : "text-sm";
+	// Rows are the menu's content, not fine print — 15px on desktop, medium weight
+	// (`font-semibold` on the current/Completed rows still reads as heavier).
+	const rowText = touch ? "text-base" : "text-[0.9375rem]";
 	const rowPad = touch ? "min-h-[2.75rem] py-2.5 px-2" : "py-1.5 px-1.5";
 
 	return (
 		<div onClick={(e) => e.stopPropagation()}>
 			{!hideHeader && (
-				<div className="px-3 py-2 text-xs text-fg-3 uppercase tracking-wider font-semibold">
-					{t("task.moveTo")}
+				<div className="flex items-center gap-2.5 px-3 py-2 mb-1 border-b border-edge">
+					<PipelineRing status={currentStatus} tooltip={false} />
+					<div className="min-w-0 flex-1">
+						<div className="truncate text-sm font-semibold text-fg">
+							{getStatusLabel(currentStatus, t, project)}
+						</div>
+						<div className="text-[0.625rem] text-fg-3">
+							{t("pipeline.stageOf", {
+								current: String(getPipelineIndex(currentStatus) + 1),
+								total: String(PIPELINE_STAGES.length),
+							})}
+						</div>
+					</div>
+					<span className="flex-shrink-0 self-start text-[0.625rem] font-semibold uppercase tracking-wider text-fg-3">
+						{t("task.moveTo")}
+					</span>
 				</div>
 			)}
 
@@ -89,23 +141,29 @@ export default function PipelineDropdown({
 								)}
 							</div>
 
-							{/* Label */}
+							{/* Label \u2014 Completed is promoted so the pipeline's exit is the
+							    fastest row to hit, instead of a duplicate CTA below. */}
 							<button
 								onClick={canTransition ? () => onMove(stage) : undefined}
 								disabled={!canTransition}
-								className={`flex-1 text-left ${touch ? "min-h-[2.75rem] py-2.5 pl-2" : "py-1.5 pl-1.5"} pr-3 ${rowText} rounded-md transition-colors ${
+								className={`flex flex-1 items-center gap-2 text-left ${touch ? "min-h-[2.75rem] py-2.5 pl-2" : "py-1.5 pl-1.5"} pr-3 ${rowText} rounded-md transition-colors ${
 									isCurrentStage
 										? "text-fg font-semibold cursor-default"
 										: canTransition
-											? "text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
-											: "text-fg-muted/40 cursor-default"
+											? stage === "completed"
+												? "font-semibold text-success hover:bg-success/15 cursor-pointer"
+												: "font-medium text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
+											: "font-medium text-fg-muted/40 cursor-default"
 								}`}
 							>
-								{getStatusLabel(stage, t, project)}
+								<span className="truncate">{getStatusLabel(stage, t, project)}</span>
 								{isCurrentStage && (
-									<span className="ml-1.5 text-[0.625rem] text-fg-3 font-normal">
+									<span className="text-[0.625rem] text-fg-3 font-normal">
 										{"\u2190"} {t("pipeline.current")}
 									</span>
+								)}
+								{stage === "completed" && canTransition && (
+									<CompleteCheckIcon className={`ml-auto flex-shrink-0 ${touch ? "w-4 h-4" : "w-3.5 h-3.5"}`} />
 								)}
 							</button>
 						</div>
@@ -134,8 +192,8 @@ export default function PipelineDropdown({
 										isCurrentSide
 											? "text-fg font-semibold cursor-default"
 											: canTransition
-												? "text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
-												: "text-fg-muted/40 cursor-default"
+												? "font-medium text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
+												: "font-medium text-fg-muted/40 cursor-default"
 									}`}
 								>
 									<div
@@ -174,7 +232,7 @@ export default function PipelineDropdown({
 									className={`w-full text-left flex items-center gap-2.5 ${rowPad} ${rowText} rounded-md transition-colors ${
 										isCurrent
 											? "text-fg font-semibold cursor-default"
-											: "text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
+											: "font-medium text-fg-2 hover:bg-elevated-hover hover:text-fg cursor-pointer"
 									}`}
 								>
 									<div
