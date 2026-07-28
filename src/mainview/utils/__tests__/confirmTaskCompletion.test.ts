@@ -124,4 +124,56 @@ describe("confirmTaskCompletion", () => {
 		expect(ok).toBe(true);
 		expect(mockedConfirm).not.toHaveBeenCalled();
 	});
+
+	describe("alwaysConfirm (one-click quick-complete)", () => {
+		const cleanStatus = {
+			insertions: 0,
+			deletions: 0,
+			unpushed: 0,
+			ahead: 0,
+			mergedByContent: false,
+		} as Awaited<ReturnType<typeof api.request.getBranchStatus>>;
+
+		it("prompts on a clean branch, where the plain call stays silent", async () => {
+			mockedBranchStatus.mockResolvedValue(cleanStatus);
+
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
+
+			expect(mockedConfirm).toHaveBeenCalledWith(
+				expect.objectContaining({ title: "task.confirmCompleteTitle", message: "task.warnCompletionFooter" }),
+			);
+		});
+
+		it("prompts for a task with no worktree at all", async () => {
+			const task = { ...baseTask, worktreePath: null } as Task;
+
+			await confirmTaskCompletion(task, project, "completed", t, undefined, { alwaysConfirm: true });
+
+			expect(mockedBranchStatus).not.toHaveBeenCalled();
+			expect(mockedConfirm).toHaveBeenCalledWith(
+				expect.objectContaining({ title: "task.confirmCompleteTitle", message: "task.confirmCompleteFooter" }),
+			);
+		});
+
+		it("folds git warnings into the same single dialog instead of asking twice", async () => {
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
+
+			expect(mockedConfirm).toHaveBeenCalledTimes(1);
+			expect(mockedConfirm).toHaveBeenCalledWith(
+				expect.objectContaining({
+					title: "task.warnCompletionTitle",
+					message: expect.stringContaining("task.warnUncommitted"),
+				}),
+			);
+		});
+
+		it("aborts the move when the user declines", async () => {
+			mockedBranchStatus.mockResolvedValue(cleanStatus);
+			mockedConfirm.mockResolvedValue(false);
+
+			const ok = await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
+
+			expect(ok).toBe(false);
+		});
+	});
 });

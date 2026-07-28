@@ -69,7 +69,26 @@ describe("moveTaskToStatus", () => {
 
 		await moveTaskToStatus({ task, project, newStatus: "completed", dispatch, t, onOpenTask });
 
-		expect(mockedConfirm).toHaveBeenCalledWith(task, project, "completed", t, onOpenTask);
+		expect(mockedConfirm).toHaveBeenCalledWith(task, project, "completed", t, onOpenTask, { alwaysConfirm: false });
+	});
+
+	it("forces the dialog for a worktree-less task when alwaysConfirm is set", async () => {
+		const dispatch = vi.fn();
+		const noWorktree = { ...task, worktreePath: null };
+
+		await moveTaskToStatus({ task: noWorktree, project, newStatus: "completed", dispatch, t, alwaysConfirm: true });
+
+		expect(mockedConfirm).toHaveBeenCalledWith(
+			noWorktree, project, "completed", t, undefined, { alwaysConfirm: true },
+		);
+	});
+
+	it("skips the dialog for a worktree-less task without alwaysConfirm", async () => {
+		const dispatch = vi.fn();
+
+		await moveTaskToStatus({ task: { ...task, worktreePath: null }, project, newStatus: "completed", dispatch, t });
+
+		expect(mockedConfirm).not.toHaveBeenCalled();
 	});
 
 	it("tells the backend NOT to suppress the push when the UI did not play (sound off)", async () => {

@@ -177,6 +177,10 @@ const kanban = {
 	"task.warnUnpushed": "{count} незапушенных коммит(ов) — будут потеряны",
 	"task.warnUnmerged": "{count} коммит(ов) запушено, но не слито в {branch}",
 	"task.warnCompletionFooter": "Worktree и ветка будут удалены. Продолжить?",
+	"task.confirmCompleteTitle": "Завершить задачу?",
+	"task.confirmCompleteFooter": "Задача будет перенесена в Completed.",
+	"task.confirmCancelTitle": "Отменить задачу?",
+	"task.confirmCancelFooter": "Задача будет перенесена в Cancelled.",
 
 	// LaunchVariantsModal
 	"launch.title": "Запуск задачи",

@@ -265,7 +265,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		setMenuOpen(!menuOpen);
 	}
 
-	async function handleMove(newStatus: TaskStatus) {
+	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
 		// Intercept: todo → active status opens the LaunchVariantsModal
 		if (task.status === "todo" && ACTIVE_STATUSES.includes(newStatus)) {
 			setMenuOpen(false);
@@ -283,6 +283,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			dispatch,
 			t,
 			onOpenTask: openTaskFromDialog,
+			alwaysConfirm: opts?.alwaysConfirm,
 			onMoved: () => onTaskMoved(task.id),
 			onMovingChange: (moving) =>
 				isTerminal ? onSetMoving?.(task.id, moving) : setMoving(moving),
@@ -934,7 +935,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								<Tooltip content={t("pipeline.completeTooltip")}>
 									<button
 										data-testid="task-card-quick-complete"
-										onClick={(e) => { e.stopPropagation(); handleMove("completed"); }}
+										onClick={(e) => { e.stopPropagation(); handleMove("completed", { alwaysConfirm: true }); }}
 										aria-label={t("pipeline.completeTooltip")}
 										className="mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success opacity-50 transition-all hover:bg-success/20 hover:opacity-100 group-hover:opacity-80"
 									>

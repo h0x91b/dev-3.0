@@ -341,7 +341,7 @@ function TaskInfoPanel({
 		setStatusMenuOpen((open) => !open);
 	}
 
-	async function handleStatusMove(newStatus: TaskStatus) {
+	async function handleStatusMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
 		setStatusMenuOpen(false);
 		const terminal = newStatus === "completed" || newStatus === "cancelled";
 		const openTaskFromDialog = () => {
@@ -364,6 +364,7 @@ function TaskInfoPanel({
 			dispatch,
 			t,
 			onOpenTask: openTaskFromDialog,
+			alwaysConfirm: opts?.alwaysConfirm,
 			// Terminal moves leave the screen and keep the optimistic completion on
 			// failure (matches the fire-and-forget behaviour); other moves stay and
 			// revert + toast if the RPC fails.
@@ -810,7 +811,7 @@ function TaskInfoPanel({
 				<Tooltip content={t("pipeline.completeTooltip")}>
 					<button
 						data-testid="task-info-quick-complete"
-						onClick={() => handleStatusMove("completed")}
+						onClick={() => handleStatusMove("completed", { alwaysConfirm: true })}
 						aria-label={t("pipeline.completeTooltip")}
 						className="mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success opacity-60 transition-all hover:bg-success/20 hover:opacity-100"
 					>

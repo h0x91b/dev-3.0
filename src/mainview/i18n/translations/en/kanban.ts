@@ -173,6 +173,10 @@ const kanban = {
 	"task.warnUnpushed": "{count} unpushed commit(s) — will be lost",
 	"task.warnUnmerged": "{count} commit(s) pushed but not merged into {branch}",
 	"task.warnCompletionFooter": "The worktree and branch will be deleted. Continue?",
+	"task.confirmCompleteTitle": "Complete task?",
+	"task.confirmCompleteFooter": "This task will move to Completed.",
+	"task.confirmCancelTitle": "Cancel task?",
+	"task.confirmCancelFooter": "This task will move to Cancelled.",
 
 	// LaunchVariantsModal
 	"launch.title": "Launch Task",

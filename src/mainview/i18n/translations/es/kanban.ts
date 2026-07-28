@@ -173,6 +173,10 @@ const kanban = {
 	"task.warnUnpushed": "{count} commit(s) sin enviar — se perderán",
 	"task.warnUnmerged": "{count} commit(s) enviados pero no fusionados en {branch}",
 	"task.warnCompletionFooter": "El worktree y la rama se eliminarán. ¿Continuar?",
+	"task.confirmCompleteTitle": "¿Completar la tarea?",
+	"task.confirmCompleteFooter": "La tarea pasará a Completed.",
+	"task.confirmCancelTitle": "¿Cancelar la tarea?",
+	"task.confirmCancelFooter": "La tarea pasará a Cancelled.",
 
 	// LaunchVariantsModal
 	"launch.title": "Lanzar tarea",

@@ -22,6 +22,12 @@ export interface MoveTaskToStatusOptions {
 	onOpenTask?: () => void;
 	/** Run the unpushed/uncommitted confirmation before terminal moves. Default true. */
 	confirm?: boolean;
+	/**
+	 * Always show the terminal-move dialog, even with a clean branch or no
+	 * worktree. Set by one-click affordances (the card's quick-complete ✓) where
+	 * a mis-click must not silently complete a task.
+	 */
+	alwaysConfirm?: boolean;
 	/** Toggle a per-card "moving" spinner while the background RPC is in flight. */
 	onMovingChange?: (moving: boolean) => void;
 	/** Record an in-session move (kanban column ordering). */
@@ -68,6 +74,7 @@ export async function moveTaskToStatus({
 	t,
 	onOpenTask,
 	confirm = true,
+	alwaysConfirm = false,
 	onMovingChange,
 	onMoved,
 	afterOptimistic,
@@ -76,8 +83,8 @@ export async function moveTaskToStatus({
 }: MoveTaskToStatusOptions): Promise<boolean> {
 	const terminal = isTerminalStatus(newStatus);
 
-	if (confirm && terminal && task.worktreePath) {
-		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask);
+	if (confirm && terminal && (task.worktreePath || alwaysConfirm)) {
+		const proceed = await confirmTaskCompletion(task, project, newStatus, t, onOpenTask, { alwaysConfirm });
 		if (!proceed) return false;
 	}
 
