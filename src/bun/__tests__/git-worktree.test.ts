@@ -123,6 +123,26 @@ describe("removeWorktree", () => {
 		expect(existsSync(wtPath)).toBe(true);
 	});
 
+	it("swallows the failure when git no longer knows the path is a worktree", async () => {
+		// Real user report: `.git/worktrees/<name>` metadata vanished, so every
+		// completion attempt died on "is not a working tree" and the task could
+		// never leave review. Teardown must succeed and reclaim the orphan dir.
+		const project = makeProject(repo.local);
+		const task = makeTask({
+			id: "77777777-8888-9999-aaaa-bbbbbbbbbbbb",
+			branchName: "dev3/task-77777777",
+		});
+		const wtPath = join(taskDir(project, task), "worktree");
+		mkdirSync(taskDir(project, task), { recursive: true });
+		g(`git worktree add -b dev3/task-77777777 "${wtPath}" main`, repo.local);
+		rmSync(join(repo.local, ".git", "worktrees"), { recursive: true, force: true });
+
+		await removeWorktree(project, { ...task, worktreePath: wtPath });
+
+		expect(existsSync(wtPath)).toBe(false);
+		expect(g("git branch", repo.local)).not.toContain("dev3/task-77777777");
+	});
+
 	it("removes worktree and deletes RENAMED branch correctly", async () => {
 		const wtPath = join(repo.dir, "worktree");
 		g(`git worktree add -b dev3/task-aaaaaaaa "${wtPath}" main`, repo.local);

@@ -2287,6 +2287,14 @@ export async function applySparseCheckout(
 	log.info("Sparse checkout applied", { worktreePath, pathCount: paths.length });
 }
 
+/**
+ * `git worktree remove` failures that mean "git never knew about this path"
+ * (metadata pruned, repo re-cloned, admin dir wiped) — not "removal refused".
+ */
+function isUnregisteredWorktreeError(stderr: string): boolean {
+	return /is not a working tree|is not a worktree|not a valid path/i.test(stderr);
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,
@@ -2318,12 +2326,27 @@ export async function removeWorktree(
 		);
 		if (!removeResult.ok) {
 			const detail = removeResult.stderr.trim() || "git worktree remove exited unsuccessfully";
-			log.error("Failed to remove worktree", {
-				path: targetPath,
-				taskId: task.id,
-				stderr: removeResult.stderr,
-			});
-			throw new Error(`Failed to remove worktree at ${targetPath}: ${detail}`);
+			if (isUnregisteredWorktreeError(removeResult.stderr)) {
+				// Git has no metadata for this path, so there is no worktree left to
+				// remove — only an orphan directory. Blocking teardown here strands the
+				// task forever (nothing can ever make git recognize the path again).
+				log.warn("Worktree is not registered with git, treating as already removed", {
+					path: targetPath,
+					taskId: task.id,
+					stderr: removeResult.stderr,
+				});
+				if (isManagedTaskWorktreePath(project, targetPath)) {
+					rmSync(targetPath, { recursive: true, force: true });
+				}
+				await run(["git", "worktree", "prune"], project.path);
+			} else {
+				log.error("Failed to remove worktree", {
+					path: targetPath,
+					taskId: task.id,
+					stderr: removeResult.stderr,
+				});
+				throw new Error(`Failed to remove worktree at ${targetPath}: ${detail}`);
+			}
 		}
 	} else {
 		log.info("Worktree directory already missing, pruning git metadata", {
