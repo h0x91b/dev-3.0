@@ -2287,6 +2287,24 @@ export async function applySparseCheckout(
 	log.info("Sparse checkout applied", { worktreePath, pathCount: paths.length });
 }
 
+// A worktree whose git metadata was pruned or deleted by hand is no longer a
+// working tree, so `git worktree remove` can never clean it up. The dangling
+// gitdir link is what distinguishes such an orphan from a live worktree, and
+// keeps the plain rmSync fallback away from directories git still owns.
+function isOrphanedWorktreeDir(worktreeDirPath: string): boolean {
+	const gitLink = `${worktreeDirPath}/.git`;
+	if (!existsSync(gitLink)) return true;
+	let contents: string;
+	try {
+		contents = readFileSync(gitLink, "utf8");
+	} catch {
+		return false;
+	}
+	const gitdir = /^gitdir:\s*(.+)$/m.exec(contents)?.[1]?.trim();
+	if (!gitdir) return false;
+	return !existsSync(resolvePath(worktreeDirPath, gitdir));
+}
+
 export async function removeWorktree(
 	project: Project,
 	task: Task,
@@ -2317,13 +2335,23 @@ export async function removeWorktree(
 			project.path,
 		);
 		if (!removeResult.ok) {
-			const detail = removeResult.stderr.trim() || "git worktree remove exited unsuccessfully";
-			log.error("Failed to remove worktree", {
-				path: targetPath,
-				taskId: task.id,
-				stderr: removeResult.stderr,
-			});
-			throw new Error(`Failed to remove worktree at ${targetPath}: ${detail}`);
+			if (!registration && isOrphanedWorktreeDir(targetPath)) {
+				log.warn("Worktree registration is gone, deleting orphaned directory", {
+					path: targetPath,
+					taskId: task.id,
+					stderr: removeResult.stderr,
+				});
+				rmSync(targetPath, { recursive: true, force: true });
+				await run(["git", "worktree", "prune"], project.path);
+			} else {
+				const detail = removeResult.stderr.trim() || "git worktree remove exited unsuccessfully";
+				log.error("Failed to remove worktree", {
+					path: targetPath,
+					taskId: task.id,
+					stderr: removeResult.stderr,
+				});
+				throw new Error(`Failed to remove worktree at ${targetPath}: ${detail}`);
+			}
 		}
 	} else {
 		log.info("Worktree directory already missing, pruning git metadata", {
