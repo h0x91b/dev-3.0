@@ -76,7 +76,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const [error, setError] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
 	const [downloading, setDownloading] = useState(false);
-	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>("follow");
+	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const viewerRef = useRef<HTMLElement>(null);
 	const assetsRef = useRef<ArtifactAsset[]>([]);
@@ -177,7 +177,10 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		? t("artifactViewer.themeFollow")
 		: themeMode === "light" ? t("artifactViewer.themeLight") : t("artifactViewer.themeDark");
 	const themeLabel = t("artifactViewer.themeMode", { mode: themeName });
-	const cycleTheme = () => setThemeMode((mode) => mode === "follow" ? "light" : mode === "light" ? "dark" : "follow");
+	const cycleTheme = () => setThemeMode((mode) => {
+		if (mode === "follow") return currentTheme();
+		return mode === currentTheme() ? (mode === "light" ? "dark" : "light") : "follow";
+	});
 	const themeIcon = themeMode === "follow" ? "◐" : themeMode === "light" ? "" : "";
 
 	return (

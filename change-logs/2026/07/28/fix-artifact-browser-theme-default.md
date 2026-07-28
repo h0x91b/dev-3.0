@@ -1,0 +1,1 @@
+HTML artifacts now open with the currently selected dev3 light or dark theme in desktop and browser mode. The artifact theme control still cycles through the opposite theme, host-following mode, and the selected theme.

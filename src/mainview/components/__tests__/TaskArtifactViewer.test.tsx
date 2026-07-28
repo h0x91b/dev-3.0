@@ -70,20 +70,29 @@ describe("TaskArtifactViewer", () => {
 		expect(onClose).toHaveBeenCalledOnce();
 	});
 
-	it("cycles artifact theme from dev3-following to light and dark overrides", async () => {
-		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
-		const frame = await screen.findByTitle("Artifact a") as HTMLIFrameElement;
-		const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
-		const theme = screen.getByTestId("artifact-viewer-theme");
-		expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
-		await userEvent.click(theme);
-		expect(theme).toHaveAccessibleName("Artifact theme: Light");
-		await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "light" }, "*"));
-		await userEvent.click(theme);
-		expect(theme).toHaveAccessibleName("Artifact theme: Dark");
-		await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: "dark" }, "*"));
-		await userEvent.click(theme);
-		expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
+	it.each(["light", "dark"] as const)("starts in the current dev3 %s theme and keeps the override cycle", async (hostTheme) => {
+		const previousTheme = document.documentElement.dataset.theme;
+		document.documentElement.dataset.theme = hostTheme;
+		try {
+			render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a")]} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+			const frame = await screen.findByTitle("Artifact a") as HTMLIFrameElement;
+			const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
+			const theme = screen.getByTestId("artifact-viewer-theme");
+			const nextTheme = hostTheme === "light" ? "dark" : "light";
+			expect(theme).toHaveAccessibleName(`Artifact theme: ${hostTheme === "light" ? "Light" : "Dark"}`);
+			fireEvent.load(frame);
+			await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: hostTheme }, "*"));
+			await userEvent.click(theme);
+			expect(theme).toHaveAccessibleName(`Artifact theme: ${nextTheme === "light" ? "Light" : "Dark"}`);
+			await waitFor(() => expect(postMessage).toHaveBeenCalledWith({ type: "dev3-artifact-theme", theme: nextTheme }, "*"));
+			await userEvent.click(theme);
+			expect(theme).toHaveAccessibleName("Artifact theme: Follow dev3");
+			await userEvent.click(theme);
+			expect(theme).toHaveAccessibleName(`Artifact theme: ${hostTheme === "light" ? "Light" : "Dark"}`);
+		} finally {
+			if (previousTheme) document.documentElement.dataset.theme = previousTheme;
+			else delete document.documentElement.dataset.theme;
+		}
 	});
 
 	it("does not consume terminal shortcuts until focus enters the viewer", async () => {
