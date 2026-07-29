@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import type { ColumnAgentConfig, DevServerStatus, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
+import type { ColumnAgentConfig, DevServerStatus, PaneSessionEntry, PermissionMode, PortInfo, Project, Task, TmuxLayout, TmuxSessionInfo } from "../../shared/types";
 import { getTaskTitle } from "../../shared/types";
 import * as data from "../data";
 import * as pty from "../pty-server";
@@ -14,6 +14,7 @@ import { loadSettings, recordFavoriteUsages } from "../settings";
 import { getUserShell } from "../shell-env";
 import { spawn } from "../spawn";
 import { setupAgentHooks } from "../agent-hooks";
+import { resolveResumableSessionId } from "../agent-transcripts";
 import { ensureArtifactTemplateEnv } from "../artifact-template";
 import {
 	tmux,
@@ -1407,6 +1408,25 @@ async function wakeIfHibernated(project: Project, task: Task): Promise<void> {
 	await dispatchLifecycleEvent(project.id, task.id, { type: "wakeRequested" }, { project, task });
 }
 
+/**
+ * Resume pointer for one pane, healed against the transcripts on disk. A stored
+ * id whose transcript is gone would kill the pane on `--resume`; the newest
+ * surviving conversation for that worktree is the right thing to reopen instead
+ * (decision 189). Returns null to let the agent pick its own latest session.
+ */
+function resolveResumeTarget(task: Task, pane: PaneSessionEntry, label: string): string | null {
+	const target = resolveResumableSessionId(pane.agentCmd, task.worktreePath ?? "", pane.sessionId);
+	if (target.substituted) {
+		log.warn("Stored session id has no transcript — resuming the newest conversation instead", {
+			taskId: task.id.slice(0, 8),
+			pane: label,
+			stored: pane.sessionId,
+			using: target.sessionId ?? "agent-latest",
+		});
+	}
+	return target.sessionId;
+}
+
 async function resumeTask(params: { taskId: string }): Promise<string> {
 	log.info("→ resumeTask", { taskId: params.taskId.slice(0, 8) });
 	const { task, project } = await findTaskAcrossProjects(params.taskId);
@@ -1426,6 +1446,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 
 	// Launch main pane (panes[0]) with resume
 	const main = panes[0];
+	const mainResume = resolveResumeTarget(task, main, "main");
 	const resolvedProject = project.kind === "virtual"
 		? project
 		: await repoConfig.resolveProjectConfig(project, task.worktreePath);
@@ -1437,7 +1458,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 		main.configId,
 		false,
 		true,
-		main.sessionId ? { sessionId: main.sessionId } : undefined,
+		mainResume ? { sessionId: mainResume } : undefined,
 	);
 
 	// Resume extra panes (panes[1..]) via split-window.
@@ -1465,8 +1486,9 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 			for (let i = 1; i < panes.length; i++) {
 				const pane = panes[i];
 				try {
+					const paneResume = resolveResumeTarget(task, pane, `pane ${i}`);
 					const cmdOpts: agents.CommandOptions = { resume: true, accountId: pane.accountId };
-					if (pane.sessionId) cmdOpts.sessionId = pane.sessionId;
+					if (paneResume) cmdOpts.sessionId = paneResume;
 					let resumeCmd: string;
 					let resumeBaseCmd = pane.agentCmd;
 					let extraEnv: Record<string, string> = {};
@@ -1476,7 +1498,7 @@ async function resumeTask(params: { taskId: string }): Promise<string> {
 						extraEnv = resolved.extraEnv;
 						resumeBaseCmd = resolved.config?.baseCommandOverride || resolved.agent?.baseCommand || pane.agentCmd;
 					} else {
-						resumeCmd = agents.buildResumeCommand(pane.agentCmd, pane.sessionId ?? undefined) ?? pane.agentCmd;
+						resumeCmd = agents.buildResumeCommand(pane.agentCmd, paneResume ?? undefined) ?? pane.agentCmd;
 					}
 					await ensureAgentTrust(task.worktreePath, project.path, resumeBaseCmd, pane.accountId);
 					resumeCmd = await applyAgentHooksToCommand(task.worktreePath, resumeBaseCmd, resumeCmd, {

@@ -91,6 +91,15 @@ export interface AgentAdapter {
 	 */
 	buildResumeCommand(baseCmd: string, sessionId?: string): string | null;
 
+	/**
+	 * Where this agent keeps one worktree's transcripts, when the resumable
+	 * session id IS the file's basename — which lets dev3 verify a stored id
+	 * before spending it on `--resume`. Pure: returns paths, never touches fs.
+	 * Omitted by agents whose store is not filename-keyed (codex/gemini key on a
+	 * cwd header inside the file), leaving their stored ids unverifiable.
+	 */
+	transcriptStore?(worktreePath: string, home: string): { dir: string; ext: string };
+
 	/** Agent-native lifecycle hooks to install, or null when the agent has none. */
 	hooksSpec(options?: { stopTarget?: TaskStatus; permissionMode?: PermissionMode }): HooksSpec | null;
 }

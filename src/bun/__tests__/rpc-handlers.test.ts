@@ -293,6 +293,7 @@ import * as repoConfig from "../repo-config";
 import * as cowClone from "../cow-clone";
 import { Utils } from "electrobun/bun";
 import { accessSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { claudeEncodePath } from "../../shared/conversation-search-core";
 import {
 	createTaskPreparation,
 	finishTaskPreparation,
@@ -8595,6 +8596,99 @@ describe("handlers.spawnBugHuntersInTask", () => {
 		await expect(
 			handlers.spawnBugHuntersInTask({ taskId: "task-1", projectId: "proj-1", agentId: null, configId: null, count: 3 }),
 		).rejects.toThrow("no worktree");
+	});
+});
+
+describe("resumeTask session-id healing", () => {
+	const WORKTREE = "/tmp/resume-wt";
+	const LIVE = "1160218f-85f5-4a45-8032-ced3af5a532b";
+	const DEAD = "125a4c8c-b567-4d24-991b-8732e82878c8";
+	const STORE = `${process.env.HOME}/.claude/projects/${claudeEncodePath(WORKTREE)}`;
+
+	/** Transcript files the claude store holds for this worktree. */
+	function seedStore(files: string[], storeExists = true): void {
+		(readdirSync as any).mockImplementation((dir: string) => (String(dir) === STORE ? files : []));
+		(existsSync as any).mockImplementation((path: string) => (String(path) === STORE ? storeExists : true));
+	}
+
+	function arrangeTask(storedSessionId: string): void {
+		const project = makeProject();
+		const task = makeTask({
+			worktreePath: WORKTREE,
+			sessionState: {
+				panes: [{ agentCmd: "claude", sessionId: storedSessionId, agentId: "builtin-claude", configId: "claude-default" }],
+			},
+		});
+		(data.loadProjects as any).mockResolvedValue([project]);
+		(data.loadVirtualProjects as any).mockResolvedValue([]);
+		(data.getTask as any).mockResolvedValue(task);
+		(pty.hasSession as any).mockReturnValue(false);
+		(pty.getPtyPort as any).mockReturnValue(9999);
+	}
+
+	function resumeOptions(): any {
+		return (agents.resolveCommandForAgent as any).mock.calls[0][3];
+	}
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		(readdirSync as any).mockImplementation(() => []);
+		(existsSync as any).mockImplementation(() => true);
+	});
+
+	it("resumes the surviving transcript when the stored session id is dead", async () => {
+		seedStore([`${LIVE}.jsonl`]);
+		arrangeTask(DEAD);
+
+		await handlers.resumeTask({ taskId: "task-1" });
+
+		expect(resumeOptions()).toMatchObject({ resume: true, sessionId: LIVE });
+	});
+
+	it("repairs the persisted pointer so the next resume is clean", async () => {
+		seedStore([`${LIVE}.jsonl`]);
+		arrangeTask(DEAD);
+
+		await handlers.resumeTask({ taskId: "task-1" });
+
+		expect(data.updateTask).toHaveBeenCalledWith(
+			expect.anything(),
+			"task-1",
+			expect.objectContaining({
+				sessionState: { panes: [expect.objectContaining({ sessionId: LIVE })] },
+			}),
+		);
+	});
+
+	it("keeps a stored session id that still has its transcript", async () => {
+		seedStore([`${LIVE}.jsonl`, `${DEAD}.jsonl`]);
+		arrangeTask(DEAD);
+
+		await handlers.resumeTask({ taskId: "task-1" });
+
+		expect(resumeOptions()).toMatchObject({ resume: true, sessionId: DEAD });
+	});
+
+	it("falls back to agent-latest when the store holds no transcript", async () => {
+		seedStore([]);
+		arrangeTask(DEAD);
+
+		await handlers.resumeTask({ taskId: "task-1" });
+
+		expect(resumeOptions()).toMatchObject({ resume: true });
+		expect(resumeOptions().sessionId).toBeUndefined();
+	});
+
+	it("passes a stored id through untouched when the store is absent (unverifiable)", async () => {
+		seedStore([], false);
+		arrangeTask(DEAD);
+
+		await handlers.resumeTask({ taskId: "task-1" });
+
+		expect(resumeOptions()).toMatchObject({ resume: true, sessionId: DEAD });
 	});
 });
 
