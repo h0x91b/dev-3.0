@@ -2015,6 +2015,21 @@ export interface BranchStatus {
 	mergeCompletionFingerprint: string | null; // stable key for deduping the merged-branch completion prompt
 }
 
+/**
+ * Work that deleting this task's worktree would destroy, answered with LOCAL git
+ * only — no `git fetch`, no `gh`, no cross-task semaphore. {@link BranchStatus}
+ * covers the same ground but spends seconds on the network, which is unusable in
+ * front of a confirmation dialog (see `confirmTaskCompletion`). Deliberately
+ * omits "pushed but not merged": that work lives on the remote, so it is not at
+ * risk, and judging it needs a fresh fetch.
+ */
+export interface UnsavedWork {
+	insertions: number;
+	deletions: number;
+	unpushed: number; // -1 = never pushed, 0 = all pushed, N = N unpushed commits
+	ahead: number; // commits ahead of the base branch, per the last known origin ref
+}
+
 export type TaskDiffMode = "branch" | "uncommitted" | "unpushed" | "recent";
 
 export type TaskDiffFileStatus =
@@ -2970,6 +2985,10 @@ export type AppRPCSchema = {
 			getBranchStatus: {
 				params: { taskId: string; projectId: string; compareRef?: string };
 				response: BranchStatus;
+			};
+			getUnsavedWork: {
+				params: { taskId: string; projectId: string };
+				response: UnsavedWork;
 			};
 			refreshTaskPrStatus: {
 				params: { taskId: string; projectId: string };

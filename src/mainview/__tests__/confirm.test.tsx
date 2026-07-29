@@ -276,6 +276,115 @@ describe("confirm service", () => {
 		expect(screen.queryByText("Branch Merged")).not.toBeInTheDocument();
 	});
 
+	describe("deferred block", () => {
+		it("renders the dialog immediately with a pending line, then swaps in the result", async () => {
+			renderHost();
+			let release: (value: string | null) => void = () => {};
+			const promise = new Promise<string | null>((resolve) => { release = resolve; });
+
+			act(() => {
+				void confirm({
+					title: "Complete task?",
+					message: "The worktree will be deleted.",
+					deferred: { pending: "Checking…", promise },
+				});
+			});
+
+			// On screen before the check settles — that is the whole point.
+			expect(await screen.findByText("Complete task?")).toBeInTheDocument();
+			expect(screen.getByTestId("confirm-deferred")).toHaveTextContent("Checking…");
+
+			await act(async () => { release("• 3 unpushed commits"); });
+
+			expect(screen.getByTestId("confirm-deferred")).toHaveTextContent("3 unpushed commits");
+		});
+
+		it("drops the block entirely when the check resolves with null", async () => {
+			renderHost();
+			act(() => {
+				void confirm({ title: "T", message: "m", deferred: { pending: "Checking…", promise: Promise.resolve(null) } });
+			});
+
+			await screen.findByText("T");
+			await act(async () => { await Promise.resolve(); });
+
+			expect(screen.queryByTestId("confirm-deferred")).not.toBeInTheDocument();
+		});
+
+		it("gates the confirm button until the check settles", async () => {
+			renderHost();
+			let release: (value: string | null) => void = () => {};
+			const promise = new Promise<string | null>((resolve) => { release = resolve; });
+
+			act(() => {
+				void confirm({
+					title: "Complete task?",
+					message: "m",
+					deferred: { pending: "Checking…", promise, gateConfirm: true },
+				});
+			});
+
+			await screen.findByText("Complete task?");
+			expect(screen.getByTestId("confirm-accept")).toBeDisabled();
+			// Cancel must stay live so a gated dialog is never a trap.
+			expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+
+			await act(async () => { release(null); });
+
+			expect(screen.getByTestId("confirm-accept")).toBeEnabled();
+		});
+
+		it("ungates with the unknown text when the gate times out", async () => {
+			vi.useFakeTimers();
+			try {
+				renderHost();
+				act(() => {
+					void confirm({
+						title: "Complete task?",
+						message: "m",
+						deferred: {
+							pending: "Checking…",
+							unknown: "Could not check the branch.",
+							promise: new Promise<string | null>(() => {}),
+							gateConfirm: true,
+							gateTimeoutMs: 1000,
+						},
+					});
+				});
+
+				expect(screen.getByTestId("confirm-accept")).toBeDisabled();
+
+				act(() => { vi.advanceTimersByTime(1000); });
+
+				expect(screen.getByTestId("confirm-accept")).toBeEnabled();
+				expect(screen.getByTestId("confirm-deferred")).toHaveTextContent("Could not check the branch.");
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("ungates when the check rejects", async () => {
+			renderHost();
+			act(() => {
+				void confirm({
+					title: "Complete task?",
+					message: "m",
+					deferred: {
+						pending: "Checking…",
+						unknown: "Could not check the branch.",
+						promise: Promise.reject(new Error("git exploded")),
+						gateConfirm: true,
+					},
+				});
+			});
+
+			await screen.findByText("Complete task?");
+			await act(async () => { await Promise.resolve(); });
+
+			expect(screen.getByTestId("confirm-accept")).toBeEnabled();
+		});
+	});
+
 	it("closes immediately when the signal is already aborted", async () => {
 		renderHost();
 		const controller = new AbortController();

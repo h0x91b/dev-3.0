@@ -75,6 +75,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [moving, setMoving] = useState(false);
+	const [quickCompleting, setQuickCompleting] = useState(false);
 	const [cancellingPreparation, setCancellingPreparation] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
@@ -263,6 +264,18 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			setMenuVisible(false);
 		}
 		setMenuOpen(!menuOpen);
+	}
+
+	// The ✓ acknowledges the click on the same tick — the dialog it opens still
+	// has a git check streaming into it, so silence here reads as a dead button.
+	async function handleQuickComplete(e: React.MouseEvent) {
+		e.stopPropagation();
+		setQuickCompleting(true);
+		try {
+			await handleMove("completed", { alwaysConfirm: true });
+		} finally {
+			setQuickCompleting(false);
+		}
 	}
 
 	async function handleMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
@@ -932,14 +945,23 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 								</span>
 							</button>
 							{canQuickComplete && (
-								<Tooltip content={t("pipeline.completeTooltip")}>
+								<Tooltip content={t("pipeline.completeTooltip")} disabled={quickCompleting}>
 									<button
 										data-testid="task-card-quick-complete"
-										onClick={(e) => { e.stopPropagation(); handleMove("completed", { alwaysConfirm: true }); }}
+										onClick={handleQuickComplete}
+										disabled={quickCompleting}
 										aria-label={t("pipeline.completeTooltip")}
-										className="mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success opacity-50 transition-all hover:bg-success/20 hover:opacity-100 group-hover:opacity-80"
+										className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-all ${
+											quickCompleting
+												? "bg-success/25 opacity-100"
+												: "opacity-50 hover:bg-success/20 hover:opacity-100 group-hover:opacity-80"
+										}`}
 									>
-										<CompleteCheckIcon className="w-3 h-3" />
+										{quickCompleting ? (
+											<span className="h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success" />
+										) : (
+											<CompleteCheckIcon className="w-3 h-3" />
+										)}
 									</button>
 								</Tooltip>
 							)}

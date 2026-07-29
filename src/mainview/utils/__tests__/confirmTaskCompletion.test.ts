@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Task, Project } from "../../../shared/types";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { getBranchStatus: vi.fn() } },
+	api: { request: { getBranchStatus: vi.fn(), getUnsavedWork: vi.fn() } },
 }));
 vi.mock("../../confirm", () => ({
 	confirm: vi.fn().mockResolvedValue(true),
@@ -13,6 +13,7 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 
 const mockedBranchStatus = vi.mocked(api.request.getBranchStatus);
+const mockedUnsavedWork = vi.mocked(api.request.getUnsavedWork);
 const mockedConfirm = vi.mocked(confirm);
 
 const t = ((key: string) => key) as never;
@@ -39,6 +40,7 @@ const dirtyStatus = {
 describe("confirmTaskCompletion", () => {
 	beforeEach(() => {
 		mockedBranchStatus.mockResolvedValue(dirtyStatus);
+		mockedUnsavedWork.mockResolvedValue(dirtyStatus);
 		mockedConfirm.mockResolvedValue(true);
 	});
 	afterEach(() => vi.clearAllMocks());
@@ -132,10 +134,10 @@ describe("confirmTaskCompletion", () => {
 			unpushed: 0,
 			ahead: 0,
 			mergedByContent: false,
-		} as Awaited<ReturnType<typeof api.request.getBranchStatus>>;
+		} as Awaited<ReturnType<typeof api.request.getUnsavedWork>>;
 
 		it("prompts on a clean branch, where the plain call stays silent", async () => {
-			mockedBranchStatus.mockResolvedValue(cleanStatus);
+			mockedUnsavedWork.mockResolvedValue(cleanStatus);
 
 			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
 
@@ -144,12 +146,64 @@ describe("confirmTaskCompletion", () => {
 			);
 		});
 
+		it("opens the dialog without waiting on the branch check", async () => {
+			let releaseUnsavedWork: (status: typeof cleanStatus) => void = () => {};
+			mockedUnsavedWork.mockReturnValue(
+				new Promise((resolve) => { releaseUnsavedWork = resolve; }) as ReturnType<typeof api.request.getUnsavedWork>,
+			);
+
+			void confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
+			await Promise.resolve();
+
+			// Dialog is already up while the check is still in flight.
+			expect(mockedConfirm).toHaveBeenCalledTimes(1);
+			const options = mockedConfirm.mock.calls[0]![0];
+			expect(options.deferred).toEqual(
+				expect.objectContaining({ pending: "task.checkingBranchState", gateConfirm: true }),
+			);
+
+			releaseUnsavedWork(dirtyStatus);
+			await expect(options.deferred!.promise).resolves.toContain("task.warnUncommitted");
+		});
+
+		it("never calls the fetch-heavy getBranchStatus — that is what made it take seconds", async () => {
+			mockedUnsavedWork.mockResolvedValue(cleanStatus);
+
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
+
+			expect(mockedUnsavedWork).toHaveBeenCalledWith({ taskId: "t1", projectId: "p1" });
+			expect(mockedBranchStatus).not.toHaveBeenCalled();
+		});
+
+		it("omits the pushed-but-unmerged line — that work is safe on the remote", async () => {
+			mockedUnsavedWork.mockResolvedValue({
+				insertions: 0,
+				deletions: 0,
+				unpushed: 0,
+				ahead: 3,
+			} as Awaited<ReturnType<typeof api.request.getUnsavedWork>>);
+
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
+
+			const options = mockedConfirm.mock.calls[0]![0];
+			await expect(options.deferred!.promise).resolves.toBeNull();
+		});
+
+		it("resolves the deferred block to null on a clean branch so no warning renders", async () => {
+			mockedUnsavedWork.mockResolvedValue(cleanStatus);
+
+			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
+
+			const options = mockedConfirm.mock.calls[0]![0];
+			await expect(options.deferred!.promise).resolves.toBeNull();
+		});
+
 		it("prompts for a task with no worktree at all", async () => {
 			const task = { ...baseTask, worktreePath: null } as Task;
 
 			await confirmTaskCompletion(task, project, "completed", t, undefined, { alwaysConfirm: true });
 
-			expect(mockedBranchStatus).not.toHaveBeenCalled();
+			expect(mockedUnsavedWork).not.toHaveBeenCalled();
 			expect(mockedConfirm).toHaveBeenCalledWith(
 				expect.objectContaining({ title: "task.confirmCompleteTitle", message: "task.confirmCompleteFooter" }),
 			);
@@ -159,16 +213,12 @@ describe("confirmTaskCompletion", () => {
 			await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });
 
 			expect(mockedConfirm).toHaveBeenCalledTimes(1);
-			expect(mockedConfirm).toHaveBeenCalledWith(
-				expect.objectContaining({
-					title: "task.warnCompletionTitle",
-					message: expect.stringContaining("task.warnUncommitted"),
-				}),
-			);
+			const options = mockedConfirm.mock.calls[0]![0];
+			await expect(options.deferred!.promise).resolves.toContain("task.warnUncommitted");
 		});
 
 		it("aborts the move when the user declines", async () => {
-			mockedBranchStatus.mockResolvedValue(cleanStatus);
+			mockedUnsavedWork.mockResolvedValue(cleanStatus);
 			mockedConfirm.mockResolvedValue(false);
 
 			const ok = await confirmTaskCompletion(baseTask, project, "completed", t, undefined, { alwaysConfirm: true });

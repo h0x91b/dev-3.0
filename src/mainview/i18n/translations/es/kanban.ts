@@ -177,6 +177,8 @@ const kanban = {
 	"task.confirmCompleteFooter": "La tarea pasará a Completed.",
 	"task.confirmCancelTitle": "¿Cancelar la tarea?",
 	"task.confirmCancelFooter": "La tarea pasará a Cancelled.",
+	"task.checkingBranchState": "Comprobando la rama por trabajo sin guardar…",
+	"task.branchStateUnknown": "No se pudo comprobar la rama por trabajo sin guardar.",
 
 	// LaunchVariantsModal
 	"launch.title": "Lanzar tarea",

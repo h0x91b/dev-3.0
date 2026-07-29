@@ -6,6 +6,7 @@ import {
 	type TaskDiffMode,
 	type TaskDiffResponse,
 	type ScheduledMessageTarget,
+	type UnsavedWork,
 	resolveTaskCompareBaseBranch,
 } from "../../shared/types";
 import * as data from "../data";
@@ -246,6 +247,30 @@ async function getBranchStatusImpl(params: { taskId: string; projectId: string; 
 	});
 
 	return result;
+}
+
+/**
+ * Local-only "what would deleting this worktree destroy?" — the completion
+ * dialog's data source. Three cheap `git` reads, no fetch, no `gh`, no
+ * semaphore, so it answers in milliseconds and can be awaited in front of the
+ * user. Use `getBranchStatus` when remote truth actually matters.
+ */
+async function getUnsavedWork(params: { taskId: string; projectId: string }): Promise<UnsavedWork> {
+	const project = await data.getProject(params.projectId);
+	const task = await data.getTask(project, params.taskId);
+	if (project.kind === "virtual" || !task.worktreePath) {
+		return { insertions: 0, deletions: 0, unpushed: 0, ahead: 0 };
+	}
+
+	const liveBranch = await git.getCurrentBranch(task.worktreePath);
+	const branchForPush = liveBranch ?? task.branchName ?? "";
+	const ref = `origin/${resolveTaskCompareBaseBranch(task, project)}`;
+	const [uncommitted, unpushed, counts] = await Promise.all([
+		git.getUncommittedChanges(task.worktreePath),
+		git.getUnpushedCount(task.worktreePath, branchForPush),
+		git.getBranchStatus(task.worktreePath, ref),
+	]);
+	return { ...uncommitted, unpushed, ahead: counts.ahead };
 }
 
 async function getBranchStatus(params: { taskId: string; projectId: string; compareRef?: string }) {
@@ -836,6 +861,7 @@ async function sendScheduledMessageNow(params: { taskId: string; projectId: stri
 
 export const gitOperationHandlers = {
 	getBranchStatus,
+	getUnsavedWork,
 	refreshTaskPrStatus,
 	getTaskDiff,
 	prepareMergeCompletionPrompt,

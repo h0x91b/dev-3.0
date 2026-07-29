@@ -65,6 +65,23 @@ export interface ConfirmOptions {
 	 * after awaiting and skip their own resolution side effects.
 	 */
 	signal?: AbortSignal;
+	/**
+	 * A second message block that arrives *after* the dialog is on screen, so a
+	 * slow check never delays the dialog itself. Until the promise settles the
+	 * muted `pending` line is shown; resolving with a string replaces it, with
+	 * `null` removes it. `gateConfirm` keeps the confirm button unavailable in
+	 * the meantime — for checks whose whole point is to stop the action (git
+	 * data-loss warnings), capped by `gateTimeoutMs` so a hung check cannot
+	 * lock the dialog.
+	 */
+	deferred?: {
+		pending: string;
+		promise: Promise<string | null>;
+		gateConfirm?: boolean;
+		gateTimeoutMs?: number;
+		/** Shown instead of `pending` when the gate timed out or the check failed. */
+		unknown?: string;
+	};
 	/** Optional neutral action that resolves with a string value. */
 	alternativeAction?: ConfirmAlternativeAction;
 	/** Render the three actions as consequence-explaining cards. */
@@ -128,12 +145,53 @@ export function ConfirmHost() {
 	return <ConfirmDialog key={pending.id} pending={pending} close={close} />;
 }
 
+type DeferredState = { text: string | null; muted: boolean; settled: boolean };
+
+/**
+ * Resolves a {@link ConfirmOptions.deferred} block while the dialog is already
+ * visible. Falls back to `unknown` text (and ungates the confirm button) when
+ * the check rejects or outruns `gateTimeoutMs`.
+ */
+function useDeferredBlock(deferred: ConfirmOptions["deferred"]): DeferredState {
+	const [state, setState] = useState<DeferredState>(() =>
+		deferred ? { text: deferred.pending, muted: true, settled: false } : { text: null, muted: false, settled: true },
+	);
+
+	useEffect(() => {
+		if (!deferred) return;
+		let done = false;
+		const settle = (next: DeferredState) => {
+			if (done) return;
+			done = true;
+			setState(next);
+		};
+		const timer = deferred.gateConfirm
+			? setTimeout(
+				() => settle({ text: deferred.unknown ?? null, muted: true, settled: true }),
+				deferred.gateTimeoutMs ?? 4000,
+			)
+			: null;
+		deferred.promise.then(
+			(text) => settle({ text, muted: false, settled: true }),
+			() => settle({ text: deferred.unknown ?? null, muted: true, settled: true }),
+		);
+		return () => {
+			done = true;
+			if (timer) clearTimeout(timer);
+		};
+	}, [deferred]);
+
+	return state;
+}
+
 function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (result: boolean | string) => void }) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 
 	const confirmLabel = pending.confirmLabel ?? t("confirmDialog.confirm");
 	const cancelLabel = pending.cancelLabel ?? t("confirmDialog.cancel");
+	const deferredState = useDeferredBlock(pending.deferred);
+	const gateActive = Boolean(pending.deferred?.gateConfirm) && !deferredState.settled;
 
 	// Auto-close when the caller's signal aborts (task resolved elsewhere).
 	useEffect(() => {
@@ -260,6 +318,19 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 					</div>
 				)}
 				{!pending.outcomeCards && <p className="text-fg-2 text-sm leading-relaxed whitespace-pre-line">{pending.message}</p>}
+				{deferredState.text !== null && (
+					<p
+						data-testid="confirm-deferred"
+						className={`flex items-start gap-2 text-sm leading-relaxed whitespace-pre-line ${
+							deferredState.muted ? "text-fg-3" : "text-warning"
+						}`}
+					>
+						{!deferredState.settled && (
+							<span className="mt-0.5 h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-fg-3/30 border-t-fg-3" aria-hidden />
+						)}
+						{deferredState.text}
+					</p>
+				)}
 				{pending.outcomeCards && pending.alternativeAction ? (
 					<div className="grid gap-2 pt-1">
 						<OutcomeAction
@@ -306,12 +377,16 @@ function ConfirmDialog({ pending, close }: { pending: PendingConfirm; close: (re
 						)}
 						<button
 							type="button"
+							data-testid="confirm-accept"
+							disabled={gateActive}
 							onClick={() => close(true)}
-							className={
-								pending.danger
-									? "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-danger text-white hover:bg-danger/80 transition-colors"
-									: "px-4 py-2 text-sm whitespace-nowrap rounded-lg bg-accent text-white hover:bg-accent-hover transition-colors"
-							}
+							className={`px-4 py-2 text-sm whitespace-nowrap rounded-lg text-white transition-colors ${
+								gateActive
+									? "bg-fg-muted/40 cursor-not-allowed"
+									: pending.danger
+										? "bg-danger hover:bg-danger/80"
+										: "bg-accent hover:bg-accent-hover"
+							}`}
 						>
 							{confirmLabel}
 						</button>

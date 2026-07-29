@@ -177,6 +177,8 @@ const kanban = {
 	"task.confirmCompleteFooter": "This task will move to Completed.",
 	"task.confirmCancelTitle": "Cancel task?",
 	"task.confirmCancelFooter": "This task will move to Cancelled.",
+	"task.checkingBranchState": "Checking the branch for unsaved work…",
+	"task.branchStateUnknown": "Could not check the branch for unsaved work.",
 
 	// LaunchVariantsModal
 	"launch.title": "Launch Task",

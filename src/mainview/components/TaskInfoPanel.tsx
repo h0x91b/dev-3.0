@@ -165,6 +165,7 @@ function TaskInfoPanel({
 	const [statusMenuPos, setStatusMenuPos] = useState({ top: 0, left: 0 });
 	const [statusMenuVisible, setStatusMenuVisible] = useState(false);
 	const [movingStatus, setMovingStatus] = useState(false);
+	const [quickCompleting, setQuickCompleting] = useState(false);
 	const [spawnModalOpen, setSpawnModalOpen] = useState(false);
 	const [scheduleMsgOpen, setScheduleMsgOpen] = useState(false);
 	const [bugHuntersOpen, setBugHuntersOpen] = useState(false);
@@ -339,6 +340,17 @@ function TaskInfoPanel({
 			setStatusMenuVisible(false);
 		}
 		setStatusMenuOpen((open) => !open);
+	}
+
+	// Acknowledge the ✓ on the same tick — its dialog still has a git check
+	// streaming in, so silence here reads as a dead button.
+	async function handleQuickComplete() {
+		setQuickCompleting(true);
+		try {
+			await handleStatusMove("completed", { alwaysConfirm: true });
+		} finally {
+			setQuickCompleting(false);
+		}
 	}
 
 	async function handleStatusMove(newStatus: TaskStatus, opts?: { alwaysConfirm?: boolean }) {
@@ -808,14 +820,21 @@ function TaskInfoPanel({
 				</svg>
 			</button>
 			{!narrow && !movingStatus && getAllowedTransitions(task.status).includes("completed") && (
-				<Tooltip content={t("pipeline.completeTooltip")}>
+				<Tooltip content={t("pipeline.completeTooltip")} disabled={quickCompleting}>
 					<button
 						data-testid="task-info-quick-complete"
-						onClick={() => handleStatusMove("completed", { alwaysConfirm: true })}
+						onClick={handleQuickComplete}
+						disabled={quickCompleting}
 						aria-label={t("pipeline.completeTooltip")}
-						className="mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success opacity-60 transition-all hover:bg-success/20 hover:opacity-100"
+						className={`mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-success transition-all ${
+							quickCompleting ? "bg-success/25 opacity-100" : "opacity-60 hover:bg-success/20 hover:opacity-100"
+						}`}
 					>
-						<CompleteCheckIcon className="w-3 h-3" />
+						{quickCompleting ? (
+							<span className="h-3 w-3 animate-spin rounded-full border-2 border-success/30 border-t-success" />
+						) : (
+							<CompleteCheckIcon className="w-3 h-3" />
+						)}
 					</button>
 				</Tooltip>
 			)}

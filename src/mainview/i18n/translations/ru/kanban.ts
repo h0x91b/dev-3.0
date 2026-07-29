@@ -181,6 +181,8 @@ const kanban = {
 	"task.confirmCompleteFooter": "Задача будет перенесена в Completed.",
 	"task.confirmCancelTitle": "Отменить задачу?",
 	"task.confirmCancelFooter": "Задача будет перенесена в Cancelled.",
+	"task.checkingBranchState": "Проверяем ветку на несохранённую работу…",
+	"task.branchStateUnknown": "Не удалось проверить ветку на несохранённую работу.",
 
 	// LaunchVariantsModal
 	"launch.title": "Запуск задачи",

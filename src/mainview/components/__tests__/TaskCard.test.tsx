@@ -470,6 +470,25 @@ describe("TaskCard", () => {
 			});
 		});
 
+		it("acknowledges the quick-complete click while the confirmation is still pending", async () => {
+			const user = userEvent.setup();
+			const task = makeTask({ status: "review-by-user", worktreePath: "/tmp/wt", branchName: "dev3/test" });
+			let decide: (ok: boolean) => void = () => {};
+			mockedConfirmTaskCompletion.mockReturnValue(new Promise<boolean>((resolve) => { decide = resolve; }));
+
+			renderCard(task);
+
+			await user.click(screen.getByTestId("task-card-quick-complete"));
+
+			// The pending state must be visible before the dialog resolves — a slow
+			// git check must never look like a dead click.
+			expect(screen.getByTestId("task-card-quick-complete")).toBeDisabled();
+
+			await act(async () => { decide(false); });
+
+			expect(screen.getByTestId("task-card-quick-complete")).toBeEnabled();
+		});
+
 		it("does not move the task when the quick-complete confirmation is declined", async () => {
 			const user = userEvent.setup();
 			const task = makeTask({ status: "review-by-user", worktreePath: "/tmp/wt", branchName: "dev3/test" });
