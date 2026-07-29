@@ -1,30 +1,39 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { TmuxLayout } from "../../../shared/types";
+import type { TaskPaneState } from "../../../shared/task-panes";
 import PaneMapSheet from "../PaneMapSheet";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { tmuxLayout: vi.fn() } },
+	api: { request: { taskPaneState: vi.fn() } },
 }));
 
-// Two side-by-side panes in window 0; a second (background) window exists.
-const LAYOUT: TmuxLayout = {
-	sessionName: "dev3-task1",
-	exists: true,
-	windows: [
-		{ index: 0, name: "main", active: true, panes: 2, zoomed: false },
-		{ index: 1, name: "logs", active: false, panes: 1, zoomed: false },
-	],
-	panes: [
-		{ windowIndex: 0, paneId: "%1", active: true, left: 0, top: 0, width: 99, height: 50, command: "claude", title: "Agent" },
-		{ windowIndex: 0, paneId: "%2", active: false, left: 100, top: 0, width: 100, height: 50, command: "zsh", title: "Shell" },
-		// A pane in the non-active window — must NOT appear on the map.
-		{ windowIndex: 1, paneId: "%3", active: true, left: 0, top: 0, width: 200, height: 50, command: "tail", title: "Logs" },
-	],
-};
+function makeState(panes: Array<{ paneId: string; label: string; active: boolean; x: number; y: number; width: number; height: number }>): TaskPaneState {
+	return {
+		backend: "tmux",
+		panes: panes.map((p, i) => ({
+			paneId: p.paneId,
+			index: i,
+			label: p.label,
+			active: p.active,
+			zoomed: false,
+			rect: { x: p.x, y: p.y, width: p.width, height: p.height },
+		})),
+		activePaneId: panes.find((p) => p.active)?.paneId ?? null,
+		zoomedPaneId: null,
+		layout: null,
+		layoutPreset: null,
+		capabilities: ["split", "focus"],
+	};
+}
+
+// Two side-by-side panes: left takes 49.5%, right takes 50%.
+const TWO_PANE_STATE = makeState([
+	{ paneId: "%1", label: "claude", active: true, x: 0,     y: 0, width: 0.495, height: 1.0 },
+	{ paneId: "%2", label: "zsh",    active: false, x: 0.5,  y: 0, width: 0.5,   height: 1.0 },
+]);
 
 function renderSheet(props: Partial<React.ComponentProps<typeof PaneMapSheet>> = {}) {
 	const onClose = props.onClose ?? vi.fn();
@@ -39,43 +48,41 @@ function renderSheet(props: Partial<React.ComponentProps<typeof PaneMapSheet>> =
 
 describe("PaneMapSheet", () => {
 	beforeEach(() => {
-		vi.mocked(api.request.tmuxLayout).mockReset();
+		vi.mocked(api.request.taskPaneState).mockReset();
 	});
 
 	it("fetches the layout when opened", async () => {
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue(LAYOUT);
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_PANE_STATE);
 		renderSheet();
-		await waitFor(() => expect(api.request.tmuxLayout).toHaveBeenCalledWith({ taskId: "task-1" }));
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalledWith({ taskId: "task-1" }));
 	});
 
 	it("does not fetch while closed", async () => {
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue(LAYOUT);
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_PANE_STATE);
 		renderSheet({ open: false });
 		await Promise.resolve();
-		expect(api.request.tmuxLayout).not.toHaveBeenCalled();
+		expect(api.request.taskPaneState).not.toHaveBeenCalled();
 	});
 
-	it("renders one box per pane of the active window, positioned by geometry", async () => {
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue(LAYOUT);
+	it("renders one box per pane, positioned by normalized rect", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_PANE_STATE);
 		renderSheet();
 
 		const active = await screen.findByLabelText("Go to claude");
 		const other = screen.getByLabelText("Go to zsh");
-		// Only the active window's two panes — the %3 pane (window 1) is excluded.
-		expect(screen.queryByLabelText("Go to tail")).toBeNull();
 
-		// Geometry → CSS percentages (winW = 200, winH = 50).
+		// Geometry from 0..1 rects → CSS percentages
 		expect(active.style.left).toBe("0%");
 		expect(active.style.width).toBe("49.5%");
 		expect(other.style.left).toBe("50%");
 		expect(other.style.width).toBe("50%");
-		// The active pane is flagged for assistive tech.
+
 		expect(active).toHaveAttribute("aria-current", "true");
 		expect(other).not.toHaveAttribute("aria-current");
 	});
 
 	it("jumps to the tapped pane by id and closes", async () => {
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue(LAYOUT);
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_PANE_STATE);
 		const { onClose, onJump } = renderSheet();
 
 		await userEvent.click(await screen.findByLabelText("Go to zsh"));
@@ -83,35 +90,24 @@ describe("PaneMapSheet", () => {
 		expect(onClose).toHaveBeenCalled();
 	});
 
-	it("lists windows when the session has more than one", async () => {
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue(LAYOUT);
-		renderSheet();
-		await screen.findByLabelText("Go to claude");
-		expect(screen.getByText("Windows")).toBeInTheDocument();
-		expect(screen.getByText("logs")).toBeInTheDocument();
-		expect(screen.getByText("1 pane")).toBeInTheDocument();
-		expect(screen.getByText("2 panes")).toBeInTheDocument();
-	});
-
-	it("hides the window list for a single-window session", async () => {
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue({
-			...LAYOUT,
-			windows: [LAYOUT.windows[0]],
-			panes: LAYOUT.panes.filter((p) => p.windowIndex === 0),
-		});
-		renderSheet();
-		await screen.findByLabelText("Go to claude");
-		expect(screen.queryByText("Windows")).toBeNull();
-	});
-
 	it("shows an empty state when there are no panes", async () => {
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue({
-			sessionName: "dev3-task1",
-			exists: false,
-			windows: [],
+		vi.mocked(api.request.taskPaneState).mockResolvedValue({
+			backend: "tmux",
 			panes: [],
+			activePaneId: null,
+			zoomedPaneId: null,
+			layout: null,
+			layoutPreset: null,
+			capabilities: [],
 		});
 		renderSheet();
 		expect(await screen.findByText("No panes to show.")).toBeInTheDocument();
+	});
+
+	it("does not show a window list (tmux-only concept removed from neutral view)", async () => {
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(TWO_PANE_STATE);
+		renderSheet();
+		await screen.findByLabelText("Go to claude");
+		expect(screen.queryByText("Windows")).toBeNull();
 	});
 });

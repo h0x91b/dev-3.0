@@ -76,15 +76,17 @@ function ScheduleMessageModal({ task, project, dispatch, onClose, initialText }:
 	const { handlePaste, isPasting, pasteKind } = useClipboardPaste(project.id, insertPathAtCursor);
 	const { handleDragOver, handleDragEnter, handleDragLeave, handleDrop, isDragging } = useFileDrop(project.id, insertPathAtCursor, task.id);
 
-	// Load the task's live panes for the (optional) concrete-pane target. Failure
-	// is non-fatal — the default agent target always works.
+	// Load live tmux panes for the (optional) concrete-pane target selector.
+	// tmuxLayout is tmux-only — skip entirely for native tasks so we never fire
+	// a session query against a backend that has no tmux session.
 	useEffect(() => {
+		if (task.terminalBackend === "native") return;
 		let cancelled = false;
 		api.request.tmuxLayout({ taskId: task.id })
 			.then((layout) => { if (!cancelled) setPanes(layout.panes ?? []); })
 			.catch(() => {});
 		return () => { cancelled = true; };
-	}, [task.id]);
+	}, [task.id, task.terminalBackend]);
 
 	// Focus the message field on open so the user can type immediately.
 	useEffect(() => {

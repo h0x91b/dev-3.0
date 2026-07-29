@@ -1,1 +1,0 @@
-Replace four tmux-specific RPCs (tmuxAction, tmuxPaneCount, tmuxKillPane, tmuxPaneNavigate) with three backend-neutral ones (taskPaneState, taskPaneAction, tmuxNewWindow) so the same pane controls work on both tmux and native backends. All renderer callers (TerminalView, TaskTmuxControls, MobilePaneCarousel, ClosePanePicker, PaneZoomBadge, menuRouter) are migrated to the new API.

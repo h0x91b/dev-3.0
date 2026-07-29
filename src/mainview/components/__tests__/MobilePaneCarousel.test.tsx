@@ -41,15 +41,6 @@ function makeState(count: number, activeIndex = 0, zoomed = false, labels?: stri
 	};
 }
 
-const LAYOUT = {
-	sessionName: "dev3-task1",
-	exists: true,
-	windows: [{ index: 0, name: "main", active: true, panes: 2, zoomed: false }],
-	panes: [
-		{ windowIndex: 0, paneId: "%1", active: true, left: 0, top: 0, width: 99, height: 50, command: "claude", title: "Agent" },
-		{ windowIndex: 0, paneId: "%2", active: false, left: 100, top: 0, width: 100, height: 50, command: "zsh", title: "Shell" },
-	],
-};
 
 function renderCarousel(taskId = "task-1") {
 	return render(
@@ -128,15 +119,15 @@ describe("MobilePaneCarousel", () => {
 	});
 
 	it("the pane overview button opens a spatial map that jumps by pane id", async () => {
-		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(2, 0, true));
-		vi.mocked(api.request.tmuxLayout).mockResolvedValue(LAYOUT);
+		// PaneMapSheet now calls taskPaneState (not tmuxLayout)
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(2, 0, true, ["claude", "bash"]));
 		renderCarousel();
 		await waitFor(() => expect(screen.getByLabelText("Pane overview")).toBeInTheDocument());
 
 		await userEvent.click(screen.getByLabelText("Pane overview"));
-		await waitFor(() => expect(api.request.tmuxLayout).toHaveBeenCalledWith({ taskId: "task-1" }));
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalledWith({ taskId: "task-1" }));
 
-		await userEvent.click(await screen.findByLabelText("Go to zsh"));
+		await userEvent.click(await screen.findByLabelText("Go to bash"));
 		await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith(expect.objectContaining({
 			taskId: "task-1",
 			action: { kind: "focus", paneId: "%2" },
