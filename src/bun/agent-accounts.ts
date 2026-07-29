@@ -6,7 +6,8 @@
  *   ~/.dev3.0/agent-accounts/claude/<id>/          — full CLAUDE_CONFIG_DIR per account
  *       .claude.json                               — per-account identity/trust/onboarding
  *       .credentials.json                          — per-account OAuth token (0600)
- *       settings.json, skills/, projects/, ...     — symlinks into ~/.claude (shared)
+ *       everything else                            — symlinks into ~/.claude,
+ *                                                    minus CLAUDE_PRIVATE_ENTRIES
  *   ~/.dev3.0/agent-accounts/codex/<id>/auth.json  — per-account snapshot of ~/.codex/auth.json
  *
  * Swap semantics:
@@ -82,25 +83,33 @@ export function defaultAccountPaths(): AccountPaths {
 	};
 }
 
-/** Entries of ~/.claude shared across accounts via symlinks: user customization
- *  (settings/skills/agents/commands/plugins/output-styles/memory) plus
- *  transcripts+todos so session resume and usage tracking keep working after an
- *  account switch. Anything Claude Code resolves *by name* out of its config dir
- *  MUST be listed here — settings.json is shared, so a name it references
- *  (`outputStyle`) that has no matching directory in the account dir silently
- *  falls back to the default with no warning anywhere.
- *  Credentials and .claude.json stay per-account by design. */
-export const CLAUDE_SHARED_ENTRIES = [
-	"settings.json",
-	"CLAUDE.md",
-	"skills",
-	"agents",
-	"commands",
-	"plugins",
-	"output-styles",
-	"projects",
-	"todos",
+/** Every entry of ~/.claude is symlinked into each account dir EXCEPT these.
+ *  Sharing is the default because it is already the proven behaviour: with the
+ *  switcher off, every agent on the machine runs on ~/.claude directly and
+ *  writes to the same sessions/cache/history. An allow-list instead lost the
+ *  race against Claude Code releases — it silently missed `output-styles`, and
+ *  `workflows`/`routines` were next (cli.js resolves six resource types by name
+ *  out of its config dir). Only what makes an account BE an account stays
+ *  private: its login, its identity, its usage and its org policy. */
+export const CLAUDE_PRIVATE_ENTRIES = [
+	".credentials.json",
+	".claude.json",
+	"stats-cache.json",
+	"policy-limits.json",
+	"statsig",
 ];
+
+/** Safety net for files Claude Code has not shipped yet: never share anything
+ *  credential-shaped, even when CLAUDE_PRIVATE_ENTRIES forgets to name it. */
+const CLAUDE_PRIVATE_PATTERNS = [/credential/i, /^auth/i, /token/i, /\.key$/i];
+
+/** OS junk — no reason to share, just noise in the account dir. */
+const CLAUDE_IGNORED_ENTRIES = [".DS_Store", ".localized"];
+
+export function isPrivateClaudeEntry(entry: string): boolean {
+	if (CLAUDE_PRIVATE_ENTRIES.includes(entry)) return true;
+	return CLAUDE_PRIVATE_PATTERNS.some((pattern) => pattern.test(entry));
+}
 
 /** Entries of ~/.codex shared across per-account CODEX_HOME dirs via symlinks:
  *  user configuration (config.toml) and prompts. auth.json stays per-account (it
@@ -616,17 +625,26 @@ export async function getActiveCodexSessionEnv(
 	return { CODEX_HOME: ensureCodexAccountHome(id, paths) };
 }
 
-/** Create the per-account config dir with symlinks into ~/.claude for shared
- *  state. Idempotent and re-run on every account resolution, so an account
- *  created before an entry joined CLAUDE_SHARED_ENTRIES is backfilled instead of
- *  staying silently half-linked. */
+/** Create the per-account config dir, symlinking every non-private entry of
+ *  ~/.claude into it. Idempotent and re-run on every account resolution, so an
+ *  entry that appeared in ~/.claude after the account was created gets picked up
+ *  instead of staying silently absent. An entry that already exists in the
+ *  account dir is left exactly as it is — never replaced, never deleted, so
+ *  real per-account state written by older builds survives untouched. */
 function scaffoldClaudeAccountDir(dir: string, paths: AccountPaths): void {
 	mkdirSync(dir, { recursive: true });
-	for (const entry of CLAUDE_SHARED_ENTRIES) {
+	let entries: string[] = [];
+	try {
+		entries = readdirSync(paths.claudeHome);
+	} catch (err) {
+		log.warn("Cannot read ~/.claude — account dir gets no shared entries", { error: String(err) });
+	}
+	for (const entry of entries) {
+		if (isPrivateClaudeEntry(entry) || CLAUDE_IGNORED_ENTRIES.includes(entry)) continue;
 		const linkPath = join(dir, entry);
 		try {
 			lstatSync(linkPath);
-			continue; // already scaffolded (re-run after a failed login attempt)
+			continue; // already scaffolded, or real state from an older build
 		} catch {
 			// missing — create below
 		}
