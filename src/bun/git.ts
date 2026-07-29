@@ -941,6 +941,26 @@ function branchName(task: Task): string {
 	return `dev3/task-${shortId(task.id)}`;
 }
 
+async function localBranchExists(projectPath: string, branch: string): Promise<boolean> {
+	return (await run(["git", "rev-parse", "--verify", `refs/heads/${branch}`], projectPath)).ok;
+}
+
+/**
+ * Free the task's own worktree directory before `git worktree add`. The path is
+ * derived from task.id, so dev3 owns it: a leftover means a prior failed cleanup
+ * or a re-run after the task was moved back to To Do. Stderr-driven retries do
+ * not work here — a failed add still creates the directory as a side effect.
+ */
+async function reclaimStaleWorktreeDir(project: Project, wtPath: string): Promise<void> {
+	if (!existsSync(wtPath)) return;
+	log.warn("Reclaiming leftover worktree directory", { wtPath, projectPath: project.path });
+	await run(["git", "worktree", "remove", "--force", wtPath], project.path);
+	if (existsSync(wtPath)) {
+		rmSync(wtPath, { recursive: true, force: true });
+	}
+	await run(["git", "worktree", "prune"], project.path);
+}
+
 export async function createWorktree(
 	project: Project,
 	task: Task,
@@ -958,18 +978,22 @@ export async function createWorktree(
 
 	if (existingBranch && variantBranchName) {
 		// Multi-variant mode: create a new branch from the existing branch's HEAD
-		const resolvedBase = existingBranch.startsWith("origin/") ? existingBranch : existingBranch;
+		const resolvedBase = existingBranch;
 		log.info("Creating variant worktree from existing branch", {
 			wtPath, variantBranchName, base: resolvedBase, taskId: task.id,
 		});
 
+		await reclaimStaleWorktreeDir(project, wtPath);
+		// A leftover variant branch (re-run of a task that kept its branch) is
+		// checked out instead of recreated, so its commits survive the re-run.
+		const variantAddArgs = await localBranchExists(project.path, variantBranchName)
+			? ["git", "worktree", "add", wtPath, variantBranchName]
+			: ["git", "worktree", "add", "-b", variantBranchName, wtPath, resolvedBase];
+
 		const result = await measureGitStep(
 			"createWorktree.variant.worktreeAdd",
 			{ taskId: task.id.slice(0, 8), wtPath, variantBranchName, base: resolvedBase },
-			() => run(
-				["git", "worktree", "add", "-b", variantBranchName, wtPath, resolvedBase],
-				project.path,
-			),
+			() => run(variantAddArgs, project.path),
 		);
 
 		if (!result.ok) {
@@ -1001,6 +1025,8 @@ export async function createWorktree(
 			wtPath, existingBranch, resolvedBranch, isRemoteRef, taskId: task.id,
 		});
 
+		await reclaimStaleWorktreeDir(project, wtPath);
+
 		const result = await measureGitStep(
 			"createWorktree.existing.worktreeAdd",
 			{ taskId: task.id.slice(0, 8), wtPath, resolvedBranch, isRemoteRef },
@@ -1012,8 +1038,13 @@ export async function createWorktree(
 
 		if (!result.ok) {
 			const isAlreadyCheckedOut = result.stderr.includes("already checked out") || result.stderr.includes("already used by worktree");
+			// `--track -b` only helps when the local branch is still missing. With the
+			// branch already on disk it fails with a misleading "a branch named X
+			// already exists" that hides the real reason the first add failed.
+			const localBranchMissing = isRemoteRef
+				&& !(await localBranchExists(project.path, resolvedBranch));
 
-			if (isRemoteRef && !isAlreadyCheckedOut) {
+			if (isRemoteRef && localBranchMissing && !isAlreadyCheckedOut) {
 				// Remote branch without a local tracking branch yet — create one
 				log.info("Retrying with tracking branch creation", { existingBranch });
 				const trackResult = await measureGitStep(
@@ -1127,41 +1158,13 @@ export async function createWorktree(
 
 	log.info("Creating worktree", { wtPath, branch, baseBranch, resolvedBase, taskId: task.id, taskDir: tDir });
 
-	// Proactively reclaim stale leftovers from a prior failed cleanup before
-	// invoking `git worktree add`. Stderr-driven retries don't work here: the
-	// first attempt creates the worktree directory as a side effect even when
-	// it fails on the branch check, so a second attempt then trips on
-	// "directory already exists". The branch and the worktree path are both
-	// owned by dev3 (derived from task.id), so reclaiming them is safe.
-	const dirExistsBeforeAdd = existsSync(wtPath);
-	const branchExistsBeforeAdd = (await run(
-		["git", "rev-parse", "--verify", `refs/heads/${branch}`],
-		project.path,
-	)).ok;
-
-	if (dirExistsBeforeAdd || branchExistsBeforeAdd) {
-		log.warn("Found stale leftovers from prior failed cleanup, reclaiming", {
-			taskId: task.id.slice(0, 8),
-			wtPath,
-			branch,
-			dirExists: dirExistsBeforeAdd,
-			branchExists: branchExistsBeforeAdd,
-		});
-
-		if (dirExistsBeforeAdd) {
-			// Try `git worktree remove` first (handles the case where the path
-			// is still registered as a worktree); fall back to plain rmSync if
-			// the directory remains.
-			await run(["git", "worktree", "remove", "--force", wtPath], project.path);
-			if (existsSync(wtPath)) {
-				rmSync(wtPath, { recursive: true, force: true });
-			}
-			await run(["git", "worktree", "prune"], project.path);
-		}
-
-		if (branchExistsBeforeAdd) {
-			await run(["git", "branch", "-D", branch], project.path);
-		}
+	// Reclaim stale leftovers from a prior failed cleanup before `git worktree
+	// add`. Both the path and the `dev3/task-*` branch are derived from task.id,
+	// so dev3 owns them and recreating them from the base branch is safe.
+	await reclaimStaleWorktreeDir(project, wtPath);
+	if (await localBranchExists(project.path, branch)) {
+		log.warn("Reclaiming leftover task branch", { taskId: task.id.slice(0, 8), branch });
+		await run(["git", "branch", "-D", branch], project.path);
 	}
 
 	const result = await measureGitStep(

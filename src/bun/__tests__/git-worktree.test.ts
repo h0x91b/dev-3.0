@@ -432,6 +432,53 @@ describe("createWorktree", () => {
 		g(`git worktree remove --force "${result.worktreePath}"`, repo.local);
 	});
 
+	it("re-runs a task on a remote branch whose worktree and local branch survived", async () => {
+		// Regression: a task launched on origin/<branch> that is moved back to To Do
+		// keeps its worktree and local branch. Re-running it hit "'<path>' already
+		// exists", retried with `--track -b`, and died on "a branch named X already
+		// exists" — the task could never be launched again.
+		g("git checkout -b verif/evidence", repo.local);
+		makeTaskCommits(repo.local);
+		g("git push origin verif/evidence", repo.local);
+		g("git checkout main", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const first = await createWorktree(project, task, "origin/verif/evidence");
+		expect(first.branchName).toBe("verif/evidence");
+
+		// Move back to To Do leaves the worktree and the branch behind, so the
+		// second launch starts from exactly that state.
+		const second = await createWorktree(project, task, "origin/verif/evidence");
+
+		expect(existsSync(second.worktreePath)).toBe(true);
+		expect(second.branchName).toBe("verif/evidence");
+		expect(second.worktreePath).toBe(first.worktreePath);
+
+		g(`git worktree remove --force "${second.worktreePath}"`, repo.local);
+	});
+
+	it("re-runs a variant task whose worktree and variant branch survived", async () => {
+		g("git checkout -b feature/base", repo.local);
+		makeTaskCommits(repo.local);
+		g("git checkout main", repo.local);
+
+		const project = makeProject(repo.local);
+		const task = makeTask();
+
+		const first = await createWorktree(project, task, "feature/base", "feature/base-v1");
+		expect(first.branchName).toBe("feature/base-v1");
+
+		const second = await createWorktree(project, task, "feature/base", "feature/base-v1");
+
+		expect(existsSync(second.worktreePath)).toBe(true);
+		expect(second.branchName).toBe("feature/base-v1");
+
+		g(`git worktree remove --force "${second.worktreePath}"`, repo.local);
+		g("git branch -D feature/base-v1", repo.local);
+	});
+
 	it("creates default task branch when no existing branch specified", async () => {
 		const project = makeProject(repo.local);
 		const task = makeTask();
