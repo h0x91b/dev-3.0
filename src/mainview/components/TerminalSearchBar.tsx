@@ -9,7 +9,7 @@ export interface TerminalSearchBarHandle {
 }
 
 interface TerminalSearchBarProps {
-	/** PTY session key — a task id or `project-<id>` (same key tmuxAction uses). */
+	/** PTY session key — a task id or `project-<id>`. */
 	taskId: string;
 	onClose: () => void;
 	/**

@@ -12,7 +12,7 @@ import Tooltip from "./Tooltip";
  * leaves no obvious way back. This badge surfaces the zoomed state and offers a
  * one-tap un-zoom.
  *
- * It only ever READS zoom (a read-only `tmuxPaneNavigate` poll) — it never
+ * It only ever READS zoom (a read-only `taskPaneState` poll) — it never
  * mutates the shared view unless the user taps it. We deliberately do NOT
  * auto-un-zoom on entry: that would fight a deliberate desktop `⌃B z` and break
  * a phone client attached to the same session (see decision 091).
