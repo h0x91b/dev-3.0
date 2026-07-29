@@ -21,11 +21,10 @@ const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests_
 
 // Since seq 1311 the coordinator has production callers:
 //  - native-backend.ts: the coordinator-backed terminal-backend implementation
-//  - native-task-panes.ts: the product-facing multi-pane runtime
 //  - task-terminal-backend.ts: injects the host launcher into coordinator deps
-// All other callers must remain test-only.
+// native-task-panes.ts routes ALL coordinator access through native-backend.ts
+// (single-backend invariant, fix #1 of PR1 review) — it is intentionally absent.
 const SANCTIONED_PRODUCTION_CALLERS = [
-	"bun/native-task-panes.ts",
 	"bun/task-terminal-backend.ts",
 	"bun/terminal-backend/native-backend.ts",
 ];

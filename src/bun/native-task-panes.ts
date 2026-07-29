@@ -1,27 +1,31 @@
 /**
  * Product-facing native multi-pane runtime for one task (seq 1311, PR1).
  *
- * Owns a process-wide map of taskId → live coordinator, and exposes the
- * stable pane-set lifecycle the pty-server layer needs: start, split, close,
- * focus, geometry, stop, and recover.
+ * ONE owner: a single module-level NativeTerminalBackend instance holds every
+ * coordinator. All operations go through it — create, recover/describe, split,
+ * focus, close, cleanup. No NativeMultipaneCoordinator is constructed here
+ * directly; native-only details (pids, SplitTree, geometry publish) are exposed
+ * via native-only methods on the concrete NativeTerminalBackend class.
  *
- * Every operation goes through the terminal-backend seam where the contract
- * covers it; direct coordinator calls are used for coordinator-native
- * operations (geometry, layout) that have no seam equivalent.
+ * Per-task context (cwd + env) is kept in `contexts` so a split pane inherits
+ * the task's working directory and environment instead of inventing /tmp or an
+ * empty env. The context is populated on start and on recover; splitNativeTaskPane
+ * fails loudly when it is absent.
  *
- * Launch dialect re-derived from task data, not persisted separately — a
- * fresh app process after restart calls recoverNativeTaskPanes, which reads
- * the coordinator record to discover existing panes and re-connects without
- * spawning.
+ * Never touches tmux. Never constructs a second backend or coordinator.
  */
 
 import { createLogger } from "./logger";
-import { NativeMultipaneCoordinator } from "./native-terminal-multipane/coordinator";
 import type { SplitTree } from "../shared/split-tree";
 import { serializeSplitTree } from "../shared/split-tree";
 import { readRecord } from "./native-terminal-registry/record";
 import { stop as stopSession } from "./native-terminal-registry/registry";
-import { nativeTaskSessionId, nativeTaskTerminalBackend, type TerminalLaunchSpec } from "./task-terminal-backend";
+import {
+	NativeTerminalBackend,
+	nativeTaskSessionId,
+	nativeTaskTerminalBackend,
+	type TerminalLaunchSpec,
+} from "./task-terminal-backend";
 import {
 	defineShellLaunchSpec,
 	defaultNativeShellLaunchSpec,
@@ -60,10 +64,32 @@ export interface StartNativeTaskPanesSpec {
 	rows: number;
 }
 
+export interface TaskPaneContext {
+	cwd: string;
+	env: Record<string, string>;
+}
+
 // ── Internal state ────────────────────────────────────────────────────────────
 
-/** Live coordinators for running tasks. Keyed by taskId. */
-const liveCoordinators = new Map<string, NativeMultipaneCoordinator>();
+/**
+ * ONE backend instance for the process lifetime. Holds all coordinator
+ * instances; prevents double-ownership of on-disk coordinator records.
+ */
+let _backend: NativeTerminalBackend | null = null;
+
+function getBackend(): NativeTerminalBackend {
+	if (!_backend) _backend = nativeTaskTerminalBackend();
+	return _backend;
+}
+
+/** @internal Exposed for tests only. Resets the singleton so tests get a fresh world. */
+export function _resetBackendForTests(): void {
+	_backend = null;
+	contexts.clear();
+}
+
+/** Task cwd + env, populated on start or recover, consumed by split. */
+const contexts = new Map<string, TaskPaneContext>();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,31 +97,14 @@ function coordinatorId(taskId: string): string {
 	return nativeTaskSessionId(taskId);
 }
 
-function makePaneLaunchSpec(
-	cwd: string,
-	env: Record<string, string>,
-	launch: TerminalLaunchSpec,
-	cols: number,
-	rows: number,
-) {
-	const shellLaunch = defineShellLaunchSpec({
-		executable: launch.executable,
-		argv: [...launch.argv],
-		cwd,
-		env,
-	});
-	return { launch: shellLaunch, cols, rows };
-}
-
-function defaultPaneLaunchSpec(cwd: string, env: Record<string, string>, cols: number, rows: number) {
-	const defaults = defaultNativeShellLaunchSpec({ platform: process.platform, cwd, env: process.env });
-	const shellLaunch = defineShellLaunchSpec({ ...defaults, env });
-	return { launch: shellLaunch, cols, rows };
-}
-
-async function buildState(taskId: string, coordinator: NativeMultipaneCoordinator): Promise<NativeTaskPanesState> {
-	const paneSnapshots = await coordinator.listPanes();
-	const panes: NativeTaskPane[] = paneSnapshots.map((snap) => ({
+async function buildState(taskId: string): Promise<NativeTaskPanesState> {
+	const backend = getBackend();
+	const coordId = coordinatorId(taskId);
+	const [snapshots, layout] = await Promise.all([
+		backend.listPanes(coordId),
+		backend.paneLayout(coordId),
+	]);
+	const panes: NativeTaskPane[] = (snapshots ?? []).map((snap) => ({
 		paneId: snap.paneId,
 		sessionId: snap.sessionId,
 		hostPid: snap.hostPid,
@@ -107,8 +116,8 @@ async function buildState(taskId: string, coordinator: NativeMultipaneCoordinato
 	return {
 		taskId,
 		panes,
-		layout: serializeSplitTree(coordinator.layout),
-		activePaneId: coordinator.layout.activePaneId,
+		layout: layout ? serializeSplitTree(layout) : "",
+		activePaneId: layout?.activePaneId ?? "",
 	};
 }
 
@@ -123,7 +132,7 @@ async function sweepLegacySingleViewSession(taskId: string): Promise<void> {
 	const legacyId = nativeTaskSessionId(taskId);
 	const record = readRecord(legacyId);
 	if (!record) return;
-	// A pane-0 session id from the multi-pane era would not match the bare
+	// A pane session id from the multi-pane era would not match the bare
 	// coordinator id — the legacy id has no "-pane-N" suffix. If we find one
 	// that has the bare id, it is pre-migration.
 	if (record.sessionId !== legacyId) return;
@@ -142,85 +151,122 @@ async function sweepLegacySingleViewSession(taskId: string): Promise<void> {
 export async function startNativeTaskPanes(spec: StartNativeTaskPanesSpec): Promise<NativeTaskPanesState> {
 	const { taskId, cwd, env, launch, cols, rows } = spec;
 	const coordId = coordinatorId(taskId);
-	const backend = nativeTaskTerminalBackend();
+	const backend = getBackend();
 
 	log.info("Starting native task panes", { taskId: taskId.slice(0, 8), coordId });
 
 	// Sweep any orphaned pre-multipane session before creating the coordinator.
 	await sweepLegacySingleViewSession(taskId);
 
-	await backend.openSession({
-		id: coordId,
-		cwd,
-		env,
-		launch,
-		size: { cols, rows },
-	});
+	await backend.openSession({ id: coordId, cwd, env, launch, size: { cols, rows } });
 
-	// Recover the coordinator the backend just created so we have a live handle.
-	const coordinator = await NativeMultipaneCoordinator.recover(coordId);
-	if (!coordinator) throw new Error(`coordinator ${coordId} vanished immediately after creation`);
-	liveCoordinators.set(taskId, coordinator);
+	// Store context for split inheritance before reading the state.
+	contexts.set(taskId, { cwd, env });
 
-	const paneState = await buildState(taskId, coordinator);
+	const state = await buildState(taskId);
 	log.info("Native task panes started", {
 		taskId: taskId.slice(0, 8),
-		paneCount: paneState.panes.length,
-		firstPaneId: paneState.panes[0]?.paneId,
+		paneCount: state.panes.length,
+		firstPaneId: state.panes[0]?.paneId,
 	});
-	return paneState;
+	return state;
 }
 
 /**
  * Rediscover an existing pane set after an app restart. Never spawns.
  * Returns `null` when no coordinator record exists for this task.
+ *
+ * `context` carries the cwd/env needed for subsequent `splitNativeTaskPane`
+ * calls; pass it whenever the caller has the information (e.g. pty-server on
+ * reattach). Without it, splits after a fresh-process recover will fail loudly.
  */
-export async function recoverNativeTaskPanes(taskId: string): Promise<NativeTaskPanesState | null> {
+export async function recoverNativeTaskPanes(
+	taskId: string,
+	context?: TaskPaneContext,
+): Promise<NativeTaskPanesState | null> {
+	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
-	const existing = liveCoordinators.get(taskId);
-	if (existing) return buildState(taskId, existing);
+	const sessionState = await backend.describeSession(coordId);
+	if (!sessionState) return null;
 
-	const coordinator = await NativeMultipaneCoordinator.recover(coordId);
-	if (!coordinator) return null;
-	liveCoordinators.set(taskId, coordinator);
-	return buildState(taskId, coordinator);
+	// Store context when provided; keep any previously stored context otherwise.
+	if (context) contexts.set(taskId, context);
+
+	return buildState(taskId);
 }
 
 /** Current pane set state; returns `null` when no live coordinator exists. */
 export async function nativeTaskPanesState(taskId: string): Promise<NativeTaskPanesState | null> {
-	const coordinator = liveCoordinators.get(taskId);
-	if (!coordinator) return null;
-	return buildState(taskId, coordinator);
+	const backend = getBackend();
+	const coordId = coordinatorId(taskId);
+	const sessionState = await backend.describeSession(coordId);
+	if (!sessionState) return null;
+	return buildState(taskId);
 }
 
-/** Split an existing pane, spawning an independent shell. */
+/**
+ * Split an existing pane, spawning a new independent shell.
+ * Inherits cwd and env from the context stored at start/recover time.
+ * Fails loudly when no context is available — do not invent /tmp defaults.
+ */
 export async function splitNativeTaskPane(
 	taskId: string,
 	fromPaneId: string,
 	orientation: SplitOrientation,
 	spec?: { cwd?: string; env?: Record<string, string>; launch?: TerminalLaunchSpec; cols?: number; rows?: number },
 ): Promise<{ paneId: string; state: NativeTaskPanesState }> {
-	const coordinator = liveCoordinators.get(taskId);
-	if (!coordinator) throw new Error(`no live native pane set for task ${taskId.slice(0, 8)}`);
-
-	// Inherit defaults from first pane's record when not explicitly supplied.
-	const firstPaneSessionId = coordinator.sessionIdFor(coordinator.paneIds()[0]!);
-	const firstRecord = readRecord(firstPaneSessionId);
-	const cwd = spec?.cwd ?? firstRecord?.shell.command[0] ?? "/tmp";
-	const env = spec?.env ?? {};
-	const cols = spec?.cols ?? firstRecord?.cols ?? 80;
-	const rows = spec?.rows ?? firstRecord?.rows ?? 24;
-
-	let paneSpec: { launch: ReturnType<typeof defineShellLaunchSpec>; cols?: number; rows?: number };
-	if (spec?.launch) {
-		paneSpec = makePaneLaunchSpec(cwd, env, spec.launch, cols, rows);
-	} else {
-		paneSpec = defaultPaneLaunchSpec(cwd, env, cols, rows);
+	const ctx = contexts.get(taskId);
+	if (!ctx) {
+		throw new Error(
+			`splitNativeTaskPane: no cwd/env context for task ${taskId.slice(0, 8)} — ` +
+				"call startNativeTaskPanes or recoverNativeTaskPanes(taskId, { cwd, env }) first",
+		);
 	}
 
-	const newPaneId = await coordinator.split(fromPaneId, orientation, paneSpec);
-	const state = await buildState(taskId, coordinator);
-	return { paneId: newPaneId, state };
+	const cwd = spec?.cwd ?? ctx.cwd;
+	const env = spec?.env ?? ctx.env;
+
+	// Derive geometry from the source pane's record; fall back to 80×24 and log.
+	const backend = getBackend();
+	const coordId = coordinatorId(taskId);
+	let cols = spec?.cols;
+	let rows = spec?.rows;
+	if (!cols || !rows) {
+		const snapshots = await backend.listPanes(coordId);
+		const sourceSnap = snapshots?.find((s) => s.paneId === fromPaneId);
+		if (sourceSnap) {
+			cols ??= sourceSnap.cols;
+			rows ??= sourceSnap.rows;
+		} else {
+			log.warn("splitNativeTaskPane: source pane record unreadable; using 80×24 fallback", {
+				taskId: taskId.slice(0, 8),
+				fromPaneId,
+			});
+			cols ??= 80;
+			rows ??= 24;
+		}
+	}
+
+	// Split through the contract; the default shell runs in the task's cwd/env.
+	let viewSpec: { cwd: string; env: Record<string, string>; launch?: TerminalLaunchSpec; orientation: SplitOrientation };
+	if (spec?.launch) {
+		viewSpec = { cwd, env, launch: spec.launch, orientation };
+	} else {
+		// Default shell: use the platform default in the task's cwd/env.
+		const defaults = defaultNativeShellLaunchSpec({ platform: process.platform, cwd, env: process.env });
+		const shellLaunch = defineShellLaunchSpec({ ...defaults, env });
+		// Pass as TerminalLaunchSpec so the backend builds the right ShellLaunchSpec.
+		viewSpec = {
+			cwd,
+			env,
+			launch: { executable: shellLaunch.executable, argv: shellLaunch.argv },
+			orientation,
+		};
+	}
+
+	const second = await backend.splitView(coordId, fromPaneId, viewSpec);
+	const state = await buildState(taskId);
+	return { paneId: second.id, state };
 }
 
 /** Close a single pane. Closing the last pane tears the pane set down. */
@@ -228,70 +274,59 @@ export async function closeNativeTaskPane(
 	taskId: string,
 	paneId: string,
 ): Promise<{ sessionTornDown: boolean; state: NativeTaskPanesState | null }> {
-	const coordinator = liveCoordinators.get(taskId);
-	if (!coordinator) throw new Error(`no live native pane set for task ${taskId.slice(0, 8)}`);
-
-	const result = await coordinator.closePane(paneId);
-	if (result.sessionTornDown) {
-		liveCoordinators.delete(taskId);
+	const backend = getBackend();
+	const coordId = coordinatorId(taskId);
+	await backend.closeView(coordId, paneId);
+	const after = await backend.describeSession(coordId);
+	if (!after) {
+		contexts.delete(taskId);
 		return { sessionTornDown: true, state: null };
 	}
-	const state = await buildState(taskId, coordinator);
-	return { sessionTornDown: false, state };
+	return { sessionTornDown: false, state: await buildState(taskId) };
 }
 
 /** Publish a geometry-only layout change (same pane set, new ratios/shape). */
 export async function setNativeTaskPaneLayout(taskId: string, tree: SplitTree): Promise<NativeTaskPanesState> {
-	const coordinator = liveCoordinators.get(taskId);
-	if (!coordinator) throw new Error(`no live native pane set for task ${taskId.slice(0, 8)}`);
-	await coordinator.publishGeometry(tree);
-	return buildState(taskId, coordinator);
+	const backend = getBackend();
+	const coordId = coordinatorId(taskId);
+	await backend.publishPaneGeometry(coordId, tree);
+	return buildState(taskId);
 }
 
 /** Set the shared active pane (shared focus, not client-local). */
 export async function focusNativeTaskPane(taskId: string, paneId: string): Promise<NativeTaskPanesState> {
-	const coordinator = liveCoordinators.get(taskId);
-	if (!coordinator) throw new Error(`no live native pane set for task ${taskId.slice(0, 8)}`);
-	const backend = nativeTaskTerminalBackend();
+	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
 	await backend.focusView(coordId, paneId);
-	// Re-read after the backend published the new active pane.
-	const updated = await NativeMultipaneCoordinator.recover(coordId);
-	if (updated) liveCoordinators.set(taskId, updated);
-	return buildState(taskId, liveCoordinators.get(taskId) ?? coordinator);
+	return buildState(taskId);
 }
 
 /**
- * Tear down every pane in a task's pane set and verify they are gone.
- * Throws when any pane is still present after teardown.
+ * Tear down every pane in a task's pane set and VERIFY they are gone.
+ * Always verifies — an unconfirmed teardown throws whether or not this process
+ * had a cached coordinator. A still-present coordinator would make the next
+ * startNativeTaskPanes fail with session-exists.
  */
 export async function stopNativeTaskPanes(taskId: string): Promise<void> {
-	const coordinator = liveCoordinators.get(taskId);
-	liveCoordinators.delete(taskId);
-
-	const backend = nativeTaskTerminalBackend();
+	const backend = getBackend();
 	const coordId = coordinatorId(taskId);
+	contexts.delete(taskId);
 	await backend.cleanupSession(coordId, { ignoreMissing: true });
-
-	// Verify the coordinator record is gone.
-	if (coordinator) {
-		const after = await NativeMultipaneCoordinator.recover(coordId);
-		if (after) {
-			throw new Error(
-				`native pane set for task ${taskId.slice(0, 8)} is still present after teardown — some panes did not exit`,
-			);
-		}
+	const after = await backend.describeSession(coordId);
+	if (after !== null) {
+		throw new Error(
+			`native pane set for task ${taskId.slice(0, 8)} is still present after teardown — some panes did not exit`,
+		);
 	}
 	log.info("Native task panes stopped", { taskId: taskId.slice(0, 8) });
 }
 
-/** True when a live coordinator with at least one owned pane exists for this task. */
+/**
+ * True when the coordinator record exists and contains at least one owned pane.
+ * Read-only: does NOT register or cache the recovered coordinator as a side effect.
+ */
 export async function nativeTaskPanesAlive(taskId: string): Promise<boolean> {
-	const coordinator = liveCoordinators.get(taskId);
-	if (!coordinator) {
-		const state = await recoverNativeTaskPanes(taskId);
-		return state !== null && state.panes.some((p) => p.alive);
-	}
-	const panes = await coordinator.listPanes();
-	return panes.some((p) => p.state !== "dead");
+	// describeSession always calls recover() under the hood (decision 169),
+	// which reconciles dead panes — a non-null result means ≥1 pane is alive.
+	return (await getBackend().describeSession(coordinatorId(taskId))) !== null;
 }

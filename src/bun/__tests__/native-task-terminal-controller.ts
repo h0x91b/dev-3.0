@@ -43,6 +43,7 @@ async function reattach(taskId: string, marker: string): Promise<void> {
 	const decoder = new TextDecoder();
 	let closed = false;
 
+	// No context needed here — this controller only binds, never splits.
 	const panesState = await recoverNativeTaskPanes(taskId);
 	const firstPane = panesState?.panes[0];
 
