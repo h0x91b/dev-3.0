@@ -342,6 +342,12 @@ const {
 	runCleanupScript,
 	portableReadKey,
 } = await import("../rpc-handlers");
+const {
+	tmuxAction,
+	tmuxKillPane,
+	tmuxPaneCount,
+	tmuxPaneNavigate,
+} = await import("../rpc-handlers/tmux-pty");
 const { _resetLifecycleActorsForTest } = await import("../lifecycle/service");
 
 beforeEach(async () => {
@@ -7096,7 +7102,7 @@ describe("handlers.pushTask", () => {
 // handlers.runDevServer
 // ================================================================
 
-describe("handlers.tmuxKillPane", () => {
+describe("tmuxKillPane", () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	function killPaneCall() {
@@ -7108,7 +7114,7 @@ describe("handlers.tmuxKillPane", () => {
 			.mockReturnValueOnce({ stdout: "%1\n%2\n", stderr: new Response(""), exited: Promise.resolve(0) }) // count
 			.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) }); // kill-pane
 
-		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "%2" });
+		const res = await tmuxKillPane({ taskId: "task-1", paneId: "%2" });
 
 		expect(res).toEqual({ killed: true });
 		const kill = killPaneCall();
@@ -7119,7 +7125,7 @@ describe("handlers.tmuxKillPane", () => {
 	it("refuses to kill the last pane without force", async () => {
 		mockSpawn.mockReturnValueOnce({ stdout: "%1\n", stderr: new Response(""), exited: Promise.resolve(0) }); // count → 1
 
-		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "%1" });
+		const res = await tmuxKillPane({ taskId: "task-1", paneId: "%1" });
 
 		expect(res).toEqual({ killed: false });
 		expect(killPaneCall()).toBeUndefined();
@@ -7128,7 +7134,7 @@ describe("handlers.tmuxKillPane", () => {
 	it("force-kills the last pane (bypasses the count guard)", async () => {
 		mockSpawn.mockReturnValue({ stdout: "", stderr: new Response(""), exited: Promise.resolve(0) });
 
-		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "%1", force: true });
+		const res = await tmuxKillPane({ taskId: "task-1", paneId: "%1", force: true });
 
 		expect(res).toEqual({ killed: true });
 		expect(killPaneCall()).toBeDefined();
@@ -7137,7 +7143,7 @@ describe("handlers.tmuxKillPane", () => {
 	});
 
 	it("rejects a malformed pane id without spawning tmux", async () => {
-		const res = await handlers.tmuxKillPane({ taskId: "task-1", paneId: "; rm -rf /" });
+		const res = await tmuxKillPane({ taskId: "task-1", paneId: "; rm -rf /" });
 
 		expect(res).toEqual({ killed: false });
 		expect(mockSpawn).not.toHaveBeenCalled();
@@ -7715,10 +7721,10 @@ describe("handlers.listTmuxSessions", () => {
 });
 
 // ================================================================
-// handlers.tmuxAction
+// tmuxAction
 // ================================================================
 
-describe("handlers.tmuxAction", () => {
+describe("tmuxAction", () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it("sends split-window -v for splitH action", async () => {
@@ -7728,7 +7734,7 @@ describe("handlers.tmuxAction", () => {
 			exited: Promise.resolve(0),
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "splitH" });
 		// -c must carry a session_path fallback: tmux 3.7 on macOS sometimes
 		// reports an empty pane_current_path (unreadable foreground cwd), and a
 		// bare #{pane_current_path} then expands to "" — tmux falls back to the
@@ -7746,7 +7752,7 @@ describe("handlers.tmuxAction", () => {
 			exited: Promise.resolve(0),
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "splitV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["tmux", "-L", "dev3", "split-window", "-h", "-t", "dev3-abcd1234", "-c", "#{?pane_current_path,#{pane_current_path},#{session_path}}"],
 			expect.any(Object),
@@ -7760,7 +7766,7 @@ describe("handlers.tmuxAction", () => {
 			exited: Promise.resolve(0),
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "layoutEvenH" });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "layoutEvenH" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["tmux", "-L", "dev3", "select-layout", "-t", "dev3-abcd1234", "even-vertical"],
 			expect.any(Object),
@@ -7774,7 +7780,7 @@ describe("handlers.tmuxAction", () => {
 			exited: Promise.resolve(0),
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "layoutEvenV" });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "layoutEvenV" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["tmux", "-L", "dev3", "select-layout", "-t", "dev3-abcd1234", "even-horizontal"],
 			expect.any(Object),
@@ -7788,7 +7794,7 @@ describe("handlers.tmuxAction", () => {
 			exited: Promise.resolve(0),
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" });
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["tmux", "-L", "dev3", "resize-pane", "-Z", "-t", "dev3-abcd1234"],
 			expect.any(Object),
@@ -7803,7 +7809,7 @@ describe("handlers.tmuxAction", () => {
 		});
 
 		await expect(
-			handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" }),
+			tmuxAction({ taskId: "abcd1234-full-id", action: "zoom" }),
 		).rejects.toThrow("tmux zoom failed");
 	});
 
@@ -7824,7 +7830,7 @@ describe("handlers.tmuxAction", () => {
 			};
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
 
 		const spawnCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
 		expect(spawnCalls.some((a) => a.includes("kill-pane"))).toBe(false);
@@ -7853,7 +7859,7 @@ describe("handlers.tmuxAction", () => {
 			};
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "killPane" });
 
 		expect(mockSpawn).toHaveBeenCalledWith(
 			["tmux", "-L", "dev3", "kill-pane", "-t", "dev3-abcd1234"],
@@ -7877,7 +7883,7 @@ describe("handlers.tmuxAction", () => {
 			};
 		});
 
-		await handlers.tmuxAction({ taskId: "abcd1234-full-id", action: "killPane", force: true });
+		await tmuxAction({ taskId: "abcd1234-full-id", action: "killPane", force: true });
 
 		const spawnCalls = mockSpawn.mock.calls.map((c) => c[0] as string[]);
 		expect(spawnCalls.some((a) => a.includes("list-panes"))).toBe(false);
@@ -7886,10 +7892,10 @@ describe("handlers.tmuxAction", () => {
 });
 
 // ================================================================
-// handlers.tmuxPaneCount
+// tmuxPaneCount
 // ================================================================
 
-describe("handlers.tmuxPaneCount", () => {
+describe("tmuxPaneCount", () => {
 	beforeEach(() => vi.clearAllMocks());
 
 	it("returns the number of panes reported by list-panes", async () => {
@@ -7908,7 +7914,7 @@ describe("handlers.tmuxPaneCount", () => {
 			};
 		});
 
-		const result = await handlers.tmuxPaneCount({ taskId: "abcd1234-full-id" });
+		const result = await tmuxPaneCount({ taskId: "abcd1234-full-id" });
 		expect(result).toEqual({ count: 3 });
 	});
 
@@ -7928,7 +7934,7 @@ describe("handlers.tmuxPaneCount", () => {
 			};
 		});
 
-		const result = await handlers.tmuxPaneCount({ taskId: "abcd1234-full-id" });
+		const result = await tmuxPaneCount({ taskId: "abcd1234-full-id" });
 		expect(result).toEqual({ count: 1 });
 	});
 
@@ -7939,7 +7945,7 @@ describe("handlers.tmuxPaneCount", () => {
 			exited: Promise.resolve(1),
 		}));
 
-		const result = await handlers.tmuxPaneCount({ taskId: "abcd1234-full-id" });
+		const result = await tmuxPaneCount({ taskId: "abcd1234-full-id" });
 		expect(result).toEqual({ count: 0 });
 	});
 });
@@ -11785,9 +11791,9 @@ describe("handlers.getProjectPtyUrl — virtual board guard", () => {
 
 
 // ----------------------------------------------------------------------------
-// handlers.tmuxPaneNavigate (narrow-viewport pane carousel)
+// tmuxPaneNavigate (narrow-viewport pane carousel)
 // ----------------------------------------------------------------------------
-describe("handlers.tmuxPaneNavigate", () => {
+describe("tmuxPaneNavigate", () => {
 	const TASK_ID = "abcd1234-0000-0000-0000-000000000000";
 	const SESSION = "dev3-abcd1234";
 	const SEP = "\t";
@@ -11819,7 +11825,7 @@ describe("handlers.tmuxPaneNavigate", () => {
 
 	it("zoom-on-entry: zooms a multi-pane window that is not yet zoomed", async () => {
 		mockLayouts([lay(row("%1", "1", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "0", "0", "zsh"))]);
-		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
+		const res = await tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
 		expect(res).toEqual({ count: 3, activeIndex: 0, zoomed: true, labels: ["claude", "bash", "zsh"] });
 		expect(called("resize-pane -Z")).toBe(true);
 		expect(called("select-pane")).toBe(false);
@@ -11827,7 +11833,7 @@ describe("handlers.tmuxPaneNavigate", () => {
 
 	it("labels prefer an explicitly-set pane title over the command", async () => {
 		mockLayouts([lay(row("%1", "1", "0", "node", "Agent"), row("%2", "0", "0", "node", "Dev Server"))]);
-		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
+		const res = await tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
 		expect(res.labels).toEqual(["Agent", "Dev Server"]);
 	});
 
@@ -11836,7 +11842,7 @@ describe("handlers.tmuxPaneNavigate", () => {
 			lay(row("%1", "1", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "0", "0", "zsh")), // before
 			lay(row("%1", "0", "0", "claude"), row("%2", "1", "0", "bash"), row("%3", "0", "0", "zsh")), // after select (active moved, auto-unzoomed)
 		]);
-		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, step: "next", zoom: true });
+		const res = await tmuxPaneNavigate({ taskId: TASK_ID, step: "next", zoom: true });
 		expect(res).toEqual({ count: 3, activeIndex: 1, zoomed: true, labels: ["claude", "bash", "zsh"] });
 		expect(called(`select-pane -t ${SESSION}:.+`)).toBe(true);
 		expect(called("resize-pane -Z")).toBe(true);
@@ -11847,14 +11853,14 @@ describe("handlers.tmuxPaneNavigate", () => {
 			lay(row("%1", "1", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "0", "0", "zsh")),
 			lay(row("%1", "0", "0", "claude"), row("%2", "0", "0", "bash"), row("%3", "1", "0", "zsh")),
 		]);
-		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, index: 2, zoom: true });
+		const res = await tmuxPaneNavigate({ taskId: TASK_ID, index: 2, zoom: true });
 		expect(res.activeIndex).toBe(2);
 		expect(called("select-pane -t %3")).toBe(true);
 	});
 
 	it("single pane: no navigation, no zoom, hides nothing to switch", async () => {
 		mockLayouts([lay(row("%1", "1", "0", "claude"))]);
-		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, step: "next", zoom: true });
+		const res = await tmuxPaneNavigate({ taskId: TASK_ID, step: "next", zoom: true });
 		expect(res).toEqual({ count: 1, activeIndex: 0, zoomed: false, labels: ["claude"] });
 		expect(called("select-pane")).toBe(false);
 		expect(called("resize-pane")).toBe(false);
@@ -11862,14 +11868,14 @@ describe("handlers.tmuxPaneNavigate", () => {
 
 	it("idempotent zoom: already zoomed + zoom:true is a no-op", async () => {
 		mockLayouts([lay(row("%1", "1", "1", "claude"), row("%2", "0", "1", "bash"), row("%3", "0", "1", "zsh"))]);
-		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
+		const res = await tmuxPaneNavigate({ taskId: TASK_ID, zoom: true });
 		expect(res).toEqual({ count: 3, activeIndex: 0, zoomed: true, labels: ["claude", "bash", "zsh"] });
 		expect(called("resize-pane")).toBe(false);
 	});
 
 	it("zoom:false unzooms a zoomed window (pager unmount / restore split)", async () => {
 		mockLayouts([lay(row("%1", "1", "1", "claude"), row("%2", "0", "1", "bash"))]);
-		const res = await handlers.tmuxPaneNavigate({ taskId: TASK_ID, zoom: false });
+		const res = await tmuxPaneNavigate({ taskId: TASK_ID, zoom: false });
 		expect(res).toEqual({ count: 2, activeIndex: 0, zoomed: false, labels: ["claude", "bash"] });
 		expect(called("resize-pane -Z")).toBe(true);
 	});

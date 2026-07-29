@@ -1507,7 +1507,19 @@ function TerminalView({ ptyUrl, taskId, projectId, onReady, onNativeStatus, touc
 
 			e.preventDefault();
 			e.stopPropagation();
-			api.request.tmuxAction({ taskId, action: binding.action }).catch(() => {});
+			const a = binding.action;
+			if (a === "newWindow") {
+				api.request.tmuxNewWindow({ taskId }).catch(() => {});
+			} else if (a === "close") {
+				api.request.taskPaneAction({ taskId, action: { kind: "close" } }).catch(() => {});
+			} else if (a === "focusStep:next") {
+				api.request.taskPaneAction({ taskId, action: { kind: "focusStep", step: "next" } }).catch(() => {});
+			} else if (a === "focusStep:prev") {
+				api.request.taskPaneAction({ taskId, action: { kind: "focusStep", step: "prev" } }).catch(() => {});
+			} else {
+				// splitH, splitV, zoom
+				api.request.taskPaneAction({ taskId, action: { kind: a } }).catch(() => {});
+			}
 		}
 		window.addEventListener("keydown", handleKeydown, { capture: true });
 		return () => window.removeEventListener("keydown", handleKeydown, { capture: true });

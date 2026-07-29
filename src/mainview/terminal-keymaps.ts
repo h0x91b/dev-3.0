@@ -1,6 +1,14 @@
 import type { TerminalKeymapPreset } from "../shared/types";
 
-export type TmuxAction = "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow";
+/**
+ * Keyboard binding actions dispatched from the terminal keymap.
+ * These map to TaskPaneAction kinds (close, splitH, splitV, zoom, focusStep)
+ * or to tmuxNewWindow for "newWindow".
+ */
+export type PaneKeyAction = "splitH" | "splitV" | "zoom" | "close" | "focusStep:next" | "focusStep:prev" | "newWindow";
+
+/** @deprecated Use PaneKeyAction. */
+export type TmuxAction = PaneKeyAction;
 
 export interface KeyBinding {
 	/**
@@ -12,7 +20,7 @@ export interface KeyBinding {
 	meta?: boolean;
 	ctrl?: boolean;
 	shift?: boolean;
-	action: TmuxAction;
+	action: PaneKeyAction;
 }
 
 export const TERMINAL_KEYMAPS: Record<TerminalKeymapPreset, KeyBinding[]> = {
@@ -21,12 +29,12 @@ export const TERMINAL_KEYMAPS: Record<TerminalKeymapPreset, KeyBinding[]> = {
 
 	// Mirrors iTerm2's standard pane & tab shortcuts, layered on top of native tmux.
 	"iterm2": [
-		{ code: "KeyW", meta: true, action: "killPane" },
+		{ code: "KeyW", meta: true, action: "close" },
 		{ code: "KeyD", meta: true, shift: false, action: "splitV" },
 		{ code: "KeyD", meta: true, shift: true, action: "splitH" },
 		{ code: "KeyT", meta: true, action: "newWindow" },
-		{ code: "BracketRight", meta: true, action: "nextPane" },
-		{ code: "BracketLeft", meta: true, action: "prevPane" },
+		{ code: "BracketRight", meta: true, action: "focusStep:next" },
+		{ code: "BracketLeft", meta: true, action: "focusStep:prev" },
 	],
 };
 

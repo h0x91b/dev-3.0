@@ -6,7 +6,7 @@ import BottomSheet from "./BottomSheet";
 import PaneMapSheet from "./PaneMapSheet";
 import { ClosePaneIcon, ManagePanesIcon, NewWindowIcon, SplitHIcon, SplitVIcon } from "./TmuxIcons";
 
-type ManageAction = "splitH" | "splitV" | "newWindow" | "killPane";
+type ManageAction = "splitH" | "splitV" | "newWindow" | "close";
 
 /**
  * Narrow-viewport terminal pane switcher. The tmux window is kept zoomed to one
@@ -32,6 +32,7 @@ interface PaneInfo {
 	activeIndex: number;
 	zoomed: boolean;
 	labels: string[];
+	paneIds: string[];
 }
 
 function prefersReducedMotion(): boolean {
@@ -40,7 +41,7 @@ function prefersReducedMotion(): boolean {
 
 function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; refreshKey?: number; children: ReactNode }) {
 	const t = useT();
-	const [info, setInfo] = useState<PaneInfo>({ count: 0, activeIndex: 0, zoomed: false, labels: [] });
+	const [info, setInfo] = useState<PaneInfo>({ count: 0, activeIndex: 0, zoomed: false, labels: [], paneIds: [] });
 	const [dragDx, setDragDx] = useState(0);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [mapOpen, setMapOpen] = useState(false);
@@ -55,12 +56,47 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 	const countRef = useRef(0);
 	countRef.current = info.count;
 
+	/** Read current pane info and update state; optionally navigate and/or enforce zoom. */
 	const navigate = useCallback(
 		async (opts?: { step?: "next" | "prev"; index?: number; paneId?: string; zoom?: boolean }): Promise<PaneInfo | null> => {
 			if (busyRef.current) return null;
 			busyRef.current = true;
 			try {
-				const res = await api.request.tmuxPaneNavigate({ taskId, ...opts });
+				if (opts?.step) {
+					await api.request.taskPaneAction({
+						taskId,
+						action: { kind: "focusStep", step: opts.step },
+					});
+				} else if (typeof opts?.index === "number") {
+					// Resolve index to paneId from current info (best-effort)
+					const targetPaneId = info.paneIds[opts.index];
+					if (targetPaneId) {
+						await api.request.taskPaneAction({
+							taskId,
+							action: { kind: "focus", paneId: targetPaneId },
+						});
+					}
+				} else if (opts?.paneId) {
+					await api.request.taskPaneAction({
+						taskId,
+						action: { kind: "focus", paneId: opts.paneId },
+					});
+				}
+				if (typeof opts?.zoom === "boolean") {
+					await api.request.taskPaneAction({
+						taskId,
+						action: { kind: "zoom", mode: opts.zoom ? "on" : "off" },
+					});
+				}
+				const state = await api.request.taskPaneState({ taskId });
+				const activeIdx = state.panes.findIndex((p) => p.active);
+				const res: PaneInfo = {
+					count: state.panes.length,
+					activeIndex: activeIdx < 0 ? 0 : activeIdx,
+					zoomed: !!state.zoomedPaneId,
+					labels: state.panes.map((p) => p.label),
+					paneIds: state.panes.map((p) => p.paneId),
+				};
 				setInfo(res);
 				return res;
 			} catch {
@@ -69,7 +105,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 				busyRef.current = false;
 			}
 		},
-		[taskId],
+		[taskId, info.paneIds],
 	);
 
 	// Create / close panes and windows from the sheet. The ⌃B prefix is the only
@@ -80,12 +116,14 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 	const runManageAction = useCallback(
 		async (action: ManageAction) => {
 			setSheetOpen(false);
-			if (action === "killPane") {
-				// Closing the only pane in the session tears down tmux (and the agent).
-				// Count session-wide (matches the backend's last-pane guard) and confirm.
+			if (action === "newWindow") {
+				await api.request.tmuxNewWindow({ taskId }).catch(() => {});
+			} else if (action === "close") {
+				// Closing the only pane tears down the session — confirm first.
 				let count = 0;
 				try {
-					count = (await api.request.tmuxPaneCount({ taskId })).count;
+					const state = await api.request.taskPaneState({ taskId });
+					count = state.panes.length;
 				} catch {
 					count = 0;
 				}
@@ -101,12 +139,12 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 						confirmed = false;
 					}
 					if (!confirmed) return;
-					await api.request.tmuxAction({ taskId, action, force: true }).catch(() => {});
+					await api.request.taskPaneAction({ taskId, action: { kind: "close", force: true } }).catch(() => {});
 				} else {
-					await api.request.tmuxAction({ taskId, action }).catch(() => {});
+					await api.request.taskPaneAction({ taskId, action: { kind: "close" } }).catch(() => {});
 				}
 			} else {
-				await api.request.tmuxAction({ taskId, action }).catch(() => {});
+				await api.request.taskPaneAction({ taskId, action: { kind: action } }).catch(() => {});
 			}
 			await navigate({ zoom: true });
 		},
@@ -443,7 +481,7 @@ function MobilePaneCarousel({ taskId, refreshKey, children }: { taskId: string; 
 
 					<button
 						type="button"
-						onClick={() => void runManageAction("killPane")}
+						onClick={() => void runManageAction("close")}
 						className="tmux-anim w-full flex items-center gap-3 min-h-[44px] px-3 rounded-xl text-left text-sm text-danger hover:bg-danger/10 transition-colors"
 					>
 						<span>

@@ -6,11 +6,29 @@ import { api } from "../../rpc";
 import { confirm } from "../../confirm";
 import { CLOSE_PANE_PICKER_EVENT } from "../../close-pane-picker";
 
+const makeState = (count: number) => ({
+	backend: "tmux" as const,
+	panes: Array.from({ length: count }, (_, i) => ({
+		paneId: `%${i + 1}`,
+		index: i,
+		label: "",
+		active: i === 0,
+		zoomed: false,
+		rect: { x: 0, y: 0, width: 1, height: 1 },
+	})),
+	activePaneId: count > 0 ? "%1" : null,
+	zoomedPaneId: null,
+	layout: null,
+	layoutPreset: null,
+	capabilities: ["split" as const],
+});
+
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
-			tmuxAction: vi.fn(),
-			tmuxPaneCount: vi.fn(),
+			taskPaneAction: vi.fn(),
+			taskPaneState: vi.fn(),
+			tmuxNewWindow: vi.fn(),
 		},
 	},
 }));
@@ -31,8 +49,9 @@ describe("TaskTmuxControls", () => {
 	beforeEach(() => {
 		localStorage.clear();
 		mockNarrow = false;
-		vi.mocked(api.request.tmuxAction).mockReset();
-		vi.mocked(api.request.tmuxPaneCount).mockReset();
+		vi.mocked(api.request.taskPaneAction).mockReset();
+		vi.mocked(api.request.taskPaneState).mockReset();
+		vi.mocked(api.request.tmuxNewWindow).mockReset();
 		vi.mocked(confirm).mockReset();
 	});
 
@@ -65,9 +84,9 @@ describe("TaskTmuxControls", () => {
 
 		expect(onPicker).toHaveBeenCalledTimes(1);
 		expect((onPicker.mock.calls[0][0] as CustomEvent).detail).toEqual({ taskId: "task-1" });
-		// The picker owns the kill now — the button never touches tmux directly here.
-		expect(api.request.tmuxAction).not.toHaveBeenCalled();
-		expect(api.request.tmuxPaneCount).not.toHaveBeenCalled();
+		// The picker owns the kill now — the button never touches pane API directly here.
+		expect(api.request.taskPaneAction).not.toHaveBeenCalled();
+		expect(api.request.taskPaneState).not.toHaveBeenCalled();
 		expect(confirm).not.toHaveBeenCalled();
 
 		window.removeEventListener(CLOSE_PANE_PICKER_EVENT, onPicker);
@@ -80,8 +99,8 @@ describe("TaskTmuxControls", () => {
 
 		it("kills the pane without confirmation when more than one pane exists", async () => {
 			const user = userEvent.setup();
-			vi.mocked(api.request.tmuxPaneCount).mockResolvedValue({ count: 3 });
-			vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+			vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(3));
+			vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeState(2));
 
 			render(
 				<I18nProvider>
@@ -91,15 +110,18 @@ describe("TaskTmuxControls", () => {
 
 			await user.click(screen.getByLabelText("Close pane"));
 
-			await waitFor(() => expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "killPane" }));
+			await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+				taskId: "task-1",
+				action: { kind: "close" },
+			}));
 			expect(confirm).not.toHaveBeenCalled();
 		});
 
 		it("asks for confirmation only when the active pane is the last one, and forces the kill on accept", async () => {
 			const user = userEvent.setup();
-			vi.mocked(api.request.tmuxPaneCount).mockResolvedValue({ count: 1 });
+			vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(1));
 			vi.mocked(confirm).mockResolvedValue(true);
-			vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+			vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeState(0));
 
 			render(
 				<I18nProvider>
@@ -114,12 +136,15 @@ describe("TaskTmuxControls", () => {
 				message: expect.stringContaining("only remaining pane"),
 				danger: true,
 			});
-			await waitFor(() => expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "killPane", force: true }));
+			await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+				taskId: "task-1",
+				action: { kind: "close", force: true },
+			}));
 		});
 
 		it("does not kill the last pane when the confirmation is dismissed", async () => {
 			const user = userEvent.setup();
-			vi.mocked(api.request.tmuxPaneCount).mockResolvedValue({ count: 1 });
+			vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(1));
 			vi.mocked(confirm).mockResolvedValue(false);
 
 			render(
@@ -131,13 +156,13 @@ describe("TaskTmuxControls", () => {
 			await user.click(screen.getByLabelText("Close pane"));
 
 			expect(confirm).toHaveBeenCalled();
-			expect(api.request.tmuxAction).not.toHaveBeenCalled();
+			expect(api.request.taskPaneAction).not.toHaveBeenCalled();
 		});
 	});
 
 	it("does not prompt for confirmation for non-destructive actions", async () => {
 		const user = userEvent.setup();
-		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeState(1));
 
 		render(
 			<I18nProvider>
@@ -148,13 +173,16 @@ describe("TaskTmuxControls", () => {
 		await user.click(screen.getByLabelText("Split horizontally"));
 
 		expect(confirm).not.toHaveBeenCalled();
-		expect(api.request.tmuxPaneCount).not.toHaveBeenCalled();
-		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "splitH" });
+		expect(api.request.taskPaneState).not.toHaveBeenCalled();
+		await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+			taskId: "task-1",
+			action: { kind: "splitH" },
+		}));
 	});
 
 	it("opens a new tmux window from the green new-window button", async () => {
 		const user = userEvent.setup();
-		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+		vi.mocked(api.request.tmuxNewWindow).mockResolvedValue(undefined);
 
 		render(
 			<I18nProvider>
@@ -165,12 +193,12 @@ describe("TaskTmuxControls", () => {
 		await user.click(screen.getByLabelText("New window"));
 
 		expect(confirm).not.toHaveBeenCalled();
-		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "newWindow" });
+		await waitFor(() => expect(api.request.tmuxNewWindow).toHaveBeenCalledWith({ taskId: "task-1" }));
 	});
 
-	it("cycles tmux layouts from the split-button primary action", async () => {
+	it("cycles layouts from the split-button primary action", async () => {
 		const user = userEvent.setup();
-		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeState(2));
 
 		render(
 			<I18nProvider>
@@ -180,12 +208,15 @@ describe("TaskTmuxControls", () => {
 
 		await user.click(screen.getByLabelText("Cycle layouts"));
 
-		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "nextLayout" });
+		await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+			taskId: "task-1",
+			action: { kind: "layoutCycle" },
+		}));
 	});
 
-	it("opens the tmux layout menu and applies the chosen preset", async () => {
+	it("opens the layout menu and applies the chosen preset", async () => {
 		const user = userEvent.setup();
-		vi.mocked(api.request.tmuxAction).mockResolvedValue(undefined);
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeState(2));
 
 		render(
 			<I18nProvider>
@@ -201,6 +232,9 @@ describe("TaskTmuxControls", () => {
 		const tiled = await screen.findByText("Tiled (grid)");
 		await user.click(tiled);
 
-		expect(api.request.tmuxAction).toHaveBeenCalledWith({ taskId: "task-1", action: "layoutTiled" });
+		await waitFor(() => expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+			taskId: "task-1",
+			action: { kind: "layoutPreset", preset: "tiled" },
+		}));
 	});
 });

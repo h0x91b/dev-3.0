@@ -30,9 +30,15 @@ function PaneZoomBadge({ taskId }: { taskId: string }) {
 			if (busyRef.current) return;
 			busyRef.current = true;
 			try {
-				const res = await api.request.tmuxPaneNavigate(zoom === undefined ? { taskId } : { taskId, zoom });
-				setZoomed(res.zoomed);
-				setMulti(res.count > 1);
+				if (typeof zoom === "boolean") {
+					await api.request.taskPaneAction({
+						taskId,
+						action: { kind: "zoom", mode: zoom ? "on" : "off" },
+					});
+				}
+				const state = await api.request.taskPaneState({ taskId });
+				setZoomed(!!state.zoomedPaneId);
+				setMulti(state.panes.length > 1);
 			} catch {
 				// Transient (session not ready / restarting) — the next poll retries.
 			} finally {

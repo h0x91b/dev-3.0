@@ -10,7 +10,7 @@ import { toast } from "../../toast";
 import { startClosePanePicker } from "../../close-pane-picker";
 
 vi.mock("../../rpc", () => ({
-	api: { request: { tmuxLayout: vi.fn(), tmuxKillPane: vi.fn() } },
+	api: { request: { tmuxLayout: vi.fn(), taskPaneAction: vi.fn() } },
 }));
 vi.mock("../../confirm", () => ({ confirm: vi.fn() }));
 vi.mock("../../toast", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
@@ -67,7 +67,15 @@ function renderPicker(taskId = "task-1") {
 describe("ClosePanePicker", () => {
 	beforeEach(() => {
 		vi.mocked(api.request.tmuxLayout).mockReset();
-		vi.mocked(api.request.tmuxKillPane).mockReset().mockResolvedValue({ killed: true });
+		vi.mocked(api.request.taskPaneAction).mockReset().mockResolvedValue({
+			backend: "tmux",
+			panes: [],
+			activePaneId: null,
+			zoomedPaneId: null,
+			layout: null,
+			layoutPreset: null,
+			capabilities: [],
+		});
 		vi.mocked(confirm).mockReset();
 		vi.mocked(toast.error).mockReset();
 	});
@@ -132,7 +140,10 @@ describe("ClosePanePicker", () => {
 		act(() => startClosePanePicker("task-1"));
 		await userEvent.click(await screen.findByLabelText("Close zsh"));
 
-		expect(api.request.tmuxKillPane).toHaveBeenCalledWith({ taskId: "task-1", paneId: "%2" });
+		expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+			taskId: "task-1",
+			action: { kind: "close", paneId: "%2" },
+		});
 		expect(confirm).not.toHaveBeenCalled();
 	});
 
@@ -145,7 +156,10 @@ describe("ClosePanePicker", () => {
 		await userEvent.click(await screen.findByLabelText("Close claude"));
 
 		expect(confirm).toHaveBeenCalled();
-		expect(api.request.tmuxKillPane).toHaveBeenCalledWith({ taskId: "task-1", paneId: "%1", force: true });
+		expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+			taskId: "task-1",
+			action: { kind: "close", paneId: "%1", force: true },
+		});
 	});
 
 	it("does not kill the last pane when the confirm is declined", async () => {
@@ -157,7 +171,7 @@ describe("ClosePanePicker", () => {
 		await userEvent.click(await screen.findByLabelText("Close claude"));
 
 		expect(confirm).toHaveBeenCalled();
-		expect(api.request.tmuxKillPane).not.toHaveBeenCalled();
+		expect(api.request.taskPaneAction).not.toHaveBeenCalled();
 	});
 
 	it("draws a single full-cover hit-box for a zoomed window", async () => {
@@ -191,6 +205,6 @@ describe("ClosePanePicker", () => {
 		await userEvent.keyboard("{Escape}");
 
 		await waitFor(() => expect(screen.queryByLabelText("Close claude")).toBeNull());
-		expect(api.request.tmuxKillPane).not.toHaveBeenCalled();
+		expect(api.request.taskPaneAction).not.toHaveBeenCalled();
 	});
 });

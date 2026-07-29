@@ -1785,7 +1785,7 @@ async function killTmuxSession(params: { sessionName: string }): Promise<void> {
 	log.info("← killTmuxSession done", { sessionName: params.sessionName });
 }
 
-async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV"; force?: boolean }): Promise<void> {
+export async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV"; force?: boolean }): Promise<void> {
 	log.info("→ tmuxAction", { taskId: params.taskId.slice(0, 8), action: params.action, force: params.force === true });
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
@@ -1870,7 +1870,7 @@ async function tmuxAction(params: { taskId: string; action: "splitH" | "splitV" 
 	log.info("← tmuxAction done", { taskId: params.taskId.slice(0, 8), action: params.action });
 }
 
-async function tmuxPaneCount(params: { taskId: string }): Promise<{ count: number }> {
+export async function tmuxPaneCount(params: { taskId: string }): Promise<{ count: number }> {
 	const socket = pty.getSessionSocket(params.taskId);
 	const tmuxSession = pty.getSessionTmuxName(params.taskId);
 	try {
@@ -1892,7 +1892,7 @@ async function tmuxPaneCount(params: { taskId: string }): Promise<{ count: numbe
  * own session), and clean up sessionState via handlePaneExited (kill-pane does
  * not fire tmux's pane-exited hook).
  */
-async function tmuxKillPane(params: { taskId: string; paneId: string; force?: boolean }): Promise<{ killed: boolean }> {
+export async function tmuxKillPane(params: { taskId: string; paneId: string; force?: boolean }): Promise<{ killed: boolean }> {
 	log.info("→ tmuxKillPane", { taskId: params.taskId.slice(0, 8), paneId: params.paneId, force: params.force === true });
 	// The pane id always originates from our own tmuxLayout (`%N`); validate the
 	// shape defensively before it reaches a spawn arg.
@@ -1931,7 +1931,7 @@ async function tmuxKillPane(params: { taskId: string; paneId: string; force?: bo
 	return { killed: true };
 }
 
-interface PaneLayoutInfo {
+export interface PaneLayoutInfo {
 	count: number;
 	activeIndex: number;
 	zoomed: boolean;
@@ -1950,7 +1950,7 @@ interface PaneLayoutInfo {
  * equal to host_short is treated as unset — else the running command, else "".
  * The frontend localises the empty fallback to "Pane N".
  */
-async function readPaneLayout(socket: string, tmuxSession: string): Promise<PaneLayoutInfo> {
+export async function readPaneLayout(socket: string, tmuxSession: string): Promise<PaneLayoutInfo> {
 	try {
 		const rows = await tmux.listPanes(PANE_SWITCHER_FORMAT, { target: tmuxSession, socket });
 		const paneIds: string[] = [];
@@ -1983,7 +1983,7 @@ async function readPaneLayout(socket: string, tmuxSession: string): Promise<Pane
  * (read the flag, toggle only on a mismatch) so a doubled call — React Strict
  * Mode, a retry, a poll racing a tap — never flips zoom the wrong way.
  */
-async function tmuxPaneNavigate(params: {
+export async function tmuxPaneNavigate(params: {
 	taskId: string;
 	step?: "next" | "prev";
 	index?: number;
@@ -2752,10 +2752,6 @@ export const tmuxPtyHandlers = {
 	getPortAllocations,
 	listTmuxSessions,
 	killTmuxSession,
-	tmuxAction,
-	tmuxPaneCount,
-	tmuxKillPane,
-	tmuxPaneNavigate,
 	tmuxLayout,
 	tmuxWindowNavigate,
 	tmuxAltClickMoveCursor,

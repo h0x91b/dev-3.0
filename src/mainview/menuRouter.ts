@@ -305,7 +305,7 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 			return;
 		}
 
-		// ── Terminal: pane ops piggy-back on tmuxAction (taskId required) ──
+		// ── Terminal: pane ops via taskPaneAction (taskId required) ──
 		case "term-close-pane": {
 			// Close Pane opens the two-step visual picker (overlay in TaskTerminal),
 			// matching the toolbar button. Desktop-only menu → no narrow fallback.
@@ -325,11 +325,11 @@ export async function handleMenuAction(action: string, ctx: RouterCtx): Promise<
 		case "term-layout-cycle": {
 			const taskId = currentTaskId(state);
 			if (!taskId) return;
-			const tmuxAction = TMUX_ACTION_MAP[action];
+			const paneAction = PANE_ACTION_MAP[action];
 			try {
-				await api.request.tmuxAction({ taskId, action: tmuxAction });
+				await api.request.taskPaneAction({ taskId, action: paneAction });
 			} catch (err) {
-				console.error(`[menu] tmuxAction(${tmuxAction}) failed`, err);
+				console.error(`[menu] taskPaneAction(${action}) failed`, err);
 			}
 			return;
 		}
@@ -408,14 +408,16 @@ export const BROWSER_HANDLED_ACTIONS: ReadonlySet<string> = new Set<string>([
 	"help-keyboard-shortcuts", "help-explain-screen", "help-documentation", "help-github", "help-report-bug",
 ]);
 
-const TMUX_ACTION_MAP = {
-	"term-split-h": "splitH",
-	"term-split-v": "splitV",
-	"term-zoom-pane": "zoom",
-	"term-layout-tiled": "layoutTiled",
-	"term-layout-even-h": "layoutEvenH",
-	"term-layout-even-v": "layoutEvenV",
-	"term-layout-main-h": "layoutMainH",
-	"term-layout-main-v": "layoutMainV",
-	"term-layout-cycle": "nextLayout",
-} as const satisfies Record<string, "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV">;
+import type { TaskPaneAction } from "../shared/task-panes";
+
+const PANE_ACTION_MAP: Record<string, TaskPaneAction> = {
+	"term-split-h": { kind: "splitH" },
+	"term-split-v": { kind: "splitV" },
+	"term-zoom-pane": { kind: "zoom", mode: "toggle" },
+	"term-layout-tiled": { kind: "layoutPreset", preset: "tiled" },
+	"term-layout-even-h": { kind: "layoutPreset", preset: "evenH" },
+	"term-layout-even-v": { kind: "layoutPreset", preset: "evenV" },
+	"term-layout-main-h": { kind: "layoutPreset", preset: "mainH" },
+	"term-layout-main-v": { kind: "layoutPreset", preset: "mainV" },
+	"term-layout-cycle": { kind: "layoutCycle" },
+};

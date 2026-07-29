@@ -4,10 +4,28 @@ import PaneZoomBadge from "../PaneZoomBadge";
 import { I18nProvider } from "../../i18n";
 import { api } from "../../rpc";
 
+const makeState = (zoomed: boolean, count: number) => ({
+	backend: "tmux" as const,
+	panes: Array.from({ length: count }, (_, i) => ({
+		paneId: `%${i + 1}`,
+		index: i,
+		label: "",
+		active: i === 0,
+		zoomed: zoomed && i === 0,
+		rect: { x: 0, y: 0, width: 1, height: 1 },
+	})),
+	activePaneId: "%1",
+	zoomedPaneId: zoomed ? "%1" : null,
+	layout: null,
+	layoutPreset: null,
+	capabilities: ["split" as const],
+});
+
 vi.mock("../../rpc", () => ({
 	api: {
 		request: {
-			tmuxPaneNavigate: vi.fn(),
+			taskPaneState: vi.fn(),
+			taskPaneAction: vi.fn(),
 		},
 	},
 }));
@@ -22,43 +40,47 @@ function renderBadge(taskId = "task-1") {
 
 describe("PaneZoomBadge", () => {
 	beforeEach(() => {
-		vi.mocked(api.request.tmuxPaneNavigate).mockReset();
+		vi.mocked(api.request.taskPaneState).mockReset();
+		vi.mocked(api.request.taskPaneAction).mockReset();
 	});
 
 	it("polls zoom state read-only on mount (no zoom mutation)", async () => {
-		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 2, activeIndex: 0, zoomed: false, labels: ["claude", "bash"] });
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(false, 2));
 		renderBadge();
-		await waitFor(() => expect(api.request.tmuxPaneNavigate).toHaveBeenCalled());
-		// First call carries no zoom intent — it must not toggle the shared view.
-		expect(vi.mocked(api.request.tmuxPaneNavigate).mock.calls[0][0]).toEqual({ taskId: "task-1" });
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
+		expect(vi.mocked(api.request.taskPaneAction)).not.toHaveBeenCalled();
 	});
 
 	it("shows no badge when the window is not zoomed", async () => {
-		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 2, activeIndex: 0, zoomed: false, labels: ["claude", "bash"] });
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(false, 2));
 		renderBadge();
-		await waitFor(() => expect(api.request.tmuxPaneNavigate).toHaveBeenCalled());
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
 		expect(screen.queryByLabelText("Show all panes")).toBeNull();
 	});
 
 	it("shows no badge for a single-pane session even if flagged zoomed", async () => {
-		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 1, activeIndex: 0, zoomed: true, labels: ["claude"] });
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(true, 1));
 		renderBadge();
-		await waitFor(() => expect(api.request.tmuxPaneNavigate).toHaveBeenCalled());
+		await waitFor(() => expect(api.request.taskPaneState).toHaveBeenCalled());
 		expect(screen.queryByLabelText("Show all panes")).toBeNull();
 	});
 
 	it("shows the badge when a multi-pane window is zoomed", async () => {
-		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 3, activeIndex: 1, zoomed: true, labels: ["claude", "bash", "zsh"] });
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(true, 3));
 		renderBadge();
 		await waitFor(() => expect(screen.getByLabelText("Show all panes")).toBeInTheDocument());
 		expect(screen.getByLabelText("Show all panes")).toHaveTextContent("Zoomed");
 	});
 
 	it("un-zooms when the badge is tapped", async () => {
-		vi.mocked(api.request.tmuxPaneNavigate).mockResolvedValue({ count: 3, activeIndex: 1, zoomed: true, labels: ["claude", "bash", "zsh"] });
+		vi.mocked(api.request.taskPaneState).mockResolvedValue(makeState(true, 3));
+		vi.mocked(api.request.taskPaneAction).mockResolvedValue(makeState(false, 3));
 		renderBadge();
 		await waitFor(() => expect(screen.getByLabelText("Show all panes")).toBeInTheDocument());
 		await userEvent.click(screen.getByLabelText("Show all panes"));
-		expect(api.request.tmuxPaneNavigate).toHaveBeenCalledWith({ taskId: "task-1", zoom: false });
+		expect(api.request.taskPaneAction).toHaveBeenCalledWith({
+			taskId: "task-1",
+			action: { kind: "zoom", mode: "off" },
+		});
 	});
 });

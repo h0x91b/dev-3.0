@@ -163,7 +163,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 			}
 			setBusy(true);
 			try {
-				await api.request.tmuxKillPane({ taskId, paneId: box.paneId, force: true });
+				await api.request.taskPaneAction({ taskId, action: { kind: "close", paneId: box.paneId, force: true } });
 			} catch {
 				toast.error(t("tmux.pickPaneError"), { taskId });
 			}
@@ -172,7 +172,7 @@ export default function ClosePanePicker({ taskId }: ClosePanePickerProps) {
 		}
 		setBusy(true);
 		try {
-			await api.request.tmuxKillPane({ taskId, paneId: box.paneId });
+			await api.request.taskPaneAction({ taskId, action: { kind: "close", paneId: box.paneId } });
 		} catch {
 			toast.error(t("tmux.pickPaneError"), { taskId });
 		}

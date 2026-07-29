@@ -104,7 +104,8 @@ vi.mock("../rpc", () => ({
 		request: {
 			uploadFileBase64: vi.fn(),
 			pasteClipboardImage: vi.fn(),
-			tmuxAction: vi.fn(),
+			taskPaneAction: vi.fn(),
+			tmuxNewWindow: vi.fn(),
 			tmuxAltClickMoveCursor: vi.fn().mockResolvedValue({ moved: true }),
 			exitCopyModeAllPanes: vi.fn().mockResolvedValue({ panesExited: 1 }),
 			logRendererEvent: vi.fn().mockResolvedValue(undefined),
@@ -469,7 +470,7 @@ describe("TerminalView – focus-on-type", () => {
 
 // ── Terminal keymap shortcuts ─────────────────────────────────────────────────
 
-const mockedTmuxAction = vi.mocked(api.request.tmuxAction);
+const mockedTaskPaneAction = vi.mocked(api.request.taskPaneAction);
 const mockedUploadFileBase64 = vi.mocked(api.request.uploadFileBase64);
 const mockedCopyTerminalSelection = vi.mocked(api.request.copyTerminalSelection);
 const mockedExitCopyModeAllPanes = vi.mocked(api.request.exitCopyModeAllPanes);
@@ -507,13 +508,13 @@ function dispatchDrop(target: Element, files: File[]) {
 describe("TerminalView – keymap shortcuts", () => {
 	beforeEach(() => {
 		localStorage.clear();
-		mockedTmuxAction.mockClear();
-		mockedTmuxAction.mockResolvedValue(undefined as any);
+		mockedTaskPaneAction.mockClear();
+		mockedTaskPaneAction.mockResolvedValue(undefined as any);
 		mockedUploadFileBase64.mockReset();
 		lastWebSocket = null;
 	});
 
-	it("iterm2 mode: Cmd+W calls tmuxAction with killPane", async () => {
+	it("iterm2 mode: Cmd+W calls taskPaneAction with close", async () => {
 		localStorage.setItem(KEYMAP_LS_KEY, "iterm2");
 		await renderAndSetup();
 		const target = focusInsideTerminal();
@@ -522,7 +523,7 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
 		});
 
-		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "killPane" });
+		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "close" } });
 		target.remove();
 	});
 
@@ -535,7 +536,7 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD", metaKey: true, shiftKey: false, bubbles: true }));
 		});
 
-		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "splitV" });
+		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "splitV" } });
 		target.remove();
 	});
 
@@ -548,11 +549,11 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD", metaKey: true, shiftKey: true, bubbles: true }));
 		});
 
-		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "splitH" });
+		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "splitH" } });
 		target.remove();
 	});
 
-	it("default preset (nothing stored): Cmd+W calls tmuxAction (iTerm2 is the default)", async () => {
+	it("default preset (nothing stored): Cmd+W calls taskPaneAction (iTerm2 is the default)", async () => {
 		// No localStorage entry — iTerm2 hotkeys ship on by default.
 		await renderAndSetup();
 		const target = focusInsideTerminal();
@@ -561,11 +562,11 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
 		});
 
-		expect(mockedTmuxAction).toHaveBeenCalledWith({ taskId: "t1", action: "killPane" });
+		expect(mockedTaskPaneAction).toHaveBeenCalledWith({ taskId: "t1", action: { kind: "close" } });
 		target.remove();
 	});
 
-	it("default mode (explicit opt-out): Cmd+W does NOT call tmuxAction", async () => {
+	it("default mode (explicit opt-out): Cmd+W does NOT call taskPaneAction", async () => {
 		localStorage.setItem(KEYMAP_LS_KEY, "default");
 		await renderAndSetup();
 		const target = focusInsideTerminal();
@@ -574,11 +575,11 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
 		});
 
-		expect(mockedTmuxAction).not.toHaveBeenCalled();
+		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
 		target.remove();
 	});
 
-	it("tmux-native mode: Cmd+W does NOT call tmuxAction", async () => {
+	it("tmux-native mode: Cmd+W does NOT call taskPaneAction", async () => {
 		localStorage.setItem(KEYMAP_LS_KEY, "tmux-native");
 		await renderAndSetup();
 		const target = focusInsideTerminal();
@@ -587,7 +588,7 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
 		});
 
-		expect(mockedTmuxAction).not.toHaveBeenCalled();
+		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
 		target.remove();
 	});
 
@@ -600,7 +601,7 @@ describe("TerminalView – keymap shortcuts", () => {
 			window.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", metaKey: true, bubbles: true }));
 		});
 
-		expect(mockedTmuxAction).not.toHaveBeenCalled();
+		expect(mockedTaskPaneAction).not.toHaveBeenCalled();
 	});
 });
 

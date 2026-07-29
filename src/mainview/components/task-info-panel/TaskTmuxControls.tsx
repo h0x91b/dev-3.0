@@ -36,7 +36,7 @@ type TmuxAction =
 	| "newWindow"
 	| "zoom"
 	| "nextLayout"
-	| "killPane"
+	| "close"
 	| "layoutTiled"
 	| "layoutEvenH"
 	| "layoutEvenV"
@@ -207,16 +207,20 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 
 	const handleTmuxAction = (action: TmuxAction) => async (event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.stopPropagation();
-		if (action === "killPane") {
+		if (action === "newWindow") {
+			api.request.tmuxNewWindow({ taskId }).catch(() => {});
+			return;
+		}
+		if (action === "close") {
 			let count = 0;
 			try {
-				const result = await api.request.tmuxPaneCount({ taskId });
-				count = result.count;
+				const state = await api.request.taskPaneState({ taskId });
+				count = state.panes.length;
 			} catch {
 				count = 0;
 			}
 			if (count <= 1) {
-				// Closing the last pane tears down the whole tmux session — confirm first.
+				// Closing the last pane tears down the whole session — confirm first.
 				let confirmed = false;
 				try {
 					confirmed = await confirm({
@@ -228,21 +232,37 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 					confirmed = false;
 				}
 				if (!confirmed) return;
-				api.request.tmuxAction({ taskId, action, force: true }).catch(() => {});
+				api.request.taskPaneAction({ taskId, action: { kind: "close", force: true } }).catch(() => {});
 				return;
 			}
+			api.request.taskPaneAction({ taskId, action: { kind: "close" } }).catch(() => {});
+			return;
 		}
-		api.request.tmuxAction({ taskId, action }).catch(() => {});
+		const actionMap: Record<string, import("../../../shared/task-panes").TaskPaneAction> = {
+			splitH: { kind: "splitH" },
+			splitV: { kind: "splitV" },
+			zoom: { kind: "zoom", mode: "toggle" },
+			nextLayout: { kind: "layoutCycle" },
+			layoutTiled: { kind: "layoutPreset", preset: "tiled" },
+			layoutEvenH: { kind: "layoutPreset", preset: "evenH" },
+			layoutEvenV: { kind: "layoutPreset", preset: "evenV" },
+			layoutMainH: { kind: "layoutPreset", preset: "mainH" },
+			layoutMainV: { kind: "layoutPreset", preset: "mainV" },
+		};
+		const paneAction = actionMap[action];
+		if (paneAction) {
+			api.request.taskPaneAction({ taskId, action: paneAction }).catch(() => {});
+		}
 	};
 
 	// The red Close Pane button. On a real desktop split it opens the two-step
 	// picker (an overlay over the terminal in TaskTerminal); on narrow viewports it
 	// falls back to the direct kill of the visible pane (reusing the last-pane
-	// teardown confirm baked into handleTmuxAction("killPane")).
+	// teardown confirm baked into handleTmuxAction("close")).
 	const handleClosePane = (event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.stopPropagation();
 		if (narrow) {
-			void handleTmuxAction("killPane")(event);
+			void handleTmuxAction("close")(event);
 			return;
 		}
 		startClosePanePicker(taskId);
@@ -303,7 +323,7 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 					</button>
 				</Tooltip>
 				<Tooltip content={t("tmux.newWindowDesc")}>
-					<button className={tmuxNewWindowBtnClass} onClick={handleTmuxAction("newWindow")} aria-label={t("tmux.newWindowDesc")}>
+					<button className={tmuxNewWindowBtnClass} onClick={(e) => { e.stopPropagation(); api.request.tmuxNewWindow({ taskId }).catch(() => {}); }} aria-label={t("tmux.newWindowDesc")}>
 						<NewWindowIcon className={tmuxSvgClass} />
 					</button>
 				</Tooltip>

@@ -74,8 +74,8 @@ describe("TERMINAL_KEYMAPS", () => {
 		}
 	});
 
-	it("Cmd+W maps to killPane", () => {
-		const binding = TERMINAL_KEYMAPS["iterm2"].find((b) => b.action === "killPane");
+	it("Cmd+W maps to close", () => {
+		const binding = TERMINAL_KEYMAPS["iterm2"].find((b) => b.action === "close");
 		expect(binding).toBeDefined();
 		expect(binding!.code).toBe("KeyW");
 		expect(binding!.meta).toBe(true);

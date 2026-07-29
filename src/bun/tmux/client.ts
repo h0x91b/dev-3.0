@@ -388,6 +388,18 @@ export class TmuxClient {
 		return this.runCommand(opts?.socket, ["resize-pane", "-Z", "-t", target], opts);
 	}
 
+	/** `select-pane -L/-R/-U/-D -t` — move focus by direction. */
+	selectPaneDirection(target: string, direction: "left" | "right" | "up" | "down", opts?: CommandOpts): Promise<void> {
+		const flag = { left: "-L", right: "-R", up: "-U", down: "-D" }[direction];
+		return this.runCommand(opts?.socket, ["select-pane", flag, "-t", target], opts);
+	}
+
+	/** `resize-pane -L/-R/-U/-D -t <target> <amount>`. */
+	resizePaneDirection(target: string, direction: "left" | "right" | "up" | "down", amount: number, opts?: CommandOpts): Promise<void> {
+		const flag = { left: "-L", right: "-R", up: "-U", down: "-D" }[direction];
+		return this.runCommand(opts?.socket, ["resize-pane", flag, "-t", target, String(amount)], opts);
+	}
+
 	/**
 	 * `send-keys -t <target> <keys…>` — each entry is one tmux key argument.
 	 * `literal` adds `-l` so the entries are sent as raw text (control bytes

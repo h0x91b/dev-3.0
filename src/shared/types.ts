@@ -3,6 +3,7 @@ import type { ConversationMatch } from "./conversation-search-core";
 import type { AgentRateLimitsReport } from "./rate-limits";
 import type { AgentAccount, AgentAccountKind, AgentAccountsState, ClaudeSlotModels } from "./agent-accounts";
 import type { TerminalBackendIdentity } from "./terminal-backend-identity";
+import type { TaskPaneState, TaskPaneAction } from "./task-panes";
 
 // ---- Changelog ----
 
@@ -3524,21 +3525,17 @@ export type AppRPCSchema = {
 				params: { taskId: string; projectId: string; noteId: string };
 				response: Task;
 			};
-			tmuxAction: {
-				params: { taskId: string; action: "splitH" | "splitV" | "zoom" | "killPane" | "nextPane" | "prevPane" | "newWindow" | "nextLayout" | "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV"; force?: boolean };
-				response: void;
-			};
-			tmuxPaneCount: {
+			taskPaneState: {
 				params: { taskId: string };
-				response: { count: number };
+				response: TaskPaneState;
 			};
-			tmuxKillPane: {
-				params: { taskId: string; paneId: string; force?: boolean };
-				response: { killed: boolean };
+			taskPaneAction: {
+				params: { taskId: string; action: TaskPaneAction };
+				response: TaskPaneState;
 			};
-			tmuxPaneNavigate: {
-				params: { taskId: string; step?: "next" | "prev"; index?: number; paneId?: string; zoom?: boolean };
-				response: { count: number; activeIndex: number; zoomed: boolean; labels: string[] };
+			tmuxNewWindow: {
+				params: { taskId: string };
+				response: void;
 			};
 			tmuxLayout: {
 				params: { taskId: string };
