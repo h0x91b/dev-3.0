@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
 	addClaudeApiProfile,
 	claudeAccountDir,
+	CLAUDE_SHARED_ENTRIES,
 	codexAccountDir,
 	completeClaudeLogin,
 	completeCodexLogin,
@@ -124,6 +125,19 @@ describe("importCurrentClaudeAccount", () => {
 		expect(lstatSync(join(dir, "settings.json")).isSymbolicLink()).toBe(true);
 	});
 
+	it("symlinks every shared entry, incl. output-styles, so settings.json names resolve", async () => {
+		seedClaudeLogin();
+		mkdirSync(join(paths.claudeHome, "output-styles"), { recursive: true });
+		writeFileSync(join(paths.claudeHome, "output-styles", "custom.md"), "# custom");
+		const account = await importCurrentClaudeAccount(paths);
+		const dir = claudeAccountDir(account.id, paths);
+
+		for (const entry of CLAUDE_SHARED_ENTRIES) {
+			expect(lstatSync(join(dir, entry)).isSymbolicLink()).toBe(true);
+		}
+		expect(existsSync(join(dir, "output-styles", "custom.md"))).toBe(true);
+	});
+
 	it("does not auto-activate the imported account (system login stays active)", async () => {
 		seedClaudeLogin();
 		await importCurrentClaudeAccount(paths);
@@ -240,6 +254,17 @@ describe("setActiveClaudeAccount / getActiveClaudeConfigDir", () => {
 
 	it("rejects unknown account ids", async () => {
 		await expect(setActiveClaudeAccount("nope", paths)).rejects.toThrow(/Unknown Claude account/);
+	});
+
+	it("backfills a shared entry missing from an account created by an older version", async () => {
+		seedClaudeLogin();
+		mkdirSync(join(paths.claudeHome, "output-styles"), { recursive: true });
+		const account = await importCurrentClaudeAccount(paths);
+		const dir = claudeAccountDir(account.id, paths);
+		rmSync(join(dir, "output-styles")); // simulate the pre-fix on-disk state
+
+		expect(await getActiveClaudeConfigDir(account.id, paths)).toBe(dir);
+		expect(lstatSync(join(dir, "output-styles")).isSymbolicLink()).toBe(true);
 	});
 
 	it("per-launch accountId override selects an account regardless of the registry default", async () => {

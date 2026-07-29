@@ -25,6 +25,7 @@ import {
 	existsSync,
 	lstatSync,
 	mkdirSync,
+	readdirSync,
 	readFileSync,
 	renameSync,
 	rmSync,
@@ -82,8 +83,12 @@ export function defaultAccountPaths(): AccountPaths {
 }
 
 /** Entries of ~/.claude shared across accounts via symlinks: user customization
- *  (settings/skills/agents/commands/plugins/memory) plus transcripts+todos so
- *  session resume and usage tracking keep working after an account switch.
+ *  (settings/skills/agents/commands/plugins/output-styles/memory) plus
+ *  transcripts+todos so session resume and usage tracking keep working after an
+ *  account switch. Anything Claude Code resolves *by name* out of its config dir
+ *  MUST be listed here — settings.json is shared, so a name it references
+ *  (`outputStyle`) that has no matching directory in the account dir silently
+ *  falls back to the default with no warning anywhere.
  *  Credentials and .claude.json stay per-account by design. */
 export const CLAUDE_SHARED_ENTRIES = [
 	"settings.json",
@@ -92,6 +97,7 @@ export const CLAUDE_SHARED_ENTRIES = [
 	"agents",
 	"commands",
 	"plugins",
+	"output-styles",
 	"projects",
 	"todos",
 ];
@@ -497,7 +503,9 @@ export async function getActiveClaudeConfigDir(
 	const id = resolveAccountIdOverride(registry.claude.activeId, accountIdOverride);
 	if (!id || !registry.claude.accounts.some((e) => e.id === id)) return null;
 	const dir = claudeAccountDir(id, paths);
-	return existsSync(join(dir, ".claude.json")) ? dir : null;
+	if (!existsSync(join(dir, ".claude.json"))) return null;
+	scaffoldClaudeAccountDir(dir, paths); // backfill entries added since this account was created
+	return dir;
 }
 
 /** Fan the profile's model overrides into the four Claude alias slots
@@ -608,7 +616,10 @@ export async function getActiveCodexSessionEnv(
 	return { CODEX_HOME: ensureCodexAccountHome(id, paths) };
 }
 
-/** Create the per-account config dir with symlinks into ~/.claude for shared state. */
+/** Create the per-account config dir with symlinks into ~/.claude for shared
+ *  state. Idempotent and re-run on every account resolution, so an account
+ *  created before an entry joined CLAUDE_SHARED_ENTRIES is backfilled instead of
+ *  staying silently half-linked. */
 function scaffoldClaudeAccountDir(dir: string, paths: AccountPaths): void {
 	mkdirSync(dir, { recursive: true });
 	for (const entry of CLAUDE_SHARED_ENTRIES) {
@@ -624,6 +635,30 @@ function scaffoldClaudeAccountDir(dir: string, paths: AccountPaths): void {
 		} catch (err) {
 			log.warn("Failed to symlink shared claude entry", { entry, error: String(err) });
 		}
+	}
+	warnOnUnresolvableOutputStyle(dir);
+}
+
+/** Output styles Claude Code ships in-binary — they need no config-dir file. */
+const BUILTIN_OUTPUT_STYLES = new Set(["default", "explanatory", "learning"]);
+
+/** A settings.json `outputStyle` naming a style with no file in the account dir
+ *  is always a plumbing bug: Claude Code falls back to the default style without
+ *  a single log line, so the setting looks correct while doing nothing. */
+function warnOnUnresolvableOutputStyle(dir: string): void {
+	const name = (safeReadJson(join(dir, "settings.json")) as { outputStyle?: unknown } | null)?.outputStyle;
+	if (typeof name !== "string" || !name.trim() || BUILTIN_OUTPUT_STYLES.has(name.trim().toLowerCase())) return;
+	let styleFiles: string[] = [];
+	try {
+		styleFiles = readdirSync(join(dir, "output-styles")).filter((f) => f.endsWith(".md"));
+	} catch {
+		// unreadable or missing — reported below
+	}
+	if (styleFiles.length === 0) {
+		log.warn("settings.json names an outputStyle but the account dir has no output-styles files", {
+			outputStyle: name,
+			dir,
+		});
 	}
 }
 
