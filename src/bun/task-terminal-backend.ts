@@ -28,7 +28,8 @@ import { NativeTerminalBackend, TmuxTerminalBackend, type TerminalBackend } from
 // isolation guard can keep pointing at a single importer.
 export type { TerminalLaunchSpec, TerminalSessionState } from "./terminal-backend";
 import { nativeHostLauncher, resolveNativeHostRuntime } from "./native-host-runtime";
-import { defaultDeps as nativeRegistryDeps } from "./native-terminal-registry/registry";
+import { defaultDeps as nativeRegistryDeps, start as registryStart } from "./native-terminal-registry/registry";
+import { defaultCoordinatorDeps } from "./native-terminal-multipane/coordinator";
 
 /** A task whose persisted backend identity cannot be interpreted. */
 export class TaskTerminalBackendError extends Error {
@@ -82,14 +83,19 @@ export function nativeTaskSessionId(taskId: string): string {
  * The native backend wired to THIS build's host runtime. The runtime is resolved
  * lazily inside the launcher so presence checks and teardown never depend on a
  * launchable host — only actually starting a session does.
+ *
+ * Injects a custom `startPane` that passes this build's host launcher to the
+ * registry's `start` function, so the coordinator spawns the correct host binary.
  */
 export function nativeTaskTerminalBackend(): NativeTerminalBackend {
+	const registryDeps = {
+		...nativeRegistryDeps,
+		launchHost: nativeHostLauncher(resolveNativeHostRuntime()),
+	};
 	return new NativeTerminalBackend({
 		deps: {
-			registryDeps: {
-				...nativeRegistryDeps,
-				launchHost: (sessionId, opts, logFd) => nativeHostLauncher(resolveNativeHostRuntime())(sessionId, opts, logFd),
-			},
+			...defaultCoordinatorDeps,
+			startPane: (sessionId, opts) => registryStart(sessionId, opts, registryDeps),
 		},
 	});
 }

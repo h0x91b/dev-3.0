@@ -12,7 +12,7 @@
 import type { NativeTerminalAvailability, Project, Task } from "../shared/types";
 import { isTerminalBackendIdentity, type TerminalBackendIdentity } from "../shared/terminal-backend-identity";
 import * as data from "./data";
-import { nativeTaskTerminalAlive } from "./native-task-terminal";
+import { nativeTaskPanesAlive } from "./native-task-panes";
 import { NativeHostRuntimeError, resolveNativeHostRuntime } from "./native-host-runtime";
 import { tmuxSessionExists } from "./pty-server";
 
@@ -35,7 +35,7 @@ export interface TaskTerminalBackendState {
 
 /** Which backend currently owns a session for this task. Read-only on both sides. */
 export async function liveTaskTerminalBackend(task: Task): Promise<TerminalBackendIdentity | null> {
-	if (await nativeTaskTerminalAlive(task.id)) return "native";
+	if (await nativeTaskPanesAlive(task.id)) return "native";
 	if (await tmuxSessionExists(task.id, task.tmuxSocket ?? undefined)) return "tmux";
 	return null;
 }

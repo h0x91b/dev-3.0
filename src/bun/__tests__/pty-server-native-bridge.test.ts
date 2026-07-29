@@ -33,11 +33,15 @@ vi.mock("node:fs", async (importOriginal) => {
 
 vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
+vi.mock("../native-task-panes", () => ({
+	startNativeTaskPanes: vi.fn(),
+	recoverNativeTaskPanes: vi.fn(async () => null),
+	stopNativeTaskPanes: vi.fn(async () => undefined),
+	nativeTaskPanesAlive: vi.fn(async () => true),
+}));
+
 vi.mock("../native-task-terminal", () => ({
-	startNativeTaskTerminal: vi.fn(),
-	attachNativeTaskTerminal: vi.fn(async () => null),
-	nativeTaskTerminalAlive: vi.fn(async () => true),
-	stopNativeTaskTerminal: vi.fn(async () => undefined),
+	bindNativeTaskPane: vi.fn(async () => null),
 }));
 
 import {
@@ -48,7 +52,8 @@ import {
 	type NativeStreamHeader,
 } from "../../shared/native-terminal-stream";
 import { encodeResizeSequence } from "../../shared/resize-protocol";
-import { startNativeTaskTerminal } from "../native-task-terminal";
+import { bindNativeTaskPane } from "../native-task-terminal";
+import { startNativeTaskPanes } from "../native-task-panes";
 import { tmux } from "../tmux";
 
 // The PTY server's WebSocket handlers are the unit under test; `Bun.serve` is a
@@ -145,6 +150,8 @@ interface FakeShell {
 	emit: (data: string) => void;
 }
 
+const FIRST_PANE_SESSION_ID = `${SESSION_ID}-pane-1`;
+
 function fakeShell(): FakeShell {
 	let emit: (data: string) => void = () => {};
 	const shell: FakeShell = {
@@ -153,17 +160,23 @@ function fakeShell(): FakeShell {
 		detach: vi.fn(),
 		emit: (data) => emit(data),
 	};
-	vi.mocked(startNativeTaskTerminal).mockImplementation(async (spec) => {
-		emit = (data) => spec.onOutput(new TextEncoder().encode(data));
+	vi.mocked(startNativeTaskPanes).mockResolvedValue({
+		taskId: TASK_ID,
+		panes: [{ paneId: "pane-1", sessionId: FIRST_PANE_SESSION_ID, hostPid: 4242, shellPid: 4243, cols: 80, rows: 24, alive: true }],
+		layout: "{}",
+		activePaneId: "pane-1",
+	} as never);
+	vi.mocked(bindNativeTaskPane).mockImplementation(async (_sessionId, hooks) => {
+		emit = (data) => hooks.onOutput(new TextEncoder().encode(data));
 		return {
-			sessionId: SESSION_ID,
-			paneId: `${SESSION_ID}:0`,
+			sessionId: FIRST_PANE_SESSION_ID,
+			paneId: "pane-1",
 			hostPid: 4242,
 			shellPid: 4243,
 			write: shell.write,
 			resize: shell.resize,
 			detach: shell.detach,
-		} as unknown as Awaited<ReturnType<typeof startNativeTaskTerminal>>;
+		} as unknown as Awaited<ReturnType<typeof bindNativeTaskPane>>;
 	});
 	return shell;
 }
@@ -206,8 +219,8 @@ describe("attaching a native viewer", () => {
 			role: "writer",
 			resumed: false,
 			reset: "fresh",
-			sessionId: SESSION_ID,
-			paneId: `${SESSION_ID}:0`,
+			sessionId: FIRST_PANE_SESSION_ID,
+			paneId: "pane-1",
 			hostPid: 4242,
 			shellPid: 4243,
 		});
@@ -303,7 +316,7 @@ describe("reconnecting a native viewer", () => {
 		expect(second.attach.paneId).toBe(first.attach.paneId);
 		expect(second.attach.hostPid).toBe(first.attach.hostPid);
 		expect(second.attach.shellPid).toBe(first.attach.shellPid);
-		expect(startNativeTaskTerminal).toHaveBeenCalledTimes(1);
+		expect(startNativeTaskPanes).toHaveBeenCalledTimes(1);
 	});
 });
 

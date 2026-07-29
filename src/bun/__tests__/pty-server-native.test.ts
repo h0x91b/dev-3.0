@@ -1,5 +1,5 @@
 /**
- * The native session's create-vs-reattach race (seq 1292).
+ * The native session's create-vs-reattach race (seq 1292/1311).
  *
  * A WebSocket client can connect while the host is still booting. If that
  * connection started a competing reattach, the app would hold TWO clients for one
@@ -33,15 +33,22 @@ vi.mock("node:fs", async (importOriginal) => {
 
 vi.mock("../spawn", () => ({ spawn: vi.fn(), spawnSync: vi.fn() }));
 
+// Mock native-task-panes for the multi-pane lifecycle
+vi.mock("../native-task-panes", () => ({
+	startNativeTaskPanes: vi.fn(),
+	recoverNativeTaskPanes: vi.fn(async () => null),
+	stopNativeTaskPanes: vi.fn(async () => undefined),
+	nativeTaskPanesAlive: vi.fn(async () => true),
+}));
+
+// Mock native-task-terminal for the per-pane binding
 vi.mock("../native-task-terminal", () => ({
-	startNativeTaskTerminal: vi.fn(),
-	attachNativeTaskTerminal: vi.fn(),
-	nativeTaskTerminalAlive: vi.fn(async () => true),
-	stopNativeTaskTerminal: vi.fn(async () => undefined),
+	bindNativeTaskPane: vi.fn(),
 }));
 
 import { spawn } from "../spawn";
-import { startNativeTaskTerminal, stopNativeTaskTerminal } from "../native-task-terminal";
+import { bindNativeTaskPane } from "../native-task-terminal";
+import { startNativeTaskPanes, stopNativeTaskPanes } from "../native-task-panes";
 import { tmux } from "../tmux";
 import {
 	createNativeTaskSession,
@@ -57,9 +64,19 @@ const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
 const SIBLING_TASK_ID = "11223344-5555-6666-7777-888888888888";
 const LAUNCH = { executable: "/bin/zsh", argv: ["/tmp/dev3/run.sh"] };
 
-function fakeTerminal() {
+function fakePanesState(taskId = TASK_ID) {
 	return {
-		sessionId: `dev3-task-${TASK_ID}`,
+		taskId,
+		panes: [{ paneId: "pane-1", sessionId: `dev3-task-${taskId}-pane-1`, hostPid: 10, shellPid: 11, cols: 80, rows: 24, alive: true }],
+		layout: "{}",
+		activePaneId: "pane-1",
+	};
+}
+
+function fakeTerminal(taskId = TASK_ID) {
+	return {
+		sessionId: `dev3-task-${taskId}-pane-1`,
+		paneId: "pane-1",
 		hostPid: 10,
 		shellPid: 11,
 		write: vi.fn(),
@@ -69,15 +86,16 @@ function fakeTerminal() {
 }
 
 /** A host boot we can hold open, to observe the window a client could race into. */
-function deferredBoot() {
-	let settle: (terminal: ReturnType<typeof fakeTerminal>) => void = () => {};
+function deferredBoot(taskId = TASK_ID) {
+	let settlePanes: (state: ReturnType<typeof fakePanesState>) => void = () => {};
 	let fail: (err: Error) => void = () => {};
-	const pending = new Promise<ReturnType<typeof fakeTerminal>>((resolve, reject) => {
-		settle = resolve;
+	const pendingPanes = new Promise<ReturnType<typeof fakePanesState>>((resolve, reject) => {
+		settlePanes = resolve;
 		fail = reject;
 	});
-	vi.mocked(startNativeTaskTerminal).mockReturnValue(pending as never);
-	return { settle, fail };
+	vi.mocked(startNativeTaskPanes).mockReturnValue(pendingPanes as never);
+	vi.mocked(bindNativeTaskPane).mockResolvedValue(fakeTerminal(taskId) as never);
+	return { settlePanes: (state = fakePanesState(taskId)) => settlePanes(state), fail };
 }
 
 beforeEach(() => {
@@ -94,7 +112,7 @@ describe("createNativeTaskSession — the boot window", () => {
 		expect(isNativeSessionSettling(TASK_ID)).toBe(true);
 		expect(hasDeadSession(TASK_ID)).toBe(false);
 
-		boot.settle(fakeTerminal());
+		boot.settlePanes();
 		await creating;
 		await destroySessionAwaited(TASK_ID);
 	});
@@ -102,7 +120,7 @@ describe("createNativeTaskSession — the boot window", () => {
 	it("stops settling once the host is up", async () => {
 		const boot = deferredBoot();
 		const creating = createNativeTaskSession(TASK_ID, "proj-1", "/tmp/wt", LAUNCH);
-		boot.settle(fakeTerminal());
+		boot.settlePanes();
 		await creating;
 
 		expect(isNativeSessionSettling(TASK_ID)).toBe(false);
@@ -128,7 +146,7 @@ describe("destroySessionAwaited on a native session", () => {
 	async function liveSession(): Promise<void> {
 		const boot = deferredBoot();
 		const creating = createNativeTaskSession(TASK_ID, "proj-1", "/tmp/wt", LAUNCH);
-		boot.settle(fakeTerminal());
+		boot.settlePanes();
 		await creating;
 	}
 
@@ -137,13 +155,13 @@ describe("destroySessionAwaited on a native session", () => {
 
 		await destroySessionAwaited(TASK_ID);
 
-		expect(stopNativeTaskTerminal).toHaveBeenCalledWith(TASK_ID);
+		expect(stopNativeTaskPanes).toHaveBeenCalledWith(TASK_ID);
 		expect(hasSession(TASK_ID)).toBe(false);
 	});
 
 	it("surfaces an unconfirmed teardown instead of letting a relaunch race it", async () => {
 		await liveSession();
-		vi.mocked(stopNativeTaskTerminal).mockRejectedValueOnce(new Error("still present after teardown"));
+		vi.mocked(stopNativeTaskPanes).mockRejectedValueOnce(new Error("still present after teardown"));
 
 		await expect(destroySessionAwaited(TASK_ID)).rejects.toThrow(/still present after teardown/);
 	});
@@ -156,10 +174,11 @@ describe("destroySessionAwaited on a native session", () => {
  */
 describe("destroyNativeTaskSession", () => {
 	async function liveSession(taskId: string): Promise<ReturnType<typeof fakeTerminal>> {
-		const terminal = fakeTerminal();
-		const boot = deferredBoot();
+		const terminal = fakeTerminal(taskId);
+		const boot = deferredBoot(taskId);
 		const creating = createNativeTaskSession(taskId, "proj-1", "/tmp/wt", LAUNCH);
-		boot.settle(terminal);
+		boot.settlePanes(fakePanesState(taskId));
+		vi.mocked(bindNativeTaskPane).mockResolvedValue(terminal as never);
 		await creating;
 		return terminal;
 	}
@@ -170,7 +189,7 @@ describe("destroyNativeTaskSession", () => {
 		await destroyNativeTaskSession(TASK_ID);
 
 		expect(terminal.detach).toHaveBeenCalledTimes(1);
-		expect(stopNativeTaskTerminal).toHaveBeenCalledWith(TASK_ID);
+		expect(stopNativeTaskPanes).toHaveBeenCalledWith(TASK_ID);
 		expect(hasSession(TASK_ID)).toBe(false);
 	});
 
@@ -179,8 +198,8 @@ describe("destroyNativeTaskSession", () => {
 
 		await destroyNativeTaskSession(TASK_ID);
 
-		expect(stopNativeTaskTerminal).toHaveBeenCalledWith(TASK_ID);
-		expect(startNativeTaskTerminal).not.toHaveBeenCalled();
+		expect(stopNativeTaskPanes).toHaveBeenCalledWith(TASK_ID);
+		expect(startNativeTaskPanes).not.toHaveBeenCalled();
 		expect(spawn).not.toHaveBeenCalled();
 	});
 
@@ -190,13 +209,13 @@ describe("destroyNativeTaskSession", () => {
 		await destroyNativeTaskSession(TASK_ID);
 		await expect(destroyNativeTaskSession(TASK_ID)).resolves.toBeUndefined();
 
-		expect(stopNativeTaskTerminal).toHaveBeenCalledTimes(2);
-		expect(startNativeTaskTerminal).toHaveBeenCalledTimes(1);
+		expect(stopNativeTaskPanes).toHaveBeenCalledTimes(2);
+		expect(startNativeTaskPanes).toHaveBeenCalledTimes(1);
 	});
 
 	it("propagates an unconfirmed teardown so the lifecycle can hold off cleanup", async () => {
 		await liveSession(TASK_ID);
-		vi.mocked(stopNativeTaskTerminal).mockRejectedValueOnce(new Error("still present after teardown"));
+		vi.mocked(stopNativeTaskPanes).mockRejectedValueOnce(new Error("still present after teardown"));
 
 		await expect(destroyNativeTaskSession(TASK_ID)).rejects.toThrow(/still present after teardown/);
 	});
@@ -210,7 +229,7 @@ describe("destroyNativeTaskSession", () => {
 
 		expect(hasSession(SIBLING_TASK_ID)).toBe(true);
 		expect(sibling.detach).not.toHaveBeenCalled();
-		expect(vi.mocked(stopNativeTaskTerminal).mock.calls).toEqual([[TASK_ID]]);
+		expect(vi.mocked(stopNativeTaskPanes).mock.calls).toEqual([[TASK_ID]]);
 		expect(killSession).not.toHaveBeenCalled();
 
 		await destroyNativeTaskSession(SIBLING_TASK_ID);

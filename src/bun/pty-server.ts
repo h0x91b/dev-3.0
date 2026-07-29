@@ -16,11 +16,15 @@ import { createLogger } from "./logger";
 import { spawn } from "./spawn";
 import { getUserShell } from "./shell-env";
 import {
-	attachNativeTaskTerminal,
-	startNativeTaskTerminal,
-	stopNativeTaskTerminal,
+	bindNativeTaskPane,
 	type NativeTaskTerminal,
 } from "./native-task-terminal";
+import {
+	startNativeTaskPanes,
+	recoverNativeTaskPanes,
+	stopNativeTaskPanes,
+} from "./native-task-panes";
+import { paneSessionKey, parsePaneSessionKey } from "../shared/pane-session-key";
 import { PTY_WS_CLOSE } from "../shared/pty-ws-close-codes";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "./task-terminal-backend";
 import {
@@ -309,8 +313,6 @@ export async function createNativeTaskSession(
 		nativeStream: new NativeBridgeJournal(),
 		nativeLease: new NativeClientLease(),
 		clients: new Set(),
-		// A native session has no tmux socket or session name; the empty strings
-		// exist so a stray tmux call fails loudly instead of hitting a real session.
 		tmuxSocket: "",
 		tmuxSessionName: "",
 		sessionType: "task",
@@ -324,25 +326,33 @@ export async function createNativeTaskSession(
 		appliedCols: size.cols,
 		appliedRows: size.rows,
 	};
-	// Marked as settling BEFORE the await so a WebSocket client connecting mid-boot
-	// does not start a competing reattach — two clients for one host would leave the
-	// app holding the observer, whose input the host silently drops.
 	session.nativeAttaching = true;
 	sessions.set(taskId, session);
 	try {
-		session.native = await startNativeTaskTerminal({
+		const env = Object.fromEntries(
+			Object.entries(extraEnv).filter(([, value]) => value !== ENV_UNSET),
+		);
+		const panesState = await startNativeTaskPanes({
 			taskId,
 			cwd,
-			env: Object.fromEntries(Object.entries(extraEnv).filter(([, value]) => value !== ENV_UNSET)),
+			env,
 			launch,
 			cols: size.cols,
 			rows: size.rows,
-			onOutput: (bytes) => ingestPtyOutput(session, bytes),
-			onClosed: () => markNativeClosed(session),
 		});
+		// Bind pane-1 under the bare taskId key (all existing paths stay unchanged).
+		const firstPane = panesState.panes[0];
+		if (!firstPane) throw new Error("coordinator created zero panes");
+		session.native = await bindNativeTaskPane(
+			firstPane.sessionId,
+			{
+				onOutput: (bytes) => ingestPtyOutput(session, bytes),
+				onClosed: () => markNativeClosed(session),
+			},
+			firstPane.paneId,
+		);
+		if (!session.native) throw new Error(`pane ${firstPane.paneId} vanished right after creation`);
 	} catch (err) {
-		// A session that never started must not look alive/recoverable to callers,
-		// and must never be quietly replaced by tmux.
 		sessions.delete(taskId);
 		throw err;
 	} finally {
@@ -391,17 +401,29 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 	session.nativeAttaching = true;
 	sessions.set(taskId, session);
 	try {
-		const native = await attachNativeTaskTerminal(taskId, {
-			onOutput: (bytes) => ingestPtyOutput(session, bytes),
-			onClosed: () => markNativeClosed(session),
-		});
+		const panesState = await recoverNativeTaskPanes(taskId);
+		if (!panesState) {
+			if (!existing) sessions.delete(taskId);
+			return false;
+		}
+		const firstPane = panesState.panes[0];
+		if (!firstPane) {
+			if (!existing) sessions.delete(taskId);
+			return false;
+		}
+		const native = await bindNativeTaskPane(
+			firstPane.sessionId,
+			{
+				onOutput: (bytes) => ingestPtyOutput(session, bytes),
+				onClosed: () => markNativeClosed(session),
+			},
+			firstPane.paneId,
+		);
 		if (!native) {
 			if (!existing) sessions.delete(taskId);
 			return false;
 		}
-		// The session may have been torn down while we were attaching. Keeping this
-		// client would leak it AND hold the host's writer lease, demoting the next
-		// legitimate reattach to a silent read-only observer.
+		// The session may have been torn down while we were attaching.
 		if (sessions.get(taskId) !== session) {
 			native.detach();
 			log.info("Native reattach landed on a torn-down session; released the client", {
@@ -412,6 +434,71 @@ export async function reattachNativeTaskSession(taskId: string, projectId: strin
 		session.native = native;
 		applyClientSizes(session);
 		return true;
+	} finally {
+		session.nativeAttaching = false;
+	}
+}
+
+/**
+ * Register (or reuse) a PtySession for a NON-first native pane under its
+ * composite key (`${taskId}~${paneId}`). Each additional pane gets its own
+ * NativeBridgeJournal and NativeClientLease so writer isolation holds per-pane.
+ * The task's pane set must already be live (created or recovered) before calling.
+ */
+export async function ensureNativePanePtySession(
+	taskId: string,
+	paneId: string,
+	paneSessionId: string,
+	projectId: string,
+	cwd: string,
+): Promise<void> {
+	const key = paneSessionKey(taskId, paneId);
+	const existing = sessions.get(key);
+	if (existing) return; // already registered
+
+	const session: PtySession = {
+		taskId,
+		projectId,
+		cwd,
+		tmuxCommand: "",
+		env: {},
+		backend: "native",
+		proc: null,
+		native: null,
+		nativeAttaching: false,
+		nativeStream: new NativeBridgeJournal(),
+		nativeLease: new NativeClientLease(),
+		clients: new Set(),
+		tmuxSocket: "",
+		tmuxSessionName: "",
+		sessionType: "task",
+		lastOutputTime: Date.now(),
+		idleNotified: false,
+		decoder: new TextDecoder("utf-8", { fatal: false }),
+		pendingData: "",
+		batchTimer: null,
+		configureTimer: null,
+		osc52Buffer: "",
+	};
+	session.nativeAttaching = true;
+	sessions.set(key, session);
+	try {
+		session.native = await bindNativeTaskPane(
+			paneSessionId,
+			{
+				onOutput: (bytes) => ingestPtyOutput(session, bytes),
+				onClosed: () => {
+					session.native = null;
+					session.appliedCols = undefined;
+					session.appliedRows = undefined;
+					log.info("Native pane session closed", { taskId: shortId(taskId), paneId });
+					// Fire ptyDied only for the FIRST pane (bare key) — additional panes
+					// closing don't signal task death.
+				},
+			},
+			paneId,
+		);
+		if (!session.native) sessions.delete(key);
 	} finally {
 		session.nativeAttaching = false;
 	}
@@ -513,6 +600,26 @@ function releaseNativeSession(session: PtySession): void {
 	}
 	session.clients.clear();
 	sessions.delete(session.taskId);
+	// Release all composite-keyed PtySession entries for additional panes of this task.
+	sweepNativePaneSessions(session.taskId);
+}
+
+/** Remove all composite-keyed PtySession entries for non-first panes of a task. */
+function sweepNativePaneSessions(taskId: string): void {
+	for (const [key, s] of sessions) {
+		const parsed = parsePaneSessionKey(key);
+		if (parsed?.taskId === taskId) {
+			if (s.batchTimer) clearTimeout(s.batchTimer);
+			s.pendingData = "";
+			s.native?.detach();
+			s.native = null;
+			for (const client of s.clients) {
+				try { client.close(); } catch { /* already closed */ }
+			}
+			s.clients.clear();
+			sessions.delete(key);
+		}
+	}
 }
 
 /** Tear down a native session's own tree — never tmux, never a sibling session. */
@@ -521,7 +628,7 @@ function destroyNativeSession(session: PtySession): Promise<void> {
 	// Stopping the host tree is I/O; like tmux kill-session it must not block the
 	// lifecycle event loop. Callers that relaunch the same task await the outcome
 	// via destroySessionAwaited instead.
-	return stopNativeTaskTerminal(session.taskId).catch((err) => {
+	return stopNativeTaskPanes(session.taskId).catch((err) => {
 		log.warn("Native session teardown failed (best-effort)", {
 			taskId: shortId(session.taskId),
 			error: String(err),
@@ -554,8 +661,9 @@ export async function destroyNativeTaskSession(taskId: string): Promise<void> {
 		destroySession(taskId);
 	} else {
 		log.info("Destroying unattached native session", { taskId: shortId(taskId) });
+		sweepNativePaneSessions(taskId);
 	}
-	await stopNativeTaskTerminal(taskId);
+	await stopNativeTaskPanes(taskId);
 }
 
 /**
@@ -573,7 +681,7 @@ export async function destroySessionAwaited(taskId: string, fallbackSocket?: str
 	releaseNativeSession(session);
 	// Unconfirmed teardown propagates on purpose: the caller is about to relaunch
 	// this exact session id, and failing here beats a confusing `session-exists`.
-	await stopNativeTaskTerminal(taskId);
+	await stopNativeTaskPanes(taskId);
 }
 
 export function hasSession(taskId: string): boolean {
@@ -921,7 +1029,8 @@ function attachNativeClient(session: PtySession, ws: any, since: number | null):
 	settleNativeStream(session);
 	const role = lease.attach(ws);
 	const replay = journal.replayFrom(since);
-	const sessionId = nativeTaskSessionId(session.taskId);
+	// Use the pane's own registry session id (not always the bare task session id).
+	const sessionId = session.native?.sessionId ?? nativeTaskSessionId(session.taskId);
 	sendToClient(
 		ws,
 		attachMessage(
@@ -1456,11 +1565,24 @@ const ptyServer = Bun.serve({
 					// launch path and rediscovered by reattach. A missing one means the
 					// shell is gone, which the ptyDied path already reports.
 					if (!session.native && !session.nativeAttaching) {
-						void reattachNativeTaskSession(sessionId, session.projectId, session.cwd).then((ok) => {
-							if (!ok) log.warn("Native session is gone; nothing to reattach", { taskId: shortId(sessionId) });
-						}).catch((err) => {
-							log.error("Native session reattach failed", { taskId: shortId(sessionId), error: String(err) });
-						});
+						// For composite keys (non-first panes), use ensureNativePanePtySession.
+						// For the bare task key (first pane), use the normal reattach path.
+						const parsed = parsePaneSessionKey(sessionId);
+						if (parsed) {
+							// Non-first pane: bind by session id (already in sessions map from ensureNativePanePtySession).
+							// If it's not bound yet, log a warning — the renderer opened the pane before the
+							// backend had a chance to register it.
+							log.warn("Non-first pane session missing native binding on WS open", {
+								taskId: shortId(parsed.taskId),
+								paneId: parsed.paneId,
+							});
+						} else {
+							void reattachNativeTaskSession(sessionId, session.projectId, session.cwd).then((ok) => {
+								if (!ok) log.warn("Native session is gone; nothing to reattach", { taskId: shortId(sessionId) });
+							}).catch((err) => {
+								log.error("Native session reattach failed", { taskId: shortId(sessionId), error: String(err) });
+							});
+						}
 					}
 				} else if (!session.proc) {
 					log.info("No proc, spawning new PTY", { taskId: shortId(sessionId) });

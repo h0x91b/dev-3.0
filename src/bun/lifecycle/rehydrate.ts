@@ -6,7 +6,7 @@ import * as pty from "../pty-server";
 import { DEFAULT_TMUX_SOCKET } from "../tmux";
 import { log } from "../rpc-handlers/shared";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
-import { nativeTaskTerminalAlive } from "../native-task-terminal";
+import { nativeTaskPanesAlive } from "../native-task-panes";
 import { dispatchLifecycleEvent } from "./service";
 
 function shouldRehydrate(task: Task): boolean {
@@ -42,7 +42,7 @@ async function terminalStillAlive(task: Task): Promise<boolean> {
 		return pty.tmuxSessionExists(task.id, task.tmuxSocket ?? DEFAULT_TMUX_SOCKET);
 	}
 	try {
-		return await nativeTaskTerminalAlive(task.id);
+		return await nativeTaskPanesAlive(task.id);
 	} catch (error) {
 		log.warn("Lifecycle boot native presence probe failed", {
 			taskId: task.id.slice(0, 8),

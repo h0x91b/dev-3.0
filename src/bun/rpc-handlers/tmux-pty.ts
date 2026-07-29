@@ -43,7 +43,7 @@ import {
 import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
-import { nativeTaskTerminalAlive } from "../native-task-terminal";
+import { nativeTaskPanesAlive } from "../native-task-panes";
 import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, log, resolveBinaryPath, shellQuote, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -1276,7 +1276,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 	// handle may or may not have noticed yet — the backend is the ground truth.
 	if (pty.hasSession(params.taskId) && !pty.isNativeSessionSettling(params.taskId)) {
 		const alive = pty.getSessionBackend(params.taskId) === "native"
-			? await nativeTaskTerminalAlive(params.taskId)
+			? await nativeTaskPanesAlive(params.taskId)
 			: await pty.tmuxSessionExists(params.taskId, pty.getSessionSocket(params.taskId));
 		if (!alive) {
 			log.info("Session in memory but the backend session is gone — destroying for recovery", {
@@ -1311,7 +1311,7 @@ async function getPtyUrl(params: { taskId: string; resume?: boolean }) {
 		if (foundTask && foundProject && isActive(foundTask.status) && foundTask.worktreePath) {
 			const identity = taskTerminalBackendIdentity(foundTask);
 			const sessionAlive = identity === "native"
-				? await nativeTaskTerminalAlive(params.taskId)
+				? await nativeTaskPanesAlive(params.taskId)
 				: await pty.tmuxSessionExists(params.taskId, foundTask.tmuxSocket ?? DEFAULT_TMUX_SOCKET);
 
 			if (sessionAlive && identity === "native") {

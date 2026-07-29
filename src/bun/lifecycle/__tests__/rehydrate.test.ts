@@ -23,8 +23,8 @@ vi.mock("../../pty-server", () => ({
 	reattachNativeTaskSession: vi.fn(() => Promise.resolve(true)),
 }));
 
-vi.mock("../../native-task-terminal", () => ({
-	nativeTaskTerminalAlive: vi.fn(() => Promise.resolve(true)),
+vi.mock("../../native-task-panes", () => ({
+	nativeTaskPanesAlive: vi.fn(() => Promise.resolve(true)),
 }));
 
 vi.mock("../../tmux", () => ({
@@ -43,7 +43,7 @@ vi.mock("../service", () => ({
 
 import * as data from "../../data";
 import * as git from "../../git";
-import { nativeTaskTerminalAlive } from "../../native-task-terminal";
+import { nativeTaskPanesAlive } from "../../native-task-panes";
 import * as pty from "../../pty-server";
 import { dispatchLifecycleEvent } from "../service";
 import { rehydrateTaskLifecycles } from "../rehydrate";
@@ -134,12 +134,12 @@ describe("boot terminal probe", () => {
 	it("probes a native task for presence instead of reattaching to it", async () => {
 		await bootWith({ terminalBackend: "native" });
 
-		expect(nativeTaskTerminalAlive).toHaveBeenCalledTimes(1);
+		expect(nativeTaskPanesAlive).toHaveBeenCalledTimes(1);
 		expect(pty.reattachNativeTaskSession).not.toHaveBeenCalled();
 	});
 
 	it("reports what the native probe found", async () => {
-		vi.mocked(nativeTaskTerminalAlive).mockResolvedValueOnce(false);
+		vi.mocked(nativeTaskPanesAlive).mockResolvedValueOnce(false);
 
 		await bootWith({ terminalBackend: "native" });
 
@@ -151,7 +151,7 @@ describe("boot terminal probe", () => {
 		await bootWith({});
 
 		expect(pty.tmuxSessionExists).toHaveBeenCalledTimes(1);
-		expect(nativeTaskTerminalAlive).not.toHaveBeenCalled();
+		expect(nativeTaskPanesAlive).not.toHaveBeenCalled();
 		expect(pty.reattachNativeTaskSession).not.toHaveBeenCalled();
 		expect(bootReality().terminalAlive).toBe(true);
 	});
