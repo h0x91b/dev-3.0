@@ -90,10 +90,12 @@ export function createFakeRegistry(): FakeRegistry {
 			return true;
 		},
 		readPaneRecord(sessionId): NativeSessionRecord | null {
-			return panes.get(sessionId)?.record ?? null;
+			const pane = panes.get(sessionId);
+			return pane?.alive ? pane.record : null;
 		},
 		readPaneToken(sessionId): string | null {
-			return panes.get(sessionId)?.token ?? null;
+			const pane = panes.get(sessionId);
+			return pane?.alive ? pane.token : null;
 		},
 		async classifyPane(record, token): Promise<OwnershipVerdict> {
 			const pane = panes.get(record.sessionId);
@@ -102,7 +104,7 @@ export function createFakeRegistry(): FakeRegistry {
 		},
 		async connectPane(record): Promise<PaneConnection> {
 			const pane = panes.get(record.sessionId);
-			if (!pane) throw new Error(`no fake pane ${record.sessionId}`);
+			if (!pane || !pane.alive) throw new Error(`no fake pane ${record.sessionId}`);
 			// Mirror the host rule: the first live attachment is writer, the rest observe.
 			const role: ClientRole = pane.writerTaken ? "observer" : "writer";
 			pane.writerTaken = true;
@@ -117,6 +119,9 @@ export function createFakeRegistry(): FakeRegistry {
 					pane.resizes.push({ cols, rows });
 					pane.record.cols = cols;
 					pane.record.rows = rows;
+				},
+				capture(_includeHistory) {
+					return pane.inputs.join("");
 				},
 				close() {
 					if (closed) return;

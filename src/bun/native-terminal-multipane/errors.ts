@@ -51,3 +51,23 @@ export class ObserverMutationError extends Error {
 		this.name = "ObserverMutationError";
 	}
 }
+
+/**
+ * A geometry-only layout change was rejected because the new tree's pane id set
+ * differs from the coordinator's current one. Order changes also count as a
+ * mismatch — the tree must be a pure ratio/shape change over the exact same set.
+ */
+export class LayoutPaneSetMismatchError extends Error {
+	readonly code = "layout-pane-set-mismatch";
+	constructor(
+		readonly coordinatorId: string,
+		readonly expectedPaneIds: readonly string[],
+		readonly receivedPaneIds: readonly string[],
+	) {
+		super(
+			`publishGeometry rejected for coordinator ${coordinatorId}: ` +
+				`pane set [${receivedPaneIds.join(", ")}] does not match current [${expectedPaneIds.join(", ")}]`,
+		);
+		this.name = "LayoutPaneSetMismatchError";
+	}
+}

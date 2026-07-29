@@ -33,13 +33,30 @@ function twoPaneRecord(coordinatorId = "mp"): NativeMultipaneRecord {
 describe("native multipane coordinator ids", () => {
 	it("accepts short safe ids and rejects traversal or oversized ones", () => {
 		expect(isValidCoordinatorId("mp-demo_1.a")).toBe(true);
+		// 46-char real coordinator id (dev3-task-<uuid>) must be accepted.
+		expect(isValidCoordinatorId("dev3-task-00000000-0000-4000-8000-000000000001")).toBe(true);
 		expect(isValidCoordinatorId("..")).toBe(false);
 		expect(isValidCoordinatorId("a/b")).toBe(false);
-		expect(isValidCoordinatorId("x".repeat(33))).toBe(false);
+		// 57 chars exceeds the new 56-char limit.
+		expect(isValidCoordinatorId("x".repeat(57))).toBe(false);
 	});
 
 	it("derives a valid registry session id per logical pane", () => {
 		expect(paneSessionId("mp", "pane-7")).toBe("mp-pane-7");
+	});
+
+	it("accepts a real dev3-task-<uuid> coordinator id and its derived pane session id fits the seam rule", () => {
+		// A real coordinator id: nativeTaskSessionId(uuid) = "dev3-task-<uuid>" = 46 chars.
+		const coordId = "dev3-task-00000000-0000-4000-8000-000000000001";
+		expect(coordId.length).toBe(46);
+		expect(isValidCoordinatorId(coordId)).toBe(true);
+
+		// The derived pane session id must fit the terminal-backend seam's rule (max 64 chars).
+		const paneId = paneSessionId(coordId, "pane-1");
+		expect(paneId).toBe(`${coordId}-pane-1`);
+		expect(paneId.length).toBeLessThanOrEqual(64);
+		// Verify it matches the seam's session-id pattern: /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+		expect(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(paneId)).toBe(true);
 	});
 });
 

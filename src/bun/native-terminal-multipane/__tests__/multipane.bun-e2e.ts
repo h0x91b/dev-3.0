@@ -166,6 +166,9 @@ async function run(): Promise<void> {
 		);
 
 		console.log("\n# client-local focus and zoom");
+		// Capture shared state before any client-local operations.
+		const sharedActiveBefore = coordinator.layout.activePaneId;
+		const sharedZoomedBefore = coordinator.layout.zoomedPaneId;
 		const viewA = coordinator.attachClient("view-a");
 		const viewB = coordinator.attachClient("view-b");
 		viewA.focus("pane-1");
@@ -177,7 +180,8 @@ async function run(): Promise<void> {
 			"the second client keeps its own focus and stays unzoomed",
 		);
 		check(
-			coordinator.layout.zoomedPaneId === null && coordinator.layout.activePaneId === "pane-1",
+			coordinator.layout.zoomedPaneId === sharedZoomedBefore &&
+				coordinator.layout.activePaneId === sharedActiveBefore,
 			"client focus and zoom never leak into the shared layout",
 		);
 

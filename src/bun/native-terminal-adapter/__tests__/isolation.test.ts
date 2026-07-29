@@ -35,6 +35,11 @@ const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests_
 // (proved by `bun/terminal-backend/__tests__/isolation.test.ts`).
 const seamRoot = resolve(sourceRoot, "bun/terminal-backend");
 
+// The native multi-pane coordinator (seq 1283) is a SANCTIONED consumer: it uses
+// the adapter's snapshot surface for point-in-time captures without importing the
+// rest of the single-view lifecycle.
+const multipaneRoot = resolve(sourceRoot, "bun/native-terminal-multipane");
+
 describe("native single-view adapter isolation", () => {
 	it("has no product callers beyond the sanctioned seam", () => {
 		// Match an actual import/require of the module, not a stray mention (the
@@ -44,6 +49,7 @@ describe("native single-view adapter isolation", () => {
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
 			.filter((path) => !path.startsWith(seamRoot))
+			.filter((path) => !path.startsWith(multipaneRoot))
 			.filter((path) => importsModule.test(readFileSync(path, "utf8")));
 		expect(importers).toEqual([]);
 	});

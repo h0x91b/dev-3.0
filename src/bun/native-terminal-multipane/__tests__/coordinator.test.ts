@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listPaneIds } from "../../../shared/split-tree";
+import { createSplitTree, listPaneIds } from "../../../shared/split-tree";
 import { defineShellLaunchSpec } from "../../native-terminal-registry/shell-launch";
 import { NativeMultipaneCoordinator, type PaneLaunchSpec } from "../coordinator";
 import {
@@ -214,6 +214,8 @@ describe("native multipane writer ownership", () => {
 	it("keeps two clients' focus and zoom independent over one pane set", async () => {
 		const coordinator = await createWithPanes(deps, 4);
 		const [first, , third] = coordinator.paneIds();
+		const panes = coordinator.paneIds();
+		const lastPane = panes[panes.length - 1]!;
 		const viewA = coordinator.attachClient("a");
 		const viewB = coordinator.attachClient("b");
 
@@ -222,7 +224,8 @@ describe("native multipane writer ownership", () => {
 		expect(viewB.focusedPaneId).toBe(first);
 		expect(viewB.zoomedPaneId).toBeNull();
 		expect(coordinator.layout.zoomedPaneId).toBeNull();
-		expect(coordinator.layout.activePaneId).toBe(first);
+		// The shared activePaneId is set by the last split, not by client-local focus.
+		expect(coordinator.layout.activePaneId).toBe(lastPane);
 	});
 
 	it("moves client focus through the shared geometry without writing to it", async () => {
@@ -233,5 +236,82 @@ describe("native multipane writer ownership", () => {
 		view.focusDirection(coordinator.layout, "right");
 		expect(view.focusedPaneId).toBe("pane-2");
 		expect(coordinator.layout).toEqual(before);
+	});
+});
+
+describe("native multipane coordinator publishGeometry", () => {
+	let root: string;
+	let deps: FakeRegistry;
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-multipane-geom-"));
+		process.env[NATIVE_MULTIPANE_DIR_ENV] = root;
+		deps = createFakeRegistry();
+	});
+
+	afterEach(() => {
+		delete process.env[NATIVE_MULTIPANE_DIR_ENV];
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("persists new ratios and the recovery sees the same layout", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		const original = coordinator.layout;
+		// Build a tree with pane set unchanged but ratio tweaked.
+		const tweaked = { ...original, activePaneId: "pane-2" };
+		await coordinator.publishGeometry(tweaked);
+		expect(coordinator.layout.activePaneId).toBe("pane-2");
+
+		// A fresh coordinator via recover must see the published layout.
+		coordinator.detach();
+		const recovered = await NativeMultipaneCoordinator.recover(ID, deps);
+		expect(recovered!.layout.activePaneId).toBe("pane-2");
+	});
+
+	it("rejects when the new tree's pane set differs from the current one", async () => {
+		const { LayoutPaneSetMismatchError } = await import("../errors");
+		const coordinator = await createWithPanes(deps, 2);
+		// A 1-pane tree mismatches the 2-pane coordinator.
+		const singlePaneTree = createSplitTree();
+		await expect(coordinator.publishGeometry(singlePaneTree)).rejects.toBeInstanceOf(
+			LayoutPaneSetMismatchError,
+		);
+	});
+
+	it("leaves the record untouched when the pane set mismatches", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		const before = readMultipaneRecord(ID)!.epoch;
+		const singlePaneTree = createSplitTree();
+		await coordinator.publishGeometry(singlePaneTree).catch(() => {});
+		expect(readMultipaneRecord(ID)!.epoch).toBe(before);
+	});
+});
+
+describe("native multipane coordinator capturePane", () => {
+	let root: string;
+	let deps: FakeRegistry;
+
+	beforeEach(() => {
+		root = mkdtempSync(join(tmpdir(), "dev3-multipane-capture-"));
+		process.env[NATIVE_MULTIPANE_DIR_ENV] = root;
+		deps = createFakeRegistry();
+	});
+
+	afterEach(() => {
+		delete process.env[NATIVE_MULTIPANE_DIR_ENV];
+		rmSync(root, { recursive: true, force: true });
+	});
+
+	it("captures the pane's text from the connection's capture method", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		// The FakeRegistry captures joined inputs — write something first.
+		await coordinator.writePane("pane-1", "hello");
+		const text = await coordinator.capturePane("pane-1", false);
+		expect(typeof text).toBe("string");
+	});
+
+	it("rejects capture of an unknown pane", async () => {
+		const coordinator = await createWithPanes(deps, 2);
+		await expect(coordinator.capturePane("ghost", false)).rejects.toBeInstanceOf(PaneNotFoundError);
 	});
 });

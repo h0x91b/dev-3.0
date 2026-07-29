@@ -25,9 +25,10 @@ export function multipaneRootDir(): string {
 	return join(dev3Home, "native-multipane");
 }
 
-// Shorter than a session id: every derived pane session id is
-// `<coordinatorId>-<paneId>` and must still fit the registry's 64-char limit.
-const COORDINATOR_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/;
+// Max 56 chars: a real coordinator id is `dev3-task-<uuid>` (46 chars), and the
+// longest derived pane session id `<coordinatorId>-pane-N` (≤53) still fits the
+// registry's 64-char limit. `..` is always rejected to block path traversal.
+const COORDINATOR_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,55}$/;
 
 export function isValidCoordinatorId(id: string): boolean {
 	return typeof id === "string" && COORDINATOR_ID_PATTERN.test(id) && !id.includes("..");
@@ -36,7 +37,7 @@ export function isValidCoordinatorId(id: string): boolean {
 export function assertValidCoordinatorId(id: string): void {
 	if (!isValidCoordinatorId(id)) {
 		throw new Error(
-			`invalid native multipane coordinator id ${JSON.stringify(id)} — allowed: ${COORDINATOR_ID_PATTERN.source} and no "..".`,
+			`invalid native multipane coordinator id ${JSON.stringify(id)} — allowed: ${COORDINATOR_ID_PATTERN.source} (max 56 chars) and no "..".`,
 		);
 	}
 }

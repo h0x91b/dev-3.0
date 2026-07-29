@@ -44,9 +44,11 @@ const soakRoot = resolve(sourceRoot, "bun/native-terminal-soak");
 // pure spec/validation helpers rather than restating them.
 const SANCTIONED_PRODUCT_CALLERS = [
 	"bun/native-host-runtime.ts",
+	"bun/native-task-panes.ts",
 	"bun/native-task-terminal.ts",
 	"bun/native-terminal-host/main.ts",
 	"bun/task-terminal-backend.ts",
+	"bun/terminal-backend/native-backend.ts",
 	"shared/platform-launch.ts",
 ];
 

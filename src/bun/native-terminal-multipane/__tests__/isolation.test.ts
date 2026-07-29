@@ -19,15 +19,29 @@ function sourceFiles(directory: string): string[] {
 const moduleFiles = sourceFiles(moduleRoot);
 const moduleFilesNoTests = moduleFiles.filter((path) => !path.includes("__tests__"));
 
+// Since seq 1311 the coordinator has production callers:
+//  - native-backend.ts: the coordinator-backed terminal-backend implementation
+//  - native-task-panes.ts: the product-facing multi-pane runtime
+//  - task-terminal-backend.ts: injects the host launcher into coordinator deps
+// All other callers must remain test-only.
+const SANCTIONED_PRODUCTION_CALLERS = [
+	"bun/native-task-panes.ts",
+	"bun/task-terminal-backend.ts",
+	"bun/terminal-backend/native-backend.ts",
+];
+
 describe("native multipane coordinator isolation", () => {
-	it("has no product callers — nothing outside the module imports it", () => {
+	it("has no product callers beyond the sanctioned seam", () => {
 		// Sibling isolation tests may NAME this module in their allowlists; only a
 		// real import from product source would put it into the app graph.
 		const importsMultipane = /(?:from|import|require\s*\()\s*['"][^'"]*native-terminal-multipane/;
 		const importers = sourceFiles(sourceRoot)
 			.filter((path) => !path.startsWith(moduleRoot))
-			.filter((path) => importsMultipane.test(readFileSync(path, "utf8")));
-		expect(importers).toEqual([]);
+			.filter((path) => !path.includes("__tests__"))
+			.filter((path) => importsMultipane.test(readFileSync(path, "utf8")))
+			.map((path) => path.slice(sourceRoot.length + 1).replaceAll("\\", "/"))
+			.sort();
+		expect(importers).toEqual(SANCTIONED_PRODUCTION_CALLERS);
 	});
 
 	it("never imports or spawns tmux (static sentinel over the module source)", () => {

@@ -17,7 +17,7 @@
  * has no product caller: it is composed by its own harness and tests only.
  */
 
-import { listPaneIds, restoreSplitTree, serializeSplitTree, splitPane, closePane as closeTreePane, createSplitTree, type SplitOrientation, type SplitTree } from "../../shared/split-tree";
+import { listPaneIds, restoreSplitTree, serializeSplitTree, splitPane, closePane as closeTreePane, createSplitTree, validateSplitTree, type SplitOrientation, type SplitTree } from "../../shared/split-tree";
 import { withFileLock } from "../file-lock";
 import { NativeSessionClient } from "../native-terminal-registry/client";
 import { classifyOwnership, type OwnershipVerdict } from "../native-terminal-registry/ownership";
@@ -26,9 +26,12 @@ import { readRecord, readToken, type NativeSessionRecord } from "../native-termi
 import { start, stop, type StartOptions, type StartResult } from "../native-terminal-registry/registry";
 import type { ShellLaunchSpec } from "../native-terminal-registry/shell-launch";
 import { CoordinatorClientView } from "./client-view";
+import { MonotonicSnapshotView } from "../native-terminal-adapter/view-reconstruction";
+import { readParserState } from "../native-terminal-registry/parser-state";
 import {
 	CoordinatorExistsError,
 	CoordinatorGoneError,
+	LayoutPaneSetMismatchError,
 	ObserverMutationError,
 	PaneNotFoundError,
 	PaneResizeNotAppliedError,
@@ -79,6 +82,8 @@ export interface PaneConnection {
 	onOutput(cb: (bytes: Uint8Array) => void): () => void;
 	input(data: string | Uint8Array): void;
 	resize(cols: number, rows: number): void;
+	/** Point-in-time screen capture; returns `""` when the surface has nothing. */
+	capture(includeHistory: boolean): string;
 	close(): void;
 }
 
@@ -101,11 +106,14 @@ export const defaultCoordinatorDeps: CoordinatorDeps = {
 	async connectPane(record, token) {
 		const client = new NativeSessionClient();
 		await client.connect(record, token, { timeoutMs: 5000 });
+		// Use the same snapshot surface the single-view adapter uses for capture.
+		const surface = new MonotonicSnapshotView(record.sessionId, readParserState);
 		return {
 			role: () => client.getRole(),
 			onOutput: (cb) => client.onOutput(cb),
 			input: (data) => client.input(data),
 			resize: (cols, rows) => client.resize(cols, rows),
+			capture: (includeHistory) => surface.capture(includeHistory) ?? "",
 			close: () => client.close(),
 		};
 	},
@@ -275,8 +283,8 @@ export class NativeMultipaneCoordinator {
 	async split(paneId: string, orientation: SplitOrientation, spec: PaneLaunchSpec): Promise<string> {
 		this.assertPane(paneId);
 		return this.withOwnedRecord(async () => {
-			const nextTree = normalizeSharedLayout(splitPane(this.tree, paneId, orientation));
-			const created = listPaneIds(nextTree).find((id) => !listPaneIds(this.tree).includes(id));
+			const rawTree = splitPane(this.tree, paneId, orientation);
+			const created = listPaneIds(rawTree).find((id) => !listPaneIds(this.tree).includes(id));
 			if (!created) throw new PaneNotFoundError(paneId);
 			await this.deps.startPane(paneSessionId(this.coordinatorId, created), {
 				launch: spec.launch,
@@ -284,7 +292,8 @@ export class NativeMultipaneCoordinator {
 				rows: spec.rows,
 				timeoutMs: spec.timeoutMs,
 			});
-			this.publish(nextTree);
+			// Activate the new pane in the shared layout (clear zoom; new pane is focused).
+			this.publish({ ...rawTree, activePaneId: created, zoomedPaneId: null });
 			return created;
 		});
 	}
@@ -375,6 +384,37 @@ export class NativeMultipaneCoordinator {
 		const connection = await this.connect(paneId);
 		if (connection.role() !== "writer") throw new ObserverMutationError(paneId, "input");
 		connection.input(data);
+	}
+
+	/** Point-in-time screen capture for one pane; returns `""` when unavailable. */
+	async capturePane(paneId: string, includeHistory: boolean): Promise<string> {
+		this.assertPane(paneId);
+		const connection = await this.connect(paneId);
+		return connection.capture(includeHistory);
+	}
+
+	/**
+	 * Publish a geometry-only layout change: same pane set, new ratios/shape.
+	 * Rejects when the new tree's pane id set differs from the current one (order
+	 * differences also count as a mismatch — no silent reconciliation).
+	 */
+	async publishGeometry(tree: SplitTree): Promise<void> {
+		const validation = validateSplitTree(tree);
+		if (!validation.valid) {
+			throw new Error(`invalid SplitTree: ${validation.errors.join("; ")}`);
+		}
+		const newIds = listPaneIds(tree);
+		const currentIds = this.paneIds();
+		if (
+			newIds.length !== currentIds.length ||
+			newIds.some((id, i) => currentIds[i] !== id)
+		) {
+			throw new LayoutPaneSetMismatchError(this.coordinatorId, currentIds, newIds);
+		}
+		return this.withOwnedRecord(async () => {
+			// Clear client-local zoom; preserve activePaneId (shared focus).
+			this.publish({ ...tree, zoomedPaneId: null });
+		});
 	}
 
 	private assertPane(paneId: string): void {
