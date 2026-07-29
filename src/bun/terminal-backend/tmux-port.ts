@@ -27,7 +27,7 @@ export interface TmuxBackendPort {
 	newSessionDetached(session: string, launch: TmuxLaunch): Promise<void>;
 	listPanes(session: string): Promise<TmuxPane[]>;
 	activePaneId(session: string): Promise<string | null>;
-	splitPane(fromPaneId: string, launch: TmuxLaunch): Promise<string>;
+	splitPane(fromPaneId: string, launch: TmuxLaunch, orientation?: "horizontal" | "vertical"): Promise<string>;
 	selectPane(paneId: string): Promise<void>;
 	/** Raw text delivered to the pane's process, control bytes included. */
 	writePane(paneId: string, data: string): Promise<void>;
@@ -61,10 +61,10 @@ export function tmuxBackendPort(client: TmuxClient = tmux): TmuxBackendPort {
 
 		activePaneId: (session) => client.activePaneId(session),
 
-		async splitPane(fromPaneId, launch) {
+		async splitPane(fromPaneId, launch, orientation = "vertical") {
 			const { paneId } = await client.splitWindow({
 				target: fromPaneId,
-				orientation: "vertical",
+				orientation,
 				cwd: launch.cwd,
 				env: launch.env as Record<string, string> | undefined,
 				command: launch.command,

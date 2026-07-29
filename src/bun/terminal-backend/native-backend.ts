@@ -1,23 +1,33 @@
 /**
  * Native implementation of the product {@link TerminalBackend} (MIG-002, seq 1280).
  *
- * A thin, honest wrapper around the already-merged `NativeSingleViewAdapter`:
- * it translates product vocabulary into that adapter's single-view lifecycle and
- * its typed errors into the contract's. Registry internals (records, tokens,
- * ownership, parser snapshots, sockets) stay behind the adapter — this file
- * imports nothing from the registry, so the seam does not widen the native
- * module's reach.
- *
- * Multi-view (`splitView`, focusing a second view) returns the typed
- * `unsupported` failure until LAY-003/LAY-004 lands. That is a documented
- * boundary of THIS adapter, not a capability the caller must negotiate.
+ * Coordinator-backed: one {@link NativeMultipaneCoordinator} per session id,
+ * cached inside this instance. Multi-view is fully supported — split, focus,
+ * and close all delegate to the coordinator's pane lifecycle. The
+ * {@link NativeSingleViewAdapter} is NOT imported here; the coordinator is the
+ * only native abstraction this backend touches.
  */
 
+import { activatePane } from "../../shared/split-tree";
 import {
-	NativeAdapterError,
-	NativeSingleViewAdapter,
-	type NativeAdapterDeps,
-} from "../native-terminal-adapter";
+	NativeMultipaneCoordinator,
+	defaultCoordinatorDeps,
+	type CoordinatorDeps,
+	type PaneLaunchSpec,
+} from "../native-terminal-multipane/coordinator";
+import {
+	CoordinatorExistsError,
+	CoordinatorGoneError,
+	LayoutPaneSetMismatchError,
+	ObserverMutationError,
+	PaneNotFoundError,
+	PaneResizeNotAppliedError,
+} from "../native-terminal-multipane/errors";
+import {
+	defineShellLaunchSpec,
+	defaultNativeShellLaunchSpec,
+	type ShellLaunchSpec,
+} from "../native-terminal-registry/shell-launch";
 import {
 	isTerminalLaunchSpec,
 	isTerminalSessionId,
@@ -36,6 +46,7 @@ import {
 	type TerminalViewState,
 } from "./contract";
 import {
+	TerminalBackendError,
 	attachmentReleased,
 	backendFailure,
 	invalidLaunch,
@@ -43,42 +54,61 @@ import {
 	invalidSize,
 	sessionExists,
 	sessionNotFound,
-	unsupported,
 	viewNotFound,
-	type TerminalBackendError,
 } from "./errors";
 
-const MULTI_VIEW_REASON = "the native backend serves one view per session until LAY-003/LAY-004";
-
 export interface NativeTerminalBackendOptions {
-	/** Injectable native seams — tests pass fakes, production uses the defaults. */
-	deps?: Partial<NativeAdapterDeps>;
+	/** Injectable coordinator seams — tests pass fakes, production uses the defaults. */
+	deps?: Partial<CoordinatorDeps>;
 }
 
-/** Translate an adapter failure into the contract's typed error. */
+/** Translate a coordinator failure into the contract's typed error. */
 function translate(
 	operation: string,
 	err: unknown,
 	sessionId: TerminalSessionId,
 	viewId?: TerminalViewId,
 ): TerminalBackendError {
-	if (err instanceof NativeAdapterError) {
-		if (err.code === "session-not-found") return sessionNotFound(sessionId);
-		if (err.code === "view-gone") return viewNotFound(sessionId, viewId ?? "<unknown>");
-		if (err.code === "multi-view-unsupported") return unsupported(operation, MULTI_VIEW_REASON);
+	if (err instanceof CoordinatorExistsError) return sessionExists(sessionId);
+	if (err instanceof CoordinatorGoneError) return sessionNotFound(sessionId);
+	if (err instanceof PaneNotFoundError) return viewNotFound(sessionId, viewId ?? err.paneId);
+	if (
+		err instanceof ObserverMutationError ||
+		err instanceof PaneResizeNotAppliedError ||
+		err instanceof LayoutPaneSetMismatchError
+	) {
+		return backendFailure(operation, err, { sessionId, viewId });
 	}
 	return backendFailure(operation, err, { sessionId, viewId });
 }
 
+function buildLaunchSpec(spec: TerminalSessionSpec | TerminalViewSpec): ShellLaunchSpec {
+	const cwd = spec.cwd;
+	const env = (spec.env as Record<string, string> | undefined) ?? {};
+	if (spec.launch) {
+		if (!isTerminalLaunchSpec(spec.launch)) throw invalidLaunch(spec.launch);
+		return defineShellLaunchSpec({
+			executable: spec.launch.executable,
+			argv: [...spec.launch.argv],
+			cwd,
+			env,
+		});
+	}
+	if (spec.command?.trim()) {
+		return defineShellLaunchSpec({ executable: spec.command, argv: [], cwd, env });
+	}
+	const defaults = defaultNativeShellLaunchSpec({ platform: process.platform, cwd, env: process.env });
+	return defineShellLaunchSpec({ ...defaults, env });
+}
+
 export class NativeTerminalBackend implements TerminalBackend {
 	readonly kind = "native" as const;
-	private readonly adapter: NativeSingleViewAdapter;
-	private readonly attachments = new Set<NativeAttachment>();
+	private readonly deps: CoordinatorDeps;
+	private readonly coordinators = new Map<TerminalSessionId, NativeMultipaneCoordinator>();
+	private readonly attachments = new Set<NativeMultipaneAttachment>();
 
 	constructor(options: NativeTerminalBackendOptions = {}) {
-		// `owner: false` keeps session lifetime out of `dispose()`: sessions are
-		// persistent and only `cleanupSession` may tear one down.
-		this.adapter = new NativeSingleViewAdapter({ owner: false, deps: options.deps });
+		this.deps = { ...defaultCoordinatorDeps, ...options.deps };
 	}
 
 	async openSession(spec: TerminalSessionSpec): Promise<TerminalSessionState> {
@@ -86,40 +116,50 @@ export class NativeTerminalBackend implements TerminalBackend {
 		if (spec.size && !isTerminalSize(spec.size)) throw invalidSize(spec.size);
 		if (spec.launch && !isTerminalLaunchSpec(spec.launch)) throw invalidLaunch(spec.launch);
 		if (await this.describeSession(spec.id)) throw sessionExists(spec.id);
-		// The native host spawns the process itself, so geometry is part of the
-		// launch instead of a resize after the shell has already painted once.
-		const handle = await this.guard("openSession", spec.id, () =>
-			this.adapter.createSession({
-				id: spec.id,
-				cwd: spec.cwd,
-				env: spec.env as Record<string, string> | undefined,
-				command: spec.command,
-				launch: spec.launch,
+
+		let paneSpec: PaneLaunchSpec;
+		try {
+			paneSpec = {
+				launch: buildLaunchSpec(spec),
 				cols: spec.size?.cols,
 				rows: spec.size?.rows,
-			}),
+			};
+		} catch (err) {
+			if (err instanceof TerminalBackendError) throw err;
+			throw backendFailure("openSession", err, { sessionId: spec.id });
+		}
+
+		const coordinator = await this.guard("openSession", spec.id, () =>
+			NativeMultipaneCoordinator.create(spec.id, paneSpec, this.deps),
 		);
-		return {
-			id: spec.id,
-			views: [{ id: handle.firstViewId, focused: true }],
-			focusedViewId: handle.firstViewId,
-		};
+		this.coordinators.set(spec.id, coordinator);
+		return this.toSessionState(spec.id, coordinator);
 	}
 
 	async describeSession(id: TerminalSessionId): Promise<TerminalSessionState | null> {
 		if (!isTerminalSessionId(id)) return null;
-		const views = await this.guard("describeSession", id, () => this.adapter.listViews(id));
-		if (views.length === 0) return null;
-		const mapped: TerminalViewState[] = views.map((view) => ({ id: view.id, focused: view.active }));
-		return { id, views: mapped, focusedViewId: mapped.find((view) => view.focused)?.id ?? null };
+		try {
+			// Always recover from disk so dead panes (reconciled out by recover()) are
+			// reflected immediately — a cached coordinator would miss pane deaths.
+			const coordinator = await NativeMultipaneCoordinator.recover(id, this.deps);
+			if (coordinator) {
+				this.coordinators.set(id, coordinator);
+				return this.toSessionState(id, coordinator);
+			}
+			this.coordinators.delete(id);
+			return null;
+		} catch {
+			return null;
+		}
 	}
 
 	async attachView(id: TerminalSessionId, viewId?: TerminalViewId): Promise<TerminalAttachment> {
 		const state = await this.requireSession(id);
 		const target = viewId ?? state.focusedViewId ?? state.views[0]?.id;
 		if (!target) throw viewNotFound(id, viewId ?? "<focused>");
-		if (!state.views.some((view) => view.id === target)) throw viewNotFound(id, target);
-		const attachment = new NativeAttachment(id, target, this.adapter, (released) =>
+		if (!state.views.some((v) => v.id === target)) throw viewNotFound(id, target);
+		const coordinator = await this.requireCoordinator(id);
+		const attachment = new NativeMultipaneAttachment(id, target, coordinator, (released) =>
 			this.attachments.delete(released),
 		);
 		this.attachments.add(attachment);
@@ -127,17 +167,33 @@ export class NativeTerminalBackend implements TerminalBackend {
 	}
 
 	async focusView(id: TerminalSessionId, viewId: TerminalViewId): Promise<void> {
-		await this.requireSession(id);
-		await this.guard("focusView", id, () => this.adapter.focusView(id, viewId), viewId);
+		const coordinator = await this.requireCoordinator(id);
+		if (!coordinator.paneIds().includes(viewId)) throw viewNotFound(id, viewId);
+		const newTree = activatePane(coordinator.layout, viewId);
+		await this.guard("focusView", id, () => coordinator.publishGeometry(newTree), viewId);
 	}
 
 	async splitView(
 		id: TerminalSessionId,
-		_from: TerminalViewId,
-		_spec: TerminalViewSpec,
+		from: TerminalViewId,
+		spec: TerminalViewSpec,
 	): Promise<TerminalViewState> {
-		await this.requireSession(id);
-		throw unsupported("splitView", MULTI_VIEW_REASON);
+		const coordinator = await this.requireCoordinator(id);
+		if (!coordinator.paneIds().includes(from)) throw viewNotFound(id, from);
+
+		let paneSpec: PaneLaunchSpec;
+		try {
+			paneSpec = { launch: buildLaunchSpec(spec) };
+		} catch (err) {
+			if (err instanceof TerminalBackendError) throw err;
+			throw backendFailure("splitView", err, { sessionId: id });
+		}
+
+		const orientation = spec.orientation ?? "horizontal";
+		const newPaneId = await this.guard("splitView", id, () =>
+			coordinator.split(from, orientation, paneSpec),
+		);
+		return { id: newPaneId, focused: coordinator.layout.activePaneId === newPaneId };
 	}
 
 	async closeView(
@@ -146,44 +202,70 @@ export class NativeTerminalBackend implements TerminalBackend {
 		opts: TerminalTeardownOptions = {},
 	): Promise<void> {
 		const ignoreMissing = opts.ignoreMissing ?? false;
-		const state = await this.describeSession(id);
-		if (!state) {
+		const coordinator = await this.getOrRecover(id);
+		if (!coordinator) {
 			if (ignoreMissing) return;
 			throw sessionNotFound(id);
 		}
-		if (!state.views.some((view) => view.id === viewId)) {
+		if (!coordinator.paneIds().includes(viewId)) {
 			if (ignoreMissing) return;
 			throw viewNotFound(id, viewId);
 		}
-		// The sole view IS the session, so closing it tears the session down.
-		await this.guard(
-			"closeView",
-			id,
-			() => this.adapter.killView(id, viewId, { bestEffort: ignoreMissing }),
-			viewId,
-		);
+		const result = await this.guard("closeView", id, () => coordinator.closePane(viewId), viewId);
+		if (result.sessionTornDown) this.coordinators.delete(id);
 	}
 
 	async cleanupSession(id: TerminalSessionId, opts: TerminalTeardownOptions = {}): Promise<void> {
 		const ignoreMissing = opts.ignoreMissing ?? false;
-		for (const attachment of [...this.attachments]) {
-			if (attachment.sessionId === id) await attachment.detach();
+		for (const att of [...this.attachments]) {
+			if (att.sessionId === id) await att.detach();
 		}
-		await this.guard("cleanupSession", id, () =>
-			this.adapter.cleanupSession(id, { bestEffort: ignoreMissing }),
-		);
+		const coordinator = await this.getOrRecover(id);
+		if (!coordinator) {
+			if (ignoreMissing) return;
+			throw sessionNotFound(id);
+		}
+		await this.guard("cleanupSession", id, () => coordinator.cleanup());
+		this.coordinators.delete(id);
 	}
 
 	async dispose(): Promise<void> {
-		for (const attachment of [...this.attachments]) await attachment.detach();
+		for (const att of [...this.attachments]) await att.detach();
 		this.attachments.clear();
-		await this.adapter.dispose();
+		this.coordinators.clear();
+	}
+
+	private async getOrRecover(id: TerminalSessionId): Promise<NativeMultipaneCoordinator | null> {
+		const cached = this.coordinators.get(id);
+		if (cached) return cached;
+		const recovered = await NativeMultipaneCoordinator.recover(id, this.deps);
+		if (recovered) this.coordinators.set(id, recovered);
+		return recovered;
+	}
+
+	private async requireCoordinator(id: TerminalSessionId): Promise<NativeMultipaneCoordinator> {
+		const c = await this.getOrRecover(id);
+		if (!c) throw sessionNotFound(id);
+		return c;
 	}
 
 	private async requireSession(id: TerminalSessionId): Promise<TerminalSessionState> {
 		const state = await this.describeSession(id);
 		if (!state) throw sessionNotFound(id);
 		return state;
+	}
+
+	private toSessionState(
+		id: TerminalSessionId,
+		coordinator: NativeMultipaneCoordinator,
+	): TerminalSessionState {
+		const paneIds = coordinator.paneIds();
+		const activePaneId = coordinator.layout.activePaneId;
+		const views: TerminalViewState[] = paneIds.map((paneId) => ({
+			id: paneId,
+			focused: paneId === activePaneId,
+		}));
+		return { id, views, focusedViewId: activePaneId ?? null };
 	}
 
 	private async guard<T>(
@@ -200,32 +282,30 @@ export class NativeTerminalBackend implements TerminalBackend {
 	}
 }
 
-class NativeAttachment implements TerminalAttachment {
+class NativeMultipaneAttachment implements TerminalAttachment {
 	private released = false;
 
 	constructor(
 		readonly sessionId: TerminalSessionId,
 		readonly viewId: TerminalViewId,
-		private readonly adapter: NativeSingleViewAdapter,
-		private readonly onDetach: (attachment: NativeAttachment) => void,
+		private readonly coordinator: NativeMultipaneCoordinator,
+		private readonly onDetach: (attachment: NativeMultipaneAttachment) => void,
 	) {}
 
 	write(data: string): Promise<void> {
-		return this.run("write", () => this.adapter.writeInput(this.sessionId, this.viewId, data));
+		return this.run("write", () => this.coordinator.writePane(this.viewId, data));
 	}
 
 	resize(size: TerminalSize): Promise<void> {
 		if (!isTerminalSize(size)) return Promise.reject(invalidSize(size));
 		return this.run("resize", () =>
-			this.adapter.resizeView(this.sessionId, this.viewId, size.cols, size.rows),
+			this.coordinator.resizePane(this.viewId, size.cols, size.rows),
 		);
 	}
 
 	async capture(opts: TerminalCaptureOptions = {}): Promise<TerminalCapture> {
 		const text = await this.run("capture", () =>
-			this.adapter.capture(this.sessionId, this.viewId, {
-				includeHistory: opts.includeScrollback ?? false,
-			}),
+			this.coordinator.capturePane(this.viewId, opts.includeScrollback ?? false),
 		);
 		return { viewId: this.viewId, text };
 	}
@@ -234,7 +314,6 @@ class NativeAttachment implements TerminalAttachment {
 		if (this.released) return;
 		this.released = true;
 		this.onDetach(this);
-		await this.adapter.detachSession(this.sessionId);
 	}
 
 	private async run<T>(operation: string, action: () => Promise<T>): Promise<T> {

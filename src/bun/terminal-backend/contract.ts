@@ -104,6 +104,9 @@ export interface TerminalSessionSpec {
 	readonly size?: TerminalSize;
 }
 
+/** How a new view is split relative to its sibling. Backends interpret this best-effort. */
+export type TerminalSplitOrientation = "horizontal" | "vertical";
+
 /** A view added to an existing session (split). */
 export interface TerminalViewSpec {
 	readonly cwd: string;
@@ -111,6 +114,12 @@ export interface TerminalViewSpec {
 	readonly command?: string;
 	/** Structured launch for the new view; takes precedence over `command`. */
 	readonly launch?: TerminalLaunchSpec;
+	/**
+	 * How to split the parent pane. `"horizontal"` means the new pane appears
+	 * beside the existing one (left/right split); `"vertical"` means above/below.
+	 * Defaults to `"horizontal"` when omitted.
+	 */
+	readonly orientation?: TerminalSplitOrientation;
 }
 
 export interface TerminalViewState {

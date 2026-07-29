@@ -8,7 +8,7 @@
  * adapter: tmux splits, native returns the typed `unsupported` result.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	NativeTerminalBackend,
 	TmuxTerminalBackend,
@@ -16,7 +16,7 @@ import {
 	type TerminalBackend,
 	type TerminalBackendErrorCode,
 } from "..";
-import { FakeNativeWorld } from "./fake-native-world";
+import { FakeCoordinatorWorld } from "./fake-coordinator-world";
 import { FakeTmuxWorld } from "./fake-tmux-world";
 
 const SESSION = "task-alpha";
@@ -30,6 +30,7 @@ interface ConformanceCase {
 		/** Kill the view's process behind the backend's back. */
 		killViewProcess(viewId: string): void;
 		geometry(): { cols: number; rows: number };
+		cleanup?(): void;
 	};
 	readonly supportsSplit: boolean;
 }
@@ -49,13 +50,14 @@ const CASES: ConformanceCase[] = [
 	},
 	{
 		name: "native",
-		supportsSplit: false,
+		supportsSplit: true,
 		setup() {
-			const world = new FakeNativeWorld();
+			const world = new FakeCoordinatorWorld();
 			return {
 				create: () => new NativeTerminalBackend({ deps: world.deps() }),
-				killViewProcess: () => world.killSessionProcess(SESSION),
+				killViewProcess: (viewId) => world.killViewProcess(SESSION, viewId),
 				geometry: () => world.geometry(SESSION),
+				cleanup: () => world.cleanup(),
 			};
 		},
 	},
@@ -72,8 +74,16 @@ async function codeOf(run: () => Promise<unknown>): Promise<TerminalBackendError
 }
 
 describe.each(CASES)("TerminalBackend contract — $name", (testCase) => {
+	let cleanupFn: (() => void) | undefined;
+
+	afterEach(() => {
+		cleanupFn?.();
+		cleanupFn = undefined;
+	});
+
 	function world() {
 		const harness = testCase.setup();
+		cleanupFn = harness.cleanup;
 		return { ...harness, backend: harness.create() };
 	}
 
