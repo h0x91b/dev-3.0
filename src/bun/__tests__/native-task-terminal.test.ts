@@ -1,19 +1,13 @@
 /**
- * The app's live binding to a native task terminal (seq 1292).
+ * The app's live per-pane binding to a native task terminal (seq 1311).
  *
- * Two properties that failed silently before they were fixed: a teardown is only
- * "done" once the session is really gone (the next launch reuses the deterministic
- * id), and the app must hold the host's WRITER lease — an observer's input and
- * resize are dropped by the host with no throw anywhere.
+ * bindNativeTaskPane must enforce the writer lease: the app holds exactly one
+ * writer per pane; an observer's input and resize are dropped by the host with
+ * no throw. It returns null when the session is already gone.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const log = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
-const backend = vi.hoisted(() => ({
-	openSession: vi.fn(async () => undefined),
-	describeSession: vi.fn(async () => null as unknown),
-	cleanupSession: vi.fn(async () => undefined),
-}));
 const client = vi.hoisted(() => ({
 	getRole: vi.fn(() => "writer" as string | null),
 	claimWriter: vi.fn(async () => ({ role: "writer" as string })),
@@ -27,86 +21,55 @@ const client = vi.hoisted(() => ({
 
 vi.mock("../logger", () => ({ createLogger: () => log }));
 
-vi.mock("../task-terminal-backend", () => ({
-	nativeTaskSessionId: (taskId: string) => `dev3-task-${taskId}`,
-	nativeTaskTerminalBackend: () => backend,
-}));
-
-vi.mock("../native-host-runtime", () => ({
-	resolveNativeHostRuntime: vi.fn(() => ({ kind: "development-entrypoint", origin: "test" })),
-}));
-
 vi.mock("../native-terminal-registry/client", () => ({
 	NativeSessionClient: { discover: vi.fn(async () => client) },
 }));
 
 vi.mock("../native-terminal-registry/record", () => ({
-	readRecord: vi.fn(() => ({ host: { pid: 10 }, shell: { pid: 11 } })),
+	readRecord: vi.fn(() => ({ host: { pid: 10 }, shell: { pid: 11 }, paneId: "pane-1" })),
 }));
 
-import {
-	attachNativeTaskTerminal,
-	stopNativeTaskTerminal,
-} from "../native-task-terminal";
+import { NativeSessionClient } from "../native-terminal-registry/client";
+import { bindNativeTaskPane } from "../native-task-terminal";
 
-const TASK_ID = "aabbccdd-1111-2222-3333-444444444444";
-const SESSION_ID = `dev3-task-${TASK_ID}`;
-
+const SESSION_ID = "dev3-task-aabbccdd-1111-2222-3333-444444444444-pane-1";
 const hooks = { onOutput: vi.fn(), onClosed: vi.fn() };
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	backend.describeSession.mockResolvedValue(null);
 	client.getRole.mockReturnValue("writer");
 	client.claimWriter.mockResolvedValue({ role: "writer" });
+	vi.mocked(NativeSessionClient.discover).mockResolvedValue(client as never);
 });
 
-describe("stopNativeTaskTerminal", () => {
-	it("cleans the session up tolerating an already-gone one", async () => {
-		await stopNativeTaskTerminal(TASK_ID);
-
-		expect(backend.cleanupSession).toHaveBeenCalledWith(SESSION_ID, { ignoreMissing: true });
+describe("bindNativeTaskPane", () => {
+	it("returns null when the session does not exist", async () => {
+		vi.mocked(NativeSessionClient.discover).mockRejectedValue(new Error("not found"));
+		const result = await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(result).toBeNull();
 	});
 
-	it("resolves once the session really is gone", async () => {
-		backend.describeSession.mockResolvedValue(null);
-
-		await expect(stopNativeTaskTerminal(TASK_ID)).resolves.toBeUndefined();
+	it("returns a terminal binding when the session exists", async () => {
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(terminal).not.toBeNull();
+		expect(terminal!.sessionId).toBe(SESSION_ID);
 	});
 
-	it("fails, naming the session, when the tree is still present afterwards", async () => {
-		backend.describeSession.mockResolvedValue({ id: SESSION_ID, status: "running" });
-
-		await expect(stopNativeTaskTerminal(TASK_ID)).rejects.toThrow(SESSION_ID);
-		await expect(stopNativeTaskTerminal(TASK_ID)).rejects.toThrow(/still present after teardown/);
-	});
-});
-
-describe("writer lease on attach", () => {
-	beforeEach(() => {
-		backend.describeSession.mockResolvedValue({ id: SESSION_ID, status: "running" });
-	});
-
-	it("claims the lease exactly once when the role is not writer", async () => {
-		client.getRole.mockReturnValue("observer");
-
-		await attachNativeTaskTerminal(TASK_ID, hooks);
-
-		expect(client.claimWriter).toHaveBeenCalledTimes(1);
-	});
-
-	it("does not claim anything when the host already made us the writer", async () => {
-		await attachNativeTaskTerminal(TASK_ID, hooks);
-
+	it("does not claim the lease when the host already made us the writer", async () => {
+		await bindNativeTaskPane(SESSION_ID, hooks);
 		expect(client.claimWriter).not.toHaveBeenCalled();
+	});
+
+	it("claims the lease when the role is not writer", async () => {
+		client.getRole.mockReturnValue("observer");
+		await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(client.claimWriter).toHaveBeenCalledTimes(1);
 	});
 
 	it("logs an error when the claim is refused", async () => {
 		client.getRole.mockReturnValue("observer");
 		client.claimWriter.mockResolvedValue({ role: "observer" });
-
-		await attachNativeTaskTerminal(TASK_ID, hooks);
-
+		await bindNativeTaskPane(SESSION_ID, hooks);
 		expect(log.error).toHaveBeenCalledTimes(1);
 		expect(log.error.mock.calls[0][0]).toMatch(/OBSERVER/);
 	});
@@ -114,9 +77,28 @@ describe("writer lease on attach", () => {
 	it("logs an error when the claim itself fails", async () => {
 		client.getRole.mockReturnValue("observer");
 		client.claimWriter.mockRejectedValue(new Error("host went away"));
-
-		await attachNativeTaskTerminal(TASK_ID, hooks);
-
+		await bindNativeTaskPane(SESSION_ID, hooks);
 		expect(log.error).toHaveBeenCalledTimes(1);
+	});
+
+	it("wires onOutput and onDisconnect hooks", async () => {
+		await bindNativeTaskPane(SESSION_ID, hooks);
+		expect(client.onOutput).toHaveBeenCalledWith(hooks.onOutput);
+		expect(client.onDisconnect).toHaveBeenCalled();
+	});
+
+	it("write/resize delegate to the client", async () => {
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks, "pane-1");
+		terminal!.write("hi\r");
+		expect(client.input).toHaveBeenCalledWith("hi\r");
+		terminal!.resize(120, 40);
+		expect(client.resize).toHaveBeenCalledWith(120, 40);
+	});
+
+	it("detach closes the client without calling onClosed", async () => {
+		const terminal = await bindNativeTaskPane(SESSION_ID, hooks);
+		terminal!.detach();
+		expect(client.close).toHaveBeenCalled();
+		expect(hooks.onClosed).not.toHaveBeenCalled();
 	});
 });

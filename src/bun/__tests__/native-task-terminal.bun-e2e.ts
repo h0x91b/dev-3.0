@@ -50,13 +50,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "../spawn";
+import { bindNativeTaskPane, type NativeTaskTerminal } from "../native-task-terminal";
 import {
-	attachNativeTaskTerminal,
-	nativeTaskTerminalAlive,
-	startNativeTaskTerminal,
-	stopNativeTaskTerminal,
-	type NativeTaskTerminal,
-} from "../native-task-terminal";
+	startNativeTaskPanes,
+	recoverNativeTaskPanes,
+	nativeTaskPanesAlive,
+	stopNativeTaskPanes,
+} from "../native-task-panes";
+import { NATIVE_MULTIPANE_DIR_ENV } from "../native-terminal-multipane/paths";
 import { nativeTaskSessionId, type TerminalLaunchSpec } from "../task-terminal-backend";
 import { encodeResizeSequence } from "../../shared/resize-protocol";
 import {
@@ -94,16 +95,20 @@ const JSON_SENTINEL = "__TASK_TERMINAL_JSON__";
 // A fixed task id keeps the session id deterministic across runs, which is the
 // property the reattach path depends on.
 const TASK_ID = "00000000-0000-4000-8000-0000000e2e12";
-const SESSION_ID = nativeTaskSessionId(TASK_ID);
+const SESSION_ID = nativeTaskSessionId(TASK_ID);       // coordinator id
+const FIRST_PANE_SESSION_ID = `${SESSION_ID}-pane-1`;  // registry session id for pane-1
 // The renderer-transport section owns its OWN task so the two halves stay independent.
 const WS_TASK_ID = "00000000-0000-4000-8000-0000000e2e34";
 const WS_SESSION_ID = nativeTaskSessionId(WS_TASK_ID);
+const WS_FIRST_PANE_SESSION_ID = `${WS_SESSION_ID}-pane-1`;
 // The lifecycle-teardown section: one task torn down with no in-memory pty-server
 // session (the app-restart shape) plus a sibling that must survive it untouched.
 const LC_TASK_ID = "00000000-0000-4000-8000-0000000e2e56";
 const LC_SESSION_ID = nativeTaskSessionId(LC_TASK_ID);
+const LC_FIRST_PANE_SESSION_ID = `${LC_SESSION_ID}-pane-1`;
 const SIB_TASK_ID = "00000000-0000-4000-8000-0000000e2e78";
 const SIB_SESSION_ID = nativeTaskSessionId(SIB_TASK_ID);
+const SIB_FIRST_PANE_SESSION_ID = `${SIB_SESSION_ID}-pane-1`;
 
 interface Sink {
 	text: () => string;
@@ -339,13 +344,47 @@ function num(verdict: Record<string, unknown> | null, key: string): number {
 	return typeof value === "number" ? value : Number.NaN;
 }
 
+/** Create a task pane set and bind the first pane, wrapping the two-step API. */
+async function startAndBind(
+	taskId: string,
+	cwd: string,
+	env: Record<string, string>,
+	launch: TerminalLaunchSpec,
+	cols: number,
+	rows: number,
+	onOutput: (bytes: Uint8Array) => void,
+	onClosed: () => void,
+): Promise<NativeTaskTerminal> {
+	const panesState = await startNativeTaskPanes({ taskId, cwd, env, launch, cols, rows });
+	const firstPane = panesState.panes[0];
+	if (!firstPane) throw new Error("no pane in created pane set");
+	const terminal = await bindNativeTaskPane(firstPane.sessionId, { onOutput, onClosed }, firstPane.paneId);
+	if (!terminal) throw new Error(`pane ${firstPane.sessionId} vanished immediately after creation`);
+	return terminal;
+}
+
+/** Reattach to an existing task's first pane. */
+async function reattachAndBind(
+	taskId: string,
+	onOutput: (bytes: Uint8Array) => void,
+	onClosed: () => void,
+): Promise<NativeTaskTerminal | null> {
+	const panesState = await recoverNativeTaskPanes(taskId);
+	const firstPane = panesState?.panes[0];
+	if (!firstPane) return null;
+	return bindNativeTaskPane(firstPane.sessionId, { onOutput, onClosed }, firstPane.paneId);
+}
+
 async function run(): Promise<void> {
 	const root = mkdtempSync(join(tmpdir(), "dev3-native-task-terminal-e2e-"));
 	const metaDir = join(root, "native-sessions");
+	const multipaneDir = join(root, "native-multipane");
 	const work = join(root, "work");
 	mkdirSync(metaDir, { recursive: true });
+	mkdirSync(multipaneDir, { recursive: true });
 	mkdirSync(work, { recursive: true });
 	process.env.DEV3_NATIVE_SESSIONS_DIR = metaDir;
+	process.env[NATIVE_MULTIPANE_DIR_ENV] = multipaneDir;
 	process.env.DEV3_NATIVE_HOST_IMAGES_DIR = join(root, "host-images");
 	process.env.DEV3_LOG_DIR = join(root, "logs");
 
@@ -375,23 +414,12 @@ async function run(): Promise<void> {
 		// ── 1. explicit native create through the product path ──
 		const first = makeSink();
 		let closedEvents = 0;
-		terminal = await startNativeTaskTerminal({
-			taskId: TASK_ID,
-			cwd: work,
-			env: {},
-			launch: taskLaunch(work),
-			cols: 100,
-			rows: 30,
-			onOutput: first.onOutput,
-			onClosed: () => {
-				closedEvents++;
-			},
-		});
+		terminal = await startAndBind(TASK_ID, work, {}, taskLaunch(work), 100, 30, first.onOutput, () => { closedEvents++; });
 		const hostPid = terminal.hostPid;
 		const shellPid = terminal.shellPid;
-		check(terminal.sessionId === SESSION_ID, "the task's terminal addresses the deterministic native session id");
+		check(terminal.sessionId === FIRST_PANE_SESSION_ID, "the task's terminal addresses the deterministic pane session id");
 		check(sessionDirCount() === 1, "exactly ONE native session exists after the explicit create");
-		check(await nativeTaskTerminalAlive(TASK_ID), "the product presence check reports the task terminal alive");
+		check(await nativeTaskPanesAlive(TASK_ID), "the product presence check reports the task terminal alive");
 		check(hostPid > 0 && shellPid > 0 && hostPid !== shellPid, "host pid and shell pid are distinct");
 		check(
 			isProcessAlive(hostPid) && isProcessAlive(shellPid) && hostPid !== process.pid,
@@ -420,7 +448,7 @@ async function run(): Promise<void> {
 			...SHELL_WARMUP_PROBE,
 		});
 		check(geoSeen !== null, `the shell observed the resized geometry (${cols}x${rows})`);
-		const resized = readRecord(SESSION_ID);
+		const resized = readRecord(FIRST_PANE_SESSION_ID);
 		check(resized?.cols === cols && resized?.rows === rows, "the host persisted the new geometry in the session record");
 
 		// ── 4. detach: the app-side client goes, the terminal does not ──
@@ -428,13 +456,13 @@ async function run(): Promise<void> {
 		terminal = null;
 		await delay(400);
 		check(closedEvents === 0, "an intentional detach is not reported as a terminal death");
-		const afterDetach = readRecord(SESSION_ID);
+		const afterDetach = readRecord(FIRST_PANE_SESSION_ID);
 		check(
 			afterDetach?.host.pid === hostPid && afterDetach?.shell.pid === shellPid,
 			"the session record still names the same host + shell after detach",
 		);
 		check(isProcessAlive(hostPid) && isProcessAlive(shellPid), "host + shell survive the app-side detach");
-		check(await nativeTaskTerminalAlive(TASK_ID), "the task terminal is still present after detach");
+		check(await nativeTaskPanesAlive(TASK_ID), "the task terminal is still present after detach");
 
 		// ── 5. app-controller restart: a separate process reattaches, nothing respawns ──
 		const restart = runController(marker.expected);
@@ -450,12 +478,12 @@ async function run(): Promise<void> {
 		// ── 6. one writer, everyone else observes ──
 		await delay(500); // let the host clear the writer slot freed by the controller's exit
 		const second = makeSink();
-		terminal = await attachNativeTaskTerminal(TASK_ID, { onOutput: second.onOutput, onClosed: () => {} });
+		terminal = await reattachAndBind(TASK_ID, second.onOutput, () => {});
 		check(terminal !== null, "the app reattached to the task terminal after the controller left");
 		if (!terminal) throw new Error("reattach returned null while the session is alive");
 		const writer = terminal;
 
-		const observer = await NativeSessionClient.discover(SESSION_ID);
+		const observer = await NativeSessionClient.discover(FIRST_PANE_SESSION_ID);
 		const observerErrors: ErrorMessage[] = [];
 		observer.onError((error) => observerErrors.push(error));
 		const observerText = makeSink();
@@ -480,12 +508,12 @@ async function run(): Promise<void> {
 		observer.close();
 
 		// ── 7. cleanup removes exactly the owned tree ──
-		await stopNativeTaskTerminal(TASK_ID);
+		await stopNativeTaskPanes(TASK_ID);
 		terminal = null;
 		const stopDeadline = Date.now() + 5000;
 		while (Date.now() < stopDeadline && (isProcessAlive(hostPid) || isProcessAlive(shellPid))) await delay(50);
 		check(!isProcessAlive(hostPid) && !isProcessAlive(shellPid), "cleanup terminated exactly the owned host + shell tree");
-		check(readRecord(SESSION_ID) === null && sessionDirCount() === 0, "cleanup removed the owned registry state");
+		check(readRecord(FIRST_PANE_SESSION_ID) === null && sessionDirCount() === 0, "cleanup removed the owned registry state");
 		if (sentinelAlive) {
 			check(await tmux.hasSession(sentinelSession, { socket: sentinelSocket }), "the pre-existing tmux sentinel session is still alive after cleanup");
 		} else {
@@ -493,9 +521,9 @@ async function run(): Promise<void> {
 		}
 
 		// ── 8. after cleanup: honest null, and nothing respawns ──
-		const gone = await attachNativeTaskTerminal(TASK_ID, { onOutput: () => {}, onClosed: () => {} });
+		const gone = await reattachAndBind(TASK_ID, () => {}, () => {});
 		check(gone === null, "reattaching to a cleaned-up task terminal returns null");
-		check(!(await nativeTaskTerminalAlive(TASK_ID)), "the product presence check reports the task terminal gone");
+		check(!(await nativeTaskPanesAlive(TASK_ID)), "the product presence check reports the task terminal gone");
 		const lost = runController(marker.expected);
 		check(lost.exitCode === 0 && lost.verdict?.attached === false, "a fresh app controller also gets an honest lost session");
 		check(sessionDirCount() === 0 && !isProcessAlive(hostPid) && !isProcessAlive(shellPid), "the lost reattach spawned NOTHING");
@@ -507,7 +535,7 @@ async function run(): Promise<void> {
 		await pty.createNativeTaskSession(WS_TASK_ID, "e2e-project", work, taskLaunch(work), {}, { cols: 100, rows: 30 });
 		check(pty.getSessionBackend(WS_TASK_ID) === "native", "pty-server registered the task session on the native backend");
 		check(pty.hasDeadSession(WS_TASK_ID) === false, "the native pty-server session is live, not dead");
-		const wsRecord = readRecord(WS_SESSION_ID);
+		const wsRecord = readRecord(WS_FIRST_PANE_SESSION_ID);
 		const wsHostPid = wsRecord?.host.pid ?? -1;
 		const wsShellPid = wsRecord?.shell.pid ?? -1;
 		check(isProcessAlive(wsHostPid) && isProcessAlive(wsShellPid), "the renderer-transport session has its own live host + shell");
@@ -625,7 +653,7 @@ async function run(): Promise<void> {
 		const wsStopDeadline = Date.now() + 5000;
 		while (Date.now() < wsStopDeadline && (isProcessAlive(wsHostPid) || isProcessAlive(wsShellPid))) await delay(50);
 		check(!isProcessAlive(wsHostPid) && !isProcessAlive(wsShellPid), "the renderer-transport host + shell tree is dead");
-		check(readRecord(WS_SESSION_ID) === null && sessionDirCount() === 0, "the renderer-transport registry state is gone");
+		check(readRecord(WS_FIRST_PANE_SESSION_ID) === null && sessionDirCount() === 0, "the renderer-transport registry state is gone");
 		if (sentinelAlive) {
 			check(await tmux.hasSession(sentinelSession, { socket: sentinelSocket }), "the tmux sentinel session survived the renderer-transport teardown too");
 		}
@@ -634,26 +662,8 @@ async function run(): Promise<void> {
 		// Both sessions are created through the product path but never registered with
 		// pty-server, which is exactly the state after an app restart: the lifecycle has
 		// a native task record and no in-memory session to detach from.
-		const lifecycle = await startNativeTaskTerminal({
-			taskId: LC_TASK_ID,
-			cwd: work,
-			env: {},
-			launch: taskLaunch(work),
-			cols: 100,
-			rows: 30,
-			onOutput: () => {},
-			onClosed: () => {},
-		});
-		const sibling = await startNativeTaskTerminal({
-			taskId: SIB_TASK_ID,
-			cwd: work,
-			env: {},
-			launch: taskLaunch(work),
-			cols: 100,
-			rows: 30,
-			onOutput: () => {},
-			onClosed: () => {},
-		});
+		const lifecycle = await startAndBind(LC_TASK_ID, work, {}, taskLaunch(work), 100, 30, () => {}, () => {});
+		const sibling = await startAndBind(SIB_TASK_ID, work, {}, taskLaunch(work), 100, 30, () => {}, () => {});
 		const child = nestedChildProbe(join(work, "nested-child.pid"));
 		const childSeen = await sendUntilObserved({
 			send: () => lifecycle.write(`${child.command}${lineEnd}`),
@@ -674,9 +684,9 @@ async function run(): Promise<void> {
 			!isProcessAlive(lifecycle.hostPid) && !isProcessAlive(lifecycle.shellPid) && !isProcessAlive(childPid),
 			"the awaited teardown resolved only after host, shell and nested child were all gone",
 		);
-		check(readRecord(LC_SESSION_ID) === null, "the torn-down task's registry state is gone");
+		check(readRecord(LC_FIRST_PANE_SESSION_ID) === null, "the torn-down task's registry state is gone");
 		check(
-			isProcessAlive(sibling.hostPid) && isProcessAlive(sibling.shellPid) && readRecord(SIB_SESSION_ID) !== null,
+			isProcessAlive(sibling.hostPid) && isProcessAlive(sibling.shellPid) && readRecord(SIB_FIRST_PANE_SESSION_ID) !== null,
 			"the sibling native session is untouched by the other task's teardown",
 		);
 		if (sentinelAlive) {
@@ -686,7 +696,7 @@ async function run(): Promise<void> {
 		const dirsBeforeRepeat = sessionDirCount();
 		await pty.destroyNativeTaskSession(LC_TASK_ID);
 		check(
-			sessionDirCount() === dirsBeforeRepeat && readRecord(SIB_SESSION_ID) !== null,
+			sessionDirCount() === dirsBeforeRepeat && readRecord(SIB_FIRST_PANE_SESSION_ID) !== null,
 			"repeating the teardown of an already-stopped task succeeds and spawns nothing",
 		);
 
@@ -709,10 +719,10 @@ async function run(): Promise<void> {
 			}
 		}
 		try {
-			await stopNativeTaskTerminal(TASK_ID);
-			await stopNativeTaskTerminal(WS_TASK_ID);
-			await stopNativeTaskTerminal(LC_TASK_ID);
-			await stopNativeTaskTerminal(SIB_TASK_ID);
+			await stopNativeTaskPanes(TASK_ID);
+			await stopNativeTaskPanes(WS_TASK_ID);
+			await stopNativeTaskPanes(LC_TASK_ID);
+			await stopNativeTaskPanes(SIB_TASK_ID);
 		} catch {
 			// best-effort
 		}

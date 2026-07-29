@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Short-lived APP CONTROLLER for the product task-terminal tracer (seq 1292).
+ * Short-lived APP CONTROLLER for the product task-terminal tracer (seq 1292/1311).
  *
  * One invocation models ONE disposable dev3 app process that comes up, reattaches
  * to a task's native primary terminal through the PRODUCT path
- * (`attachNativeTaskTerminal`), prints a single structured JSON verdict, and exits
- * without ever stopping the detached host. Two uses:
+ * (`recoverNativeTaskPanes` + `bindNativeTaskPane`), prints a single structured
+ * JSON verdict, and exits without ever stopping the detached host. Two uses:
  *
  *   reattach   after an app restart — must find the SAME host/shell and receive the
  *              replayed screen state, with no second spawn.
@@ -15,7 +15,8 @@
  */
 
 import { readdirSync } from "node:fs";
-import { attachNativeTaskTerminal } from "../native-task-terminal";
+import { bindNativeTaskPane } from "../native-task-terminal";
+import { recoverNativeTaskPanes } from "../native-task-panes";
 import { nativeTaskSessionId } from "../task-terminal-backend";
 import { readRecord } from "../native-terminal-registry/record";
 import { sessionsRootDir } from "../native-terminal-registry/paths";
@@ -42,14 +43,35 @@ async function reattach(taskId: string, marker: string): Promise<void> {
 	const decoder = new TextDecoder();
 	let closed = false;
 
-	const terminal = await attachNativeTaskTerminal(taskId, {
-		onOutput: (bytes) => {
-			replayed += decoder.decode(bytes, { stream: true });
+	const panesState = await recoverNativeTaskPanes(taskId);
+	const firstPane = panesState?.panes[0];
+
+	if (!firstPane) {
+		emit({
+			phase: "reattach",
+			ok: true,
+			attached: false,
+			controllerPid: process.pid,
+			sessionId,
+			dirsBefore,
+			dirsAfter: sessionDirCount(),
+			recordPresent: readRecord(sessionId) !== null,
+		});
+		process.exit(0);
+	}
+
+	const terminal = await bindNativeTaskPane(
+		firstPane.sessionId,
+		{
+			onOutput: (bytes) => {
+				replayed += decoder.decode(bytes, { stream: true });
+			},
+			onClosed: () => {
+				closed = true;
+			},
 		},
-		onClosed: () => {
-			closed = true;
-		},
-	});
+		firstPane.paneId,
+	);
 
 	if (!terminal) {
 		emit({
@@ -60,7 +82,7 @@ async function reattach(taskId: string, marker: string): Promise<void> {
 			sessionId,
 			dirsBefore,
 			dirsAfter: sessionDirCount(),
-			recordPresent: readRecord(sessionId) !== null,
+			recordPresent: readRecord(firstPane.sessionId) !== null,
 		});
 		process.exit(0);
 	}
