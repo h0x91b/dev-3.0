@@ -1029,8 +1029,9 @@ function attachNativeClient(session: PtySession, ws: any, since: number | null):
 	settleNativeStream(session);
 	const role = lease.attach(ws);
 	const replay = journal.replayFrom(since);
-	// Use the pane's own registry session id (not always the bare task session id).
-	const sessionId = session.native?.sessionId ?? nativeTaskSessionId(session.taskId);
+	// sessionId always identifies the TASK coordinator (no -pane-N suffix);
+	// paneId carries the logical pane identity so callers can distinguish panes.
+	const sessionId = nativeTaskSessionId(session.taskId);
 	sendToClient(
 		ws,
 		attachMessage(
@@ -1038,7 +1039,7 @@ function attachNativeClient(session: PtySession, ws: any, since: number | null):
 				seq: replay.seq,
 				role,
 				sessionId,
-				paneId: session.native?.paneId ?? `${sessionId}:0`,
+				paneId: session.native?.paneId ?? "pane-1",
 				hostPid: session.native?.hostPid ?? -1,
 				shellPid: session.native?.shellPid ?? -1,
 				resumed: replay.resumed,
