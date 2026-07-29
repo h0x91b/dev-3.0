@@ -27,6 +27,9 @@ import { NativeTerminalBackend, TmuxTerminalBackend, type TerminalBackend } from
 // The seam's vocabulary reaches the rest of the app through here, so the
 // isolation guard can keep pointing at a single importer.
 export type { TerminalLaunchSpec, TerminalSessionState } from "./terminal-backend";
+// Re-export the concrete class so native-task-panes can hold the typed handle
+// without importing terminal-backend directly (isolation: decision 179).
+export { NativeTerminalBackend } from "./terminal-backend";
 import { nativeHostLauncher, resolveNativeHostRuntime } from "./native-host-runtime";
 import { defaultDeps as nativeRegistryDeps, start as registryStart } from "./native-terminal-registry/registry";
 import { defaultCoordinatorDeps } from "./native-terminal-multipane/coordinator";

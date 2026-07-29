@@ -101,6 +101,41 @@ describe("NativeTerminalBackend", () => {
 		expect(err.cause).toBe(boom);
 	});
 
+	it("listPanes returns per-pane pids via the native-only method", async () => {
+		const h = harness();
+		world = h.world;
+		const created = await h.backend.openSession({ id: SESSION, cwd: CWD, size: { cols: 100, rows: 30 } });
+		const panes = await h.backend.listPanes(SESSION);
+		expect(panes).not.toBeNull();
+		expect(panes!).toHaveLength(created.views.length);
+		expect(panes![0].paneId).toBe(created.views[0].id);
+		expect(panes![0].cols).toBe(100);
+		expect(panes![0].rows).toBe(30);
+	});
+
+	it("paneLayout returns the shared SplitTree", async () => {
+		const h = harness();
+		world = h.world;
+		await h.backend.openSession({ id: SESSION, cwd: CWD });
+		const layout = await h.backend.paneLayout(SESSION);
+		expect(layout).not.toBeNull();
+		expect(layout!.activePaneId).toBeDefined();
+	});
+
+	it("publishPaneGeometry changes the shared activePaneId", async () => {
+		const h = harness();
+		world = h.world;
+		await h.backend.openSession({ id: SESSION, cwd: CWD });
+		await h.backend.splitView(SESSION, (await h.backend.describeSession(SESSION))!.views[0].id, { cwd: CWD });
+		const layout = await h.backend.paneLayout(SESSION);
+		const panes = await h.backend.describeSession(SESSION);
+		const secondPane = panes!.views[1]!.id;
+		// Activate second pane via geometry publish.
+		await h.backend.publishPaneGeometry(SESSION, { ...layout!, activePaneId: secondPane });
+		const updated = await h.backend.paneLayout(SESSION);
+		expect(updated!.activePaneId).toBe(secondPane);
+	});
+
 	it("releases its attachments on dispose without stopping the session", async () => {
 		const h = harness();
 		world = h.world;

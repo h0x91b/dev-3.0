@@ -8,12 +8,13 @@
  * only native abstraction this backend touches.
  */
 
-import { activatePane } from "../../shared/split-tree";
+import { activatePane, type SplitTree } from "../../shared/split-tree";
 import {
 	NativeMultipaneCoordinator,
 	defaultCoordinatorDeps,
 	type CoordinatorDeps,
 	type PaneLaunchSpec,
+	type PaneSnapshot,
 } from "../native-terminal-multipane/coordinator";
 import {
 	CoordinatorExistsError,
@@ -227,6 +228,29 @@ export class NativeTerminalBackend implements TerminalBackend {
 		}
 		await this.guard("cleanupSession", id, () => coordinator.cleanup());
 		this.coordinators.delete(id);
+	}
+
+	// ── Native-only methods (not on TerminalBackend; callers hold the concrete type) ──
+
+	/** Per-pane host/shell pids, size, and liveness — not expressible via the contract. */
+	async listPanes(id: TerminalSessionId): Promise<PaneSnapshot[] | null> {
+		const coordinator = await this.getOrRecover(id);
+		if (!coordinator) return null;
+		return coordinator.listPanes();
+	}
+
+	/** The shared SplitTree (membership + geometry) of a session's coordinator. */
+	async paneLayout(id: TerminalSessionId): Promise<SplitTree | null> {
+		const coordinator = await this.getOrRecover(id);
+		if (!coordinator) return null;
+		return coordinator.layout;
+	}
+
+	/** Publish a geometry-only layout change via the coordinator. */
+	async publishPaneGeometry(id: TerminalSessionId, tree: SplitTree): Promise<void> {
+		const coordinator = await this.getOrRecover(id);
+		if (!coordinator) throw sessionNotFound(id);
+		await this.guard("publishPaneGeometry", id, () => coordinator.publishGeometry(tree));
 	}
 
 	async dispose(): Promise<void> {
