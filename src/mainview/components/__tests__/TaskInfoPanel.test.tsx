@@ -39,6 +39,15 @@ vi.mock("../../rpc", () => ({
 				{ id: "text-mate", name: "TextMate", macAppName: "TextMate" },
 			]),
 			openInApp: vi.fn().mockResolvedValue(undefined),
+			taskPaneState: vi.fn().mockResolvedValue({
+				backend: "tmux",
+				panes: [],
+				activePaneId: null,
+				zoomedPaneId: null,
+				layout: null,
+				layoutPreset: null,
+				capabilities: ["split", "zoom", "newWindow"],
+			}),
 		},
 	},
 }));

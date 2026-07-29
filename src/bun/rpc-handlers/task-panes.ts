@@ -1,9 +1,10 @@
 /**
- * Backend-neutral pane RPC handlers (seq 1311, PR2).
+ * Backend-neutral pane RPC handlers (seq 1311, PR2 + PR3).
  *
  * `taskPaneState`  — read current pane geometry for any backend.
  * `taskPaneAction` — execute a split/focus/zoom/close/layout/resize action.
  * `tmuxNewWindow`  — tmux-only: open a new window in the task session.
+ * `getPanePtyUrl`  — native-only: return the WS URL for one native pane's viewer.
  *
  * All tmux internals are delegated to the exported helpers from tmux-pty.ts.
  * All native internals go through native-task-panes.ts.
@@ -57,6 +58,7 @@ import {
 	type TaskPaneLayoutPreset,
 	type TaskPaneState,
 } from "../../shared/task-panes";
+import { paneSessionKey } from "../../shared/pane-session-key";
 import { createLogger } from "../logger";
 
 const log = createLogger("task-panes");
@@ -492,10 +494,55 @@ async function tmuxNewWindow(params: { taskId: string }): Promise<void> {
 	}
 }
 
+// ── Handler: getPanePtyUrl ────────────────────────────────────────────────────
+
+async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promise<{ url: string }> {
+	log.info("→ getPanePtyUrl", { taskId: params.taskId.slice(0, 8), paneId: params.paneId });
+	const { task: foundTask, project: foundProject } = await findTaskAcrossProjects(params.taskId);
+	if (!foundTask || !foundProject) {
+		throw new Error(`Task ${params.taskId.slice(0, 8)} not found`);
+	}
+	const identity = taskTerminalBackendIdentity(foundTask);
+	if (identity !== "native") {
+		throw new Error(`getPanePtyUrl is only available for native tasks (got: ${identity})`);
+	}
+	const nativeState = await nativeTaskPanesState(params.taskId);
+	if (!nativeState) {
+		throw new Error(`No native pane state for task ${params.taskId.slice(0, 8)}`);
+	}
+	const pane = nativeState.panes.find((p) => p.paneId === params.paneId);
+	if (!pane) {
+		throw new Error(`Pane ${params.paneId} not found in task ${params.taskId.slice(0, 8)}`);
+	}
+	// First pane is registered under the bare taskId; additional panes use a composite key.
+	const isFirstPane = nativeState.panes[0]?.paneId === params.paneId;
+	const sessionKey = isFirstPane
+		? params.taskId
+		: paneSessionKey(params.taskId, params.paneId);
+
+	if (!isFirstPane) {
+		if (!foundTask.worktreePath) {
+			throw new Error(`Task ${params.taskId.slice(0, 8)} has no worktree path`);
+		}
+		await pty.ensureNativePanePtySession(
+			params.taskId,
+			params.paneId,
+			pane.sessionId,
+			foundProject.id,
+			foundTask.worktreePath,
+		);
+	}
+
+	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
+	log.info("← getPanePtyUrl", { url, paneId: params.paneId, isFirstPane });
+	return { url };
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 export const taskPanesHandlers = {
 	taskPaneState,
 	taskPaneAction,
 	tmuxNewWindow,
+	getPanePtyUrl,
 };

@@ -1,6 +1,4 @@
-import type { TranslationRecord } from "../en";
-
-const panes: Pick<TranslationRecord, `panes.${string}` & keyof TranslationRecord> & Record<string, string> = {
+const panes = {
 	"panes.layoutLabel": "Diseño",
 	"panes.layoutNeedsTwoPanes": "Se necesitan al menos 2 paneles para cambiar el diseño",
 	"panes.nativeHintsTitle": "Atajos de terminal",
@@ -11,6 +9,6 @@ const panes: Pick<TranslationRecord, `panes.${string}` & keyof TranslationRecord
 	"panes.exitedClose": "Cerrar panel",
 	"panes.hostGone": "El host del terminal no está disponible — use los controles de recuperación",
 	"panes.unsupportedOnBackend": "No compatible con este backend",
-} as unknown as Pick<TranslationRecord, `panes.${string}` & keyof TranslationRecord> & Record<string, string>;
+} as const;
 
 export default panes;

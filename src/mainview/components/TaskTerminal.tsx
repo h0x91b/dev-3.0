@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type ReactNode } from "react";
 import type { Task, Project, TaskSessionState } from "../../shared/types";
 import { getTaskOpenMode, taskClosedHomeRoute, type AppAction, type Route } from "../state";
 import { api } from "../rpc";
@@ -20,6 +20,8 @@ import type { NativeStreamRole } from "../../shared/native-terminal-stream";
 import { useNarrowViewport } from "../hooks/useNarrowViewport";
 import { CAROUSEL_MAX_WIDTH } from "./MobileBoardCarousel";
 import { isElectrobun } from "../rpc";
+import type { TaskPaneState } from "../../shared/task-panes";
+import { getPaneRects, restoreSplitTree } from "../../shared/split-tree";
 
 interface TaskTerminalProps {
 	projectId: string;
@@ -32,31 +34,28 @@ interface TaskTerminalProps {
 }
 
 const PTY_CONNECT_TIMEOUT_MS = 10_000;
+const NATIVE_PANE_POLL_MS = 2500;
 
 type ErrorKind = "worktree-gone" | "session-ended";
 
 function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, hideInfoPanel }: TaskTerminalProps) {
 	const t = useT();
-	// Show ExtraKeyBar on touch devices (phones/tablets) where a physical keyboard
-	// is unavailable. navigator.maxTouchPoints is more reliable than screen width
-	// because the viewport meta tag overrides CSS dimensions on mobile.
 	const isTouchDevice = navigator.maxTouchPoints > 0;
-	// Touch input model (browser mode): compose mode is the default — the
-	// terminal never summons the OSK; TerminalComposer owns text entry. The ⌨
-	// toggle on ExtraKeyBar flips to raw mode (direct typing) and back.
 	const touchInput = !isElectrobun && isTouchDevice;
 	const [rawMode, setRawMode] = useState(false);
 	const composerApiRef = useRef<TerminalComposerApi | null>(null);
-	// On a narrow viewport we keep the tmux window zoomed to one pane and offer a
-	// pager to move between panes (instead of a cramped multi-pane split).
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
-	// Bumped whenever the window switcher moves to another tmux window, so the
-	// pane carousel re-reads + re-zooms the newly-active window's panes at once
-	// (instead of waiting up to one poll interval).
 	const [windowEpoch, setWindowEpoch] = useState(0);
+
+	const task = tasks.find((t) => t.id === taskId);
+	const project = projects.find((p) => p.id === projectId);
+	const isPreparing = task?.preparing === true;
+
+	// Detect native backend from the task record (available before state loads).
+	const isNative = task?.terminalBackend === "native";
+
+	// ── Tmux path state (unchanged) ────────────────────────────────────────────
 	const [ptyUrl, setPtyUrl] = useState<string | null>(null);
-	// Native backend only: this viewer's write role plus a bump each time the
-	// server refused its input. Never set for a tmux terminal.
 	const [nativeRole, setNativeRole] = useState<NativeStreamRole>("writer");
 	const [refusedAt, setRefusedAt] = useState(0);
 	const handleNativeStatus = useCallback(({ role, refused }: { role: NativeStreamRole; refused: boolean }) => {
@@ -73,9 +72,18 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	const [restarting, setRestarting] = useState(false);
 	const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-	const task = tasks.find((t) => t.id === taskId);
-	const project = projects.find((p) => p.id === projectId);
-	const isPreparing = task?.preparing === true;
+	// ── Native multi-pane state ─────────────────────────────────────────────────
+	const [nativePaneState, setNativePaneState] = useState<TaskPaneState | null>(null);
+	const [paneUrls, setPaneUrls] = useState<Map<string, string>>(() => new Map());
+	// Client-local focus: clicking/typing into a pane focuses it here, not on the server.
+	const [clientFocusPaneId, setClientFocusPaneId] = useState<string | null>(null);
+	// Client-local zoom: show only the focused pane full-bleed.
+	const [clientZoom, setClientZoom] = useState(false);
+	// Per-pane handles and roles for NativeViewerBar.
+	const paneHandlesRef = useRef<Map<string, TerminalHandle>>(new Map());
+	const paneRolesRef = useRef<Map<string, { role: NativeStreamRole; refusedAt: number }>>(new Map());
+	const [focusedPaneRole, setFocusedPaneRole] = useState<NativeStreamRole>("writer");
+	const [focusedPaneRefusedAt, setFocusedPaneRefusedAt] = useState(0);
 
 	async function classifyAndSetError() {
 		const worktreePath = task?.worktreePath;
@@ -91,10 +99,9 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 		}
 	}
 
+	// ── Tmux PTY URL effect (skipped for native) ──────────────────────────────
 	useEffect(() => {
-		// While the worktree is still being created there is no PTY to connect
-		// to. Skip the request entirely and let the preparing view render; once
-		// `preparing` flips false this effect re-runs and connects normally.
+		if (isNative) return;
 		if (isPreparing) return;
 		let cancelled = false;
 		(async () => {
@@ -113,17 +120,50 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			} catch (err) {
 				if (cancelled) return;
 				console.error("[TaskTerminal] getPtyUrl FAILED:", err);
-				console.error("[TaskTerminal] Error details:", {
-					message: (err as Error)?.message,
-					stack: (err as Error)?.stack,
-					taskId,
-					worktreePath: task?.worktreePath,
-				});
 				await classifyAndSetError();
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [taskId, isPreparing]);
+	}, [taskId, isPreparing, isNative]);
+
+	// ── Native pane state polling ──────────────────────────────────────────────
+	useEffect(() => {
+		if (!isNative || isPreparing) return;
+		let cancelled = false;
+		const fetch = async () => {
+			try {
+				const state = await api.request.taskPaneState({ taskId });
+				if (cancelled) return;
+				setNativePaneState(state);
+				// Set initial client focus to the server-active pane.
+				setClientFocusPaneId((prev) => prev ?? state.activePaneId ?? (state.panes[0]?.paneId ?? null));
+			} catch {
+				if (!cancelled) await classifyAndSetError();
+			}
+		};
+		fetch();
+		const timer = setInterval(fetch, NATIVE_PANE_POLL_MS);
+		return () => { cancelled = true; clearInterval(timer); };
+	}, [taskId, isPreparing, isNative]);
+
+	// ── Fetch per-pane URLs when new panes appear ─────────────────────────────
+	useEffect(() => {
+		if (!nativePaneState) return;
+		for (const pane of nativePaneState.panes) {
+			if (!paneUrls.has(pane.paneId)) {
+				api.request.getPanePtyUrl({ taskId, paneId: pane.paneId })
+					.then(({ url }) => {
+						setPaneUrls((prev) => {
+							if (prev.has(pane.paneId)) return prev; // already added
+							const next = new Map(prev);
+							next.set(pane.paneId, url);
+							return next;
+						});
+					})
+					.catch(() => {});
+			}
+		}
+	}, [nativePaneState?.panes.map((p) => p.paneId).join(",")]);
 
 	// Hibernating a task whose terminal is already open must not leave a dead
 	// socket reconnecting forever: drop straight to the wake screen the moment the
@@ -140,13 +180,8 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	useEffect(() => {
 		function onPtyDied(e: Event) {
 			const detail = (e as CustomEvent).detail;
-			console.warn("[TaskTerminal] ptyDied event received", {
-				eventTaskId: detail?.taskId?.slice(0, 8),
-				myTaskId: taskId.slice(0, 8),
-				matches: detail?.taskId === taskId,
-			});
 			if (detail?.taskId === taskId) {
-				classifyAndSetError();
+				void classifyAndSetError();
 			}
 		}
 		window.addEventListener("rpc:ptyDied", onPtyDied);
@@ -156,9 +191,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	// Fallback timeout for cases where ptyDied doesn't fire
 	useEffect(() => {
 		if (ptyUrl && !error) {
-			timeoutRef.current = setTimeout(() => {
-				// Safety net; ptyDied usually fires first.
-			}, PTY_CONNECT_TIMEOUT_MS);
+			timeoutRef.current = setTimeout(() => {}, PTY_CONNECT_TIMEOUT_MS);
 		}
 		return () => {
 			if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -175,8 +208,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			t,
 			confirm: false,
 			revertOnFailure: false,
-			// Land on the user's home surface: fullscreen open-mode → the board,
-			// split open-mode → the split task view with nothing selected.
 			afterOptimistic: () => navigate(taskClosedHomeRoute(projectId, getTaskOpenMode())),
 		});
 	}
@@ -300,7 +331,7 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			<div className="flex items-center justify-center h-full">
 				<div className="bg-raised border border-edge rounded-lg p-6 max-w-md w-full space-y-4">
 					<div className={`flex items-center gap-2 font-medium ${isSessionEnded ? "text-fg" : "text-danger"}`}>
-						<span className="text-lg">{isSessionEnded ? "\u23F9" : "\u26A0"}</span>
+						<span className="text-lg">{isSessionEnded ? "⏹" : "⚠"}</span>
 						<span>{isSessionEnded ? t("terminal.sessionEnded") : t("terminal.envError")}</span>
 					</div>
 					{!isSessionEnded && (
@@ -345,21 +376,257 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 	function toggleRawMode() {
 		setRawMode((prev) => {
 			const next = !prev;
-			// Entering raw mode inside the tap gesture opens the OSK immediately;
-			// leaving it drops terminal focus so compose mode owns the keyboard.
 			if (next) termHandle?.focus();
 			else termHandle?.blur();
 			return next;
 		});
 	}
 
-	// ExtraKeyBar attach → compose mode drops paths into the composer draft
-	// (visible, captionable); raw mode pastes them straight onto the prompt.
 	function handleAttachPaths(paths: string[]) {
 		const escaped = paths.map((p) => p.replace(/ /g, "\\ "));
 		if (!rawMode && composerApiRef.current) composerApiRef.current.appendPaths(escaped);
 		else termHandle?.paste(`${escaped.join(" ")} `);
 	}
+
+	// ── Native multi-pane rendering ─────────────────────────────────────────────
+	if (isNative) {
+		// Build pane rects from the split tree for absolute positioning.
+		const parsedTree = nativePaneState?.layout ? restoreSplitTree(nativePaneState.layout) : null;
+		const rects = parsedTree ? getPaneRects(parsedTree) : new Map();
+		const panes = nativePaneState?.panes ?? [];
+
+		// Focused pane: clicking a pane updates client-local focus.
+		const focusPaneId = clientFocusPaneId ?? nativePaneState?.activePaneId ?? panes[0]?.paneId ?? null;
+
+		function makePaneNativeStatusHandler(paneId: string) {
+			return ({ role, refused }: { role: NativeStreamRole; refused: boolean }) => {
+				paneRolesRef.current.set(paneId, { role, refusedAt: refused ? Date.now() : (paneRolesRef.current.get(paneId)?.refusedAt ?? 0) });
+				if (paneId === focusPaneId) {
+					setFocusedPaneRole(role);
+					if (refused) setFocusedPaneRefusedAt(Date.now());
+				}
+			};
+		}
+
+		function handleFocusPane(paneId: string) {
+			setClientFocusPaneId(paneId);
+			const stored = paneRolesRef.current.get(paneId);
+			setFocusedPaneRole(stored?.role ?? "writer");
+			setFocusedPaneRefusedAt(stored?.refusedAt ?? 0);
+		}
+
+		function closeFocusedPane(paneId: string) {
+			api.request.taskPaneAction({ taskId, action: { kind: "close", paneId } })
+				.then(setNativePaneState)
+				.catch(() => {});
+		}
+
+		function renderNativePane(paneId: string): ReactNode {
+			const url = paneUrls.get(paneId);
+			const paneInfo = panes.find((p) => p.paneId === paneId);
+			const isFocused = paneId === focusPaneId;
+
+			// Pane whose host is gone: show a danger-toned recovery line.
+			if (paneInfo && paneInfo.alive === false) {
+				const paneIndex = (paneInfo.index ?? 0) + 1;
+				return (
+					<div className="h-full w-full flex flex-col items-center justify-center gap-3 bg-raised">
+						<span className="text-danger text-sm font-medium">{t("panes.exited")}</span>
+						<button
+							onClick={() => closeFocusedPane(paneId)}
+							className="px-3 py-1.5 rounded text-xs font-medium bg-danger/10 text-danger border border-danger/25 hover:bg-danger/20 transition-colors"
+							aria-label={t("panes.exitedClose") + ` (${t("panes.paneLabel", { index: String(paneIndex) })})`}
+						>
+							{t("panes.exitedClose")}
+						</button>
+					</div>
+				);
+			}
+
+			return (
+				<div className="h-full w-full flex flex-col overflow-hidden">
+					{url ? (
+						<TerminalView
+							ptyUrl={url}
+							taskId={taskId}
+							projectId={projectId}
+							onReady={(handle) => {
+								paneHandlesRef.current.set(paneId, handle);
+								// Use focused pane's handle for touch composer.
+								if (isFocused) setTermHandle(handle);
+							}}
+							onNativeStatus={isFocused ? makePaneNativeStatusHandler(paneId) : undefined}
+							touchComposeMode={touchInput && !rawMode}
+						/>
+					) : (
+						<div className="flex items-center justify-center h-full">
+							<div className="flex items-center gap-3">
+								<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+								<span className="text-fg-3 text-sm">{t("terminal.connecting")}</span>
+							</div>
+						</div>
+					)}
+				</div>
+			);
+		}
+
+		const focusedPaneHandle = paneHandlesRef.current.get(focusPaneId ?? "");
+
+		// Narrow: use MobilePaneCarousel (backend-neutral); MobileWindowCarousel not rendered.
+		if (narrow) {
+			const activePaneUrl = focusPaneId ? paneUrls.get(focusPaneId) : undefined;
+			const nativeTerminalArea = activePaneUrl ? (
+				<TerminalView
+					key={focusPaneId}
+					ptyUrl={activePaneUrl}
+					taskId={taskId}
+					projectId={projectId}
+					onReady={(handle) => {
+						if (focusPaneId) paneHandlesRef.current.set(focusPaneId, handle);
+						setTermHandle(handle);
+					}}
+					onNativeStatus={focusPaneId ? makePaneNativeStatusHandler(focusPaneId) : undefined}
+					touchComposeMode={touchInput && !rawMode}
+				/>
+			) : (
+				<div className="flex items-center justify-center h-full">
+					<div className="flex items-center gap-3">
+						<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+						<span className="text-fg-3 text-sm">{t("terminal.connecting")}</span>
+					</div>
+				</div>
+			);
+
+			return (
+				<div className="relative h-full w-full flex flex-col overflow-hidden">
+					{!hideInfoPanel && task && project && (
+						<div className="contents" data-collapse-on-compose>
+							<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+						</div>
+					)}
+					{activePaneUrl && focusPaneId && (
+						<NativeViewerBar
+							role={focusedPaneRole}
+							refusedAt={focusedPaneRefusedAt}
+							onTakeControl={() => paneHandlesRef.current.get(focusPaneId)?.claimWriter()}
+						/>
+					)}
+					<MobilePaneCarousel taskId={taskId}>{nativeTerminalArea}</MobilePaneCarousel>
+					{touchInput && focusedPaneHandle && (
+						<div className={rawMode ? "hidden" : "contents"}>
+							<TerminalComposer handle={focusedPaneHandle} task={task} project={project} dispatch={dispatch} apiRef={composerApiRef} />
+						</div>
+					)}
+					{touchInput && focusedPaneHandle && (
+						<ExtraKeyBar
+							handle={focusedPaneHandle}
+							rawMode={rawMode}
+							onToggleRaw={toggleRawMode}
+							attachProjectId={projectId}
+							attachTaskId={taskId}
+							onAttachPaths={handleAttachPaths}
+						/>
+					)}
+				</div>
+			);
+		}
+
+		// Wide: absolute-positioned panes from SplitTree rects — stable keys, no remounting on sibling changes.
+		const GAP = 0.003; // ~1px visual gap between panes
+
+		// Zoom: show only the focused pane full-bleed.
+		const zoomedPane = clientZoom ? focusPaneId : null;
+
+		return (
+			<div className="relative h-full w-full flex flex-col overflow-hidden">
+				{!hideInfoPanel && task && project && (
+					<div className="contents" data-collapse-on-compose>
+						<TaskInfoPanel task={task} project={project} dispatch={dispatch} navigate={navigate} isFullPage />
+					</div>
+				)}
+				{focusPaneId && paneUrls.has(focusPaneId) && (
+					<NativeViewerBar
+						role={focusedPaneRole}
+						refusedAt={focusedPaneRefusedAt}
+						onTakeControl={() => paneHandlesRef.current.get(focusPaneId)?.claimWriter()}
+					/>
+				)}
+				{zoomedPane ? (
+					// Zoom mode: render only the focused pane.
+					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
+						<div
+							key={zoomedPane}
+							className="absolute inset-0 border border-accent/60 ring-1 ring-accent/30 overflow-hidden"
+							onClick={() => handleFocusPane(zoomedPane)}
+						>
+							{renderNativePane(zoomedPane)}
+						</div>
+						{/* Client-local unzoom button for native panes */}
+						<button
+							className="absolute top-2 right-2 z-10 px-2 py-1 rounded text-[0.625rem] font-medium bg-accent/20 text-accent border border-accent/40 hover:bg-accent/30 transition-colors"
+							onClick={() => setClientZoom(false)}
+							aria-label={t("tmux.zoomDesc")}
+						>
+							{t("tmux.zoomDesc")}
+						</button>
+					</div>
+				) : panes.length > 0 ? (
+					// Tiled mode: render all panes by rect.
+					<div className="relative isolate flex-1 min-h-0 overflow-hidden">
+						{panes.map((pane) => {
+							const rect = rects.get(pane.paneId) ?? { x: 0, y: 0, width: 1, height: 1 };
+							const isFocused = pane.paneId === focusPaneId;
+							return (
+								<div
+									key={pane.paneId}
+									data-pane-id={pane.paneId}
+									data-focused={isFocused ? "true" : "false"}
+									className={`absolute overflow-hidden border ${
+										isFocused ? "border-accent/60 ring-1 ring-accent/30" : "border-edge"
+									}`}
+									style={{
+										left: `${(rect.x + GAP / 2) * 100}%`,
+										top: `${(rect.y + GAP / 2) * 100}%`,
+										width: `${Math.max(0, rect.width - GAP) * 100}%`,
+										height: `${Math.max(0, rect.height - GAP) * 100}%`,
+									}}
+									onClick={() => handleFocusPane(pane.paneId)}
+								>
+									{renderNativePane(pane.paneId)}
+								</div>
+							);
+						})}
+						<ClosePanePicker taskId={taskId} />
+					</div>
+				) : (
+					// No panes yet (loading).
+					<div className="flex items-center justify-center flex-1">
+						<div className="flex items-center gap-3">
+							<div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+							<span className="text-fg-3 text-sm">{t("terminal.connecting")}</span>
+						</div>
+					</div>
+				)}
+				{touchInput && focusedPaneHandle && (
+					<div className={rawMode ? "hidden" : "contents"}>
+						<TerminalComposer handle={focusedPaneHandle} task={task} project={project} dispatch={dispatch} apiRef={composerApiRef} />
+					</div>
+				)}
+				{touchInput && focusedPaneHandle && (
+					<ExtraKeyBar
+						handle={focusedPaneHandle}
+						rawMode={rawMode}
+						onToggleRaw={toggleRawMode}
+						attachProjectId={projectId}
+						attachTaskId={taskId}
+						onAttachPaths={handleAttachPaths}
+					/>
+				)}
+			</div>
+		);
+	}
+
+	// ── Tmux path (unchanged) ──────────────────────────────────────────────────
 
 	const terminalArea = ptyUrl ? (
 		<TerminalView
@@ -395,8 +662,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 			)}
 			{narrow && ptyUrl ? (
 				// Narrow: a window switcher (outer) wraps the pane carousel (inner).
-				// Pane swipe / dots / Arrow keys move panes; the window bar moves
-				// between tmux windows (workspaces) and only renders when count > 1.
 				<MobileWindowCarousel taskId={taskId} onSwitch={() => setWindowEpoch((e) => e + 1)}>
 					<MobilePaneCarousel taskId={taskId} refreshKey={windowEpoch}>{terminalArea}</MobilePaneCarousel>
 				</MobileWindowCarousel>
@@ -407,7 +672,6 @@ function TaskTerminal({ projectId, taskId, tasks, projects, navigate, dispatch, 
 					{ptyUrl && <ClosePanePicker taskId={taskId} />}
 				</div>
 			)}
-			{/* Keep the composer mounted in raw mode (hidden) so a draft survives the toggle. */}
 			{touchInput && termHandle && (
 				<div className={rawMode ? "hidden" : "contents"}>
 					<TerminalComposer handle={termHandle} task={task} project={project} dispatch={dispatch} apiRef={composerApiRef} />

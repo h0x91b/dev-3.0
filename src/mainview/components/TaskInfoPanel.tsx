@@ -49,7 +49,7 @@ import {
 } from "./TaskIcons";
 import TaskNotes from "./task-info-panel/TaskNotes";
 import TaskOpenIn from "./task-info-panel/TaskOpenIn";
-import TaskTmuxControls from "./task-info-panel/TaskTmuxControls";
+import TaskPaneControls from "./task-info-panel/TaskPaneControls";
 import { useTaskAllocatedPorts } from "./task-info-panel/useTaskAllocatedPorts";
 import type { TaskInlineDiffRequest } from "./task-inline-diff";
 import { isTestFile } from "../../shared/test-files";
@@ -1376,7 +1376,7 @@ function TaskInfoPanel({
 							{hibernateButton}
 							{scheduledMessagesChip}
 							<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-							<TaskTmuxControls taskId={task.id} compact={tight} />
+							<TaskPaneControls taskId={task.id} compact={tight} />
 						</div>
 						{worktreeSettingsButton}
 						{showPanelButton}
@@ -1465,7 +1465,7 @@ function TaskInfoPanel({
 								{hibernateButton}
 								{scheduledMessagesChip}
 								<div className="w-px h-6 self-center bg-edge flex-shrink-0 mx-1" aria-hidden="true" />
-								<TaskTmuxControls taskId={task.id} compact={tight} />
+								<TaskPaneControls taskId={task.id} compact={tight} />
 							</div>
 							<HelpSpot topicId="inspector.panel" className="ml-0.5" />
 							{showPanelButton}

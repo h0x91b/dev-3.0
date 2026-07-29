@@ -23,14 +23,16 @@ import {
 	TmuxHintsIcon,
 	ZoomPaneIcon,
 } from "../TmuxIcons";
+import type { TaskPaneState } from "../../../shared/task-panes";
+import { taskPaneSupports } from "../../../shared/task-panes";
 
-interface TaskTmuxControlsProps {
+interface TaskPaneControlsProps {
 	taskId: string;
 	/** Drop the layout button's text label when the inspector bar is short on width. */
 	compact?: boolean;
 }
 
-type TmuxAction =
+type PaneAction =
 	| "splitH"
 	| "splitV"
 	| "newWindow"
@@ -45,13 +47,13 @@ type TmuxAction =
 
 type LayoutAction = "layoutTiled" | "layoutEvenH" | "layoutEvenV" | "layoutMainH" | "layoutMainV";
 
-export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxControlsProps) {
+const PANE_STATE_POLL_MS = 3000;
+
+export default function TaskPaneControls({ taskId, compact = false }: TaskPaneControlsProps) {
 	const t = useT();
-	// Hover-to-pick only makes sense on a real split with a pointer. On a narrow
-	// viewport the terminal is a one-pane carousel (no hover, no visible split),
-	// so Close Pane keeps its direct-kill behavior there.
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
 	const [keymapPreset, setKeymapPresetState] = useState(() => getKeymapPreset());
+	const [paneState, setPaneState] = useState<TaskPaneState | null>(null);
 	const [hintsOpen, setHintsOpen] = useState(false);
 	const [hintsPos, setHintsPos] = useState({ top: 0, left: 0 });
 	const [hintsVisible, setHintsVisible] = useState(false);
@@ -67,11 +69,23 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 	const layoutMenuRef = useRef<HTMLDivElement>(null);
 	const layoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// Fetch pane state on mount and periodically.
+	useEffect(() => {
+		let cancelled = false;
+		const fetch = () => {
+			api.request.taskPaneState({ taskId }).then((s) => {
+				if (!cancelled) setPaneState(s);
+			}).catch(() => {});
+		};
+		fetch();
+		const timer = setInterval(fetch, PANE_STATE_POLL_MS);
+		return () => { cancelled = true; clearInterval(timer); };
+	}, [taskId]);
+
 	useEffect(() => {
 		function onKeymapChanged(event: Event) {
 			setKeymapPresetState((event as CustomEvent).detail);
 		}
-
 		window.addEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
 		return () => window.removeEventListener(KEYMAP_CHANGED_EVENT, onKeymapChanged);
 	}, []);
@@ -112,28 +126,18 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 	);
 
 	useLayoutEffect(() => {
-		if (!hintsOpen || !hintsPopoverRef.current || !hintsTriggerRef.current) {
-			return;
-		}
-
+		if (!hintsOpen || !hintsPopoverRef.current || !hintsTriggerRef.current) return;
 		const menu = hintsPopoverRef.current.getBoundingClientRect();
 		const trigger = hintsTriggerRef.current.getBoundingClientRect();
 		const vw = window.innerWidth;
 		const vh = window.innerHeight;
 		const pad = 8;
-
 		let top = trigger.bottom + 6;
 		let left = trigger.right - menu.width;
-
-		if (top + menu.height > vh - pad) {
-			top = trigger.top - menu.height - 6;
-		}
-		if (left + menu.width > vw - pad) {
-			left = vw - menu.width - pad;
-		}
+		if (top + menu.height > vh - pad) top = trigger.top - menu.height - 6;
+		if (left + menu.width > vw - pad) left = vw - menu.width - pad;
 		if (left < pad) left = pad;
 		if (top < pad) top = pad;
-
 		setHintsPos({ top, left });
 		setHintsVisible(true);
 	}, [hintsOpen]);
@@ -174,28 +178,18 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 	);
 
 	useLayoutEffect(() => {
-		if (!layoutOpen || !layoutMenuRef.current || !layoutTriggerRef.current) {
-			return;
-		}
-
+		if (!layoutOpen || !layoutMenuRef.current || !layoutTriggerRef.current) return;
 		const menu = layoutMenuRef.current.getBoundingClientRect();
 		const trigger = layoutTriggerRef.current.getBoundingClientRect();
 		const vw = window.innerWidth;
 		const vh = window.innerHeight;
 		const pad = 8;
-
 		let top = trigger.bottom + 6;
 		let left = trigger.right - menu.width;
-
-		if (top + menu.height > vh - pad) {
-			top = trigger.top - menu.height - 6;
-		}
-		if (left + menu.width > vw - pad) {
-			left = vw - menu.width - pad;
-		}
+		if (top + menu.height > vh - pad) top = trigger.top - menu.height - 6;
+		if (left + menu.width > vw - pad) left = vw - menu.width - pad;
 		if (left < pad) left = pad;
 		if (top < pad) top = pad;
-
 		setLayoutPos({ top, left });
 		setLayoutVisible(true);
 	}, [layoutOpen]);
@@ -205,7 +199,12 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 		setKeymapPreset(keymapPreset === "iterm2" ? "default" : "iterm2");
 	}
 
-	const handleTmuxAction = (action: TmuxAction) => async (event: ReactMouseEvent<HTMLButtonElement>) => {
+	/** Re-read pane state after any mutating action so capabilities stay fresh. */
+	function refreshState() {
+		api.request.taskPaneState({ taskId }).then(setPaneState).catch(() => {});
+	}
+
+	const handleAction = (action: PaneAction) => async (event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.stopPropagation();
 		if (action === "newWindow") {
 			api.request.tmuxNewWindow({ taskId }).catch(() => {});
@@ -214,13 +213,12 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 		if (action === "close") {
 			let count = 0;
 			try {
-				const state = await api.request.taskPaneState({ taskId });
+				const state = paneState ?? await api.request.taskPaneState({ taskId });
 				count = state.panes.length;
 			} catch {
 				count = 0;
 			}
 			if (count <= 1) {
-				// Closing the last pane tears down the whole session — confirm first.
 				let confirmed = false;
 				try {
 					confirmed = await confirm({
@@ -232,10 +230,10 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 					confirmed = false;
 				}
 				if (!confirmed) return;
-				api.request.taskPaneAction({ taskId, action: { kind: "close", force: true } }).catch(() => {});
+				api.request.taskPaneAction({ taskId, action: { kind: "close", force: true } }).catch(() => {}).finally(refreshState);
 				return;
 			}
-			api.request.taskPaneAction({ taskId, action: { kind: "close" } }).catch(() => {});
+			api.request.taskPaneAction({ taskId, action: { kind: "close" } }).catch(() => {}).finally(refreshState);
 			return;
 		}
 		const actionMap: Record<string, import("../../../shared/task-panes").TaskPaneAction> = {
@@ -251,39 +249,48 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 		};
 		const paneAction = actionMap[action];
 		if (paneAction) {
-			api.request.taskPaneAction({ taskId, action: paneAction }).catch(() => {});
+			api.request.taskPaneAction({ taskId, action: paneAction }).then(setPaneState).catch(() => {});
 		}
 	};
 
-	// The red Close Pane button. On a real desktop split it opens the two-step
-	// picker (an overlay over the terminal in TaskTerminal); on narrow viewports it
-	// falls back to the direct kill of the visible pane (reusing the last-pane
-	// teardown confirm baked into handleTmuxAction("close")).
 	const handleClosePane = (event: ReactMouseEvent<HTMLButtonElement>) => {
 		event.stopPropagation();
 		if (narrow) {
-			void handleTmuxAction("close")(event);
+			void handleAction("close")(event);
 			return;
 		}
 		startClosePanePicker(taskId);
 	};
 
-	// Cycling steps through tmux's own layout rotation, so the toolbar can no longer
-	// know which named preset is active — clear the highlight to avoid lying about it.
 	const cycleLayout = (event: ReactMouseEvent<HTMLButtonElement>) => {
 		setActiveLayout(null);
-		void handleTmuxAction("nextLayout")(event);
+		void handleAction("nextLayout")(event);
 	};
 
 	const applyLayout = (action: LayoutAction) => (event: ReactMouseEvent<HTMLButtonElement>) => {
 		setActiveLayout(action);
 		setLayoutOpen(false);
 		setLayoutVisible(false);
-		void handleTmuxAction(action)(event);
+		void handleAction(action)(event);
 	};
 
+	// Capability checks (fall back to permissive defaults while state loads).
+	const canSplit = paneState === null || taskPaneSupports(paneState, "split");
+	const canZoom = paneState === null || taskPaneSupports(paneState, "zoom");
+	const canClose = paneState === null || taskPaneSupports(paneState, "close");
+	const canLayoutCycle = paneState !== null && taskPaneSupports(paneState, "layoutCycle");
+	const canLayoutPreset = paneState !== null && taskPaneSupports(paneState, "layoutPreset");
+	const showNewWindow = paneState !== null && taskPaneSupports(paneState, "newWindow");
+	const isNative = paneState?.backend === "native";
+
+	// Layout button is disabled when the backend has no layoutCycle capability (1 pane).
+	const layoutDisabled = !canLayoutCycle && !canLayoutPreset;
+	const layoutDisabledReason = layoutDisabled && paneState !== null
+		? t("panes.layoutNeedsTwoPanes")
+		: undefined;
+
 	const tmuxBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-accent hover:bg-accent/20 bg-accent/10 border border-accent/25 flex items-center gap-1";
-	// New window is a "create" action — green, to set it apart from the blue pane splits.
+	const tmuxBtnDisabledClass = "px-1.5 py-1 rounded text-[0.625rem] font-medium text-fg-muted bg-elevated/50 border border-edge/50 flex items-center gap-1 cursor-not-allowed opacity-50";
 	const tmuxNewWindowBtnClass = "tmux-anim px-1.5 py-1 rounded text-[0.625rem] font-medium transition-colors text-success hover:bg-success/20 bg-success/10 border border-success/35 flex items-center gap-1";
 	const tmuxIconBtnClass = "tmux-anim px-1.5 py-1 rounded text-fg-muted hover:text-fg-2 hover:bg-elevated border border-edge transition-colors flex items-center justify-center flex-shrink-0";
 	const tmuxSvgClass = "w-4 h-4";
@@ -309,64 +316,91 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 		{ action: "layoutMainV", descKey: "tmux.layoutMainVDesc", shortcut: "⌃B M-4" },
 	];
 
+	const hintsTitle = isNative ? t("panes.nativeHintsTitle") : t("tmux.title");
+
 	return (
 		<>
 			<div className="flex items-center gap-1.5 flex-shrink-0">
 				<Tooltip content={t("tmux.splitHDesc")} detail={t("ttip.tmux.splitH")}>
-					<button className={tmuxBtnClass} onClick={handleTmuxAction("splitH")} aria-label={t("tmux.splitHDesc")}>
+					<button
+						className={canSplit ? tmuxBtnClass : tmuxBtnDisabledClass}
+						disabled={!canSplit}
+						onClick={canSplit ? handleAction("splitH") : undefined}
+						aria-label={t("tmux.splitHDesc")}
+					>
 						<SplitHIcon className={tmuxSvgClass} />
 					</button>
 				</Tooltip>
 				<Tooltip content={t("tmux.splitVDesc")} detail={t("ttip.tmux.splitV")}>
-					<button className={tmuxBtnClass} onClick={handleTmuxAction("splitV")} aria-label={t("tmux.splitVDesc")}>
+					<button
+						className={canSplit ? tmuxBtnClass : tmuxBtnDisabledClass}
+						disabled={!canSplit}
+						onClick={canSplit ? handleAction("splitV") : undefined}
+						aria-label={t("tmux.splitVDesc")}
+					>
 						<SplitVIcon className={tmuxSvgClass} />
 					</button>
 				</Tooltip>
-				<Tooltip content={t("tmux.newWindowDesc")}>
-					<button className={tmuxNewWindowBtnClass} onClick={(e) => { e.stopPropagation(); api.request.tmuxNewWindow({ taskId }).catch(() => {}); }} aria-label={t("tmux.newWindowDesc")}>
-						<NewWindowIcon className={tmuxSvgClass} />
-					</button>
-				</Tooltip>
 
-				<div
-					className="flex items-stretch rounded text-accent bg-accent/10 border border-accent/25 overflow-hidden"
-					onMouseEnter={showLayout}
-					onMouseLeave={hideLayout}
-				>
-					<Tooltip content={t("tmux.nextLayoutDesc")} detail={t("ttip.tmux.nextLayout")}>
+				{showNewWindow && (
+					<Tooltip content={t("tmux.newWindowDesc")}>
 						<button
-							className="tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors hover:bg-accent/20 flex items-center gap-1"
-							onClick={cycleLayout}
+							className={tmuxNewWindowBtnClass}
+							onClick={(e) => { e.stopPropagation(); api.request.tmuxNewWindow({ taskId }).catch(() => {}); }}
+							aria-label={t("tmux.newWindowDesc")}
+						>
+							<NewWindowIcon className={tmuxSvgClass} />
+						</button>
+					</Tooltip>
+				)}
+
+				<Tooltip content={layoutDisabledReason ?? ""} detail={!layoutDisabled ? undefined : undefined}>
+					<div
+						className={`flex items-stretch rounded ${layoutDisabled ? "opacity-50 cursor-not-allowed" : "text-accent bg-accent/10 border border-accent/25"} overflow-hidden`}
+						onMouseEnter={!layoutDisabled ? showLayout : undefined}
+						onMouseLeave={!layoutDisabled ? hideLayout : undefined}
+					>
+						<button
+							className={`tmux-anim px-1.5 py-1 text-[0.625rem] font-medium transition-colors ${layoutDisabled ? "text-fg-muted bg-elevated/50 border border-edge/50 cursor-not-allowed" : "text-accent hover:bg-accent/20"} flex items-center gap-1`}
+							disabled={layoutDisabled}
+							onClick={!layoutDisabled ? cycleLayout : undefined}
 							aria-label={t("tmux.nextLayoutDesc")}
+							title={layoutDisabledReason}
 						>
 							{cycleIcon}
-							{!compact && <span>tmux layout</span>}
+							{!compact && <span>{t("panes.layoutLabel")}</span>}
 						</button>
-					</Tooltip>
-					<Tooltip content={t("tmux.chooseLayout")} detail={t("ttip.tmux.chooseLayout")}>
-						<button
-							ref={layoutTriggerRef}
-							className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
-							onClick={(event) => {
-								event.stopPropagation();
-								showLayout();
-							}}
-							aria-label={t("tmux.chooseLayout")}
-							aria-haspopup="menu"
-							aria-expanded={layoutOpen}
-						>
-							<svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-								<path d="M6 9 L12 15 L18 9" stroke="currentColor" />
-							</svg>
-						</button>
-					</Tooltip>
-				</div>
+						{!layoutDisabled && (
+							<button
+								ref={layoutTriggerRef}
+								className="px-1 py-1 transition-colors hover:bg-accent/20 border-l border-accent/25 flex items-center justify-center"
+								onClick={(event) => {
+									event.stopPropagation();
+									showLayout();
+								}}
+								aria-label={t("tmux.chooseLayout")}
+								aria-haspopup="menu"
+								aria-expanded={layoutOpen}
+							>
+								<svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+									<path d="M6 9 L12 15 L18 9" stroke="currentColor" />
+								</svg>
+							</button>
+						)}
+					</div>
+				</Tooltip>
 
 				<Tooltip content={t("tmux.zoomDesc")} detail={t("ttip.tmux.zoom")}>
-					<button className={tmuxBtnClass} onClick={handleTmuxAction("zoom")} aria-label={t("tmux.zoomDesc")}>
+					<button
+						className={canZoom ? tmuxBtnClass : tmuxBtnDisabledClass}
+						disabled={!canZoom}
+						onClick={canZoom ? handleAction("zoom") : undefined}
+						aria-label={t("tmux.zoomDesc")}
+					>
 						<ZoomPaneIcon className={tmuxSvgClass} />
 					</button>
 				</Tooltip>
+
 				<button
 					ref={hintsTriggerRef}
 					className={tmuxIconBtnClass}
@@ -376,8 +410,8 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 					}}
 					onMouseEnter={showHints}
 					onMouseLeave={hideHints}
-					title={t("tmux.title")}
-					aria-label={t("tmux.title")}
+					title={hintsTitle}
+					aria-label={hintsTitle}
 				>
 					<TmuxHintsIcon className="w-3.5 h-3.5" />
 				</button>
@@ -386,8 +420,9 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 
 				<Tooltip content={t("tmux.closePaneDesc")} detail={t("ttip.tmux.closePane")}>
 					<button
-						className={`${tmuxBtnClass} text-danger hover:bg-danger/20 bg-danger/10 border-danger/25`}
-						onClick={handleClosePane}
+						className={`${canClose ? tmuxBtnClass : tmuxBtnDisabledClass} ${canClose ? "text-danger hover:bg-danger/20 bg-danger/10 border-danger/25" : ""}`}
+						disabled={!canClose}
+						onClick={canClose ? handleClosePane : undefined}
 						aria-label={t("tmux.closePaneDesc")}
 					>
 						<ClosePaneIcon className={tmuxSvgClass} />
@@ -395,7 +430,7 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 				</Tooltip>
 			</div>
 
-			{layoutOpen && createPortal(
+			{!layoutDisabled && layoutOpen && createPortal(
 				<div
 					ref={layoutMenuRef}
 					role="menu"
@@ -414,11 +449,9 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 						}}
 						className="tmux-anim w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-elevated border border-transparent"
 					>
-						<span className="flex-shrink-0 text-fg-2">
-							{cycleIcon}
-						</span>
+						<span className="flex-shrink-0 text-fg-2">{cycleIcon}</span>
 						<span className="text-xs flex-1 text-fg-2">{t("tmux.nextLayoutDesc")}</span>
-						<kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">⌃B ␣</kbd>
+						{!isNative && <kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">⌃B ␣</kbd>}
 					</button>
 					<div className="my-1 border-t border-edge" />
 					{layouts.map(({ action, descKey, shortcut }) => {
@@ -442,7 +475,7 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 										<path d="M3 8 L6.5 11.5 L13 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
 									</svg>
 								)}
-								<kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">{shortcut}</kbd>
+								{!isNative && <kbd className="font-mono text-[0.625rem] text-fg-muted flex-shrink-0">{shortcut}</kbd>}
 							</button>
 						);
 					})}
@@ -458,24 +491,38 @@ export default function TaskTmuxControls({ taskId, compact = false }: TaskTmuxCo
 					onMouseEnter={showHints}
 					onMouseLeave={hideHints}
 				>
-					<div className="text-xs font-semibold text-fg mb-3">{t("tmux.title")}</div>
+					<div className="text-xs font-semibold text-fg mb-3">{hintsTitle}</div>
 
-					<div className={popoverSection}>{t("tmux.panes")}</div>
-					<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-						<kbd className={popoverKbd}>⌃B -</kbd><span className={popoverDesc}>{t("tmux.splitHDesc")}</span>
-						<kbd className={popoverKbd}>⌃B |</kbd><span className={popoverDesc}>{t("tmux.splitVDesc")}</span>
-						<kbd className={popoverKbd}>⌃B z</kbd><span className={popoverDesc}>{t("tmux.zoomDesc")}</span>
-						<kbd className={popoverKbd}>⌃B ␣</kbd><span className={popoverDesc}>{t("tmux.nextLayoutDesc")}</span>
-						<kbd className={popoverKbd}>⌃B x</kbd><span className={popoverDesc}>{t("tmux.closePaneDesc")}</span>
-						<kbd className={popoverKbd}>⌃D</kbd><span className={popoverDesc}>{t("tmux.closePaneEofDesc")}</span>
-						<kbd className={popoverKbd}>⌃B M-1</kbd><span className={popoverDesc}>{t("tmux.layoutEvenHDesc")}</span>
-						<kbd className={popoverKbd}>⌃B M-2</kbd><span className={popoverDesc}>{t("tmux.layoutEvenVDesc")}</span>
-						<kbd className={popoverKbd}>⌃B M-3</kbd><span className={popoverDesc}>{t("tmux.layoutMainHDesc")}</span>
-						<kbd className={popoverKbd}>⌃B M-4</kbd><span className={popoverDesc}>{t("tmux.layoutMainVDesc")}</span>
-						<kbd className={popoverKbd}>⌃B M-5</kbd><span className={popoverDesc}>{t("tmux.layoutTiledDesc")}</span>
-						<span className={`${popoverDesc} col-span-2 mt-1.5 text-fg-muted`}>{t("tmux.selectPaneDesc")}</span>
-						<span className={`${popoverDesc} col-span-2 text-fg-muted`}>{t("tmux.resizePaneDesc")}</span>
-					</div>
+					{isNative ? (
+						<>
+							<div className={popoverSection}>{t("tmux.panes")}</div>
+							<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+								<span className={`${popoverDesc} col-span-2 text-fg-muted`}>{t("panes.nativeNoPrefixKeys")}</span>
+							</div>
+							<div className="mt-3 pt-2 border-t border-edge">
+								<span className={`${popoverDesc} text-fg-muted block`}>{t("panes.nativeWindowsUnavailable")}</span>
+							</div>
+						</>
+					) : (
+						<>
+							<div className={popoverSection}>{t("tmux.panes")}</div>
+							<div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+								<kbd className={popoverKbd}>⌃B -</kbd><span className={popoverDesc}>{t("tmux.splitHDesc")}</span>
+								<kbd className={popoverKbd}>⌃B |</kbd><span className={popoverDesc}>{t("tmux.splitVDesc")}</span>
+								<kbd className={popoverKbd}>⌃B z</kbd><span className={popoverDesc}>{t("tmux.zoomDesc")}</span>
+								<kbd className={popoverKbd}>⌃B ␣</kbd><span className={popoverDesc}>{t("tmux.nextLayoutDesc")}</span>
+								<kbd className={popoverKbd}>⌃B x</kbd><span className={popoverDesc}>{t("tmux.closePaneDesc")}</span>
+								<kbd className={popoverKbd}>⌃D</kbd><span className={popoverDesc}>{t("tmux.closePaneEofDesc")}</span>
+								<kbd className={popoverKbd}>⌃B M-1</kbd><span className={popoverDesc}>{t("tmux.layoutEvenHDesc")}</span>
+								<kbd className={popoverKbd}>⌃B M-2</kbd><span className={popoverDesc}>{t("tmux.layoutEvenVDesc")}</span>
+								<kbd className={popoverKbd}>⌃B M-3</kbd><span className={popoverDesc}>{t("tmux.layoutMainHDesc")}</span>
+								<kbd className={popoverKbd}>⌃B M-4</kbd><span className={popoverDesc}>{t("tmux.layoutMainVDesc")}</span>
+								<kbd className={popoverKbd}>⌃B M-5</kbd><span className={popoverDesc}>{t("tmux.layoutTiledDesc")}</span>
+								<span className={`${popoverDesc} col-span-2 mt-1.5 text-fg-muted`}>{t("tmux.selectPaneDesc")}</span>
+								<span className={`${popoverDesc} col-span-2 text-fg-muted`}>{t("tmux.resizePaneDesc")}</span>
+							</div>
+						</>
+					)}
 
 					<div className="border-t border-edge mt-3 pt-3">
 						<div className={popoverSection}>{t("tmux.keyboardMode")}</div>
