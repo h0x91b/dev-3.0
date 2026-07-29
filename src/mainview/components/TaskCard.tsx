@@ -68,9 +68,11 @@ interface TaskCardProps {
 	prInfo?: TaskPRBadgeInfo;
 	/** Opens the selected task's diff at its first unresolved review thread. */
 	onOpenUnresolvedComments?: (task: Task) => void;
+	/** Reopens the New Task popup on a draft card instead of the detail modal. */
+	onEditDraft?: (task: Task) => void;
 }
 
-function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments }: TaskCardProps) {
+function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants, onAddAttempts, onDragStart: onDragStartProp, onTaskMoved, resourceUsage, bellCount = 0, bellReasons, ports, isActiveInSplit = false, isMoving: isMovingProp = false, onSetMoving, siblingMap, prInfo, onOpenUnresolvedComments, onEditDraft }: TaskCardProps) {
 	const t = useT();
 	const statusColors = useStatusColors();
 	const narrow = useNarrowViewport(CAROUSEL_MAX_WIDTH);
@@ -111,6 +113,8 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	const isShuttingDown = task.shuttingDown === true;
 	const isDisabled = moving || isMovingProp || isPreparing || cancellingPreparation || isShuttingDown;
 	const isTodo = task.status === "todo";
+	// An unfinished draft: not runnable, and a click reopens the New Task popup.
+	const isDraft = task.draft === true;
 	const isCancelled = task.status === "cancelled";
 	const isActive = ACTIVE_STATUSES.includes(task.status);
 	const isCompleting = (moving || isMovingProp) && (task.status === "completed" || task.status === "cancelled");
@@ -282,6 +286,12 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		// Intercept: todo → active status opens the LaunchVariantsModal
 		if (task.status === "todo" && ACTIVE_STATUSES.includes(newStatus)) {
 			setMenuOpen(false);
+			// A draft would be refused by the lifecycle machine at the end of the
+			// launch flow — say so now instead of walking the user through it.
+			if (isDraft) {
+				toast.error(t("kanban.draftNotDroppable"), { taskId: task.id });
+				return;
+			}
 			onLaunchVariants(task, newStatus);
 			return;
 		}
@@ -394,6 +404,10 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 		// the previously-active task's terminal on screen.
 		if (isDisabled && !isPreparing) return;
 		if (cancellingPreparation) return;
+		if (isDraft && onEditDraft && !menuOpen) {
+			onEditDraft(task);
+			return;
+		}
 		if (isActive && !menuOpen) {
 			preview.close();
 			const openMode = getTaskOpenMode();
@@ -446,6 +460,11 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 	}
 
 	function handleTitleClick(e: React.MouseEvent) {
+		if (isDraft && onEditDraft) {
+			e.stopPropagation();
+			onEditDraft(task);
+			return;
+		}
 		if (isTodo) {
 			e.stopPropagation();
 			setDetailOpen(true);
@@ -597,7 +616,7 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 			onContextMenu={handleContextMenu}
 			onMouseEnter={handleCardMouseEnter}
 			onMouseLeave={handleCardMouseLeave}
-			className={`group relative p-3.5 glass-card rounded-xl transition-all border border-l-[3px] ${isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : "border-transparent"} ${
+			className={`group relative p-3.5 glass-card rounded-xl transition-all border border-l-[3px] ${isDraft ? "border-dashed" : ""} ${isActiveInSplit ? "border-accent ring-2 ring-accent/70 shadow-lg shadow-accent/20" : isDraft ? "border-edge-active" : "border-transparent"} ${
 				isActive || isCompleted || isCancelled
 					? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
 					: "cursor-grab active:cursor-grabbing hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25"
@@ -726,6 +745,15 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 				<div className="mb-1 flex items-center gap-1.5">
 					<PriorityBadge priority={task.priority} onChange={handleSetPriority} />
 					<span className="text-[0.625rem] text-fg-muted font-mono">#{task.seq}</span>
+					{isDraft && (
+						<span
+							data-testid="task-card-draft-badge"
+							title={t("task.draftHint")}
+							className="inline-flex items-center rounded border border-dashed border-edge-active px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-fg-3"
+						>
+							{t("task.draftBadge")}
+						</span>
+					)}
 				</div>
 			)}
 
@@ -1073,8 +1101,9 @@ function TaskCard({ task, project, dispatch, navigate, agents, onLaunchVariants,
 					</span>
 				)}
 
-				{/* Run button for TODO cards — right-aligned */}
-				{isTodo && (
+				{/* Run button for TODO cards — right-aligned. A draft has nothing to run
+				    yet; the lifecycle machine would refuse the launch anyway. */}
+				{isTodo && !isDraft && (
 					<>
 						<div className="flex-1" />
 						<Tooltip content={t("task.run")} detail={t("ttip.task.run")}>

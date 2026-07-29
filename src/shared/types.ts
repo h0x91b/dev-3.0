@@ -83,6 +83,14 @@ export const ACTIVE_STATUSES: TaskStatus[] = [
 	"review-by-ai",
 ];
 
+/**
+ * Rejection message every activation path produces for a draft task. The CLI
+ * compares against it to translate the lifecycle rejection into its dedicated
+ * exit code, so the string is a contract — not free-form log text.
+ */
+export const DRAFT_TASK_ACTIVATION_ERROR =
+	"Task is a draft — finish its description and save it as a normal task before starting it.";
+
 export const MERGE_COMPLETE_ELIGIBLE_STATUSES: TaskStatus[] = [
 	"user-questions",
 	"review-by-user",
@@ -1331,6 +1339,16 @@ export interface Task {
 	 * description or title converts it into a normal task and clears this flag.
 	 */
 	scratch?: boolean;
+	/**
+	 * True while the task is an unfinished draft parked in To Do by "Save as
+	 * draft". A draft is explicitly not ready: every activation path refuses it
+	 * (the lifecycle machine rejects the move, see {@link DRAFT_TASK_ACTIVATION_ERROR}),
+	 * and clicking its card reopens the New Task popup prefilled. Cleared only by
+	 * an explicit save with a non-empty description; the transition is one-way.
+	 * Absent/false on every pre-existing task, so older app versions reading the
+	 * same `tasks.json` simply see an ordinary To Do task.
+	 */
+	draft?: boolean;
 	/**
 	 * For tasks in a virtual ("Operations") project only: the user-chosen fixed
 	 * working folder picked at creation (e.g. `~/Downloads`). When absent, the
@@ -2839,7 +2857,7 @@ export type AppRPCSchema = {
 				response: ConversationMatch[];
 			};
 			createTask: {
-				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string; priority?: TaskPriority };
+				params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority };
 				response: Task;
 			};
 			setTaskPriority: {
@@ -2878,7 +2896,22 @@ export type AppRPCSchema = {
 				response: Task;
 			};
 			editTask: {
-				params: { taskId: string; projectId: string; description: string };
+				// One optional-field update for a To Do task: whatever is present is
+				// written, everything else is left alone. Saving a draft is a single
+				// call (and therefore a single persisted write) rather than a create
+				// followed by best-effort title/label follow-ups.
+				// `draft: false` promotes a draft into an ordinary task and requires a
+				// non-empty description; there is no way back to `draft: true`.
+				params: {
+					taskId: string;
+					projectId: string;
+					description?: string;
+					customTitle?: string | null;
+					priority?: TaskPriority;
+					labelIds?: string[];
+					existingBranch?: string | null;
+					draft?: boolean;
+				};
 				response: Task;
 			};
 			renameTask: {

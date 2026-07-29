@@ -3,6 +3,8 @@ import { handleTask } from "../commands/task";
 import type { CliContext } from "../context";
 import type { ParsedArgs } from "../args";
 import type { Task, CliResponse } from "../../shared/types";
+import { DRAFT_TASK_ACTIVATION_ERROR } from "../../shared/types";
+import { CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 
 vi.mock("../stdin", () => ({
 	readStdin: vi.fn(),
@@ -146,6 +148,22 @@ describe("task show", () => {
 	it("exits with usage error when no ID and no context", async () => {
 		await expect(handleTask("show", args(), SOCKET, null)).rejects.toThrow("EXIT_3");
 		expect(stderrOutput).toContain("Usage:");
+	});
+
+	it("marks a draft task so an agent does not start on a half-written prompt", async () => {
+		mockSend.mockResolvedValue(okResp({ ...FAKE_TASK, status: "todo", draft: true }));
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).toMatch(/Draft:\s+yes/);
+	});
+
+	it("does not mention drafts for an ordinary task", async () => {
+		mockSend.mockResolvedValue(okResp(FAKE_TASK));
+
+		await handleTask("show", args(["aaaaaaaa"]), SOCKET, null);
+
+		expect(stdoutOutput).not.toContain("Draft:");
 	});
 
 	it("exits with error on server failure", async () => {
@@ -633,6 +651,15 @@ describe("task move", () => {
 			handleTask("move", args(["aaaaaaaa"], { status: "todo" }), SOCKET, null),
 		).rejects.toThrow("EXIT_1");
 		expect(stderrOutput).toContain("Invalid status transition");
+	});
+
+	it("exits with the draft exit code when the task is a draft", async () => {
+		mockSend.mockResolvedValue(errResp(DRAFT_TASK_ACTIVATION_ERROR));
+
+		await expect(
+			handleTask("move", args(["aaaaaaaa"], { status: "in-progress" }), SOCKET, null),
+		).rejects.toThrow(`EXIT_${CLI_EXIT_CODE_TASK_IS_DRAFT}`);
+		expect(stderrOutput).toContain("draft");
 	});
 
 	it("prints arrow notation with status label", async () => {

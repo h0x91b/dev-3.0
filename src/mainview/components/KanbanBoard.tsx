@@ -12,6 +12,7 @@ import { useT, statusKey, statusDescKey } from "../i18n";
 import { api } from "../rpc";
 import KanbanColumn from "./KanbanColumn";
 import LaunchVariantsModal from "./LaunchVariantsModal";
+import CreateTaskModal from "./CreateTaskModal";
 import { sortTasksForColumn } from "./sortTasks";
 import LabelFilterBar from "./LabelFilterBar";
 import { matchesTaskQuery } from "../utils/taskSearch";
@@ -118,6 +119,9 @@ function KanbanBoard({
 	});
 	const [launchModal, setLaunchModal] = useState<{ task: Task; targetStatus: TaskStatus; mode?: "spawn" | "addAttempts" } | null>(null);
 	const [dragFromStatus, setDragFromStatus] = useState<TaskStatus | null>(null);
+	// Draft being edited: reopens the New Task popup prefilled from the card.
+	const [editDraftTaskId, setEditDraftTaskId] = useState<string | null>(null);
+	const [dragFromDraft, setDragFromDraft] = useState(false);
 	const [dragFromCustomColumnId, setDragFromCustomColumnId] = useState<string | null>(null);
 	const [moveOrderMap, setMoveOrderMap] = useState<Map<string, number>>(new Map());
 	const [searchQuery, setSearchQuery] = useState("");
@@ -249,6 +253,7 @@ function KanbanBoard({
 		function handleDragEnd() {
 			setDragFromStatus(null);
 			setDragFromCustomColumnId(null);
+			setDragFromDraft(false);
 			setDraggedTaskId(null);
 		}
 		window.addEventListener("dragend", handleDragEnd);
@@ -262,6 +267,7 @@ function KanbanBoard({
 		if (task) {
 			setDragFromStatus(task.status);
 			setDragFromCustomColumnId(task.customColumnId ?? null);
+			setDragFromDraft(task.draft === true);
 			setDraggedTaskId(taskId);
 		}
 	}
@@ -269,8 +275,16 @@ function KanbanBoard({
 	async function handleTaskDrop(taskId: string, targetStatus: TaskStatus) {
 		setDragFromStatus(null);
 		setDragFromCustomColumnId(null);
+		setDragFromDraft(false);
 		const task = tasks.find((t) => t.id === taskId);
 		if (!task) return;
+
+		// Columns already refuse a draft as a drop target; this is the last-resort
+		// guard for a drop that still reaches the board (keyboard DnD, stale state).
+		if (task.draft === true && targetStatus !== "todo") {
+			toast.error(t("kanban.draftNotDroppable"), { taskId: task.id });
+			return;
+		}
 
 		// If already in target status and no custom column, nothing to do
 		if (task.status === targetStatus && !task.customColumnId) return;
@@ -301,8 +315,13 @@ function KanbanBoard({
 	async function handleTaskDropToCustomColumn(taskId: string, customColumnId: string) {
 		setDragFromStatus(null);
 		setDragFromCustomColumnId(null);
+		setDragFromDraft(false);
 		const task = tasks.find((t) => t.id === taskId);
 		if (!task || task.customColumnId === customColumnId) return;
+		if (task.draft === true) {
+			toast.error(t("kanban.draftNotDroppable"), { taskId: task.id });
+			return;
+		}
 
 		// Optimistic update
 		const optimisticTask = { ...task, customColumnId };
@@ -569,6 +588,12 @@ function KanbanBoard({
 		return null;
 	}, [currentTip, displayTasks, collapseState]);
 
+	// Resolved from the live task list, so the popup closes by itself if the draft
+	// is promoted or deleted from somewhere else.
+	const editDraftTask = editDraftTaskId
+		? tasks.find((task) => task.id === editDraftTaskId && task.draft === true) ?? null
+		: null;
+
 	const orderedColumns = getOrderedColumns();
 	const handleTipChanged = applyTipState;
 
@@ -603,6 +628,8 @@ function KanbanBoard({
 		onReorderTask: handleReorderTask,
 		dragFromStatus,
 		dragFromCustomColumnId,
+		dragFromDraft,
+		onEditDraft: (task: Task) => setEditDraftTaskId(task.id),
 		onDragStart: handleDragStart,
 		onTaskMoved: recordMove,
 		bellCounts,
@@ -724,6 +751,18 @@ function KanbanBoard({
 				</div>
 			)}
 
+			{editDraftTask && (
+				<CreateTaskModal
+					project={project}
+					dispatch={dispatch}
+					draftTask={editDraftTask}
+					onClose={() => setEditDraftTaskId(null)}
+					onCreateAndRun={(task) => {
+						setEditDraftTaskId(null);
+						setLaunchModal({ task, targetStatus: "in-progress" });
+					}}
+				/>
+			)}
 			{launchModal && (
 				<LaunchVariantsModal
 					task={launchModal.task}

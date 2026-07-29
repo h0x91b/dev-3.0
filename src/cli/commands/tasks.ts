@@ -82,7 +82,9 @@ export async function handleTasks(
 				return [
 					String(t.seq),
 					t.id.slice(0, 8),
-					STATUS_LABELS[t.status] || t.status,
+					// Drafts share the To Do column but are not runnable — mark them
+					// here so a listing never reads as "ready to pick up".
+					`${STATUS_LABELS[t.status] || t.status}${t.draft === true ? " (draft)" : ""}`,
 					title.length > 60 ? title.slice(0, 57) + "..." : title,
 				];
 			}),

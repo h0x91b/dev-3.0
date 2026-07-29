@@ -14,6 +14,7 @@ const kanban = {
 	"kanban.showLess": "Свернуть",
 	"kanban.collapseColumn": "Открепить колонку",
 	"kanban.renameColumn": "Переименовать колонку",
+	"kanban.draftNotDroppable": "Это черновик — допишите описание и сохраните как задачу, прежде чем запускать.",
 
 	// CreateTaskModal
 	"createTask.title": "Новая задача",
@@ -30,6 +31,10 @@ const kanban = {
 	"createTask.scratch": "Черновик",
 	"createTask.scratchSubtitle": "Без промпта — агент спросит",
 	"createTask.scratchHint": "Открыть терминал с агентом без промпта. Агент сам назовёт таску, когда ты объяснишь, что нужно.",
+	"createTask.saveAsDraft": "Сохранить черновик",
+	"createTask.saveAsDraftHint": "Отложить задачу как незаконченный черновик. Она остаётся в To Do, и запустить её нельзя, пока вы не допишете описание.",
+	"createTask.editDraftTitle": "Черновик",
+	"createTask.draftSaveFailed": "Не удалось сохранить черновик: {error}",
 	"createTask.discardConfirm": "Отменить? Введённое описание будет потеряно.",
 	"createTask.keepEditing": "Продолжить редактирование",
 	"createTask.discard": "Отменить",
@@ -63,6 +68,8 @@ const kanban = {
 
 	// TaskCard
 	"task.moveTo": "Переместить в",
+	"task.draftBadge": "Черновик",
+	"task.draftHint": "Незаконченный черновик — нажмите, чтобы продолжить писать. Запустить его пока нельзя.",
 	"task.delete": "Удалить",
 	"task.confirmDelete": "Удалить задачу «{title}»?",
 	"task.failedMove": "Не удалось переместить задачу: {error}",

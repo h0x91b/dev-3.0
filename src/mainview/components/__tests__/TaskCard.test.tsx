@@ -162,6 +162,7 @@ function renderCard(
 		prInfo?: TaskPRBadgeInfo;
 		onOpenUnresolvedComments?: (task: Task) => void;
 		siblingMap?: Map<string, Task[]>;
+		onEditDraft?: (task: Task) => void;
 	},
 ) {
 	return render(
@@ -182,6 +183,7 @@ function renderCard(
 				prInfo={opts?.prInfo}
 				onOpenUnresolvedComments={opts?.onOpenUnresolvedComments}
 				siblingMap={opts?.siblingMap}
+				onEditDraft={opts?.onEditDraft}
 			/>
 		</I18nProvider>,
 	);
@@ -1995,5 +1997,56 @@ describe("TaskCard", () => {
 				expect(screen.queryByTestId("pr-status-sheet")).not.toBeInTheDocument();
 			});
 		});
+	});
+});
+
+// A draft card must read as "not ready" at a glance and route clicks to the
+// New Task popup instead of the read-only detail modal.
+describe("TaskCard — drafts", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("shows a Draft badge and a dashed border", () => {
+		const { container } = renderCard(makeTask({ draft: true }), { onEditDraft: vi.fn() });
+
+		expect(screen.getByTestId("task-card-draft-badge")).toHaveTextContent("Draft");
+		expect(container.querySelector("[data-task-id='t1']")?.className).toContain("border-dashed");
+	});
+
+	it("offers no Run button", () => {
+		renderCard(makeTask({ draft: true }), { onEditDraft: vi.fn() });
+
+		expect(screen.queryByRole("button", { name: "Run" })).toBeNull();
+	});
+
+	it("reopens the New Task popup instead of the detail modal", async () => {
+		const onEditDraft = vi.fn();
+		const task = makeTask({ draft: true });
+		renderCard(task, { onEditDraft });
+
+		await userEvent.click(screen.getByText("My task"));
+
+		expect(onEditDraft).toHaveBeenCalledWith(task);
+		expect(screen.queryByTestId("task-detail-modal")).toBeNull();
+	});
+
+	it("refuses the status menu's active targets instead of opening the launch flow", async () => {
+		const onLaunchVariants = vi.fn();
+		renderCard(makeTask({ draft: true }), { onEditDraft: vi.fn(), onLaunchVariants });
+
+		await userEvent.click(screen.getAllByText("To Do")[0]);
+		await userEvent.click(screen.getByText("Agent is Working"));
+
+		expect(onLaunchVariants).not.toHaveBeenCalled();
+		expect(vi.mocked(toast.error)).toHaveBeenCalled();
+	});
+
+	it("leaves an ordinary To Do card opening the detail modal", async () => {
+		const onEditDraft = vi.fn();
+		renderCard(makeTask(), { onEditDraft });
+
+		await userEvent.click(screen.getByText("My task"));
+
+		expect(onEditDraft).not.toHaveBeenCalled();
+		expect(screen.getByTestId("task-detail-modal")).toBeTruthy();
 	});
 });

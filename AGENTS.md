@@ -245,6 +245,7 @@ Public `dev3` CLI exit codes are a documented contract:
 - **Runtime** — the actor-owned execution phase (`idle`, `preparing`, `running`, or `tearing-down`), independent of the column. `Task.runtimeState` is only a persisted recovery hint and must be verified against tmux/worktree reality at boot.
 - **Activity** — a watcher declared by lifecycle state, such as `mergeWatch` or `prWatch`. Activities deliver findings back through the task mailbox; they never write task status directly.
 - **Actor/mailbox** — the per-task FIFO that serializes lifecycle events while allowing different tasks to run in parallel. RPC callers await their own mailbox event and its synchronous effects.
+- **Draft** — a task the user explicitly marked unfinished ("Save as draft"). A property of the task (`Task.draft`), not a column and not a runtime phase: it lives in To Do, `idle`, with no worktree. No activation path may start it — the lifecycle machine rejects the move, so the UI affordances are only mirrors. The opposite of a *scratch* task (no prompt, launched immediately). Promotion to an ordinary task is one-way; see [decision 180](decisions/180-draft-tasks-lifecycle-enforced-one-way.md).
 - **Compensating event** — the explicit event dispatched when an `abort` effect fails. The transition table declares the recovery path; the executor must not hide it in ad-hoc catch logic.
 
 Two-process model:

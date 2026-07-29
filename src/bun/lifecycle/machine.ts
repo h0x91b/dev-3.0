@@ -1,5 +1,6 @@
 import {
 	ACTIVE_STATUSES as ACTIVE_TASK_STATUSES,
+	DRAFT_TASK_ACTIVATION_ERROR,
 	getAllowedTransitions,
 	isStatusGuardBlocked,
 	MERGE_COMPLETE_ELIGIBLE_STATUSES,
@@ -194,6 +195,16 @@ function moveTransition(
 		};
 	}
 	const needsActivation = !ACTIVE_STATUSES.has(oldStatus) && ACTIVE_STATUSES.has(target.status);
+
+	// A draft is refused here, at the single choke point every activation path
+	// funnels through (Run button, board drag, variant spawn, scheduled launch,
+	// automations, CLI) — UI affordances only mirror this rule.
+	if (needsActivation && state.facts.draft === true) {
+		return {
+			next: state,
+			effects: [effect({ type: "reject", message: DRAFT_TASK_ACTIVATION_ERROR }, "abort")],
+		};
+	}
 
 	if (needsActivation) {
 		const runId = event.runId ?? "pending-run";

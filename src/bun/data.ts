@@ -53,7 +53,7 @@ function tasksBackupFileName(now: Date = new Date()): string {
 	return `${now.toISOString().slice(0, 13)}Z.json`;
 }
 
-function deriveTaskBaseBranch(project: Project, existingBranch?: string | null): string {
+export function deriveTaskBaseBranch(project: Project, existingBranch?: string | null): string {
 	const normalizedExistingBranch = existingBranch?.trim()
 		.replace(/^refs\/remotes\//, "")
 		.replace(/^origin\//, "");
@@ -819,6 +819,8 @@ export async function addTask(
 		configId?: string | null;
 		accountId?: string | null;
 		seq?: number;
+		/** Overrides the title derived from the description (blank-description drafts). */
+		title?: string;
 		existingBranch?: string;
 		preparing?: boolean;
 		preparingStage?: Task["preparingStage"];
@@ -827,6 +829,7 @@ export async function addTask(
 		runtimeState?: Task["runtimeState"];
 		watched?: boolean;
 		scratch?: boolean;
+		draft?: boolean;
 		customTitle?: string | null;
 		titleEditedByUser?: boolean;
 		labelIds?: string[];
@@ -841,7 +844,7 @@ export async function addTask(
 ): Promise<Task> {
 	const file = tasksFile(project);
 	return withFileLock(file, async () => {
-		const title = titleFromDescription(description);
+		const title = extras?.title?.trim() || titleFromDescription(description);
 		log.info("Creating task", { projectId: project.id, title, status });
 		const tasks = await rawLoadTasks(project, { strict: true, persistMigrations: true });
 		const now = new Date().toISOString();
@@ -890,6 +893,7 @@ export async function addTask(
 			...(extras?.runtimeState ? { runtimeState: extras.runtimeState } : {}),
 			...(extras?.watched ? { watched: true } : {}),
 			...(extras?.scratch ? { scratch: true } : {}),
+			...(extras?.draft ? { draft: true } : {}),
 			...(extras?.customTitle ? { customTitle: extras.customTitle } : {}),
 			...(extras?.titleEditedByUser ? { titleEditedByUser: true } : {}),
 			...(extras?.opsWorkDir ? { opsWorkDir: extras.opsWorkDir } : {}),

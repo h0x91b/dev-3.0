@@ -1,6 +1,6 @@
 import type { CliResponse, Task, TaskStatus, TaskHistoryEntry, TaskNote } from "../../shared/types";
-import { STATUS_LABELS, ALL_STATUSES, DEFAULT_PRIORITY, getTaskTitle, getTaskOverview, normalizePriority } from "../../shared/types";
-import { CLI_EXIT_CODE_COMPLETION_DECLINED } from "../../shared/cli-exit-codes";
+import { STATUS_LABELS, ALL_STATUSES, DEFAULT_PRIORITY, DRAFT_TASK_ACTIVATION_ERROR, getTaskTitle, getTaskOverview, normalizePriority } from "../../shared/types";
+import { CLI_EXIT_CODE_COMPLETION_DECLINED, CLI_EXIT_CODE_TASK_IS_DRAFT } from "../../shared/cli-exit-codes";
 import { CODEX_STOP_HOOK_FLAG, CODEX_STOP_HOOK_SUCCESS_JSON, TOLERATE_APP_OFFLINE_FLAG } from "../../shared/agent-hooks";
 import { sendRequest } from "../socket-client";
 import { printDetail, exitError, exitUsage } from "../output";
@@ -88,6 +88,10 @@ function printTask(task: Task, opts: ShowTaskOptions = {}): void {
 		["Status:", STATUS_LABELS[task.status] || task.status],
 		["Priority:", task.priority ?? DEFAULT_PRIORITY],
 	];
+
+	// Drafts are deliberately unfinished — say so before an agent reads the
+	// half-written description and starts guessing.
+	if (task.draft === true) fields.push(["Draft:", "yes — cannot be started until the user finishes it"]);
 
 	if (task.branchName) fields.push(["Branch:", task.branchName]);
 	if (task.worktreePath) fields.push(["Worktree:", task.worktreePath]);
@@ -332,7 +336,18 @@ async function moveTask(args: ParsedArgs, socketPath: string, context: CliContex
 	if (projectId) params.projectId = projectId;
 
 	const resp = await sendRequest(socketPath, "task.move", params);
-	if (!resp.ok) exitError(resp.error || "Failed to move task");
+	if (!resp.ok) {
+		// A draft was deliberately parked by the human — give it its own exit code
+		// so an agent can tell "not ready yet" apart from a real failure.
+		if (resp.error?.includes(DRAFT_TASK_ACTIVATION_ERROR)) {
+			exitError(
+				resp.error,
+				"Ask the user to finish the draft's description and save it as a normal task before starting work.",
+				CLI_EXIT_CODE_TASK_IS_DRAFT,
+			);
+		}
+		exitError(resp.error || "Failed to move task");
+	}
 
 	const task = resp.data as Task;
 	if (codexStopHook) {

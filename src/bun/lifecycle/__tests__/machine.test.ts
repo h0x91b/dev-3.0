@@ -831,3 +831,72 @@ describe("boot runtime reconciliation", () => {
 		});
 	});
 });
+
+// A draft is a task the user explicitly marked unfinished. The rule lives here,
+// in the pure transition, because every activation path (Run button, board drag,
+// variant spawn, scheduled launch, automation, CLI) funnels through it.
+describe("draft tasks cannot be activated", () => {
+	const draft = () => state("todo", {
+		facts: {
+			hasWorktree: false,
+			projectKind: "git",
+			hasPrIdentity: false,
+			peerReviewEnabled: true,
+			draft: true,
+		},
+	});
+
+	for (const target of ["in-progress", "user-questions", "review-by-ai", "review-by-user", "review-by-colleague"] as const) {
+		it(`refuses a move to ${target}`, () => {
+			const result = transition(draft(), {
+				type: "moveRequested",
+				target: { status: target, customColumnId: null },
+			});
+
+			expect(result.next.column.status).toBe("todo");
+			expect(result.next.runtime.phase).toBe("idle");
+			expect(result.effects).toHaveLength(1);
+			expect(result.effects[0]).toMatchObject({
+				type: "reject",
+				message: expect.stringContaining("draft"),
+			});
+		});
+	}
+
+	it("refuses a launch that carries preparation instructions", () => {
+		const result = transition(draft(), {
+			type: "moveRequested",
+			target: { status: "in-progress", customColumnId: null },
+			runId: "run-1",
+			preparation: {
+				launch: { label: "variant", agentId: "builtin-claude", configId: "claude-auto" },
+				awaitCompletion: false,
+				publishColumn: true,
+			},
+		});
+
+		expect(result.next.column.status).toBe("todo");
+		expect(result.effects.map((e) => e.type)).toEqual(["reject"]);
+	});
+
+	it("still allows a draft to move inside To Do and to be deleted", () => {
+		const toCustomColumn = transition(draft(), {
+			type: "moveRequested",
+			target: { customColumnId: "col-1" },
+		});
+		const deleted = transition(draft(), { type: "deleteRequested" });
+
+		expect(toCustomColumn.effects.some((e) => e.type === "reject")).toBe(false);
+		expect(deleted.effects.some((e) => e.type === "reject")).toBe(false);
+	});
+
+	it("leaves an ordinary To Do task activatable", () => {
+		const result = transition(state("todo"), {
+			type: "moveRequested",
+			target: { status: "in-progress", customColumnId: null },
+		});
+
+		expect(result.next.column.status).toBe("in-progress");
+		expect(result.effects.some((e) => e.type === "prepareTask")).toBe(true);
+	});
+});

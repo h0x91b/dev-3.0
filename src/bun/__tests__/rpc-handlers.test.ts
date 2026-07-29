@@ -44,6 +44,7 @@ vi.mock("../data", () => ({
 	loadTasks: vi.fn(),
 	updateTask: vi.fn(),
 	setTaskPriority: vi.fn(),
+	deriveTaskBaseBranch: vi.fn((project: any, branch?: string | null) => branch || project.defaultBaseBranch),
 	addTask: vi.fn(),
 	addProject: vi.fn(),
 	reorderProjects: vi.fn(),
@@ -2988,6 +2989,156 @@ describe("handlers.editTask", () => {
 		await expect(
 			handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "Edit" }),
 		).rejects.toThrow("Can only edit tasks in todo status");
+	});
+
+	it("touches only the fields it was given", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", description: "Keep me", customTitle: "Keep title" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		await handlers.editTask({ taskId: "task-1", projectId: "proj-1", priority: "P0" });
+
+		expect(data.updateTask).toHaveBeenCalledTimes(1);
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", { priority: "P0" });
+	});
+
+	it("saves a whole draft in a single write", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", draft: true, description: "" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, draft: true, description: "Half a thought" });
+
+		await handlers.editTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			description: "Half a thought",
+			customTitle: "My draft",
+			priority: "P1",
+			labelIds: ["l1"],
+			existingBranch: "feature/x",
+			draft: true,
+		});
+
+		expect(data.updateTask).toHaveBeenCalledTimes(1);
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
+			description: "Half a thought",
+			customTitle: "My draft",
+			titleEditedByUser: true,
+			priority: "P1",
+			labelIds: ["l1"],
+			existingBranch: "feature/x",
+			draft: true,
+		}));
+	});
+
+	it("keeps the placeholder title of a draft that still has no description", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", draft: true, description: "", title: "Draft — 09:12" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue(task);
+
+		await handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "", draft: true });
+
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
+			title: "Draft — 09:12",
+		}));
+	});
+
+	it("promotes a draft into a runnable task", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", draft: true, description: "" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+		vi.mocked(data.updateTask).mockResolvedValue({ ...task, draft: false, description: "Now it is written" });
+
+		const result = await handlers.editTask({
+			taskId: "task-1",
+			projectId: "proj-1",
+			description: "Now it is written",
+			draft: false,
+		});
+
+		expect(result.draft).toBe(false);
+		expect(data.updateTask).toHaveBeenCalledWith(project, "task-1", expect.objectContaining({
+			draft: false,
+			description: "Now it is written",
+		}));
+	});
+
+	it("refuses to promote a draft that still has no description", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", draft: true, description: "" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.editTask({ taskId: "task-1", projectId: "proj-1", description: "   ", draft: false }),
+		).rejects.toThrow(/needs a description/i);
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+
+	it("refuses to turn a runnable task back into a draft", async () => {
+		const project = makeProject();
+		const task = makeTask({ status: "todo", description: "Already runnable" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(task);
+
+		await expect(
+			handlers.editTask({ taskId: "task-1", projectId: "proj-1", draft: true }),
+		).rejects.toThrow(/cannot be turned back into a draft/i);
+		expect(data.updateTask).not.toHaveBeenCalled();
+	});
+});
+
+// ================================================================
+// Draft tasks — creation and scheduling guards
+// ================================================================
+
+describe("draft tasks", () => {
+	beforeEach(() => vi.clearAllMocks());
+
+	it("creates a blank draft with a readable placeholder title", async () => {
+		const project = makeProject();
+		const created = makeTask({ status: "todo", draft: true, description: "", title: "Draft — 09:12" });
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.addTask).mockResolvedValue(created);
+
+		const result = await handlers.createTask({ projectId: "proj-1", description: "", draft: true });
+
+		expect(result).toEqual(created);
+		expect(data.addTask).toHaveBeenCalledWith(project, "", "todo", expect.objectContaining({
+			draft: true,
+			title: expect.stringMatching(/^Draft — \d{2}:\d{2}$/),
+		}));
+	});
+
+	it("refuses to create a draft straight into a running column", async () => {
+		vi.mocked(data.getProject).mockResolvedValue(makeProject());
+
+		await expect(
+			handlers.createTask({ projectId: "proj-1", description: "x", draft: true, status: "in-progress" }),
+		).rejects.toThrow(/cannot be created into an active status/i);
+	});
+
+	it("refuses to schedule a deferred launch on a draft", async () => {
+		const project = makeProject();
+		vi.mocked(data.getProject).mockResolvedValue(project);
+		vi.mocked(data.getTask).mockResolvedValue(makeTask({ status: "todo", draft: true }));
+
+		await expect(
+			handlers.scheduleTaskLaunch({
+				taskId: "task-1",
+				projectId: "proj-1",
+				at: new Date(Date.now() + 60_000).toISOString(),
+				targetStatus: "in-progress",
+				variants: [{ agentId: "builtin-claude", configId: "claude-auto" }],
+			}),
+		).rejects.toThrow(/draft/i);
+		expect(data.updateTask).not.toHaveBeenCalled();
 	});
 });
 

@@ -157,6 +157,9 @@ function renderBuiltinColumn(overrides: {
 	tasks?: Task[];
 	isCustomColumn?: boolean;
 	customColumnId?: string;
+	dragFromStatus?: Task["status"] | null;
+	dragFromDraft?: boolean;
+	onTaskDrop?: (taskId: string, targetStatus: Task["status"]) => void;
 } = {}) {
 	return render(
 		<I18nProvider>
@@ -171,10 +174,11 @@ function renderBuiltinColumn(overrides: {
 				agents={[]}
 				onLaunchVariants={vi.fn()}
 				onAddAttempts={vi.fn()}
-				onTaskDrop={vi.fn()}
+				onTaskDrop={overrides.onTaskDrop ?? vi.fn()}
 				onReorderTask={vi.fn()}
-				dragFromStatus={null}
+				dragFromStatus={overrides.dragFromStatus ?? null}
 				dragFromCustomColumnId={null}
+				dragFromDraft={overrides.dragFromDraft}
 				onDragStart={vi.fn()}
 				onTaskMoved={vi.fn()}
 				bellCounts={new Map()}
@@ -770,5 +774,31 @@ describe("custom column inline rename (issue #222)", () => {
 		await userEvent.clear(input);
 		await userEvent.type(input, "Beta{Enter}");
 		expect(onRenameColumn).toHaveBeenCalledWith("Beta");
+	});
+});
+
+// The mouse must not become a loophole around the draft rule: only To Do may
+// accept a draft card as a drop target.
+describe("KanbanColumn — draft drop targets", () => {
+	function columnFor(label: string) {
+		return screen.getByText(label).closest("[class*='glass-column']") as HTMLElement;
+	}
+
+	it("refuses a dragged draft on an active column", () => {
+		renderBuiltinColumn({ status: "in-progress", label: "Agent is Working", dragFromStatus: "todo", dragFromDraft: true });
+
+		expect(dispatch(columnFor("Agent is Working"), "dragover")).toBe(false);
+	});
+
+	it("refuses a dragged draft on a custom column", () => {
+		renderBuiltinColumn({ label: "On hold", isCustomColumn: true, customColumnId: "col-1", dragFromStatus: "todo", dragFromDraft: true });
+
+		expect(dispatch(columnFor("On hold"), "dragover")).toBe(false);
+	});
+
+	it("accepts a non-draft To Do card on an active column", () => {
+		renderBuiltinColumn({ status: "in-progress", label: "Agent is Working", dragFromStatus: "todo" });
+
+		expect(dispatch(columnFor("Agent is Working"), "dragover")).toBe(true);
 	});
 });

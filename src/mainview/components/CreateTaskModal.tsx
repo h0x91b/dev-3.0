@@ -22,6 +22,9 @@ import { useFocusTrap } from "../utils/useFocusTrap";
 import HelpSpot from "./HelpSpot";
 import Select from "./Select";
 
+/** "draft" parks the task as an unfinished draft; the rest are the launch exits. */
+type SubmitMode = "save" | "run" | "scratch" | "draft";
+
 interface ProjectCurrentBranchInfo {
 	branch: string | null;
 	isBaseBranch: boolean;
@@ -35,9 +38,19 @@ interface CreateTaskModalProps {
 	onClose: () => void;
 	onCreateAndRun?: (task: Task, project: Project) => void;
 	onOpenAutomations?: (project: Project) => void;
+	/**
+	 * Reopens this popup on an existing draft instead of creating a task: every
+	 * field is prefilled from the draft and the exits become Save as draft /
+	 * Save / Save and Run.
+	 */
+	draftTask?: Task;
 }
 
-function CreateTaskModal({ project: initialProject, projects, dispatch, onClose, onCreateAndRun, onOpenAutomations }: CreateTaskModalProps) {
+function sameLabelIds(left: string[], right: string[]): boolean {
+	return left.length === right.length && left.every((id) => right.includes(id));
+}
+
+function CreateTaskModal({ project: initialProject, projects, dispatch, onClose, onCreateAndRun, onOpenAutomations, draftTask }: CreateTaskModalProps) {
 	const t = useT();
 	const trapRef = useFocusTrap<HTMLDivElement>();
 	const availableProjects = useMemo(() => {
@@ -47,22 +60,28 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 		}
 		return orderProjectsForDisplay(visibleProjects);
 	}, [initialProject, projects]);
+	// Editing an existing draft: the task already belongs to a board, so the
+	// project is fixed and every field starts from what the user had saved.
+	const isDraftEdit = !!draftTask;
 	const [selectedProjectId, setSelectedProjectId] = useState(initialProject.id);
 	const selectedProject = availableProjects.find((candidate) => candidate.id === selectedProjectId) ?? initialProject;
 	const project = selectedProject;
-	const [description, setDescription] = useState("");
+	const [description, setDescription] = useState(draftTask?.description ?? "");
 	const [creating, setCreating] = useState(false);
-	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
-	const [priority, setPriority] = useState<TaskPriority>(DEFAULT_PRIORITY);
+	const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>(draftTask?.labelIds ?? []);
+	const [priority, setPriority] = useState<TaskPriority>(draftTask?.priority ?? DEFAULT_PRIORITY);
 	const [labelPickerOpen, setLabelPickerOpen] = useState(false);
 	const [confirmDiscard, setConfirmDiscard] = useState(false);
-	const [customTitle, setCustomTitle] = useState<string | null>(null);
+	const [customTitle, setCustomTitle] = useState<string | null>(draftTask?.customTitle ?? null);
 	const [editingTitle, setEditingTitle] = useState(false);
-	const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
+	const [selectedBranch, setSelectedBranch] = useState<string | null>(draftTask?.existingBranch ?? null);
+	// Whether the user actually touched the branch picker. The initial auto-fill of
+	// the project's current branch must not count as "the form has content".
+	const [branchTouched, setBranchTouched] = useState(false);
 	const [projectCurrentBranch, setProjectCurrentBranch] = useState<ProjectCurrentBranchInfo | null>(null);
 	const [checkedProjectCurrentBranch, setCheckedProjectCurrentBranch] = useState(false);
 	const [pendingBranchChoice, setPendingBranchChoice] = useState<string | null>(null);
-	const [pendingSubmitMode, setPendingSubmitMode] = useState<"save" | "run" | "scratch" | null>(null);
+	const [pendingSubmitMode, setPendingSubmitMode] = useState<SubmitMode | null>(null);
 	const [reviewMode, setReviewMode] = useState(false);
 	const [dismissedPrUrl, setDismissedPrUrl] = useState<string | null>(null);
 	const [prApplying, setPrApplying] = useState(false);
@@ -84,7 +103,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 		try {
 			const result = await api.request.getProjectCurrentBranch({ projectId: project.id });
 			if (requestId !== projectBranchRequestRef.current) return null;
-			if (!result.isBaseBranch && result.branch) {
+			// An existing draft already carries the branch the user chose (including a
+			// deliberate "base branch" = null), so never auto-fill over it.
+			if (!isDraftEdit && !result.isBaseBranch && result.branch) {
 				setSelectedBranch((prev) => prev ?? result.branch);
 			}
 			setProjectCurrentBranch(result);
@@ -98,7 +119,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 				setCheckedProjectCurrentBranch(true);
 			}
 		}
-	}, [project.id]);
+	}, [project.id, isDraftEdit]);
 
 	function handleProjectChange(projectId: string) {
 		if (creating || projectId === selectedProjectId) return;
@@ -255,13 +276,29 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 		}
 	}
 
+	// "Save as draft" needs at least one filled field, so the board never fills up
+	// with empty ghost cards.
+	const hasAnyInput = !!description.trim()
+		|| !!customTitle
+		|| selectedLabelIds.length > 0
+		|| priority !== DEFAULT_PRIORITY
+		|| branchTouched;
+
+	const draftDirty = !!draftTask && (
+		description !== (draftTask.description ?? "")
+		|| (customTitle ?? null) !== (draftTask.customTitle ?? null)
+		|| priority !== (draftTask.priority ?? DEFAULT_PRIORITY)
+		|| !sameLabelIds(selectedLabelIds, draftTask.labelIds ?? [])
+		|| (selectedBranch ?? null) !== (draftTask.existingBranch ?? null)
+	);
+
 	function handleRequestClose() {
 		if (pendingBranchChoice) {
 			setPendingBranchChoice(null);
 			setPendingSubmitMode(null);
 			return;
 		}
-		if (description.trim()) {
+		if (isDraftEdit ? draftDirty : !!description.trim()) {
 			setConfirmDiscard(true);
 		} else {
 			onClose();
@@ -289,9 +326,43 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 		}
 	});
 
-	async function createTaskWithBranch(branch: string | null, mode: "save" | "run" | "scratch") {
+	// Saving an existing draft is ONE editTask call — one atomic write for the
+	// description, title, priority, labels, branch and the draft flag itself.
+	async function saveExistingDraft(branch: string | null, mode: SubmitMode) {
+		if (!draftTask) return;
 		const trimmed = description.trim();
-		if (mode !== "scratch" && !trimmed) return;
+		const keepDraft = mode === "draft";
+		if (!keepDraft && !trimmed) return;
+		if (creating) return;
+		setCreating(true);
+		try {
+			const updated = await api.request.editTask({
+				taskId: draftTask.id,
+				projectId: draftTask.projectId,
+				description: trimmed,
+				customTitle,
+				priority,
+				labelIds: selectedLabelIds,
+				existingBranch: branch,
+				draft: keepDraft,
+			});
+			dispatch({ type: "updateTask", task: updated });
+			trackEvent("task_edited", { project_id: project.id, source: keepDraft ? "draft_save" : "draft_promote" });
+			if (mode === "run" && onCreateAndRun) {
+				onCreateAndRun(updated, project);
+			} else {
+				onClose();
+			}
+		} catch (err) {
+			toast.error(t("createTask.draftSaveFailed", { error: String(err) }));
+			setCreating(false);
+		}
+	}
+
+	async function createTaskWithBranch(branch: string | null, mode: SubmitMode) {
+		const trimmed = description.trim();
+		if (mode !== "scratch" && mode !== "draft" && !trimmed) return;
+		if (mode === "draft" && !hasAnyInput) return;
 		if (creating) return;
 		setCreating(true);
 		try {
@@ -301,6 +372,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 				// we still send an empty string here to match the RPC shape.
 				description: mode === "scratch" ? "" : trimmed,
 				...(mode === "scratch" ? { scratch: true } : {}),
+				...(mode === "draft" ? { draft: true } : {}),
 				...(branch ? { existingBranch: branch } : {}),
 				...(isVirtual && opsFolder ? { opsWorkDir: opsFolder } : {}),
 				...(priority !== DEFAULT_PRIORITY ? { priority } : {}),
@@ -346,6 +418,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 				project_id: project.id,
 				...(mode === "run" ? { source: "create_and_run" } : {}),
 				...(mode === "scratch" ? { source: "scratch" } : {}),
+				...(mode === "draft" ? { source: "draft" } : {}),
 			});
 			if ((mode === "run" || mode === "scratch") && onCreateAndRun) {
 				onCreateAndRun(task, project);
@@ -358,16 +431,32 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 		}
 	}
 
-	async function handleSubmit(mode: "save" | "run" | "scratch") {
+	async function commit(branch: string | null, mode: SubmitMode) {
+		if (isDraftEdit) {
+			await saveExistingDraft(branch, mode);
+			return;
+		}
+		await createTaskWithBranch(branch, mode);
+	}
+
+	async function handleSubmit(mode: SubmitMode) {
 		const trimmed = description.trim();
 		if (creating) return;
-		if (mode !== "scratch" && !trimmed) return;
+		if (mode !== "scratch" && mode !== "draft" && !trimmed) return;
+		if (mode === "draft" && !(isDraftEdit ? true : hasAnyInput)) return;
 		if (mode === "run" && !onCreateAndRun) return;
 		if (mode === "scratch" && !onCreateAndRun) return;
 
-		// Virtual ops have no git branch — create directly with no branch choice.
+		// Virtual ops have no git branch — commit directly with no branch choice.
 		if (isVirtual) {
-			await createTaskWithBranch(null, mode);
+			await commit(null, mode);
+			return;
+		}
+
+		// Parking a draft launches nothing, so the "which branch?" question is
+		// deferred to the moment the draft is actually promoted.
+		if (mode === "draft") {
+			await commit(selectedBranch, mode);
 			return;
 		}
 
@@ -396,7 +485,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 			return;
 		}
 
-		await createTaskWithBranch(effectiveBranch, mode);
+		await commit(effectiveBranch, mode);
 	}
 
 	async function handleCreate() {
@@ -411,6 +500,10 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 		await handleSubmit("scratch");
 	}
 
+	async function handleSaveAsDraft() {
+		await handleSubmit("draft");
+	}
+
 	function dismissBranchChoice() {
 		setPendingBranchChoice(null);
 		setPendingSubmitMode(null);
@@ -420,7 +513,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 		const mode = pendingSubmitMode;
 		dismissBranchChoice();
 		if (!mode) return;
-		void createTaskWithBranch(branch, mode);
+		void commit(branch, mode);
 	}
 
 	function toggleLabelId(labelId: string) {
@@ -440,7 +533,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 				<div className="flex items-center justify-between">
 					<div className="flex items-center gap-1.5">
 						<h2 className="text-fg text-lg font-semibold">
-							{t("createTask.title")}
+							{isDraftEdit ? t("createTask.editDraftTitle") : t("createTask.title")}
 						</h2>
 						<HelpSpot topicId="modal.create-task" />
 					</div>
@@ -457,18 +550,26 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 
 				{/* Project context — defaults to the board that opened this modal. */}
 				<div className="space-y-1.5">
-					<label htmlFor="create-task-project" className="text-fg-2 text-sm font-medium">
+					<label htmlFor={isDraftEdit ? undefined : "create-task-project"} className="text-fg-2 text-sm font-medium">
 						{t("createTask.projectLabel")}
 					</label>
-					<Select
-						id="create-task-project"
-						value={project.id}
-						options={availableProjects.map((candidate) => ({
-							value: candidate.id,
-							label: isBuiltinOpsProject(candidate) ? t("ops.boardName") : candidate.name,
-						}))}
-						onChange={handleProjectChange}
-					/>
+					{isDraftEdit ? (
+						/* The draft already lives on a board — moving it between projects is
+						   the card's own action, not a field of this popup. */
+						<div className="px-3 py-2 bg-raised border border-edge rounded-xl text-fg-2 text-sm truncate">
+							{isBuiltinOpsProject(project) ? t("ops.boardName") : project.name}
+						</div>
+					) : (
+						<Select
+							id="create-task-project"
+							value={project.id}
+							options={availableProjects.map((candidate) => ({
+								value: candidate.id,
+								label: isBuiltinOpsProject(candidate) ? t("ops.boardName") : candidate.name,
+							}))}
+							onChange={handleProjectChange}
+						/>
+					)}
 				</div>
 
 				{/* Description textarea + drop zone */}
@@ -565,7 +666,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 						<span className="text-[0.6875rem] text-accent animate-pulse">{t(pasteKind === "text" ? "paste.savingText" : "images.pasting")}</span>
 					)}
 					<ImageAttachmentsStrip text={description} onRemovePath={handleRemovePath} />
-					{generatedTitle && (
+					{(generatedTitle || customTitle) && (
 						<div className="text-xs">
 							{editingTitle ? (
 								<div className="flex items-center gap-1.5">
@@ -750,6 +851,7 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 						selectedBranch={selectedBranch}
 						onSelectBranch={(branch) => {
 							setSelectedBranch(branch);
+							setBranchTouched(true);
 							// Turn off review mode when branch is deselected
 							if (!branch && reviewMode) {
 								handleReviewModeChange(false);
@@ -784,7 +886,9 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 					) : (
 						<>
 							<div className="flex flex-wrap items-center justify-end gap-2">
-								{onCreateAndRun && (
+								{/* Scratch is the opposite of a draft (launch now, no prompt) and
+								    makes no sense on a task that already exists. */}
+								{onCreateAndRun && !isDraftEdit && (
 									<div className="mr-auto flex flex-col items-start gap-0.5">
 										<button
 											onClick={handleCreateScratch}
@@ -805,6 +909,18 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 										</span>
 									</div>
 								)}
+								{/* Quietest of the group — parking a draft must never look like the
+								    primary action. Available with an empty description so a chosen
+								    branch, priority or label set is not lost. */}
+								<button
+									onClick={handleSaveAsDraft}
+									disabled={creating || !(isDraftEdit || hasAnyInput)}
+									title={t("createTask.saveAsDraftHint")}
+									data-testid="create-task-save-draft"
+									className={`px-3 py-1.5 text-fg-3 text-xs font-medium rounded-lg border border-dashed border-edge-active hover:text-fg hover:bg-fg/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isDraftEdit ? "mr-auto" : ""}`}
+								>
+									{t("createTask.saveAsDraft")}
+								</button>
 								{onCreateAndRun && (
 									<button
 										onClick={handleCreateAndRun}

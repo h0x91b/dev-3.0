@@ -105,6 +105,14 @@ describe("tasks list", () => {
 		expect(stdoutOutput).toContain("Agent is Working");
 	});
 
+	it("marks draft tasks in the status column", async () => {
+		mockSend.mockResolvedValue(okResp([{ ...TASKS[0], draft: true }]));
+
+		await handleTasks("list", { positional: [], flags: { project: "proj-001" } }, SOCKET, null);
+
+		expect(stdoutOutput).toContain("To Do (draft)");
+	});
+
 	it("auto-detects projectId from context", async () => {
 		mockSend.mockResolvedValue(okResp(TASKS));
 

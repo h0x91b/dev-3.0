@@ -39,6 +39,8 @@ interface KanbanColumnProps {
 	onReorderTask: (taskId: string, targetIndex: number) => void;
 	dragFromStatus: TaskStatus | null;
 	dragFromCustomColumnId?: string | null;
+	/** The card being dragged is an unfinished draft: only To Do may accept it. */
+	dragFromDraft?: boolean;
 	onDragStart: (taskId: string) => void;
 	onTaskMoved: (taskId: string) => void;
 	bellCounts: Map<string, number>;
@@ -62,6 +64,8 @@ interface KanbanColumnProps {
 	// PR numbers for task cards
 	taskPrMap?: Map<string, TaskPRBadgeInfo>;
 	onOpenUnresolvedComments?: (task: Task) => void;
+	/** Reopens the New Task popup on a draft card. */
+	onEditDraft?: (task: Task) => void;
 	// Feature discovery tip
 	tip?: Tip | null;
 	tipState?: TipState;
@@ -97,6 +101,7 @@ function KanbanColumn({
 	onReorderTask,
 	dragFromStatus,
 	dragFromCustomColumnId,
+	dragFromDraft = false,
 	onDragStart,
 	onTaskMoved,
 	bellCounts,
@@ -110,6 +115,7 @@ function KanbanColumn({
 	siblingMap,
 	taskPrMap,
 	onOpenUnresolvedComments,
+	onEditDraft,
 	isCustomColumn,
 	customColumnId,
 	colorOverride,
@@ -230,12 +236,16 @@ function KanbanColumn({
 		? customColumnId !== undefined && dragFromCustomColumnId === customColumnId
 		: dragFromStatus === status && (dragFromCustomColumnId === null || dragFromCustomColumnId === undefined);
 
+	// A draft may be reordered inside To Do but never dragged out of it — the
+	// mouse must not become a loophole around the non-runnable guarantee.
+	const draftBlocksDrop = dragFromDraft && !(!isCustomColumn && status === "todo");
+
 	// Can this column accept a cross-column drop?
-	const isCrossColumnTarget = isCustomColumn
+	const isCrossColumnTarget = !draftBlocksDrop && (isCustomColumn
 		// Custom columns accept drops from any column except themselves
 		? (dragFromStatus !== null || dragFromCustomColumnId !== null) && dragFromCustomColumnId !== customColumnId
 		// Built-in columns use transition logic; also accept from custom columns (underlying status governs)
-		: dragFromStatus !== null && getAllowedTransitions(dragFromStatus).includes(status);
+		: dragFromStatus !== null && getAllowedTransitions(dragFromStatus).includes(status));
 
 	// Clear dropIndex when drag ends globally
 	useEffect(() => {
@@ -609,6 +619,7 @@ function KanbanColumn({
 							siblingMap={siblingMap}
 							prInfo={taskPrMap?.get(task.id)}
 							onOpenUnresolvedComments={onOpenUnresolvedComments}
+							onEditDraft={onEditDraft}
 						/>
 					</div>
 				))}

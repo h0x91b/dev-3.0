@@ -24,6 +24,8 @@ export interface LifecycleFacts {
 	hasWorktree: boolean;
 	projectKind: "git" | "virtual";
 	hasPrIdentity: boolean;
+	/** The task is an unfinished draft: no activation path may start it. */
+	draft?: boolean;
 	peerReviewEnabled: boolean;
 	manualCompletion?: boolean;
 	mergeCompletionPrompt?: Task["mergeCompletionPrompt"];

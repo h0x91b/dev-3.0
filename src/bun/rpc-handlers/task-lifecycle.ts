@@ -1,5 +1,5 @@
 import type { LaunchVariant, Project, Task, TaskPriority, TaskStatus } from "../../shared/types";
-import { ACTIVE_STATUSES, titleFromDescription } from "../../shared/types";
+import { ACTIVE_STATUSES, DRAFT_TASK_ACTIVATION_ERROR, titleFromDescription } from "../../shared/types";
 import * as data from "../data";
 import { resolveCompletionRequest } from "../completion-requests";
 import { loadSettings, recordFavoriteUsages } from "../settings";
@@ -15,6 +15,18 @@ function scratchPlaceholder(now: Date = new Date()): string {
 
 function isScratchPlaceholderDescription(description: string): boolean {
 	return /^Scratch — \d{2}:\d{2}$/.test(description.trim());
+}
+
+/**
+ * Title for a draft parked before anything was typed into the description — the
+ * card has to stay recognisable on the board. Unlike the scratch placeholder
+ * this never enters `description`: a draft's description must stay empty so
+ * "Save" remains unavailable until the user actually writes the prompt.
+ */
+function draftPlaceholderTitle(now: Date = new Date()): string {
+	const hh = String(now.getHours()).padStart(2, "0");
+	const mm = String(now.getMinutes()).padStart(2, "0");
+	return `Draft — ${hh}:${mm}`;
 }
 
 export async function handleBellAutoStatus(taskId: string): Promise<void> {
@@ -77,11 +89,12 @@ async function getAllProjectTasks(): Promise<{ projectId: string; tasks: Task[] 
 	return results;
 }
 
-async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; opsWorkDir?: string; priority?: TaskPriority }): Promise<Task> {
+async function createTask(params: { projectId: string; description: string; status?: TaskStatus; existingBranch?: string; scratch?: boolean; draft?: boolean; opsWorkDir?: string; priority?: TaskPriority }): Promise<Task> {
 	log.info("→ createTask", {
 		projectId: params.projectId,
 		requestedStatus: params.status ?? "todo",
 		scratch: params.scratch === true,
+		draft: params.draft === true,
 		descriptionLength: params.description.length,
 		hasExistingBranch: Boolean(params.existingBranch),
 		hasOpsWorkDir: Boolean(params.opsWorkDir),
@@ -89,6 +102,13 @@ async function createTask(params: { projectId: string; description: string; stat
 	});
 	const project = await data.getProject(params.projectId);
 	const isScratch = params.scratch === true;
+	const isDraft = params.draft === true;
+	// A draft is the exact opposite of a scratch task (unfinished vs launch-now)
+	// and can never be created straight into a running column.
+	if (isDraft && isScratch) throw new Error("A task cannot be both a draft and a scratch task");
+	if (isDraft && isActive(params.status ?? "todo")) {
+		throw new Error("A draft task cannot be created into an active status");
+	}
 	// Scratch tasks always start in "todo" with a placeholder title so the
 	// Launch Variants modal can open and let the user pick the agent before
 	// anything is actually spawned. The `scratch: true` flag is persisted so
@@ -99,6 +119,8 @@ async function createTask(params: { projectId: string; description: string; stat
 	const extras: Parameters<typeof data.addTask>[3] = {
 		...(params.existingBranch ? { existingBranch: params.existingBranch } : {}),
 		...(isScratch ? { scratch: true } : {}),
+		...(isDraft ? { draft: true } : {}),
+		...(isDraft && !params.description.trim() ? { title: draftPlaceholderTitle() } : {}),
 		...(params.opsWorkDir ? { opsWorkDir: params.opsWorkDir } : {}),
 		...(params.priority ? { priority: params.priority } : {}),
 	};
@@ -518,26 +540,78 @@ async function addAttempts(params: {
 	return [updatedSource, ...launched];
 }
 
-async function editTask(params: { taskId: string; projectId: string; description: string }): Promise<Task> {
-	log.info("→ editTask", { taskId: params.taskId });
+/**
+ * Single optional-field update for a To Do task: every supplied field is
+ * written, everything else is left untouched. Saving a draft is therefore one
+ * call and one persisted write instead of a create plus best-effort title/label
+ * follow-ups. `draft: false` promotes a draft into an ordinary task and demands
+ * a non-empty description; the reverse direction is refused outright.
+ */
+async function editTask(params: {
+	taskId: string;
+	projectId: string;
+	description?: string;
+	customTitle?: string | null;
+	priority?: TaskPriority;
+	labelIds?: string[];
+	existingBranch?: string | null;
+	draft?: boolean;
+}): Promise<Task> {
+	log.info("→ editTask", { taskId: params.taskId, draft: params.draft });
 	const project = await data.getProject(params.projectId);
 	const task = await data.getTask(project, params.taskId);
 	if (task.status !== "todo") {
 		throw new Error(`Can only edit tasks in todo status (got ${task.status})`);
 	}
-	const updates: Partial<Task> = { description: params.description };
-	if (
-		task.scratch === true
-		&& params.description.trim()
-		&& !isScratchPlaceholderDescription(params.description)
-	) {
-		updates.scratch = false;
+	if (params.draft === true && task.draft !== true) {
+		throw new Error("A task that is already runnable cannot be turned back into a draft");
 	}
-	if (!task.customTitle) {
-		updates.title = titleFromDescription(params.description);
+
+	const description = params.description ?? task.description;
+	const customTitle = params.customTitle !== undefined
+		? (params.customTitle?.trim() || null)
+		: (task.customTitle ?? null);
+
+	if (params.draft === false && !description.trim()) {
+		throw new Error("A draft needs a description before it can become a runnable task");
 	}
+
+	const updates: Partial<Task> = {};
+	if (params.description !== undefined) {
+		updates.description = params.description;
+		if (
+			task.scratch === true
+			&& params.description.trim()
+			&& !isScratchPlaceholderDescription(params.description)
+		) {
+			updates.scratch = false;
+		}
+	}
+	if (params.customTitle !== undefined) {
+		updates.customTitle = customTitle;
+		// Only the UI reaches this RPC, so a typed title is a real user edit and
+		// must lock the title against future agent renames (issue #583).
+		updates.titleEditedByUser = customTitle !== null;
+		if (task.scratch === true && customTitle !== null) updates.scratch = false;
+	}
+	if (!customTitle && (params.description !== undefined || params.customTitle !== undefined)) {
+		// A draft parked with no description keeps the placeholder title it was
+		// created with, so its card stays recognisable on the board.
+		updates.title = titleFromDescription(description) || task.title || draftPlaceholderTitle();
+	}
+	// Priority is a whole-group property, but a draft is never part of a variant
+	// group (nothing can launch it), so the plain per-task write is correct here.
+	if (params.priority !== undefined) updates.priority = params.priority;
+	if (params.labelIds !== undefined) updates.labelIds = params.labelIds;
+	if (params.existingBranch !== undefined) {
+		updates.existingBranch = params.existingBranch;
+		updates.baseBranch = data.deriveTaskBaseBranch(project, params.existingBranch);
+	}
+	if (params.draft !== undefined) updates.draft = params.draft;
+
 	const updated = await data.updateTask(project, task.id, updates);
-	log.info("← editTask done", { taskId: task.id });
+	getPushMessage()?.("taskUpdated", { projectId: project.id, task: updated });
+	log.info("← editTask done", { taskId: task.id, draft: updated.draft === true });
 	return updated;
 }
 
@@ -720,6 +794,9 @@ async function scheduleTaskLaunch(params: {
 	if (task.status !== "todo") {
 		throw new Error(`Task must be in todo status to schedule a launch (got ${task.status})`);
 	}
+	// Refused here as well as in the lifecycle machine: a draft must never carry a
+	// pending scheduledLaunch that would fire while the user is away.
+	if (task.draft === true) throw new Error(DRAFT_TASK_ACTIVATION_ERROR);
 	if (params.variants.length === 0) {
 		throw new Error("Scheduled launch needs at least one variant");
 	}

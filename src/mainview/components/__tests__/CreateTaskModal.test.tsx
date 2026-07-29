@@ -11,6 +11,7 @@ vi.mock("../../rpc", () => ({
 	request: {
 			createTask: vi.fn(),
 			renameTask: vi.fn(),
+			editTask: vi.fn(),
 			listBranches: vi.fn(),
 			fetchBranches: vi.fn(),
 			setTaskLabels: vi.fn(),
@@ -81,6 +82,7 @@ function renderModal(props: {
 	onCreateAndRun?: (task: Task) => void;
 	project?: Project;
 	projects?: Project[];
+	draftTask?: Task;
 } = {}) {
 	return render(
 		<I18nProvider>
@@ -90,6 +92,7 @@ function renderModal(props: {
 				dispatch={props.dispatch ?? vi.fn()}
 				onClose={props.onClose ?? vi.fn()}
 				onCreateAndRun={props.onCreateAndRun}
+				draftTask={props.draftTask}
 			/>
 		</I18nProvider>,
 	);
@@ -1490,5 +1493,172 @@ describe("CreateTaskModal — virtual (Operations) project", () => {
 		await waitFor(() => {
 			expect(mockedApi.request.createTask).toHaveBeenCalledWith({ projectId: "p1", description: "Backup prod" });
 		});
+	});
+});
+
+// ============================================================================
+// Save as draft — the fourth exit of the New Task popup, and the draft-edit mode
+// it reopens into.
+// ============================================================================
+
+const draftTask: Task = {
+	...mockTask,
+	id: "draft-1",
+	title: "Draft — 09:12",
+	description: "",
+	draft: true,
+	priority: "P1",
+	labelIds: ["l1"],
+	customTitle: "Half an idea",
+	existingBranch: "feature/x",
+};
+
+describe("CreateTaskModal — Save as draft (create mode)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+	});
+
+	it("refuses to save an untouched popup, and enables once any field is filled", async () => {
+		renderModal();
+		const button = screen.getByTestId("create-task-save-draft");
+		expect(button).toBeDisabled();
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+
+		expect(button).toBeEnabled();
+	});
+
+	it("is available with an empty description once a priority was picked", async () => {
+		renderModal();
+		expect(screen.getByTestId("create-task-save-draft")).toBeDisabled();
+
+		await userEvent.click(screen.getByLabelText(/^Priority P3/));
+		await userEvent.click(screen.getByRole("menuitemradio", { name: /^P0/ }));
+
+		expect(screen.getByTestId("create-task-save-draft")).toBeEnabled();
+	});
+
+	it("creates the task as a draft and closes without launching", async () => {
+		const onClose = vi.fn();
+		const onCreateAndRun = vi.fn();
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, draft: true, description: "half a thought" });
+		renderModal({ onClose, onCreateAndRun });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+		await userEvent.click(screen.getByTestId("create-task-save-draft"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith(expect.objectContaining({
+				description: "half a thought",
+				draft: true,
+			}));
+		});
+		expect(onCreateAndRun).not.toHaveBeenCalled();
+		await waitFor(() => expect(onClose).toHaveBeenCalled());
+	});
+});
+
+describe("CreateTaskModal — draft-edit mode", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "other", isBaseBranch: false, isDirty: false, behindOrigin: 0 });
+	});
+
+	it("prefills every field the user had entered", async () => {
+		renderModal({ draftTask, onCreateAndRun: vi.fn() });
+
+		expect(screen.getByText("Edit Draft")).toBeTruthy();
+		expect(screen.getByText("Half an idea")).toBeTruthy();
+		expect(screen.getByText("P1")).toBeTruthy();
+		// The draft's own branch must survive — never overwritten by the project's
+		// current branch auto-fill.
+		await waitFor(() => expect(screen.getByText("feature/x")).toBeTruthy());
+	});
+
+	it("offers Save as draft / Save / Save & Start and hides Scratch", () => {
+		renderModal({ draftTask, onCreateAndRun: vi.fn() });
+
+		expect(screen.getByTestId("create-task-save-draft")).toBeEnabled();
+		expect(screen.queryByRole("button", { name: /Scratch Task/i })).toBeNull();
+		// Empty description → nothing may make it runnable yet.
+		expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+		expect(screen.getByRole("button", { name: /Save & Start/i })).toBeDisabled();
+	});
+
+	it("enables Save once the description is non-empty", async () => {
+		renderModal({ draftTask, onCreateAndRun: vi.fn() });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "Now it is written");
+
+		expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+	});
+
+	it("saves the whole draft in one editTask call and keeps it a draft", async () => {
+		const dispatch = vi.fn();
+		mockedApi.request.editTask.mockResolvedValue({ ...draftTask, description: "more words" });
+		renderModal({ draftTask, dispatch, onCreateAndRun: vi.fn() });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "more words");
+		await userEvent.click(screen.getByTestId("create-task-save-draft"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.editTask).toHaveBeenCalledTimes(1);
+			expect(mockedApi.request.editTask).toHaveBeenCalledWith({
+				taskId: "draft-1",
+				projectId: "p1",
+				description: "more words",
+				customTitle: "Half an idea",
+				priority: "P1",
+				labelIds: ["l1"],
+				existingBranch: "feature/x",
+				draft: true,
+			});
+		});
+		expect(dispatch).toHaveBeenCalledWith({ type: "updateTask", task: expect.objectContaining({ draft: true }) });
+	});
+
+	it("promotes the draft on Save", async () => {
+		mockedApi.request.editTask.mockResolvedValue({ ...draftTask, draft: false, description: "written" });
+		renderModal({ draftTask, onCreateAndRun: vi.fn() });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "written");
+		await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+		await waitFor(() => {
+			expect(mockedApi.request.editTask).toHaveBeenCalledWith(expect.objectContaining({ draft: false }));
+		});
+	});
+
+	it("hands the promoted task to the launch flow on Save & Start", async () => {
+		const onCreateAndRun = vi.fn();
+		const promoted = { ...draftTask, draft: false, description: "written" };
+		mockedApi.request.editTask.mockResolvedValue(promoted);
+		renderModal({ draftTask, onCreateAndRun });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "written");
+		await userEvent.click(screen.getByRole("button", { name: /Save & Start/i }));
+
+		await waitFor(() => expect(onCreateAndRun).toHaveBeenCalledWith(promoted, mockProject));
+	});
+
+	it("asks before discarding unsaved edits to the draft", async () => {
+		const onClose = vi.fn();
+		renderModal({ draftTask, onClose, onCreateAndRun: vi.fn() });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "unsaved");
+		await userEvent.click(screen.getByLabelText("Close"));
+
+		expect(screen.getByText(/Discard changes/i)).toBeTruthy();
+		expect(onClose).not.toHaveBeenCalled();
+	});
+
+	it("closes straight away when nothing was edited", async () => {
+		const onClose = vi.fn();
+		renderModal({ draftTask, onClose, onCreateAndRun: vi.fn() });
+
+		await userEvent.click(screen.getByLabelText("Close"));
+
+		expect(onClose).toHaveBeenCalled();
 	});
 });
