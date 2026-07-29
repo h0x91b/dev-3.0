@@ -35,7 +35,7 @@ const kanban = {
 	"createTask.saveAsDraftHint": "Park this task as an unfinished draft. It stays in To Do and nothing can start it until you finish the description.",
 	"createTask.editDraftTitle": "Edit Draft",
 	"createTask.draftSaveFailed": "Failed to save draft: {error}",
-	"createTask.discardConfirm": "Discard changes? Your description will be lost.",
+	"createTask.discardConfirm": "Unsaved changes — park them as a draft, or discard?",
 	"createTask.keepEditing": "Keep editing",
 	"createTask.discard": "Discard",
 	"createTask.branchLabel": "Branch",

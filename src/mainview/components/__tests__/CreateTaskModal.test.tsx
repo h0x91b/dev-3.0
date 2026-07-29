@@ -1649,7 +1649,7 @@ describe("CreateTaskModal — draft-edit mode", () => {
 		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "unsaved");
 		await userEvent.click(screen.getByLabelText("Close"));
 
-		expect(screen.getByText(/Discard changes/i)).toBeTruthy();
+		expect(screen.getByText(/Unsaved changes/i)).toBeTruthy();
 		expect(onClose).not.toHaveBeenCalled();
 	});
 
@@ -1660,5 +1660,60 @@ describe("CreateTaskModal — draft-edit mode", () => {
 		await userEvent.click(screen.getByLabelText("Close"));
 
 		expect(onClose).toHaveBeenCalled();
+	});
+});
+
+// The discard bar is the one moment work actually gets lost, so it offers the
+// draft as a way out instead of only "lose it or keep typing".
+describe("CreateTaskModal — Save as draft from the discard confirmation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockedApi.request.getProjectCurrentBranch.mockResolvedValue({ branch: "main", isBaseBranch: true, isDirty: false, behindOrigin: 0 });
+	});
+
+	it("offers all three exits when closing a half-written new task", async () => {
+		renderModal({ onCreateAndRun: vi.fn() });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+		await userEvent.click(screen.getByLabelText("Close"));
+
+		expect(screen.getByRole("button", { name: /Keep editing/i })).toBeTruthy();
+		expect(screen.getByTestId("discard-save-draft")).toBeEnabled();
+		expect(screen.getByRole("button", { name: /^Discard$/i })).toBeTruthy();
+	});
+
+	it("parks the new task as a draft instead of losing it", async () => {
+		const onClose = vi.fn();
+		mockedApi.request.createTask.mockResolvedValue({ ...mockTask, draft: true, description: "half a thought" });
+		renderModal({ onClose, onCreateAndRun: vi.fn() });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "half a thought");
+		await userEvent.click(screen.getByLabelText("Close"));
+		await userEvent.click(screen.getByTestId("discard-save-draft"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.createTask).toHaveBeenCalledWith(expect.objectContaining({
+				description: "half a thought",
+				draft: true,
+			}));
+		});
+		await waitFor(() => expect(onClose).toHaveBeenCalled());
+	});
+
+	it("keeps a reopened draft's edits when the user was about to discard them", async () => {
+		mockedApi.request.editTask.mockResolvedValue({ ...draftTask, description: "second sitting" });
+		renderModal({ draftTask, onCreateAndRun: vi.fn() });
+
+		await userEvent.type(screen.getByPlaceholderText(/Describe what needs to be done/i), "second sitting");
+		await userEvent.click(screen.getByLabelText("Close"));
+		await userEvent.click(screen.getByTestId("discard-save-draft"));
+
+		await waitFor(() => {
+			expect(mockedApi.request.editTask).toHaveBeenCalledWith(expect.objectContaining({
+				taskId: "draft-1",
+				description: "second sitting",
+				draft: true,
+			}));
+		});
 	});
 });

@@ -35,7 +35,7 @@ const kanban = {
 	"createTask.saveAsDraftHint": "Отложить задачу как незаконченный черновик. Она остаётся в To Do, и запустить её нельзя, пока вы не допишете описание.",
 	"createTask.editDraftTitle": "Черновик",
 	"createTask.draftSaveFailed": "Не удалось сохранить черновик: {error}",
-	"createTask.discardConfirm": "Отменить? Введённое описание будет потеряно.",
+	"createTask.discardConfirm": "Есть несохранённые изменения — отложить черновиком или выбросить?",
 	"createTask.keepEditing": "Продолжить редактирование",
 	"createTask.discard": "Отменить",
 	"createTask.branchLabel": "Ветка",

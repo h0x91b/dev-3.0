@@ -35,7 +35,7 @@ const kanban = {
 	"createTask.saveAsDraftHint": "Aparca esta tarea como un borrador sin terminar. Permanece en To Do y nada puede iniciarla hasta que completes la descripción.",
 	"createTask.editDraftTitle": "Editar borrador",
 	"createTask.draftSaveFailed": "No se pudo guardar el borrador: {error}",
-	"createTask.discardConfirm": "¿Descartar cambios? Se perderá la descripción introducida.",
+	"createTask.discardConfirm": "Cambios sin guardar: ¿guardarlos como borrador o descartarlos?",
 	"createTask.keepEditing": "Seguir editando",
 	"createTask.discard": "Descartar",
 	"createTask.branchLabel": "Rama",

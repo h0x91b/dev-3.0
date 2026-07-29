@@ -865,15 +865,25 @@ function CreateTaskModal({ project: initialProject, projects, dispatch, onClose,
 			{/* Actions */}
 				<div className="space-y-2.5 pt-1">
 					{confirmDiscard ? (
-						<div className="flex items-center justify-between gap-2 bg-danger/10 border border-danger/30 rounded-xl px-3 py-2.5">
+						<div className="flex flex-wrap items-center justify-between gap-2 bg-danger/10 border border-danger/30 rounded-xl px-3 py-2.5">
 							<span className="text-fg-2 text-sm">{t("createTask.discardConfirm")}</span>
-							<div className="flex gap-2 shrink-0">
+							<div className="flex flex-wrap gap-2 shrink-0">
 								<button
 									ref={keepEditingRef}
 									onClick={() => setConfirmDiscard(false)}
 									className="px-3 py-1 text-fg-3 text-sm hover:text-fg transition-colors rounded-lg focus:outline-none focus:ring-2 focus:ring-edge-active focus:text-fg"
 								>
 									{t("createTask.keepEditing")}
+								</button>
+								{/* The one moment work actually gets lost — parking the draft is the
+								    likely intent here, so it leads over the destructive exit. */}
+								<button
+									onClick={handleSaveAsDraft}
+									disabled={creating || !(isDraftEdit || hasAnyInput)}
+									data-testid="discard-save-draft"
+									className="px-3 py-1 bg-accent text-white text-sm font-medium rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+								>
+									{t("createTask.saveAsDraft")}
 								</button>
 								<button
 									onClick={onClose}
