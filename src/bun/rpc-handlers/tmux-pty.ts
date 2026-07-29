@@ -43,7 +43,8 @@ import {
 import { markAgentPane } from "../agent-prompt";
 import { dev3TaskTempPath } from "../temp-paths";
 import { taskTerminalBackendIdentity } from "../task-terminal-backend";
-import { nativeTaskPanesAlive } from "../native-task-panes";
+import { nativeTaskPanesAlive, nativeTaskPanesState } from "../native-task-panes";
+import { paneSessionKey } from "../../shared/pane-session-key";
 import { getPushMessage, isActive, buildAgentEnv, buildAgentRetryWrapper, buildCmdScript, buildSetupStartupWrapper, buildEnvExports, buildScriptRunnerCommand, buildTaskLifecycleEnv, log, resolveBinaryPath, shellQuote, writeLaunchScript } from "./shared-pure";
 import { assertPosixLaunchDialect, launchDialect } from "../../shared/platform-launch";
 import { resolveOperationalProjectConfig } from "./settings-config";
@@ -2736,6 +2737,49 @@ export async function handlePaneExited(taskId: string, _exitedPaneId: string): P
 	}
 }
 
+async function getPanePtyUrl(params: { taskId: string; paneId: string }): Promise<{ url: string }> {
+	log.info("→ getPanePtyUrl", { taskId: params.taskId.slice(0, 8), paneId: params.paneId });
+	const { task: foundTask, project: foundProject } = await findTaskAcrossProjects(params.taskId);
+	if (!foundTask || !foundProject) {
+		throw new Error(`Task ${params.taskId.slice(0, 8)} not found`);
+	}
+	const identity = taskTerminalBackendIdentity(foundTask);
+	if (identity !== "native") {
+		throw new Error(`getPanePtyUrl is only available for native tasks (got: ${identity})`);
+	}
+	const nativeState = await nativeTaskPanesState(params.taskId);
+	if (!nativeState) {
+		throw new Error(`No native pane state for task ${params.taskId.slice(0, 8)}`);
+	}
+	const pane = nativeState.panes.find((p) => p.paneId === params.paneId);
+	if (!pane) {
+		throw new Error(`Pane ${params.paneId} not found in task ${params.taskId.slice(0, 8)}`);
+	}
+	// First pane is registered under the bare taskId; additional panes use a composite key.
+	const isFirstPane = nativeState.panes[0]?.paneId === params.paneId;
+	const sessionKey = isFirstPane
+		? params.taskId
+		: paneSessionKey(params.taskId, params.paneId);
+
+	if (!isFirstPane) {
+		// Ensure the PTY session for this additional pane exists (survives app restart).
+		if (!foundTask.worktreePath) {
+			throw new Error(`Task ${params.taskId.slice(0, 8)} has no worktree path`);
+		}
+		await pty.ensureNativePanePtySession(
+			params.taskId,
+			params.paneId,
+			pane.sessionId,
+			foundProject.id,
+			foundTask.worktreePath,
+		);
+	}
+
+	const url = `ws://localhost:${pty.getPtyPort()}?session=${sessionKey}`;
+	log.info("← getPanePtyUrl", { url, paneId: params.paneId, isFirstPane });
+	return { url };
+}
+
 export const tmuxPtyHandlers = {
 	runDevServer,
 	checkDevServer,
@@ -2763,4 +2807,5 @@ export const tmuxPtyHandlers = {
 	spawnBugHuntersInTask,
 	resumeTask,
 	restartTask,
+	getPanePtyUrl,
 };

@@ -1,0 +1,16 @@
+import type { TranslationRecord } from "../en";
+
+const panes: Pick<TranslationRecord, `panes.${string}` & keyof TranslationRecord> & Record<string, string> = {
+	"panes.layoutLabel": "Макет",
+	"panes.layoutNeedsTwoPanes": "Нужно минимум 2 панели для смены макета",
+	"panes.nativeHintsTitle": "Быстрые команды",
+	"panes.nativeNoPrefixKeys": "Префикс ⌃B не используется — управление панелями через панель инструментов",
+	"panes.nativeWindowsUnavailable": "Окна доступны только в tmux (недоступно в нативных задачах)",
+	"panes.paneLabel": "Панель {index}",
+	"panes.exited": "Панель завершена",
+	"panes.exitedClose": "Закрыть панель",
+	"panes.hostGone": "Хост терминала недоступен — используйте элементы восстановления ниже",
+	"panes.unsupportedOnBackend": "Не поддерживается этим бэкендом",
+} as unknown as Pick<TranslationRecord, `panes.${string}` & keyof TranslationRecord> & Record<string, string>;
+
+export default panes;

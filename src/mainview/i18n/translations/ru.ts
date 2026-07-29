@@ -19,6 +19,7 @@ import { tooltips } from "./ru/tooltips";
 import automations from "./ru/automations";
 import diagnostics from "./ru/diagnostics";
 import nativePaneLab from "./ru/nativePaneLab";
+import panes from "./ru/panes";
 
 const ru: TranslationRecord & Record<string, string> = {
 	...common,
@@ -41,6 +42,7 @@ const ru: TranslationRecord & Record<string, string> = {
 	...automations,
 	...diagnostics,
 	...nativePaneLab,
+	...panes,
 };
 
 export default ru;

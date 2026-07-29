@@ -3211,6 +3211,10 @@ export type AppRPCSchema = {
 					| { url: string }
 					| { recoverable: true; sessionState: TaskSessionState; hibernated?: true };
 			};
+			getPanePtyUrl: {
+				params: { taskId: string; paneId: string };
+				response: { url: string };
+			};
 			resumeTask: {
 				params: { taskId: string };
 				response: string;

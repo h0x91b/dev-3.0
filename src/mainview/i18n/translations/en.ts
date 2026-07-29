@@ -18,6 +18,7 @@ import { tooltips } from "./en/tooltips";
 import automations from "./en/automations";
 import diagnostics from "./en/diagnostics";
 import nativePaneLab from "./en/nativePaneLab";
+import panes from "./en/panes";
 
 const en = {
 	...common,
@@ -40,6 +41,7 @@ const en = {
 	...automations,
 	...diagnostics,
 	...nativePaneLab,
+	...panes,
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -19,6 +19,7 @@ import { tooltips } from "./es/tooltips";
 import automations from "./es/automations";
 import diagnostics from "./es/diagnostics";
 import nativePaneLab from "./es/nativePaneLab";
+import panes from "./es/panes";
 
 const es: TranslationRecord & Record<string, string> = {
 	...common,
@@ -41,6 +42,7 @@ const es: TranslationRecord & Record<string, string> = {
 	...automations,
 	...diagnostics,
 	...nativePaneLab,
+	...panes,
 };
 
 export default es;
