@@ -640,26 +640,46 @@ function scaffoldClaudeAccountDir(dir: string, paths: AccountPaths): void {
 }
 
 /** Output styles Claude Code ships in-binary — they need no config-dir file. */
-const BUILTIN_OUTPUT_STYLES = new Set(["default", "explanatory", "learning"]);
+const BUILTIN_OUTPUT_STYLES = new Set(["default", "explanatory", "learning", "proactive"]);
 
-/** A settings.json `outputStyle` naming a style with no file in the account dir
- *  is always a plumbing bug: Claude Code falls back to the default style without
- *  a single log line, so the setting looks correct while doing nothing. */
+/** The name Claude Code registers a style file under: frontmatter `name` REPLACES
+ *  the filename slug, it is not an alias for it (cli.js: `A.name ?? basename`).
+ *  So `low-battery.md` with `name: Low Battery` is only reachable as "Low Battery". */
+export function registeredOutputStyleName(file: string, contents: string): string {
+	const slug = file.replace(/\.md$/, "");
+	if (!contents.startsWith("---")) return slug;
+	const end = contents.indexOf("\n---", 3);
+	const frontmatter = end === -1 ? contents : contents.slice(0, end);
+	const declared = /^name:[ \t]*(.+)$/m.exec(frontmatter)?.[1]?.trim().replace(/^["']|["']$/g, "");
+	return declared || slug;
+}
+
+/** A settings.json `outputStyle` that resolves to nothing is always a config bug:
+ *  Claude Code looks the name up as an exact map key and falls back to the default
+ *  style without a single log line, so the setting looks correct while doing
+ *  nothing. Only user-level styles are checked — a project `.claude/output-styles`
+ *  could still define the name, hence the wording. */
 function warnOnUnresolvableOutputStyle(dir: string): void {
-	const name = (safeReadJson(join(dir, "settings.json")) as { outputStyle?: unknown } | null)?.outputStyle;
-	if (typeof name !== "string" || !name.trim() || BUILTIN_OUTPUT_STYLES.has(name.trim().toLowerCase())) return;
-	let styleFiles: string[] = [];
+	const configured = (safeReadJson(join(dir, "settings.json")) as { outputStyle?: unknown } | null)?.outputStyle;
+	if (typeof configured !== "string" || !configured.trim()) return;
+	const name = configured.trim();
+	if (BUILTIN_OUTPUT_STYLES.has(name.toLowerCase())) return;
+
+	const stylesDir = join(dir, "output-styles");
+	let available: string[] = [];
 	try {
-		styleFiles = readdirSync(join(dir, "output-styles")).filter((f) => f.endsWith(".md"));
+		available = readdirSync(stylesDir)
+			.filter((f) => f.endsWith(".md"))
+			.map((f) => registeredOutputStyleName(f, readFileSync(join(stylesDir, f), "utf-8")));
 	} catch {
-		// unreadable or missing — reported below
+		// missing or unreadable dir → nothing resolves, reported below
 	}
-	if (styleFiles.length === 0) {
-		log.warn("settings.json names an outputStyle but the account dir has no output-styles files", {
-			outputStyle: name,
-			dir,
-		});
-	}
+	if (available.includes(name)) return;
+	log.warn("settings.json outputStyle matches no user-level output style — Claude Code will use the default", {
+		outputStyle: name,
+		available,
+		dir,
+	});
 }
 
 const CLAUDE_KEYCHAIN_SERVICE = "Claude Code-credentials";

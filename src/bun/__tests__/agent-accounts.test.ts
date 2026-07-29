@@ -18,6 +18,7 @@ import {
 	listAgentAccounts,
 	prepareClaudeLogin,
 	prepareCodexLogin,
+	registeredOutputStyleName,
 	removeAgentAccount,
 	renameAgentAccount,
 	setActiveClaudeAccount,
@@ -108,6 +109,26 @@ beforeEach(() => {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	rmSync(root, { recursive: true, force: true });
+});
+
+describe("registeredOutputStyleName", () => {
+	// Claude Code registers a style under frontmatter `name` INSTEAD of the
+	// filename slug — the slug is not kept as an alias, so a settings.json value
+	// of "low-battery" never matches a file declaring `name: Low Battery`.
+	it("prefers the frontmatter name over the filename slug", () => {
+		const md = "---\nname: Low Battery\ndescription: x\nkeep-coding-instructions: true\n---\n\n# body\n";
+		expect(registeredOutputStyleName("low-battery.md", md)).toBe("Low Battery");
+	});
+
+	it("falls back to the filename slug when there is no frontmatter name", () => {
+		expect(registeredOutputStyleName("my-style.md", "---\ndescription: x\n---\nbody")).toBe("my-style");
+		expect(registeredOutputStyleName("my-style.md", "# no frontmatter at all")).toBe("my-style");
+	});
+
+	it("ignores a name-like line in the body and strips quotes", () => {
+		expect(registeredOutputStyleName("s.md", '---\nname: "Quoted Name"\n---\nname: Not This\n')).toBe("Quoted Name");
+		expect(registeredOutputStyleName("s.md", "---\ndescription: x\n---\nname: Body Name\n")).toBe("s");
+	});
 });
 
 describe("importCurrentClaudeAccount", () => {
