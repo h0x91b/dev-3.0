@@ -70,6 +70,24 @@ describe("workflow Bun pins", () => {
 		expect(bunPins()).toHaveLength(setupBunSteps());
 	});
 
+	// A pin change IS a packaged-runtime change, so the job that proves the
+	// package must re-run on it. Without this, a pure pin edit ships unproven.
+	it("makes every Bun-pinning workflow trigger the packaged-runtime proof", () => {
+		const packageWorkflow = "windows-conpty-package.yml";
+		const triggerPaths = readFileSync(join(WORKFLOWS_DIR, packageWorkflow), "utf8")
+			.split(/\r?\n/)
+			.map((line) => /^\s*-\s*["']([^"']+)["']/.exec(line)?.[1])
+			.filter((path): path is string => path !== undefined);
+		const pinningWorkflows = [...new Set(bunPins().map((pin) => pin.workflow))];
+
+		const untriggered = pinningWorkflows.filter((workflow) => !triggerPaths.includes(`.github/workflows/${workflow}`));
+
+		expect(
+			untriggered,
+			`These workflows pin Bun but do not re-run ${packageWorkflow}, so a pin change would ship unproven:\n${untriggered.join("\n")}`,
+		).toEqual([]);
+	});
+
 	it("keeps the baseline a plain release version, never a range or tag", () => {
 		expect(MINIMUM_WINDOWS_CONPTY_BUN_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
 	});
