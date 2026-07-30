@@ -387,11 +387,11 @@ const COMMANDS: CommandHelp[] = [
 		name: "show-artifact",
 		summary: "Surface a task-bound HTML artifact in the running app.",
 		subcommands: [],
-		usage: 'dev3 show-artifact <file.html> [--images <image...>] [--title "..."] [--task <id>]',
+		usage: 'dev3 show-artifact <file.html> [--assets <file...>] [--title "..."] [--task <id>]',
 		details: [
-			"--images <paths...>   Copy raster assets beside the HTML; all following paths belong to the artifact until the next flag.",
+			"--assets <paths...>   Copy local CSS, classic JS, and raster assets; all following paths belong to the artifact until the next flag.",
 			"--title <text>        Viewer title (defaults to the HTML filename).",
-			"Artifacts with images download as ZIP; standalone artifacts download as HTML.",
+			"Artifacts with local assets download as ZIP; standalone artifacts download as HTML.",
 		],
 	},
 	{

@@ -4,320 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Agent Operations Cockpit</title>
-  <style>
-    * { box-sizing: border-box; }
-    html, body {
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    body {
-      margin: 0;
-      padding: 24px;
-      background: rgb(var(--dev3-surface-base));
-      color: rgb(var(--dev3-text-primary));
-      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    .app { max-width: 1180px; margin: auto; }
-    .topbar, .brand, .actions, .segmented, .inline, .table-tools { display: flex; align-items: center; }
-    .topbar { justify-content: space-between; gap: 20px; margin-bottom: 20px; }
-    .brand { gap: 13px; }
-    .brand img {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      box-shadow: 0 10px 28px rgb(var(--dev3-accent) / .22);
-    }
-    h1 { margin: 0; font-size: 22px; line-height: 1.15; letter-spacing: -.03em; }
-    .eyebrow, .muted { color: rgb(var(--dev3-text-secondary)); }
-    .eyebrow { margin-bottom: 3px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
-    .actions { gap: 8px; }
-    .status {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      padding: 7px 10px;
-      border: 1px solid rgb(var(--dev3-success) / .25);
-      border-radius: 999px;
-      background: rgb(var(--dev3-success) / .08);
-      color: rgb(var(--dev3-success));
-      font-size: 12px;
-    }
-    .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: rgb(var(--dev3-success));
-      box-shadow: 0 0 0 4px rgb(var(--dev3-success) / .12);
-    }
-    button, input, select { font: inherit; }
-    button {
-      padding: 8px 12px;
-      border: 1px solid rgb(var(--dev3-border));
-      border-radius: 10px;
-      background: rgb(var(--dev3-surface-elevated));
-      color: rgb(var(--dev3-text-primary));
-      cursor: pointer;
-      transition: .16s ease;
-    }
-    button:hover { border-color: rgb(var(--dev3-accent) / .65); transform: translateY(-1px); }
-    button:focus-visible, input:focus-visible, select:focus-visible, th:focus-visible {
-      outline: 2px solid rgb(var(--dev3-accent));
-      outline-offset: 2px;
-    }
-    button.primary {
-      border-color: rgb(var(--dev3-accent));
-      background: rgb(var(--dev3-accent));
-      color: rgb(var(--dev3-on-accent));
-      font-weight: 650;
-    }
-    button.ghost { background: transparent; }
-    button.active {
-      border-color: rgb(var(--dev3-accent) / .55);
-      background: rgb(var(--dev3-accent) / .14);
-      color: rgb(var(--dev3-accent));
-    }
-    .grid { display: grid; gap: 14px; }
-    .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
-    .card {
-      border: 1px solid rgb(var(--dev3-border));
-      border-radius: 16px;
-      background: rgb(var(--dev3-surface-raised));
-      box-shadow: 0 14px 34px rgb(var(--dev3-shadow) / .08);
-    }
-    .kpi { padding: 16px; }
-    .kpi-top {
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      color: rgb(var(--dev3-text-secondary));
-      font-size: 11px;
-      letter-spacing: .06em;
-      text-transform: uppercase;
-    }
-    .kpi-value { margin: 8px 0 3px; font-size: 29px; font-weight: 760; letter-spacing: -.04em; }
-    .trend { color: rgb(var(--dev3-success)); font-size: 12px; }
-    .trend.warn { color: rgb(var(--dev3-warning)); }
-    .dashboard-grid {
-      display: grid;
-      grid-template-columns: repeat(12, minmax(0, 1fr));
-      gap: 14px;
-      margin-bottom: 14px;
-    }
-    .velocity-panel { grid-column: span 8; }
-    .pie-panel { grid-column: span 4; }
-    .radar-panel { grid-column: span 7; }
-    .scenario-panel { grid-column: span 5; }
-    .section { padding: 18px; }
-    .section-head {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 16px;
-    }
-    .gallery-panel { margin-bottom: 14px; }
-    .section-title { font-size: 15px; font-weight: 700; }
-    .section-copy { margin-top: 2px; color: rgb(var(--dev3-text-secondary)); font-size: 12px; }
-    .segmented {
-      gap: 3px;
-      padding: 3px;
-      border: 1px solid rgb(var(--dev3-border));
-      border-radius: 11px;
-      background: rgb(var(--dev3-surface-base));
-    }
-    .segmented button { padding: 6px 9px; border: 0; background: transparent; }
-    .segmented button.active { background: rgb(var(--dev3-accent)); color: rgb(var(--dev3-on-accent)); }
-    .chart-host { height: 250px; }
-    .chart-host svg { max-width: 100%; }
-    html.printing .chart-host { height: 155px; }
-    html.printing .chart-host > div, html.printing .chart-host svg { width: 100% !important; height: 100% !important; }
-    .chart-unavailable {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      padding: 0 24px;
-      border: 1px dashed rgb(var(--dev3-border));
-      border-radius: 12px;
-      color: rgb(var(--dev3-text-muted));
-      font-size: 12px;
-      text-align: center;
-    }
-    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .field { display: grid; gap: 6px; }
-    .field.full { grid-column: 1 / -1; }
-    .field label {
-      color: rgb(var(--dev3-text-secondary));
-      font-size: 11px;
-      letter-spacing: .05em;
-      text-transform: uppercase;
-    }
-    .field input, .field select {
-      width: 100%;
-      padding: 9px 10px;
-      border: 1px solid rgb(var(--dev3-border));
-      border-radius: 10px;
-      background: rgb(var(--dev3-surface-base));
-      color: rgb(var(--dev3-text-primary));
-      outline: none;
-    }
-    .field input:focus, .field select:focus {
-      border-color: rgb(var(--dev3-accent));
-      box-shadow: 0 0 0 3px rgb(var(--dev3-accent) / .12);
-    }
-    input[type="range"] { padding: 0; box-shadow: none; }
-    .range-label { display: flex; justify-content: space-between; color: rgb(var(--dev3-text-secondary)); font-size: 11px; }
-    .check { display: flex; align-items: center; gap: 8px; color: rgb(var(--dev3-text-secondary)); font-size: 12px; }
-    .check input { width: auto; }
-    .form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
-    .table-card { overflow: hidden; }
-    .table-head { padding: 16px 18px 12px; }
-    .table-tools { gap: 8px; }
-    .table-tools input, .table-tools select {
-      padding: 7px 9px;
-      border: 1px solid rgb(var(--dev3-border));
-      border-radius: 9px;
-      background: rgb(var(--dev3-surface-base));
-      color: rgb(var(--dev3-text-primary));
-      outline: none;
-    }
-    .table-tools input { width: 190px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 11px 18px; border-top: 1px solid rgb(var(--dev3-border)); text-align: left; font-size: 12px; }
-    th {
-      color: rgb(var(--dev3-text-muted));
-      font-weight: 600;
-      letter-spacing: .05em;
-      text-transform: uppercase;
-      cursor: pointer;
-    }
-    tbody tr:hover { background: rgb(var(--dev3-accent) / .04); }
-    .pill { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 650; }
-    .pill.success { color: rgb(var(--dev3-success)); background: rgb(var(--dev3-success) / .1); }
-    .pill.warning { color: rgb(var(--dev3-warning)); background: rgb(var(--dev3-warning) / .1); }
-    .pill.accent { color: rgb(var(--dev3-accent)); background: rgb(var(--dev3-accent) / .1); }
-    .bar-cell { display: flex; align-items: center; gap: 9px; }
-    .mini-track { width: 76px; height: 6px; overflow: hidden; border-radius: 99px; background: rgb(var(--dev3-border)); }
-    .mini-fill { height: 100%; border-radius: 99px; background: rgb(var(--dev3-accent)); }
-    .toast {
-      position: fixed;
-      right: 22px;
-      bottom: 22px;
-      padding: 11px 14px;
-      border: 1px solid rgb(var(--dev3-success) / .3);
-      border-radius: 11px;
-      background: rgb(var(--dev3-surface-elevated));
-      color: rgb(var(--dev3-text-primary));
-      box-shadow: 0 12px 40px rgb(var(--dev3-shadow) / .24);
-      opacity: 0;
-      pointer-events: none;
-      transform: translateY(20px);
-      transition: .2s;
-    }
-    .toast.show { opacity: 1; transform: none; }
-    .empty { padding: 26px; color: rgb(var(--dev3-text-muted)); text-align: center; }
-    .print-only { display: none; }
-    .dev3-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 18px 4px 2px;
-      color: rgb(var(--dev3-text-muted));
-      font-size: 11px;
-    }
-    .dev3-footer strong { color: rgb(var(--dev3-text-secondary)); font-weight: 650; }
-    .dev3-footer a { color: rgb(var(--dev3-accent)); text-decoration: none; }
-    .dev3-footer a:hover { text-decoration: underline; }
-
-    @media (max-width: 900px) {
-      .kpis { grid-template-columns: repeat(2, 1fr); }
-      .dashboard-grid { grid-template-columns: 1fr; }
-      .velocity-panel, .pie-panel, .radar-panel, .scenario-panel { grid-column: auto; }
-      .topbar { align-items: flex-start; flex-direction: column; }
-    }
-    @media (max-width: 560px) {
-      body { padding: 14px; }
-      .kpis { grid-template-columns: 1fr; }
-      .actions { flex-wrap: wrap; }
-      .controls { grid-template-columns: 1fr; }
-      .field.full { grid-column: auto; }
-      .table-tools { align-items: stretch; flex-direction: column; }
-      .table-tools input { width: 100%; }
-      th:nth-child(3), td:nth-child(3), th:nth-child(5), td:nth-child(5) { display: none; }
-      .dev3-footer { align-items: flex-start; flex-direction: column; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
-    }
-    @page { margin: 10mm; }
-    @media print {
-      html, body {
-        background: rgb(var(--dev3-surface-base)) !important;
-        color: rgb(var(--dev3-text-primary)) !important;
-      }
-      body { padding: 0; font-size: 10px; }
-      .app { max-width: none; }
-      .topbar { margin-bottom: 8px; }
-      .brand { gap: 9px; }
-      .brand img { width: 34px; height: 34px; border-radius: 10px; box-shadow: none; }
-      h1 { font-size: 17px; }
-      .eyebrow { font-size: 8px; }
-      .muted, .section-copy { font-size: 9px; }
-      .actions, .scenario-panel, .table-tools, .toast, .print-hidden { display: none !important; }
-      .print-only { display: block !important; }
-      .kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
-      .kpi { padding: 9px 10px; }
-      .kpi-top { font-size: 8px; }
-      .kpi-value { margin: 3px 0 1px; font-size: 20px; }
-      .trend { font-size: 8px; }
-      .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
-      .velocity-panel { grid-column: 1 / -1; }
-      .pie-panel, .radar-panel { grid-column: auto; }
-      .card, tr { break-inside: avoid; box-shadow: none; }
-      .section { padding: 10px; }
-      .section-head { margin-bottom: 6px; }
-      .section-title { font-size: 11px; }
-      .segmented { padding: 0; border: 0; background: transparent; }
-      .segmented button { display: none; padding: 3px 6px; font-size: 8px; }
-      .segmented button.active { display: block; }
-      .chart-host { height: 155px; }
-      .chart-host > div, .chart-host svg { width: 100% !important; height: 100% !important; }
-      .table-head { padding: 8px 10px 6px; }
-      th, td { padding: 5px 10px; font-size: 8px; }
-      thead { display: table-header-group; }
-      .pill { padding: 2px 5px; font-size: 7px; }
-      .mini-track { width: 52px; height: 4px; }
-      .dev3-footer { padding: 8px 2px 0; font-size: 8px; }
-    }
-  </style>
-  <style data-dev3-artifact-shell>
-    :root, [data-theme="dark"] { color-scheme: dark; --dev3-surface-base: 6 9 21; --dev3-surface-raised: 14 18 30; --dev3-surface-elevated: 21 26 41; --dev3-text-primary: 250 252 255; --dev3-text-secondary: 170 187 212; --dev3-text-muted: 82 98 121; --dev3-border: 32 38 55; --dev3-accent: 68 150 255; --dev3-success: 74 222 128; --dev3-warning: 250 204 21; --dev3-danger: 255 130 130; --dev3-on-accent: 255 255 255; --dev3-shadow: 0 0 0; }
-    [data-theme="light"] { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 148 163 184; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; }
-    @media (prefers-color-scheme: light) {
-      :root:not([data-theme]) { color-scheme: light; --dev3-surface-base: 240 242 250; --dev3-surface-raised: 255 255 255; --dev3-surface-elevated: 237 239 247; --dev3-text-primary: 15 23 42; --dev3-text-secondary: 71 85 105; --dev3-text-muted: 148 163 184; --dev3-border: 203 213 225; --dev3-accent: 59 130 246; --dev3-success: 22 163 74; --dev3-warning: 202 138 4; --dev3-danger: 220 38 38; --dev3-on-accent: 255 255 255; --dev3-shadow: 15 23 42; }
-    }
-    html { background: rgb(var(--dev3-surface-base)); color: rgb(var(--dev3-text-primary)); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; }
-    .dev3-card { padding: 16px; border: 1px solid rgb(var(--dev3-border)); border-radius: 16px; background: rgb(var(--dev3-surface-raised)); }
-    .dev3-grid { display: grid; gap: 16px; }
-    .dev3-muted { color: rgb(var(--dev3-text-secondary)); }
-    .dev3-accent { color: rgb(var(--dev3-accent)); }
-  </style>
-  <script data-dev3-artifact-shell>
-    (function () {
-      function setTheme(theme) {
-        if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
-      }
-      window.addEventListener("message", function (event) {
-        if (event.data && event.data.type === "dev3-artifact-theme") setTheme(event.data.theme);
-      });
-      if (!document.documentElement.dataset.theme) {
-        setTheme(matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
-      }
-    })();
-  </script>
+  <link data-dev3-vendor="choices.js@11.2.3" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.css" referrerpolicy="no-referrer">
+  <link data-dev3-vendor="nouislider@15.8.1" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="app.css" data-dev3-artifact-shell>
 </head>
 <body>
   <main class="app">
@@ -338,47 +27,58 @@
       </div>
     </header>
 
-    <section class="grid kpis">
+    <nav class="section-nav print-hidden" aria-label="Report sections">
+      <a href="#overview">Overview</a>
+      <a href="#charts">Charts</a>
+      <a href="#scenario">Scenario</a>
+      <a href="#gallery">Gallery</a>
+      <a href="#runs">Runs</a>
+    </nav>
+
+    <section class="grid kpis section-anchor" id="overview">
+      <h2 class="sr-only">Overview</h2>
       <article class="card kpi"><div class="kpi-top"><span>Tasks shipped</span><span>↗</span></div><div class="kpi-value" id="shipped">128</div><div class="trend" id="shippedTrend">+18.4% vs previous</div></article>
       <article class="card kpi"><div class="kpi-top"><span>Agent success</span><span>◎</span></div><div class="kpi-value" id="success">94.2%</div><div class="trend">+3.1 points</div></article>
       <article class="card kpi"><div class="kpi-top"><span>Median cycle</span><span>◷</span></div><div class="kpi-value" id="cycle">22m</div><div class="trend">8m faster</div></article>
       <article class="card kpi"><div class="kpi-top"><span>Review queue</span><span>◇</span></div><div class="kpi-value" id="queue">7</div><div class="trend warn" id="queueTrend">2 need attention</div></article>
     </section>
 
-    <section class="dashboard-grid">
+    <section class="dashboard-grid section-anchor" id="charts">
       <article class="card section velocity-panel">
         <div class="section-head">
-          <div><div class="section-title">Delivery velocity</div><div class="section-copy">Completed tasks and predicted capacity</div></div>
+          <div><h2 class="section-title">Delivery velocity</h2><div class="section-copy">Completed tasks and predicted capacity</div></div>
           <div class="segmented" id="periods"><button type="button" data-period="7">7d</button><button type="button" class="active" data-period="30">30d</button><button type="button" data-period="90">90d</button></div>
         </div>
         <div class="chart-host" id="velocityChart" role="img"></div>
       </article>
 
       <article class="card section pie-panel">
-        <div class="section-head"><div><div class="section-title">Pipeline health</div><div class="section-copy">Current task distribution</div></div></div>
+        <div class="section-head"><div><h2 class="section-title">Pipeline health</h2><div class="section-copy">Current task distribution</div></div></div>
         <div class="chart-host" id="pipelinePie" role="img"></div>
       </article>
 
       <article class="card section radar-panel">
-        <div class="section-head"><div><div class="section-title">Capability profile</div><div class="section-copy">Current scenario against the delivery target</div></div></div>
+        <div class="section-head"><div><h2 class="section-title">Capability profile</h2><div class="section-copy">Current scenario against the delivery target</div></div></div>
         <div class="chart-host" id="capabilityRadar" role="img"></div>
       </article>
 
-      <article class="card section scenario-panel">
-        <div class="section-head"><div><div class="section-title">Scenario builder</div><div class="section-copy">Tune the next agent run</div></div></div>
+      <article class="card section scenario-panel section-anchor" id="scenario">
+        <div class="section-head"><div><h2 class="section-title">Scenario builder</h2><div class="section-copy">Tune the next agent run</div></div></div>
         <form id="scenarioForm" class="controls">
-          <div class="field"><label for="workflow">Workflow</label><select id="workflow"><option>Feature delivery</option><option>Bug hunt</option><option>PR review</option><option>Research sprint</option></select></div>
-          <div class="field"><label for="agents">Agents</label><select id="agents"><option>3 agents</option><option selected>5 agents</option><option>8 agents</option><option>12 agents</option></select></div>
-          <div class="field full"><label for="risk">Risk tolerance</label><input id="risk" type="range" min="1" max="10" value="6"><div class="range-label"><span>Conservative</span><strong id="riskValue">6 / 10</strong><span>Aggressive</span></div></div>
+          <div class="field"><label for="workflow">Workflow</label><select id="workflow" data-ui-select><option>Feature delivery</option><option>Bug hunt</option><option>PR review</option><option>Research sprint</option></select></div>
+          <div class="field"><label for="agents">Agents</label><select id="agents" data-ui-select><option>3 agents</option><option selected>5 agents</option><option>8 agents</option><option>12 agents</option></select></div>
+          <div class="field full"><label for="risk">Risk tolerance <output id="riskValue" for="risk">6 / 10</output></label><input id="risk" type="range" min="1" max="10" value="6" data-ui-slider data-unit=" / 10" data-pips="4"><div class="range-label"><span>Conservative</span><span>Aggressive</span></div></div>
           <label class="check field full"><input id="experiments" type="checkbox" checked> Include experimental agent presets</label>
+          <fieldset class="option-group field full"><legend>Review mode</legend><div class="choice-grid"><label class="check"><input type="radio" name="reviewMode" value="automatic" checked> Automatic</label><label class="check"><input type="radio" name="reviewMode" value="manual"> Manual</label></div></fieldset>
+          <label class="switch field full"><input type="checkbox" checked><span aria-hidden="true"></span> Auto-refresh forecasts</label>
           <div class="form-actions field full"><button type="reset">Reset</button><button class="primary" type="submit">Simulate</button></div>
         </form>
       </article>
     </section>
 
-    <section class="card section gallery-panel">
+    <section class="card section gallery-panel section-anchor" id="gallery">
       <div class="section-head">
-        <div><div class="section-title">Chart gallery</div><div class="section-copy">More ECharts types through the same bridge — keep what fits your report, delete the rest</div></div>
+        <div><h2 class="section-title">Chart gallery</h2><div class="section-copy">More ECharts types through the same bridge — keep what fits your report, delete the rest</div></div>
         <div class="segmented" id="galleryTabs">
           <button type="button" class="active" data-gallery="heatmap">Heatmap</button>
           <button type="button" data-gallery="sankey">Sankey</button>
@@ -389,431 +89,26 @@
       <div class="chart-host" id="galleryChart" role="img"></div>
     </section>
 
-    <section class="card table-card">
+    <section class="card table-card section-anchor" id="runs">
       <div class="section-head table-head">
-        <div><div class="section-title">Recent agent runs</div><div class="section-copy">Click a column heading to sort</div></div>
-        <div class="table-tools"><input id="search" type="search" placeholder="Search runs…"><select id="statusFilter" aria-label="Filter by status"><option value="all">All statuses</option><option value="Shipped">Shipped</option><option value="Review">Review</option><option value="Running">Running</option></select></div>
+        <div><h2 class="section-title">Recent agent runs</h2><div class="section-copy">Click a column heading to sort</div></div>
+        <div class="table-tools"><input id="search" type="search" placeholder="Search runs…"><select id="statusFilter" aria-label="Filter by status" data-ui-select><option value="all">All statuses</option><option value="Shipped">Shipped</option><option value="Review">Review</option><option value="Running">Running</option></select></div>
       </div>
       <table><thead><tr><th data-sort="name" tabindex="0">Run</th><th data-sort="status" tabindex="0">Status</th><th data-sort="agent" tabindex="0">Agent</th><th data-sort="progress" tabindex="0">Progress</th><th data-sort="cycle" tabindex="0">Cycle</th></tr></thead><tbody id="runRows"></tbody></table>
       <div class="empty" id="empty" hidden>No matching runs.</div>
     </section>
-    <footer class="dev3-footer"><span><strong>Built with dev3 Artifacts</strong> · interactive reports that travel with the task</span><span>Template v1 · self-contained HTML</span></footer>
+    <footer class="dev3-footer"><span><strong>Built with dev3 Artifacts</strong> · interactive reports that travel with the task</span><span>Template v1 · portable bundle</span></footer>
   </main>
   <div class="toast" id="toast" role="status" aria-live="polite">Scenario recalculated.</div>
 
-  <!-- Apache ECharts 6.1.0 (Apache-2.0) from cdnjs. Keep src, integrity, and crossorigin
-       exactly as-is: SRI rejects tampered payloads. Charts degrade to a notice while offline.
+  <!-- Apache ECharts 6.1.0 (Apache-2.0) from cdnjs. Keep the versioned src exactly as-is.
+       Charts degrade to a notice while offline.
        Extra libraries / fetch integrations are allowed too — see AUTHORING.md "Network access". -->
-  <script data-dev3-vendor="echarts@6.1.0" src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js" integrity="sha512-3R9RRqDVhSNI5qNFolkgqYFn8qPfMTgA5EJ0hmzu63eOUf8apFGtkTc4MtMjTLmFIpriHg6uqLzLOUITGfMifg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script data-dev3-vendor="echarts@6.1.0" src="https://cdnjs.cloudflare.com/ajax/libs/echarts/6.1.0/echarts.min.js" referrerpolicy="no-referrer"></script>
+  <script data-dev3-vendor="choices.js@11.2.3" src="https://cdnjs.cloudflare.com/ajax/libs/choices.js/11.2.3/choices.min.js" referrerpolicy="no-referrer"></script>
+  <script data-dev3-vendor="nouislider@15.8.1" src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.8.1/nouislider.min.js" referrerpolicy="no-referrer"></script>
 
-  <script>
-    // ---- dev3 chart bridge --------------------------------------------------
-    // The pinned cdnjs script above exposes window.echarts. Charts must keep
-    // the SVG renderer: canvas output blurs or disappears in print/PDF export.
-    // Offline (CDN unreachable / SRI rejected) every chart degrades to a notice
-    // while the rest of the report stays fully interactive.
-    const CHART_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-    const chartsAvailable = typeof echarts !== "undefined";
-    const dev3ChartRegistry = new Set();
-    let appliedChartTheme;
-
-    function tokenColor(name, alpha) {
-      const triplet = getComputedStyle(document.documentElement).getPropertyValue(name).trim().split(/\s+/).join(", ");
-      return alpha == null ? `rgb(${triplet})` : `rgba(${triplet}, ${alpha})`;
-    }
-
-    function registerDev3ChartTheme() {
-      if (!chartsAvailable) return;
-      appliedChartTheme = document.documentElement.dataset.theme;
-      const axisLabel = { color: tokenColor("--dev3-text-muted") };
-      const softSplit = { lineStyle: { color: tokenColor("--dev3-border", .6) } };
-      echarts.registerTheme("dev3", {
-        color: [tokenColor("--dev3-accent"), tokenColor("--dev3-success"), tokenColor("--dev3-warning"), tokenColor("--dev3-danger"), tokenColor("--dev3-text-secondary")],
-        backgroundColor: "transparent",
-        textStyle: { fontFamily: CHART_FONT, color: tokenColor("--dev3-text-secondary") },
-        categoryAxis: { axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, axisTick: { show: false }, axisLabel, splitLine: { show: false } },
-        valueAxis: { axisLine: { show: false }, axisTick: { show: false }, axisLabel, splitLine: softSplit },
-        legend: { textStyle: { color: tokenColor("--dev3-text-secondary"), fontSize: 11 }, itemWidth: 14, itemHeight: 9 },
-        radar: { axisName: { color: tokenColor("--dev3-text-muted"), fontSize: 10 }, axisLine: { lineStyle: { color: tokenColor("--dev3-border") } }, splitLine: softSplit, splitArea: { show: false } },
-      });
-    }
-
-    // ECharts emits its root <svg> without a viewBox; mirroring the rendered
-    // size into one lets the print stylesheet scale charts to the page grid.
-    function syncChartViewBox(element) {
-      const svg = element.querySelector("svg");
-      if (svg) svg.setAttribute("viewBox", `0 0 ${svg.getAttribute("width")} ${svg.getAttribute("height")}`);
-    }
-
-    // Theme-aware chart wrapper. optionFactory returns a normal ECharts option;
-    // call .update() after changing the data it reads. Theme switches remount
-    // every chart so token colors captured inside factories stay current.
-    function dev3Chart(element, optionFactory) {
-      if (!chartsAvailable) {
-        element.innerHTML = '<div class="chart-unavailable">Charts need network access to cdnjs.cloudflare.com — reconnect and reload.</div>';
-        return { chart: null, update() {}, resize() {}, remount() {} };
-      }
-      const factory = typeof optionFactory === "function" ? optionFactory : () => optionFactory;
-      const entry = {
-        chart: null,
-        update() {
-          entry.chart.setOption(factory());
-          syncChartViewBox(element);
-        },
-        resize() {
-          entry.chart.resize();
-          syncChartViewBox(element);
-        },
-        remount() {
-          if (entry.chart) entry.chart.dispose();
-          entry.chart = echarts.init(element, "dev3", { renderer: "svg" });
-          // Themes cannot style the HTML tooltip overlay, so tooltip colors ride
-          // in a base option that later setOption(factory()) calls merge into.
-          entry.chart.setOption({
-            aria: { enabled: true },
-            tooltip: {
-              backgroundColor: tokenColor("--dev3-surface-elevated"),
-              borderColor: tokenColor("--dev3-border"),
-              textStyle: { color: tokenColor("--dev3-text-primary"), fontSize: 12 },
-            },
-          });
-          entry.chart.setOption(factory());
-          syncChartViewBox(element);
-        },
-      };
-      entry.remount();
-      new ResizeObserver(() => entry.resize()).observe(element);
-      dev3ChartRegistry.add(entry);
-      return entry;
-    }
-
-    function rethemeDev3Charts() {
-      registerDev3ChartTheme();
-      dev3ChartRegistry.forEach((entry) => entry.remount());
-    }
-
-    // The host theme message can land while the document is still parsing (the
-    // shell listener in <head> applies it before this script exists), so charts
-    // follow the data-theme attribute itself instead of message timing.
-    new MutationObserver(() => {
-      const theme = document.documentElement.dataset.theme;
-      if (theme === appliedChartTheme) return;
-      appliedChartTheme = theme;
-      rethemeDev3Charts();
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-
-    // Re-render charts at the compact print height before the page snapshot.
-    window.addEventListener("beforeprint", () => {
-      document.documentElement.classList.add("printing");
-      dev3ChartRegistry.forEach((entry) => {
-        entry.chart.dispatchAction({ type: "hideTip" });
-        entry.resize();
-      });
-    });
-    window.addEventListener("afterprint", () => {
-      document.documentElement.classList.remove("printing");
-      dev3ChartRegistry.forEach((entry) => entry.resize());
-    });
-
-    registerDev3ChartTheme();
-
-    // ---- demo data and state ------------------------------------------------
-    const datasets = {
-      7: [12, 18, 15, 24, 21, 29, 35],
-      30: [9, 14, 12, 18, 22, 19, 28, 31, 26, 38, 42, 39],
-      90: [8, 12, 10, 15, 14, 19, 17, 24, 22, 27, 31, 29, 35, 39, 37, 44],
-    };
-    const runs = [
-      { name: "Artifact workspace", status: "Shipped", agent: "Codex · Sol", progress: 100, cycle: "18m" },
-      { name: "Remote mobile QA", status: "Review", agent: "Claude · Opus", progress: 88, cycle: "31m" },
-      { name: "CLI error taxonomy", status: "Running", agent: "Codex · Terra", progress: 67, cycle: "24m" },
-      { name: "Updater dependency audit", status: "Shipped", agent: "Claude · Sonnet", progress: 100, cycle: "42m" },
-      { name: "Git race reproducer", status: "Review", agent: "Codex · Luna", progress: 92, cycle: "27m" },
-      { name: "Theme contrast sweep", status: "Running", agent: "Codex · Sol", progress: 54, cycle: "16m" },
-    ];
-    const radarLabels = ["Speed", "Quality", "Autonomy", "Coverage", "Efficiency", "Predictability"];
-    const radarTarget = [82, 88, 80, 86, 84, 82];
-    let velocityValues = datasets[30];
-    let pipelineShare = [62, 24, 14];
-    let capabilityValues = [78, 82, 68, 88, 75, 72];
-    let currentPeriod = 30;
-    let sortKey = "name";
-    let sortDirection = 1;
-    let themeMode = "auto";
-    let hostTheme = document.documentElement.dataset.theme || "dark";
-
-    const artifactTheme = document.getElementById("artifactTheme");
-    const refresh = document.getElementById("refresh");
-    const shipped = document.getElementById("shipped");
-    const success = document.getElementById("success");
-    const cycle = document.getElementById("cycle");
-    const queue = document.getElementById("queue");
-    const riskValue = document.getElementById("riskValue");
-    const search = document.getElementById("search");
-    const statusFilter = document.getElementById("statusFilter");
-    const runRows = document.getElementById("runRows");
-    const empty = document.getElementById("empty");
-    const toast = document.getElementById("toast");
-
-    // ---- charts ---------------------------------------------------------------
-    const velocityChart = dev3Chart(document.getElementById("velocityChart"), () => ({
-      grid: { left: 40, right: 16, top: 28, bottom: 26 },
-      tooltip: { trigger: "axis", valueFormatter: (value) => `${value} tasks` },
-      xAxis: { type: "category", boundaryGap: false, data: velocityValues.map((_, index) => String(index + 1)) },
-      yAxis: { type: "value" },
-      series: [{
-        name: "Tasks completed",
-        type: "line",
-        smooth: true,
-        symbol: "circle",
-        symbolSize: 7,
-        lineStyle: { width: 3 },
-        areaStyle: {
-          color: {
-            type: "linear", x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: tokenColor("--dev3-accent", .3) },
-              { offset: 1, color: tokenColor("--dev3-accent", 0) },
-            ],
-          },
-        },
-        data: velocityValues,
-      }],
-    }));
-
-    const pipelinePie = dev3Chart(document.getElementById("pipelinePie"), () => ({
-      color: [tokenColor("--dev3-accent"), tokenColor("--dev3-warning"), tokenColor("--dev3-danger")],
-      tooltip: { trigger: "item", formatter: "{b}: {c}%" },
-      legend: { bottom: 0, icon: "circle" },
-      series: [{
-        name: "Pipeline",
-        type: "pie",
-        radius: ["52%", "76%"],
-        center: ["50%", "42%"],
-        itemStyle: { borderColor: tokenColor("--dev3-surface-raised"), borderWidth: 3, borderRadius: 7 },
-        label: { show: false, position: "center" },
-        labelLine: { show: false },
-        emphasis: { label: { show: true, fontSize: 16, fontWeight: 700, color: tokenColor("--dev3-text-primary"), formatter: "{b}\n{c}%" } },
-        data: [
-          { name: "Running", value: pipelineShare[0] },
-          { name: "Review", value: pipelineShare[1] },
-          { name: "Blocked", value: pipelineShare[2] },
-        ],
-      }],
-    }));
-
-    const capabilityRadar = dev3Chart(document.getElementById("capabilityRadar"), () => ({
-      tooltip: {},
-      legend: { bottom: 0, icon: "roundRect" },
-      radar: { indicator: radarLabels.map((name) => ({ name, max: 100 })), radius: "64%", center: ["50%", "46%"] },
-      series: [{
-        type: "radar",
-        symbol: "circle",
-        symbolSize: 5,
-        data: [
-          { name: "Current scenario", value: capabilityValues, lineStyle: { width: 3 }, areaStyle: { opacity: .22 } },
-          { name: "Target", value: radarTarget, symbol: "none", lineStyle: { type: "dashed", width: 2, color: tokenColor("--dev3-success") }, itemStyle: { color: tokenColor("--dev3-success") } },
-        ],
-      }],
-    }));
-
-    // ---- chart gallery: one host, four more chart types -----------------------
-    // Switching series *type* needs a fresh mount (setOption merges would keep
-    // stale axes/components), so the tab handler calls remount(), not update().
-    const galleryHours = ["8a", "9a", "10a", "11a", "12p", "1p", "2p", "3p", "4p", "5p", "6p", "7p"];
-    const galleryDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    let galleryType = "heatmap";
-
-    const galleryOptions = {
-      heatmap: () => ({
-        grid: { left: 44, right: 16, top: 14, bottom: 44 },
-        tooltip: { position: "top", formatter: (p) => `${galleryDays[p.value[1]]} ${galleryHours[p.value[0]]}: ${p.value[2]} runs` },
-        xAxis: { type: "category", data: galleryHours },
-        yAxis: { type: "category", data: galleryDays },
-        visualMap: {
-          min: 0, max: 10, orient: "horizontal", left: "center", bottom: 0,
-          itemWidth: 10, itemHeight: 90,
-          textStyle: { color: tokenColor("--dev3-text-muted"), fontSize: 10 },
-          inRange: { color: [tokenColor("--dev3-accent", .06), tokenColor("--dev3-accent")] },
-        },
-        series: [{
-          type: "heatmap",
-          itemStyle: { borderColor: tokenColor("--dev3-surface-raised"), borderWidth: 2, borderRadius: 3 },
-          data: galleryDays.flatMap((_, day) => galleryHours.map((_, hour) => [hour, day, (day * 5 + hour * 7 + 3) % 11])),
-        }],
-      }),
-      sankey: () => ({
-        tooltip: { trigger: "item" },
-        series: [{
-          type: "sankey",
-          left: 12, right: 80, top: 14, bottom: 14,
-          nodeGap: 14,
-          lineStyle: { color: "gradient", opacity: .25, curveness: .5 },
-          itemStyle: { borderRadius: 4 },
-          label: { color: tokenColor("--dev3-text-secondary"), fontSize: 11 },
-          // Sankey ignores palette order for nodes — color each node explicitly.
-          data: [
-            { name: "Backlog", itemStyle: { color: tokenColor("--dev3-text-muted") } },
-            { name: "Planned", itemStyle: { color: tokenColor("--dev3-accent", .55) } },
-            { name: "In progress", itemStyle: { color: tokenColor("--dev3-accent") } },
-            { name: "Review", itemStyle: { color: tokenColor("--dev3-warning") } },
-            { name: "Shipped", itemStyle: { color: tokenColor("--dev3-success") } },
-            { name: "Rework", itemStyle: { color: tokenColor("--dev3-warning", .7) } },
-            { name: "Blocked", itemStyle: { color: tokenColor("--dev3-danger") } },
-          ],
-          links: [
-            { source: "Backlog", target: "Planned", value: 34 },
-            { source: "Backlog", target: "Blocked", value: 4 },
-            { source: "Planned", target: "In progress", value: 30 },
-            { source: "In progress", target: "Review", value: 26 },
-            { source: "In progress", target: "Blocked", value: 4 },
-            { source: "Review", target: "Shipped", value: 22 },
-            { source: "Review", target: "Rework", value: 4 },
-          ],
-        }],
-      }),
-      sunburst: () => ({
-        tooltip: { trigger: "item", formatter: "{b}: {c}" },
-        series: [{
-          type: "sunburst",
-          radius: ["18%", "90%"],
-          itemStyle: { borderColor: tokenColor("--dev3-surface-raised"), borderWidth: 2, borderRadius: 6 },
-          label: { fontSize: 10, minAngle: 14 },
-          data: [
-            { name: "App", children: [{ name: "UI", value: 14 }, { name: "State", value: 8 }, { name: "RPC", value: 6 }] },
-            { name: "CLI", children: [{ name: "Commands", value: 9 }, { name: "Hooks", value: 5 }] },
-            { name: "Infra", children: [{ name: "CI", value: 6 }, { name: "Release", value: 4 }] },
-          ],
-        }],
-      }),
-      gauge: () => ({
-        series: [{
-          type: "gauge",
-          startAngle: 210, endAngle: -30, min: 0, max: 100,
-          progress: { show: true, width: 14, roundCap: true },
-          axisLine: { lineStyle: { width: 14, color: [[1, tokenColor("--dev3-border", .55)]] } },
-          axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false }, pointer: { show: false }, anchor: { show: false },
-          title: { offsetCenter: [0, "30%"], color: tokenColor("--dev3-text-secondary"), fontSize: 12 },
-          detail: { offsetCenter: [0, "-6%"], formatter: "{value}%", color: tokenColor("--dev3-text-primary"), fontSize: 30, fontWeight: 700, valueAnimation: true },
-          itemStyle: { color: tokenColor("--dev3-accent") },
-          data: [{ value: 94, name: "Agent success" }],
-        }],
-      }),
-    };
-
-    const galleryChart = dev3Chart(document.getElementById("galleryChart"), () => galleryOptions[galleryType]());
-
-    document.getElementById("galleryTabs").addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-gallery]");
-      if (!button) return;
-      galleryType = button.dataset.gallery;
-      document.querySelectorAll("[data-gallery]").forEach((item) => item.classList.toggle("active", item === button));
-      galleryChart.remount();
-    });
-
-    // ---- table, scenario, and shell wiring ------------------------------------
-    function statusClass(status) {
-      return status === "Shipped" ? "success" : status === "Review" ? "warning" : "accent";
-    }
-
-    function renderTable() {
-      const query = search.value.toLowerCase();
-      const filter = statusFilter.value;
-      const shown = runs
-        .filter((run) => (filter === "all" || run.status === filter) && run.name.toLowerCase().includes(query))
-        .sort((a, b) => String(a[sortKey]).localeCompare(String(b[sortKey]), undefined, { numeric: true }) * sortDirection);
-      runRows.innerHTML = shown.map((run) => `<tr><td><strong>${run.name}</strong></td><td><span class="pill ${statusClass(run.status)}">${run.status}</span></td><td>${run.agent}</td><td><div class="bar-cell"><div class="mini-track"><div class="mini-fill" style="width:${run.progress}%"></div></div><span>${run.progress}%</span></div></td><td>${run.cycle}</td></tr>`).join("");
-      empty.hidden = shown.length > 0;
-    }
-
-    function showToast(message) {
-      toast.textContent = message;
-      toast.classList.add("show");
-      clearTimeout(window.toastTimer);
-      window.toastTimer = setTimeout(() => toast.classList.remove("show"), 1800);
-    }
-
-    function scenarioRadar(risk, agentCount) {
-      return [
-        Math.min(98, 54 + agentCount * 3 + risk * 2),
-        Math.max(48, 96 - risk * 3),
-        Math.min(96, 48 + agentCount * 4 + risk),
-        Math.max(52, 91 - risk * 2),
-        Math.min(97, 58 + agentCount * 2 + risk * 2),
-        Math.max(45, 94 - risk * 3 + agentCount),
-      ];
-    }
-
-    function simulate() {
-      const risk = Number(document.getElementById("risk").value);
-      const agentCount = Number(document.getElementById("agents").value.split(" ")[0]);
-      shipped.textContent = 118 + risk * agentCount;
-      success.textContent = `${(97.2 - risk * .45).toFixed(1)}%`;
-      cycle.textContent = `${Math.max(9, 30 - agentCount - risk)}m`;
-      queue.textContent = Math.max(2, 12 - risk);
-      const running = Math.min(78, 50 + risk * 2);
-      const review = Math.min(94, running + 22);
-      velocityValues = datasets[currentPeriod].map((value, index) => Math.round(value * (.82 + risk * .035) + (index % 3) * agentCount / 3));
-      pipelineShare = [running, review - running, 100 - review];
-      capabilityValues = scenarioRadar(risk, agentCount);
-      velocityChart.update();
-      pipelinePie.update();
-      capabilityRadar.update();
-      showToast(`Scenario recalculated with ${agentCount} agents`);
-    }
-
-    document.getElementById("periods").addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-period]");
-      if (!button) return;
-      currentPeriod = Number(button.dataset.period);
-      document.querySelectorAll("[data-period]").forEach((item) => item.classList.toggle("active", item === button));
-      velocityValues = datasets[currentPeriod];
-      velocityChart.update();
-      showToast(`${currentPeriod} day window loaded`);
-    });
-
-    function applyDemoTheme() {
-      const theme = themeMode === "auto" ? hostTheme : themeMode;
-      document.documentElement.dataset.theme = theme;
-      artifactTheme.textContent = themeMode === "auto" ? "◐ Auto" : themeMode === "light" ? "☀ Light" : "☾ Dark";
-      artifactTheme.title = themeMode === "auto" ? "Theme: Follow host" : `Theme: ${themeMode}`;
-      showToast(themeMode === "auto" ? "Following the host theme" : `Artifact theme: ${themeMode}`);
-    }
-
-    window.addEventListener("message", (event) => {
-      if (event.data?.type !== "dev3-artifact-theme") return;
-      hostTheme = event.data.theme;
-      if (themeMode === "auto") document.documentElement.dataset.theme = hostTheme;
-    });
-    artifactTheme.addEventListener("click", () => {
-      themeMode = themeMode === "auto" ? "light" : themeMode === "light" ? "dark" : "auto";
-      applyDemoTheme();
-    });
-    document.getElementById("risk").addEventListener("input", (event) => { riskValue.textContent = `${event.target.value} / 10`; });
-    document.getElementById("scenarioForm").addEventListener("submit", (event) => { event.preventDefault(); simulate(); });
-    document.getElementById("scenarioForm").addEventListener("reset", () => setTimeout(() => { riskValue.textContent = "6 / 10"; showToast("Scenario reset"); }, 0));
-    document.getElementById("runTop").addEventListener("click", simulate);
-    refresh.addEventListener("click", () => {
-      refresh.textContent = "↻ Refreshing…";
-      setTimeout(() => { refresh.textContent = "↻ Refresh"; showToast("Live data refreshed"); }, 650);
-    });
-    search.addEventListener("input", renderTable);
-    statusFilter.addEventListener("change", renderTable);
-    document.querySelectorAll("th[data-sort]").forEach((heading) => {
-      const sort = () => {
-        sortDirection = sortKey === heading.dataset.sort ? -sortDirection : 1;
-        sortKey = heading.dataset.sort;
-        renderTable();
-      };
-      heading.addEventListener("click", sort);
-      heading.addEventListener("keydown", (event) => {
-        if (event.key !== "Enter" && event.key !== " ") return;
-        event.preventDefault();
-        sort();
-      });
-    });
-
-    renderTable();
-  </script>
+  <script src="app.js" data-dev3-artifact-shell></script>
+  <script src="report.js"></script>
 </body>
 </html>

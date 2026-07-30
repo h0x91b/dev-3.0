@@ -4,11 +4,9 @@ interface ArtifactAssetPayload {
 	dataUrl: string;
 }
 
-// The iframe sandbox (opaque origin, allow-scripts only) is the security boundary,
-// not this CSP: artifacts may load libraries from any origin and talk to any server
-// (fetch/WebSocket) so agents can build integrations with the user's own services or
-// the dev3 dev server (decision 163). Only plugin/base-url legacy vectors stay closed.
-const CSP = "default-src data: blob: https: http:; script-src 'unsafe-inline' data: blob: https: http:; style-src 'unsafe-inline' data: blob: https: http:; connect-src data: blob: https: http: ws: wss:; object-src 'none'; base-uri 'none'";
+// The opaque-origin iframe sandbox is the security boundary. Keep CSP permissive so
+// artifact runtimes, CDN assets, desktop schemes, fetch, and WebSockets just work.
+const CSP = "default-src * data: blob: file: views: 'unsafe-inline' 'unsafe-eval'; connect-src * data: blob: file: views: ws: wss:";
 
 /**
  * Right-click "Save image" for artifact images. The iframe is opaque-origin and
@@ -31,19 +29,46 @@ function findScript(): string {
 }
 
 function assetKey(url: string): string | null {
-	if (/^(?:data:|blob:|https?:|\/\/|#)/i.test(url)) return null;
-	const clean = url.split(/[?#]/, 1)[0].replace(/^\.\//, "");
+	const clean = url.trim().split(/[?#]/, 1)[0];
+	if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#|\/)/i.test(clean)) return null;
+	let decoded: string;
 	try {
-		return decodeURIComponent(clean);
+		decoded = decodeURIComponent(clean);
 	} catch {
-		return clean;
+		decoded = clean;
 	}
+	const segments: string[] = [];
+	for (const segment of decoded.split("/")) {
+		if (!segment || segment === ".") continue;
+		if (segment === "..") {
+			if (segments.length === 0) return null;
+			segments.pop();
+			continue;
+		}
+		segments.push(segment);
+	}
+	return segments.join("/") || null;
+}
+
+function rewriteAssetAttribute(
+	source: string,
+	pattern: RegExp,
+	rewrite: (value: string) => string,
+): string {
+	return source.replace(pattern, (match, prefix: string, quote: string | undefined, quoted: string | undefined, bare: string | undefined) => {
+		const value = quote ? quoted : bare;
+		if (value === undefined) return match;
+		const rewritten = rewrite(value);
+		if (rewritten === value) return match;
+		const outputQuote = quote || "\"";
+		return `${prefix}${outputQuote}${rewritten}${outputQuote}`;
+	});
 }
 
 /**
  * Prepare stored artifact HTML for an opaque-origin sandboxed iframe.
- * Relative raster references are replaced with the copied assets' data URLs;
- * everything else remains visible in source but is blocked by the injected CSP.
+ * Relative local asset references are replaced with copied data URLs so CSS,
+ * classic scripts, and raster images work without giving the iframe an origin.
  */
 export function composeArtifactDocument(source: string, assets: ArtifactAssetPayload[], saveImageLabel?: string): string {
 	const byName = new Map(assets.map((asset) => [asset.name, asset.dataUrl]));
@@ -52,19 +77,23 @@ export function composeArtifactDocument(source: string, assets: ArtifactAssetPay
 		return (key && byName.get(key)) || url;
 	};
 
-	let html = source.replace(
-		/(\b(?:src|poster)\s*=\s*)(["'])(.*?)\2/gi,
-		(_match, prefix: string, quote: string, value: string) => `${prefix}${quote}${resolve(value)}${quote}`,
+	let html = rewriteAssetAttribute(
+		source,
+		/((?:^|[\s<])(?:src|poster)\s*=\s*)(?:(["'])(.*?)\2|([^\s"'=<>`]+))/gi,
+		resolve,
 	);
-	html = html.replace(
-		/(\bsrcset\s*=\s*)(["'])(.*?)\2/gi,
-		(_match, prefix: string, quote: string, value: string) => {
-			const replaced = value.split(",").map((candidate) => {
+	html = rewriteAssetAttribute(
+		html,
+		/(<link\b[^>]*?\shref\s*=\s*)(?:(["'])(.*?)\2|([^\s"'=<>`]+))/gi,
+		resolve,
+	);
+	html = rewriteAssetAttribute(
+		html,
+		/((?:^|[\s<])srcset\s*=\s*)(?:(["'])(.*?)\2|([^\s"'=<>`]+))/gi,
+		(value) => value.split(",").map((candidate) => {
 				const parts = candidate.trim().split(/\s+/);
 				return [resolve(parts[0]), ...parts.slice(1)].join(" ");
-			}).join(", ");
-			return `${prefix}${quote}${replaced}${quote}`;
-		},
+			}).join(", "),
 	);
 	html = html.replace(
 		/url\(\s*(["']?)(.*?)\1\s*\)/gi,

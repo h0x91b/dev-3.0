@@ -18,11 +18,13 @@ const CTX: CliContext = {
 };
 const DIR = mkdtempSync(join(tmpdir(), "dev3-showartifact-cli-"));
 const HTML = join(DIR, "report.html");
+const CSS = join(DIR, "app.css");
+const JS = join(DIR, "app.js");
 const PNG = join(DIR, "chart.png");
-const PNG2 = join(DIR, "diagram.webp");
 writeFileSync(HTML, "<!doctype html><h1>Report</h1>");
+writeFileSync(CSS, "body { color: red; }");
+writeFileSync(JS, "document.body.dataset.ready = 'true';");
 writeFileSync(PNG, "PNG");
-writeFileSync(PNG2, "WEBP");
 
 afterAll(() => rmSync(DIR, { recursive: true, force: true }));
 
@@ -48,22 +50,22 @@ afterEach(() => {
 });
 
 describe("show-artifact", () => {
-	it("sends one HTML file plus every path following --images", async () => {
+	it("sends one HTML file plus every path following --assets", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
-		await handleShowArtifact([HTML, "--images", PNG, PNG2, "--title", "Metrics"], SOCKET, CTX);
+		await handleShowArtifact([HTML, "--assets", CSS, JS, PNG, "--title", "Metrics"], SOCKET, CTX);
 		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", {
 			taskId: CTX.taskId,
 			projectId: CTX.projectId,
 			htmlPath: HTML,
-			imagePaths: [PNG, PNG2],
+			assetPaths: [CSS, JS, PNG],
 			title: "Metrics",
 		});
 	});
 
-	it("supports an artifact with no images", async () => {
+	it("supports an artifact with no local assets", async () => {
 		mockSend.mockResolvedValue(okResp({ delivered: true, stored: 1, taskId: CTX.taskId }));
 		await handleShowArtifact([HTML], SOCKET, CTX);
-		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({ imagePaths: [] }));
+		expect(mockSend).toHaveBeenCalledWith(SOCKET, "ui.show-artifact", expect.objectContaining({ assetPaths: [] }));
 	});
 
 	it("reports an artifact viewer queued by Focus Mode", async () => {
@@ -74,9 +76,10 @@ describe("show-artifact", () => {
 
 	it("rejects non-HTML input and unsupported assets", async () => {
 		await expect(handleShowArtifact([PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		await expect(handleShowArtifact([HTML, "--images", PNG], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		const txt = join(DIR, "bad.txt");
 		writeFileSync(txt, "x");
-		await expect(handleShowArtifact([HTML, "--images", txt], SOCKET, CTX)).rejects.toThrow("EXIT_3");
+		await expect(handleShowArtifact([HTML, "--assets", txt], SOCKET, CTX)).rejects.toThrow("EXIT_3");
 		expect(mockSend).not.toHaveBeenCalled();
 	});
 });

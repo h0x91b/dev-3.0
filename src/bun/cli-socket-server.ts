@@ -1183,14 +1183,14 @@ const handlers: Record<string, Handler> = {
 		if ((await loadSettings()).focusMode) setFocusMode(true);
 		const htmlPath = typeof params.htmlPath === "string" ? params.htmlPath : "";
 		if (!htmlPath) throw new Error("HTML artifact path is required");
-		const imagePaths = Array.isArray(params.imagePaths)
-			? params.imagePaths.filter((path): path is string => typeof path === "string" && path.length > 0)
+		const assetPaths = Array.isArray(params.assetPaths)
+			? params.assetPaths.filter((path): path is string => typeof path === "string" && path.length > 0)
 			: [];
 		const title = typeof params.title === "string" && params.title.trim() ? params.title.trim() : undefined;
 
 		let incoming: SharedArtifact;
 		try {
-			incoming = saveSharedArtifact(project.path, htmlPath, imagePaths, title);
+			incoming = saveSharedArtifact(project.path, htmlPath, assetPaths, title);
 		} catch (error) {
 			if (error instanceof SharedArtifactError) throw error;
 			throw new Error(`Failed to store artifact: ${error instanceof Error ? error.message : String(error)}`);

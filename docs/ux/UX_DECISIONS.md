@@ -10,6 +10,12 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 - **Why:** the two live precedents disagreed (diff viewer = toolbar toggle, terminal = floating keyboard-only bar), and the artifact header is artifact-level chrome already at 8 slots — so the search *field* stays out of it while one icon is an accepted §11 exception (user-requested: a keyboard-only find is invisible to a pointer user). Rejected: a search input in the header, and multiple entry points per viewer.
 - **Status:** Observed (artifact viewer). Evidence: `TaskArtifactViewer.tsx`, `ArtifactSearchBar.tsx`, `TerminalSearchBar.tsx`, `TaskDiffViewer.tsx`, `utils/artifactDocument.ts`, `keymap.ts`.
 
+## 2026-07-29 — Artifact bundles separate authoring from the stable shell
+
+- **Rule:** A task artifact is an HTML entrypoint plus explicit local CSS/classic-JS/raster assets; agents normally edit only `index.html` and `report.js`, while the opaque-origin iframe sandbox provides isolation and CSP stays permissive for artifact runtimes.
+- **Why:** The single 800-line file forced agents to consume formatting code for content-only work; restrictive per-capability CSP repeatedly broke legitimate local and CDN assets without strengthening the sandbox boundary.
+- **Status:** Implemented. Evidence: `shared-artifacts.ts`, `artifactDocument.ts`, `artifact-template/AUTHORING.md`, decision 179. Supersedes the 2026-07-09 entry's security/export details.
+
 ## 2026-07-28 — A lifecycle split-control counts as ONE task-card inline action
 
 - **Rule:** The card's status control may carry a second half that commits the pipeline's own terminal move (today: a ✓ straight to Completed) and still spends one slot of the §9 `max_inline_actions: 2` budget — but only when it is glued to the status trigger, shares its hover surface, is desktop-only (the narrow path stays the BottomSheet's promoted Completed row, ≥44px), and hides whenever `getAllowedTransitions` forbids the target. Anything not on the object's own lifecycle is a normal action and costs its own slot.
@@ -132,9 +138,7 @@ git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
 ## 2026-07-09 — HTML Artifacts: sandboxed task workspace + separate Runtime control
 
-- **Rule:** `SharedArtifact` is a task-owned HTML output opened in a resizable workspace beside the terminal (one-at-a-time on narrow), with opaque-origin iframe sandbox + network-blocking CSP, live dev3 theme tokens, and HTML/ZIP download; Runtime keeps `Images` and `Artifacts` as separate conditional controls, an explicit budget exception chosen by the user.
-- **Why:** Interactive reports need to stay portable and usable alongside the agent; rejected a modal (blocks terminal), a TSX/backend mini-runtime (server/dependency/share burden), and a merged Outputs button (user requires distinct identities).
-- **Status:** Observed. Evidence: `TaskArtifactViewer.tsx`, `TaskWorkspacePane.tsx`, `shared-artifacts.ts`, decision 120.
+- Placement and Runtime-control rules remain in bible §5; the security/export contract is superseded by the 2026-07-29 artifact-bundle decision.
 
 ## 2026-07-06 — Feature-gated preset: shown-but-disabled + deep-link to enable
 

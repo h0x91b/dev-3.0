@@ -105,7 +105,7 @@ The dev3 skill (`SKILL.md`) is installed into each agent's skill directory. Thre
 - **Codex variant** — full body; hook-aware status section with manual fallback for older sessions, keeps the `/bin/bash` shell note. The same body is also injected out-of-band as a developer message via `-c developer_instructions=...` on every dev3 launch, including scratch tasks and resume (decision 115); the skill file remains the fallback for sessions started outside the dev3 launcher
 - **Generic variant** — full body (for Gemini it is the only protocol channel); full manual status management instructions ("CRITICAL — NON-NEGOTIABLE"), requires agents to run `dev3 task move` at start/end of every turn
 
-All variants teach the same two-step dev3 bug-feedback flow: send the private anonymous vent first, then offer to create a public `h0x91b/dev-3.0` GitHub issue with the `Reported by AI` label after explicit user approval. They also treat an unqualified interactive artifact/report/dashboard request as a likely dev3 HTML artifact, while preserving explicit Claude Artifact and build/package meanings, and require agents to copy the task-local starter before editing it.
+All variants teach the same two-step dev3 bug-feedback flow: send the private anonymous vent first, then offer to create a public `h0x91b/dev-3.0` GitHub issue with the `Reported by AI` label after explicit user approval. They also treat an unqualified interactive artifact/report/dashboard request as a likely dev3 HTML artifact while preserving explicit Claude Artifact and build/package meanings. Each receives the same fixed six-file starter map, exact copy command, two-file edit boundary, and `dev3 show-artifact --assets` publish command.
 
 ### dev3-project-config (project configuration)
 

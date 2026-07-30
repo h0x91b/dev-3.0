@@ -13,6 +13,7 @@ import {
 	getProjectConfigSkillContent,
 	getTmuxSkillContent,
 } from "../agent-skills";
+import { ARTIFACT_TEMPLATE_FILES } from "../artifact-template";
 import { hookCliDialect } from "../../shared/dev3-cli-path";
 
 // The Claude SKILL.md is deliberately short (the protocol lives in the system
@@ -65,10 +66,17 @@ describe("dev3 skill content", () => {
 		for (const skill of [CLAUDE_SKILL_BODY, getCodexSkillContent(), getGenericSkillContent()]) {
 			expect(skill).toContain("## dev3 HTML artifacts");
 			expect(skill).toContain("DEV3_ARTIFACT_TEMPLATE_DIR");
-			expect(skill).toContain("Copy the entire template directory");
-			expect(skill).toContain("Read `AUTHORING.md`");
+			expect(skill).toContain('cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report');
+			expect(skill).toContain("The layout is fixed; do not spend a turn listing or rediscovering it");
+			for (const file of ARTIFACT_TEMPLATE_FILES) {
+				expect(skill).toContain(`\`${file}\``);
+			}
+			expect(skill).toContain("Do not read the shell files for ordinary reports");
 			expect(skill).toContain("Claude Artifacts");
-			expect(skill).toContain("dev3 show-artifact");
+			expect(skill).toContain(
+				'dev3 show-artifact ./dev3-artifact-report/index.html --assets ./dev3-artifact-report/app.css ./dev3-artifact-report/report.js ./dev3-artifact-report/app.js ./dev3-artifact-report/dev3-icon.png --title "Report title"',
+			);
+			expect(skill).not.toContain("--images");
 		}
 	});
 

@@ -1,3 +1,5 @@
+import { deflateRawSync } from "node:zlib";
+
 interface ZipEntry {
 	name: string;
 	data: Uint8Array;
@@ -34,16 +36,19 @@ function safeName(name: string): string {
 	return normalized;
 }
 
-/**
- * Create a standards-compliant ZIP using the STORE method (no compression).
- * HTML is tiny and raster images are already compressed, so avoiding a ZIP
- * dependency keeps artifact export deterministic and available in every app
- * update channel.
- */
-export function createStoreZip(entries: ZipEntry[]): Uint8Array {
+/** Create a deterministic ZIP, deflating each entry only when that reduces its size. */
+export function createZip(entries: ZipEntry[]): Uint8Array {
 	const prepared = entries.map((entry) => {
 		const name = encoder.encode(safeName(entry.name));
-		return { ...entry, name, crc: crc32(entry.data) };
+		const deflated = deflateRawSync(entry.data, { level: 6 });
+		const useDeflate = deflated.byteLength < entry.data.byteLength;
+		return {
+			name,
+			data: useDeflate ? deflated : entry.data,
+			uncompressedSize: entry.data.byteLength,
+			crc: crc32(entry.data),
+			method: useDeflate ? 8 : 0,
+		};
 	});
 	const localSize = prepared.reduce((sum, entry) => sum + 30 + entry.name.length + entry.data.length, 0);
 	const centralSize = prepared.reduce((sum, entry) => sum + 46 + entry.name.length, 0);
@@ -56,12 +61,12 @@ export function createStoreZip(entries: ZipEntry[]): Uint8Array {
 		writeU32(output, offset, 0x04034b50);
 		writeU16(output, offset + 4, 20);
 		writeU16(output, offset + 6, 0x0800); // UTF-8 names
-		writeU16(output, offset + 8, 0); // STORE
+		writeU16(output, offset + 8, entry.method);
 		writeU16(output, offset + 10, 0);
 		writeU16(output, offset + 12, 33); // 1980-01-01
 		writeU32(output, offset + 14, entry.crc);
 		writeU32(output, offset + 18, entry.data.length);
-		writeU32(output, offset + 22, entry.data.length);
+		writeU32(output, offset + 22, entry.uncompressedSize);
 		writeU16(output, offset + 26, entry.name.length);
 		writeU16(output, offset + 28, 0);
 		output.set(entry.name, offset + 30);
@@ -75,12 +80,12 @@ export function createStoreZip(entries: ZipEntry[]): Uint8Array {
 		writeU16(output, offset + 4, 20);
 		writeU16(output, offset + 6, 20);
 		writeU16(output, offset + 8, 0x0800);
-		writeU16(output, offset + 10, 0);
+		writeU16(output, offset + 10, entry.method);
 		writeU16(output, offset + 12, 0);
 		writeU16(output, offset + 14, 33);
 		writeU32(output, offset + 16, entry.crc);
 		writeU32(output, offset + 20, entry.data.length);
-		writeU32(output, offset + 24, entry.data.length);
+		writeU32(output, offset + 24, entry.uncompressedSize);
 		writeU16(output, offset + 28, entry.name.length);
 		writeU16(output, offset + 30, 0);
 		writeU16(output, offset + 32, 0);

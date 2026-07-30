@@ -44,7 +44,7 @@ vi.mock("../shared-images", () => ({
 
 vi.mock("../shared-artifacts", () => ({
 	SharedArtifactError: class SharedArtifactError extends Error {},
-	saveSharedArtifact: vi.fn((_projectPath: string, htmlPath: string, imagePaths: string[], title?: string) => ({
+	saveSharedArtifact: vi.fn((_projectPath: string, htmlPath: string, assetPaths: string[], title?: string) => ({
 		id: "artifact-1",
 		kind: "html",
 		title: title || "report",
@@ -53,7 +53,7 @@ vi.mock("../shared-artifacts", () => ({
 		originalPath: htmlPath,
 		bytes: 10,
 		createdAt: 1,
-		assets: imagePaths.map((path) => ({
+		assets: assetPaths.map((path) => ({
 			name: path.split("/").pop(),
 			storedPath: `/wt/shared-artifacts/artifact-1/${path.split("/").pop()}`,
 			originalPath: path,
@@ -1173,7 +1173,7 @@ describe("ui.show-artifact", () => {
 		]);
 	});
 
-	it("stores HTML plus images and pushes taskUpdated + cliShowArtifact", async () => {
+	it("stores HTML plus local assets and pushes taskUpdated + cliShowArtifact", async () => {
 		const project = makeProject();
 		const task = makeTask({ seq: 14 });
 		const pushFn = vi.fn();
@@ -1189,12 +1189,17 @@ describe("ui.show-artifact", () => {
 			taskId: task.id,
 			projectId: project.id,
 			htmlPath: "/tmp/report.html",
-			imagePaths: ["/tmp/chart.png"],
+			assetPaths: ["/tmp/app.css", "/tmp/app.js", "/tmp/chart.png"],
 			title: "Metrics",
 		}));
 
 		expect(response.ok).toBe(true);
-		expect(saveSharedArtifact).toHaveBeenCalledWith(project.path, "/tmp/report.html", ["/tmp/chart.png"], "Metrics");
+		expect(saveSharedArtifact).toHaveBeenCalledWith(
+			project.path,
+			"/tmp/report.html",
+			["/tmp/app.css", "/tmp/app.js", "/tmp/chart.png"],
+			"Metrics",
+		);
 		expect(pushFn).toHaveBeenCalledWith("taskUpdated", expect.objectContaining({ projectId: project.id }));
 		expect(pushFn).toHaveBeenCalledWith(
 			"cliShowArtifact",

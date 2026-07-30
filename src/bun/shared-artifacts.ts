@@ -8,21 +8,23 @@ import {
 	writeFileSync,
 } from "node:fs";
 import type { Stats } from "node:fs";
-import { basename, dirname, extname, isAbsolute, relative, resolve as resolvePath, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, posix, relative, resolve as resolvePath, sep } from "node:path";
 import type { SharedArtifact, SharedArtifactAsset } from "../shared/types";
 import {
 	MAX_SHARED_ARTIFACT_HTML_BYTES,
-	MAX_SHARED_ARTIFACT_IMAGES,
-	MAX_SHARED_IMAGE_BYTES,
-	SHARED_IMAGE_EXTS,
+	MAX_SHARED_ARTIFACT_ASSET_BYTES,
+	MAX_SHARED_ARTIFACT_ASSETS,
+	SHARED_ARTIFACT_ASSET_EXTS,
 } from "../shared/types";
 import { DEV3_HOME } from "./paths";
-import { createStoreZip } from "./zip-store";
+import { createZip } from "./zip";
 import { projectSlug } from "./git";
 
-const IMAGE_EXTS = new Set(SHARED_IMAGE_EXTS);
+const ASSET_EXTS = new Set(SHARED_ARTIFACT_ASSET_EXTS);
 const MAX_TOTAL_ASSET_BYTES = 100 * 1024 * 1024;
 const MIME_BY_EXT: Record<string, string> = {
+	css: "text/css",
+	js: "text/javascript",
 	png: "image/png",
 	jpg: "image/jpeg",
 	jpeg: "image/jpeg",
@@ -51,13 +53,13 @@ function safeBasename(path: string): string {
 	return name;
 }
 
-function assetNameFor(htmlPath: string, imagePath: string): string {
-	const fromHtml = relative(dirname(htmlPath), imagePath);
+function assetNameFor(htmlPath: string, assetPath: string): string {
+	const fromHtml = relative(dirname(htmlPath), assetPath);
 	if (fromHtml && !isAbsolute(fromHtml) && fromHtml !== ".." && !fromHtml.startsWith(`..${sep}`)) {
 		const segments = fromHtml.split(sep).map((segment) => safeBasename(segment));
 		return segments.join("/");
 	}
-	throw new SharedArtifactError(`Artifact image must be inside the HTML directory: ${imagePath}`);
+	throw new SharedArtifactError(`Artifact asset must be inside the HTML directory: ${assetPath}`);
 }
 
 function assertSourceFile(path: string): Stats {
@@ -70,6 +72,11 @@ function assertSourceFile(path: string): Stats {
 	return stat;
 }
 
+function base64DataUrl(mime: string, data: Uint8Array): string {
+	const charset = mime.startsWith("text/") ? ";charset=utf-8" : "";
+	return `data:${mime}${charset};base64,${Buffer.from(data).toString("base64")}`;
+}
+
 export function injectArtifactThemeContract(source: string): string {
 	if (source.includes("data-dev3-artifact-shell")) return source;
 	const headEnd = source.search(/<\/head\s*>/i);
@@ -79,11 +86,11 @@ export function injectArtifactThemeContract(source: string): string {
 	return `${ARTIFACT_THEME_CONTRACT}${source}`;
 }
 
-/** Copy one HTML artifact plus optional raster assets and build its ZIP bundle. */
+/** Copy one HTML artifact plus optional local assets and build its ZIP bundle. */
 export function saveSharedArtifact(
 	projectPath: string,
 	htmlPath: string,
-	imagePaths: string[],
+	assetPaths: string[],
 	title?: string,
 ): SharedArtifact {
 	const htmlStat = assertSourceFile(htmlPath);
@@ -93,24 +100,24 @@ export function saveSharedArtifact(
 	if (htmlStat.size > MAX_SHARED_ARTIFACT_HTML_BYTES) {
 		throw new SharedArtifactError(`HTML artifact is too large (max ${MAX_SHARED_ARTIFACT_HTML_BYTES / 1024 / 1024} MB)`);
 	}
-	if (imagePaths.length > MAX_SHARED_ARTIFACT_IMAGES) {
-		throw new SharedArtifactError(`Too many artifact images (max ${MAX_SHARED_ARTIFACT_IMAGES})`);
+	if (assetPaths.length > MAX_SHARED_ARTIFACT_ASSETS) {
+		throw new SharedArtifactError(`Too many artifact assets (max ${MAX_SHARED_ARTIFACT_ASSETS})`);
 	}
 	const seenNames = new Set<string>();
 	let totalAssetBytes = 0;
-	const validatedAssets = imagePaths.map((path) => {
+	const validatedAssets = assetPaths.map((path) => {
 		const stat = assertSourceFile(path);
 		const name = assetNameFor(htmlPath, path);
 		const ext = extname(name).replace(/^\./, "").toLowerCase();
-		if (!IMAGE_EXTS.has(ext)) throw new SharedArtifactError(`Unsupported artifact image type "${ext || "(none)"}": ${path}`);
-		if (stat.size > MAX_SHARED_IMAGE_BYTES) throw new SharedArtifactError(`Artifact image is too large: ${path}`);
-		if (seenNames.has(name)) throw new SharedArtifactError(`Duplicate artifact image name: ${name}`);
+		if (!ASSET_EXTS.has(ext)) throw new SharedArtifactError(`Unsupported artifact asset type "${ext || "(none)"}": ${path}`);
+		if (stat.size > MAX_SHARED_ARTIFACT_ASSET_BYTES) throw new SharedArtifactError(`Artifact asset is too large: ${path}`);
+		if (seenNames.has(name)) throw new SharedArtifactError(`Duplicate artifact asset name: ${name}`);
 		seenNames.add(name);
 		totalAssetBytes += stat.size;
 		return { path, name, ext, stat };
 	});
 	if (totalAssetBytes > MAX_TOTAL_ASSET_BYTES) {
-		throw new SharedArtifactError("Artifact images exceed the 100 MB combined limit");
+		throw new SharedArtifactError("Artifact assets exceed the 100 MB combined limit");
 	}
 
 	const id = crypto.randomUUID();
@@ -142,7 +149,7 @@ export function saveSharedArtifact(
 		};
 		if (assets.length > 0) {
 			const bundlePath = `${dir}/${baseTitle}.zip`;
-			const zip = createStoreZip([
+			const zip = createZip([
 				{ name: htmlName, data: new TextEncoder().encode(html) },
 				...assets.map((asset) => ({ name: asset.name, data: new Uint8Array(readFileSync(asset.storedPath)) })),
 			]);
@@ -182,12 +189,68 @@ export function loadSharedArtifactContent(artifact: SharedArtifact): {
 } {
 	assertStoredArtifactRecord(artifact);
 	const html = readFileSync(artifact.storedPath, "utf8");
-	const assets = artifact.assets.map((asset) => ({
-		name: asset.name,
-		mime: asset.mime,
-		dataUrl: `data:${asset.mime};base64,${readFileSync(asset.storedPath).toString("base64")}`,
-	}));
-	return { html, assets };
+	const assets = artifact.assets.map((asset) => {
+		const data = readFileSync(asset.storedPath);
+		return { name: asset.name, mime: asset.mime, data };
+	});
+	const assetsByName = new Map(assets.map((asset) => [asset.name, asset]));
+	const renderedDataUrls = new Map<string, string>();
+	const rendering = new Set<string>();
+
+	const localAssetName = (ownerName: string, value: string): string | null => {
+		if (/^(?:data:|blob:|https?:|\/\/|#)/i.test(value)) return null;
+		const clean = value.split(/[?#]/, 1)[0];
+		let decoded: string;
+		try { decoded = decodeURIComponent(clean); } catch { decoded = clean; }
+		return posix.normalize(posix.join(posix.dirname(ownerName), decoded));
+	};
+
+	const renderDataUrl = (name: string): string | undefined => {
+		const cached = renderedDataUrls.get(name);
+		if (cached) return cached;
+		const asset = assetsByName.get(name);
+		if (!asset) return undefined;
+		if (asset.mime !== "text/css") {
+			const dataUrl = base64DataUrl(asset.mime, asset.data);
+			renderedDataUrls.set(name, dataUrl);
+			return dataUrl;
+		}
+		if (rendering.has(name)) throw new SharedArtifactError(`Circular CSS @import: ${name}`);
+
+		rendering.add(name);
+		try {
+			let css = asset.data.toString("utf8").replace(
+				/@import\s+(["'])(.*?)\1/gi,
+				(match, quote: string, value: string) => {
+					const importedName = localAssetName(asset.name, value);
+					const dataUrl = importedName ? renderDataUrl(importedName) : undefined;
+					return dataUrl ? `@import ${quote}${dataUrl}${quote}` : match;
+				},
+			);
+			css = css.replace(
+				/url\(\s*(["']?)(.*?)\1\s*\)/gi,
+				(match, quote: string, value: string) => {
+					const referencedName = localAssetName(asset.name, value);
+					const dataUrl = referencedName ? renderDataUrl(referencedName) : undefined;
+					return dataUrl ? `url(${quote}${dataUrl}${quote})` : match;
+				},
+			);
+			const dataUrl = base64DataUrl(asset.mime, Buffer.from(css));
+			renderedDataUrls.set(name, dataUrl);
+			return dataUrl;
+		} finally {
+			rendering.delete(name);
+		}
+	};
+
+	return {
+		html,
+		assets: assets.map((asset) => ({
+			name: asset.name,
+			mime: asset.mime,
+			dataUrl: renderDataUrl(asset.name)!,
+		})),
+	};
 }
 
 /** Strip control, separator and Windows-illegal characters so a title is a safe download stem. */

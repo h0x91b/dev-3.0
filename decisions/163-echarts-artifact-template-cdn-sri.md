@@ -1,5 +1,7 @@
 # 163 — ECharts in the artifact starter via SRI-pinned CDN script
 
+Superseded by decision 181. Artifact CDN URLs remain version-pinned, but byte-level SRI checks were removed because provider byte drift repeatedly broke otherwise compatible reports.
+
 ## Context
 
 The v1 artifact starter drew its charts with ~150 lines of hand-rolled SVG math (decision 153), which capped both visual quality and the chart types agents could realistically produce. The user asked for a proper charting library so artifacts get beautiful interactive charts with minimal authoring code. Decision 153 rejected chart libraries only in their unpinned runtime-CDN form.

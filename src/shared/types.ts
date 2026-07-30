@@ -1385,7 +1385,7 @@ export interface Task {
 	/**
 	 * HTML artifacts an agent surfaced via `dev3 show-artifact`, oldest→newest.
 	 * Each artifact is stored in its own additive `shared-artifacts/<id>/`
-	 * directory together with any `--images` assets and an optional ZIP bundle.
+	 * directory together with any `--assets` files and an optional ZIP bundle.
 	 */
 	sharedArtifacts?: SharedArtifact[];
 	/**
@@ -1618,8 +1618,14 @@ export const MAX_SHARED_IMAGES_PER_CALL = 20;
 /** Maximum accepted HTML source size for `dev3 show-artifact` (bytes). */
 export const MAX_SHARED_ARTIFACT_HTML_BYTES = 5 * 1024 * 1024;
 
-/** Maximum raster assets accepted by one `dev3 show-artifact --images` call. */
-export const MAX_SHARED_ARTIFACT_IMAGES = 20;
+/** Local asset extensions accepted by `dev3 show-artifact --assets`. */
+export const SHARED_ARTIFACT_ASSET_EXTS: readonly string[] = ["css", "js", ...SHARED_IMAGE_EXTS];
+
+/** Maximum local assets accepted by one `dev3 show-artifact --assets` call. */
+export const MAX_SHARED_ARTIFACT_ASSETS = 40;
+
+/** Per-file size cap for a local HTML artifact asset (bytes). */
+export const MAX_SHARED_ARTIFACT_ASSET_BYTES = 25 * 1024 * 1024;
 
 // ---- Package scripts runner ----
 
@@ -1992,9 +1998,9 @@ export interface SharedImage {
 	createdAt: number;
 }
 
-/** One raster asset copied beside a task-bound HTML artifact. */
+/** One local asset copied beside a task-bound HTML artifact. */
 export interface SharedArtifactAsset {
-	/** Basename preserved so relative references in the HTML keep working. */
+	/** Relative path preserved so references in HTML and CSS keep working. */
 	name: string;
 	storedPath: string;
 	originalPath: string;
@@ -2007,7 +2013,7 @@ export interface SharedArtifactAsset {
  *
  * The stored HTML contains the stable dev3 artifact theme contract. When
  * `assets` is non-empty, `bundlePath` points at a portable ZIP containing the
- * HTML and every copied image at the archive root.
+ * HTML and every copied local asset at its relative path.
  */
 export interface SharedArtifact {
 	id: string;
@@ -3700,7 +3706,7 @@ export type AppRPCSchema = {
 			};
 			/**
 			 * CLI-shared HTML artifacts (`dev3 show-artifact`). Same delivery model as
-			 * {@link cliShowImage} but for self-contained artifacts.
+			 * {@link cliShowImage} but for portable HTML bundles.
 			 */
 			cliShowArtifact: {
 				taskId: string;

@@ -9,13 +9,20 @@ describe("composeArtifactDocument", () => {
 			{ name: "diagram.webp", mime: "image/webp", dataUrl: "data:image/webp;base64,BBB" },
 		]);
 		expect(output).toContain("Content-Security-Policy");
-		// Artifacts may load libraries from any origin and reach any server —
-		// the iframe sandbox, not the CSP, is the isolation boundary (decision 163).
-		expect(output).toContain("script-src 'unsafe-inline' data: blob: https: http:");
-		expect(output).toContain("connect-src data: blob: https: http: ws: wss:");
-		expect(output).toContain("object-src 'none'");
+		// The iframe sandbox, not CSP, is the artifact security boundary.
+		expect(output).toContain("default-src * data: blob: file: views: 'unsafe-inline' 'unsafe-eval'");
+		expect(output).toContain("connect-src * data: blob: file: views: ws: wss:");
 		expect(output).toContain('src="data:image/png;base64,AAA"');
 		expect(output).toContain("url('data:image/webp;base64,BBB')");
+	});
+
+	it("keeps the sandbox CSP permissive for desktop schemes and artifact runtimes", () => {
+		const output = composeArtifactDocument("<!doctype html><p>Artifact</p>", []);
+
+		expect(output).toContain("default-src * data: blob: file: views: 'unsafe-inline' 'unsafe-eval'");
+		expect(output).toContain("connect-src * data: blob: file: views: ws: wss:");
+		expect(output).not.toContain("object-src 'none'");
+		expect(output).not.toContain("base-uri 'none'");
 	});
 
 	it("rewrites nested relative image paths without flattening them", () => {
@@ -23,6 +30,49 @@ describe("composeArtifactDocument", () => {
 			{ name: "assets/charts/q1.png", mime: "image/png", dataUrl: "data:image/png;base64,NESTED" },
 		]);
 		expect(output).toContain('src="data:image/png;base64,NESTED"');
+	});
+
+	it("rewrites local stylesheets and classic scripts for the srcdoc sandbox", () => {
+		const output = composeArtifactDocument(
+			'<html><head><link rel="stylesheet" href="./app.css"></head><body><a href="app.css">Source</a><script defer src="app.js"></script></body></html>',
+			[
+				{ name: "app.css", mime: "text/css", dataUrl: "data:text/css;base64,Q1NT" },
+				{ name: "app.js", mime: "text/javascript", dataUrl: "data:text/javascript;base64,SlM=" },
+			],
+		);
+
+		expect(output).toContain('rel="stylesheet" href="data:text/css;base64,Q1NT"');
+		expect(output).toContain('defer src="data:text/javascript;base64,SlM="');
+		expect(output).toContain('<a href="app.css">Source</a>');
+	});
+
+	it("canonicalizes dot segments in quoted local asset paths", () => {
+		const output = composeArtifactDocument(
+			'<html><head><link rel="stylesheet" href="./nested/../app.css"></head><body><script src="./nested/../app.js"></script></body></html>',
+			[
+				{ name: "app.css", mime: "text/css", dataUrl: "data:text/css;charset=utf-8;base64,Q1NT" },
+				{ name: "app.js", mime: "text/javascript", dataUrl: "data:text/javascript;charset=utf-8;base64,SlM=" },
+			],
+		);
+
+		expect(output).toContain('href="data:text/css;charset=utf-8;base64,Q1NT"');
+		expect(output).toContain('src="data:text/javascript;charset=utf-8;base64,SlM="');
+		expect(output).not.toContain("./nested/../");
+	});
+
+	it("rewrites unquoted local asset attributes and quotes the resulting data URLs", () => {
+		const output = composeArtifactDocument(
+			'<html><head><link rel=stylesheet href=app.css></head><body><script src=app.js></script><img src=chart.png></body></html>',
+			[
+				{ name: "app.css", mime: "text/css", dataUrl: "data:text/css;charset=utf-8;base64,Q1NT" },
+				{ name: "app.js", mime: "text/javascript", dataUrl: "data:text/javascript;charset=utf-8;base64,SlM=" },
+				{ name: "chart.png", mime: "image/png", dataUrl: "data:image/png;base64,UE5H" },
+			],
+		);
+
+		expect(output).toContain('href="data:text/css;charset=utf-8;base64,Q1NT"');
+		expect(output).toContain('src="data:text/javascript;charset=utf-8;base64,SlM="');
+		expect(output).toContain('src="data:image/png;base64,UE5H"');
 	});
 
 	it("leaves external URLs untouched — only copied relative assets are rewritten", () => {

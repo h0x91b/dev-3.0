@@ -55,21 +55,31 @@ describe("injectArtifactThemeContract", () => {
 describe("saveSharedArtifact", () => {
 	beforeEach(() => rmSync(TEST_HOME, { recursive: true, force: true }));
 
-	it("copies HTML and --images into one directory and creates a ZIP", () => {
+	it("copies HTML and local assets into one portable bundle", () => {
 		const html = join(SRC_DIR, "report.html");
 		const image = join(SRC_DIR, "chart.png");
-		writeFileSync(html, '<!doctype html><img src="chart.png">');
+		const css = join(SRC_DIR, "app.css");
+		const script = join(SRC_DIR, "app.js");
+		writeFileSync(html, '<!doctype html><link rel="stylesheet" href="app.css"><img src="chart.png"><script src="app.js"></script>');
 		writeFileSync(image, "PNGDATA");
+		writeFileSync(css, "body { color: red; }");
+		writeFileSync(script, "document.body.dataset.ready = 'true';");
 
-		const saved = saveSharedArtifact("/my/project", html, [image], "Quarterly report");
+		const saved = saveSharedArtifact("/my/project", html, [css, script, image], "Quarterly report");
 
 		expect(saved.title).toBe("Quarterly report");
 		expect(saved.isUnread).toBe(true);
 		expect(saved.name).toBe("report.html");
-		expect(saved.assets.map((item) => item.name)).toEqual(["chart.png"]);
+		expect(saved.assets.map((item) => [item.name, item.mime])).toEqual([
+			["app.css", "text/css"],
+			["app.js", "text/javascript"],
+			["chart.png", "image/png"],
+		]);
 		expect(dirname(saved.assets[0].storedPath)).toBe(dirname(saved.storedPath));
 		expect(readFileSync(saved.storedPath, "utf8")).toContain("data-dev3-artifact-shell");
-		expect(readFileSync(saved.assets[0].storedPath, "utf8")).toBe("PNGDATA");
+		expect(readFileSync(saved.assets[0].storedPath, "utf8")).toBe("body { color: red; }");
+		expect(readFileSync(saved.assets[1].storedPath, "utf8")).toContain("dataset.ready");
+		expect(readFileSync(saved.assets[2].storedPath, "utf8")).toBe("PNGDATA");
 		expect(saved.bundlePath).toBeTruthy();
 		expect(existsSync(saved.bundlePath!)).toBe(true);
 		expect(basename(saved.bundlePath!)).toBe("report.zip");
@@ -123,6 +133,24 @@ describe("saveSharedArtifact", () => {
 		expect(Buffer.from(download.base64, "base64").subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));
 	});
 
+	it("labels text asset data URLs as UTF-8", () => {
+		const html = join(SRC_DIR, "localized.html");
+		const css = join(SRC_DIR, "localized.css");
+		const script = join(SRC_DIR, "localized.js");
+		writeFileSync(html, '<!doctype html><link rel="stylesheet" href="localized.css"><script src="localized.js"></script>');
+		writeFileSync(css, '.label::before { content: "Hello ✓ 🌍"; }');
+		writeFileSync(script, 'document.body.textContent = "Hello ✓ 🌍";');
+
+		const payload = loadSharedArtifactContent(saveSharedArtifact("/my/project", html, [css, script]));
+		const stylesheet = payload.assets.find((asset) => asset.name === "localized.css");
+		const javascript = payload.assets.find((asset) => asset.name === "localized.js");
+
+		expect(stylesheet?.dataUrl).toMatch(/^data:text\/css;charset=utf-8;base64,/);
+		expect(javascript?.dataUrl).toMatch(/^data:text\/javascript;charset=utf-8;base64,/);
+		expect(Buffer.from(stylesheet?.dataUrl.split(",", 2)[1] ?? "", "base64").toString("utf8")).toContain("Hello ✓ 🌍");
+		expect(Buffer.from(javascript?.dataUrl.split(",", 2)[1] ?? "", "base64").toString("utf8")).toContain("Hello ✓ 🌍");
+	});
+
 	it("preserves nested paths so extracted ZIP references remain portable", () => {
 		const html = join(SRC_DIR, "dupes.html");
 		const aDir = join(SRC_DIR, "a");
@@ -140,7 +168,57 @@ describe("saveSharedArtifact", () => {
 		expect(zip.includes(Buffer.from("b/same.png"))).toBe(true);
 	});
 
-	it("rejects images outside the HTML directory instead of creating a broken bundle", () => {
+	it("rewrites local URLs inside copied stylesheets for sandbox rendering", () => {
+		const root = join(SRC_DIR, "css-assets");
+		const styles = join(root, "styles");
+		const images = join(root, "images");
+		mkdirSync(styles, { recursive: true });
+		mkdirSync(images, { recursive: true });
+		const html = join(root, "index.html");
+		const css = join(styles, "app.css");
+		const image = join(images, "background.png");
+		writeFileSync(html, '<!doctype html><link rel="stylesheet" href="styles/app.css">');
+		writeFileSync(css, '.hero { background-image: url("../images/background.png"); }');
+		writeFileSync(image, "PNGDATA");
+
+		const saved = saveSharedArtifact("/my/project", html, [css, image]);
+		const payload = loadSharedArtifactContent(saved);
+		const stylesheet = payload.assets.find((asset) => asset.name === "styles/app.css");
+		const encoded = stylesheet?.dataUrl.split(",", 2)[1] ?? "";
+		const renderedCss = Buffer.from(encoded, "base64").toString("utf8");
+
+		expect(renderedCss).toContain("data:image/png;base64,");
+		expect(renderedCss).not.toContain("../images/background.png");
+	});
+
+	it("rewrites nested CSS imports and their local URLs for sandbox rendering", () => {
+		const root = join(SRC_DIR, "css-imports");
+		const styles = join(root, "styles");
+		const images = join(root, "images");
+		mkdirSync(styles, { recursive: true });
+		mkdirSync(images, { recursive: true });
+		const html = join(root, "index.html");
+		const appCss = join(styles, "app.css");
+		const themeCss = join(styles, "theme.css");
+		const image = join(images, "texture.png");
+		writeFileSync(html, '<!doctype html><link rel="stylesheet" href="styles/app.css">');
+		writeFileSync(appCss, '@import "./theme.css" screen;');
+		writeFileSync(themeCss, '.card { background: url("../images/texture.png"); }');
+		writeFileSync(image, "PNGDATA");
+
+		const saved = saveSharedArtifact("/my/project", html, [appCss, themeCss, image]);
+		const payload = loadSharedArtifactContent(saved);
+		const stylesheet = payload.assets.find((asset) => asset.name === "styles/app.css");
+		const renderedCss = Buffer.from(stylesheet?.dataUrl.split(",", 2)[1] ?? "", "base64").toString("utf8");
+		const importedDataUrl = renderedCss.match(/@import "(data:text\/css;charset=utf-8;base64,[^"]+)"/)?.[1];
+		const importedCss = Buffer.from(importedDataUrl?.split(",", 2)[1] ?? "", "base64").toString("utf8");
+
+		expect(renderedCss).not.toContain("./theme.css");
+		expect(importedCss).toContain("data:image/png;base64,");
+		expect(importedCss).not.toContain("../images/texture.png");
+	});
+
+	it("rejects assets outside the HTML directory instead of creating a broken bundle", () => {
 		const htmlDir = join(SRC_DIR, "contained");
 		mkdirSync(htmlDir, { recursive: true });
 		const html = join(htmlDir, "report.html");

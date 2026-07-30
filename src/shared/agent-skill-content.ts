@@ -161,10 +161,12 @@ Inside a dev3 task, an unqualified request for an "artifact", interactive report
 
 Every launched agent receives \`$DEV3_ARTIFACT_TEMPLATE_DIR\`, an absolute path to a pristine task-local starter. When creating a dev3 HTML artifact:
 
-1. Copy the entire template directory into the worktree; never edit the pristine source.
-2. Read \`AUTHORING.md\` in the copied directory before editing.
-3. Start from its \`index.html\`, dev3 branding, semantic CSS tokens, responsive layout, and Auto/Light/Dark theme switch.
-4. Keep the report's content and data self-contained (external chart/UI libraries and live \`fetch\`/WebSocket integrations are allowed — see the starter's AUTHORING.md), then present it with \`dev3 show-artifact ... --images ...\`.
+The layout is fixed; do not spend a turn listing or rediscovering it: \`AUTHORING.md\` is the compact reference, \`index.html\` + \`report.js\` are the normal edit surface, \`app.css\` + \`app.js\` are the stable visual/runtime shell, and \`dev3-icon.png\` is the bundled brand asset.
+
+1. Copy it once with \`cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report\`; never edit the pristine source.
+2. Read the copied \`AUTHORING.md\`, then inspect and edit only \`index.html\` and \`report.js\` unless the artifact format itself must change. Do not read the shell files for ordinary reports.
+3. Keep the report's content and data local. External chart/UI libraries and live \`fetch\`/WebSocket integrations are allowed as documented in \`AUTHORING.md\`.
+4. Present the starter with \`dev3 show-artifact ./dev3-artifact-report/index.html --assets ./dev3-artifact-report/app.css ./dev3-artifact-report/report.js ./dev3-artifact-report/app.js ./dev3-artifact-report/dev3-icon.png --title "Report title"\`. Insert any report-specific local assets in the \`--assets\` list before \`--title\`.
 
 If the environment variable is unexpectedly missing, report that dev3 could not provision the starter instead of inventing a different template.
 `;
@@ -178,7 +180,7 @@ Pull the user back to this task deliberately — enough that they never miss som
 - \`dev3 notify "message" [--level info|success|error] [--duration <seconds>]\` — clickable in-app toast (ephemeral; duration is 2s–30s, the \`s\` suffix is optional). \`--duration\` applies only to in-app toasts.
 - \`dev3 notify "message" [--level info|success|error] --desktop\` — sends a native OS notification that shows even when the app is backgrounded; do not combine \`--desktop\` with \`--duration\`.
 - \`dev3 show-image <path> [--caption "..."] [<path> ...]\` — **show the user actual images** (screenshots, \`agent-browser\` captures, rendered charts) in an in-app viewer; files are copied into the worktree, and **each \`--caption\` annotates the image it immediately follows** (e.g. \`dev3 show-image before.png --caption "current bug" after.png --caption "after my fix"\`). If pixels exist and are relevant, put them in front of the user — never just describe a picture or leave a path they must open themselves.
-- \`dev3 show-artifact <file.html> [--images <image...>] [--title "..."]\` — **show the user an interactive HTML artifact** in a sandboxed task workspace. Keep the HTML's content and data self-contained (external libraries and network integrations are allowed); local raster assets must be explicitly listed after \`--images\`, live beside or below the HTML file, and keep those relative paths in the ZIP. Artifacts with images download as a ZIP, while standalone artifacts download as HTML.
+- \`dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]\` — **show the user an interactive HTML artifact** in a sandboxed task workspace. Local CSS, classic JS, and raster files must be explicitly listed after \`--assets\`, live beside or below the HTML file, and keep their relative paths in the ZIP. Artifacts with local assets download as a ZIP; standalone artifacts download as HTML.
 - \`dev3 ui state\` — focused task/project, app foreground, user idle time (\`userActivity\`), tmux layout (\`--json\`). Check this BEFORE pinging to choose the channel.
 
 MUST ping — one per logical event, not per step: **blocked** or waiting on a question → \`dev3 attention "the question"\`; **finished** something important → \`dev3 notify "..." --level success\`; something **broke** → \`dev3 notify "..." --level error\`; produced an **image worth seeing** → proactive \`dev3 show-image ... --caption "..."\`; produced an interactive report worth exploring → proactive \`dev3 show-artifact ...\`. SHOULD (only on long runs when the user likely stepped away): a major milestone; a go/no-go before a risky action. Never ping per-step progress, routine tool calls, or anything already visible in the terminal.

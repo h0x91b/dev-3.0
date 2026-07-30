@@ -13,7 +13,14 @@ const log = createLogger("artifact-template");
 
 export const ARTIFACT_TEMPLATE_VERSION = 1;
 
-const ARTIFACT_TEMPLATE_FILES = ["index.html", "AUTHORING.md", "dev3-icon.png"] as const;
+export const ARTIFACT_TEMPLATE_FILES = [
+	"AUTHORING.md",
+	"index.html",
+	"report.js",
+	"app.css",
+	"app.js",
+	"dev3-icon.png",
+] as const;
 
 interface EnsureArtifactTemplateOptions {
 	sourceDir?: string;
@@ -53,7 +60,7 @@ export function artifactTemplateDir(project: Project, task: Task, worktreePath?:
 }
 
 /**
- * Restore the app-owned pristine starter for one task. Only the three managed
+ * Restore the app-owned pristine starter for one task. Only the managed
  * files are replaced; unknown files are preserved so provisioning is additive
  * and remains safe across app versions sharing ~/.dev3.0.
  */

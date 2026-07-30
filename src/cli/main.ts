@@ -72,7 +72,7 @@ Commands:
   dev3 attention "reason" [--task <id>] Light the red attention badge on the task card (reason shows on hover)
   dev3 message "text" [--in <dur> | --at <hh:mm>] [--task <id>]  Send text to the task's live agent now, or schedule it (Send later)
   dev3 show-image <path> [--caption "..."] [<path> ...]  Show images (screenshots/renders) in an in-app viewer bound to the task; each --caption annotates the preceding image
-  dev3 show-artifact <file.html> [--images <image...>] [--title "..."]  Show a task-bound HTML artifact; image assets are copied beside it and exported as ZIP
+  dev3 show-artifact <file.html> [--assets <file...>] [--title "..."]  Show a task-bound HTML artifact; local CSS, JS, and images are exported as ZIP
   dev3 ui state [--json]                 Show focused task/project, foreground, user idle time + the worktree's tmux layout (ASCII pane map)
   dev3 config show                       Show effective project settings (merged)
   dev3 config export                     Export settings to .dev3/config.json

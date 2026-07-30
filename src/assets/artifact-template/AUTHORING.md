@@ -1,54 +1,106 @@
 # dev3 artifact starter
 
-This directory is the pristine, task-local dev3 HTML artifact starter. Never edit it in place. Copy the entire directory into the task worktree, then edit only the copy:
+The layout is fixed; do not list or explore the directory before starting:
+
+- `AUTHORING.md` — read this reference once.
+- `index.html` — report copy, sections, fields, and table headings; edit this.
+- `report.js` — report data, charts, filters, and interactions; edit this.
+- `app.css` — stable responsive visual system and print layout; keep unchanged.
+- `app.js` — stable theme, chart, control, and toast bridge; keep unchanged.
+- `dev3-icon.png` — bundled brand asset; keep and publish it.
+
+Copy this pristine directory into the task worktree before editing:
 
 ```bash
 cp -R "$DEV3_ARTIFACT_TEMPLATE_DIR" ./dev3-artifact-report
 ```
 
-Start from `index.html`. Replace the sample cockpit title, data, chart labels, form fields, and table rows with content for the current task. Keep the useful interaction patterns and remove sections that do not help the report.
+## Edit surface
 
-## Network access and external libraries
+For most reports, edit only `index.html` and `report.js`.
 
-Artifacts render in a sandboxed opaque-origin iframe with **network access open**: you may load extra libraries, styles, and fonts from any CDN, `fetch()` data from the user's own services or the dev3 dev server, and open WebSockets. The sandbox isolates the artifact from the dev3 app itself (no parent page, files, or cookies) — for `fetch()`/WebSocket the target server must accept requests from a `null` origin (CORS). Prefer SRI-pinned (`integrity` + `crossorigin`) CDN script tags so a tampered payload is rejected instead of executed, and keep the report readable offline where practical: content and data inline, libraries as the only network dependency.
+- `index.html` owns visible copy, sections, form fields, and table headings.
+- `report.js` owns all report-specific data and behavior: chart options, table rows, filters, and interactions.
+- `app.css` owns the responsive dev3 visual system and print layout.
+- `app.js` owns only the reusable theme, chart, and toast shell.
 
-## Charts (Apache ECharts from cdnjs)
+Do not read or edit `app.css` or `app.js` unless the artifact format itself must change. This keeps formatting out of the authoring context and makes normal artifact work a targeted change. Delete irrelevant HTML sections and their matching `report.js` blocks freely; the reusable shell has no dependency on demo data or panels.
 
-`index.html` loads the full **Apache ECharts 6.1.0** API through the `<script data-dev3-vendor="echarts@6.1.0">` tag — an SRI-pinned script from `cdnjs.cloudflare.com`. Keep the tag intact including `integrity` and `crossorigin`. Offline, charts degrade to a visible notice while the rest of the report keeps working.
+## Preview and share
 
-Create charts through the small `dev3Chart(element, optionFactory)` bridge next to the demos (line/area, donut, radar). Pass a container element and a function returning a plain ECharts option; the bridge applies the dev3 token theme, forces the SVG renderer (crisp print/PDF), enables built-in aria descriptions, re-renders on theme switches, and resizes with the container. Mutate the data your factory reads, then call `handle.update()`. Use `tokenColor("--dev3-…", alpha?)` for any explicit colors so both themes and re-theming work.
-
-- Keep the SVG renderer; canvas charts blur or disappear in PDF output.
-- Any ECharts chart type is fine (heatmap, sankey, graph, sunburst, gauge, candlestick, …) — prefer it over hand-rolled SVG. The "Chart gallery" card demos heatmap, sankey, sunburst, and gauge through one host; switching series type needs `handle.remount()` (a plain `update()` merge would keep stale axes). Keep the types your report needs, delete the rest of the card.
-
-## Print and PDF
-
-Choose Auto, Light, or Dark in the report, then print normally with Cmd/Ctrl+P. The print stylesheet preserves that selected theme and chart colors, removes interactive controls, compacts the grid, repeats table headers, and avoids splitting cards or rows where possible. Charts re-render at a compact height via the `beforeprint` hook (`html.printing`).
-
-- Keep `print-color-adjust: exact` on `html, body`; never force a light palette inside `@media print`.
-- Keep charts on the SVG renderer so they stay crisp in PDF output.
-- Add `print-hidden` to controls that do not belong in a static report, and `print-only` to concise context that should appear only in the PDF.
-- Check print preview in both Light and Dark after changing the report layout.
-
-Preserve these contracts:
-
-- Keep `data-dev3-artifact-template="v1"` on `<html>`.
-- Keep the dev3 icon and a `DEV3 ARTIFACT · <CATEGORY>` eyebrow in the header.
-- Keep `Built with dev3 Artifacts` in the footer.
-- Keep the Auto → Light → Dark theme control. Auto follows the dev3 host theme and falls back to `prefers-color-scheme` outside dev3.
-- Use only the bundled `--dev3-*` semantic tokens for color. Define both dark and light values.
-- Keep the page responsive and keyboard-accessible.
-- Keep the print stylesheet responsive to the selected theme and suitable for PDF export.
-- Keep the pinned ECharts script tag (with `integrity` + `crossorigin`) and the `dev3Chart` bridge intact when the report has charts; remove both only if the report has no charts at all.
-- Keep the report's own content and data self-contained; external libraries and live integrations are allowed (see "Network access"), analytics/trackers are not.
-- Keep raster images beside or below `index.html` and reference them with relative paths.
-
-Preview the result in dev3 with the icon and any added raster images included:
+Pass every local dependency explicitly after `--assets`:
 
 ```bash
 dev3 show-artifact ./dev3-artifact-report/index.html \
-  --images ./dev3-artifact-report/dev3-icon.png \
+  --assets \
+  ./dev3-artifact-report/app.css \
+  ./dev3-artifact-report/report.js \
+  ./dev3-artifact-report/app.js \
+  ./dev3-artifact-report/dev3-icon.png \
   --title "Report title"
 ```
 
-Pass every other relative raster asset after `--images` too. Artifacts with images download as a ZIP, so the exported report remains portable.
+Keep assets beside or below `index.html` and reference them with relative paths. dev3 rewrites local CSS, classic JavaScript, raster references, and CSS `@import` chains for its sandboxed viewer, then includes the original paths in the downloadable ZIP. Pass every imported stylesheet explicitly in `--assets`. The extracted ZIP also opens directly through `file://`. Avoid ES modules and `fetch()` for local files because browsers restrict them for opaque and file origins.
+
+## Network access and external libraries
+
+Artifacts render in a sandboxed opaque-origin iframe with network access open. CDN libraries, fonts, `fetch()`, and WebSockets may reach the user's services or the dev3 dev server, but the target must accept a `null` origin (CORS). Prefer familiar, narrowly scoped libraries from cdnjs when they remove report-specific code, and pin the exact version in the URL. Do not add `integrity` hashes: CDN byte changes must not brick an otherwise compatible artifact. Keep report content and data local; analytics and trackers are not allowed.
+
+The starter already pins ECharts 6.1.0, Choices.js 11.2.3, and noUiSlider 15.8.1 in their URLs. Do not replace their tags or reproduce their behavior in report code. All three degrade safely when offline: charts show a notice, while selects and ranges remain native controls.
+
+## Charts (Apache ECharts from cdnjs)
+
+`index.html` loads Apache ECharts 6.1.0 through a versioned cdnjs tag. Keep that tag intact when the report has charts. Offline, chart hosts show a notice while the rest of the report remains usable.
+
+The stable bridge lives in `app.js` and exposes `window.dev3Artifact.chart()`, `.color()`, `.enhance()`, `.setControl()`, and `.toast()`. Keep chart options, values, labels, filters, and interactions in `report.js`; use the exposed helpers there without editing the shell. The chart helper applies dev3 tokens, uses the SVG renderer for crisp print/PDF output, adds aria descriptions, re-renders on theme changes, and resizes with its container.
+
+Use `.remount()` when switching a chart view so ECharts redraws its geometry from left to right; use `.update()` when live data should morph in place. The shell keeps ECharts' native timing and disables motion when the user prefers reduced motion.
+
+## Navigation and form controls
+
+Local fragment links are real navigation. Put them in `.section-nav`, give every target an `id` plus `.section-anchor`, and let the shell handle scrolling, focus, `aria-current`, and scrollspy:
+
+```html
+<nav class="section-nav"><a href="#results">Results</a></nav>
+<section class="section-anchor" id="results"><h2>Results</h2></section>
+```
+
+Keep form markup native and opt into the polished CDN controls with one attribute. The original elements remain the form values and the offline fallback; the shell handles keyboard support, labels, output updates, and reset synchronization:
+
+```html
+<select id="cohort" data-ui-select><option>Control</option><option>Agent</option></select>
+<label for="threshold">Threshold <output for="threshold">80%</output></label>
+<input id="threshold" type="range" min="50" max="100" value="80" data-ui-slider data-unit="%" data-pips="3">
+```
+
+Use native checkbox, radio, and switch markup from `index.html`; `app.css` supplies the shared skin without report JavaScript.
+When report code changes an enhanced select or range, call `dev3Artifact.setControl(element, value)` so the native value, visual control, events, and output stay synchronized.
+
+## Dense evidence tables
+
+Keep decision summaries and charts first, then preserve exhaustive source rows in a visible evidence ledger. Large mechanically produced datasets may live in an additional classic JavaScript asset such as `evidence-data.js`; list it in `--assets`, load it before `report.js`, and keep only rendering logic in `report.js`.
+
+Wrap wide tables in `.evidence-table-scroll` and add `.evidence-table` to the table. The shell keeps every column reachable with horizontal scrolling on narrow screens and lays all columns out for print. Reuse the semantic source markers `.good`, `.bad`, `.sig`, `.flat`, `.dim`, `.sep`, `.regime`, and `.total`; the shell maps them to dev3 tokens, quiet typographic significance emphasis, column separators, rollout boundaries, and total rows.
+
+## Print and PDF
+
+Choose Auto, Light, or Dark in the report, then print with Cmd/Ctrl+P. The stylesheet preserves the selected theme and chart colors, removes interactive controls, repeats table headers, and avoids splitting cards and rows.
+
+- Keep `print-color-adjust: exact` on `html, body`.
+- Keep charts on the SVG renderer.
+- Add `print-hidden` to controls that do not belong in static output.
+- Add `print-only` to concise context shown only in PDF.
+- Closed `details` sections expand for printing and return to their prior state afterwards.
+- For dense charts, set `--dev3-print-chart-height` on `<html>` to keep every label visible.
+- Check print preview in both Light and Dark after changing layout.
+
+## Contracts to preserve
+
+- Keep `data-dev3-artifact-template="v1"` on `<html>`.
+- Keep the dev3 icon and a `DEV3 ARTIFACT · <CATEGORY>` eyebrow.
+- Keep `Built with dev3 Artifacts` in the footer.
+- Keep the Auto → Light → Dark theme control.
+- Keep local navigation functional: a click must scroll, focus the section heading, and expose `aria-current`.
+- Use only the bundled `--dev3-*` semantic tokens for color.
+- Keep the page responsive and keyboard-accessible.
+- Keep report content/data local; external libraries and live integrations are allowed.

@@ -1,0 +1,5 @@
+Short: Multi-file artifact bundles
+
+Artifacts can now bundle local CSS, classic JavaScript, CSS imports, and images while remaining portable through compressed ZIP export and isolated inside the opaque-origin viewer sandbox. The starter keeps report content and behavior in two focused authoring files, while its stable shell supplies working scrollspy navigation, responsive chart panels, native left-to-right ECharts drawing motion, polished controls, and dense evidence tables whose quiet typographic significance markers, narrow-screen scrolling, and full-column print layout work out of the box. Every supported agent receives the fixed file map plus exact copy and publish commands, and a deliberately permissive artifact CSP lets familiar ECharts, Choices.js, noUiSlider, CDN assets, fetch, and WebSockets work without brittle integrity hashes or policy exceptions while retaining readable native or textual fallbacks offline. Text data URLs declare UTF-8 explicitly, and viewer composition canonicalizes local dot segments plus quoted and unquoted asset attributes so preview behavior matches the downloaded ZIP.
+
+Suggested by @nadavsheinbein (h0x91b/dev-3.0#1173)
