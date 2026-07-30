@@ -1,0 +1,1 @@
+Removed the Decision-First reply format and the mandatory `## Test instructions` block from the agent instructions. The shape of agent replies now belongs to the harness output style; the repo only keeps the English-only rule for text written into the codebase, plus content requirements for telling the user how to check the work.

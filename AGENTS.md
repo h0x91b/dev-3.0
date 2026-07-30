@@ -6,19 +6,7 @@ This file provides guidance to AI coding agents when working with code in this r
 
 ## Response style
 
-**Default writing style: Decision-First.** Optimize replies for fast scanning and minimum necessary text.
-
-- When structure is needed, use this section order, labels uppercase, divider width consistent:
-  `============= [CANDIDATES] =============`
-  `============== [DECISION] ==============`
-  `================ [WHY] =================`
-  `================ [NEXT] ================`
-- `CANDIDATES`: 2-5 genuinely viable options — no strawmen, no filler, no "do nothing" padding. Candidates must be maximally diverse approaches (different layers, mechanisms, scopes), not cosmetic variations of one idea or "subset of the plan" vs "the plan". Up to 5 short lines each; mark the pick `(chosen)`. If only one reasonable approach exists, skip the section and say so in `DECISION` — a fake alternatives list is worse than none.
-- `CANDIDATES` frames options concisely; `DECISION` explains the chosen one in more detail. Keep every section to short paragraphs or a flat list of concrete steps.
-- Short sentences, concrete nouns, direct verbs. Don't repeat a point in different words; don't add background that doesn't change the decision; delete sentences that add no information. Target: readable in 10-15 seconds for normal task updates.
-- For code changes, always end the final reply with the repo-mandated `## Test instructions` block.
-
-**Decision-First governs structure, never language or register.** The user's own language, tone, and formality settings (session language policy, personal instructions, an explicit request mid-conversation) always win — write the sections in whatever language and register the user asked for. Never switch a reply to English, or flatten the user's preferred tone, just to look like the example above. If the two ever seem to collide, keep the user's voice and drop the formatting, not the reverse. The English-only rule applies solely to text written **into** the repo (see [Language policy](#language-policy)).
+**This repo does not impose one.** Shape, language and register of your replies belong to your harness's output style and the user's own instructions. The English-only rule applies solely to text written **into** the repo (see [Language policy](#language-policy)), never to replies.
 
 ## What is this
 
@@ -199,24 +187,15 @@ The five canonical triage roles map to **dev3 labels** with their canonical name
 
 Single-context: `AGENTS.md` is the primary domain/architecture doc (no separate `CONTEXT.md`), ADRs live in `decisions/NNN-slug.md` (not `docs/adr/`). See `docs/agents/domain.md`.
 
-## Test instructions (mandatory for every task)
+## Telling the user how to check the work
 
-**Every task must end with a "Test instructions" section in the final message** — a TL;DR the user can follow without reading the conversation above:
+**No mandated block and no fixed heading** — fit it into whatever shape your output style gives you. What must reach the user is the content: enough for them to see the change working without re-reading the conversation.
 
-```
-## Test instructions
-
-1. Go to [place in the app]
-2. Click [element] / Do [action]
-3. Expected: [what should happen]
-```
-
-Rules:
-- **Cover the entire task, not just the latest change** — if the task added buttons A, B, then C, verify all three; mark the newest item with `(new)`.
-- **Be specific** — exact labels, tab names, menu paths ("Open Settings → General tab → 'Auto-save' toggle"), not "open settings".
-- **Keep it short** — one numbered step per thing to verify; what to do + what to expect, no why.
-- **Include negative cases if relevant** — e.g. "Click X when Y is empty — expect an error toast, not a crash."
-- **Update, don't duplicate** — a new version fully replaces earlier test instructions; always give the full set.
+- **Cover the whole task, not just the last change** — if the task added buttons A, B, then C, all three get a step; mark the newest `(new)`.
+- **Be specific** — exact labels, tab names, menu paths ("Settings → General → 'Auto-save' toggle"), commands. Not "open settings".
+- **One step per thing to check** — what to do, what to expect, no why.
+- **Include the negative case when it matters** — "Click X with Y empty — expect an error toast, not a crash."
+- **Replace, don't append** — the latest version supersedes earlier ones; always give the full set, never a delta.
 
 ## Commands
 
