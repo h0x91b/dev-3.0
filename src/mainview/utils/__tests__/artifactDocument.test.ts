@@ -39,6 +39,27 @@ describe("composeArtifactDocument", () => {
 
 	it("omits the save-image menu when no label is provided", () => {
 		const output = composeArtifactDocument('<html><head></head><body><img src="chart.png"></body></html>', []);
-		expect(output).not.toContain("data-dev3-artifact-menu");
+		// The find script references the menu's marker (to skip its text), so assert
+		// on the menu script tag itself rather than the bare attribute name.
+		expect(output).not.toContain("<script data-dev3-artifact-menu>");
+		expect(output).not.toContain("dev3-artifact-save-image");
+	});
+
+	it("always injects the find bridge, including its in-iframe ⌘F relay", () => {
+		const output = composeArtifactDocument('<html><head></head><body><p>hello</p></body></html>', []);
+		expect(output).toContain("data-dev3-artifact-find");
+		// The parent drives the search; the iframe owns highlight + scroll.
+		expect(output).toContain("dev3-artifact-find-result");
+		expect(output).toContain("dev3-artifact-find-step");
+		expect(output).toContain("dev3-artifact-find-clear");
+		// Keydown never leaves the iframe, so ⌘F inside the artifact must be relayed.
+		expect(output).toContain("dev3-artifact-find-open");
+		expect(output).toContain("CSS.highlights");
+	});
+
+	it("injects the find bridge into bare-fragment artifacts too", () => {
+		const output = composeArtifactDocument("<p>no html wrapper</p>", []);
+		expect(output).toContain("data-dev3-artifact-find");
+		expect(output).toContain("no html wrapper");
 	});
 });

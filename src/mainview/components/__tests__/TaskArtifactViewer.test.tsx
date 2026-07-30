@@ -7,6 +7,9 @@ import TaskArtifactViewer from "../TaskArtifactViewer";
 vi.mock("../../rpc", () => ({
 	api: { request: { readArtifactContent: vi.fn(), readArtifactDownload: vi.fn() } },
 }));
+
+// Pin the platform so the ⌘F assertions don't depend on the host running them.
+vi.mock("../../utils/platform", () => ({ isMac: () => true, isRemote: () => false }));
 import { api } from "../../rpc";
 const mockedApi = vi.mocked(api, true);
 
@@ -138,6 +141,81 @@ describe("TaskArtifactViewer", () => {
 		createObjectURL.mockRestore();
 		revokeObjectURL.mockRestore();
 		click.mockRestore();
+	});
+
+	async function openFind(artifactList = [artifact("a")]) {
+		render(<I18nProvider><button type="button">Terminal</button><TaskArtifactViewer artifacts={artifactList} initialIndex={0} onClose={vi.fn()} /></I18nProvider>);
+		const frame = await screen.findByTitle(`Artifact ${artifactList[0].id}`) as HTMLIFrameElement;
+		const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
+		return { frame, postMessage };
+	}
+
+	/** Fake a reply from the sandboxed document for the newest query token. */
+	function replyFromFrame(frame: HTMLIFrameElement, token: number, matches: number, index: number) {
+		const event = new MessageEvent("message", { data: { type: "dev3-artifact-find-result", token, matches, index } });
+		Object.defineProperty(event, "source", { value: frame.contentWindow });
+		window.dispatchEvent(event);
+	}
+
+	it("opens find on ⌘F only once focus is inside the viewer, and searches the sandboxed document", async () => {
+		const { frame, postMessage } = await openFind();
+
+		screen.getByRole("button", { name: "Terminal" }).focus();
+		fireEvent.keyDown(window, { code: "KeyF", metaKey: true });
+		expect(screen.queryByTestId("artifact-search-bar")).not.toBeInTheDocument();
+
+		screen.getByTestId("artifact-viewer-close").focus();
+		fireEvent.keyDown(window, { code: "KeyF", metaKey: true });
+		expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument();
+
+		await userEvent.type(screen.getByPlaceholderText("Find in artifact"), "revenue");
+		await waitFor(() => expect(postMessage).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "dev3-artifact-find", query: "revenue" }),
+			"*",
+		));
+
+		replyFromFrame(frame, 1, 3, 0);
+		await waitFor(() => expect(screen.getByTestId("artifact-search-count")).toHaveTextContent("1/3"));
+
+		await userEvent.click(screen.getByRole("button", { name: /next match/i }));
+		expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "dev3-artifact-find-step", delta: 1 }), "*");
+	});
+
+	it("opens find when the artifact relays its own ⌘F, and the header magnifier toggles it", async () => {
+		const { frame } = await openFind();
+
+		const relay = new MessageEvent("message", { data: { type: "dev3-artifact-find-open" } });
+		Object.defineProperty(relay, "source", { value: frame.contentWindow });
+		window.dispatchEvent(relay);
+		await waitFor(() => expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument());
+
+		await userEvent.click(screen.getByTestId("artifact-viewer-search"));
+		expect(screen.queryByTestId("artifact-search-bar")).not.toBeInTheDocument();
+		await userEvent.click(screen.getByTestId("artifact-viewer-search"));
+		expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument();
+	});
+
+	it("keeps Escape and the arrow keys off artifact history while find is open", async () => {
+		const onClose = vi.fn();
+		render(<I18nProvider><TaskArtifactViewer artifacts={[artifact("a"), artifact("b")]} initialIndex={0} onClose={onClose} /></I18nProvider>);
+		await screen.findByTitle("Artifact a");
+		screen.getByTestId("artifact-viewer-close").focus();
+		fireEvent.keyDown(window, { code: "KeyF", metaKey: true });
+		expect(screen.getByTestId("artifact-search-bar")).toBeInTheDocument();
+
+		// Arrows belong to the query caret, not to the artifact history.
+		fireEvent.keyDown(window, { key: "ArrowRight" });
+		expect(screen.getByText("Artifact a")).toBeInTheDocument();
+
+		// Escape unwinds one layer: find first, the viewer only after.
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(screen.queryByTestId("artifact-search-bar")).not.toBeInTheDocument();
+		expect(onClose).not.toHaveBeenCalled();
+		// Focus must land back on the toggle, never on the iframe — key events inside
+		// the sandboxed document never reach this window, so the next Escape would die.
+		expect(document.activeElement).toBe(screen.getByTestId("artifact-viewer-search"));
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(onClose).toHaveBeenCalledOnce();
 	});
 
 	it("requests ZIP download when the artifact has assets", async () => {

@@ -4,6 +4,12 @@ Compact index of UX architecture decisions — the *why* behind rules that live 
 `PRODUCT_UX_BIBLE.md` / `ux-architecture.yaml`. Max ~5 lines per entry; details live in
 git history, PRs, and `decisions/NNN-*.md`. Newest first.
 
+## 2026-07-30 — Find-in-content follows the content, not the viewer header
+
+- **Rule:** `⌘F` over a viewer's rendered content puts the search UI in that surface's *content* toolbar where one exists (diff viewer §5.3), otherwise on a floating top-right bar over the content, focus-gated to that viewer; the header may carry **exactly one** magnifier icon that toggles that bar and nothing else. Bible §10 row `find in content`.
+- **Why:** the two live precedents disagreed (diff viewer = toolbar toggle, terminal = floating keyboard-only bar), and the artifact header is artifact-level chrome already at 8 slots — so the search *field* stays out of it while one icon is an accepted §11 exception (user-requested: a keyboard-only find is invisible to a pointer user). Rejected: a search input in the header, and multiple entry points per viewer.
+- **Status:** Observed (artifact viewer). Evidence: `TaskArtifactViewer.tsx`, `ArtifactSearchBar.tsx`, `TerminalSearchBar.tsx`, `TaskDiffViewer.tsx`, `utils/artifactDocument.ts`, `keymap.ts`.
+
 ## 2026-07-28 — A lifecycle split-control counts as ONE task-card inline action
 
 - **Rule:** The card's status control may carry a second half that commits the pipeline's own terminal move (today: a ✓ straight to Completed) and still spends one slot of the §9 `max_inline_actions: 2` budget — but only when it is glued to the status trigger, shares its hover surface, is desktop-only (the narrow path stays the BottomSheet's promoted Completed row, ≥44px), and hides whenever `getAllowedTransitions` forbids the target. Anything not on the object's own lifecycle is a normal action and costs its own slot.

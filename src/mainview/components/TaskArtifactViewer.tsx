@@ -5,6 +5,8 @@ import { useT } from "../i18n";
 import HelpSpot from "./HelpSpot";
 import { toast } from "../toast";
 import { composeArtifactDocument } from "../utils/artifactDocument";
+import { isMac } from "../utils/platform";
+import ArtifactSearchBar, { type ArtifactSearchBarHandle } from "./ArtifactSearchBar";
 
 interface TaskArtifactViewerProps {
 	artifacts: SharedArtifact[];
@@ -16,6 +18,7 @@ interface TaskArtifactViewerProps {
 type ArtifactThemeMode = "follow" | "light" | "dark";
 
 const ICON = "'JetBrainsMono Nerd Font Mono'";
+const SEARCH_DEBOUNCE_MS = 150;
 
 function currentTheme(): "dark" | "light" {
 	return document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -77,9 +80,18 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 	const [fullscreen, setFullscreen] = useState(false);
 	const [downloading, setDownloading] = useState(false);
 	const [themeMode, setThemeMode] = useState<ArtifactThemeMode>(() => currentTheme());
+	const [searchOpen, setSearchOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	// null = nothing searched yet (empty query) — the counter stays hidden.
+	const [matches, setMatches] = useState<number | null>(null);
+	const [activeIndex, setActiveIndex] = useState(-1);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const viewerRef = useRef<HTMLElement>(null);
 	const assetsRef = useRef<ArtifactAsset[]>([]);
+	const searchBarRef = useRef<ArtifactSearchBarHandle | null>(null);
+	const searchToggleRef = useRef<HTMLButtonElement>(null);
+	// Guards against out-of-order replies from the iframe while typing fast.
+	const searchTokenRef = useRef(0);
 	const current = artifacts[index];
 
 	useEffect(() => {
@@ -92,6 +104,11 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		setSrcDoc(null);
 		setError(false);
 		assetsRef.current = [];
+		// A different document invalidates the query's matches — start it clean
+		// instead of showing a counter from the artifact the user just left.
+		setQuery("");
+		setMatches(null);
+		setActiveIndex(-1);
 		api.request.readArtifactContent({ artifact: current })
 			.then((payload) => {
 				if (cancelled) return;
@@ -102,11 +119,66 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		return () => { cancelled = true; };
 	}, [current, t]);
 
+	const postToFrame = useCallback((message: Record<string, unknown>) => {
+		frameRef.current?.contentWindow?.postMessage(message, "*");
+	}, []);
+
+	const openSearch = useCallback(() => {
+		setSearchOpen(true);
+		// Already open → re-focus the input and select the query for retyping.
+		searchBarRef.current?.focusInput();
+	}, []);
+
+	const closeSearch = useCallback(() => {
+		setSearchOpen(false);
+		setQuery("");
+		setMatches(null);
+		setActiveIndex(-1);
+		postToFrame({ type: "dev3-artifact-find-clear" });
+		// Hand focus back to the toggle, NOT to the iframe: focusing the frame moves
+		// focus into the sandboxed document, whose key events never reach this window
+		// — the next Escape (and ⌘F) would silently die.
+		searchToggleRef.current?.focus();
+	}, [postToFrame]);
+
+	// The search runs inside the opaque-origin iframe; we only ship the query in and
+	// read the counter back. Debounced so fast typing doesn't re-walk the document
+	// per keystroke, tokened so a slow reply can't overwrite a newer one.
+	useEffect(() => {
+		if (!searchOpen) return;
+		const timer = setTimeout(() => {
+			if (!query) {
+				searchTokenRef.current++;
+				setMatches(null);
+				setActiveIndex(-1);
+				postToFrame({ type: "dev3-artifact-find-clear" });
+				return;
+			}
+			postToFrame({ type: "dev3-artifact-find", query, token: ++searchTokenRef.current });
+		}, SEARCH_DEBOUNCE_MS);
+		return () => clearTimeout(timer);
+	}, [query, searchOpen, srcDoc, postToFrame]);
+
+	const step = useCallback((delta: 1 | -1) => {
+		if (!matches) return;
+		postToFrame({ type: "dev3-artifact-find-step", delta, token: ++searchTokenRef.current });
+	}, [matches, postToFrame]);
+
 	useEffect(() => {
 		function onMessage(event: MessageEvent) {
 			if (event.source !== frameRef.current?.contentWindow) return;
-			const data = event.data as { type?: string; src?: string; alt?: string } | null;
-			if (!data || data.type !== "dev3-artifact-save-image" || typeof data.src !== "string") return;
+			const data = event.data as { type?: string; src?: string; alt?: string; token?: number; matches?: number; index?: number } | null;
+			if (!data) return;
+			// Keyboard events inside the sandboxed iframe never reach this window, so
+			// the artifact's own ⌘F handler asks us to open the bar.
+			if (data.type === "dev3-artifact-find-open") { openSearch(); return; }
+			if (data.type === "dev3-artifact-find-result") {
+				if (data.token !== searchTokenRef.current) return;
+				setMatches(typeof data.matches === "number" ? data.matches : 0);
+				setActiveIndex(typeof data.index === "number" ? data.index : -1);
+				return;
+			}
+			if (data.type !== "dev3-artifact-save-image" || typeof data.src !== "string") return;
 			const parsed = parseDataUrl(data.src);
 			if (!parsed) { toast.error(t("artifactViewer.imageSaveFailed"), { taskId }); return; }
 			try {
@@ -118,7 +190,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		}
 		window.addEventListener("message", onMessage);
 		return () => window.removeEventListener("message", onMessage);
-	}, [t, taskId]);
+	}, [t, taskId, openSearch]);
 
 	const sendTheme = useCallback(() => {
 		const theme = themeMode === "follow" ? currentTheme() : themeMode;
@@ -150,14 +222,37 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 			if (!fullscreen && !viewerRef.current?.contains(document.activeElement)) return;
 			if (event.key === "Escape") {
 				event.preventDefault();
-				if (fullscreen) setFullscreen(false);
+				// Escape unwinds one layer at a time: search → fullscreen → viewer.
+				if (searchOpen) closeSearch();
+				else if (fullscreen) setFullscreen(false);
 				else onClose();
-			} else if (event.key === "ArrowLeft") { event.preventDefault(); go(-1); }
-			else if (event.key === "ArrowRight") { event.preventDefault(); go(1); }
+			} else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+				// While searching, arrows belong to the query caret, not to history.
+				if (searchOpen) return;
+				event.preventDefault();
+				go(event.key === "ArrowLeft" ? -1 : 1);
+			}
 		}
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [fullscreen, go, onClose]);
+	}, [fullscreen, go, onClose, searchOpen, closeSearch]);
+
+	// ⌘F (Ctrl+F elsewhere) — find inside the artifact. Gated on focus being inside
+	// this viewer so the browser's native find keeps working everywhere else in
+	// remote mode. Focus sitting *inside* the iframe is handled by the injected
+	// script, which posts `dev3-artifact-find-open` instead.
+	useEffect(() => {
+		function onFindShortcut(event: KeyboardEvent) {
+			const combo = isMac() ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+			if (!combo || event.shiftKey || event.altKey || event.code !== "KeyF") return;
+			if (!fullscreen && !viewerRef.current?.contains(document.activeElement)) return;
+			event.preventDefault();
+			event.stopPropagation();
+			openSearch();
+		}
+		window.addEventListener("keydown", onFindShortcut, { capture: true });
+		return () => window.removeEventListener("keydown", onFindShortcut, { capture: true });
+	}, [fullscreen, openSearch]);
 
 	if (!current) return null;
 
@@ -177,6 +272,7 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 		? t("artifactViewer.themeFollow")
 		: themeMode === "light" ? t("artifactViewer.themeLight") : t("artifactViewer.themeDark");
 	const themeLabel = t("artifactViewer.themeMode", { mode: themeName });
+	const searchLabel = `${t("artifactViewer.search")} (${isMac() ? "⌘F" : "Ctrl+F"})`;
 	const cycleTheme = () => setThemeMode((mode) => {
 		if (mode === "follow") return currentTheme();
 		return mode === currentTheme() ? (mode === "light" ? "dark" : "light") : "follow";
@@ -208,6 +304,16 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				)}
 				<button
 					type="button"
+					ref={searchToggleRef}
+					data-testid="artifact-viewer-search"
+					className={`${iconButton} ${searchOpen ? "bg-accent/10 text-accent" : ""}`}
+					onClick={() => (searchOpen ? closeSearch() : openSearch())}
+					aria-label={searchLabel}
+					aria-pressed={searchOpen}
+					title={searchLabel}
+				><span style={{ fontFamily: ICON }}></span></button>
+				<button
+					type="button"
 					data-testid="artifact-viewer-theme"
 					className={`${iconButton} ${themeMode === "follow" ? "" : "bg-accent/10 text-accent"}`}
 					onClick={cycleTheme}
@@ -218,7 +324,18 @@ export default function TaskArtifactViewer({ artifacts, initialIndex, onClose, t
 				<button type="button" data-testid="artifact-viewer-fullscreen" className={iconButton} onClick={() => setFullscreen((value) => !value)} aria-label={fullscreen ? t("artifactViewer.exitFullscreen") : t("artifactViewer.fullscreen")}><span style={{ fontFamily: ICON }}>{fullscreen ? "" : ""}</span></button>
 				<button type="button" data-testid="artifact-viewer-close" className={iconButton} onClick={onClose} aria-label={t("artifactViewer.close")}><span style={{ fontFamily: ICON }}></span></button>
 			</header>
-			<div className="min-h-0 flex-1 bg-base">
+			<div className="relative min-h-0 flex-1 bg-base">
+				{searchOpen && srcDoc && !error && (
+					<ArtifactSearchBar
+						ref={searchBarRef}
+						query={query}
+						onQueryChange={setQuery}
+						matches={matches}
+						activeIndex={activeIndex}
+						onStep={step}
+						onClose={closeSearch}
+					/>
+				)}
 				{error ? (
 					<div className="flex h-full items-center justify-center px-6 text-center text-sm text-danger">{t("artifactViewer.loadFailed")}</div>
 				) : srcDoc ? (

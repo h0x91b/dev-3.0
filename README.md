@@ -313,6 +313,7 @@ every shortcut in one panel (App + Terminal/tmux tabs). The full list is defined
 | Help mode (explain this screen) | ⇧⌘/ | Ctrl+Shift+/ |
 | Open current project/worktree in an app (picker) | ⌘O | Ctrl+O |
 | Terminal immersive fullscreen | F11 / ⇧⌘F | F11 / Ctrl+Shift+F |
+| Find in the focused terminal / HTML artifact | ⌘F | Ctrl+F |
 | Back / Forward | ⌘[ / ⌘] | Ctrl+[ / Ctrl+] |
 | Previous / next live variant | ⇧⌘[ / ⇧⌘] | Ctrl+Shift+[ / Ctrl+Shift+] |
 | Switch to project 1–9 (keep view) | ⌘1–9 | Ctrl+1–9 |

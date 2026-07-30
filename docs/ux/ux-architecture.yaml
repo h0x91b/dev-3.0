@@ -428,8 +428,9 @@ ux_architecture:
       purpose: "Task-bound interactive HTML output surfaced via dev3 show-artifact; docked beside the terminal, horizontally resizable, and fullscreen on demand."
       feature_class: ["object_action", "data_visualization", "notification"]
       reached_from: ["arrival_push (auto-open only on the focused task)", "inspector:Artifacts conditional count button"]
-      allowed: ["sandboxed_html", "history_navigation", "theme_sync", "resize", "fullscreen", "download_html", "download_zip"]
+      allowed: ["sandboxed_html", "history_navigation", "theme_sync", "resize", "fullscreen", "find_in_content", "download_html", "download_zip"]
       forbidden: ["global_destination", "task_lifecycle_action", "git_mutation", "subresource_network_access", "parent_dom_or_rpc_access", "native_dialog"]
+      find_in_content: "Floating bar over the iframe (top-right); Cmd/Ctrl+F is the primary trigger while focus is inside the viewer, plus exactly ONE earned magnifier icon in the header that toggles the bar (explicit bible-section-10/11 exception -- the search field itself never moves into the header). The parent cannot reach the opaque-origin document, so query/step are postMessage'd to an injected script that owns highlighting and scroll and reports {matches,index} back. Registered in keymap.ts."
       security: "iframe sandbox=allow-scripts without allow-same-origin; injected CSP blocks connections/subresources, frames, objects, forms and base URLs. Allowed scripts can still self-navigate their iframe, so artifacts are trusted task output rather than an untrusted-code boundary. Copied relative images are rewritten to data URLs only in the rendered srcdoc."
       layout: "Desktop: right-side TaskWorkspacePane sibling with persisted width. Narrow: one-at-a-time artifact replaces terminal until closed."
       export: "No assets -> HTML download. Any --images assets -> STORE ZIP containing HTML plus safe asset paths relative to the HTML."

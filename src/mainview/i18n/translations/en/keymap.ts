@@ -43,6 +43,7 @@ const keymap = {
 	"keymap.shortcut.keyboardShortcuts": "Show this keyboard shortcuts panel",
 	"keymap.shortcut.helpMode": "Explain this screen (help mode)",
 	"keymap.shortcut.terminalFullscreen": "Toggle terminal immersive fullscreen (task terminal only)",
+	"keymap.shortcut.artifactSearch": "Find in the focused HTML artifact",
 	"keymap.shortcut.toggleProjectTerminal": "Toggle project terminal",
 	"keymap.shortcut.openQuickShell": "Open Quick Shell",
 	"keymap.shortcut.terminalSearch": "Search in the focused terminal (tmux scrollback)",

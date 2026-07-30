@@ -96,6 +96,7 @@ export const APP_SHORTCUTS: ShortcutSpec[] = [
 	{ id: "keyboard-shortcuts", keys: { mac: "⌘/", other: "Ctrl+/" }, descKey: "keymap.shortcut.keyboardShortcuts", category: "view" },
 	{ id: "help-mode", keys: { mac: "⇧⌘/", other: "Ctrl+Shift+/" }, descKey: "keymap.shortcut.helpMode", category: "view" },
 	{ id: "terminal-fullscreen", keys: { mac: "F11 / ⇧⌘F", other: "F11 / Ctrl+Shift+F" }, descKey: "keymap.shortcut.terminalFullscreen", category: "view" },
+	{ id: "artifact-search", keys: { mac: "⌘F", other: "Ctrl+F" }, descKey: "keymap.shortcut.artifactSearch", category: "view" },
 
 	// ── Terminal ──
 	{ id: "toggle-project-terminal", keys: { mac: "⌘`", other: "Ctrl+`" }, descKey: "keymap.shortcut.toggleProjectTerminal", category: "terminal" },
